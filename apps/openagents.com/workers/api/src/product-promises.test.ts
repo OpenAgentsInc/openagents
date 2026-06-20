@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.27')
+    expect(decoded.version).toBe('2026-06-20.28')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -225,6 +225,10 @@ describe('public product promises document', () => {
     // eval_suite_reproduction_missing by projecting the retained Psion
     // checkpoint-eval decision; paid ablation dispatch remains blocked, so
     // green remains exactly 24.
+    // The 2026-06-20.28 Tassadar Percepta architecture-receipt pass clears
+    // only percepta_executor_architecture_receipts_missing by projecting a
+    // refs-only architecture bundle; CPU-transform training receipts remain
+    // blocked, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -488,16 +492,18 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
             'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
+            'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
+            'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
+            'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
           ]),
           blockerRefs: [
-            'blocker.product_promises.percepta_executor_architecture_receipts_missing',
             'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
           ],
           safeCopy: expect.stringContaining(
-            'model/spec boundary is now written down',
+            'architecture receipt projection is now live',
           ),
           verification: expect.stringContaining(
-            'tassadar_model_spec_missing',
+            'percepta_executor_architecture_receipts_missing',
           ),
         }),
         expect.objectContaining({
@@ -968,12 +974,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.27', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.28', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.27',
+      expectedVersion: '2026-06-20.28',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.27',
+      servedVersion: '2026-06-20.28',
       status: 'ready',
     })
     expect(
@@ -983,7 +989,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.27',
+      servedVersion: '2026-06-20.28',
       status: 'blocked',
     })
   })

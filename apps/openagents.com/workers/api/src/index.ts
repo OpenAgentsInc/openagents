@@ -33,6 +33,10 @@ import {
   handleTrainingAblationDeriskingLedgerApi,
 } from './training-ablation-derisking-ledger-routes'
 import {
+  TassadarPerceptaArchitectureReceiptsEndpoint,
+  handleTassadarPerceptaArchitectureReceiptsApi,
+} from './tassadar-percepta-architecture-receipts-routes'
+import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
   isMarketplaceComposeAndListEnabled,
@@ -8045,6 +8049,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // execution, spend, settlement, model promotion, or green claim.
     path: TrainingAblationDeriskingLedgerEndpoint,
     handler: request => handleTrainingAblationDeriskingLedgerApi(request),
+  },
+  {
+    // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;
+    // promise models.tassadar_percepta_executor.v1, red). Read-only refs and
+    // digest projection: clears only the architecture-receipt blocker while
+    // Pylon CPU-transform training receipts remain missing. No trained model,
+    // inference endpoint, spend, settlement, promotion, or green claim.
+    path: TassadarPerceptaArchitectureReceiptsEndpoint,
+    handler: request =>
+      handleTassadarPerceptaArchitectureReceiptsApi(request),
   },
   {
     path: '/api/public/demand-provenance',
