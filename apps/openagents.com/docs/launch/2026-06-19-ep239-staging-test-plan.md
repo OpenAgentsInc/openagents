@@ -268,6 +268,34 @@ adapter is **owner-armed and stays inert** — do **not** try to settle a payout
 - Dashboard: `GET /api/inference/referral/dashboard` (browser session; returns
   **401** to a bare agent token — live, not 404) shows accrued eligibility.
 - Payout dispatch: `POST /api/operator/inference/referral/payout/:ref/dispatch`
+
+When the owner supplies a staging/test settlement receipt from the inert/test
+rail, the receipt is publicly dereferenceable without exposing referral
+identity or payment material:
+
+```sh
+REFERRAL_PAYOUT_RECEIPT_REF="receipt.site_referral_payout.staging_test..."
+curl -s "$B/api/public/site-referral-payout-receipts/$REFERRAL_PAYOUT_RECEIPT_REF"
+```
+
+Only a response whose `receipt.resolution.status` is `"ok"` and
+`receipt.resolution.state` is `"settled"` proves the settlement-readback part of
+the #5520 referral leg. The response intentionally omits payout refs, user ids,
+attribution ids, referral source/invite ids, destinations, invoices, payment
+hashes, preimages, raw provider payloads, wallet material, and ledger ids.
+
+Feed that ref into the push-button smoke:
+
+```sh
+bun apps/openagents.com/scripts/ep239-staging-smoke.mjs \
+  --referral-payout-receipt-ref "$REFERRAL_PAYOUT_RECEIPT_REF" \
+  --require-complete --json
+```
+
+The smoke keeps `referral_accrual_and_test_settlement` `UNPROVEN` unless the
+public receipt resolves as a settled referral payout receipt on the staging
+Worker. Route-gating checks alone (unknown referral 404 + dashboard 401) are
+not enough for #5520 completion.
   is admin-gated AND owner-armed; it stays inert. Do not attempt to settle.
 
 Because the full referral chain (create source → capture → claim → paid event →

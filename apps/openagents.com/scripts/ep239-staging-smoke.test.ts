@@ -72,6 +72,8 @@ describe('Ep239 staging funded-loop smoke', () => {
       'cs_test_123',
       '--stripe-checkout-receipt-ref',
       'receipt.billing.stripe_checkout.cs_test_456',
+      '--referral-payout-receipt-ref',
+      'receipt.site_referral_payout.staging_test.settled_1',
     ])
     expect(options.baseUrl).toBe('https://x.example')
     expect(options.json).toBe(true)
@@ -79,6 +81,9 @@ describe('Ep239 staging funded-loop smoke', () => {
     expect(options.stripeCheckoutSessionId).toBe('cs_test_123')
     expect(options.stripeCheckoutReceiptRef).toBe(
       'receipt.billing.stripe_checkout.cs_test_456',
+    )
+    expect(options.referralPayoutReceiptRef).toBe(
+      'receipt.site_referral_payout.staging_test.settled_1',
     )
     expect(smoke.parseArgs(['--help']).help).toBe(true)
     expect(() => smoke.parseArgs(['--nope'])).toThrowError(/Unknown argument/)
@@ -125,7 +130,9 @@ describe('Ep239 staging funded-loop smoke', () => {
       meteredSpendProven: true,
       meteredSpendRefs: ['receipt.inference.charge.chatcmpl_123'],
       referralAccrualProven: true,
-      referralAccrualRefs: ['receipt.referral.staging_test.settled_1'],
+      referralAccrualRefs: [
+        'receipt.site_referral_payout.staging_test.settled_1',
+      ],
       newSurfacesProven: true,
       newSurfaceRefs: ['ftjob_123', 'sbx_123'],
       promiseHonestyProven: true,

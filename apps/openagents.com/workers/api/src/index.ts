@@ -471,6 +471,7 @@ import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receip
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { makePublicSiteReferralPayoutReceiptRoutes } from './public-site-referral-payout-receipt-routes'
 import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-receipt-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
@@ -554,6 +555,7 @@ import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboar
 import { makeSiteReferralPayoutAdapter } from './site-referral-payout-adapter'
 import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
 import { handleSiteReferralPayoutsPublicApi } from './site-referral-payout-public-routes'
+import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
@@ -7085,6 +7087,13 @@ const publicStripeCheckoutReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const publicSiteReferralPayoutReceiptRoutes =
+  makePublicSiteReferralPayoutReceiptRoutes<Env>({
+    makeStore: env =>
+      makeD1SiteReferralPayoutReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -9789,6 +9798,9 @@ const routeRequest = makeWorkerRouteRequest({
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
+  routePublicSiteReferralPayoutReceiptRequest:
+    publicSiteReferralPayoutReceiptRoutes
+      .routePublicSiteReferralPayoutReceiptRequest,
   routePublicStripeCheckoutReceiptRequest:
     publicStripeCheckoutReceiptRoutes.routePublicStripeCheckoutReceiptRequest,
   routeEcommerceCampaignReceiptRequest:

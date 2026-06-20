@@ -1328,6 +1328,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicStripeCheckoutReceiptEnvelope: objectSummary(
     'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
+  PublicSiteReferralPayoutReceiptEnvelope: objectSummary(
+    'Public-safe Site referral payout receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.site_referral_payout.*` only when a settled referral payout ledger entry cites that public-safe evidence ref, exposing settlement state, amount sats, qualifying event kind, policy refs, caveats, and public-safe evidence refs while omitting payout refs, user ids, attribution ids, referral source or invite ids, destinations, invoices, payment hashes, preimages, raw provider payloads, wallet material, and ledger ids. Read-only; grants no attribution, invite, checkout, spend, refund, payout, settlement, wallet, provider, public-claim, or registry authority.',
+  ),
   PublicCardCreditSpendReceiptEnvelope: objectSummary(
     'Public card-credit-spend receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.inference.card_credit_spend.*` as pending, invalid, or ok from the checkout credit row, card-origin USD-credit grant row, and inference charge row without granting checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
@@ -10144,6 +10147,37 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public count-only Site referral payout ledger projection.',
           '#/components/schemas/SiteReferralPayoutsPublicProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/site-referral-payout-receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicSiteReferralPayoutReceipt',
+      summary: 'Get public Site referral payout receipt',
+      description:
+        'Read-only public-safe receipt readback for a settled Site referral payout. The route resolves `receipt.site_referral_payout.*` only when a settled referral payout ledger row cites that exact public-safe evidence ref, and omits payout refs, user ids, attribution ids, referral source or invite ids, payout destinations, invoices, payment hashes, preimages, raw provider payloads, wallet material, and ledger ids. It grants no attribution, payout, settlement, wallet, spend, provider, or public-claim authority.',
+      tags: ['Sites'],
+      security: publicRead,
+      parameters: [
+        {
+          name: 'receiptRef',
+          in: 'path',
+          required: true,
+          schema: { type: 'string' },
+          description:
+            'Public-safe receipt ref beginning `receipt.site_referral_payout.`.',
+        },
+      ],
+      responses: {
+        '200': okJson(
+          'Public Site referral payout receipt envelope.',
+          '#/components/schemas/PublicSiteReferralPayoutReceiptEnvelope',
+        ),
+        '404': okJson(
+          'No settled public referral payout receipt was found for this ref.',
+          '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),
       },

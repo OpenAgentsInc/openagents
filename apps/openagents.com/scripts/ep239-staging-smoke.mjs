@@ -29,6 +29,7 @@
 //   #   --require-complete     (exit non-zero unless the #5520 gate is complete)
 //   #   --stripe-checkout-session-id <cs_test_...>
 //   #   --stripe-checkout-receipt-ref <receipt.billing.stripe_checkout.cs_test_...>
+//   #   --referral-payout-receipt-ref <receipt.site_referral_payout...>
 //   #   --help
 
 const DEFAULT_BASE = 'https://openagents-staging.openagents.workers.dev'
@@ -43,6 +44,8 @@ const STRIPE_CHECKOUT_SESSION_ENV =
   'OPENAGENTS_STAGING_STRIPE_CHECKOUT_SESSION_ID'
 const STRIPE_CHECKOUT_RECEIPT_ENV =
   'OPENAGENTS_STAGING_STRIPE_CHECKOUT_RECEIPT_REF'
+const REFERRAL_PAYOUT_RECEIPT_ENV =
+  'OPENAGENTS_STAGING_REFERRAL_PAYOUT_RECEIPT_REF'
 
 const EP239_PROMISE_IDS = [
   'sites.referral_bitcoin_stream.v1',
@@ -68,6 +71,7 @@ export const parseArgs = argv => {
     json: false,
     requireComplete: false,
     help: false,
+    referralPayoutReceiptRef: process.env[REFERRAL_PAYOUT_RECEIPT_ENV],
     stripeCheckoutSessionId: process.env[STRIPE_CHECKOUT_SESSION_ENV],
     stripeCheckoutReceiptRef: process.env[STRIPE_CHECKOUT_RECEIPT_ENV],
   }
@@ -85,6 +89,9 @@ export const parseArgs = argv => {
     } else if (value === '--stripe-checkout-receipt-ref') {
       options.stripeCheckoutReceiptRef =
         argv[++i] || options.stripeCheckoutReceiptRef
+    } else if (value === '--referral-payout-receipt-ref') {
+      options.referralPayoutReceiptRef =
+        argv[++i] || options.referralPayoutReceiptRef
     } else if (value === '--help' || value === '-h') {
       options.help = true
     } else {
@@ -103,6 +110,7 @@ Usage:
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs [--base-url <url>] [--json]
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --stripe-checkout-session-id cs_test_...
+  bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --referral-payout-receipt-ref receipt.site_referral_payout.staging_test...
 
 Environment:
   ${ADMIN_ENV}   staging operator admin token (read from env only, never printed).
@@ -114,6 +122,10 @@ Environment:
   ${STRIPE_CHECKOUT_RECEIPT_ENV}
                             public receipt ref
                             receipt.billing.stripe_checkout.<cs_test_...>.
+  ${REFERRAL_PAYOUT_RECEIPT_ENV}
+                            settled referral payout receipt ref from the
+                            staging/test rail:
+                            receipt.site_referral_payout.<...>.
 
 This harness NEVER touches production and NEVER flips a product promise green.
 
@@ -243,6 +255,30 @@ const readPublicStripeCheckoutReceipt = async (base, receiptRef) => {
     resolution?.paymentState === 'paid' &&
     resolution?.fulfillmentState === 'fulfilled' &&
     resolution?.creditLedgerState === 'credited'
+
+  return { ok, result }
+}
+
+const readPublicSiteReferralPayoutReceipt = async (base, receiptRef) => {
+  const result = await requestJson(
+    base,
+    `/api/public/site-referral-payout-receipts/${encodeURIComponent(
+      receiptRef,
+    )}`,
+    { method: 'GET' },
+  )
+  const receipt = result.body?.receipt
+  const resolution = receipt?.resolution
+  const ok =
+    result.status === 200 &&
+    receipt?.receiptRef === receiptRef &&
+    receipt?.schemaVersion ===
+      'openagents.site_referral_payout_receipt.v1' &&
+    receipt?.attributionLinked === true &&
+    typeof receipt?.qualifyingEventKind === 'string' &&
+    receipt.qualifyingEventKind.length > 0 &&
+    resolution?.status === 'ok' &&
+    resolution?.state === 'settled'
 
   return { ok, result }
 }
@@ -733,7 +769,7 @@ const legMeteredSpend = async (base, token, grant) => {
 // The full accrual chain is browser-session-driven (create source -> capture ->
 // claim -> paid event -> dashboard); headlessly we confirm the live (401/404)
 // gating + capture-redirect behavior, which is the agent-testable surface today.
-const legReferral = async (base, token) => {
+const legReferral = async (base, token, options = {}) => {
   // Capture: an UNKNOWN source returns 404 by design (live, not absent).
   const unknownSource = unique('unknown-src')
   const capture = await requestJson(
@@ -752,20 +788,46 @@ const legReferral = async (base, token) => {
   const captureLive = capture.status === 404
   const dashboardGated = dashboard.status === 401
 
+  const receiptRef =
+    typeof options.referralPayoutReceiptRef === 'string' &&
+    options.referralPayoutReceiptRef.trim() !== ''
+      ? options.referralPayoutReceiptRef.trim()
+      : null
+
+  const receiptReadback =
+    receiptRef === null
+      ? null
+      : await readPublicSiteReferralPayoutReceipt(base, receiptRef)
+
+  const receipt = receiptReadback?.result.body?.receipt
+  const resolution = receipt?.resolution
+  const receiptProven = Boolean(receiptReadback?.ok)
+
   const detail = {
     captureHttp: capture.status,
     captureExpected: '404 (unknown source rejected by design)',
     dashboardHttp: dashboard.status,
     dashboardExpected: '401 (browser-session required; live, not 404)',
+    payoutReceiptRef: receiptRef,
+    payoutReceiptHttp: receiptReadback?.result.status ?? null,
+    payoutReceiptResolution: resolution?.status ?? null,
+    payoutReceiptState: resolution?.state ?? null,
+    payoutSettlementRail: resolution?.settlementRail ?? null,
+    qualifyingEventKind: receipt?.qualifyingEventKind ?? null,
     note:
       'full cross-category accrual (create source -> capture -> claim -> paid ' +
       'event -> dashboard) is browser-session-driven and owner-gated; the ' +
-      'live gating above is the headless-testable surface',
+      'live gating above is the headless-testable surface unless a settled ' +
+      'public referral payout receipt is supplied',
   }
 
   if (captureLive && dashboardGated) {
     record('5. referral attribution + accrual gating', 'PASS', detail)
-    return { gatingLive: true, fullAccrualProven: false }
+    return {
+      fullAccrualProven: receiptProven,
+      gatingLive: true,
+      receiptRef: receiptProven ? receiptRef : null,
+    }
   }
 
   // If the dashboard route is not present (404), that is a real surface gap.
@@ -1067,7 +1129,7 @@ export const run = async argv => {
   const stripeCheckout = await legStripeTestCheckoutCredit(base, options)
   const grant = await legFundedGrant(base, userId)
   const meteredSpend = await legMeteredSpend(base, token, grant)
-  const referral = await legReferral(base, token)
+  const referral = await legReferral(base, token, options)
   const newSurfaces = await legNewSurfaces(base, token)
   const promiseHonesty = await legPromiseHonesty(base)
 
@@ -1085,7 +1147,7 @@ export const run = async argv => {
       ? [meteredSpend.chargeReceiptRef]
       : [],
     referralAccrualProven: Boolean(referral?.fullAccrualProven),
-    referralAccrualRefs: [],
+    referralAccrualRefs: referral?.receiptRef ? [referral.receiptRef] : [],
     newSurfacesProven: Boolean(newSurfaces?.allPass),
     newSurfaceRefs: newSurfaces?.refs ?? [],
     promiseHonestyProven: Boolean(promiseHonesty?.proven),
