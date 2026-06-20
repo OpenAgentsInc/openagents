@@ -1,5 +1,15 @@
 # vertex-fleet run note — energy.flexible_load_proof.v1
 
+> **2026-06-20 follow-up run:** advanced
+> `blocker.product_promises.flexible_load_event_history_missing` by binding the
+> planned training-marathon curtailment drill to the event-telemetry schema.
+> New artifacts: `apps/openagents.com/workers/api/src/pylon-curtailment-drill-plan.ts`
+> (+ `.test.ts`) and the runbook
+> `docs/training/2026-06-20-training-marathon-curtailment-drill-runbook.md`.
+> Promise stays **planned**; the blocker stays listed (only partially advanced).
+
+---
+
 **Date:** 2026-06-20  
 **Worker:** claude-sonnet-4-6 (Vertex AI)  
 **Branch:** vertex-fleet/energy.flexible_load_proof.v1
