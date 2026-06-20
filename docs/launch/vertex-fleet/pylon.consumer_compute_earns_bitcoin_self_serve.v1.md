@@ -3,6 +3,43 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (j) — WSL scope-out: wire it into the runtime install path
+
+Blocker advanced this run:
+`blocker.product_promises.windows_wsl_consumer_install_coverage_missing`
+
+Update (i) added `detectWslHost` + `classifyConsumerInstallHost` but explicitly
+noted the remaining gap: "the runtime install/bootstrap path does not yet WIRE
+`detectWslHost` to refuse/guide a WSL contributor". That gap was real and load-
+bearing — the actual `pylon bootstrap` command gated on
+`summary.platform.supported`, which is `true` for a WSL host (WSL reports
+`platform === "linux"`), so a WSL contributor would have been silently treated as
+a supported `linux` install, directly contradicting the documented scope-out.
+
+- `apps/pylon/src/wsl-host-detect.ts` — NEW dependency-free leaf module holding
+  `detectWslHost` + `WSL_ENV_SIGNALS` (pure, public-safe; reads no files, emits no
+  env value/path/identifier). Extracted so `bootstrap.ts` can share it without a
+  circular import; `consumer-install-platform-support.ts` re-exports it so its
+  public surface is unchanged.
+- `apps/pylon/src/bootstrap.ts` — `createBootstrapSummary` now derives
+  `platform.wsl` (WSL env signal on a `linux` host) and `platform.inScope`
+  (`supported && !wsl`). `supported` keeps its raw-platform meaning.
+- `apps/pylon/src/index.ts` — the `pylon bootstrap` command now refuses on
+  `!platform.inScope` and prints WSL-specific guidance ("use a native macOS or
+  Linux host") when `platform.wsl`, instead of silently proceeding.
+- `apps/pylon/tests/bootstrap.test.ts` — +4 cases (WSL linux → `inScope:false`
+  while `supported:true`; native linux/macOS in scope; win32 out of scope).
+- `apps/pylon/docs/platform-support.md` — documented the runtime wiring.
+
+Validation: pylon `tsc` 0 errors; `bun test tests/bootstrap.test.ts
+src/consumer-install-platform-support.test.ts` → 35 pass; workers/api `tsc` 0
+errors; `apps/openagents.com` `check:deploy` passes.
+
+No promise state changed; no Windows/WSL support claimed; no host probed. Still
+listed: clearing the blocker still needs the owner-facing copy-narrowing sign-off.
+This run closes the classifier-vs-runtime gap so the real install path can no
+longer silently admit a WSL host as supported.
+
 ## Update 2026-06-20 (i) — WSL scope-out: enforce it in code, not just prose
 
 Blocker advanced this run:

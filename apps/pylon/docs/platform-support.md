@@ -109,11 +109,35 @@ Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (23 pass) and
 `apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` (6 pass, runs the
 applied audit against the real `apps/pylon/README.md`).
 
+### Runtime install path: WSL scope-out is now wired (not just classifier-only)
+
+`detectWslHost` previously lived only in the classifier, so the actual
+`pylon bootstrap` command could still treat a WSL host as supported: its gate
+read `summary.platform.supported`, which is `true` for WSL (WSL reports
+`platform === "linux"`). That prose-vs-runtime gap is now closed:
+
+- `detectWslHost` / `WSL_ENV_SIGNALS` moved to a dependency-free leaf module
+  `apps/pylon/src/wsl-host-detect.ts` (re-exported from
+  `consumer-install-platform-support.ts` so its public surface is unchanged), so
+  `bootstrap.ts` can share it without a circular import.
+- `createBootstrapSummary` (`apps/pylon/src/bootstrap.ts`) now derives
+  `platform.wsl` (WSL env signal on a `linux` host) and `platform.inScope`
+  (`supported && !wsl`). `supported` keeps its raw-platform meaning; `inScope` is
+  the authoritative self-serve gate.
+- The `pylon bootstrap` command (`apps/pylon/src/index.ts`) now refuses on
+  `!platform.inScope` and prints WSL-specific guidance ("use a native macOS or
+  Linux host") when `platform.wsl`, instead of silently proceeding.
+
+Tests: `apps/pylon/tests/bootstrap.test.ts` — WSL linux host is detected and
+`inScope:false` (while `supported:true`); native linux and macOS are `inScope`;
+native Windows is out of scope.
+
 This does NOT clear the blocker and changes no promise state. It does not build
 Windows/WSL support or run a host probe; it locks the scope decision as an
-enforceable gate so launch copy cannot over-promise platform coverage. Clearing
-the blocker still requires the owner-facing copy-narrowing decision (and any
-future reopen would follow the path below).
+enforceable gate so launch copy cannot over-promise platform coverage AND so the
+runtime install path can no longer silently treat a WSL host as supported.
+Clearing the blocker still requires the owner-facing copy-narrowing decision (and
+any future reopen would follow the path below).
 
 ## Future Windows/WSL Reopen Path
 

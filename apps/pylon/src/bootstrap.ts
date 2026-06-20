@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { homedir, platform } from "node:os"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagentsinc/tassadar-executor"
 import { PYLON_VERSION, type PylonVersion } from "./version.js"
+import { detectWslHost } from "./wsl-host-detect.js"
 
 export type SupportedPlatform = "darwin" | "linux"
 export type BootstrapOptions = {
@@ -24,6 +25,14 @@ export type BootstrapSummary = {
     current: NodeJS.Platform
     supported: boolean
     supportedTargets: SupportedPlatform[]
+    // True when the host is running under WSL. WSL reports `current === "linux"`,
+    // so `supported` alone cannot reveal it; this is the public-safe WSL signal.
+    wsl: boolean
+    // The authoritative self-serve gate: the host is a proven target AND not WSL.
+    // `supported` is the raw platform check; `inScope` is what the install path
+    // must gate on so a WSL host (a `linux`-reporting but out-of-scope host) is
+    // not silently treated as supported.
+    inScope: boolean
   }
   paths: {
     home: string
@@ -203,14 +212,21 @@ export function createBootstrapSummary(
   env: NodeJS.ProcessEnv = process.env,
   currentPlatform: NodeJS.Platform = platform(),
 ): BootstrapSummary {
+  const supported = isSupportedPlatform(currentPlatform)
+  // WSL reports `platform === "linux"`. Detect it from public-safe env signals so
+  // a WSL host is held out of scope rather than passing the `linux` supported
+  // check. The WSL signal is only meaningful on linux.
+  const wsl = currentPlatform === "linux" && detectWslHost(env)
   return {
     packageName: "@openagentsinc/pylon",
     version: PYLON_VERSION,
     bin: "pylon",
     platform: {
       current: currentPlatform,
-      supported: isSupportedPlatform(currentPlatform),
+      supported,
       supportedTargets,
+      wsl,
+      inScope: supported && !wsl,
     },
     paths: resolvePylonHome(env),
     updatePolicy: {
