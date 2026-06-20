@@ -25,6 +25,7 @@ export * from "./benchmark/external-repo-studying-privacy-policy-registry";
 export * from "./benchmark/external-repo-studying-scan-attestation-registry";
 export * from "./benchmark/external-repo-studying-upload-privacy-binding";
 export * from "./benchmark/external-repo-studying-review-policy-binding";
+export * from "./benchmark/external-repo-studying-scan-upload-binding";
 export * from "./benchmark/openagents-customer-private-validation";
 export * from "./benchmark/openagents-autopilot-coder-studied-context";
 export * from "./benchmark/openagents-autopilot-coder-studied-runtime";

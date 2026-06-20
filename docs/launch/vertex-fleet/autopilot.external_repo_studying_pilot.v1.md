@@ -340,6 +340,66 @@ and owner-signed.
 
 ---
 
+## Update (2026-06-20): scan-attestation ↔ upload binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+This closes the LAST forgeable-string seam in the self-serve upload preflight —
+the malware/secret clean-scan gate — and is the exact next step the previous
+"clean-scan attestation registry" update named. The registry already exposed
+`isCleanScanAttestationRef(...)` to verify a ref matches a KNOWN, CLEAN
+attestation for an exact `(customerRef, repo, uploadManifestDigest)`, but nothing
+yet forced the upload to consume only such a ref: the upload preflight's
+`scanAttestationPresent` was still a plain string-presence check. This change
+binds them, mirroring the existing upload↔privacy binding.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-scan-upload-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyScanUploadBinding(...)`
+  - Schema `openagents.external_repo_study_scan_upload_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes the scan-attestation registry, a candidate `scanAttestationCandidateRef`,
+    and an upload request **with its `scanAttestationRef` omitted from the input
+    type** (`Omit<…, "scanAttestationRef">`), so a caller cannot inject their own
+    ref. The binding derives the upload's `scanAttestationRef` ONLY from a
+    candidate that `isCleanScanAttestationRef` verifies as a registry-known CLEAN
+    attestation covering the SAME customer + repo + upload manifest digest, then
+    builds the upload preflight from it. An unknown / stale / non-clean /
+    different-manifest ref binds NO ref, so the upload blocks on
+    `…self_serve_upload.clean_scan_attestation_missing` instead of trusting a
+    string.
+  - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
+    are ALWAYS false (asserted on both the binding and the nested upload
+    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
+    Refuses `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-scan-upload-binding.test.ts`
+  — 7 passing tests (bound-verified inert, forged-ref→unbound + upload blocked,
+  different-manifest unbound, findings-verdict never binds, armed-still-inert,
+  OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+With this, BOTH refs-only gates of the upload preflight (privacy review and clean
+scan) are now backed by verified, content-bound references rather than arbitrary
+strings. The binding is still the *decision/control* layer only. The self-serve
+upload blocker stays listed because it still requires, all owner/product-gated
+and out of scope here: real malware/secret-scan EXECUTION (the registry only
+mirrors a verdict); real durable, access-controlled upload storage + signed-URL
+intake; a real customer-data privacy review backing an ARMED clearance; and an
+ARMED ingestion against a real customer upload with a dereferenceable closeout
+receipt and owner sign-off per `proof.claim_upgrade_receipts.v1`. The remaining
+blockers (`privacy_policy_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
+
+---
+
 ## Update (2026-06-20): clean-scan attestation registry
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
