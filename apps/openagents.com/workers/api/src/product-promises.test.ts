@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.23')
+    expect(decoded.version).toBe('2026-06-20.24')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -210,6 +210,10 @@ describe('public product promises document', () => {
     // The 2026-06-20.23 model-ladder cleanup drops the already-documented
     // rung_economics_gate_format_missing blocker while leaving the R1 rehearsal
     // blocker in place, so green remains exactly 24.
+    // The 2026-06-20.24 largest-run cleanup drops the already-documented
+    // participant-methodology and comparable-run blockers while leaving the
+    // comparable-scale public contributor receipts blocker in place, so green
+    // remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -347,6 +351,19 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'pylon.largest_decentralized_training_claim.v1',
           state: 'red',
+          blockerRefs: [
+            'blocker.product_promises.public_training_contributor_receipts_missing',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+            'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+          ]),
+          safeCopy: expect.stringContaining(
+            'count methodology plus comparable training-run research are now documented',
+          ),
+          verification: expect.stringContaining(
+            'five counted realBitcoinMoved:true contributors',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'claims.world_first_ai_training_paid_bitcoin.v1',
@@ -926,12 +943,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.23', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.24', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.23',
+      expectedVersion: '2026-06-20.24',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.23',
+      servedVersion: '2026-06-20.24',
       status: 'ready',
     })
     expect(
@@ -941,7 +958,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.23',
+      servedVersion: '2026-06-20.24',
       status: 'blocked',
     })
   })
