@@ -277,6 +277,30 @@
       .event-meta { color:#6b7488; font-size:.72rem; white-space:nowrap; }
       .event-completed .event-detail { color:#5ee08a; }
       .event-failed .event-detail { color:#ff6b6b; }
+
+      /* Concise session-stream transcript (markdown-rendered assistant text,
+         one-line tool actions, suppressed token/lifecycle noise). */
+      .stream-transcript { display:flex; flex-direction:column; gap:.5rem; margin:.2rem 0 .8rem; }
+      .stream-assistant { color:#e6eaf2; font-size:.88rem; line-height:1.5; }
+      .stream-reasoning { color:#8b93a7; font-size:.82rem; line-height:1.45; font-style:italic; }
+      .stream-tool { color:#9ba3b3; font-family:ui-monospace,monospace; font-size:.8rem; }
+      .stream-tool code { color:#9ba3b3; background:transparent; }
+      .stream-error { color:#ff6b6b; font-family:ui-monospace,monospace; font-size:.82rem; }
+      .stream-error code { color:#ff6b6b; background:transparent; }
+      /* Inline markdown blocks rendered as Foldkit nodes (never innerHTML). */
+      .md { display:flex; flex-direction:column; gap:.35rem; min-width:0; }
+      .md-p { margin:0; line-height:1.5; overflow-wrap:anywhere; }
+      .md-h { margin:.1rem 0 .05rem; line-height:1.3; font-weight:650; color:#f2f4f8; }
+      .md-h1 { font-size:1.02rem; }
+      .md-h2 { font-size:.95rem; }
+      .md-h3 { font-size:.9rem; color:#cdd3e0; }
+      .md-ul, .md-ol { margin:.1rem 0; padding-left:1.1rem; display:flex; flex-direction:column; gap:.15rem; }
+      .md-ul { list-style:disc; }
+      .md-ol { list-style:decimal; }
+      .md-ul li, .md-ol li { line-height:1.45; overflow-wrap:anywhere; }
+      .md-pre { margin:.15rem 0; padding:.5rem .65rem; background:#0d1017; border:1px solid #1c2230; border-radius:.4rem; overflow-x:auto; }
+      .md-pre code { font-family:ui-monospace,monospace; font-size:.8rem; color:#cdd3e0; white-space:pre; background:transparent; }
+      .md-code { font-family:ui-monospace,monospace; font-size:.82em; color:#9ad0ff; background:#11151d; border-radius:.25rem; padding:.04rem .28rem; }
       .verify-line { margin:.2rem 0 .2rem; font-size:.82rem; font-family:ui-monospace,monospace; }
       .verify-completed { color:#5ee08a; }
       .verify-failed { color:#ff6b6b; }
