@@ -318,6 +318,7 @@ export const browserCommandProductIntents = {
   LoadPublicForumLaunchStatus: 'public.forum.launch-status.load',
   LoadPublicForumTipLeaderboards: 'public.forum.tip-leaderboards.load',
   LoadPublicProductPromises: 'public.product-promises.load',
+  LoadPublicPromiseTransitions: 'public.product-promises.load-transitions',
   LoadPublicPylonStats: 'public.pylon.stats.load',
   LoadPublicTrainingRuns: 'public.training.runs.load',
   LoadSettledFeedSnapshot: 'public.settled-feed.snapshot.load',
