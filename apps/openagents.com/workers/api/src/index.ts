@@ -65,6 +65,10 @@ import {
   handleTrainingPostTrainingDpoPreferenceWorkloadApi,
 } from './training-post-training-dpo-preference-workload-routes'
 import {
+  TrainingPostTrainingVibeTestRubricEndpoint,
+  handleTrainingPostTrainingVibeTestRubricApi,
+} from './training-post-training-vibe-test-rubric-routes'
+import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   handleTassadarPerceptaArchitectureReceiptsApi,
 } from './tassadar-percepta-architecture-receipts-routes'
@@ -8144,6 +8148,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
     handler: request =>
       handleTrainingPostTrainingDpoPreferenceWorkloadApi(request),
+  },
+  {
+    // Post-training vibe-test rubric projection (#5523 / DE-5 #5528; promise
+    // training.post_training_arc.v1, planned). Read-only deterministic rubric
+    // and fixture closeout digest; real model transcripts, reviewer signature,
+    // promotion, service, and green gates remain false. No assignment, spend,
+    // settlement, model promotion, reviewed artifact, or green claim.
+    path: TrainingPostTrainingVibeTestRubricEndpoint,
+    handler: request => handleTrainingPostTrainingVibeTestRubricApi(request),
   },
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;

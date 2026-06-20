@@ -25,6 +25,7 @@ const approvedExactRoutePaths = [
   '/api/public/training/ablation-derisking-ledger',
   '/api/public/training/post-training-arc/instruct-sft-lane',
   '/api/public/training/post-training-arc/dpo-preference-workload',
+  '/api/public/training/post-training-arc/vibe-test-rubric',
   '/api/public/models/tassadar-percepta-executor/architecture-receipts',
   '/api/public/demand-provenance',
   '/api/public/markets/open-markets',
@@ -120,6 +121,7 @@ const approvedExactRoutePaths = [
   '/api/agents/me/balance/preferences',
   '/api/agents/home',
   '/v1/chat/completions',
+  '/v1/models',
   '/v1/fine_tuning/jobs',
   '/v1/sandboxes',
 ] as const
