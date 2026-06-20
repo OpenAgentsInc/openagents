@@ -69,6 +69,14 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // voice-command approval receipts + cross-device sync stay open and the
   // promise stays yellow regardless.
   MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED?: string | undefined
+  // Omni client-delivery business-object projection flag (DE-9 / EPIC #5532;
+  // promise workrooms.omni_client_delivery_workrooms.v1, yellow). Default OFF:
+  // the `/api/public/omni/client-delivery-projection` route is INERT (empty
+  // store) on the live Worker. Set "true"/"1"/"on" to arm the read-only
+  // delivery-plan projection over an injected store. It clears only the missing
+  // read-only delivery-projection blocker; the live integration, owner sign-off,
+  // and closeout receipt stay owner-gated and the promise stays yellow.
+  OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED?: string | undefined
   // Pylon multi-earning-node projection flag (EPIC #5523 / DE-4 #5527; promise
   // pylon.v0_3_multi_earning_node.v1, red). Default OFF: the
   // `/api/public/pylon/multi-earning-node` surface is INERT (empty store) on

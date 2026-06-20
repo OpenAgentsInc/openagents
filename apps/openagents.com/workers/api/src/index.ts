@@ -53,6 +53,11 @@ import {
   isMobileWorkroomApprovalProjectionEnabled,
 } from './mobile-workroom-approval-projection-routes'
 import {
+  OmniClientDeliveryProjectionEndpoint,
+  handleOmniClientDeliveryProjectionApi,
+  isOmniClientDeliveryProjectionEnabled,
+} from './omni-client-delivery-projection-routes'
+import {
   VoiceProgramIngestEndpoint,
   handleVoiceProgramIngestApi,
   isVoiceProgramIngestEnabled,
@@ -8121,6 +8126,30 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ),
         nowIso: currentIsoTimestamp,
       }),
+  },
+  {
+    // Omni client-delivery business-object projection (DE-9 / EPIC #5532;
+    // promise workrooms.omni_client_delivery_workrooms.v1, yellow). INERT by
+    // default: the store is empty unless OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED
+    // is armed. When armed it projects the existing source-authorized
+    // business-object delivery seam (buildOmniBusinessObjectDeliveryPlan) over
+    // an injected client-delivery workroom store: per-write approval-gated
+    // decisions plus the integration gate verdict. It applies no write, sends,
+    // settles, spends, mutates a connector, notifies, launches a runner, or
+    // upgrades a public claim (effectsApplied is always false). This clears ONLY
+    // blocker.product_promises.omni_client_delivery_projection_missing; the
+    // live-integration, owner-sign-off, and closeout-receipt blockers stay
+    // owner-gated and the promise stays yellow. GET only.
+    path: OmniClientDeliveryProjectionEndpoint,
+    handler: (request, env) =>
+      Effect.succeed(
+        handleOmniClientDeliveryProjectionApi(request, {
+          enabled: isOmniClientDeliveryProjectionEnabled(
+            env.OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED,
+          ),
+          nowIso: currentIsoTimestamp,
+        }),
+      ),
   },
   {
     // Voice-session transcript ingestion endpoint (#5523 / DE-7 #5530; promise
