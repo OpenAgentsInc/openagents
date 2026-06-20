@@ -90,6 +90,7 @@ describe('Omni source-authorized business objects', () => {
     expect(projection.mutationApplied).toBe(true)
     expect(projection.approvalRecorded).toBe(true)
     expect(projection.closeoutReady).toBe(true)
+    expect(projection.connectorReadReceiptRefs).toEqual([])
     expect(omniSourceAuthorityProjectionHasPrivateMaterial(projection)).toBe(
       false,
     )
@@ -104,6 +105,7 @@ describe('Omni source-authorized business objects', () => {
     expect(projection.bindingRef).toBe('redacted')
     expect(projection.businessObjectRef).toBe('redacted')
     expect(projection.operatorDiagnosticRefs).toEqual([])
+    expect(projection.connectorReadReceiptRefs).toEqual([])
   })
 
   // -------------------------------------------------------------------------
@@ -280,5 +282,21 @@ describe('Omni source-authorized business objects', () => {
         nowIso,
       ),
     ).toThrow(OmniSourceAuthorityUnsafe)
+  })
+
+  test('blocks connector read without connector read receipt refs', () => {
+    try {
+      projectOmniBusinessObjectWrite(
+        write({
+          sourceKind: 'connector_read',
+          connectorReadReceiptRefs: [],
+        }),
+        'operator',
+        nowIso
+      )
+      expect.unreachable()
+    } catch (e: any) {
+      expect(e.reason).toBe('Connector read writes require connector read receipt refs.')
+    }
   })
 })

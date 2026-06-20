@@ -201,6 +201,7 @@ export class OmniBusinessObjectWriteRecord extends S.Class<OmniBusinessObjectWri
   businessObjectRef: S.String,
   caveatRefs: S.Array(S.String),
   closeoutRefs: S.Array(S.String),
+  connectorReadReceiptRefs: S.Array(S.String),
   createdAtIso: S.String,
   evidenceRefs: S.Array(S.String),
   id: S.String,
@@ -231,6 +232,7 @@ export class OmniBusinessObjectWriteProjection extends S.Class<OmniBusinessObjec
   caveatRefs: S.Array(S.String),
   closeoutReady: S.Boolean,
   closeoutRefs: S.Array(S.String),
+  connectorReadReceiptRefs: S.Array(S.String),
   createdAtDisplay: S.String,
   evidenceRefs: S.Array(S.String),
   id: S.String,
@@ -396,6 +398,7 @@ const recordRefs = (
   ...record.blockerRefs,
   ...record.caveatRefs,
   ...record.closeoutRefs,
+  ...record.connectorReadReceiptRefs,
   ...record.evidenceRefs,
   ...record.operatorDiagnosticRefs,
   ...record.proposedChangeRefs,
@@ -476,6 +479,15 @@ const assertRecordSafe = (record: OmniBusinessObjectWriteRecord): void => {
   ) {
     throw new OmniSourceAuthorityUnsafe({
       reason: 'Applied business-object writes require write-receipt refs.',
+    })
+  }
+
+  if (
+    record.sourceKind === 'connector_read' &&
+    record.connectorReadReceiptRefs.length === 0
+  ) {
+    throw new OmniSourceAuthorityUnsafe({
+      reason: 'Connector read writes require connector read receipt refs.',
     })
   }
 
@@ -672,6 +684,13 @@ export const projectOmniBusinessObjectWrite = (
     closeoutRefs: publicOrAgent
       ? []
       : safeRefsForAudience('closeout refs', record.closeoutRefs, audience),
+    connectorReadReceiptRefs: publicOrAgent
+      ? []
+      : safeRefsForAudience(
+        'connector read receipt refs',
+        record.connectorReadReceiptRefs,
+        audience,
+      ),
     createdAtDisplay: friendlyBlueprintMissionBriefingTime(
       record.createdAtIso,
       nowIso,
@@ -737,6 +756,7 @@ const projectionText = (
       ...projection.blockerRefs,
       ...projection.caveatRefs,
       ...projection.closeoutRefs,
+      ...projection.connectorReadReceiptRefs,
       ...projection.evidenceRefs,
       ...projection.operatorDiagnosticRefs,
       ...projection.proposedChangeRefs,
@@ -794,6 +814,7 @@ export const OMNI_BUSINESS_OBJECT_WRITE_FIXTURE: OmniBusinessObjectWriteRecord =
     businessObjectRef: 'business_object.contact.acme_primary',
     caveatRefs: ['caveat.source_authority.proposal_until_approved'],
     closeoutRefs: ['closeout.business_object_write.contact_updated'],
+    connectorReadReceiptRefs: [],
     createdAtIso: '2026-06-19T05:10:00.000Z',
     evidenceRefs: ['evidence.source_authority.write_summary'],
     id: 'business_object_write.acme_contact_1',
