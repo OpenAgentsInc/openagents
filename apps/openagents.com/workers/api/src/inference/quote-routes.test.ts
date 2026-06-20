@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 
 import { estimateBudgetCapacity } from './budget-estimate'
 import { estimateRequestCost } from './cost-estimate'
+import {
+  ALL_LANES_UNARMED,
+  type SupplyLaneArming,
+} from './model-serving-policy'
 import { MODEL_PRICING_TABLE } from './pricing'
 import { handleQuote } from './quote-routes'
 
@@ -167,5 +171,74 @@ describe('handleQuote', () => {
     expect(body.promptTokens).toBe(10)
     expect(body.completionTokens).toBe(0)
     expect(body.estimatedChargeUsd).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('handleQuote provider serving policy gate', () => {
+  // Arming with ONLY the Vertex Gemini lane live (the hosted-Gemini lane).
+  const geminiArmed: SupplyLaneArming = {
+    ...ALL_LANES_UNARMED,
+    'vertex-gemini': true,
+  }
+
+  it('quotes a KNOWN model whose lane IS armed (200)', async () => {
+    const response = await run(
+      post({
+        completionTokens: 100,
+        model: 'gemini-3.5-flash',
+        promptTokens: 100,
+      }),
+      { enabled: true, laneArming: geminiArmed },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { isEstimate: boolean }
+    expect(body.isEstimate).toBe(true)
+  })
+
+  it('refuses a KNOWN model whose lane is NOT armed (404 model_unavailable)', async () => {
+    // Fireworks lane is unarmed in geminiArmed, so gpt-oss-20b is unservable.
+    const response = await run(
+      post({ completionTokens: 100, model: 'gpt-oss-20b', promptTokens: 100 }),
+      { enabled: true, laneArming: geminiArmed },
+    )
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      error: 'model_unavailable',
+      model: 'gpt-oss-20b',
+    })
+  })
+
+  it('refuses regardless of casing (gate cannot be bypassed by model-id case)', async () => {
+    const response = await run(
+      post({ completionTokens: 1, model: 'GPT-OSS-20B', promptTokens: 1 }),
+      { enabled: true, laneArming: geminiArmed },
+    )
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      error: 'model_unavailable',
+      model: 'GPT-OSS-20B',
+    })
+  })
+
+  it('does NOT gate an UNKNOWN model id (conservative fallback quote, 200)', async () => {
+    const response = await run(
+      post({
+        completionTokens: 100,
+        model: 'totally-made-up-model',
+        promptTokens: 100,
+      }),
+      { enabled: true, laneArming: ALL_LANES_UNARMED },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { isUnknownModel: boolean }
+    expect(body.isUnknownModel).toBe(true)
+  })
+
+  it('omitting laneArming keeps every model quotable (backward compatible)', async () => {
+    const response = await run(
+      post({ completionTokens: 100, model: 'gpt-oss-20b', promptTokens: 100 }),
+      { enabled: true },
+    )
+    expect(response.status).toBe(200)
   })
 })

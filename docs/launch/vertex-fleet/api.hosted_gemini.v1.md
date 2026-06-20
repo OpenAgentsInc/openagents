@@ -284,6 +284,44 @@ production binding shape the harness was missing.
   PRESENCE-derived — it does not prove a lane's credential actually authenticates
   upstream. The gateway blocker REMAINS listed.
 
+### 2026-06-20 update — serving policy gates the pre-purchase quote surface
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **further advanced, still NOT cleared.** The serving policy already gated the
+  public catalog (`/v1/models` list + retrieve) to servable lanes, but the
+  pre-purchase **quote** surface (`POST /v1/quote`) was NOT gated: it returned a
+  fundable credit/USD/msat price for ANY known model — including a model whose
+  supply lane is unarmed (one `/v1/models` deliberately hides). That let a credits
+  customer size (and fund a balance toward) a model the gateway can only fail
+  `model_unavailable` on at dispatch — exactly the gap the serving policy exists
+  to close. This change extends the same provider policy to the quote surface:
+  - `apps/openagents.com/workers/api/src/inference/model-serving-policy.ts`
+    — new `resolveNamedModelServability(modelId, arming)`: resolves a customer
+    NAMED model id against the SAME pricing table the gateway bills from
+    (`lookupModel`, case-insensitive) and returns `true` (known + lane armed),
+    `false` (known + lane unarmed), or `undefined` (unknown id — intentionally
+    NOT gated, since the estimator prices unknown ids at the conservative fallback
+    rate). Presence-only, no secret read.
+  - `apps/openagents.com/workers/api/src/inference/quote-routes.ts`
+    — `QuoteDeps` gains an OPTIONAL `laneArming`; when supplied, a quote for a
+    KNOWN model on an unarmed lane returns `404 { error: 'model_unavailable',
+    model }` instead of a price. Omitting it preserves the prior quote-everything
+    behaviour (no breaking change); an unknown id still falls through to the
+    fallback quote.
+  - `apps/openagents.com/workers/api/src/index.ts` — the live `/v1/quote` call
+    site now passes `laneArming: resolveSupplyLaneArming(env)`, so the LIVE
+    gateway only quotes models it can actually serve, consistent with `/v1/models`.
+  - Tests: 4 new cases in `model-serving-policy.test.ts` (armed/unarmed/unknown/
+    case-insensitive servability) and 5 new cases in `quote-routes.test.ts`
+    (armed lane quotes 200, unarmed lane 404 `model_unavailable`, casing cannot
+    bypass the gate, unknown id still quotes, omitted arming stays backward
+    compatible). Suites: 32 pass.
+
+  **Honest scope:** this is provider POLICY (which models the quote surface will
+  price) only. It does NOT add billing, entitlement, quota, or settlement, and
+  arming is still PRESENCE-derived (it does not prove a lane's credential
+  authenticates upstream). The gateway blocker REMAINS listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
