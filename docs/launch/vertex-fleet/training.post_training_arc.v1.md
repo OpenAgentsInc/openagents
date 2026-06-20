@@ -4,6 +4,63 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (e) — DPO preference-grading challenge verifier
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.preference_rollout_work_missing` — advanced, **not
+cleared**.
+
+The DPO reference workload (`cs336-a5-dpo-preference-workload.ts`) emits a
+deterministic `outputDigestHex` answer key, but there was no committed bridge
+from that answer key to the verification layer a paid `cs336_a5_dpo_grading`
+dispatch would settle against — the same `deterministic_recompute` challenge
+shape the 2026-06-11 alignment run used for its four Verified challenges. This
+change adds that verifier.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-challenge.ts`
+  - `buildCs336A5DpoGradingChallengeSpec`: recomputes the reference DPO grade
+    for a split and packages a public-safe `deterministic_recompute` challenge
+    spec (`expectedDigestHex`, `pairCount`, `betaMicro`, refs, update-boundary).
+    Exposes only digests/counts/refs — never prompts, completions, log-probs,
+    or weights.
+  - `verifyCs336A5DpoGradingResponse`: verifies a worker's CLAIMED grading
+    digest by recomputing the reference grade from the committed seed and
+    returns a `TrainingVerificationVerdict`. `Verified` only when the stored
+    expected digest, the fresh recompute, and the claim all agree (and any
+    supplied pair count matches). Otherwise `Rejected` with precise failure
+    codes (`DigestMismatch`, `OutputDigestMissing`, `DimensionMismatch`, or
+    `VerificationClassUnknown` for a malformed spec). The verifier never trusts
+    the spec's stored digest blindly — a stale/forged spec is rejected.
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-challenge.test.ts`
+  - 11 committed tests: deterministic spec build matching the reference digest,
+    spec re-build stability, non-positive-beta guard, public-safety of the spec,
+    Verified happy path, case-insensitive digest, tampered-digest reject,
+    malformed-claim reject, pair-count-mismatch reject, stale-spec reject, and
+    malformed-expected-digest reject.
+
+### Honesty boundary (why the blocker stays open)
+
+The verdict is a pure function over deterministic digests. No hosted LLM, real
+policy/reference model, paid dispatch, lease, settlement, or rail-side Verified
+challenge is created — this is the verification math a paid preference-grading
+dispatch would record against, not the paid work itself. The DPO/policy-gradient
+update stays behind the #4669 training boundary. No public route, registry edit,
+or green transition is added here.
+
+### What genuinely remains for `preference_rollout_work_missing`
+
+Still open: no paid `cs336_a5_dpo_grading` dispatch / lease / settlement / on-rail
+Verified challenge over preference pairs has run, and real model log-probs are
+not yet wired.
+
+---
+
 ## 2026-06-20 (d) — overlong-penalty GRPO reward-shaping reference math
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
