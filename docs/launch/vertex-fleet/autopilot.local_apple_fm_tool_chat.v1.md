@@ -132,13 +132,48 @@ Advances (does **not** clear)
   (no supervisor is live to attach). This wires the *projection plumbing* so the
   phase reaches the surface the moment a launcher exists.
 
+## Follow-up run (2026-06-20): stateful supervisor driver glues policy to a launcher
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: `reduceAppleFmBridgeSupervisor(...)` is a pure reducer and
+  `summarizeAppleFmBridgeSupervisor(...)` is a pure projection, but nothing held
+  the supervisor state across events, translated the emitted actions into
+  effects, or closed the backoff loop by re-feeding a `tick` when a restart
+  timer fired. A live launcher had no deterministic core to build on.
+- `apps/pylon/src/node/apple-fm-bridge-supervisor-driver.ts` —
+  `createAppleFmBridgeSupervisorDriver({ spawn, markRunning?, giveUp?, now, timer })`
+  returns a stateful driver (`requestStart` / `notifyStarted` / `notifyHealthy`
+  / `notifyExited` / `phase` / `snapshot` / `status` / `dispose`). It folds each
+  signal through the reducer, performs the single emitted action via the
+  injected effects, and — on `schedule_restart` — sets a timer that, when it
+  fires, re-feeds a `tick` so backoff actually transitions back to `spawn`. ALL
+  real I/O is injected: a live launcher passes `Bun.spawn` + `setTimeout`; tests
+  pass fakes. The driver never reads the wall clock, spawns a process, opens a
+  socket, or emits prompts, paths, tokens, URLs, or bearer material.
+- `apps/pylon/tests/apple-fm-bridge-supervisor-driver.test.ts` — 7 tests over a
+  fake clock+timer harness: spawn-once / no-double-spawn, mark-running + running
+  status, crash → self-firing backoff respawn, crash-loop give-up + blocker ref
+  + `stopped` status, stable-uptime escalation reset, `dispose` cancels the
+  pending restart, and a no-sensitive-keys status assertion. `bun test` green
+  (7 pass / 28 assertions).
+- Still open: the real launcher that constructs this driver with `Bun.spawn`,
+  spawns/monitors the actual Foundation Models bridge process, feeds its real
+  `process_started`/`process_exited`/heartbeat signals, and registers the live
+  driver's `status()` with the Pylon `apple_fm.status` action does not exist yet.
+  This run supplies the deterministic driver core that launcher will sit on.
+
 ## What genuinely remains (blocker NOT cleared)
 
-- Wire a real launcher (`Bun.spawn`/`child_process`) on top of this policy that
-  feeds `process_started`/`process_exited`/`health_ok` events from the live
-  bridge and performs the emitted `spawn`/`schedule_restart`/`give_up` actions,
-  then embed `summarizeAppleFmBridgeSupervisor(...)` output into the
-  `apple_fm.status` projection so the supervisor phase reaches the surface.
+- Wire a real launcher (`Bun.spawn`/`child_process`) on top of the new driver
+  (`createAppleFmBridgeSupervisorDriver`): give it a real `spawn` that launches
+  the discovered helper, a real `setTimeout`-backed `timer`, and a real `now`,
+  feed it the live bridge's `process_started`/`process_exited`/heartbeat
+  signals, and register the live driver's `status()` with the Pylon
+  `apple_fm.status` action so the supervisor phase reaches the surface from a
+  real process (the projection plumbing already exists via
+  `withAppleFmSupervisorStatus`).
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a
