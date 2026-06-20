@@ -11,6 +11,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   buildLaborProductFlowPlan,
+  carryLaborProductOrderToSettlement,
   laborProductOrderReceiptRef,
   settleLaborProductOrder,
   type LaborProductListing,
@@ -231,6 +232,147 @@ describe('settleLaborProductOrder armed against real SQL', () => {
     await settleOnce()
     const balance = await readAgentBalance(db, BUYER)
     // Only one 100_000 msat debit despite two settle calls.
+    expect(balance?.availableMsat).toBe(150_000)
+  })
+})
+
+// Full sale carry-through against REAL SQL: the composed entry point
+// (carryLaborProductOrderToSettlement) is the one thing a real sale flows
+// through — order -> dispatch -> deliver -> settle -> recorded receipt — so this
+// proves the WHOLE chain composes with money genuinely moving on the ledger and
+// a dereferenceable receipt minted, not a fabricated `settled` result.
+describe('carryLaborProductOrderToSettlement end-to-end against real SQL', () => {
+  const orderRequest = {
+    orderId: 'order-e2e-1',
+    buyerRef: BUYER,
+    listing,
+  } as const
+  const baseInput = {
+    request: orderRequest,
+    workerRef: 'agent:worker',
+    artifactRef: 'artifact.repo_triage.order-e2e-1',
+    adapterId: 'labor-runtime',
+    createdAt: NOW,
+    settledAt: '2026-06-20T02:00:00.000Z',
+  } as const
+
+  test('records a settled order + dereferenceable receipt when armed, owner-signed, and funded', async () => {
+    const db = makeDb()
+    await seedBalance(db, 250_000)
+    const result = await run(
+      carryLaborProductOrderToSettlement(
+        { db, enabled: true, nowIso: () => NOW },
+        { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
+      ),
+    )
+
+    expect(result._tag).toBe('recorded')
+    if (result._tag !== 'recorded') return
+    // The terminal stage is produced and identity is carried end to end.
+    expect(result.plan.stage).toBe('settled')
+    expect(result.plan.orderId).toBe('order-e2e-1')
+    expect(result.plan.workerRef).toBe('agent:worker')
+    expect(result.plan.artifactRef).toBe('artifact.repo_triage.order-e2e-1')
+    // The receipt is dereferenceable and matches the order's own receipt ref.
+    expect(result.receipt.settled).toBe(true)
+    expect(result.receipt.receiptRef).toBe(
+      laborProductOrderReceiptRef('order-e2e-1'),
+    )
+    expect(result.receipt.receiptRef).toBe(result.plan.settlement.receiptRef)
+    expect(result.receipt.streamKind).toBe('labor')
+    expect(result.receipt.settledAt).toBe('2026-06-20T02:00:00.000Z')
+    // One settled order does not flip the promise.
+    expect(result.receipt.promiseState).toBe('yellow')
+    expect(result.outcome.metered).toBe(true)
+    // Money genuinely moved: 100 sats == 100_000 msat debited from 250_000.
+    const balance = await readAgentBalance(db, BUYER)
+    expect(balance?.availableMsat).toBe(150_000)
+  })
+
+  test('stays disabled (no ledger IO, no receipt) when the flag is off — the default', async () => {
+    const db = makeDb()
+    await seedBalance(db, 250_000)
+    const result = await run(
+      carryLaborProductOrderToSettlement(
+        { db, enabled: false, nowIso: () => NOW },
+        { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
+      ),
+    )
+    expect(result._tag).toBe('disabled')
+    // The default path never touches the balance.
+    const balance = await readAgentBalance(db, BUYER)
+    expect(balance?.availableMsat).toBe(250_000)
+  })
+
+  test('refuses to settle without an owner sign-off ref, even when armed', async () => {
+    const db = makeDb()
+    await seedBalance(db, 250_000)
+    const result = await run(
+      carryLaborProductOrderToSettlement(
+        { db, enabled: true, nowIso: () => NOW },
+        baseInput,
+      ),
+    )
+    expect(result._tag).toBe('not_authorized')
+    const balance = await readAgentBalance(db, BUYER)
+    expect(balance?.availableMsat).toBe(250_000)
+  })
+
+  test('mints NO receipt when the order is under-funded (no money moved)', async () => {
+    const db = makeDb()
+    await seedBalance(db, 10_000)
+    const result = await run(
+      carryLaborProductOrderToSettlement(
+        { db, enabled: true, nowIso: () => NOW },
+        { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
+      ),
+    )
+    // Settled on the ledger but moved no money => no dereferenceable receipt.
+    expect(result._tag).toBe('not_settled')
+    const balance = await readAgentBalance(db, BUYER)
+    expect(balance?.availableMsat).toBe(10_000)
+  })
+
+  test('rejects a malformed order request before any ledger IO', async () => {
+    const db = makeDb()
+    await seedBalance(db, 250_000)
+    const result = await run(
+      carryLaborProductOrderToSettlement(
+        { db, enabled: true, nowIso: () => NOW },
+        {
+          ...baseInput,
+          request: { ...orderRequest, orderId: '   ' },
+          ownerSignOffRef: 'owner.sig.labor.e2e',
+        },
+      ),
+    )
+    expect(result._tag).toBe('rejected')
+    if (result._tag === 'rejected') {
+      expect(result.stage).toBe('ordered')
+    }
+    const balance = await readAgentBalance(db, BUYER)
+    expect(balance?.availableMsat).toBe(250_000)
+  })
+
+  test('is idempotent per order: a replay records again but never double-charges', async () => {
+    const db = makeDb()
+    await seedBalance(db, 250_000)
+    const carry = () =>
+      run(
+        carryLaborProductOrderToSettlement(
+          { db, enabled: true, nowIso: () => NOW },
+          { ...baseInput, ownerSignOffRef: 'owner.sig.labor.e2e' },
+        ),
+      )
+    const first = await carry()
+    const second = await carry()
+    expect(first._tag).toBe('recorded')
+    expect(second._tag).toBe('recorded')
+    if (first._tag === 'recorded' && second._tag === 'recorded') {
+      expect(second.receipt.receiptRef).toBe(first.receipt.receiptRef)
+    }
+    // Only one 100_000 msat debit despite two full carry-throughs.
+    const balance = await readAgentBalance(db, BUYER)
     expect(balance?.availableMsat).toBe(150_000)
   })
 })
