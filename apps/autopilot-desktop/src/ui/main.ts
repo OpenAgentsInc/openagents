@@ -17,7 +17,10 @@ import { Runtime } from "foldkit"
 import type { Document } from "foldkit/html"
 import { html } from "foldkit/html"
 
-import type { DesktopRPCSchema } from "../shared/rpc"
+import {
+  DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type DesktopRPCSchema,
+} from "../shared/rpc"
 import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
 import { initialRuntimeState } from "./initial-state"
 import {
@@ -98,6 +101,7 @@ const crashView = (error: Error): Document => ({
 })
 
 const rpc = Electroview.defineRPC<DesktopRPCSchema>({
+  maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {},
     messages: {

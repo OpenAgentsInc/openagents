@@ -8,7 +8,7 @@
 //      inbound message the UI dispatches when the owner types (ChangedShellInput).
 //   2. SUBMIT      — `shellControl{action:"submit"}` routes to SubmittedShell,
 //      which records the user turn and fires the response seam.
-//   3. RESPONSE    — the loopback command lands the assistant turn (RespondedShell).
+//   3. RESPONSE    — the loopback command lands the Autopilot turn (RespondedShell).
 //   4. READ        — `shellTranscriptText(model)` is the plain-text projection of
 //      exactly what the shell view renders, so the driver sees the SAME state.
 //
@@ -78,8 +78,8 @@ assert(commands.length === 1, "submit dispatches exactly the response seam")
 )
 assert(model.shellPending === false, "response clears pending")
 assert(
-  model.shellTurns.length === 2 && model.shellTurns[1].role === "assistant",
-  "response records the assistant turn",
+  model.shellTurns.length === 2 && model.shellTurns[1].role === "autopilot",
+  "response records the Autopilot turn",
 )
 
 // 4. READ (what a driver reads to see the SAME state the owner sees).
@@ -88,7 +88,7 @@ console.log("--- transcript (driver-visible) ---")
 console.log(transcript)
 console.log("-----------------------------------")
 assert(
-  transcript === `you: ${PROMPT}\nassistant: ${shellLoopbackReply(PROMPT)}`,
+  transcript === `you: ${PROMPT}\nautopilot: ${shellLoopbackReply(PROMPT)}`,
   "transcript projection matches the conversation",
 )
 

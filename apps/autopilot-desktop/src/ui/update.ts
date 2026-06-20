@@ -2621,8 +2621,8 @@ export const update = (model: Model, message: Message): Result => {
           shellTurns: [
             ...model.shellTurns,
             {
-              id: chatMessageId("shell.assistant"),
-              role: "assistant",
+              id: chatMessageId("shell.autopilot"),
+              role: "autopilot",
               text: message.text,
             },
           ],

@@ -10,6 +10,12 @@ import type {
   PromiseSurfacingInput,
 } from "./promise-surfacing"
 
+// Electrobun's default RPC timeout is 1000ms, which is too short for host-side
+// requests that legitimately touch the network, especially the zero-base shell
+// model turn. Keep the timeout finite so a genuinely wedged bridge still
+// resolves to an honest UI error.
+export const DESKTOP_RPC_MAX_REQUEST_TIME_MS = 60_000
+
 export type SessionEventRow = {
   readonly eventIndex: number
   readonly phase: string
@@ -649,7 +655,7 @@ export type InferenceGatewayReadinessResponse = {
 // HUD H5 (#5503): the zero-base shell's REAL model response. The Bun host owns
 // the OpenAgents agent token + the gateway base URL and calls the
 // OpenAI-compatible `/v1/chat/completions` surface (Gemini 3.5 Flash on the free
-// per-agent allowance); the webview receives ONLY the plain assistant text (or a
+// per-agent allowance); the webview receives ONLY the plain Autopilot text (or a
 // clean, honest "how to configure"/error message when there is no token or the
 // call fails). NEVER the raw token. `ok:false` still carries a user-facing
 // `text` — it is never a fabricated model answer, just an honest plain-language
@@ -871,7 +877,7 @@ export type DesktopRPCSchema = {
       // prompt to the live OpenAgents inference gateway
       // (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
       // allowance) using the desktop's configured agent token and returns ONLY
-      // the plain assistant text. The raw token never crosses this boundary.
+      // the plain Autopilot text. The raw token never crosses this boundary.
       // No-token / failure returns `ok:false` with an honest plain-language
       // message (never a fabricated answer).
       readonly shellTurn: {

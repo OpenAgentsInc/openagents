@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildShellTurn, resolveShellAgentToken } from "../src/bun/shell-turn"
+import {
+  SHELL_SYSTEM_PROMPT,
+  buildShellTurn,
+  resolveShellAgentToken,
+} from "../src/bun/shell-turn"
 
 // HUD H5 (#5503): the Bun-host shell-turn that gives the zero-base shell bar a
 // REAL model response via the live OpenAgents inference gateway. The agent token
@@ -88,7 +92,7 @@ describe("buildShellTurn — honest no-token + network behaviour", () => {
     expect(r.ok).toBe(false)
   })
 
-  test("with token: POSTs to /v1/chat/completions with a Bearer header + Gemini default, returns the assistant text", async () => {
+  test("with token: POSTs to /v1/chat/completions with a Bearer header + Gemini default, returns the Autopilot text", async () => {
     let seenUrl: string | null = null
     let seenAuth: string | null = null
     let seenBody: unknown = null
@@ -117,6 +121,13 @@ describe("buildShellTurn — honest no-token + network behaviour", () => {
     expect(seenAuth).toBe("Bearer sk-secret")
     expect((seenBody as { model?: string }).model).toBe("gemini-3.5-flash")
     expect((seenBody as { stream?: boolean }).stream).toBe(false)
+    expect(
+      (seenBody as { messages?: Array<{ role: string; content: string }> })
+        .messages,
+    ).toEqual([
+      { role: "system", content: SHELL_SYSTEM_PROMPT },
+      { role: "user", content: "say hi" },
+    ])
     expect(r.ok).toBe(true)
     expect(r.text).toBe("Hi there!")
     // The raw token NEVER appears in what crosses back to the webview.

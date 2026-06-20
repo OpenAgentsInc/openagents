@@ -1544,7 +1544,7 @@ export const PersistPreferences = Command.define(
 // talks to the now-LIVE OpenAgents inference gateway
 // (`POST /v1/chat/completions`, Gemini 3.5 Flash on the free per-agent
 // allowance) using the desktop's configured OpenAgents agent token. The Bun
-// host owns the token; the webview only ever sees the plain assistant text.
+// host owns the token; the webview only ever sees the plain Autopilot text.
 //
 // The Bun handler is HONEST and NEVER FAKES: with no token configured (or on a
 // gateway/network failure) it returns `ok:false` with a clean, plain-language

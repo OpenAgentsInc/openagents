@@ -74,19 +74,20 @@ import {
   reconcileTrainingWindow,
   requestTrainingBootstrapGrant,
 } from "./training-runs"
-import type {
-  AppleFmReadinessResponse,
-  AppleFmSessionStartResponse,
-  BuiltInAgentReadinessResponse,
-  BuiltInAgentStartResponse,
-  ChooseIdentityParams,
-  ChooseIdentityResponse,
-  DesktopRPCSchema,
-  IdentityChoiceStateResponse,
-  InstallReadinessResponse,
-  OnboardingStatusResponse,
-  TrainingOperatorReadinessPylonRefSource,
-  TrainingOperatorReadinessResponse,
+import {
+  DESKTOP_RPC_MAX_REQUEST_TIME_MS,
+  type AppleFmReadinessResponse,
+  type AppleFmSessionStartResponse,
+  type BuiltInAgentReadinessResponse,
+  type BuiltInAgentStartResponse,
+  type ChooseIdentityParams,
+  type ChooseIdentityResponse,
+  type DesktopRPCSchema,
+  type IdentityChoiceStateResponse,
+  type InstallReadinessResponse,
+  type OnboardingStatusResponse,
+  type TrainingOperatorReadinessPylonRefSource,
+  type TrainingOperatorReadinessResponse,
 } from "../shared/rpc"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
@@ -725,6 +726,7 @@ async function startComposerAppleFmSession(input: {
 }
 
 const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
+  maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
       // Open an external URL in the system browser. The webview routes every
@@ -789,7 +791,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       },
       // HUD H5 (#5503): one zero-base shell turn. The Bun host resolves the
       // desktop's OpenAgents agent token and calls the live inference gateway;
-      // only the plain assistant text (or an honest configure/error message)
+      // only the plain Autopilot text (or an honest configure/error message)
       // crosses back to the webview. The raw token never does.
       //
       // Token source (#5503 live-gateway fix): prefer an explicit env override

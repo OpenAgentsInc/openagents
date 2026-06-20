@@ -199,7 +199,7 @@ export type ChatMessage = typeof ChatMessage.Type
 // it, and nothing else. A turn is just `{ role, text }` — NO session refs, NO
 // program-step / verdict / node-state jargon (that all lives in the hidden chat
 // pane). `shellPending` disables the input while a response is in flight.
-export const ShellRole = S.Literals(["you", "assistant"])
+export const ShellRole = S.Literals(["you", "autopilot"])
 export type ShellRole = typeof ShellRole.Type
 
 export const ShellTurn = S.Struct({
@@ -639,7 +639,7 @@ export const modelPaneLayer = (model: Model): PaneLayer =>
 // A pure, plain-text projection of exactly what the shell screen shows the user
 // (the conversation above the bar). The headless/RPC control path reads THIS so
 // a driver (Claude) sees the SAME rendered state the owner does — no DOM, no
-// hidden fields. One line per turn: "you: …" / "assistant: …".
+// hidden fields. One line per turn: "you: …" / "autopilot: …".
 export const shellTranscriptText = (model: Model): string =>
   model.shellTurns.map((turn) => `${turn.role}: ${turn.text}`).join("\n")
 

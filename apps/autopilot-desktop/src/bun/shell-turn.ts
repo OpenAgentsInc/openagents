@@ -6,7 +6,7 @@
 // now-LIVE OpenAgents inference gateway — the OpenAI-compatible
 // `POST /v1/chat/completions` surface on openagents.com (Gemini 3.5 Flash on the
 // free per-agent allowance) — authenticated with the desktop's configured
-// OpenAgents agent token, and projects ONLY the assistant text back to the
+// OpenAgents agent token, and projects ONLY the model text back to the
 // webview.
 //
 // SECRET BOUNDARY: the agent token lives ONLY in the Bun host env
@@ -31,10 +31,10 @@ import type { ShellTurnResponse } from "../shared/rpc"
 // OPENAGENTS_SHELL_MODEL / OPENAGENTS_INFERENCE_GATEWAY_MODEL override wins.
 const DEFAULT_SHELL_MODEL = "gemini-3.5-flash"
 
-// A short, neutral system steer so the shell answers like a clean assistant and
+// A short, neutral system steer so the shell answers as Autopilot and
 // keeps out of internal-jargon territory.
-const SHELL_SYSTEM_PROMPT =
-  "You are the OpenAgents desktop assistant. Answer the user's message directly and concisely in plain language."
+export const SHELL_SYSTEM_PROMPT =
+  "You are Autopilot, the OpenAgents desktop agent. Answer the user's message directly and concisely in plain language."
 
 const NO_TOKEN_MESSAGE =
   "I can't reach a model yet — no OpenAgents account token is configured. " +

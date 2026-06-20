@@ -118,7 +118,7 @@ describe("zero-base shell: text bar → response loop", () => {
     expect(c4).toHaveLength(0)
   })
 
-  test("the response lands as an assistant turn and clears pending", () => {
+  test("the response lands as an Autopilot turn and clears pending", () => {
     const [m0] = initialRuntimeState()
     const [m1] = update(m0, ChangedShellInput({ value: "ping" }))
     const [m2] = update(m1, SubmittedShell())
@@ -129,7 +129,7 @@ describe("zero-base shell: text bar → response loop", () => {
     )
     expect(m3.shellPending).toBe(false)
     expect(m3.shellTurns).toHaveLength(2)
-    expect(m3.shellTurns[1]).toMatchObject({ role: "assistant" })
+    expect(m3.shellTurns[1]).toMatchObject({ role: "autopilot" })
     expect(m3.shellTurns[1].text).toBe(shellLoopbackReply("ping"))
     // The conversation now renders above the bar.
     const tree = serialize(view(m3).body)
@@ -139,7 +139,7 @@ describe("zero-base shell: text bar → response loop", () => {
 })
 
 describe("zero-base shell: programmatic-control parity", () => {
-  test("shellTranscriptText projects EXACTLY what the user sees (you → assistant)", () => {
+  test("shellTranscriptText projects EXACTLY what the user sees (you → Autopilot)", () => {
     const [m0] = initialRuntimeState()
     const [m1] = update(m0, ChangedShellInput({ value: "drive me" }))
     const [m2] = update(m1, SubmittedShell())
@@ -148,7 +148,7 @@ describe("zero-base shell: programmatic-control parity", () => {
       RespondedShell({ prompt: "drive me", text: "ok" }),
     )
     // A driver (Claude) reads this and sees the same state the owner does.
-    expect(shellTranscriptText(m3)).toBe("you: drive me\nassistant: ok")
+    expect(shellTranscriptText(m3)).toBe("you: drive me\nautopilot: ok")
     // And every line it reads is present in the rendered view (true parity).
     const tree = serialize(view(m3).body)
     expect(tree).toContain("drive me")
