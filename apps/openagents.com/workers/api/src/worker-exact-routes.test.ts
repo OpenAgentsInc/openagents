@@ -20,6 +20,7 @@ const approvedExactRoutePaths = [
   '/api/public/markets/risk/skeleton',
   '/api/public/marketplace/composed-products',
   '/api/public/markets/signature-monetization/metering',
+  '/api/public/pylon/multi-earning-node',
   '/api/mobile/voice-sessions/ingest',
   '/api/public/autopilot/composed-runs',
   '/api/public/autopilot/labor-products',
