@@ -1774,6 +1774,152 @@ const schemaComponents = (): JsonSchema => ({
       totalCurrentPayouts: { type: 'integer', minimum: 0 },
     },
   },
+  PartnerPayoutsPublicProjection: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Public count-only partner payout ledger projection with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes per-state, per-role, and per-asset aggregate counts/amounts only; no partner refs, user ids, payout refs, payout destinations, qualifying event refs, invoices, preimages, provider payloads, or wallet material are projected.',
+    required: [
+      'assetTotals',
+      'authorityBoundary',
+      'blockerRefs',
+      'caveatRefs',
+      'generatedAt',
+      'kind',
+      'ledgerWiredInSource',
+      'operatorRoutesWiredInSource',
+      'partnerProjectionApiWiredInSource',
+      'policy',
+      'publicSafe',
+      'roleTotals',
+      'schemaVersion',
+      'settledCount',
+      'settledSats',
+      'staleness',
+      'stateTotals',
+      'totalCurrentPayouts',
+    ],
+    properties: {
+      assetTotals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['asset', 'count', 'settledAmount', 'totalAmount'],
+          properties: {
+            asset: { type: 'string', enum: ['usd', 'credits', 'sats'] },
+            count: { type: 'integer', minimum: 0 },
+            settledAmount: { type: 'integer' },
+            totalAmount: { type: 'integer' },
+          },
+        },
+      },
+      authorityBoundary: { type: 'string' },
+      blockerRefs: { type: 'array', items: { type: 'string' } },
+      caveatRefs: { type: 'array', items: { type: 'string' } },
+      generatedAt: { type: 'string', format: 'date-time' },
+      kind: { type: 'string', enum: ['partner_payouts_public'] },
+      ledgerWiredInSource: { type: 'boolean' },
+      operatorRoutesWiredInSource: { type: 'boolean' },
+      partnerProjectionApiWiredInSource: { type: 'boolean' },
+      policy: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['policyRef', 'rolePolicies'],
+        properties: {
+          policyRef: { type: 'string' },
+          rolePolicies: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: [
+                'maxEventAmount',
+                'maxPartnerPeriodAmount',
+                'maxPartnerPeriodCount',
+                'partnerRole',
+                'percentBps',
+              ],
+              properties: {
+                maxEventAmount: { type: 'integer', minimum: 0 },
+                maxPartnerPeriodAmount: { type: 'integer', minimum: 0 },
+                maxPartnerPeriodCount: { type: 'integer', minimum: 0 },
+                partnerRole: {
+                  type: 'string',
+                  enum: ['design_partner', 'referral', 'affiliate'],
+                },
+                percentBps: { type: 'integer', minimum: 0 },
+              },
+            },
+          },
+        },
+      },
+      publicSafe: { type: 'boolean' },
+      roleTotals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['count', 'partnerRole', 'totalAmount'],
+          properties: {
+            count: { type: 'integer', minimum: 0 },
+            partnerRole: {
+              type: 'string',
+              enum: ['design_partner', 'referral', 'affiliate'],
+            },
+            totalAmount: { type: 'integer' },
+          },
+        },
+      },
+      schemaVersion: { type: 'string' },
+      settledCount: { type: 'integer', minimum: 0 },
+      settledSats: { type: 'integer' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      stateTotals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['count', 'state', 'totalAmount'],
+          properties: {
+            count: { type: 'integer', minimum: 0 },
+            state: {
+              type: 'string',
+              enum: [
+                'eligible',
+                'approved',
+                'dispatched',
+                'settled',
+                'failed',
+                'refused',
+                'reversed',
+              ],
+            },
+            totalAmount: { type: 'integer' },
+          },
+        },
+      },
+      totalCurrentPayouts: { type: 'integer', minimum: 0 },
+    },
+  },
   SiteReferralPayoutTransitionRequest: objectSummary(
     'Operator-only append-only Site referral payout ledger transition request.',
   ),
@@ -8448,6 +8594,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public count-only Site referral payout ledger projection.',
           '#/components/schemas/SiteReferralPayoutsPublicProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/partner-payouts': {
+    get: operation({
+      operationId: 'getPublicPartnerPayouts',
+      summary: 'Get public partner payout projection',
+      description:
+        'Read-only public-safe count projection of the partner payout ledger. The response aggregates current payout states, roles, assets, and settled sats without exposing partner refs, user ids, payout refs, payout destinations, qualifying event refs, invoices, preimages, provider payloads, or wallet material. It grants no partner attribution, payout, settlement, withdrawal, revenue, or spend authority.',
+      tags: ['Sites'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public count-only partner payout ledger projection.',
+          '#/components/schemas/PartnerPayoutsPublicProjection',
         ),
         ...errorResponses(),
       },

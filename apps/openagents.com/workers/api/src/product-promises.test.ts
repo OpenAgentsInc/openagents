@@ -139,8 +139,9 @@ describe('public product promises document', () => {
     // pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 green (Pylon
     // v1.0.5 signed release shipped + verified, owner-authorized), so green is
     // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
-    // 2026-06-20.5 signature-metering de-stale pass flip no promise state, so
-    // green remains exactly 24.
+    // 2026-06-20.5 signature-metering de-stale pass and 2026-06-20.6
+    // partner-payout projection de-stale pass flip no promise state, so green
+    // remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -693,6 +694,39 @@ describe('public product promises document', () => {
     )
     expect(signaturePromise?.authorityBoundary).toContain(
       'do not install, promote, bill, debit, credit, or settle',
+    )
+  })
+
+  test('partner payout ledger records projection evidence while keeping settlement blocked', () => {
+    const document = publicProductPromisesDocument()
+    const partnerPromise = document.promises.find(
+      promise => promise.promiseId === 'autopilot_sites.partner_payout_ledger.v1',
+    )
+
+    expect(partnerPromise).toMatchObject({
+      state: 'red',
+      blockerRefs: [
+        'blocker.product_promises.partner_attribution_policy_missing',
+        'blocker.product_promises.partner_payout_settlement_not_wired',
+        'blocker.product_promises.partner_first_real_payout_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
+        'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
+        'route:/api/public/partner-payouts',
+      ]),
+    })
+    expect(partnerPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.partner_projection_api_missing',
+    )
+    expect(partnerPromise?.safeCopy).toContain(
+      'public-safe count-only partner-payout projection API',
+    )
+    expect(partnerPromise?.verification).toContain(
+      'clears the projection API blocker only',
+    )
+    expect(partnerPromise?.authorityBoundary).toContain(
+      'public aggregate projections are not spendable value',
     )
   })
 

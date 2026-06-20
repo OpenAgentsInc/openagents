@@ -241,6 +241,9 @@ import {
   verifyLineText,
   walletSummary,
 } from "./helpers"
+// Concise + markdown-rendered session-stream transcript (owner report,
+// 2026-06-19): replaces the raw label/markdown dump with a clean readable view.
+import { conciseTranscript } from "./stream-render"
 // #5468 (EPIC #5461): bounded auto-approve policy + audit-trail projection.
 import {
   boundedAutoApprovalPolicySummary,
@@ -5069,6 +5072,12 @@ const composerTranscript = (
   events: ReadonlyArray<SessionEventRow>,
 ): Html => {
   if (events.length === 0) return emptyLine("Waiting for the agent's first turn…")
+  // Concise, markdown-rendered transcript: assistant/reasoning text as markdown,
+  // tool actions as one-liners, token/lifecycle noise suppressed. Falls back to
+  // the raw lifecycle timeline only when a turn has produced no readable content
+  // yet (so progress is still visible).
+  const concise = conciseTranscript(events)
+  if (concise !== null) return concise
   const transcriptEvents = events.filter(isComposerTranscriptEvent)
   const shown = transcriptEvents.length > 0 ? transcriptEvents : events
   return eventTimeline(model, shown)
