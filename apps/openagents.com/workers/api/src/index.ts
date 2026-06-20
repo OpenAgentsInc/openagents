@@ -137,6 +137,7 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
+import { handleQuote } from './inference/quote-routes'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -9412,6 +9413,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/models',
     handler: (request, env) =>
       handleModelsList(request, {
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+      }),
+  },
+  {
+    // Pre-purchase cost quote (POST /v1/quote) for the inference gateway. INERT
+    // by default: gated behind the SAME INFERENCE_GATEWAY_ENABLED flag as
+    // /v1/chat/completions and /v1/models, so it 404s when the gateway is off.
+    // Public, unauthenticated, public-safe — like /v1/models it reads only the
+    // published catalog price (the estimator omits our cost basis / margin),
+    // moves no money, and writes no ledger row. It returns the exact
+    // credit/USD/msat charge the metering hook WOULD settle for a given model +
+    // token estimate + funding rail (`isEstimate: true`), so a credits customer
+    // can size a deliberate spend before funding a balance. Computed from the
+    // SAME pricing engine (`priceRequest`) the metering hook bills against, so a
+    // quote cannot drift from the eventual billed charge. No promise state
+    // changes; the paid loop is still secrets-gated.
+    path: '/v1/quote',
+    handler: (request, env) =>
+      handleQuote(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
       }),
   },
