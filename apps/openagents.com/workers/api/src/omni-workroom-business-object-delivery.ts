@@ -1,0 +1,239 @@
+import { Schema as S } from 'effect'
+
+import type { OmniProjectionAudience } from './omni-data-classification'
+import type { OmniWorkroomRecord } from './omni-workrooms'
+import {
+  type OmniBusinessObjectWriteRecord,
+  type OmniSourceAuthorityBinding,
+  decideOmniBusinessObjectWrite,
+  projectOmniBusinessObjectWrite,
+} from './omni-source-authorized-business-objects'
+
+// ---------------------------------------------------------------------------
+// Workroom-delivery integration for source-authorized business objects
+// (DE-9 / EPIC #5532).
+//
+// This is the seam where the source-authority + approval-gated write model
+// touches the LIVE omni client-delivery workroom surface
+// (workrooms.omni_client_delivery_workrooms.v1, yellow). It is FLAG-GATED
+// INERT: by default the integration is disabled, and even when enabled it
+// only ever produces a PLAN of approval-gated write decisions plus a typed
+// gate verdict. It never applies a write, never sends, never settles, and
+// never returns "applied" authority by itself.
+//
+// Promotion of the source-authorized-business-objects promise to green
+// requires the live integration ENABLED, an owner sign-off ref, and a
+// closeout receipt — which is owner-gated and out of scope for this build.
+// ---------------------------------------------------------------------------
+
+/**
+ * The integration gate state. `inert_disabled` is the default and the only
+ * state this build ships in. The remaining states describe the gate ladder a
+ * future owner-armed promotion walks; none of them are flipped here.
+ */
+export const OmniBusinessObjectDeliveryGateState = S.Literals([
+  'inert_disabled',
+  'enabled_blocked',
+  'enabled_ready',
+])
+export type OmniBusinessObjectDeliveryGateState =
+  typeof OmniBusinessObjectDeliveryGateState.Type
+
+/**
+ * Operator/owner configuration for the integration. Defaults keep every live
+ * effect off. `integrationEnabled` is the master INERT flag; `ownerSignOffRef`
+ * and `closeoutReceiptRef` are the additional gates required before the gate
+ * may report `enabled_ready`.
+ */
+export type OmniBusinessObjectDeliveryConfig = Readonly<{
+  closeoutReceiptRef?: string | undefined
+  integrationEnabled?: boolean | undefined
+  ownerSignOffRef?: string | undefined
+}>
+
+export const OMNI_BUSINESS_OBJECT_DELIVERY_INERT_CONFIG: OmniBusinessObjectDeliveryConfig =
+  {
+    closeoutReceiptRef: undefined,
+    integrationEnabled: false,
+    ownerSignOffRef: undefined,
+  }
+
+/**
+ * A single planned write entry: the write projection plus the pure
+ * approval-gated decision for it. `applyAllowed` here reflects whether the
+ * write COULD be applied under the source-authority model; it is still held
+ * inert by the integration gate unless the gate reaches `enabled_ready`.
+ */
+export class OmniBusinessObjectDeliveryPlanEntry extends S.Class<OmniBusinessObjectDeliveryPlanEntry>(
+  'OmniBusinessObjectDeliveryPlanEntry',
+)({
+  applyAllowed: S.Boolean,
+  approvalRequired: S.Boolean,
+  blockerRefs: S.Array(S.String),
+  reasonRef: S.String,
+  write: S.Unknown,
+}) {}
+
+export class OmniBusinessObjectDeliveryPlan extends S.Class<OmniBusinessObjectDeliveryPlan>(
+  'OmniBusinessObjectDeliveryPlan',
+)({
+  applyableCount: S.Number,
+  audience: S.String,
+  blockerRefs: S.Array(S.String),
+  // The integration never applies writes itself; this is always false in this
+  // build. It exists so callers cannot mistake a plan for an applied effect.
+  effectsApplied: S.Boolean,
+  entries: S.Array(OmniBusinessObjectDeliveryPlanEntry),
+  gateState: OmniBusinessObjectDeliveryGateState,
+  proposedCount: S.Number,
+  workroomId: S.String,
+}) {}
+
+export class OmniBusinessObjectDeliveryUnsafe extends S.TaggedErrorClass<OmniBusinessObjectDeliveryUnsafe>()(
+  'OmniBusinessObjectDeliveryUnsafe',
+  { reason: S.String },
+) {}
+
+/**
+ * Resolve the integration gate state from config. `inert_disabled` unless the
+ * master flag is on; `enabled_ready` only when the flag is on AND an owner
+ * sign-off ref AND a closeout receipt ref are present; otherwise
+ * `enabled_blocked`.
+ */
+export const resolveOmniBusinessObjectDeliveryGate = (
+  config: OmniBusinessObjectDeliveryConfig,
+): OmniBusinessObjectDeliveryGateState => {
+  if (config.integrationEnabled !== true) {
+    return 'inert_disabled'
+  }
+
+  const hasOwnerSignOff =
+    typeof config.ownerSignOffRef === 'string' &&
+    config.ownerSignOffRef.trim() !== ''
+  const hasCloseoutReceipt =
+    typeof config.closeoutReceiptRef === 'string' &&
+    config.closeoutReceiptRef.trim() !== ''
+
+  return hasOwnerSignOff && hasCloseoutReceipt
+    ? 'enabled_ready'
+    : 'enabled_blocked'
+}
+
+const gateBlockerRefs = (
+  gateState: OmniBusinessObjectDeliveryGateState,
+  config: OmniBusinessObjectDeliveryConfig,
+): ReadonlyArray<string> => {
+  if (gateState === 'inert_disabled') {
+    return ['blocker.business_object_delivery.integration_inert_disabled']
+  }
+
+  if (gateState === 'enabled_ready') {
+    return []
+  }
+
+  const blockers: Array<string> = []
+
+  if (
+    typeof config.ownerSignOffRef !== 'string' ||
+    config.ownerSignOffRef.trim() === ''
+  ) {
+    blockers.push('blocker.business_object_delivery.owner_sign_off_missing')
+  }
+
+  if (
+    typeof config.closeoutReceiptRef !== 'string' ||
+    config.closeoutReceiptRef.trim() === ''
+  ) {
+    blockers.push('blocker.business_object_delivery.closeout_receipt_missing')
+  }
+
+  return blockers.sort()
+}
+
+/**
+ * Build the inert delivery plan for a live client-delivery workroom. It
+ * matches each write to its named binding, runs the pure approval-gated
+ * decision, and returns a plan plus the integration gate verdict. It applies
+ * nothing. `effectsApplied` is always false.
+ */
+export const buildOmniBusinessObjectDeliveryPlan = (
+  input: Readonly<{
+    audience: OmniProjectionAudience
+    bindings: ReadonlyArray<OmniSourceAuthorityBinding>
+    config?: OmniBusinessObjectDeliveryConfig | undefined
+    nowIso: string
+    workroom: OmniWorkroomRecord
+    writes: ReadonlyArray<OmniBusinessObjectWriteRecord>
+  }>,
+): OmniBusinessObjectDeliveryPlan => {
+  const config = input.config ?? OMNI_BUSINESS_OBJECT_DELIVERY_INERT_CONFIG
+  const gateState = resolveOmniBusinessObjectDeliveryGate(config)
+
+  const bindingsById = new Map<string, OmniSourceAuthorityBinding>(
+    input.bindings.map(binding => [binding.id, binding]),
+  )
+
+  const entries: Array<OmniBusinessObjectDeliveryPlanEntry> = input.writes.map(
+    write => {
+      const binding = bindingsById.get(write.bindingRef)
+
+      if (binding === undefined) {
+        return new OmniBusinessObjectDeliveryPlanEntry({
+          applyAllowed: false,
+          approvalRequired: true,
+          blockerRefs: ['blocker.business_object_delivery.binding_not_found'],
+          reasonRef: 'reason.business_object_delivery.binding_not_found',
+          write: projectOmniBusinessObjectWrite(
+            write,
+            input.audience,
+            input.nowIso,
+          ),
+        })
+      }
+
+      const decision = decideOmniBusinessObjectWrite(binding, write)
+
+      // The pure model may say a write is applyable, but the integration gate
+      // holds it inert until enabled_ready. effectsApplied stays false either
+      // way; this only governs the per-entry applyAllowed signal callers read.
+      const integrationApplyAllowed =
+        gateState === 'enabled_ready' && decision.applyAllowed
+
+      return new OmniBusinessObjectDeliveryPlanEntry({
+        applyAllowed: integrationApplyAllowed,
+        approvalRequired: decision.approvalRequired,
+        blockerRefs:
+          gateState === 'enabled_ready'
+            ? decision.blockerRefs
+            : [
+              ...decision.blockerRefs,
+              ...(gateState === 'inert_disabled'
+                ? [
+                  'blocker.business_object_delivery.integration_inert_disabled',
+                ]
+                : ['blocker.business_object_delivery.integration_enabled_blocked']),
+            ].sort(),
+        reasonRef:
+          gateState === 'enabled_ready'
+            ? decision.reasonRef
+            : 'reason.business_object_delivery.held_inert',
+        write: projectOmniBusinessObjectWrite(
+          write,
+          input.audience,
+          input.nowIso,
+        ),
+      })
+    },
+  )
+
+  return new OmniBusinessObjectDeliveryPlan({
+    applyableCount: entries.filter(entry => entry.applyAllowed).length,
+    audience: input.audience,
+    blockerRefs: gateBlockerRefs(gateState, config),
+    effectsApplied: false,
+    entries,
+    gateState,
+    proposedCount: entries.length,
+    workroomId: input.workroom.id,
+  })
+}
