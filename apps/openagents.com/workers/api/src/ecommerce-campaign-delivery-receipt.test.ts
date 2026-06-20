@@ -2,10 +2,15 @@ import { describe, expect, test } from 'vitest'
 
 import { ECOMMERCE_DESIGN_PARTNER_TEMPLATE_REF } from './prefilled-workspace-vertical-templates'
 import {
+  ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
   type EcommerceCampaignAuthorityGateId,
   type EcommerceCampaignDeliveryInput,
   EcommerceCampaignDeliveryReceiptInvariantError,
   buildEcommerceCampaignDeliveryReceipt,
+  decodeEcommerceCampaignDeliveryReceiptDocument,
+  serializeEcommerceCampaignDeliveryReceiptDocument,
+  toEcommerceCampaignDeliveryReceiptDocument,
+  verifyDereferencedEcommerceCampaignReceipt,
   verifyEcommerceCampaignPaidDelivery,
 } from './ecommerce-campaign-delivery-receipt'
 
@@ -153,5 +158,90 @@ describe('e-commerce campaign delivery receipt', () => {
     expect(verifyEcommerceCampaignPaidDelivery(receipt)).toContain(
       'paid settlement recorded without a dereferenceable payment ref',
     )
+  })
+})
+
+const paidReceipt = () =>
+  buildEcommerceCampaignDeliveryReceipt(
+    baseInput({
+      humanReviewAccepted: true,
+      receiptedGates: allReceiptedGates,
+      publishedArtifactRefs: ['campaign.meta.set.123'],
+      spendObservedCents: 42_000,
+      statsWindow: '2026-06-20/2026-06-27',
+      paidSettlement: {
+        amountCents: 25_000,
+        asset: 'usd',
+        evidenced: true,
+        publicPaymentRef: 'payment.public.ref.abc',
+      },
+    }),
+  )
+
+describe('e-commerce campaign delivery receipt — dereferenceable document', () => {
+  test('serialize is deterministic and round-trips through decode', () => {
+    const document = toEcommerceCampaignDeliveryReceiptDocument(paidReceipt())
+
+    const body = serializeEcommerceCampaignDeliveryReceiptDocument(document)
+    expect(body).toBe(
+      serializeEcommerceCampaignDeliveryReceiptDocument(document),
+    )
+
+    const decoded = decodeEcommerceCampaignDeliveryReceiptDocument(body)
+    expect(decoded.docVersion).toBe(
+      ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
+    )
+    expect(decoded).toEqual(document)
+  })
+
+  test('a dereferenced paid-delivery body verifies clean', () => {
+    const body = serializeEcommerceCampaignDeliveryReceiptDocument(
+      toEcommerceCampaignDeliveryReceiptDocument(paidReceipt()),
+    )
+
+    expect(verifyDereferencedEcommerceCampaignReceipt(body)).toEqual([])
+  })
+
+  test('a dereferenced blocked-draft body does not verify as paid', () => {
+    const body = serializeEcommerceCampaignDeliveryReceiptDocument(
+      toEcommerceCampaignDeliveryReceiptDocument(
+        buildEcommerceCampaignDeliveryReceipt(baseInput()),
+      ),
+    )
+
+    expect(
+      verifyDereferencedEcommerceCampaignReceipt(body).length,
+    ).toBeGreaterThan(0)
+  })
+
+  test('malformed JSON surfaces as a decode reason, never throws or passes', () => {
+    const reasons = verifyDereferencedEcommerceCampaignReceipt('{not json')
+
+    expect(reasons.length).toBeGreaterThan(0)
+    expect(reasons[0]).toContain('failed to decode')
+  })
+
+  test('a wrong-version body is rejected at decode', () => {
+    const body = serializeEcommerceCampaignDeliveryReceiptDocument(
+      toEcommerceCampaignDeliveryReceiptDocument(paidReceipt()),
+    )
+    const tampered = body.replace(
+      ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
+      'ecommerce.campaign.delivery_receipt.v999',
+    )
+
+    const reasons = verifyDereferencedEcommerceCampaignReceipt(tampered)
+    expect(reasons.length).toBeGreaterThan(0)
+    expect(reasons[0]).toContain('failed to decode')
+  })
+
+  test('a body that strips published artifacts cannot pass as paid', () => {
+    const body = serializeEcommerceCampaignDeliveryReceiptDocument(
+      toEcommerceCampaignDeliveryReceiptDocument(paidReceipt()),
+    )
+    const tampered = body.replace('"campaign.meta.set.123"', '')
+
+    const reasons = verifyDereferencedEcommerceCampaignReceipt(tampered)
+    expect(reasons).toContain('no published artifact refs')
   })
 })

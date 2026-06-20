@@ -27,6 +27,31 @@ e-commerce inventory-aware ad-campaign work item produced by the
     reviewed + paid delivery that verifies clean, and the rejection invariants
     (publish/spend while blocked, over-cap spend, missing payment ref).
 
+## What this follow-up run added (dereferenceable document contract)
+
+A receipt held only in memory is not *dereferenceable*. This run adds the
+versioned wire contract a public route would serve and a consumer would fetch +
+independently re-verify, in the same module:
+
+- `ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION` + the
+  `EcommerceCampaignDeliveryReceiptDocument` versioned envelope.
+- `toEcommerceCampaignDeliveryReceiptDocument(...)` — wrap a built receipt.
+- `serializeEcommerceCampaignDeliveryReceiptDocument(...)` — deterministic JSON
+  body (stable bytes a consumer can hash/cache).
+- `decodeEcommerceCampaignDeliveryReceiptDocument(...)` — decode + **validate**
+  the wire shape (uses `json-boundary`'s `parseJsonWithSchema`; no raw
+  `JSON.parse`, so the zero-debt architecture check stays clean). Rejects
+  malformed JSON and wrong `docVersion`.
+- `verifyDereferencedEcommerceCampaignReceipt(body)` — the single entrypoint a
+  consumer / future public route handler calls on a raw fetched body: decode
+  failures surface as a reason (never thrown, never silently passed), otherwise
+  it runs the paid-delivery verifier. A malformed, wrong-version, or
+  artifact-stripped body can never pass as "delivered".
+- 6 added tests: deterministic serialize, round-trip decode, clean verify of a
+  dereferenced paid body, a blocked draft not verifying, malformed JSON →
+  decode reason, wrong-version → decode reason, and an artifact-stripped body →
+  `no published artifact refs` (13 tests total in the file).
+
 ## Which blocker this advances
 
 `blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing`
@@ -45,6 +70,13 @@ per `proof.claim_upgrade_receipts.v1`. The blocker stays listed.
 1. Run a real first paid e-commerce work item through the seeded workspace and
    emit an instance of this receipt with `verifyEcommerceCampaignPaidDelivery`
    returning `[]`.
-2. Persist/serve that receipt instance at a dereferenceable public route and
-   wire it into a receipt-first claim upgrade per `proof.claim_upgrade_receipts.v1`.
+2. Persist/serve that receipt instance at the dereferenceable public route. The
+   wire format + decode/verify contract now exist
+   (`verifyDereferencedEcommerceCampaignReceipt`); what remains is a real route
+   handler that stores and serves a real instance, plus wiring into a
+   receipt-first claim upgrade per `proof.claim_upgrade_receipts.v1`.
 3. Deliver a self-serve vertical pack to clear the self-serve blocker.
+
+Both blockers remain listed in the registry — this run advanced
+`ecommerce_pack_first_paid_delivery_receipt_missing` (no real instance exists
+yet) and did not touch `ecommerce_pack_self_serve_missing`.

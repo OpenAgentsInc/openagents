@@ -1,5 +1,6 @@
 import { Schema as S } from 'effect'
 
+import { parseJsonWithSchema } from './json-boundary'
 import { ECOMMERCE_DESIGN_PARTNER_TEMPLATE_REF } from './prefilled-workspace-vertical-templates'
 
 /**
@@ -311,4 +312,86 @@ export const verifyEcommerceCampaignPaidDelivery = (
   }
 
   return reasons
+}
+
+/**
+ * Dereferenceable public DOCUMENT contract.
+ *
+ * The promise's green path requires "a dereferenceable first paid e-commerce
+ * work-item delivery receipt". A receipt held only in memory is not
+ * dereferenceable: a consumer at a public route must be able to FETCH the
+ * receipt as a stable, versioned JSON document and INDEPENDENTLY re-validate
+ * and re-verify it without trusting the producer.
+ *
+ * This section supplies that contract: a versioned envelope, a deterministic
+ * serializer, a decode that validates the wire shape, and a single
+ * dereference-and-verify entrypoint a consumer (or a future public route)
+ * calls on the raw fetched body. It does NOT assert any real paid delivery has
+ * happened — it only makes the existing receipt format actually transportable
+ * and re-verifiable across a trust boundary.
+ */
+export const ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION =
+  'ecommerce.campaign.delivery_receipt.v1' as const
+
+export const EcommerceCampaignDeliveryReceiptDocument = S.Struct({
+  // Schema version pin so consumers can refuse unknown wire shapes.
+  docVersion: S.Literal(ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION),
+  receipt: EcommerceCampaignDeliveryReceipt,
+})
+export type EcommerceCampaignDeliveryReceiptDocument =
+  typeof EcommerceCampaignDeliveryReceiptDocument.Type
+
+const encodeReceiptDocument = S.encodeSync(
+  EcommerceCampaignDeliveryReceiptDocument,
+)
+
+/**
+ * Wrap a built receipt into its versioned dereferenceable document envelope.
+ */
+export const toEcommerceCampaignDeliveryReceiptDocument = (
+  receipt: EcommerceCampaignDeliveryReceipt,
+): EcommerceCampaignDeliveryReceiptDocument => ({
+  docVersion: ECOMMERCE_CAMPAIGN_DELIVERY_RECEIPT_DOC_VERSION,
+  receipt,
+})
+
+/**
+ * Deterministically serialize a receipt document to the JSON body that a public
+ * route would serve. Deterministic so the same receipt always produces the same
+ * bytes (a stable artifact a consumer can hash/cache).
+ */
+export const serializeEcommerceCampaignDeliveryReceiptDocument = (
+  document: EcommerceCampaignDeliveryReceiptDocument,
+): string => JSON.stringify(encodeReceiptDocument(document))
+
+/**
+ * Decode and VALIDATE a dereferenced JSON body back into a receipt document.
+ * Throws if the body is not valid JSON or does not match the versioned wire
+ * shape — a consumer must never trust an unvalidated body.
+ */
+export const decodeEcommerceCampaignDeliveryReceiptDocument = (
+  body: string,
+): EcommerceCampaignDeliveryReceiptDocument =>
+  parseJsonWithSchema(EcommerceCampaignDeliveryReceiptDocument, body)
+
+/**
+ * The single entrypoint a consumer (or future public route handler) calls on a
+ * raw dereferenced body. Returns the reasons the dereferenced receipt does NOT
+ * qualify as an evidenced first paid delivery; an empty list means it does.
+ *
+ * Decode/validation failures are surfaced as a reason (never thrown) so a
+ * malformed or wrong-version body can never silently pass as "delivered".
+ */
+export const verifyDereferencedEcommerceCampaignReceipt = (
+  body: string,
+): ReadonlyArray<string> => {
+  let document: EcommerceCampaignDeliveryReceiptDocument
+  try {
+    document = decodeEcommerceCampaignDeliveryReceiptDocument(body)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return [`receipt document failed to decode: ${detail}`]
+  }
+
+  return verifyEcommerceCampaignPaidDelivery(document.receipt)
 }
