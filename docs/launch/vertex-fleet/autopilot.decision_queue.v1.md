@@ -10,8 +10,10 @@
 
 | File | Purpose |
 |---|---|
-| `packages/autopilot-control-protocol/src/decision-closeout-receipt.ts` | `DecisionCloseoutReceipt` type, `buildDecisionCloseoutReceipt()` builder, and `validateDecisionCloseoutReceipt()` validator |
+| `packages/autopilot-control-protocol/src/decision-closeout-receipt.ts` | `DecisionCloseoutReceipt` type, `buildDecisionCloseoutReceipt()` builder, and `validateDecisionCloseoutReceipt()` validator. Now also exports the single-sourced `TERMINAL_DECISION_OUTCOMES` / `DECISION_CLIENTS` vocabularies that the validator and the ledger share |
 | `packages/autopilot-control-protocol/src/decision-closeout-receipt.test.ts` | 20 tests covering all terminal outcomes, all client surfaces, answer-verb hasAnswer logic, terminal-vs-transient classification, and tamper-detection via line reconstruction |
+| `packages/autopilot-control-protocol/src/decision-closeout-ledger.ts` | `createDecisionCloseoutLedger()` — the storage + audit-index layer for closeout receipts (added 2026-06-20). Validates on append, enforces exactly-once per decision `requestId`, idempotently converges byte-identical cross-client re-appends (`deduped: true`), refuses a conflicting second closeout for a closed command (`reason: "conflict"`), and answers audit queries `get` / `byClient` / `byActor` / `byOutcome` / `summary` |
+| `packages/autopilot-control-protocol/src/decision-closeout-ledger.test.ts` | 10 tests: empty state, record/get, invalid rejection, idempotent cross-client convergence, conflict refusal, audit slices, vocabulary summary, append order, mutation-safe snapshots, ledger isolation |
 
 **What it does:**
 
@@ -52,7 +54,11 @@ and is shared across desktop / web / Expo (the three client surfaces).
   hasn't been exercised in a dereferenceable end-to-end receipt yet.
 
 - **`blocker.product_promises.receipt_backed_command_closeout_missing`** —
-  *Partially advanced* this run. The receipt type, builder, and validator are
-  now in place. The remaining gap is a storage layer (e.g. D1 or KV) that
-  persists and indexes these receipts for later audit queries, and a proof of
-  at least one real receipt produced by a live paired-node resolution.
+  *Partially advanced* (further this run). The receipt type, builder, and
+  validator landed earlier; this run adds the in-memory storage + audit-index
+  layer (`createDecisionCloseoutLedger`) with exactly-once dedup, cross-client
+  convergence, conflict refusal, and audit queries. The remaining gap is a
+  *persistent* backing store (D1/KV) wrapping this same ledger contract, the
+  call site that appends to the ledger when `createRemoteDecisionQueue().resolve`
+  returns a terminal outcome, and a proof of at least one real receipt produced
+  by a live paired-node resolution.
