@@ -184,6 +184,10 @@ import {
   readArtanisTickMonitor,
 } from './artanis-tick-monitor'
 import {
+  boundedTickStreakLimit,
+  readArtanisTickStreak,
+} from './artanis-tick-streak'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -8800,6 +8804,24 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           nowIso: currentIsoTimestamp(),
         })
         return Response.json(monitor, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
+    path: '/api/public/artanis/tick-streak',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const streak = await readArtanisTickStreak(openAgentsDatabase(env), {
+          limit: boundedTickStreakLimit(
+            new URL(request.url).searchParams.get('limit'),
+          ),
+          nowIso: currentIsoTimestamp(),
+        })
+        return Response.json(streak, {
           headers: { 'cache-control': 'no-store' },
         })
       }),
