@@ -35,6 +35,12 @@
 // Nothing here installs, probes a host, or flips a promise state.
 
 import { isSupportedPlatform, type SupportedPlatform } from "./bootstrap.js"
+// WSL detection lives in a dependency-free leaf module so it can be shared with
+// `bootstrap.ts` (the runtime install path) without a circular import. Re-exported
+// here to preserve this module's public surface.
+import { detectWslHost, WSL_ENV_SIGNALS } from "./wsl-host-detect.js"
+
+export { detectWslHost, WSL_ENV_SIGNALS }
 
 export const WINDOWS_WSL_BLOCKER_REF =
   "blocker.product_promises.windows_wsl_consumer_install_coverage_missing" as const
@@ -161,41 +167,6 @@ export function classifyConsumerInstallPlatform(
   platform: NodeJS.Platform = process.platform,
 ): ConsumerInstallPlatformSupport {
   return classifyConsumerInstallHost({ platform })
-}
-
-// Environment variables WSL sets in its Linux userland. Their mere presence is a
-// reliable, public-safe WSL signal; we never read or emit their VALUES.
-const WSL_ENV_SIGNALS: readonly string[] = [
-  "WSL_DISTRO_NAME",
-  "WSL_INTEROP",
-  "WSLENV",
-]
-
-/**
- * Detect whether the current host is running under WSL.
- *
- * Pure and side-effect-free: the caller supplies the environment and, optionally,
- * the text of `/proc/version` (which on WSL contains "microsoft"/"WSL"). Returns a
- * plain boolean — it never reads files itself and never emits any environment
- * value, path, or machine identifier. Use its result as the `wsl` signal for
- * `classifyConsumerInstallHost` so a WSL host (which reports `platform === "linux"`)
- * is classified `out-of-scope` per the documented scope decision.
- */
-export function detectWslHost(
-  env: NodeJS.ProcessEnv = process.env,
-  procVersionText?: string,
-): boolean {
-  for (const key of WSL_ENV_SIGNALS) {
-    const value = env[key]
-    if (typeof value === "string" && value.trim().length > 0) return true
-  }
-  if (
-    typeof procVersionText === "string" &&
-    /\b(?:microsoft|wsl)\b/i.test(procVersionText)
-  ) {
-    return true
-  }
-  return false
 }
 
 /**

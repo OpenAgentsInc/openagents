@@ -2812,10 +2812,14 @@ async function main() {
     try {
       const options = parseBootstrapArgs(args.slice(1))
       const summary = createBootstrapSummary(options, Bun.env)
-      if (!summary.platform.supported) {
-        process.stderr.write(
-          `Pylon ${summary.version} supports macOS and Linux only. Current platform: ${summary.platform.current}\n`,
-        )
+      if (!summary.platform.inScope) {
+        // WSL reports `platform === "linux"`, so it would pass the raw `supported`
+        // check; gate on `inScope` and guide a WSL contributor to a native host
+        // per the documented macOS/Linux-only scope-out.
+        const detail = summary.platform.wsl
+          ? `Pylon ${summary.version} supports native macOS and Linux only; WSL is out of scope for the v1.0 self-serve install. Use a native macOS or Linux host.`
+          : `Pylon ${summary.version} supports macOS and Linux only. Current platform: ${summary.platform.current}`
+        process.stderr.write(`${detail}\n`)
         process.exitCode = 1
         return
       }

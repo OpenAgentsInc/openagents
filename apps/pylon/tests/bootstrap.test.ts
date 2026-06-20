@@ -49,6 +49,58 @@ describe("Pylon bootstrap release surface", () => {
     expect(summary.updatePolicy.sourceBuildFallback).toBe("disabled")
   })
 
+  // WSL reports `platform === "linux"`, so the raw `supported` check passes and a
+  // WSL host would be silently treated as the proven `linux` target — directly
+  // contradicting the documented macOS/Linux-only scope-out. The bootstrap
+  // summary must surface WSL and gate self-serve install on `inScope`, not on the
+  // raw `supported` flag.
+  describe("WSL host scope-out (windows_wsl_consumer_install_coverage_missing)", () => {
+    test("a WSL host (linux + WSL env signal) is detected and held out of scope", () => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: "/tmp/pylon-test", WSL_DISTRO_NAME: "Ubuntu" },
+        "linux",
+      )
+      expect(summary.platform.current).toBe("linux")
+      // Raw platform check still passes — that is exactly why `inScope` is needed.
+      expect(summary.platform.supported).toBe(true)
+      expect(summary.platform.wsl).toBe(true)
+      expect(summary.platform.inScope).toBe(false)
+    })
+
+    test("a native linux host (no WSL signal) is in scope", () => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: "/tmp/pylon-test" },
+        "linux",
+      )
+      expect(summary.platform.wsl).toBe(false)
+      expect(summary.platform.inScope).toBe(true)
+    })
+
+    test("macOS is in scope and never flagged as WSL", () => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: "/tmp/pylon-test", WSL_DISTRO_NAME: "Ubuntu" },
+        "darwin",
+      )
+      // The WSL env signal is ignored off-linux: WSL is a linux-userland concern.
+      expect(summary.platform.wsl).toBe(false)
+      expect(summary.platform.inScope).toBe(true)
+    })
+
+    test("native Windows is out of scope (not in scope, not WSL)", () => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--json"]),
+        { PYLON_HOME: "/tmp/pylon-test" },
+        "win32",
+      )
+      expect(summary.platform.supported).toBe(false)
+      expect(summary.platform.wsl).toBe(false)
+      expect(summary.platform.inScope).toBe(false)
+    })
+  })
+
   test("resolves deterministic home, config, cache, and release paths", () => {
     expect(resolvePylonHome({ PYLON_HOME: "/tmp/pylon-home" })).toEqual({
       home: "/tmp/pylon-home",
