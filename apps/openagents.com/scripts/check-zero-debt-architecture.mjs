@@ -575,6 +575,11 @@ const publicProjectionComplianceToken =
 const publicProjectionSurfaces = [
   // Declared surfaces (payload carries generatedAt + staleness contract).
   {
+    module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
+    route: '/api/public/marketing-agency/receipts',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/artanis-public-report.ts',
     route: '/api/public/artanis/report',
     status: 'staleness_declared',

@@ -1679,6 +1679,8 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   legacy count as an exact ratchet budget that may only shrink as retrofits
   land.
 - Projection inventory (staleness mode → compliance as of epic #4751):
+  - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
+    over the static mocked delivery-receipt fixture. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).

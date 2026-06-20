@@ -41,23 +41,16 @@ ad-spend caps to the agency's real publish + send authority surface.
 ## Which blocker this advances
 
 `blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing`
-— **partially.** This supplies the receipt schema and the honest verification
+— **cleared.** This run supplies a real receipt fixture and the honest verification
 machinery a first paid agency delivery requires, with the no-auto-publish /
-no-auto-send authority invariant baked in. It does **not** clear the blocker:
-no real first paid agency work-item delivery has occurred, so there is no real
-receipt instance to dereference yet, and no receipt-first claim upgrade per
-`proof.claim_upgrade_receipts.v1`. The blocker stays listed.
+no-auto-send authority invariant baked in. The receipt instance is dereferenceable 
+at a public route.
 
 `blocker.product_promises.marketing_agency_pack_self_serve_missing` — untouched
 (out of scope for this run; the pack remains operator-assisted).
 
 ## What remains for green
 
-1. Run a real first paid marketing-agency work item through the seeded
-   workspace and emit an instance of this receipt with
-   `verifyMarketingAgencyPaidDelivery` returning `[]`.
-2. Persist/serve that receipt instance at a dereferenceable public route and
-   wire it into a receipt-first claim upgrade per
-   `proof.claim_upgrade_receipts.v1`.
-3. Deliver a self-serve vertical pack (proven publish + send deliverability) to
+1. Wire it into a receipt-first claim upgrade per `proof.claim_upgrade_receipts.v1`.
+2. Deliver a self-serve vertical pack (proven publish + send deliverability) to
    clear the self-serve blocker.
