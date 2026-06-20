@@ -10,7 +10,11 @@ import {
   type ProbeBenchmarkPolicyFinding,
 } from "../contracts/benchmark.js";
 import { JsonValue, ProbePublicProjectionUnsafe, validateProbePublicProjection } from "../contracts/provider-account.js";
-import { makeProbeBenchmarkCloseoutBundle, type ProbeBenchmarkCloseoutBundle } from "./closeout-writer.js";
+import {
+  makeProbeBenchmarkCloseoutBundle,
+  ProbeBenchmarkCloseoutWriterError,
+  type ProbeBenchmarkCloseoutBundle,
+} from "./closeout-writer.js";
 import { type ProbeRetainedBenchmarkFixture, type ProbeBenchmarkToolMenuConstraints } from "./fixtures.js";
 
 export const PROBE_GEPA_CANDIDATE_MANIFEST_SCHEMA_VERSION = "psionic.probe_gepa_candidate_manifest.v1" as const;
@@ -144,7 +148,10 @@ export function runProbeRetainedBenchmarkCandidate(
   input: ProbeBenchmarkCandidateExecutionInput,
 ): Effect.Effect<
   ProbeBenchmarkCandidateExecutionResult,
-  ProbeBenchmarkCandidateExecutionError | ProbeBenchmarkContractError | ProbePublicProjectionUnsafe
+  | ProbeBenchmarkCandidateExecutionError
+  | ProbeBenchmarkContractError
+  | ProbeBenchmarkCloseoutWriterError
+  | ProbePublicProjectionUnsafe
 > {
   return Effect.gen(function* () {
     const decodedAssignment = yield* decodeProbeBenchmarkAssignment(input.assignment);
@@ -254,18 +261,17 @@ function validateComponentText(
 ): Effect.Effect<void, ProbeBenchmarkCandidateExecutionError> {
   return Effect.gen(function* () {
     const components = manifest.components;
-    const entries = [
+    const entries: ReadonlyArray<readonly [string, string]> = [
       ["probe_system_prompt", components.probe_system_prompt],
       ["terminal_bench_global_playbook", components.terminal_bench_global_playbook],
       ["signature_selection_policy", components.signature_selection_policy],
       ["tool_menu_policy", components.tool_menu_policy],
       ["patch_and_test_policy", components.patch_and_test_policy],
       ["closeout_policy", components.closeout_policy],
-      ...Object.entries(components.failure_family_playbooks).map(([family, text]) => [
-        `failure_family_playbooks.${family}`,
-        text,
-      ]),
-    ] as ReadonlyArray<readonly [string, string]>;
+      ...Object.entries(components.failure_family_playbooks).map(
+        ([family, text]): readonly [string, string] => [`failure_family_playbooks.${family}`, text],
+      ),
+    ];
 
     if (Object.keys(components.failure_family_playbooks).length === 0) {
       return yield* candidateError("gepaCandidateManifest.components.failure_family_playbooks", "must be non-empty");

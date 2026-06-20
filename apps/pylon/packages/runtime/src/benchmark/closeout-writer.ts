@@ -691,11 +691,18 @@ function decisionTraceSummary(trace: ProbeBenchmarkDecisionTrace): JsonValue {
   };
 }
 
+// `Array.isArray` types its argument as `any[]`, which does not narrow a
+// `ReadonlyArray<JsonValue>` out of the JsonValue union, so use a reusable
+// predicate that narrows to the record shape explicitly.
+function isJsonRecord(value: JsonValue | undefined): value is { readonly [key: string]: JsonValue } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function expectRecord(
   value: JsonValue,
   path: string,
 ): Effect.Effect<{ readonly [key: string]: JsonValue }, ProbeBenchmarkCloseoutWriterError> {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+  if (isJsonRecord(value)) {
     return Effect.succeed(value);
   }
 
@@ -708,7 +715,7 @@ function expectRecord(
 }
 
 function expectOptionalRecord(value: JsonValue | undefined): { readonly [key: string]: JsonValue } {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+  return isJsonRecord(value) ? value : {};
 }
 
 function expectString(
@@ -755,7 +762,7 @@ function getNestedString(
   let current: JsonValue | undefined = record;
 
   for (const part of path) {
-    if (typeof current !== "object" || current === null || Array.isArray(current)) {
+    if (!isJsonRecord(current)) {
       return undefined;
     }
 
