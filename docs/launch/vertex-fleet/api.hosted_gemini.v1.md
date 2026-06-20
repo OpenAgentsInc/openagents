@@ -246,6 +246,44 @@ production binding shape the harness was missing.
   still passes no resolver, so prod stays refs-only), and there is no
   registered-agent production smoke. The blocker REMAINS listed.
 
+### 2026-06-20 update — provider serving policy gates the public catalog
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **further advanced, still NOT cleared.** The public catalog (`/v1/models`)
+  published EVERY model in the pricing table regardless of whether the gateway
+  could actually serve that model's supply lane: a paid gateway was advertising
+  (and letting a credits customer fund a balance toward) models whose lane has no
+  provisioned credential, so the request could only fail `model_unavailable` at
+  dispatch. This change adds the missing provider serving policy:
+  - `apps/openagents.com/workers/api/src/inference/model-serving-policy.ts`
+    — `resolveSupplyLaneArming(env)` derives which supply lanes are armed from
+    credential PRESENCE only (`VERTEX_SA_KEY` → both Vertex lanes incl. the
+    hosted-Gemini lane; `FIREWORKS_API_KEY` → Fireworks; the openagents-network
+    serving fabric is never armed — roadmap). It reads only whether a secret is a
+    non-blank string — never the value — so it neither handles nor leaks a
+    credential. `filterServableCatalog` / `isModelServable` / `isLaneArmed` are
+    pure helpers; `ALL_LANES_UNARMED` is the safe default.
+  - `apps/openagents.com/workers/api/src/inference/models-routes.ts`
+    — `ModelsListDeps` gains an OPTIONAL `laneArming`; when supplied,
+    `/v1/models` advertises only servable models and `/v1/models/{id}` reports
+    `model_not_found` for a known model on an unarmed lane. Omitting it preserves
+    the prior list-everything behaviour (no breaking change to other callers).
+  - `apps/openagents.com/workers/api/src/index.ts` — the three live gateway call
+    sites now pass `laneArming: resolveSupplyLaneArming(env)`, so the LIVE gateway
+    only advertises models it can actually serve.
+  - Tests: `model-serving-policy.test.ts` (new, 14 cases: arming matrix incl.
+    blank-credential, never-armed serving fabric, per-lane servability, identity/
+    empty/lane-scoped/order-preserving filtering) and 6 new route cases in
+    `models-routes.test.ts` (full file 19 pass): omitted arming lists all, Vertex
+    arming advertises only Vertex models incl. the hosted-Gemini lane, no
+    credential advertises nothing, retrieve resolves an armed model and 404s a
+    known model on an unarmed lane.
+
+  **Honest scope:** this is provider POLICY (which models the catalog advertises)
+  only. It does NOT add billing, entitlement, quota, or settlement, and arming is
+  PRESENCE-derived — it does not prove a lane's credential actually authenticates
+  upstream. The gateway blocker REMAINS listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
@@ -263,8 +301,9 @@ production binding shape the harness was missing.
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
 - `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
-  Gemini metering lane now exists (2026-06-20 update above), but billing,
-  entitlement, provider policy, quota, and settlement refs for a public paid
-  model gateway still remain.
+  Gemini metering lane and the provider serving policy that gates the public
+  catalog to servable lanes now exist (2026-06-20 updates above), but billing,
+  entitlement, quota, and settlement refs for a public paid model gateway still
+  remain.
 - Any green flip remains receipt-first and owner-signed per
   `proof.claim_upgrade_receipts.v1`.

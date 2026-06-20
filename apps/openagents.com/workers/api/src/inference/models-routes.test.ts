@@ -7,6 +7,8 @@ import {
   routeModelRetrieveRequest,
 } from './models-routes'
 import { MODEL_PRICING_TABLE } from './pricing'
+import { buildModelCatalog } from './model-catalog'
+import { resolveSupplyLaneArming } from './model-serving-policy'
 
 const run = (request: Request, deps: Parameters<typeof handleModelsList>[1]) =>
   Effect.runPromise(handleModelsList(request, deps))
@@ -205,5 +207,75 @@ describe('routeModelRetrieveRequest dispatcher', () => {
     const response = await Effect.runPromise(effect!)
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({ error: 'inference_gateway_disabled' })
+  })
+})
+
+describe('provider serving policy (laneArming)', () => {
+  const catalog = buildModelCatalog()
+  const geminiId = catalog.find(e => e.lane === 'vertex-gemini')!.id
+  const fireworksId = catalog.find(e => e.lane === 'fireworks')!.id
+
+  it('lists every model when laneArming is omitted (prior behaviour)', async () => {
+    const response = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      { enabled: true },
+    )
+    const body = (await response.json()) as { data: ReadonlyArray<unknown> }
+    expect(body.data.length).toBe(MODEL_PRICING_TABLE.length)
+  })
+
+  it('advertises only servable models when arming is supplied', async () => {
+    const response = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      },
+    )
+    const body = (await response.json()) as {
+      data: ReadonlyArray<{ id: string; oa_lane: string }>
+    }
+    expect(body.data.length).toBeGreaterThan(0)
+    expect(body.data.length).toBeLessThan(MODEL_PRICING_TABLE.length)
+    expect(body.data.some(m => m.id === geminiId)).toBe(true)
+    expect(body.data.some(m => m.id === fireworksId)).toBe(false)
+    expect(body.data.every(m => m.oa_lane.startsWith('vertex-'))).toBe(true)
+  })
+
+  it('advertises no models when no lane credential is provisioned', async () => {
+    const response = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      { enabled: true, laneArming: resolveSupplyLaneArming({}) },
+    )
+    const body = (await response.json()) as { data: ReadonlyArray<unknown> }
+    expect(body.data).toEqual([])
+  })
+
+  it('retrieves a model on an armed lane', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${geminiId}`, { method: 'GET' }),
+      geminiId,
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { id: string }
+    expect(body.id).toBe(geminiId)
+  })
+
+  it('reports model_not_found for a known model on an UNARMED lane', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${fireworksId}`, { method: 'GET' }),
+      fireworksId,
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      },
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('model_not_found')
   })
 })
