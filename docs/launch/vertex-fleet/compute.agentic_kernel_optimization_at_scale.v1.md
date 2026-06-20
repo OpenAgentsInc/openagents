@@ -303,3 +303,46 @@ the prior update deferred — now done on the op the verdict carries explicitly.
   forum route, real worker tok/s + replayed output traces, and real escrow
   settled into dereferenceable receipts + owner sign-off. The March 2026 result
   stays historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — throughput-record op-provenance gate (apples-to-oranges guard)
+
+Advances `blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing`
+by closing the gap the prior op-binding update explicitly named: the verifier
+took the baseline/optimized throughput records on trust and never asserted they
+both *measure the op the job claims to optimize*. The records carry `kernelRef`
+(the kernel *implementation* — baseline vs optimized intentionally differ), so
+nothing stopped a settlement pairing a `rmsnorm` baseline (328 tok/s) against an
+`attention.flash` optimized record (a higher, unrelated tok/s) and reading the
+ratio as a "speedup" of `rmsnorm`. The accounting balanced and every campaign
+reconciler passed; the throughput comparison was apples-to-oranges.
+
+New artifact (in `packages/tassadar-executor`, the green parity engine):
+
+- `src/kernel-optimization-parity.ts` — `KernelThroughputRecord` now carries an
+  `opRef` (the op the record's kernel implements, distinct from `kernelRef` the
+  implementation). `verifyKernelOptimizationParity` gains an `op_mismatch`
+  rejection: both records' `opRef` AND the job's claimed `optimizedOpRef` must
+  normalize (trim + lowercase) to the same non-empty op, else the tok/s numbers
+  are not comparable and the kernel is rejected. The gate sits in the structural
+  block (after `target_mismatch`, before `invalid_throughput`/parity/throughput),
+  so op provenance — like target — is checked before "faster but wrong" can ever
+  matter. No change to the exact-trace-replay engine; no new money path.
+- `src/kernel-optimization-parity.test.ts` — 6 new tests (11 total): case-
+  insensitive record-op match accepts, a different-op optimized record rejects,
+  a claimed op that disagrees with both records rejects, a blank claimed op
+  rejects, and op-mismatch wins over a faster-but-wrong parity verdict.
+
+This is the "cross-checking record provenance against the op" piece the prior
+update deferred — now the verifier itself proves the two tok/s records and the
+claimed op are the same op before producing any acceptance verdict.
+
+### What still remains (blocker NOT cleared)
+
+- Op provenance is now asserted on the records' declared `opRef`; it is still a
+  declared field, not derived from the measured kernel's own trace. Binding the
+  record's op to the replayed output trace's graph remains.
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces feeding the verdict
+  (numbers are still caller-supplied), and real escrow settled into
+  dereferenceable receipts + owner sign-off. The March 2026 result stays
+  historical-demo only. No promise state changed; no blocker dropped.
