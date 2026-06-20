@@ -1663,6 +1663,11 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
     const verifiedCount = classDistributions.filter(
       distribution => distribution.verified,
     ).length
+    const observedSettledDeviceClassCount = new Set(
+      classDistributions
+        .filter(distribution => distribution.verified)
+        .map(distribution => distribution.deviceClassRef),
+    ).size
 
     return noStoreJsonResponse({
       blockerRefs:
@@ -1677,6 +1682,7 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
       classDistributions,
       observedDeviceClassCount,
       observedMeasurementCount: classDistributions.length,
+      observedSettledDeviceClassCount,
       projections,
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
       sourceRefs: [

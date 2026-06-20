@@ -74,14 +74,42 @@ export type DeviceCapabilityEarningEstimate = Readonly<{
   p90SatsPerHour: number | null
 }>
 
+/**
+ * Provenance label for a device-capability measurement row.
+ *
+ * - `settled_cross_checked`: the original, fully-receipted basis — a paid
+ *   benchmark closeout settled over Lightning and verified by
+ *   `statistical_cross_check`. Rows of this provenance may carry a
+ *   settlement receipt and a modeled-from-measured earning estimate, and
+ *   become `verified` once they reach the same-class sample/verdict bar.
+ * - `measured_unsettled`: a genuinely measured benchmark distribution that
+ *   is NOT paid and NOT cross-check verified yet. This is the honest path
+ *   for a freshly-characterized device class whose work has not been
+ *   dispatched as a paid assignment and whose timings have not been
+ *   replicated on a second same-class device. Such a row never carries a
+ *   settlement receipt-derived earning estimate, never reports `verified`,
+ *   and is held at `crossCheckState: 'measured_unverified'`. Its honesty
+ *   anchor is the deterministic output-digest commitment, which must match
+ *   the suite's commitment across heterogeneous hardware.
+ */
+export const DeviceCapabilityMeasurementProvenances = [
+  'settled_cross_checked',
+  'measured_unsettled',
+] as const
+export type DeviceCapabilityMeasurementProvenance =
+  (typeof DeviceCapabilityMeasurementProvenances)[number]
+
 export type DeviceCapabilityDistribution = Readonly<{
   crossCheckState:
     | 'cross_checked'
     | 'insufficient_same_class_samples'
+    | 'measured_unverified'
     | 'needs_replication'
   deviceClassRef: string
+  digestCommitmentRefs: ReadonlyArray<string>
   earningEstimate: DeviceCapabilityEarningEstimate | null
   max: number
+  measurementProvenance: DeviceCapabilityMeasurementProvenance
   measurementRef: string
   metric: Cs336A2QualificationProbeMeasurement
   min: number
@@ -103,6 +131,7 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   jobKind: typeof Cs336A2DeviceBenchmarkJobKind
   observedDeviceClassCount: number
   observedMeasurementCount: number
+  observedSettledDeviceClassCount: number
   privacyBoundaryRefs: ReadonlyArray<string>
   requiredSameClassSampleCount: number
   schemaVersion: 'openagents.training.device_capability_dataset.v1'
@@ -130,8 +159,12 @@ const Cs336A2EarningEstimateEvidence = S.Struct({
 
 export const Cs336A2MeasurementEvidence = S.Struct({
   deviceClassRef: PublicSafeRef,
+  digestCommitmentRefs: PublicSafeRefs,
   earningEstimate: S.optionalKey(Cs336A2EarningEstimateEvidence),
   max: S.Number,
+  measurementProvenance: S.optionalKey(
+    S.Literals(DeviceCapabilityMeasurementProvenances),
+  ),
   measurementRef: S.optionalKey(PublicSafeRef),
   metric: S.Literals(Cs336A2QualificationProbeMeasurements),
   min: S.Number,
@@ -191,6 +224,19 @@ const metricFromUnknown = (
   return Cs336A2QualificationProbeMeasurements.find(metric => metric === text)
 }
 
+const provenanceFromUnknown = (
+  value: unknown,
+): DeviceCapabilityMeasurementProvenance => {
+  const text = optionalString(value)
+  const match = DeviceCapabilityMeasurementProvenances.find(
+    provenance => provenance === text,
+  )
+
+  // Default to the original settled/cross-checked basis so existing
+  // receipted rows keep their exact prior semantics.
+  return match ?? 'settled_cross_checked'
+}
+
 const publicSafeJson = (value: unknown): string => {
   const json = JSON.stringify(value)
 
@@ -215,7 +261,15 @@ const benchmarkEvidenceRecord = (
 const estimateFromEvidence = (
   measurementRef: string,
   measurement: Record<string, unknown>,
+  provenance: DeviceCapabilityMeasurementProvenance,
 ): DeviceCapabilityEarningEstimate | null => {
+  // Earning estimates are modeled FROM a receipted, settled closeout. A
+  // genuinely measured but unsettled row has no paid basis, so it never
+  // carries an earning estimate even if one is present in the evidence.
+  if (provenance === 'measured_unsettled') {
+    return null
+  }
+
   const estimate = measurement.earningEstimate
 
   if (!isRecord(estimate)) {
@@ -251,7 +305,15 @@ const estimateFromEvidence = (
 const crossCheckState = (
   sampleCount: number,
   verificationRefs: ReadonlyArray<string>,
+  provenance: DeviceCapabilityMeasurementProvenance,
 ): DeviceCapabilityDistribution['crossCheckState'] => {
+  // A genuinely measured but unsettled row is never treated as verified,
+  // regardless of sample count, because no validator verdict and no
+  // second same-class device have replicated it.
+  if (provenance === 'measured_unsettled') {
+    return 'measured_unverified'
+  }
+
   if (sampleCount >= 3 && verificationRefs.length > 0) {
     return 'cross_checked'
   }
@@ -314,19 +376,32 @@ const distributionsFromEvidence = (
         return []
       }
 
+      const provenance = provenanceFromUnknown(measurement.measurementProvenance)
       const measurementRef =
         optionalString(measurement.measurementRef) ??
         `measurement.cs336_a2.${input.run.trainingRunRef}.${index + 1}`
+      // Run-level verified challenges attach only to settled rows. A
+      // genuinely measured but unsettled row never borrows another row's
+      // verdict, so its verification set stays exactly what the evidence
+      // declared (in practice, empty).
       const verificationRefs = uniqueRefs([
         ...stringArrayFromUnknown(measurement.verificationRefs),
-        ...verifiedChallengeRefs,
+        ...(provenance === 'measured_unsettled' ? [] : verifiedChallengeRefs),
       ])
-      const state = crossCheckState(sampleCount, verificationRefs)
+      const state = crossCheckState(sampleCount, verificationRefs, provenance)
       const projected: DeviceCapabilityDistribution = {
         crossCheckState: state,
         deviceClassRef,
-        earningEstimate: estimateFromEvidence(measurementRef, measurement),
+        digestCommitmentRefs: uniqueRefs(
+          stringArrayFromUnknown(measurement.digestCommitmentRefs),
+        ),
+        earningEstimate: estimateFromEvidence(
+          measurementRef,
+          measurement,
+          provenance,
+        ),
         max,
+        measurementProvenance: provenance,
         measurementRef,
         metric,
         min,
@@ -413,6 +488,36 @@ const assertAdmissibleMeasurement = (
     )
   }
 
+  const provenance = measurement.measurementProvenance ?? 'settled_cross_checked'
+
+  if (provenance === 'measured_unsettled') {
+    // Genuinely measured but unsettled rows are NOT paid, so they carry no
+    // settlement receipt and no earning estimate. Their honesty anchor is
+    // the deterministic output-digest commitment that must match the
+    // suite's commitment across heterogeneous hardware, so at least one
+    // digest-commitment ref is required in lieu of a settlement receipt.
+    if (measurement.digestCommitmentRefs === undefined ||
+      measurement.digestCommitmentRefs.length === 0) {
+      throw new DeviceCapabilityEvidenceValidationError(
+        'CS336 A2 measured_unsettled evidence requires at least one digest-commitment ref (the deterministic cross-device output commitment).',
+      )
+    }
+
+    if (measurement.earningEstimate !== undefined) {
+      throw new DeviceCapabilityEvidenceValidationError(
+        'CS336 A2 measured_unsettled evidence must not carry an earning estimate; earning estimates are modeled only from a receipted, settled closeout.',
+      )
+    }
+
+    if (measurement.receiptRefs.length > 0) {
+      throw new DeviceCapabilityEvidenceValidationError(
+        'CS336 A2 measured_unsettled evidence must not carry a settlement receipt ref; unsettled rows are explicitly not paid.',
+      )
+    }
+
+    return
+  }
+
   if (measurement.receiptRefs.length === 0) {
     throw new DeviceCapabilityEvidenceValidationError(
       'CS336 A2 measurement evidence requires at least one receipt ref; unreceipted benchmark rows are not admissible.',
@@ -482,6 +587,11 @@ export const publicDeviceCapabilityProjection = (
   const verifiedCount = classDistributions.filter(
     distribution => distribution.verified,
   ).length
+  const observedSettledDeviceClassCount = new Set(
+    classDistributions
+      .filter(distribution => distribution.verified)
+      .map(distribution => distribution.deviceClassRef),
+  ).size
 
   return {
     benchmarkSuiteRef: Cs336A2DeviceBenchmarkSuiteRef,
@@ -497,6 +607,7 @@ export const publicDeviceCapabilityProjection = (
     jobKind: Cs336A2DeviceBenchmarkJobKind,
     observedDeviceClassCount,
     observedMeasurementCount,
+    observedSettledDeviceClassCount,
     privacyBoundaryRefs: [
       'privacy.cs336_a2.class_level_dataset_only',
       'privacy.cs336_a2.no_device_identifiers',

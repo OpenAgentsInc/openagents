@@ -395,4 +395,170 @@ describe('CS336 A2 device capability projection', () => {
       }),
     ).toThrow('device-identifying or private material')
   })
+
+  it('admits a genuinely measured but unsettled second device class without a settlement receipt or earning estimate', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-measured-unsettled',
+      nowIso: '2026-06-20T00:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.x86_64_linux_intel',
+      },
+    })
+    const measurement = {
+      deviceClassRef: 'device_class.x86_64_linux.intel',
+      digestCommitmentRefs: [
+        'commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0',
+      ],
+      max: 3203.387,
+      measurementProvenance: 'measured_unsettled' as const,
+      metric: 'attention_throughput' as const,
+      min: 174.2336,
+      p50: 3109.9212,
+      p90: 3169.043,
+      receiptRefs: [],
+      sampleCount: 24,
+      unit: 'megaflops',
+      verificationRefs: [],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-20T00:01:00.000Z',
+      request: {
+        measurements: [measurement],
+        sourceRefs: ['tailnet.x86_64_linux_intel.self_characterization'],
+      },
+      run,
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(projection.observedDeviceClassCount).toBe(1)
+    expect(projection.observedSettledDeviceClassCount).toBe(0)
+    expect(projection.classDistributions[0]).toMatchObject({
+      crossCheckState: 'measured_unverified',
+      deviceClassRef: 'device_class.x86_64_linux.intel',
+      measurementProvenance: 'measured_unsettled',
+      verified: false,
+    })
+    expect(projection.classDistributions[0]?.earningEstimate).toBeNull()
+    expect(projection.classDistributions[0]?.receiptRefs).toEqual([])
+    expect(projection.classDistributions[0]?.digestCommitmentRefs).toEqual([
+      'commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0',
+    ])
+  })
+
+  it('does not let a run-level verdict mark a measured_unsettled row verified, and rejects unsettled rows that claim receipts, estimates, or no digest', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-unsettled-guards',
+      nowIso: '2026-06-20T00:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.unsettled_guards',
+      },
+    })
+    const baseMeasurement = {
+      deviceClassRef: 'device_class.x86_64_linux.intel',
+      digestCommitmentRefs: [
+        'commitment.cs336_a2.memory_bandwidth.sha256_02d2cf92913ee000',
+      ],
+      max: 13.5337,
+      measurementProvenance: 'measured_unsettled' as const,
+      metric: 'memory_bandwidth' as const,
+      min: 8.2227,
+      p50: 10.6705,
+      p90: 12.3328,
+      receiptRefs: [],
+      sampleCount: 24,
+      unit: 'gigabytes_per_second',
+      verificationRefs: [],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-20T00:01:00.000Z',
+      request: { measurements: [baseMeasurement] },
+      run,
+    })
+    // A real Verified run-level challenge must NOT leak onto the unsettled row.
+    const challenge = finalizeTrainingVerificationChallengeRecord({
+      challenge: leaseTrainingVerificationChallengeRecord({
+        challenge: buildTrainingVerificationChallengeRecord({
+          makeId: () => 'challenge',
+          nowIso: '2026-06-20T00:01:00.000Z',
+          request: {
+            commitmentRefs: ['commitment.cs336_a2.unrelated.1'],
+            contributionRef: 'measurement.cs336_a2.unrelated',
+            homeworkKind: 'admin_dispatched_homework',
+            payload: { deviceClassRef: 'device_class.unrelated' },
+            samplingPolicy: 'aggregate',
+            trainingRunRef: run.trainingRunRef,
+            verificationClass: 'statistical_cross_check',
+            windowRef: 'training.window.unrelated.1',
+          },
+        }).challenge,
+        eventId: 'lease',
+        nowIso: '2026-06-20T00:02:00.000Z',
+        request: { validatorRef: 'validator.unrelated' },
+      }).challenge,
+      eventId: 'final',
+      nowIso: '2026-06-20T00:03:00.000Z',
+      request: { receiptRefs: ['receipt.unrelated.verdict.1'] },
+      verdict: {
+        failureCodes: [],
+        state: 'Verified',
+        verdictRefs: ['verdict.unrelated.1'],
+      },
+    }).challenge
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [challenge],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(projection.classDistributions[0]?.verified).toBe(false)
+    expect(projection.classDistributions[0]?.crossCheckState).toBe(
+      'measured_unverified',
+    )
+    expect(projection.classDistributions[0]?.verificationRefs).toEqual([])
+
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-20T00:01:00.000Z',
+        request: {
+          measurements: [{ ...baseMeasurement, receiptRefs: ['receipt.leak.1'] }],
+        },
+        run,
+      }),
+    ).toThrow('must not carry a settlement receipt')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-20T00:01:00.000Z',
+        request: {
+          measurements: [
+            {
+              ...baseMeasurement,
+              earningEstimate: { workClass: 'cs336_a2_device_benchmark' },
+            },
+          ],
+        },
+        run,
+      }),
+    ).toThrow('must not carry an earning estimate')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-20T00:01:00.000Z',
+        request: {
+          measurements: [{ ...baseMeasurement, digestCommitmentRefs: [] }],
+        },
+        run,
+      }),
+    ).toThrow('digest-commitment ref')
+  })
 })

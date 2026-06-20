@@ -1711,6 +1711,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/demand-provenance` — live at read over revenue-bearing
+    public surfaces that carry typed internal/external demand splits — compliant
+    (`generatedAt`, `projection_staleness.v1` live-at-read contract, AO/kWh
+    surface summary, internal/external/unlabeled counts, zero external-demand
+    claim, remaining coverage refs, and authority boundary). It is proof-copy
+    discipline only: no revenue, demand, payout, settlement, reporting, or
+    public-claim upgrade authority.
   - `GET /api/public/marketplace/composed-products` — live at read over the
     INERT compose-and-list listing store (EPIC #5510, #5515; promise
     `marketplace.compose_and_list_products.v1`, planned) — compliant
