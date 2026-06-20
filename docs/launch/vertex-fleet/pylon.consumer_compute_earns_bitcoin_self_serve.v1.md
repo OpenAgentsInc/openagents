@@ -3,6 +3,41 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (l) — scale methodology: fused safe parse→verify entry
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+Update (h) added `parseQualifiedContributorMethodologyInput` (the untrusted-input
+parse boundary) and (a) the run-level verifier, but they stayed two SEPARATE
+exported halves. The documented remaining step — "run the verifier against the
+live run's real evidence" — loads an untrusted JSON document, so the correct
+flow is parse → (only if ok) verify. Exposing both halves separately left a real
+footgun: a caller can skip the parse boundary entirely by type-asserting the raw
+document straight into `verifyQualifiedContributorMethodology`, silently
+defeating the closed key allowlist and type checks the boundary exists to
+enforce. Nothing made the boundary unbypassable for the real-evidence run.
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  added `verifyQualifiedContributorMethodologyDocument(candidate: unknown)`: the
+  single safe entry that fuses parse → verify. Returns `{ ok:false, errors }`
+  with path-qualified parse reasons (verifying nothing) or `{ ok:true, verdict }`
+  with the conformance verdict. Pure; counts nothing beyond the existing rule and
+  asserts no scale claim. Also exported
+  `QualifiedContributorMethodologyDocumentResult`.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +7 vitest cases (sound/conforming; JSON round-trip; inflated-count parses but
+  fails conformance; malformed fails the boundary with no `verdict`; leak-prone
+  extra field rejected before any verification; non-object rejected). 26→33 tests,
+  wired into `check:deploy`.
+- Methodology doc updated to dereference the fused entry (26→33 tests).
+
+No promise state changed; no scale claim asserted. Still listed: clearing it
+needs running this entry against the live run's REAL evidence file and citing the
+`ok:true` `verdict.conforms === true`, plus owner sign-off. This run closes the
+"parse boundary is bypassable / two-step manual glue" gap so the real-evidence
+run is a single, boundary-safe call.
+
 ## Update 2026-06-20 (k) — autostart receipts: fail-closed capture orchestrator
 
 Blocker advanced this run:

@@ -88,8 +88,16 @@ This is the rule implemented for the live metric, verbatim from the metric's own
     balance) with path-qualified errors, and returns the typed input only when
     the document is sound. This makes the "run the verifier against the live
     run's real evidence" step safe to do from a file rather than hand-built
-    objects. Covered by `qualified-contributor-methodology.test.ts` (27 tests,
-    wired into `check:deploy`).
+    objects. For that step it also exposes
+    `verifyQualifiedContributorMethodologyDocument`, the single safe entry that
+    **fuses parse → verify** over an untrusted document: it returns
+    `{ ok:false, errors }` with path-qualified parse reasons (verifying nothing)
+    or `{ ok:true, verdict }` with the conformance result. This removes the
+    footgun of skipping the parse boundary by type-asserting a raw document
+    straight into `verifyQualifiedContributorMethodology` — the boundary is
+    unbypassable for the real-evidence run. Covered by
+    `qualified-contributor-methodology.test.ts` (33 tests, wired into
+    `check:deploy`).
 
 ## Public dereference path
 

@@ -12,6 +12,7 @@ import {
   parseQualifiedContributorMethodologyInput,
   verifyQualifiedContributor,
   verifyQualifiedContributorMethodology,
+  verifyQualifiedContributorMethodologyDocument,
 } from './qualified-contributor-methodology'
 
 const realSettlement = (
@@ -484,5 +485,107 @@ describe('parseQualifiedContributorMethodologyInput', () => {
     expect(
       verifyQualifiedContributorMethodology(parsed.value).conforms,
     ).toBe(true)
+  })
+})
+
+describe('verifyQualifiedContributorMethodologyDocument', () => {
+  // The single safe entry: parse -> verify, fused, over an untrusted document.
+  const soundConformingDocument = (): unknown => ({
+    claimedQualifiedContributorCount: 2,
+    contributors: [
+      {
+        pylonRef: 'pylon.a',
+        leaseRefs: ['lease.a.1'],
+        verifiedExactTraceReplayChallengeRefs: ['challenge.a.1'],
+        settlementReceipts: [
+          {
+            receiptRef: 'receipt.a',
+            state: 'settled',
+            providerConfirmed: true,
+            realBitcoinMoved: true,
+          },
+        ],
+      },
+      {
+        pylonRef: 'pylon.b',
+        leaseRefs: ['lease.b.1'],
+        verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+        settlementReceipts: [
+          {
+            receiptRef: 'receipt.b',
+            state: 'settled',
+            providerConfirmed: true,
+            realBitcoinMoved: true,
+          },
+        ],
+      },
+    ],
+  })
+
+  test('parses then verifies a sound, conforming document in one call', () => {
+    const result = verifyQualifiedContributorMethodologyDocument(
+      soundConformingDocument(),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.verdict.conforms).toBe(true)
+    expect(result.verdict.qualifiedContributorCount).toBe(2)
+  })
+
+  test('survives a JSON round-trip (real file-load shape)', () => {
+    const result = verifyQualifiedContributorMethodologyDocument(
+      JSON.parse(JSON.stringify(soundConformingDocument())),
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.verdict.conforms).toBe(true)
+  })
+
+  test('a sound document with an inflated count parses but does not conform', () => {
+    const doc = soundConformingDocument() as Record<string, unknown>
+    doc.claimedQualifiedContributorCount = 5
+    const result = verifyQualifiedContributorMethodologyDocument(doc)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.verdict.conforms).toBe(false)
+    expect(result.verdict.reasons).toContain(
+      QualifiedRunReason.ClaimedCountMismatch,
+    )
+  })
+
+  test('a malformed document fails the parse boundary and verifies nothing', () => {
+    const result = verifyQualifiedContributorMethodologyDocument({
+      claimedQualifiedContributorCount: 1.5,
+      contributors: 'nope',
+    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors).toContain(
+      'not-a-non-negative-integer:$.claimedQualifiedContributorCount',
+    )
+    expect(result.errors).toContain('not-an-array:$.contributors')
+    expect('verdict' in result).toBe(false)
+  })
+
+  test('a leak-prone extra field fails the boundary before any verification', () => {
+    const doc = soundConformingDocument() as {
+      contributors: Array<Record<string, unknown>>
+    }
+    const firstContributor = doc.contributors[0]
+    if (firstContributor === undefined) throw new Error('fixture missing contributor')
+    firstContributor.rawSparkAddress = 'sp1qexample'
+    const result = verifyQualifiedContributorMethodologyDocument(doc)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors).toContain(
+      'unexpected-key:$.contributors[0].rawSparkAddress',
+    )
+  })
+
+  test('a non-object candidate fails the boundary', () => {
+    const result = verifyQualifiedContributorMethodologyDocument(null)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.errors).toContain('not-an-object:$')
   })
 })
