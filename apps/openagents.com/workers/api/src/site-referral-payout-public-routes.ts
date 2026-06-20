@@ -4,6 +4,7 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type SiteReferralPayoutPublicCurrentState,
+  type SiteReferralPayoutsPublicProjection,
   aggregateSiteReferralPayoutPublicProjection,
 } from './site-referral-payout-public-projection'
 import type { SiteReferralPayoutState } from './site-referral-payout-ledger'
@@ -102,10 +103,11 @@ export const handleSiteReferralPayoutsPublicApi = (
   return Effect.promise(async () => {
     const currentStates = await readCurrentStates()
     const projection = aggregateSiteReferralPayoutPublicProjection(currentStates)
-
-    return noStoreJsonResponse({
+    const body: SiteReferralPayoutsPublicProjection = {
       ...projection,
       generatedAt: nowIso,
-    })
+    }
+
+    return noStoreJsonResponse(body)
   })
 }

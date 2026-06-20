@@ -1762,7 +1762,7 @@ async function computeSparkSelftest(state: PylonLocalState): Promise<SparkSelfte
 }
 
 // Best-effort resolve this node's static Spark-hosted Lightning Address (#5078)
-// for publishing alongside the BOLT 12 offer in tip-recipient readiness. Returns
+// as an optional fallback alongside the native Spark tip destination. Returns
 // undefined (and costs nothing) when the Spark backup is not opt-in enabled, or
 // when the helper cannot reach the Spark network. Never throws.
 async function resolveLightningAddressForReadiness(
@@ -3619,19 +3619,20 @@ async function main() {
           pylonRef: state.identity.pylonRef,
         })
         // Onboarding auto-claim (#4712): a wallet that reports ready also
-        // claims Forum tip-recipient readiness with a fresh BOLT 12 offer,
+        // claims Forum tip-recipient readiness with its native Spark address,
         // best-effort - the silent-untippable trap cannot happen to a
         // Pylon user. Failures are reported, never fatal to readiness.
         let tipReadinessClaim: Record<string, unknown> | { error: string } | null = null
         if (status.receiveReady) {
           try {
+            const sparkAddress = await resolveSparkAddressForReadiness(state)
             const lightningAddress = await resolveLightningAddressForReadiness(state)
             tipReadinessClaim = await claimTipReadiness(
               {
                 agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
                 baseUrl,
               },
-              { pylonRef: state.identity.pylonRef, lightningAddress },
+              { pylonRef: state.identity.pylonRef, sparkAddress, lightningAddress },
             )
           } catch (error) {
             tipReadinessClaim = { error: error instanceof Error ? error.message : String(error) }

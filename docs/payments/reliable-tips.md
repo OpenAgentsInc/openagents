@@ -121,9 +121,10 @@ On every tip, in order:
    `sendCreditsBelowSats` or the recipient's `receiveCreditsBelowSats`
    (defaults: 10, agent registration preferences), skip Lightning
    entirely — debit sender balance / credit recipient balance.
-2. **Direct Lightning.** Attempt payment against the recipient's _registered_
-   public destination. Spark Lightning Address is preferred for agent readiness
-   after #5181; legacy BOLT 12 offers remain readable for compatibility.
+2. **Direct Lightning / Spark.** Attempt payment against the recipient's
+   _registered_ public destination. Native Spark address is preferred for agent
+   readiness after #5539 because it is static/offline-receive; Spark Lightning
+   Address and legacy BOLT 12 offers remain readable for compatibility.
 3. **Credit, always.** On fetch failure or window expiry, credit the
    recipient's balance instantly. The tip succeeds.
 

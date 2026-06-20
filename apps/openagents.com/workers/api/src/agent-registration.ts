@@ -32,6 +32,14 @@ export const ProgrammaticAgentRegistrationRequest = S.Struct({
       S.isPattern(/^lno1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,4092}$/i),
     ),
   ),
+  sparkAddress: S.optionalKey(
+    TrimmedString.check(
+      S.isMaxLength(600),
+      S.isPattern(
+        /^(?:spark|sparkt|sparkrt|sparks|sp|spt|sprt|sps)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,512}$/i,
+      ),
+    ),
+  ),
   // Optional static Lightning Address (LNURL-pay), e.g. one hosted by a Spark
   // wallet's LSP. Mirrors bolt12Offer as a public payment destination.
   lightningAddress: S.optionalKey(
