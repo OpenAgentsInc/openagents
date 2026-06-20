@@ -58,6 +58,58 @@ export type KernelOptimizationSettlementItem = Readonly<{
 }>
 
 /**
+ * A settled job tied to the specific dispatched job it settles.
+ *
+ * `requestedSlug` is the per-job identity the campaign already guarantees is
+ * unique across the fan-out (see `buildKernelOptimizationCampaign`), so it is
+ * the natural key for matching a settlement back to its dispatched request —
+ * the parity verdict alone cannot do this (it carries the target model/device/
+ * hardware but not the dispatched job's slug or op-level kernel ref).
+ */
+export type KernelOptimizationKeyedSettlementItem =
+  KernelOptimizationSettlementItem &
+    Readonly<{
+      /** The dispatched request's `requestedSlug` this settlement settles. */
+      requestedSlug: string
+    }>
+
+/** One per-job escrow disagreement between dispatch and settlement. */
+export type KernelOptimizationBudgetMismatch = Readonly<{
+  requestedSlug: string
+  dispatchedSats: number
+  settledSats: number
+}>
+
+/**
+ * The result of matching each settlement item to its specific dispatched job.
+ *
+ * The totals-level `reconcileKernelOptimizationCampaignSettlement` confirms the
+ * job COUNT and total escrow conserve, but it cannot tell WHICH job drifted, and
+ * it is blind to offsetting errors that net to zero — e.g. job A settled twice
+ * while job B is never settled (count and total escrow can both still match), or
+ * one job overpaid by the exact amount another is underpaid. This per-job report
+ * names the specific dispatched slugs that drifted.
+ */
+export type KernelOptimizationCampaignPerJobReconciliation = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff every per-job check below passed — safe to release per job. */
+  ok: boolean
+  /** Dispatched slugs settled exactly once with the dispatched escrow. */
+  matchedSlugs: ReadonlyArray<string>
+  /** Dispatched slugs with no settlement item at all. */
+  unsettledSlugs: ReadonlyArray<string>
+  /** Settled slugs that no dispatched request in this campaign backs. */
+  unexpectedSlugs: ReadonlyArray<string>
+  /** Slugs that appear in more than one settlement item. */
+  duplicateSlugs: ReadonlyArray<string>
+  /** Matched slugs whose settled escrow differs from the dispatched escrow. */
+  budgetMismatches: ReadonlyArray<KernelOptimizationBudgetMismatch>
+  /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
+  discrepancies: ReadonlyArray<string>
+}>
+
+/**
  * The result of reconciling a dispatched campaign against its settlement ledger.
  *
  * At scale the dangerous failure modes are not bad verdicts (those are caught by
@@ -298,5 +350,119 @@ export const reconcileKernelOptimizationCampaignSettlement = (
     jobCountReconciled,
     ok: discrepancies.length === 0,
     settledJobs,
+  }
+}
+
+/**
+ * Reconcile a dispatched campaign against its settlement ledger PER JOB.
+ *
+ * Where `reconcileKernelOptimizationCampaignSettlement` reconciles totals (job
+ * count + escrow conservation), this matches each settlement item to the
+ * specific dispatched request it settles, keyed on the unique `requestedSlug`
+ * the campaign fan-out guarantees. That closes two gaps the totals check cannot:
+ *
+ *   1. It names WHICH job drifted — a dispatched job that was never settled
+ *      (`unsettledSlugs`), or a settlement for a job this campaign never
+ *      dispatched (`unexpectedSlugs`).
+ *   2. It catches OFFSETTING errors the totals check is blind to — e.g. one job
+ *      settled twice while another is never settled (`duplicateSlugs`; job count
+ *      and total escrow can both still match), or one job overpaid by exactly
+ *      what another is underpaid (`budgetMismatches`; the totals net to zero).
+ *
+ * Like the totals-level reconciler it moves no money and never throws: every
+ * disagreement is a finding to surface, not a programming error. The `ok` gate
+ * must hold before the verified-work rail releases any per-job payout/refund.
+ */
+export const reconcileKernelOptimizationCampaignPerJob = (
+  campaign: KernelOptimizationCampaign,
+  items: ReadonlyArray<KernelOptimizationKeyedSettlementItem>,
+): KernelOptimizationCampaignPerJobReconciliation => {
+  const discrepancies: string[] = []
+
+  // Dispatched jobs, keyed by their unique requested slug -> escrow locked.
+  const dispatchedBudgetBySlug = new Map<string, number>()
+  for (const request of campaign.requests) {
+    const slug = request.requestedSlug ?? ''
+    dispatchedBudgetBySlug.set(slug, request.budgetSats)
+  }
+
+  // Tally settlement items per slug so duplicates are visible.
+  const settledCountBySlug = new Map<string, number>()
+  const settledBudgetBySlug = new Map<string, number>()
+  for (const item of items) {
+    const slug = item.requestedSlug.trim()
+    settledCountBySlug.set(slug, (settledCountBySlug.get(slug) ?? 0) + 1)
+    // Record the escrow only from the first sighting; duplicates are reported
+    // separately and must not silently overwrite the matched amount.
+    if (!settledBudgetBySlug.has(slug)) {
+      settledBudgetBySlug.set(slug, item.budgetSats)
+    }
+  }
+
+  const matchedSlugs: string[] = []
+  const unsettledSlugs: string[] = []
+  const budgetMismatches: KernelOptimizationBudgetMismatch[] = []
+
+  for (const [slug, dispatchedSats] of dispatchedBudgetBySlug) {
+    const settledCount = settledCountBySlug.get(slug) ?? 0
+    if (settledCount === 0) {
+      unsettledSlugs.push(slug)
+      continue
+    }
+    // Duplicate handling is reported below; here only single settlements with a
+    // matching escrow count as cleanly matched.
+    const settledSats = settledBudgetBySlug.get(slug) ?? 0
+    if (settledCount === 1 && settledSats === dispatchedSats) {
+      matchedSlugs.push(slug)
+    } else if (settledSats !== dispatchedSats) {
+      budgetMismatches.push({ dispatchedSats, requestedSlug: slug, settledSats })
+    }
+  }
+
+  const unexpectedSlugs: string[] = []
+  const duplicateSlugs: string[] = []
+  for (const [slug, count] of settledCountBySlug) {
+    if (!dispatchedBudgetBySlug.has(slug)) {
+      unexpectedSlugs.push(slug)
+    }
+    if (count > 1) {
+      duplicateSlugs.push(slug)
+    }
+  }
+
+  if (campaign.campaignRef.trim().length === 0) {
+    discrepancies.push('campaignRef must be non-empty.')
+  }
+  if (unsettledSlugs.length > 0) {
+    discrepancies.push(
+      `dispatched job(s) never settled: ${unsettledSlugs.join(', ')}`,
+    )
+  }
+  if (unexpectedSlugs.length > 0) {
+    discrepancies.push(
+      `settlement(s) for job(s) this campaign never dispatched: ${unexpectedSlugs.join(', ')}`,
+    )
+  }
+  if (duplicateSlugs.length > 0) {
+    discrepancies.push(
+      `job(s) settled more than once: ${duplicateSlugs.join(', ')}`,
+    )
+  }
+  for (const mismatch of budgetMismatches) {
+    discrepancies.push(
+      `per-job escrow drift on "${mismatch.requestedSlug}": dispatched ${mismatch.dispatchedSats} sat(s) but settled ${mismatch.settledSats}`,
+    )
+  }
+
+  return {
+    budgetMismatches,
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    duplicateSlugs,
+    matchedSlugs,
+    ok: discrepancies.length === 0,
+    unexpectedSlugs,
+    unsettledSlugs,
   }
 }
