@@ -6,7 +6,9 @@ import { describe, expect, it } from "bun:test"
 import type { SparkBackupReceiveProjection } from "./wallet.js"
 import {
   buildSparkHelperAutostartReceipt,
+  captureSparkHelperAutostartReceipt,
   classifySparkHelperAutostart,
+  serializeSparkHelperAutostartReceipt,
   SPARK_AUTOSTART_ENV,
   verifySparkHelperAutostartReceipt,
   verifySparkHelperAutostartReceiptSet,
@@ -339,5 +341,109 @@ describe("verifySparkHelperAutostartReceiptSet", () => {
     expect(result.reasons).toContain("entry-receipt-invalid:pylon:bad")
     // The good entry's contributor is still surfaced for traceability.
     expect(result.distinctContributorCount).toBe(1)
+  })
+})
+
+describe("captureSparkHelperAutostartReceipt", () => {
+  const readyReceive = receive({
+    state: "address-ready",
+    credentialReady: true,
+    helperReady: true,
+  })
+
+  it("does not capture when not opted in (inert by default)", () => {
+    const result = captureSparkHelperAutostartReceipt(
+      readyReceive,
+      "2026-06-19T00:00:00.000Z",
+      { env: {} },
+    )
+    expect(result.captured).toBe(false)
+    if (!result.captured) {
+      expect(result.reasons).toContain("not-autostart-ready:disabled")
+    }
+  })
+
+  it("does not capture when opted in but the helper is not ready", () => {
+    const result = captureSparkHelperAutostartReceipt(
+      receive({ credentialReady: true, helperReady: false, state: "helper-unavailable" }),
+      "2026-06-19T00:00:00.000Z",
+      { enabled: true },
+    )
+    expect(result.captured).toBe(false)
+    if (!result.captured) {
+      expect(result.reasons).toContain("not-autostart-ready:helper-not-ready")
+    }
+  })
+
+  it("captures a self-verified, gate-valid artifact when autostart-ready", () => {
+    const result = captureSparkHelperAutostartReceipt(
+      readyReceive,
+      "2026-06-19T00:00:00.000Z",
+      { enabled: true },
+    )
+    expect(result.captured).toBe(true)
+    if (result.captured) {
+      // The emitted receipt passes the very gate an auditor would run.
+      expect(result.verification.clearsBlocker).toBe(true)
+      expect(verifySparkHelperAutostartReceipt(result.receipt).clearsBlocker).toBe(true)
+      // And the persisted (serialized) form round-trips through the gate too.
+      const reparsed = JSON.parse(result.serialized)
+      expect(verifySparkHelperAutostartReceipt(reparsed).clearsBlocker).toBe(true)
+      expect(result.receipt.operatorHandStartRequired).toBe(false)
+    }
+  })
+
+  it("serializes deterministically and canonically regardless of key order", () => {
+    const result = captureSparkHelperAutostartReceipt(
+      readyReceive,
+      "2026-06-19T00:00:00.000Z",
+      { enabled: true },
+    )
+    expect(result.captured).toBe(true)
+    if (result.captured) {
+      // Re-serializing a key-shuffled copy of the same receipt is byte-identical.
+      const shuffled = {
+        contentRedacted: result.receipt.contentRedacted,
+        observedAt: result.receipt.observedAt,
+        operatorHandStartRequired: result.receipt.operatorHandStartRequired,
+        derivedFromReceiveState: result.receipt.derivedFromReceiveState,
+        payoutReady: result.receipt.payoutReady,
+        ref: result.receipt.ref,
+        schema: result.receipt.schema,
+      }
+      expect(serializeSparkHelperAutostartReceipt(shuffled)).toBe(result.serialized)
+      expect(result.serialized.endsWith("\n")).toBe(true)
+    }
+  })
+
+  it("rejects a non-canonical observation timestamp (fail-closed, no artifact)", () => {
+    const result = captureSparkHelperAutostartReceipt(
+      readyReceive,
+      "2026-06-19 00:00:00",
+      { enabled: true },
+    )
+    expect(result.captured).toBe(false)
+    if (!result.captured) {
+      expect(result.reasons).toContain("self-verify-failed:bad-observed-at")
+    }
+  })
+
+  it("two distinct captures differ only by observedAt and are accepted as distinct", () => {
+    const a = captureSparkHelperAutostartReceipt(readyReceive, "2026-06-19T00:00:00.000Z", {
+      enabled: true,
+    })
+    const b = captureSparkHelperAutostartReceipt(readyReceive, "2026-06-19T01:23:45.000Z", {
+      enabled: true,
+    })
+    expect(a.captured && b.captured).toBe(true)
+    if (a.captured && b.captured) {
+      expect(a.serialized).not.toBe(b.serialized)
+      const set = verifySparkHelperAutostartReceiptSet([
+        { contributorRef: "pylon:alpha", receipt: a.receipt },
+        { contributorRef: "pylon:beta", receipt: b.receipt },
+      ])
+      expect(set.clearsBlocker).toBe(true)
+      expect(set.distinctContributorCount).toBe(2)
+    }
   })
 })

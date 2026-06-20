@@ -38,6 +38,22 @@ implemented as `verifySparkHelperAutostartReceipt`.
   It mirrors the cross-contributor settlement-integrity rule in the
   scale-methodology verifier.
 
+- `captureSparkHelperAutostartReceipt(receive, observedAt, opts)` — **new**:
+  the fail-closed capture orchestrator. Composes classify → build →
+  **self-verify** → canonical serialize and only returns `{ captured: true, … }`
+  when the receipt it built passes its own `verifySparkHelperAutostartReceipt`
+  audit AND survives a JSON round-trip re-audit. Otherwise it returns
+  `{ captured: false, reasons[], projection }` and emits nothing. This means any
+  artifact the self-serve path writes is gate-valid by construction — there is no
+  longer a manual "build then write" step that could persist a non-conforming or
+  leaky artifact. Pure/side-effect-free: it produces `result.serialized` but
+  writes no file.
+- `serializeSparkHelperAutostartReceipt(receipt)` — **new**: canonical,
+  deterministic JSON (fixed key order over the closed allowlist, trailing
+  newline), independent of object key insertion order. Two captures of the same
+  observation serialize identically; two genuinely independent captures differ at
+  least in `observedAt`.
+
 ## Capture procedure (normal contributor, self-serve)
 
 1. Install Pylon and complete Spark backup receive setup (see
@@ -45,8 +61,12 @@ implemented as `verifySparkHelperAutostartReceipt`.
 2. Opt in: set `PYLON_SPARK_AUTOSTART=1`. With the flag off nothing changes.
 3. Without any operator hand-start, let the helper reach a payout-ready receive
    target (`address-ready` or offline `cached-address-ready`).
-4. Capture: classify the receive projection, then build the receipt with the
-   observation timestamp, and write the JSON artifact. Do **not** hand-edit it.
+4. Capture: call `captureSparkHelperAutostartReceipt(receive, observedAt, opts)`
+   and persist `result.serialized` **verbatim** only when `result.captured` is
+   true. Do **not** hand-edit it; the function has already self-verified the
+   artifact (and its serialized round-trip) against the audit gate. If
+   `result.captured` is false, fix the reported `result.reasons` — no artifact is
+   written.
 
 ## Verification gate (auditor / reviewer)
 
@@ -79,4 +99,4 @@ The audit fails (and the artifact must be rejected) on any of:
   separate copy-narrowing and scale-methodology work, plus owner sign-off
   (receipt-first per `proof.claim_upgrade_receipts.v1`).
 
-Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (26 pass).
+Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (32 pass).

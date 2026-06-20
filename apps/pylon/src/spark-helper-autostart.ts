@@ -469,3 +469,134 @@ export function verifySparkHelperAutostartReceiptSet(
     reasons,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fail-closed capture: classify -> build -> SELF-VERIFY -> canonical serialize.
+//
+// The classifier, receipt builder, and verifiers above are all the pieces a
+// capture needs, but until now NO code path actually produced a gate-valid
+// artifact: the capture runbook's "build the receipt and write the JSON" step
+// was manual prose. That left a real integrity hole — a capture could write an
+// artifact that does not pass `verifySparkHelperAutostartReceipt` (e.g. a future
+// builder change, a hand-edited file, or a non-canonical timestamp), and only an
+// auditor running the verifier afterwards would notice.
+//
+// `captureSparkHelperAutostartReceipt` closes that hole by being fail-closed: it
+// only returns a `captured: true` result when the receipt it built passes its
+// OWN single-receipt audit AND survives a JSON round-trip re-audit. So any
+// artifact emitted by the self-serve capture path is gate-valid by construction;
+// if anything is off, it returns `captured: false` with reasons instead of
+// emitting a bad/leaky artifact. Pure and side-effect-free: it builds the
+// in-memory artifact + its canonical serialization but writes nothing itself.
+// ---------------------------------------------------------------------------
+
+// Canonical key order for the serialized receipt artifact. Must exactly cover
+// the closed allowlist the verifier enforces, so a serialized artifact can never
+// carry a key the auditor would reject (and never omit one it requires).
+const RECEIPT_KEY_ORDER: readonly (keyof SparkHelperAutostartReceipt)[] = [
+  "schema",
+  "ref",
+  "payoutReady",
+  "derivedFromReceiveState",
+  "operatorHandStartRequired",
+  "observedAt",
+  "contentRedacted",
+]
+
+/**
+ * Serialize a receipt to canonical, deterministic JSON over the closed key
+ * allowlist (fixed key order, trailing newline). Independent of the receipt
+ * object's own key insertion order, so two captures of the same observation
+ * serialize identically — and any two genuinely independent captures differ at
+ * least in `observedAt`.
+ */
+export function serializeSparkHelperAutostartReceipt(
+  receipt: SparkHelperAutostartReceipt,
+): string {
+  const source = receipt as Record<string, unknown>
+  const ordered: Record<string, unknown> = {}
+  for (const key of RECEIPT_KEY_ORDER) {
+    ordered[key] = source[key]
+  }
+  return `${JSON.stringify(ordered, null, 2)}\n`
+}
+
+export type SparkHelperAutostartCaptureResult =
+  | {
+      captured: false
+      // Why no artifact was emitted (e.g. `not-autostart-ready:<state>`,
+      // `receipt-not-built`, `self-verify-failed:<reason>`, `round-trip-failed:<reason>`).
+      reasons: string[]
+      // The classifier projection this attempt was derived from, for traceability.
+      projection: SparkHelperAutostartProjection
+    }
+  | {
+      captured: true
+      projection: SparkHelperAutostartProjection
+      // The redacted, public-safe receipt. Guaranteed to pass
+      // `verifySparkHelperAutostartReceipt` with `clearsBlocker: true`.
+      receipt: SparkHelperAutostartReceipt
+      // The self-audit verdict over `receipt` (always valid here, surfaced for
+      // the capture log).
+      verification: SparkHelperAutostartReceiptVerification
+      // Canonical JSON the self-serve path should persist verbatim. Do NOT
+      // hand-edit it: re-audit any edited artifact with the verifier.
+      serialized: string
+    }
+
+/**
+ * Capture a Spark-helper autostart receipt from a live receive projection,
+ * fail-closed.
+ *
+ * Pure and side-effect-free: it classifies, builds, self-verifies, and produces
+ * the canonical serialization, but writes nothing. The self-serve capture path
+ * calls this and persists `result.serialized` only when `result.captured` — so
+ * an artifact that does not pass the audit (or would leak a field) is never
+ * emitted. This does NOT clear the blocker; clearing it still needs a REAL
+ * captured receipt from a normal contributor that passes the verifier.
+ */
+export function captureSparkHelperAutostartReceipt(
+  receive: SparkBackupReceiveProjection,
+  observedAt: string,
+  options: SparkHelperAutostartOptions = {},
+): SparkHelperAutostartCaptureResult {
+  const projection = classifySparkHelperAutostart(receive, options)
+
+  if (projection.state !== "autostart-ready") {
+    return {
+      captured: false,
+      reasons: [`not-autostart-ready:${projection.state}`],
+      projection,
+    }
+  }
+
+  const receipt = buildSparkHelperAutostartReceipt(projection, observedAt)
+  if (receipt === null) {
+    return { captured: false, reasons: ["receipt-not-built"], projection }
+  }
+
+  // Self-audit: never emit an artifact that does not pass its own gate.
+  const verification = verifySparkHelperAutostartReceipt(receipt)
+  if (!verification.clearsBlocker) {
+    return {
+      captured: false,
+      reasons: verification.reasons.map((r) => `self-verify-failed:${r}`),
+      projection,
+    }
+  }
+
+  // Round-trip guard: the persisted form is what an auditor re-reads, so verify
+  // the serialized-then-parsed artifact too. This catches any serializer drift
+  // before the artifact is ever written.
+  const serialized = serializeSparkHelperAutostartReceipt(receipt)
+  const roundTrip = verifySparkHelperAutostartReceipt(JSON.parse(serialized))
+  if (!roundTrip.clearsBlocker) {
+    return {
+      captured: false,
+      reasons: roundTrip.reasons.map((r) => `round-trip-failed:${r}`),
+      projection,
+    }
+  }
+
+  return { captured: true, projection, receipt, verification, serialized }
+}
