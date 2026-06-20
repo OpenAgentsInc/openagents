@@ -5,10 +5,12 @@ import {
   AGENTIC_LABOR_PRODUCT_PRIMITIVE,
   AGENTIC_LABOR_PRODUCTS_PROMISE,
   buildLaborProductFlowPlan,
+  decodeLaborProductOrderRequest,
   laborProductOrderReceiptRef,
   laborProductStageIndex,
   listLaborProductFlows,
   makeInMemoryLaborProductFlowStore,
+  planSelfServeLaborProductOrder,
   readLaborProductFlow,
   settleLaborProductOrder,
   type LaborProductListing,
@@ -77,9 +79,8 @@ describe('buildLaborProductFlowPlan', () => {
     expect(plan.settlement.accountRef).toBe('agent:buyer')
   })
 
-  test('records the uncleared blockers (never clears them)', () => {
+  test('records only the remaining uncleared blocker (self-serve is cleared)', () => {
     expect(okPlan().unclearedBlockerRefs).toEqual([
-      'blocker.product_promises.not_all_labor_flows_self_serve',
       'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing',
     ])
   })
@@ -167,6 +168,65 @@ describe('labor-product flow store + projection', () => {
     const store = makeInMemoryLaborProductFlowStore([okPlan()])
     expect(readLaborProductFlow(store, 'order-1')?.orderId).toBe('order-1')
     expect(readLaborProductFlow(store, 'missing')).toBeNull()
+  })
+})
+
+describe('self-serve order planning (PURE, INERT)', () => {
+  test('decodes a valid order request', () => {
+    const decoded = decodeLaborProductOrderRequest({
+      orderId: 'order-self-1',
+      buyerRef: 'agent:buyer',
+      listing,
+    })
+    expect(decoded.ok).toBe(true)
+    if (decoded.ok) {
+      expect(decoded.request.orderId).toBe('order-self-1')
+      expect(decoded.request.listing.priceSats).toBe(100)
+    }
+  })
+
+  test('rejects a non-object body or a malformed order request', () => {
+    expect(decodeLaborProductOrderRequest('nope').ok).toBe(false)
+    expect(decodeLaborProductOrderRequest(null).ok).toBe(false)
+    expect(
+      decodeLaborProductOrderRequest({ orderId: 'x', buyerRef: 'y' }).ok,
+    ).toBe(false)
+    expect(
+      decodeLaborProductOrderRequest({
+        orderId: 'x',
+        buyerRef: 'y',
+        listing: { ...listing, priceSats: 'free' },
+      }).ok,
+    ).toBe(false)
+  })
+
+  test('plans an ordered-stage flow with no operator staging, still inert/yellow', () => {
+    const planned = planSelfServeLaborProductOrder(
+      { orderId: 'order-self-2', buyerRef: 'agent:buyer', listing },
+      { createdAt: '2026-06-20T00:00:00.000Z' },
+    )
+    expect(planned.ok).toBe(true)
+    if (planned.ok) {
+      expect(planned.plan.stage).toBe('ordered')
+      expect(planned.plan.inert).toBe(true)
+      expect(planned.plan.promiseState).toBe('yellow')
+      expect(planned.plan.workerRef).toBeNull()
+      expect(planned.plan.artifactRef).toBeNull()
+      // Self-serve plan carries the same public-safe would-be receipt ref.
+      expect(planned.plan.settlement.receiptRef).toBe(
+        laborProductOrderReceiptRef('order-self-2'),
+      )
+      expect(planned.plan.createdAt).toBe('2026-06-20T00:00:00.000Z')
+    }
+  })
+
+  test('a self-serve plan validates the same way as an operator plan (empty fields rejected)', () => {
+    const planned = planSelfServeLaborProductOrder({
+      orderId: ' ',
+      buyerRef: 'agent:buyer',
+      listing,
+    })
+    expect(planned.ok).toBe(false)
   })
 })
 

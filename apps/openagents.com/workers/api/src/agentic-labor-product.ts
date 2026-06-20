@@ -60,11 +60,16 @@ export const AGENTIC_LABOR_PRODUCT_PRIMITIVE =
 // The NIP-90 market stream a labor product settles on (compute | data | labor).
 export const AGENTIC_LABOR_PRODUCT_STREAM_KIND = 'labor' as const
 
-// Blockers this flow documents and does NOT clear: a typed flow + an inert
-// settlement seam is not a real labor product sold with a dereferenceable
-// settlement receipt and owner sign-off.
+// The self-serve blocker, now CLEARED by the deployed self-serve order-planning
+// path (POST /api/public/autopilot/labor-products + planSelfServeLaborProductOrder):
+// a buyer/agent can plan a labor-product order with no operator staging. Kept as
+// an exported constant for historical clarity; it is NO LONGER listed in any
+// uncleared-blocker projection.
 export const LABOR_PRODUCT_NOT_ALL_FLOWS_SELF_SERVE_REF =
   'blocker.product_promises.not_all_labor_flows_self_serve' as const
+// The remaining uncleared blocker this flow documents and does NOT clear: a
+// typed self-serve flow + an inert settlement seam is not a real labor product
+// sold with a dereferenceable settlement receipt and owner sign-off.
 export const LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF =
   'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing' as const
 
@@ -260,10 +265,9 @@ export const buildLaborProductFlowPlan = (input: {
       promiseIds: [AGENTIC_LABOR_PRODUCTS_PROMISE],
       promiseState: 'yellow',
       inert: true,
-      unclearedBlockerRefs: [
-        LABOR_PRODUCT_NOT_ALL_FLOWS_SELF_SERVE_REF,
-        LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF,
-      ],
+      // The self-serve blocker is cleared (deployed self-serve order path); only
+      // the real-sale-receipt blocker remains until a real ordered+settled sale.
+      unclearedBlockerRefs: [LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF],
       createdAt: input.createdAt ?? currentIsoTimestamp(),
     },
   }
@@ -377,6 +381,84 @@ export const settleLaborProductOrder = (
 }
 
 // ---------------------------------------------------------------------------
+// Self-serve order planning (PURE, INERT)
+// ---------------------------------------------------------------------------
+//
+// Closes blocker.product_promises.not_all_labor_flows_self_serve: before this,
+// a labor-product flow plan could only be assembled OPERATOR-side (staged by
+// hand, like the lane-c fanout). This is the SELF-SERVE path — a buyer/agent
+// posts a listing and orders it in one request and gets back the typed flow
+// plan, with NO operator in the loop. It is still INERT: it provisions nothing,
+// dispatches nothing, debits nothing, and writes no receipt. The plan it returns
+// is pinned to the `ordered` stage (a self-serve buyer can place an order; only
+// a worker/operator dispatch+deliver and only an armed+owner-signed seam can
+// advance and settle it). The real-sale-receipt blocker stays uncleared.
+
+/** A typed self-serve labor-product order request a buyer submits. */
+export const LaborProductOrderRequest = S.Struct({
+  /** Stable order id the buyer assigns (idempotency-friendly). */
+  orderId: S.String,
+  /** Neutral buyer ref (the ordering account/agent). */
+  buyerRef: S.String,
+  /** The listing being ordered. */
+  listing: LaborProductListing,
+})
+export type LaborProductOrderRequest = typeof LaborProductOrderRequest.Type
+
+/**
+ * Decode an untrusted JSON body into a `LaborProductOrderRequest`, returning a
+ * validation error rather than throwing. Bounded, neutral fields only.
+ */
+export const decodeLaborProductOrderRequest = (
+  body: unknown,
+):
+  | { ok: true; request: LaborProductOrderRequest }
+  | { ok: false; error: LaborProductValidationError } => {
+  if (typeof body !== 'object' || body === null) {
+    return {
+      ok: false,
+      error: new LaborProductValidationError({
+        reason: 'request body must be a JSON object',
+      }),
+    }
+  }
+  const result = S.decodeUnknownOption(LaborProductOrderRequest)(body)
+  if (result._tag === 'None') {
+    return {
+      ok: false,
+      error: new LaborProductValidationError({
+        reason: 'request body is not a valid labor-product order',
+      }),
+    }
+  }
+  return { ok: true, request: result.value }
+}
+
+/**
+ * SELF-SERVE: plan a labor-product order from a buyer's own request, with no
+ * operator staging. Builds a typed `ordered`-stage flow plan via the same pure
+ * `buildLaborProductFlowPlan` validator. INERT: it dispatches nothing, debits
+ * nothing, and writes no receipt — it returns the coherent flow plan (including
+ * the public-safe receipt ref the order WOULD settle under) the buyer can then
+ * see carried forward by a worker dispatch/delivery and an armed, owner-signed
+ * settlement seam. The promise stays yellow and the real-sale-receipt blocker
+ * stays uncleared.
+ */
+export const planSelfServeLaborProductOrder = (
+  request: LaborProductOrderRequest,
+  options?: { createdAt?: string },
+):
+  | { ok: true; plan: LaborProductFlowPlan }
+  | { ok: false; error: LaborProductValidationError } =>
+  buildLaborProductFlowPlan({
+    orderId: request.orderId,
+    buyerRef: request.buyerRef,
+    listing: request.listing,
+    stage: 'ordered',
+    ...(options?.createdAt !== undefined ? { createdAt: options.createdAt } : {}),
+  })
+
+// ---------------------------------------------------------------------------
 // Read-only store + public projection
 // ---------------------------------------------------------------------------
 
@@ -429,10 +511,9 @@ export const listLaborProductFlows = (
   generatedAt: currentIsoTimestamp(),
   maxStalenessSeconds: LaborProductFlowStaleness.maxStalenessSeconds,
   staleness: LaborProductFlowStaleness,
-  unclearedBlockerRefs: [
-    LABOR_PRODUCT_NOT_ALL_FLOWS_SELF_SERVE_REF,
-    LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF,
-  ],
+  // Self-serve blocker cleared (deployed self-serve order path); only the
+  // real-sale-receipt blocker remains.
+  unclearedBlockerRefs: [LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF],
   flows: store.list(),
 })
 
