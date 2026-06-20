@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { sortNotificationFeed, type NotificationFeedItem } from "./notification-feed-sort"
+import { sortNotificationFeed, type NotificationFeedItem } from "./notification-feed-sort.js"
 
 const notification = (
   sessionRef: string,

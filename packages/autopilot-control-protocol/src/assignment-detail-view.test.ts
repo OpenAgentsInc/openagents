@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   projectAssignmentDetail,
   type AssignmentDetailView,
-} from "./assignment-detail-view"
+} from "./assignment-detail-view.js"
 
 describe("assignment detail view projection", () => {
   test("projects a direct camelCase assignment detail", () => {

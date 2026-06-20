@@ -1,4 +1,4 @@
-import { sessionBadge } from "./session-badge"
+import { sessionBadge } from "./session-badge.js"
 
 export type HeaderStatsInput = {
   sessions: { state: string }[]

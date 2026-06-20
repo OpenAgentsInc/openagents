@@ -1,4 +1,4 @@
-import type { DecisionVerb } from "./decision"
+import type { DecisionVerb } from "./decision.js"
 
 export type DecisionResolveCommandInput = {
   ref: string

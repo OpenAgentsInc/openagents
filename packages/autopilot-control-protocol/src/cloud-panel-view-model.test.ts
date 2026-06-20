@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildCloudPanel } from "./cloud-panel-view-model"
+import { buildCloudPanel } from "./cloud-panel-view-model.js"
 
 describe("cloud panel view model", () => {
   test("reports unavailable without fabricating quota or cost", () => {

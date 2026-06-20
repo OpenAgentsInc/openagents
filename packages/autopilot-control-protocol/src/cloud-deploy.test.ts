@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildDeployPlan,
   validateDeploy,
-} from "./cloud-deploy"
+} from "./cloud-deploy.js"
 
 describe("cloud deploy plan", () => {
   test("builds a byo-key deploy request and summary", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import { summarizeAssignments } from "./assignments-poll-view"
-import type { AssignmentRow } from "./assignments-view"
+import { summarizeAssignments } from "./assignments-poll-view.js"
+import type { AssignmentRow } from "./assignments-view.js"
 
 describe("assignments poll view summary", () => {
   test("summarizes normalized assignment lifecycle states", () => {

@@ -1,4 +1,4 @@
-import { parseAutopilotDeepLink } from "./deeplink-parse"
+import { parseAutopilotDeepLink } from "./deeplink-parse.js"
 
 export type DeepLinkRouteScreen = "Nodes" | "SessionDetail" | "Settings" | null
 

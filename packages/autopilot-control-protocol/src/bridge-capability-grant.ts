@@ -2,7 +2,7 @@ import {
   verbAllowedByCapabilities,
   type BridgeRequestVerb,
   type Capability,
-} from "./bridge"
+} from "./bridge.js"
 
 export type BridgeCapabilityGrantProjection = {
   verbs: string[]

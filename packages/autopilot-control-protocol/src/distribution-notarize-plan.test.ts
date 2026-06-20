@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { planDistribution } from "./distribution-notarize-plan"
+import { planDistribution } from "./distribution-notarize-plan.js"
 
 describe("distribution notarize plan", () => {
   test("requires notarization for desktop delta builds", () => {

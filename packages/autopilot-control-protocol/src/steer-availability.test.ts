@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { availableSteerVerbs } from "./steer-availability"
+import { availableSteerVerbs } from "./steer-availability.js"
 
 describe("steer availability", () => {
   test("returns running verbs that the node supports", () => {

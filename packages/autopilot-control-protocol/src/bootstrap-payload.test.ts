@@ -2,11 +2,11 @@ import { inspect } from "node:util"
 
 import { describe, expect, test } from "bun:test"
 
-import type { BootstrapPayload } from "./bootstrap-payload"
+import type { BootstrapPayload } from "./bootstrap-payload.js"
 import {
   decodeBootstrapPayload,
   encodeBootstrapPayload,
-} from "./bootstrap-payload"
+} from "./bootstrap-payload.js"
 
 const payload: BootstrapPayload = {
   version: 1,

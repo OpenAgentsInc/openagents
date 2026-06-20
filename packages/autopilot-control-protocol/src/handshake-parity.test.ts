@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { checkHandshakeParity } from "./handshake-parity"
+import { checkHandshakeParity } from "./handshake-parity.js"
 
 describe("handshake parity", () => {
   test("accepts empty desktop and mobile session lists", () => {

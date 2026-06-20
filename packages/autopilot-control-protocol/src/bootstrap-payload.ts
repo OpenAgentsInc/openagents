@@ -1,7 +1,7 @@
 import { Schema as S } from "effect"
 
-import { Capability } from "./bridge"
-import { ProjectionLevel } from "./control"
+import { Capability } from "./bridge.js"
+import { ProjectionLevel } from "./control.js"
 
 // RN-safe: this module is bundled by Metro (mobile) as well as Bun/Node, so it
 // must avoid `node:` builtins and `Buffer`. Use globals + a pure base64url codec.

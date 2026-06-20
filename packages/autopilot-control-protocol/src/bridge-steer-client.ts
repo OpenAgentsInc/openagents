@@ -14,7 +14,7 @@ import {
   verbAllowedByCapabilities,
   type BridgeRequestEnvelope,
   type Capability,
-} from "./bridge"
+} from "./bridge.js"
 
 type BaseSteerInput = {
   pairingRef: string

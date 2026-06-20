@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { explainShipMode } from "./ship-mode-explain"
+import { explainShipMode } from "./ship-mode-explain.js"
 
 describe("ship mode explanation", () => {
   test("explains a missing previous fingerprint as an initial build", () => {

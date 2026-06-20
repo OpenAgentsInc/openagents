@@ -1,5 +1,5 @@
-import type { AutonomousShipReceipt } from "./autonomous-ship-receipt"
-import { validateShipReceipt } from "./autonomous-ship-receipt"
+import type { AutonomousShipReceipt } from "./autonomous-ship-receipt.js"
+import { validateShipReceipt } from "./autonomous-ship-receipt.js"
 
 export type ShipReceiptLedger = {
   append(receipt: unknown): { accepted: boolean }

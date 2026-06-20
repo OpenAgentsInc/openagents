@@ -1,10 +1,10 @@
-import { coalesceNotifications } from "./notification-batch"
-import { buildNotification } from "./notification-dispatch"
-import type { NotificationPriority } from "./notification-dispatch"
+import { coalesceNotifications } from "./notification-batch.js"
+import { buildNotification } from "./notification-dispatch.js"
+import type { NotificationPriority } from "./notification-dispatch.js"
 import {
   filterByQuietHours,
   inQuietHours,
-} from "./notification-quiet-hours"
+} from "./notification-quiet-hours.js"
 
 export type NotificationRenderEvent = {
   phase: string

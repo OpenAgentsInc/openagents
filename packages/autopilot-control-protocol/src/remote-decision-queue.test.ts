@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { createRemoteDecisionQueue, type DecisionEvent } from "./remote-decision-queue"
-import type { BridgeTransport } from "./bridge-transport"
+import { createRemoteDecisionQueue, type DecisionEvent } from "./remote-decision-queue.js"
+import type { BridgeTransport } from "./bridge-transport.js"
 
 // A minimal fake of the one transport method the queue uses. `behavior` lets a
 // test return an ok body, throw a network error, or throw the node's typed

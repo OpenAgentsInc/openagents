@@ -4,7 +4,7 @@ import {
   buildCloudListRequest,
   buildDeployCloudRequest,
   parseCloudList,
-} from "./cloud-client"
+} from "./cloud-client.js"
 
 describe("cloud client request builders", () => {
   test("buildDeployCloudRequest carries objective and byo-key selection", () => {
@@ -47,7 +47,7 @@ describe("cloud client response parsers", () => {
       },
     ]
 
-    expect(parseCloudList(raw)).toEqual(raw)
+    expect(parseCloudList(raw)).toEqual(raw as ReturnType<typeof parseCloudList>)
   })
 
   test("parseCloudList rejects non-array responses", () => {

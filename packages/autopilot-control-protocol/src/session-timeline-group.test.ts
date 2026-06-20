@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { groupTimeline } from "./session-timeline-group"
+import { groupTimeline } from "./session-timeline-group.js"
 
 describe("session timeline grouping", () => {
   test("returns no groups and zero total for an empty timeline", () => {

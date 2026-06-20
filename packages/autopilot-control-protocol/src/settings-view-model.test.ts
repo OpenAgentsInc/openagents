@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildSettingsView } from "./settings-view-model"
+import { buildSettingsView } from "./settings-view-model.js"
 
 describe("settings view model", () => {
   test("projects configured settings in stable display order", () => {

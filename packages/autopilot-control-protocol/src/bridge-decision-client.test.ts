@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test"
 import {
   buildDecisionResolveEnvelope,
   canResolveDecision,
-} from "./bridge-decision-client"
-import type { Capability } from "./bridge"
+} from "./bridge-decision-client.js"
+import type { Capability } from "./bridge.js"
 
 const baseInput = {
   pairingRef: "pairing.fixture.0001",

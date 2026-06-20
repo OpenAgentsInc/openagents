@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { validateAssignmentClaim } from "./assignment-claim-validate"
+import { validateAssignmentClaim } from "./assignment-claim-validate.js"
 
 describe("assignment claim validation", () => {
   test("accepts open assignments with a non-empty assignment ref", () => {

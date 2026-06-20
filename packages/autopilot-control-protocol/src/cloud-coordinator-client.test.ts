@@ -4,8 +4,8 @@ import {
   buildCloudDispatchRequest,
   buildCloudSessionListRequest,
   parseCloudSessionList,
-} from "./cloud-coordinator-client"
-import type { SessionSummary } from "./control"
+} from "./cloud-coordinator-client.js"
+import type { SessionSummary } from "./control.js"
 
 const baseSession: SessionSummary = {
   sessionRef: "cloud.session.fixture.0001",
@@ -60,7 +60,7 @@ describe("cloud coordinator session list parser", () => {
       },
     ]
 
-    expect(parseCloudSessionList(rows)).toEqual(rows)
+    expect(parseCloudSessionList(rows)).toEqual(rows as ReturnType<typeof parseCloudSessionList>)
   })
 
   test("parseCloudSessionList preserves optional external-agent fields", () => {

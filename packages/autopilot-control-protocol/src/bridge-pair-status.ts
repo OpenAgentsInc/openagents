@@ -1,4 +1,4 @@
-import type { BridgeRequestVerb, Capability } from "./bridge"
+import type { BridgeRequestVerb, Capability } from "./bridge.js"
 
 type BridgePairStatusClaims = {
   expiresAt?: string

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { exportSessionMarkdown } from "./session-markdown-export"
+import { exportSessionMarkdown } from "./session-markdown-export.js"
 
 describe("session markdown export", () => {
   test("renders a custom title and each event as a timeline bullet", () => {

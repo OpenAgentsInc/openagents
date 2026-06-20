@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { detectFingerprintDrift } from "./ship-fingerprint-drift"
+import { detectFingerprintDrift } from "./ship-fingerprint-drift.js"
 
 describe("ship fingerprint drift", () => {
   test("returns a stable empty drift report for no history", () => {

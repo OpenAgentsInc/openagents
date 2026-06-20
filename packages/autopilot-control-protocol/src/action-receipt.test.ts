@@ -4,7 +4,7 @@ import {
   createActionQueue,
   isRetryableOutcome,
   type ActionOutcome,
-} from "./action-receipt"
+} from "./action-receipt.js"
 
 describe("classifyActionOutcome (#5002)", () => {
   test("network failure → offline (retryable)", () => {

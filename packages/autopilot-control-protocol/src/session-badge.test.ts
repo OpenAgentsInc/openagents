@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { sessionBadge } from "./session-badge"
+import { sessionBadge } from "./session-badge.js"
 
 describe("session badge", () => {
   test("maps running sessions to the running tone", () => {

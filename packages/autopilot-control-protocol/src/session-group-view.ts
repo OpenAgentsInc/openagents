@@ -1,4 +1,4 @@
-import { sortSessions, type SessionSortRow } from "./session-sort"
+import { sortSessions, type SessionSortRow } from "./session-sort.js"
 
 export type SessionGroupRow = {
   sessionRef: string

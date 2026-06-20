@@ -1,4 +1,4 @@
-import { validateDeployRequest } from "./deploy-request-validate"
+import { validateDeployRequest } from "./deploy-request-validate.js"
 
 export type DeployCloudCommandInput = {
   target: "cloudrun" | "workers"

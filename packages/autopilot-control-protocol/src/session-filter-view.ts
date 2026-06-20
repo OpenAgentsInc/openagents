@@ -1,5 +1,5 @@
-import { filterSessions } from "./session-filter"
-import { sortSessions, type SessionSortRow } from "./session-sort"
+import { filterSessions } from "./session-filter.js"
+import { sortSessions, type SessionSortRow } from "./session-sort.js"
 
 type SessionListFilter = "all" | "running" | "completed"
 

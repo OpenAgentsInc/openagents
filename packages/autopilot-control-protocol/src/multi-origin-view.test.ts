@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { mergeSessionViews, type UnifiedSessionRow } from "./multi-origin-view"
+import { mergeSessionViews, type MergeSessionViewsInput, type UnifiedSessionRow } from "./multi-origin-view.js"
 
 const session = (
   sessionRef: string,
@@ -98,7 +98,7 @@ describe("multi-origin session view", () => {
       bridge: undefined,
       cloud: [],
       external: undefined,
-    })).toEqual([])
+    } as unknown as MergeSessionViewsInput)).toEqual([])
   })
 
   test("defensively skips non-object rows and rows without session refs", () => {

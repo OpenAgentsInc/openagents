@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildNotificationCenter,
   type NotificationCenterInputItem,
-} from "./notification-center-view"
+} from "./notification-center-view.js"
 
 const item = (
   sessionRef: string,

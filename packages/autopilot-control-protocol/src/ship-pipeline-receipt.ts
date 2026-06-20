@@ -1,4 +1,4 @@
-import type { ShipPipelinePlan } from "./ship-pipeline-plan"
+import type { ShipPipelinePlan } from "./ship-pipeline-plan.js"
 
 export type ShipPipelineReceiptInput = {
   action: ShipPipelinePlan["action"]

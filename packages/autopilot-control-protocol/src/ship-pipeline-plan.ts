@@ -1,5 +1,5 @@
-import { planEasBuild } from "./eas-build-plan"
-import { decideOtaPublish } from "./ota-publish-eligibility"
+import { planEasBuild } from "./eas-build-plan.js"
+import { decideOtaPublish } from "./ota-publish-eligibility.js"
 
 export type ShipPipelinePlanInput = {
   currentFingerprint: string

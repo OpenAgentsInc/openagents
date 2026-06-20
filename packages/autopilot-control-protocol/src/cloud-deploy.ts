@@ -2,7 +2,7 @@ import {
   buildDeployCloudRequest,
   type CloudSelection,
   type DeployCloudRequest,
-} from "./cloud-client"
+} from "./cloud-client.js"
 
 export type DeploySelection = "byo_key" | "credits"
 

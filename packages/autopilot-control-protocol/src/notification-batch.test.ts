@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import { coalesceNotifications } from "./notification-batch"
-import type { NotificationBatchItem } from "./notification-batch"
+import { coalesceNotifications } from "./notification-batch.js"
+import type { NotificationBatchItem } from "./notification-batch.js"
 
 describe("notification batch coalescing", () => {
   test("returns an empty batch for no notifications", () => {

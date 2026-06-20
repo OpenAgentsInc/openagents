@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { normalizeAsset } from "./ota-asset-ref"
+import { normalizeAsset } from "./ota-asset-ref.js"
 
 describe("OTA asset reference normalization", () => {
   test("normalizes a complete expo-updates asset entry", () => {

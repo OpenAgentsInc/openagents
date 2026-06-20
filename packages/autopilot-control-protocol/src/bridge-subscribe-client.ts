@@ -1,6 +1,6 @@
-import type { BridgeRequestEnvelope } from "./bridge"
-import { buildSubscribeRequest, parseEventBatch } from "./bridge-client"
-import type { SessionEvent } from "./control"
+import type { BridgeRequestEnvelope } from "./bridge.js"
+import { buildSubscribeRequest, parseEventBatch } from "./bridge-client.js"
+import type { SessionEvent } from "./control.js"
 
 export type BuildSubscribeEnvelopeInput = {
   pairingRef: string

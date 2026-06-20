@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { cloudPanelState } from "./cloud-panel-state"
+import { cloudPanelState } from "./cloud-panel-state.js"
 
 describe("cloud panel state", () => {
   test("reports no feed honestly without fabricated quota", () => {

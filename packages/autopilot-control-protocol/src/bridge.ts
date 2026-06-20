@@ -1,6 +1,6 @@
 import { Schema as S } from "effect"
 
-import { ProjectionLevel } from "./control"
+import { ProjectionLevel } from "./control.js"
 
 // Re-export so consumers (e.g. ./bridge-transport) can treat ProjectionLevel as
 // part of the bridge vocabulary surface. Canonical source remains ./control.

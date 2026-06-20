@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { sessionActions } from "./session-action-availability"
+import { sessionActions } from "./session-action-availability.js"
 
 describe("session action availability", () => {
   test("enables running session actions supported by the node", () => {

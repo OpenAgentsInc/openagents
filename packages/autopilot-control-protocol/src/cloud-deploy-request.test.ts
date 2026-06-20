@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildCloudDeployRequest } from "./cloud-deploy-request"
+import { buildCloudDeployRequest } from "./cloud-deploy-request.js"
 
 describe("cloud deploy request", () => {
   test("builds a cloud deploy request with artifact and repo refs", () => {

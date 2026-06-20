@@ -1,4 +1,4 @@
-import type { DecisionRecord, DecisionVerb } from "./decision"
+import type { DecisionRecord, DecisionVerb } from "./decision.js"
 
 export type DecisionPromptKind = "approval" | "question" | "choice" | "unknown"
 

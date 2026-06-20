@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildClaimReceipt, validate } from "./assignment-claim-receipt"
+import { buildClaimReceipt, validate } from "./assignment-claim-receipt.js"
 
 describe("assignment claim receipt", () => {
   test("builds a deterministic claim receipt", () => {

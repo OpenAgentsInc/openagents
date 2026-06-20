@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectDeployProgress } from "./cloud-deploy-progress"
+import { projectDeployProgress } from "./cloud-deploy-progress.js"
 
 describe("cloud deploy progress projection", () => {
   test("returns idle progress for no events", () => {

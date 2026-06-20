@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectBalance } from "./earnings-balance-view"
+import { projectBalance } from "./earnings-balance-view.js"
 
 describe("earnings balance view projection", () => {
   test("projects a read-only balance from earnings fields", () => {

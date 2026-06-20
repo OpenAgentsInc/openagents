@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { validateSpawnRequest } from "./spawn-request-validate"
+import { validateSpawnRequest } from "./spawn-request-validate.js"
 
 describe("spawn request validation", () => {
   test("accepts codex requests with a trimmed objective", () => {

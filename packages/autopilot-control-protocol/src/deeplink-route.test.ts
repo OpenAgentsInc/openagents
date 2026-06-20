@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolveDeepLinkRoute } from "./deeplink-route"
+import { resolveDeepLinkRoute } from "./deeplink-route.js"
 
 describe("autopilot deep link route resolution", () => {
   test("routes session deep links to SessionDetail with the session ref", () => {

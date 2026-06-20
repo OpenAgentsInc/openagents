@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolveBaseUrls } from "./address-resolution"
+import { resolveBaseUrls } from "./address-resolution.js"
 
 describe("pairing address resolution", () => {
   test("orders addresses tailnet first by default", () => {

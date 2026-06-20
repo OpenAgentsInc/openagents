@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectApprovals, type ApprovalRow } from "./approvals-view"
+import { projectApprovals, type ApprovalRow } from "./approvals-view.js"
 
 describe("approvals view projection", () => {
   test("projects pending approvals with approve deny answer verbs", () => {

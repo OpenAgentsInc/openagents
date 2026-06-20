@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { planShipPipeline } from "./ship-pipeline-plan"
+import { planShipPipeline } from "./ship-pipeline-plan.js"
 
 describe("ship pipeline plan", () => {
   test("publishes an iOS OTA update for JavaScript changes on the published fingerprint", () => {

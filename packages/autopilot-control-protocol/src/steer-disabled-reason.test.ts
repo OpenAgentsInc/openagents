@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { steerDisabledReason } from "./steer-disabled-reason"
+import { steerDisabledReason } from "./steer-disabled-reason.js"
 
 describe("steer disabled reason", () => {
   test("enables pause for a running session when the node supports it", () => {

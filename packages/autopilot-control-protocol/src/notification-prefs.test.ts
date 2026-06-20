@@ -4,7 +4,7 @@ import {
   normalizeNotificationPrefs,
   shouldDeliver,
   type NotificationPrefs,
-} from "./notification-prefs"
+} from "./notification-prefs.js"
 
 const defaults: NotificationPrefs = {
   enabled: true,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildDeployCommand } from "./deploy-cloud-command"
+import { buildDeployCommand } from "./deploy-cloud-command.js"
 
 describe("deploy cloud command builder", () => {
   test("builds a Cloud Run production command", () => {
@@ -60,7 +60,7 @@ describe("deploy cloud command builder", () => {
       target: "kubernetes",
       ref: "refs/heads/main",
       env: "preview",
-    } as Parameters<typeof buildDeployCommand>[0])).toEqual({
+    } as unknown as Parameters<typeof buildDeployCommand>[0])).toEqual({
       ok: false,
       command: "",
       args: [],
@@ -86,7 +86,7 @@ describe("deploy cloud command builder", () => {
       target: "workers",
       ref: "refs/heads/main",
       env: "staging",
-    } as Parameters<typeof buildDeployCommand>[0])).toEqual({
+    } as unknown as Parameters<typeof buildDeployCommand>[0])).toEqual({
       ok: false,
       command: "",
       args: [],

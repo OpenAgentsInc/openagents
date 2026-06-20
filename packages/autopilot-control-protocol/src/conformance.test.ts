@@ -6,8 +6,8 @@ import {
   needsResnapshot,
   pendingDecision,
   resolveDecision,
-} from "./index"
-import { decisionRequestFixture, sessionEventStreamFixture } from "./fixtures"
+} from "./index.js"
+import { decisionRequestFixture, sessionEventStreamFixture } from "./fixtures.js"
 
 describe("cross-client conformance", () => {
   test("cursor resume accepts fixture events monotonically and resnapshots after retention gaps", () => {

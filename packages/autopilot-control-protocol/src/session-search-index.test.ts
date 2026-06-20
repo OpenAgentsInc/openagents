@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { searchSessionEvents } from "./session-search-index"
+import { searchSessionEvents } from "./session-search-index.js"
 
 describe("session event search index", () => {
   test("returns no matches for an empty query", () => {

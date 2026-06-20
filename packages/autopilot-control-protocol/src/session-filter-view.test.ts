@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildSessionListView } from "./session-filter-view"
-import type { SessionSortRow } from "./session-sort"
+import { buildSessionListView } from "./session-filter-view.js"
+import type { SessionSortRow } from "./session-sort.js"
 
 const session = (
   sessionRef: string,

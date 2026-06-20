@@ -7,11 +7,11 @@ import {
   buildSubscribeRequest,
   parseEventBatch,
   parseListResponse,
-} from "./bridge-client"
+} from "./bridge-client.js"
 import {
   sessionEventStreamFixture,
   sessionListFixture,
-} from "./fixtures"
+} from "./fixtures.js"
 
 const baseRequest = {
   pairingRef: "pairing.fixture.0001",

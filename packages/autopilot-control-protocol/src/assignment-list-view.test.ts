@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   projectAssignmentList,
   type AssignmentListView,
-} from "./assignment-list-view"
+} from "./assignment-list-view.js"
 
 describe("assignment list view projection", () => {
   test("splits open and claimed assignments from a direct array", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { buildCloudSummary } from "./cloud-quota-summary"
+import { buildCloudSummary } from "./cloud-quota-summary.js"
 
 describe("cloud quota summary", () => {
   test("summarizes primary active provider, standby, and estimated cost", () => {

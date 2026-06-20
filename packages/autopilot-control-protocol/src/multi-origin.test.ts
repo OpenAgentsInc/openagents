@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
-import type { SessionSummary } from "./control"
-import { mergeSessions } from "./multi-origin"
+import type { SessionSummary } from "./control.js"
+import { mergeSessions } from "./multi-origin.js"
 
 const session = (
   sessionRef: string,

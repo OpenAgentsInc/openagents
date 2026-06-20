@@ -2,8 +2,8 @@ import {
   verbAllowedByCapabilities,
   type BridgeRequestEnvelope,
   type Capability,
-} from "./bridge"
-import type { DecisionVerb } from "./decision"
+} from "./bridge.js"
+import type { DecisionVerb } from "./decision.js"
 
 export type BuildDecisionResolveEnvelopeInput = {
   pairingRef: string

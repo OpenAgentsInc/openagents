@@ -17,15 +17,15 @@
 // Pure + transport-agnostic (the BridgeTransport injects fetch; the caller
 // injects `nowMs`/idgen), matching the rest of this package.
 
-import { classifyActionOutcome, createActionQueue, isRetryableOutcome, type ActionOutcome } from "./action-receipt"
+import { classifyActionOutcome, createActionQueue, isRetryableOutcome, type ActionOutcome } from "./action-receipt.js"
 import {
   applyExternalResolution,
   pendingDecision,
   resolveDecision as resolveDecisionRecord,
   type DecisionRecord,
   type DecisionVerb,
-} from "./decision"
-import type { BridgeTransport } from "./bridge-transport"
+} from "./decision.js"
+import type { BridgeTransport } from "./bridge-transport.js"
 
 // A node decision event as projected over session.subscribe / session.history.
 // We accept the loose record shape the bridge `events()` projection emits and

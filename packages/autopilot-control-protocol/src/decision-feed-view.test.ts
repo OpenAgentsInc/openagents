@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { projectDecisionFeed } from "./decision-feed-view"
+import { projectDecisionFeed } from "./decision-feed-view.js"
 
 describe("decision feed view projection", () => {
   test("projects sessions with pending decision phases", () => {
