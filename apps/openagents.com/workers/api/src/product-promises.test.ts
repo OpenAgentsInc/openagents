@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.15')
+    expect(decoded.version).toBe('2026-06-20.17')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -166,8 +166,16 @@ describe('public product promises document', () => {
     // so green remains exactly 24. The 2026-06-20.14 demand-provenance
     // projection
     // pass moves proof.demand_provenance.v1 planned -> yellow without flipping
-    // green, so green remains exactly 24. The 2026-06-20.15 two-record
-    // artanis-area pass drops artanis_unattended_tick_streak_missing on
+    // green, so green remains exactly 24. The 2026-06-20.15 control-center
+    // self-serve-fanout pass clears the self_serve_fanout_missing blocker on
+    // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
+    // single-action fanout planner/route + INERT public projection); the
+    // promise STAYS yellow, so green remains exactly 24. The 2026-06-20.16
+    // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
+    // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
+    // without flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.17 two-record artanis-area pass drops
+    // artanis_unattended_tick_streak_missing on
     // artanis.tassadar_evolution_loop.v1 (the deployed tick-streak gate is met:
     // longestStreak 12 >= 10, dereferenceable closeout receipts) and adds the
     // external-contributor responder-support projection
@@ -864,12 +872,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.15', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.17', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.15',
+      expectedVersion: '2026-06-20.17',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.15',
+      servedVersion: '2026-06-20.17',
       status: 'ready',
     })
     expect(
@@ -879,7 +887,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.15',
+      servedVersion: '2026-06-20.17',
       status: 'blocked',
     })
   })
