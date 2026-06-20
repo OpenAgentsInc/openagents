@@ -80,3 +80,16 @@ per `proof.claim_upgrade_receipts.v1`. The blocker stays listed.
 Both blockers remain listed in the registry — this run advanced
 `ecommerce_pack_first_paid_delivery_receipt_missing` (no real instance exists
 yet) and did not touch `ecommerce_pack_self_serve_missing`.
+
+## Route Update
+
+This subsequent fleet run provided the missing dereferenceable public route for the first-paid delivery-receipt, solving the first half of "What remains for green".
+
+- `apps/openagents.com/workers/api/src/ecommerce-campaign-receipt-store.ts`
+  - In-memory and D1 storage backings for the receipt document.
+- `apps/openagents.com/workers/api/src/ecommerce-campaign-receipt-routes.ts`
+  - A GET route `/api/public/ecommerce-campaign/receipts/{receiptRef}` returning the raw dereferenced document.
+
+This advances `blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing` further. What strictly remains for this blocker is:
+1. Emitting and storing an instance of this receipt from a live seeded workspace
+2. Wiring the stored instance into a receipt-first claim upgrade per `proof.claim_upgrade_receipts.v1`
