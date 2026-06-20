@@ -9393,6 +9393,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         lanePlan: selectAdapterPlan,
+        // Provider serving policy (public_paid_model_gateway_missing on
+        // api.hosted_gemini.v1): the SAME presence-derived lane arming the
+        // public catalog (/v1/models) and the pre-purchase quote (/v1/quote)
+        // are gated on. A request for a KNOWN model whose supply lane is not
+        // armed (e.g. an absent VERTEX_SA_KEY / FIREWORKS_API_KEY) is rejected
+        // with a clean model_unavailable before dispatch, so the LIVE gateway
+        // serves exactly what it advertises and quotes. INERT regardless — the
+        // gateway is gated by INFERENCE_GATEWAY_ENABLED above.
+        laneArming: resolveSupplyLaneArming(env),
         // Abuse / fair-share / spend-cap gates (#5486): the route exposes
         // `checkFairShare` and `checkSpendCap` seams whose pure deciders live in
         // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`).

@@ -355,6 +355,43 @@ production binding shape the harness was missing.
   there is still no registered-agent production smoke. The blocker REMAINS
   listed.
 
+### 2026-06-20 update — serving policy gates the live dispatch path
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **further advanced, still NOT cleared.** The serving policy already gated the
+  public catalog (`/v1/models`) and the pre-purchase quote (`/v1/quote`) to
+  servable lanes, but the actual dispatch surface (`POST /v1/chat/completions`)
+  did NOT enforce it: it only rejected `model_unavailable` when no adapter
+  *resolved in the registry* (`hasViableLane`). A KNOWN model on an unarmed lane
+  (e.g. a registered Vertex adapter with no `VERTEX_SA_KEY`) slipped past that
+  check and failed DEEP at dispatch with a generic `provider_error` (502) — so
+  the gateway accepted (and could charge account-state gates against) a request
+  for a model the catalog deliberately hides and the quote 404s. This change
+  closes the advertise == quote == serve consistency gap:
+  - `apps/openagents.com/workers/api/src/inference/chat-completions-routes.ts`
+    — `ChatCompletionsDeps` gains an OPTIONAL `laneArming`; when supplied, a
+    request for a KNOWN model on an unarmed lane returns `400 { error:
+    'model_unavailable', model }` BEFORE the premium/balance/spend-cap gates and
+    before dispatch (servability is a model+supply property, independent of the
+    account). An UNKNOWN model id (servability `undefined`) falls through
+    unchanged, exactly as on `/v1/quote`. Omitting `laneArming` preserves the
+    prior serve-everything behaviour (no breaking change). Presence-only — no
+    secret value is read on this hot path.
+  - `apps/openagents.com/workers/api/src/index.ts` — the live
+    `/v1/chat/completions` call site now passes
+    `laneArming: resolveSupplyLaneArming(env)`, so the LIVE gateway dispatches
+    only models it can actually serve, consistent with `/v1/models` + `/v1/quote`.
+  - Tests: 6 new cases in `chat-completions-routes.test.ts` (full file 35 pass):
+    known model on an unarmed lane 400s `model_unavailable`, an armed lane serves
+    200, an unknown id is not gated, casing cannot bypass the gate, omitted arming
+    stays backward compatible, and servability is checked BEFORE the balance gate
+    (unservable beats 402).
+
+  **Honest scope:** this is provider POLICY (which models the dispatch path will
+  serve) only. It does NOT add billing, entitlement, quota, or settlement, and
+  arming is still PRESENCE-derived (it does not prove a lane's credential
+  authenticates upstream). The gateway blocker REMAINS listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
@@ -374,9 +411,10 @@ production binding shape the harness was missing.
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
 - `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
-  Gemini metering lane and the provider serving policy that gates the public
-  catalog to servable lanes now exist (2026-06-20 updates above), but billing,
-  entitlement, quota, and settlement refs for a public paid model gateway still
-  remain.
+  Gemini metering lane and the provider serving policy that now gates ALL THREE
+  public gateway surfaces (`/v1/models`, `/v1/quote`, and the live
+  `/v1/chat/completions` dispatch path) to servable lanes exist (2026-06-20
+  updates above), but billing, entitlement, quota, and settlement refs for a
+  public paid model gateway still remain.
 - Any green flip remains receipt-first and owner-signed per
   `proof.claim_upgrade_receipts.v1`.

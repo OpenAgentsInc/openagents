@@ -22,6 +22,10 @@ import {
   decideFairShare,
   decideSpendCap,
 } from './inference-abuse-controls'
+import {
+  ALL_LANES_UNARMED,
+  resolveSupplyLaneArming,
+} from './model-serving-policy'
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect)
 
@@ -414,6 +418,94 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           lanePlan: () => ['vertex-anthropic'],
           registry: new InferenceProviderRegistry(),
+        }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('model_unavailable')
+  })
+})
+
+// PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing) -----------
+// The route accepts the SAME presence-derived lane arming the public catalog
+// (/v1/models) and the pre-purchase quote (/v1/quote) gate on, so the gateway
+// serves exactly what it advertises and quotes. A KNOWN model on an unarmed lane
+// is rejected with a clean model_unavailable BEFORE any account-state gate or
+// dispatch; an UNKNOWN id falls through; omitting the arming is a no-op.
+describe('POST /v1/chat/completions serving-policy gate', () => {
+  // `gemini-3.5-flash` is a real pricing-table model on the vertex-gemini lane;
+  // `opus` is on vertex-anthropic. `stub-model` is unknown to the table.
+  const geminiBody = {
+    messages: [{ content: 'hello world', role: 'user' }],
+    model: 'gemini-3.5-flash',
+  }
+
+  test('rejects a KNOWN model on an UNARMED lane with model_unavailable (400)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(geminiBody),
+        baseDeps({ laneArming: ALL_LANES_UNARMED }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string; model: string }
+    expect(body.error).toBe('model_unavailable')
+    expect(body.model).toBe('gemini-3.5-flash')
+  })
+
+  test('serves a KNOWN model when its lane IS armed', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(geminiBody),
+        baseDeps({ laneArming: resolveSupplyLaneArming({ VERTEX_SA_KEY: 'x' }) }),
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('does NOT gate an UNKNOWN model id (falls through unchanged)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({ laneArming: ALL_LANES_UNARMED }),
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('casing cannot bypass the gate (lookup is case-insensitive)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: 'GEMINI-3.5-FLASH',
+        }),
+        baseDeps({ laneArming: ALL_LANES_UNARMED }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('model_unavailable')
+  })
+
+  test('omitting laneArming preserves the prior serve-everything behaviour', async () => {
+    const response = await run(
+      handleChatCompletions(chatRequest(geminiBody), baseDeps()),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('servability is checked BEFORE the balance gate (unservable beats 402)', async () => {
+    // An unservable model on an empty-balance account must report
+    // model_unavailable (400), not insufficient_credits (402): the gateway can
+    // never serve it regardless of how the customer funds their balance.
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(geminiBody),
+        baseDeps({
+          laneArming: ALL_LANES_UNARMED,
+          readAvailableMsat: emptyBalance,
         }),
       ),
     )
