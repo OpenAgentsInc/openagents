@@ -12,7 +12,7 @@ import {
   reserveAuthEmailOtpSend,
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
-import worker from './index'
+import worker, { authIssuerAllowsRedirectHostname } from './index'
 
 type OpenAuthStorageRow = {
   expires_at: number | null
@@ -171,6 +171,31 @@ const storedRows = (db: MemoryD1): ReadonlyArray<Record<string, unknown>> =>
 describe('auth email OTP hardening', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  test('auth issuer redirect host allowlist includes staging but rejects sibling worker hosts', () => {
+    expect(authIssuerAllowsRedirectHostname('openagents.com')).toBe(true)
+    expect(authIssuerAllowsRedirectHostname('auth.openagents.com')).toBe(true)
+    expect(
+      authIssuerAllowsRedirectHostname(
+        'openagents-staging.openagents.workers.dev',
+      ),
+    ).toBe(true)
+    expect(authIssuerAllowsRedirectHostname('localhost')).toBe(true)
+    expect(authIssuerAllowsRedirectHostname('127.0.0.1')).toBe(true)
+
+    expect(authIssuerAllowsRedirectHostname('openagents.example.com')).toBe(
+      false,
+    )
+    expect(
+      authIssuerAllowsRedirectHostname('random.openagents.workers.dev'),
+    ).toBe(false)
+    expect(
+      authIssuerAllowsRedirectHostname(
+        'openagents-staging.evil.workers.dev',
+      ),
+    ).toBe(false)
+    expect(authIssuerAllowsRedirectHostname('www.openagents.com')).toBe(false)
   })
 
   test('stamps a short server-side expiry claim and rejects stale claims', () => {

@@ -149,7 +149,9 @@ and the spend's receipt/activity ref as evidence.
    allowlist entry (`openagents-staging.openagents.workers.dev`) is already in
    `makeAuthIssuer` in `index.ts`, but it only takes effect when the **prod**
    Worker (`auth.openagents.com`) is deployed. **Do not prod-deploy without
-   explicit owner approval.**
+   explicit owner approval.** Regression coverage lives in
+   `workers/api/src/auth-email-otp-hardening.test.ts`, which pins the exact
+   staging callback host and rejects sibling/random Worker hosts.
 
 ## Verified on 2026-06-19 (this work)
 

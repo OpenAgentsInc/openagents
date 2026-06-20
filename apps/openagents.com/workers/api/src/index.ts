@@ -2810,6 +2810,18 @@ const hydrateTeamAutopilotContextFileExcerpts = async (
   return { ...bundle, selectedFiles }
 }
 
+export const authIssuerAllowsRedirectHostname = (hostname: string): boolean =>
+  hostname === 'openagents.com' ||
+  hostname === 'auth.openagents.com' ||
+  // Isolated staging Worker. WIDEN-ONLY: this lets the prod issuer accept the
+  // staging-origin auth callback so a human can sign in on staging and exercise
+  // the billing/credit flow. The staging Worker delegates auth to this same
+  // prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the allowlist must
+  // live here. Prod hosts above are unchanged.
+  hostname === 'openagents-staging.openagents.workers.dev' ||
+  hostname === 'localhost' ||
+  hostname === '127.0.0.1'
+
 const makeAuthIssuer = (env: Env) => {
   const config = getOpenAgentsWorkerConfig(env)
   const emailCodeUi = CodeUI({
@@ -2862,18 +2874,7 @@ const makeAuthIssuer = (env: Env) => {
     allow: async ({ redirectURI }) => {
       const hostname = new URL(redirectURI).hostname
 
-      return (
-        hostname === 'openagents.com' ||
-        hostname === 'auth.openagents.com' ||
-        // Isolated staging Worker. WIDEN-ONLY: this lets the prod issuer accept
-        // the staging-origin auth callback so a human can sign in on staging and
-        // exercise the billing/credit flow. The staging Worker delegates auth to
-        // this same prod issuer (OPENAUTH_ISSUER_URL=auth.openagents.com), so the
-        // allowlist must live here. Prod hosts above are unchanged.
-        hostname === 'openagents-staging.openagents.workers.dev' ||
-        hostname === 'localhost' ||
-        hostname === '127.0.0.1'
-      )
+      return authIssuerAllowsRedirectHostname(hostname)
     },
     success: async (ctx, response) => {
       if (response.provider === 'code') {
