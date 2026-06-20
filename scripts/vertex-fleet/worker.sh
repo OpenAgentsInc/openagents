@@ -99,6 +99,12 @@ fi
 
 cd "$WORKTREE" || { emit "$(result_json error "" skipped null "cd_worktree_failed")"; exit 1; }
 
+# Pin the base to a fixed SHA. BASE (e.g. "origin/main") is a moving ref: a
+# concurrent push or a later `git fetch` advances it mid-run, which would make
+# the ahead-of-base count below misfire and a real commit look like no_changes.
+BASE_SHA="$(git rev-parse HEAD)"
+log "base pinned: ${BASE_SHA}"
+
 # Install deps so check:deploy can run. Reuse bun's global cache (fast).
 log "installing deps (bun install)..."
 bun install >>"$AGENT_LOG" 2>&1 || log "WARN: bun install returned nonzero (continuing)"
@@ -144,7 +150,7 @@ fi
 # ---- Did the agent actually change anything? --------------------------------
 if git diff --quiet HEAD 2>/dev/null && [[ -z "$(git status --porcelain)" ]]; then
   # Maybe the agent already committed. Check for commits beyond base.
-  AHEAD="$(git rev-list --count "${BASE}..HEAD" 2>/dev/null || echo 0)"
+  AHEAD="$(git rev-list --count "${BASE_SHA}..HEAD" 2>/dev/null || echo 0)"
   if [[ "$AHEAD" == "0" ]]; then
     log "agent produced no changes"
     emit "$(result_json no_changes "" skipped "$COST" "agent_made_no_changes")"; exit 0
@@ -157,7 +163,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
   git commit -q -m "vertex-fleet(${PROMISE}): agent changes (${MODEL} on Vertex)" || true
 fi
 
-AHEAD="$(git rev-list --count "${BASE}..HEAD" 2>/dev/null || echo 0)"
+AHEAD="$(git rev-list --count "${BASE_SHA}..HEAD" 2>/dev/null || echo 0)"
 if [[ "$AHEAD" == "0" ]]; then
   log "no commits ahead of base after commit attempt"
   emit "$(result_json no_changes "" skipped "$COST" "no_commits_ahead")"; exit 0
