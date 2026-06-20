@@ -227,9 +227,15 @@ export const handlePublicPromiseTransitionsApi = (
 
   return Effect.promise(async () => {
     const receipts = await input.store.listReceipts(200)
+    const registry = publicProductPromisesDocument()
 
     return noStoreJsonResponse({
       kind: 'product_promise_transitions',
+      generatedAt: registry.generatedAt,
+      registryGeneratedAt: registry.generatedAt,
+      registryVersion: registry.registryVersion,
+      maxStalenessSeconds: registry.maxStalenessSeconds,
+      staleness: registry.staleness,
       publicSafe: true,
       receipts,
       rule: 'A passing receipt is mechanical evidence for a proposed state transition. It is not the transition itself: registry state changes remain maintainer actions shipped through the versioned registry.',
