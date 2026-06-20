@@ -202,6 +202,40 @@ export const composedProductPrimitives = (
 ]
 
 /**
+ * One monetizable layer derived from a composed product: a (layer,
+ * capabilityRef) pair the builder could attach a monetize-any-layer offer to.
+ * INERT scaffolding — this is the seam (#5518) between a composed product and
+ * the per-layer monetization offers, NOT an offer itself (it carries no price,
+ * no referral split, and authorizes nothing). The monetize-any-layer module
+ * (`marketplace-monetize-any-layer.ts`) owns building/validating real offers and
+ * runs the no-resale guards; this only enumerates which layers a product exposes.
+ */
+export type ComposedProductMonetizableLayer = {
+  layer: MarketplaceComposablePrimitive
+  capabilityRef: string
+}
+
+/**
+ * Enumerate the monetizable layers of a composed product: its distinct
+ * primitives, each paired with the FIRST capabilityRef the product binds for
+ * that primitive (a deterministic, dedup-by-primitive projection). This is the
+ * compose-and-list -> monetize-any-layer bridge: a builder lists a composed
+ * product, then attaches a per-layer offer to one of these layers. PURE / INERT;
+ * it computes no price and authorizes no resale. The promises stay planned.
+ */
+export const composedProductMonetizableLayers = (
+  definition: ComposedProductDefinition,
+): ReadonlyArray<ComposedProductMonetizableLayer> => {
+  const byLayer = new Map<MarketplaceComposablePrimitive, string>()
+  for (const component of definition.components) {
+    if (!byLayer.has(component.primitive)) {
+      byLayer.set(component.primitive, component.capabilityRef)
+    }
+  }
+  return [...byLayer].map(([layer, capabilityRef]) => ({ layer, capabilityRef }))
+}
+
+/**
  * A read-only listing store. Injected so the surface stays pure and testable;
  * the live Worker passes an empty store while the marketplace is INERT.
  */

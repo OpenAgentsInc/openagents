@@ -5,6 +5,7 @@ import {
   MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
   type ComposedProductDefinition,
   buildComposedProductDefinition,
+  composedProductMonetizableLayers,
   composedProductPrimitives,
   listComposedProducts,
   makeInMemoryComposedProductListingStore,
@@ -99,6 +100,20 @@ describe('compose-and-list product definition model (#5515)', () => {
       ],
     })
     expect(composedProductPrimitives(definition)).toEqual(['inference', 'sandbox'])
+  })
+
+  test('composedProductMonetizableLayers pairs each distinct layer with its first capabilityRef (#5518 seam)', () => {
+    const definition = okDefinition({
+      components: [
+        { primitive: 'inference', capabilityRef: 'inference.gateway.v1' },
+        { primitive: 'inference', capabilityRef: 'inference.second.v1' },
+        { primitive: 'sandbox', capabilityRef: 'cloud.sandbox.v1' },
+      ],
+    })
+    expect(composedProductMonetizableLayers(definition)).toEqual([
+      { layer: 'inference', capabilityRef: 'inference.gateway.v1' },
+      { layer: 'sandbox', capabilityRef: 'cloud.sandbox.v1' },
+    ])
   })
 })
 

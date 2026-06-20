@@ -109,8 +109,9 @@ describe('public product promises document', () => {
       decoded.promises.length,
     )
     // Honest green count: no green flip may land without a dereferenceable
-    // receipt. The Episode 239 (registry 2026-06-19.7) records are all
-    // red/planned, so the green count must stay exactly 20.
+    // receipt. The Episode 239 records (registry 2026-06-19.6) are all
+    // red/planned, and the 2026-06-19.7 scaffold-advancement passes flip
+    // nothing, so the green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
