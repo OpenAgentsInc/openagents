@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.9')
+    expect(decoded.version).toBe('2026-06-19.10')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -111,10 +111,14 @@ describe('public product promises document', () => {
     // receipt. The Episode 239 records (registry 2026-06-19.6) are all
     // red/planned; the 2026-06-19.7 passes (scaffold advancement + training
     // live-run destale), the 2026-06-19.8 weekend-promise-assault pass
-    // (evidence docs + an inert capability), and the 2026-06-19.9 remote-bridge
+    // (evidence docs + an inert capability), the 2026-06-19.9 remote-bridge
     // decision-queue transport pass (a pure composing capability + evidence refs
-    // on autopilot.decision_queue.v1 / mobile.autopilot_remote_control.v1) flip
-    // nothing, so the green count must stay exactly 20.
+    // on autopilot.decision_queue.v1 / mobile.autopilot_remote_control.v1), and
+    // the 2026-06-19.10 composed-run capstone pass (a FLAG-GATED INERT execution
+    // composition wiring the real metering + referral seams; evidence refs on
+    // cloud.primitives_suite.v1 / cloud.agent_cloud_one_stop_revshare.v1 /
+    // autopilot.all_in_one_business_system.v1) flip nothing, so the green count
+    // must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
@@ -638,12 +642,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.9', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.10', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.9',
+      expectedVersion: '2026-06-19.10',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.9',
+      servedVersion: '2026-06-19.10',
       status: 'ready',
     })
     expect(
@@ -653,7 +657,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.9',
+      servedVersion: '2026-06-19.10',
       status: 'blocked',
     })
   })

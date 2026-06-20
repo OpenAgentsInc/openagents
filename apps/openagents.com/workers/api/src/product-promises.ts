@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.9'
+export const PublicProductPromisesVersion = '2026-06-19.10'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -189,6 +189,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-19.7: autopilot.*/autopilot_sites.* yellow→green-readiness pass, no state flips. A consolidated dereferenceable readiness receipt (docs/launch/2026-06-19-autopilot-yellow-green-readiness-receipt.md) now records, per non-green autopilot.*/autopilot_sites.* promise, the runnable verification command + observed output, what was built, the exact remaining receipt for green, and the owner gate. Two promises had real last-mile code built and tested this pass: autopilot.mission_briefing.v1 gained real risk and receipts rollups in the Mission Briefing projection (risk: review caveats, blocker count, delivery/worktree/change-capture statuses, settlement-blocked reason, derived clear/attention/blocked level; receipts: authority-receipt/proof/verification refs, buyer-payment proof, settlement eligibility), closing the cost_risk_receipt_rollup_missing blocker (autopilot-work-routes.test.ts 37 pass, with new rollup + no-secret-leak assertions); and autopilot_sites.native_email_sequences.v1 gained the missing "home for site form-specs" as a typed, tested registry (site-form-spec-registry.ts: resolves a FormCaptureSpec by id from a published site/version metadata_json, key↔id agreement, safe degrade to 404 on malformed input; site-form-spec-registry.test.ts 7 pass), making the public form-capture route wireable. The remaining autopilot/sites yellows/reds had their green-readiness evidence assembled (workers/api autopilot/sites module suite 166 pass over 14 files; apps/web credits-panel 24 pass) and their exact remaining receipt + owner gate recorded. NO promise changes state; zero green flips. Any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-19.5: blocker/copy destale on the inference gateway, no green flips. The earlier "api unbuilt" framing for inference.gateway_credits_business.v1 is now STALE and corrected: the OpenAI-compatible gateway request surface is BUILT, DEPLOYED, and LIVE in prod (POST /v1/chat/completions, INFERENCE_GATEWAY_ENABLED=true), and Gemini 3.5 Flash is served end-to-end through it, verified live 2026-06-19 (docs/inference/2026-06-19-gateway-gemini-live-verification.md; an unauthenticated prod POST returns 401 not 404, confirming the route is deployed and key-auth-gated). Free inference works. The promise STAYS red/non-green because it is a CREDITS BUSINESS and the PAID-credits path is not collectable end-to-end: Stripe card->credit is wired in source but has no prod secrets, and the USD->msat bridge (#5497, merged) has no real upstream purchase to bridge, so there is no dereferenceable card->credit->inference-spend receipt. Its blocker set is rewritten from "*_unbuilt" gateway/metering/pricing/routing blockers to paid-credits blockers (inference_paid_credits_card_to_credit_not_collectable, inference_usd_to_msat_bridge_no_real_purchase, inference_card_credit_inference_spend_receipt_missing). inference.fireworks_open_model_provider.v1 evidence is honestly tightened — it is now a REGISTERED LIVE SUPPLY LANE in the deployed gateway rather than a bare provider connection, and its stale "gateway api unbuilt" blocker is dropped — but it STAYS yellow (no sellable paid open-model product, no paid receipt). NO promise changes state; zero green flips. Any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-19.9: remote-bridge decision-queue transport built; evidence-only, no state flips. The composing capability that lets command APIs (decision resolve) flow over the capability-scoped Pylon bridge to a remote node now exists as a pure, transport-agnostic protocol module: packages/autopilot-control-protocol/src/remote-decision-queue.ts (createRemoteDecisionQueue), with 20 passing tests in remote-decision-queue.test.ts. It ingests node decision events delivered over session.subscribe/session.history into a live queue of exactly-once DecisionRecords, relays decision.resolve through the existing BridgeTransport (which carries the answer_decision capability, enforced node-side against the STORED pairing claims — no new auth, no scope-weakening), classifies each result into one typed action receipt, and offline-queues resolutions taken while disconnected for oldest-first drain. This unblocks the cross-client exactly-once decision queue for autopilot.decision_queue.v1 and the steer/decision leg of mobile.autopilot_remote_control.v1, both of which STAY planned: green still requires a dereferenceable receipt of a real phone/web/desktop decision resolved over a remote-reachable paired node with receipt closeout, plus owner sign-off per proof.claim_upgrade_receipts.v1. The node-side remote bridge (#5000) was already merged (9a31ad6bf); this is the client-side composing transport that the Expo app and web/desktop decision queues share. NO promise changes state; zero green flips.',
+        'Registry 2026-06-19.10: composed-run capstone wired to the REAL metering + referral seams; evidence-only, no state flips. The Autopilot all-in-one composed-run scaffold (#5519) was a shape-demo: it derived component receipt refs but exercised neither the merged metering seam nor the referral bridge. It now has a FLAG-GATED INERT execution-composition module, workers/api/src/autopilot-composed-run-execution.ts (composeRunExecution + composedComponentCharge + composedRunExecutionProjection), with 15 passing tests in autopilot-composed-run-execution.test.ts. A composed run now composes >= 2 REAL primitive scaffolds (inference + one of fine-tuning/sandbox) onto ONE shared balance: each component derives its receipt-first charge shape from its OWN primitive helper — fine-tuning/sandbox build a full CloudPrimitiveCharge through the merged receipt-first cloud-metering seam (cloud/cloud-metering.ts: cloudChargePayInPlan/cloudChargeReceiptRef/cloudChargeIdempotencyKey), inference through the inference metering hook — the per-component charges sum into ONE shared-balance debit total, and the composed spend is fed through the MERGED referral bridge (marketplace-monetize-any-layer-accrual.ts -> the ONE RL-1 cross-category ledger). HONEST/INERT by construction: it builds the CloudPrimitiveCharge PLANS but NEVER calls settleCloudPrimitiveCharge (no D1 batch, no debit), and ALWAYS calls the referral bridge with enabled:false, so the bridge returns its disabled plan and touches no ledger (proven by a D1 stub that throws on any IO). This advances cloud.primitives_suite.v1, cloud.agent_cloud_one_stop_revshare.v1, and autopilot.all_in_one_business_system.v1, ALL of which STAY planned. NO promise changes state; zero green flips; green count stays 20. Green needs a REAL billed composed run with a dereferenceable revshare receipt plus owner sign-off per proof.claim_upgrade_receipts.v1, and demand provenance per proof.demand_provenance.v1 (internal first-party use is plumbing proof, not market proof).',
       ],
     },
     promises: [
@@ -2891,6 +2892,12 @@ export const publicProductPromisesDocument = () => {
           'docs/inference/README.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5474',
           'https://github.com/OpenAgentsInc/openagents/issues/5475',
+          'https://github.com/OpenAgentsInc/openagents/issues/5510',
+          'https://github.com/OpenAgentsInc/openagents/issues/5519',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.ts',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.test.ts',
+          'apps/openagents.com/workers/api/src/cloud/cloud-metering.ts',
+          'apps/openagents.com/workers/api/src/marketplace-monetize-any-layer-accrual.ts',
           'promise:inference.gateway_credits_business.v1',
           'promise:inference.referral_on_all_inference.v1',
           'promise:payments.accepted_outcome_economics.v1',
@@ -2999,6 +3006,11 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
           'docs/launch/2026-06-19-near-term-product-priorities.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5510',
+          'https://github.com/OpenAgentsInc/openagents/issues/5519',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run.ts',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.ts',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.test.ts',
           'promise:cloud.primitives_suite.v1',
           'promise:cloud.agent_cloud_one_stop_revshare.v1',
           'promise:markets.open_protocol_markets.v1',
@@ -3032,6 +3044,11 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
           'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5510',
+          'https://github.com/OpenAgentsInc/openagents/issues/5519',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.ts',
+          'apps/openagents.com/workers/api/src/autopilot-composed-run-execution.test.ts',
+          'apps/openagents.com/workers/api/src/cloud/cloud-metering.ts',
           'promise:inference.gateway_credits_business.v1',
           'promise:cloud.fine_tuning_service.v1',
           'promise:cloud.sandbox_compute_service.v1',
