@@ -193,3 +193,118 @@ export function buildSparkHelperAutostartReceipt(
     contentRedacted: true,
   }
 }
+
+/**
+ * Result of auditing a candidate autostart receipt.
+ *
+ * - `valid`        — the candidate is a well-formed, public-safe autostart
+ *                    receipt (correct schema/ref/types, no leak-prone fields).
+ * - `clearsBlocker`— true ONLY when valid AND it actually attests payout
+ *                    readiness with no operator hand-start. This is the bar a
+ *                    real captured receipt must meet before it could ever be
+ *                    cited to clear `spark_helper_autostart_receipt_missing`.
+ * - `reasons`      — human-readable failure reasons; empty when valid.
+ */
+export type SparkHelperAutostartReceiptVerification = {
+  valid: boolean
+  clearsBlocker: boolean
+  reasons: string[]
+}
+
+// The exact, closed set of keys a public-safe receipt may carry. Any extra key
+// is rejected: an unknown field is exactly how a raw target/balance/credential
+// could be smuggled into a "receipt" that is then published.
+const ALLOWED_RECEIPT_KEYS: ReadonlySet<string> = new Set<string>([
+  "schema",
+  "ref",
+  "payoutReady",
+  "derivedFromReceiveState",
+  "operatorHandStartRequired",
+  "observedAt",
+  "contentRedacted",
+])
+
+const RECEIPT_REF_PATTERN =
+  /^receipt\.pylon\.spark_helper_autostart\.([a-z-]+)\.v0\.1$/
+
+function isReadyReceiveState(value: unknown): value is SparkBackupReceiveState {
+  return (
+    typeof value === "string" &&
+    READY_RECEIVE_STATES.has(value as SparkBackupReceiveState)
+  )
+}
+
+function isIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false
+  const parsed = Date.parse(value)
+  if (Number.isNaN(parsed)) return false
+  // Round-trip guard: only accept canonical ISO-8601 (what the builder emits),
+  // so loose/ambiguous date strings cannot pass as a "receipt" timestamp.
+  return new Date(parsed).toISOString() === value
+}
+
+/**
+ * Audit a candidate autostart receipt parsed from untrusted input (e.g. a JSON
+ * artifact a contributor captured on the self-serve path).
+ *
+ * Pure and side-effect-free. This does NOT capture or produce a receipt; it is
+ * the deterministic gate a reviewer/auditor runs to confirm a captured receipt
+ * is well-formed, public-safe, and actually attests no-hand-start payout
+ * readiness — the prerequisite for ever citing it against the blocker.
+ */
+export function verifySparkHelperAutostartReceipt(
+  candidate: unknown,
+): SparkHelperAutostartReceiptVerification {
+  const reasons: string[] = []
+
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+    return { valid: false, clearsBlocker: false, reasons: ["not-an-object"] }
+  }
+
+  const record = candidate as Record<string, unknown>
+
+  // Public-safety: reject any key outside the closed allowlist before reading
+  // values, so a leaked field (balance, raw address, credential) fails the audit.
+  for (const key of Object.keys(record)) {
+    if (!ALLOWED_RECEIPT_KEYS.has(key)) {
+      reasons.push(`unexpected-key:${key}`)
+    }
+  }
+
+  if (record.schema !== "openagents.pylon.spark_helper_autostart_receipt.v0.1") {
+    reasons.push("bad-schema")
+  }
+
+  const refMatch =
+    typeof record.ref === "string" ? RECEIPT_REF_PATTERN.exec(record.ref) : null
+  if (!refMatch) {
+    reasons.push("bad-ref")
+  } else if (!READY_RECEIVE_STATES.has(refMatch[1] as SparkBackupReceiveState)) {
+    reasons.push("ref-state-not-payout-ready")
+  }
+
+  if (!isReadyReceiveState(record.derivedFromReceiveState)) {
+    reasons.push("derived-state-not-payout-ready")
+  }
+
+  // The ref's encoded state must match the declared derivedFromReceiveState, so
+  // a receipt cannot claim one (ready) state in its ref and another in its body.
+  if (refMatch && record.derivedFromReceiveState !== refMatch[1]) {
+    reasons.push("ref-state-mismatch")
+  }
+
+  if (record.payoutReady !== true) reasons.push("not-payout-ready")
+  if (record.operatorHandStartRequired !== false) {
+    reasons.push("operator-hand-start-required")
+  }
+  if (record.contentRedacted !== true) reasons.push("not-redacted")
+  if (!isIsoTimestamp(record.observedAt)) reasons.push("bad-observed-at")
+
+  const valid = reasons.length === 0
+  return {
+    valid,
+    // Validity already implies payoutReady && !operatorHandStartRequired.
+    clearsBlocker: valid,
+    reasons,
+  }
+}
