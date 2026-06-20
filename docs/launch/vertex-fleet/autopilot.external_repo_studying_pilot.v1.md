@@ -710,3 +710,66 @@ remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): DSR ↔ customer-authorization binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The customer-authorization registry update named the next step explicitly: a
+binding that DERIVES the privacy-review / upload / **DSR** preflights'
+`customerAuthorizationRef` from a registry-known ACTIVE authorization. The
+review↔authorization binding closed the seam for the privacy-review preflight;
+this change closes the LAST forgeable-string seam in the **data-subject-request
+(DSR) preflight**. Until now the DSR preflight's `customerAuthorizationPresent`
+gate was still a plain string-presence check
+(`(request.customerAuthorizationRef ?? "").trim().length > 0`): any non-empty
+string passed, including a forged, stale, or WITHDRAWN ref.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-dsr-authorization-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyDsrAuthorizationBinding(...)`
+  - Schema `openagents.external_repo_study_dsr_authorization_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes the customer-authorization registry, a candidate
+    `authorizationCandidateRef`, the published policy registry + `policyRef`, and a
+    DSR request **with its `customerAuthorizationRef` omitted from the input type**
+    (`Omit<…, "customerAuthorizationRef">`), so a caller cannot inject their own
+    ref. The binding derives the DSR's `customerAuthorizationRef` ONLY from a
+    candidate that `isActiveCustomerAuthorizationRef` verifies as a registry-known
+    ACTIVE authorization covering the SAME customer + repo, then builds the DSR
+    preflight from it. An unknown / withdrawn / mismatched / empty ref binds NO
+    ref, so the DSR preflight blocks on
+    `…data_subject_request.customer_authorization_missing` instead of trusting a
+    string.
+  - **Inert by construction**: `requestHonored`, `dataExported`, `dataErased`,
+    `authorizationWithdrawn`, and `effectsApplied` are ALWAYS false (asserted on
+    both the binding and the nested DSR preflight); `customerPublicClaimAllowed` /
+    `marketplacePackageAllowed` / `payoutEligible` are ALWAYS false.
+    `sourceBoundary = "customer_refs_withheld"`. Refuses
+    `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-dsr-authorization-binding.test.ts`
+  — 8 passing tests (bound-held inert, forged-ref→unbound + DSR blocked,
+  withdrawn→unbound, customer mismatch, repo mismatch, armed-still-inert,
+  OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+With this, BOTH refs-only consumers of the lawful-basis anchor that have a
+dedicated preflight (privacy-review and DSR) now derive `customerAuthorizationRef`
+from a verified active authorization rather than an arbitrary string. The binding
+is still the *decision/control* layer only. The privacy-policy blocker stays
+listed because it still requires, all owner/legal-gated and out of scope here:
+legal/owner ratification of the policy text; a real human/legal DSR fulfilment
+process backed by durable, access-controlled storage that can actually export or
+erase derived artifacts; real revocation enforcement; and an owner-signed armed
+run with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`.
+The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
