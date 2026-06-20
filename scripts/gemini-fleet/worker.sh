@@ -124,16 +124,50 @@ fi
 # Serialize git-worktree setup: concurrent `git worktree add` on one repo races
 # on git's index/worktree locks. Agent runs stay parallel; only this fast setup
 # is mutually exclusive (mkdir = atomic, macOS-safe).
+#
+# The lock BLOCKS until acquired (no "proceed on timeout" — that caused the
+# concurrent add that 8/9 workers failed on). The fetch + index-touching steps
+# AND the `git worktree add` all run under the lock; we release immediately
+# after the add. Bound is generous (~120s) so a slow add by one worker never
+# starves the others; if we somehow can't acquire in that window we fail loudly
+# rather than racing.
 GF_GIT_LOCK="${SRC_REPO}/.git/gf-worktree.lock"
-_gf_n=0
-while ! mkdir "$GF_GIT_LOCK" 2>/dev/null; do sleep 0.5; _gf_n=$((_gf_n+1)); [ "$_gf_n" -gt 600 ] && { log "WARN: worktree lock wait timeout; proceeding"; break; }; done
-git -C "$SRC_REPO" fetch origin main --quiet 2>>"$AGENT_LOG" || true
-git -C "$SRC_REPO" worktree remove "$WORKTREE" --force >/dev/null 2>&1 || true
-git -C "$SRC_REPO" worktree prune >/dev/null 2>&1 || true
-git -C "$SRC_REPO" branch -D "$BRANCH" >/dev/null 2>&1 || true
-git -C "$SRC_REPO" worktree add -b "$BRANCH" "$WORKTREE" "$BASE" >>"$AGENT_LOG" 2>&1
+gf_lock_acquire() {
+  local _n=0
+  # 240 * 0.5s = 120s blocking bound. mkdir is atomic; a stale lock from a
+  # killed worker is the only way this spins forever, so we cap and fail.
+  while ! mkdir "$GF_GIT_LOCK" 2>/dev/null; do
+    sleep 0.5; _n=$((_n+1))
+    [ "$_n" -gt 240 ] && return 1
+  done
+  return 0
+}
+gf_lock_release() { rmdir "$GF_GIT_LOCK" 2>/dev/null || true; }
+
+# Everything inside the lock: serialize the index/worktree-touching git steps.
+gf_worktree_add() {
+  git -C "$SRC_REPO" fetch origin main --quiet 2>>"$AGENT_LOG" || true
+  git -C "$SRC_REPO" worktree remove "$WORKTREE" --force >/dev/null 2>&1 || true
+  git -C "$SRC_REPO" worktree prune >/dev/null 2>&1 || true
+  git -C "$SRC_REPO" branch -D "$BRANCH" >/dev/null 2>&1 || true
+  git -C "$SRC_REPO" worktree add -b "$BRANCH" "$WORKTREE" "$BASE" >>"$AGENT_LOG" 2>&1
+}
+
+if ! gf_lock_acquire; then
+  log "FATAL: could not acquire worktree lock within bound"
+  emit "$(result_json error "" skipped null "worktree_lock_timeout")"; exit 1
+fi
+gf_worktree_add
 GF_ADD_RC=$?
-rmdir "$GF_GIT_LOCK" 2>/dev/null || true
+if [ "$GF_ADD_RC" != 0 ]; then
+  # Transient failure (stale worktree admin state, leftover lock). Prune and
+  # retry ONCE, still under the lock, before declaring failure.
+  log "WARN: worktree add failed (rc=$GF_ADD_RC); pruning + one retry under lock"
+  git -C "$SRC_REPO" worktree prune >/dev/null 2>&1 || true
+  gf_worktree_add
+  GF_ADD_RC=$?
+fi
+gf_lock_release
 if [ "$GF_ADD_RC" != 0 ]; then
   log "FATAL: could not create worktree (rc=$GF_ADD_RC)"
   emit "$(result_json error "" skipped null "worktree_add_failed")"; exit 1
