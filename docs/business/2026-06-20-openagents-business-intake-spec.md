@@ -11,10 +11,10 @@ You are an AI agent helping a human decide what to buy from OpenAgents. Do this
 in three passes:
 
 1. **Read the Offerings menu below.** It is the menu of what OpenAgents can
-   actually deliver. Each item is marked *Available now*, *Available soon*, or
-   *Roadmap*. Do not promise anything beyond what is marked here. If the human
-   asks for something not listed, say so plainly and capture it as an open
-   question.
+   actually deliver. Each item is marked *Available now*, *Operator-assisted*,
+   or *Roadmap*. Do not promise anything beyond what is marked here. If the
+   human asks for something not listed, say so plainly and capture it as an
+   open question.
 2. **Run the Interview.** Ask the human the questions in the Interview section,
    one area at a time, in a natural conversation. Use the branching guidance to
    skip questions that don't apply. Your goal is to land on **one fast quick win
@@ -40,7 +40,8 @@ verifiable evidence rather than a vague promise. The model is simple:
 - **Then put parts of your business on Autopilot** — as trust builds, you hand
   recurring work (content, code, intake, campaigns, support) to agents that run
   in the background and report what they did.
-- **Pay how you want**, including in Bitcoin, and only as work is accepted.
+- **Scope payment up front**, including Bitcoin where the backing rails are
+  proven for the specific work, and only as work is accepted.
 
 You don't have to commit to the whole journey up front. The point of this intake
 is to pick the first small win and to know where the relationship can go.
@@ -52,8 +53,9 @@ is to pick the first small win and to know where the relationship can go.
 Each offering says, in plain English, **what you get**, its **availability**, and
 a **typical quick win**. Availability is grounded in our public product-promise
 registry (`https://openagents.com/api/public/product-promises`): *Available now*
-maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
-*Roadmap* to planned work we believe is realistically a few days' lift.
+maps to a shipped/green sellable surface, *Operator-assisted* maps to useful
+green/yellow pieces that still need a human/operator path or carry a caveat, and
+*Roadmap* maps to planned work that has not shipped.
 
 ### 1. Coding & agent work (software done by agents)
 
@@ -61,9 +63,10 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
   repository, runs your verification command, and hands back a reviewable change
   with evidence. Good for bug fixes, refactors, small features, cleanup of
   AI-generated "slop" codebases, and one-off scripts.
-- **Availability:** *Available now* — coding-runtime work (Pylon/Probe) and the
-  Forge work-order loop are shipped; a desktop GUI to watch/steer sessions is
-  *Available soon*.
+- **Availability:** *Operator-assisted* — coding-runtime work (Pylon/Probe) and
+  the Forge work-order loop are shipped, but packaging this as a priced
+  intake → delivery → accepted-outcome → receipt business product is still
+  operator-assisted; a desktop GUI to watch/steer sessions remains yellow.
 - **Typical quick win:** "Fix this failing test suite," "refactor this messy
   module," or "add this one feature with passing tests" — delivered with a diff
   and verification evidence.
@@ -73,11 +76,11 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
 - **What you get:** Access to open-weight model inference through OpenAgents
   (e.g., Gemini and Fireworks-hosted open models like DeepSeek), with a free
   taste to start and credit-funded metered usage after that.
-- **Availability:** *Available now* — free inference, a verified Fireworks
-  open-model provider connection, and a USD-credit→usage loop are live and
-  proven end-to-end in staging. A single OpenAI/Anthropic-compatible
-  credit-balance gateway is *Roadmap* (a realistic few-days lift on top of the
-  shipped pieces).
+- **Availability:** *Operator-assisted* — a bounded free inference taste and
+  verified provider connections are available, but the full paid
+  card/Bitcoin→credit→inference-spend path is not collectable end-to-end in
+  production yet. A single OpenAI/Anthropic-compatible credit-balance gateway is
+  *Roadmap*.
 - **Typical quick win:** "Run this batch of summaries/classifications/extractions
   through a model and hand back the results," or wire a model behind one of your
   internal tools.
@@ -87,9 +90,9 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
 - **What you get:** An Autopilot Site — a built site served at a stable URL,
   with optional custom branded hostnames, native email sequences, and built-in
   referral links.
-- **Availability:** *Available soon* — site build/host, custom hostnames, email
-  sequences, and referral streams are partial/flag-gated today (yellow). Treat
-  these as "available with a caveat / behind a flag," not a finished
+- **Availability:** *Operator-assisted* — site build/host, custom hostnames,
+  email sequences, and referral streams are partial/flag-gated today (yellow).
+  Treat these as "available with a caveat / behind a flag," not a finished
   self-serve product.
 - **Typical quick win:** A branded landing page plus a welcome-email sequence for
   a launch or campaign.
@@ -102,11 +105,11 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
   ad campaigns), **legal** (forms/intake copilot, review-gated, no legal advice),
   and **marketing agency** (white-label landing pages + emails). Every stage
   keeps a human-review gate before anything publishes or spends.
-- **Availability:** *Available soon* — the Forge automations surface, prefilled
-  vertical workspaces, and the work-order control plane are shipped as operator
-  tools; the fully self-serve "all-in-one business system" framing is *Roadmap*.
-  Today this is delivered as a guided, operator-assisted workspace, not a
-  one-click product.
+- **Availability:** *Operator-assisted* — the Forge automations surface,
+  prefilled vertical workspaces, and the work-order control plane are shipped as
+  operator tools; the fully self-serve "all-in-one business system" framing is
+  *Roadmap*. Today this is delivered as a guided, operator-assisted workspace,
+  not a one-click product.
 - **Typical quick win:** One prefilled workspace seeded for your vertical with a
   first real work item run through it (e.g., a draft inventory-aware campaign or
   an NDA intake packet) — drafted, never auto-published.
@@ -117,11 +120,10 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
   including scoped, verified training runs and a public device-capability
   dataset. Fine-tuning and rentable sandbox compute as buyable primitives are
   being stood up (jobs already queue in staging).
-- **Availability:** *Available now* for scoped decentralized training runs and
-  verification classes (green). *Roadmap* for fine-tuning-as-a-service and
-  metered sandbox compute as self-serve products — early surfaces exist
-  (fine-tuning jobs and sandboxes provision in staging) but are not yet a
-  finished buy-it-now offering.
+- **Availability:** *Operator-assisted* — scoped decentralized training runs
+  and verification classes are green, but fine-tuning-as-a-service and metered
+  sandbox compute are not finished buy-it-now offerings. The public
+  device-capability dataset is also roadmap/postponed.
 - **Typical quick win:** A bounded, verified training or compute task with a
   reported result and receipt — best scoped with us directly first.
 
@@ -142,20 +144,20 @@ maps to shipped/green, *Available soon* to partial/flag-gated/yellow, and
   (Money Dev Kit), reliable tips with BOLT 12 + offline Spark fallback, and
   USD-credit funding for usage. You can fund accounts and pay for work, including
   in sats.
-- **Availability:** *Available now* for the USD-credit→usage loop and reliable
-  tips/offline fallback (green). *Available soon* for the broader self-custodial
-  wallet flow (MDK, yellow) and credit-card purchase of Autopilot credits
-  (*Roadmap*). Native-sat live settlement for general payouts is the next
-  proof we're landing; treat it as "available soon, ask us."
+- **Availability:** *Operator-assisted* — reliable tips/offline fallback are
+  green and parts of the credit usage loop have receipts, but the broader
+  self-custodial wallet flow, credit-card purchase of Autopilot credits, and
+  native-sat live settlement for general payouts are not broadly green yet.
+  Treat paid work as scoped with an explicit receipt plan before funding.
 - **Typical quick win:** Fund an account and run paid work end-to-end with a
   dereferenceable receipt.
 
-> **Honesty note:** *Available now* means we have run it end-to-end (most of the
-> money loop above is proven live in staging with real receipts). *Available
-> soon* means it works behind a flag or with a caveat. *Roadmap* means we believe
-> we can stand it up quickly but haven't shipped it yet. If an offering you want
-> is *soon* or *roadmap*, we'll say so in writing and scope the smallest honest
-> version.
+> **Honesty note:** *Available now* means the sellable surface is green for the
+> claim being made. *Operator-assisted* means useful pieces are live, but the
+> delivery still needs a human/operator path, a flag, or a written caveat.
+> *Roadmap* means it has not shipped yet. If an offering you want is
+> *Operator-assisted* or *Roadmap*, we'll say so in writing and scope the
+> smallest honest version.
 
 ---
 
@@ -201,9 +203,10 @@ business automation (4).
 10. For ongoing work, do you want usage-metered, a fixed monthly scope, or
     pay-per-accepted-outcome?
 
-*Branch:* if they want Bitcoin, note it — reliable tips and the credit loop are
-live; native-sat live settlement for general payout is "available soon," so set
-expectations honestly.
+*Branch:* if they want Bitcoin, note it — reliable tips are live, while broader
+wallet, credit-purchase, and native-sat settlement paths are operator-assisted
+or roadmap depending on the exact work. Set expectations honestly before
+funding.
 
 ### E. Data & access constraints
 
@@ -223,8 +226,8 @@ expectations honestly.
 ### G. Fit — pick 1–2 offerings
 
 16. Based on the above, which **one or two** offerings from the menu fit best?
-    State them and the availability (now / soon / roadmap) so the human knows
-    what's real today.
+    State them and the availability (available now / operator-assisted /
+    roadmap) so the human knows what's real today.
 17. Confirm: does the human want to start with this quick win? If yes, fill the
     Output Spec Template.
 
@@ -269,8 +272,8 @@ OpenAgents. Keep it concrete and skimmable.
 - Why it matters now:
 
 ## 3. Chosen offerings (1–2)
-- Offering A: <name> — availability: <now / soon / roadmap>
-- Offering B (optional): <name> — availability: <now / soon / roadmap>
+- Offering A: <name> — availability: <available now / operator-assisted / roadmap>
+- Offering B (optional): <name> — availability: <available now / operator-assisted / roadmap>
 
 ## 4. Quick win (Day 1)
 - The first small task to deliver:
@@ -307,5 +310,5 @@ OpenAgents. Keep it concrete and skimmable.
 
 ---
 
-*Be honest about what's shipped vs. soon vs. roadmap. The fastest path to a good
-relationship is a real quick win and clear expectations.*
+*Be honest about what's shipped, operator-assisted, or roadmap. The fastest path
+to a good relationship is a real quick win and clear expectations.*

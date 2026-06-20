@@ -97,3 +97,19 @@ accepted -> paid lifecycle finishes.
 
 What remains for the receipt blocker:
 - An operator must actually run this new tool on a real paid run and commit the generated dereferenceable receipt fixture.
+
+## Update 2026-06-20 — public copy/evidence honesty pass
+
+Advances the same yellow promise without a green flip by tightening the public
+business copy and evidence refs:
+
+- The product-promise registry now points at the real public page and route
+  test: `apps/openagents.com/apps/web/src/page/business.ts` and
+  `apps/openagents.com/apps/web/src/business-route.test.ts`.
+- The public `/business` page and this intake spec now distinguish
+  `Available now`, `Operator-assisted`, and `Roadmap` offerings. Yellow,
+  flagged, or manually delivered business products no longer ride under a broad
+  "available now" badge just because some backing primitives are green.
+- The credit/pricing copy now says the full card/Bitcoin-to-credit-to-inference
+  loop is still being closed for production and that paid work is scoped with an
+  explicit receipt plan before funding.

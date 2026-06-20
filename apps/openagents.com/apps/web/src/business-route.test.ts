@@ -113,9 +113,12 @@ describe('business route', () => {
       'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
     )
 
-    // Exact pricing framing required by the issue.
+    // Pricing framing stays honest until the paid credit loop is collectable.
     expect(rendered).toContain(
-      'Usage is billed as clear token-based credits — buy credits and spend them as you go. No monthly AI subscription, and your credits never expire.',
+      'Usage is framed as clear token-based credits where the paid loop is available.',
+    )
+    expect(rendered).toContain(
+      'The broader card/Bitcoin-to-credit-to-inference path is still being closed for production',
     )
   })
 
@@ -129,9 +132,17 @@ describe('business route', () => {
     expect(rendered).toContain('Autopilot business automation')
     expect(rendered).toContain('Payments rails')
 
-    // Honest now/soon/roadmap framing is present (no overselling).
+    // Honest available-now/operator-assisted framing is present (no overselling).
     expect(rendered).toContain('Available now')
-    expect(rendered).toContain('Available soon')
+    expect(rendered).toContain('Operator-assisted')
+    expect(rendered).toContain('Live now:')
+    expect(rendered).toContain('Current caveat:')
+    expect(rendered).toContain(
+      'The full paid card/Bitcoin-to-credit-to-inference loop is not collectable end-to-end in production yet.',
+    )
+    expect(rendered).toContain(
+      'Packaging this as a priced intake-to-receipt business product is operator-assisted today.',
+    )
   })
 
   test('renders the quick-win to Autopilot ladder', () => {

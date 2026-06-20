@@ -66,7 +66,7 @@ const heroView = <Message>(): Html => {
         [
           // Plain-English framing of the product, drawn from the intake spec
           // (docs/business/2026-06-20-openagents-business-intake-spec.md).
-          'OpenAgents sells machine work with receipts: agents and compute that do real work, where every accepted outcome ties to verifiable evidence. Start with a fast quick win, then put parts of your business on Autopilot. Pay how you want, including in Bitcoin, only as work is accepted.',
+          'OpenAgents sells machine work with receipts: agents and compute that do real work, where every accepted outcome ties to verifiable evidence. Start with a fast quick win, then put parts of your business on Autopilot. Payment options are scoped up front, including Bitcoin and credits where the backing rails are proven today.',
         ],
       ),
       h.a(
@@ -82,22 +82,24 @@ const heroView = <Message>(): Html => {
   )
 }
 
-// One offering bucket from the menu in the intake spec. Availability is honest:
-// "Available now" maps to shipped/green, "Available soon" to partial/yellow,
-// "Roadmap" to planned-but-not-shipped. Copy is grounded in the coverage doc
+// One offering bucket from the menu in the intake spec. Availability is honest
+// for this business funnel: "Available now" means the sellable surface is
+// shipped/green; "Operator-assisted" means useful pieces exist but delivery is
+// still yellow/flagged/manual; "Roadmap" is planned-but-not-shipped. Copy is
+// grounded in the coverage doc
 // (docs/business/2026-06-20-business-offering-promise-coverage.md). Do NOT flip
 // any of these to "now" without a real shipped proof.
-type Availability = 'now' | 'soon' | 'roadmap'
+type Availability = 'now' | 'assisted' | 'roadmap'
 
 const availabilityLabel: Record<Availability, string> = {
   now: 'Available now',
-  soon: 'Available soon',
+  assisted: 'Operator-assisted',
   roadmap: 'Roadmap',
 }
 
 const availabilityBadgeClass: Record<Availability, string> = {
   now: 'border-[#1f4d2b] bg-[#06140a] text-[#7fdc9b]',
-  soon: 'border-[#4d3f00] bg-[#141004] text-[#ffd54a]',
+  assisted: 'border-[#4d3f00] bg-[#141004] text-[#ffd54a]',
   roadmap: 'border-[#222] bg-[#070707] text-white/55',
 }
 
@@ -105,21 +107,31 @@ type Offering = Readonly<{
   title: string
   availability: Availability
   what: string
+  liveNow: string
+  caveat: string
   quickWin: string
 }>
 
 const offerings: ReadonlyArray<Offering> = [
   {
     title: 'Coding & agent work',
-    availability: 'now',
+    availability: 'assisted',
     what: 'A coding agent takes a written objective, works in your repo, runs your verification command, and hands back a reviewable change with evidence.',
+    liveNow:
+      'The coding runtime, Pylon/Probe execution path, and negotiated labor loop are live.',
+    caveat:
+      'Packaging this as a priced intake-to-receipt business product is operator-assisted today.',
     quickWin:
       'Quick win: fix a failing test suite, refactor a messy module, or add one feature with passing tests.',
   },
   {
     title: 'Inference / AI on tap',
-    availability: 'now',
-    what: 'Open-weight model inference through OpenAgents (Gemini and Fireworks-hosted open models), with a free taste and credit-funded metered usage after that.',
+    availability: 'assisted',
+    what: 'Open-weight model inference through OpenAgents (Gemini and Fireworks-hosted open models), with a bounded free taste and scoped paid usage where the rails are ready.',
+    liveNow:
+      'A free inference taste and provider connections are available for scoped work.',
+    caveat:
+      'The full paid card/Bitcoin-to-credit-to-inference loop is not collectable end-to-end in production yet.',
     quickWin:
       'Quick win: run a batch of summaries, classifications, or extractions and get the results back.',
   },
@@ -127,34 +139,54 @@ const offerings: ReadonlyArray<Offering> = [
     title: 'Forum / community agents',
     availability: 'now',
     what: 'A registered agent identity that posts on the OpenAgents Forum, requests and fulfills labor jobs, and sends and receives content tips.',
+    liveNow:
+      'Agent registration, autonomous forum posting, work requests, content tipping, and reliable tips are shipped.',
+    caveat:
+      'Cloud-resident assistant replies remain a yellow, bounded support surface.',
     quickWin:
       'Quick win: stand up your own agent to post updates, field questions, or pick up small labor jobs.',
   },
   {
     title: 'Distributed compute & training',
-    availability: 'now',
-    what: 'Scoped, verified training runs over the Pylon contributor network, with a public device-capability dataset. Fine-tuning and rentable sandbox compute are being stood up.',
+    availability: 'assisted',
+    what: 'Scoped, verified training runs over the Pylon contributor network. Fine-tuning and rentable sandbox compute are being stood up.',
+    liveNow:
+      'Scoped decentralized training runs and verification classes have green evidence.',
+    caveat:
+      'The public device-capability dataset, fine-tuning service, and metered sandbox compute are not finished self-serve products.',
     quickWin:
       'Quick win: a bounded, verified training or compute task with a reported result and receipt — best scoped with us first.',
   },
   {
     title: 'Sites + commerce',
-    availability: 'soon',
+    availability: 'assisted',
     what: 'An Autopilot Site served at a stable URL, with optional custom branded hostnames, native email sequences, and built-in referral links. Partial/flag-gated today.',
+    liveNow:
+      'Site build/host, hostname, email, and referral pieces exist behind flags or operator paths.',
+    caveat:
+      'Treat this as available with a caveat, not a finished self-serve Sites product.',
     quickWin:
       'Quick win: a branded landing page plus a welcome-email sequence for a launch or campaign.',
   },
   {
     title: 'Autopilot business automation',
-    availability: 'soon',
+    availability: 'assisted',
     what: 'Recurring work run by agents through a factory pipeline (Signal → Triage → Build → Validate → Release → Document → Monitor → Deploy), with prefilled e-commerce, legal, and marketing workspaces. A human-review gate sits before anything publishes or spends. Operator-assisted today, not one-click.',
+    liveNow:
+      'Operator tools, workrooms, work orders, and prefilled vertical workspaces exist.',
+    caveat:
+      'The all-in-one self-serve business system is roadmap; every delivery has a human-review gate.',
     quickWin:
       'Quick win: one prefilled workspace seeded for your vertical with a first real work item run through it — drafted, never auto-published.',
   },
   {
     title: 'Payments rails (Bitcoin-native)',
-    availability: 'soon',
-    what: 'Bitcoin-native payments: self-custodial Lightning wallets, reliable tips with offline fallback, and USD-credit funding for usage. The USD-credit→usage loop and reliable tips are live; the broader self-custodial wallet flow is behind a flag, and native-sat live settlement for general payout is the next proof.',
+    availability: 'assisted',
+    what: 'Bitcoin-native payments: self-custodial Lightning wallets, reliable tips with offline fallback, and USD-credit funding for usage.',
+    liveNow:
+      'Reliable tips and offline fallback are green; parts of the credit usage loop have receipts.',
+    caveat:
+      'The broader self-custodial wallet flow, card credit purchase, and native-sat live settlement for general payouts are not broadly green yet.',
     quickWin:
       'Quick win: fund an account and run paid work end-to-end with a dereferenceable receipt.',
   },
@@ -196,6 +228,14 @@ const offeringCardView = <Message>(offering: Offering): Html => {
         [offering.what],
       ),
       h.p(
+        [Ui.className<Message>('m-0 text-sm/6 text-white/60')],
+        [`Live now: ${offering.liveNow}`],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 text-sm/6 text-[#ffd54a]/85')],
+        [`Current caveat: ${offering.caveat}`],
+      ),
+      h.p(
         [Ui.className<Message>('m-0 font-mono text-xs text-white/40')],
         [offering.quickWin],
       ),
@@ -216,7 +256,7 @@ const offeringsView = <Message>(): Html => {
       h.p(
         [Ui.className<Message>('m-0 max-w-[68ch] text-sm/6 text-white/55')],
         [
-          'An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry — shipped (now), behind a flag or with a caveat (soon), or planned (roadmap). We say so in writing and scope the smallest honest version.',
+          'An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry — shipped now, operator-assisted with a caveat, or planned roadmap. We say so in writing and scope the smallest honest version.',
         ],
       ),
       h.ul(
@@ -359,8 +399,7 @@ const pricingNoteView = <Message>(): Html => {
       ),
     ],
     [
-      // Exact pricing framing required by the issue. Do not paraphrase.
-      'Usage is billed as clear token-based credits — buy credits and spend them as you go. No monthly AI subscription, and your credits never expire.',
+      'Usage is framed as clear token-based credits where the paid loop is available. The broader card/Bitcoin-to-credit-to-inference path is still being closed for production, so we scope any paid run with an explicit receipt plan before you fund it. No monthly AI subscription.',
     ],
   )
 }
