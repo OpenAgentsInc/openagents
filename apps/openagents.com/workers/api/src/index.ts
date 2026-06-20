@@ -291,6 +291,7 @@ import {
 import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
 import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
+import { makeHostedGeminiExecuteReadyWork } from './autopilot-hosted-gemini-executor-env'
 import {
   type AutopilotWorkOrderRecord,
   dispatchDueScheduledAutopilotWork,
@@ -6763,6 +6764,13 @@ const agentSearchRoutes = makeAgentSearchRoutes({
 const autopilotWorkRouteDependencies = {
   agentStore: (env: WorkerBindings) =>
     makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  // Hosted Gemini executor binding (api.hosted_gemini.v1, yellow). DOUBLE-gated
+  // and INERT by default: resolves an executor ONLY when
+  // HOSTED_GEMINI_EXECUTOR_ENABLED is armed AND VERTEX_SA_KEY is present;
+  // otherwise it resolves `undefined` (no execution, no closeout) — exactly the
+  // prior behaviour when no executor was wired. Reads the config off the live
+  // `Env` the route already receives; carries no secret into any closeout.
+  executeReadyWork: makeHostedGeminiExecuteReadyWork(),
   l402SigningBoundary: (env: WorkerBindings) =>
     forumL402SigningBoundaryForEnv(env),
   makeBuyerPaymentLedgerStore: (env: WorkerBindings) =>
@@ -6791,7 +6799,7 @@ const autopilotWorkRouteDependencies = {
     ),
 }
 
-const autopilotWorkRoutes = makeAutopilotWorkRoutes<WorkerBindings>(
+const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(
   autopilotWorkRouteDependencies,
 )
 

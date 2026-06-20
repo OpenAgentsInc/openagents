@@ -6,6 +6,7 @@ import {
   type AgentRegistrationStore,
 } from './agent-registration'
 import { createHostedGeminiExecutorBinding } from './autopilot-hosted-gemini-binding'
+import { makeHostedGeminiExecuteReadyWork } from './autopilot-hosted-gemini-executor-env'
 import {
   createHostedGeminiWorkExecutor,
   type HostedGeminiInferenceCaller,
@@ -3812,6 +3813,62 @@ describe('Autopilot work routes', () => {
     expect(paid.status).toBe(200)
     expect(paidJson.work?.state).toBe('paid_ready')
     expect(paidJson.work?.executionCloseout).toBeNull()
+  })
+
+  test('env-gated hosted Gemini executor delivers end-to-end through the route harness when the env is armed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'public-safe hosted Gemini closeout summary',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 7, promptTokens: 11, totalTokens: 18 },
+    })
+    // Drive the SAME env seam that index.ts wires, with the live env armed
+    // (flag on + secret present) and a spy adapter injected for the test.
+    const resolve = makeHostedGeminiExecuteReadyWork({ buildAdapter: () => adapter })
+    const armedEnv = {
+      HOSTED_GEMINI_EXECUTOR_ENABLED: 'true',
+      VERTEX_SA_KEY: '{"client_email":"x"}',
+    }
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      input => resolve(armedEnv, input),
+      'idem-autopilot-work-hosted-gemini-env-armed',
+      'payment_proof.autopilot_work.hosted_gemini_env_armed',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('delivered')
+    expect(paidJson.work?.executionCloseout).toMatchObject({
+      publicSafe: true,
+      runnerKind: 'hosted_gemini',
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.stream).toBe(false)
+  })
+
+  test('env-gated hosted Gemini executor stays INERT (no delivery, adapter untouched) when the flag is off', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'must never run',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+    })
+    const resolve = makeHostedGeminiExecuteReadyWork({ buildAdapter: () => adapter })
+    // Secret present but the flag is OFF: the seam stays INERT (the prod default).
+    const inertEnv = { VERTEX_SA_KEY: '{"client_email":"x"}' }
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      input => resolve(inertEnv, input),
+      'idem-autopilot-work-hosted-gemini-env-inert',
+      'payment_proof.autopilot_work.hosted_gemini_env_inert',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('paid_ready')
+    expect(paidJson.work?.executionCloseout).toBeNull()
+    expect(requests).toHaveLength(0)
   })
 
   test('keeps MDK checkout proof retries payment-required until checkout verification is wired', async () => {
