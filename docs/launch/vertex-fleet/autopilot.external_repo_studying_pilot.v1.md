@@ -773,3 +773,68 @@ The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missi
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): combined review-intake binding (all three review gates at once)
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The two earlier review bindings each closed only SOME of the privacy-review
+preflight's three refs-only gates: `review<->policy` derives the DPA + retention
+refs but still lets a caller pass an arbitrary `customerAuthorizationRef`, and
+`review<->authorization` derives the `customerAuthorizationRef` but still lets a
+caller pass arbitrary DPA / retention refs. So a single caller composing one
+binding by hand could STILL forge whichever ref that binding left open. Nothing
+yet derived ALL THREE refs in one place — exactly the residual seam the combined
+`upload<->intake` binding closed for the self-serve upload preflight's two gates.
+This change adds the analogous composition so the review has NO forgeable ref
+input at all.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-review-intake-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyReviewIntakeBinding(...)`
+  - Schema `openagents.external_repo_study_review_intake_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes the published policy registry + `policyRef`, the customer-authorization
+    registry + candidate ref, and a review request **with all three refs
+    (`dataProcessingAgreementRef`, `retentionPolicyRef`,
+    `customerAuthorizationRef`) omitted from the input type** (`Omit<…>`). It
+    derives the DPA + retention refs from a KNOWN published policy version
+    (`isPublishedExternalRepoStudyPrivacyPolicyRef`) AND the lawful-basis ref from
+    a registry-verified ACTIVE authorization
+    (`isActiveCustomerAuthorizationRef`) for the same customer + repo, then builds
+    the review preflight from all three. `bound_held` requires BOTH sources
+    genuinely backed; each gate independently controls its own refs, so a failure
+    in one source blocks only that gate (the validator asserts an unbacked source
+    derives no ref and never leaves the review's gate satisfied).
+  - **Inert by construction**: `reviewCleared` and `effectsApplied` are ALWAYS
+    false (asserted on both the binding and the nested review preflight);
+    `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
+    are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
+    `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-review-intake-binding.test.ts`
+  — 8 passing tests (all-three-gates bound + inert, forged-policy→DPA/retention
+  unbound while authorization still derived, forged-authorization→lawful-basis
+  unbound while policy still derived, withdrawn-authorization unbound, customer
+  mismatch, armed-still-inert, OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+With this, ALL THREE refs-only gates of the privacy-review preflight are now
+derived in a single binding from verified, content-bound sources — no forgeable
+ref input remains on the privacy-review path. The binding is still the
+*decision/control* layer only. The privacy-policy blocker stays listed because it
+still requires, all owner/legal-gated and out of scope here: legal/owner
+ratification of the policy text; a real human/legal review against a real customer
+study (not a ref check); durable, access-controlled storage that enforces the
+declared retention window and real revocation; and an owner-signed armed clearance
+with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
+remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
