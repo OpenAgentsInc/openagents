@@ -346,3 +346,50 @@ promise state or blocker list was changed. What genuinely remains is identical t
 the checkpoint section above: a window sealed end-to-end against a real remote
 content-addressed checkpoint store, with the read-back actually fetched and
 re-hashed, feeding this emitter to produce a published receipt.
+
+## 2026-06-20 durable checkpoint seal receipt verifier
+
+Blocker advanced: **`blocker.product_promises.durable_checkpoint_seal_missing`**
+(still listed).
+
+All three blockers gained a receipt EMITTER (the production side: the artifact the
+runtime publishes once the real operation happens), but nothing existed on the
+CONSUMPTION side. A consumer that later dereferences a published receipt must treat
+it as untrusted input and confirm it is authentic and self-consistent *before*
+relying on it (e.g. before any projection flag could ever flip on its strength).
+Decoding alone is insufficient: the receipt schema pins the literal `outcome`,
+`publicSafe`, `blockerRef`, and schema versions, but it does not bind the
+deterministic content-addressed `receiptRef` to its `windowRef` +
+`checkpointDigestRef`, nor re-check that the digest is content-addressed or that
+replication meets the durable minimum — a forged/tampered receipt can decode
+cleanly while carrying a mismatched ref, a non-content-addressed digest, or
+sub-minimum replication. This change supplies that missing verifier:
+
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-verifier.ts`
+  - `verifyDurableCheckpointSealReceipt` /
+    `verifyUntrustedDurableCheckpointSealReceipt`: pure verifiers returning a
+    `verified` vs `not_verified` verdict with enumerated reasons. They re-derive
+    the canonical receipt ref from the receipt's own window/digest fields and
+    confirm it matches, re-check that the digest is content-addressed, and
+    re-check that replication meets the durable minimum. They **fail toward
+    `not_verified`** — a malformed, ref-mismatched, non-content-addressed, or
+    under-replicated receipt is never reported as verified — mirroring the seal
+    predicate's fail-toward-HOLD posture.
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-verifier.test.ts`
+  - 7 tests: a genuine emitted receipt verifies (trusted + untrusted-decode
+    paths); ref mismatch, non-content-addressed digest, and sub-minimum
+    replication each fail to verify; a malformed receipt and a forged-outcome
+    receipt that does not decode each fail toward `not_verified`.
+- `training-marathon-operations.ts` now lists the verifier module in the
+  checkpoint surface `sourceRefs`. All projection flags stay false — no window has
+  been sealed on a real remote content-addressed checkpoint store, so there is no
+  real receipt to verify yet.
+
+This is contract-level only: a `verified` verdict reports a published receipt is
+internally authentic and consistent with the emitter invariants. It does **not**
+assert any real remote checkpoint store was read back, and grants no dispatch,
+settlement, storage-backend, promise-state, or green-claim authority. No promise
+state or blocker list was changed. `durable_checkpoint_seal_missing` stays listed:
+what remains is the end-to-end seal against a real remote content-addressed
+checkpoint store (read-back actually fetched and re-hashed) producing a published
+receipt that this verifier would then confirm.
