@@ -43,6 +43,11 @@ import {
   isSignatureUsageMeteringEnabled,
 } from './signature-usage-metering-routes'
 import {
+  MobileWorkroomApprovalProjectionEndpoint,
+  handleMobileWorkroomApprovalProjectionApi,
+  isMobileWorkroomApprovalProjectionEnabled,
+} from './mobile-workroom-approval-projection-routes'
+import {
   VoiceProgramIngestEndpoint,
   handleVoiceProgramIngestApi,
   isVoiceProgramIngestEnabled,
@@ -7977,6 +7982,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isPylonMultiEarningProjectionEnabled(
           env.PYLON_MULTI_EARNING_PROJECTION_ENABLED,
         ),
+      }),
+  },
+  {
+    // Mobile workroom approval projection (promise
+    // mobile.voice_approval_companion.v1, planned). INERT by default: the store
+    // is empty unless MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED is armed. When
+    // armed it returns the existing read-only mobile approval-card projection:
+    // no approval, execution, notification, payment, provider mutation, runner
+    // launch, or public-claim upgrade. This clears ONLY
+    // blocker.product_promises.mobile_projection_missing; voice-command
+    // approval receipts and cross-device sync stay open, and the promise stays
+    // planned. GET only.
+    path: MobileWorkroomApprovalProjectionEndpoint,
+    handler: (request, env) =>
+      handleMobileWorkroomApprovalProjectionApi(request, {
+        enabled: isMobileWorkroomApprovalProjectionEnabled(
+          env.MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED,
+        ),
+        nowIso: currentIsoTimestamp,
       }),
   },
   {

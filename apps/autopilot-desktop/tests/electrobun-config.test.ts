@@ -4,10 +4,7 @@ import { describe, expect, test } from "bun:test"
 
 import { DESKTOP_RPC_MAX_REQUEST_TIME_MS } from "../src/shared/rpc"
 import { desktopApplicationMenu } from "../src/bun/application-menu"
-import config from "../electrobun.config"
-
-const mokshaAssetSource =
-  "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha"
+import config, { mokshaAssetSource } from "../electrobun.config"
 
 describe("ElectroBun packaging", () => {
   test("uses the concise Autopilot app title", () => {

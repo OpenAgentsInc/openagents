@@ -170,6 +170,13 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
           state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
+            'route:/api/mobile/workroom-approval-projection',
+          ]),
+          blockerRefs: expect.not.arrayContaining([
+            'blocker.product_promises.mobile_projection_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'pylon.no_dark_capacity_accounting.v1',

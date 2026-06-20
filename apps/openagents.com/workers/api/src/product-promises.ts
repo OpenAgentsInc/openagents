@@ -1446,20 +1446,24 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Voice and mobile should let users inspect workrooms, review pending approvals, issue bounded commands, and see the same approval receipts without bypassing server-side policy.',
         safeCopy:
-          'Voice/mobile approval is planned. Any current voice or mobile language must say approvals remain server-side and receipt-backed.',
+          'Voice/mobile approval is planned. A read-only mobile workroom approval projection is wired at GET /api/mobile/workroom-approval-projection and defaults inert; any current voice or mobile language must say approvals remain server-side and receipt-backed.',
         unsafeCopy:
           'Do not claim a voice transcript or mobile tap can directly mutate CRM, send email, create PRs, spend money, launch paid runners, or publish claims.',
         evidenceRefs: [
           'docs/promises/2026-06-09-product-promises-green-roadmap.md',
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
+          'apps/openagents.com/workers/api/src/omni-mobile-workroom-approval-cards.ts',
+          'apps/openagents.com/workers/api/src/omni-mobile-workroom-approval-cards.test.ts',
+          'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
+          'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.test.ts',
+          'route:/api/mobile/workroom-approval-projection',
         ],
         blockerRefs: [
-          'blocker.product_promises.mobile_projection_missing',
           'blocker.product_promises.voice_command_approval_receipts_missing',
           'blocker.product_promises.cross_device_workroom_sync_missing',
         ],
         verification:
-          'Green requires a voice command or mobile approval flow that records transcript/source refs, proposed action, approval decision, and matching workroom receipt.',
+          'Green requires a voice command or mobile approval flow that records transcript/source refs, proposed action, approval decision, cross-device workroom sync, and matching workroom receipt.',
         authorityBoundary:
           'Voice transcripts are evidence of user intent, not final mutation, spend, deploy, or publication authority.',
       },
