@@ -156,6 +156,40 @@ criterion + owed artifact, the armed digest renders CLEARS with no outstanding
 artifacts and no unchecked markers, no per-component amounts leak (public-safe),
 and the render is deterministic with no trailing whitespace.
 
+## Follow-up: demand-provenance binding for the gate (this run)
+
+`apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-demand-provenance.ts`
+— a PURE derivation that resolves the acceptance gate's `demand_provenance_external`
+criterion from the REAL `proof.demand_provenance.v1` surface instead of a reviewer
+hand-asserting the value. The gate carries a free-union `demandProvenance` evidence
+field and the manifest already names `proof.demand_provenance.v1` as its governing
+ref, but nothing BOUND the two — a reviewer (or future armed run) could type
+`external_market` by hand with no link to the actual provenance projection, exactly
+the demand-provenance theater the capstone's real-business-receipt blocker guards
+against.
+
+`deriveComposedRunDemandProvenance(signal)` maps the provenance surface's own rule
+(`no_external_dollar_no_demand_claim`, surfaced as `externalDemandClaimAllowed`) plus
+the accepted-outcome totals to the gate's union: `external_market` when the surface
+permits the external-demand claim, `internal_first_party` when only internal
+first-party outcomes exist (plumbing proof, not market proof), `unknown` when
+nothing is labeled. `demandProvenanceSignalFromProjection(projection)` lifts a live
+`DemandProvenanceProjection` into the narrow public-safe signal;
+`withDerivedDemandProvenance(evidence, signal)` rebinds gate evidence's
+`demandProvenance` from the surface — overwriting any hand-asserted value. It
+INTRODUCES no new demand rule (it honors the projection's) and DECIDES NOTHING
+IRREVERSIBLE: flips no promise, drops no blocker, moves no money. Against the current
+internal-only surface the derivation returns a non-external provenance, so the gate's
+external-demand criterion stays UNSATISFIED — the honest status quo, now read from
+the governing surface rather than asserted.
+
+Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-demand-provenance.test.ts`
+(5 tests) — the live internal-only surface derives non-external, external accepted-
+outcome demand derives `external_market` and satisfies the criterion, internal-only
+derives `internal_first_party`, unlabeled derives `unknown`, and
+`withDerivedDemandProvenance` corrects a hand-asserted `external_market` lie back to
+the surface truth (gate stays uncleared) while a real-external surface satisfies it.
+
 ## What remains (blocker stays listed)
 
 This is the receipt **shape**, reconciled over an INERT execution. The blocker stays
