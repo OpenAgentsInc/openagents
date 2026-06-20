@@ -25,6 +25,11 @@ import { Effect, Schema as S } from 'effect'
 import { noStoreJsonResponse } from '../http/responses'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
+import {
+  type CloudMeteringDeps,
+  type CloudMeteringOutcome,
+  settleCloudPrimitiveCharge,
+} from './cloud-metering'
 
 // FLAG ---------------------------------------------------------------------
 // Parse the CLOUD_FINE_TUNING_ENABLED flag. Default OFF: anything other than an
@@ -95,6 +100,14 @@ export type FineTuningRuntimeAdapter = Readonly<{
       request: FineTuningJobRequest
     }>,
   ) => Effect.Effect<FineTuningJob, FineTuningAdapterError>
+  // Lifecycle READ seam (#5516). Resolves the current state of a previously
+  // submitted job for the owning account, or undefined when the job is unknown
+  // to this account (also the cross-account isolation point: a job is only
+  // visible to the account that submitted it). A real adapter reads the training
+  // lane's job store; the stub has no persistence and always returns undefined.
+  get: (
+    input: Readonly<{ jobId: string; accountRef: string }>,
+  ) => Effect.Effect<FineTuningJob | undefined, FineTuningAdapterError>
 }>
 
 // Typed adapter failure so the route maps runtime problems to a stable JSON
@@ -134,7 +147,15 @@ export const stubFineTuningAdapter: FineTuningRuntimeAdapter = {
         createdAt: currentIsoTimestamp(),
       }),
     ),
+  // The stub has no persistence: a submitted job is not retained, so a later
+  // status read resolves to undefined (the route maps that to 404). #5516's real
+  // adapter reads the training-lane job store.
+  get: () => Effect.succeed(undefined),
 }
+
+// Public-safe primitive tag for fine-tuning charges, receipt refs, and metering
+// diagnostics. Shared with the cloud metering seam (`cloud-metering.ts`).
+export const FINE_TUNING_PRIMITIVE = 'cloud.fine_tuning.job'
 
 // METERING / RECEIPT HOOK SEAM --------------------------------------------
 // The single typed point where #5516's billing path decrements credits for a
@@ -183,6 +204,67 @@ export const stubFineTuningMeteringHook: FineTuningMeteringHook = context =>
       receiptRef: null,
     } satisfies FineTuningMeteringOutcome
   })
+
+// LIVE LEDGER METERING (#5516) --------------------------------------------
+// The real receipt-first credit-debit hook the no-op stub becomes once a
+// fine-tune job reports REAL runtime usage. It computes the charge with an
+// INJECTED pure pricing function (`priceUsd`, never a hardcoded price, never an
+// estimate) from the runtime usage, converts to integer msat, and decrements the
+// account's credit balance through the shared cloud-metering seam
+// (`settleCloudPrimitiveCharge` -> `payments-ledger.ts`). Idempotent per job id,
+// never goes negative.
+//
+// HONEST SCOPE: wiring this hook does NOT make fine-tuning a live billed product
+// — the scaffold keeps defaulting to the stub, and this only ever charges when a
+// REAL job completes with usage AND #5516 supplies both a real runtime adapter
+// and a real `priceUsd`. The promise STAYS red; a green flip requires a
+// dereferenceable PAID fine-tuning receipt + owner sign-off.
+export type FineTuningLedgerMeteringDeps = Readonly<
+  CloudMeteringDeps & {
+    // Pure pricing: REAL runtime usage -> USD charge. No default — a live hook
+    // MUST supply the real price basis; there is no implicit pricing.
+    priceUsd: (
+      context: FineTuningMeteringContext,
+    ) => number
+    // USD -> integer msat. Shares the inference gateway's single-source
+    // conversion so a cloud charge and an inference charge convert identically.
+    usdToMsat: (chargeUsd: number) => number
+  }
+>
+
+export const makeLedgerFineTuningMeteringHook = (
+  deps: FineTuningLedgerMeteringDeps,
+): FineTuningMeteringHook => {
+  return context =>
+    Effect.gen(function* () {
+      // At intake there is no runtime usage yet (no run), so there is nothing to
+      // charge — report metered:false without writing a ledger row. The per-run
+      // charge fires only once the runtime reports real usage on this job.
+      if (context.usage === undefined) {
+        return {
+          metered: false,
+          receiptRef: null,
+        } satisfies FineTuningMeteringOutcome
+      }
+      const chargeMsat = Math.max(0, Math.ceil(deps.usdToMsat(deps.priceUsd(context))))
+      const outcome: CloudMeteringOutcome = yield* settleCloudPrimitiveCharge(
+        { db: deps.db, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
+        {
+          accountRef: context.accountRef,
+          adapterId: 'fine-tuning-runtime',
+          chargeId: context.jobId,
+          chargeMsat,
+          primitive: FINE_TUNING_PRIMITIVE,
+        },
+      )
+      // Project the scaffold's own public-safe receipt ref (the one this surface
+      // already advertises) when the debit landed; null when it did not.
+      return {
+        metered: outcome.metered,
+        receiptRef: outcome.metered ? fineTuningJobReceiptRef(context.jobId) : null,
+      } satisfies FineTuningMeteringOutcome
+    })
+}
 
 // AUTH SEAM ----------------------------------------------------------------
 // Resolves the per-account API key to an account ref. Returns undefined when the
@@ -312,5 +394,69 @@ export const handleFineTuningJobSubmit = (
       // (stub => metered:false). It NEVER claims a paid/servable result.
       metered: metering.metered,
       receipt_ref: metering.receiptRef,
+    })
+  })
+
+// ROUTE: GET /v1/fine_tuning/jobs/:jobId (OpenAI-shaped lifecycle read). INERT
+// (404) by default until the EPIC lands. Resolves the current state of a job for
+// the AUTHENTICATED account only — the adapter's `get` enforces that a job is
+// visible only to the account that submitted it (cross-account isolation). The
+// stub adapter has no persistence, so it always resolves to 404; #5516's real
+// adapter reads the training-lane job store.
+export const handleFineTuningJobGet = (
+  request: Request,
+  jobId: string,
+  deps: FineTuningServiceDeps,
+) =>
+  Effect.gen(function* () {
+    // INERT GATE.
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'fine_tuning_service_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+    }
+
+    if (jobId.trim() === '') {
+      return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+    }
+
+    const adapter = deps.adapter ?? stubFineTuningAdapter
+    const resolved = yield* adapter
+      .get({ jobId, accountRef: session.accountRef })
+      .pipe(
+        Effect.map(job => ({ ok: true as const, job })),
+        Effect.catch(error =>
+          Effect.succeed({ ok: false as const, reason: error.reason }),
+        ),
+      )
+    if (!resolved.ok) {
+      return noStoreJsonResponse(
+        { error: 'runtime_error', reason: resolved.reason },
+        { status: 502 },
+      )
+    }
+
+    if (resolved.job === undefined) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return noStoreJsonResponse({
+      object: 'fine_tuning.job',
+      id: resolved.job.jobId,
+      model: resolved.job.baseModel,
+      status: resolved.job.status,
+      fine_tuned_model: resolved.job.fineTunedModel,
+      created_at: resolved.job.createdAt,
     })
   })

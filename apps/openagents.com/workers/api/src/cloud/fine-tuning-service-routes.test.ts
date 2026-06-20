@@ -8,8 +8,10 @@ import {
   type FineTuningServiceDeps,
   FineTuningAdapterError,
   fineTuningJobReceiptRef,
+  handleFineTuningJobGet,
   handleFineTuningJobSubmit,
   isFineTuningServiceEnabled,
+  makeLedgerFineTuningMeteringHook,
   stubFineTuningAdapter,
 } from './fine-tuning-service-routes'
 
@@ -132,6 +134,8 @@ describe('POST /v1/fine_tuning/jobs', () => {
       id: 'failing',
       submit: () =>
         Effect.fail(new FineTuningAdapterError({ adapterId: 'failing', reason: 'down' })),
+      get: () =>
+        Effect.fail(new FineTuningAdapterError({ adapterId: 'failing', reason: 'down' })),
     }
     const response = await run(
       handleFineTuningJobSubmit(jobRequest(validBody), baseDeps({ adapter: failing })),
@@ -173,5 +177,115 @@ describe('POST /v1/fine_tuning/jobs', () => {
     )
     expect(job.status).toBe('queued')
     expect(job.fineTunedModel).toBeNull()
+  })
+})
+
+const jobGetRequest = (): Request =>
+  new Request('https://openagents.com/v1/fine_tuning/jobs/ftjob_fixed', {
+    method: 'GET',
+  })
+
+describe('GET /v1/fine_tuning/jobs/:jobId', () => {
+  test('is inert (404) when the flag is disabled', async () => {
+    const response = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ enabled: false })),
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('fine_tuning_service_disabled')
+  })
+
+  test('rejects an unauthenticated read with 401', async () => {
+    const response = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ authenticate: authNone })),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  test('the stub adapter has no persistence, so a read is 404 not_found', async () => {
+    const response = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps()),
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('not_found')
+  })
+
+  test('projects a resolved job for the owning account', async () => {
+    const adapter: FineTuningRuntimeAdapter = {
+      id: 'persisted',
+      submit: () => Effect.fail(new FineTuningAdapterError({ adapterId: 'persisted', reason: 'n/a' })),
+      get: ({ jobId, accountRef }) =>
+        Effect.succeed(
+          accountRef === 'agent:test-user'
+            ? {
+                jobId,
+                accountRef,
+                baseModel: 'gemini-3.5-flash',
+                datasetRef: 'dataset:abc',
+                suffix: undefined,
+                status: 'running' as const,
+                fineTunedModel: null,
+                createdAt: '2026-06-19T00:00:00.000Z',
+              }
+            : undefined,
+        ),
+    }
+    const response = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ adapter })),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.object).toBe('fine_tuning.job')
+    expect(body.id).toBe('ftjob_fixed')
+    expect(body.status).toBe('running')
+  })
+
+  test('enforces cross-account isolation (a job is 404 for a different account)', async () => {
+    const adapter: FineTuningRuntimeAdapter = {
+      id: 'persisted',
+      submit: () => Effect.fail(new FineTuningAdapterError({ adapterId: 'persisted', reason: 'n/a' })),
+      // Only the submitting account sees the job; everyone else gets undefined.
+      get: ({ accountRef }) =>
+        Effect.succeed(accountRef === 'agent:owner' ? ({} as never) : undefined),
+    }
+    const response = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ adapter })),
+    )
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('makeLedgerFineTuningMeteringHook', () => {
+  test('reports metered:false at intake (no runtime usage yet)', async () => {
+    const hook = makeLedgerFineTuningMeteringHook({
+      db: {} as D1Database,
+      priceUsd: () => 1,
+      usdToMsat: usd => Math.ceil(usd * 1000),
+    })
+    const outcome = await run(
+      hook({ accountRef: 'agent:x', jobId: 'j1', baseModel: 'm' }),
+    )
+    expect(outcome.metered).toBe(false)
+    expect(outcome.receiptRef).toBeNull()
+  })
+
+  test('a zero-usd charge is metered with a zeroCharge receipt and no debit', async () => {
+    // db is never touched because the charge rounds to 0 msat.
+    const hook = makeLedgerFineTuningMeteringHook({
+      db: {} as D1Database,
+      priceUsd: () => 0,
+      usdToMsat: usd => Math.ceil(usd * 1000),
+    })
+    const outcome = await run(
+      hook({
+        accountRef: 'agent:x',
+        jobId: 'j1',
+        baseModel: 'm',
+        usage: { trainedTokens: 1000 },
+      }),
+    )
+    expect(outcome.metered).toBe(true)
+    expect(outcome.receiptRef).toBe(fineTuningJobReceiptRef('j1'))
   })
 })

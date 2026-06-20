@@ -26,6 +26,11 @@ import { Effect, Schema as S } from 'effect'
 import { noStoreJsonResponse } from '../http/responses'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
+import {
+  type CloudMeteringDeps,
+  type CloudMeteringOutcome,
+  settleCloudPrimitiveCharge,
+} from './cloud-metering'
 
 // FLAG ---------------------------------------------------------------------
 // Parse CLOUD_SANDBOX_COMPUTE_ENABLED. Default OFF: anything other than an
@@ -100,6 +105,14 @@ export type SandboxRuntimeAdapter = Readonly<{
       request: SandboxRequest
     }>,
   ) => Effect.Effect<Sandbox, SandboxAdapterError>
+  // Lifecycle READ seam (#5517). Resolves the current state of a previously
+  // provisioned sandbox for the owning account, or undefined when the sandbox is
+  // unknown to this account (also the cross-account isolation point: a sandbox is
+  // only visible to the account that rented it). A real adapter reads the
+  // isolated-session substrate; the stub has no persistence and returns undefined.
+  get: (
+    input: Readonly<{ sandboxId: string; accountRef: string }>,
+  ) => Effect.Effect<Sandbox | undefined, SandboxAdapterError>
 }>
 
 // Typed adapter failure so the route maps runtime problems to a stable JSON
@@ -139,7 +152,15 @@ export const stubSandboxAdapter: SandboxRuntimeAdapter = {
         expiresAtHint: null,
       }),
     ),
+  // The stub has no persistence: a provisioned sandbox is not retained, so a
+  // later status read resolves to undefined (the route maps that to 404).
+  // #5517's real adapter reads the isolated-session substrate.
+  get: () => Effect.succeed(undefined),
 }
+
+// Public-safe primitive tag for sandbox charges, receipt refs, and metering
+// diagnostics. Shared with the cloud metering seam (`cloud-metering.ts`).
+export const SANDBOX_COMPUTE_PRIMITIVE = 'cloud.sandbox_compute.rental'
 
 // METERING / RECEIPT HOOK SEAM --------------------------------------------
 // The single typed point where #5517's billing path decrements credits for a
@@ -186,6 +207,61 @@ export const stubSandboxMeteringHook: SandboxMeteringHook = context =>
       receiptRef: null,
     } satisfies SandboxMeteringOutcome
   })
+
+// LIVE LEDGER METERING (#5517) --------------------------------------------
+// The real receipt-first credit-debit hook the no-op stub becomes once a sandbox
+// rental ends with REAL metered usage (wall-seconds, CPU-seconds, etc.). It
+// computes the charge with an INJECTED pure pricing function (`priceUsd`, never a
+// hardcoded price, never an estimate), converts to integer msat, and decrements
+// the account's credit balance through the shared cloud-metering seam
+// (`settleCloudPrimitiveCharge` -> `payments-ledger.ts`). Idempotent per sandbox
+// id, never goes negative.
+//
+// HONEST SCOPE: wiring this hook does NOT make sandbox compute a live billed
+// product — the scaffold keeps defaulting to the stub, and this only charges when
+// a REAL rental ends with usage AND #5517 supplies both a real runtime adapter
+// and a real `priceUsd`. The promise STAYS red; a green flip requires a
+// dereferenceable PAID sandbox receipt + owner sign-off.
+export type SandboxLedgerMeteringDeps = Readonly<
+  CloudMeteringDeps & {
+    priceUsd: (context: SandboxMeteringContext) => number
+    usdToMsat: (chargeUsd: number) => number
+  }
+>
+
+export const makeLedgerSandboxMeteringHook = (
+  deps: SandboxLedgerMeteringDeps,
+): SandboxMeteringHook => {
+  return context =>
+    Effect.gen(function* () {
+      // At provision time there is no metered usage yet (the rental has not
+      // ended), so there is nothing to charge — report metered:false without a
+      // ledger row. The per-rental charge fires only once usage is reported.
+      if (context.usage === undefined) {
+        return {
+          metered: false,
+          receiptRef: null,
+        } satisfies SandboxMeteringOutcome
+      }
+      const chargeMsat = Math.max(0, Math.ceil(deps.usdToMsat(deps.priceUsd(context))))
+      const outcome: CloudMeteringOutcome = yield* settleCloudPrimitiveCharge(
+        { db: deps.db, ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }) },
+        {
+          accountRef: context.accountRef,
+          adapterId: 'sandbox-runtime',
+          chargeId: context.sandboxId,
+          chargeMsat,
+          primitive: SANDBOX_COMPUTE_PRIMITIVE,
+        },
+      )
+      // Project the scaffold's own public-safe receipt ref (the one this surface
+      // already advertises) when the debit landed; null when it did not.
+      return {
+        metered: outcome.metered,
+        receiptRef: outcome.metered ? sandboxRentalReceiptRef(context.sandboxId) : null,
+      } satisfies SandboxMeteringOutcome
+    })
+}
 
 // AUTH SEAM ----------------------------------------------------------------
 export type SandboxAuth = (
@@ -329,5 +405,70 @@ export const handleSandboxRequest = (
       // metered:false). NEVER claims a paid/usable sandbox result.
       metered: metering.metered,
       receipt_ref: metering.receiptRef,
+    })
+  })
+
+// ROUTE: GET /v1/sandboxes/:sandboxId (lifecycle read). INERT (404) by default
+// until the EPIC lands. Resolves the current state of a sandbox for the
+// AUTHENTICATED account only — the adapter's `get` enforces that a sandbox is
+// visible only to the account that rented it (cross-account isolation). The stub
+// adapter has no persistence, so it always resolves to 404; #5517's real adapter
+// reads the isolated-session substrate.
+export const handleSandboxGet = (
+  request: Request,
+  sandboxId: string,
+  deps: SandboxComputeServiceDeps,
+) =>
+  Effect.gen(function* () {
+    // INERT GATE.
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'sandbox_compute_service_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+    }
+
+    if (sandboxId.trim() === '') {
+      return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+    }
+
+    const adapter = deps.adapter ?? stubSandboxAdapter
+    const resolved = yield* adapter
+      .get({ sandboxId, accountRef: session.accountRef })
+      .pipe(
+        Effect.map(sandbox => ({ ok: true as const, sandbox })),
+        Effect.catch(error =>
+          Effect.succeed({ ok: false as const, reason: error.reason }),
+        ),
+      )
+    if (!resolved.ok) {
+      return noStoreJsonResponse(
+        { error: 'runtime_error', reason: resolved.reason },
+        { status: 502 },
+      )
+    }
+
+    if (resolved.sandbox === undefined) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return noStoreJsonResponse({
+      object: 'sandbox',
+      id: resolved.sandbox.sandboxId,
+      image: resolved.sandbox.image,
+      ttl_seconds: resolved.sandbox.ttlSeconds,
+      status: resolved.sandbox.status,
+      connection_ref: resolved.sandbox.connectionRef,
+      created_at: resolved.sandbox.createdAt,
     })
   })

@@ -101,3 +101,18 @@ gracefully if one is retired.
 - **Pricing:** sell = Fireworks cost × multiplier/margin; cache-affinity + batch (50%) cut our
   cost further; 429/503 → backoff + overflow.
 - **Meter from `usage`**, pin `x-session-affinity`, handle the adaptive rate-limit ramp.
+
+## Re-verification (2026-06-19, weekend assault DE-2)
+
+Independently re-confirmed the live provider connection against the OpenAgents-held key
+(`~/work/.secrets/fireworks.env`, never printed/committed):
+
+- `POST https://api.fireworks.ai/inference/v1/chat/completions` on
+  `accounts/fireworks/models/glm-5p2` → **HTTP 200**, real usage object
+  `{prompt_tokens: 19, completion_tokens: 12, total_tokens: 31}`, `finish_reason: length`.
+
+This keeps `inference.fireworks_open_model_provider.v1` at **yellow**: the provider connection
+is a verified, reproducible, registered live supply lane in the deployed gateway. It does NOT
+green — green needs the PAID open-model product (card/Bitcoin → metered open-model spend →
+dereferenceable paid receipt), which is the owner-gated paid-credits path shared with
+`inference.gateway_credits_business.v1`. No state flip.
