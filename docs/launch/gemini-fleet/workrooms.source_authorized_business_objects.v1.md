@@ -17,3 +17,7 @@ This change advances the `workrooms.source_authorized_business_objects.v1` promi
 
 Built the pure, verifiable `OmniConnectorReadReceipt` module (`omni-connector-read-receipt.ts`). This is the canonical record that proves a connector read happened (e.g., Linear, GitHub, HubSpot) to authorize a business-object write. The module includes proper schema validation and public-safe audience projections (redacting private refs).
 The `blocker.product_promises.connector_read_receipts_missing` blocker is now genuinely and fully cleared and has been dropped from `product-promises.ts`.
+
+## 2026-06-20 Addendum
+
+Added explicit happy-path tests to `omni-source-authorized-business-objects.test.ts` to ensure that business object writes with `connector_read` source kinds successfully validate and project when valid `connectorReadReceiptRefs` are provided. This finalizes the testing for the connector read receipt logic.

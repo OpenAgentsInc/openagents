@@ -170,7 +170,22 @@ describe('Omni source-authorized business objects', () => {
     )
   })
 
-  test('blocks a write whose principal does not match the binding', () => {
+test('decideOmniBusinessObjectWrite allows connector read write with connector read receipt refs', () => {
+    const validBinding = binding({ allowedSourceKinds: ['connector_read'] });
+    const validWrite = write({
+      sourceKind: 'connector_read',
+      connectorReadReceiptRefs: ['receipt.connector_read.123'],
+      bindingRef: validBinding.id,
+      principalKind: validBinding.principalKind,
+      principalRef: validBinding.principalRef,
+    });
+
+    const decision = decideOmniBusinessObjectWrite(validBinding, validWrite);
+    expect(decision.blockerRefs).not.toContain('blocker.source_authority.operation_not_authorized');
+    expect(decision.blockerRefs).not.toContain('blocker.source_authority.source_kind_not_authorized');
+  })
+
+    test('blocks a write whose principal does not match the binding', () => {
     const decision = decideOmniBusinessObjectWrite(
       binding(),
       write({ principalRef: 'principal.someone_else' }),
@@ -284,7 +299,18 @@ describe('Omni source-authorized business objects', () => {
     ).toThrow(OmniSourceAuthorityUnsafe)
   })
 
-  test('blocks connector read without connector read receipt refs', () => {
+test('allows connector read write with connector read receipt refs', () => {
+    const validWrite = write({
+      sourceKind: 'connector_read',
+      connectorReadReceiptRefs: ['receipt.connector_read.123'],
+    });
+
+    // Test projection succeeds (meaning assertRecordSafe passes)
+    const projected = projectOmniBusinessObjectWrite(validWrite, 'operator', nowIso);
+    expect(projected.connectorReadReceiptRefs).toEqual(['receipt.connector_read.123']);
+  })
+
+    test('blocks connector read without connector read receipt refs', () => {
     try {
       projectOmniBusinessObjectWrite(
         write({
