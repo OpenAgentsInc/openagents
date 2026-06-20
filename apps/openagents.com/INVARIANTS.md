@@ -1956,6 +1956,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     only already-public data, exposes no private data, moves no money, grants no
     authority, and flips no promise. Regression coverage:
     `workers/api/src/promise-transition-audit-routes.test.ts`.
+- GREEN-FLIP SIGN-OFF DELEGATION (owner-authorized 2026-06-20). Per-flip owner
+  sign-off for yellow/red -> green transitions is DELEGATED to the operating
+  agent. The operating agent MAY record a green transition (transition receipt +
+  registry state change + deploy) when it is genuinely satisfied the promise is
+  KEPT, with a dereferenceable receipt and all green gates honestly met. This does
+  NOT waive the dereferenceable-receipt or gates-met requirements
+  (`proof.claim_upgrade_receipts.v1`), and does NOT relax any money-arming,
+  spend-enablement, or live-payout gate — those remain OWNER-gated. NEVER record a
+  green flip for a promise whose green criteria require a live event (real
+  payment, real external user, signed installer, settled receipt) that has not
+  actually occurred. The audit panel records the operating agent as the signoff
+  actor; fabricating deservingness is a hard violation.
   - `GET /api/public/training/ablation-derisking-ledger` — live at read over
     the candidate-only training ablation derisking ledger (promise
     `training.ablation_system.v1`, planned) — compliant (`generatedAt`,
