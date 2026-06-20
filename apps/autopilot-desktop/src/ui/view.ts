@@ -52,6 +52,13 @@ import {
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
 import { isGatewayBalanceLow } from "../shared/inference-routing"
+// #5735: adapt the already-written pylon-network scene onto the three-effect
+// bezier graph so the chat can render as glass over a calm 3D world scene.
+import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
+import type {
+  PylonNetworkNode,
+  PylonNetworkScene,
+} from "../shared/pylon-network-scene"
 
 import type {
   AccountRow,
@@ -5728,58 +5735,123 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
     ],
   )
 
-const chatPane = (model: Model): Html =>
+// #5735: world-scene-behind-chat feature flag. Default OFF, so the chat surface
+// is byte-for-byte the current pane unless the flag is explicitly enabled. When
+// on, the chat thread + composer render as translucent glass over a full-bleed
+// 3D pylon scene (mirrors the .training-fullscreen-scene/-overlay pattern).
+// Live data is a separate issue (#5736); this seeds a static scene.
+const CHAT_WORLD_SCENE: boolean =
+  ((import.meta as { env?: Record<string, string | undefined> }).env
+    ?.VITE_CHAT_WORLD_SCENE ?? "0") === "1"
+
+// A calm static seed scene: one hub + ~8 ring pylons. A couple are "working"
+// so the graph reads as a living-but-idle network rather than dead. This is a
+// placeholder until #5736 wires the live PylonNetworkScene snapshot in.
+const CHAT_SCENE_RING_NODES: ReadonlyArray<PylonNetworkNode> = Array.from(
+  { length: 8 },
+  (_unused, index): PylonNetworkNode => {
+    const tone: PylonNetworkNode["tone"] =
+      index === 1 || index === 5 ? "working" : index % 3 === 0 ? "online" : "offline"
+    return {
+      id: `seed-pylon-${index}`,
+      label: "pylon",
+      tone,
+      flowing: tone === "working",
+    }
+  },
+)
+
+const CHAT_SCENE: PylonNetworkScene = {
+  activityIntensity: 0.18,
+  dormant: false,
+  onlineNow: 6,
+  sessionsOnlineNow: 2,
+  sellableOnlineNow: 2,
+  walletReadyNow: 4,
+  assignmentReadyNow: 2,
+  seen24h: 8,
+  registeredTotal: 8,
+  satsSettled24h: 0,
+  satsSettledTotal: 0,
+  trainingAssignedContributors: 0,
+  trainingAcceptedContributors: 0,
+  trainingProgressContributors: 0,
+  nodes: CHAT_SCENE_RING_NODES,
+  asOfLabel: null,
+}
+
+const chatSceneBackground = (): Html =>
+  h.div([cls("chat-scene-background")], [
+    trainingRunView<Message>(
+      [cls("three-effect-chat-scene")],
+      pylonNetworkVisualizationOptions(CHAT_SCENE),
+    ),
+  ])
+
+// The chat thread + composer, shared by both the plain and world-scene layouts.
+const chatThread = (model: Model): Html =>
   h.div(
-    [cls("chat-pane")],
+    [cls("chat-thread-shell")],
     [
-      paneTitle("Chat"),
-      h.div(
-        [cls("chat-thread-shell")],
-        [
-          h.ul(
-            [cls("chat-message-list")],
-            model.chatMessages.length === 0
-              ? [h.li([cls("chat-empty")], [emptyLine("No chat turns yet.")])]
-              : model.chatMessages.map(message => chatMessageView(model, message)),
-          ),
-        ],
+      h.ul(
+        [cls("chat-message-list")],
+        model.chatMessages.length === 0
+          ? [h.li([cls("chat-empty")], [emptyLine("No chat turns yet.")])]
+          : model.chatMessages.map(message => chatMessageView(model, message)),
       ),
-      h.div(
-        [cls("chat-composer")],
+    ],
+  )
+
+const chatComposer = (model: Model): Html =>
+  h.div(
+    [cls("chat-composer")],
+    [
+      h.textarea(
         [
-          h.textarea(
+          cls("text-area chat-input"),
+          h.Rows(4),
+          h.Placeholder("Ask Autopilot to continue a Blueprint program turn..."),
+          h.Value(model.chatInput),
+          h.OnInput((value: string) => ChangedChatInput({ value })),
+        ],
+        [],
+      ),
+      model.chatStatus.tone !== "idle"
+        ? h.p([cls(`spawn-status spawn-${model.chatStatus.tone}`)], [
+            model.chatStatus.text,
+          ])
+        : h.p([cls("spawn-status")], [" "]),
+      h.div(
+        [cls("chat-actions")],
+        [
+          h.button(
             [
-              cls("text-area chat-input"),
-              h.Rows(4),
-              h.Placeholder("Ask Autopilot to continue a Blueprint program turn..."),
-              h.Value(model.chatInput),
-              h.OnInput((value: string) => ChangedChatInput({ value })),
+              cls("primary-button"),
+              h.Type("button"),
+              h.Disabled(model.chatPending),
+              h.OnClick(ClickedChatSubmit()),
             ],
-            [],
-          ),
-          model.chatStatus.tone !== "idle"
-            ? h.p([cls(`spawn-status spawn-${model.chatStatus.tone}`)], [
-                model.chatStatus.text,
-              ])
-            : h.p([cls("spawn-status")], [" "]),
-          h.div(
-            [cls("chat-actions")],
-            [
-              h.button(
-                [
-                  cls("primary-button"),
-                  h.Type("button"),
-                  h.Disabled(model.chatPending),
-                  h.OnClick(ClickedChatSubmit()),
-                ],
-                [model.chatPending ? "Sending..." : "Send turn"],
-              ),
-            ],
+            [model.chatPending ? "Sending..." : "Send turn"],
           ),
         ],
       ),
     ],
   )
+
+const chatPane = (model: Model): Html =>
+  CHAT_WORLD_SCENE
+    ? h.div([cls("chat-pane chat-pane-world")], [
+        chatSceneBackground(),
+        h.div([cls("chat-content-overlay")], [
+          paneTitle("Chat"),
+          chatThread(model),
+          chatComposer(model),
+        ]),
+      ])
+    : h.div(
+        [cls("chat-pane")],
+        [paneTitle("Chat"), chatThread(model), chatComposer(model)],
+      )
 
 const composerPane = (model: Model): Html => {
   const node = modelNode(model)
