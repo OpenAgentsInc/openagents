@@ -128,6 +128,32 @@ public-safe surface. This run closes that evidence gap:
 INERT and PURE: mints no money, reads no wallet, admits no live settled receipt.
 The empty manifest reports `promiseState: 'red'`, `inert: true`, no modes.
 
+### Follow-up (this run): public-safe per-mode WORK-RECEIPT manifest
+
+The settlement manifest enumerates the distinct SETTLEMENT refs behind each
+settled count, but the projection still collapses every other amount class
+(`observed/pending/paid`) — and the work-unit identity of settled units — to bare
+integer COUNTS. An owner verifying a (receipt-first, owner-signed) green flip
+could dereference settled units' settlements but not the individual WORK units
+behind any per-mode count. This run closes that symmetric evidence gap on the
+work-unit axis:
+
+- `projectPylonWorkReceiptManifest(receipts)` — PURE/INERT, always
+  `promiseState: 'red'`. Returns a public-safe per-mode manifest listing the
+  `receiptRef`s backing each amount class (`observedReceiptRefs`,
+  `pendingReceiptRefs`, `paidReceiptRefs`, `settledReceiptRefs`), plus each mode's
+  `receiptCount` / `distinctAssignmentRefCount` / `workUnitCoverageComplete` and
+  install-level totals + `coverageComplete`. Per-mode counts, the coverage
+  verdict, and totals are delegated to `verifyWorkReceiptWorkUnitCoverage`, so the
+  manifest (evidence) and the auditor (gate) can never disagree. `settledReceiptRefs`
+  lists WORK refs, not settlement refs — the settlement refs stay in the separate
+  settlement manifest, so the two manifests cover the two distinct axes.
+- New tests: empty/enumeration cases, work-vs-settlement-ref separation, in-mode
+  over-claim visibility, manifest-vs-auditor agreement, and receiptRef idempotency.
+
+INERT and PURE: mints no money, reads no wallet, admits no live receipt. The
+empty manifest reports `promiseState: 'red'`, `inert: true`, no modes.
+
 ## What genuinely remains (blocker stays listed)
 
 `multi_earning_mode_receipts_missing` is **partially advanced, not cleared**:

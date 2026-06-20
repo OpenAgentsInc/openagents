@@ -482,6 +482,124 @@ export const verifyWorkReceiptWorkUnitCoverage = (
 }
 
 /**
+ * One per-mode entry of the WORK-RECEIPT manifest. INERT and public-safe. Unlike
+ * the projection record (which collapses a mode to integer amount-class COUNTS),
+ * this enumerates the actual DISTINCT work-receipt refs backing each amount class
+ * in first-seen order — so every unit the projection counts in
+ * `observed/pending/paid/settled` is individually dereferenceable, not just a
+ * number. Carries the same per-mode work-unit coverage verdict as the auditor.
+ *
+ * NOTE: `settledReceiptRefs` lists the WORK-receipt refs (`receiptRef`) of a
+ * mode's settled units; the dereferenceable SETTLEMENT refs live in the separate
+ * settlement manifest (`projectPylonSettlementManifest`). The two manifests cover
+ * the two distinct axes — work-unit identity vs settlement identity.
+ */
+export type ModeWorkReceiptManifestEntry = {
+  mode: string
+  receiptCount: number
+  distinctAssignmentRefCount: number
+  workUnitCoverageComplete: boolean
+  observedReceiptRefs: ReadonlyArray<string>
+  pendingReceiptRefs: ReadonlyArray<string>
+  paidReceiptRefs: ReadonlyArray<string>
+  settledReceiptRefs: ReadonlyArray<string>
+}
+
+/**
+ * Whole-install WORK-RECEIPT manifest. INERT, public-safe, still red. It is the
+ * work-unit-axis companion to projectPylonSettlementManifest: the settlement
+ * manifest enumerates the distinct SETTLEMENT refs behind each settled count;
+ * this manifest enumerates the distinct WORK-receipt refs behind every
+ * amount-class count, so an owner verifying a (receipt-first, owner-signed) green
+ * flip can dereference each individual work unit the projection reports — not
+ * only the settled ones, and not collapsed to a count.
+ *
+ * `coverageComplete` mirrors verifyWorkReceiptWorkUnitCoverage's
+ * `allWorkUnitsDistinct`, so a consumer reading the manifest knows whether each
+ * mode's `receiptCount` equals the number of distinct work units listed (no
+ * in-mode or cross-mode work-unit over-claim).
+ */
+export type PylonWorkReceiptManifest = {
+  schema: typeof PYLON_MULTI_EARNING_RECEIPT_SCHEMA
+  promiseId: typeof PYLON_MULTI_EARNING_PROMISE
+  promiseState: 'red'
+  inert: true
+  perMode: ReadonlyArray<ModeWorkReceiptManifestEntry>
+  totalReceiptCount: number
+  totalDistinctAssignmentRefCount: number
+  coverageComplete: boolean
+}
+
+/**
+ * Build the public-safe WORK-RECEIPT manifest for a set of work receipts. PURE /
+ * INERT and always `promiseState: 'red'`. Receipts are first deduped by
+ * receiptRef, then grouped by mode (first-seen order); within each mode the
+ * `receiptRef`s are split by amount class (each in first-seen order). The per-mode
+ * counts, coverage verdict, and install totals are taken from
+ * verifyWorkReceiptWorkUnitCoverage, so the manifest (evidence) and the auditor
+ * (gate) can never disagree about whether the work units are distinct. Surfacing
+ * this list is the per-mode receipt evidence the projection needs so each counted
+ * unit — observed, pending, paid, or settled — is dereferenceable.
+ */
+export const projectPylonWorkReceiptManifest = (
+  receipts: ReadonlyArray<PylonModeWorkReceipt>,
+): PylonWorkReceiptManifest => {
+  const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+
+  // Preserve first-seen mode order for a stable manifest.
+  const order: string[] = []
+  const grouped = new Map<string, PylonModeWorkReceipt[]>()
+  for (const receipt of deduped) {
+    const existing = grouped.get(receipt.mode)
+    if (existing === undefined) {
+      order.push(receipt.mode)
+      grouped.set(receipt.mode, [receipt])
+    } else {
+      existing.push(receipt)
+    }
+  }
+
+  // Single source of truth for per-mode counts, coverage, and install totals.
+  const coverage = verifyWorkReceiptWorkUnitCoverage(deduped)
+  const coverageByMode = new Map(coverage.perMode.map(m => [m.mode, m]))
+
+  const refsOf = (
+    modeReceipts: ReadonlyArray<PylonModeWorkReceipt>,
+    amountClass: ReceiptableAmountClass,
+  ): string[] =>
+    modeReceipts
+      .filter(r => r.amountClass === amountClass)
+      .map(r => r.receiptRef)
+
+  const perMode: ModeWorkReceiptManifestEntry[] = []
+  for (const mode of order) {
+    const modeReceipts = grouped.get(mode) ?? []
+    const modeCoverage = coverageByMode.get(mode)
+    perMode.push({
+      mode,
+      receiptCount: modeCoverage?.receiptCount ?? modeReceipts.length,
+      distinctAssignmentRefCount: modeCoverage?.distinctAssignmentRefCount ?? 0,
+      workUnitCoverageComplete: modeCoverage?.workUnitCoverageComplete ?? true,
+      observedReceiptRefs: refsOf(modeReceipts, 'observed'),
+      pendingReceiptRefs: refsOf(modeReceipts, 'pending'),
+      paidReceiptRefs: refsOf(modeReceipts, 'paid'),
+      settledReceiptRefs: refsOf(modeReceipts, 'settled'),
+    })
+  }
+
+  return {
+    schema: PYLON_MULTI_EARNING_RECEIPT_SCHEMA,
+    promiseId: PYLON_MULTI_EARNING_PROMISE,
+    promiseState: 'red',
+    inert: true,
+    perMode,
+    totalReceiptCount: coverage.totalReceiptCount,
+    totalDistinctAssignmentRefCount: coverage.totalDistinctAssignmentRefCount,
+    coverageComplete: coverage.allWorkUnitsDistinct,
+  }
+}
+
+/**
  * Fold a set of per-mode work receipts into the projection's earning store.
  * PURE. Receipts are first deduped by receiptRef, then grouped by mode; each
  * mode's amount-class counts come from its receipts, and a mode that carries any
