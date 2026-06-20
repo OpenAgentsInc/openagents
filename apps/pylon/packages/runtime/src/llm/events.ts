@@ -1,6 +1,6 @@
 import { Schema as S } from "effect";
-import { ProbeLlmToolResultValue } from "./messages";
-import { ProbeLlmUsage, ProbeLlmProviderMetadata } from "./usage";
+import { ProbeLlmToolResultValue } from "./messages.js";
+import { ProbeLlmUsage, ProbeLlmProviderMetadata } from "./usage.js";
 
 export const ProbeLlmFinishReason = S.Literals(["stop", "length", "tool_calls", "content_filter", "error", "unknown"]);
 export type ProbeLlmFinishReason = typeof ProbeLlmFinishReason.Type;

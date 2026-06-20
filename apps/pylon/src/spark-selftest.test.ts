@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { sparkModuleSelftest } from "./spark-backup-helper"
+import { sparkModuleSelftest } from "./spark-backup-helper.js"
 
 describe("sparkModuleSelftest", () => {
   it("reports loaded when the module exposes defaultConfig + SdkBuilder.new", async () => {
@@ -29,7 +29,7 @@ describe("sparkModuleSelftest", () => {
   })
 })
 
-import { toSatNumber } from "./spark-backup-helper"
+import { toSatNumber } from "./spark-backup-helper.js"
 
 describe("toSatNumber (balance coercion #5166)", () => {
   it("accepts number, bigint, and decimal-string sat amounts", () => {

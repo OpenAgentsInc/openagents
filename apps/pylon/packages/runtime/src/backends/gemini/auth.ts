@@ -4,8 +4,7 @@ import {
   GEMINI_BACKEND_KIND,
   GeminiAuthResolutionReceipt,
   type GeminiApiKeySource,
-  type GeminiAuthResolutionReceipt,
-} from "./contract";
+} from "./contract.js";
 
 export interface ResolveGeminiApiKeyOptions {
   readonly apiKey?: string;
@@ -72,7 +71,7 @@ export function makeGeminiAuthHeaders(resolvedKey: ResolvedGeminiApiKey): Readon
   };
 }
 
-function resolved(apiKey: string, source: GeminiApiKeySource, profileId = GEMINI_API_PROFILE_ID): ResolvedGeminiApiKey {
+function resolved(apiKey: string, source: GeminiApiKeySource, profileId: string = GEMINI_API_PROFILE_ID): ResolvedGeminiApiKey {
   return {
     apiKey,
     source,

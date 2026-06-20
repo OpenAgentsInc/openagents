@@ -1,7 +1,7 @@
 import { Schema as S } from "effect";
-import { APPLE_FM_BACKEND_KIND, APPLE_FM_DEFAULT_MODEL_ID, type AppleFmUsageMeasurement } from "./contract";
-import { type AppleFmHealthStatus } from "./client";
-import { type AppleFmToolCallbackStatus, type AppleFmToolName } from "./tools";
+import { APPLE_FM_BACKEND_KIND, APPLE_FM_DEFAULT_MODEL_ID, type AppleFmUsageMeasurement } from "./contract.js";
+import { type AppleFmHealthStatus } from "./client.js";
+import { type AppleFmToolCallbackStatus, type AppleFmToolName } from "./tools.js";
 
 export const AppleFmAcceptanceCaseName = S.Literals([
   "read_file_answer",

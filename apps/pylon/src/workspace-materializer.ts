@@ -2,8 +2,8 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { createHash } from "node:crypto"
-import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent"
-import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent"
+import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
+import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 
 /**
  * The adapter-neutral git_checkout workspace materializer (issue #4798).

@@ -11,7 +11,7 @@ import { createHash, createPublicKey, verify as edVerify } from "node:crypto"
 import { chmod, rename, writeFile, rm } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-import { PYLON_VERSION } from "./version"
+import { PYLON_VERSION } from "./version.js"
 
 // Pinned OpenAgents release public key (ed25519). Verifying against this and
 // failing closed is the whole point — rotating the key requires shipping a new

@@ -3,10 +3,10 @@
 // MUST be the FIRST import: installs the Breez stdout guard as a top-level
 // side effect before any sibling module (or eagerly-evaluated bundled Breez SDK
 // module in the compiled binary) can print its storage banner to stdout. rc.33.
-import { installBreezStdoutGuard } from "./breez-stdout-guard"
+import { installBreezStdoutGuard } from "./breez-stdout-guard.js"
 // #5404: cross-platform Bun compiled-binary detection (POSIX `/$bunfs/` and
 // Windows `B:\~BUN\root\…`), shared with the embedded Spark WASM extraction.
-import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime"
+import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 import { readFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import {
@@ -14,19 +14,19 @@ import {
   declareTassadarExecutorCapability,
   mergeTassadarCapabilityRefs,
   writeTassadarCapabilityEvidence,
-} from "./tassadar-capability"
+} from "./tassadar-capability.js"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
-} from "./claude-agent"
+} from "./claude-agent.js"
 import {
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   withCodexAgentCapability,
-} from "./codex-agent"
-import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
-import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips"
+} from "./codex-agent.js"
+import { withWorkspaceMaterializerCapability } from "./workspace-materializer.js"
+import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips.js"
 import {
   ARTANIS_FORUM_SLUG,
   appendMemory,
@@ -36,9 +36,9 @@ import {
   forumReply,
   readMemories,
   resolveModelAdapter,
-} from "./agent-surface"
+} from "./agent-surface.js"
 import { Console, Deferred, Effect, PubSub } from "effect"
-import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
+import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state.js"
 import {
   forkLogPersistence,
   forkNodeServices,
@@ -47,24 +47,24 @@ import {
   seedLogFeed,
   superviseLoop,
   type PylonNodeRuntime,
-} from "./node/runtime"
-import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
+} from "./node/runtime.js"
+import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist.js"
 import {
   buildBrokerRegistrationBody,
   postNodeRegistration,
   type BrokerRegistrationHosts,
-} from "./node/discovery-register"
-import { createIntentQueue } from "./node/intent-intake"
-import { createApprovalQueue } from "./node/approval-queue"
-import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
-import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
+} from "./node/discovery-register.js"
+import { createIntentQueue } from "./node/intent-intake.js"
+import { createApprovalQueue } from "./node/approval-queue.js"
+import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
+import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
 import {
   scanClaudeSessions,
   toEventRows,
   toSessionListEntry,
   type ExternalSession,
-} from "./node/external-sessions"
-import { scanCodexSessions } from "./node/codex-sessions"
+} from "./node/external-sessions.js"
+import { scanCodexSessions } from "./node/codex-sessions.js"
 import { homedir } from "node:os"
 import {
   defaultControlPort,
@@ -73,65 +73,65 @@ import {
   startControlServer,
   type ControlCommandActions,
   type ControlCommand,
-} from "./node/control-server"
-import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
+} from "./node/control-server.js"
+import { collectPylonAppleFmStatus } from "./node/apple-fm-status.js"
 import {
   createControlSessionActions,
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
-} from "./node/control-sessions"
-import { resolveCloudControlConfig } from "./cloud-control-client"
-import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
-import { collectPylonContextProjection } from "./context-projection"
-import { collectPylonDevDoctor } from "./dev-doctor"
+} from "./node/control-sessions.js"
+import { resolveCloudControlConfig } from "./cloud-control-client.js"
+import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider.js"
+import { collectPylonContextProjection } from "./context-projection.js"
+import { collectPylonDevDoctor } from "./dev-doctor.js"
 import {
   collectPylonAccountsList,
   collectPylonAccountsUsage,
   parsePylonAccountsUsageArgs,
   resolvePylonAccountUsageRefreshTargets,
   type PylonAccountsUsageArgs,
-} from "./account-usage"
+} from "./account-usage.js"
 import {
   recordPylonDevCodexRun,
   runPylonDevApply,
   runPylonDevCheck,
   runPylonDevReload,
   type PylonDevCommandSpec,
-} from "./dev-loop"
+} from "./dev-loop.js"
 import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
-} from "./codex-composer"
+} from "./codex-composer.js"
 import {
   rejectClaudeLocalDangerForPublicPath,
   runClaudeComposerStream,
-} from "./claude-composer"
-import { runProbeCli } from "../packages/runtime/src/index"
-import { PYLON_VERSION } from "./version"
+} from "./claude-composer.js"
+import { runProbeCli } from "../packages/runtime/src/index.js"
+import { PYLON_VERSION } from "./version.js"
 import {
   ControlEndpointError,
   runControlCommand,
-} from "./node/control-cli"
+} from "./node/control-cli.js"
 import {
   runSessionsExec,
   type ApprovalPolicy,
   type SessionsExecControl,
-} from "./node/sessions-exec"
+} from "./node/sessions-exec.js"
 import {
   parseSessionsBatchTasks,
   runSessionsBatch,
-} from "./node/sessions-batch"
-import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy"
+} from "./node/sessions-batch.js"
+import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy.js"
 import {
   PYLON_COMMAND_CATALOG,
   findCommandEntry,
   projectCommandCatalog,
-} from "./cli-catalog"
+} from "./cli-catalog.js"
 import {
   formatPublicActivityCliText,
   runPublicActivityCliCommand,
   type PublicActivityCliCommand,
-} from "./public-activity-cli"
+} from "./public-activity-cli.js"
 import {
   activateTrainingWindow,
   admitTrainingEvidence,
@@ -141,14 +141,14 @@ import {
   reconcileTrainingWindow,
   readTrainingStatus,
   trainingPreflightReport,
-} from "./training-cockpit"
+} from "./training-cockpit.js"
 import {
   assertWorkloadFamily,
   parseTassadarWorkload,
   runValidatorAuto,
   submitReplayVerdict,
   submitTraceContribution,
-} from "./tassadar-trace-client"
+} from "./tassadar-trace-client.js"
 import { loadPinnedTassadarSelfTestWorkload } from "@openagentsinc/tassadar-executor/self-test"
 import { readFile as readFileForPacket } from "node:fs/promises"
 import {
@@ -157,15 +157,16 @@ import {
   parseBootstrapArgs,
   selectPylonHomeResolution,
   writeBootstrapFiles,
-} from "./bootstrap"
-import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state"
+  type BootstrapSummary,
+} from "./bootstrap.js"
+import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
-} from "./presence"
+} from "./presence.js"
 import {
   admitPayoutTarget,
   appendLedgerEvent,
@@ -188,7 +189,7 @@ import {
   isSparkBackupDefaultEnabled,
   type SparkBackupSendProjection,
   type WalletStatusProjection,
-} from "./wallet"
+} from "./wallet.js"
 import {
   createSparkBackupHelper,
   createSparkBackupSendTransfer,
@@ -200,8 +201,8 @@ import {
   // #5207 warm Spark session (daemon background sync + shutdown).
   syncWarmSparkSession,
   closeWarmSparkSession,
-} from "./spark-backup-helper"
-import { resolveNostrIdentityPath } from "./nostr-identity"
+} from "./spark-backup-helper.js"
+import { resolveNostrIdentityPath } from "./nostr-identity.js"
 import {
   acceptAssignment,
   pollAssignments,
@@ -211,27 +212,27 @@ import {
   type AssignmentCloseout,
   type AssignmentProgress,
   type PylonAssignmentLease,
-} from "./assignment"
-import { discoverHostInventory } from "./inventory"
+} from "./assignment.js"
+import { discoverHostInventory } from "./inventory.js"
 import {
   autoUpdateDisabledReason,
   checkForUpdate,
   downloadAndApply,
   resolveSelfBinaryPath,
-} from "./self-update"
-import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator"
-import { inspectPsionicConnector } from "./psionic-connector"
+} from "./self-update.js"
+import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator.js"
+import { inspectPsionicConnector } from "./psionic-connector.js"
 import {
   installPsionicBinary,
   installPsionicModelArtifact,
-} from "./psionic-install"
+} from "./psionic-install.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   policyFromEnv,
   relaysFromEnv,
   startNip90ProviderLoop,
-} from "./provider-nip90"
-import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor"
+} from "./provider-nip90.js"
+import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor.js"
 import {
   acceptPylonWorkOffer,
   createPylonWorkRequest,
@@ -243,7 +244,7 @@ import {
   submitPylonAutopilotWork,
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
-} from "./work-requester"
+} from "./work-requester.js"
 import { hostname } from "node:os"
 
 // Routes node lifecycle log lines from plain async call sites into the
@@ -546,7 +547,7 @@ function makeIntentActions(intentQueue: ReturnType<typeof createIntentQueue>) {
 // the real first-run approval so the job can proceed.
 const approvalQueue = createApprovalQueue()
 
-function makeApprovalActions(paths: BootstrapSummary["paths"]) {
+function makeApprovalActions(paths: PylonPaths) {
   return {
     list: async () => ({ approvals: approvalQueue.list() }),
     resolve: async (input: { approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }) => {
@@ -946,7 +947,7 @@ async function runHeadlessAssignmentWorkerLoop(
   while (true) {
     try {
       const result = await runNoSpendAssignment(summary, options)
-      if (result.ok) {
+      if (result.ok && result.closeout) {
         log(`[Assignments] Completed no-spend assignment ${result.closeout.assignmentRef}.`)
       } else if (result.reason !== "no no-spend assignment lease available") {
         log(`[Assignments] No-spend run skipped: ${JSON.stringify(result)}`, "verbose")
@@ -1076,7 +1077,7 @@ const runHeadlessNode = Effect.gen(function* () {
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
       appleFmStatus: () => collectPylonAppleFmStatus({ summary: bootstrapSummary, env: Bun.env }),
-      approvals: makeApprovalActions(bootstrapSummary.paths),
+      approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
     },
     port: controlPort,
@@ -3147,7 +3148,7 @@ async function main() {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
       const networkOptions = {
-        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl: baseUrl ?? "https://openagents.com",
       }
       if (args[0] === "memories") {
@@ -3245,7 +3246,7 @@ async function main() {
       const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error(`${args[0]} requires --base-url or PYLON_OPENAGENTS_BASE_URL`)
       const networkOptions = {
-        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl,
       }
       if (args[0] === "tip") {
@@ -3395,7 +3396,7 @@ async function main() {
       if (!baseUrl) throw new Error("work commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const networkOptions = {
-        agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
         baseUrl,
       }
 
@@ -3416,12 +3417,12 @@ async function main() {
         }
         const result = await submitPylonAutopilotWork(networkOptions, {
           ...(adapter === undefined ? {} : { adapter }),
-          branch: options.branch,
+          branch: optionString(options, "branch"),
           budgetCents,
-          commit: options.commit,
+          commit: optionString(options, "commit"),
           objective,
-          repository: options.repo,
-          verificationCommand: options.verify,
+          repository: optionString(options, "repo"),
+          verificationCommand: optionString(options, "verify"),
         })
         await appendMemory(summary.paths.home, {
           at: new Date().toISOString(),
@@ -3444,10 +3445,10 @@ async function main() {
         }
         const result = await createPylonWorkRequest(networkOptions, {
           budgetSats,
-          deadline: options.deadline,
+          deadline: optionString(options, "deadline"),
           objective,
-          repository: options.repo,
-          verificationCommand: options.verify,
+          repository: optionString(options, "repo"),
+          verificationCommand: optionString(options, "verify"),
         })
         await appendMemory(summary.paths.home, workRequestMemoryEntry({
           at: new Date().toISOString(),
@@ -3700,7 +3701,7 @@ async function main() {
         // fleet-wide, which gate makes the offline-receive helper unavailable.
         const sparkSelftest = await computeSparkSelftest(state)
         const result = await reportWalletReadiness({ status, sparkSelftest }, {
-          agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+          agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
           baseUrl,
           pylonRef: state.identity.pylonRef,
         })
@@ -3715,7 +3716,7 @@ async function main() {
             const lightningAddress = await resolveLightningAddressForReadiness(state)
             tipReadinessClaim = await claimTipReadiness(
               {
-                agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+                agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
                 baseUrl,
               },
               { pylonRef: state.identity.pylonRef, sparkAddress, lightningAddress },
@@ -4020,7 +4021,7 @@ async function main() {
         const result = await registerSparkPayoutTarget(
           { rawSparkAddress: prepared.localTarget },
           {
-            agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+            agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
             baseUrl,
             pylonRef: state.identity.pylonRef,
           },
@@ -4034,7 +4035,7 @@ async function main() {
       }
       if (command === "admit-payout-target") {
         const kind = options.kind as any
-        const ref = options.ref
+        const ref = optionString(options, "ref")
         if (!kind || !ref) throw new Error("wallet admit-payout-target requires --kind and --ref")
         const result = admitPayoutTarget({ kind, ref })
         process.stdout.write(`${JSON.stringify({ ...result, ledger: state.paths.ledger }, null, 2)}\n`)
@@ -4044,10 +4045,10 @@ async function main() {
         const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
         if (!baseUrl) throw new Error("wallet request-payout-target-admission requires --base-url or PYLON_OPENAGENTS_BASE_URL")
         const kind = options.kind as any
-        const ref = options.ref
+        const ref = optionString(options, "ref")
         if (!kind || !ref) throw new Error("wallet request-payout-target-admission requires --kind and --ref")
         const result = await requestPayoutTargetAdmission({ kind, ref }, {
-          agentToken: options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+          agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
           baseUrl,
           pylonRef: state.identity.pylonRef,
         })
@@ -4073,7 +4074,7 @@ async function main() {
         throw new Error("assignment commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      const agentToken = options["agent-token"] ?? Bun.env.OPENAGENTS_AGENT_TOKEN
+      const agentToken = optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN
       const clientOptions = { ...(agentToken ? { agentToken } : {}), baseUrl }
       if (command === "poll") {
         const leases = await pollAssignments(summary, clientOptions)
@@ -4081,21 +4082,21 @@ async function main() {
         return
       }
       if (command === "accept") {
-        const leaseJson = options.lease
+        const leaseJson = optionString(options, "lease")
         if (!leaseJson) throw new Error("assignment accept requires --lease JSON")
         const result = await acceptAssignment(summary, JSON.parse(leaseJson) as PylonAssignmentLease, clientOptions)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "progress") {
-        const progressJson = options.progress
+        const progressJson = optionString(options, "progress")
         if (!progressJson) throw new Error("assignment progress requires --progress JSON")
         const result = await submitAssignmentProgress(summary, JSON.parse(progressJson) as AssignmentProgress, clientOptions)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "closeout") {
-        const closeoutJson = options.closeout
+        const closeoutJson = optionString(options, "closeout")
         if (!closeoutJson) throw new Error("assignment closeout requires --closeout JSON")
         const result = await submitAssignmentCloseout(summary, JSON.parse(closeoutJson) as AssignmentCloseout, clientOptions)
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -4192,9 +4193,9 @@ async function main() {
         return
       }
       if (command === "approve-labor") {
-        const approvedByRef = options["approved-by-ref"]
+        const approvedByRef = optionString(options, "approved-by-ref")
         if (!approvedByRef) throw new Error("provider approve-labor requires --approved-by-ref")
-        const jobType = options["job-type"]
+        const jobType = optionString(options, "job-type")
         if (jobType !== undefined && jobType !== "code_task" && jobType !== "review" && jobType !== "document_work") {
           throw new Error("provider approve-labor --job-type must be code_task, review, or document_work")
         }

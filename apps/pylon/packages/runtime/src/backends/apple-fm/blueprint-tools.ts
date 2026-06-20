@@ -4,8 +4,8 @@ import {
   type ProbeToolMenu,
   type ProbeToolName,
   type ProbeToolPolicy,
-} from "../../blueprint/tool-menu";
-import { type AppleFmToolDefinition, type AppleFmToolName } from "./tools";
+} from "../../blueprint/tool-menu.js";
+import { type AppleFmToolDefinition, type AppleFmToolName } from "./tools.js";
 
 export const AppleFmBlueprintProjectedToolRef = S.Struct({
   approvalPolicyRef: S.String,

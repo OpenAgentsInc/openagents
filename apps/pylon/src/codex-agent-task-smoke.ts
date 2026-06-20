@@ -1,16 +1,16 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { runNoSpendAssignment, type AssignmentClientOptions, type PylonAssignmentLease } from "./assignment"
+import { runNoSpendAssignment, type AssignmentClientOptions, type PylonAssignmentLease } from "./assignment.js"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
   type CodexAgentRunner,
-} from "./codex-agent-executor"
-import { CODEX_AGENT_CAPABILITY_REF, CODEX_AGENT_SDK_PACKAGE } from "./codex-agent"
-import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap"
-import { sendHeartbeat } from "./presence"
-import { ensurePylonLocalState } from "./state"
+} from "./codex-agent-executor.js"
+import { CODEX_AGENT_CAPABILITY_REF, CODEX_AGENT_SDK_PACKAGE } from "./codex-agent.js"
+import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap.js"
+import { sendHeartbeat } from "./presence.js"
+import { ensurePylonLocalState } from "./state.js"
 
 /**
  * The bounded local-Codex real-task smoke (issue #4790, epic #4793,

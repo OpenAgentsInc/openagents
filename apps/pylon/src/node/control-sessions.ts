@@ -8,46 +8,46 @@ import {
   type PublicPylonAccountSelection,
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
-} from "../account-registry"
-import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent"
+} from "../account-registry.js"
+import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent.js"
 import {
   permissionModeForClaudeComposerExecutionMode,
   runClaudeComposerStream,
-} from "../claude-composer"
+} from "../claude-composer.js"
 import {
   type CodexAgentConfig,
   type CodexDevConfig,
   loadCodexAgentConfig,
   loadCodexDevConfig,
   type PylonComposerAdapter,
-} from "../codex-agent"
+} from "../codex-agent.js"
 import {
   runCodexComposerStream,
   sandboxModeForCodexComposerExecutionMode,
-} from "../codex-composer"
-import type { BootstrapSummary } from "../bootstrap"
+} from "../codex-composer.js"
+import type { BootstrapSummary } from "../bootstrap.js"
 import {
   PYLON_DEV_CHECK_SCHEMA,
   recordPylonDevCodexRun,
   runPylonDevCheck,
   type PylonDevCheckProjection,
-} from "../dev-loop"
+} from "../dev-loop.js"
 import {
   PROOF_REDACTION_PATTERN_REFS,
   scanProofSerialization,
-} from "../proof-redaction"
-import { classifySessionError } from "../session-error-class"
-import { ControlCommandValidationError } from "./control-command-error"
-import { assertPublicProjectionSafe } from "../state"
+} from "../proof-redaction.js"
+import { classifySessionError } from "../session-error-class.js"
+import { ControlCommandValidationError } from "./control-command-error.js"
+import { assertPublicProjectionSafe } from "../state.js"
 import {
   materializeGitCheckoutWorkspaceWithLease,
   releaseWorkspace,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
-} from "../workspace-materializer"
-import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate"
-import { collectPylonAppleFmStatus } from "./apple-fm-status"
-import { runAppleFmLocalControlSession } from "./apple-fm-local-session"
+} from "../workspace-materializer.js"
+import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate.js"
+import { collectPylonAppleFmStatus } from "./apple-fm-status.js"
+import { runAppleFmLocalControlSession } from "./apple-fm-local-session.js"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
@@ -357,6 +357,14 @@ function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
+// `record.state` is mutated concurrently by `cancel()` across `await` points,
+// so a literal-narrowed read (after e.g. `record.state = "running"`) does not
+// reflect the value that may have changed during the await. Read it through
+// this helper so callers always see the full ControlSessionState union.
+function currentSessionState(record: SessionRecord): ControlSessionState {
+  return record.state
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
@@ -440,7 +448,7 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
     )
   }
   const repoRef = raw.repoRef === undefined ? undefined : repositoryRefFrom(raw.repoRef)
-  if (raw.repoRef !== undefined && repoRef === null) {
+  if (repoRef === null) {
     throw new ControlCommandValidationError(
       "repo_ref_invalid",
       "session.spawn repoRef is invalid",
@@ -1150,7 +1158,7 @@ export function createControlSessionActions(options: {
         verify: record.verify,
         workspaceRef: record.workspace.workspaceRef,
       })
-      if (record.state === "cancelled" || record.abort.signal.aborted) return
+      if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) return
       if (result.cloudRunner !== undefined) record.cloudRunner = result.cloudRunner
       if (result.resourceUsageReceiptRef !== undefined && result.resourceUsageReceiptRef !== null) {
         record.resourceUsageReceiptRef = result.resourceUsageReceiptRef
@@ -1182,7 +1190,7 @@ export function createControlSessionActions(options: {
         })
       }
     } catch (error) {
-      if (record.state === "cancelled" || record.abort.signal.aborted) {
+      if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) {
         await finishCancelled(record)
         return
       }

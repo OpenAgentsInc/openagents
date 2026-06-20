@@ -7,11 +7,11 @@ import {
   makeAppleFmToolCallbackSession,
   type AppleFmToolDefinition,
   type AppleFmToolName,
-} from "../../packages/runtime/src/index"
+} from "../../packages/runtime/src/index.js"
 import type {
   ControlSessionExecutorInput,
   ControlSessionExecutorResult,
-} from "./control-sessions"
+} from "./control-sessions.js"
 
 export const APPLE_FM_LOCAL_SESSION_SAFE_TOOLS = [
   "read_file",

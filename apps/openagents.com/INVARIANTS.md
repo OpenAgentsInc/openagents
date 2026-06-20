@@ -1799,6 +1799,24 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `multi_earning_settlement_refs_missing`) stay owner-gated and are surfaced
     as `remainingOwnerGatedBlockers`. It records no real earnings, moves no
     money, and admits no install as closed (#5527).
+  - `GET /api/public/omni/client-delivery-projection` — live at read over the
+    INERT client-delivery workroom store (promise
+    `workrooms.omni_client_delivery_workrooms.v1`, yellow) — compliant
+    (`generatedAt`, `live_at_read` contract). The surface is flag-gated
+    (`OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED`, default off => empty store) and
+    the payload always reports `effectsApplied: false`. When armed it projects
+    the existing source-authorized business-object delivery seam
+    (`buildOmniBusinessObjectDeliveryPlan`) over an injected workroom store:
+    per-write approval-gated decisions plus the integration gate verdict. It
+    applies no business-object write, sends nothing, settles nothing, spends
+    nothing, mutates no connector, notifies nobody, launches no runner, and
+    upgrades no public claim. It is the read-only delivery-projection
+    deliverable (clearing
+    `blocker.product_promises.omni_client_delivery_projection_missing`); the
+    live-integration, owner-sign-off, and closeout-receipt blockers
+    (`integration_inert_disabled`, `owner_sign_off_missing`,
+    `closeout_receipt_missing`) stay owner-gated and are surfaced as
+    `remainingBlockers`, so the promise stays yellow (DE-9 / #5532).
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,

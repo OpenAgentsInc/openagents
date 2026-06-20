@@ -3,7 +3,7 @@ import {
   BlueprintProgramFamily,
   BlueprintProgramRiskClass,
   isBlueprintProjectionPrivateDataSafe,
-} from "./contracts";
+} from "./contracts.js";
 
 export const ProbeBlueprintContributionKind = S.Literals([
   "signature_contribution",

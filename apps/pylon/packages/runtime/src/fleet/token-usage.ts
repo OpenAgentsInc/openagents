@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { Effect, Schema as S } from "effect";
-import { type AppleFmUsageMeasurement } from "../backends/apple-fm/contract";
-import { type ResolvedProbeBackendProfile } from "../backends/backend-profile";
-import { type GeminiCompleteResult } from "../backends/gemini/client";
-import { type ProbeRunAssignment } from "../contracts/assignment";
-import { validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
-import { type ProbeLlmUsage } from "../llm/usage";
+import { type AppleFmUsageMeasurement } from "../backends/apple-fm/contract.js";
+import { type ResolvedProbeBackendProfile } from "../backends/backend-profile.js";
+import { type GeminiCompleteResult } from "../backends/gemini/client.js";
+import { type ProbeRunAssignment } from "../contracts/assignment.js";
+import { validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
+import { type ProbeLlmUsage } from "../llm/usage.js";
 
 export type ProbeTokenUsageProducerSystem = "probe";
 export type ProbeTokenUsageSourceRoute =

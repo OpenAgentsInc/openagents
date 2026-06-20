@@ -3,7 +3,7 @@ import { existsSync } from "node:fs"
 import { join } from "node:path"
 import { homedir, platform } from "node:os"
 import { TASSADAR_EXECUTOR_CAPABILITY_REF } from "@openagentsinc/tassadar-executor"
-import { PYLON_VERSION, type PylonVersion } from "./version"
+import { PYLON_VERSION, type PylonVersion } from "./version.js"
 
 export type SupportedPlatform = "darwin" | "linux"
 export type BootstrapOptions = {

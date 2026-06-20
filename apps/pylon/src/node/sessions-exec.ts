@@ -20,7 +20,7 @@ import type {
   ControlSessionProjection,
   ControlSessionSpawnCommand,
   ControlSessionState,
-} from "./control-sessions"
+} from "./control-sessions.js"
 
 // The bounded subset of the control surface this driver composes over. Each is
 // the SAME function the running node exposes (and the desktop GUI drives), so

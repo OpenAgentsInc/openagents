@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Effect, Schema as S } from "effect";
-import { APPLE_FM_BACKEND_KIND } from "./contract";
-import { AppleFmBackendFailureReceipt, makeAppleFmFailureReceipt } from "./receipts";
+import { APPLE_FM_BACKEND_KIND } from "./contract.js";
+import { AppleFmBackendFailureReceipt, makeAppleFmFailureReceipt } from "./receipts.js";
 
 export const AppleFmToolName = S.Literals([
   "read_file",

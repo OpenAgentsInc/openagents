@@ -1,7 +1,7 @@
 import type {
   ShipAuthorizationDecision,
   ShipMode,
-} from "./loop-safety"
+} from "./loop-safety.js"
 
 export type ShipReceiptInput = {
   intentId: string

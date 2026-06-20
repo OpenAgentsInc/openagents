@@ -1,8 +1,8 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { Effect, Schema as S } from "effect";
-import { ProbeProvider, validateProbePublicProjection, type JsonValue, type ProviderSecretRef } from "../contracts/provider-account";
-import { type OmegaResolvedAuthGrant } from "../omega/grant-client";
+import { ProbeProvider, validateProbePublicProjection, type JsonValue, type ProviderSecretRef } from "../contracts/provider-account.js";
+import { type OmegaResolvedAuthGrant } from "../omega/grant-client.js";
 
 export const ProbeBrokeredAuthSecret = S.Struct({
   providerSecretRef: S.String,

@@ -9,12 +9,12 @@ import {
   type BlueprintProgramRegistryProjection as BlueprintProgramRegistryProjectionType,
   type BlueprintProjectionUnsafe,
   type BlueprintRegistrySourceKind as BlueprintRegistrySourceKindType,
-} from "./contracts";
+} from "./contracts.js";
 import {
   STATIC_BLUEPRINT_CONTRACT_EXPORT,
   STATIC_BLUEPRINT_PROGRAM_REGISTRY,
   STATIC_BLUEPRINT_REGISTRY_VERSION_REF,
-} from "./fixtures";
+} from "./fixtures.js";
 
 export const BlueprintSignatureRegistryView = S.Struct({
   contractExport: S.optional(BlueprintContractExportSeed),

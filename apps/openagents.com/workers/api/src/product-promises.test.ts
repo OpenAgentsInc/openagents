@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.19')
+    expect(decoded.version).toBe('2026-06-20.21')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -174,7 +174,7 @@ describe('public product promises document', () => {
     // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
     // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
     // without flipping the promise (stays yellow), so green remains exactly 24.
-    // The 2026-06-20.17 repo-study customer-private-validation pass drops
+    // The 2026-06-20.18 repo-study customer-private-validation pass drops
     // repo_studying_customer_private_validation_missing on
     // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
     // validation module + delivery seam); the promise STAYS yellow, so green
@@ -192,6 +192,17 @@ describe('public product promises document', () => {
     // claim/list path at /api/tenant/hostnames that writes only pending rows;
     // live provisioning stays owner-gated and INERT default-OFF), without
     // flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.20 training ablation one-delta harness pass clears the
+    // ablation_harness_missing blocker on training.ablation_system.v1 while
+    // eval reproduction and paid dispatch remain blocked, so green remains
+    // exactly 24. The 2026-06-20.21 external-repo-studying pilot
+    // customer-private-admission pass drops
+    // external_repo_studying_customer_private_admission_missing on
+    // autopilot.external_repo_studying_pilot.v1 (refs-only INERT admission
+    // module that REUSES the customer-private validation engine and decides
+    // whether an external contributor's study may be admitted for a customer,
+    // flag-gated default-OFF, admitted/effectsApplied always false); the
+    // promise STAYS yellow, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -265,18 +276,19 @@ describe('public product promises document', () => {
           promiseId: 'training.ablation_system.v1',
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-20-ablation-one-delta-harness.md',
             'https://openagents.com/api/public/training/ablation-derisking-ledger',
             'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
             'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
           ]),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.ablation_harness_missing',
             'blocker.product_promises.eval_suite_reproduction_missing',
+            'blocker.product_promises.paid_ablation_dispatch_missing',
           ]),
           safeCopy: expect.stringContaining(
             '/api/public/training/ablation-derisking-ledger',
           ),
-          verification: expect.stringContaining('candidate-only'),
+          verification: expect.stringContaining('one-delta manifest harness'),
         }),
         expect.objectContaining({
           promiseId: 'training.model_ladder.v1',
@@ -820,7 +832,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('ablation derisking ledger clears only the projection blocker', () => {
+  test('ablation derisking ledger clears projection and harness blockers only', () => {
     const document = publicProductPromisesDocument()
     const ablationPromise = document.promises.find(
       promise => promise.promiseId === 'training.ablation_system.v1',
@@ -829,10 +841,11 @@ describe('public product promises document', () => {
     expect(ablationPromise).toMatchObject({
       state: 'planned',
       blockerRefs: [
-        'blocker.product_promises.ablation_harness_missing',
         'blocker.product_promises.eval_suite_reproduction_missing',
+        'blocker.product_promises.paid_ablation_dispatch_missing',
       ],
       evidenceRefs: expect.arrayContaining([
+        'docs/training/2026-06-20-ablation-one-delta-harness.md',
         'https://openagents.com/api/public/training/ablation-derisking-ledger',
         'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
         'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
@@ -841,8 +854,11 @@ describe('public product promises document', () => {
     expect(ablationPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.ablation_ledger_projection_missing',
     )
+    expect(ablationPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.ablation_harness_missing',
+    )
     expect(ablationPromise?.safeCopy).toContain(
-      'public, read-only ablation derisking ledger projection',
+      'one-delta manifest-verified candidate entries',
     )
     expect(ablationPromise?.verification).toContain(
       'zero paid ablations, zero reproduced evals, and zero accepted verdicts',
@@ -882,12 +898,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.19', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.21', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.19',
+      expectedVersion: '2026-06-20.21',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.19',
+      servedVersion: '2026-06-20.21',
       status: 'ready',
     })
     expect(
@@ -897,7 +913,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.19',
+      servedVersion: '2026-06-20.21',
       status: 'blocked',
     })
   })

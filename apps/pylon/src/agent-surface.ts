@@ -9,7 +9,7 @@ import { existsSync } from "node:fs"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-import type { TipsNetworkOptions } from "./tips"
+import type { TipsNetworkOptions } from "./tips.js"
 
 // ---------------------------------------------------------------------------
 // Forum surface

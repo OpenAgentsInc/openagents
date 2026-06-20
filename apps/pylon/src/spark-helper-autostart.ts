@@ -28,7 +28,7 @@
 import type {
   SparkBackupReceiveProjection,
   SparkBackupReceiveState,
-} from "./wallet"
+} from "./wallet.js"
 
 export const SPARK_AUTOSTART_ENV = "PYLON_SPARK_AUTOSTART" as const
 

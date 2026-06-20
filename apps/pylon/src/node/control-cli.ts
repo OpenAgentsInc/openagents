@@ -14,9 +14,9 @@ import {
   controlTokenFileName,
   defaultControlPort,
   type ControlCommand,
-} from "./control-server"
-import { sendControlCommand } from "./control-client"
-import { resolvePylonHome } from "../bootstrap"
+} from "./control-server.js"
+import { sendControlCommand } from "./control-client.js"
+import { resolvePylonHome } from "../bootstrap.js"
 
 export type ResolvedControlEndpoint = {
   baseUrl: string

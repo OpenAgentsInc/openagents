@@ -1,4 +1,4 @@
-import type { ShipMode } from "./ship-mode"
+import type { ShipMode } from "./ship-mode.js"
 
 export type LocalBuildPlanInput = {
   shipMode: "rebuild"

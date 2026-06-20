@@ -5,7 +5,7 @@ import {
   type ProjectionLevel,
 } from "@openagentsinc/autopilot-control-protocol"
 
-import type { BindAddress } from "./bind-config"
+import type { BindAddress } from "./bind-config.js"
 
 export type BuildPairingOfferInput = {
   binds: Array<Pick<BindAddress, "address" | "requiresAuth">>
@@ -39,7 +39,7 @@ export function buildPairingOffer(input: BuildPairingOfferInput): PairingOffer {
 function classifyAddresses(
   binds: ReadonlyArray<Pick<BindAddress, "address" | "requiresAuth">>,
 ): BootstrapPayload["addresses"] {
-  const addresses: Partial<BootstrapPayload["addresses"]> = {}
+  const addresses: { -readonly [K in keyof BootstrapPayload["addresses"]]?: BootstrapPayload["addresses"][K] } = {}
 
   for (const bind of binds) {
     if (bind.address.startsWith("127.")) {

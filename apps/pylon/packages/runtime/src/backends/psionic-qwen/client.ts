@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Effect, Schema as S } from "effect";
-import { type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "../backend-profile";
-import { resolvePsionicQwenBackendProfile, type ProbeBackendRegistryError } from "../registry";
+import { type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "../backend-profile.js";
+import { resolvePsionicQwenBackendProfile, type ProbeBackendRegistryError } from "../registry.js";
 import {
   ProbeLlmEvents,
   makeProbeLlmMessage,
@@ -9,16 +9,14 @@ import {
   makeProbeLlmToolResult,
   type ProbeLlmEvent,
   type ProbeLlmRequest,
-} from "../../llm";
-import { dispatchProbeLlmTool } from "../../llm/tool-runtime";
-import { type ProbeLlmTools } from "../../llm/tool";
+} from "../../llm/index.js";
+import { dispatchProbeLlmTool } from "../../llm/tool-runtime.js";
+import { type ProbeLlmTools } from "../../llm/tool.js";
 import {
   PSIONIC_QWEN_SUPPORTED_ENDPOINT_REFS,
   PsionicQwenHealthResponse,
   PsionicQwenModelListResponse,
-  type PsionicQwenHealthResponse,
-  type PsionicQwenModelListResponse,
-} from "./contract";
+} from "./contract.js";
 import {
   admitPsionicQwenModelRows,
   descriptorsFromPsionicModelList,
@@ -26,7 +24,7 @@ import {
   selectPsionicQwenModel,
   type PsionicQwenModelAdmission,
   type PsionicQwenModelSelection,
-} from "./model-admission";
+} from "./model-admission.js";
 import {
   finishPsionicOpenAiStreamState,
   lowerProbeLlmRequestToPsionicOpenAiBody,
@@ -34,7 +32,7 @@ import {
   parsePsionicOpenAiChatCompletion,
   parsePsionicOpenAiSsePayload,
   type PsionicOpenAiProtocolError,
-} from "./protocol";
+} from "./protocol.js";
 import {
   makePsionicQwenAvailabilityReceipt,
   makePsionicQwenFailureReceipt,
@@ -44,7 +42,7 @@ import {
   PsionicQwenFailureReceipt,
   type PsionicQwenToolCallReceipt,
   type PsionicQwenTranscriptReceipt,
-} from "./receipts";
+} from "./receipts.js";
 
 export const PsionicQwenHealthStatus = S.Literals(["ready", "configured", "malformed", "unreachable"]);
 export type PsionicQwenHealthStatus = typeof PsionicQwenHealthStatus.Type;

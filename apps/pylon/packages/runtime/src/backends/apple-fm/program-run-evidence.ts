@@ -4,10 +4,10 @@ import {
   validateProbeProgramRunEvidence,
   type ProbeBlueprintProgramRunEvidence,
   type ProbeBlueprintProgramRunEvidenceUnsafe,
-} from "../../blueprint/program-run-evidence";
-import { type ProbeToolMenu } from "../../blueprint/tool-menu";
-import { type AppleFmToolStreamResult } from "./client";
-import { type AppleFmBlueprintToolProjection } from "./blueprint-tools";
+} from "../../blueprint/program-run-evidence.js";
+import { type ProbeToolMenu } from "../../blueprint/tool-menu.js";
+import { type AppleFmToolStreamResult } from "./client.js";
+import { type AppleFmBlueprintToolProjection } from "./blueprint-tools.js";
 
 export interface MakeAppleFmProgramRunEvidenceInput {
   readonly actorRef: string;

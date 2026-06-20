@@ -1,4 +1,4 @@
-import { PYLON_CLIENT_VERSION } from "./version"
+import { PYLON_CLIENT_VERSION } from "./version.js"
 
 export type LiveWorkerLoopSmokeEnv = Readonly<Record<string, string | undefined>>
 

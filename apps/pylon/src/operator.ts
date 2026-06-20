@@ -1,6 +1,6 @@
-import type { PylonHostInventoryProjection } from "./inventory"
-import { assertPublicProjectionSafe } from "./state"
-import type { UnifiedWalletBalanceProjection, WalletStatusProjection } from "./wallet"
+import type { PylonHostInventoryProjection } from "./inventory.js"
+import { assertPublicProjectionSafe } from "./state.js"
+import type { UnifiedWalletBalanceProjection, WalletStatusProjection } from "./wallet.js"
 
 export type OperatorMode = "automated" | "inspect" | "recovery"
 

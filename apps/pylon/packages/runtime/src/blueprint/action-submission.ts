@@ -1,6 +1,6 @@
 import { Effect, Schema as S } from "effect";
-import { isBlueprintProjectionPrivateDataSafe } from "./contracts";
-import { hashProbeProgramRunInput } from "./program-run-evidence";
+import { isBlueprintProjectionPrivateDataSafe } from "./contracts.js";
+import { hashProbeProgramRunInput } from "./program-run-evidence.js";
 
 export const ProbeRequestedEffectKind = S.Literals([
   "create_pull_request",

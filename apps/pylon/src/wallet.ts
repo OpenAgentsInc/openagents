@@ -3,9 +3,9 @@ import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import type { PylonPaths } from "./state"
-import { assertPublicProjectionSafe, ensureStateDirectories } from "./state"
-import { toSatNumber } from "./sat-number"
+import type { PylonPaths } from "./state.js"
+import { assertPublicProjectionSafe, ensureStateDirectories } from "./state.js"
+import { toSatNumber } from "./sat-number.js"
 
 export type WalletReadiness =
   | "daemon-offline"
@@ -62,7 +62,7 @@ import {
   classifySparkHelperFailureReason,
   sanitizeSparkDebug,
   type SparkHelperUnavailableReason,
-} from "./spark-backup-helper"
+} from "./spark-backup-helper.js"
 
 // #5194: dump a raw helper result to stderr (PYLON_SPARK_DEBUG=1 only) whenever
 // a read failed to become ready. The point: even when the stderr is EMPTY the

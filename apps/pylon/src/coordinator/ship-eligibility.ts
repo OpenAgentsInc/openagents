@@ -1,5 +1,5 @@
-import type { FingerprintShipMode } from "./ship-mode-classify"
-import type { ShipSpendGateDecision } from "./ship-spend-gate"
+import type { FingerprintShipMode } from "./ship-mode-classify.js"
+import type { ShipSpendGateDecision } from "./ship-spend-gate.js"
 
 export type ShipEligibilityInput = {
   mode: FingerprintShipMode

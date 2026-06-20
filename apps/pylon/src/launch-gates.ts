@@ -1,6 +1,6 @@
-import { assertPublicProjectionSafe } from "./state"
-import type { PsionicTrainingBoundaryProjection } from "./psionic-training-boundary"
-import { PYLON_VERSION, PYLON_CLIENT_VERSION } from "./version"
+import { assertPublicProjectionSafe } from "./state.js"
+import type { PsionicTrainingBoundaryProjection } from "./psionic-training-boundary.js"
+import { PYLON_VERSION, PYLON_CLIENT_VERSION } from "./version.js"
 
 export type LaunchClaimState = "allowed" | "blocked" | "planned"
 

@@ -13,10 +13,10 @@ import {
   type BlueprintProgramToolScope as BlueprintProgramToolScopeType,
   type BlueprintProgramType,
   type BlueprintReleaseGateRef,
-} from "./contracts";
-import { blueprintRegistryProjectionIsSafe } from "./contracts";
-import { BlueprintSignatureLookupRequest } from "./contracts";
-import { BlueprintSignatureRegistryView } from "./registry-client";
+} from "./contracts.js";
+import { blueprintRegistryProjectionIsSafe } from "./contracts.js";
+import { BlueprintSignatureLookupRequest } from "./contracts.js";
+import { BlueprintSignatureRegistryView } from "./registry-client.js";
 
 export const BlueprintSignatureLookupInput = S.Struct({
   backendCapabilityRefs: S.Array(S.String),

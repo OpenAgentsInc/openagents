@@ -1,7 +1,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
-import type { BootstrapSummary } from "./bootstrap"
+import type { BootstrapSummary } from "./bootstrap.js"
 
 export type QuotaRecord = {
   accountRefHash: string

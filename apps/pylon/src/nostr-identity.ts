@@ -9,7 +9,7 @@ import { HDKey } from "@scure/bip32"
 import { bech32 } from "@scure/base"
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
-import type { BootstrapSummary } from "./bootstrap"
+import type { BootstrapSummary } from "./bootstrap.js"
 
 export const ENV_OPENAGENTS_IDENTITY_MNEMONIC_PATH = "OPENAGENTS_IDENTITY_MNEMONIC_PATH"
 export const ENV_OPENAGENTS_PYLON_HOME = "OPENAGENTS_PYLON_HOME"

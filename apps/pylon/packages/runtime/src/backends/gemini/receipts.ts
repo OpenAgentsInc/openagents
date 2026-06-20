@@ -1,7 +1,7 @@
 import { Schema as S } from "effect";
-import { ProbeLlmUsage } from "../../llm/usage";
-import { redactReceiptUrl } from "../../receipt-redaction";
-import { GEMINI_BACKEND_KIND } from "./contract";
+import { ProbeLlmUsage } from "../../llm/usage.js";
+import { redactReceiptUrl } from "../../receipt-redaction.js";
+import { GEMINI_BACKEND_KIND } from "./contract.js";
 
 export const GeminiBackendAvailabilityReceipt = S.Struct({
   kind: S.Literal("probe_backend_availability"),
