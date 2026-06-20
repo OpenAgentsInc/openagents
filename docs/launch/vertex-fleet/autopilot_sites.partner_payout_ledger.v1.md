@@ -153,19 +153,47 @@ call-site gap on the code side of the blocker.
 The agreement WRITER is now reachable end-to-end; `recordPartnerPayoutForPaidEvent`
 (the paid-event feed) still awaits a production caller (see below).
 
+### Follow-up (this run): the agreement routes are now SERVED by the worker
+
+The previous run shipped `partner-agreement-routes.ts` with a
+`makePartnerAgreementRoutes` factory but, like the ledger routes at the time,
+left it unchained — so the operator endpoints existed in source but `index.ts`
+never mounted them and no real request could reach the sanctioned agreement
+WRITER. (The ledger routes have since been wired at `index.ts`; the agreement
+routes were the last partner-rail module still dark.) Without a served writer,
+the only way to seed the EXPLICIT `partner_agreements` rows the attribution
+policy depends on remained a raw SQL insert, and the no-fallback rule meant no
+partner could ever be attributed. This run closes that call-site gap:
+
+- `apps/openagents.com/workers/api/src/index.ts` — three minimal edits mirroring
+  the `partnerPayoutLedgerRoutes` wiring exactly:
+  1. `import { makePartnerAgreementRoutes } from './partner-agreement-routes'`.
+  2. construct `partnerAgreementRoutes` with the same
+     `nowIso: currentIsoTimestamp` / `requireAdminApiToken` dependencies used by
+     the ledger routes.
+  3. chain `partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx)`
+     onto the `routeOmniRequest` `??` chain, immediately after the partner payout
+     ledger route. The route returns `Effect | undefined`, so a non-matching path
+     falls through to the rest of the chain unchanged.
+- No new behaviour, schema, or money movement is introduced — this is pure
+  call-site integration. `GET/POST /api/operator/partners/agreements` are now
+  admin-gated and live. Migration `0214_partner_agreements.sql` must be applied
+  before serving (already present in `migrations/`).
+- `bunx tsc -p tsconfig.json --noEmit` reports 0 errors after the wiring.
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
   `PARTNER_PAYOUT_ROLE_POLICY` and on this attribution model (caveat
   `caveat.public.partner_payouts.partner_policy_not_owner_signed`). This is a
   product decision and is the load-bearing remainder of this blocker.
-- **Call-site wiring**: `recordPartnerAgreement` now has an admin HTTP surface
-  (`partner-agreement-routes.ts`), but like the ledger routes it is NOT yet
-  chained into `index.ts` / `worker-routes.ts` — coordinator integration is
-  still required to serve it. `recordPartnerPayoutForPaidEvent` still has no
-  production caller: a real paid-event source (e.g. the Stripe/credit webhook
+- **Call-site wiring**: `recordPartnerAgreement` is now reachable end-to-end —
+  its admin routes (`partner-agreement-routes.ts`) are chained into `index.ts`'s
+  `routeOmniRequest` as of this run, alongside the already-wired payout ledger
+  routes. What still has no production caller is `recordPartnerPayoutForPaidEvent`
+  (the paid-event feed): a real paid-event source (e.g. the Stripe/credit webhook
   path that already feeds `recordReferralPayoutForPaidEvent`) still needs to
-  invoke the payout feed.
+  invoke the payout feed so an attributed agreement actually mints a payout.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 
