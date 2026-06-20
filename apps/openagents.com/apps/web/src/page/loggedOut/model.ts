@@ -993,6 +993,76 @@ export const PublicProductPromisesModel = S.Union([
 ])
 export type PublicProductPromisesModel = typeof PublicProductPromisesModel.Type
 
+// Claim-upgrade audit panel: promise-transition receipts from
+// /api/public/product-promises/transitions. Each receipt is the
+// dereferenceable, registry-versioned proof for one proposed state flip.
+export const PublicPromiseTransitionCheck = S.Struct({
+  kind: S.String,
+  result: S.String,
+})
+export type PublicPromiseTransitionCheck =
+  typeof PublicPromiseTransitionCheck.Type
+
+export const PublicPromiseTransitionException = S.Struct({
+  approvedByRef: S.String,
+  expiresAt: S.String,
+  reasonRef: S.String,
+})
+export type PublicPromiseTransitionException =
+  typeof PublicPromiseTransitionException.Type
+
+export const PublicPromiseTransitionReceipt = S.Struct({
+  checkedAt: S.String,
+  checks: S.Array(PublicPromiseTransitionCheck),
+  evidenceRefs: S.Array(S.String),
+  exception: S.NullOr(PublicPromiseTransitionException),
+  fromState: S.String,
+  promiseId: S.String,
+  receiptId: S.String,
+  registryVersion: S.String,
+  result: S.String,
+  toState: S.String,
+})
+export type PublicPromiseTransitionReceipt =
+  typeof PublicPromiseTransitionReceipt.Type
+
+export const PublicPromiseTransitions = S.Struct({
+  kind: S.String,
+  publicSafe: S.Boolean,
+  receipts: S.Array(PublicPromiseTransitionReceipt),
+  rule: S.String,
+})
+export type PublicPromiseTransitions = typeof PublicPromiseTransitions.Type
+
+export const IdlePublicPromiseTransitions = ts(
+  'PublicPromiseTransitionsIdle',
+  {},
+)
+export const LoadingPublicPromiseTransitions = ts(
+  'PublicPromiseTransitionsLoading',
+  {},
+)
+export const LoadedPublicPromiseTransitions = ts(
+  'PublicPromiseTransitionsLoaded',
+  {
+    transitions: PublicPromiseTransitions,
+  },
+)
+export const FailedPublicPromiseTransitions = ts(
+  'PublicPromiseTransitionsFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicPromiseTransitionsModel = S.Union([
+  IdlePublicPromiseTransitions,
+  LoadingPublicPromiseTransitions,
+  LoadedPublicPromiseTransitions,
+  FailedPublicPromiseTransitions,
+])
+export type PublicPromiseTransitionsModel =
+  typeof PublicPromiseTransitionsModel.Type
+
 export const IdlePublicTrainingRuns = ts('PublicTrainingRunsIdle', {})
 export const LoadingPublicTrainingRuns = ts('PublicTrainingRunsLoading', {
   runId: S.NullOr(S.String),
@@ -1128,6 +1198,7 @@ export const Model = ts('LoggedOut', {
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
+  publicPromiseTransitions: PublicPromiseTransitionsModel,
   publicTrainingRuns: PublicTrainingRunsModel,
   settledFeed: SettledFeedModel,
   shareProjection: ShareProjectionModel,
@@ -1176,6 +1247,10 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'ProductPromises'
         ? LoadingPublicProductPromises()
         : IdlePublicProductPromises(),
+    publicPromiseTransitions:
+      route._tag === 'ProductPromises'
+        ? LoadingPublicPromiseTransitions()
+        : IdlePublicPromiseTransitions(),
     publicTrainingRuns:
       route._tag === 'PublicTrainingRuns'
         ? LoadingPublicTrainingRuns({ runId: null })

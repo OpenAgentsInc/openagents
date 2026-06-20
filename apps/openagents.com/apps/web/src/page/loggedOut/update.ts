@@ -10,6 +10,7 @@ import {
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
   FailedLoadPublicProductPromises,
+  FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
   FailedLoadPublicTrainingRuns,
   FailedLoadSettledFeedSnapshot,
@@ -21,6 +22,7 @@ import {
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
   SucceededLoadPublicProductPromises,
+  SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
   SucceededLoadPublicTrainingRuns,
   SucceededLoadSettledFeedSnapshot,
@@ -33,6 +35,7 @@ import {
   FailedPublicForumLaunchStatus,
   FailedPublicForumTipLeaderboards,
   FailedPublicProductPromises,
+  FailedPublicPromiseTransitions,
   FailedPublicPylonStats,
   FailedPublicTrainingRuns,
   FailedShareProjection,
@@ -42,6 +45,7 @@ import {
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
   LoadedPublicProductPromises,
+  LoadedPublicPromiseTransitions,
   LoadedPublicPylonStats,
   LoadedPublicTrainingRuns,
   LoadedShareProjection,
@@ -52,6 +56,7 @@ import {
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
   PublicProductPromises,
+  PublicPromiseTransitions,
   PublicPylonStats,
   PublicTrainingRunResponse,
   PublicTrainingRunsResponse,
@@ -92,6 +97,11 @@ class PublicForumTipLeaderboardsLoadError extends S.TaggedErrorClass<PublicForum
 
 class PublicProductPromisesLoadError extends S.TaggedErrorClass<PublicProductPromisesLoadError>()(
   'PublicProductPromisesLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicPromiseTransitionsLoadError extends S.TaggedErrorClass<PublicPromiseTransitionsLoadError>()(
+  'PublicPromiseTransitionsLoadError',
   { error: S.Defect },
 ) {}
 
@@ -482,6 +492,46 @@ export const LoadPublicProductPromises = Command.define(
   ),
 )
 
+export const LoadPublicPromiseTransitions = Command.define(
+  'LoadPublicPromiseTransitions',
+  SucceededLoadPublicPromiseTransitions,
+  FailedLoadPublicPromiseTransitions,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/product-promises/transitions', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicPromiseTransitionsLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicPromiseTransitionsLoadError({
+        error: `Promise transitions returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicPromiseTransitionsLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(PublicPromiseTransitions)(payload)
+
+    return SucceededLoadPublicPromiseTransitions({ transitions: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicPromiseTransitions({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
 export const LoadPublicTrainingRuns = Command.define(
   'LoadPublicTrainingRuns',
   { runId: S.NullOr(S.String) },
@@ -640,7 +690,7 @@ export const initialCommands = (
           LoadSettledFeedSnapshot(),
         ]
       : model.route._tag === 'ProductPromises'
-        ? [LoadPublicProductPromises()]
+        ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
         : model.route._tag === 'PublicTrainingRuns'
           ? [LoadPublicTrainingRuns({ runId: null })]
           : model.route._tag === 'PublicTrainingRun'
@@ -830,6 +880,20 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       FailedLoadPublicProductPromises: ({ error }) => [
         evo(model, {
           publicProductPromises: () => FailedPublicProductPromises({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicPromiseTransitions: ({ transitions }) => [
+        evo(model, {
+          publicPromiseTransitions: () =>
+            LoadedPublicPromiseTransitions({ transitions }),
+        }),
+        [],
+      ],
+      FailedLoadPublicPromiseTransitions: ({ error }) => [
+        evo(model, {
+          publicPromiseTransitions: () =>
+            FailedPublicPromiseTransitions({ error }),
         }),
         [],
       ],

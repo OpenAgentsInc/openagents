@@ -103,7 +103,11 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Onboarding: () => Onboarding.view(model.onboarding),
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
               DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),
-              ProductPromises: () => Promises.view(model.publicProductPromises),
+              ProductPromises: () =>
+                Promises.view(
+                  model.publicProductPromises,
+                  model.publicPromiseTransitions,
+                ),
               PublicTrainingRuns: () =>
                 TrainingRuns.view(model.publicTrainingRuns, null),
               PublicTrainingRun: route =>
