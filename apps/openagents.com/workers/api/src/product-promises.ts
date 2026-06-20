@@ -2581,16 +2581,18 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Spoken commands and intent can be ingested into Autopilot workrooms as transcribed, approval-gated action proposals.',
         safeCopy:
-          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path, then wire the live ingestion endpoint, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
+          'Voice-session evidence contracts, read-only projections, and a voice-transcript→program ingest core shipped in wave-3 (#4992): voice-session metadata, transcript segments, and command proposals with approval-required and risk labels, projected with mutation disabled. Going further is a product decision plus wiring: pick an STT vendor and capture path, the flag-gated INERT ingestion endpoint (POST /api/mobile/voice-sessions/ingest, default off) is now wired to the ingest core (#5542, clearing the endpoint blocker); remaining is an STT vendor + capture path, AI proposal generation, and the approval UI. Foundation infrastructure for mobile.voice_approval_companion.v1.',
         unsafeCopy:
           'Do not claim users can speak commands that execute, or that voice transcripts are trusted for mutations (CRM, email send, code, deploy, spend) without server-side approval; the ingest core exists but no STT vendor or live capture path is chosen.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.ts',
           'apps/openagents.com/workers/api/src/omni-voice-session-evidence.test.ts',
+          'apps/openagents.com/workers/api/src/voice-program-ingest-routes.ts',
+          'route:/api/mobile/voice-sessions/ingest',
           'https://github.com/OpenAgentsInc/openagents/issues/4992',
+          'https://github.com/OpenAgentsInc/openagents/pull/5542',
         ],
         blockerRefs: [
-          'blocker.product_promises.voice_ingestion_endpoint_missing',
           'blocker.product_promises.voice_transcription_service_missing',
           'blocker.product_promises.voice_proposal_and_approval_ui_missing',
         ],
