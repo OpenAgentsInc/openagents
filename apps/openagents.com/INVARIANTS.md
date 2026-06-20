@@ -1879,6 +1879,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     flips no promise; the `referral.refer_once_earn_forever.v1` promise stays
     red/owner-gated. Regression coverage:
     `workers/api/src/site-referral-payout-public-projection.test.ts`.
+  - `GET /api/public/product-promises/audit` — live at read over the live
+    product-promise registry joined against the promise transition-receipt feed
+    (proof.claim_upgrade_receipts.v1) — compliant (`generatedAt`, top-level
+    `projection_staleness.v1` `live_at_read` contract, `maxStalenessSeconds` 0,
+    `rebuildsOn` registry/receipt transitions). Read-only enterprise audit
+    surface: per promise it projects promiseId, productArea, currentState,
+    lastVerifiedAt, blockerRefs, and the backing transition receipts (from->to
+    state, registryVersion, receiptRef, result, evidence refs, owner signoff),
+    plus a registry-wide summary listing any green promises with no recorded
+    green-flip receipt. Filterable by promiseId/state/greenOnly. It re-projects
+    only already-public data, exposes no private data, moves no money, grants no
+    authority, and flips no promise. Regression coverage:
+    `workers/api/src/promise-transition-audit-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no
