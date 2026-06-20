@@ -37,6 +37,10 @@ import {
   handleTrainingFullPipelineProgramApi,
 } from './training-full-pipeline-program-routes'
 import {
+  TrainingModelLadderRungsEndpoint,
+  handleTrainingModelLadderRungsApi,
+} from './training-model-ladder-rungs-routes'
+import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
@@ -8065,6 +8069,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // claim.
     path: TrainingFullPipelineProgramEndpoint,
     handler: request => handleTrainingFullPipelineProgramApi(request),
+  },
+  {
+    // Model-ladder rung status projection (#5523 / DE-5 #5528; promise
+    // training.model_ladder.v1, planned). Read-only ladder surface: exposes R0,
+    // the published R1 closeout criteria, and the economics-gate format while
+    // keeping R1/R2 closeout receipts and green authority false.
+    path: TrainingModelLadderRungsEndpoint,
+    handler: request => handleTrainingModelLadderRungsApi(request),
   },
   {
     // Public gradient-window status projection (#5523 / DE-5 #5528; promise

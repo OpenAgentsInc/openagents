@@ -60,6 +60,22 @@ effective tokens/sec** — recorded in psionic's actual-pretraining runbook
 It proves dispatch/checkpoint/receipt mechanics only. R0 rehearsal throughput is
 **not** network training capability and must not be presented as such.
 
+### Public rung-status projection (2026-06-20)
+
+`GET /api/public/training/model-ladder-rungs` is the public-safe, live-at-read
+projection for this promise. It exposes the R0-R4 rung definitions, the retained
+R0 rehearsal, the six R1 closeout criteria below, and the five-field
+economics-gate format. The route is a status surface only: it reports
+`rungEconomicsGateFormatAvailable=true`, but keeps
+`r1FullRehearsalAvailable=false`, `r1CloseoutReceiptAvailable=false`,
+`r2NetworkRungReceiptAvailable=false`, and `greenGateSatisfied=false`.
+
+The projection does not clear `blocker.product_promises.r1_full_rehearsal_missing`.
+It also does not clear
+`blocker.product_promises.model_ladder_network_rungs_not_run` for
+`pylon.first_real_model_training_run.v1`; that still requires a real R2-or-above
+network rung with paid verified windows and a closeout receipt.
+
 ## R1 closeout criteria (what an R1 closeout receipt must demonstrate)
 
 R1 is the **operator-scale full rehearsal**: the whole pipeline dispatched

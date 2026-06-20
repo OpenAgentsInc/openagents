@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.39')
+    expect(decoded.version).toBe('2026-06-20.40')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -478,9 +478,18 @@ describe('public product promises document', () => {
           blockerRefs: ['blocker.product_promises.r1_full_rehearsal_missing'],
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-19-model-ladder-rung-economics.md',
+            'route:/api/public/training/model-ladder-rungs',
+            'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
+            'apps/openagents.com/workers/api/src/training-model-ladder-rungs.test.ts',
           ]),
+          safeCopy: expect.stringContaining(
+            'GET /api/public/training/model-ladder-rungs',
+          ),
           verification: expect.stringContaining(
             'rung_economics_gate_format_missing dimension is documented',
+          ),
+          unsafeCopy: expect.stringContaining(
+            'Do not claim any Psion rung above R0 is trained',
           ),
         }),
         expect.objectContaining({
@@ -974,6 +983,24 @@ describe('public product promises document', () => {
       )
     }
 
+    expect(
+      byId.get('pylon.first_real_model_training_run.v1'),
+    ).toMatchObject({
+      blockerRefs: [
+        'blocker.product_promises.model_ladder_network_rungs_not_run',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'route:/api/public/training/model-ladder-rungs',
+        'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
+      ]),
+      safeCopy: expect.stringContaining(
+        'r2NetworkRungReceiptAvailable=false',
+      ),
+      verification: expect.stringContaining(
+        'model_ladder_network_rungs_not_run',
+      ),
+    })
+
     // The participant/scale methodology + comparable-runs research are attached
     // to the largest-run and consumer-self-serve promises.
     expect(
@@ -1183,12 +1210,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.39', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.40', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.39',
+      expectedVersion: '2026-06-20.40',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.39',
+      servedVersion: '2026-06-20.40',
       status: 'ready',
     })
     expect(
@@ -1198,7 +1225,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.39',
+      servedVersion: '2026-06-20.40',
       status: 'blocked',
     })
   })

@@ -17,6 +17,7 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',
   '/api/public/training/full-pipeline-program',
+  '/api/public/training/model-ladder-rungs',
   '/api/public/training/public-gradient-windows',
   '/api/public/training/ablation-derisking-ledger',
   '/api/public/training/post-training-arc/instruct-sft-lane',
