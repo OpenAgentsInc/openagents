@@ -61,6 +61,11 @@ const rejectedParity: TassadarReplayVerdict = {
   replayedTraceDigest: 'c'.repeat(64),
 }
 
+// The baseline kernel replayed on the same validator device, yielding the same
+// output trace ('a') as the verified optimized replay => cross-graph output
+// equivalence. Its graph is the baseline record's graph (set below).
+const baselineParity: TassadarReplayVerdict = { ...verifiedParity }
+
 const verdictFor = (
   targetModel: string,
   optimizedTokensPerSecond: number,
@@ -77,6 +82,7 @@ const verdictFor = (
       targetModel,
       tokensPerSecond: 328,
     },
+    baselineParityVerdict: { ...baselineParity, graphDigest: parityVerdict.graphDigest },
     optimized: {
       device: 'cuda',
       graphDigest: parityVerdict.graphDigest,

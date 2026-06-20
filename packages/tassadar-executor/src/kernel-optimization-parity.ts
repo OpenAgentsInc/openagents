@@ -63,6 +63,7 @@ export type KernelOptimizationRejection =
   | Readonly<{ reason: "op_mismatch"; detail: string }>
   | Readonly<{ reason: "kernel_not_optimized"; detail: string }>
   | Readonly<{ reason: "parity_trace_unbound"; detail: string }>
+  | Readonly<{ reason: "output_parity_mismatch"; detail: string }>
   | Readonly<{ reason: "invalid_throughput"; detail: string }>
   | Readonly<{
       reason: "parity_rejected"
@@ -118,6 +119,19 @@ const isPositiveFinite = (value: number): boolean =>
  * proof does not pertain to the measured kernel, so even a "verified" verdict is
  * meaningless for it. Parity is checked before throughput so that "faster but
  * wrong" can never be accepted.
+ *
+ * Output-parity (cross-graph equivalence): the optimized kernel's own replay
+ * verdict (`parityVerdict`) only proves the optimized graph is self-consistent
+ * (the worker did not lie about its OWN outputs). The work definition's actual
+ * correctness anchor is stronger — "the optimized kernel must produce IDENTICAL
+ * outputs to the baseline". That is a TWO-graph claim, and the bounded-workload
+ * replay engine re-executes ONE graph, so it is established by replaying the
+ * baseline kernel on the SAME validator device (`baselineParityVerdict`) to get
+ * the reference output, then requiring the independently-recomputed optimized
+ * output trace to equal that reference byte-for-byte. A faster kernel that
+ * computes different outputs than the baseline — even one whose own replay is
+ * self-consistent — is wrong and is rejected (`output_parity_mismatch`), before
+ * the throughput gate.
  */
 export const verifyKernelOptimizationParity = (
   input: Readonly<{
@@ -125,10 +139,18 @@ export const verifyKernelOptimizationParity = (
     optimizedOpRef: string
     baseline: KernelThroughputRecord
     optimized: KernelThroughputRecord
+    /** The OPTIMIZED kernel replayed on the independent validator device. */
     parityVerdict: TassadarReplayVerdict
+    /**
+     * The BASELINE kernel replayed on the SAME validator device, establishing
+     * the reference output the optimized kernel must reproduce. Without it the
+     * verifier can prove the optimized kernel is self-consistent but NOT that it
+     * computes the same thing as the baseline (cross-graph output equivalence).
+     */
+    baselineParityVerdict: TassadarReplayVerdict
   }>,
 ): KernelOptimizationVerdict => {
-  const { baseline, optimized, parityVerdict } = input
+  const { baseline, baselineParityVerdict, optimized, parityVerdict } = input
   const speedupRatio =
     isPositiveFinite(baseline.tokensPerSecond) &&
     isPositiveFinite(optimized.tokensPerSecond)
@@ -230,6 +252,26 @@ export const verifyKernelOptimizationParity = (
     })
   }
 
+  // Symmetric baseline trace-binding: the baseline reference output is only
+  // trustworthy if it was replayed on the graph the baseline record actually
+  // names. Otherwise the "reference" the optimized output is compared against
+  // could be some other graph's outputs.
+  const baselineGraph = normalizeDigest(baseline.graphDigest)
+  const baselineReplayedGraph = normalizeDigest(baselineParityVerdict.graphDigest)
+  if (baselineGraph.length === 0) {
+    return rejected({
+      detail:
+        "baseline record must name the graph digest its reference output was measured on (to bind it to the baseline replay)",
+      reason: "parity_trace_unbound",
+    })
+  }
+  if (baselineGraph !== baselineReplayedGraph) {
+    return rejected({
+      detail: `baseline record graph "${baseline.graphDigest.trim()}" != baseline reference-replay graph "${baselineParityVerdict.graphDigest.trim()}"; the reference output does not pertain to the named baseline kernel`,
+      reason: "parity_trace_unbound",
+    })
+  }
+
   if (
     !isPositiveFinite(baseline.tokensPerSecond) ||
     !isPositiveFinite(optimized.tokensPerSecond)
@@ -244,6 +286,45 @@ export const verifyKernelOptimizationParity = (
     return rejected({
       parityRejection: parityVerdict.rejection,
       reason: "parity_rejected",
+    })
+  }
+
+  // Output-parity gate (cross-graph output equivalence). The optimized parity
+  // verdict above only proves the optimized kernel is self-consistent. The work
+  // definition requires it to produce IDENTICAL outputs to the baseline, so the
+  // baseline reference output (itself an independent replay on the SAME device)
+  // must equal the optimized kernel's recomputed output trace. Checked before
+  // throughput: a faster kernel that computes different outputs is wrong.
+  if (baselineParityVerdict.outcome !== "verified") {
+    return rejected({
+      detail:
+        "baseline reference output is not itself reproducible on the validator device, so there is no trustworthy reference to compare the optimized output against",
+      reason: "output_parity_mismatch",
+    })
+  }
+  const optimizedValidator = parityVerdict.validatorDeviceRef.trim()
+  const baselineValidator = baselineParityVerdict.validatorDeviceRef.trim()
+  if (optimizedValidator !== baselineValidator) {
+    return rejected({
+      detail: `baseline reference recomputed on a different validator device ("${baselineValidator}") than the optimized kernel ("${optimizedValidator}"); a byte-for-byte output comparison is only meaningful on one device`,
+      reason: "output_parity_mismatch",
+    })
+  }
+  const optimizedOutput = normalizeDigest(parityVerdict.replayedTraceDigest ?? "")
+  const baselineOutput = normalizeDigest(
+    baselineParityVerdict.replayedTraceDigest ?? "",
+  )
+  if (optimizedOutput.length === 0 || baselineOutput.length === 0) {
+    return rejected({
+      detail:
+        "missing a recomputed output trace digest on one side; cannot prove the optimized kernel reproduces the baseline output",
+      reason: "output_parity_mismatch",
+    })
+  }
+  if (optimizedOutput !== baselineOutput) {
+    return rejected({
+      detail: `optimized output trace "${(parityVerdict.replayedTraceDigest ?? "").trim()}" != baseline reference output trace "${(baselineParityVerdict.replayedTraceDigest ?? "").trim()}"; the optimized kernel produces different outputs than the baseline (faster but wrong)`,
+      reason: "output_parity_mismatch",
     })
   }
 
