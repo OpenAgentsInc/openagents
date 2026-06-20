@@ -181,19 +181,57 @@ partner could ever be attributed. This run closes that call-site gap:
   before serving (already present in `migrations/`).
 - `bunx tsc -p tsconfig.json --noEmit` reports 0 errors after the wiring.
 
+### Follow-up (this run): the paid-event feed now has a PRODUCTION caller
+
+The last load-bearing code gap on this blocker was that `recordPartnerPayoutForPaidEvent`
+(the paid-event feed) had no production caller — every test exercised it with
+injected deps, but no real payment path invoked it, so an explicit active
+agreement could never actually mint a partner payout. The referral feed was
+already wired into the real Stripe checkout-paid path
+(`stripe-billing.ts:recordReferralPayoutForPaidEvent`); the partner feed was not.
+This run wires it alongside, mirroring the referral pattern exactly:
+
+- `apps/openagents.com/workers/api/src/stripe-billing.ts` —
+  - `buildStripeCheckoutPartnerPayoutEvent(...)`, an exported PURE builder that
+    maps a fulfilled USD credit checkout onto a `PartnerQualifyingPaidEvent`
+    (`asset: 'usd'`, `qualifyingAmount = pack.amountCents`, payer as
+    `customerUserId`, deterministic per-session `idempotencyKey`). Extracted as a
+    pure function so the Stripe -> partner-rail contract is testable without a
+    live Stripe client or D1.
+  - The fulfillment path now calls `recordPartnerPayoutForPaidEvent(db, event)`
+    in its own best-effort `try/catch`, right after the referral feed call. It is
+    non-authoritative for billing (a feed failure never blocks fulfillment) and
+    idempotent per checkout session. Because the qualifying amount is the USD
+    purchase value, any eligibility is a USD-asset row whose role percentage
+    never mints a withdrawable-Bitcoin liability; whether ANY partner is credited
+    is still decided downstream by the no-fallback attribution policy (an EXPLICIT
+    active agreement must cover the buyer), so the common no-agreement case
+    records nothing.
+- `apps/openagents.com/workers/api/src/partner-payout-stripe-wire.test.ts` — 5
+  tests: builder maps a USD checkout exactly, deterministic idempotency key, and
+  the produced event run through the feed yields no_active_agreement (no
+  agreement), a USD eligibility (covering agreement), and self_attribution skip
+  (buyer is the partner).
+
+With this, the partner rail is reachable end-to-end from a real payment:
+operator seeds an agreement (`POST /api/operator/partners/agreements`) -> a real
+Stripe credit purchase by a covered customer mints an `eligible` partner payout
+row -> operators walk it through approve/dispatch/settle.
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
   `PARTNER_PAYOUT_ROLE_POLICY` and on this attribution model (caveat
   `caveat.public.partner_payouts.partner_policy_not_owner_signed`). This is a
   product decision and is the load-bearing remainder of this blocker.
-- **Call-site wiring**: `recordPartnerAgreement` is now reachable end-to-end —
-  its admin routes (`partner-agreement-routes.ts`) are chained into `index.ts`'s
-  `routeOmniRequest` as of this run, alongside the already-wired payout ledger
-  routes. What still has no production caller is `recordPartnerPayoutForPaidEvent`
-  (the paid-event feed): a real paid-event source (e.g. the Stripe/credit webhook
-  path that already feeds `recordReferralPayoutForPaidEvent`) still needs to
-  invoke the payout feed so an attributed agreement actually mints a payout.
+- **Call-site wiring**: both `recordPartnerAgreement` (admin routes chained into
+  `index.ts`) AND `recordPartnerPayoutForPaidEvent` (now invoked from the real
+  Stripe checkout-paid path in `stripe-billing.ts`, see the follow-up above) have
+  production callers. The remaining wiring nuance: only the Stripe credit
+  CHECKOUT path is fed; the auto-top-up credit path is not (matching the referral
+  feed, which is likewise checkout-only). Extending coverage to auto-top-up — and
+  to any non-Stripe Bitcoin revenue event — is a follow-up, not a blocker for the
+  first real partner payout.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 

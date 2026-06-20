@@ -17,6 +17,8 @@ import {
 } from './billing'
 import { WorkerSecret, redactedValue } from './config'
 import { parseJsonWithSchema } from './json-boundary'
+import { type PartnerQualifyingPaidEvent } from './partner-attribution-eligibility'
+import { recordPartnerPayoutForPaidEvent } from './partner-payout-feed'
 import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 
 export const STRIPE_API_VERSION = '2026-05-27.dahlia'
@@ -685,6 +687,41 @@ const createCreditCheckout = async (
   }
 }
 
+/**
+ * Map a fulfilled Stripe credit checkout onto the partner-payout feed's
+ * qualifying-event shape (autopilot_sites.partner_payout_ledger.v1).
+ *
+ * Pure and deterministic so the Stripe -> partner-rail contract is testable
+ * without a live Stripe client or D1:
+ *  - `asset: 'usd'` and `qualifyingAmount = amountCents` — the role percentage
+ *    is applied to the USD purchase value, so any resulting eligibility is a
+ *    USD-asset row that never mints a withdrawable-Bitcoin liability.
+ *  - `customerUserId` is the PAYER, who is also recorded as the ledger
+ *    beneficiary and drives the self-payout exclusion.
+ *  - `idempotencyKey` is deterministic per checkout session, so a webhook
+ *    redelivery creates the eligibility row at most once.
+ * Whether any partner is actually credited is decided downstream by the
+ * no-fallback attribution policy (an EXPLICIT active agreement must cover the
+ * customer); the common no-agreement case records nothing.
+ */
+export const buildStripeCheckoutPartnerPayoutEvent = (
+  input: Readonly<{
+    amountCents: number
+    nowIso: string
+    sessionId: string
+    userId: string
+  }>,
+): PartnerQualifyingPaidEvent => ({
+  asset: 'usd',
+  customerUserId: input.userId,
+  eventIso: input.nowIso,
+  idempotencyKey: `partner_payout.stripe_checkout.${input.sessionId}`,
+  periodKey: input.nowIso.slice(0, 7),
+  qualifyingAmount: input.amountCents,
+  qualifyingEventKind: 'stripe_credit_purchase',
+  qualifyingEventRef: `evidence.stripe_checkout_paid.${input.sessionId}`,
+})
+
 const fulfillCheckoutSession = async (
   config: StripeConfigShape,
   stripeClient: StripeClientShape,
@@ -751,6 +788,30 @@ const fulfillCheckoutSession = async (
     })
   } catch {
     // Swallow: referral feed is non-authoritative for billing fulfillment.
+  }
+
+  // autopilot_sites.partner_payout_ledger.v1: FEED the partner payout ledger
+  // from the SAME real paid event. Distinct from the referral rail above, this
+  // credits a partner ONLY if `recordPartnerPayoutForPaidEvent` finds an
+  // EXPLICIT, currently-active `partner_agreements` row covering this customer
+  // (the no-fallback attribution policy); the common case — no agreement —
+  // records nothing. The qualifying amount is the USD purchase value, so any
+  // eligibility is a USD-asset row whose role percentage never mints a
+  // withdrawable-Bitcoin liability. Best-effort and idempotent per checkout
+  // session: a partner-feed failure must never block billing fulfillment, and
+  // every row created here stays operator-gated (eligible -> approve/dispatch).
+  try {
+    await recordPartnerPayoutForPaidEvent(
+      input.db,
+      buildStripeCheckoutPartnerPayoutEvent({
+        amountCents: pack.amountCents,
+        nowIso: now,
+        sessionId: input.sessionId,
+        userId,
+      }),
+    )
+  } catch {
+    // Swallow: partner feed is non-authoritative for billing fulfillment.
   }
 
   await input.db
