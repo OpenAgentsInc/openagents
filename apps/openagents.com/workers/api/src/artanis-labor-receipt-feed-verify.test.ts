@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 
 import { ArtanisLaborReceiptError } from './artanis-labor-request-receipt'
 import {
+  parseAndVerifyArtanisLaborReceiptFeed,
+  parseArtanisLaborReceiptFeed,
   verifyArtanisLaborReceiptFeed,
   verifyArtanisLaborReceiptFeedRow,
 } from './artanis-labor-receipt-feed-verify'
@@ -142,6 +144,85 @@ describe('artanis labor receipt feed consumer-side verification', () => {
       ],
     }
     expect(() => verifyArtanisLaborReceiptFeed(broken)).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+})
+
+describe('artanis labor receipt feed untrusted-bytes parse boundary', () => {
+  test('raw feed JSON bytes parse and verify end to end', () => {
+    const feed = feedOf([sealRequested(), sealSkipped(), sealAccepted()])
+    const wire = JSON.stringify(feed)
+    const result = parseAndVerifyArtanisLaborReceiptFeed(wire)
+    expect(result.verifiedRowCount).toBe(3)
+    expect(result.receipts.map((r) => r.terminalState)).toEqual([
+      'requested_pending_delivery',
+      'skipped_config_disabled',
+      'accepted_released',
+    ])
+  })
+
+  test('parse alone returns typed rows without re-deriving refs', () => {
+    const feed = feedOf([sealRequested()])
+    const parsed = parseArtanisLaborReceiptFeed(JSON.stringify(feed))
+    expect(parsed.schemaVersion).toBe('openagents.artanis_labor_receipt_feed.v1')
+    expect(parsed.rows).toHaveLength(1)
+    expect(parsed.rows[0]?.workRequestId).toBe('work_request_1')
+  })
+
+  test('an empty feed parses and verifies to zero rows', () => {
+    const result = parseAndVerifyArtanisLaborReceiptFeed(JSON.stringify(feedOf([])))
+    expect(result.verifiedRowCount).toBe(0)
+  })
+
+  test('non-JSON bytes are rejected', () => {
+    expect(() => parseArtanisLaborReceiptFeed('not-json')).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('a non-object envelope is rejected', () => {
+    expect(() => parseArtanisLaborReceiptFeed('[]')).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('an unrecognized schemaVersion is rejected', () => {
+    const feed = feedOf([sealRequested()])
+    const wire = JSON.stringify({ ...feed, schemaVersion: 'something.else.v1' })
+    expect(() => parseArtanisLaborReceiptFeed(wire)).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('a non-array rows field is rejected', () => {
+    const feed = feedOf([sealRequested()])
+    const wire = JSON.stringify({ ...feed, rows: {} })
+    expect(() => parseArtanisLaborReceiptFeed(wire)).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('a row with an unrecognized terminalState is rejected', () => {
+    const feed = feedOf([sealRequested()])
+    const wire = JSON.stringify({
+      ...feed,
+      rows: [{ ...feed.rows[0], terminalState: 'bogus_state' }],
+    })
+    expect(() => parseArtanisLaborReceiptFeed(wire)).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('a row whose budget no longer addresses its served ref is caught on verify', () => {
+    const feed = feedOf([sealRequested()])
+    const wire = JSON.stringify({
+      ...feed,
+      rows: [{ ...feed.rows[0], budgetMsat: 1 }],
+    })
+    // Parse succeeds (structurally valid) but the content-address no longer matches.
+    expect(parseArtanisLaborReceiptFeed(wire).rows).toHaveLength(1)
+    expect(() => parseAndVerifyArtanisLaborReceiptFeed(wire)).toThrow(
       ArtanisLaborReceiptError,
     )
   })
