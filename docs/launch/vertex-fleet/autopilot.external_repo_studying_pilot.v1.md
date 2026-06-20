@@ -229,3 +229,60 @@ owner-signed armed clearance with a dereferenceable closeout receipt per
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): review ↔ published-policy binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The published policy registry (previous update) introduced
+`isPublishedExternalRepoStudyPrivacyPolicyRef` to close the forgeable-string
+seam — but nothing yet forced the privacy-review preflight to actually consume a
+KNOWN published policy. The review preflight's DPA / retention gates were still
+plain string-presence checks: any non-empty `dataProcessingAgreementRef` /
+`retentionPolicyRef` passed, even pointing at no published policy. This change
+closes that seam, exactly as the upload↔privacy binding did for the
+`privacyReviewRef`.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-review-policy-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyReviewPolicyBinding(...)`
+  - Schema `openagents.external_repo_study_review_policy_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes the published policy registry, a `policyRef`, and a privacy-review
+    request **with `dataProcessingAgreementRef` + `retentionPolicyRef` omitted
+    from the input type** (`Omit<…>`), so a caller cannot inject their own refs.
+    The binding derives both refs FROM a policy ref that matches a KNOWN
+    published version (via `isPublishedExternalRepoStudyPrivacyPolicyRef`), then
+    builds the review preflight from them. An unknown / forged / empty policy ref
+    binds NO refs, so the review blocks on `data_processing_agreement_missing` +
+    `retention_policy_missing` instead of trusting arbitrary strings. The matched
+    version's `termsDigest` is recorded as evidence.
+  - **Inert by construction**: `reviewCleared` / `effectsApplied` are ALWAYS
+    false (asserted on both the binding and the nested review preflight);
+    `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
+    are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
+    `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-review-policy-binding.test.ts`
+  — 7 passing tests (bound-held inert, forged-ref→unbound + review blocked,
+  empty-ref unbound, retention-out-of-policy still blocked, armed-still-inert,
+  OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+The binding is still the *decision/control* layer only. The privacy-policy
+blocker stays listed because it still requires, all owner/legal-gated and out of
+scope here: legal/owner ratification of the policy text; a real human/legal
+review against a real customer study (not a ref/digest check); durable,
+access-controlled storage that enforces the declared retention window; and an
+owner-signed armed clearance with a dereferenceable closeout receipt per
+`proof.claim_upgrade_receipts.v1`. The remaining blockers
+(`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
