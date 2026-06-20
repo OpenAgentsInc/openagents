@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.31'
+export const PublicProductPromisesVersion = '2026-06-20.32'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -27,6 +27,7 @@ const sourceRefs = [
   'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
   'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
   'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+  'docs/training/2026-06-20-training-full-pipeline-program-status.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -1704,13 +1705,17 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents will operate a full owned LLM training pipeline — data refinery, ablation system, architecture derisking, marathon operations, post-training, and infrastructure measurement — as paid, verified work on the Pylon network.',
         safeCopy:
-          'A written buildout plan exists (docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md) extending the CS336 program (#4673-#4684) with the Smol Training Playbook as operational reference; psionic holds bounded CS336 reference lanes and a retained tri-host pretraining rehearsal. No full pipeline stage is live as a broadly paid network workload.',
+          'A written buildout plan exists (docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md) extending the CS336 program (#4673-#4684) with the Smol Training Playbook as operational reference, and a public status projection is live at GET /api/public/training/full-pipeline-program. The projection maps the DE-5 stage promises to current route/evidence/blocker status: ablation, device-capability, verification-class, Artanis, architecture, and instruct-SFT receipt surfaces are visible, while public gradients, marathon operations, paid corpus work, paid ablations, paid SFT/preference work, and R1+ ladder rungs remain incomplete. No full pipeline stage is live as a broadly paid network workload.',
         unsafeCopy:
           'Do not claim OpenAgents currently operates an end-to-end training pipeline, trains world-class or frontier-class models, or that the network is training models for buyers.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
           'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'docs/training/2026-06-20-training-full-pipeline-program-status.md',
+          'route:/api/public/training/full-pipeline-program',
+          'apps/openagents.com/workers/api/src/training-full-pipeline-program.ts',
+          'apps/openagents.com/workers/api/src/training-full-pipeline-program.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4855',
           'https://github.com/OpenAgentsInc/psionic/tree/main/docs/smol',
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
@@ -1719,7 +1724,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.training_pipeline_rails_incomplete',
         ],
         verification:
-          'This umbrella promise tracks the program; each workstream and ladder rung carries its own training.* promise with its own evidence. Green requires every workstream promise at green or yellow plus at least one ladder rung completed end to end with public receipts.',
+          'This umbrella promise tracks the program; each workstream and ladder rung carries its own training.* promise with its own evidence. GET /api/public/training/full-pipeline-program is a live-at-read stage-status projection that reports each DE-5 stage promise, endpoint refs, evidence refs, receipt-surface state, and blocker refs, with greenGateSatisfied=false and remainingBlockerRefs=[training_pipeline_rails_incomplete]. It does not clear the umbrella blocker because several workstreams are still planned/red and no R1+ rung has completed end to end. Green requires every workstream promise at green or yellow plus at least one ladder rung completed end to end with public receipts.',
         authorityBoundary:
           'A written plan grants no capability, training, payout, or settlement authority, and does not move any other promise. Internal pipeline demand is plumbing proof, not market proof.',
       },
@@ -3532,6 +3537,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.29 is a training.post_training_arc.v1 instruct-SFT lane receipt pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/post-training-arc/instruct-sft-lane now serves a public-safe, live-at-read receipt receipt.training.post_training_arc.instruct_sft_lane.psion_fixture.v1 for the bounded Psionic lane psion_instruct_sft_v1: owned chat template, assistant-token generation mask, repo-owned example corpus, deterministic smoke run, and bit-exact resume drill from deterministic generator output. This clears blocker.product_promises.instruct_sft_lane_missing only by replacing it with sharper blockers: blocker.product_promises.instruct_sft_fixture_sync_missing for the current Psionic committed-report drift from generator output, and blocker.product_promises.instruct_sft_paid_dispatch_missing for the missing paid OpenAgents SFT assignment. The promise remains planned because no paid OpenAgents SFT assignment has run, preference/DPO pairwise rollout work is still missing, and no reviewed vibe-test closeout artifact exists. No assignment, spend, settlement, instruct model, fine-tuning service, preference optimization, model promotion, or green claim is created. Evidence: docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md.',
         'Registry 2026-06-20.30 partially advances autopilot.decision_queue.v1 on blocker.product_promises.receipt_backed_command_closeout_missing and flips NO promise state (stays planned, green count unchanged at 24). Adds DecisionCloseoutReceipt (packages/autopilot-control-protocol/src/decision-closeout-receipt.ts) — the canonical, tamper-verifiable receipt type for a resolved remote Pylon bridge decision: captures requestId (exactly-once key), actionRef, verb (approve/deny/answer), terminal outcome (applied/duplicate/expired/revoked/stale/unauthorized/unsupported/error), client surface (desktop/web/expo), actor, decidedAt, hasAnswer, and a deterministic line reconstructed by validateDecisionCloseoutReceipt for audit integrity. 20 tests across all terminal outcomes, all client surfaces, answer-verb hasAnswer, terminal-vs-transient classification, and field-tamper detection. Transient outcomes (offline/overloaded) excluded by type — the queue replays them on drain. No receipt storage layer, no HTTP surface change, no end-to-end proof: the remaining gap on receipt_backed_command_closeout_missing is a persistent store and at least one live receipt from a real paired-node resolution. decision_queue_api_missing and cross_client_exactly_once_decisions_missing remain fully open. Evidence: docs/launch/vertex-fleet/autopilot.decision_queue.v1.md.',
         'Registry 2026-06-20.31 is a training.post_training_arc.v1 fixture-sync receipt pass and flips NO promise state (stays planned, green count unchanged at 24). Psionic PR #1132 synchronizes the committed fixtures/psion/instruct/psion_instruct_sft_lane_report_v1.json report with deterministic generator output, and scripts/check-psion-instruct-sft-lane.sh now verifies the committed fixture with report digest sha256:76b5524234b4dd6507560c0cda6f28e782fe097c1fb022108aaaae40794d6871. GET /api/public/training/post-training-arc/instruct-sft-lane now reports committedReportFixtureSyncAvailable=true and drops blocker.product_promises.instruct_sft_fixture_sync_missing only. The promise remains planned because no paid OpenAgents SFT assignment has run, preference/DPO pairwise rollout work is still missing, and no reviewed vibe-test closeout artifact exists. No assignment, spend, settlement, instruct model, fine-tuning service, preference optimization, model promotion, or green claim is created. Evidence: docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md and https://github.com/OpenAgentsInc/psionic/pull/1132.',
+        'Registry 2026-06-20.32 is a training.full_pipeline_program.v1 stage-status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/full-pipeline-program now serves a public-safe, live-at-read map of DE-5 training stages to their promise state, endpoint refs, evidence refs, receipt-surface state, and blocker refs. It makes the umbrella program auditable without widening the claim: greenGateSatisfied=false, endToEndRunReceiptAvailable=false, ladderRungEndToEndReceiptAvailable=false, paidNetworkWorkloadBroadlyLive=false, and blocker.product_promises.training_pipeline_rails_incomplete remains. No training dispatch, corpus admission, public-gradient acceptance, checkpoint mutation, spend, settlement, model promotion, service claim, or green transition is created. Evidence: docs/training/2026-06-20-training-full-pipeline-program-status.md.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

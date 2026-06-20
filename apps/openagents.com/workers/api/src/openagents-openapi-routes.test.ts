@@ -154,6 +154,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/full-pipeline-program',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingFullPipelineProgramStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/ablation-derisking-ledger',
         'get',
       ).operationId,

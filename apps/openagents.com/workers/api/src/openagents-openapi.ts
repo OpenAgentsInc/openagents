@@ -23,6 +23,7 @@ import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
+import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -453,6 +454,100 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingFullPipelineProgramEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe full training-pipeline program status projection for training.full_pipeline_program.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, stage rows for the DE-5 training workstreams, endpoint refs, evidence refs, blocker refs, and a gate that keeps endToEndRunReceiptAvailable=false, ladderRungEndToEndReceiptAvailable=false, paidNetworkWorkloadBroadlyLive=false, and greenGateSatisfied=false until the remaining stage receipts exist. It exposes refs and status only: no raw datasets, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, model promotion, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'registryVersion',
+    'schemaVersion',
+    'sourceRefs',
+    'stageSummary',
+    'stages',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingFullPipelineProgramEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'endToEndRunReceiptAvailable',
+        'everyWorkstreamAtLeastYellow',
+        'greenGateSatisfied',
+        'ladderRungEndToEndReceiptAvailable',
+        'paidNetworkWorkloadBroadlyLive',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+      ],
+      properties: {
+        endToEndRunReceiptAvailable: { type: 'boolean' },
+        everyWorkstreamAtLeastYellow: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        ladderRungEndToEndReceiptAvailable: { type: 'boolean' },
+        paidNetworkWorkloadBroadlyLive: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.full_pipeline_program.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    registryVersion: { type: 'string' },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    stageSummary: { type: 'object', additionalProperties: true },
+    stages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'blockerRefs',
+          'endpointRefs',
+          'evidenceRefs',
+          'promiseId',
+          'promiseState',
+          'receiptState',
+          'role',
+          'stageId',
+          'statusLabel',
+        ],
+        properties: {
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          endpointRefs: { type: 'array', items: { type: 'string' } },
+          evidenceRefs: { type: 'array', items: { type: 'string' } },
+          promiseId: { type: 'string' },
+          promiseState: { type: 'string' },
+          receiptState: { type: 'string' },
+          role: { type: 'string' },
+          stageId: { type: 'string' },
+          statusLabel: { type: 'string' },
+        },
+      },
+    },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 export const TrainingPostTrainingInstructSftEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
@@ -837,6 +932,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingLeaderboardsEnvelope: objectSummary(
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
+  TrainingFullPipelineProgramEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
   TrainingPostTrainingInstructSftEnvelope,
@@ -4818,6 +4914,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public training-run settlement rows.',
           '#/components/schemas/TrainingRunSettlementsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingFullPipelineProgramEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingFullPipelineProgramStatus',
+      summary: 'Read full training-pipeline program status',
+      description:
+        'Returns the public-safe full training-pipeline program status projection for training.full_pipeline_program.v1. It maps the current DE-5 training workstreams to their promise states, endpoint refs, evidence refs, receipt-surface state, and blocker refs, while keeping greenGateSatisfied=false and the umbrella training_pipeline_rails_incomplete blocker active. Read-only; grants no training-dispatch, spend, settlement, canonical-checkpoint mutation, model-promotion, model-service, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Full training-pipeline program status.',
+          '#/components/schemas/TrainingFullPipelineProgramEnvelope',
         ),
         ...errorResponses(),
       },
