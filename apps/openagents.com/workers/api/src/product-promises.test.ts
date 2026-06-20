@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.17')
+    expect(decoded.version).toBe('2026-06-20.19')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -174,8 +174,20 @@ describe('public product promises document', () => {
     // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
     // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
     // without flipping the promise (stays yellow), so green remains exactly 24.
-    // The 2026-06-20.17 custom-hostname self-serve pass clears
-    // hostname_customer_self_serve_missing on
+    // The 2026-06-20.17 repo-study customer-private-validation pass drops
+    // repo_studying_customer_private_validation_missing on
+    // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
+    // validation module + delivery seam); the promise STAYS yellow, so green
+    // remains exactly 24. The 2026-06-20.18 two-record artanis-area pass drops
+    // artanis_unattended_tick_streak_missing on
+    // artanis.tassadar_evolution_loop.v1 (the deployed tick-streak gate is met:
+    // longestStreak 12 >= 10, dereferenceable closeout receipts) and adds the
+    // external-contributor responder-support projection
+    // (GET /api/public/artanis/responder-support) on
+    // artanis.pylon_support_responder.v1 while KEEPING its
+    // external_contributor_flow_unproven blocker; both promises STAY yellow, so
+    // green remains exactly 24. The 2026-06-20.19 custom-hostname self-serve
+    // pass clears hostname_customer_self_serve_missing on
     // autopilot_sites.custom_tenant_hostnames.v1 (deployed customer-gated
     // claim/list path at /api/tenant/hostnames that writes only pending rows;
     // live provisioning stays owner-gated and INERT default-OFF), without
@@ -454,7 +466,7 @@ describe('public product promises document', () => {
         expect.objectContaining({
           audience: expect.arrayContaining(['agent', 'operator', 'developer']),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.repo_studying_customer_private_validation_missing',
+            'blocker.product_promises.repo_studying_privacy_review_missing',
             'blocker.product_promises.repo_studying_marketplace_metering_missing',
             'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
           ]),
@@ -462,6 +474,7 @@ describe('public product promises document', () => {
             'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
             'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
             'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+            'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
             'promise:repo.open_source_code_map.v1',
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
@@ -869,12 +882,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.17', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.19', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.17',
+      expectedVersion: '2026-06-20.19',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.17',
+      servedVersion: '2026-06-20.19',
       status: 'ready',
     })
     expect(
@@ -884,7 +897,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.17',
+      servedVersion: '2026-06-20.19',
       status: 'blocked',
     })
   })
