@@ -6,12 +6,17 @@ import {
   serverError,
 } from './http/responses'
 import type { EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
+import {
+  type EcommerceCampaignPaidDeliveryClaimStore,
+  projectEcommerceCampaignPaidDeliveryClaims,
+} from './ecommerce-campaign-claim-upgrade'
 import { notFound } from '@openagentsinc/sync-worker'
 
 type HttpResponse = globalThis.Response
 
 export type EcommerceCampaignReceiptRoutesDependencies<Bindings> = Readonly<{
   makeStore: (env: Bindings) => EcommerceCampaignReceiptStore
+  makeClaimStore: (env: Bindings) => EcommerceCampaignPaidDeliveryClaimStore
 }>
 
 const receiptRefFromPath = (
@@ -50,6 +55,19 @@ export const makeEcommerceCampaignReceiptRoutes = <Bindings>(
     env: Bindings,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    if (
+      url.pathname === '/api/public/ecommerce-campaign/receipts' &&
+      url.searchParams.get('view') === 'paid-delivery-claims'
+    ) {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+      const claims = dependencies.makeClaimStore(env).list()
+      return Effect.succeed(
+        noStoreJsonResponse(projectEcommerceCampaignPaidDeliveryClaims(claims))
+      )
+    }
 
     const receiptRef = receiptRefFromPath(
       url.pathname,
