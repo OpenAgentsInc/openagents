@@ -48,18 +48,47 @@ any) a paid event is attributed to, and whether that attribution is allowed.
   — 6 tests (no-agreement skip, eligibility-input mapping, asset/amount/period
   passthrough, role precedence, self-attribution skip, expired-window skip).
 
+### Follow-up (this run): the storage-backed feed is now built
+
+The previously-deferred "storage-backed reader" step is now implemented as the
+partner-rail analogue of `recordReferralPayoutForPaidEvent`:
+
+- `apps/openagents.com/workers/api/migrations/0214_partner_agreements.sql` —
+  the `partner_agreements` table backing the policy: EXPLICIT, currently-active
+  agreements naming `customer_user_id`, `partner_ref`/`partner_user_id`, and
+  `role`. The `role` CHECK excludes `referral` (owned by the referral rail), so
+  cross-rail double-pay is unstorable. No payout destinations, invoices,
+  preimages, or provider payloads live here.
+- `apps/openagents.com/workers/api/src/partner-payout-feed.ts` —
+  `readActivePartnerAgreementsForCustomer(db, customerUserId)` (D1-backed,
+  read-only, bounded, safe-id-guarded) plus
+  `recordPartnerPayoutForPaidEvent(db, event, deps?)`: reads the customer's
+  explicit candidates, runs `resolvePartnerPayoutEligibilityInput`, and on an
+  `eligible` decision calls `createPartnerPayoutEligibility` exactly once
+  (idempotent on the event key). `no_active_agreement` / `self_attribution`
+  record NOTHING — no inferred fallback. The reader and ledger writer are
+  injectable so the rules stay testable without a live D1.
+- `apps/openagents.com/workers/api/src/partner-payout-feed.test.ts` — 7 tests
+  (no-agreement skip, eligibility mapping, design_partner>affiliate precedence,
+  self-attribution skip, expired-window skip, default-reader query/binding map,
+  malformed-id no-query guard).
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
   `PARTNER_PAYOUT_ROLE_POLICY` and on this attribution model (caveat
-  `caveat.public.partner_payouts.partner_policy_not_owner_signed`).
-- **Storage-backed reader**: the one remaining wiring step is a reader that
-  loads candidate `PartnerAgreement`s from a partner-agreements table and calls
-  `createPartnerPayoutEligibility` with the input
-  `resolvePartnerPayoutEligibilityInput` now returns (mirrors the storage read
-  in `site-referral-payout-feed.ts`). The pure decision and the pure mapping
-  are now both built and tested; only the DB read + insert call remain, kept
-  out of scope here so the product rules stay independently testable.
+  `caveat.public.partner_payouts.partner_policy_not_owner_signed`). This is a
+  product decision and is the load-bearing remainder of this blocker.
+- **Call-site wiring**: `recordPartnerPayoutForPaidEvent` now exists but has no
+  production caller yet — a real paid-event source (e.g. the Stripe/credit
+  webhook path that already feeds `recordReferralPayoutForPaidEvent`) still
+  needs to invoke it, and rows must be seeded into `partner_agreements`.
+- **Recording the attribution basis on the ledger row**: the feed surfaces the
+  winning `agreementRef`/`policyRef` in its result, but the ledger's
+  `CreatePartnerPayoutEligibilityInput` does not yet accept extra
+  `policyRefs`/`evidenceRefs`, so the explicit attribution basis is not yet
+  persisted on the row. Wiring that through is a small, separate ledger change
+  kept out of scope here.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 
