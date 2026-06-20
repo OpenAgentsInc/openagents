@@ -1334,6 +1334,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicPartnerPayoutReceiptEnvelope: objectSummary(
     'Public-safe partner payout receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.partner_payout.*` only when a settled partner payout ledger entry cites that public-safe evidence ref, exposing settlement state, amount, asset, qualifying event kind, policy refs, caveats, and public-safe evidence refs while omitting partner refs, user ids, payout refs, qualifying-event refs, destinations, invoices, payment hashes, preimages, raw provider payloads, wallet material, and ledger ids. Read-only; grants no partner attribution, eligibility, payout, settlement, withdrawal, wallet, provider, spend, revenue, registry, or public-claim authority.',
   ),
+  OperatorPartnerPayoutDispatchResponse: objectSummary(
+    'Operator-only partner payout dispatch response. The route readiness-gates live payout mode, refuses non-sats rows before adapter call, records settled only after an injected adapter returns a public-safe receipt.partner_payout evidence ref, and returns redacted outcome state/reason/receipt fields without payout destinations, invoices, preimages, provider payloads, wallet material, or raw payment material.',
+  ),
   PublicCardCreditSpendReceiptEnvelope: objectSummary(
     'Public card-credit-spend receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.inference.card_credit_spend.*` as pending, invalid, or ok from the checkout credit row, card-origin USD-credit grant row, and inference charge row without granting checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
@@ -10403,6 +10406,40 @@ const paths = (): JsonSchema => ({
         ),
         '404': okJson(
           'No settled public referral payout receipt was found for this ref.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/partners/payout-ledger/{payoutRef}/dispatch': {
+    post: operation({
+      operationId: 'dispatchPartnerPayout',
+      summary: 'Dispatch partner payout',
+      description:
+        'Operator-only partner payout dispatch coordinator. It readiness-gates the owner-armed payout mode, refuses non-sats rows before adapter call, invokes an injected adapter for sats rows before recording settled, and records only public-safe `receipt.partner_payout.*` settlement evidence. Default production wiring is inert and fail-closed until a live partner payout rail is explicitly armed.',
+      tags: ['Sites'],
+      security: adminBearer,
+      parameters: [
+        {
+          name: 'payoutRef',
+          in: 'path',
+          required: true,
+          schema: { type: 'string' },
+          description: 'Partner payout ledger reference.',
+        },
+      ],
+      responses: {
+        '200': okJson(
+          'Partner payout dispatch outcome.',
+          '#/components/schemas/OperatorPartnerPayoutDispatchResponse',
+        ),
+        '401': okJson(
+          'Admin API token is missing or invalid.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '409': okJson(
+          'Partner payout state cannot be dispatched.',
           '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),

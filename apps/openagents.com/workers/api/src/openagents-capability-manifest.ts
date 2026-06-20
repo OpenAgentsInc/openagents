@@ -751,6 +751,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only partner agreement seed/readback route for the explicit-agreement partner-attribution policy. It records or lists who may be attributed for a paying customer and does not create payout eligibility by itself, move money, expose payout destinations, or grant settlement authority.',
       },
       {
+        id: 'operator_partner_payout_dispatch',
+        href: 'https://openagents.com/api/operator/partners/payout-ledger/{payoutRef}/dispatch',
+        method: 'POST',
+        auth: 'admin_api_token',
+        description:
+          'Operator-only partner payout dispatch coordinator. It readiness-gates the owner-armed payout mode, refuses non-sats rows before adapter call, calls an injected adapter for sats rows before recording settled, and records only public-safe `receipt.partner_payout.*` evidence; default production wiring is inert and fail-closed until a live partner payout rail is explicitly armed.',
+      },
+      {
         id: 'public_partner_payout_receipt',
         href: 'https://openagents.com/api/public/partner-payout-receipts/{receiptRef}',
         method: 'GET',

@@ -430,6 +430,7 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
+import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
@@ -7023,6 +7024,18 @@ const sitesOrchestrationRoutes = makeSitesOrchestrationRoutes({
 
 const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>(
   {
+    dispatchDependencies: {
+      adapter: {
+        adapterKind: 'owner_armed_partner_payout',
+        dispatch: async () => {
+          throw new PartnerPayoutDispatchError(
+            'partner_payout_adapter_unconfigured: owner has not armed a live partner payout rail',
+          )
+        },
+      },
+      nowIso: currentIsoTimestamp,
+      readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
+    },
     nowIso: currentIsoTimestamp,
     requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   },

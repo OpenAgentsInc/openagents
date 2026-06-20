@@ -57,6 +57,24 @@ expose partner refs, user ids, payout refs, qualifying event refs, payout
 destinations, invoices, preimages, provider payloads, wallet material, or ledger
 ids.
 
+## Dispatch Route
+
+Operators can drive a sats-denominated partner payout row through the
+readiness-gated dispatch coordinator:
+
+```sh
+PARTNER_PAYOUT_REF="partner_payout_ref_..."
+curl -fsS -X POST \
+  -H "authorization: Bearer $OPENAGENTS_ADMIN_BEARER_TOKEN" \
+  "https://openagents.com/api/operator/partners/payout-ledger/$PARTNER_PAYOUT_REF/dispatch"
+```
+
+The coordinator refuses USD/credit rows before adapter call, refuses while the
+owner-armed payout mode is disabled, and records `settled` only after the
+injected adapter returns a public-safe `receipt.partner_payout.*` evidence ref.
+Default production wiring remains inert/fail-closed until a live partner payout
+rail and destination policy are explicitly armed.
+
 ## Policy Rules
 
 - `referral` is rejected. The referral rail owns referral payouts.
@@ -69,8 +87,8 @@ ids.
 
 ## Remaining Blockers
 
-This clears the stale source-level `partner_attribution_policy_missing` blocker
-and prepares the dereferenceable public receipt route. It does not claim a live
-partner revenue stream. The promise remains red until partner settlement
-dispatch records a real public receipt and at least one real partner payout
-settles with owner sign-off.
+This clears the stale source-level `partner_attribution_policy_missing` and
+`partner_payout_settlement_not_wired` blockers, and prepares the dereferenceable
+public receipt route. It does not claim a live partner revenue stream. The
+promise remains red until at least one real partner payout settles with a real
+public receipt and owner sign-off.

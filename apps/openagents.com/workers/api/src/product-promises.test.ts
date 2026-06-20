@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.52')
+    expect(decoded.version).toBe('2026-06-20.53')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -1142,16 +1142,17 @@ describe('public product promises document', () => {
     expect(partnerPromise).toMatchObject({
       state: 'red',
       blockerRefs: [
-        'blocker.product_promises.partner_payout_settlement_not_wired',
         'blocker.product_promises.partner_first_real_payout_pending',
       ],
       evidenceRefs: expect.arrayContaining([
         'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
         'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
+        'apps/openagents.com/workers/api/src/partner-payout-dispatch.ts',
         'apps/openagents.com/workers/api/src/partner-attribution-policy.ts',
         'apps/openagents.com/workers/api/src/partner-agreement-routes.ts',
         'apps/openagents.com/workers/api/src/public-partner-payout-receipt-routes.ts',
         'route:/api/operator/partners/agreements',
+        'route:/api/operator/partners/payout-ledger/{payoutRef}/dispatch',
         'route:/api/public/partner-payouts',
         'route:/api/public/partner-payout-receipts/{receiptRef}',
       ]),
@@ -1162,11 +1163,14 @@ describe('public product promises document', () => {
     expect(partnerPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.partner_attribution_policy_missing',
     )
+    expect(partnerPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.partner_payout_settlement_not_wired',
+    )
     expect(partnerPromise?.safeCopy).toContain(
       'explicit-agreement-only attribution policy',
     )
     expect(partnerPromise?.verification).toContain(
-      'prepares the dereferenceable receipt surface',
+      'source-level settlement-dispatch blockers',
     )
     expect(partnerPromise?.authorityBoundary).toContain(
       'public aggregate projections are not spendable value',
@@ -1310,22 +1314,22 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.52', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.53', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.52',
+      expectedVersion: '2026-06-20.53',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.52',
+      servedVersion: '2026-06-20.53',
       status: 'ready',
     })
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-12.1', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.52', document),
     ).toMatchObject({
       blockerRefs: [
-        'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
+        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.52',
       ],
-      expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.52',
+      expectedVersion: '2026-06-20.52',
+      servedVersion: '2026-06-20.53',
       status: 'blocked',
     })
   })

@@ -17,56 +17,24 @@
  *   GET  /api/operator/partners/payout-ledger/:payoutRef
  *     - admin-gated; returns the current `projectPartnerPayout(...)` projection
  *       (or 404 when the ref is unknown).
+ *   POST /api/operator/partners/payout-ledger/:payoutRef/dispatch
+ *     - admin-gated; readiness-gated; drives a sats-denominated row through
+ *       approved -> dispatched -> settled via an injected adapter that returns
+ *       a public-safe `receipt.partner_payout.*` evidence ref.
  *
  * Authority boundary: ledger state is NOT spendable value. Settlement requires
  * operator-gated dispatch plus public-safe settlement evidence refs, enforced
  * inside the core module (`mark_settled` rejects without evidenceRefs).
- *
- * ============================================================================
- * COORDINATOR WIRING (deferred integration — do NOT wire from this lane)
- * ----------------------------------------------------------------------------
- * This lane intentionally does NOT touch the shared `index.ts` /
- * `worker-routes.ts` files. The coordinator integrating this lane must:
- *
- * 1. Construct the routes in `index.ts` alongside the referral payout routes,
- *    reusing the existing `requireAdminApiToken` and `currentIsoTimestamp`:
- *
- *      import { makePartnerPayoutLedgerRoutes }
- *        from './partner-payout-ledger-routes'
- *
- *      const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes({
- *        nowIso: currentIsoTimestamp,
- *        requireAdminApiToken,
- *      })
- *
- * 2. Expose the route on the worker-routes dependency object (next to
- *    `routeSiteReferralPayoutLedgerRequest`):
- *
- *      routePartnerPayoutLedgerRequest:
- *        partnerPayoutLedgerRoutes.routePartnerPayoutLedgerRequest,
- *
- * 3. Add the field to the `worker-routes.ts` dependency type as an
- *    `OptionalEffectRoute`, then chain it inside `routeOmniRequest` right
- *    after the referral payout block:
- *
- *      const partnerPayoutLedgerResponse =
- *        dependencies.routePartnerPayoutLedgerRequest(request, env, ctx)
- *
- *      if (partnerPayoutLedgerResponse !== undefined) {
- *        return yield* partnerPayoutLedgerResponse
- *      }
- *
- *    (Order is not significant; the path prefixes do not collide with the
- *    referral `/api/operator/sites/referrals/payout-ledger/...` routes.)
- *
- * 4. Apply migration `0184_partner_payout_ledger.sql` before serving (see the
- *    core module's wiring notes).
- * ============================================================================
  */
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { decodeUnknownWithSchema } from './json-boundary'
+import {
+  type PartnerPayoutDispatchDependencies,
+  PartnerPayoutDispatchError,
+  dispatchPartnerPayoutSettlement,
+} from './partner-payout-dispatch'
 import {
   PartnerPayoutLedgerStorageError,
   PartnerPayoutLedgerValidationError,
@@ -85,6 +53,7 @@ type PartnerPayoutLedgerEnv = Readonly<{
 type PartnerPayoutLedgerRouteDependencies<
   Bindings extends PartnerPayoutLedgerEnv,
 > = Readonly<{
+  dispatchDependencies: PartnerPayoutDispatchDependencies
   nowIso: () => string
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
 }>
@@ -230,6 +199,72 @@ const transitionRoute = <Bindings extends PartnerPayoutLedgerEnv>(
     }),
   )
 
+const dispatchRoute = <Bindings extends PartnerPayoutLedgerEnv>(
+  dependencies: PartnerPayoutLedgerRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  payoutRef: string,
+): Effect.Effect<HttpResponse> =>
+  runRoute(
+    Effect.gen(function* () {
+      if (request.method !== 'POST') {
+        return methodNotAllowed(['POST'])
+      }
+
+      yield* requireAdmin(dependencies, request, env)
+
+      const outcome = yield* Effect.tryPromise({
+        catch: error =>
+          error instanceof PartnerPayoutLedgerValidationError ||
+          error instanceof PartnerPayoutLedgerStorageError
+            ? error
+            : error instanceof PartnerPayoutDispatchError
+              ? new PartnerPayoutLedgerStorageError({
+                  error,
+                  operation: 'partnerPayoutLedger.dispatchRoute.adapter',
+                })
+              : new PartnerPayoutLedgerStorageError({
+                  error,
+                  operation: 'partnerPayoutLedger.dispatchRoute',
+                }),
+        try: () =>
+          dispatchPartnerPayoutSettlement(
+            openAgentsDatabase(env),
+            dependencies.dispatchDependencies,
+            { payoutRef },
+          ),
+      })
+
+      return noStoreJsonResponse({
+        dispatch:
+          outcome._tag === 'settled'
+            ? {
+                _tag: outcome._tag,
+                amountSats: outcome.entry.amount,
+                payoutRef: outcome.entry.payoutRef,
+                receiptRef: outcome.receiptRef,
+                state: outcome.entry.state,
+              }
+            : outcome._tag === 'already_settled'
+              ? {
+                  _tag: outcome._tag,
+                  payoutRef: outcome.entry.payoutRef,
+                  state: outcome.entry.state,
+                }
+              : {
+                  _tag: outcome._tag,
+                  reasonRef: outcome.reasonRef,
+                  ...(outcome.entry === null
+                    ? {}
+                    : {
+                        payoutRef: outcome.entry.payoutRef,
+                        state: outcome.entry.state,
+                      }),
+                },
+      })
+    }),
+  )
+
 const projectionRoute = <Bindings extends PartnerPayoutLedgerEnv>(
   dependencies: PartnerPayoutLedgerRouteDependencies<Bindings>,
   request: Request,
@@ -265,6 +300,8 @@ const projectionRoute = <Bindings extends PartnerPayoutLedgerEnv>(
 
 const TRANSITIONS_PATTERN =
   /^\/api\/operator\/partners\/payout-ledger\/([^/]+)\/transitions$/
+const DISPATCH_PATTERN =
+  /^\/api\/operator\/partners\/payout-ledger\/([^/]+)\/dispatch$/
 const PROJECTION_PATTERN =
   /^\/api\/operator\/partners\/payout-ledger\/([^/]+)$/
 
@@ -288,6 +325,17 @@ export const makePartnerPayoutLedgerRoutes = <
         request,
         env,
         decodeURIComponent(transitionsMatch[1] ?? ''),
+      )
+    }
+
+    const dispatchMatch = DISPATCH_PATTERN.exec(url.pathname)
+
+    if (dispatchMatch !== null) {
+      return dispatchRoute(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(dispatchMatch[1] ?? ''),
       )
     }
 

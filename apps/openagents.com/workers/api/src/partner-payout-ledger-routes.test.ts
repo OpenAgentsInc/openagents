@@ -2,12 +2,17 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  hostedMdkDirectPayoutDisabledGate,
+  projectMdkPayoutModeGate,
+} from './mdk-payout-mode-gate'
+import {
   createPartnerPayoutEligibility,
   type PartnerPayoutAsset,
   type PartnerPayoutRole,
   type PartnerPayoutState,
 } from './partner-payout-ledger'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
+import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 
 // ---------------------------------------------------------------------------
 // D1 fake (reused from partner-payout-ledger.test.ts)
@@ -144,6 +149,30 @@ class PayoutStatement implements D1PreparedStatement {
   }
 
   all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (
+      this.query.includes('FROM partner_payout_ledger_entries') &&
+      this.query.includes("WHERE state = 'settled'")
+    ) {
+      const needle = String(this.values[0] ?? '').replaceAll('%', '')
+      const rows = this.store.rows
+        .filter(
+          entry =>
+            entry.state === 'settled' &&
+            entry.archived_at === null &&
+            entry.evidence_refs_json.includes(needle),
+        )
+        .sort((left, right) =>
+          right.created_at === left.created_at
+            ? right.id.localeCompare(left.id)
+            : right.created_at.localeCompare(left.created_at),
+        )
+
+      return Promise.resolve({
+        results: rows,
+        success: true,
+      } as D1Result<T>)
+    }
+
     return Promise.reject(new Error(`Unexpected all: ${this.query}`))
   }
 
@@ -180,8 +209,36 @@ let isoCounter = 0
 const nowIso = (): string =>
   `2026-06-10T10:0${Math.min(9, isoCounter++)}:00.000Z`
 
-const makeRoutes = (store: PayoutStore, admin = true) =>
+const makeRoutes = (
+  store: PayoutStore,
+  admin = true,
+  overrides: Partial<{
+    dispatch: (input: {
+      amountSats: number
+      idempotencyKey: string
+      payoutRef: string
+    }) => Promise<{ receiptRef: string }>
+    livePayoutClaimAllowed: boolean
+  }> = {},
+) =>
   makePartnerPayoutLedgerRoutes<TestEnv>({
+    dispatchDependencies: {
+      adapter: {
+        adapterKind: 'test',
+        dispatch:
+          overrides.dispatch ??
+          (async () => ({ receiptRef: 'receipt.partner_payout.test' })),
+      },
+      nowIso,
+      readReadiness: async () =>
+        overrides.livePayoutClaimAllowed === true
+          ? projectMdkPayoutModeGate({
+              hostedFundedKeyVerified: true,
+              hostedProgrammaticPayoutsEnabled: true,
+              requestedMode: 'hosted_mdk_direct_payout',
+            })
+          : hostedMdkDirectPayoutDisabledGate(),
+    },
     nowIso,
     requireAdminApiToken: () => Promise.resolve(admin),
   })
@@ -206,6 +263,8 @@ const runRequest = (
 
 const TRANSITIONS_URL =
   'https://openagents.com/api/operator/partners/payout-ledger/partner_payout_ref_1/transitions'
+const DISPATCH_URL =
+  'https://openagents.com/api/operator/partners/payout-ledger/partner_payout_ref_1/dispatch'
 const PROJECTION_URL =
   'https://openagents.com/api/operator/partners/payout-ledger/partner_payout_ref_1'
 
@@ -234,6 +293,15 @@ const transitionRequest = (body: unknown): Request =>
 
 const seedEligible = async (store: PayoutStore): Promise<void> => {
   await createPartnerPayoutEligibility(payoutDb(store), baseDesignPartner)
+}
+
+const seedEligibleSats = async (store: PayoutStore): Promise<void> => {
+  await createPartnerPayoutEligibility(payoutDb(store), {
+    ...baseDesignPartner,
+    asset: 'sats',
+    idempotencyKey: 'partner-payout:sats:eligible:1',
+    qualifyingAmount: 2500,
+  })
 }
 
 describe('Partner payout ledger routes — transitions', () => {
@@ -460,6 +528,198 @@ describe('Partner payout ledger routes — projection', () => {
   })
 })
 
+describe('Partner payout ledger routes — dispatch', () => {
+  test('requires admin token for operator dispatch', async () => {
+    const store = new PayoutStore()
+    await seedEligibleSats(store)
+    const routes = makeRoutes(store, false)
+
+    const response = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'POST' }),
+    )
+
+    expect(response.status).toBe(401)
+    expect(store.rows.map(row => row.state)).toEqual(['eligible'])
+  })
+
+  test('refuses non-sats partner rows before adapter call', async () => {
+    const store = new PayoutStore()
+    await seedEligible(store)
+    const dispatchCalls: Array<unknown> = []
+    const routes = makeRoutes(store, true, {
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.partner_payout.should_not_dispatch' }
+      },
+      livePayoutClaimAllowed: true,
+    })
+
+    const response = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'POST' }),
+    )
+    const body = (await response.json()) as {
+      dispatch: { _tag: string; reasonRef?: string; state?: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.dispatch).toMatchObject({
+      _tag: 'refused',
+      reasonRef:
+        'reason.public.partner_payout.non_sats_asset_not_withdrawable_bitcoin',
+      state: 'eligible',
+    })
+    expect(dispatchCalls).toHaveLength(0)
+    expect(store.rows.map(row => row.state)).toEqual(['eligible'])
+  })
+
+  test('refuses while owner-armed payout mode is disabled', async () => {
+    const store = new PayoutStore()
+    await seedEligibleSats(store)
+    const dispatchCalls: Array<unknown> = []
+    const routes = makeRoutes(store, true, {
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.partner_payout.should_not_dispatch' }
+      },
+      livePayoutClaimAllowed: false,
+    })
+
+    const response = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'POST' }),
+    )
+    const body = (await response.json()) as {
+      dispatch: { _tag: string; reasonRef?: string; state?: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.dispatch).toMatchObject({
+      _tag: 'refused',
+      reasonRef: 'reason.public.partner_payout.payout_target_not_ready',
+      state: 'eligible',
+    })
+    expect(dispatchCalls).toHaveLength(0)
+    expect(store.rows.map(row => row.state)).toEqual(['eligible'])
+  })
+
+  test('settles through an armed adapter and exposes receipt readback', async () => {
+    const store = new PayoutStore()
+    await seedEligibleSats(store)
+    const dispatchCalls: Array<{
+      amountSats: number
+      idempotencyKey: string
+      payoutRef: string
+    }> = []
+    const routes = makeRoutes(store, true, {
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.partner_payout.hosted_mdk.abc123' }
+      },
+      livePayoutClaimAllowed: true,
+    })
+
+    const response = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'POST' }),
+    )
+    const body = (await response.json()) as {
+      dispatch: {
+        _tag: string
+        amountSats: number
+        payoutRef: string
+        receiptRef: string
+        state: string
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.dispatch).toMatchObject({
+      _tag: 'settled',
+      amountSats: 500,
+      payoutRef: 'partner_payout_ref_1',
+      receiptRef: 'receipt.partner_payout.hosted_mdk.abc123',
+      state: 'settled',
+    })
+    expect(dispatchCalls).toEqual([
+      {
+        amountSats: 500,
+        idempotencyKey: 'partner_payout.adapter.partner_payout_ref_1',
+        payoutRef: 'partner_payout_ref_1',
+      },
+    ])
+    expect(store.rows.map(row => row.state)).toEqual([
+      'eligible',
+      'approved',
+      'dispatched',
+      'settled',
+    ])
+    expect(store.rows.at(-1)?.evidence_refs_json).toContain(
+      'receipt.partner_payout.hosted_mdk.abc123',
+    )
+    expect(store.rows.at(-1)?.evidence_refs_json).toContain(
+      'evidence.partner_payout.adapter.test',
+    )
+
+    const receiptStore = makeD1PartnerPayoutReceiptStore(payoutDb(store))
+    const receipt = await receiptStore.readPartnerPayoutReceipt(
+      'receipt.partner_payout.hosted_mdk.abc123',
+      '2026-06-10T10:05:00.000Z',
+    )
+
+    expect(receipt).toMatchObject({
+      amount: 500,
+      asset: 'sats',
+      receiptRef: 'receipt.partner_payout.hosted_mdk.abc123',
+      resolution: {
+        settlementRail: 'hosted_mdk',
+        state: 'settled',
+        status: 'ok',
+      },
+    })
+  })
+
+  test('already-settled dispatch does not call adapter again', async () => {
+    const store = new PayoutStore()
+    await seedEligibleSats(store)
+    const dispatchCalls: Array<unknown> = []
+    const routes = makeRoutes(store, true, {
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.partner_payout.hosted_mdk.idem' }
+      },
+      livePayoutClaimAllowed: true,
+    })
+
+    await runRequest(routes, store, new Request(DISPATCH_URL, { method: 'POST' }))
+    const repeat = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'POST' }),
+    )
+    const body = (await repeat.json()) as {
+      dispatch: { _tag: string; state: string }
+    }
+
+    expect(body.dispatch).toMatchObject({
+      _tag: 'already_settled',
+      state: 'settled',
+    })
+    expect(dispatchCalls).toHaveLength(1)
+    expect(store.rows.map(row => row.state)).toEqual([
+      'eligible',
+      'approved',
+      'dispatched',
+      'settled',
+    ])
+  })
+})
+
 describe('Partner payout ledger routes — auth + matching', () => {
   test('transitions are rejected with 401 when admin token is absent', async () => {
     const store = new PayoutStore()
@@ -518,6 +778,20 @@ describe('Partner payout ledger routes — auth + matching', () => {
       routes,
       store,
       new Request(TRANSITIONS_URL, { method: 'GET' }),
+    )
+
+    expect(response.status).toBe(405)
+  })
+
+  test('wrong method on dispatch path is 405', async () => {
+    const store = new PayoutStore()
+    await seedEligibleSats(store)
+    const routes = makeRoutes(store)
+
+    const response = await runRequest(
+      routes,
+      store,
+      new Request(DISPATCH_URL, { method: 'GET' }),
     )
 
     expect(response.status).toBe(405)
