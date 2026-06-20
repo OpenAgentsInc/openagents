@@ -361,5 +361,253 @@ non-green promise" on API keys.
 - AFK loop: `openagents/docs/autopilot-coder/2026-06-13-afk-autonomous-loop.md`
 - Forge control plane: `forge/README.md`
 
-*No secret values, tokens, keys, project IDs, or credentials appear in this
-document by design.*
+*Sections 1–4 and this appendix contain no secret values, tokens, keys, project
+IDs, or credentials by design. The two sections below (the Claude-on-Vertex
+resolution + 2026-06-20 spike) intentionally name the GCP project
+(`openagentsgemini`) and model IDs because that is the concrete setup that
+works — but they still contain **no access tokens, OAuth tokens, SA keys, or
+secret values** (all redacted).*
+
+---
+
+## Resolution: Claude-on-Vertex is the ToS-clean fleet path
+
+Section 3's "ToS verdict" said: do **not** build the fleet on hosted ChatGPT
+(consumer Codex subscription) auth, and **API keys / provider APIs are the honest
+path**. The cleanest concrete instance of that honest path is **Anthropic Claude
+served through Google Vertex AI** in our `openagentsgemini` GCP project. It
+resolves the ToS wall directly:
+
+- **It is a provider *API*, billed per token through Google Cloud — not a
+  subscription seat.** There is no "one human's seat shared across a fleet."
+  Every request is a metered, pay-as-you-go Vertex `rawPredict` call. Running N
+  parallel automated agents against it is exactly what the API is for. This is
+  the opposite of the hosted-ChatGPT problem, and it is consistent with our own
+  `provider.compliant_usage_labor.v1` promise ("OpenAgents never resells provider
+  access") and the no-resale memory note (no-resale is scoped to SUBSCRIPTION
+  accounts; API-inference is allowed).
+- **It gives the fleet the strongest single coding model (Claude) without
+  needing an Anthropic-direct key per agent.** Probe today has Gemini + Codex
+  backends but **no Anthropic backend** (Section 2c). Vertex is a way to put
+  Claude into the fleet through one already-authed GCP project, rather than
+  distributing N Anthropic API keys.
+- **One project, one quota surface, central billing.** All instances authenticate
+  as the same GCP project and share that project's per-model Vertex quota
+  (RPM/TPM). That is a feature for an owner-run fleet: one place to read spend,
+  one place to raise limits, one place to cut it off.
+
+### The env / auth / model setup that works
+
+Authentication for Claude Code's Vertex path is **Application Default
+Credentials (ADC)** — the `google-auth` token chain, *not* a Bearer flag. Our
+own server adapter
+(`apps/openagents.com/workers/api/src/inference/vertex-anthropic-adapter.ts`)
+instead uses a Bearer GCP token / `VERTEX_SA_KEY`; for an unattended GCE fleet
+the right auth is the **GCE metadata-server ADC of a service account** (no key
+files on disk), which is also how `oa-codex-control` already authenticates to GCP
+(`OA_CODEX_GCE_USE_METADATA_ADC`).
+
+Verified-working setup (project `openagentsgemini`, project number
+`157437760789`, region `global`, `anthropic_version: vertex-2023-10-16`):
+
+```bash
+# One-time per machine/account (interactive — establishes ADC):
+gcloud auth application-default login
+gcloud auth application-default set-quota-project openagentsgemini
+
+# Claude Code on Vertex (per agent / per shell):
+env CLAUDE_CODE_USE_VERTEX=1 \
+    ANTHROPIC_VERTEX_PROJECT_ID=openagentsgemini \
+    CLOUD_ML_REGION=global \
+    ANTHROPIC_MODEL=claude-haiku-4-5 \
+    ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5 \
+    claude -p "..."
+```
+
+Required IAM on the principal/SA (verified granted for `chris@openagents.com`):
+`roles/aiplatform.user` (`aiplatform.endpoints.predict`) and
+`roles/serviceusage.serviceUsageConsumer` (`serviceusage.services.use`). Models
+are enabled on `locations/global` (haiku/sonnet/opus all 200-OK per the Vertex
+runbook). The small/fast model is a **separate** env var
+(`ANTHROPIC_SMALL_FAST_MODEL`) and must also be a Vertex-enabled model or
+claude-code's background calls fail.
+
+---
+
+## Test implementation — obstacles found (2026-06-20)
+
+**Did `claude -p` run on Vertex? NO — blocked by one expired-ADC reauth, with the
+underlying Vertex wire path *proven correct*.** The raw Vertex API works (200 OK,
+real completion). Claude Code dispatched to the correct model and region but
+could not mint a Vertex token because this machine's ADC needs an interactive
+re-login. This is a **one-command, needs-owner** blocker, not a model/region/
+quota/IAM problem.
+
+### What proved correct (raw Vertex sanity, bypassing claude-code)
+
+`rawPredict` against `claude-haiku-4-5` at `locations/global` with a valid GCP
+token + `x-goog-user-project: openagentsgemini` returned **HTTP 200** with a real
+completion (token redacted):
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer [REDACTED]" \
+  -H "x-goog-user-project: openagentsgemini" \
+  -H "Content-Type: application/json" \
+  "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/anthropic/models/claude-haiku-4-5:rawPredict" \
+  -d '{"anthropic_version":"vertex-2023-10-16","max_tokens":8,
+       "messages":[{"role":"user","content":[{"type":"text","text":"Reply with exactly: OK"}]}]}'
+# → HTTP 200
+# {"model":"claude-haiku-4-5-20251001", ... "content":[{"type":"text","text":"OK"}],
+#  "stop_reason":"end_turn","usage":{"input_tokens":12,"output_tokens":4}}
+```
+
+So model enablement, IAM (`aiplatform.endpoints.predict` + `serviceusage.
+services.use` both granted), `aiplatform.googleapis.com` (ENABLED), the wire
+contract, and the `global` region are all good.
+
+### What claude-code did (the real test)
+
+```bash
+env CLAUDE_CODE_USE_VERTEX=1 ANTHROPIC_VERTEX_PROJECT_ID=openagentsgemini \
+    CLOUD_ML_REGION=global ANTHROPIC_MODEL=claude-haiku-4-5 \
+    ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5 \
+    claude --debug -p "reply with exactly: VERTEX_OK"
+```
+
+Result: **no stdout, hung ~60s, killed.** claude-code 2.1.183 debug log
+(`~/.claude/debug/latest`) shows it *correctly* routed to Vertex and then failed
+auth on all 11 retries (redacted):
+
+```text
+[API:timing] dispatching to vertex model=claude-haiku-4-5
+[ERROR] API error (attempt 1/11): {"error":"invalid_grant",
+  "error_description":"reauth related error (invalid_rapt)",
+  "error_subtype":"invalid_rapt"}
+... (attempts 2/11 … 11/11, exponential backoff) ...
+```
+
+`dispatching to vertex model=claude-haiku-4-5` is the proof the model-id +
+`CLOUD_ML_REGION=global` mapping is correct. The failure is purely the ADC token
+mint. The "hang" was simply claude-code grinding through 11 exponential-backoff
+retries; it never reaches the model.
+
+### Obstacle list (symptom → root cause → fix → status)
+
+1. **ADC reauth (`invalid_rapt`) — THE blocker that stopped the test.**
+   - *Symptom:* `claude -p` on Vertex produces no output and hangs ~60s; debug log
+     shows `invalid_grant / reauth related error (invalid_rapt)` on every retry.
+     `gcloud auth application-default print-access-token` errors with
+     "Reauthentication failed. cannot prompt during non-interactive execution."
+   - *Root cause:* the ADC refresh token's **Reauth Proof Token (RAPT) has
+     expired** — a Google account/org security policy requiring periodic
+     *interactive* re-login. claude-code's Vertex path uses ADC and cannot
+     refresh non-interactively. (The separate `gcloud auth print-access-token`
+     **user** token is still valid, which is why the raw curl probe worked — but
+     claude-code does not use that token.)
+   - *Fix:* owner runs once, interactively:
+     `gcloud auth application-default login` then
+     `gcloud auth application-default set-quota-project openagentsgemini`. For an
+     unattended fleet, avoid this class entirely by using a **service-account
+     identity via GCE metadata-server ADC** (no RAPT, no interactive reauth) —
+     exactly what `oa-codex-control` already does.
+   - *Status:* **needs-owner** (one interactive command on this Mac), or
+     **needs-infra** done-right (SA + metadata ADC on the GCE runner). Not a code
+     bug.
+
+2. **Model-id + region mapping.**
+   - *Symptom:* (none observed — this worked.)
+   - *Root cause / fix:* claude-code's Vertex IDs match ours exactly
+     (`claude-haiku-4-5`, `claude-sonnet-4-6`, `claude-opus-4-8`) and our models
+     live on `CLOUD_ML_REGION=global`. The debug log confirmed correct dispatch.
+     If `global` ever fails to carry a model, fall back to `us-east5`
+     (sonnet/haiku) or the `us` multi-region (opus) per the Vertex runbook.
+   - *Status:* **resolved-in-test** (mapping correct; could not complete only
+     because of #1).
+
+3. **Small/fast model needs a Vertex model too.**
+   - *Symptom:* would surface as background/title/quota-probe calls failing while
+     the main `-p` call looks configured.
+   - *Root cause:* claude-code makes auxiliary calls on `ANTHROPIC_SMALL_FAST_MODEL`;
+     under `CLAUDE_CODE_USE_VERTEX=1` that must also be a Vertex-enabled model.
+   - *Fix:* set `ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5` (done in the test
+     command).
+   - *Status:* **resolved-in-test** (pre-empted).
+
+4. **Quota — shared, per-model, per-project (the concurrency reality).**
+   - *Symptom:* at fleet width, `RESOURCE_EXHAUSTED` (429) on Vertex.
+   - *Root cause:* **all instances authenticating as project `openagentsgemini`
+     share that project's per-model Vertex quota.** N agents do not get N
+     independent budgets — they contend for one RPM/TPM pool per model per
+     endpoint class. Live numbers pulled via the Cloud Quotas API on 2026-06-20
+     (`cloudquotas.googleapis.com/.../157437760789/locations/global/quotaPreferences`):
+     - **US multi-region, granted:** haiku-4-5 = **120 RPM / 5M in-TPM / 500k
+       out-TPM**; sonnet-4-6 = **60 RPM / 2M in-TPM / 200k out-TPM**;
+       opus-4-8 = **0 RPM granted** (preferred 30, denied/reconciling — Opus on
+       US-multiregion is effectively unavailable right now); a legacy
+       `anthropic-claude-opus` bucket shows 3500 RPM granted.
+     - **Global endpoint:** **no explicit `Global*` quota preference is set**, so
+       the `global` path runs on Google's default per-model quota until a
+       preference is created.
+   - *Fix / how to raise:* create a Cloud Quotas preference per
+     `quotaId` × `base_model` (global IDs:
+     `GlobalOnlinePredictionRequestsPerMinutePerProjectPerBaseModel`,
+     `…InputTokensPerMinutePerBaseModel`, `…OutputTokensPerMinutePerBaseModel`;
+     US equivalents `UsOnlinePrediction…`), per the Vertex runbook's quota
+     section, or via the console:
+     `console.cloud.google.com/iam-admin/quotas?project=openagentsgemini`
+     (filter service `aiplatform.googleapis.com`, metric "online prediction
+     requests per minute per base model"). *Concurrency math for a "few-instance"
+     start:* haiku's granted 120 RPM comfortably covers ~5–10 agents at a sane
+     request rate; sonnet's 60 RPM is the tighter bound; **Opus is the real cap —
+     do not plan a fleet on Opus until its quota is granted (>0).** (Note: the
+     repo path `apps/openagents.com/docs/cloud/quotas/2026-06-19-vertex-ai-anthropic-opus-quota-request.md`
+     referenced in planning **does not yet exist on `origin/main`** — the live
+     quota state above and the console are the authority.)
+   - *Status:* **needs-infra** to raise for scale; **resolved-for-a-few** —
+     current haiku/sonnet grants already support a small (5–8 agent) start on
+     those two models.
+
+5. **Cost — pay-per-token, not free.**
+   - *Symptom:* Vertex usage shows up on the GCP bill.
+   - *Root cause:* Claude-on-Vertex is metered per input/output token (Google
+     Cloud billing, partner-model pricing). N agents = N× token spend; this is
+     real money, unlike the (mis)assumption of "free off a subscription seat."
+   - *Fix:* prefer haiku for breadth, reserve sonnet/opus for hard tasks; add a
+     per-wave spend cap; reuse `oa-codex-control`'s
+     `openagents.resource_usage_receipt.v1` accounting so each agent's spend is
+     attributable.
+   - *Status:* **needs-owner** (accept the cost model; set a spend cap).
+
+6. **Minimal "few-instance" runner — what it actually needs.**
+   - *Reuse:* `oa-codex-control` (already deployed) for per-run ephemeral GCE VM
+     provision/teardown + receipts; have it launch `claude` with the
+     `CLAUDE_CODE_USE_VERTEX=1` env block above instead of (or alongside) the
+     Codex runner. **Auth via the GCE SA metadata-server ADC** — this *also*
+     eliminates obstacle #1 (no RAPT/interactive reauth on a service account).
+   - *Key/SA distribution:* no per-agent key files needed — every VM uses the
+     same project SA's metadata ADC. Just grant the runner SA
+     `roles/aiplatform.user` + `roles/serviceusage.serviceUsageConsumer` on
+     `openagentsgemini`.
+   - *Still missing for a real fleet (unchanged from Section 3):* **PR-per-agent /
+     branch-per-agent merge automation** is the highest-leverage gap; isolation
+     (worktree per session) exists, merge does not. And `oa-codex-control`'s
+     durable queue is **off by default** capping concurrency at **1**
+     (`OA_CODEX_QUEUE_ENABLED`, `OA_CODEX_QUEUE_MAX_CONCURRENCY`) — must be
+     enabled + raised deliberately.
+   - *Status:* **needs-infra** (small: SA grant + env wiring on the existing
+     control daemon; PR-per-agent is the larger build).
+
+### One-line bottom line
+
+The Vertex *path itself works* (raw 200 OK; claude-code correctly dispatches to
+`global`/`claude-haiku-4-5`). The only thing that stopped `claude -p` from
+completing was an **expired ADC reauth (`invalid_rapt`)** — fixed by one
+interactive `gcloud auth application-default login`, or designed away entirely by
+running the fleet on a **GCE service-account metadata-ADC** identity. After that,
+the gating concerns are **shared per-project quota** (haiku/sonnet OK for a few
+agents; Opus quota = 0), **per-token cost**, and the pre-existing
+**PR-per-agent** gap.
+
+*No access tokens, OAuth tokens, service-account keys, or secret values appear in
+this section — all credentials were redacted.*
