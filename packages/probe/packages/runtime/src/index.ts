@@ -22,6 +22,7 @@ export * from "./benchmark/external-repo-studying-pilot-admission";
 export * from "./benchmark/external-repo-studying-self-serve-upload";
 export * from "./benchmark/external-repo-studying-privacy-review";
 export * from "./benchmark/external-repo-studying-privacy-policy-registry";
+export * from "./benchmark/external-repo-studying-scan-attestation-registry";
 export * from "./benchmark/external-repo-studying-upload-privacy-binding";
 export * from "./benchmark/external-repo-studying-review-policy-binding";
 export * from "./benchmark/openagents-customer-private-validation";
