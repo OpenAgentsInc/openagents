@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import { interpretKey, type KeyEvent } from "../src/ui/keyboard"
+import { initialRuntimeState } from "../src/ui/initial-state"
 import {
   ChangedCommandPaletteQuery,
   ClosedCommandPalette,
@@ -300,6 +301,20 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(isMountable(view(model))).toBe(true)
     const queried = Model.make({ ...model, commandPaletteQuery: "swarm" })
     expect(isMountable(view(queried))).toBe(true)
+  })
+
+  test("fresh runtime first paint is the Verse, not shell target tabs", () => {
+    const [model] = initialRuntimeState()
+    const tree = serializeView(view(model).body)
+
+    expect(model.pane).toBe("chat")
+    expect(tree).toContain("chat-pane-world")
+    expect(tree).toContain("The Verse")
+    expect(tree).toContain("Tassadar")
+    expect(tree).toContain("Pylon")
+    expect(tree).not.toContain("shell-target-tabs")
+    expect(tree).not.toContain("Claude Code")
+    expect(tree).not.toContain("Codex")
   })
 })
 

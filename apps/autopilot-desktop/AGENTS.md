@@ -31,59 +31,44 @@ Reference: `docs/autopilot-coder/2026-06-13-autopilot-desktop-app-audit.md` and
 the web app under `apps/openagents.com/apps/web` (its `entry.ts` / `view.ts` show
 the `Runtime.makeProgram` + `view()` pattern).
 
-## Default surface: the zero-base shell (owner directive, 2026-06-19)
+## Default surface: the Verse (owner directive, 2026-06-20)
 
-**The app launches to a dead-simple shell: a black screen with NOTHING on it
-except a single text bar at the bottom** (and the clean conversation above it
-once there is a response). This is the `shell` pane (`PaneId`), the default set
-by `initial-state.ts` (`pane: "shell"`, NO warm-up commands — the screen stays
-quiet and black).
+**The app launches to the Verse: the chat/world surface centered on Pylons,
+Tassadar, and one chat bar.** This is the `chat` pane (`PaneId`), with
+`model.verseEnabled` default-on and the launch build resolving the Verse bundle
+on unless an explicit fallback/debug kill switch is set. Fresh first paint must
+not show the shell target tabs, `Claude Code`, or `Codex`.
 
-- **All the old UI is KEPT, just hidden.** The full multi-pane UI
+- **The fallback shell is KEPT, just demoted.** The `shell` pane, its
+  programmatic-control path, and its tests remain available for advanced/debug
+  work. It is reachable through the explicit fallback control, Escape from the
+  full UI, and command-palette navigation. Do not make it the real app entry
+  again without a new owner directive.
+- **All advanced panes are KEPT and reachable.** The full multi-pane UI
   (network/chat/code/supervise/explore/settings + nav + Cmd-K palette) still
-  mounts and works; it just does not render by default. It is reachable only via
-  an explicit open: Cmd-K (the palette overlays the shell) or the small "open
-  panes" affordance (`OpenedPanes` → lands on chat). `ClosedPanes` returns to the
-  black shell. Settings specifically is behind that explicit open, never on the
-  default screen. The black-screen guard (`tests/black-screen-guard.test.ts`)
-  still mounts EVERY pane — keep it green.
-- **HUD H3 (#5501) — the managed pane layer.** Panes are also available as a
-  MANAGED layer of draggable + resizable floating windows OVER the base surface,
-  the durable OpenAgents pane-as-data pattern (audit
-  `docs/launch/2026-06-19-previous-hud-systems-audit.md` §4.1/§4.6), NOT the old
-  free-floating default sprawl. A pane is plain data (`{id, kind, rect, z}`) in
-  `src/ui/pane-manager.ts`; the pure `reducePaneLayer` (open/close/focus/move/
-  resize + cascade placement + viewport clamp) is the ONLY mutator, stored on the
-  opaque `paneLayer` Model field (`modelPaneLayer`). Panes open via the command
-  palette ("Open <X> as a pane", derived from the SAME nav registry as everything
-  else), float over the shell/network/full UI, and the shell stays BLACK until one
-  is opened. Drag/resize uses `h.OnPointerDown` to capture a gesture
-  (`StartedPaneDrag`) plus a window `pointermove`/`pointerup` subscription
-  (`subscriptions.ts` → `MovedPaneDragPointer`/`EndedPaneDrag`); the 8 resize
-  handles match Commander's edge/corner set. Cascade + clamp are the anti-sprawl
-  guard (§5.2): a new pane never stacks exactly on the last, and no pane can be
-  dragged off-screen. Parity: `paneLayerText(layer)`. Tests:
-  `tests/pane-layer.test.ts`.
-- **The text bar is the one surface.** Typing + submitting shows a clean
-  conversation (you → answer) with NO session refs / program-step / verdict /
-  node-state jargon. The response path is `RespondToShellInput` in `commands.ts`
-  (→ `RespondedShell`). **HUD H5 (#5503) wired a REAL model:** the command calls
-  the Bun `shellTurn` RPC verb (`src/bun/shell-turn.ts`), which posts to the live
-  OpenAgents inference gateway (`POST /v1/chat/completions`, Gemini 3.5 Flash on
-  the free per-agent allowance) using the desktop's configured agent token
-  (`OPENAGENTS_AGENT_TOKEN`, kept in the Bun host — never crosses to the
-  webview). No token / a gateway failure returns an HONEST plain-language
-  message, never a fabricated answer. The reducer + view are unchanged; the
-  deterministic `shellLoopbackReply` is kept as the offline/test fallback and is
-  what the proof injects so parity stays deterministic.
-- **Programmatic control + parity.** Drive the shell over the existing RPC path:
-  the Bun→webview `shellControl` message (`shared/rpc.ts`, routed in `main.ts`)
-  pushes the SAME inbound messages the UI dispatches (`ChangedShellInput` /
-  `SubmittedShell`). Read what the owner sees with `shellTranscriptText(model)`
-  (pure projection of the rendered conversation). Proof:
-  `bun run proof:shell-control`. Tests: `tests/zero-base-shell.test.ts`,
-  `tests/shell-turn.test.ts`.
-- **Quiet by default.** Native OS notifications are OFF unless
+  mounts and works. Code, Supervise, Composer, Sessions, Swarm, repo/worktree,
+  deploy, Claude, and Codex affordances belong behind nav/Cmd-K/advanced panes,
+  not first paint. The black-screen guard still mounts EVERY pane — keep it
+  green.
+- **HUD H3 (#5501) — the managed pane layer.** Panes are available as a MANAGED
+  layer of draggable + resizable floating windows over the base surface, the
+  durable OpenAgents pane-as-data pattern (audit
+  `docs/launch/2026-06-19-previous-hud-systems-audit.md` §4.1/§4.6). A pane is
+  plain data (`{id, kind, rect, z}`) in `src/ui/pane-manager.ts`; the pure
+  `reducePaneLayer` is the only mutator. Cascade + clamp keep panes from
+  stacking exactly or being dragged off-screen. Parity: `paneLayerText(layer)`.
+  Tests: `tests/pane-layer.test.ts`.
+- **The chat bar is the first input.** The launch copy should say
+  Verse/Pylon/Tassadar. The existing coding-session chat path is still present
+  until the Tassadar default chat path lands, but the first visible surface must
+  not invite the user to shell out to Codex/Claude/cloud-code.
+- **Programmatic shell control + parity stay intact.** Drive the fallback shell
+  over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
+  routed in `main.ts`) pushes the same inbound messages the UI dispatches
+  (`ChangedShellInput` / `SubmittedShell`). Read what the owner sees with
+  `shellTranscriptText(model)`. Proof: `bun run proof:shell-control`. Tests:
+  `tests/zero-base-shell.test.ts`, `tests/shell-turn.test.ts`.
+- **Quiet notifications.** Native OS notifications are OFF unless
   `OA_DESKTOP_OS_NOTIFICATIONS=1` (see `src/bun/index.ts`). The in-app
   notification center still accumulates as a passive projection.
 

@@ -5782,10 +5782,10 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
     ],
   )
 
-// #5735: world-scene-behind-chat feature flag. Default OFF, so the chat surface
-// is byte-for-byte the current pane unless the flag is explicitly enabled. When
-// on, the chat thread + composer render as translucent glass over a full-bleed
-// 3D pylon scene (mirrors the .training-fullscreen-scene/-overlay pattern).
+// #5735/#5819: the Verse/world-scene behind chat. Default ON for launch, with a
+// build kill-switch and the runtime Verse toggle for fallback/debug. When on,
+// the chat thread + composer render as translucent glass over a full-bleed 3D
+// pylon scene (mirrors the .training-fullscreen-scene/-overlay pattern).
 // #5730 (P2.5): the static seed is now only a zero-state/pre-load fallback —
 // when the flag is on AND live pylon-stats have arrived, the scene shows the
 // REAL pylons (modelChatWorldScene), and with CHAT_WORLD_PAYMENTS on, real
@@ -5910,7 +5910,9 @@ const chatThread = (model: Model): Html =>
       h.ul(
         [cls("chat-message-list")],
         model.chatMessages.length === 0
-          ? [h.li([cls("chat-empty")], [emptyLine("No chat turns yet.")])]
+          ? [h.li([cls("chat-empty")], [
+              emptyLine("Verse online. Talk to Tassadar or ask what your Pylon is doing."),
+            ])]
           : model.chatMessages.map(message => chatMessageView(model, message)),
       ),
     ],
@@ -5924,7 +5926,7 @@ const chatComposer = (model: Model): Html =>
         [
           cls("text-area chat-input"),
           h.Rows(4),
-          h.Placeholder("Ask Autopilot to continue a Blueprint program turn..."),
+          h.Placeholder("Talk to Tassadar about the Verse, your Pylon, or the training run..."),
           h.Value(model.chatInput),
           h.OnInput((value: string) => ChangedChatInput({ value })),
         ],
@@ -5945,7 +5947,7 @@ const chatComposer = (model: Model): Html =>
               h.Disabled(model.chatPending),
               h.OnClick(ClickedChatSubmit()),
             ],
-            [model.chatPending ? "Sending..." : "Send turn"],
+            [model.chatPending ? "Sending..." : "Send"],
           ),
         ],
       ),
@@ -5965,7 +5967,7 @@ const chatPane = (model: Model): Html =>
         chatSceneBackground(model),
         characterCreationOverlay(model),
         h.div([cls("chat-content-overlay")], [
-          paneTitle("Chat"),
+          paneTitle("The Verse"),
           chatThread(model),
           chatComposer(model),
         ]),
@@ -6648,17 +6650,18 @@ const rootView = (model: Model): Html => {
   return h.div(
     [cls("app-shell"), themeData],
     [
-      // Always-available return to the zero-base shell (owner directive
-      // 2026-06-19). The shell is home; this + Escape mean opening the full UI
-      // is never a trap.
+      // Always-available fallback/debug shell. It stays reachable for advanced
+      // work, but the Verse is now home, so the visible first-paint affordance
+      // avoids making "shell" the product story.
       h.button(
         [
           cls("shell-return"),
           h.Type("button"),
-          h.Title("Back to the shell (Esc)"),
+          h.Title("Open fallback shell (Esc)"),
+          h.AriaLabel("Open fallback shell"),
           h.OnClick(ClosedPanes()),
         ],
-        ["← Shell"],
+        ["Advanced"],
       ),
       sidebar(model),
       h.main(

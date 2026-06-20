@@ -1,6 +1,7 @@
 import type { Command } from "foldkit"
 
 import type { Message } from "./message"
+import { LoadOnboardingStatus } from "./commands"
 import { initialModel, Model } from "./model"
 // #5472: load the locally-persisted Settings preferences and apply them to the
 // initial model so theme + spawn defaults take effect from app entry. Loaded
@@ -13,14 +14,10 @@ type InitialRuntimeState = readonly [
   ReadonlyArray<Command.Command<Message>>,
 ]
 
-// ZERO-BASE SHELL (owner directive, 2026-06-19): the app launches to a black
-// screen with NOTHING on it except the bottom text bar — the `shell` pane. We
-// deliberately fire NO warm-up commands at entry (no onboarding/proof/activity/
-// gateway loaders), so the default screen stays quiet and black and nothing
-// pulls the user onto another surface. Every pane the old UI had is KEPT and
-// still mounts; each warms ITS OWN projections lazily on open (the NavigatedTo
-// handler in update.ts already loads per-pane data when a pane is entered via
-// the Cmd-K palette / "open panes"). One thing at a time.
+// VERSE HOME (owner directive, 2026-06-20): the app launches into the Verse
+// chat/world surface. The fallback shell and the full Code/Supervise panes are
+// still mounted and reachable, but the first paint is Pylons + Tassadar + one
+// chat bar instead of a coding target selector.
 export const initialRuntimeState = (): InitialRuntimeState => {
   const preferences = loadPreferences()
   const model = Model.make({
@@ -37,11 +34,13 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     gatewayInferenceFallback: preferences.gatewayInferenceFallback,
     spawnAdapter: preferences.defaultAdapter,
     spawnLane: preferences.defaultLane,
-    // The dead-simple default surface: black + the bottom text bar.
-    pane: "shell",
+    // The hands-off default surface: the Verse world plus one chat bar.
+    pane: "chat",
+    onboardingPending: true,
   })
 
-  // No entry commands: the shell needs nothing loaded to render its black
-  // screen + input. Panes warm lazily on open (NavigatedTo in update.ts).
-  return [model, []]
+  // Warm the character-creation/Pylon readiness projection on first paint so
+  // the Verse can show an honest ready/loading/blocker state without requiring
+  // the user to open another pane.
+  return [model, [LoadOnboardingStatus()]]
 }

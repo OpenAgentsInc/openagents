@@ -1,10 +1,10 @@
-// Chat-world build-time feature flags (P2.5 wiring · #5730).
+// Chat-world / Verse build-time feature flags (P2.5 wiring · #5730, #5819).
 //
 // Single source of truth for the two chat-world flags so the VIEW (view.ts)
 // and the SUBSCRIPTIONS (chat-world-subscriptions.ts) agree on exactly what is
-// on. Both are resolved from Vite build env (VITE_CHAT_WORLD_SCENE /
-// VITE_CHAT_WORLD_PAYMENTS) and default OFF, so the desktop surface is
-// byte-for-byte the current pane unless a flag is explicitly built in.
+// on. The launch build defaults the Verse bundle ON via VITE_VERSE_ENABLED
+// (implicit true), while retaining the older per-feature Vite env overrides and
+// an explicit VITE_DISABLE_VERSE hard kill switch for fallback/debug builds.
 //
 // The pure mappers in shared/chat-world-scene.ts read globalThis.__OA_FLAGS for
 // headless test override; the desktop runtime instead resolves the build flags
@@ -13,17 +13,36 @@
 
 import type { ChatWorldFlags } from "./chat-world-scene"
 
-const envFlag = (name: string): boolean => {
-  const env = (import.meta as { env?: Record<string, string | undefined> }).env
-  return (env?.[name] ?? "0") === "1"
+const envValue = (name: string): string | undefined => {
+  const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env
+  const processEnv = (globalThis as {
+    process?: { env?: Record<string, string | undefined> }
+  }).process?.env
+  return viteEnv?.[name] ?? processEnv?.[name]
 }
+
+const envFlag = (name: string, fallback = false): boolean => {
+  const raw = envValue(name)
+  if (raw === undefined) return fallback
+  const normalized = raw.trim().toLowerCase()
+  return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on"
+}
+
+const verseDisabled = (): boolean =>
+  envFlag("VITE_DISABLE_VERSE") || envFlag("VITE_VERSE_DISABLED")
+
+const verseLaunchDefault = (): boolean =>
+  !verseDisabled() && envFlag("VITE_VERSE_ENABLED", true)
+
+const verseFeatureFlag = (name: string): boolean =>
+  !verseDisabled() && envFlag(name, verseLaunchDefault())
 
 // Resolve the chat-world flags from the build env. CHAT_WORLD_PAYMENTS implies
 // CHAT_WORLD_SCENE — payment beams have nowhere to fly without the scene — so a
 // payments-only misconfiguration still yields a coherent (scene-on) state.
 export const chatWorldBuildFlags = (): ChatWorldFlags => {
-  const scene = envFlag("VITE_CHAT_WORLD_SCENE")
-  const payments = envFlag("VITE_CHAT_WORLD_PAYMENTS")
+  const scene = verseFeatureFlag("VITE_CHAT_WORLD_SCENE")
+  const payments = verseFeatureFlag("VITE_CHAT_WORLD_PAYMENTS")
   return {
     CHAT_WORLD_SCENE: scene || payments,
     CHAT_WORLD_PAYMENTS: payments,
@@ -31,7 +50,7 @@ export const chatWorldBuildFlags = (): ChatWorldFlags => {
 }
 
 export const agentCharacterCreationFlag = (): boolean =>
-  envFlag("VITE_AGENT_CHARACTER_CREATION")
+  verseFeatureFlag("VITE_AGENT_CHARACTER_CREATION")
 
 export const chatWorldMultiplayerFlag = (): boolean =>
   envFlag("VITE_CHAT_WORLD_MULTIPLAYER")

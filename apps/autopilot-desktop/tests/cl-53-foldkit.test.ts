@@ -168,17 +168,16 @@ const onboardingProjection = (
 })
 
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
-  test("desktop startup lands on the dead-simple shell with NO warm-up commands", () => {
-    // ZERO-BASE SHELL (owner directive, 2026-06-19): the app launches to a
-    // black screen with nothing on it except the bottom text bar (the `shell`
-    // pane). Startup deliberately fires NO warm-up commands — the screen stays
-    // quiet and black; every pane warms ITS OWN projections lazily on open
-    // (NavigatedTo in update.ts). The old onboarding-on-launch + 6 startup
-    // loaders are intentionally gone.
+  test("desktop startup lands on the Verse chat home and warms onboarding only", () => {
+    // VERSE HOME (owner directive, 2026-06-20): the app now launches to the
+    // Pylon/Tassadar Verse surface. It warms only onboarding so the
+    // character-creation/readiness overlay has an honest state; the older
+    // multi-loader startup remains gone.
     const [model, commands] = initialRuntimeState()
 
-    expect(model.pane).toBe("shell")
-    expect(commands).toHaveLength(0)
+    expect(model.pane).toBe("chat")
+    expect(commands.map(command => command.name)).toEqual(["LoadOnboardingStatus"])
+    expect(model.onboardingPending).toBe(true)
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")
   })
@@ -376,8 +375,8 @@ describe("update reducer (CL-53)", () => {
 
   test("incomplete onboarding status keeps the onboarding pane", () => {
     // The auto-advance contract is scoped to the onboarding pane (the user must
-    // have opened it). Zero-base launch now lands on `shell`, so start the user
-    // on the onboarding pane explicitly to exercise this guard.
+    // have opened it). Verse launch lands on `chat`, so start the user on the
+    // onboarding pane explicitly to exercise this guard.
     const start = Model.make({ ...initialModel, pane: "onboarding" })
     const [model, commands] = update(
       start,
@@ -408,9 +407,9 @@ describe("update reducer (CL-53)", () => {
   })
 
   test("complete onboarding status auto-navigates the onboarding pane to chat", () => {
-    // From the onboarding pane, a completed chain auto-advances to chat. (Zero-
-    // base launch lands on `shell`, not onboarding, so start on onboarding to
-    // exercise the auto-advance the way a returning user reaches it.)
+    // From the onboarding pane, a completed chain auto-advances to chat. Verse
+    // launch already lands on chat, so start on onboarding to exercise the
+    // auto-advance the way a returning user reaches it.
     const start = Model.make({ ...initialModel, pane: "onboarding" })
     const [model, commands] = update(
       start,
