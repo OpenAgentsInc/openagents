@@ -318,7 +318,8 @@ const budgetChecks = [
     // It returns `Effect.Effect<Response>` like the sibling public read handlers.
     // Ratchet back down when these public-projection handlers are extracted behind
     // shared route mappers.
-    budget: 96,
+    // +1 (96 -> 97) for the public labor earnings read handler
+    budget: 97,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -574,6 +575,11 @@ const publicProjectionComplianceToken =
 
 const publicProjectionSurfaces = [
   // Declared surfaces (payload carries generatedAt + staleness contract).
+  {
+    module: 'workers/api/src/labor-earnings-routes.ts',
+    route: '/api/public/labor-earnings',
+    status: 'staleness_declared',
+  },
   {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',

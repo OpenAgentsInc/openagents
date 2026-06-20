@@ -1366,7 +1366,6 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.labor_external_ladder_settlement_missing',
-          'blocker.product_promises.labor_self_serve_earning_missing',
         ],
         verification:
           'A labor job must run on the contributor’s own connected account or API budget with output-only delivery, payment for accepted results, and a public settlement receipt. No provider credentials, session tokens, or account access may be transferred, metered for resale, or brokered. First-live met by #4777 (output-only delivery, validator acceptance, credit-ledger settlement). Green requires the same compliant flow settling external sats over the reliable-tips ladder and running self-serve (not operator-staged). State set to yellow under owner authorization 2026-06-14; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version.',

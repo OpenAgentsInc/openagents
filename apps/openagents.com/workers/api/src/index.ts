@@ -87,6 +87,7 @@ import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
+import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import {
   boundedResponderSupportLimit,
@@ -9120,6 +9121,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
+  },
+  {
+    path: '/api/public/labor-earnings',
+    handler: (request, env) =>
+      handlePublicLaborEarningsApi(request, {
+        db: openAgentsDatabase(env),
+      }),
   },
   {
     path: '/api/public/artanis/labor-receipts',
