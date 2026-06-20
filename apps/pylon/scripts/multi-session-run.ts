@@ -370,7 +370,7 @@ export function parsePlanJson(raw: unknown): MultiSessionPlanEntry[] {
     const verify = stringArray(record.verify)
     if (verify === null) throw new Error(`multi-session plan entry ${index} has invalid verify argv`)
     const repoRef = record.repoRef === undefined ? undefined : repositoryRefFrom(record.repoRef)
-    if (record.repoRef !== undefined && repoRef === null) {
+    if (repoRef === null) {
       throw new Error(`multi-session plan entry ${index} has invalid repoRef`)
     }
     const worktreePath = typeof record.worktreePath === "string" ? record.worktreePath : undefined

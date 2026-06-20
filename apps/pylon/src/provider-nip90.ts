@@ -825,16 +825,24 @@ export async function runProviderJobOnce(input: {
           relayUrl: input.relay.relayUrl,
           runtime: input.runtime,
         })
-      : await runLaborResult({
-          agentKind: input.laborAgentKind ?? detectConfiguredLaborAgent() ?? "codex",
-          entry: entry as ProviderRequestEntry & { laborRequest: LaborJobRequest },
-          event: input.event,
-          identity: input.identity,
-          quote,
-          relayUrl: input.relay.relayUrl,
-          runtime: input.laborRuntime ?? input.runtime ?? makeConfiguredLaborRuntime(),
-          workspace: laborAdmission.workspace,
-        })
+      : await (async () => {
+          // A defined laborRequest only reaches here via the admitted-with-
+          // workspace branch of evaluateLaborAdmission; assert the invariant so
+          // the workspace type is sound.
+          if (laborAdmission.workspace === undefined) {
+            throw new Error("labor admission accepted without a resolved workspace")
+          }
+          return runLaborResult({
+            agentKind: input.laborAgentKind ?? detectConfiguredLaborAgent() ?? "codex",
+            entry: entry as ProviderRequestEntry & { laborRequest: LaborJobRequest },
+            event: input.event,
+            identity: input.identity,
+            quote,
+            relayUrl: input.relay.relayUrl,
+            runtime: input.laborRuntime ?? input.runtime ?? makeConfiguredLaborRuntime(),
+            workspace: laborAdmission.workspace,
+          })
+        })()
     await input.relay.publish(result)
 
     const success = signNostrEvent(

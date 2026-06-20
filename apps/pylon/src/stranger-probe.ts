@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { Brand } from "effect"
 import { generateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
 import {
@@ -123,6 +124,13 @@ export function makeThrowawayCustomerIdentity(): PylonNostrPrivateIdentity {
 
 // --- probe request and response filters ------------------------------------
 
+// `createJobRequestEvent` takes a branded UnixTimestamp. The nip90 dependency
+// intentionally does not re-export the `UnixTimestamp` schema/type, so we
+// reconstruct its structural brand locally. The brand is purely nominal — the
+// value here is already a validated integer unix-seconds timestamp produced by
+// the probe — so this carries no runtime risk and stays type-sound.
+type UnixTimestamp = number & Brand.Brand<"UnixTimestamp">
+
 export function buildProbeJobRequestEvent(input: {
   identity: PylonNostrPrivateIdentity
   prompt: string
@@ -138,7 +146,8 @@ export function buildProbeJobRequestEvent(input: {
     // afterwards, instead of pre-selecting a provider.
     serviceProviders: [],
   })
-  return signNostrEvent(createJobRequestEvent(request, input.createdAtSeconds), input.identity)
+  const createdAt = input.createdAtSeconds as UnixTimestamp
+  return signNostrEvent(createJobRequestEvent(request, createdAt), input.identity)
 }
 
 export function buildProbeResponseFilters(input: {

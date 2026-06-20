@@ -38,7 +38,12 @@ export class NodeRegistration {
     this.updatedAt = input.updatedAt
   }
 
-  toJSON(): Omit<NodeRegistration, "controlToken"> & { controlToken: "[redacted]" } {
+  toJSON(): {
+    nodeRef: string
+    addresses: NodeRegistrationAddresses
+    controlToken: "[redacted]"
+    updatedAt: string
+  } {
     return {
       nodeRef: this.nodeRef,
       addresses: this.addresses,

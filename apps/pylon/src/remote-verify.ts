@@ -37,7 +37,7 @@ export function planRemoteVerify(input: {
   stepRefs.push("release")
 
   return {
-    providerKind: provider.kind,
+    providerKind: "static_ssh",
     steps: stepRefs.map((step) => ({
       step,
       detailRef: `remote_verify.${step}`,

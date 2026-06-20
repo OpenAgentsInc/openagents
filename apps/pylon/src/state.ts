@@ -205,7 +205,7 @@ export async function loadOrCreateRuntimeState(
   await ensureStateDirectories(paths)
   const existing = await readJsonFile<PylonRuntimeState>(paths.runtimeState)
   const requestedCapabilityRefs = input.capabilityRefs ?? []
-  const defaultCapabilityRefSet = new Set(PYLON_DEFAULT_CAPABILITY_REFS)
+  const defaultCapabilityRefSet = new Set<string>(PYLON_DEFAULT_CAPABILITY_REFS)
   const defaultOnly =
     requestedCapabilityRefs.length > 0 &&
     requestedCapabilityRefs.every(ref => defaultCapabilityRefSet.has(ref))
