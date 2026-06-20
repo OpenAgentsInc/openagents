@@ -55,6 +55,7 @@ describe("kernel-optimization throughput-parity verdict", () => {
     const verdict = verifyKernelOptimizationParity({
       baseline,
       optimized,
+      optimizedOpRef: "rmsnorm",
       parityVerdict: verifiedParity,
     })
     expect(verdict.classId).toBe(KERNEL_OPTIMIZATION_PARITY_CLASS_ID)
@@ -63,12 +64,25 @@ describe("kernel-optimization throughput-parity verdict", () => {
     expect(verdict.parityOutcome).toBe("verified")
     expect(verdict.parityValidatorDeviceRef).toBe("validator-device-2")
     expect(verdict.speedupRatio).toBeCloseTo(523 / 328, 6)
+    // The op being optimized is surfaced (trimmed) for per-op settlement binding.
+    expect(verdict.optimizedOpRef).toBe("rmsnorm")
+  })
+
+  test("surfaces the trimmed op ref so settlements can bind by op", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized,
+      optimizedOpRef: "  attention.flash  ",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.optimizedOpRef).toBe("attention.flash")
   })
 
   test("speed never overrides correctness: faster-but-wrong is rejected", () => {
     const verdict = verifyKernelOptimizationParity({
       baseline,
       optimized,
+      optimizedOpRef: "rmsnorm",
       parityVerdict: rejectedParity,
     })
     expect(verdict.outcome).toBe("rejected")
@@ -84,6 +98,7 @@ describe("kernel-optimization throughput-parity verdict", () => {
     const verdict = verifyKernelOptimizationParity({
       baseline,
       optimized: { ...optimized, tokensPerSecond: 328 },
+      optimizedOpRef: "rmsnorm",
       parityVerdict: verifiedParity,
     })
     expect(verdict.outcome).toBe("rejected")
@@ -94,6 +109,7 @@ describe("kernel-optimization throughput-parity verdict", () => {
     const verdict = verifyKernelOptimizationParity({
       baseline,
       optimized: { ...optimized, device: "metal" },
+      optimizedOpRef: "rmsnorm",
       parityVerdict: verifiedParity,
     })
     expect(verdict.outcome).toBe("rejected")
@@ -104,6 +120,7 @@ describe("kernel-optimization throughput-parity verdict", () => {
     const zero = verifyKernelOptimizationParity({
       baseline: { ...baseline, tokensPerSecond: 0 },
       optimized,
+      optimizedOpRef: "rmsnorm",
       parityVerdict: verifiedParity,
     })
     expect(zero.outcome).toBe("rejected")
@@ -112,6 +129,7 @@ describe("kernel-optimization throughput-parity verdict", () => {
     const nan = verifyKernelOptimizationParity({
       baseline,
       optimized: { ...optimized, tokensPerSecond: Number.NaN },
+      optimizedOpRef: "rmsnorm",
       parityVerdict: verifiedParity,
     })
     expect(nan.outcome).toBe("rejected")

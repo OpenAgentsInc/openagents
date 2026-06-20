@@ -99,6 +99,20 @@ export type KernelOptimizationTargetMismatch = Readonly<{
 }>
 
 /**
+ * One per-job disagreement between the OP a settlement's parity verdict claims
+ * to have optimized and the op the dispatched job (named by the same
+ * `requestedSlug`) actually targets — an "op swap". Distinct from a target
+ * swap: two jobs can share the exact (model, device, hardware) target while
+ * optimizing different ops, so the model/device/hardware target reconciler is
+ * blind to this; only the op binds them apart.
+ */
+export type KernelOptimizationOpMismatch = Readonly<{
+  requestedSlug: string
+  dispatchedOpRef: string
+  settledVerdictOpRef: string
+}>
+
+/**
  * The result of binding each settlement's parity verdict back to the SPECIFIC
  * dispatched job it claims to settle, by target.
  *
@@ -122,6 +136,35 @@ export type KernelOptimizationCampaignTargetReconciliation = Readonly<{
   unmatchedSlugs: ReadonlyArray<string>
   /** Slugs whose settled verdict optimizes a different target than dispatched. */
   targetMismatches: ReadonlyArray<KernelOptimizationTargetMismatch>
+  /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
+  discrepancies: ReadonlyArray<string>
+}>
+
+/**
+ * The result of binding each settlement's parity verdict back to the SPECIFIC
+ * dispatched job it claims to settle, by OP.
+ *
+ * `reconcileKernelOptimizationCampaignTargets` binds by (model, device,
+ * hardware), but a campaign can dispatch several ops for the SAME target — e.g.
+ * `rmsnorm` and `attention.flash` both on `qwen-3.5-0.5b`/`cuda`/`a10g`. A
+ * settlement filed under the `rmsnorm` job's slug, with that job's exact budget,
+ * but carrying a verdict that optimized `attention.flash`, clears the per-job
+ * (slug + escrow) AND the model/device/hardware target reconcilers: the
+ * accounting conserves and the coarse target matches, yet the wrong op was paid.
+ * This report checks the verdict's own `optimizedOpRef` equals the op the
+ * dispatched job under that slug actually targets (`kernelRef`).
+ */
+export type KernelOptimizationCampaignOpReconciliation = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff every settled verdict's op matched its dispatched job. */
+  ok: boolean
+  /** Slugs whose settled verdict op matched the dispatched job's op. */
+  matchedSlugs: ReadonlyArray<string>
+  /** Slugs settled but not dispatched by this campaign (op unknowable). */
+  unmatchedSlugs: ReadonlyArray<string>
+  /** Slugs whose settled verdict optimizes a different op than dispatched. */
+  opMismatches: ReadonlyArray<KernelOptimizationOpMismatch>
   /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
   discrepancies: ReadonlyArray<string>
 }>
@@ -620,6 +663,94 @@ export const reconcileKernelOptimizationCampaignTargets = (
     matchedSlugs,
     ok: discrepancies.length === 0,
     targetMismatches,
+    unmatchedSlugs,
+  }
+}
+
+/**
+ * Bind each settlement's parity verdict back to the specific dispatched job it
+ * claims to settle, BY OP.
+ *
+ * This closes the gap `reconcileKernelOptimizationCampaignTargets` explicitly
+ * defers: that reconciler binds on (model, device, hardware), but a single
+ * campaign can dispatch several ops against the SAME target (e.g. `rmsnorm` and
+ * `attention.flash` both on `qwen-3.5-0.5b`/`cuda`/`a10g`). A settlement filed
+ * under the `rmsnorm` job's slug, with that job's exact budget, carrying a
+ * verdict that actually optimized `attention.flash`, clears the per-job
+ * (slug + escrow) reconciler AND the coarse target reconciler — the accounting
+ * conserves and the model/device/hardware match — yet the wrong op was paid.
+ *
+ * Like the target reconciler it recomputes each dispatched job's requested slug
+ * from the campaign spec (via the same dispatch encoder, so it cannot drift from
+ * the real slug) to learn that slug's true op (`kernelRef`), then checks the
+ * settled verdict's own `optimizedOpRef` matches it (trim + case-normalized). A
+ * blank verdict op never matches a dispatched op, so it is reported as a
+ * mismatch. It takes the campaign SPEC (only the spec carries the structured op)
+ * and the keyed settlement items; it moves no money and never throws. The `ok`
+ * gate must hold before the verified-work rail releases any per-op payout/refund.
+ */
+export const reconcileKernelOptimizationCampaignOps = (
+  spec: KernelOptimizationCampaignSpec,
+  items: ReadonlyArray<KernelOptimizationKeyedSettlementItem>,
+): KernelOptimizationCampaignOpReconciliation => {
+  // Build the campaign once: validates the spec (non-empty, unique targets,
+  // unique slugs) and yields the slug per job in spec order.
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  // Map each unique requested slug to the op the dispatched job under it targets.
+  // spec.jobs[i] <-> campaign.requests[i] by order.
+  const dispatchedOpBySlug = new Map<string, string>()
+  spec.jobs.forEach((job, index) => {
+    const slug = campaign.requests[index]?.requestedSlug ?? ''
+    dispatchedOpBySlug.set(slug, job.kernelRef.trim().toLowerCase())
+  })
+
+  const matchedSlugs: string[] = []
+  const unmatchedSlugs: string[] = []
+  const opMismatches: KernelOptimizationOpMismatch[] = []
+
+  for (const item of items) {
+    const slug = item.requestedSlug.trim()
+    const dispatchedOp = dispatchedOpBySlug.get(slug)
+    if (dispatchedOp === undefined) {
+      unmatchedSlugs.push(slug)
+      continue
+    }
+    const settledOp = item.verdict.optimizedOpRef.trim().toLowerCase()
+    if (settledOp.length > 0 && settledOp === dispatchedOp) {
+      matchedSlugs.push(slug)
+    } else {
+      opMismatches.push({
+        dispatchedOpRef: dispatchedOp,
+        requestedSlug: slug,
+        settledVerdictOpRef: item.verdict.optimizedOpRef.trim(),
+      })
+    }
+  }
+
+  const discrepancies: string[] = []
+  if (unmatchedSlugs.length > 0) {
+    discrepancies.push(
+      `settlement(s) for slug(s) this campaign never dispatched: ${unmatchedSlugs.join(', ')}`,
+    )
+  }
+  for (const mismatch of opMismatches) {
+    const got =
+      mismatch.settledVerdictOpRef.length === 0
+        ? '(blank)'
+        : mismatch.settledVerdictOpRef
+    discrepancies.push(
+      `op swap on "${mismatch.requestedSlug}": dispatched op "${mismatch.dispatchedOpRef}" but settled verdict optimizes "${got}"`,
+    )
+  }
+
+  return {
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    matchedSlugs,
+    ok: discrepancies.length === 0,
+    opMismatches,
     unmatchedSlugs,
   }
 }
