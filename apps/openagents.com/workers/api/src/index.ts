@@ -53,6 +53,10 @@ import {
   handleTrainingPublicDistributedRunScaleApi,
 } from './training-public-distributed-run-scale-routes'
 import {
+  PylonLargestDecentralizedTrainingClaimEndpoint,
+  handlePylonLargestDecentralizedTrainingClaimStatusApi,
+} from './pylon-largest-decentralized-training-claim-status-routes'
+import {
   TrainingPostTrainingInstructSftEndpoint,
   handleTrainingPostTrainingInstructSftApi,
 } from './training-post-training-instruct-sft-routes'
@@ -8021,6 +8025,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: TrainingPublicDistributedRunScaleEndpoint,
     handler: (request, env) =>
       handleTrainingPublicDistributedRunScaleApi(request, env),
+  },
+  {
+    path: PylonLargestDecentralizedTrainingClaimEndpoint,
+    handler: (request, env) =>
+      handlePylonLargestDecentralizedTrainingClaimStatusApi(request, env),
   },
   {
     path: '/api/public/activity-timeline',

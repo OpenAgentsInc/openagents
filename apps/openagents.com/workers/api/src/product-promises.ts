@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.42'
+export const PublicProductPromisesVersion = '2026-06-20.43'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -29,6 +29,7 @@ const sourceRefs = [
   'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
   'docs/training/2026-06-20-training-full-pipeline-program-status.md',
   'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
+  'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
   'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
   'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
   'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
@@ -598,7 +599,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents/Pylon can make or beat a largest decentralized training run claim against a 200-contributor benchmark.',
         safeCopy:
-          'Do not make a largest-run claim yet; Episode 236 renews the target, and the count methodology plus comparable training-run research are now documented, but the current public run remains far below comparable scale.',
+          'Do not make a largest-run claim yet; Episode 236 renews the target, and the count methodology plus comparable training-run research are now documented. GET /api/public/pylon/largest-decentralized-training-claim compares the current public run to the ~70 contributor comparable and 200 contributor target, and it reports the current run remains far below comparable scale.',
         unsafeCopy:
           'Do not say OpenAgents has the largest decentralized training run, has beaten Bittensor, or has 200+ contributors unless current comparable evidence exists.',
         evidenceRefs: [
@@ -609,14 +610,19 @@ export const publicProductPromisesDocument = () => {
           'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
           'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+          'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
+          'route:/api/public/pylon/largest-decentralized-training-claim',
+          'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts',
+          'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status-routes.ts',
+          'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.test.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.public_training_contributor_receipts_missing',
         ],
         verification:
-          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable. The qualified-contributor counting rule is now written and dereferenceable (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts) and the comparable runs are documented with citations (docs/training/2026-06-19-comparable-decentralized-training-runs-research.md: Templar Covenant-72B ~70 contributors, ~200 is the transcript target). This clears the methodology and comparable-evidence gaps as written evidence only; the promise stays red because the live run has five counted realBitcoinMoved:true contributors, far below the comparable scale, so public_training_contributor_receipts_missing is unmet. No green flip without an actual comparable-scale run and an owner-signed receipt-first upgrade.',
+          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable. The qualified-contributor counting rule is now written and dereferenceable (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts) and the comparable runs are documented with citations (docs/training/2026-06-19-comparable-decentralized-training-runs-research.md: Templar Covenant-72B ~70 contributors, ~200 is the transcript target). As of registry 2026-06-20.43, GET /api/public/pylon/largest-decentralized-training-claim reads the public distributed-run scale projection and reports qualifiedContributorCount=5, concreteComparableThresholdMet=false, transcriptTargetThresholdMet=false, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false. This clears the methodology and comparable-evidence gaps as written evidence only; the promise stays red because the live run has five counted realBitcoinMoved:true contributors, far below the comparable scale, so public_training_contributor_receipts_missing is unmet. No green flip without an actual comparable-scale run and an owner-signed receipt-first upgrade.',
         authorityBoundary:
-          'Marketing comparisons do not grant proof. Public copy must degrade to the receipts actually available.',
+          'Marketing comparisons and public status projections do not grant proof. Public copy must degrade to the receipts actually available; this projection grants no contributor admission, training dispatch, spend, settlement, benchmark victory, largest-run claim, network-scale claim, or product-promise transition authority.',
       },
       {
         ...basePromiseFields,
@@ -3600,6 +3606,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.40 is a training.model_ladder.v1 public rung-status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/model-ladder-rungs now serves a public-safe, live-at-read projection over R0-R4 rung definitions, the retained R0 rehearsal, the six R1 closeout criteria, and the five-field economics-gate format. It reports rungEconomicsGateFormatAvailable=true and publicProjectionAvailable=true, but r1FullRehearsalAvailable=false, r1CloseoutReceiptAvailable=false, r2NetworkRungReceiptAvailable=false, r1PopulatedReportAvailable=false, settledNetworkEconomicsAvailable=false, and greenGateSatisfied=false. blocker.product_promises.r1_full_rehearsal_missing remains because no rung above R0 has run to a closeout receipt; pylon.first_real_model_training_run.v1 still needs blocker.product_promises.model_ladder_network_rungs_not_run cleared by a real R2-or-above network rung. No rung run, training dispatch, spend, settlement, model artifact, eval, model promotion, capability claim, network-training claim, or green transition is created. Evidence: docs/training/2026-06-19-model-ladder-rung-economics.md and apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts.',
         'Registry 2026-06-20.41 is a training.marathon_operations.v1 public status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/marathon-operations now serves a public-safe, live-at-read projection over durable-checkpoint sealing, standby dispatch, and curtailment drill gates. It reports durable checkpoint and standby predicates visible, but durableCheckpointRemoteReadbackReceiptAvailable=false, liveStandbyPromotionReceiptAvailable=false, curtailmentDrillReceiptAvailable=false, marathonCloseoutReceiptAvailable=false, receiptBackedLiveOperationCount=0, and greenGateSatisfied=false. All blockers remain active: durable_checkpoint_seal_missing, standby_dispatch_missing, and curtailment_drill_missing. No checkpoint store read-back, standby promotion, training dispatch, spend, settlement, curtailment event, flexible-load evidence, model promotion, or green transition is created. Evidence: docs/launch/vertex-fleet/training.marathon_operations.v1.md and apps/openagents.com/workers/api/src/training-marathon-operations.ts.',
         'Registry 2026-06-20.42 is a training.public_distributed_training_run.v1 public scale-status projection pass and flips NO promise state (stays red, green count unchanged at 24). GET /api/public/training/public-distributed-run-scale now reads the existing public training-run summary and settlement reconciliation and projects the current bounded run against the documented >=50 qualified-contributor network-scale threshold: qualifiedContributorCount=5, acceptedTraceCount=11, realSettlementReceiptCount=5, networkScaleThresholdMet=false, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false. blocker.product_promises.public_distributed_training_run_receipts_missing remains active because the five bounded canary-scale settlements satisfy existence of multi-contributor real settlement but not comparable network-scale accepted-work receipts. No participant-scale run, at-scale dispatch, spend, settlement, largest-run claim, model-quality claim, public training capability claim, yellow/green transition, or owner-signed upgrade is created. Evidence: docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md and apps/openagents.com/workers/api/src/training-public-distributed-run-scale.ts.',
+        'Registry 2026-06-20.43 is a pylon.largest_decentralized_training_claim.v1 public status projection pass and flips NO promise state (stays red, green count unchanged at 24). GET /api/public/pylon/largest-decentralized-training-claim now reads the public distributed-run scale projection and compares the current bounded run to both the cited ~70 contributor Templar Covenant-72B comparable and the Episode 236 200 contributor target: qualifiedContributorCount=5, acceptedTraceCount=11, realSettlementReceiptCount=5, concreteComparableThresholdMet=false, transcriptTargetThresholdMet=false, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false. blocker.product_promises.public_training_contributor_receipts_missing remains active because the five bounded canary-scale contributors are far below comparable largest-run scale. No participant-scale run, at-scale dispatch, spend, settlement, benchmark-victory claim, largest-run claim, network-scale claim, yellow/green transition, or owner-signed upgrade is created. Evidence: docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md and apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

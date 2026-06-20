@@ -21,6 +21,7 @@ import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
+import { PylonLargestDecentralizedTrainingClaimEndpoint } from './pylon-largest-decentralized-training-claim-status'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
@@ -781,6 +782,14 @@ export const TrainingPublicDistributedRunScaleEnvelope: JsonSchema = {
     'Public-safe scale-status projection for training.public_distributed_training_run.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the documented >=50 qualified-contributor network-scale threshold, current public run counters, scale axes, and explicit blocker refs. It keeps networkScaleThresholdMet=false for the current bounded run, keeps ownerSignedUpgradeAvailable=false, and keeps greenGateSatisfied=false until comparable-scale accepted-work and real-settlement receipts plus owner signoff exist. It exposes refs and counters only: no private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement authority, largest-run claim, model-quality claim, or green product-promise authority.',
 }
 
+export const PylonLargestDecentralizedTrainingClaimStatusEnvelope: JsonSchema =
+  {
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Public-safe largest-run claim status projection for pylon.largest_decentralized_training_claim.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the documented ~70 contributor comparable benchmark, the 200 contributor transcript target, current public run counters, comparison rows, and explicit blocker refs. It keeps concreteComparableThresholdMet=false, transcriptTargetThresholdMet=false, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false for the current bounded run. It exposes refs and counters only: no private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement authority, largest-run claim, benchmark-victory claim, network-scale claim, or green product-promise authority.',
+  }
+
 export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
@@ -1395,6 +1404,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingMarathonOperationsEnvelope,
   TrainingModelLadderRungsEnvelope,
   TrainingPublicDistributedRunScaleEnvelope,
+  PylonLargestDecentralizedTrainingClaimStatusEnvelope,
   TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
@@ -5452,6 +5462,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public distributed-run scale status.',
           '#/components/schemas/TrainingPublicDistributedRunScaleEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [PylonLargestDecentralizedTrainingClaimEndpoint]: {
+    get: operation({
+      operationId: 'getPylonLargestDecentralizedTrainingClaimStatus',
+      summary: 'Read largest decentralized training claim status',
+      description:
+        'Returns the public-safe status projection for pylon.largest_decentralized_training_claim.v1. It compares the current public training-run qualified-contributor count against the cited ~70 contributor comparable and the 200 contributor transcript target while keeping concreteComparableThresholdMet=false, transcriptTargetThresholdMet=false, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false for the bounded run. Read-only; grants no contributor admission, training dispatch, spend, settlement, largest-run claim, benchmark-victory claim, network-scale claim, or public-claim authority.',
+      tags: ['Pylon', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Largest decentralized training claim status.',
+          '#/components/schemas/PylonLargestDecentralizedTrainingClaimStatusEnvelope',
         ),
         ...errorResponses(),
       },
