@@ -2,6 +2,7 @@ import { Effect, Match as M, Schema as S } from 'effect'
 
 import type { AgentRegistrationStore } from './agent-registration'
 import { sha256Hex } from './agent-registration'
+import { buildAutopilotDecisionCloseoutReceipt } from './autopilot-decision-closeout'
 import {
   type AutopilotWorkOrderRecord,
   type AutopilotWorkReviewAction,
@@ -513,9 +514,21 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
     const item = items.find(
       candidate => candidate.decision.actionKind === 'approve_pr_draft',
     )
+    // Receipt-backed closeout for the live review path: a canonical,
+    // tamper-verifiable artifact a later audit can dereference. The closeoutRef
+    // is identical across an idempotent replay, so a downstream ledger records
+    // exactly one closeout per resolved decision.
+    const closeout = buildAutopilotDecisionCloseoutReceipt({
+      decisionRef,
+      idempotent: result.idempotent,
+      decidedAt: nowIso,
+      reviewDecision,
+      workOrderRef,
+    })
 
     return noStoreJsonResponse(
       {
+        closeout,
         decision: item?.decision ?? null,
         directEffectPermitted: false,
         generatedAt: nowIso,

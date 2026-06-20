@@ -2,7 +2,31 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — route-side act classification
+## Latest run (2026-06-20) — receipt-backed closeout on the LIVE review path
+
+**Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout.ts` | `buildAutopilotDecisionCloseoutReceipt()` + `validateAutopilotDecisionCloseoutReceipt()` — the canonical, tamper-verifiable closeout receipt for the ONE decision-queue act that is actually wired today: `autopilot-decision-routes.ts#actOnDecision` (the work-order review accept / reject / request_changes path). Until now that live HTTP route recorded a review decision and returned the projection but emitted **no closeout artifact** — nothing a later audit could dereference. The protocol-side `DecisionCloseoutReceipt` covers the *remote Pylon-bridge* path, a different surface unreachable from the worker-api review store. This receipt mirrors that contract (deterministic `line` reconstructed by the validator so any field tamper invalidates it; `closeoutRef` exactly-once key that is IDENTICAL across an idempotent replay, so a downstream ledger records one closeout per decision; public-safe `receiptRefs` only). |
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout.test.ts` | 11 tests: applied vs duplicate classification, stable exactly-once `closeoutRef` across replay, action→resolvedState mapping for all three actions, public-safe ref normalization (trim/dedupe/sort/reject-unsafe), and validator tamper-detection (non-object, tampered outcome, action/state mismatch, unknown action, forged line). |
+
+**Wiring (minimal, additive):** `actOnDecision` now builds the closeout and
+returns it under a new `closeout` field on the act response (status unchanged;
+existing route tests still pass — the field is additive). This makes the live
+review path genuinely receipt-backed end-to-end through the HTTP surface, not
+just a standalone builder. No promise state changes.
+
+**What remains for this blocker:** a *persistent* ledger (D1/KV) that appends
+these worker-api receipts keyed by `closeoutRef` (the protocol-side
+`createDecisionCloseoutLedger` is the in-memory contract to mirror), plus the
+remote-bridge receipt's own persistence + a live paired-node proof.
+
+---
+
+## Earlier run (2026-06-20) — route-side act classification
 
 **Blocker advanced:** `blocker.product_promises.decision_queue_api_missing`
 
@@ -135,11 +159,15 @@ and is shared across desktop / web / Expo (the three client surfaces).
   #5000 / #5004).
 
 - **`blocker.product_promises.receipt_backed_command_closeout_missing`** —
-  *Partially advanced* (further this run). The receipt type, builder, and
-  validator landed earlier; this run adds the in-memory storage + audit-index
-  layer (`createDecisionCloseoutLedger`) with exactly-once dedup, cross-client
-  convergence, conflict refusal, and audit queries. The remaining gap is a
-  *persistent* backing store (D1/KV) wrapping this same ledger contract, the
-  call site that appends to the ledger when `createRemoteDecisionQueue().resolve`
-  returns a terminal outcome, and a proof of at least one real receipt produced
-  by a live paired-node resolution.
+  *Partially advanced* (further again 2026-06-20). Earlier runs built the
+  remote-bridge receipt type/builder/validator and the in-memory ledger
+  (`createDecisionCloseoutLedger`). This run extends the closeout coverage to the
+  **live worker-api HTTP path**: `actOnDecision` now produces and returns a
+  canonical, tamper-verifiable `AutopilotDecisionCloseoutReceipt`
+  (`autopilot-decision-closeout.ts`) for every review resolution, with an
+  exactly-once `closeoutRef` stable across idempotent replays. The remaining gap
+  is a *persistent* backing store (D1/KV) keyed by `closeoutRef` that appends
+  both surfaces' receipts (mirroring the in-memory ledger contract), the
+  call site that appends when `createRemoteDecisionQueue().resolve` returns a
+  terminal outcome, and a proof of at least one real receipt produced by a live
+  paired-node resolution.
