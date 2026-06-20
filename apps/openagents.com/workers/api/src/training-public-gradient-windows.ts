@@ -12,6 +12,7 @@ import { TassadarGradientWindowPromotionReceiptFeedSchemaVersion } from './tassa
 import { TassadarGradientWindowPromotionReceiptSchemaVersion } from './tassadar-gradient-window-promotion-receipt'
 import { TassadarGradientWindowPromotionReceiptVerificationSchemaVersion } from './tassadar-gradient-window-promotion-receipt-verify'
 import { TassadarGradientWindowQuarantineRecordSchemaVersion } from './tassadar-gradient-window-quarantine-record'
+import { TassadarGradientWindowQuarantineRecordVerificationSchemaVersion } from './tassadar-gradient-window-quarantine-record-verify'
 
 export const TrainingPublicGradientWindowsEndpoint =
   '/api/public/training/public-gradient-windows'
@@ -68,6 +69,10 @@ export class TrainingPublicGradientWindowsProjection extends S.Class<TrainingPub
     quarantineRecordFormatAvailable: S.Boolean,
     quarantineRecordSchemaVersion: S.Literal(
       TassadarGradientWindowQuarantineRecordSchemaVersion,
+    ),
+    quarantineRecordVerifierAvailable: S.Boolean,
+    quarantineRecordVerifierSchemaVersion: S.Literal(
+      TassadarGradientWindowQuarantineRecordVerificationSchemaVersion,
     ),
     quarantineRouteAvailable: S.Boolean,
     schemaVersion: S.Literal(TassadarGradientWindowIntakeSchemaVersion),
@@ -152,6 +157,9 @@ export const projectTrainingPublicGradientWindows = (
       quarantineRecordFormatAvailable: true,
       quarantineRecordSchemaVersion:
         TassadarGradientWindowQuarantineRecordSchemaVersion,
+      quarantineRecordVerifierAvailable: true,
+      quarantineRecordVerifierSchemaVersion:
+        TassadarGradientWindowQuarantineRecordVerificationSchemaVersion,
       quarantineRouteAvailable: false,
       schemaVersion: TassadarGradientWindowIntakeSchemaVersion,
       sourceRefs: [
@@ -159,6 +167,8 @@ export const projectTrainingPublicGradientWindows = (
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.test.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record-verify.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record-verify.test.ts',
       ],
     },
     receiptSurface: {

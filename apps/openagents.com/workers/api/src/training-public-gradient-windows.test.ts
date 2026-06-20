@@ -32,6 +32,8 @@ type PublicGradientWindowsBody = Readonly<{
     predicateAvailable: boolean
     quarantineRecordFormatAvailable: boolean
     quarantineRecordSchemaVersion: string
+    quarantineRecordVerifierAvailable: boolean
+    quarantineRecordVerifierSchemaVersion: string
     quarantineRouteAvailable: boolean
     schemaVersion: string
   }>
@@ -107,6 +109,9 @@ describe('training public gradient windows projection', () => {
       quarantineRecordFormatAvailable: true,
       quarantineRecordSchemaVersion:
         'openagents.training.public_gradient_window.quarantine_record.v1',
+      quarantineRecordVerifierAvailable: true,
+      quarantineRecordVerifierSchemaVersion:
+        'openagents.training.public_gradient_window.quarantine_record_verification.v1',
       quarantineRouteAvailable: false,
       schemaVersion:
         'openagents.training.public_gradient_window.intake_admission.v1',
@@ -115,6 +120,8 @@ describe('training public gradient windows projection', () => {
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.test.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record-verify.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record-verify.test.ts',
       ],
     })
     expect(projection.runtimeSurface).toEqual({
