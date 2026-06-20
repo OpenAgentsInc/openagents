@@ -33,6 +33,11 @@ import {
   isMarketplaceComposeAndListEnabled,
 } from './marketplace-composition-routes'
 import {
+  SignatureUsageMeteringEndpoint,
+  handleSignatureUsageMeteringApi,
+  isSignatureUsageMeteringEnabled,
+} from './signature-usage-metering-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -7927,6 +7932,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleMarketplaceCompositionApi(request, {
         enabled: isMarketplaceComposeAndListEnabled(
           env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED,
+        ),
+      }),
+  },
+  {
+    // Signature usage-metering surface (#5523 / DE-6 #5529; promise
+    // marketplace.signature_monetization.v1, red). INERT: the store is empty
+    // unless SIGNATURE_USAGE_METERING_ENABLED is armed, and the response always
+    // reports inert/red with the settlement blocker still open. It PRODUCES the
+    // public-safe usage-evidence refs the signature revenue gate consumes
+    // (clearing blocker.product_promises.signature_usage_metering_missing) and
+    // makes no live-revenue or settlement claim. Read-only.
+    path: SignatureUsageMeteringEndpoint,
+    handler: (request, env) =>
+      handleSignatureUsageMeteringApi(request, {
+        enabled: isSignatureUsageMeteringEnabled(
+          env.SIGNATURE_USAGE_METERING_ENABLED,
         ),
       }),
   },
