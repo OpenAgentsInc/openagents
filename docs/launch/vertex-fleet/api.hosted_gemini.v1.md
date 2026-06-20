@@ -74,6 +74,38 @@ production binding shape the harness was missing.
   (still-missing) armed executor delivers hosted Gemini work. The gateway
   blocker REMAINS listed.
 
+### 2026-06-20 update — Vertex Gemini → executor public-safe inference bridge
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** The executor binding already
+  consumed an injected `HostedGeminiInferenceCaller`, and a real Vertex Gemini
+  provider adapter (`inference/vertex-gemini-adapter.ts`) already returns a
+  receipt-first `InferenceResult`. The missing connective tissue was a
+  public-safe projection turning a real Gemini result into the executor's
+  REFS-ONLY contract without leaking raw output. This change adds it:
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-inference-bridge.ts`
+    — `projectGeminiResultToPublicSafeRefs(result, digestHex)` maps a real
+    `InferenceResult` to `{ modelRef, responseDigestRef, usageRef }` (model id +
+    SHA-256 digest of the completion + token COUNTS only); the raw completion is
+    hashed (`hostedGeminiResponseDigestHex`) and never returned. Every emitted
+    ref is re-validated with `publicSafeExecutionCloseoutRef`; any unsafe/empty
+    ref aborts the projection. `createVertexGeminiHostedCaller(config)` wraps an
+    injected runner into a `HostedGeminiInferenceCaller`, FLAG-GATED + INERT by
+    default (disabled → returns `undefined`, never calls the runner).
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-inference-bridge.test.ts`
+    (new, 10 cases): projection is refs-only + public-safe; secret-bearing
+    completion content never appears in any ref; cached-prompt split surfaces;
+    empty model/digest abort; negative/NaN token counts clamp to zero; the
+    caller is INERT when disabled, drives the runner + projects when armed,
+    declines cleanly when the runner returns undefined; and the SHA-256 digest
+    matches the known `sha256("hello world")`.
+
+  **Honest scope:** this is the public-safe *projection + caller seam* only. It
+  does NOT build the live Effect→Promise runner that constructs a Gemini request
+  from a work order and drives the adapter against real Vertex quota, it is not
+  wired into the worker dependency graph, and there is still no registered-agent
+  production smoke. The blocker REMAINS listed.
+
 ## What remains (for green)
 
 - A real deployed `HostedGeminiInferenceCaller` (the hosted Gemini inference
