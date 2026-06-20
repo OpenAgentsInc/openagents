@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.41')
+    expect(decoded.version).toBe('2026-06-20.42')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -106,6 +106,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
@@ -265,8 +268,8 @@ describe('public product promises document', () => {
     // green remains exactly 24.
     // The 2026-06-20.36 marathon pass wires standby-dispatch preflight but no
     // receipt-backed live standby promotion exists, so green remains exactly 24.
-    // The 2026-06-20.41 marathon pass adds a public status projection but keeps
-    // durable checkpoint, standby, and curtailment receipt blockers active.
+    // The 2026-06-20.42 public distributed-run scale pass adds a public status
+    // projection but keeps the network-scale receipt blocker active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -502,7 +505,22 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'training.public_distributed_training_run.v1',
           state: 'red',
-          evidenceRefs: expect.arrayContaining(['docs/transcripts/236.md']),
+          blockerRefs: [
+            'blocker.product_promises.public_distributed_training_run_receipts_missing',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'docs/transcripts/236.md',
+            'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
+            'route:/api/public/training/public-distributed-run-scale',
+            'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.ts',
+            'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.test.ts',
+          ]),
+          safeCopy: expect.stringContaining(
+            'GET /api/public/training/public-distributed-run-scale',
+          ),
+          verification: expect.stringContaining(
+            'networkScaleThresholdMet=false',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'training.decentralized_training_launch.v1',
@@ -1217,12 +1235,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.41', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.42', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.41',
+      expectedVersion: '2026-06-20.42',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.41',
+      servedVersion: '2026-06-20.42',
       status: 'ready',
     })
     expect(
@@ -1232,7 +1250,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.41',
+      servedVersion: '2026-06-20.42',
       status: 'blocked',
     })
   })

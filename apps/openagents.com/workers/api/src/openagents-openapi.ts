@@ -26,6 +26,7 @@ import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-der
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
 import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
+import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
@@ -773,6 +774,13 @@ export const TrainingModelLadderRungsEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingPublicDistributedRunScaleEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe scale-status projection for training.public_distributed_training_run.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the documented >=50 qualified-contributor network-scale threshold, current public run counters, scale axes, and explicit blocker refs. It keeps networkScaleThresholdMet=false for the current bounded run, keeps ownerSignedUpgradeAvailable=false, and keeps greenGateSatisfied=false until comparable-scale accepted-work and real-settlement receipts plus owner signoff exist. It exposes refs and counters only: no private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement authority, largest-run claim, model-quality claim, or green product-promise authority.',
+}
+
 export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
@@ -1386,6 +1394,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingFullPipelineProgramEnvelope,
   TrainingMarathonOperationsEnvelope,
   TrainingModelLadderRungsEnvelope,
+  TrainingPublicDistributedRunScaleEnvelope,
   TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
@@ -5426,6 +5435,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Model-ladder rung status.',
           '#/components/schemas/TrainingModelLadderRungsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingPublicDistributedRunScaleEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingPublicDistributedRunScaleStatus',
+      summary: 'Read public distributed-run scale status',
+      description:
+        'Returns the public-safe scale-status projection for training.public_distributed_training_run.v1. It projects the documented >=50 qualified-contributor network-scale threshold against the current public run counters while keeping networkScaleThresholdMet=false for the bounded run, ownerSignedUpgradeAvailable=false, and greenGateSatisfied=false. Read-only; grants no contributor admission, training dispatch, spend, settlement, largest-run claim, model-quality claim, network-scale claim, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public distributed-run scale status.',
+          '#/components/schemas/TrainingPublicDistributedRunScaleEnvelope',
         ),
         ...errorResponses(),
       },
