@@ -53,7 +53,46 @@ settlement, storage-backend, or green-claim authority.
 - Prove it end-to-end against a real remote content-addressed checkpoint store
   (the read-back is still a declared descriptor/proof ref, not a wired fetch).
 
+## 2026-06-20 standby dispatch admissibility predicate
+
+Blocker advanced: **`blocker.product_promises.standby_dispatch_missing`**
+(partially — still listed).
+
+Marathon discipline requires a pre-warmed standby Pylon to be *promoted* into a
+live collective when a contributor drops out. The pieces around it already exist
+(ban-for-round / standby-gated abort in psionic#1126, bootstrap-from-durable-seal
+behind a join barrier in #4850/#4851, and the `standby_promotion` churn field in
+the window authority), but nothing decided whether a *specific* standby may be
+promoted right now. This change supplies that missing admissibility predicate as
+a self-contained, contract-level module:
+
+- `apps/openagents.com/workers/api/src/training-standby-dispatch.ts`
+  - `TrainingStandbyDispatch` typed descriptor: qualification flag, ban-for-round
+    flag, bootstrap-seal-verified flag, the window the standby bootstrapped from
+    vs the live sealed window, live vacancy count, and last-heartbeat age.
+  - `evaluateStandbyDispatch` / `evaluateUntrustedStandbyDispatch`: pure evaluator
+    returning a `promote_standby` vs `hold_standby` verdict with enumerated
+    reasons. It **fails toward HOLD** — never promotes on incomplete or stale
+    evidence — so the run keeps its existing contributors (or escalates to the
+    standby-gated abort path) rather than silently admitting an unqualified node.
+    A malformed descriptor also HOLDs.
+- `apps/openagents.com/workers/api/src/training-standby-dispatch.test.ts`
+  - 9 tests: promotable standby passes; not-qualified, banned-for-round,
+    bootstrap-not-verified, bootstrap/live window mismatch, no-vacancy, and stale
+    heartbeat each HOLD; a malformed descriptor fails toward HOLD; a well-formed
+    untrusted descriptor decodes.
+
+This is contract-level only: a `promote_standby` verdict means the standby is
+*eligible* for promotion. It grants no dispatch, settlement, promise-state, or
+green-claim authority, and no promise state or blocker list was changed.
+
+### What genuinely remains for the standby blocker
+
+- A real standby promoted into a live run (a recorded, receipt-backed live
+  promotion), wiring this predicate into the actual dispatch path. The evaluator
+  is decided from a declared descriptor, not yet fed by live heartbeat/vacancy
+  telemetry.
+
 ## Other blockers (out of scope this run)
 
-- `blocker.product_promises.standby_dispatch_missing` — untouched.
 - `blocker.product_promises.curtailment_drill_missing` — untouched.
