@@ -242,7 +242,12 @@ const budgetChecks = [
     // returns `Effect.Effect<Response>` like the sibling public read handlers.
     // Ratchet back down when the composed-run handlers are extracted behind
     // route mappers.
-    budget: 86,
+    // +1 (86 -> 87) for the cloud coding-session surface
+    // (cloud/cloud-coding-session-routes.ts, autopilot.cloud_coding_sessions.v1,
+    // red): a flag-gated INERT launch + lifecycle scaffold mirroring the
+    // sandbox/fine-tuning Cloud-primitive pattern. Ratchet back down when these
+    // /v1/* cloud handlers are extracted behind shared route mappers.
+    budget: 87,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

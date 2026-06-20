@@ -60,6 +60,16 @@ import {
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
 } from './cloud/sandbox-compute-service-routes'
+// Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
+// "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
+// (default off). Ships wired to the stub/accepting runtime adapter + no-op
+// metering stub; the managed GCE control-plane adapter + live receipt-first
+// metering plug into its seams. The promise STAYS red — no real VM, no real
+// repo-edit, no paid receipt; no green flip lands here.
+import {
+  isCloudCodingSessionsEnabled,
+  routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
+} from './cloud/cloud-coding-session-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { selectAdapterPlan } from './inference/model-router'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
@@ -8964,6 +8974,30 @@ const routeRequest = makeWorkerRouteRequest({
   routeAutopilotWorkRequest: (request, env, ctx) =>
     autopilotDecisionRoutes.routeAutopilotDecisionRequest(request, env, ctx) ??
     autopilotWorkRoutes.routeAutopilotWorkRequest(request, env, ctx),
+  // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red).
+  // INERT behind CLOUD_CODING_SESSIONS_ENABLED (default off). Wired to the same
+  // programmatic-agent auth the inference gateway / sandbox / fine-tuning
+  // surfaces use; ships defaulted to the stub runtime adapter + no-op metering
+  // stub, so on prod every route returns 404 and nothing is provisioned or
+  // billed. The managed GCE control-plane adapter + live receipt-first metering
+  // hook plug into the module's seams when the EPIC lands.
+  routeCloudCodingSessionRequest: (request, env) =>
+    routeCloudCodingSessionRequestImpl(request, {
+      authenticate: async authRequest => {
+        const token = readBearerToken(authRequest)
+        if (token === undefined) {
+          return undefined
+        }
+        const session = await authenticateProgrammaticAgent(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          token,
+        )
+        return session === undefined
+          ? undefined
+          : { accountRef: `agent:${session.user.id}` }
+      },
+      enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
+    }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
