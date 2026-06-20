@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.14')
+    expect(decoded.version).toBe('2026-06-20.15')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -166,7 +166,15 @@ describe('public product promises document', () => {
     // so green remains exactly 24. The 2026-06-20.14 demand-provenance
     // projection
     // pass moves proof.demand_provenance.v1 planned -> yellow without flipping
-    // green, so green remains exactly 24.
+    // green, so green remains exactly 24. The 2026-06-20.15 two-record
+    // artanis-area pass drops artanis_unattended_tick_streak_missing on
+    // artanis.tassadar_evolution_loop.v1 (the deployed tick-streak gate is met:
+    // longestStreak 12 >= 10, dereferenceable closeout receipts) and adds the
+    // external-contributor responder-support projection
+    // (GET /api/public/artanis/responder-support) on
+    // artanis.pylon_support_responder.v1 while KEEPING its
+    // external_contributor_flow_unproven blocker; both promises STAY yellow, so
+    // green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -856,12 +864,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.14', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.15', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.14',
+      expectedVersion: '2026-06-20.15',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.14',
+      servedVersion: '2026-06-20.15',
       status: 'ready',
     })
     expect(
@@ -871,7 +879,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.14',
+      servedVersion: '2026-06-20.15',
       status: 'blocked',
     })
   })

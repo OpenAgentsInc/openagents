@@ -1,6 +1,10 @@
 import { Effect, Schema as S } from 'effect'
 
 import { artanisMindComplete } from './artanis-mind'
+import {
+  type ArtanisAskerProvenance,
+  classifyAskerProvenance,
+} from './artanis-responder-provenance'
 import { parseJsonWithSchema } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
 
@@ -124,6 +128,9 @@ export const runArtanisResponderScan = async (
     geminiApiKey: string | null
     gatewayToken?: string | undefined
     artanisActorRefs: ReadonlyArray<string>
+    // Owner/operator actor refs (e.g. the admin user posting test articles)
+    // so they are classified owner_operator, never external_contributor.
+    adminActorRefs?: ReadonlyArray<string>
     nowIso: string
   }>,
 ): Promise<ResponderScanOutcome> => {
@@ -145,6 +152,15 @@ export const runArtanisResponderScan = async (
   )
 
   const candidates = await readCandidates(db, cursorIso, deps.artanisActorRefs)
+
+  // Bounded asker-provenance classification (blocker
+  // external_contributor_flow_unproven). The mind still owns the
+  // question-class decision; this only labels WHO asked so the public
+  // external-contributor projection can be honest.
+  const provenanceFor = (actorRef: string): ArtanisAskerProvenance =>
+    classifyAskerProvenance(actorRef, {
+      adminActorRefs: deps.adminActorRefs ?? [],
+    })
 
   if (candidates.length === 0) {
     return {
@@ -186,8 +202,8 @@ export const runArtanisResponderScan = async (
       await db
         .prepare(
           `INSERT INTO artanis_responder_actions
-           (id, topic_id, first_post_id, question_class, state, proposal_json, asked_at, created_at, updated_at)
-           VALUES (?, ?, ?, NULL, 'blocked', ?, ?, ?, ?)
+           (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
+           VALUES (?, ?, ?, NULL, 'blocked', ?, ?, ?, ?, ?, ?)
            ON CONFLICT (topic_id) DO NOTHING`,
         )
         .bind(
@@ -195,6 +211,8 @@ export const runArtanisResponderScan = async (
           candidate.topicId,
           candidate.firstPostId,
           JSON.stringify({ reason: 'mind_unavailable' }),
+          candidate.actorRef,
+          provenanceFor(candidate.actorRef),
           candidate.createdAt,
           deps.nowIso,
           deps.nowIso,
@@ -220,8 +238,8 @@ export const runArtanisResponderScan = async (
         await db
           .prepare(
             `INSERT INTO artanis_responder_actions
-             (id, topic_id, first_post_id, question_class, state, proposal_json, asked_at, created_at, updated_at)
-             VALUES (?, ?, ?, NULL, 'blocked', ?, ?, ?, ?)
+             (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
+             VALUES (?, ?, ?, NULL, 'blocked', ?, ?, ?, ?, ?, ?)
              ON CONFLICT (topic_id) DO NOTHING`,
           )
           .bind(
@@ -232,6 +250,8 @@ export const runArtanisResponderScan = async (
               rawProposal: mindResult.text.slice(0, 1000),
               reason: 'schema_invalid_mind_output',
             }),
+            candidate.actorRef,
+            provenanceFor(candidate.actorRef),
             candidate.createdAt,
             deps.nowIso,
             deps.nowIso,
@@ -253,8 +273,8 @@ export const runArtanisResponderScan = async (
         await db
           .prepare(
             `INSERT INTO artanis_responder_actions
-             (id, topic_id, first_post_id, question_class, state, proposal_json, asked_at, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             (id, topic_id, first_post_id, question_class, state, proposal_json, asker_actor_ref, asker_provenance, asked_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (topic_id) DO NOTHING`,
           )
           .bind(
@@ -268,6 +288,8 @@ export const runArtanisResponderScan = async (
               title: candidate.title.slice(0, 120),
               verdict: verdict ?? null,
             }),
+            candidate.actorRef,
+            provenanceFor(candidate.actorRef),
             candidate.createdAt,
             deps.nowIso,
             deps.nowIso,
@@ -310,6 +332,7 @@ export const runArtanisResponderScanScheduled = (
     geminiApiKey: string | null
     gatewayToken?: string | undefined
     artanisActorRefs: ReadonlyArray<string>
+    adminActorRefs?: ReadonlyArray<string>
     nowIso: string
   }>,
 ): Effect.Effect<ResponderScanOutcome, never> =>

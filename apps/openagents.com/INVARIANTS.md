@@ -1689,6 +1689,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     artanis.tassadar_evolution_loop.v1: currentStreak/longestStreak/
     targetReached against streakTarget 10, each currentStreak assignment
     dereferenceable as an artanis_admin_closeout receipt).
+  - `GET /api/public/artanis/responder-support` — live at read over the
+    Artanis responder-action ledger — compliant (`generatedAt`, `staleness`
+    contract `projection_staleness.v1` live_at_read, the external-contributor
+    Pylon-support flow projection for artanis.pylon_support_responder.v1:
+    per-asker-provenance answered counts, externalContributorFlowProven, and
+    each external interaction's dereferenceable reply-post ref).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
     honesty caveat refs).
