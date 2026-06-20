@@ -9,8 +9,10 @@ import {
   MAX_SANDBOX_TTL_SECONDS,
   SandboxAdapterError,
   DEFAULT_SANDBOX_IMAGE,
+  handleSandboxGet,
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
+  makeLedgerSandboxMeteringHook,
   sandboxRentalReceiptRef,
   stubSandboxAdapter,
 } from './sandbox-compute-service-routes'
@@ -142,6 +144,8 @@ describe('POST /v1/sandboxes', () => {
       id: 'failing',
       provision: () =>
         Effect.fail(new SandboxAdapterError({ adapterId: 'failing', reason: 'no_capacity' })),
+      get: () =>
+        Effect.fail(new SandboxAdapterError({ adapterId: 'failing', reason: 'no_capacity' })),
     }
     const response = await run(
       handleSandboxRequest(sandboxRequest({}), baseDeps({ adapter: failing })),
@@ -178,5 +182,111 @@ describe('POST /v1/sandboxes', () => {
     )
     expect(sandbox.status).toBe('provisioning')
     expect(sandbox.connectionRef).toBeNull()
+  })
+})
+
+const sandboxGetRequest = (): Request =>
+  new Request('https://openagents.com/v1/sandboxes/sbx_fixed', { method: 'GET' })
+
+describe('GET /v1/sandboxes/:sandboxId', () => {
+  test('is inert (404) when the flag is disabled', async () => {
+    const response = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ enabled: false })),
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('sandbox_compute_service_disabled')
+  })
+
+  test('rejects an unauthenticated read with 401', async () => {
+    const response = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ authenticate: authNone })),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  test('the stub adapter has no persistence, so a read is 404 not_found', async () => {
+    const response = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps()),
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('not_found')
+  })
+
+  test('projects a resolved sandbox for the owning account', async () => {
+    const adapter: SandboxRuntimeAdapter = {
+      id: 'persisted',
+      provision: () => Effect.fail(new SandboxAdapterError({ adapterId: 'persisted', reason: 'n/a' })),
+      get: ({ sandboxId, accountRef }) =>
+        Effect.succeed(
+          accountRef === 'agent:test-user'
+            ? {
+                sandboxId,
+                accountRef,
+                image: DEFAULT_SANDBOX_IMAGE,
+                ttlSeconds: 900,
+                status: 'ready' as const,
+                connectionRef: 'session:scoped-ref',
+                createdAt: '2026-06-19T00:00:00.000Z',
+                expiresAtHint: null,
+              }
+            : undefined,
+        ),
+    }
+    const response = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ adapter })),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.object).toBe('sandbox')
+    expect(body.id).toBe('sbx_fixed')
+    expect(body.status).toBe('ready')
+  })
+
+  test('enforces cross-account isolation (a sandbox is 404 for a different account)', async () => {
+    const adapter: SandboxRuntimeAdapter = {
+      id: 'persisted',
+      provision: () => Effect.fail(new SandboxAdapterError({ adapterId: 'persisted', reason: 'n/a' })),
+      get: ({ accountRef }) =>
+        Effect.succeed(accountRef === 'agent:owner' ? ({} as never) : undefined),
+    }
+    const response = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ adapter })),
+    )
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('makeLedgerSandboxMeteringHook', () => {
+  test('reports metered:false at provision time (no metered usage yet)', async () => {
+    const hook = makeLedgerSandboxMeteringHook({
+      db: {} as D1Database,
+      priceUsd: () => 1,
+      usdToMsat: usd => Math.ceil(usd * 1000),
+    })
+    const outcome = await run(
+      hook({ accountRef: 'agent:x', sandboxId: 's1', image: 'i' }),
+    )
+    expect(outcome.metered).toBe(false)
+    expect(outcome.receiptRef).toBeNull()
+  })
+
+  test('a zero-usd charge is metered with a receipt ref and no debit', async () => {
+    const hook = makeLedgerSandboxMeteringHook({
+      db: {} as D1Database,
+      priceUsd: () => 0,
+      usdToMsat: usd => Math.ceil(usd * 1000),
+    })
+    const outcome = await run(
+      hook({
+        accountRef: 'agent:x',
+        sandboxId: 's1',
+        image: 'i',
+        usage: { wallSeconds: 30 },
+      }),
+    )
+    expect(outcome.metered).toBe(true)
+    expect(outcome.receiptRef).toBe(sandboxRentalReceiptRef('s1'))
   })
 })
