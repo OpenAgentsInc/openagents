@@ -137,6 +137,8 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
     evidenceRefs: [
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.test.ts',
+      'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+      'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.ts',
       'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
     ],
@@ -145,7 +147,7 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
     role: 'Public gradient-window quarantine, recompute, canary, promotion, and rollback gate.',
     stageId: 'public_gradient_windows',
     statusLabel:
-      'The promotion regime, promoted-window receipt emitter, and public status projection are code-backed, but no public contributor gradient window has been accepted, promoted, paid, or settled.',
+      'The intake admission predicate, promotion regime, promoted-window receipt emitter, and public status projection are code-backed, but no public contributor gradient window has been accepted, promoted, paid, or settled.',
   },
   {
     endpointRefs: [

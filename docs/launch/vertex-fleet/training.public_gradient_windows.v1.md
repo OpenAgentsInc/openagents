@@ -97,6 +97,13 @@ live-at-read status projection for this promise.
 The projection makes the current boundary machine-readable:
 
 - `regimeGateAvailable: true`
+- `intakeAdmissionPredicateAvailable: true`
+- `intakeSurface.predicateAvailable: true`
+- `intakeSurface.schemaVersion:
+  openagents.training.public_gradient_window.intake_admission.v1`
+- `intakeSurface.quarantineRouteAvailable: false`
+- `intakeSurface.acceptedSubmissionCount: 0`
+- `intakeSurface.admittedQuarantineRecordCount: 0`
 - `promotionReceiptEmitterAvailable: true`
 - `publicProjectionAvailable: true`
 - `liveWindowRuntimeAvailable: false`
@@ -110,10 +117,11 @@ The projection makes the current boundary machine-readable:
 - `greenGateSatisfied: false`
 
 This does not clear any product blocker. It only gives reviewers and agents one
-dereferenceable status endpoint for the already-landed regime gate and receipt
-emitter. The promise remains **planned** until a real public window runtime
-accepts candidate windows, at least one public window emits a promoted-window
-receipt, and settlement receipts exist where real money moved.
+dereferenceable status endpoint for the already-landed intake predicate, regime
+gate, and receipt emitter. The promise remains **planned** until a real public
+window runtime accepts candidate windows, persists admitted quarantine records,
+at least one public window emits a promoted-window receipt, and settlement
+receipts exist where real money moved.
 
 No public window was accepted, no checkpoint was mutated, no assignment, spend,
 or settlement occurred, no receipt-backed promotion row exists, and no green

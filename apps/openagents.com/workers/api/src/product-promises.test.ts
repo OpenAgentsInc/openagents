@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.45')
+    expect(decoded.version).toBe('2026-06-20.46')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -118,6 +118,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/training.public_gradient_windows.v1.md',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
@@ -282,6 +285,8 @@ describe('public product promises document', () => {
     // closeout projection but keeps the reviewed-artifact blocker active.
     // The 2026-06-20.45 marathon curtailment pass exposes the drill predicate
     // but keeps the drill-receipt blocker active.
+    // The 2026-06-20.46 public-gradient pass exposes the intake predicate but
+    // keeps the live-runtime blocker active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -841,6 +846,8 @@ describe('public product promises document', () => {
           audience: expect.arrayContaining(['contributor', 'operator', 'public']),
           evidenceRefs: expect.arrayContaining([
             'route:/api/public/training/public-gradient-windows',
+            'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+            'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
             'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
             'apps/openagents.com/workers/api/src/training-public-gradient-windows.test.ts',
           ]),
@@ -855,7 +862,7 @@ describe('public product promises document', () => {
             '/api/public/training/public-gradient-windows',
           ),
           verification: expect.stringContaining(
-            'promotedWindowReceiptAvailable=false',
+            'intakeSurface.quarantineRouteAvailable=false',
           ),
         }),
         expect.objectContaining({
@@ -1271,12 +1278,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.45', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.46', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.45',
+      expectedVersion: '2026-06-20.46',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.45',
+      servedVersion: '2026-06-20.46',
       status: 'ready',
     })
     expect(
@@ -1286,7 +1293,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.45',
+      servedVersion: '2026-06-20.46',
       status: 'blocked',
     })
   })

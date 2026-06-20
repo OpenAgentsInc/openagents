@@ -15,6 +15,7 @@ type PublicGradientWindowsBody = Readonly<{
   endpoint: string
   gate: Readonly<{
     greenGateSatisfied: boolean
+    intakeAdmissionPredicateAvailable: boolean
     liveWindowRuntimeAvailable: boolean
     promotedWindowReceiptAvailable: boolean
     promotionReceiptEmitterAvailable: boolean
@@ -25,6 +26,13 @@ type PublicGradientWindowsBody = Readonly<{
   }>
   promiseRef: string
   promiseState: string
+  intakeSurface: Readonly<{
+    acceptedSubmissionCount: number
+    admittedQuarantineRecordCount: number
+    predicateAvailable: boolean
+    quarantineRouteAvailable: boolean
+    schemaVersion: string
+  }>
   receiptSurface: Readonly<{
     emittedReceiptCount: number
     receiptRouteAvailable: boolean
@@ -62,6 +70,7 @@ describe('training public gradient windows projection', () => {
     expect(projection.gate).toEqual({
       clearsBlockerRefs: [],
       greenGateSatisfied: false,
+      intakeAdmissionPredicateAvailable: true,
       liveWindowRuntimeAvailable: false,
       promotedWindowReceiptAvailable: false,
       promotionReceiptEmitterAvailable: true,
@@ -79,6 +88,18 @@ describe('training public gradient windows projection', () => {
       receiptRouteAvailable: false,
       receiptSchemaVersion:
         'openagents.training.public_gradient_window.promotion_receipt.v1',
+    })
+    expect(projection.intakeSurface).toMatchObject({
+      acceptedSubmissionCount: 0,
+      admittedQuarantineRecordCount: 0,
+      predicateAvailable: true,
+      quarantineRouteAvailable: false,
+      schemaVersion:
+        'openagents.training.public_gradient_window.intake_admission.v1',
+      sourceRefs: [
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
+      ],
     })
     expect(projection.runtimeSurface).toEqual({
       acceptedPublicWindowCount: 0,
@@ -129,6 +150,7 @@ describe('training public gradient windows projection', () => {
     )
     expect(body.promiseState).toBe('planned')
     expect(body.gate.publicProjectionAvailable).toBe(true)
+    expect(body.gate.intakeAdmissionPredicateAvailable).toBe(true)
     expect(body.gate.regimeGateAvailable).toBe(true)
     expect(body.gate.promotionReceiptEmitterAvailable).toBe(true)
     expect(body.gate.liveWindowRuntimeAvailable).toBe(false)
@@ -142,6 +164,13 @@ describe('training public gradient windows projection', () => {
     ])
     expect(body.receiptSurface.emittedReceiptCount).toBe(0)
     expect(body.receiptSurface.receiptRouteAvailable).toBe(false)
+    expect(body.intakeSurface.predicateAvailable).toBe(true)
+    expect(body.intakeSurface.schemaVersion).toBe(
+      'openagents.training.public_gradient_window.intake_admission.v1',
+    )
+    expect(body.intakeSurface.quarantineRouteAvailable).toBe(false)
+    expect(body.intakeSurface.acceptedSubmissionCount).toBe(0)
+    expect(body.intakeSurface.admittedQuarantineRecordCount).toBe(0)
     expect(body.runtimeSurface.currentRuntimeState).toBe('not_live')
     expect(body.runtimeSurface.acceptedPublicWindowCount).toBe(0)
     expect(body.runtimeSurface.promotedPublicWindowCount).toBe(0)
