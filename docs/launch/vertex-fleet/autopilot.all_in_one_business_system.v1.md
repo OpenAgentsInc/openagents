@@ -44,6 +44,36 @@ Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt.test.
 (5 tests) — including a regression that asserts the surface and settlement refs
 genuinely differ for fine-tuning and that the receipt binds both.
 
+## Follow-up: real-business-receipt acceptance gate (this run)
+
+`apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-gate.ts` — a
+PURE acceptance gate that turns the prose green-flip criteria (which lived only in
+module comments and the registry `verification` string) into a TYPED, TESTABLE
+predicate. `evaluateRealBusinessReceiptGate(evidence)` reports, per criterion,
+whether a composed-run receipt's evidence satisfies the bar, and whether the whole
+set would clear
+`blocker.product_promises.autopilot_business_system_real_business_receipt_missing`:
+
+- composes ≥ 2 distinct primitives (the all-in-one invariant);
+- one shared balance ref;
+- composed spend reconciles to the sum of component charges;
+- every component charge actually billed (settled against the ledger);
+- revenue settled where it applies (or no revenue applies);
+- owner sign-off transition receipt recorded (`proof.claim_upgrade_receipts.v1`);
+- demand provenance is external market, not internal first-party plumbing
+  (`proof.demand_provenance.v1`).
+
+It DECIDES NOTHING IRREVERSIBLE: it flips no promise, drops no blocker, and moves
+no money — acting on a `true` result stays an owner-gated step outside the module.
+`inertReceiptGateEvidence(receipt)` derives the honest status-quo evidence for the
+current inert receipt; the gate returns `clearsBlocker: false` and names the unmet
+criteria (components not billed, no owner sign-off, demand not external market).
+
+Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-gate.test.ts`
+(5 tests) — inert receipt fails honestly, fully-armed evidence clears with no open
+ref, revenue-applies-but-unsettled fails, revenue-N/A passes, and a single-primitive
+receipt fails the composition criterion.
+
 ## What remains (blocker stays listed)
 
 This is the receipt **shape**, reconciled over an INERT execution. The blocker stays
