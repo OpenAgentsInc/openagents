@@ -45,9 +45,10 @@ not authority.
 ## Executive read
 
 The Verse is conceptually correct and now has real implementation seams. After
-#5819-#5823 it is the default first surface, includes Tassadar training state,
-and shows a distinct local Pylon base, but it is not yet the complete hands-off
-experience the owner is asking for.
+#5819-#5824 it is the default first surface, includes Tassadar training state,
+shows a distinct local Pylon base, and resolves receipt-backed payment motion to
+real station/avatar positions when a public world projection is present. It is
+not yet the complete hands-off experience the owner is asking for.
 
 What exists:
 
@@ -57,6 +58,9 @@ What exists:
 - Live Pylon projection from `/api/public/pylon-stats`.
 - Evidence-bound payment particle projection from
   `/api/public/activity-timeline` and its SSE stream.
+- Payment endpoint resolution that prefers public SpacetimeDB Pylon
+  station/avatar positions and labels unresolved endpoints as fallback rather
+  than claiming a fake world location.
 - A character-creation overlay projection tied to real onboarding status.
 - A training scene and Training Live pane that already render a
   `three-effect` run visualization.
@@ -86,7 +90,8 @@ What is wrong for the requested product direction:
 - The default Verse training layer is still fed by the Desktop public
   projections, not by a live SpacetimeDB Desktop client.
 - Multiplayer/SpacetimeDB Desktop integration is still projection/query shape,
-  not a connected client with live rows in the app.
+  not a connected client with live rows in the app. Payment endpoint resolution
+  is ready for those rows, but the rows are not live in the runtime yet.
 - The open issue backlog still frames DE-3 as "Autopilot product surface -
   coding agent." The owner's current launch intent is different: Pylons,
   Tassadar, training visibility, and an autopilot world first; coding controls
@@ -154,6 +159,11 @@ Working pieces:
 - `chatSceneVisualization` renders the Pylon network through
   `trainingRunView`, composes the Tassadar training run layer, then overlays
   payment layers when enabled.
+- `chatWorldPaymentLayer` now resolves payment endpoints through
+  `ChatWorldMultiplayerProjection` when available: `pylonRef` maps to station
+  positions, `actorRef`/`avatarRef` maps to avatar positions, and unresolved
+  endpoints are explicitly labeled fallback while still carrying the receipt
+  source ref in the click label.
 - `characterCreationOverlay` projects onboarding status into character-creation
   beats and a compute/mana bar.
 - `trainingPane` and `trainingFullscreenPane` already render `trainingRunView`
@@ -189,10 +199,9 @@ Working pieces:
 
 Missing for hands-off:
 
-- Pylon station positions from SpacetimeDB are not yet driving the Desktop
-  scene.
-- Activity particles are endpoint-ring overlays, not resolved to actual Pylon
-  station/avatar positions.
+- Pylon station/avatar rows from SpacetimeDB are not yet connected to the
+  Desktop runtime, so the new payment resolver usually receives no live world
+  projection outside tests/smokes.
 - The UI does not yet make Pylon readiness, wallet readiness, assignment
   readiness, and compute/mana feel like one base status.
 
@@ -259,8 +268,9 @@ Missing for hands-off:
   `agent_avatar`.
 - There is no live position write loop from the Desktop character/spawner into
   `avatar_position`.
-- There is no pylon station -> actual scene position resolution for payments,
-  focus beams, or proximity chat.
+- Payment particles have projection-level pylon station/avatar position
+  resolution, but live SpacetimeDB rows are not yet feeding it in Desktop; focus
+  beams and proximity chat still need the same treatment.
 
 ## Open issue audit
 

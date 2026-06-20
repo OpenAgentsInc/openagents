@@ -35,6 +35,7 @@ import type {
 } from "@openagentsinc/three-effect/core"
 
 import type { ChatWorldPylonScene, PaymentParticle } from "./chat-world-scene"
+import type { ChatWorldMultiplayerProjection } from "./chat-world-multiplayer"
 import {
   type PylonNetworkNode,
   type PylonNetworkScene,
@@ -114,10 +115,125 @@ const endpointRingPosition = (index: number, count: number): TrainingRunVector =
 const endpointStatus = (particle: PaymentParticle): string =>
   particle.realBitcoinMoved ? "verified" : "active"
 
+export type ChatWorldPaymentEndpointSource = "station" | "avatar" | "fallback"
+
+export type ChatWorldPaymentEndpoint = Readonly<{
+  ref: string
+  label: string
+  position: TrainingRunVector
+  source: ChatWorldPaymentEndpointSource
+}>
+
+export type ChatWorldPaymentEndpointIndex =
+  ReadonlyMap<string, ChatWorldPaymentEndpoint>
+
+const finite = (value: number): boolean =>
+  Number.isFinite(value) && !Number.isNaN(value)
+
+const vectorFromXYZ = (
+  x: number,
+  y: number,
+  z: number,
+): TrainingRunVector | null =>
+  finite(x) && finite(y) && finite(z)
+    ? [
+        Number(x.toFixed(3)),
+        Number(y.toFixed(3)),
+        Number(z.toFixed(3)),
+      ]
+    : null
+
+const endpointRefKeys = (ref: string): ReadonlyArray<string> => {
+  const trimmed = ref.trim()
+  if (trimmed.length === 0) return []
+  const lower = trimmed.toLowerCase()
+  return [
+    trimmed,
+    lower,
+    lower.replace(/:/g, "."),
+    lower.replace(/\./g, ":"),
+  ].filter((key, index, keys) => key.length > 0 && keys.indexOf(key) === index)
+}
+
+const indexEndpoint = (
+  index: Map<string, ChatWorldPaymentEndpoint>,
+  ref: string,
+  endpoint: ChatWorldPaymentEndpoint,
+): void => {
+  for (const key of endpointRefKeys(ref)) {
+    if (!index.has(key)) index.set(key, endpoint)
+  }
+}
+
+// Build an exact-ref endpoint index from the already-projected public world rows.
+// Stations map by pylonRef; avatars map by both actorRef and avatarRef. The
+// fallback ring below remains explicitly labeled, so unknown endpoints never
+// pretend to have a real SpacetimeDB position.
+export const chatWorldPaymentEndpointIndex = (
+  world: ChatWorldMultiplayerProjection | null | undefined,
+): ChatWorldPaymentEndpointIndex => {
+  const index = new Map<string, ChatWorldPaymentEndpoint>()
+  if (world?.connected !== true) return index
+
+  for (const station of world.stations) {
+    const position = vectorFromXYZ(station.x, station.y, station.z)
+    if (position === null) continue
+    const endpoint: ChatWorldPaymentEndpoint = {
+      ref: station.pylonRef,
+      label: station.label,
+      position,
+      source: "station",
+    }
+    indexEndpoint(index, station.pylonRef, endpoint)
+  }
+
+  for (const agent of world.agents) {
+    const position = vectorFromXYZ(agent.x, agent.y, agent.z)
+    if (position === null) continue
+    const endpoint: ChatWorldPaymentEndpoint = {
+      ref: agent.actorRef,
+      label: agent.label,
+      position,
+      source: "avatar",
+    }
+    indexEndpoint(index, agent.actorRef, endpoint)
+    indexEndpoint(index, agent.avatarRef, endpoint)
+  }
+
+  return index
+}
+
+export const resolveChatWorldPaymentEndpoint = (
+  ref: string,
+  fallbackPosition: TrainingRunVector,
+  endpoints: ChatWorldPaymentEndpointIndex,
+): ChatWorldPaymentEndpoint => {
+  for (const key of endpointRefKeys(ref)) {
+    const endpoint = endpoints.get(key)
+    if (endpoint !== undefined) return endpoint
+  }
+  return {
+    ref,
+    label: `unresolved ${ref}`,
+    position: fallbackPosition,
+    source: "fallback",
+  }
+}
+
 // A compact, inspector-friendly label that survives into the node-selection
-// detail so a click can dereference the receipt. Carries the first sourceRef.
-const endpointLabel = (ref: string, sats: number): string =>
-  sats > 0 ? `${ref} · ${sats} sats` : ref
+// detail. It starts with the receipt/source ref so clicking either endpoint
+// opens evidence first, then names the real station/avatar or fallback context.
+const endpointLabel = (
+  sourceRef: string,
+  endpoint: ChatWorldPaymentEndpoint,
+  particle: PaymentParticle,
+  role: "from" | "to",
+): string => {
+  const amount = role === "to" && particle.amountSats > 0
+    ? `${particle.amountSats} sats`
+    : role
+  return `${sourceRef} · ${amount} · ${endpoint.label} · ${endpoint.source}`
+}
 
 export type ChatWorldPaymentLayer = {
   readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
@@ -132,8 +248,10 @@ export type ChatWorldPaymentLayer = {
 // rest), and we additionally refuse any that somehow lost their refs.
 export const chatWorldPaymentLayer = (
   particles: ReadonlyArray<PaymentParticle>,
+  world?: ChatWorldMultiplayerProjection | null,
 ): ChatWorldPaymentLayer => {
   const renderable = particles.filter((p) => p.sourceRefs.length > 0)
+  const endpoints = chatWorldPaymentEndpointIndex(world)
 
   const entityById = new Map<string, TrainingRunEntityDefinition>()
   const beams: TrainingRunBeamDefinition[] = []
@@ -143,23 +261,31 @@ export const chatWorldPaymentLayer = (
     const primaryRef = particle.sourceRefs[0] as string
     const fromId = `pay:${particle.id}:from`
     const toId = `pay:${particle.id}:to`
-    const fromPos = endpointRingPosition(index * 2, renderable.length * 2)
-    const toPos = endpointRingPosition(index * 2 + 1, renderable.length * 2)
+    const fromEndpoint = resolveChatWorldPaymentEndpoint(
+      particle.fromRef,
+      endpointRingPosition(index * 2, renderable.length * 2),
+      endpoints,
+    )
+    const toEndpoint = resolveChatWorldPaymentEndpoint(
+      particle.toRef,
+      endpointRingPosition(index * 2 + 1, renderable.length * 2),
+      endpoints,
+    )
 
     if (!entityById.has(fromId)) {
       entityById.set(fromId, {
         id: fromId,
         status: endpointStatus(particle),
-        label: endpointLabel(particle.fromRef, 0),
-        position: fromPos,
+        label: endpointLabel(primaryRef, fromEndpoint, particle, "from"),
+        position: fromEndpoint.position,
       })
     }
     if (!entityById.has(toId)) {
       entityById.set(toId, {
         id: toId,
         status: endpointStatus(particle),
-        label: endpointLabel(primaryRef, particle.amountSats),
-        position: toPos,
+        label: endpointLabel(primaryRef, toEndpoint, particle, "to"),
+        position: toEndpoint.position,
       })
     }
 
@@ -187,8 +313,9 @@ export const chatWorldPaymentLayer = (
 export const withChatWorldPaymentLayer = (
   base: TrainingRunVisualizationOptions,
   particles: ReadonlyArray<PaymentParticle>,
+  world?: ChatWorldMultiplayerProjection | null,
 ): TrainingRunVisualizationOptions => {
-  const layer = chatWorldPaymentLayer(particles)
+  const layer = chatWorldPaymentLayer(particles, world)
   if (layer.entities.length === 0) return base
   return {
     ...base,

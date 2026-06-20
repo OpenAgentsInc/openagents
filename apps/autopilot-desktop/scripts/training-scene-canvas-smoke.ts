@@ -155,10 +155,11 @@ import {
   trainingRunTagName,
 } from "@openagentsinc/three-effect/foldkit"
 import { trainingRunVisualizationOptionsFromSnapshot } from "@openagentsinc/three-effect/core"
+import { withChatWorldPaymentLayer } from "../src/shared/chat-world-visualization"
 
 registerTrainingRunElement()
 
-const visualization = trainingRunVisualizationOptionsFromSnapshot({
+const baseVisualization = trainingRunVisualizationOptionsFromSnapshot({
   activeWindowCount: 1,
   assignedContributorCount: 8,
   blockerRefCount: 2,
@@ -230,6 +231,50 @@ const visualization = trainingRunVisualizationOptionsFromSnapshot({
   settledPayoutSats: 0,
   verifiedWorkCount: 4,
 })
+
+const visualization = withChatWorldPaymentLayer(
+  baseVisualization,
+  [{
+    id: "smoke-payment-1",
+    fromRef: "pylon.smoke.alpha",
+    toRef: "agent.smoke.tassadar",
+    amountSats: 21000,
+    realBitcoinMoved: true,
+    color: 0xf5b73a,
+    size: 0.7,
+    sourceRefs: ["receipt.smoke.real_bitcoin_moved.1"],
+    ts: "2026-06-20T00:00:00.000Z",
+    text: "smoke settlement",
+  }],
+  {
+    connected: true,
+    database: "openagents-world",
+    worldUrl: "https://spacetime.openagents.com",
+    regionRef: "region.smoke",
+    stations: [{
+      pylonRef: "pylon.smoke.alpha",
+      label: "Smoke Alpha Pylon",
+      x: -2.5,
+      y: 0.25,
+      z: -1.25,
+    }],
+    agents: [{
+      avatarRef: "avatar.smoke.tassadar",
+      actorRef: "agent.smoke.tassadar",
+      avatarKind: "tassadar",
+      label: "Smoke Tassadar",
+      color: "#f5b73a",
+      x: 2.5,
+      y: 0.75,
+      z: 1.25,
+      yaw: 0,
+      movementMode: "walk",
+      chatMessages: [],
+      attentionRefs: [],
+    }],
+    proximityChatCount: 0,
+  },
+)
 
 const host = document.createElement(trainingRunTagName)
 host.id = "training-scene"

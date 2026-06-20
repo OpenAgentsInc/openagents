@@ -77,6 +77,11 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   blocker when absent, and a distinct `My Pylon Base` projection derived from
   identity choice, onboarding, training-operator readiness, live Pylon state,
   and receipt-backed settled sats. Keep fleet growth and my-Pylon growth split.
+- **Payment particles are receipt-backed world motion.** When
+  `ChatWorldMultiplayerProjection` has public Pylon station or avatar positions,
+  payment beams must use those coordinates. Missing endpoints stay explicitly
+  labeled as fallback/unresolved; never invent a fake location or animate a
+  payment without source refs.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches

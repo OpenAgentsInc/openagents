@@ -4,14 +4,17 @@ import type {
   ChatWorldPylonScene,
   PaymentParticle,
 } from "../src/shared/chat-world-scene"
+import type { ChatWorldMultiplayerProjection } from "../src/shared/chat-world-multiplayer"
 import {
   PAYMENT_PARTICLE_DIM,
   PAYMENT_PARTICLE_GOLD,
   pylonGrowthTier,
 } from "../src/shared/chat-world-scene"
 import {
+  chatWorldPaymentEndpointIndex,
   chatWorldPaymentLayer,
   liveChatWorldNetworkScene,
+  resolveChatWorldPaymentEndpoint,
   withChatWorldPaymentLayer,
 } from "../src/shared/chat-world-visualization"
 import { pylonNetworkVisualizationOptions } from "../src/ui/pylon-network-visualization"
@@ -96,6 +99,38 @@ const particle = (overrides: Partial<PaymentParticle> = {}): PaymentParticle => 
   ...overrides,
 })
 
+const worldProjection = (
+  overrides: Partial<ChatWorldMultiplayerProjection> = {},
+): ChatWorldMultiplayerProjection => ({
+  connected: true,
+  database: "openagents-world",
+  worldUrl: "https://spacetime.openagents.com",
+  regionRef: "region.run.public",
+  stations: [{
+    pylonRef: "pylon.alpha",
+    label: "Alpha Pylon",
+    x: 1.25,
+    y: 0.5,
+    z: -2,
+  }],
+  agents: [{
+    avatarRef: "avatar.bravo",
+    actorRef: "agent.bravo",
+    avatarKind: "tassadar",
+    label: "Tassadar",
+    color: "#f5b73a",
+    x: -3,
+    y: 1,
+    z: 2.75,
+    yaw: 0,
+    movementMode: "walk",
+    chatMessages: [],
+    attentionRefs: [],
+  }],
+  proximityChatCount: 0,
+  ...overrides,
+})
+
 describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
   test("each particle yields a beam + burst + two clickable endpoints", () => {
     const layer = chatWorldPaymentLayer([particle()])
@@ -111,6 +146,8 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(beam.simulated).toBe(false)
     // the target endpoint label carries the receipt ref (click → inspector)
     const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
+    const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
+    expect(fromEntity.label).toContain("receipt:nip90:abc")
     expect(toEntity.label).toContain("receipt:nip90:abc")
     expect(toEntity.label).toContain("21000 sats")
   })
@@ -127,6 +164,59 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(layer.beams).toHaveLength(0)
     expect(layer.bursts).toHaveLength(0)
     expect(layer.entities).toHaveLength(0)
+  })
+
+  test("indexes public world endpoints by station, actor, and avatar refs", () => {
+    const endpoints = chatWorldPaymentEndpointIndex(worldProjection())
+    expect(
+      resolveChatWorldPaymentEndpoint("pylon:alpha", [9, 9, 9], endpoints),
+    ).toMatchObject({
+      label: "Alpha Pylon",
+      position: [1.25, 0.5, -2],
+      source: "station",
+    })
+    expect(
+      resolveChatWorldPaymentEndpoint("agent.bravo", [9, 9, 9], endpoints),
+    ).toMatchObject({
+      label: "Tassadar",
+      position: [-3, 1, 2.75],
+      source: "avatar",
+    })
+    expect(
+      resolveChatWorldPaymentEndpoint("avatar.bravo", [9, 9, 9], endpoints),
+    ).toMatchObject({
+      label: "Tassadar",
+      position: [-3, 1, 2.75],
+      source: "avatar",
+    })
+  })
+
+  test("uses real station/avatar positions when public world endpoints exist", () => {
+    const layer = chatWorldPaymentLayer([
+      particle({ fromRef: "pylon:alpha", toRef: "agent.bravo" }),
+    ], worldProjection())
+
+    const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
+    const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
+    expect(fromEntity.position).toEqual([1.25, 0.5, -2])
+    expect(fromEntity.label).toContain("Alpha Pylon")
+    expect(fromEntity.label).toContain("station")
+    expect(toEntity.position).toEqual([-3, 1, 2.75])
+    expect(toEntity.label).toContain("Tassadar")
+    expect(toEntity.label).toContain("avatar")
+  })
+
+  test("labels unresolved endpoints as fallback instead of claiming a world location", () => {
+    const layer = chatWorldPaymentLayer([
+      particle({ fromRef: "pylon:alpha", toRef: "pylon:missing" }),
+    ], worldProjection())
+
+    const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
+    const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
+    expect(fromEntity.label).toContain("station")
+    expect(toEntity.label).toContain("unresolved pylon:missing")
+    expect(toEntity.label).toContain("fallback")
+    expect(toEntity.label).toContain("receipt:nip90:abc")
   })
 })
 
