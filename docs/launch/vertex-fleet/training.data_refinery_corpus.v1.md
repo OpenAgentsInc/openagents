@@ -2,6 +2,48 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — eval-delta settlement receipt (binds payment to provenance)
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+`settleCs336A4EvalDeltaPayment` produces a `payable`/`blocked` settlement
+*decision*, but that decision floated free — it was consumed by nothing and
+pointed at no shard. A bonus decision that cannot be tied back to the corpus it
+pays for is not an auditable payment record. This change adds the receipt that
+binds the two existing halves together:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-receipt.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-receipt.test.ts` (6 tests)
+
+`buildCs336A4EvalDeltaSettlementReceipt` takes a settlement decision plus the
+shard's corpus provenance receipt and emits a deterministic, content-addressed,
+public-safe bonus receipt. It fails closed so a bonus can never be recorded
+against a shard whose provenance does not check out:
+
+- the settlement and the bound provenance receipt must name the **same
+  `assignmentRef`** (a payment must point at the shard it pays for);
+- a `payable` settlement **requires** the bound provenance receipt to be
+  `recomputeVerified` (no bonus for a shard whose deterministic recompute did
+  not verify);
+- the receipt carries the provenance receipt's content-addressed `receiptRef`
+  and `finalOutputDigestRef`, so an auditor can re-derive both halves;
+- caller-derived refs are guarded for wallet/payment/private/raw material; the
+  embedded settlement carries only this codebase's trusted constant policy refs.
+
+The `receiptRef` is content-addressed via SHA-256 over a canonical body, so the
+same settlement + provenance receipt always yield the same ref.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This binds the settlement to the
+shard but still records no real payment: no fixed-trainer eval loop has produced
+a real eval-delta measurement, no operator funding parameters are set, and the
+builder is not yet wired into A4 closeout, the `a4_eval_delta` leaderboard, or a
+provider settlement. The promise's green criterion — at least one eval-delta
+payment computed from a fixed reference model and backed by a Verified
+`deterministic_recompute` shard — is unmet. `crawl_scale_corpus_missing` and
+`corpus_provenance_receipts_missing` are untouched by this update.
+
 ## 2026-06-20 update — eval-delta payment settlement computation
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
