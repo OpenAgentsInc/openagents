@@ -350,3 +350,48 @@ building the quarantine record's read-side verifier. It does **not** clear it: n
 live store persists these records, no route serves them, and no public window has
 been accepted, promoted, paid, or settled. The blocker stays listed and the
 promise stays **planned**.
+
+## 2026-06-20 quarantine-record feed builder (read-side collection aggregation)
+
+The receipt side of the runtime had a collection-level aggregator
+(`tassadar-gradient-window-promotion-receipt-feed.ts`) that turns an untrusted
+list of read-back receipts into one public-safe, verified, de-duplicated, ordered
+feed. The quarantine side (the live-window-runtime side) had a builder
+(`tassadar-gradient-window-quarantine-record.ts`) and a read-side verifier
+(`tassadar-gradient-window-quarantine-record-verify.ts`) for **one** record, but
+no aggregator. A public quarantine route or store-scan does not serve a single
+record — it serves a **collection**. Nothing turned an untrusted list of
+read-back quarantine records into the feed such a route would publish. That is
+the symmetric missing edge for
+`blocker.product_promises.public_gradient_live_window_runtime_missing`.
+
+This change adds it:
+
+- `tassadar-gradient-window-quarantine-record-feed.ts`
+  - `buildTassadarGradientWindowQuarantineRecordFeed(records)` — a pure,
+    **total** function over an array of untrusted records. It runs each through
+    the read-side verifier
+    (`verifyTassadarGradientWindowQuarantineRecord`), admits only records that
+    pass every invariant, drops duplicates (same canonical record ref) keeping
+    the first, counts and explains every rejection, and returns `acceptedEntries`
+    (each `{ recordRef, windowRef, pendingVerificationStages }`)
+    deterministically ordered by record ref, plus `acceptedRecordCount`,
+    `rejectedRecordCount`, and a de-duplicated sorted `rejectionReasonRefs`. It
+    never throws, so it is safe at the edge of a real quarantine feed; an empty
+    input yields an empty feed (the live state today). Every admitted entry is
+    residency-only — the feed surfaces no `promotionEligible` and confers no
+    promotion, settlement, canonical-checkpoint, compiled-core-gradient, or
+    direct-submission authority.
+  - Schema version
+    `openagents.training.public_gradient_window.quarantine_record_feed.v1`.
+- `tassadar-gradient-window-quarantine-record-feed.test.ts` — exercises the empty
+  feed, ordered admission of builder-emitted records, duplicate-ref dropping,
+  rejection of an unparseable record without dropping valid ones, and rejection
+  of a record whose ref no longer derives from its window ref.
+
+This advances
+`blocker.product_promises.public_gradient_live_window_runtime_missing` by
+building the quarantine feed's read-side aggregation layer. It does **not** clear
+it: no live store persists these records, no route serves the feed, and no public
+window has been accepted, promoted, paid, or settled — so a real feed is empty.
+The blocker stays listed and the promise stays **planned**.
