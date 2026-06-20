@@ -201,15 +201,45 @@ Advances (does **not** clear)
   `withAppleFmSupervisorStatus`). That last integration step is the remaining
   supervision wiring; this run supplies the deterministic launcher it sits on.
 
+## Follow-up run (2026-06-20): host-assembly factory wires the launcher's production defaults
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: `createAppleFmBridgeLauncher(...)` takes a `helper`, a
+  `spawnProcess` seam, a `now` clock, and a `timer` — but nothing assembled those
+  from the *production* defaults the remaining step calls for. In particular there
+  was no `setTimeout`/`clearTimeout`-backed `AppleFmBridgeSupervisorTimer`
+  anywhere, and no single seam that paired `discoverAppleFmBridgeHelper()` with
+  `createBunAppleFmBridgeProcessSpawner()` + `Date.now` while degrading
+  gracefully (returning `null`, not throwing) on a host that ships no helper.
+- `apps/pylon/src/node/apple-fm-bridge-launcher-host.ts` —
+  `createSetTimeoutSupervisorTimer()` (the production backoff timer) and
+  `createDefaultAppleFmBridgeLauncher({ discover?, discoverHelper?, spawnProcess?,
+  timer?, now?, config?, port?, extraArgs? })`, which discovers the helper and, if
+  present, returns `{ helper, launcher }` assembled with the live defaults — or
+  `null` when no helper is found. Every real dependency stays injectable so the
+  assembly is deterministic in tests; the module reads no wall clock of its own
+  and introduces no prompts, file contents, tokens, URLs, or bearer material.
+- `apps/pylon/tests/apple-fm-bridge-launcher-host.test.ts` — 7 tests: null on
+  no-helper, assembly + spawn-spec/running status, discover-options threading
+  through real env discovery, port + extra-args forwarding, a no-sensitive-content
+  (incl. no helper path) assertion, and the `setTimeout` timer fire/clear
+  behaviour. `bun test` green (7 pass / 17 assertions).
+- Still open: nothing in the Pylon node host (`src/index.ts` /
+  `control-sessions.ts`) yet *calls* `createDefaultAppleFmBridgeLauncher()`,
+  routes the live bridge heartbeat into `notifyHealthy()`, or attaches the
+  launcher's `status()` to the `apple_fm.status` action via the already-built
+  `withAppleFmSupervisorStatus`. This run supplies the production assembly seam
+  that final host call will use.
+
 ## What genuinely remains (blocker NOT cleared)
 
-- Construct the launcher in the Pylon node host: build it with
-  `createBunAppleFmBridgeProcessSpawner()`, a `setTimeout`-backed `timer`, and
-  `Date.now`, pass the result of `discoverAppleFmBridgeHelper()`, route the live
-  bridge heartbeat into `notifyHealthy()`, and register the launcher's
+- Call `createDefaultAppleFmBridgeLauncher()` from the Pylon node host, route the
+  live bridge heartbeat into `notifyHealthy()`, and register the launcher's
   `status()` with the Pylon `apple_fm.status` action so the supervisor phase
-  reaches the surface from a real process (the projection plumbing already
-  exists via `withAppleFmSupervisorStatus`).
+  reaches the surface from a real process (the assembly seam and the projection
+  plumbing — `withAppleFmSupervisorStatus` — already exist).
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a
