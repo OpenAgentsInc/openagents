@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.15')
+    expect(decoded.version).toBe('2026-06-20.16')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -170,7 +170,12 @@ describe('public product promises document', () => {
     // self-serve-fanout pass clears the self_serve_fanout_missing blocker on
     // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
     // single-action fanout planner/route + INERT public projection); the
-    // promise STAYS yellow, so green remains exactly 24.
+    // promise STAYS yellow, so green remains exactly 24. The 2026-06-20.16
+    // repo-study customer-private-validation pass drops
+    // repo_studying_customer_private_validation_missing on
+    // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
+    // validation module + delivery seam); the promise STAYS yellow, so green
+    // remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -445,7 +450,7 @@ describe('public product promises document', () => {
         expect.objectContaining({
           audience: expect.arrayContaining(['agent', 'operator', 'developer']),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.repo_studying_customer_private_validation_missing',
+            'blocker.product_promises.repo_studying_privacy_review_missing',
             'blocker.product_promises.repo_studying_marketplace_metering_missing',
             'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
           ]),
@@ -453,6 +458,7 @@ describe('public product promises document', () => {
             'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
             'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
             'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+            'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
             'promise:repo.open_source_code_map.v1',
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
@@ -860,12 +866,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.15', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.16', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.15',
+      expectedVersion: '2026-06-20.16',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.15',
+      servedVersion: '2026-06-20.16',
       status: 'ready',
     })
     expect(
@@ -875,7 +881,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.15',
+      servedVersion: '2026-06-20.16',
       status: 'blocked',
     })
   })
