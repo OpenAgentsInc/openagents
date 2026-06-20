@@ -182,6 +182,27 @@ sealed receipt persisted by content address**, not just a fixture:
     delivery seals `accepted_released`; validator-fail delivery seals
     `rejected_refunded`.
 
+## What this run adds (frozen wire-format regression guard)
+
+The receipt is content-addressed and persisted durably in D1 keyed by its ref,
+and `get`/`list` re-verify that the stored bytes still address that ref. The
+existing tests prove the ref is *deterministic* and *divergent*, but they
+recompute both sides of every comparison — so a refactor of `serialize`/`derive`
+(key order, spacing, field rename, digest length) would silently change every
+persisted ref while all of those tests still pass, orphaning every
+already-stored receipt (its tamper-evident read would fail and it would drop out
+of the public feed). This run closes that gap:
+
+- `apps/openagents.com/workers/api/src/artanis-labor-request-receipt-golden.test.ts`
+  — golden vectors that freeze the **exact** canonical wire bytes and
+  content-addressed ref for every terminal state against fixed inputs (16 cases:
+  per-state frozen bytes, frozen ref, and the durable-store contract that the
+  frozen bytes still parse/verify under the frozen ref today, plus a
+  full-terminal-state coverage pin). Re-blessing these values now forces an
+  explicit decision (format change ⇒ migration/version bump for stored
+  receipts) instead of a silent break. Mints no payment, identity, or settlement
+  authority.
+
 ## What remains
 
 - The receipt is now **minted by a run, persistable, dereferenceable,
