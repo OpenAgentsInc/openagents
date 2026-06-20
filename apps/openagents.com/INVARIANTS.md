@@ -1723,6 +1723,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     inference / fine-tuning / sandbox primitive scaffolds); it provisions no
     primitive, debits no balance, and makes no billing, settlement, or
     live-business claim.
+  - `GET /api/public/autopilot/labor-products` — live at read over the INERT
+    agentic labor-product flow store (promise
+    `autopilot.agentic_labor_products.v1`, yellow) — compliant (`generatedAt`,
+    `live_at_read` contract). The surface is flag-gated
+    (`AGENTIC_LABOR_PRODUCTS_ENABLED`, default off => empty store) and the
+    payload always reports `inert: true` / `promiseState: 'yellow'` with the two
+    labor blockers surfaced as `unclearedBlockerRefs`. It shows the end-to-end
+    labor-product flow shape only (post -> order -> dispatch -> deliver ->
+    settle, with the settlement receipt ref derived from the shared
+    cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
+    flag-gated INERT and owner-gated and is unreachable from this read-only
+    route; the surface debits no balance and makes no live-sale claim.
   - `GET /api/public/customer-one-cohort` — live at read over Customer #1
     cohort source rows and privacy-review evidence — compliant (`generatedAt`,
     contract, evidence-only opaque cohort refs, generic labels, counts, blockers,

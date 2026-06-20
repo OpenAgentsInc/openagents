@@ -247,7 +247,13 @@ const budgetChecks = [
     // red): a flag-gated INERT launch + lifecycle scaffold mirroring the
     // sandbox/fine-tuning Cloud-primitive pattern. Ratchet back down when these
     // /v1/* cloud handlers are extracted behind shared route mappers.
-    budget: 87,
+    // +1 (87 -> 88) for the agentic labor-product flow surface
+    // (agentic-labor-product-routes.ts, autopilot.agentic_labor_products.v1,
+    // yellow): a flag-gated INERT read-only listing for the post->order->
+    // dispatch->deliver->settle flow scaffold, mirroring the composed-run
+    // listing pattern. Ratchet back down when these public-projection handlers
+    // are extracted behind shared route mappers.
+    budget: 88,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -550,6 +556,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/autopilot-composed-run.ts',
     route: '/api/public/autopilot/composed-runs',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/agentic-labor-product.ts',
+    route: '/api/public/autopilot/labor-products',
     status: 'staleness_declared',
   },
   {

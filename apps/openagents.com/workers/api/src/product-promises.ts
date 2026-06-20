@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.10'
+export const PublicProductPromisesVersion = '2026-06-19.11'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -61,6 +61,7 @@ const sourceRefs = [
   'docs/launch/2026-06-19-credits-purchase-collect-money-audit.md',
   'docs/launch/2026-06-19-near-term-product-priorities.md',
   'docs/promises/2026-06-19-weekend-assault-tail-domains.md',
+  'apps/openagents.com/docs/labor/2026-06-19-agentic-labor-product-flow-scaffold.md',
 ]
 
 const basePromiseFields = {
@@ -1136,14 +1137,23 @@ export const publicProductPromisesDocument = () => {
         evidenceRefs: [
           'https://openagents.com/docs/openagents',
           'https://openagents.com/docs/autopilot-sites',
+          'apps/openagents.com/workers/api/src/agentic-labor-product.ts',
+          'apps/openagents.com/workers/api/src/agentic-labor-product-routes.ts',
+          'apps/openagents.com/workers/api/src/agentic-labor-product.test.ts',
+          'apps/openagents.com/workers/api/src/agentic-labor-product-settlement.test.ts',
+          'apps/openagents.com/workers/api/src/agentic-labor-product-routes.test.ts',
+          'apps/openagents.com/docs/labor/2026-06-19-agentic-labor-product-flow-scaffold.md',
+          'route:/api/public/autopilot/labor-products',
+          'promise:autopilot.control_center_fanout_marketplace.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.not_all_labor_flows_self_serve',
+          'blocker.product_promises.agentic_labor_product_real_sale_receipt_missing',
         ],
         verification:
-          'Customer-facing claims should map to order, review, artifact, acceptance, billing, and handoff evidence.',
+          'A typed end-to-end labor-product flow exists (post -> order -> dispatch -> deliver -> settle): buildLaborProductFlowPlan models the orderable listing and coherent lifecycle, and settleLaborProductOrder is a FLAG-GATED INERT, owner-gated settlement seam that (when armed + delivered + owner-signed) runs a receipt-first, idempotent, never-negative charge through the shared cloud-metering ledger on the NIP-90 labor stream (verified against real SQL). The /api/public/autopilot/labor-products route is wired but INERT (empty store, inert/yellow) unless AGENTIC_LABOR_PRODUCTS_ENABLED is armed. GREEN still needs a real labor product ordered by an external buyer, carried through settlement with the flag armed, producing a dereferenceable settlement receipt, plus owner sign-off (proof.claim_upgrade_receipts.v1 + proof.demand_provenance.v1).',
         authorityBoundary:
-          'Product direction is not proof of every workflow, payout, or marketplace state.',
+          'Product direction and a typed inert flow are not proof of a real labor product sold; the settlement seam moves no money until armed, owner-signed, and against a delivered order.',
       },
       {
         ...basePromiseFields,

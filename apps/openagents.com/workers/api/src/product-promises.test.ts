@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.10')
+    expect(decoded.version).toBe('2026-06-19.11')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -119,7 +119,11 @@ describe('public product promises document', () => {
     // payments.autopilot_credits_purchase.v1 red +
     // autopilot_sites.site_build_and_host.v1 yellow), and the composed-run
     // capstone (a flag-gated INERT execution composition wiring the real metering
-    // + referral seams) — flip nothing, so the green count must stay exactly 20.
+    // + referral seams) — and the 2026-06-19.11 pass — the agentic labor-product
+    // flow scaffold (a typed post->order->dispatch->deliver->settle flow with a
+    // flag-gated INERT, owner-gated settlement seam) advancing
+    // autopilot.agentic_labor_products.v1 (stays yellow) — flip nothing, so the
+    // green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
@@ -643,12 +647,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.10', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.11', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.10',
+      expectedVersion: '2026-06-19.11',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.10',
+      servedVersion: '2026-06-19.11',
       status: 'ready',
     })
     expect(
@@ -658,7 +662,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.10',
+      servedVersion: '2026-06-19.11',
       status: 'blocked',
     })
   })

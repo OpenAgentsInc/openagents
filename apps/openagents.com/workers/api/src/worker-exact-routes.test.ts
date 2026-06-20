@@ -20,6 +20,7 @@ const approvedExactRoutePaths = [
   '/api/public/markets/risk/skeleton',
   '/api/public/marketplace/composed-products',
   '/api/public/autopilot/composed-runs',
+  '/api/public/autopilot/labor-products',
   '/api/public/customer-one-cohort',
   '/api/operator/customer-one-cohort/rows',
   '/api/operator/product-promises/transitions',
