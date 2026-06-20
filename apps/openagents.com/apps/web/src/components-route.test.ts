@@ -120,6 +120,7 @@ describe('components gallery route', () => {
       Scene.expect(Scene.text('inputGroup')).toExist(),
       Scene.expect(Scene.text('tableList')).toExist(),
       Scene.expect(Scene.text('marketingHero')).toExist(),
+      Scene.expect(Scene.text('businessIntakeForm')).toExist(),
       Scene.expect(Scene.text('workroomTimeline')).toExist(),
       Scene.expect(Scene.text('v4Composer')).toExist(),
       Scene.expect(Scene.text('applicationHomeScreen')).toExist(),
@@ -144,6 +145,9 @@ describe('components gallery route', () => {
       Scene.expect(Scene.role('heading', { name: 'Feedback' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Workroom' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Public' })).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Business landing' }),
+      ).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Page examples' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'V4' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'AI Elements' })).toExist(),
@@ -159,6 +163,19 @@ describe('components gallery route', () => {
         Scene.role('heading', { name: 'Component library' }),
       ).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Primitives' })).toExist(),
+    )
+  })
+
+  test('renders the business landing component family', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(ComponentsFamilyRoute({ family: 'business' }))),
+      Scene.expect(
+        Scene.role('heading', { name: 'Business landing' }),
+      ).toExist(),
+      Scene.expect(Scene.text('businessOfferingMenu mode=light')).toExist(),
+      Scene.expect(Scene.text('businessIntakeForm')).toExist(),
+      Scene.expect(Scene.text('data-ui-family business/* markers')).toExist(),
     )
   })
 })

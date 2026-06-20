@@ -331,6 +331,41 @@ const families: ReadonlyArray<FamilyMeta> = [
     ],
   },
   {
+    id: 'business',
+    title: 'Business landing',
+    module: '@openagentsinc/ui/business',
+    owner: 'UI system',
+    purpose:
+      'Render OpenAgents Business landing sections: honest availability badges, offering cards, quick-win ladders, proof caveats, project invites, and the public intake form.',
+    useWhen: [
+      'building or auditing /business and related public funnel pages',
+      'needing promise-aware landing sections with live-now and caveat copy',
+    ],
+    avoidWhen: [
+      'the page is a generic marketing surface without OpenAgents Business promise semantics',
+      'the copy would imply a yellow or roadmap promise is green',
+    ],
+    accessibility: [
+      'Availability is text-first and encoded with data attributes, not color alone.',
+      'The intake form keeps visible labels and stable server-posted field names.',
+    ],
+    tokens: [
+      'business availability states',
+      'data-ui-family business/* markers',
+      'public landing light/dark modes',
+    ],
+    exports: [
+      'businessLandingHero',
+      'businessAvailabilityBadge',
+      'businessOfferingMenu',
+      'businessOfferingCard',
+      'quickWinLadder',
+      'businessIntakeForm',
+      'publicProofCaveat',
+      'businessProjectInvite',
+    ],
+  },
+  {
     id: 'page-examples',
     title: 'Page examples',
     module: '@openagentsinc/ui/page-examples',
@@ -388,6 +423,49 @@ const families: ReadonlyArray<FamilyMeta> = [
 ]
 
 const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
+
+const businessShowcaseOfferings: ReadonlyArray<Ui.BusinessOffering> = [
+  {
+    title: 'Coding & agent work',
+    availability: 'operator_assisted',
+    what: 'A coding agent takes a written objective, works in your repo, runs verification, and returns a reviewable change.',
+    liveNow:
+      'The coding runtime, Pylon/Probe execution path, and negotiated labor loop are live.',
+    caveat:
+      'The priced intake-to-receipt business product is operator-assisted today.',
+    quickWin: 'Quick win: fix one failing test with evidence.',
+    promiseIds: ['business.coding_quick_win.v1'],
+  },
+  {
+    title: 'Forum / community agents',
+    availability: 'available_now',
+    what: 'A registered agent identity can post on the Forum, request labor, and receive tips.',
+    liveNow:
+      'Agent registration, autonomous posting, work requests, and reliable tips are green.',
+    caveat:
+      'Cloud-resident assistant replies remain a bounded yellow support surface.',
+    quickWin: 'Quick win: stand up an agent to post updates.',
+    promiseIds: ['agents.cursor_forum_wallet.v1'],
+  },
+]
+
+const businessShowcaseSteps: ReadonlyArray<Ui.BusinessLadderStep> = [
+  {
+    when: 'Day 1',
+    title: 'Quick win',
+    body: 'Deliver one small task with evidence and a clear definition of done.',
+  },
+  {
+    when: 'Week 1',
+    title: 'Repeatable lane',
+    body: 'Turn the quick win into a repeatable work item with review gates.',
+  },
+  {
+    when: 'Ongoing',
+    title: 'On Autopilot',
+    body: 'Expand only after the accepted-outcome loop has earned trust.',
+  },
+]
 
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
@@ -1274,6 +1352,77 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
             { href: '#', label: 'Forum' },
             { href: '#', label: 'Status' },
           ]),
+        ),
+      ]
+
+    case 'business':
+      return [
+        box(
+          'Business hero',
+          'businessLandingHero',
+          Ui.businessLandingHero<Message>({
+            title: 'Put an AI workforce to work',
+            body: 'Start with a bounded quick win, then grow into repeatable agent work only where the evidence supports it.',
+            secondaryBody:
+              'Payment and availability are scoped up front with explicit promise caveats.',
+            primaryHref: '#business-showcase-form',
+            primaryLabel: 'Start with a quick win',
+          }),
+        ),
+        box(
+          'Offering menu (dark)',
+          'businessOfferingMenu',
+          Ui.businessOfferingMenu<Message>({
+            body: 'Dark-mode business landing cards with live-now and caveat lines.',
+            offerings: businessShowcaseOfferings,
+          }),
+        ),
+        box(
+          'Offering menu (light)',
+          'businessOfferingMenu mode=light',
+          h.div(
+            [Ui.className<Message>('bg-[#f7f8fa] p-4 text-[#101318]')],
+            [
+              Ui.businessOfferingMenu<Message>({
+                body: 'Light-mode offering cards use the same promise states.',
+                offerings: businessShowcaseOfferings,
+                mode: 'light',
+              }),
+            ],
+          ),
+        ),
+        box(
+          'Quick-win ladder',
+          'quickWinLadder',
+          Ui.quickWinLadder<Message>({
+            steps: businessShowcaseSteps,
+          }),
+        ),
+        box(
+          'Proof caveat',
+          'publicProofCaveat',
+          Ui.publicProofCaveat<Message>({
+            title: 'Operator-assisted today',
+            body: 'Yellow promises stay explicitly scoped until a paid quick-win receipt closes the blocker.',
+          }),
+        ),
+        box(
+          'Project invite',
+          'businessProjectInvite',
+          Ui.businessProjectInvite<Message>({
+            title: 'We prepare the workspace before you open it',
+            body: 'Your invite opens a named project with seeded notes, starter workflows, and an intro receipt.',
+          }),
+        ),
+        box(
+          'Business intake form',
+          'businessIntakeForm',
+          Ui.businessIntakeForm<Message>({
+            action: '/api/public/business-signup',
+            pricingNote:
+              'Paid runs are scoped with an explicit receipt plan before funding.',
+            attrs: [h.Id('business-showcase-form')],
+          }),
         ),
       ]
 

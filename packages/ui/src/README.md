@@ -66,6 +66,9 @@ Current covered families:
 - marketing bento grids, pricing grids, FAQs, testimonials, team, blog,
   contact, newsletter, stats timeline, logo cloud, and footer
 - marketing landing-page composites
+- OpenAgents Business landing components: availability badges, offering menus
+  and cards, quick-win ladders, proof caveats, project invites, landing heroes,
+  and the public intake form
 
 New web UI should compose these primitives first. Add a new primitive here only
 when it maps to a real Application UI family or removes duplicated app code.

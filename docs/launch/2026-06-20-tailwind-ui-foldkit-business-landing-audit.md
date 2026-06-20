@@ -37,6 +37,12 @@ The useful answer is therefore:
   `/business` separates live backing pieces from current caveats, and the intake
   spec uses `Available now`, `Operator-assisted`, and `Roadmap` instead of the
   older coarse `now/soon/roadmap` shorthand.
+- 2026-06-20 / #5833: Added the shared `@openagentsinc/ui/business` family with
+  business landing heroes, availability badges, offering menus/cards,
+  quick-win ladders, proof caveats, project invites, and the public intake form.
+  `/components` now renders the Business family with both dark and light sample
+  presentations, and package tests cover the new `data-ui-family` markers plus
+  the default business intake field contract.
 
 ## Sources Reviewed
 
