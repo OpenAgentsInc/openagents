@@ -9,6 +9,7 @@ import { selectSweepCandidates, sweepAmountSat } from '../tips-sweep'
 import { makeLedgerMeteringHook, type MeteringContext } from './metering-hook'
 import { priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
+import { parseCardCreditGrantContextRef } from './card-credit-provenance'
 import {
   agentRefForUser,
   fundInferenceFromCredit,
@@ -270,6 +271,56 @@ describe('fundInferenceFromCredit (#5497)', () => {
       .first()) as Row | null
     expect(payIn?.pay_in_type).toBe('usd_credit_grant')
     expect(payIn?.state).toBe('paid')
+  })
+
+  test('stamps the funding Stripe session onto the grant context_ref when provided', async () => {
+    const db = makeDb()
+    await seedUsdCents(db, 500)
+
+    const outcome = await run(
+      fundInferenceFromCredit(
+        {
+          amountCents: 300,
+          grantRef: 'g_session',
+          sourceCheckoutSessionId: 'cs_test_xyz',
+          userId: USER,
+        },
+        deps(db),
+      ),
+    )
+    expect(outcome.ok).toBe(true)
+
+    // The stored grant context_ref is dereferenceable back to its funding
+    // session, so the card->credit->inference-spend chain can be proven.
+    const payIn = (await db
+      .prepare(`SELECT context_ref FROM pay_ins WHERE idempotency_key = ?`)
+      .bind(usdCreditGrantIdempotencyKey('g_session'))
+      .first()) as Row | null
+    expect(
+      parseCardCreditGrantContextRef(String(payIn?.context_ref ?? '')),
+    ).toBe('cs_test_xyz')
+  })
+
+  test('falls back to the legacy generic context_ref when no session is provided', async () => {
+    const db = makeDb()
+    await seedUsdCents(db, 500)
+
+    await run(
+      fundInferenceFromCredit(
+        { amountCents: 300, grantRef: 'g_nosession', userId: USER },
+        deps(db),
+      ),
+    )
+
+    const payIn = (await db
+      .prepare(`SELECT context_ref FROM pay_ins WHERE idempotency_key = ?`)
+      .bind(usdCreditGrantIdempotencyKey('g_nosession'))
+      .first()) as Row | null
+    // No card origin: the generic format carries the user, not a session.
+    expect(String(payIn?.context_ref)).toBe(`inference:usd-credit:${USER}`)
+    expect(
+      parseCardCreditGrantContextRef(String(payIn?.context_ref ?? '')),
+    ).toBeUndefined()
   })
 
   test('is idempotent per grant ref: replaying the same ref never double-grants or double-debits', async () => {

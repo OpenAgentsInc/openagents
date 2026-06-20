@@ -7,6 +7,7 @@ import {
   cardCreditPurchaseLedgerKey,
   cardCreditSpendReceiptRef,
 } from './card-credit-spend-receipt'
+import { cardCreditGrantContextRef } from './card-credit-provenance'
 import { inferenceChargeReceiptRef } from './metering-hook'
 import { usdCreditGrantReceiptRef } from './usd-credit-bridge'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
@@ -143,5 +144,38 @@ describe('assembleCardCreditSpendReceipt', () => {
     )
     if (!result.ok) throw new Error('expected ok')
     expect(result.receipt.conservation.residualMsat).toBe(0)
+  })
+
+  test('binds the grant to the purchase when the grant context_ref proves the session', () => {
+    const contextRef = cardCreditGrantContextRef('cs_test_123')
+    if (contextRef === undefined) throw new Error('expected a context ref')
+    const result = assembleCardCreditSpendReceipt(
+      validInput({ grant: { contextRef } }),
+    )
+    if (!result.ok) throw new Error('expected ok')
+    // The credit_to_msat step now carries the dereferenceable provenance ref.
+    expect(result.receipt.chain[1]?.evidenceRef).toBe(contextRef)
+  })
+
+  test('rejects a grant whose context_ref names a different session', () => {
+    const contextRef = cardCreditGrantContextRef('cs_other_999')
+    if (contextRef === undefined) throw new Error('expected a context ref')
+    const result = assembleCardCreditSpendReceipt(
+      validInput({ grant: { contextRef } }),
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'provenance_mismatch' })
+  })
+
+  test('rejects a generic (non-card) grant context_ref as unprovable provenance', () => {
+    const result = assembleCardCreditSpendReceipt(
+      validInput({ grant: { contextRef: 'inference:usd-credit:user_42' } }),
+    )
+    expect(result).toMatchObject({ ok: false, reason: 'provenance_mismatch' })
+  })
+
+  test('omitting the grant context_ref leaves provenance caller-asserted (no evidence ref)', () => {
+    const result = assembleCardCreditSpendReceipt(validInput())
+    if (!result.ok) throw new Error('expected ok')
+    expect(result.receipt.chain[1]?.evidenceRef).toBeUndefined()
   })
 })
