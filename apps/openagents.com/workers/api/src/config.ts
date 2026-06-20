@@ -39,6 +39,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // ingestion-endpoint blocker; STT vendor + approval UI stay owner/product-
   // gated and the promise stays red regardless.
   VOICE_PROGRAM_INGEST_ENABLED?: string | undefined
+  // Site page form-capture wiring flag (#5523 / DE-9 #5532; promise
+  // autopilot_sites.native_email_sequences.v1, yellow). Default OFF: the public
+  // capture route (POST /api/sites/forms/:formId/submit) stays unmounted and
+  // the omni dispatch chain falls through exactly as today. Set "true"/"1"/"on"
+  // to mount it — the route resolves a page's FormCaptureSpec from the active
+  // site version metadata via site-form-spec-registry and persists leads via
+  // the native-lists addSubscriber sink. Arming clears ONLY the
+  // route-unmounted blocker; the customer UI, send service, and deliverability
+  // stay owner/product-gated and the promise stays yellow.
+  SITE_FORM_CAPTURE_ENABLED?: string | undefined
   // Pylon multi-earning-node projection flag (EPIC #5523 / DE-4 #5527; promise
   // pylon.v0_3_multi_earning_node.v1, red). Default OFF: the
   // `/api/public/pylon/multi-earning-node` surface is INERT (empty store) on
