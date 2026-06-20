@@ -1,5 +1,5 @@
 // Mobile workroom approval projection endpoint
-// (promise mobile.voice_approval_companion.v1, planned).
+// (promise mobile.voice_approval_companion.v1, yellow).
 //
 // INERT by default. The route is wired into the live Worker but reads from an
 // injected store that the Worker leaves EMPTY unless the surface flag is
@@ -113,7 +113,7 @@ const projectionPayload = (
 
   return {
     promiseId: MOBILE_WORKROOM_APPROVAL_PROJECTION_PROMISE_ID,
-    promiseState: 'planned' as const,
+    promiseState: 'yellow' as const,
     enabled: deps.enabled,
     inert: !deps.enabled,
     projectionAvailable: true as const,
@@ -149,7 +149,7 @@ const projectionPayload = (
     note:
       'Mobile workroom approval projection is read-only. It clears the ' +
       'mobile projection blocker only; voice-command approval receipts and ' +
-      'cross-device workroom sync remain open, so the promise stays planned.',
+      'cross-device workroom sync remain open, so the promise stays yellow.',
   }
 }
 
