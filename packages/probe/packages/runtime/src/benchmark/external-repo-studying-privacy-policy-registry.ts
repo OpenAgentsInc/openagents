@@ -59,6 +59,29 @@ export const EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_PATH =
   "docs/legal/external-repo-studying-privacy-policy.v0.md" as const;
 
 /**
+ * Content digest (`sha256:…`) of the canonical human-readable policy document at
+ * EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_PATH. This PINS the exact legal
+ * text a customer reads to the machine-readable registry: if the document drifts
+ * from this digest (or vice versa), the registry no longer matches the published
+ * policy. A test reads the on-disk document, recomputes the digest with
+ * `externalRepoStudyPrivacyPolicyDocumentDigest`, and asserts it equals this
+ * value, so CI catches any doc<->registry drift.
+ */
+export const EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_DIGEST =
+  "sha256:84235952c90ebd4cab57f98a241fffe6654d3a50d1ebf49bbe67e3b1f3b5d510" as const;
+
+/**
+ * Deterministic content digest of a privacy-policy document's raw text. The
+ * registry pins the canonical document with this digest so the human-readable
+ * legal text cannot silently drift from the machine-readable published terms.
+ */
+export function externalRepoStudyPrivacyPolicyDocumentDigest(
+  documentText: string,
+): string {
+  return sha256Ref(documentText);
+}
+
+/**
  * The structured terms of a published policy version, expressed as refs, counts,
  * and enums only. The deterministic `termsDigest` is sha256 over this object, so
  * a change to the published terms changes the digest.
@@ -75,6 +98,7 @@ export type OpenAgentsExternalRepoStudyPrivacyPolicyTerms =
   typeof OpenAgentsExternalRepoStudyPrivacyPolicyTerms.Type;
 
 export const OpenAgentsExternalRepoStudyPrivacyPolicyVersion = S.Struct({
+  documentDigest: S.String,
   documentPath: S.String,
   effectiveDate: S.String,
   policyRef: S.String,
@@ -136,6 +160,7 @@ export function buildOpenAgentsExternalRepoStudyPrivacyPolicyRegistry(
 > {
   return Effect.gen(function* () {
     const v0: OpenAgentsExternalRepoStudyPrivacyPolicyVersion = {
+      documentDigest: EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_DIGEST,
       documentPath: EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_PATH,
       effectiveDate: "2026-06-20",
       policyRef: EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_REF,
@@ -207,6 +232,28 @@ export function isPublishedExternalRepoStudyPrivacyPolicyRef(
   }
   return registry.publishedVersions.some(
     (version) => version.policyRef === ref,
+  );
+}
+
+/**
+ * Whether `documentText` is the EXACT canonical text published for `ref`. Closes
+ * the document-drift seam: a study or reviewer can verify the policy document
+ * actually served matches the content the registry pinned, rather than trusting
+ * that `documentPath` still points at the published text. Returns false for an
+ * unknown ref or any content whose digest differs from the published one.
+ */
+export function isMatchingPublishedExternalRepoStudyPrivacyPolicyDocument(
+  registry: OpenAgentsExternalRepoStudyPrivacyPolicyRegistry,
+  ref: string | undefined,
+  documentText: string,
+): boolean {
+  if (ref === undefined || ref.trim().length === 0) {
+    return false;
+  }
+  const digest = externalRepoStudyPrivacyPolicyDocumentDigest(documentText);
+  return registry.publishedVersions.some(
+    (version) =>
+      version.policyRef === ref && version.documentDigest === digest,
   );
 }
 
@@ -294,6 +341,10 @@ function validateExternalRepoStudyPrivacyPolicyRegistry(
       yield* requireSha256(
         version.termsDigest,
         "externalRepoStudyPrivacyPolicyRegistry.version.termsDigest",
+      );
+      yield* requireSha256(
+        version.documentDigest,
+        "externalRepoStudyPrivacyPolicyRegistry.version.documentDigest",
       );
 
       if (seen.has(version.policyRef)) {

@@ -126,6 +126,57 @@ and owner-signed.
 
 ---
 
+## Update (2026-06-20): policy registry ↔ on-disk document digest binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The published policy registry already pinned the *structured* terms with a
+`termsDigest`, but the actual human-readable legal text a customer reads
+(`docs/legal/external-repo-studying-privacy-policy.v0.md`) was bound to the
+registry only by a `documentPath` string. Nothing detected drift: the legal text
+could be edited (e.g. weakening the retention cap, the PII set, or the
+no-widened-claims clause) without changing the registry, or the registry could
+point at a stale/forged document. This change closes that document-drift seam.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-privacy-policy-registry.ts`
+  - Adds `documentDigest` (`sha256:…`) to each published policy version, pinning
+    the EXACT canonical document content, plus the exported constant
+    `EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_DIGEST`.
+  - `externalRepoStudyPrivacyPolicyDocumentDigest(text)` — deterministic content
+    digest helper, and the registry validator now requires `documentDigest` to be
+    a sha256 ref.
+  - `isMatchingPublishedExternalRepoStudyPrivacyPolicyDocument(registry, ref, text)`
+    closes the document-drift seam exactly as `isPublished…Ref` closed the
+    forgeable-ref seam: a study/reviewer can verify the policy text actually
+    served matches the pinned content, not just that a path string exists. Tampered
+    text or an unknown/empty ref does not verify.
+  - **Inert by construction** is preserved: `effectsApplied` /
+    `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
+    remain ALWAYS false; this only pins/verifies published text.
+- `packages/probe/packages/runtime/tests/external-repo-studying-privacy-policy-registry.test.ts`
+  — 2 new tests (now 7 total): one reads the on-disk legal document, recomputes
+  the digest, and asserts it equals the pinned constant (a CI guard against
+  doc↔registry drift); one verifies exact text passes while tampered text and
+  unknown/empty refs fail.
+
+### What genuinely remains (blocker NOT dropped)
+
+Pinning the document content does not by itself clear `privacy_policy_missing`.
+Still required, all owner/legal-gated and out of scope here: legal/owner
+ratification of the policy text; a real human/legal review against a real
+customer study (not a ref/digest check); durable, access-controlled storage that
+enforces the declared retention window; and an owner-signed armed clearance with
+a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
+remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
+
+---
+
 ## Update (2026-06-20): upload ↔ privacy-review binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
