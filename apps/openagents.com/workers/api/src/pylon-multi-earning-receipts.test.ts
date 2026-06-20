@@ -8,6 +8,7 @@ import {
   foldWorkReceiptsIntoEarningStore,
   makeInMemoryPylonModeWorkReceiptStore,
   projectPylonSettlementManifest,
+  projectPylonWorkReceiptManifest,
   recordModeWorkReceipt,
   verifyWorkReceiptSettlementCoverage,
   verifyWorkReceiptWorkUnitCoverage,
@@ -614,5 +615,156 @@ describe('pylon multi-earning fold work-unit integrity (#5527)', () => {
     expect(folded.ok).toBe(false)
     if (folded.ok) return
     expect(folded.error.reason).toMatch(/across earning modes/)
+  })
+})
+
+describe('pylon multi-earning work-receipt manifest (#5527)', () => {
+  test('empty receipts yield an empty, still-red, covered manifest', () => {
+    const manifest = projectPylonWorkReceiptManifest([])
+    expect(manifest.promiseState).toBe('red')
+    expect(manifest.inert).toBe(true)
+    expect(manifest.perMode).toHaveLength(0)
+    expect(manifest.totalReceiptCount).toBe(0)
+    expect(manifest.totalDistinctAssignmentRefCount).toBe(0)
+    expect(manifest.coverageComplete).toBe(true)
+  })
+
+  test('enumerates the work-receipt refs per amount class per mode', () => {
+    const manifest = projectPylonWorkReceiptManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_b',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(manifest.coverageComplete).toBe(true)
+    expect(manifest.totalReceiptCount).toBe(3)
+    expect(manifest.totalDistinctAssignmentRefCount).toBe(3)
+    expect(manifest.perMode).toEqual([
+      {
+        mode: 'training',
+        receiptCount: 2,
+        distinctAssignmentRefCount: 2,
+        workUnitCoverageComplete: true,
+        observedReceiptRefs: ['receipt.public.pylon.training.work_a'],
+        pendingReceiptRefs: [],
+        paidReceiptRefs: [],
+        settledReceiptRefs: ['receipt.public.pylon.training.work_b'],
+      },
+      {
+        mode: 'compute',
+        receiptCount: 1,
+        distinctAssignmentRefCount: 1,
+        workUnitCoverageComplete: true,
+        observedReceiptRefs: [],
+        pendingReceiptRefs: [],
+        paidReceiptRefs: ['receipt.public.pylon.compute.work_a'],
+        settledReceiptRefs: [],
+      },
+    ])
+  })
+
+  test('settledReceiptRefs lists WORK refs, not settlement refs', () => {
+    const manifest = projectPylonWorkReceiptManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+    ])
+    expect(manifest.perMode[0]?.settledReceiptRefs).toEqual([
+      'receipt.public.pylon.training.work_a',
+    ])
+    // The settlement ref lives in the settlement manifest, not here.
+    const settlement = projectPylonSettlementManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+    ])
+    expect(settlement.perMode[0]?.settlementReceiptRefs).toEqual([
+      'receipt.public.pylon.training.settlement_a',
+    ])
+  })
+
+  test('an in-mode work-unit over-claim surfaces as not covered', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+      }),
+    ]
+    const manifest = projectPylonWorkReceiptManifest(receipts)
+    expect(manifest.coverageComplete).toBe(false)
+    expect(manifest.perMode[0]?.receiptCount).toBe(2)
+    expect(manifest.perMode[0]?.distinctAssignmentRefCount).toBe(1)
+    expect(manifest.perMode[0]?.workUnitCoverageComplete).toBe(false)
+    // The over-claim is visible: 2 receipts behind 1 distinct work unit.
+    expect(manifest.perMode[0]?.observedReceiptRefs).toHaveLength(2)
+  })
+
+  test('manifest and work-unit auditor never disagree on coverage', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.shared.unit',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ]
+    const manifest = projectPylonWorkReceiptManifest(receipts)
+    const coverage = verifyWorkReceiptWorkUnitCoverage(receipts)
+    expect(manifest.coverageComplete).toBe(coverage.allWorkUnitsDistinct)
+    expect(manifest.coverageComplete).toBe(false)
+    expect(manifest.totalDistinctAssignmentRefCount).toBe(
+      coverage.totalDistinctAssignmentRefCount,
+    )
+  })
+
+  test('a duplicate receiptRef collapses (idempotent) before enumeration', () => {
+    const dup = okReceipt({
+      mode: 'training',
+      amountClass: 'observed',
+      assignmentRef: 'assignment.public.pylon.training.a',
+      receiptRef: 'receipt.public.pylon.training.work_a',
+    })
+    const manifest = projectPylonWorkReceiptManifest([dup, dup])
+    expect(manifest.totalReceiptCount).toBe(1)
+    expect(manifest.perMode[0]?.observedReceiptRefs).toEqual([
+      'receipt.public.pylon.training.work_a',
+    ])
   })
 })
