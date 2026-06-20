@@ -2,6 +2,53 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — decontamination gate wired into the settlement closeout
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+The prior update added a deterministic decontamination *receipt + binding gate*
+(`assertCs336A4EvalDeltaDecontamination`) but left it un-wired, explicitly
+noting: "it is not yet wired into `closeCs336A4EvalDeltaSettlement` (so the
+closeout does not yet REQUIRE a clean decontamination receipt before pricing —
+the natural next step)." This change takes that step: the one path that prices
+and records an eval-delta bonus now **requires** a clean decontamination receipt
+before it will price anything.
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.ts`
+  (gate wired in; `decontaminationReceipt` is now a REQUIRED input)
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.test.ts`
+  (updated; now 10 tests, +2 for the new gate)
+
+`closeCs336A4EvalDeltaSettlement` now runs four fail-closed gates in order:
+(1) `assertCs336A4EvalDeltaMeasurementBinding` — the delta was measured on the
+shard's admitted source; (2) **new** `assertCs336A4EvalDeltaDecontamination` —
+a CLEAN decontamination receipt covers exactly the measurement's source AND
+held-out eval set, asserted BEFORE pricing so a delta inflated by eval leakage
+(memorisation, not data quality) can never be priced or recorded; (3)
+`settleCs336A4EvalDeltaPayment` — price the bonus; (4)
+`buildCs336A4EvalDeltaSettlementReceipt` — bind the decision to provenance. The
+`decontaminationReceipt` parameter is non-optional, so there is no longer a
+settlement path that prices a bonus without decontamination evidence. The
+closeout result now carries the cleared `decontaminationReceiptRef` for audit.
+New tests prove the closeout rejects a clean receipt that decontaminated against
+an unrelated eval set (`held_out_eval_set_ref_mismatch`) and a contaminated
+(non-clean) corpus (`receipt_not_clean`) even when the bonus would otherwise be
+payable.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This wires an existing anti-gaming
+gate into an existing in-memory closeout — it scans no corpus, removes no spans,
+runs no eval, funds nothing, and pays nothing. The closeout itself is still not
+wired into the live A4 admission/closeout path (`training-data-refinery.ts`),
+the A4 public projection, or the `a4_eval_delta` leaderboard. No fixed-trainer
+eval loop has produced a real measurement, no real corpus has been
+decontaminated, and no operator funding parameters are set. The promise's green
+criterion — at least one eval-delta payment computed from a fixed reference
+model and backed by a Verified `deterministic_recompute` shard — is unmet.
+`crawl_scale_corpus_missing` and `corpus_provenance_receipts_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — eval-delta decontamination receipt + binding gate
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
