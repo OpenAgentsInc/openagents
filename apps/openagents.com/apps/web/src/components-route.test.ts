@@ -145,6 +145,7 @@ describe('components gallery route', () => {
       Scene.expect(Scene.role('heading', { name: 'Feedback' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Workroom' })).toExist(),
       Scene.expect(Scene.role('heading', { name: 'Public' })).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Public theme' })).toExist(),
       Scene.expect(
         Scene.role('heading', { name: 'Business landing' }),
       ).toExist(),
@@ -176,6 +177,25 @@ describe('components gallery route', () => {
       Scene.expect(Scene.text('businessOfferingMenu mode=light')).toExist(),
       Scene.expect(Scene.text('businessIntakeForm')).toExist(),
       Scene.expect(Scene.text('data-ui-family business/* markers')).toExist(),
+    )
+  })
+
+  test('renders the public landing theme component family', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(
+        LoggedOut.init(ComponentsFamilyRoute({ family: 'public-theme' })),
+      ),
+      Scene.expect(Scene.role('heading', { name: 'Public theme' })).toExist(),
+      Scene.expect(Scene.text('publicLandingThemeSelector')).toExist(),
+      Scene.expect(
+        Scene.text('publicLandingThemeShell mode=light'),
+      ).toExist(),
+      Scene.expect(
+        Scene.text('publicLandingThemeShell mode=dark'),
+      ).toExist(),
+      Scene.expect(Scene.text('Shell-scoped theme')).toExist(),
+      Scene.expect(Scene.text('data-public-landing-shell')).toExist(),
     )
   })
 })

@@ -31,6 +31,17 @@
   --color-forum-text: #47536b;
   --color-forum-wrap: #ffffff;
   --color-forum-wrap-border: #ededed;
+  --color-public-landing-accent: #8a5a00;
+  --color-public-landing-border: #d8dde5;
+  --color-public-landing-faint: #8a93a3;
+  --color-public-landing-muted: #5f6673;
+  --color-public-landing-negative: #b91c1c;
+  --color-public-landing-page: #f7f8fa;
+  --color-public-landing-positive: #047857;
+  --color-public-landing-surface: #ffffff;
+  --color-public-landing-surface-muted: #f1f3f5;
+  --color-public-landing-text: #101318;
+  --color-public-landing-warning: #92400e;
   --font-mono: var(--font-family-mono);
   --font-sans: var(--font-family-sans);
 }
@@ -82,6 +93,33 @@
  */
 :root[data-forum-theme='dark'] [data-forum-app] {
   box-shadow: 0 0 0 1px var(--color-forum-wrap-border);
+}
+
+/*
+ * Public landing theme switching (light / dark / system).
+ *
+ * This mirrors the Forum selector model but intentionally scopes resolved
+ * values to [data-public-landing-shell]. The script never writes theme state
+ * to <html>, so a light public landing can coexist with the dark-only app
+ * shell and with Forum's own token set.
+ */
+[data-public-landing-shell] {
+  color-scheme: light;
+}
+
+[data-public-landing-shell][data-public-landing-theme='dark'] {
+  color-scheme: dark;
+  --color-public-landing-accent: #ffb400;
+  --color-public-landing-border: #222222;
+  --color-public-landing-faint: rgba(255, 255, 255, 0.35);
+  --color-public-landing-muted: rgba(255, 255, 255, 0.58);
+  --color-public-landing-negative: #ff9a9a;
+  --color-public-landing-page: #000000;
+  --color-public-landing-positive: #7fdc9b;
+  --color-public-landing-surface: #010102;
+  --color-public-landing-surface-muted: #030303;
+  --color-public-landing-text: #f1efe8;
+  --color-public-landing-warning: #ffd54a;
 }
 
 @layer base {

@@ -66,6 +66,7 @@ Current covered families:
 - marketing bento grids, pricing grids, FAQs, testimonials, team, blog,
   contact, newsletter, stats timeline, logo cloud, and footer
 - marketing landing-page composites
+- public landing theme shells, selectors, and the scoped light/dark script
 - OpenAgents Business landing components: availability badges, offering menus
   and cards, quick-win ladders, proof caveats, project invites, landing heroes,
   and the public intake form

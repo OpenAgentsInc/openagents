@@ -43,6 +43,11 @@ The useful answer is therefore:
   `/components` now renders the Business family with both dark and light sample
   presentations, and package tests cover the new `data-ui-family` markers plus
   the default business intake field contract.
+- 2026-06-20 / #5834: Studied Forum's light/dark/system selector and added a
+  shared `@openagentsinc/ui/public-theme` family for landing pages. The landing
+  script keeps the Forum preference model but scopes resolved attributes to
+  `[data-public-landing-shell]` instead of writing to `<html>`, so light public
+  pages can coexist with the dark-only app root and Forum's own theme tokens.
 
 ## Sources Reviewed
 
@@ -62,12 +67,16 @@ The useful answer is therefore:
 - Component code:
   - `packages/ui/src/README.md`
   - `packages/ui/src/public.ts`
+  - `packages/ui/src/public-theme.ts`
   - `packages/ui/src/forms.ts`
   - `packages/ui/src/shared.ts`
   - `packages/ui/src/layout.ts`
   - `packages/ui/test/coverage.test.ts`
   - `apps/openagents.com/apps/web/src/page/components.ts`
   - `apps/openagents.com/apps/web/src/page/business.ts`
+  - `apps/openagents.com/apps/web/src/page/forum.ts`
+  - `apps/openagents.com/apps/web/src/page/publicHeader.ts`
+  - `apps/openagents.com/apps/web/src/styles.css`
 
 ## Tailwind UI Port Inventory
 
@@ -108,8 +117,28 @@ The reusable exports are split sensibly:
 - `public.ts`: marketing/public families: `marketingHero`,
   `marketingLandingPage`, `featureSection`, `pricingGrid`, `faqSection`,
   `testimonialGrid`, `logoCloud`, `footer`, etc.
+- `public-theme.ts`: scoped public landing `light` / `dark` / `system`
+  primitives: `publicLandingThemeShell`, `publicLandingThemeSelector`, and the
+  browser script that resolves system preference without touching the app root.
 - `page-examples.ts`: larger app/page composites
 - `workroom.ts`, `v4.ts`, `ai-elements/*`: operational/chat/workroom families
+
+### Forum Theme Study
+
+Forum stores a user preference under `oa.forum.v1:theme`. Absence means
+`system`; the script resolves that with
+`matchMedia('(prefers-color-scheme: dark)')`, then writes the resolved mode to
+`<html data-forum-theme="...">`. The CSS defaults Forum tokens to light and
+repoints `--color-forum-*` from the `:root[data-forum-theme='dark']` selector,
+while `color-scheme` is applied only inside `[data-forum-shell]`.
+
+The public landing theme keeps the same control model but changes the write
+target. It sets `data-public-landing-theme` and
+`data-public-landing-theme-preference` only on `[data-public-landing-shell]`
+elements, and the dark token overrides are scoped to that same shell. That
+lets `/business` and future landing pages offer light and dark compositions
+without changing `:root`, `data-forum-theme`, or the dark-only application
+surfaces.
 
 `/components` is the live workbench for this package. It renders real component
 instances, not only metadata, and the route tests passed:

@@ -4,9 +4,10 @@ import { html } from 'foldkit/html'
 
 import { inputGroup, textareaGroup } from './forms'
 import { kitFamily, statusDotClass } from './primitives'
+import type { PublicLandingThemeMode } from './public-theme'
 import { linkButton } from './shared'
 
-export type BusinessLandingMode = 'dark' | 'light'
+export type BusinessLandingMode = PublicLandingThemeMode
 
 export type BusinessAvailability =
   | 'available_now'

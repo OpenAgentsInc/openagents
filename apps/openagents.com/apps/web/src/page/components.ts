@@ -331,6 +331,36 @@ const families: ReadonlyArray<FamilyMeta> = [
     ],
   },
   {
+    id: 'public-theme',
+    title: 'Public theme',
+    module: '@openagentsinc/ui/public-theme',
+    owner: 'UI system',
+    purpose:
+      'Provide scoped light/dark/system theme controls for public landing pages without changing the dark-only app root or Forum theme state.',
+    useWhen: [
+      'building a public landing page that needs both light and dark presentations',
+      'wrapping Tailwind UI public/business sections in a theme-aware shell',
+    ],
+    avoidWhen: [
+      'the surface is Forum (use the Forum header selector and forum tokens)',
+      'the surface is an operational app/workroom screen with the dark-only core contract',
+    ],
+    accessibility: [
+      'The selector is a real labeled <select>, and the scoped shell sets color-scheme for browser form controls.',
+    ],
+    tokens: [
+      'data-public-landing-shell',
+      'data-public-landing-theme',
+      'data-public-landing-theme-select',
+      'public-landing-* color tokens',
+    ],
+    exports: [
+      'publicLandingThemeShell',
+      'publicLandingThemeSelector',
+      'publicLandingThemeScript',
+    ],
+  },
+  {
     id: 'business',
     title: 'Business landing',
     module: '@openagentsinc/ui/business',
@@ -489,6 +519,7 @@ export const view = <Message>(
           articleView<Message>(selectedFamily),
         ],
       ),
+      h.script([], [Ui.publicLandingThemeScript()]),
     ],
   )
 }
@@ -1352,6 +1383,90 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
             { href: '#', label: 'Forum' },
             { href: '#', label: 'Status' },
           ]),
+        ),
+      ]
+
+    case 'public-theme':
+      return [
+        box(
+          'Theme selector',
+          'publicLandingThemeSelector',
+          Ui.publicLandingThemeSelector<Message>({
+            preference: 'system',
+          }),
+        ),
+        box(
+          'Scoped shell (light)',
+          'publicLandingThemeShell mode=light',
+          Ui.publicLandingThemeShell<Message>({
+            mode: 'light',
+            className: 'grid gap-4 p-4',
+            children: [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex flex-wrap items-center justify-between gap-3',
+                  ),
+                ],
+                [
+                  h.p(
+                    [
+                      Ui.className<Message>(
+                        'm-0 font-mono text-sm text-public-landing-muted',
+                      ),
+                    ],
+                    ['Shell-scoped theme'],
+                  ),
+                  Ui.publicLandingThemeSelector<Message>({
+                    preference: 'light',
+                    label: 'Public landing theme',
+                  }),
+                ],
+              ),
+              Ui.businessOfferingMenu<Message>({
+                title: 'Light landing modules',
+                body: 'Business sections read the same light/dark mode vocabulary.',
+                offerings: businessShowcaseOfferings,
+                mode: 'light',
+              }),
+            ],
+          }),
+        ),
+        box(
+          'Scoped shell (dark)',
+          'publicLandingThemeShell mode=dark',
+          Ui.publicLandingThemeShell<Message>({
+            mode: 'dark',
+            className: 'grid gap-4 p-4',
+            children: [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex flex-wrap items-center justify-between gap-3',
+                  ),
+                ],
+                [
+                  h.p(
+                    [
+                      Ui.className<Message>(
+                        'm-0 font-mono text-sm text-public-landing-muted',
+                      ),
+                    ],
+                    ['Shell-scoped theme'],
+                  ),
+                  Ui.publicLandingThemeSelector<Message>({
+                    preference: 'dark',
+                    label: 'Public landing theme',
+                  }),
+                ],
+              ),
+              Ui.publicProofCaveat<Message>({
+                title: 'No root theme leakage',
+                body: 'Public landing pages can render light or dark shells while the app root stays dark-only.',
+                mode: 'dark',
+              }),
+            ],
+          }),
         ),
       ]
 
