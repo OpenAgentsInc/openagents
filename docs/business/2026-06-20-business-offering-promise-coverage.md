@@ -57,7 +57,7 @@ assisted, red = blocked for affirmative copy, planned = roadmap.
 | All-in-one business system framing (Signal→…→Deploy, self-serve) | `autopilot.all_in_one_business_system.v1` | planned | Self-serve framing is roadmap. |
 | Client-delivery workrooms | `workrooms.omni_client_delivery_workrooms.v1` | yellow | — |
 | Agentic labor products | `autopilot.agentic_labor_products.v1` | yellow | — |
-| **E-commerce prefilled workspace (inventory-aware ad campaigns)** | **`business.ecommerce_workspace_pack.v1` (NEW)** | yellow | Template shipped as operator tool; first paid e-commerce delivery receipt pending. |
+| **E-commerce prefilled workspace (inventory-aware ad campaigns)** | **`business.ecommerce_workspace_pack.v1` (NEW)** | yellow | Template shipped as operator tool; first paid e-commerce delivery receipt pending (format + verifier now built — see `docs/launch/vertex-fleet/business.ecommerce_workspace_pack.v1.md`). |
 | **Legal prefilled workspace (forms/intake copilot, review-gated, no legal advice)** | **`business.legal_workspace_pack.v1` (NEW)** | yellow | Template shipped as operator tool; first paid legal delivery receipt pending. |
 | **Marketing-agency prefilled workspace (white-label pages + emails)** | **`business.marketing_agency_workspace_pack.v1` (NEW)** | yellow | Template + Sites surfaces shipped; deliverability + first paid agency delivery receipt pending. |
 
