@@ -1,0 +1,204 @@
+import { describe, expect, test } from 'vitest'
+
+import {
+  projectPylonMultiEarningNode,
+} from './pylon-multi-earning-node'
+import {
+  RECEIPTABLE_AMOUNT_CLASSES,
+  foldWorkReceiptsIntoEarningStore,
+  makeInMemoryPylonModeWorkReceiptStore,
+  recordModeWorkReceipt,
+} from './pylon-multi-earning-receipts'
+
+const okReceipt = (input: Parameters<typeof recordModeWorkReceipt>[0]) => {
+  const result = recordModeWorkReceipt(input)
+  if (!result.ok) {
+    throw new Error(result.error.reason)
+  }
+  return result.receipt
+}
+
+describe('pylon multi-earning work receipt (#5527)', () => {
+  test('receiptable classes are observed/pending/paid/settled (no modeled)', () => {
+    expect(RECEIPTABLE_AMOUNT_CLASSES).toEqual([
+      'observed',
+      'pending',
+      'paid',
+      'settled',
+    ])
+    expect(
+      (RECEIPTABLE_AMOUNT_CLASSES as ReadonlyArray<string>).includes('modeled'),
+    ).toBe(false)
+  })
+
+  test('builds a valid non-settled receipt with no settlement ref', () => {
+    const receipt = okReceipt({
+      mode: 'compute',
+      amountClass: 'observed',
+      assignmentRef: 'assignment.public.pylon.compute.a',
+      receiptRef: 'receipt.public.pylon.compute.work_a',
+    })
+    expect(receipt.amountClass).toBe('observed')
+    expect(receipt.settlementReceiptRef).toBeUndefined()
+  })
+
+  test('a settled receipt requires a settlement receipt ref', () => {
+    const result = recordModeWorkReceipt({
+      mode: 'training',
+      amountClass: 'settled',
+      assignmentRef: 'assignment.public.pylon.training.a',
+      receiptRef: 'receipt.public.pylon.training.work_a',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toMatch(/settlementReceiptRef/)
+    }
+  })
+
+  test('a settlement ref is only valid on a settled receipt', () => {
+    const result = recordModeWorkReceipt({
+      mode: 'training',
+      amountClass: 'paid',
+      assignmentRef: 'assignment.public.pylon.training.a',
+      receiptRef: 'receipt.public.pylon.training.work_a',
+      settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+    })
+    expect(result.ok).toBe(false)
+  })
+
+  test('rejects an unknown amount class', () => {
+    const result = recordModeWorkReceipt({
+      mode: 'training',
+      // intentionally invalid amount class
+      amountClass: 'modeled' as never,
+      assignmentRef: 'assignment.public.pylon.training.a',
+      receiptRef: 'receipt.public.pylon.training.work_a',
+    })
+    expect(result.ok).toBe(false)
+  })
+
+  test('rejects unsafe refs in any ref field', () => {
+    expect(
+      recordModeWorkReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'lnbc-payout',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }).ok,
+    ).toBe(false)
+    expect(
+      recordModeWorkReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'wallet_secret',
+      }).ok,
+    ).toBe(false)
+  })
+
+  test('store is idempotent per receiptRef', () => {
+    const store = makeInMemoryPylonModeWorkReceiptStore([
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.compute.b',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(store.list()).toHaveLength(1)
+    expect(store.list()[0]?.amountClass).toBe('observed')
+  })
+})
+
+describe('pylon multi-earning receipt fold (#5527)', () => {
+  test('empty receipts fold to an empty, still-red projection', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([])
+    expect(folded.ok).toBe(true)
+    if (!folded.ok) return
+    const projection = projectPylonMultiEarningNode(folded.store)
+    expect(projection.promiseState).toBe('red')
+    expect(projection.modes).toHaveLength(0)
+    expect(projection.settledModeCount).toBe(0)
+  })
+
+  test('folds per-mode receipts into projection counts backed by receipts', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_b',
+      }),
+      okReceipt({
+        mode: 'forum_tips',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.forum_tips.a',
+        receiptRef: 'receipt.public.pylon.forum_tips.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.forum_tips.settlement_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(folded.ok).toBe(true)
+    if (!folded.ok) return
+
+    const projection = projectPylonMultiEarningNode(folded.store)
+    // Two settled modes are now backed by settlement receipts...
+    expect(projection.settledModeCount).toBe(2)
+    expect(projection.settledModesBarMet).toBe(true)
+    // ...yet the surface NEVER flips the promise.
+    expect(projection.promiseState).toBe('red')
+    expect(projection.inert).toBe(true)
+
+    const training = projection.modes.find(m => m.mode === 'training')
+    expect(training?.observedCount).toBe(1)
+    expect(training?.settledCount).toBe(1)
+    expect(training?.settlementReceiptRef).toBe(
+      'receipt.public.pylon.training.settlement_b',
+    )
+    // modeled never comes from a receipt
+    expect(training?.modeledCount).toBe(0)
+
+    const compute = projection.modes.find(m => m.mode === 'compute')
+    expect(compute?.paidCount).toBe(1)
+    expect(compute?.settledCount).toBe(0)
+    expect(compute?.settlementReceiptRef).toBeUndefined()
+  })
+
+  test('a settled mode always carries a settlement receipt ref after fold', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+    ])
+    expect(folded.ok).toBe(true)
+    if (!folded.ok) return
+    const projection = projectPylonMultiEarningNode(folded.store)
+    expect(
+      projection.modes.every(
+        m => m.settledCount === 0 || m.settlementReceiptRef !== undefined,
+      ),
+    ).toBe(true)
+  })
+})

@@ -82,6 +82,23 @@ const RAW_TIMESTAMP_PATTERN = /\d{4}-\d{2}-\d{2}t\d{2}:\d{2}:\d{2}/i
 
 const isNonEmpty = (value: string): boolean => value.trim().length > 0
 
+/**
+ * Whether `value` is a bounded, neutral, public-safe ref token: non-empty,
+ * matches the safe shape, and carries no money / wallet / payment / payout /
+ * customer / secret / bolt11 / preimage / raw-timestamp material. Exported so
+ * adjacent surfaces (e.g. the per-mode work-receipt layer) reuse exactly this
+ * discipline instead of re-deriving it.
+ */
+export const isPublicSafeToken = (value: string): boolean => {
+  const trimmed = value.trim()
+  return (
+    isNonEmpty(trimmed) &&
+    SAFE_TOKEN_PATTERN.test(trimmed) &&
+    !UNSAFE_TOKEN_PATTERN.test(trimmed) &&
+    !RAW_TIMESTAMP_PATTERN.test(trimmed)
+  )
+}
+
 const assertSafeToken = (label: string, value: string): string => {
   const trimmed = value.trim()
   if (!isNonEmpty(trimmed)) {
@@ -89,11 +106,7 @@ const assertSafeToken = (label: string, value: string): string => {
       reason: `${label} must be a non-empty token`,
     })
   }
-  if (
-    !SAFE_TOKEN_PATTERN.test(trimmed) ||
-    UNSAFE_TOKEN_PATTERN.test(trimmed) ||
-    RAW_TIMESTAMP_PATTERN.test(trimmed)
-  ) {
+  if (!isPublicSafeToken(trimmed)) {
     throw new PylonMultiEarningError({
       reason: `${label} must be a bounded, public-safe token (no money, wallet, payment, payout, customer, secret, bolt11, preimage, or timestamp material)`,
     })
