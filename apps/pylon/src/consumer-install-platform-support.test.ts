@@ -4,9 +4,11 @@
 // Blocker:  blocker.product_promises.windows_wsl_consumer_install_coverage_missing
 import { describe, expect, it } from "bun:test"
 import {
+  classifyConsumerInstallHost,
   CONSUMER_INSTALL_SUPPORTED_TARGETS,
   classifyConsumerInstallPlatform,
   type ConsumerInstallPlatformClaim,
+  detectWslHost,
   verifyConsumerInstallPlatformClaim,
   WINDOWS_WSL_BLOCKER_REF,
 } from "./consumer-install-platform-support.js"
@@ -53,6 +55,81 @@ describe("classifyConsumerInstallPlatform", () => {
 
   it("never emits private/machine fields", () => {
     const result = classifyConsumerInstallPlatform("win32")
+    expect(Object.keys(result).sort()).toEqual(
+      [
+        "blockerRefs",
+        "contentRedacted",
+        "disposition",
+        "guidanceRefs",
+        "platform",
+        "reasonRef",
+        "schema",
+        "supportedTargets",
+      ].sort(),
+    )
+  })
+})
+
+describe("detectWslHost", () => {
+  it("returns false for a clean (native) environment with no WSL signals", () => {
+    expect(detectWslHost({})).toBe(false)
+    expect(detectWslHost({ PATH: "/usr/bin", HOME: "/home/u" })).toBe(false)
+  })
+
+  it("detects WSL from each recognized environment signal", () => {
+    expect(detectWslHost({ WSL_DISTRO_NAME: "Ubuntu" })).toBe(true)
+    expect(detectWslHost({ WSL_INTEROP: "/run/WSL/8_interop" })).toBe(true)
+    expect(detectWslHost({ WSLENV: "PATH/l" })).toBe(true)
+  })
+
+  it("ignores empty/whitespace-only WSL env values", () => {
+    expect(detectWslHost({ WSL_DISTRO_NAME: "" })).toBe(false)
+    expect(detectWslHost({ WSL_DISTRO_NAME: "   " })).toBe(false)
+  })
+
+  it("detects WSL from /proc/version text (microsoft / WSL2)", () => {
+    expect(
+      detectWslHost(
+        {},
+        "Linux version 5.15.0-microsoft-standard-WSL2 (...) #1 SMP",
+      ),
+    ).toBe(true)
+    expect(detectWslHost({}, "Linux version 6.1.0-generic (...) #1 SMP")).toBe(false)
+  })
+
+  it("never returns environment values (returns a plain boolean)", () => {
+    expect(typeof detectWslHost({ WSL_DISTRO_NAME: "secret-distro" })).toBe("boolean")
+  })
+})
+
+describe("classifyConsumerInstallHost (WSL-aware)", () => {
+  it("classifies a WSL host out-of-scope even though it reports platform linux", () => {
+    const result = classifyConsumerInstallHost({ platform: "linux", wsl: true })
+    expect(result.disposition).toBe("out-of-scope")
+    expect(result.reasonRef).toBe("reason.platform.wsl_out_of_scope")
+    expect(result.blockerRefs).toEqual([WINDOWS_WSL_BLOCKER_REF])
+    expect(result.guidanceRefs).toContain(
+      "guidance.platform.use_native_macos_or_linux_host_not_wsl",
+    )
+    expect(result.contentRedacted).toBe(true)
+  })
+
+  it("classifies native linux (no WSL signal) as supported", () => {
+    const result = classifyConsumerInstallHost({ platform: "linux", wsl: false })
+    expect(result.disposition).toBe("supported")
+    expect(result.blockerRefs).toEqual([])
+  })
+
+  it("matches classifyConsumerInstallPlatform when no WSL signal is given", () => {
+    for (const platform of ["darwin", "linux", "win32", "freebsd"] as const) {
+      expect(classifyConsumerInstallHost({ platform })).toEqual(
+        classifyConsumerInstallPlatform(platform),
+      )
+    }
+  })
+
+  it("never emits private/machine fields for a WSL host", () => {
+    const result = classifyConsumerInstallHost({ platform: "linux", wsl: true })
     expect(Object.keys(result).sort()).toEqual(
       [
         "blockerRefs",

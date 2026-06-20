@@ -76,11 +76,20 @@ honest-copy requirement is now machine-checkable in
 `apps/pylon/src/consumer-install-platform-support.ts`:
 
 - `classifyConsumerInstallPlatform(platform)` — pure, public-safe disposition for
-  any platform: `supported` (darwin/linux, sharing `bootstrap.isSupportedPlatform`)
-  vs `out-of-scope` (native Windows `win32`, the WSL Linux userland contributors
-  conflate with native Linux, and everything else), with honest guidance refs and
-  the blocker ref. Emits no machine identifiers, paths, usernames, or private
-  material.
+  a `NodeJS.Platform`: `supported` (darwin/linux, sharing
+  `bootstrap.isSupportedPlatform`) vs `out-of-scope` (native Windows `win32` and
+  everything else), with honest guidance refs and the blocker ref. Emits no machine
+  identifiers, paths, usernames, or private material.
+- `classifyConsumerInstallHost({ platform, wsl })` / `detectWslHost(env, procVersion?)`
+  — WSL handling. WSL reports `platform === "linux"`, so a platform-only check
+  mis-classifies a WSL host as `supported`, silently contradicting this scope-out.
+  `detectWslHost` is a pure boolean detector over the supplied environment (the
+  presence of `WSL_DISTRO_NAME` / `WSL_INTEROP` / `WSLENV`) and optional
+  `/proc/version` text (`microsoft`/`wsl`); it never reads files itself and never
+  emits any env value, path, or identifier. Feeding its result as the `wsl` signal
+  makes `classifyConsumerInstallHost` return `out-of-scope` with
+  `reason.platform.wsl_out_of_scope` for a WSL host — so the documented WSL
+  scope-out is now enforced in code, not just prose.
 - `verifyConsumerInstallPlatformClaim(claim)` — audits an untrusted stated
   platform-support claim and returns `{ valid, overpromises, reasons[] }`.
   `overpromises === true` (the reviewer fail signal) when the supported set is not
@@ -96,7 +105,7 @@ honest-copy requirement is now machine-checkable in
   and the derived claim does not over-promise. This binds the verifier to the
   shipped file so real copy drift fails in CI, not just a synthetic fixture.
 
-Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (14 pass) and
+Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (23 pass) and
 `apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` (6 pass, runs the
 applied audit against the real `apps/pylon/README.md`).
 
