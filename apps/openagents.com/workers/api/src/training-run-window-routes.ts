@@ -45,8 +45,11 @@ import {
 import {
   Cs336A2DeviceBenchmarkEvidenceRequest,
   admitCs336A2DeviceBenchmarkEvidence,
+  buildDeviceCapabilitySameClassReplicationSignals,
   buildDeviceCapabilityThermalThrottleSignals,
   publicDeviceCapabilityProjection,
+  sameClassReplicationBlockerRefs,
+  sameClassReplicationStatus,
   thermalThrottleBlockerRefs,
   thermalThrottleDetectionStatus,
 } from './training-device-capability'
@@ -1671,25 +1674,41 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         .filter(distribution => distribution.verified)
         .map(distribution => distribution.deviceClassRef),
     ).size
+    const dashboardSameClassReplicationSignals =
+      buildDeviceCapabilitySameClassReplicationSignals(classDistributions)
+    const dashboardSameClassReplicationBlockerRefs =
+      sameClassReplicationBlockerRefs(dashboardSameClassReplicationSignals)
     const dashboardThermalThrottleSignals =
       buildDeviceCapabilityThermalThrottleSignals(classDistributions)
+    const measurementBlockerRefs =
+      classDistributions.length > 0 &&
+      verifiedCount === classDistributions.length
+        ? []
+        : [
+            'blocker.cs336_a2.requires_receipted_benchmark_results',
+            'blocker.cs336_a2.requires_statistical_cross_check',
+            'blocker.cs336_a2.requires_replication_across_same_class_devices',
+          ]
 
     return noStoreJsonResponse({
-      blockerRefs:
-        classDistributions.length > 0 &&
-        verifiedCount === classDistributions.length
-          ? []
-          : [
-              'blocker.cs336_a2.requires_receipted_benchmark_results',
-              'blocker.cs336_a2.requires_statistical_cross_check',
-              'blocker.cs336_a2.requires_replication_across_same_class_devices',
-            ],
+      blockerRefs: [
+        ...new Set([
+          ...measurementBlockerRefs,
+          ...dashboardSameClassReplicationBlockerRefs,
+        ]),
+      ].sort(),
       classDistributions,
       observedDeviceClassCount,
       observedMeasurementCount: classDistributions.length,
       observedSettledDeviceClassCount,
       projections,
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
+      sameClassReplicationBlockerRefs:
+        dashboardSameClassReplicationBlockerRefs,
+      sameClassReplicationSignals: dashboardSameClassReplicationSignals,
+      sameClassReplicationStatus: sameClassReplicationStatus(
+        dashboardSameClassReplicationSignals,
+      ),
       sourceRefs: [
         'route:/api/training/device-capabilities/a2',
         'route:/api/training/runs',

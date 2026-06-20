@@ -38,8 +38,8 @@ describe('CS336 A2 device capability projection', () => {
     expect(projection).toMatchObject({
       blockerRefs: [
         'blocker.cs336_a2.requires_receipted_benchmark_results',
-        'blocker.cs336_a2.requires_statistical_cross_check',
         'blocker.cs336_a2.requires_replication_across_same_class_devices',
+        'blocker.cs336_a2.requires_statistical_cross_check',
       ],
       classDistributions: [],
       jobKind: 'cs336_a2_device_benchmark',
@@ -47,6 +47,11 @@ describe('CS336 A2 device capability projection', () => {
       observedMeasurementCount: 0,
       requiredSameClassSampleCount: 3,
       schemaVersion: 'openagents.training.device_capability_dataset.v1',
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_replication_across_same_class_devices',
+      ],
+      sameClassReplicationSignals: [],
+      sameClassReplicationStatus: 'missing',
       thermalThrottleBlockerRefs: [
         'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
       ],
@@ -157,7 +162,9 @@ describe('CS336 A2 device capability projection', () => {
       windows: [window],
     })
 
-    expect(projection.blockerRefs).toEqual([])
+    expect(projection.blockerRefs).toEqual([
+      'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+    ])
     expect(projection.thermalThrottleDetectionStatus).toBe('missing')
     expect(projection.thermalThrottleBlockerRefs).toEqual([
       'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
@@ -169,8 +176,23 @@ describe('CS336 A2 device capability projection', () => {
       deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
       metric: 'tokens_per_second',
       p50: 1900,
+      sameClassReplicationScope: 'cross_process_same_host',
+      sameClassReplicationStatus: 'same_host_only',
       sampleCount: 4,
       verified: true,
+    })
+    expect(projection.sameClassReplicationStatus).toBe('same_host_only')
+    expect(projection.sameClassReplicationBlockerRefs).toEqual([
+      'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+    ])
+    expect(projection.sameClassReplicationSignals[0]).toMatchObject({
+      blockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      reasonCode:
+        'device_capability.public.same_class_replication_same_host_only',
+      scope: 'cross_process_same_host',
+      state: 'same_host_only',
     })
     expect(projection.classDistributions[0]?.earningEstimate).toMatchObject({
       basisLabel: 'modeled_from_measured_benchmark_distribution',
@@ -270,7 +292,9 @@ describe('CS336 A2 device capability projection', () => {
       sampleCount: 6,
       verified: true,
     })
-    expect(projection.blockerRefs).toEqual([])
+    expect(projection.blockerRefs).toEqual([
+      'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+    ])
 
     expect(() =>
       admitCs336A2DeviceBenchmarkEvidence({
@@ -342,6 +366,7 @@ describe('CS336 A2 device capability projection', () => {
       p50: 94,
       p90: 99,
       receiptRefs: ['receipt.cs336.a2.host_ram.1'],
+      sameClassReplicationScope: 'cross_machine_same_class' as const,
       sampleCount: 5,
       unit: 'gigabytes',
       verificationRefs: ['verdict.training.statistical_cross_check.2'],
@@ -355,6 +380,7 @@ describe('CS336 A2 device capability projection', () => {
       p50: 0.91,
       p90: 0.95,
       receiptRefs: ['receipt.cs336.a2.sustained_ratio.1'],
+      sameClassReplicationScope: 'cross_machine_same_class' as const,
       sampleCount: 5,
       unit: 'ratio',
       verificationRefs: ['verdict.training.statistical_cross_check.3'],
@@ -381,6 +407,10 @@ describe('CS336 A2 device capability projection', () => {
       'thermal_throttle_not_observed',
     )
     expect(projection.thermalThrottleBlockerRefs).toEqual([])
+    expect(projection.sameClassReplicationStatus).toBe(
+      'cross_machine_replicated',
+    )
+    expect(projection.sameClassReplicationBlockerRefs).toEqual([])
     expect(projection.thermalThrottleSignals[0]).toMatchObject({
       deviceClassRef: 'device_class.example.rtx_4090_24gb_96gb_host',
       metric: 'sustained_vs_burst_throughput_ratio',
@@ -476,8 +506,14 @@ describe('CS336 A2 device capability projection', () => {
       crossCheckState: 'measured_unverified',
       deviceClassRef: 'device_class.x86_64_linux.intel',
       measurementProvenance: 'measured_unsettled',
+      sameClassReplicationScope: 'single_observation',
+      sameClassReplicationStatus: 'single_observation',
       verified: false,
     })
+    expect(projection.sameClassReplicationStatus).toBe('single_observation')
+    expect(projection.sameClassReplicationBlockerRefs).toEqual([
+      'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+    ])
     expect(projection.classDistributions[0]?.earningEstimate).toBeNull()
     expect(projection.classDistributions[0]?.receiptRefs).toEqual([])
     expect(projection.classDistributions[0]?.digestCommitmentRefs).toEqual([
