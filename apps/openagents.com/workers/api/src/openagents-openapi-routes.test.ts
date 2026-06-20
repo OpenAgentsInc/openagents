@@ -147,6 +147,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/training/runs/{trainingRunRef}/standby-dispatch-preflight',
+        'post',
+      ).operationId,
+    ).toBe('preflightTrainingStandbyDispatch')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/verification-challenges/{challengeRef}',
         'get',
       ).operationId,
@@ -612,6 +619,13 @@ describe('OpenAgents OpenAPI route', () => {
     ).toBe('getPublicTassadarFirstRealSettlementReplay')
     expect(
       operationAt(body, '/api/hygiene-lane/debt-receipts', 'post').security,
+    ).toEqual([{ adminBearer: [] }])
+    expect(
+      operationAt(
+        body,
+        '/api/training/runs/{trainingRunRef}/standby-dispatch-preflight',
+        'post',
+      ).security,
     ).toEqual([{ adminBearer: [] }])
     expect(
       operationAt(body, '/api/customer-orders/active', 'get').security,

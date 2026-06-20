@@ -86,6 +86,25 @@ This is contract-level only: a `promote_standby` verdict means the standby is
 *eligible* for promotion. It grants no dispatch, settlement, promise-state, or
 green-claim authority, and no promise state or blocker list was changed.
 
+## 2026-06-20 standby dispatch preflight route
+
+The standby predicate is now reachable through the Worker as an admin-gated
+preflight:
+
+- `POST /api/training/runs/{trainingRunRef}/standby-dispatch-preflight`
+  verifies the run exists, evaluates a public-safe `TrainingStandbyDispatch`
+  descriptor, and returns the typed `promote_standby` / `hold_standby` gate.
+- The route fails malformed descriptors and path/body run-ref mismatches toward
+  `hold_standby`; it never turns incomplete evidence into a promotion.
+- The response includes the public run projection plus the gate only. It mutates
+  no run/window/lease state, writes no receipt, dispatches no standby, spends no
+  funds, and grants no promise-state authority.
+- OpenAPI and route tests cover the route contract.
+
+This still does **not** clear `standby_dispatch_missing`: there is no live
+heartbeat/vacancy telemetry feed and no receipt-backed standby promotion in a
+real run.
+
 ### What genuinely remains for the standby blocker
 
 - A real standby promoted into a live run (a recorded, receipt-backed live
