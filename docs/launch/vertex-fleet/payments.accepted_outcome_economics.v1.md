@@ -155,6 +155,52 @@ names each runner/reviewer/originator/referrer), and the `not_yet_evidenced`
 payable/settlement evidence that depends on the untouched
 `settlement_state_machine_incomplete` blocker. The blocker stays listed.
 
+## Follow-on change: contributor party sourcing
+
+`apps/openagents.com/workers/api/src/omni-contributor-party-sourcing.ts` — a
+pure, deterministic resolver that closes the "real per-outcome party sourcing"
+gap the share policy left to its caller. Every prior call site had to invent the
+contributor ids; this reads them from a CANONICAL location on a persisted
+economics record (`metadata.contributors` →
+`{ runnerId, reviewerId?, originatorId?, referrerId?, platformId? }`) and returns
+the exact `OmniContributorSharePolicyInput` the share policy consumes.
+
+Honesty discipline mirrors the rest of the pipeline:
+
+- `metadata.contributors` must be an OBJECT and must name a `runnerId`; a missing
+  block, a non-object value, or an unnamed runner FAILS
+  (`OmniContributorPartySourcingError`) rather than fabricating a contributor —
+  the absence of party provenance can never be silently papered over.
+- Present ids must be non-empty strings; safe-ref shape and cross-role
+  uniqueness stay enforced downstream by the share policy, so a sourced input
+  plugs straight into `resolveOmniContributorShares`.
+- Absent optional roles are omitted (no `undefined`-valued keys), keeping the
+  output canonical and the resolver deterministic.
+
+It also adds `buildOmniContributorAccrualBundleFromRecord(record)`, the single
+dereference point the blocker calls for: given one stored economics record,
+produce the reconciled receipt + accrual bundle without any call site re-stating
+who the contributors are, with the bundle's cross-view reconciliation,
+share-sum, and settlement-disclaimed invariants all preserved.
+
+Tests: `apps/openagents.com/workers/api/src/omni-contributor-party-sourcing.test.ts`
+(14 tests, passing) cover runner-only and all-role sourcing, omission of absent
+optional fields, determinism, missing/non-object/array contributors rejection,
+missing-runner rejection, wrong-type and empty-string id rejection, the tagged
+error type, and the end-to-end record→bundle binder (including failure
+propagation and settlement staying disclaimed).
+
+This advances `blocker.product_promises.contributor_ledger_missing` —
+**partially advanced, NOT cleared.** It turns the share policy from "caller hands
+parties in" into "parties sourced from the persisted record itself", closing the
+party-provenance half of what remained. What STILL remains for this blocker: a
+PERSISTED/queryable bundle record + HTTP read route to dereference by
+accepted-outcome id (the resolver is pure and not yet wired into a route), the
+producer side that WRITES `metadata.contributors` from real workroom/contract
+events, and the `not_yet_evidenced` payable/settlement evidence that depends on
+the untouched `settlement_state_machine_incomplete` blocker. The blocker stays
+listed in the registry.
+
 ## What genuinely remains (blocker stays listed)
 
 - A persisted/queryable receipt record and a read route so a reviewer can
