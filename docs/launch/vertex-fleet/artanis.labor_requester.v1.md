@@ -203,6 +203,37 @@ of the public feed). This run closes that gap:
   receipts) instead of a silent break. Mints no payment, identity, or settlement
   authority.
 
+## What this run adds (consumer-side feed verification)
+
+The serving side already re-verifies every sealed receipt against the ref it is
+keyed under before projecting it, but a **third party reading the public JSON
+feed** had no library function to confirm the same thing for itself — it had to
+trust the server's `receiptRef`. A feed row carries exactly the eight canonical
+receipt fields plus that served ref, so a consumer can reconstruct the canonical
+receipt from the row's own public fields, re-derive its content-address, and
+confirm it matches the served name without trusting the server. This run closes
+that gap:
+
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.ts`
+  - `verifyArtanisLaborReceiptFeedRow(row)` reconstructs the canonical receipt
+    from a feed row's public fields, re-serializes it through the canonical-form
+    gate, re-derives its content-address, and confirms it matches the served
+    `receiptRef` — throwing `ArtanisLaborReceiptError` if the row is internally
+    inconsistent (e.g. a budget on a non-placed state) or any public field was
+    mutated away from the ref it is served under. Returns the validated receipt.
+  - `verifyArtanisLaborReceiptFeed(feed)` runs that check over every row in a
+    feed projection, throwing on the first inconsistent row, so a non-throwing
+    return means every served receipt is self-consistent. This is the entry
+    point an external auditor calls against
+    `GET /api/public/artanis/labor-receipts`. Mints no payment, identity, or
+    settlement authority; reads only public fields.
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-feed-verify.test.ts`
+  - 8 cases: clean row re-derives its served ref, derived receipt equals the
+    sealed source, tampered served ref rejected, internally inconsistent row
+    rejected (budget on a skipped state), mutated public field rejected, full
+    clean feed verified-and-counted, empty feed verifies to zero, and a feed with
+    one forged row throws on that row.
+
 ## What remains
 
 - The receipt is now **minted by a run, persistable, dereferenceable,
