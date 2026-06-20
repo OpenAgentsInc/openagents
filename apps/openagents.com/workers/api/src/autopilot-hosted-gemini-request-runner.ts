@@ -45,6 +45,11 @@ import { Effect, Exit } from 'effect'
 
 import type { HostedGeminiInferenceCallerInput } from './autopilot-hosted-gemini-inference-bridge'
 import {
+  type HostedGeminiRefContentResolver,
+  type HostedGeminiResolvedContext,
+  resolveHostedGeminiPromptContext,
+} from './autopilot-hosted-gemini-content-resolver'
+import {
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceResult,
@@ -74,6 +79,13 @@ export type HostedGeminiRequestRunnerConfig = Readonly<{
   model?: string | undefined
   /** Output-token ceiling (defaults to DEFAULT_HOSTED_GEMINI_MAX_OUTPUT_TOKENS). */
   maxOutputTokens?: number | undefined
+  /**
+   * Optional INJECTED resolver that dereferences the work order's task +
+   * acceptance refs into public-safe content. When provided (and the runner is
+   * armed) the request embeds the resolved content; when absent or unresolvable
+   * the request keeps the existing refs-only frame.
+   */
+  resolveRefContent?: HostedGeminiRefContentResolver | undefined
 }>
 
 const isNonEmptyRef = (value: string): boolean => value.trim() !== ''
@@ -89,7 +101,11 @@ const isNonEmptyRef = (value: string): boolean => value.trim() !== ''
  */
 export const buildHostedGeminiInferenceRequest = (
   input: HostedGeminiInferenceCallerInput,
-  options: Readonly<{ model: string; maxOutputTokens: number }>,
+  options: Readonly<{
+    model: string
+    maxOutputTokens: number
+    resolvedContext?: HostedGeminiResolvedContext | undefined
+  }>,
 ): InferenceRequest | undefined => {
   if (!isNonEmptyRef(input.workOrderRef) || !isNonEmptyRef(input.taskRef)) {
     return undefined
@@ -104,6 +120,18 @@ export const buildHostedGeminiInferenceRequest = (
       ? [`objectives=${objectiveRefs.join(',')}`]
       : []),
   ]
+
+  // Embed dereferenced, public-safe content (when a resolver supplied it) so the
+  // model acts on the real task instead of opaque refs. The content is already
+  // secret-scrubbed by the resolver's sanitizer; refs above stay for provenance.
+  const resolved = options.resolvedContext
+  if (resolved !== undefined) {
+    userLines.push('', '--- resolved task content (public-safe) ---')
+    userLines.push(`task_content: ${resolved.taskContent}`)
+    resolved.objectiveContents.forEach((content, index) => {
+      userLines.push(`objective_content[${index}]: ${content}`)
+    })
+  }
 
   return {
     messages: [
@@ -135,9 +163,16 @@ export const createHostedGeminiRequestRunner = (
     if (!config.enabled) {
       return undefined
     }
+    // Best-effort dereference of the work order's refs into public-safe content;
+    // `undefined` (no resolver, or nothing safe resolved) keeps the refs-only frame.
+    const resolvedContext =
+      config.resolveRefContent === undefined
+        ? undefined
+        : await resolveHostedGeminiPromptContext(input, config.resolveRefContent)
     const request = buildHostedGeminiInferenceRequest(input, {
       maxOutputTokens,
       model,
+      ...(resolvedContext === undefined ? {} : { resolvedContext }),
     })
     if (request === undefined) {
       return undefined

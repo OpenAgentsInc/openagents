@@ -151,6 +151,38 @@ describe('createHostedGeminiRequestRunner', () => {
     expect(complete).not.toHaveBeenCalled()
   })
 
+  test('embeds resolver-supplied public-safe content in the request when armed', async () => {
+    const { adapter, complete } = succeedingAdapter(geminiResult())
+    const runner = createHostedGeminiRequestRunner({
+      adapter,
+      enabled: true,
+      resolveRefContent: async (ref: string) => `resolved:${ref}`,
+    })
+    await runner(callerInput)
+    const request = complete.mock.calls[0]?.[0] as InferenceRequest
+    const user = request.messages[1]?.content ?? ''
+    // Refs stay for provenance; resolved content is appended.
+    expect(user).toContain('task=task.work-1.a1')
+    expect(user).toContain('task_content: resolved:task.work-1.a1')
+    expect(user).toContain(
+      'objective_content[0]: resolved:acceptance.work-1.a1.criteria',
+    )
+  })
+
+  test('keeps the refs-only frame when the resolver returns nothing safe', async () => {
+    const { adapter, complete } = succeedingAdapter(geminiResult())
+    const runner = createHostedGeminiRequestRunner({
+      adapter,
+      enabled: true,
+      resolveRefContent: async () => undefined,
+    })
+    await runner(callerInput)
+    const request = complete.mock.calls[0]?.[0] as InferenceRequest
+    const user = request.messages[1]?.content ?? ''
+    expect(user).toContain('task=task.work-1.a1')
+    expect(user).not.toContain('resolved task content')
+  })
+
   test('folds a typed adapter failure into undefined (never throws)', async () => {
     const runner = createHostedGeminiRequestRunner({
       adapter: failingAdapter(
