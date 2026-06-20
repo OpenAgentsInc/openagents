@@ -224,6 +224,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/post-training-arc/vibe-test-closeout',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPostTrainingVibeTestCloseout')
+    expect(
+      operationAt(
+        body,
         '/api/public/models/tassadar-percepta-executor/architecture-receipts',
         'get',
       ).operationId,

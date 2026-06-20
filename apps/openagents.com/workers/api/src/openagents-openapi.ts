@@ -31,6 +31,7 @@ import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-dis
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
+import { TrainingPostTrainingVibeTestCloseoutEndpoint } from './training-post-training-vibe-test-closeout'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -1125,6 +1126,110 @@ export const TrainingPostTrainingDpoPreferenceWorkloadEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingPostTrainingVibeTestCloseoutEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe post-training vibe-test machine-checked closeout projection for training.post_training_arc.v1. Carries generatedAt, a live_at_read staleness contract, one deterministic_recompute receipt for the owned vibe-test rubric over the repo-owned example transcript set with its reproducible closeoutDigestHex and aggregate stats, plus explicit gate fields showing machineCheckedCloseoutAvailable=true while reviewerSignedCloseoutAvailable=false, vibeTestArtifactAvailable=false, and greenGateSatisfied=false. It exposes refs, counts, and digests only: no raw prompts, completions, reviewer identities, private logs, wallet material, payment material, model-service claim, model-promotion claim, dispatch authority, settlement, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'receiptSummary',
+    'receipts',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingPostTrainingVibeTestCloseoutEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'greenGateSatisfied',
+        'machineCheckedCloseoutAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+        'remainingProductBlockerRefs',
+        'reviewerSignedCloseoutAvailable',
+        'vibeTestArtifactAvailable',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        greenGateSatisfied: { type: 'boolean' },
+        machineCheckedCloseoutAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+        remainingProductBlockerRefs: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        reviewerSignedCloseoutAvailable: { type: 'boolean' },
+        vibeTestArtifactAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.post_training_arc.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    receiptSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'machineCheckedCloseoutCount',
+        'reviewerSignedCloseoutCount',
+      ],
+      properties: {
+        machineCheckedCloseoutCount: { type: 'integer', minimum: 0 },
+        reviewerSignedCloseoutCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    receipts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'artifactRef',
+          'closeoutDigestHex',
+          'machineCheckedAvailable',
+          'receiptRef',
+          'reviewerSigned',
+          'rubricRef',
+          'verificationClass',
+        ],
+        properties: {
+          artifactRef: { type: 'string' },
+          closeoutDigestHex: { type: 'string' },
+          machineCheckedAvailable: { type: 'boolean' },
+          receiptRef: { type: 'string' },
+          reviewerSigned: { type: 'boolean' },
+          rubricRef: { type: 'string' },
+          verificationClass: { type: 'string' },
+        },
+      },
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
   minLength: 1,
@@ -1410,6 +1515,7 @@ const schemaComponents = (): JsonSchema => ({
   TassadarPerceptaArchitectureReceiptsEnvelope,
   TrainingPostTrainingInstructSftEnvelope,
   TrainingPostTrainingDpoPreferenceWorkloadEnvelope,
+  TrainingPostTrainingVibeTestCloseoutEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, and thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
@@ -5547,6 +5653,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Post-training DPO preference workload projection.',
           '#/components/schemas/TrainingPostTrainingDpoPreferenceWorkloadEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingPostTrainingVibeTestCloseoutEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingPostTrainingVibeTestCloseout',
+      summary: 'Read post-training vibe-test closeout projection',
+      description:
+        'Returns the public-safe vibe-test machine-checked closeout projection for training.post_training_arc.v1. The bounded receipt proves the owned, versioned vibe-test rubric and its deterministic closeout over the repo-owned example transcript set, with a reproducible closeoutDigestHex and aggregate stats. It is prerequisite evidence only: a reviewer-signed closeout artifact is still missing, so reviewerSignedCloseoutAvailable, vibeTestArtifactAvailable, and greenGateSatisfied remain false. Read-only; grants no model promotion, assignment, spend, settlement, model-service, or green product-promise authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Post-training vibe-test closeout projection.',
+          '#/components/schemas/TrainingPostTrainingVibeTestCloseoutEnvelope',
         ),
         ...errorResponses(),
       },

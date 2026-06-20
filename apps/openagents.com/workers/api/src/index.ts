@@ -65,6 +65,10 @@ import {
   handleTrainingPostTrainingDpoPreferenceWorkloadApi,
 } from './training-post-training-dpo-preference-workload-routes'
 import {
+  TrainingPostTrainingVibeTestCloseoutEndpoint,
+  handleTrainingPostTrainingVibeTestCloseoutApi,
+} from './training-post-training-vibe-test-closeout-routes'
+import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   handleTassadarPerceptaArchitectureReceiptsApi,
 } from './tassadar-percepta-architecture-receipts-routes'
@@ -8144,6 +8148,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
     handler: request =>
       handleTrainingPostTrainingDpoPreferenceWorkloadApi(request),
+  },
+  {
+    // Post-training vibe-test machine-checked closeout projection (#5523 /
+    // DE-5 #5528; promise training.post_training_arc.v1, planned). Read-only
+    // deterministic closeout receipt over the repo-owned example transcripts:
+    // publishes the rubric ref, reproducible closeoutDigestHex, and stats while
+    // reviewerSignedCloseoutAvailable, vibeTestArtifactAvailable, and the green
+    // gate remain false. No model promotion, dispatch, spend, settlement,
+    // reviewer-signed artifact, or green claim.
+    path: TrainingPostTrainingVibeTestCloseoutEndpoint,
+    handler: request =>
+      handleTrainingPostTrainingVibeTestCloseoutApi(request),
   },
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;

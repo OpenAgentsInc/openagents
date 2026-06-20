@@ -4,6 +4,73 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (c) — vibe-test closeout public projection
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.vibe_test_artifact_missing` — advanced, **not
+cleared**.
+
+The owned vibe-test rubric and its deterministic machine-checked closeout
+already existed in `post-training-vibe-test-rubric.ts` (see section (b) below),
+but — unlike the instruct-SFT and DPO lanes — there was **no public route**
+exposing the closeout receipt. This change publishes the machine-checked half of
+the closeout as a public-safe, live-at-read projection so the missing
+reviewer-signed gate is inspectable next to its sibling lanes.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/training-post-training-vibe-test-closeout.ts`
+  - Public-safe projection `projectTrainingPostTrainingVibeTestCloseout` and
+    receipt `receipt.training.post_training_arc.vibe_test_closeout.machine_checked.v1`
+    over `rubric.training.post_training_arc.vibe_test.v1`.
+  - Committed `closeoutDigestHex` constant
+    `6312b3054b0a94e5a3a45bc3818e3014416f34f6c82582070d088e742370efc8`,
+    recomputed live by the colocated test so rubric/corpus drift fails CI.
+  - Gate fields: `machineCheckedCloseoutAvailable=true` while
+    `reviewerSignedCloseoutAvailable=false`, `vibeTestArtifactAvailable=false`,
+    and `greenGateSatisfied=false`. The same public-safety leakage assertion as
+    the DPO lane runs over the receipt and projection.
+- `apps/openagents.com/workers/api/src/training-post-training-vibe-test-closeout-routes.ts`
+  - `GET /api/public/training/post-training-arc/vibe-test-closeout` (GET-only).
+- `apps/openagents.com/workers/api/src/training-post-training-vibe-test-closeout.test.ts`
+  - 3 committed tests: committed digest reproduces the live closeout,
+    projection keeps the reviewer-signed gate open, and the single receipt is
+    the deterministic machine-checked closeout.
+- Wiring: `index.ts` route entry, `openagents-openapi.ts`
+  `TrainingPostTrainingVibeTestCloseoutEnvelope` schema + path operation
+  `getTrainingPostTrainingVibeTestCloseout`, and the two route-manifest tests
+  (`worker-exact-routes.test.ts`, `openagents-openapi-routes.test.ts`).
+
+### Honesty boundary (why the blocker stays open)
+
+`reviewerSigned`/`reviewerSignedCloseoutAvailable` are hard-coded `false` and
+the transcripts remain repo-owned fixture text. This projection only exposes the
+machine-checked half of the artifact; it does not forge a reviewer signature,
+grade real Psion instruct-model transcripts, promote a checkpoint, or claim
+green. `vibe_test_artifact_missing` stays open.
+
+### Validation
+
+- `bunx tsc -p tsconfig.json --noEmit` (workers/api): **0 errors**.
+- `bun run check:deploy`: passes (exit 0).
+- Pre-existing, unrelated: `src/worker-exact-routes.test.ts` already fails at
+  HEAD because the live manifest contains `/v1/models` which is absent from that
+  test's approved list (confirmed by re-running on a clean stash). This test is
+  not part of `check:deploy`; my route addition is correctly reflected in both
+  manifest tests and the only remaining diff is the unrelated `/v1/models` row.
+
+### What remains for `vibe_test_artifact_missing`
+
+Still open: no real instruct-model transcripts graded and no owner/reviewer
+signed closeout artifact. A green closeout needs reviewed real transcripts plus
+a human signature against this rubric.
+
+---
+
 ## 2026-06-20 (b) — vibe-test rubric reference module
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
