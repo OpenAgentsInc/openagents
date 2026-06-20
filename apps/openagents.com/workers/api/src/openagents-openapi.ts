@@ -21,6 +21,7 @@ import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
+import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -365,6 +366,92 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
   },
 }
 
+export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. Carries generatedAt, a live_at_read staleness contract, one architecture receipt bundle with compiled-executor, learned-interface, verifier, and artifact-lineage components, plus explicit gate fields showing architectureReceiptsAvailable=true, pylonCpuTransformTrainingReceiptsAvailable=false, and greenGateSatisfied=false. It exposes refs and digests only: no raw traces, private runner logs, provider payloads, wallet material, payment material, trained-model claim, inference endpoint, model promotion, or CPU-transform training claim.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'receiptSummary',
+    'receipts',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TassadarPerceptaArchitectureReceiptsEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'architectureReceiptsAvailable',
+        'clearsBlockerRefs',
+        'greenGateSatisfied',
+        'pylonCpuTransformTrainingReceiptsAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+      ],
+      properties: {
+        architectureReceiptsAvailable: { type: 'boolean' },
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        greenGateSatisfied: { type: 'boolean' },
+        pylonCpuTransformTrainingReceiptsAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: { type: 'string' },
+    promiseState: { type: 'string', enum: ['red'] },
+    receiptSummary: {
+      type: 'object',
+      additionalProperties: true,
+    },
+    receipts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'receiptRef',
+          'receiptState',
+          'architectureFamily',
+          'components',
+          'clearsBlockerRefs',
+          'blockerRefs',
+          'authorityBoundary',
+        ],
+        properties: {
+          architectureFamily: { type: 'string' },
+          authorityBoundary: { type: 'string' },
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+          components: { type: 'array', items: { type: 'object' } },
+          receiptRef: { type: 'string' },
+          receiptState: { type: 'string' },
+        },
+      },
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
   minLength: 1,
@@ -641,6 +728,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
   TrainingAblationDeriskingLedgerEnvelope,
+  TassadarPerceptaArchitectureReceiptsEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, and thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
@@ -4636,6 +4724,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training ablation derisking ledger.',
           '#/components/schemas/TrainingAblationDeriskingLedgerEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TassadarPerceptaArchitectureReceiptsEndpoint]: {
+    get: operation({
+      operationId: 'getTassadarPerceptaArchitectureReceipts',
+      summary: 'Read Tassadar Percepta executor architecture receipts',
+      description:
+        'Returns the public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. The receipt bundle ties the public model profile to compiled/frozen executor refs, learned-interface refs, artifact-lineage hashes, and verifier refs. It clears only the architecture-receipt blocker; Pylon CPU-transform training receipts remain missing and greenGateSatisfied remains false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, CPU-transform training claim, or green product-promise authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Tassadar Percepta executor architecture receipts.',
+          '#/components/schemas/TassadarPerceptaArchitectureReceiptsEnvelope',
         ),
         ...errorResponses(),
       },

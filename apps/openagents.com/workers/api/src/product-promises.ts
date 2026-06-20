@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.27'
+export const PublicProductPromisesVersion = '2026-06-20.28'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -24,6 +24,7 @@ const sourceRefs = [
   'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
   'docs/training/2026-06-20-cs336-a2-thermal-throttle-classifier.md',
   'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
+  'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -805,26 +806,28 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Tassadar model direction uses a Percepta Executor Class architecture, with CPU computation transformation support added to Pylon v1.0 for experimental training.',
         safeCopy:
-          'Episode 236 names a Tassadar/Percepta Executor Class direction. The public model/spec boundary is now written down in docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md: model name, runtime boundary, Pylon integration shape, training/eval plan, artifact-lineage requirements, and safety notes. Treat Pylon integration receipts, architecture receipts, CPU-transform training receipts, and public model evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no public model claim and does not move this promise.',
+          'Episode 236 names a Tassadar/Percepta Executor Class direction. The public model/spec boundary is written down in docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md, and a public-safe architecture receipt projection is now live at GET /api/public/models/tassadar-percepta-executor/architecture-receipts with receipt.models.tassadar_percepta_executor.architecture.bundle.v1 tying the model profile to Psionic compiled-executor bundles, the W3 baseline-D frozen-executor learned-interface receipt, artifact-lineage hashes, and exact-trace verifier refs. Treat Pylon CPU-transform training receipts and public model evidence as unresolved until receipts exist. The bounded executor proof of concept is green (compute.tassadar_executor_poc.v1) but proves exact replay only, not a model. The 2026-06-14 W3 student-program report validated the frozen-analytic-executor-plus-learned-interface research direction (baseline D reached exact-rollout pass@1 while purely-learned baselines failed) but is explicitly research/evaluation only: it creates no trained-model claim and does not make this promise green.',
         unsafeCopy:
-          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, or is earning contributors Bitcoin, and do not present the W3 student-program results or the executor PoC as proof of a trained Percepta model.',
+          'Do not claim a Tassadar trained model exists, is trained, outperforms CPUs, replaces a CPU, has run Pylon CPU-transform training, or is earning contributors Bitcoin, and do not present the architecture receipt, W3 student-program results, or executor PoC as proof of a trained Percepta model.',
         evidenceRefs: [
           'docs/transcripts/236.md',
           'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
           'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
           'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
+          'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
+          'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
+          'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
           'docs/tassadar/2026-06-14-w3-student-program-report.md',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:artanis.tassadar_evolution_loop.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.percepta_executor_architecture_receipts_missing',
           'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
         ],
         verification:
-          'The public model/spec boundary is now documented at docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md: model name, runtime boundary, Pylon integration shape, staged training/eval plan, artifact-lineage requirements, safety notes, and remaining receipt gates. This clears blocker.product_promises.tassadar_model_spec_missing. Green still requires Percepta executor architecture receipts and Pylon CPU-transform training receipts carrying public-safe refs for model profile/config/checkpoint/eval digests, accepted work, verifier verdicts, and settlement where real money moved.',
+          'The public model/spec boundary is documented at docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md, and the architecture receipt projection at /api/public/models/tassadar-percepta-executor/architecture-receipts now carries receipt.models.tassadar_percepta_executor.architecture.bundle.v1 with public-safe refs for the model profile, Psionic compiled/frozen executor components, W3 baseline-D learned-interface components, checkpoint/interface/eval digests, and exact-trace verifier refs. This clears blocker.product_promises.tassadar_model_spec_missing and blocker.product_promises.percepta_executor_architecture_receipts_missing. Green still requires Pylon CPU-transform training receipts carrying assignment refs, accepted work, verifier verdicts, and settlement where real money moved.',
         authorityBoundary:
-          'The scoped Tassadar executor PoC proves bounded exact replay only; it does not prove a model-training architecture, general model capability, or paid earning path.',
+          'The scoped Tassadar executor PoC and architecture receipts prove bounded exact replay plus public architecture lineage only; they do not prove a trained model, Pylon CPU-transform training, general model capability, inference endpoint, settlement, or paid earning path.',
       },
       {
         ...basePromiseFields,
@@ -3509,6 +3512,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.25 is a models.tassadar_percepta_executor.v1 model/spec pass and flips NO promise state (stays red, green count unchanged at 24). docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md now names the Tassadar Percepta Executor lane, its runtime boundary, Pylon integration shape, staged training/eval plan, artifact-lineage requirements, safety notes, and remaining receipt gates. This clears blocker.product_promises.tassadar_model_spec_missing only. The remaining blockers are blocker.product_promises.percepta_executor_architecture_receipts_missing and blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing. No trained model, architecture receipt, CPU-transform training receipt, inference endpoint, settlement, model promotion, or model-capability claim is created.',
         'Registry 2026-06-20.26 is a training.device_capability_dataset.v1 thermal-classifier pass and flips NO promise state (stays yellow, green count unchanged at 24). GET /api/training/device-capabilities/a2 and each A2 run-level dataset projection now expose thermalThrottleSignals, thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs derived only from admitted sustained_vs_burst_throughput_ratio rows. The deterministic rule uses the existing 0.8 sustained-vs-burst ratio floor: verified rows below the floor report thermal_throttle_observed; verified rows at or above it report thermal_throttle_not_observed; measured_unsettled or otherwise unverified rows report needs_verified_thermal_probe; missing rows report missing. The product blocker blocker.product_promises.thermal_throttle_detection_missing STAYS because no live production contributor row currently reports a verified sustained-vs-burst thermal probe, and this is a projection classifier, not continuous fleet monitoring. blocker.product_promises.same_host_replication_caveat is untouched. No paid assignment, verification verdict, settlement, earning estimate, green flip, or capability claim is created. Evidence: docs/training/2026-06-20-cs336-a2-thermal-throttle-classifier.md.',
         'Registry 2026-06-20.27 is a training.ablation_system.v1 eval-reproduction pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/ablation-derisking-ledger now carries evalReproductionReceipts with one retained Psion actual-pretraining checkpoint-eval decision projected as receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1, source schema psion.actual_pretraining_checkpoint_eval_decision.v1, frozen checkpoint eval pack benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02, four gates passed, aggregatePassRateBps 10000, aggregateScoreBps 8532, decisionState continue. This clears blocker.product_promises.eval_suite_reproduction_missing only. The promise remains planned on blocker.product_promises.paid_ablation_dispatch_missing: no OpenAgents ablation cell has been dispatched as paid work, no assignment settled, no ablation verdict was accepted, and no model promotion or training-decision claim is created. Evidence: docs/training/2026-06-20-ablation-eval-reproduction-receipt.md.',
+        'Registry 2026-06-20.28 is a models.tassadar_percepta_executor.v1 architecture-receipt pass and flips NO promise state (stays red, green count unchanged at 24). GET /api/public/models/tassadar-percepta-executor/architecture-receipts now serves a public-safe, live-at-read architecture receipt bundle receipt.models.tassadar_percepta_executor.architecture.bundle.v1 tying the model profile to Psionic compiled-executor bundles, the W3 baseline-D frozen-executor learned-interface receipt, artifact-lineage hashes, and exact-trace verifier refs. This clears blocker.product_promises.percepta_executor_architecture_receipts_missing only. The promise remains red on blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing: no Pylon CPU-transform training assignment has run, no accepted work or verifier verdict exists for that training path, no settlement moved, and no trained-model, inference, model-promotion, or capability claim is created. Evidence: docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
