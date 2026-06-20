@@ -1479,11 +1479,12 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/omni-source-authorized-business-objects.test.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.test.ts',
+          'apps/openagents.com/workers/api/src/omni-connector-read-receipts.ts',
+          'apps/openagents.com/workers/api/src/omni-connector-read-receipts.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/5532',
         ],
         blockerRefs: [
           'blocker.product_promises.source_authority_model_not_green',
-          'blocker.product_promises.connector_read_receipts_missing',
           'blocker.product_promises.approval_gated_business_writes_missing',
         ],
         verification:
@@ -2572,6 +2573,8 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/omni-source-authorized-business-objects.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.ts',
           'apps/openagents.com/workers/api/src/omni-workroom-business-object-delivery.test.ts',
+          'apps/openagents.com/workers/api/src/omni-connector-read-receipts.ts',
+          'apps/openagents.com/workers/api/src/omni-connector-read-receipts.test.ts',
           'GET /api/omni/workrooms/:id/source-authority',
           'https://github.com/OpenAgentsInc/openagents/issues/4973',
           'https://github.com/OpenAgentsInc/openagents/issues/4977',
@@ -4031,6 +4034,8 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.54 is a markets.open_protocol_markets.v1 de-stale pass and flips NO promise state. The public unified open-markets surface already exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeleton projections at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton, so blocker.product_promises.open_markets_unified_surface_missing is removed. The promise remains planned: liquidity/risk are skeleton-only, compute/data are not broadly live paid markets, and green still requires real participant transactions plus dereferenceable settlement receipts across all six markets. No market-making, matching, insurance underwriting, liquidity transaction, settlement, payout, or green claim is created.',
         'Registry 2026-06-20.55 is a marketplace.compose_and_list_products.v1 de-stale pass and flips NO promise state. The inert public composed-products surface already exists at GET /api/public/marketplace/composed-products, backed by the typed product-definition model and read-only listing/discovery projection, so the broad blocker.product_promises.marketplace_listing_lifecycle_unbuilt is replaced with the narrower blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt. The promise remains planned: there is still no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, and no billing, attribution, rev-share, sale receipt, or settlement. No marketplace sale, install, fulfillment, payout, settlement, or green claim is created.',
         'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
+        'Registry 2026-06-20.57 is a workrooms.source_authorized_business_objects.v1 connector read receipt pass and flips NO promise state (stays red; green count unchanged). The typed contract and projection for a connector read receipt now exist in omni-connector-read-receipts.ts with tests, providing the typed evidence record that proves an agent or runtime actually read a specific piece of data from a connector source. This closes the loop for the connectorReadReceiptRefs in the source-authority model. This clears blocker.product_promises.connector_read_receipts_missing. The promise remains RED: green requires the flag-gated inert delivery seam to be enabled end-to-end with a real source-authorized approval-gated workroom write, a closeout receipt, and owner sign-off. Zero green flips.',
+
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

@@ -2,11 +2,15 @@
 
 This change advances the `workrooms.source_authorized_business_objects.v1` promise by addressing the `blocker.product_promises.connector_read_receipts_missing` blocker.
 
-**What was built:**
-- Added `connectorReadReceiptRefs` property to `OmniBusinessObjectWriteRecord` and `OmniBusinessObjectWriteProjection` in the source-authorized business objects model (`omni-source-authorized-business-objects.ts`).
-- Added strict safety checks in `assertRecordSafe` to enforce that any business-object write originating from a `connector_read` source kind MUST provide at least one connector read receipt ref.
-- Updated public projection redaction to ensure `connectorReadReceiptRefs` are properly stripped for public/agent audiences and exposed for operator/private audiences.
-- Expanded the test suite in `omni-source-authorized-business-objects.test.ts` to verify the connector read receipt checks, rejecting writes (chat-text-only inference) that claim connector source without receipts.
+**What was built (Previous):**
+- Added `connectorReadReceiptRefs` property to `OmniBusinessObjectWriteRecord`.
+- Added strict safety checks requiring connector read receipt refs for `connector_read` sources.
+
+**What was built (Current):**
+- Created the typed contract and projection for the connector read receipt itself in `apps/openagents.com/workers/api/src/omni-connector-read-receipts.ts`.
+- Implemented `OmniConnectorReadReceiptRecord` and `OmniConnectorReadReceiptProjection` to prove that an agent/runtime actually read a specific piece of data from a connector source.
+- Added strict public-safe projection rules (`projectOmniConnectorReadReceipt`) ensuring unsafe material (like raw connector payloads, customer data, and private paths) is never exposed to public/agent audiences.
+- Added full test suite in `omni-connector-read-receipts.test.ts` verifying redaction and projection safety.
 
 **What remains:**
 - `blocker.product_promises.source_authority_model_not_green`
