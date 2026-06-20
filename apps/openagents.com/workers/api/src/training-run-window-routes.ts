@@ -45,7 +45,10 @@ import {
 import {
   Cs336A2DeviceBenchmarkEvidenceRequest,
   admitCs336A2DeviceBenchmarkEvidence,
+  buildDeviceCapabilityThermalThrottleSignals,
   publicDeviceCapabilityProjection,
+  thermalThrottleBlockerRefs,
+  thermalThrottleDetectionStatus,
 } from './training-device-capability'
 import {
   TrainingLeaderboardLanes,
@@ -1668,6 +1671,8 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         .filter(distribution => distribution.verified)
         .map(distribution => distribution.deviceClassRef),
     ).size
+    const dashboardThermalThrottleSignals =
+      buildDeviceCapabilityThermalThrottleSignals(classDistributions)
 
     return noStoreJsonResponse({
       blockerRefs:
@@ -1689,6 +1694,13 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         'route:/api/training/device-capabilities/a2',
         'route:/api/training/runs',
       ],
+      thermalThrottleBlockerRefs: thermalThrottleBlockerRefs(
+        dashboardThermalThrottleSignals,
+      ),
+      thermalThrottleDetectionStatus: thermalThrottleDetectionStatus(
+        dashboardThermalThrottleSignals,
+      ),
+      thermalThrottleSignals: dashboardThermalThrottleSignals,
     })
   })
 

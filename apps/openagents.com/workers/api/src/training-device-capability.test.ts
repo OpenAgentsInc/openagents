@@ -47,6 +47,11 @@ describe('CS336 A2 device capability projection', () => {
       observedMeasurementCount: 0,
       requiredSameClassSampleCount: 3,
       schemaVersion: 'openagents.training.device_capability_dataset.v1',
+      thermalThrottleBlockerRefs: [
+        'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
+      ],
+      thermalThrottleDetectionStatus: 'missing',
+      thermalThrottleSignals: [],
     })
     expect(Cs336A2DeviceBenchmarkJobKind).toBe('cs336_a2_device_benchmark')
     expect(
@@ -153,6 +158,10 @@ describe('CS336 A2 device capability projection', () => {
     })
 
     expect(projection.blockerRefs).toEqual([])
+    expect(projection.thermalThrottleDetectionStatus).toBe('missing')
+    expect(projection.thermalThrottleBlockerRefs).toEqual([
+      'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
+    ])
     expect(projection.observedDeviceClassCount).toBe(1)
     expect(projection.observedMeasurementCount).toBe(1)
     expect(projection.classDistributions[0]).toMatchObject({
@@ -368,6 +377,20 @@ describe('CS336 A2 device capability projection', () => {
     })
 
     expect(projection.observedMeasurementCount).toBe(2)
+    expect(projection.thermalThrottleDetectionStatus).toBe(
+      'thermal_throttle_not_observed',
+    )
+    expect(projection.thermalThrottleBlockerRefs).toEqual([])
+    expect(projection.thermalThrottleSignals[0]).toMatchObject({
+      deviceClassRef: 'device_class.example.rtx_4090_24gb_96gb_host',
+      metric: 'sustained_vs_burst_throughput_ratio',
+      p50Ratio: 0.91,
+      ratioFloor: 0.8,
+      reasonCode:
+        'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor',
+      state: 'thermal_throttle_not_observed',
+      verified: true,
+    })
     expect(projection.classDistributions.map(item => item.metric)).toEqual([
       'host_ram_headroom_gb',
       'sustained_vs_burst_throughput_ratio',
@@ -394,6 +417,15 @@ describe('CS336 A2 device capability projection', () => {
         run,
       }),
     ).toThrow('device-identifying or private material')
+    expect(() =>
+      admitCs336A2DeviceBenchmarkEvidence({
+        nowIso: '2026-06-12T16:05:00.000Z',
+        request: {
+          measurements: [{ ...sustainedMeasurement, unit: 'percent' }],
+        },
+        run,
+      }),
+    ).toThrow('unit ratio')
   })
 
   it('admits a genuinely measured but unsettled second device class without a settlement receipt or earning estimate', () => {
@@ -451,6 +483,65 @@ describe('CS336 A2 device capability projection', () => {
     expect(projection.classDistributions[0]?.digestCommitmentRefs).toEqual([
       'commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0',
     ])
+  })
+
+  it('classifies measured thermal rows as needing verification until a cross-check verdict exists', () => {
+    const run = buildTrainingRunRecord({
+      makeId: () => 'a2-measured-thermal',
+      nowIso: '2026-06-20T00:00:00.000Z',
+      request: {
+        promiseRef: 'training.device_capability_dataset.v1',
+        trainingRunRef: 'run.cs336.a2.device_capability.measured_thermal',
+      },
+    })
+    const measurement = {
+      deviceClassRef: 'device_class.x86_64_linux.intel',
+      digestCommitmentRefs: [
+        'commitment.cs336_a2.sustained_ratio.sha256_thermal_probe',
+      ],
+      max: 0.7,
+      measurementProvenance: 'measured_unsettled' as const,
+      metric: 'sustained_vs_burst_throughput_ratio' as const,
+      min: 0.48,
+      p50: 0.62,
+      p90: 0.68,
+      receiptRefs: [],
+      sampleCount: 24,
+      unit: 'ratio',
+      verificationRefs: [],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    const admitted = admitCs336A2DeviceBenchmarkEvidence({
+      nowIso: '2026-06-20T00:01:00.000Z',
+      request: { measurements: [measurement] },
+      run,
+    })
+    const projection = publicDeviceCapabilityProjection({
+      challenges: [],
+      leases: [],
+      run: admitted,
+      windows: [],
+    })
+
+    expect(projection.thermalThrottleDetectionStatus).toBe(
+      'needs_verified_thermal_probe',
+    )
+    expect(projection.thermalThrottleBlockerRefs).toEqual([
+      'blocker.cs336_a2.requires_verified_sustained_vs_burst_thermal_probe',
+    ])
+    expect(projection.thermalThrottleSignals).toHaveLength(1)
+    expect(projection.thermalThrottleSignals[0]).toMatchObject({
+      blockerRefs: [
+        'blocker.cs336_a2.requires_verified_sustained_vs_burst_thermal_probe',
+      ],
+      measurementProvenance: 'measured_unsettled',
+      p50Ratio: 0.62,
+      reasonCode:
+        'device_capability.public.thermal_probe_needs_statistical_cross_check',
+      state: 'thermal_probe_needs_verification',
+      verified: false,
+    })
   })
 
   it('does not let a run-level verdict mark a measured_unsettled row verified, and rejects unsettled rows that claim receipts, estimates, or no digest', () => {
