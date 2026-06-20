@@ -51,17 +51,32 @@ describe('resolvePartnerPayoutEligibilityInput', () => {
       input: {
         asset: 'usd',
         beneficiaryUserId: 'user_customer',
+        evidenceRefs: ['agreement.partner_a.v1'],
         idempotencyKey: 'partner_payout:evt_123',
         nowIso: EVENT_ISO,
         partnerRef: 'partner.partner_a',
         partnerRole: 'affiliate',
         partnerUserId: 'user_partner_a',
         periodKey: '2026-06',
+        policyRefs: [PARTNER_ATTRIBUTION_POLICY_REF],
         qualifyingAmount: 10000,
         qualifyingEventKind: 'stripe.invoice.paid',
         qualifyingEventRef: 'evt.partner_payout.evt_123',
       },
     })
+  })
+
+  test('persists the attribution basis: agreement ref as evidence, policy ref', () => {
+    const result = resolvePartnerPayoutEligibilityInput(event(), [
+      agreement({ role: 'design_partner' }),
+    ])
+
+    if (result._tag !== 'eligible') {
+      throw new Error('expected eligible')
+    }
+
+    expect(result.input.evidenceRefs).toEqual(['agreement.partner_a.v1'])
+    expect(result.input.policyRefs).toEqual([PARTNER_ATTRIBUTION_POLICY_REF])
   })
 
   test('carries the qualifying event fields and asset through unchanged', () => {
