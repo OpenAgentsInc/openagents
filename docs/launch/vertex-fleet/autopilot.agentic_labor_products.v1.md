@@ -235,3 +235,44 @@ provenance *labelable and enforceable*, but no REAL external (third-party
 real-dollar) settled receipt has been published, so `externalDemandClaimAllowed`
 is `false` everywhere live. A published, real, external, owner-signed settled
 receipt is still required for green.
+
+## Follow-up run (2026-06-20): real-sale claim-upgrade gate (the reviewer's verdict)
+
+The pipeline could MINT a settled receipt, DEREFERENCE it, and CLASSIFY its
+demand provenance — but those three artifacts lived in three modules and nothing
+assembled them into the **single verdict a claim-upgrade review under
+`proof.claim_upgrade_receipts.v1` is actually handed**: "does THIS settlement
+substantiate a real external sale?" A reviewer had to hand-correlate three
+objects, and — the real hole — **nothing checked that the `external` demand
+attestation actually belonged to the settled receipt being reviewed**. An
+`external` attestation minted for order A could be waved over a self-dealt
+receipt for order B and look like a genuine sale.
+
+This run adds the conservative gate (new file
+`apps/openagents.com/workers/api/src/agentic-labor-product-claim-upgrade.ts`):
+
+- `assessLaborProductRealSaleClaim(input, options?)` — a **pure** verdict over
+  four independently-reported gates: a genuine settled receipt; the demand
+  attestation demonstrably belongs to THAT receipt (orderId **and** receiptRef
+  match); that matched attestation classifies the demand `external`; and an owner
+  sign-off ref is present. `realSaleSubstantiated` is true **only** when all four
+  pass. It can only **withhold** a claim, never manufacture one, and **never**
+  flips a promise — every output carries `promiseState: 'yellow'`.
+- `projectLaborProductRealSaleClaims(inputs)` — a public-safe `live_at_read`
+  projection; `realSaleClaimSubstantiated` is true only when at least one
+  settlement clears every gate. Empty in production (no real external settled
+  receipt published) -> nothing substantiated, blocker surfaced.
+
+Tests: `agentic-labor-product-claim-upgrade.test.ts` (7 cases) — the all-gates
+happy path (and that it stays yellow), withhold-on-missing-owner-sign-off,
+whitespace-only sign-off, self-dealt non-external demand, the cross-receipt
+attestation-mismatch hole, and the empty + mixed projection split.
+
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
+`bun run check:deploy` **passed**; `git diff --check` clean.
+
+Still does **not** clear the blocker: this assembles and cross-validates the
+*evidence* a claim-upgrade review weighs, but no REAL external settled receipt
+has been published and signed, so `realSaleClaimSubstantiated` is `false`
+everywhere live. A published, real, external, owner-signed settled receipt that
+clears every gate is still required for green.
