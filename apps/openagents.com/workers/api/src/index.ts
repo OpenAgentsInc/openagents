@@ -349,6 +349,7 @@ import {
 } from './json-boundary'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
+import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-self-serve-public-routes'
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
@@ -7107,6 +7108,8 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
 
 const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes()
+const marketingAgencySelfServePublicRoutes =
+  makeMarketingAgencySelfServePublicRoutes()
 
 const publicCardCreditSpendReceiptRoutes =
   makePublicCardCreditSpendReceiptRoutes<Env>({
@@ -9890,6 +9893,8 @@ const routeRequest = makeWorkerRouteRequest({
     ecommerceCampaignReceiptRoutes.routeEcommerceCampaignReceiptRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
+  routeMarketingAgencySelfServeRequest:
+    marketingAgencySelfServePublicRoutes.routeMarketingAgencySelfServeRequest,
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),
