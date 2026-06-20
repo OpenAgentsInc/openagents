@@ -1015,6 +1015,13 @@ export const update = (model: Model, message: Message): Result => {
           const submit = submitTurnMessage(model, intent.pane)
           return submit ? update(model, submit) : [model, noCommands]
         }
+        case "toggle-verse":
+          // #5730 The Verse: inline the toggle (message constructors are
+          // type-only imports here). Byte-identical to the ToggleVerse reducer.
+          return [
+            Model.make({ ...model, verseEnabled: !model.verseEnabled }),
+            noCommands,
+          ]
       }
     }
 
@@ -1050,6 +1057,11 @@ export const update = (model: Model, message: Message): Result => {
       ]
     case "ToggledArtifactBrowser":
       return [Model.make({ ...model, artifactBrowserOpen: !model.artifactBrowserOpen }), noCommands]
+
+    // #5730 The Verse: flip the runtime toggle for the game-world view. Pure
+    // model toggle — the view gates the scene render on this + the build flag.
+    case "ToggleVerse":
+      return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
 
     // Chat: flip a single message's "program details" disclosure (scoped-step /
     // Tassadar scaffolding). Collapsed by default; pure model toggle.

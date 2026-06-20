@@ -34,6 +34,8 @@ export type KeyIntent =
   // explicit "open panes" can always be undone, so you never get trapped in
   // the full UI (owner directive 2026-06-19).
   | Readonly<{ kind: "back-to-shell" }>
+  // #5730 The Verse: ⌘⇧V / Ctrl-⇧V toggles the game-world view on/off.
+  | Readonly<{ kind: "toggle-verse" }>
 
 const isModified = (event: KeyEvent): boolean => event.meta || event.ctrl
 
@@ -74,6 +76,11 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
 
   // ── Cmd/Ctrl-K opens the palette from anywhere (even while typing) ────────
   if (key.toLowerCase() === "k" && isModified(event)) return { kind: "open-palette" }
+
+  // ── Cmd/Ctrl-Shift-V toggles the Verse (game-world view) from anywhere ────
+  if (key.toLowerCase() === "v" && isModified(event) && event.shift) {
+    return { kind: "toggle-verse" }
+  }
 
   // ── Cmd/Ctrl-Enter submits the chat/composer turn ─────────────────────────
   if (key === "Enter" && isModified(event)) {

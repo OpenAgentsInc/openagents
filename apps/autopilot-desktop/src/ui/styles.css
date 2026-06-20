@@ -431,6 +431,31 @@ body {
   color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 65%, transparent);
 }
+/* #5730 The Verse: the game-world toggle slot. Wider than a square so the short
+   "Verse" label fits; lit (glowing) when the view is on, dim when off. */
+.hotbar-slot-verse {
+  width: auto;
+  min-width: 3rem;
+  padding: 0 0.7rem;
+}
+.hotbar-slot-label {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.hotbar-slot-verse-on {
+  color: var(--hud-primary, #fff);
+  border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
+  background: color-mix(in srgb, var(--hud-primary) 14%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--hud-primary) 35%, transparent);
+}
+.hotbar-slot-verse-on:hover,
+.hotbar-slot-verse-on:focus-visible {
+  border-color: color-mix(in srgb, var(--hud-primary) 85%, transparent);
+}
 /* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card
    (the game-HUD status layer) rendered by the three-effect H2 kit. Sits clear of
    the left sidebar and the bottom-center hotbar so it never occludes the shell

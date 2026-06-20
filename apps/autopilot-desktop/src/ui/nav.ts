@@ -345,6 +345,7 @@ export const SHORTCUTS: ReadonlyArray<ShortcutSpec> = [
   { chord: "Enter", description: "Run the selected command", when: "palette open" },
   { chord: "⌘↵ / Ctrl-↵", description: "Submit the chat / composer turn", when: "Chat or Composer" },
   { chord: "j / k", description: "Move to the next / previous sub-pane in the group", when: "anywhere (not while typing)" },
+  { chord: "⌘⇧V / Ctrl-⇧V", description: "Toggle the Verse (game-world view)", when: "anywhere" },
 ]
 
 // ── HUD H1: the hotbar (#5499) ───────────────────────────────────────────────
@@ -367,6 +368,13 @@ export type HotbarSlot =
       label: string
       chord: string
     }>
+  // #5730 The Verse: a toggle slot that shows/hides the game-world view behind
+  // chat. Lit when on (default ON). Carries a keyboard chord like the ⌘K slot.
+  | Readonly<{
+      kind: "verse"
+      label: string
+      chord: string
+    }>
 
 // The blank slots are exactly the primary nav groups, keyed by their accel so
 // count/order follow the registry without reintroducing click behavior.
@@ -382,5 +390,7 @@ const groupHotbarSlots: ReadonlyArray<HotbarSlot> = [...NAV_GROUPS]
 
 export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = [
   ...groupHotbarSlots,
+  // #5730 The Verse: a toggle for the game-world view behind chat (default ON).
+  { kind: "verse" as const, label: "Verse", chord: "⌘⇧V" },
   { kind: "palette" as const, label: "Command palette", chord: "⌘K" },
 ]

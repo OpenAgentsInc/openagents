@@ -450,6 +450,11 @@ export const Model = ts("AutopilotDesktop", {
   // expanded (the ref rows under the artifact summary line).
   artifactBrowserOpen: S.Boolean,
 
+  // #5730 The Verse: runtime toggle for the game-world view that renders behind
+  // the chat surface. Defaults TRUE (the Verse shows by default). The build flag
+  // CHAT_WORLD_SCENE remains a hard kill-switch; this is the user-facing control.
+  verseEnabled: S.Boolean,
+
   // Approvals optimistically resolved this session (hidden until the next poll
   // confirms). Keyed by approvalRef.
   resolvedApprovals: S.Array(S.String),
@@ -1037,6 +1042,8 @@ export const initialModel: Model = Model.make({
   expandedDiffFiles: [],
   diffViewMode: "unified",
   artifactBrowserOpen: false,
+  // #5730 The Verse: on by default so the game-world view is visible now.
+  verseEnabled: true,
   resolvedApprovals: [],
   spawnAdapter: "codex",
   spawnObjective: "",
