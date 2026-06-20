@@ -7,7 +7,7 @@ import {
   type LaborJobRequest,
   type LaborJobType,
 } from "@openagentsinc/nip90"
-import { assertPublicProjectionSafe, ensureStateDirectories, type PylonPaths } from "./state"
+import { assertPublicProjectionSafe, ensureStateDirectories, type PylonPaths } from "./state.js"
 
 export const PYLON_LABOR_CAPABILITY_REF = "capability.public.pylon.labor.local_agent.v0.3"
 export const PYLON_LABOR_APPROVAL_POLICY_REF = "policy.public.pylon.labor.first_run_operator_approval.v0.3"

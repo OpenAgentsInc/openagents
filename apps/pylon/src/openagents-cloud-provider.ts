@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 
 import { Effect } from "effect"
 
-import { describeExecutionProvider } from "./execution-provider"
+import { describeExecutionProvider } from "./execution-provider.js"
 import {
   cloudLaneForControlLane,
   isCloudTerminalEventKind,
@@ -14,14 +14,14 @@ import {
   type CloudRunnerBinding,
   type CloudTerminalKind,
   type CloudWorkroomEvent,
-} from "./cloud-control-client"
+} from "./cloud-control-client.js"
 import type {
   ControlSessionExecutor,
   ControlSessionExecutorInput,
   ControlSessionExecutorResult,
   ControlSessionLane,
-} from "./node/control-sessions"
-import { makeOmegaGrantResolverFromEnv } from "../packages/runtime/src/index"
+} from "./node/control-sessions.js"
+import { makeOmegaGrantResolverFromEnv } from "../packages/runtime/src/index.js"
 
 export type CloudSessionRequest = {
   providerKind: "openagents_cloud"

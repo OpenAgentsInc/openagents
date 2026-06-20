@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import type { Brand } from "effect"
 import { generateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
 import {
@@ -9,16 +10,16 @@ import {
   jobInput,
   makeJobRequest,
 } from "@openagentsinc/nip90"
-import { deriveNip06Identity, type PylonNostrPrivateIdentity } from "./nostr-identity"
+import { deriveNip06Identity, type PylonNostrPrivateIdentity } from "./nostr-identity.js"
 import {
   OPENAGENTS_MARKET_RELAY_URL,
   WebSocketRelayTransport,
   signNostrEvent,
   type NostrEvent,
   type ProviderPublishReceipt,
-} from "./provider-nip90"
-import { assertPublicProjectionSafe } from "./state"
-import type { WalletCommandRunner } from "./wallet"
+} from "./provider-nip90.js"
+import { assertPublicProjectionSafe } from "./state.js"
+import type { WalletCommandRunner } from "./wallet.js"
 
 // #4866: repeatable stranger-buyer NIP-90 probe smoke, replaying the Orrery
 // probe shape (forum topic 499cec6e, post 7be6aa0a) against the canonical
@@ -123,6 +124,13 @@ export function makeThrowawayCustomerIdentity(): PylonNostrPrivateIdentity {
 
 // --- probe request and response filters ------------------------------------
 
+// `createJobRequestEvent` takes a branded UnixTimestamp. The nip90 dependency
+// intentionally does not re-export the `UnixTimestamp` schema/type, so we
+// reconstruct its structural brand locally. The brand is purely nominal — the
+// value here is already a validated integer unix-seconds timestamp produced by
+// the probe — so this carries no runtime risk and stays type-sound.
+type UnixTimestamp = number & Brand.Brand<"UnixTimestamp">
+
 export function buildProbeJobRequestEvent(input: {
   identity: PylonNostrPrivateIdentity
   prompt: string
@@ -138,7 +146,8 @@ export function buildProbeJobRequestEvent(input: {
     // afterwards, instead of pre-selecting a provider.
     serviceProviders: [],
   })
-  return signNostrEvent(createJobRequestEvent(request, input.createdAtSeconds), input.identity)
+  const createdAt = input.createdAtSeconds as UnixTimestamp
+  return signNostrEvent(createJobRequestEvent(request, createdAt), input.identity)
 }
 
 export function buildProbeResponseFilters(input: {

@@ -1,5 +1,5 @@
 import { Effect, Schema as S } from "effect";
-import { ProbeLlmToolResultValue, makeProbeLlmToolResultValue } from "./messages";
+import { ProbeLlmToolResultValue, makeProbeLlmToolResultValue } from "./messages.js";
 
 export const ProbeLlmJsonSchema = S.Record(S.String, S.Unknown);
 export type ProbeLlmJsonSchema = typeof ProbeLlmJsonSchema.Type;

@@ -1,4 +1,4 @@
-import { assertPublicProjectionSafe } from "./state"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export type PublicActivityCliCommand =
   | "activity"

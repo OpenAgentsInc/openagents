@@ -5,8 +5,8 @@ import { Effect } from "effect"
 import {
   makePsionicQwenClient,
   type PsionicQwenReadiness,
-} from "../packages/runtime/src/index"
-import { assertPublicProjectionSafe } from "./state"
+} from "../packages/runtime/src/index.js"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export type PsionicConnectorPhase = "absent" | "configured" | "negotiated" | "refused"
 
@@ -124,14 +124,14 @@ export async function inspectPsionicConnector(
     binary,
     blockerRefs,
     capabilityRefs: readiness.ready ? psionicCapabilityRefs : [],
-    modelRefs: readiness.modelRefs,
-    observedModelRefs: readiness.observedModelRefs,
+    modelRefs: [...readiness.modelRefs],
+    observedModelRefs: [...readiness.observedModelRefs],
     phase,
     receiptRefs: [stableRef("receipt.psionic.qwen35.availability", JSON.stringify(readiness.receipt))],
     refusalRefs: blockerRefs,
     service: {
       configured: true,
-      endpointRefs: readiness.supportedEndpointRefs,
+      endpointRefs: [...readiness.supportedEndpointRefs],
       sourceRef: serviceSourceRef(readiness),
     },
     updatedAt: observedAt,

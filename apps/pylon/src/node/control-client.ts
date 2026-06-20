@@ -4,8 +4,8 @@
 // commands over the HTTP API.
 
 import { Effect, type Scope } from "effect"
-import type { PylonEvent } from "./state"
-import type { ControlCommand, PylonSnapshot } from "./control-server"
+import type { PylonEvent } from "./state.js"
+import type { ControlCommand, PylonSnapshot } from "./control-server.js"
 
 export interface ControlClientHandlers {
   onSnapshot: (snapshot: PylonSnapshot) => void

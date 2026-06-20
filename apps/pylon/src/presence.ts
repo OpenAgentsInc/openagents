@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto"
-import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version"
-import type { BootstrapSummary } from "./bootstrap"
+import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version.js"
+import type { BootstrapSummary } from "./bootstrap.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   providerNip90LaneRefs,
   relaysFromEnv,
-} from "./provider-nip90"
-import { publishableCapabilityRefs } from "./tassadar-capability"
-import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity"
+} from "./provider-nip90.js"
+import { publishableCapabilityRefs } from "./tassadar-capability.js"
+import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
@@ -16,8 +16,8 @@ import {
   type PylonPresenceState,
   type PylonRuntimeState,
   writePresenceState,
-} from "./state"
-import type { WalletStatusProjection } from "./wallet"
+} from "./state.js"
+import type { WalletStatusProjection } from "./wallet.js"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies

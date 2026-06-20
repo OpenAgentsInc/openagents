@@ -10,8 +10,8 @@ import {
   ProviderSecretRef,
   validateProbePublicProjection,
   type ProbePublicProjectionUnsafe,
-} from "../contracts/provider-account";
-import { requireAssignmentGrantRefs, type ProbeRunAssignment } from "../contracts/assignment";
+} from "../contracts/provider-account.js";
+import { requireAssignmentGrantRefs, type ProbeRunAssignment } from "../contracts/assignment.js";
 
 export const ProbeMaterializationTarget = S.Union([
   S.Struct({

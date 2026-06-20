@@ -9,35 +9,35 @@ import {
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagentsinc/tassadar-executor"
-import type { BootstrapSummary } from "./bootstrap"
-import type { ClaudeAgentProbeOptions } from "./claude-agent"
+import type { BootstrapSummary } from "./bootstrap.js"
+import type { ClaudeAgentProbeOptions } from "./claude-agent.js"
 import {
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
-} from "./claude-agent-executor"
-import type { CodexAgentProbeOptions } from "./codex-agent"
-import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor"
-import { createSignedHeaders } from "./presence"
+} from "./claude-agent-executor.js"
+import type { CodexAgentProbeOptions } from "./codex-agent.js"
+import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor.js"
+import { createSignedHeaders } from "./presence.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
   ensureStateDirectories,
   loadOrCreatePresenceState,
   type PylonLocalState,
-} from "./state"
+} from "./state.js"
 import {
   admitGepaAssignmentToEnvelope,
   createDefaultGepaCapabilityEnvelope,
   type PylonGepaAssignmentRequirements,
   type PylonGepaCapabilityEnvelope,
-} from "./gepa-capability"
+} from "./gepa-capability.js"
 import {
   PSIONIC_QWEN_MODEL_REFS,
   selectPsionicQwenModel,
   type PsionicQwenModelAdmission,
   type PsionicQwenTaskMode,
-} from "../packages/runtime/src/index"
+} from "../packages/runtime/src/index.js"
 
 export type AssignmentPaymentMode = "no-spend" | "paid"
 export type AssignmentStatus = "offered" | "accepted" | "running" | "closed" | "rejected" | "cancelled" | "timed-out" | "stale"
@@ -469,6 +469,7 @@ export function tassadarPayloadFrom(codingAssignment: unknown): TassadarAssignme
     | null
     | undefined
   const kind = record?.kind
+  if (record === null || record === undefined) return null
   if (kind !== TASSADAR_EXECUTOR_TRACE_JOB_KIND && kind !== TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND) {
     return null
   }
@@ -790,7 +791,7 @@ function isExpired(lease: PylonAssignmentLease, now: Date) {
 export async function computeAssignmentAdmission(
   state: PylonLocalState,
   lease: PylonAssignmentLease,
-  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "psionicQwenAdmission"> = {},
+  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "psionicQwenAdmission" | "gepaEnvelope"> = {},
 ) {
   const now = options.now?.() ?? new Date()
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
@@ -835,7 +836,7 @@ export async function computeAssignmentAdmission(
   return { admissible: blockerRefs.size === 0, blockerRefs: [...blockerRefs] }
 }
 
-async function postJson(options: AssignmentClientOptions, path: string, body: JsonRecord, state: PylonLocalState) {
+async function postJson(options: AssignmentClientOptions, path: string, body: JsonRecord, state: PylonLocalState): Promise<JsonRecord> {
   assertPublicProjectionSafe(body)
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { ControlSessionSpawnCommand } from "./control-sessions"
+import type { ControlSessionSpawnCommand } from "./control-sessions.js"
 import {
   runSessionsExec,
   type ApprovalPolicy,
@@ -7,7 +7,7 @@ import {
   type SessionsExecControl,
   type SessionsExecOptions,
   type SessionsExecResult,
-} from "./sessions-exec"
+} from "./sessions-exec.js"
 
 const RESULT_SCHEMA = "openagents.pylon.sessions_batch_result.v0.1"
 
@@ -126,12 +126,12 @@ export function parseSessionsBatchTasks(input: unknown): SessionsBatchTask[] {
     const rawId = typeof record.id === "string" && record.id.trim().length > 0 ? record.id.trim() : fallbackId
     if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(rawId)) throw new Error(`sessions batch ${fallbackId} id is invalid`)
     const verify = record.verify === undefined ? undefined : stringArray(record.verify)
-    if (record.verify !== undefined && verify === null) {
+    if (verify === null) {
       throw new Error(`sessions batch ${rawId} verify must be a non-empty string array`)
     }
     const timeoutSeconds =
       record.timeoutSeconds === undefined ? undefined : positiveInteger(record.timeoutSeconds)
-    if (record.timeoutSeconds !== undefined && timeoutSeconds === null) {
+    if (timeoutSeconds === null) {
       throw new Error(`sessions batch ${rawId} timeoutSeconds must be a positive integer`)
     }
     const worktreePath =

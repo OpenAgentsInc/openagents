@@ -4,10 +4,10 @@ import {
   type ProbeLlmMessage,
   type ProbeLlmRequest,
   stringifyToolResult,
-} from "../../llm";
-import { ProbeLlmEvents, type ProbeLlmEvent, type ProbeLlmFinishReason } from "../../llm/events";
-import { type ProbeLlmToolDefinition } from "../../llm/tool";
-import { makeProbeLlmUsage, type ProbeLlmUsage } from "../../llm/usage";
+} from "../../llm/index.js";
+import { ProbeLlmEvents, type ProbeLlmEvent, type ProbeLlmFinishReason } from "../../llm/events.js";
+import { type ProbeLlmToolDefinition } from "../../llm/tool.js";
+import { makeProbeLlmUsage, type ProbeLlmUsage } from "../../llm/usage.js";
 
 export interface PsionicOpenAiTool {
   readonly type: "function";

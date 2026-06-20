@@ -3,12 +3,12 @@
 // Promise: pylon.consumer_compute_earns_bitcoin_self_serve.v1
 // Blocker:  blocker.product_promises.spark_helper_autostart_receipt_missing
 import { describe, expect, it } from "bun:test"
-import type { SparkBackupReceiveProjection } from "./wallet"
+import type { SparkBackupReceiveProjection } from "./wallet.js"
 import {
   buildSparkHelperAutostartReceipt,
   classifySparkHelperAutostart,
   SPARK_AUTOSTART_ENV,
-} from "./spark-helper-autostart"
+} from "./spark-helper-autostart.js"
 
 function receive(
   overrides: Partial<SparkBackupReceiveProjection>,

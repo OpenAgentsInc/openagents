@@ -7,18 +7,18 @@ import {
   probeCodexAgentReadiness,
   type CodexAgentProbeOptions,
   type CodexAgentSandboxMode,
-} from "./codex-agent"
+} from "./codex-agent.js"
 import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
-} from "./workspace-materializer"
+} from "./workspace-materializer.js"
 import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
-} from "./account-registry"
-import type { PylonLocalState } from "./state"
+} from "./account-registry.js"
+import type { PylonLocalState } from "./state.js"
 
 /**
  * The local Codex executor gate (issue #4789, epic #4793, promise

@@ -1,4 +1,4 @@
-import type { ExternalEvent } from "./external-sessions"
+import type { ExternalEvent } from "./external-sessions.js"
 
 function clip(value: string, max = 200): string {
   const oneLine = value.replace(/\s+/g, " ").trim()

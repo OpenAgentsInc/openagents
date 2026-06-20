@@ -8,20 +8,20 @@ import {
   pylonAccountEnvironment,
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
-} from "./account-registry"
+} from "./account-registry.js"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   type ClaudeAgentReadiness,
-} from "./claude-agent"
+} from "./claude-agent.js"
 import {
   detectCodexCliLogin,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   type CodexAgentReadiness,
-} from "./codex-agent"
-import type { BootstrapSummary } from "./bootstrap"
-import { assertPublicProjectionSafe } from "./state"
+} from "./codex-agent.js"
+import type { BootstrapSummary } from "./bootstrap.js"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_ACCOUNT_USAGE_STORE_SCHEMA = "openagents.pylon.account_usage_store.v0.3"
 export const PYLON_ACCOUNTS_LIST_SCHEMA = "openagents.pylon.accounts_list.v0.3"

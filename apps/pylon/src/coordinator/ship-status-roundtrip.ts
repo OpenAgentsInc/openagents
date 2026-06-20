@@ -1,5 +1,5 @@
-import type { ShipMode } from "./ship-mode"
-import type { ShipReceipt } from "./ship-receipt"
+import type { ShipMode } from "./ship-mode.js"
+import type { ShipReceipt } from "./ship-receipt.js"
 
 export type ShipStatusRoundtripShipMode = Extract<ShipMode, "ota" | "rebuild">
 

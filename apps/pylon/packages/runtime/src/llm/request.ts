@@ -1,6 +1,6 @@
 import { Schema as S } from "effect";
-import { ProbeLlmMessage, makeProbeLlmMessage, type ProbeLlmMessageInput } from "./messages";
-import { ProbeLlmToolDefinition } from "./tool";
+import { ProbeLlmMessage, makeProbeLlmMessage, type ProbeLlmMessageInput } from "./messages.js";
+import { ProbeLlmToolDefinition } from "./tool.js";
 
 export const ProbeLlmGenerationOptions = S.Struct({
   maxTokens: S.optional(S.Number),
@@ -71,5 +71,11 @@ function normalizeSystem(input: MakeProbeLlmRequestInput["system"]): ReadonlyArr
     return [makeProbeLlmMessage("system", input)];
   }
 
-  return Array.isArray(input) ? input : [input];
+  // `Array.isArray` does not narrow a `ReadonlyArray<...>` out of the union, so
+  // guard on the readonly array shape explicitly to keep both branches typed.
+  if (Array.isArray(input)) {
+    return input as ReadonlyArray<ProbeLlmMessage>;
+  }
+
+  return [input as ProbeLlmMessage];
 }

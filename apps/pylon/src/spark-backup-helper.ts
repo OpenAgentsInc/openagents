@@ -48,16 +48,16 @@ import type {
   SparkBackupSweepTransfer,
   SparkBackupSweepTransferResult,
   WalletCommandResult,
-} from "./wallet"
+} from "./wallet.js"
 // #5304: the single canonical "is the Spark backup ON?" resolver (default-ON
 // unless an explicit OFF override). Used so the helper resolver enables by
 // default instead of requiring PYLON_SPARK_BACKUP_ENABLED.
-import { isSparkBackupDefaultEnabled } from "./wallet"
-import { SparkBunStorage } from "./spark-bun-storage"
-import { toSatNumber } from "./sat-number"
-import { ensureSparkWasmAvailable } from "./spark-wasm-runtime"
+import { isSparkBackupDefaultEnabled } from "./wallet.js"
+import { SparkBunStorage } from "./spark-bun-storage.js"
+import { toSatNumber } from "./sat-number.js"
+import { ensureSparkWasmAvailable } from "./spark-wasm-runtime.js"
 // Re-export so existing importers (and tests) can keep importing it from here.
-export { toSatNumber } from "./sat-number"
+export { toSatNumber } from "./sat-number.js"
 
 // Embedded default OpenAgents Breez/Spark API key. This key was committed to the
 // repo historically (commit 783f33d5f, as the Rust EmbeddedDefault) and is
@@ -889,8 +889,14 @@ async function sendSparkPaymentFromSdk(input: {
     input.timeoutMs,
     SEND_COMPLETION_TIMEOUT_SECS * 1000 + SEND_TIMEOUT_BUFFER_MS,
   )
-  const sendPrepared = (idempotency: string, preferSpark: boolean) =>
-    withTimeout(
+  const sendPrepared = (idempotency: string, preferSpark: boolean) => {
+    // Re-establish the narrowing inside the closure (TS drops the outer
+    // typeof-guard narrowing for the optional method here). The method must be
+    // invoked as `input.sdk.sendPayment(...)` so wasm-bindgen keeps `this`.
+    if (typeof input.sdk.sendPayment !== "function") {
+      throw new Error("spark sdk sendPayment is unavailable")
+    }
+    return withTimeout(
       input.sdk.sendPayment({
         prepareResponse,
         options: isBolt11
@@ -901,6 +907,7 @@ async function sendSparkPaymentFromSdk(input: {
       sendTimeoutMs,
       "spark sendPayment",
     )
+  }
   const tSettle = performance.now()
   const sent = isBolt11
     ? await sendPrepared(sdkIdempotencyKey, true).catch(error => {

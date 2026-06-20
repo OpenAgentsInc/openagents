@@ -8,28 +8,28 @@ import {
   loadClaudeDevConfig,
   probeClaudeAgentReadiness,
   type ClaudeAgentReadiness,
-} from "./claude-agent"
+} from "./claude-agent.js"
 import {
   loadCodexAgentConfig,
   loadCodexDevConfig,
   probeCodexAgentReadiness,
   type CodexAgentReadiness,
   type PylonComposerAdapter,
-} from "./codex-agent"
+} from "./codex-agent.js"
 import {
   sandboxModeForCodexComposerExecutionMode,
   type CodexComposerExecutionMode,
-} from "./codex-composer"
+} from "./codex-composer.js"
 import {
   CLAUDE_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
   permissionModeForClaudeComposerExecutionMode,
   type ClaudeComposerExecutionMode,
   type ClaudeComposerPermissionMode,
-} from "./claude-composer"
-import { createBootstrapSummary, parseBootstrapArgs, type BootstrapSummary } from "./bootstrap"
-import { discoverHostInventory, type PylonBackendHealth, type PylonHostInventoryProjection } from "./inventory"
-import { collectPylonAccountUsageSummary, type PylonAccountUsageSummary } from "./account-usage"
-import { assertPublicProjectionSafe } from "./state"
+} from "./claude-composer.js"
+import { createBootstrapSummary, parseBootstrapArgs, type BootstrapSummary } from "./bootstrap.js"
+import { discoverHostInventory, type PylonBackendHealth, type PylonHostInventoryProjection } from "./inventory.js"
+import { collectPylonAccountUsageSummary, type PylonAccountUsageSummary } from "./account-usage.js"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_DEV_DOCTOR_SCHEMA = "openagents.pylon.dev_doctor.v0.3"
 

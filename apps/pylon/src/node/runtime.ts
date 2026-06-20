@@ -21,7 +21,7 @@ import {
   type TelemetryPaneState,
   type WalletPaneState,
   type WalletStatusInput,
-} from "./state"
+} from "./state.js"
 
 export interface PylonNodeRuntime {
   readonly wallet: SubscriptionRef.SubscriptionRef<WalletPaneState>

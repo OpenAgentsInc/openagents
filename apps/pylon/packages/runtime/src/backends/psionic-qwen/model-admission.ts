@@ -2,7 +2,7 @@ import {
   PSIONIC_QWEN_KNOWN_ARTIFACT_DIGESTS,
   PSIONIC_QWEN_MODEL_REFS,
   type PsionicQwenModelListResponse,
-} from "./contract";
+} from "./contract.js";
 
 export type PsionicQwenModelRef = typeof PSIONIC_QWEN_MODEL_REFS[keyof typeof PSIONIC_QWEN_MODEL_REFS];
 export type PsionicQwenModelRowKey = keyof typeof PSIONIC_QWEN_MODEL_REFS;

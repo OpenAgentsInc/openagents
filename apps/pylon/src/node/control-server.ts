@@ -9,10 +9,10 @@ import { chmod, mkdir, writeFile } from "node:fs/promises"
 import { randomBytes } from "node:crypto"
 import { join } from "node:path"
 import { Effect, PubSub, SubscriptionRef, type Scope } from "effect"
-import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state"
-import type { PylonNodeRuntime } from "./runtime"
-import { createBridgePairingService } from "./bridge-pairing-service"
-import { controlCommandValidationReason } from "./control-command-error"
+import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } from "./state.js"
+import type { PylonNodeRuntime } from "./runtime.js"
+import { createBridgePairingService } from "./bridge-pairing-service.js"
+import { controlCommandValidationReason } from "./control-command-error.js"
 import {
   CONTROL_HEALTH_CAPABILITIES,
   CONTROL_SCHEMA_TAG,
@@ -20,7 +20,7 @@ import {
   type BridgeRequestVerb,
   type Capability,
 } from "@openagentsinc/autopilot-control-protocol"
-import { PYLON_VERSION } from "../version"
+import { PYLON_VERSION } from "../version.js"
 import type {
   ControlSessionActions,
   AppleFmSessionStartCommand,
@@ -30,7 +30,7 @@ import type {
   ControlSessionListCommand,
   ControlSessionReplyCommand,
   ControlSessionSpawnCommand,
-} from "./control-sessions"
+} from "./control-sessions.js"
 
 export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"

@@ -4,7 +4,7 @@ import {
   ProbePublicProjectionUnsafe,
   sanitizeProbePublicProjection,
   validateProbePublicProjection,
-} from "./provider-account";
+} from "./provider-account.js";
 
 export const PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF = "probe.benchmark_assignment.v1" as const;
 export const PROBE_BENCHMARK_RUN_SCHEMA_REF = "probe.benchmark_run.v1" as const;
@@ -544,7 +544,7 @@ export function validateProbeBenchmarkRouteScorecard(
 }
 
 function decodeBenchmarkSchema<A, I>(
-  schema: S.Schema<A, I>,
+  schema: S.Codec<A, I>,
   value: unknown,
   path: string,
 ): Effect.Effect<A, ProbeBenchmarkContractError> {

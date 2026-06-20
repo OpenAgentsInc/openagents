@@ -81,7 +81,10 @@ export async function ensureSparkWasmAvailable(): Promise<void> {
     if (!isCompiledBinary()) return
 
     // The generated module only exists in a binary build; absent elsewhere.
-    const mod = (await import("./generated/spark-wasm-b64").catch(() => null)) as
+    // Build the specifier at runtime so the typechecker does not try to
+    // statically resolve a module that is intentionally generated at build time.
+    const generatedSpecifier = "./generated/spark-wasm-b64.js"
+    const mod = (await import(generatedSpecifier).catch(() => null)) as
       | { WASM_B64?: string }
       | null
     const b64 = mod?.WASM_B64

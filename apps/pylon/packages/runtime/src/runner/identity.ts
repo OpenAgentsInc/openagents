@@ -1,7 +1,7 @@
 import { Effect, Schema as S } from "effect";
-import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract";
-import { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract";
-import { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract";
+import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract.js";
+import { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract.js";
+import { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract.js";
 import {
   assignmentRequiresProviderGrant,
   assignmentSelectsAppleFmBackend,
@@ -10,21 +10,21 @@ import {
   validateProbeAssignmentBlueprintScope,
   validateProbeAssignmentProjection,
   type ProbeRunAssignment,
-} from "../contracts/assignment";
-import { validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
+} from "../contracts/assignment.js";
+import { validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
 import {
   materializeProbeAuthGrant,
   type ProbeAuthMaterializationError,
   type ProbeBrokeredAuthSecret,
   type ProbeMaterializedAuth,
-} from "../auth/materializer";
-import { type OmegaGrantResolver, type ProbeAuthGrantError } from "../omega/grant-client";
+} from "../auth/materializer.js";
+import { type OmegaGrantResolver, type ProbeAuthGrantError } from "../omega/grant-client.js";
 
 export const ProbeRunnerKind = S.Literals(["local", "shc", "pylon", "sandbox"]);
 export type ProbeRunnerKind = typeof ProbeRunnerKind.Type;
-export { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract";
-export { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract";
-export { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract";
+export { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract.js";
+export { PROBE_GEMINI_BACKEND_CAPABILITY } from "../backends/gemini/contract.js";
+export { PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY } from "../backends/psionic-qwen/contract.js";
 
 export const ProbeRunnerIdentity = S.Struct({
   runnerId: S.String,
@@ -91,7 +91,7 @@ export function authorizeRunnerForAssignment(
       Effect.mapError(
         (error) =>
           new ProbeRunnerAuthorizationError({
-            reason: `assignment Blueprint scope is invalid: ${"reason" in error ? error.reason : error._tag}`,
+            reason: `assignment Blueprint scope is invalid: ${error.reason}`,
           }),
       ),
     );

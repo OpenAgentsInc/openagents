@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto"
 import { openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { expandClaudeMessage } from "./claude-blocks"
+import { expandClaudeMessage } from "./claude-blocks.js"
 
 export type ExternalAgentKind = "claude" | "codex"
 

@@ -14,7 +14,7 @@ import {
   mintBootstrapSecret,
   type PairingRecord,
   type StoredBootstrapSecret,
-} from "./bridge-pairing"
+} from "./bridge-pairing.js"
 
 export type IssueBootstrapResult = { bootstrapId: string; secret: string }
 

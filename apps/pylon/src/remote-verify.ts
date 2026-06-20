@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 
-import { describeExecutionProvider } from "./execution-provider"
-import type { SshTarget } from "./ssh-target"
+import { describeExecutionProvider } from "./execution-provider.js"
+import type { SshTarget } from "./ssh-target.js"
 
 export type RemoteVerifyStep = {
   step: "materialize" | "sync" | "run" | "collect_artifacts" | "release"
@@ -37,7 +37,7 @@ export function planRemoteVerify(input: {
   stepRefs.push("release")
 
   return {
-    providerKind: provider.kind,
+    providerKind: "static_ssh",
     steps: stepRefs.map((step) => ({
       step,
       detailRef: `remote_verify.${step}`,

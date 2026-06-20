@@ -7,7 +7,7 @@
 
 import { appendFile, mkdir, rename, stat } from "node:fs/promises"
 import { join } from "node:path"
-import { isSessionBannerMessage, type PylonLogEntry, type PylonLogLevel } from "./state"
+import { isSessionBannerMessage, type PylonLogEntry, type PylonLogLevel } from "./state.js"
 
 export const feedLogFileName = "feed-log.jsonl"
 export const feedLogRotatedFileName = "feed-log.jsonl.1"

@@ -8,7 +8,7 @@ import type {
   BlueprintProgramType,
   BlueprintReleaseGateRef,
   ProbeToolMenuPlan,
-} from "./contracts";
+} from "./contracts.js";
 
 export const BLUEPRINT_CONTRACT_CONSUMERS: ReadonlyArray<BlueprintContractConsumer> = [
   "ai_agent",

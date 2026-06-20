@@ -1,10 +1,10 @@
 import { Effect } from "effect"
-import type { BootstrapSummary } from "../bootstrap"
+import type { BootstrapSummary } from "../bootstrap.js"
 import {
   reportAppleFmBackendCapability,
   type ProbeBackendCapabilityReport,
   type ProbeRunnerIdentity,
-} from "../../packages/runtime/src/index"
+} from "../../packages/runtime/src/index.js"
 
 export const PYLON_APPLE_FM_STATUS_SCHEMA = "openagents.pylon.apple_fm.status.v0.1" as const
 

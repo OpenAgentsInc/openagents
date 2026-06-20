@@ -22,7 +22,7 @@ import {
 } from "@openagentsinc/tassadar-executor"
 import { runPinnedTassadarExecutorSelfTest } from "@openagentsinc/tassadar-executor/self-test"
 
-import { assertPublicProjectionSafe } from "./state"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF =
   "blocker.pylon.tassadar_executor_self_test_failed"

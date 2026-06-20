@@ -1,4 +1,4 @@
-import type { DistributionTarget } from "./distribution-checklist"
+import type { DistributionTarget } from "./distribution-checklist.js"
 
 export type DistributionReceiptInput = {
   target: DistributionTarget

@@ -1,10 +1,10 @@
 import { Schema as S } from "effect";
-import { redactReceiptUrl } from "../../receipt-redaction";
+import { redactReceiptUrl } from "../../receipt-redaction.js";
 import {
   APPLE_FM_BACKEND_KIND,
   type AppleFmUnavailableReason,
   type AppleFmUsageMeasurement,
-} from "./contract";
+} from "./contract.js";
 
 export const AppleFmBackendAvailabilityReceipt = S.Struct({
   kind: S.Literal("probe_backend_availability"),

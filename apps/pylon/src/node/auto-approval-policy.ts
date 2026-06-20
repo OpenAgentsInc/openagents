@@ -26,7 +26,7 @@ import type {
   ApprovalDecision,
   ApprovalPolicyCallback,
   PendingApprovalSummary,
-} from "./sessions-exec"
+} from "./sessions-exec.js"
 
 // The bounded category an approval resolves to. `allow` => auto-approve; the
 // other two never auto-approve.

@@ -3,11 +3,11 @@ import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 import { dirname } from "node:path"
-import { PYLON_DEFAULT_CAPABILITY_REFS, type BootstrapSummary } from "./bootstrap"
-import { PYLON_VERSION, type PylonVersion } from "./version"
-import type { PylonHostInventoryProjection } from "./inventory"
-import type { PsionicConnectorState } from "./psionic-connector"
-import { loadOrCreateNostrIdentity } from "./nostr-identity"
+import { PYLON_DEFAULT_CAPABILITY_REFS, type BootstrapSummary } from "./bootstrap.js"
+import { PYLON_VERSION, type PylonVersion } from "./version.js"
+import type { PylonHostInventoryProjection } from "./inventory.js"
+import type { PsionicConnectorState } from "./psionic-connector.js"
+import { loadOrCreateNostrIdentity } from "./nostr-identity.js"
 
 export type PylonLifecycleState = "offline" | "online" | "paused" | "degraded" | "assignment-ready"
 
@@ -205,7 +205,7 @@ export async function loadOrCreateRuntimeState(
   await ensureStateDirectories(paths)
   const existing = await readJsonFile<PylonRuntimeState>(paths.runtimeState)
   const requestedCapabilityRefs = input.capabilityRefs ?? []
-  const defaultCapabilityRefSet = new Set(PYLON_DEFAULT_CAPABILITY_REFS)
+  const defaultCapabilityRefSet = new Set<string>(PYLON_DEFAULT_CAPABILITY_REFS)
   const defaultOnly =
     requestedCapabilityRefs.length > 0 &&
     requestedCapabilityRefs.every(ref => defaultCapabilityRefSet.has(ref))

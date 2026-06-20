@@ -23,7 +23,11 @@ export type McpResponseError = Readonly<{
   data?: McpJsonValue
 }>
 
-export type McpResponseEnvelope<Result extends McpJsonValue> = Readonly<{
+// `Result` is the structured, JSON-serializable success payload. We constrain
+// to an object shape rather than the stricter `McpJsonValue` so structured
+// result types (e.g. McpToolCallResult, whose nested index signatures permit
+// `| undefined`) are accepted without weakening the wire model.
+export type McpResponseEnvelope<Result extends Readonly<Record<string, unknown>>> = Readonly<{
   jsonrpc: "2.0"
   id: McpRequestId
   result?: Result

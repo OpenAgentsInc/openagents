@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
 import { Effect, Schema as S } from "effect";
-import { type ProbeLlmContentPart, type ProbeLlmMessage, type ProbeLlmRequest, stringifyToolResult } from "../../llm";
-import { ProbeLlmEvents, type ProbeLlmEvent, type ProbeLlmFinishReason } from "../../llm/events";
-import { type ProbeLlmToolDefinition } from "../../llm/tool";
-import { makeProbeLlmUsage, type ProbeLlmUsage } from "../../llm/usage";
-import { convertProbeToolSchemaToGemini } from "./tool-schema";
+import { type ProbeLlmContentPart, type ProbeLlmMessage, type ProbeLlmRequest, stringifyToolResult } from "../../llm/index.js";
+import { ProbeLlmEvents, type ProbeLlmEvent, type ProbeLlmFinishReason } from "../../llm/events.js";
+import { type ProbeLlmToolDefinition } from "../../llm/tool.js";
+import { makeProbeLlmUsage, type ProbeLlmUsage } from "../../llm/usage.js";
+import { convertProbeToolSchemaToGemini } from "./tool-schema.js";
 
 export interface GeminiTextPart {
   readonly text: string;
