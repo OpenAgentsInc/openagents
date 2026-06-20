@@ -192,3 +192,46 @@ Still does **not** clear the blocker: this makes a published receipt
 (demand provenance) has been settled under an armed, owner-signed seam and
 published. That published, real, dereferenceable receipt + owner sign-off is
 still required for green.
+
+## Follow-up run (2026-06-20): demand-provenance classification of settlements
+
+A settled order could be MINTED, RECORDED, and DEREFERENCED as a typed
+`LaborProductSettlementReceipt` — but a receipt minted from a **self-dealt** or
+operator-staged order (buyer == seller, or an internal first-party account) was
+byte-for-byte indistinguishable from one minted by a real **external** buyer.
+Per `proof.demand_provenance.v1`'s rule (`no_external_dollar_no_demand_claim`), a
+claim-upgrade review cannot accept a settlement as a **real sale** unless the
+demand behind it is labeled `external`. Nothing labeled a labor-product
+settlement's demand provenance, so every settled receipt silently looked like
+market demand.
+
+This run adds that label + the enforcing projection (new file
+`apps/openagents.com/workers/api/src/agentic-labor-product-demand.ts`):
+
+- `classifyLaborProductSaleDemand(receipt, signals)` — a **pure, conservative**
+  classifier yielding `external | internal | unlabeled`:
+  - self-dealt (buyer or debited account == seller) -> `internal` (you cannot buy
+    from yourself and call it market demand), even with an external ref;
+  - a known internal/operator actor (`internalActorRefs`) -> `internal`;
+  - `external` ONLY on **positive** third-party evidence (a non-empty
+    `externalDemandRef`) AND a clean counterparty;
+  - otherwise `unlabeled` (NOT external).
+  It can only **withhold** an external demand claim, never manufacture one.
+- `projectLaborProductDemandProvenance(entries)` — a public-safe projection that
+  aggregates the internal/external/unlabeled split and sets
+  `externalDemandClaimAllowed` true **only** when at least one settlement is
+  `external`. Empty in production (no real sale published) -> all-zero, no claim,
+  uncleared real-sale-receipt blocker surfaced. Promise stays `yellow`.
+
+Tests: `agentic-labor-product-demand.test.ts` (8 cases) covering the external
+gate, both self-dealt forms, known-internal-actor, unlabeled default, blank-ref
+rejection, and the empty + mixed projection split.
+
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
+`bun run check:deploy` **passed**; `git diff --check` clean.
+
+Still does **not** clear the blocker: this makes a settlement's demand
+provenance *labelable and enforceable*, but no REAL external (third-party
+real-dollar) settled receipt has been published, so `externalDemandClaimAllowed`
+is `false` everywhere live. A published, real, external, owner-signed settled
+receipt is still required for green.
