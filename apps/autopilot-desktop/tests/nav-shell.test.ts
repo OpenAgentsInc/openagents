@@ -2,6 +2,12 @@ import { describe, expect, test } from "bun:test"
 
 import { interpretKey, type KeyEvent } from "../src/ui/keyboard"
 import {
+  IconCount,
+  iconNames,
+  iconSvg,
+  type IconName,
+} from "../src/shared/openagents-icon-catalog"
+import {
   ChangedCommandPaletteQuery,
   ClosedCommandPalette,
   MovedCommandPaletteSelection,
@@ -368,12 +374,27 @@ describe("#5499 HUD H1 hotbar — derived from the SAME nav registry", () => {
     expect(tree).toContain("⌘K")
   })
 
+  test("the desktop hotbar uses the Fireball/Vortex OpenAI SVG icon catalog", () => {
+    expect(IconCount).toBe(755)
+    const hotbarIcons = [
+      "Chat",
+      "Code",
+      "CheckCircle",
+      "Globe",
+      "Settings",
+      "Search",
+    ] satisfies ReadonlyArray<IconName>
+    for (const name of hotbarIcons) {
+      expect(iconNames).toContain(name)
+      expect(iconSvg(name)).toContain("<svg")
+    }
+  })
+
   test("the hotbar slot face is icon-only, with the shortcut badge and label tooltip", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
-    // Slot 2 = Code group. The face uses the code glyph and a top-right 2 badge;
-    // the actual label is exposed through the tooltip/title rather than printed
-    // below the icon.
-    expect(tree).toContain("</>")
+    // Slot 2 = Code group. The face uses a catalog SVG and a top-right 2 badge;
+    // the actual label is exposed through the tooltip/title rather than printed below the icon.
+    expect(tree).toContain("viewBox")
     expect(tree).toContain("Code — press 2 or ⌘2")
     expect(tree).toContain("Command palette (⌘K)")
     expect(tree).toContain("hotbar-slot-tooltip")

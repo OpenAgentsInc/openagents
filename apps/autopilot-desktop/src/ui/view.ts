@@ -52,6 +52,7 @@ import {
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
 import { isGatewayBalanceLow } from "../shared/inference-routing"
+import { iconSvg, type IconName } from "../shared/openagents-icon-catalog"
 
 import type {
   AccountRow,
@@ -553,23 +554,33 @@ const commandPalette = (model: Model): Html => {
 // Rendered on the zero-base shell AND the full UI so the command bar is always
 // the launcher. The active group's slot is highlighted from `groupForPane` so
 // the hotbar, sidebar, and current pane never disagree.
-const hotbarSlotIcon = (slot: HotbarSlot): string => {
-  if (slot.kind === "palette") return "⌘"
+const hotbarSlotIconName = (slot: HotbarSlot): IconName => {
+  if (slot.kind === "palette") return "Search"
   switch (slot.group) {
     case "chat":
-      return "···"
+      return "Chat"
     case "code":
-      return "</>"
+      return "Code"
     case "supervise":
-      return "✓"
+      return "CheckCircle"
     case "explore":
-      return "◎"
+      return "Globe"
     case "settings":
-      return "⚙"
+      return "Settings"
     default:
-      return String(slot.number)
+      return "Circle"
   }
 }
+
+const hotbarSlotIconView = (slot: HotbarSlot): Html =>
+  h.span(
+    [
+      cls("hotbar-slot-icon"),
+      h.AriaHidden(true),
+      h.InnerHTML(iconSvg(hotbarSlotIconName(slot))),
+    ],
+    [],
+  )
 
 const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
   if (slot.kind === "palette") {
@@ -583,7 +594,7 @@ const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
         h.OnClick(OpenedCommandPalette()),
       ],
       [
-        h.span([cls("hotbar-slot-icon"), h.AriaHidden("true")], [hotbarSlotIcon(slot)]),
+        hotbarSlotIconView(slot),
         h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], ["K"]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
@@ -600,7 +611,7 @@ const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
       h.OnClick(NavigatedToGroup({ group: slot.group })),
     ],
     [
-      h.span([cls("hotbar-slot-icon"), h.AriaHidden("true")], [hotbarSlotIcon(slot)]),
+      hotbarSlotIconView(slot),
       h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], [String(slot.number)]),
       h.span([cls("hotbar-slot-tooltip")], [title]),
     ],

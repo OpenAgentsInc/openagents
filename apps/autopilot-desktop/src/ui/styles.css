@@ -287,13 +287,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.45rem;
-  height: 1.45rem;
+  width: 1.35rem;
+  height: 1.35rem;
   color: currentColor;
-  font-family: ui-monospace, monospace;
-  font-size: 1.02rem;
-  font-weight: 700;
-  line-height: 1;
+  pointer-events: none;
+}
+.hotbar-slot-icon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  flex: 0 0 auto;
 }
 .hotbar-slot-key {
   position: absolute;
