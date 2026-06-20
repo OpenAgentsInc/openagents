@@ -14,6 +14,7 @@ import {
   KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
   type KernelOptimizationSettlementItem,
   buildKernelOptimizationCampaign,
+  reconcileKernelOptimizationCampaignSettlement,
   summarizeKernelOptimizationCampaignSettlement,
 } from './kernel-optimization-campaign'
 
@@ -172,5 +173,97 @@ describe('kernel-optimization campaign settlement', () => {
         { budgetSats: 1.5, verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity) },
       ]),
     ).toThrow(KernelOptimizationDispatchError)
+  })
+})
+
+describe('kernel-optimization campaign reconciliation', () => {
+  const campaignRef = 'campaign.qwen35-smallest-4'
+  const buildFourJobCampaign = () =>
+    buildKernelOptimizationCampaign({ campaignRef, jobs: models.map(job) })
+
+  // The full happy-path settlement of the four-job campaign: 2 paid, 2 refunded.
+  const fullItems: KernelOptimizationSettlementItem[] = [
+    { budgetSats: 50_000, verdict: verdictFor('qwen-3.5-0.5b', 523, verifiedParity) },
+    { budgetSats: 50_000, verdict: verdictFor('qwen-3.5-1.8b', 410, verifiedParity) },
+    { budgetSats: 50_000, verdict: verdictFor('qwen-3.5-4b', 600, rejectedParity) },
+    { budgetSats: 50_000, verdict: verdictFor('qwen-3.5-7b', 300, verifiedParity) },
+  ]
+
+  test('reconciles a complete, escrow-conserving settlement', () => {
+    const campaign = buildFourJobCampaign()
+    const settlement = summarizeKernelOptimizationCampaignSettlement(
+      campaignRef,
+      fullItems,
+    )
+
+    const report = reconcileKernelOptimizationCampaignSettlement(campaign, settlement)
+
+    expect(report.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(report.ok).toBe(true)
+    expect(report.discrepancies).toEqual([])
+    expect(report.dispatchedJobs).toBe(4)
+    expect(report.settledJobs).toBe(4)
+    expect(report.jobCountReconciled).toBe(true)
+    expect(report.escrowSats).toBe(200_000)
+    // 100_000 paid + 100_000 refunded === 200_000 locked.
+    expect(report.accountedSats).toBe(200_000)
+    expect(report.escrowConserved).toBe(true)
+  })
+
+  test('flags a dropped job (job-count drift)', () => {
+    const campaign = buildFourJobCampaign()
+    // Settle only three of the four dispatched jobs.
+    const settlement = summarizeKernelOptimizationCampaignSettlement(
+      campaignRef,
+      fullItems.slice(0, 3),
+    )
+
+    const report = reconcileKernelOptimizationCampaignSettlement(campaign, settlement)
+
+    expect(report.ok).toBe(false)
+    expect(report.jobCountReconciled).toBe(false)
+    expect(report.dispatchedJobs).toBe(4)
+    expect(report.settledJobs).toBe(3)
+    // Dropping a refunded job also leaks escrow.
+    expect(report.escrowConserved).toBe(false)
+    expect(report.discrepancies.some((d) => d.includes('job-count drift'))).toBe(true)
+    expect(report.discrepancies.some((d) => d.includes('escrow drift'))).toBe(true)
+  })
+
+  test('flags escrow drift even when the job count matches', () => {
+    const campaign = buildFourJobCampaign()
+    // Same four jobs, but one was settled for the wrong escrow amount.
+    const tampered: KernelOptimizationSettlementItem[] = [
+      ...fullItems.slice(0, 3),
+      { budgetSats: 49_999, verdict: fullItems[3]!.verdict },
+    ]
+    const settlement = summarizeKernelOptimizationCampaignSettlement(
+      campaignRef,
+      tampered,
+    )
+
+    const report = reconcileKernelOptimizationCampaignSettlement(campaign, settlement)
+
+    expect(report.jobCountReconciled).toBe(true)
+    expect(report.escrowConserved).toBe(false)
+    expect(report.ok).toBe(false)
+    expect(report.accountedSats).toBe(199_999)
+    expect(report.discrepancies.some((d) => d.includes('escrow drift'))).toBe(true)
+  })
+
+  test('flags reconciling mismatched campaigns', () => {
+    const campaign = buildFourJobCampaign()
+    const settlement = summarizeKernelOptimizationCampaignSettlement(
+      'campaign.some-other-run',
+      fullItems,
+    )
+
+    const report = reconcileKernelOptimizationCampaignSettlement(campaign, settlement)
+
+    expect(report.ok).toBe(false)
+    expect(report.campaignRef).toBe(campaignRef)
+    expect(report.discrepancies.some((d) => d.includes('campaignRef mismatch'))).toBe(
+      true,
+    )
   })
 })

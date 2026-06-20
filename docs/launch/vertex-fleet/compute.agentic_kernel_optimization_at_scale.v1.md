@@ -128,3 +128,37 @@ dispatch set + the settlement ledger the verified-work rail would execute.
   independent validator devices feeding the verdicts (still caller-supplied).
 - Real escrow settled from the ledger, producing dereferenceable settlement
   receipts + owner sign-off. The March 2026 result stays historical-demo only.
+
+## Update 2026-06-20 — campaign↔settlement escrow-conservation reconciliation
+
+Further advances `blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`
+by binding the two halves that previously existed independently: the dispatched
+campaign (`buildKernelOptimizationCampaign`) and its settlement ledger
+(`summarizeKernelOptimizationCampaignSettlement`). Nothing yet asserted they
+described the SAME campaign — at scale the dangerous drift is accounting, not
+correctness (correctness is already caught by the parity verdict).
+
+New artifact (in `apps/openagents.com/workers/api`):
+
+- `reconcileKernelOptimizationCampaignSettlement(campaign, settlement)` (added to
+  `src/kernel-optimization-campaign.ts`) returns a
+  `KernelOptimizationCampaignReconciliation` report whose `ok` gate must hold
+  before the verified-work rail releases any payout/refund. It mechanically
+  catches the three at-scale accounting failure modes: (1) **campaignRef drift**
+  — settling one run's verdicts against another's dispatch set; (2) **job-count
+  drift** — a dispatched job never settled or an extra settlement no job backs;
+  (3) **escrow drift** — `payout + refund != escrow locked` (sats created or
+  destroyed in settlement). It moves no money and never throws; a mismatch is a
+  listed `discrepancy`, not an exception.
+- `src/kernel-optimization-campaign.test.ts` — 4 new tests (11 total): the
+  complete escrow-conserving four-job reconciliation, dropped-job drift, escrow
+  drift with a matching job count, and reconciling mismatched campaigns.
+
+### What still remains for the at-scale run (blocker NOT cleared)
+
+- The reconciliation is totals/count-level (escrow conservation + job count); it
+  does not yet match each settlement item to its specific dispatched job, because
+  the parity verdict carries no `kernelRef`. Per-target reconciliation remains.
+- Everything from the prior update still stands: live dispatch through the forum
+  route, real worker tok/s + replayed output traces, and real escrow settled
+  into dereferenceable receipts + owner sign-off.
