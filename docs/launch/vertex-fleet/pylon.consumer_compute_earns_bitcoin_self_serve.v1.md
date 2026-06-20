@@ -3,6 +3,33 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (d) — scale methodology: cross-contributor settlement integrity
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+The conformance verifier already rejected inflated counts, simulation/non-settled
+receipts, and duplicate `pylonRef`s. But it checked only that *contributors* were
+distinct — not that each counted contributor was backed by its OWN distinct real
+settlement. Two contributors with different `pylonRef`s could both cite the SAME
+provider-confirmed real-bitcoin receipt and still conform, falsely backing "two
+distinct real-paid contributors" with a single Bitcoin movement. The promise
+claim explicitly rests on *two distinct settlements* (1,005 sats), so this was a
+real integrity gap.
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  added `QualifiedRunReason.SharedSettlementReceipt` and a run-level check that
+  flattens the counted contributors' `countedSettlementReceiptRefs` and fails
+  conformance when any receipt is reused across counted contributors.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +2 vitest cases (shared-receipt fails; own-distinct-receipt conforms); now
+  15 tests, wired into `check:deploy`.
+- Methodology doc updated to document the cross-contributor integrity rule.
+
+No promise state changed; no scale claim asserted. Still listed: clearing it
+needs running the verifier against the live run's real evidence and citing
+`conforms:true`, plus owner sign-off.
+
 ## Update 2026-06-20 (c) — applied README copy-drift guard (real file, not fixture)
 
 Blocker advanced this run:
