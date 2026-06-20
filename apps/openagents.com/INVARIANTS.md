@@ -1892,6 +1892,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     only already-public data, exposes no private data, moves no money, grants no
     authority, and flips no promise. Regression coverage:
     `workers/api/src/promise-transition-audit-routes.test.ts`.
+  - `GET /api/public/training/ablation-derisking-ledger` — live at read over
+    the candidate-only training ablation derisking ledger (promise
+    `training.ablation_system.v1`, planned) — compliant (`generatedAt`,
+    top-level `projection_staleness.v1` `live_at_read` contract, explicit gate
+    with `publicProjectionAvailable=true` and `greenGateSatisfied=false`,
+    public-safe candidate entries, remaining blocker refs, and no private
+    training, provider, payment, wallet, or customer material). The surface
+    clears only `blocker.product_promises.ablation_ledger_projection_missing`;
+    the harness and eval-reproduction blockers remain. It grants no dispatch,
+    assignment, spend, settlement, model-promotion, verdict, or public-claim
+    authority and flips no promise. Regression coverage:
+    `workers/api/src/training-ablation-derisking-ledger.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

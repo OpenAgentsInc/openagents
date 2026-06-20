@@ -28,6 +28,10 @@ import {
   handleRiskMarketSkeletonApi,
 } from './open-markets-routes'
 import {
+  TrainingAblationDeriskingLedgerEndpoint,
+  handleTrainingAblationDeriskingLedgerApi,
+} from './training-ablation-derisking-ledger-routes'
+import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
   isMarketplaceComposeAndListEnabled,
@@ -8001,6 +8005,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Training ablation derisking ledger projection (#5523 / DE-5 #5528;
+    // promise training.ablation_system.v1, planned). Read-only candidate
+    // ledger: clears only the missing public projection blocker while the
+    // one-delta harness, eval reproduction, paid dispatch, and verdict gates
+    // remain false. No ablation execution, spend, settlement, model promotion,
+    // or green claim.
+    path: TrainingAblationDeriskingLedgerEndpoint,
+    handler: request => handleTrainingAblationDeriskingLedgerApi(request),
   },
   {
     path: '/api/public/markets/open-markets',
