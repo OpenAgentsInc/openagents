@@ -803,12 +803,13 @@ export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
   description:
-    'Public-safe public-gradient-window status projection for training.public_gradient_windows.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the regime gate, the promoted-window receipt emitter surface, current zero-count runtime state, and explicit blocker refs. It keeps liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false until a real public window is accepted, promoted, paid, and settled. It exposes refs and status only: no raw gradients, raw traces, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, checkpoint mutation, or green product-promise authority.',
+    'Public-safe public-gradient-window status projection for training.public_gradient_windows.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the intake admission predicate, the regime gate, the promoted-window receipt emitter surface, current zero-count runtime state, and explicit blocker refs. It keeps liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false until a real public window is accepted, promoted, paid, and settled. It exposes refs and status only: no raw gradients, raw traces, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, checkpoint mutation, or green product-promise authority.',
   required: [
     'authorityBoundary',
     'endpoint',
     'gate',
     'generatedAt',
+    'intakeSurface',
     'promiseRef',
     'promiseState',
     'receiptSurface',
@@ -833,6 +834,7 @@ export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
       required: [
         'clearsBlockerRefs',
         'greenGateSatisfied',
+        'intakeAdmissionPredicateAvailable',
         'liveWindowRuntimeAvailable',
         'promotedWindowReceiptAvailable',
         'promotionReceiptEmitterAvailable',
@@ -844,6 +846,7 @@ export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
       properties: {
         clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
         greenGateSatisfied: { type: 'boolean' },
+        intakeAdmissionPredicateAvailable: { type: 'boolean' },
         liveWindowRuntimeAvailable: { type: 'boolean' },
         promotedWindowReceiptAvailable: { type: 'boolean' },
         promotionReceiptEmitterAvailable: { type: 'boolean' },
@@ -859,6 +862,26 @@ export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
       enum: ['promise:training.public_gradient_windows.v1'],
     },
     promiseState: { type: 'string', enum: ['planned'] },
+    intakeSurface: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'acceptedSubmissionCount',
+        'admittedQuarantineRecordCount',
+        'predicateAvailable',
+        'quarantineRouteAvailable',
+        'schemaVersion',
+        'sourceRefs',
+      ],
+      properties: {
+        acceptedSubmissionCount: { type: 'integer' },
+        admittedQuarantineRecordCount: { type: 'integer' },
+        predicateAvailable: { type: 'boolean' },
+        quarantineRouteAvailable: { type: 'boolean' },
+        schemaVersion: { type: 'string' },
+        sourceRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
     receiptSurface: {
       type: 'object',
       additionalProperties: true,
@@ -5619,7 +5642,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingPublicGradientWindowsStatus',
       summary: 'Read public gradient-window status',
       description:
-        'Returns the public-safe public-gradient-window status projection for training.public_gradient_windows.v1. It exposes the regime gate and promoted-window receipt emitter surface while keeping liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, aggregation, canonical-checkpoint mutation, model promotion, or public-claim authority.',
+        'Returns the public-safe public-gradient-window status projection for training.public_gradient_windows.v1. It exposes the intake admission predicate, regime gate, and promoted-window receipt emitter surface while keeping liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, aggregation, canonical-checkpoint mutation, model promotion, or public-claim authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
