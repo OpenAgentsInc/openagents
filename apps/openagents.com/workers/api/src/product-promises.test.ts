@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.4')
+    expect(decoded.version).toBe('2026-06-20.6')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -132,7 +132,16 @@ describe('public product promises document', () => {
     // agents.nostr_fallback_coordination.v1 yellow -> green (owner-authorized
     // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly
     // 21. The 2026-06-20.1 pass is a Spark-first Forum wallet copy/default
-    // update with no state flips, so the count remained 21. The 2026-06-20.2 pass flips training.verification_classes.v1 yellow -> green (owner-authorized #4674 per-contribution sampling decision), so green is now exactly 22. The 2026-06-20.3 pass flips pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 green (Pylon v1.0.5 signed release shipped + verified, owner-authorized), so green is now exactly 24.
+    // update with no state flips, so the count remained 21. The 2026-06-20.2
+    // pass flips training.verification_classes.v1 yellow -> green
+    // (owner-authorized #4674 per-contribution sampling decision), so green is
+    // now exactly 22. The 2026-06-20.3 pass flips
+    // pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 green (Pylon
+    // v1.0.5 signed release shipped + verified, owner-authorized), so green is
+    // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
+    // 2026-06-20.5 signature-metering de-stale pass and 2026-06-20.6
+    // partner-payout projection de-stale pass flip no promise state, so green
+    // remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -170,6 +179,13 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
           state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
+            'route:/api/mobile/workroom-approval-projection',
+          ]),
+          blockerRefs: expect.not.arrayContaining([
+            'blocker.product_promises.mobile_projection_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'pylon.no_dark_capacity_accounting.v1',
@@ -652,16 +668,78 @@ describe('public product promises document', () => {
     )
   })
 
+  test('signature monetization records metering evidence while keeping settlement blocked', () => {
+    const document = publicProductPromisesDocument()
+    const signaturePromise = document.promises.find(
+      promise => promise.promiseId === 'marketplace.signature_monetization.v1',
+    )
+
+    expect(signaturePromise).toMatchObject({
+      state: 'red',
+      blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
+        'apps/openagents.com/workers/api/src/signature-usage-metering-routes.ts',
+        'route:/api/public/markets/signature-monetization/metering',
+      ]),
+    })
+    expect(signaturePromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.signature_usage_metering_missing',
+    )
+    expect(signaturePromise?.safeCopy).toContain(
+      'inert public usage-metering projection',
+    )
+    expect(signaturePromise?.verification).toContain(
+      'clearing the usage-metering blocker only',
+    )
+    expect(signaturePromise?.authorityBoundary).toContain(
+      'do not install, promote, bill, debit, credit, or settle',
+    )
+  })
+
+  test('partner payout ledger records projection evidence while keeping settlement blocked', () => {
+    const document = publicProductPromisesDocument()
+    const partnerPromise = document.promises.find(
+      promise => promise.promiseId === 'autopilot_sites.partner_payout_ledger.v1',
+    )
+
+    expect(partnerPromise).toMatchObject({
+      state: 'red',
+      blockerRefs: [
+        'blocker.product_promises.partner_attribution_policy_missing',
+        'blocker.product_promises.partner_payout_settlement_not_wired',
+        'blocker.product_promises.partner_first_real_payout_pending',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
+        'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
+        'route:/api/public/partner-payouts',
+      ]),
+    })
+    expect(partnerPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.partner_projection_api_missing',
+    )
+    expect(partnerPromise?.safeCopy).toContain(
+      'public-safe count-only partner-payout projection API',
+    )
+    expect(partnerPromise?.verification).toContain(
+      'clears the projection API blocker only',
+    )
+    expect(partnerPromise?.authorityBoundary).toContain(
+      'public aggregate projections are not spendable value',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.4', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.6', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.4',
+      expectedVersion: '2026-06-20.6',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.4',
+      servedVersion: '2026-06-20.6',
       status: 'ready',
     })
     expect(
@@ -671,7 +749,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.4',
+      servedVersion: '2026-06-20.6',
       status: 'blocked',
     })
   })

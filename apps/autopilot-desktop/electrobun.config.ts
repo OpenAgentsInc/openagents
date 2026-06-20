@@ -1,3 +1,19 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
+const workspaceMokshaAssetSource =
+  "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha";
+const rootMokshaAssetSource =
+  "../../node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha";
+
+export const mokshaAssetSource = existsSync(
+  join(desktopRoot, workspaceMokshaAssetSource),
+)
+  ? workspaceMokshaAssetSource
+  : rootMokshaAssetSource;
+
 export default {
   app: {
     name: "Autopilot",
@@ -31,8 +47,7 @@ export default {
       // and resolves its GLB/font/image assets relative to the bundled view
       // module (`views://autopilot-desktop/assets/moksha/...`). Copy the whole
       // asset directory so WebKit does not get empty `views://` responses.
-      "../../node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha":
-        "views/autopilot-desktop/assets/moksha",
+      [mokshaAssetSource]: "views/autopilot-desktop/assets/moksha",
       // #5027 (Phase 2, packaged build): the bundled headless Pylon node, built
       // by `bun run build:pylon-node` before electrobun build. electrobun copies
       // `build.copy` dests under `<RESOURCES_FOLDER>/app/`, so this dest lands at

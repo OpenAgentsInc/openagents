@@ -43,6 +43,11 @@ import {
   isSignatureUsageMeteringEnabled,
 } from './signature-usage-metering-routes'
 import {
+  MobileWorkroomApprovalProjectionEndpoint,
+  handleMobileWorkroomApprovalProjectionApi,
+  isMobileWorkroomApprovalProjectionEnabled,
+} from './mobile-workroom-approval-projection-routes'
+import {
   VoiceProgramIngestEndpoint,
   handleVoiceProgramIngestApi,
   isVoiceProgramIngestEnabled,
@@ -410,6 +415,7 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
+import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import {
@@ -8038,6 +8044,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Mobile workroom approval projection (promise
+    // mobile.voice_approval_companion.v1, planned). INERT by default: the store
+    // is empty unless MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED is armed. When
+    // armed it returns the existing read-only mobile approval-card projection:
+    // no approval, execution, notification, payment, provider mutation, runner
+    // launch, or public-claim upgrade. This clears ONLY
+    // blocker.product_promises.mobile_projection_missing; voice-command
+    // approval receipts and cross-device sync stay open, and the promise stays
+    // planned. GET only.
+    path: MobileWorkroomApprovalProjectionEndpoint,
+    handler: (request, env) =>
+      handleMobileWorkroomApprovalProjectionApi(request, {
+        enabled: isMobileWorkroomApprovalProjectionEnabled(
+          env.MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED,
+        ),
+        nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
     // Voice-session transcript ingestion endpoint (#5523 / DE-7 #5530; promise
     // mobile.voice_session_evidence_transcript_ingest.v1, red). INERT by
     // default: when VOICE_PROGRAM_INGEST_ENABLED is OFF the endpoint returns an
@@ -8409,6 +8434,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/site-referral-payouts',
     handler: (request, env) =>
       handleSiteReferralPayoutsPublicApi(request, env),
+  },
+  {
+    path: '/api/public/partner-payouts',
+    handler: (request, env) => handlePartnerPayoutsPublicApi(request, env),
   },
   {
     path: '/api/public/relay-health',

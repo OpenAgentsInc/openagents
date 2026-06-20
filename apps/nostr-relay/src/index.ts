@@ -468,11 +468,116 @@ export class NostrRelayDO extends BaseNostrRelayDO {
       return true
     }
 
-    // Authorized + verified: hand off to the base relay store/broadcast so REQ
-    // subscribers receive it and read-back-by-id works.
+    // Authorized + verified: store directly with robust replaceable/addressable
+    // handling so REQ read-back-by-id works. We do NOT defer to the base relay's
+    // store here: its parameterized-replaceable path uses a SQL cursor `.one()`
+    // that throws on the zero-existing-row case (StorageError), so we own the
+    // upsert exactly as `storeAddressableMarketEvent` does for market listings.
     this.runRetention(now)
-    void super.webSocketMessage(ws, JSON.stringify(["EVENT", event]))
-    return true
+    return this.storeSignedEvent(event, ws)
+  }
+
+  /**
+   * Store a signed event with the correct Nostr replaceability semantics:
+   *   - addressable (30000-39999, incl. NIP-38 30315): unique by pubkey+kind+d
+   *   - replaceable (10000-19999 + kind 3, incl. NIP-02 3 / NIP-65 10002):
+   *     unique by pubkey+kind
+   *   - regular (everything else, incl. NIP-01 1 / NIP-28 / NIP-59 1059): append
+   * Sends the appropriate OK frame and returns true (message fully handled).
+   */
+  private storeSignedEvent(event: SignedNostrEvent, ws: WebSocket): boolean {
+    const kind = event.kind
+    const isAddressable = kind >= 30000 && kind <= 39999
+    const isReplaceable =
+      kind === 0 || kind === 3 || (kind >= 10000 && kind <= 19999)
+
+    try {
+      ensureParameterizedReplaceableStorage(this.marketSql)
+
+      if (isAddressable || isReplaceable) {
+        const dTag = isAddressable ? dTagValue(event) : null
+        if (isAddressable && dTag === null) {
+          ws.send(relayOk(event.id, false, "blocked: addressable event requires d tag"))
+          return true
+        }
+
+        const existing = (isAddressable
+          ? this.marketSql.exec<{ id: string; created_at: number }>(
+              "SELECT id, created_at FROM events WHERE pubkey = ? AND kind = ? AND d_tag = ?",
+              event.pubkey,
+              kind,
+              dTag,
+            )
+          : this.marketSql.exec<{ id: string; created_at: number }>(
+              "SELECT id, created_at FROM events WHERE pubkey = ? AND kind = ?",
+              event.pubkey,
+              kind,
+            )
+        ).toArray()[0] ?? null
+
+        if (existing !== null) {
+          if (existing.id === event.id) {
+            ws.send(relayOk(event.id, true, "duplicate: event already exists"))
+            return true
+          }
+          const shouldReplace =
+            event.created_at > existing.created_at ||
+            (event.created_at === existing.created_at && event.id < existing.id)
+          if (!shouldReplace) {
+            ws.send(relayOk(event.id, true, "duplicate: older replaceable event ignored"))
+            return true
+          }
+          this.marketSql.exec("DELETE FROM events WHERE id = ?", existing.id)
+        }
+
+        this.marketSql.exec(
+          `INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig, d_tag)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          event.id,
+          event.pubkey,
+          event.created_at,
+          kind,
+          JSON.stringify(event.tags),
+          event.content,
+          event.sig,
+          dTag,
+        )
+        ws.send(relayOk(event.id, true, ""))
+        return true
+      }
+
+      // Regular event: append (idempotent on id).
+      const already = this.marketSql
+        .exec<{ id: string }>("SELECT id FROM events WHERE id = ?", event.id)
+        .toArray()[0] ?? null
+      if (already !== null) {
+        ws.send(relayOk(event.id, true, "duplicate: event already exists"))
+        return true
+      }
+      this.marketSql.exec(
+        `INSERT INTO events (id, pubkey, created_at, kind, tags, content, sig, d_tag)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        event.id,
+        event.pubkey,
+        event.created_at,
+        kind,
+        JSON.stringify(event.tags),
+        event.content,
+        event.sig,
+        null,
+      )
+      ws.send(relayOk(event.id, true, ""))
+      return true
+    } catch (error) {
+      ws.send(
+        relayOk(
+          event.id,
+          false,
+          `error: coordination storage failed: ${(error as Error).message}`,
+        ),
+      )
+      return true
+    }
   }
 
   private screenMessage(message: string | ArrayBuffer): string | null {

@@ -70,6 +70,14 @@ Full agent test script (JSON assertions, signature check, optional managed
 session): see the repo guide
 <https://github.com/OpenAgentsInc/openagents/blob/main/docs/autopilot-coder/2026-06-15-rc-agent-test-guide.md>.
 
+### Agent smoke path
+
+For the compact agent-facing route through registration, Pylon presence, the
+Tassadar run projection, training preflight, a short lease claim, trace submit,
+and validator auto-discovery, use the smoke block in
+<https://openagents.com/AGENTS.md#pylon-agent-smoke-path>. Keep raw tokens,
+wallet material, workload files, and local paths out of reports.
+
 ## B. Autopilot Desktop (GUI, macOS)
 
 1. **Download here:** `AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg`
