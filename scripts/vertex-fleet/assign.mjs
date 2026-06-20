@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 #!/usr/bin/env node
 // assign.mjs — promise -> assignment selector for the Vertex fleet runner.
 //
@@ -114,6 +115,21 @@ async function main() {
     const brefs = p.blockerRefs || [];
     return brefs.some(isBuildable);
   });
+
+  // Dedup: exclude promises that already have an OPEN vertex-fleet PR (its branch
+  // exists, so `git worktree add -b` would collide). Frees the fleet to pick fresh
+  // promises each batch; a promise becomes eligible again once its PR merges/closes.
+  try {
+    const out = execSync('gh pr list --state open --json headRefName --limit 300', { encoding: 'utf8' });
+    const taken = new Set();
+    for (const pr of JSON.parse(out)) {
+      const m = String(pr.headRefName || '').match(/^vertex-fleet\/(.+)$/);
+      if (m) taken.add(m[1]);
+    }
+    if (taken.size) pool = pool.filter((p) => !taken.has(p.promiseId));
+  } catch (e) {
+    console.error('assign: open-PR dedup skipped:', String(e).slice(0, 80));
+  }
 
   if (args.ids) {
     const want = new Set(args.ids);
