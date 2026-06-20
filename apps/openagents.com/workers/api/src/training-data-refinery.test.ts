@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { Cs336A4HomeworkStages } from './cs336-a4-data-refinery'
+import { buildCs336A4ProvenanceReceipt } from './cs336-a4-provenance'
 import {
   admitCs336A4DataRefineryEvidence,
   Cs336A4RequiredVerifiedStageCount,
@@ -37,6 +38,35 @@ const baseShard = (stage: (typeof Cs336A4HomeworkStages)[number]) => ({
   verificationRefs: [`challenge.cs336_a4.${stage}.1`],
 })
 
+const shardWithProvenance = async (
+  stage: (typeof Cs336A4HomeworkStages)[number],
+) => {
+  const shard = baseShard(stage)
+  const corpusProvenanceReceipt = await buildCs336A4ProvenanceReceipt({
+    assignmentRef: `assignment.cs336_a4.${stage}.1`,
+    finalOutputDigestRef: shard.outputDigestRef,
+    inputShardRef: shard.shardRef,
+    provenance: {
+      acquisitionMode: 'bounded_synthetic_corpus',
+      licenseRef: 'license.public.cc0.synthetic_corpus_v1',
+      snapshotRef: `snapshot.cs336_a4.${stage}.v1`,
+      sourceRef: 'source.psion.bounded_synthetic_mixture.v1',
+    },
+    sourceInputDigestRef: `digest.cs336_a4.${stage}.source`,
+    transformChain: [
+      {
+        codeVersionRef: `psionic.refinery.v1.${stage}`,
+        inputDigestRef: `digest.cs336_a4.${stage}.source`,
+        outputDigestRef: shard.outputDigestRef,
+        recomputedDigestRef: shard.outputDigestRef,
+        stage,
+      },
+    ],
+  })
+
+  return { ...shard, corpusProvenanceReceipt }
+}
+
 describe('CS336 A4 data-refinery projection', () => {
   it('keeps the public refinery projection blocked without receipted shards', () => {
     const projection = publicDataRefineryProjection({
@@ -48,11 +78,17 @@ describe('CS336 A4 data-refinery projection', () => {
 
     expect(projection).toMatchObject({
       blockerRefs: [
-        'blocker.cs336_a4.requires_three_verified_stages',
         'blocker.cs336_a4.operator_funding_required_for_paid_shards',
+        'blocker.cs336_a4.requires_corpus_provenance_receipts',
+        'blocker.cs336_a4.requires_three_verified_stages',
       ],
       observedVerifiedShardCount: 0,
       observedVerifiedStages: [],
+      corpusProvenanceReceiptBlockerRefs: [
+        'blocker.cs336_a4.requires_corpus_provenance_receipts',
+      ],
+      corpusProvenanceReceiptRefs: [],
+      corpusProvenanceReceiptStatus: 'missing',
       psionicLaneRef: 'psion_cs336_a4_data_refinery_reference_v1',
       requiredVerifiedStageCount: Cs336A4RequiredVerifiedStageCount,
       schemaVersion: 'openagents.training.data_refinery.v1',
@@ -64,8 +100,9 @@ describe('CS336 A4 data-refinery projection', () => {
     )
   })
 
-  it('admits receipted shards and rejects unreceipted, unsafe, or empty evidence', () => {
+  it('admits receipted shards and rejects unreceipted, unsafe, empty, or unprovenanced evidence', async () => {
     const run = buildRun()
+    const shard = await shardWithProvenance('pii_masking')
 
     expect(() =>
       admitCs336A4DataRefineryEvidence({
@@ -79,7 +116,7 @@ describe('CS336 A4 data-refinery projection', () => {
       admitCs336A4DataRefineryEvidence({
         nowIso: '2026-06-11T02:00:00.000Z',
         request: {
-          shards: [{ ...baseShard('pii_masking'), receiptRefs: [] }],
+          shards: [{ ...shard, receiptRefs: [] }],
         },
         run,
       }),
@@ -91,7 +128,7 @@ describe('CS336 A4 data-refinery projection', () => {
         request: {
           shards: [
             {
-              ...baseShard('pii_masking'),
+              ...shard,
               sourceRefs: ['lnbc10n1deadbeef.fake_invoice_material'],
             },
           ],
@@ -100,11 +137,40 @@ describe('CS336 A4 data-refinery projection', () => {
       }),
     ).toThrow(/wallet, payment, raw-shard, or private material/)
 
+    expect(() =>
+      admitCs336A4DataRefineryEvidence({
+        nowIso: '2026-06-11T02:00:00.000Z',
+        request: {
+          shards: [
+            {
+              ...baseShard('pii_masking'),
+            } as unknown as Awaited<ReturnType<typeof shardWithProvenance>>,
+          ],
+        },
+        run,
+      }),
+    ).toThrow(/corpusProvenanceReceipt/)
+
+    expect(() =>
+      admitCs336A4DataRefineryEvidence({
+        nowIso: '2026-06-11T02:00:00.000Z',
+        request: {
+          shards: [
+            {
+              ...shard,
+              outputDigestRef: 'digest.sha256.cs336_a4.pii_masking.WRONG',
+            },
+          ],
+        },
+        run,
+      }),
+    ).toThrow(/final output digest/)
+
     const admitted = admitCs336A4DataRefineryEvidence({
       nowIso: '2026-06-11T02:30:00.000Z',
       request: {
         receiptRefs: ['approval.operator.20260611.focus_cs336_issue4680'],
-        shards: [baseShard('pii_masking')],
+        shards: [shard],
         sourceRefs: ['issue.github.openagents.4680'],
       },
       run,
@@ -120,19 +186,24 @@ describe('CS336 A4 data-refinery projection', () => {
     expect(projection.status).toBe('collecting_shards')
     expect(projection.shards).toHaveLength(1)
     expect(projection.shards[0]).toMatchObject({
+      corpusProvenanceReceiptRef: shard.corpusProvenanceReceipt.receiptRef,
+      corpusProvenanceVerified: true,
       pylonRef: 'pylon.24819249b4634a4c9d5e',
       settledPayoutSats: 0,
       stage: 'pii_masking',
       verified: true,
     })
+    expect(projection.corpusProvenanceReceiptStatus).toBe('available')
+    expect(projection.corpusProvenanceReceiptBlockerRefs).toEqual([])
   })
 
-  it('reaches stages_verified only with three distinct verified stages', () => {
+  it('reaches stages_verified only with three distinct verified stages', async () => {
     const run = buildRun()
     const stages = ['pii_masking', 'exact_line_dedup', 'minhash_dedup'] as const
+    const shards = await Promise.all(stages.map(shardWithProvenance))
     const admitted = admitCs336A4DataRefineryEvidence({
       nowIso: '2026-06-11T02:30:00.000Z',
-      request: { shards: stages.map(baseShard) },
+      request: { shards },
       run,
     })
     const window = buildTrainingWindowRecord({
@@ -195,6 +266,7 @@ describe('CS336 A4 data-refinery projection', () => {
     ])
     expect(projection.status).toBe('stages_verified')
     expect(projection.blockerRefs).toEqual([])
+    expect(projection.corpusProvenanceReceiptStatus).toBe('available')
     expect(projection.observedVerifiedShardCount).toBe(3)
   })
 })
