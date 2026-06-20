@@ -161,6 +161,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/post-training-arc/instruct-sft-lane',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPostTrainingInstructSftLane')
+    expect(
+      operationAt(
+        body,
         '/api/public/models/tassadar-percepta-executor/architecture-receipts',
         'get',
       ).operationId,

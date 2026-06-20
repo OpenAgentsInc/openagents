@@ -23,6 +23,7 @@ import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
+import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -452,6 +453,115 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingPostTrainingInstructSftEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe instruct SFT lane receipt projection for training.post_training_arc.v1. Carries generatedAt, a live_at_read staleness contract, one bounded Psionic fixture-scale lane receipt with owned chat-template, generation-mask, corpus, smoke-run, and bit-exact resume evidence, plus explicit gate fields showing instructSftLaneAvailable=true, instructSftPaidDispatchAvailable=false, preferenceRolloutWorkAvailable=false, vibeTestArtifactAvailable=false, and greenGateSatisfied=false. It exposes refs and digests only: no raw prompts, raw datasets, private runner logs, provider payloads, wallet material, payment material, model-service claim, trained-model claim, dispatch authority, settlement, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'receiptSummary',
+    'receipts',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingPostTrainingInstructSftEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'committedReportFixtureSyncAvailable',
+        'greenGateSatisfied',
+        'instructSftLaneAvailable',
+        'instructSftPaidDispatchAvailable',
+        'preferenceRolloutWorkAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+        'vibeTestArtifactAvailable',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        committedReportFixtureSyncAvailable: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        instructSftLaneAvailable: { type: 'boolean' },
+        instructSftPaidDispatchAvailable: { type: 'boolean' },
+        preferenceRolloutWorkAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+        vibeTestArtifactAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.post_training_arc.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    receiptSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'instructSftReceiptCount',
+        'paidDispatchCount',
+        'preferenceRolloutReceiptCount',
+        'vibeTestArtifactReceiptCount',
+      ],
+      properties: {
+        instructSftReceiptCount: { type: 'integer', minimum: 0 },
+        paidDispatchCount: { type: 'integer', minimum: 0 },
+        preferenceRolloutReceiptCount: { type: 'integer', minimum: 0 },
+        vibeTestArtifactReceiptCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    receipts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'receiptRef',
+          'laneId',
+          'runId',
+          'paidDispatchState',
+          'clearsBlockerRefs',
+          'blockerRefs',
+          'authorityBoundary',
+          'sourceRefs',
+        ],
+        properties: {
+          authorityBoundary: { type: 'string' },
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+          laneId: { type: 'string' },
+          paidDispatchState: { type: 'string' },
+          receiptRef: { type: 'string' },
+          runId: { type: 'string' },
+          sourceRefs: { type: 'array', items: { type: 'string' } },
+        },
+      },
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
   minLength: 1,
@@ -729,6 +839,7 @@ const schemaComponents = (): JsonSchema => ({
   ),
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
+  TrainingPostTrainingInstructSftEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, and thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
@@ -4724,6 +4835,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training ablation derisking ledger.',
           '#/components/schemas/TrainingAblationDeriskingLedgerEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingPostTrainingInstructSftEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingPostTrainingInstructSftLane',
+      summary: 'Read post-training instruct SFT lane receipt',
+      description:
+        'Returns the public-safe instruct SFT lane receipt projection for training.post_training_arc.v1. The bounded Psionic fixture-scale receipt proves an owned chat template, assistant-token generation mask, repo-owned example corpus, deterministic smoke run, and bit-exact resume drill from generator output. It clears only the generic instruct-SFT lane blocker; Psionic committed-report fixture synchronization, paid OpenAgents dispatch, preference rollout work, vibe-test artifact, and greenGateSatisfied remain false. Read-only; grants no assignment, spend, settlement, model promotion, model-service, fine-tuning-service, or green product-promise authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Post-training instruct SFT lane receipt.',
+          '#/components/schemas/TrainingPostTrainingInstructSftEnvelope',
         ),
         ...errorResponses(),
       },

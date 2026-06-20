@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.28')
+    expect(decoded.version).toBe('2026-06-20.29')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -229,6 +229,10 @@ describe('public product promises document', () => {
     // only percepta_executor_architecture_receipts_missing by projecting a
     // refs-only architecture bundle; CPU-transform training receipts remain
     // blocked, so green remains exactly 24.
+    // The 2026-06-20.29 post-training instruct-SFT lane receipt pass clears
+    // only instruct_sft_lane_missing by replacing it with narrower fixture-sync
+    // and paid SFT dispatch blockers; paid dispatch, preference rollout, and
+    // vibe-test gates remain blocked, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -315,6 +319,29 @@ describe('public product promises document', () => {
             '/api/public/training/ablation-derisking-ledger',
           ),
           verification: expect.stringContaining('one-delta manifest harness'),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.post_training_arc.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
+            'route:/api/public/training/post-training-arc/instruct-sft-lane',
+            'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
+            'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
+            'https://github.com/OpenAgentsInc/psionic/blob/main/scripts/check-psion-instruct-sft-lane.sh',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.instruct_sft_paid_dispatch_missing',
+            'blocker.product_promises.instruct_sft_fixture_sync_missing',
+            'blocker.product_promises.preference_rollout_work_missing',
+            'blocker.product_promises.vibe_test_artifact_missing',
+          ],
+          safeCopy: expect.stringContaining(
+            '/api/public/training/post-training-arc/instruct-sft-lane',
+          ),
+          verification: expect.stringContaining(
+            'clears blocker.product_promises.instruct_sft_lane_missing',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'artanis.tassadar_evolution_loop.v1',
@@ -944,6 +971,45 @@ describe('public product promises document', () => {
     )
   })
 
+  test('post-training arc clears the instruct SFT lane blocker only', () => {
+    const document = publicProductPromisesDocument()
+    const postTrainingPromise = document.promises.find(
+      promise => promise.promiseId === 'training.post_training_arc.v1',
+    )
+
+    expect(postTrainingPromise).toMatchObject({
+      state: 'planned',
+      blockerRefs: [
+        'blocker.product_promises.instruct_sft_paid_dispatch_missing',
+        'blocker.product_promises.instruct_sft_fixture_sync_missing',
+        'blocker.product_promises.preference_rollout_work_missing',
+        'blocker.product_promises.vibe_test_artifact_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
+        'route:/api/public/training/post-training-arc/instruct-sft-lane',
+        'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
+        'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/fixtures/psion/instruct/psion_instruct_sft_lane_report_v1.json',
+      ]),
+    })
+    expect(postTrainingPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.instruct_sft_lane_missing',
+    )
+    expect(postTrainingPromise?.safeCopy).toContain(
+      'owned versioned chat template',
+    )
+    expect(postTrainingPromise?.safeCopy).toContain(
+      'No paid OpenAgents SFT dispatch exists yet',
+    )
+    expect(postTrainingPromise?.verification).toContain(
+      'Psionic fixture sync',
+    )
+    expect(postTrainingPromise?.authorityBoundary).toContain(
+      'not a model-quality',
+    )
+  })
+
   test('keeps demand provenance yellow after the first public projection', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
@@ -974,12 +1040,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.28', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.29', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.28',
+      expectedVersion: '2026-06-20.29',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.28',
+      servedVersion: '2026-06-20.29',
       status: 'ready',
     })
     expect(
@@ -989,7 +1055,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.28',
+      servedVersion: '2026-06-20.29',
       status: 'blocked',
     })
   })

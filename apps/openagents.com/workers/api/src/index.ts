@@ -33,6 +33,10 @@ import {
   handleTrainingAblationDeriskingLedgerApi,
 } from './training-ablation-derisking-ledger-routes'
 import {
+  TrainingPostTrainingInstructSftEndpoint,
+  handleTrainingPostTrainingInstructSftApi,
+} from './training-post-training-instruct-sft-routes'
+import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   handleTassadarPerceptaArchitectureReceiptsApi,
 } from './tassadar-percepta-architecture-receipts-routes'
@@ -8049,6 +8053,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // execution, spend, settlement, model promotion, or green claim.
     path: TrainingAblationDeriskingLedgerEndpoint,
     handler: request => handleTrainingAblationDeriskingLedgerApi(request),
+  },
+  {
+    // Post-training instruct SFT lane receipt (#5523 / DE-5 #5528;
+    // promise training.post_training_arc.v1, planned). Read-only fixture-scale
+    // lane receipt: clears only the generic instruct-SFT lane blocker while
+    // paid dispatch, preference rollout, and vibe-test gates remain false. No
+    // assignment, spend, settlement, model promotion, service, or green claim.
+    path: TrainingPostTrainingInstructSftEndpoint,
+    handler: request => handleTrainingPostTrainingInstructSftApi(request),
   },
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;

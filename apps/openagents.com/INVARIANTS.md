@@ -1943,13 +1943,32 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `training.ablation_system.v1`, planned) — compliant (`generatedAt`,
     top-level `projection_staleness.v1` `live_at_read` contract, explicit gate
     with `publicProjectionAvailable=true` and `greenGateSatisfied=false`,
-    public-safe candidate entries, remaining blocker refs, and no private
-    training, provider, payment, wallet, or customer material). The surface
-    clears only `blocker.product_promises.ablation_ledger_projection_missing`;
-    the harness and eval-reproduction blockers remain. It grants no dispatch,
-    assignment, spend, settlement, model-promotion, verdict, or public-claim
-    authority and flips no promise. Regression coverage:
+    public-safe candidate entries, one-delta manifest-harness evidence, a
+    retained checkpoint-eval reproduction receipt, remaining blocker refs, and
+    no private training, provider, payment, wallet, or customer material). The
+    surface clears the projection, one-delta harness, and eval-reproduction
+    blockers; `blocker.product_promises.paid_ablation_dispatch_missing`
+    remains. It grants no dispatch, assignment, spend, settlement,
+    model-promotion, verdict, or public-claim authority and flips no promise.
+    Regression coverage:
     `workers/api/src/training-ablation-derisking-ledger.test.ts`.
+  - `GET /api/public/training/post-training-arc/instruct-sft-lane` — live at
+    read over the bounded Psionic fixture-scale instruct SFT lane receipt
+    (promise `training.post_training_arc.v1`, planned) — compliant
+    (`generatedAt`, top-level `projection_staleness.v1` `live_at_read`
+    contract, explicit gate with `instructSftLaneAvailable=true`,
+    `instructSftPaidDispatchAvailable=false`,
+    `preferenceRolloutWorkAvailable=false`,
+    `vibeTestArtifactAvailable=false`, and `greenGateSatisfied=false`). The
+    surface exposes public-safe refs and digests for the owned chat template,
+    assistant-token generation mask, repo-owned example corpus, deterministic
+    smoke run, and bit-exact resume drill from deterministic generator output.
+    It clears only `blocker.product_promises.instruct_sft_lane_missing`;
+    committed Psionic report-fixture synchronization, paid dispatch, preference
+    rollout, and vibe-test blockers remain. It grants no assignment, spend,
+    settlement, model promotion, model-service, fine-tuning-service, or
+    public-claim authority and flips no promise. Regression coverage:
+    `workers/api/src/training-post-training-instruct-sft.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no
