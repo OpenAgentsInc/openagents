@@ -2,6 +2,55 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — provenance receipt ↔ crawl-shard assignment binding gate
+
+**Blocker advanced:** `blocker.product_promises.corpus_provenance_receipts_missing`.
+
+`deriveCs336A4CrawlShardAssignment` mints a payable `assignmentRef` carrying an
+`inputShardRef` + a `Cs336A4SourceProvenance`, and `buildCs336A4ProvenanceReceipt`
+emits the receipt a contributor hands back when they close a shard out. The
+assignment was "ready to feed" the receipt builder, but nothing on the RETURN
+path checked that a receipt handed back actually closes out THE dispatched
+assignment. A contributor could return an internally-consistent, recompute-
+verified provenance receipt for a *different* shard, source, snapshot, or
+license, and the operator had no deterministic gate to catch it before
+admitting or paying for it. This change adds that gate:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-provenance-binding.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-provenance-binding.test.ts` (8 tests)
+
+`verifyCs336A4CrawlShardProvenanceBinding` is a pure comparison over two
+already-built artifacts that decides `bound` / not bound and reports the first
+mismatch with a typed reason:
+
+- `assignment_ref_mismatch` — the receipt closes out a different assignment;
+- `input_shard_ref_mismatch` — the receipt's input is not the assigned shard;
+- `acquisition_mode_mismatch` / `source_ref_mismatch` / `snapshot_ref_mismatch`
+  / `license_ref_mismatch` — the receipt silently re-attributes the corpus to a
+  different origin, snapshot, or license than the operator dispatched.
+
+`assertCs336A4CrawlShardProvenanceBinding` is the fail-closed wrapper for an
+admission/closeout path: it throws `Cs336A4CrawlShardProvenanceBindingError`
+(carrying the mismatch reason) on an unbound receipt and returns the receipt's
+content-addressed `receiptRef` on success. The gate deliberately does NOT
+re-validate the receipt's internal transform chain (that is
+`buildCs336A4ProvenanceReceipt`'s job) and does NOT settle payment (that is the
+eval-delta settlement receipt's job); it answers exactly one question: does
+this receipt close out this assignment?
+
+### What genuinely remains (blocker NOT cleared)
+
+`corpus_provenance_receipts_missing` stays listed. This is the deterministic
+*binding check* between an assignment and a returned receipt — it admits
+nothing and acquires nothing. No real refinery shard has been dispatched as
+paid work and closed out with a provenance receipt populated from actual source
+acquisition + recompute verification, and this gate is not yet wired into the
+live A4 closeout/admission path (`training-data-refinery.ts`) or the public
+projection. The promise's green criterion — every shard carrying
+source-provenance and transform digests, produced by a real paid closeout —
+is unmet. `crawl_scale_corpus_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — crawl-shard plan → assignable/payable units bridge
 
 **Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
