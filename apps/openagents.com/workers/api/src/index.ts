@@ -88,6 +88,7 @@ import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-rou
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
+import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import {
   boundedResponderSupportLimit,
@@ -9130,6 +9131,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handlePublicLaborEarningsApi(request, {
         db: openAgentsDatabase(env),
+      }),
+  },
+  {
+    path: '/api/public/labor-earnings/payout',
+    handler: (request, env) =>
+      handleSelfServeLaborPayoutApi(request, {
+        db: openAgentsDatabase(env),
+        authenticate: agentBalanceAuthForStore(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+        ),
+        // INERT flag: defaults to false so it plans but lists nothing.
+        enabled: env.LABOR_SELF_SERVE_PAYOUT_ENABLED === 'true',
       }),
   },
   {
