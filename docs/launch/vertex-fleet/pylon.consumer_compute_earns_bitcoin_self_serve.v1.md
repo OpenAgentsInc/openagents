@@ -3,8 +3,36 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
-## Blocker advanced
+## Update 2026-06-20 — scale-methodology conformance verifier
 
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+The participant/scale methodology was already written
+(`docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md`)
+but the promise verification requires the methodology be *applied* as an
+enforceable gate. This run built that gate:
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  pure `verifyQualifiedContributorMethodology` / `verifyQualifiedContributor`.
+  Recomputes a run's qualified-contributor count from per-contributor evidence
+  under the authoritative 3-prong rule (admitted lease + replay-verified
+  exact_trace work + provider-confirmed real-bitcoin settlement) and flags an
+  inflated/under-counted claim, double-counts, and excluded receipts. Explicitly
+  rejects simulation-only (`realBitcoinMoved:false`), non-`settled`, and
+  not-provider-confirmed receipts — closing the gap where the in-line
+  `qualifiedContributorRefs` join trusts its caller to pre-filter receipts.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — 13 vitest cases, wired into `apps/openagents.com` `check:deploy`.
+- Methodology doc updated to dereference the verifier.
+
+No promise state changed; no scale claim asserted. Still listed; the honest
+remaining step is running the verifier against the live run's real evidence and
+citing `conforms:true`, plus owner sign-off. The other two blockers below remain.
+
+## Prior run — Spark-helper autostart receipt verifier
+
+Blocker advanced (prior run):
 `blocker.product_promises.spark_helper_autostart_receipt_missing`
 
 ## What was built
