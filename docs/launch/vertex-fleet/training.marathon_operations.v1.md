@@ -260,3 +260,43 @@ stays listed. It grants no dispatch, settlement, flexible-load-claim,
 promise-state, or green-claim authority, and no promise state or blocker list was
 changed. What genuinely remains is identical to above: a real scheduled drill on
 a live run feeding this emitter to produce a published receipt.
+
+## 2026-06-20 standby promotion receipt emitter
+
+Blocker advanced: **`blocker.product_promises.standby_dispatch_missing`**
+(still listed).
+
+The public marathon projection has carried `livePromotionReceiptAvailable=false`
+and `receiptBackedPromotionAvailable=false` because, although the standby-dispatch
+predicate and preflight route exist, there was no canonical receipt FORMAT to
+convert a `promote_standby` verdict into the public-safe artifact the runtime must
+publish once a standby is actually admitted. This change supplies that missing
+emitter, mirroring the curtailment-drill and gradient-window promotion-receipt
+patterns:
+
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt.ts`
+  - `StandbyDispatchReceipt` typed, public-safe receipt: run/standby refs, the
+    window the standby was promoted into, `outcome: 'promote_standby'`, the
+    predicate schema version, a deterministic content-addressed `receiptRef`
+    derived from the run ref + standby contributor ref, and lineage `sourceRefs`.
+  - `buildStandbyDispatchReceipt` / `buildUntrustedStandbyDispatchReceipt`:
+    re-run the dispatch predicate and **refuse to emit** (throw
+    `StandbyDispatchReceiptUnsafe`) for any non-promotable or malformed dispatch,
+    so a receipt can never be minted for an unqualified, banned, unbootstrapped,
+    window-mismatched, no-vacancy, or stale standby.
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt.test.ts`
+  - 9 tests: promotable standby emits a public-safe receipt; deterministic ref;
+    unqualified / banned / bootstrap-unverified / window-mismatch / no-vacancy /
+    stale-heartbeat each refuse; well-formed untrusted descriptor builds;
+    malformed untrusted descriptor refuses.
+- `training-marathon-operations.ts` now lists the receipt module in the standby
+  surface `sourceRefs`. All projection flags stay false — no live promotion has
+  occurred.
+
+This is the receipt FORMAT only. No live standby has been promoted into a real
+run, so `livePromotionReceiptAvailable` / `receiptBackedPromotionAvailable` stay
+false and `standby_dispatch_missing` stays listed. It grants no dispatch,
+settlement, promise-state, or green-claim authority, and no promise state or
+blocker list was changed. What genuinely remains is identical to the standby
+section above: a real standby promoted into a live run (live heartbeat/vacancy
+telemetry feeding the predicate) producing a published, receipt-backed promotion.
