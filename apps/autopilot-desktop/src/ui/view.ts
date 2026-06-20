@@ -192,6 +192,7 @@ import {
   ToggledEvent,
   ToggledDiffFile,
   ToggledDiffViewMode,
+  ToggleVerse,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
@@ -575,7 +576,7 @@ const commandPalette = (model: Model): Html => {
 // Rendered inside the zero-base shell input row on the bottom-left, and as a
 // floating bottom-left compact strip on the full UI. Group slots are decorative
 // blanks; ⌘K remains clickable.
-const hotbarSlotView = (slot: HotbarSlot): Html => {
+const hotbarSlotView = (model: Model, slot: HotbarSlot): Html => {
   if (slot.kind === "palette") {
     const title = `${slot.label} (${slot.chord})`
     return h.button(
@@ -592,20 +593,49 @@ const hotbarSlotView = (slot: HotbarSlot): Html => {
       ],
     )
   }
+  // #5730 The Verse: an active toggle slot. Lit (on) when the runtime toggle is
+  // enabled; clicking (or ⌘⇧V) flips it. The world view itself only renders when
+  // the CHAT_WORLD_SCENE build flag is also on, but the toggle is always shown so
+  // the user-facing control is discoverable.
+  if (slot.kind === "verse") {
+    const on = model.verseEnabled
+    const title = `${slot.label}: ${on ? "on" : "off"} (${slot.chord})`
+    return h.button(
+      [
+        cls(
+          `hotbar-slot hotbar-slot-button hotbar-slot-verse${
+            on ? " hotbar-slot-verse-on" : ""
+          }`,
+        ),
+        h.Type("button"),
+        h.Title(title),
+        h.AriaLabel(title),
+        h.AriaPressed(on ? "true" : "false"),
+        h.OnClick(ToggleVerse()),
+      ],
+      [
+        h.span([cls("hotbar-slot-label")], [slot.label]),
+        h.span([cls("hotbar-slot-tooltip")], [title]),
+      ],
+    )
+  }
   return h.div(
     [cls("hotbar-slot hotbar-slot-empty"), h.AriaHidden(true)],
     [],
   )
 }
 
-const hotbar = (placement: "floating" | "inline" = "floating"): Html =>
+const hotbar = (
+  model: Model,
+  placement: "floating" | "inline" = "floating",
+): Html =>
   h.div(
     [
       cls(`hotbar hotbar-${placement}`),
       h.Role("toolbar"),
       h.AriaLabel("Hotbar"),
     ],
-    HOTBAR_SLOTS.map((slot) => hotbarSlotView(slot)),
+    HOTBAR_SLOTS.map((slot) => hotbarSlotView(model, slot)),
   )
 
 // ── Nodes pane ────────────────────────────────────────────────────────────────
@@ -5878,8 +5908,15 @@ const chatComposer = (model: Model): Html =>
     ],
   )
 
+// #5730 The Verse: the game-world scene renders behind chat when the build flag
+// CHAT_WORLD_SCENE is on (hard kill-switch) AND the runtime toggle
+// `model.verseEnabled` is true (user-facing control, default ON). Toggling the
+// Verse off falls back to the byte-for-byte plain chat pane.
+const verseVisible = (model: Model): boolean =>
+  CHAT_WORLD_SCENE && model.verseEnabled
+
 const chatPane = (model: Model): Html =>
-  CHAT_WORLD_SCENE
+  verseVisible(model)
     ? h.div([cls("chat-pane chat-pane-world")], [
         chatSceneBackground(model),
         h.div([cls("chat-content-overlay")], [
@@ -6142,7 +6179,7 @@ const shellPane = (model: Model): Html =>
         [
           // Bottom-left hotbar; blank cells are inert, and the chat input sits
           // immediately to its right.
-          hotbar("inline"),
+          hotbar(model, "inline"),
           shellTargetTabs(model.shellTarget),
           h.input([
             cls("shell-input"),
@@ -6559,7 +6596,7 @@ const rootView = (model: Model): Html => {
   if (model.pane === "network") {
     return h.div(
       [cls("app-shell app-shell-network"), themeData],
-      [networkPane(model), managedPaneLayer(model), hotbar(), commandPalette(model)],
+      [networkPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
     )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"
@@ -6602,7 +6639,7 @@ const rootView = (model: Model): Html => {
       ),
       // HUD H1 (#5499): the same blank bottom-left command strip across the full
       // UI. Hidden in immersive training fullscreen so it does not occlude the scene.
-      fullscreenTraining ? h.empty : hotbar(),
+      fullscreenTraining ? h.empty : hotbar(model),
       // HUD H7 (#5504): the live status/meters overlay, top-right corner. Hidden
       // in fullscreen training (same anti-occlusion rule as the hotbar).
       fullscreenTraining ? h.empty : statusHudOverlay(model),

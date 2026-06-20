@@ -374,19 +374,38 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
     expect(tree).toContain("hotbar-slot-chord")
     expect(tree).not.toContain("hotbar-slot-icon")
     expect(tree).not.toContain("hotbar-slot-key")
-    expect(tree).not.toContain("hotbar-slot-label")
     expect(tree).toContain("⌘K")
   })
 
-  test("the hotbar face is blank except the command-palette control", () => {
+  // #5730 The Verse: the hotbar now carries one active toggle slot ("Verse")
+  // alongside the ⌘K palette control; the group cells stay blank.
+  test("the hotbar face is blank except the palette and the Verse toggle", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar-slot-empty")
     expect(tree).toContain("hotbar-slot-palette")
     expect(tree).toContain("Command palette (⌘K)")
+    expect(tree).toContain("hotbar-slot-verse")
+    expect(tree).toContain("Verse")
     expect(tree).toContain("hotbar-slot-tooltip")
     expect(tree).not.toContain("viewBox")
     expect(tree).not.toContain("Code — press")
-    expect(tree).not.toContain("hotbar-slot-label")
+  })
+
+  // #5730 The Verse: defaults ON, so the toggle slot renders lit.
+  test("the Verse toggle slot is lit by default (verseEnabled defaults ON)", () => {
+    const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
+    expect(tree).toContain("hotbar-slot-verse-on")
+    expect(tree).toContain("Verse: on (⌘⇧V)")
+  })
+
+  // #5730 The Verse: toggling off drops the lit class but keeps the slot.
+  test("the Verse toggle slot is dim when verseEnabled is off", () => {
+    const tree = serializeView(
+      view(Model.make({ ...initialModel, pane: "composer", verseEnabled: false })).body,
+    )
+    expect(tree).toContain("hotbar-slot-verse")
+    expect(tree).not.toContain("hotbar-slot-verse-on")
+    expect(tree).toContain("Verse: off (⌘⇧V)")
   })
 
   test("the hotbar renders on the full UI as a bottom-left floating strip without active group highlighting", () => {
@@ -403,8 +422,8 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
     expect(tree).not.toContain("hotbar-slot")
   })
 
-  test("the slot count = nav groups + the palette slot (grows automatically with the registry)", () => {
-    expect(HOTBAR_SLOTS.length).toBe(NAV_GROUPS.length + 1)
+  test("the slot count = nav groups + the Verse toggle + the palette slot (#5730)", () => {
+    expect(HOTBAR_SLOTS.length).toBe(NAV_GROUPS.length + 2)
   })
 })
 

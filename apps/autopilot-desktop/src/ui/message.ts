@@ -100,6 +100,10 @@ export const ToggledDiffFile = m("ToggledDiffFile", { path: S.String })
 export const ToggledDiffViewMode = m("ToggledDiffViewMode")
 export const ToggledArtifactBrowser = m("ToggledArtifactBrowser")
 
+// #5730 The Verse: flip the runtime toggle for the game-world view that renders
+// behind chat. Pure model toggle — no control verb / RPC.
+export const ToggleVerse = m("ToggleVerse")
+
 // Chat: expand/collapse a single chat message's "program details" disclosure
 // (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
 // opens to a clean conversation. Pure model toggle — no control verb / RPC.
@@ -642,6 +646,7 @@ export const Message = S.Union([
   ToggledDiffFile,
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
+  ToggleVerse,
   ToggledChatMessageDetails,
   ClickedCoordinatorToggle,
   SettledCoordinatorToggle,
