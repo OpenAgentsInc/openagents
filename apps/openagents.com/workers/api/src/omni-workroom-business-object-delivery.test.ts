@@ -9,6 +9,8 @@ import {
 import {
   OmniBusinessObjectDeliveryPlan,
   buildOmniBusinessObjectDeliveryPlan,
+  buildOmniWorkroomSourceAuthorityDeliveryPlan,
+  extractWorkroomSourceAuthorityInputs,
   resolveOmniBusinessObjectDeliveryGate,
 } from './omni-workroom-business-object-delivery'
 
@@ -136,6 +138,73 @@ describe('Omni workroom business-object delivery integration (INERT)', () => {
     expect(plan.entries[0]?.applyAllowed).toBe(true)
     expect(plan.entries[0]?.reasonRef).toBe(
       'reason.source_authority.approved_write_applyable',
+    )
+  })
+
+  test('extracts source-authority inputs from live workroom metadata', () => {
+    const inputs = extractWorkroomSourceAuthorityInputs({
+      ...workroom(),
+      metadata: {
+        sourceAuthority: {
+          bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+          writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
+        },
+      },
+    })
+
+    expect(inputs.bindings).toHaveLength(1)
+    expect(inputs.writes).toHaveLength(1)
+    expect(inputs.bindings[0]?.id).toBe(
+      OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE.id,
+    )
+  })
+
+  test('extracts empty inputs when no source-authority metadata block exists', () => {
+    expect(extractWorkroomSourceAuthorityInputs(workroom())).toEqual({
+      bindings: [],
+      writes: [],
+    })
+  })
+
+  test('skips malformed metadata entries without throwing', () => {
+    const inputs = extractWorkroomSourceAuthorityInputs({
+      ...workroom(),
+      metadata: {
+        sourceAuthority: {
+          bindings: [{ not: 'a binding' }, OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+          writes: 'not-an-array',
+        },
+      },
+    })
+
+    expect(inputs.bindings).toHaveLength(1)
+    expect(inputs.writes).toEqual([])
+  })
+
+  test('record-level builder is inert by default from live metadata', () => {
+    const plan = buildOmniWorkroomSourceAuthorityDeliveryPlan({
+      audience: 'operator',
+      nowIso,
+      workroom: {
+        ...workroom(),
+        metadata: {
+          sourceAuthority: {
+            bindings: [OMNI_SOURCE_AUTHORITY_BINDING_FIXTURE],
+            writes: [OMNI_BUSINESS_OBJECT_WRITE_FIXTURE],
+          },
+        },
+      },
+    })
+
+    expect(S.decodeUnknownSync(OmniBusinessObjectDeliveryPlan)(plan)).toEqual(
+      plan,
+    )
+    expect(plan.gateState).toBe('inert_disabled')
+    expect(plan.effectsApplied).toBe(false)
+    expect(plan.applyableCount).toBe(0)
+    expect(plan.proposedCount).toBe(1)
+    expect(plan.blockerRefs).toContain(
+      'blocker.business_object_delivery.integration_inert_disabled',
     )
   })
 

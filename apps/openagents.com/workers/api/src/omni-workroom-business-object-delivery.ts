@@ -5,6 +5,8 @@ import type { OmniWorkroomRecord } from './omni-workrooms'
 import {
   type OmniBusinessObjectWriteRecord,
   type OmniSourceAuthorityBinding,
+  OmniBusinessObjectWriteRecord as OmniBusinessObjectWriteRecordSchema,
+  OmniSourceAuthorityBinding as OmniSourceAuthorityBindingSchema,
   decideOmniBusinessObjectWrite,
   projectOmniBusinessObjectWrite,
 } from './omni-source-authorized-business-objects'
@@ -235,5 +237,123 @@ export const buildOmniBusinessObjectDeliveryPlan = (
     gateState,
     proposedCount: entries.length,
     workroomId: input.workroom.id,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Live-record integration: extract source-authority inputs from a live
+// client-delivery workroom record and build the INERT delivery plan for it.
+//
+// This is the wiring that lets the live omni client-delivery workroom surface
+// reach the source-authority + approval-gated write model at all. The source-
+// authority bindings and proposed writes for a workroom live in the workroom
+// record's projection-only `metadata.sourceAuthority` block (an existing D1
+// field; no new migration, no new state). Extraction is decode-or-empty: any
+// absent, malformed, or unsafe entry is dropped rather than thrown, so the
+// integration can never crash a live workroom read and never fabricates a
+// binding or write. The resulting plan is still FLAG-GATED INERT.
+// ---------------------------------------------------------------------------
+
+/**
+ * The shape of the optional `sourceAuthority` block a live workroom record may
+ * carry in its projection-only metadata. Both arrays are optional and each
+ * entry is decoded independently so one bad entry never discards the rest.
+ */
+type WorkroomSourceAuthorityMetadata = Readonly<{
+  bindings: ReadonlyArray<OmniSourceAuthorityBinding>
+  writes: ReadonlyArray<OmniBusinessObjectWriteRecord>
+}>
+
+const decodeBindingsSafely = (
+  value: unknown,
+): ReadonlyArray<OmniSourceAuthorityBinding> => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const decode = S.decodeUnknownSync(OmniSourceAuthorityBindingSchema)
+  const out: Array<OmniSourceAuthorityBinding> = []
+
+  for (const item of value) {
+    try {
+      out.push(decode(item))
+    } catch {
+      // Malformed or unsafe entry: skip it. The integration never fabricates a
+      // binding, and one bad entry never discards the rest.
+    }
+  }
+
+  return out
+}
+
+const decodeWritesSafely = (
+  value: unknown,
+): ReadonlyArray<OmniBusinessObjectWriteRecord> => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const decode = S.decodeUnknownSync(OmniBusinessObjectWriteRecordSchema)
+  const out: Array<OmniBusinessObjectWriteRecord> = []
+
+  for (const item of value) {
+    try {
+      out.push(decode(item))
+    } catch {
+      // Malformed or unsafe entry: skip it.
+    }
+  }
+
+  return out
+}
+
+/**
+ * Pull the source-authority bindings + proposed writes a live workroom record
+ * carries in `metadata.sourceAuthority`. Returns empty arrays when the block
+ * is absent or unparseable; individual malformed entries are skipped.
+ */
+export const extractWorkroomSourceAuthorityInputs = (
+  workroom: OmniWorkroomRecord,
+): WorkroomSourceAuthorityMetadata => {
+  const block = workroom.metadata?.['sourceAuthority']
+
+  if (typeof block !== 'object' || block === null || Array.isArray(block)) {
+    return { bindings: [], writes: [] }
+  }
+
+  const record = block as Readonly<Record<string, unknown>>
+
+  return {
+    bindings: decodeBindingsSafely(record['bindings']),
+    writes: decodeWritesSafely(record['writes']),
+  }
+}
+
+/**
+ * Build the INERT source-authority delivery plan directly from a live workroom
+ * record by extracting its `metadata.sourceAuthority` bindings/writes. This is
+ * the entry point the live omni client-delivery workroom route surface uses to
+ * project the source-authority model for a real workroom. It applies nothing;
+ * `effectsApplied` is always false and the gate defaults to `inert_disabled`.
+ */
+export const buildOmniWorkroomSourceAuthorityDeliveryPlan = (
+  input: Readonly<{
+    audience: OmniProjectionAudience
+    config?: OmniBusinessObjectDeliveryConfig | undefined
+    nowIso: string
+    workroom: OmniWorkroomRecord
+  }>,
+): OmniBusinessObjectDeliveryPlan => {
+  const { bindings, writes } = extractWorkroomSourceAuthorityInputs(
+    input.workroom,
+  )
+
+  return buildOmniBusinessObjectDeliveryPlan({
+    audience: input.audience,
+    bindings,
+    config: input.config,
+    nowIso: input.nowIso,
+    workroom: input.workroom,
+    writes,
   })
 }
