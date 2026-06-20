@@ -2,6 +2,52 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — crawl-shard dispatch coverage gate
+
+**Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
+
+`buildCs336A4CrawlShardPlan` partitions a snapshot into shard units and
+`deriveCs336A4CrawlShardAssignment(s)` turns those into payable assignment
+units. A test asserts the *happy-path* output of
+`deriveCs336A4CrawlShardAssignments` tiles a plan, but there was no reusable
+runtime gate to confirm that an ARBITRARY set of assignments — re-ordered,
+hand-curated, returned over the wire, or mixed across plans — completely and
+uniquely covers the snapshot an operator is about to pay for. Without it a
+paid dispatch could silently leave a snapshot **gap** (part of the corpus
+never acquired) or a segment **overlap** (the operator pays twice for the same
+bytes). This change adds that gate:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-dispatch-coverage.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-dispatch-coverage.test.ts` (12 tests)
+
+`verifyCs336A4CrawlShardDispatchCoverage` is a pure comparison over a plan plus
+a set of already-built assignments. It first checks every assignment belongs to
+the plan (`plan_ref_mismatch`, `acquisition_mode_mismatch`, and
+source/snapshot/license re-attribution via `source_ref_mismatch`,
+`snapshot_ref_mismatch`, `license_ref_mismatch`) and is internally consistent
+(`segment_range_invalid`, `segment_out_of_bounds`, `duplicate_assignment_ref`),
+then sweeps the segment intervals once across `[0, segmentCount)` to report a
+`duplicate_segment_coverage` (overlap) or `segment_gap` with the exact offending
+segment. A `complete: true` result is returned only for an exact, non-overlapping
+tiling. `assertCs336A4CrawlShardDispatchCoverage` is the fail-closed wrapper for
+a dispatch path: it throws `Cs336A4CrawlShardDispatchCoverageError` (carrying the
+reason) on an incomplete/double-counted set and returns the plan's content-
+addressed `planRef` on success. The gate deliberately does NOT re-derive
+assignment refs, does NOT bind a returned provenance receipt, and does NOT
+settle payment.
+
+### What genuinely remains (blocker NOT cleared)
+
+`crawl_scale_corpus_missing` stays listed. This is the deterministic
+*coverage check* over a set of assignments — it acquires nothing and dispatches
+nothing. No real crawl snapshot has been acquired, no assignment set has been
+dispatched as PAID work or run through the deterministic refinery, and this gate
+is not yet wired into the A4 dispatch/admission path. The promise's green
+criterion — refinery shards dispatched as paid assignments at crawl scale with
+deterministic-recompute verification — is unmet.
+`corpus_provenance_receipts_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — eval-delta measurement ↔ provenance source binding gate
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
