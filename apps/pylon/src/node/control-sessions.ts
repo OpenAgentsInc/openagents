@@ -284,16 +284,38 @@ type WorkspaceSelection = {
   workspaceStateRoot?: string
 }
 
+// Owner-local "no sandbox" opt-in for the desktop's own embedded node.
+//
+// The desktop app launches its own authenticated local Pylon node and forwards
+// `PYLON_CODEX_NO_SANDBOX=1` into the node child env (node-launcher.ts). When set,
+// a Codex control session runs full-access with network enabled — Codex can use
+// git / GitHub / credentials, which a sandboxed session cannot (that no-network
+// sandbox is exactly why "Codex didn't connect to GitHub").
+//
+// This honors the workspace INVARIANT: "authenticated local control sessions
+// may honor the local dev overlay" for danger modes. It is a node-boot env on
+// the OWNER's local machine — NOT a `session.spawn` wire field — so the
+// `rejectDangerFields` wire-defense (a remote spawn cannot force danger) stays
+// fully intact.
+export function codexControlSessionNoSandboxOptIn(
+  env: Record<string, string | undefined> | undefined,
+): boolean {
+  const value = env?.PYLON_CODEX_NO_SANDBOX?.trim().toLowerCase()
+  return value === "1" || value === "true" || value === "yes"
+}
+
 export function codexControlSessionExecutionSettings(
   config: Pick<CodexAgentConfig, "sandboxMode">,
   devConfig: Pick<CodexDevConfig, "codexExecutionMode">,
+  env?: Record<string, string | undefined>,
 ): {
   executionMode: "local_bounded" | "local_supervised_danger"
   networkAccessEnabled: boolean
   sandboxMode: "read-only" | "workspace-write" | "danger-full-access"
 } {
   const executionMode =
-    devConfig.codexExecutionMode === "local_supervised_danger"
+    devConfig.codexExecutionMode === "local_supervised_danger" ||
+    codexControlSessionNoSandboxOptIn(env)
       ? "local_supervised_danger"
       : "local_bounded"
   return {
@@ -737,7 +759,7 @@ async function defaultControlSessionExecutor(
   } else if (input.adapter === "codex") {
     const config = await loadCodexAgentConfig(input.summary)
     const devConfig = await loadCodexDevConfig(input.summary)
-    const settings = codexControlSessionExecutionSettings(config, devConfig)
+    const settings = codexControlSessionExecutionSettings(config, devConfig, input.env)
     executionMode = settings.executionMode
     sandboxMode = settings.sandboxMode
     networkAccessEnabled = settings.networkAccessEnabled

@@ -4,3 +4,4 @@
 export * from '@openagentsinc/ui'
 export * from './tenant-theme'
 export * from './credits-panel'
+export * from './email-sequence-panel'

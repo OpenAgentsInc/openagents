@@ -64,7 +64,7 @@ a measured kWh and must never be presented as one.
 
 ## 5. Current measurement status (honest)
 
-**Yellow, modeled seed only.** As of 2026-06-15:
+**Yellow, modeled seed only.** As of 2026-06-20:
 
 - Numerator: `/api/public/metrics/accepted-outcomes-per-kwh` now publishes a
   receipt-backed accepted-outcome counter with one seed accepted outcome: the
@@ -74,6 +74,10 @@ a measured kWh and must never be presented as one.
 - Denominator: the seed datapoint is **modeled**, not measured: 100 W provider
   power assumption × acceptance→result wall-clock window. Pylon still does not
   report measured kWh, and there is no operator energy-ingestion path.
+- Green gate: the endpoint now exposes the measured-telemetry threshold directly:
+  `requiredMeasuredDatapointCount = 2`, `currentMeasuredDatapointCount = 0`,
+  `measuredDatapointShortfall = 2`, and
+  `measuredTelemetryGateSatisfied = false`.
 
 So today AO/kWh has a **caveated modeled seed datapoint**, not measured production
 telemetry. That is enough to move the promise out of `planned` and into `yellow`,
@@ -117,10 +121,10 @@ real internal/external demand split — see
 1. a frozen definition (this doc — **done**),
 2. an accepted-outcome counter tied to verified-work receipts,
 3. measured or explicitly-modeled energy (kWh) per device/window, and
-4. at least one **published AO/kWh datapoint** with evidence-state labels and
-   caveats.
+4. at least two **published measured AO/kWh datapoints** from real telemetry
+   with evidence-state labels, caveats, and transition receipts.
 
-Until all four exist with measured or repeatable per-device telemetry, no AO/kWh
+Until all four exist with at least two measured per-device telemetry datapoints, no AO/kWh
 figure may be presented as measured, broadly representative, ranked, or
 production-routing evidence (see the promise's `unsafeCopy`).
 

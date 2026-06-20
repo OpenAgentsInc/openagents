@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   AcceptedOutcomesPerKwhEndpoint,
   AcceptedOutcomesPerKwhProjection,
+  AcceptedOutcomesPerKwhRequiredMeasuredDatapoints,
   modeledLabor4777AoKwhDatapoint,
   projectAcceptedOutcomesPerKwh,
 } from './accepted-outcomes-per-kwh'
@@ -29,6 +30,12 @@ describe('Accepted Outcomes per kWh metric', () => {
     expect(projection.gate.greenGateSatisfied).toBe(false)
     expect(projection.gate.modeledFigurePublicationAllowed).toBe(true)
     expect(projection.gate.measuredFigurePublicationAllowed).toBe(false)
+    expect(projection.gate.requiredMeasuredDatapointCount).toBe(
+      AcceptedOutcomesPerKwhRequiredMeasuredDatapoints,
+    )
+    expect(projection.gate.currentMeasuredDatapointCount).toBe(0)
+    expect(projection.gate.measuredDatapointShortfall).toBe(2)
+    expect(projection.gate.measuredTelemetryGateSatisfied).toBe(false)
     expect(projection.staleness).toMatchObject({
       composition: 'live_at_read',
       contractVersion: 'projection_staleness.v1',
@@ -44,6 +51,31 @@ describe('Accepted Outcomes per kWh metric', () => {
     expect(projection.unsafeCopy).toContain(
       'Do not describe the seed datapoint as measured',
     )
+    expect(projection.unsafeCopy).toContain(
+      'until at least two real telemetry datapoints are published',
+    )
+  })
+
+  test('exposes the measured-telemetry green threshold without upgrading the modeled seed', () => {
+    const projection = projectAcceptedOutcomesPerKwh({
+      generatedAt: '2026-06-15T22:15:00.000Z',
+    })
+
+    expect(projection.gate.requiredMeasuredDatapointCount).toBe(2)
+    expect(projection.gate.currentMeasuredDatapointCount).toBe(
+      projection.energyAccounting.measuredDatapointCount,
+    )
+    expect(projection.gate.currentMeasuredDatapointCount).toBeLessThan(
+      projection.gate.requiredMeasuredDatapointCount,
+    )
+    expect(projection.gate.measuredDatapointShortfall).toBe(
+      projection.gate.requiredMeasuredDatapointCount -
+        projection.gate.currentMeasuredDatapointCount,
+    )
+    expect(projection.gate.blockerRefs).toContain(
+      'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
+    )
+    expect(projection.statusLabel).toContain('0 of 2 measured datapoints')
   })
 
   test('labels demand provenance internal/external and forbids unlabeled market-demand claims', () => {
