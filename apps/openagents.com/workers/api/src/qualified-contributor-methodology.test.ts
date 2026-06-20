@@ -9,6 +9,7 @@ import {
   QualifiedRunReason,
   type QualifiedContributorEvidence,
   type QualifiedContributorSettlementEvidence,
+  parseQualifiedContributorMethodologyInput,
   verifyQualifiedContributor,
   verifyQualifiedContributorMethodology,
 } from './qualified-contributor-methodology'
@@ -292,5 +293,196 @@ describe('verifyQualifiedContributorMethodology', () => {
         contributors: [],
       }).conforms,
     ).toBe(false)
+  })
+})
+
+describe('parseQualifiedContributorMethodologyInput', () => {
+  // A structurally sound, public-safe document an auditor could load from JSON.
+  const validDocument = (): unknown => ({
+    claimedQualifiedContributorCount: 2,
+    contributors: [
+      {
+        pylonRef: 'pylon.a',
+        leaseRefs: ['lease.a.1'],
+        verifiedExactTraceReplayChallengeRefs: ['challenge.a.1'],
+        settlementReceipts: [
+          {
+            receiptRef: 'receipt.a',
+            state: 'settled',
+            providerConfirmed: true,
+            realBitcoinMoved: true,
+          },
+        ],
+      },
+      {
+        pylonRef: 'pylon.b',
+        leaseRefs: ['lease.b.1'],
+        verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+        settlementReceipts: [
+          {
+            receiptRef: 'receipt.b',
+            state: 'settled',
+            providerConfirmed: true,
+            realBitcoinMoved: true,
+          },
+        ],
+      },
+    ],
+  })
+
+  test('parses a sound document and the result feeds the verifier', () => {
+    const parsed = parseQualifiedContributorMethodologyInput(validDocument())
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    const result = verifyQualifiedContributorMethodology(parsed.value)
+    expect(result.conforms).toBe(true)
+    expect(result.qualifiedContributorCount).toBe(2)
+  })
+
+  test('round-trips through JSON (the real auditor path)', () => {
+    const parsed = parseQualifiedContributorMethodologyInput(
+      JSON.parse(JSON.stringify(validDocument())),
+    )
+    expect(parsed.ok).toBe(true)
+  })
+
+  test('rejects a non-object document', () => {
+    const parsed = parseQualifiedContributorMethodologyInput([])
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain('not-an-object:$')
+  })
+
+  test('rejects a leak-prone extra key at the document level', () => {
+    const doc = validDocument() as Record<string, unknown>
+    doc.walletBalanceSats = 1005
+    const parsed = parseQualifiedContributorMethodologyInput(doc)
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain('unexpected-key:$.walletBalanceSats')
+  })
+
+  test('rejects a leak-prone extra key on a settlement receipt', () => {
+    const parsed = parseQualifiedContributorMethodologyInput({
+      claimedQualifiedContributorCount: 1,
+      contributors: [
+        {
+          pylonRef: 'pylon.a',
+          leaseRefs: ['lease.a.1'],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.a.1'],
+          settlementReceipts: [
+            {
+              receiptRef: 'receipt.a',
+              state: 'settled',
+              providerConfirmed: true,
+              realBitcoinMoved: true,
+              rawSparkAddress: 'sp1qredacted',
+            },
+          ],
+        },
+      ],
+    })
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain(
+      'unexpected-key:$.contributors[0].settlementReceipts[0].rawSparkAddress',
+    )
+  })
+
+  test('rejects a non-integer claimed count', () => {
+    const doc = validDocument() as Record<string, unknown>
+    doc.claimedQualifiedContributorCount = 1.5
+    const parsed = parseQualifiedContributorMethodologyInput(doc)
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain(
+      'not-a-non-negative-integer:$.claimedQualifiedContributorCount',
+    )
+  })
+
+  test('rejects a mistyped settlement state with a path-qualified error', () => {
+    const parsed = parseQualifiedContributorMethodologyInput({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        {
+          pylonRef: 'pylon.a',
+          leaseRefs: ['lease.a.1'],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.a.1'],
+          settlementReceipts: [
+            {
+              receiptRef: 'receipt.a',
+              state: 'settled',
+              providerConfirmed: true,
+              realBitcoinMoved: true,
+            },
+          ],
+        },
+        {
+          pylonRef: 'pylon.b',
+          leaseRefs: ['lease.b.1'],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+          settlementReceipts: [
+            {
+              receiptRef: 'receipt.b',
+              state: 7,
+              providerConfirmed: true,
+              realBitcoinMoved: true,
+            },
+          ],
+        },
+      ],
+    })
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain(
+      'not-a-string:$.contributors[1].settlementReceipts[0].state',
+    )
+  })
+
+  test('rejects contributors that is not an array', () => {
+    const doc = validDocument() as Record<string, unknown>
+    doc.contributors = { 0: 'nope' }
+    const parsed = parseQualifiedContributorMethodologyInput(doc)
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain('not-an-array:$.contributors')
+  })
+
+  test('rejects a non-string ref inside leaseRefs with its index', () => {
+    const parsed = parseQualifiedContributorMethodologyInput({
+      claimedQualifiedContributorCount: 1,
+      contributors: [
+        {
+          pylonRef: 'pylon.a',
+          leaseRefs: ['lease.ok', 42],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.a.1'],
+          settlementReceipts: [
+            {
+              receiptRef: 'receipt.a',
+              state: 'settled',
+              providerConfirmed: true,
+              realBitcoinMoved: true,
+            },
+          ],
+        },
+      ],
+    })
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.errors).toContain(
+      'not-a-string:$.contributors[0].leaseRefs[1]',
+    )
+  })
+
+  test('an empty contributors array parses (verifier then judges the count)', () => {
+    const parsed = parseQualifiedContributorMethodologyInput({
+      claimedQualifiedContributorCount: 0,
+      contributors: [],
+    })
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    expect(
+      verifyQualifiedContributorMethodology(parsed.value).conforms,
+    ).toBe(true)
   })
 })
