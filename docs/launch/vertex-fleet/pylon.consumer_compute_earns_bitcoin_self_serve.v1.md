@@ -3,6 +3,38 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (f) — autostart receipts: reject a replicated receipt artifact
+
+Blocker advanced this run:
+`blocker.product_promises.spark_helper_autostart_receipt_missing`
+
+Update (e) closed the reused-*contributor-ref* hole in
+`verifySparkHelperAutostartReceiptSet`, but a parallel hole remained: the autostart
+receipt carries no contributor binding, so an operator could capture ONE receipt on
+their own host and pair byte-identical copies of it with two *distinct* fabricated
+contributor refs — every entry passed (distinct refs + a valid receipt) and the set
+falsely attested two distinct contributors. This is the same shape as the
+`shared-settlement-receipt-across-contributors` rule already enforced in the
+scale-methodology verifier (Update d), which `(e)` explicitly said it mirrored — but
+the autostart set verifier did not yet enforce it.
+
+- `apps/pylon/src/spark-helper-autostart.ts` — `verifySparkHelperAutostartReceiptSet`
+  now fingerprints each valid receipt (canonical, fixed-key-order serialization over
+  the closed allowlist) and rejects an exact-duplicate artifact reused across entries
+  with `duplicate-receipt-artifact:<ref>`. Two genuinely independent captures differ
+  at least in `observedAt`, so an exact duplicate is replication, not a second
+  contributor.
+- `apps/pylon/src/spark-helper-autostart.test.ts` — updated the distinct-contributors
+  test to use independent (distinct-`observedAt`) receipts, and added 2 cases
+  (replicated artifact under distinct refs fails; differ-only-in-`observedAt` is
+  accepted as distinct). 26 pass (was 24).
+- `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — documented the rule.
+
+No promise state changed; nothing started, no funds moved, no host probed. Still
+listed: clearing it needs REAL captured receipts from ≥1 distinct normal contributor
+that pass `verifySparkHelperAutostartReceiptSet` with `clearsBlocker:true`, plus owner
+sign-off.
+
 ## Update 2026-06-20 (e) — autostart receipts: distinct-normal-contributor set gate
 
 Blocker advanced this run:

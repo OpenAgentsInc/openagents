@@ -29,7 +29,11 @@ implemented as `verifySparkHelperAutostartReceipt`.
   no contributor binding, and one operator host could be presented as "several
   contributors". This gate runs the single-receipt audit on each receipt AND
   requires the contributor refs (public-safe pylonRefs) to be non-empty and
-  **distinct**, rejecting a reused ref. Returns
+  **distinct**, rejecting a reused ref. It ALSO rejects a byte-identical receipt
+  **artifact** reused across entries (`duplicate-receipt-artifact:<ref>`): because
+  the receipt carries no contributor binding, a copy of one capture paired with a
+  fabricated ref must not count as a second contributor. Two genuinely independent
+  captures differ at least in `observedAt`. Returns
   `{ valid, clearsBlocker, distinctContributorCount, perEntry[], reasons[] }`.
   It mirrors the cross-contributor settlement-integrity rule in the
   scale-methodology verifier.
@@ -75,4 +79,4 @@ The audit fails (and the artifact must be rejected) on any of:
   separate copy-narrowing and scale-methodology work, plus owner sign-off
   (receipt-first per `proof.claim_upgrade_receipts.v1`).
 
-Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (24 pass).
+Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (26 pass).
