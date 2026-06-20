@@ -1483,7 +1483,6 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.source_authority_model_not_green',
-          'blocker.product_promises.connector_read_receipts_missing',
           'blocker.product_promises.approval_gated_business_writes_missing',
         ],
         verification:
