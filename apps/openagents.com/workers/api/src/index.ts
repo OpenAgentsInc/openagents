@@ -423,6 +423,7 @@ import {
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
 import { publicProductPromisesDocument } from './product-promises'
+import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
@@ -7982,6 +7983,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1).
+    // Read-only: joins the transition-receipt feed against the live registry so
+    // a third party can audit every green flip (promiseId, from->to,
+    // registryVersion, receiptRef, lastVerifiedAt) with filtering + summary.
+    path: '/api/public/product-promises/audit',
+    handler: (request, env) =>
+      handlePublicPromiseAuditApi(request, {
+        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
   },
@@ -8045,14 +8057,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     // Mobile workroom approval projection (promise
-    // mobile.voice_approval_companion.v1, planned). INERT by default: the store
+    // mobile.voice_approval_companion.v1, yellow). INERT by default: the store
     // is empty unless MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED is armed. When
     // armed it returns the existing read-only mobile approval-card projection:
     // no approval, execution, notification, payment, provider mutation, runner
     // launch, or public-claim upgrade. This clears ONLY
     // blocker.product_promises.mobile_projection_missing; voice-command
     // approval receipts and cross-device sync stay open, and the promise stays
-    // planned. GET only.
+    // yellow. GET only.
     path: MobileWorkroomApprovalProjectionEndpoint,
     handler: (request, env) =>
       handleMobileWorkroomApprovalProjectionApi(request, {
