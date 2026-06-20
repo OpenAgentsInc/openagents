@@ -9455,6 +9455,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleQuote(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        laneArming: resolveSupplyLaneArming(env),
       }),
   },
   {

@@ -6,6 +6,7 @@ import {
   filterServableCatalog,
   isLaneArmed,
   isModelServable,
+  resolveNamedModelServability,
   resolveSupplyLaneArming,
   type SupplyLaneArming,
 } from './model-serving-policy'
@@ -116,5 +117,34 @@ describe('filterServableCatalog', () => {
   it('preserves catalog order', () => {
     const filtered = filterServableCatalog(catalog, ALL_ARMED)
     expect(filtered.map(e => e.id)).toEqual(catalog.map(e => e.id))
+  })
+})
+
+describe('resolveNamedModelServability', () => {
+  it('returns true for a known model on an armed lane', () => {
+    expect(resolveNamedModelServability('gemini-3.5-flash', ALL_ARMED)).toBe(
+      true,
+    )
+  })
+
+  it('returns false for a known model on an unarmed lane', () => {
+    expect(
+      resolveNamedModelServability('gemini-3.5-flash', ALL_LANES_UNARMED),
+    ).toBe(false)
+  })
+
+  it('returns undefined for an unknown model id (not gated)', () => {
+    expect(
+      resolveNamedModelServability('not-a-real-model', ALL_ARMED),
+    ).toBeUndefined()
+  })
+
+  it('resolves case-insensitively (lookup keys on the canonical id)', () => {
+    expect(resolveNamedModelServability('GEMINI-3.5-FLASH', ALL_ARMED)).toBe(
+      true,
+    )
+    expect(
+      resolveNamedModelServability('GEMINI-3.5-FLASH', ALL_LANES_UNARMED),
+    ).toBe(false)
   })
 })

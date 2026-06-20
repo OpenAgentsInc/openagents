@@ -21,6 +21,7 @@
 // catalog advertises to what is genuinely servable.
 
 import type { ModelCatalogEntry } from './model-catalog'
+import { lookupModel } from './pricing'
 import type { SupplyLane } from './pricing'
 
 // Which supply lanes the gateway can ACTUALLY serve right now. A lane is "armed"
@@ -77,6 +78,30 @@ export const isModelServable = (
   entry: ModelCatalogEntry,
   arming: SupplyLaneArming,
 ): boolean => isLaneArmed(arming, entry.lane)
+
+// Servability for a model the customer NAMES by id (vs a catalog entry already
+// in hand). Resolves the id against the SAME pricing table the gateway bills
+// from (`lookupModel`, case-insensitive), so a named quote cannot disagree with
+// the catalog on which lane a model belongs to. Returns:
+//   - true       : the model is in the pricing table AND its lane is armed
+//                  (servable right now)
+//   - false      : the model is in the pricing table but its lane is NOT armed
+//                  (a quote would fund a balance toward a model that can only
+//                  fail `model_unavailable` at dispatch — the gap to gate)
+//   - undefined  : the model id is unknown to the pricing table. The gateway
+//                  intentionally prices unknown ids at a conservative fallback
+//                  rate (cost-estimate.ts), so an unknown id is NOT gated here;
+//                  the caller keeps its existing unknown-model behaviour.
+export const resolveNamedModelServability = (
+  modelId: string,
+  arming: SupplyLaneArming,
+): boolean | undefined => {
+  const entry = lookupModel(modelId)
+  if (entry === undefined) {
+    return undefined
+  }
+  return isLaneArmed(arming, entry.lane)
+}
 
 // Narrow a published catalog to only the models the gateway can actually serve
 // right now. Order is preserved. With every lane armed this is the identity

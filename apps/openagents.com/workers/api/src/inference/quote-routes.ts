@@ -26,6 +26,10 @@ import { Effect, Schema as S } from 'effect'
 import { noStoreJsonResponse } from '../http/responses'
 import { type BudgetEstimate, estimateBudgetCapacity } from './budget-estimate'
 import { type CostEstimate, estimateRequestCost } from './cost-estimate'
+import {
+  resolveNamedModelServability,
+  type SupplyLaneArming,
+} from './model-serving-policy'
 
 export type QuoteDeps = Readonly<{
   // Whether the gateway is enabled. The Worker passes
@@ -34,6 +38,16 @@ export type QuoteDeps = Readonly<{
   // Catalog/pricing margin override (defaults to the launch margin inside the
   // pricing engine). Tests inject a fixed value for determinism.
   margin?: number
+  // Provider serving policy: which supply lanes are armed (credential present).
+  // When supplied, a quote for a KNOWN model whose supply lane is NOT armed is
+  // refused `model_unavailable` instead of returning a fundable price — so the
+  // quote surface can never let a credits customer fund a balance toward a model
+  // the gateway cannot serve (mirrors how `/v1/models` filters its catalog;
+  // model-serving-policy.ts). When omitted, every model is quotable (the prior
+  // behaviour — preserved for callers that do not gate on arming). An UNKNOWN
+  // model id is never gated here: the estimator prices it at the conservative
+  // fallback rate exactly as before.
+  laneArming?: SupplyLaneArming
 }>
 
 // QUOTE REQUEST SCHEMA ----------------------------------------------------
@@ -98,6 +112,22 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
     const body = decodeBody(rawBody)
     if (body === undefined) {
       return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+    }
+
+    // PROVIDER POLICY GATE: when lane arming is supplied, refuse a quote for a
+    // KNOWN model whose supply lane is not armed right now — such a request can
+    // only fail `model_unavailable` at dispatch, so quoting a fundable price for
+    // it would invite funding a balance toward an unservable model. An unknown
+    // id (servability `undefined`) falls through to the conservative fallback
+    // quote unchanged. Omitting `laneArming` keeps every model quotable.
+    if (
+      deps.laneArming !== undefined &&
+      resolveNamedModelServability(body.model, deps.laneArming) === false
+    ) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: body.model },
+        { status: 404 },
+      )
     }
 
     // Shared knobs for both modes. Spread the optionals only when set so
