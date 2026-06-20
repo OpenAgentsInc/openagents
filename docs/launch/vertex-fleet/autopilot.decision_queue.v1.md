@@ -2,7 +2,27 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — cross-client coordinator
+## Latest run (2026-06-20) — full-vocabulary decision-act contract
+
+**Blocker advanced:** `blocker.product_promises.decision_queue_api_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-act.ts` | `authorizeAutopilotDecisionAct()` — the validated request→command contract the decision-queue HTTP route is missing. Today `autopilot-decision-routes.ts` hard-rejects everything except `approve_pr_draft` ("Only approve_pr_draft decision actions are actionable through the decision queue."). This module accepts the full client vocabulary — `continue` / `steer` / `provide_context` / `rerun_tests` / `retry_account` / `stop` (plus `approve_pr_draft`) — decodes the wire request with Effect-Schema (`AutopilotDecisionActRequest`), and authorizes it against the stored decision facts. It enforces the CLAIM's two invariants in pure code: **route-authorized** (an act is refused unless the stored decision status is `available`/`recommended`, and unless the resolution matches the stored `actionKind`) and **evidence-only** (every produced `AutopilotDecisionActCommand` reports `directEffectPermitted: false` / `authorityBoundary: 'evidence_only'`, and only public-safe refs may cross — raw payloads/secrets are rejected). It emits the `closeoutRef` exactly-once key a receipt is later attributed to. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-act.test.ts` | 11 tests: schema decode of submit/decline, unknown-resolution & unknown-verb decode rejection, evidence-only command shape, full-vocabulary coverage (every actionable kind authorizes, proving the surface is no longer approve-only), kind-mismatch refusal, non-actionable-status refusal, `provide_context`/`steer` context-required-on-submit (and not on decline), unsafe-ref rejection, and ref normalization (trim/dedupe/sort). |
+
+**What it proves:** the decision-queue API now has a tested, mergeable contract
+for the *full* decision vocabulary the node can raise — not just the legacy PR
+approval. The route layer can decode → `authorizeAutopilotDecisionAct` → apply,
+with route-authorization and evidence-only safety enforced once, in one pure,
+test-backed place. No promise state changes; no store/route wiring is claimed
+(see "What remains").
+
+---
+
+## Earlier run (2026-06-20) — cross-client coordinator
 
 **Blocker advanced:** `blocker.product_promises.cross_client_exactly_once_decisions_missing`
 
@@ -64,11 +84,20 @@ and is shared across desktop / web / Expo (the three client surfaces).
 
 ## What remains (still open after this run)
 
-- **`blocker.product_promises.decision_queue_api_missing`** — An HTTP route that
-  exposes the full decision-type vocabulary (continue / steer / provide context /
-  rerun tests / retry / stop) beyond `approve_pr_draft` still needs to be wired
-  into the Worker API. The blueprint continuation-decision-queue service exists
-  but has no HTTP surface.
+- **`blocker.product_promises.decision_queue_api_missing`** —
+  *Partially advanced (2026-06-20).* The validated request→command **contract**
+  for the full decision-type vocabulary (continue / steer / provide context /
+  rerun tests / retry / stop, plus `approve_pr_draft`) now exists and is tested
+  (`apps/openagents.com/workers/api/src/autopilot-decision-act.ts`,
+  `authorizeAutopilotDecisionAct`). The remaining gap is the *wiring*:
+  `autopilot-decision-routes.ts#actOnDecision` still only resolves
+  `approve_pr_draft` via the work-order review store — it needs to (a) read the
+  stored decision facts for non-review kinds, (b) call
+  `authorizeAutopilotDecisionAct`, and (c) persist the resulting evidence-only
+  command + closeout, with idempotency on `closeoutRef`. The blueprint
+  continuation-decision-queue projection service is still read-only (no act
+  surface). No promise state changes until a real act over a live paired node
+  produces a dereferenceable receipt.
 
 - **`blocker.product_promises.cross_client_exactly_once_decisions_missing`** —
   *Partially advanced (2026-06-20).* `createDecisionCloseoutCoordinator` now
