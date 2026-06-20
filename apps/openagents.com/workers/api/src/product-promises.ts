@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.4'
+export const PublicProductPromisesVersion = '2026-06-20.5'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1248,21 +1248,23 @@ export const publicProductPromisesDocument = () => {
         claim:
           'DSPy/GEPA signatures and agent workflow components can be discoverable and monetizable.',
         safeCopy:
-          'Signature validation, Blueprint tooling, and marketplace gates exist; usage metering, billing, revenue split, and settlement are not live.',
+          'Signature validation, Blueprint tooling, marketplace gates, and an inert public usage-metering projection exist. Billing, pricing, revenue split, and settlement are not live.',
         unsafeCopy:
           'Do not claim signatures or workflow components are generating settled revenue.',
         evidenceRefs: [
           'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
           'apps/pylon/packages/runtime/src/blueprint',
+          'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
+          'apps/openagents.com/workers/api/src/signature-usage-metering.test.ts',
+          'apps/openagents.com/workers/api/src/signature-usage-metering-routes.ts',
+          'apps/openagents.com/workers/api/src/signature-usage-metering-routes.test.ts',
+          'route:/api/public/markets/signature-monetization/metering',
         ],
-        blockerRefs: [
-          'blocker.product_promises.signature_usage_metering_missing',
-          'blocker.product_promises.signature_settlement_missing',
-        ],
+        blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
         verification:
-          'Requires package validation, runtime activation, metering, attribution, pricing, rev-share, dispute/refund policy, and settlement receipts.',
+          'Usage metering reaches the metered rung via the inert public projection and tests, clearing the usage-metering blocker only. Green still requires package activation, attribution, pricing, rev-share, dispute/refund policy, and settlement receipts.',
         authorityBoundary:
-          'Discovery or contribution validation does not install, promote, bill, or settle package usage.',
+          'Discovery, contribution validation, and inert usage metering do not install, promote, bill, debit, credit, or settle package usage.',
       },
       {
         ...basePromiseFields,
@@ -3439,6 +3441,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.2: owner-decided green — training.verification_classes.v1 yellow -> green. The last open gate (#4674 aggregate-only vs per-contribution sampling) is decided in writing: per-contribution sampling default per class, aggregate-only deprecated (docs/promises/2026-06-20-verification-class-sampling-policy.md, owner-approved 2026-06-20). Other criteria already met (registry live; exact_trace_replay/deterministic_recompute/freivalds_merkle on real work; paid weak-device validator closeout #4676; exact_trace_replay already per-contribution across five paid contributors on run.tassadar.executor.20260615). Blocker cleared. Green 21 -> 22. Honest bound: not all five classes on real work / not at-scale. promise_transition via operator route per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-20.3: Pylon v1.0.5 signed-binary release shipped + verified — pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 yellow -> green (owner-authorized 2026-06-20). Signed binaries (macOS+Linux, 4 targets) signed with pinned ed25519 kid 2dbe811d19f67528, published to updates.openagents.com (Cloud Run oa-updates-00041-b7b, rollout 100, full rc history preserved); live feed verified serving v1.0.5 with sha256+ed25519 against apps/oa-updates/keys/release-pubkey.json (fail-closed, tamper rejected); live network smoke registered+heartbeated online in /api/pylons as pylon.33afd48282a649047e3a (openagents.pylon@1.0.5). Both blockers cleared. Green 22 -> 24. Honest bound: macOS+Linux only (Windows out of scope); network-scale earning separate. Flip applied in source ahead of the operator-route transition receipt.',
         'Registry 2026-06-20.4: green-quality fix on pylon.release_tomorrow.v1 (conceding Orrery audit, forum topic 415e16a7) — its green previously rested on the sibling pylon.v03_release_candidate.v1 evidence array; it now carries its OWN dereferenceable refs (the signed darwin-arm64 feed https://updates.openagents.com/pylon/rc/darwin-arm64/feed.json and the live registration route:/api/pylons#pylon.33afd48282a649047e3a). No state change (stays green), green count unchanged at 24. The transitions-feed backfill for the four post-2026-06-17.5 flips remains the owner-gated item (prod admin token).',
+        'Registry 2026-06-20.5 is a marketplace.signature_monetization.v1 de-stale pass and flips NO promise state. The already-deployed inert usage-metering model and public read-only projection (GET /api/public/markets/signature-monetization/metering) prove validation+metering can reach the metered rung while the promise remains red/inert and settlement stays blocked. This clears blocker.product_promises.signature_usage_metering_missing only; blocker.product_promises.signature_settlement_missing remains. No billing, pricing, rev-share, payout, settlement, or revenue claim is created.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

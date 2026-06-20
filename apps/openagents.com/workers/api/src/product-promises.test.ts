@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.4')
+    expect(decoded.version).toBe('2026-06-20.5')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -132,7 +132,15 @@ describe('public product promises document', () => {
     // agents.nostr_fallback_coordination.v1 yellow -> green (owner-authorized
     // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly
     // 21. The 2026-06-20.1 pass is a Spark-first Forum wallet copy/default
-    // update with no state flips, so the count remained 21. The 2026-06-20.2 pass flips training.verification_classes.v1 yellow -> green (owner-authorized #4674 per-contribution sampling decision), so green is now exactly 22. The 2026-06-20.3 pass flips pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 green (Pylon v1.0.5 signed release shipped + verified, owner-authorized), so green is now exactly 24.
+    // update with no state flips, so the count remained 21. The 2026-06-20.2
+    // pass flips training.verification_classes.v1 yellow -> green
+    // (owner-authorized #4674 per-contribution sampling decision), so green is
+    // now exactly 22. The 2026-06-20.3 pass flips
+    // pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 green (Pylon
+    // v1.0.5 signed release shipped + verified, owner-authorized), so green is
+    // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
+    // 2026-06-20.5 signature-metering de-stale pass flip no promise state, so
+    // green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -659,16 +667,45 @@ describe('public product promises document', () => {
     )
   })
 
+  test('signature monetization records metering evidence while keeping settlement blocked', () => {
+    const document = publicProductPromisesDocument()
+    const signaturePromise = document.promises.find(
+      promise => promise.promiseId === 'marketplace.signature_monetization.v1',
+    )
+
+    expect(signaturePromise).toMatchObject({
+      state: 'red',
+      blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
+        'apps/openagents.com/workers/api/src/signature-usage-metering-routes.ts',
+        'route:/api/public/markets/signature-monetization/metering',
+      ]),
+    })
+    expect(signaturePromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.signature_usage_metering_missing',
+    )
+    expect(signaturePromise?.safeCopy).toContain(
+      'inert public usage-metering projection',
+    )
+    expect(signaturePromise?.verification).toContain(
+      'clearing the usage-metering blocker only',
+    )
+    expect(signaturePromise?.authorityBoundary).toContain(
+      'do not install, promote, bill, debit, credit, or settle',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.4', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.5', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.4',
+      expectedVersion: '2026-06-20.5',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.4',
+      servedVersion: '2026-06-20.5',
       status: 'ready',
     })
     expect(
@@ -678,7 +715,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.4',
+      servedVersion: '2026-06-20.5',
       status: 'blocked',
     })
   })
