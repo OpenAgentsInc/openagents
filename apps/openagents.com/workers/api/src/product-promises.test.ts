@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.1')
+    expect(decoded.version).toBe('2026-06-20.2')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -132,10 +132,10 @@ describe('public product promises document', () => {
     // agents.nostr_fallback_coordination.v1 yellow -> green (owner-authorized
     // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly
     // 21. The 2026-06-20.1 pass is a Spark-first Forum wallet copy/default
-    // update with no state flips, so the count remains 21.
+    // update with no state flips, so the count remained 21. The 2026-06-20.2 pass flips training.verification_classes.v1 yellow -> green (owner-authorized #4674 per-contribution sampling decision), so green is now exactly 22.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(21)
+    ).toBe(22)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -344,7 +344,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'training.verification_classes.v1',
-          state: 'yellow',
+          state: 'green',
           evidenceRefs: expect.arrayContaining([
             'receipt.nexus_pylon.settlement.assignment_public_training_validator_recheck_20260611053500',
             'promise_transition_0bfce0c5-e4dd-4d19-9221-4bc9504f2055',
@@ -656,12 +656,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.1', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.2', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.1',
+      expectedVersion: '2026-06-20.2',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.1',
+      servedVersion: '2026-06-20.2',
       status: 'ready',
     })
     expect(
@@ -671,7 +671,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.1',
+      servedVersion: '2026-06-20.2',
       status: 'blocked',
     })
   })
