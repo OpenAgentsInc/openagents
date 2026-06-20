@@ -571,9 +571,9 @@ export const SettledPersistPreferences = m("SettledPersistPreferences")
 // text bar; `SubmittedShell` submits the current input (a turn); `RespondedShell`
 // is the response landing back (HUD H5 #5503: from the real-model `shellTurn`
 // RPC in commands.ts, with the deterministic loopback as the offline/test
-// fallback). `OpenedPanes` reveals the KEPT
-// full multi-pane UI (explicit open → lands on the chat pane); `ClosedPanes`
-// returns to the black shell. These are the only verbs the shell needs.
+// fallback). `OpenedPanes` reveals the KEPT advanced multi-pane UI (explicit
+// open → lands on the Code composer); `ClosedPanes` returns to the black shell.
+// These are the only verbs the shell needs.
 export const ChangedShellInput = m("ChangedShellInput", { value: S.String })
 export const CycledShellTarget = m("CycledShellTarget")
 export const SelectedShellTarget = m("SelectedShellTarget", { target: ShellTarget })

@@ -1,8 +1,8 @@
 // CL-53: the Foldkit view for the Autopilot Desktop webview.
 //
-// Replaces the hand-DOM shell + panes/ + cards/. A persistent left sidebar
-// (Nodes/Sessions/Decisions/Spawn/Settings + pending-decision badge + node
-// status line + coordinator Pause/Resume toggle) and a content-pane router.
+// Replaces the hand-DOM shell + panes/ + cards/. The Verse home is immersive;
+// advanced panes use the grouped left sidebar (Code/Supervise/Explore/Settings)
+// and a content-pane router once explicitly opened.
 //
 // Read-only DISPLAY uses the shared `@openagentsinc/autopilot-ui` components
 // (typed with message `never` — embedding them inside a view of message Message
@@ -6644,6 +6644,30 @@ const rootView = (model: Model): Html => {
     return h.div(
       [cls("app-shell app-shell-network"), themeData],
       [networkPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
+    )
+  }
+  // #5820: the Verse is the default product surface, so keep coding/session/
+  // repo/worktree/cloud controls out of first paint. Advanced work remains one
+  // Cmd-K away, and navigating to any non-Verse pane restores the full sidebar.
+  if (model.pane === "chat" && verseVisible(model)) {
+    return h.div(
+      [cls("app-shell app-shell-verse"), themeData],
+      [
+        h.button(
+          [
+            cls("shell-return verse-advanced"),
+            h.Type("button"),
+            h.Title("Open advanced commands (Cmd-K)"),
+            h.AriaLabel("Open advanced commands"),
+            h.OnClick(OpenedCommandPalette()),
+          ],
+          ["Advanced"],
+        ),
+        chatPane(model),
+        managedPaneLayer(model),
+        hotbar(model),
+        commandPalette(model),
+      ],
     )
   }
   const fullscreenTraining = model.pane === "training-fullscreen"

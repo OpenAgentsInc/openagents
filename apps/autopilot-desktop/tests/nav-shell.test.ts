@@ -289,7 +289,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     return typeof record.title === "string" && "body" in record && record.body != null
   }
 
-  test("every pane renders a Document with the grouped sidebar", () => {
+  test("every pane renders a mountable Document", () => {
     for (const pane of PaneId.literals) {
       const model: ModelType = Model.make({ ...initialModel, pane })
       expect({ pane, ok: isMountable(view(model)) }).toEqual({ pane, ok: true })
@@ -303,18 +303,40 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(isMountable(view(queried))).toBe(true)
   })
 
-  test("fresh runtime first paint is the Verse, not shell target tabs", () => {
+  test("fresh runtime first paint is the immersive Verse, not advanced code chrome", () => {
     const [model] = initialRuntimeState()
     const tree = serializeView(view(model).body)
 
     expect(model.pane).toBe("chat")
+    expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("The Verse")
     expect(tree).toContain("Tassadar")
     expect(tree).toContain("Pylon")
+    expect(tree).toContain("Advanced")
+    expect(tree).not.toContain("sidebar")
+    expect(tree).not.toContain("status-hud-overlay")
     expect(tree).not.toContain("shell-target-tabs")
+    expect(tree).not.toContain("Go to Composer")
+    expect(tree).not.toContain("Spawn a session")
+    expect(tree).not.toContain("Sessions")
+    expect(tree).not.toContain("Swarm")
+    expect(tree).not.toContain("Deploy")
     expect(tree).not.toContain("Claude Code")
     expect(tree).not.toContain("Codex")
+  })
+
+  test("fresh Verse first paint keeps advanced Code paths reachable through Cmd-K", () => {
+    const [start] = initialRuntimeState()
+    const [palette] = update(start, OpenedCommandPalette())
+    const tree = serializeView(view(palette).body)
+
+    expect(palette.commandPaletteOpen).toBe(true)
+    expect(tree).toContain("Go to Composer")
+    expect(tree).toContain("Go to Sessions")
+    expect(tree).toContain("Go to Swarm")
+    expect(tree).toContain("Go to Spawn")
+    expect(tree).toContain("Spawn a session")
   })
 })
 

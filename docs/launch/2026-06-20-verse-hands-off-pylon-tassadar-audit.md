@@ -18,6 +18,11 @@ not authority.
   bundle defaults on with an explicit kill switch, onboarding warms on first
   paint, and focused tests assert no `Claude Code` or `Codex` target tabs on
   the default surface.
+- 2026-06-20: #5820 demoted the advanced coding chrome from first paint. The
+  default Chat/Verse root now renders without sidebar, status HUD, shell target
+  tabs, Spawn/Sessions/Swarm/Deploy labels, or repo/worktree/cloud-code copy;
+  Cmd-K/Advanced opens the command palette and the explicit shell open path
+  lands on the Code composer.
 
 ## Executive read
 
@@ -378,8 +383,7 @@ Replace first paint with:
 
 ### P0 - Make the Verse the default surface
 
-Status: landed by #5819 on 2026-06-20. Remaining P0 cleanup is tracked in
-#5820 for deeper coding-surface demotion.
+Status: landed by #5819 and #5820 on 2026-06-20.
 
 Acceptance:
 

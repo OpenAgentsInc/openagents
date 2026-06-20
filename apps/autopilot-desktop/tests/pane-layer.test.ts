@@ -1,4 +1,4 @@
-// HUD H3 (#5501): the managed pane layer over the zero-base shell.
+// HUD H3 (#5501): the managed pane layer over the base surfaces.
 //
 // Panes come back as a MANAGED layer (pane-as-data + a typed PaneManager reducer)
 // opened from the hotbar / command palette — NOT the old free-floating default
@@ -8,8 +8,8 @@
 // off-screen); (3) the Foldkit wiring (the H3 messages flow through update.ts
 // and store back on the Model); (4) the registry seam (every nav destination is
 // openable as a pane via the palette); (5) the render (windows + 8 resize
-// handles render only when panes are open); and (6) the invariant that the shell
-// stays BLACK by default — no managed panes until an explicit open.
+// handles render only when panes are open); and (6) the invariant that the Verse
+// and fallback shell stay window-free until an explicit open.
 
 import { describe, expect, test } from "bun:test"
 
@@ -46,6 +46,8 @@ import {
 import { paletteCommands } from "../src/ui/nav"
 
 const VIEWPORT: Viewport = { width: 1440, height: 900 }
+
+const fallbackShellModel = () => Model.make({ ...initialModel, pane: "shell" })
 
 // Cycle-safe serialize (the foldkit Html tree is plain objects) to assert what
 // the view does / does not render without a DOM.
@@ -279,18 +281,19 @@ describe("HUD H3 registry seam: every nav destination is openable as a pane", ()
 })
 
 describe("HUD H3 render: windows + handles render only when panes are open", () => {
-  test("with no panes open the shell stays BLACK — no pane layer in the tree", () => {
+  test("with no panes open the Verse first paint has no pane layer in the tree", () => {
     const [model] = initialRuntimeState()
-    expect(model.pane).toBe("shell")
+    expect(model.pane).toBe("chat")
     expect(modelPaneLayer(model).panes).toHaveLength(0)
     const tree = serialize(view(model).body)
-    // The pane layer renders nothing — the default screen is the black shell.
+    expect(tree).toContain("app-shell-verse")
+    // The pane layer renders nothing until an explicit open.
     expect(tree).not.toContain("pane-layer")
     expect(tree).not.toContain("pane-window")
   })
 
-  test("opening a pane on the shell renders a managed window with a title bar + 8 resize handles", () => {
-    const [m0] = initialRuntimeState()
+  test("opening a pane on the fallback shell renders a managed window with a title bar + 8 resize handles", () => {
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, OpenedManagedPane({ pane: "chat" }))
     // Still on the black shell base — the pane FLOATS over it (not the old
     // free-floating default; the shell pane itself is unchanged underneath).
@@ -308,14 +311,26 @@ describe("HUD H3 render: windows + handles render only when panes are open", () 
     expect(tree).toContain("shell-bar")
   })
 
-  test("the pane layer also floats over the full UI (a pane opened while on chat)", () => {
+  test("the pane layer also floats over the immersive Verse home", () => {
     const opened = Model.make({
       ...initialModel,
       pane: "chat",
       paneLayer: reducePaneLayer(emptyPaneLayer, { kind: "open", pane: "swarm" }, VIEWPORT),
     })
     const tree = serialize(view(opened).body)
-    expect(tree).toContain("sidebar") // full UI base
+    expect(tree).toContain("app-shell-verse") // Verse base
+    expect(tree).not.toContain("sidebar")
+    expect(tree).toContain("pane-window") // + the floating managed pane
+  })
+
+  test("the pane layer also floats over the advanced full UI", () => {
+    const opened = Model.make({
+      ...initialModel,
+      pane: "composer",
+      paneLayer: reducePaneLayer(emptyPaneLayer, { kind: "open", pane: "swarm" }, VIEWPORT),
+    })
+    const tree = serialize(view(opened).body)
+    expect(tree).toContain("sidebar") // advanced full UI base
     expect(tree).toContain("pane-window") // + the floating managed pane
   })
 })

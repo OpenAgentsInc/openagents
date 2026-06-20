@@ -46,10 +46,11 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   again without a new owner directive.
 - **All advanced panes are KEPT and reachable.** The full multi-pane UI
   (network/chat/code/supervise/explore/settings + nav + Cmd-K palette) still
-  mounts and works. Code, Supervise, Composer, Sessions, Swarm, repo/worktree,
-  deploy, Claude, and Codex affordances belong behind nav/Cmd-K/advanced panes,
-  not first paint. The black-screen guard still mounts EVERY pane — keep it
-  green.
+  mounts and works, but the Verse first paint does not show the sidebar or
+  status HUD. Code, Supervise, Composer, Sessions, Swarm, repo/worktree, deploy,
+  Claude, and Codex affordances belong behind Cmd-K/Advanced and then the normal
+  advanced nav, not first paint. The black-screen guard still mounts EVERY pane
+  — keep it green.
 - **HUD H3 (#5501) — the managed pane layer.** Panes are available as a MANAGED
   layer of draggable + resizable floating windows over the base surface, the
   durable OpenAgents pane-as-data pattern (audit

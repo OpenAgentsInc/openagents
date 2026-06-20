@@ -3075,11 +3075,11 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
-    // The explicit open: reveal the KEPT full multi-pane UI. Lands on the chat
-    // pane (the closest single-surface match to the shell bar) and warms it via
-    // the existing NavigatedTo handler (its per-pane projection loads fire).
+    // The explicit open: reveal the KEPT full multi-pane UI behind the advanced
+    // Code group. The Verse chat pane is now immersive by default (#5820), so
+    // this lands on Composer to make the sidebar/code tools explicit.
     case "OpenedPanes":
-      return update(model, NavigatedTo({ pane: "chat" }))
+      return update(model, NavigatedTo({ pane: "composer" }))
     // Return to the black shell. Pure pane switch; the panes stay mounted and
     // reopenable. Closes the palette if it was open.
     case "ClosedPanes":

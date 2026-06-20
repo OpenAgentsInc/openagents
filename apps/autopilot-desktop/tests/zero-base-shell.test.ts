@@ -1,17 +1,16 @@
-// ZERO-BASE SHELL (owner directive, 2026-06-19): the desktop launches to a
-// dead-simple shell — a black screen with NOTHING on it except a single text
-// bar at the bottom (and the clean conversation above it once there is a
-// response). Everything else (the full multi-pane UI) is KEPT and still mounts,
-// but is hidden behind an explicit open (Cmd-K palette / "open panes").
+// ZERO-BASE SHELL (owner directive, 2026-06-19; demoted by #5820): the fallback
+// shell remains a dead-simple black screen with NOTHING on it except a single
+// text bar at the bottom (and the clean conversation above it once there is a
+// response). The real launch surface is now the Verse; these tests pin the
+// shell when it is explicitly opened.
 //
-// These tests pin: (1) the minimal default shell on launch (shell pane, no
-// warm-up commands, no panes rendered), (2) the text-bar → response loop (a
-// pure reducer + one loopback command), (3) programmatic-control parity (the
-// transcript projection matches what the view shows), and (4) the open/close
-// panes toggle (the hidden UI is reachable and the panes still mount).
+// These tests pin: (1) the minimal fallback shell (shell pane, no panes
+// rendered), (2) the text-bar → response loop (a pure reducer + one loopback
+// command), (3) programmatic-control parity (the transcript projection matches
+// what the view shows), and (4) the open/close panes toggle (the advanced UI is
+// reachable and the panes still mount).
 
 import { describe, expect, test } from "bun:test"
-import { initialRuntimeState } from "../src/ui/initial-state"
 import {
   initialModel,
   Model,
@@ -50,12 +49,12 @@ const serialize = (node: unknown): string => {
   })
 }
 
-describe("zero-base shell: the minimal default surface", () => {
-  test("launch lands on the `shell` pane with NO warm-up commands", () => {
-    const [model, commands] = initialRuntimeState()
+const fallbackShellModel = () => Model.make({ ...initialModel, pane: "shell" })
+
+describe("zero-base shell: the minimal fallback surface", () => {
+  test("the explicit fallback shell starts quiet", () => {
+    const model = fallbackShellModel()
     expect(model.pane).toBe("shell")
-    // Quiet + black: nothing is loaded at entry (panes warm lazily on open).
-    expect(commands).toHaveLength(0)
     // The shell starts empty (truly black: no conversation, empty input).
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")
@@ -63,8 +62,8 @@ describe("zero-base shell: the minimal default surface", () => {
     expect(model.shellPending).toBe(false)
   })
 
-  test("the default shell view mounts a Document with the text bar and NO nav/sidebar/panes", () => {
-    const [model] = initialRuntimeState()
+  test("the fallback shell view mounts a Document with the text bar and NO nav/sidebar/panes", () => {
+    const model = fallbackShellModel()
     const doc = view(model) as { title: string; body: unknown }
     expect(doc.title).toBe("Autopilot")
     expect(doc.body).toBeDefined()
@@ -84,8 +83,8 @@ describe("zero-base shell: the minimal default surface", () => {
     expect(tree).not.toContain("composer-pane")
   })
 
-  test("on a fresh launch (no response yet) the conversation area is absent — pure black", () => {
-    const [model] = initialRuntimeState()
+  test("before a response, the conversation area is absent — pure black", () => {
+    const model = fallbackShellModel()
     const tree = serialize(view(model).body)
     expect(tree).not.toContain("shell-conversation")
   })
@@ -93,7 +92,7 @@ describe("zero-base shell: the minimal default surface", () => {
 
 describe("zero-base shell: text bar → response loop", () => {
   test("Shift+Tab cycles the shell target; selecting a target is pure state", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1, c1] = update(m0, CycledShellTarget())
     expect(m1.shellTarget).toBe("claude_code")
     expect(c1).toHaveLength(0)
@@ -106,7 +105,7 @@ describe("zero-base shell: text bar → response loop", () => {
   })
 
   test("typing tracks the input; an empty submit is a no-op (no error chrome)", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1, c1] = update(m0, ChangedShellInput({ value: "  " }))
     expect(m1.shellInput).toBe("  ")
     const [m2, c2] = update(m1, SubmittedShell())
@@ -116,7 +115,7 @@ describe("zero-base shell: text bar → response loop", () => {
   })
 
   test("submitting records the user turn, sets pending, and dispatches the loopback command", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, ChangedShellInput({ value: "hello there" }))
     const [m2, commands] = update(m1, SubmittedShell())
     expect(m2.shellInput).toBe("")
@@ -131,7 +130,7 @@ describe("zero-base shell: text bar → response loop", () => {
     // The input is intentionally NOT disabled while pending (a disabled input is
     // blurred, dropping focus from the chat box after every send). That's only
     // safe because the reducer guards a second submit while pending.
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, ChangedShellInput({ value: "first" }))
     const [m2] = update(m1, SubmittedShell())
     expect(m2.shellPending).toBe(true)
@@ -143,7 +142,7 @@ describe("zero-base shell: text bar → response loop", () => {
   })
 
   test("the response lands as an Autopilot turn and clears pending", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, ChangedShellInput({ value: "ping" }))
     const [m2] = update(m1, SubmittedShell())
     // Drive the loopback exactly as the command would (deterministic seam).
@@ -162,7 +161,7 @@ describe("zero-base shell: text bar → response loop", () => {
   })
 
   test("Claude Code target submits through the coding session bridge", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, SelectedShellTarget({ target: "claude_code" }))
     const [m2] = update(m1, ChangedShellInput({ value: "fix the crash" }))
     const [m3, commands] = update(m2, SubmittedShell())
@@ -522,7 +521,7 @@ describe("zero-base shell: text bar → response loop", () => {
 
 describe("zero-base shell: programmatic-control parity", () => {
   test("shellTranscriptText projects EXACTLY what the user sees (you → Autopilot)", () => {
-    const [m0] = initialRuntimeState()
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, ChangedShellInput({ value: "drive me" }))
     const [m2] = update(m1, SubmittedShell())
     const [m3] = update(
@@ -539,14 +538,14 @@ describe("zero-base shell: programmatic-control parity", () => {
 })
 
 describe("zero-base shell: open / close the hidden full UI", () => {
-  test("OpenedPanes reveals the full UI (lands on chat) and the chat pane mounts", () => {
-    const [m0] = initialRuntimeState()
+  test("OpenedPanes reveals the advanced full UI (lands on Code composer)", () => {
+    const m0 = fallbackShellModel()
     const [m1] = update(m0, OpenedPanes())
-    expect(m1.pane).toBe("chat")
+    expect(m1.pane).toBe("composer")
     const tree = serialize(view(m1).body)
-    // The full UI is back: sidebar + the chat pane render when opened.
+    // The full UI is back: sidebar + the Code composer render when opened.
     expect(tree).toContain("sidebar")
-    expect(tree).toContain("chat-pane")
+    expect(tree).toContain("composer-pane")
   })
 
   test("ClosedPanes returns to the black shell and closes the palette", () => {
@@ -573,8 +572,8 @@ describe("zero-base shell: open / close the hidden full UI", () => {
     expect(interpretKey(onShell, esc)).not.toEqual({ kind: "back-to-shell" })
   })
 
-  test("the full UI always renders a visible 'back to shell' control", () => {
-    const tree = serialize(view(Model.make({ ...initialModel, pane: "chat" })).body)
+  test("advanced panes render a visible fallback control", () => {
+    const tree = serialize(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("shell-return")
   })
 

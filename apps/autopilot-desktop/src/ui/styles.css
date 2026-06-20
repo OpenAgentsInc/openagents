@@ -108,6 +108,84 @@ body {
   overflow: hidden;
   background: #000;
 }
+
+/*
+ * VERSE HOME (#5820): first paint is the Pylon/Tassadar world, not the advanced
+ * coding chrome. Cmd-K / Advanced opens the command palette; explicit
+ * navigation to Code/Supervise/etc. restores the normal sidebar shell.
+ */
+.app-shell-verse {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+.app-shell-verse .chat-pane-world {
+  position: absolute;
+  inset: 0;
+  min-height: 100vh;
+  gap: 0;
+}
+
+.app-shell-verse .chat-scene-background {
+  position: absolute;
+  inset: 0;
+}
+
+.app-shell-verse .three-effect-chat-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.app-shell-verse .chat-content-overlay {
+  position: absolute;
+  left: clamp(1rem, 3vw, 2rem);
+  bottom: clamp(5.25rem, 9vh, 6.5rem);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(44rem, calc(100vw - 2rem));
+  max-height: min(74vh, 44rem);
+}
+
+.app-shell-verse .pane-title {
+  font-size: clamp(1.45rem, 2.8vw, 2.35rem);
+  line-height: 1.05;
+}
+
+.app-shell-verse .chat-thread-shell {
+  min-height: 9rem;
+  max-height: min(38vh, 22rem);
+  backdrop-filter: blur(12px);
+}
+
+.app-shell-verse .chat-input {
+  min-height: 5.5rem;
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 760px) {
+  .app-shell-verse .chat-content-overlay {
+    left: 0.8rem;
+    right: 0.8rem;
+    bottom: 5.7rem;
+    width: auto;
+    max-height: 64vh;
+  }
+
+  .app-shell-verse .chat-thread-shell {
+    min-height: 7rem;
+    max-height: 30vh;
+  }
+
+  .app-shell-verse .chat-input {
+    min-height: 4.75rem;
+  }
+}
 .shell-pane {
   position: absolute;
   inset: 0;
