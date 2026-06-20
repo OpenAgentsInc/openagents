@@ -8,7 +8,11 @@ import {
   planTrainingWindow,
   reconcileTrainingWindow,
   readTrainingStatus,
+  trainingPreflightReport,
 } from "../src/training-cockpit"
+
+const TASSADAR_EXECUTOR_CAPABILITY_REF =
+  "capability.tassadar_poc.numeric_model_executor"
 
 // CL-5035: the training cockpit CLI mirrors the desktop training verbs against
 // the openagents.com training HTTP API. These tests inject a recording fetch so
@@ -139,6 +143,56 @@ describe("training claim", () => {
     expect(claimPayoutTargetWarning(true)).toBeNull()
     expect(claimPayoutTargetWarning(undefined)).toBeNull()
     expect(claimPayoutTargetWarning(false)?.warningRef).toBe("warning.training.claim.payout_target_unregistered")
+  })
+})
+
+describe("training preflight", () => {
+  test("reports the exact commands for missing payout target and self-test capability", () => {
+    const report = trainingPreflightReport(
+      {
+        blockerRefs: [],
+        capabilityRefs: [],
+        lifecycle: "offline",
+        pylonRef: "pylon.abc",
+        sparkPayoutTargetRef: null,
+      },
+      { baseUrl: base },
+    )
+
+    expect(report.ok).toBe(false)
+    expect(report.reason).toBe("blocked")
+    expect(report.checks.payoutTarget.ok).toBe(false)
+    expect(report.checks.tassadarExecutorCapability.ok).toBe(false)
+    expect(report.recommendedCommands).toEqual([
+      `pylon wallet register-payout-target --kind spark-address --base-url ${base}`,
+      "pylon provider go-online",
+      `pylon presence heartbeat --base-url ${base}`,
+    ])
+    expect(report.authorityBoundary).toContain("Read-only local preflight")
+  })
+
+  test("is ready when a payout target and receipted executor capability exist", () => {
+    const report = trainingPreflightReport(
+      {
+        blockerRefs: [],
+        capabilityRefs: [
+          TASSADAR_EXECUTOR_CAPABILITY_REF,
+          "receipt.tassadar_executor.self_test.v1.aaaaaaaaaaaaaaaa",
+        ],
+        lifecycle: "online",
+        pylonRef: "pylon.abc",
+        sparkPayoutTargetRef: "payout.spark.123",
+      },
+      { baseUrl: base },
+    )
+
+    expect(report.ok).toBe(true)
+    expect(report.reason).toBe("ready")
+    expect(report.recommendedCommands).toEqual([])
+    expect(report.checks.payoutTarget.payoutTargetRef).toBe("payout.spark.123")
+    expect(report.checks.tassadarExecutorCapability.selfTestReceiptRefs).toEqual([
+      "receipt.tassadar_executor.self_test.v1.aaaaaaaaaaaaaaaa",
+    ])
   })
 })
 

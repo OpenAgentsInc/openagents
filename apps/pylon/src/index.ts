@@ -140,6 +140,7 @@ import {
   planTrainingWindow,
   reconcileTrainingWindow,
   readTrainingStatus,
+  trainingPreflightReport,
 } from "./training-cockpit"
 import {
   assertWorkloadFamily,
@@ -2573,7 +2574,26 @@ async function main() {
       const adminToken = optionString(options, "admin-token") ?? Bun.env.OA_TRAINING_ADMIN_TOKEN
       const net = { baseUrl, ...(adminToken ? { adminToken } : {}) }
       let result: unknown
-      if (command === "plan") {
+      if (command === "preflight") {
+        const preflightState = await ensurePylonLocalState(createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env))
+        let sparkPayoutTargetRef = preflightState.presence.sparkPayoutTargetRef
+        try {
+          const presence = await loadOrCreatePresenceState(preflightState.paths, preflightState.identity)
+          sparkPayoutTargetRef = presence.sparkPayoutTargetRef
+        } catch {
+          sparkPayoutTargetRef = preflightState.presence.sparkPayoutTargetRef
+        }
+        result = trainingPreflightReport(
+          {
+            blockerRefs: preflightState.runtime.blockerRefs,
+            capabilityRefs: preflightState.runtime.capabilityRefs,
+            lifecycle: preflightState.runtime.lifecycle,
+            pylonRef: preflightState.identity.pylonRef,
+            sparkPayoutTargetRef,
+          },
+          { baseUrl },
+        )
+      } else if (command === "plan") {
         result = await planTrainingWindow(net)
       } else if (command === "activate") {
         const windowRef = optionString(options, "window-ref")
@@ -2708,7 +2728,7 @@ async function main() {
           }
         }
       } else {
-        throw new Error("usage: pylon training plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate [--auto [--watch]] ...")
+        throw new Error("usage: pylon training preflight|plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate [--auto [--watch]] ...")
       }
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
       const okFlag = (result as { ok?: boolean } | null)?.ok

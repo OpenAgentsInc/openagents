@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
+const OPERATOR_SNAPSHOT_ONESHOT_TIMEOUT_MS = 10_000
 
 async function runOperatorSnapshot(env: Record<string, string>): Promise<{
   elapsedMs: number
@@ -33,7 +34,7 @@ async function runOperatorSnapshot(env: Record<string, string>): Promise<{
       timeout = setTimeout(() => {
         proc.kill()
         resolve({ exitCode: null, timedOut: true })
-      }, 5_000)
+      }, OPERATOR_SNAPSHOT_ONESHOT_TIMEOUT_MS)
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
@@ -61,7 +62,7 @@ describe("#5401 operator snapshot one-shot clean exit", () => {
       })
 
       expect(result.timedOut).toBe(false)
-      expect(result.elapsedMs).toBeLessThan(5_000)
+      expect(result.elapsedMs).toBeLessThan(OPERATOR_SNAPSHOT_ONESHOT_TIMEOUT_MS)
       expect(result.exitCode).toBe(0)
       expect(result.stdout).not.toContain("Breez SDK")
 

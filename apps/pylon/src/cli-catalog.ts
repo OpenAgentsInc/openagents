@@ -195,14 +195,14 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   {
     command: "training",
     summary:
-      "Drive the training cockpit lane (plan/activate/claim/admit/reconcile/closeout/status/submit-trace/validate).",
+      "Drive the training cockpit lane (preflight/plan/activate/claim/admit/reconcile/closeout/status/submit-trace/validate).",
     mutates: true,
     spends: false,
     needsNetwork: true,
     json: true,
     args: [
       pos(
-        "plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate",
+        "preflight|plan|activate|claim|admit|reconcile|closeout|status|submit-trace|validate",
         "Subcommand.",
       ),
       opt("--base-url", "OpenAgents base URL."),

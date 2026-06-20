@@ -16,6 +16,11 @@
 // control calls. Admin verbs require an admin token (OA_TRAINING_ADMIN_TOKEN /
 // --admin-token); without one they fail cleanly with a nonzero exit.
 
+const TASSADAR_EXECUTOR_CAPABILITY_REF =
+  "capability.tassadar_poc.numeric_model_executor"
+const TASSADAR_EXECUTOR_SELF_TEST_RECEIPT_REF_PATTERN =
+  /^receipt\.tassadar_executor\.self_test\.v1\.[0-9a-f]{16}$/
+
 export type TrainingNetworkOptions = {
   baseUrl: string
   adminToken?: string
@@ -238,6 +243,119 @@ export function claimPayoutTargetWarning(
   payoutTargetRegistered: boolean | undefined,
 ): ClaimPayoutTargetWarning | null {
   return payoutTargetRegistered === false ? CLAIM_PAYOUT_TARGET_WARNING : null
+}
+
+export type TrainingPreflightCheck = {
+  ok: boolean
+  state: "ready" | "blocked"
+  blockerRefs: string[]
+  commandRefs: string[]
+}
+
+export type TrainingPreflightReport = {
+  schema: "openagents.pylon.training_preflight.v0.1"
+  ok: boolean
+  reason: "ready" | "blocked"
+  pylonRef: string
+  lifecycle: string
+  checks: {
+    payoutTarget: TrainingPreflightCheck & {
+      payoutTargetRef: string | null
+    }
+    tassadarExecutorCapability: TrainingPreflightCheck & {
+      capabilityRef: string
+      capabilityPresent: boolean
+      selfTestReceiptRefs: string[]
+    }
+  }
+  blockerRefs: string[]
+  recommendedCommands: string[]
+  authorityBoundary: string
+}
+
+/**
+ * Local, read-only Tassadar preflight. It deliberately does not register a
+ * payout target, run the executor self-test, heartbeat, claim work, or spend.
+ * It only tells a contributor what their current local state implies before
+ * they call `pylon training claim`.
+ */
+export function trainingPreflightReport(
+  input: {
+    pylonRef: string
+    lifecycle: string
+    capabilityRefs: string[]
+    blockerRefs: string[]
+    sparkPayoutTargetRef: string | null
+  },
+  options: { baseUrl: string },
+): TrainingPreflightReport {
+  const payoutTargetRef = input.sparkPayoutTargetRef?.trim() || null
+  const payoutTargetReady = payoutTargetRef !== null
+  const capabilityPresent = input.capabilityRefs.includes(
+    TASSADAR_EXECUTOR_CAPABILITY_REF,
+  )
+  const selfTestReceiptRefs = input.capabilityRefs.filter(ref =>
+    TASSADAR_EXECUTOR_SELF_TEST_RECEIPT_REF_PATTERN.test(ref),
+  )
+  const executorReady = capabilityPresent && selfTestReceiptRefs.length > 0
+  const payoutBlockerRefs = payoutTargetReady
+    ? []
+    : ["blocker.training_preflight.payout_target_unregistered"]
+  const executorBlockerRefs = executorReady
+    ? []
+    : ["blocker.training_preflight.tassadar_executor_self_test_missing"]
+  const recommendedCommands = [
+    ...(payoutTargetReady
+      ? []
+      : [
+          `pylon wallet register-payout-target --kind spark-address --base-url ${options.baseUrl}`,
+        ]),
+    ...(executorReady
+      ? []
+      : [
+          "pylon provider go-online",
+          `pylon presence heartbeat --base-url ${options.baseUrl}`,
+        ]),
+  ]
+  const blockerRefs = [
+    ...payoutBlockerRefs,
+    ...executorBlockerRefs,
+    ...input.blockerRefs,
+  ]
+
+  return {
+    authorityBoundary:
+      "Read-only local preflight. It does not register payout material, run the executor self-test, heartbeat, claim work, spend, accept work, or settle payouts.",
+    blockerRefs,
+    checks: {
+      payoutTarget: {
+        blockerRefs: payoutBlockerRefs,
+        commandRefs: payoutTargetReady
+          ? []
+          : ["pylon wallet register-payout-target --kind spark-address"],
+        ok: payoutTargetReady,
+        payoutTargetRef,
+        state: payoutTargetReady ? "ready" : "blocked",
+      },
+      tassadarExecutorCapability: {
+        blockerRefs: executorBlockerRefs,
+        capabilityPresent,
+        capabilityRef: TASSADAR_EXECUTOR_CAPABILITY_REF,
+        commandRefs: executorReady
+          ? []
+          : ["pylon provider go-online", "pylon presence heartbeat"],
+        ok: executorReady,
+        selfTestReceiptRefs,
+        state: executorReady ? "ready" : "blocked",
+      },
+    },
+    lifecycle: input.lifecycle,
+    ok: blockerRefs.length === 0,
+    pylonRef: input.pylonRef,
+    reason: blockerRefs.length === 0 ? "ready" : "blocked",
+    recommendedCommands,
+    schema: "openagents.pylon.training_preflight.v0.1",
+  }
 }
 
 // claim: a Pylon claims a lease on an active window (public endpoint).
