@@ -54,6 +54,27 @@ INERT and PURE: mints no money, reads no wallet, moves no funds, admits no live
 settled receipt. The fold of even two settled modes still reports
 `promiseState: 'red'`, `inert: true`.
 
+### Follow-up (this run): work-unit-coverage integrity
+
+The settlement-coverage check stops two SETTLED units sharing one settlement
+receipt, but the same over-claim hole existed one layer down on the
+`assignmentRef` (work-unit) axis: two DISTINCT receipts (distinct `receiptRef`s)
+could carry the SAME `assignmentRef`, so a single real work unit was counted
+twice into a mode's `observed/pending/paid/settled` totals — and the same unit
+could even be claimed across two modes, inflating the `>=2 settled modes` bar
+with one piece of work. The `assignmentRef` field was recorded but never audited.
+This run closes that hole, symmetric to the settlement auditor:
+
+- `verifyWorkReceiptWorkUnitCoverage(...)` — PURE/INERT auditor returning a
+  public-safe per-mode report (`receiptCount`, `distinctAssignmentRefCount`,
+  `workUnitCoverageComplete`) plus install-level `crossModeWorkUnitReuse` and the
+  single `allWorkUnitsDistinct` gate.
+- `foldWorkReceiptsIntoEarningStore(...)` now also REJECTS (returns `ok: false`)
+  when work-unit coverage is incomplete, so a projection's per-mode counts can
+  never be inflated by re-counting one work unit (within a mode or across modes).
+- New tests: empty/covered/in-mode-shared/cross-mode-reuse cases for the auditor,
+  plus fold-rejection for in-mode work-unit over-claim and cross-mode reuse.
+
 ## What genuinely remains (blocker stays listed)
 
 `multi_earning_mode_receipts_missing` is **partially advanced, not cleared**:

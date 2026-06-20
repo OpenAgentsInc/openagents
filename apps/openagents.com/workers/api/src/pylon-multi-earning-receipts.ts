@@ -278,6 +278,105 @@ export const verifyWorkReceiptSettlementCoverage = (
 }
 
 /**
+ * Per-mode work-unit-coverage report for a set of work receipts. INERT. For one
+ * mode it states how many (deduped) receipts the mode carries and how many
+ * DISTINCT work units (`assignmentRef`s) back them. Coverage is `complete` only
+ * when those two numbers are equal — i.e. every receipt in the mode attests its
+ * own distinct work unit, never re-counting one unit across two receipts.
+ */
+export type ModeWorkUnitCoverage = {
+  mode: string
+  receiptCount: number
+  distinctAssignmentRefCount: number
+  workUnitCoverageComplete: boolean
+}
+
+/**
+ * Whole-install work-unit-coverage report. INERT and public-safe: it carries
+ * only neutral mode labels and integer counts. `crossModeWorkUnitReuse` is true
+ * when one `assignmentRef` is claimed by receipts in more than one mode (a
+ * cross-mode over-claim that could inflate the >=2-modes bar with a single work
+ * unit). `allWorkUnitsDistinct` is the honest gate the fold trusts: every mode is
+ * per-mode complete AND no work unit is reused across modes.
+ */
+export type WorkReceiptWorkUnitCoverage = {
+  schema: typeof PYLON_MULTI_EARNING_RECEIPT_SCHEMA
+  perMode: ReadonlyArray<ModeWorkUnitCoverage>
+  totalReceiptCount: number
+  totalDistinctAssignmentRefCount: number
+  crossModeWorkUnitReuse: boolean
+  allWorkUnitsDistinct: boolean
+}
+
+/**
+ * Verify that a set of work receipts does not over-claim WORK UNITS. PURE /
+ * INERT. Receipts are first deduped by receiptRef (so a receipt counts once),
+ * then grouped by mode: within each mode the number of receipts must equal the
+ * number of distinct `assignmentRef`s, and no `assignmentRef` may be shared
+ * across modes. This is the integrity check that lets the projection's per-mode
+ * `observed/pending/paid/settled` counts be TRUSTED as one-per-work-unit. It is
+ * the work-unit analogue of `verifyWorkReceiptSettlementCoverage`: that auditor
+ * stops two settled units sharing one settlement receipt; this one stops two
+ * receipts sharing one work unit and double-counting it into the amount classes.
+ */
+export const verifyWorkReceiptWorkUnitCoverage = (
+  receipts: ReadonlyArray<PylonModeWorkReceipt>,
+): WorkReceiptWorkUnitCoverage => {
+  const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+
+  // Preserve first-seen mode order for a stable report.
+  const order: string[] = []
+  const refsByMode = new Map<string, string[]>()
+  for (const receipt of deduped) {
+    const existing = refsByMode.get(receipt.mode)
+    if (existing === undefined) {
+      order.push(receipt.mode)
+      refsByMode.set(receipt.mode, [receipt.assignmentRef])
+    } else {
+      existing.push(receipt.assignmentRef)
+    }
+  }
+
+  const perMode: ModeWorkUnitCoverage[] = []
+  const refToModes = new Map<string, Set<string>>()
+  for (const mode of order) {
+    const refs = refsByMode.get(mode) ?? []
+    const distinct = new Set(refs)
+    perMode.push({
+      mode,
+      receiptCount: refs.length,
+      distinctAssignmentRefCount: distinct.size,
+      workUnitCoverageComplete: refs.length === distinct.size,
+    })
+    for (const ref of distinct) {
+      const modes = refToModes.get(ref)
+      if (modes === undefined) {
+        refToModes.set(ref, new Set([mode]))
+      } else {
+        modes.add(mode)
+      }
+    }
+  }
+
+  const totalReceiptCount = deduped.length
+  const totalDistinctAssignmentRefCount = refToModes.size
+  const crossModeWorkUnitReuse = [...refToModes.values()].some(
+    modes => modes.size > 1,
+  )
+  const allWorkUnitsDistinct =
+    perMode.every(m => m.workUnitCoverageComplete) && !crossModeWorkUnitReuse
+
+  return {
+    schema: PYLON_MULTI_EARNING_RECEIPT_SCHEMA,
+    perMode,
+    totalReceiptCount,
+    totalDistinctAssignmentRefCount,
+    crossModeWorkUnitReuse,
+    allWorkUnitsDistinct,
+  }
+}
+
+/**
  * Fold a set of per-mode work receipts into the projection's earning store.
  * PURE. Receipts are first deduped by receiptRef, then grouped by mode; each
  * mode's amount-class counts come from its receipts, and a mode that carries any
@@ -286,10 +385,12 @@ export const verifyWorkReceiptSettlementCoverage = (
  * work-receipt store). The resulting store feeds projectPylonMultiEarningNode
  * unchanged, so the projection's counts are now backed by receipts.
  *
- * Before folding, settlement coverage is verified: if any settled count would
- * not be backed by that many DISTINCT settlement receipts (within a mode or
- * reused across modes), the fold REJECTS rather than emit a projection that
- * over-claims settlement.
+ * Before folding, two integrity checks run. Work-unit coverage: if any mode's
+ * amount-class counts would be inflated by two receipts re-counting one work unit
+ * (a shared `assignmentRef` within a mode or reused across modes), the fold
+ * REJECTS. Settlement coverage: if any settled count would not be backed by that
+ * many DISTINCT settlement receipts (within a mode or reused across modes), the
+ * fold REJECTS. Either rejection prevents a projection that over-claims.
  *
  * `modeledCount` is always 0 here: `modeled` is an estimate with no work event,
  * so it has no receipt and cannot be folded in.
@@ -300,6 +401,18 @@ export const foldWorkReceiptsIntoEarningStore = (
   | { ok: true; store: PylonMultiEarningStore }
   | { ok: false; error: PylonMultiEarningError } => {
   const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+
+  const workUnits = verifyWorkReceiptWorkUnitCoverage(deduped)
+  if (!workUnits.allWorkUnitsDistinct) {
+    return {
+      ok: false,
+      error: new PylonMultiEarningError({
+        reason: workUnits.crossModeWorkUnitReuse
+          ? 'work-unit over-claim: an assignmentRef is reused across earning modes; each receipt must attest its own distinct work unit'
+          : 'work-unit over-claim: a mode has more receipts than distinct work units; each receipt must attest its own distinct assignmentRef',
+      }),
+    }
+  }
 
   const coverage = verifyWorkReceiptSettlementCoverage(deduped)
   if (!coverage.allModesSettlementCovered) {
