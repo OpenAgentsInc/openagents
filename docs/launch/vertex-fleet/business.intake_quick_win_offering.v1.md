@@ -80,3 +80,20 @@ New files (under `apps/openagents.com/workers/api/src/`):
   (`blocker.product_promises.business_first_paid_quick_win_receipt_missing`),
   then a receipt-first upgrade per `proof.claim_upgrade_receipts.v1` before any
   green flip.
+
+## Update (gemini-fleet) — receipt issuance operator CLI
+
+Advances `blocker.product_promises.business_first_paid_quick_win_receipt_missing`
+(**advanced, NOT cleared**) by providing the concrete issuance path for an operator.
+Since quick-win delivery is operator-assisted today, the operator needs a mechanism
+to actually generate the required receipt fixture when an intake -> delivered ->
+accepted -> paid lifecycle finishes.
+
+- `apps/openagents.com/workers/api/scripts/issue-business-quick-win-receipt.ts` —
+  A standalone operator CLI script that accepts lifecycle references via command line
+  flags, constructs the input, runs `buildBusinessQuickWinReceipt`, and allows
+  optional `--assert-paid` validation before dumping the final JSON receipt to be
+  handed to the customer.
+
+What remains for the receipt blocker:
+- An operator must actually run this new tool on a real paid run and commit the generated dereferenceable receipt fixture.
