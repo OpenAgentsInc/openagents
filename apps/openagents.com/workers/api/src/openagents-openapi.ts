@@ -3,12 +3,6 @@ import { Effect, Schema as S } from 'effect'
 
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
-import { DemandProvenanceEndpoint } from './demand-provenance'
-import {
-  LiquidityMarketSkeletonEndpoint,
-  RiskMarketSkeletonEndpoint,
-} from './open-markets-skeletons'
-import { OpenMarketsSurfaceEndpoint } from './open-markets-surface'
 import {
   AGENT_SEARCH_BASIC_RECOVERY_PRODUCT_ID,
   AGENT_SEARCH_BASIC_RECOVERY_SCOPE_REF,
@@ -17,8 +11,14 @@ import {
   AGENT_SEARCH_PAYMENT_REDEEM_ENDPOINT,
 } from './agent-search'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
+import { DemandProvenanceEndpoint } from './demand-provenance'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
+import {
+  LiquidityMarketSkeletonEndpoint,
+  RiskMarketSkeletonEndpoint,
+} from './open-markets-skeletons'
+import { OpenMarketsSurfaceEndpoint } from './open-markets-surface'
 import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { PylonLargestDecentralizedTrainingClaimEndpoint } from './pylon-largest-decentralized-training-claim-status'
@@ -27,11 +27,11 @@ import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-der
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
 import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
-import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
-import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingDpoPreferenceWorkloadEndpoint } from './training-post-training-dpo-preference-workload'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
 import { TrainingPostTrainingVibeTestRubricEndpoint } from './training-post-training-vibe-test-rubric'
+import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
+import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -1321,6 +1321,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PublicHome: objectSummary(
     'Public-safe homepage JSON discovery document with canonical docs and live data endpoint refs for the public homepage.',
+  ),
+  PublicInferenceReceiptEnvelope: objectSummary(
+    'Public-safe inference ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn pay_ins.public_receipt_ref). It proves that a paid `receipt.inference.charge.*` or `receipt.inference.usd_credit_grant.*` ledger row exists without exposing account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, or raw prompts. Read-only; grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
   ),
   BusinessSignupRequest: {
     type: 'object',
@@ -4303,6 +4306,29 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/inference/receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicInferenceReceipt',
+      summary: 'Read public inference ledger receipt',
+      description:
+        'Returns a public-safe inference receipt projection for `receipt.inference.charge.*` and `receipt.inference.usd_credit_grant.*` ledger rows. The projection carries generatedAt and a live_at_read staleness contract, proves the paid ledger row exists, and excludes account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, and raw prompts.',
+      tags: ['Public Proof', 'Billing'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Inference receipt ref, such as receipt.inference.charge.<requestId> or receipt.inference.usd_credit_grant.<grantRef>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public inference receipt.',
+          '#/components/schemas/PublicInferenceReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/public/artanis/report': {
     get: operation({
       operationId: 'getPublicArtanisReport',
@@ -4384,7 +4410,8 @@ const paths = (): JsonSchema => ({
   '/api/public/artanis/responder-support': {
     get: operation({
       operationId: 'getPublicArtanisResponderSupport',
-      summary: 'Read the Artanis Pylon-support responder external-flow projection',
+      summary:
+        'Read the Artanis Pylon-support responder external-flow projection',
       description:
         'Returns the public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance answered counts, externalContributorFlowProven, and the external-contributor interactions each with a dereferenceable reply-post ref (fetchable at publicUrl). An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor); operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate. Read-only projection with no dispatch, spend, assignment, settlement, moderation, or registry authority.',
       tags: ['Public Proof'],
@@ -5502,14 +5529,35 @@ const paths = (): JsonSchema => ({
         queryParam('ref', 'Repeated public replay source ref.'),
         queryParam('receiptRef', 'Settlement receipt ref.'),
         queryParam('run', 'Training run ref override.'),
-        queryParam('mode', '`activity-timeline` to generate a replay from the public activity timeline.'),
-        queryParam('from', 'Generated activity replay inclusive ISO lower bound (required with mode=activity-timeline).'),
-        queryParam('to', 'Generated activity replay inclusive ISO upper bound (required with mode=activity-timeline).'),
-        queryParam('runRef', 'Generated activity replay training run ref filter.'),
-        queryParam('windowRef', 'Generated activity replay training window ref filter.'),
+        queryParam(
+          'mode',
+          '`activity-timeline` to generate a replay from the public activity timeline.',
+        ),
+        queryParam(
+          'from',
+          'Generated activity replay inclusive ISO lower bound (required with mode=activity-timeline).',
+        ),
+        queryParam(
+          'to',
+          'Generated activity replay inclusive ISO upper bound (required with mode=activity-timeline).',
+        ),
+        queryParam(
+          'runRef',
+          'Generated activity replay training run ref filter.',
+        ),
+        queryParam(
+          'windowRef',
+          'Generated activity replay training window ref filter.',
+        ),
         queryParam('actorRef', 'Generated activity replay actor ref filter.'),
-        queryParam('kind', 'Generated activity replay event-kind filter; repeat or comma-separate.'),
-        queryParam('source', 'Generated activity replay source-kind filter; repeat or comma-separate.'),
+        queryParam(
+          'kind',
+          'Generated activity replay event-kind filter; repeat or comma-separate.',
+        ),
+        queryParam(
+          'source',
+          'Generated activity replay source-kind filter; repeat or comma-separate.',
+        ),
         queryParam('since', 'Generated activity replay cursor resume bound.'),
         queryParam('limit', 'Generated activity replay page limit.'),
       ],

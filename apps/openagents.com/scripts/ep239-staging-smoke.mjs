@@ -182,6 +182,23 @@ const requestJson = async (baseUrl, path, init = {}) => {
 const unique = prefix =>
   `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 
+const readPublicInferenceReceipt = async (base, receiptRef, expectedKind) => {
+  const result = await requestJson(
+    base,
+    `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`,
+    { method: 'GET' },
+  )
+  const receipt = result.body?.receipt
+  const ok =
+    result.status === 200 &&
+    receipt?.receiptRef === receiptRef &&
+    receipt?.kind === expectedKind &&
+    receipt?.ledgerState === 'paid' &&
+    receipt?.schemaVersion === 'openagents.inference.receipt.v1'
+
+  return { ok, result }
+}
+
 // ---------------------------------------------------------------------------
 // report model
 // ---------------------------------------------------------------------------
@@ -463,7 +480,25 @@ const legFundedGrant = async (base, userId) => {
     return undefined
   }
 
-  record('3. funded grant (operator credit)', 'PASS', detail)
+  const readback = await readPublicInferenceReceipt(
+    base,
+    receiptRef,
+    'usd_credit_grant',
+  )
+  if (!readback.ok) {
+    record('3. funded grant (operator credit)', 'FAIL', {
+      ...detail,
+      reason: 'grant receipt was minted but was not publicly dereferenceable',
+      receiptReadbackHttp: readback.result.status,
+      receiptReadbackBody: redact(readback.result.body),
+    })
+    return undefined
+  }
+
+  record('3. funded grant (operator credit)', 'PASS', {
+    ...detail,
+    receiptReadbackHttp: readback.result.status,
+  })
   return { receiptRef, grantedMsat: result.body?.grantedMsat ?? null }
 }
 
@@ -558,8 +593,27 @@ const legMeteredSpend = async (base, token, grant) => {
   }
 
   if (decremented) {
-    record('4. metered spend (decrement + charge receipt)', 'PASS', detail)
-    return { chargeReceiptRef, chatcmplId }
+    const readback =
+      typeof chargeReceiptRef === 'string'
+        ? await readPublicInferenceReceipt(base, chargeReceiptRef, 'charge')
+        : { ok: false, result: { status: 0, body: null } }
+
+    if (!readback.ok) {
+      record('4. metered spend (decrement + charge receipt)', 'FAIL', {
+        ...detail,
+        reason:
+          'balance decremented, but the charge receipt was not publicly dereferenceable',
+        receiptReadbackHttp: readback.result.status,
+        receiptReadbackBody: redact(readback.result.body),
+      })
+      return undefined
+    }
+
+    record('4. metered spend (decrement + charge receipt)', 'PASS', {
+      ...detail,
+      receiptReadbackHttp: readback.result.status,
+    })
+    return { chargeReceiptRef, chatcmplId, receiptDereferenced: true }
   }
 
   // 200 + chatcmpl but no decrement: the free taste/allowance covered it. This is
@@ -922,7 +976,9 @@ export const run = async argv => {
     stripeTestCardCheckoutRefs: [],
     operatorGrantProven: Boolean(grant),
     operatorGrantRefs: grant?.receiptRef ? [grant.receiptRef] : [],
-    meteredSpendProven: Boolean(meteredSpend?.chargeReceiptRef),
+    meteredSpendProven: Boolean(
+      meteredSpend?.chargeReceiptRef && meteredSpend?.receiptDereferenced,
+    ),
     meteredSpendRefs: meteredSpend?.chargeReceiptRef
       ? [meteredSpend.chargeReceiptRef]
       : [],

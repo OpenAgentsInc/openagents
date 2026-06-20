@@ -792,6 +792,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/accepted-outcome/settlement/{economicsId}',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/inference-receipts.ts',
+    route: '/api/public/inference/receipts/{receiptRef}',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',

@@ -199,6 +199,17 @@ curl -s "$B/api/agents/me/balance" -H "Authorization: Bearer $TOKEN"
 - A successful free-taste completion without a decrement is not enough for the
   Phase-1 spend gate. The gate is `PROVEN` only when the balance drops and the
   charge receipt can be dereferenced.
+- Inference grant and charge receipts are dereferenceable through the public-safe
+  read route:
+
+```sh
+curl -s "$B/api/public/inference/receipts/$RECEIPT_REF"
+```
+
+The response proves the paid ledger row exists and carries `generatedAt` plus a
+live-at-read staleness contract. It deliberately omits account ids, amounts,
+idempotency keys, Stripe session ids, invoices, preimages, wallet material,
+provider payloads, and raw prompts.
 
 ## Capability 4 — Referral (cross-category accrual; payout stays inert)
 

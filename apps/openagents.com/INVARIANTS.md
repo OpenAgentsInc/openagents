@@ -1154,8 +1154,8 @@ This is the invariant ledger for `openagents`.
   progress notes, but they are not settlement evidence.
 - Duplicate/novelty is enforced by typed fingerprint keys, not loose ref
   matching: `DebtReceiptKey = sha256(debtReceiptRef | repoBaselineRef |
-  scopeDigest | objectiveDigest)` and `PatchNoveltyKey = sha256(DebtReceiptKey |
-  normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
+scopeDigest | objectiveDigest)` and `PatchNoveltyKey = sha256(DebtReceiptKey |
+normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   settlement is allowed per `DebtReceiptKey`, then it retires; a near-duplicate
   patch carrying an already-retired `DebtReceiptKey` is a duplicate replay and
   is not payable.
@@ -2033,6 +2033,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     assignment, spend, settlement, payout, or public-claim authority and flips
     no promise. Regression coverage:
     `workers/api/src/public-accepted-outcome-settlement-routes.test.ts`.
+  - `GET /api/public/inference/receipts/{receiptRef}` — live at read over
+    `pay_ins.public_receipt_ref` for `receipt.inference.charge.*` and
+    `receipt.inference.usd_credit_grant.*` ledger rows — compliant
+    (`generatedAt`, top-level `projection_staleness.v1` `live_at_read` contract,
+    paid-ledger-row proof only). It exposes the receipt ref, kind, paid state,
+    caveats, and source refs while omitting account ids, amounts, idempotency
+    keys, Stripe session ids, invoices, preimages, wallet material, provider
+    payloads, and raw prompts. Read-only; grants no spend, refund, payout,
+    checkout, settlement, provider, public-claim, or registry authority.
+    Regression coverage:
+    `workers/api/src/public-inference-receipt-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read over the versioned

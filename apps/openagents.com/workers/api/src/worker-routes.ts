@@ -54,6 +54,7 @@ type WorkerRouteDependencies = Readonly<{
   routeOmniRequest: OptionalEffectRoute
   routeOnboardingRequest: OptionalEffectRoute
   routeNexusPylonVisibilityRequest: OptionalEffectRoute
+  routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicNip90MarketReceiptRequest: OptionalEffectRoute
   routeEcommerceCampaignReceiptRequest: OptionalEffectRoute
 
@@ -458,6 +459,13 @@ export const makeWorkerRouteRequest =
 
       if (nexusPylonVisibilityResponse !== undefined) {
         return yield* nexusPylonVisibilityResponse
+      }
+
+      const publicInferenceReceiptResponse =
+        dependencies.routePublicInferenceReceiptRequest(request, env, ctx)
+
+      if (publicInferenceReceiptResponse !== undefined) {
+        return yield* publicInferenceReceiptResponse
       }
 
       const publicNip90MarketReceiptResponse =

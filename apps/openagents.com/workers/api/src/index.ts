@@ -22,106 +22,6 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
-import { handleOmniContributorAccrualBundleApi } from './omni-contributor-accrual-bundle-routes'
-import { handleDemandProvenanceApi } from './demand-provenance-routes'
-import {
-  handleLiquidityMarketSkeletonApi,
-  handleOpenMarketsSurfaceApi,
-  handleRiskMarketSkeletonApi,
-} from './open-markets-routes'
-import {
-  TrainingAblationDeriskingLedgerEndpoint,
-  handleTrainingAblationDeriskingLedgerApi,
-} from './training-ablation-derisking-ledger-routes'
-import {
-  TrainingFullPipelineProgramEndpoint,
-  handleTrainingFullPipelineProgramApi,
-} from './training-full-pipeline-program-routes'
-import {
-  TrainingMarathonOperationsEndpoint,
-  handleTrainingMarathonOperationsApi,
-} from './training-marathon-operations-routes'
-import {
-  TrainingModelLadderRungsEndpoint,
-  handleTrainingModelLadderRungsApi,
-} from './training-model-ladder-rungs-routes'
-import {
-  TrainingPublicGradientWindowsEndpoint,
-  handleTrainingPublicGradientWindowsApi,
-} from './training-public-gradient-windows-routes'
-import {
-  TrainingPublicDistributedRunScaleEndpoint,
-  handleTrainingPublicDistributedRunScaleApi,
-} from './training-public-distributed-run-scale-routes'
-import {
-  PylonLargestDecentralizedTrainingClaimEndpoint,
-  handlePylonLargestDecentralizedTrainingClaimStatusApi,
-} from './pylon-largest-decentralized-training-claim-status-routes'
-import {
-  TrainingPostTrainingInstructSftEndpoint,
-  handleTrainingPostTrainingInstructSftApi,
-} from './training-post-training-instruct-sft-routes'
-import {
-  TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
-  handleTrainingPostTrainingDpoPreferenceWorkloadApi,
-} from './training-post-training-dpo-preference-workload-routes'
-import {
-  TrainingPostTrainingVibeTestRubricEndpoint,
-  handleTrainingPostTrainingVibeTestRubricApi,
-} from './training-post-training-vibe-test-rubric-routes'
-import {
-  TassadarPerceptaArchitectureReceiptsEndpoint,
-  handleTassadarPerceptaArchitectureReceiptsApi,
-} from './tassadar-percepta-architecture-receipts-routes'
-import {
-  MarketplaceComposeListEndpoint,
-  handleMarketplaceCompositionApi,
-  isMarketplaceComposeAndListEnabled,
-} from './marketplace-composition-routes'
-import {
-  PylonMultiEarningNodeEndpoint,
-  handlePylonMultiEarningNodeApi,
-  isPylonMultiEarningProjectionEnabled,
-} from './pylon-multi-earning-node-routes'
-import {
-  SignatureUsageMeteringEndpoint,
-  handleSignatureUsageMeteringApi,
-  isSignatureUsageMeteringEnabled,
-} from './signature-usage-metering-routes'
-import {
-  MobileWorkroomApprovalProjectionEndpoint,
-  handleMobileWorkroomApprovalProjectionApi,
-  isMobileWorkroomApprovalProjectionEnabled,
-} from './mobile-workroom-approval-projection-routes'
-import {
-  OmniClientDeliveryProjectionEndpoint,
-  handleOmniClientDeliveryProjectionApi,
-  isOmniClientDeliveryProjectionEnabled,
-} from './omni-client-delivery-projection-routes'
-import {
-  VoiceProgramIngestEndpoint,
-  handleVoiceProgramIngestApi,
-  isVoiceProgramIngestEnabled,
-} from './voice-program-ingest-routes'
-import {
-  AutopilotComposedRunEndpoint,
-  handleAutopilotComposedRunApi,
-  isAutopilotComposedRunEnabled,
-} from './autopilot-composed-run-routes'
-import {
-  AgenticLaborProductEndpoint,
-  handleAgenticLaborProductApi,
-  isAgenticLaborProductsEnabled,
-} from './agentic-labor-product-routes'
-import {
-  SelfServeFanoutEndpoint,
-  handleSelfServeFanoutApi,
-  isSelfServeFanoutEnabled,
-} from './self-serve-fanout-routes'
-import {
-  MarketplaceWorkClassCatalogEndpoint,
-  handleMarketplaceWorkClassCatalogApi,
-} from './marketplace-work-class-catalog-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -130,69 +30,6 @@ import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
-import {
-  handleChatCompletions,
-  isInferenceGatewayEnabled,
-} from './inference/chat-completions-routes'
-import {
-  handleModelsList,
-  routeModelRetrieveRequest,
-} from './inference/models-routes'
-import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
-import { resolveSupplyLaneArming } from './inference/model-serving-policy'
-import { handleQuote } from './inference/quote-routes'
-// Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
-// promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
-// STAY red until a dereferenceable paid receipt lands. No green flip here.
-import {
-  handleFineTuningJobSubmit,
-  isFineTuningServiceEnabled,
-} from './cloud/fine-tuning-service-routes'
-import {
-  handleSandboxRequest,
-  isSandboxComputeServiceEnabled,
-} from './cloud/sandbox-compute-service-routes'
-// Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
-// "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
-// (default off). Ships wired to the stub/accepting runtime adapter + no-op
-// metering stub; the managed GCE control-plane adapter + live receipt-first
-// metering plug into its seams. The promise STAYS red — no real VM, no real
-// repo-edit, no paid receipt; no green flip lands here.
-import {
-  isCloudCodingSessionsEnabled,
-  routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
-} from './cloud/cloud-coding-session-routes'
-import { fireworksAdapter } from './inference/fireworks-adapter'
-import { selectAdapterPlan } from './inference/model-router'
-import { makeLedgerMeteringHook } from './inference/metering-hook'
-import { withReferralAccrual } from './inference/inference-referral-accrual'
-import {
-  checkFreeAllowancePreflight,
-  withFreeAllowance,
-} from './inference/inference-free-allowance'
-import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
-import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
-import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
-import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
-import {
-  InferenceAdapterError,
-  InferenceProviderRegistry,
-} from './inference/provider-adapter'
-import {
-  type PassthroughAdapterConfig,
-  makePassthroughAdapter,
-} from './inference/passthrough-adapter'
-import { stubEchoAdapter } from './inference/stub-echo-adapter'
-import {
-  VERTEX_ANTHROPIC_ADAPTER_ID,
-  makeVertexAnthropicAdapter,
-} from './inference/vertex-anthropic-adapter'
-import {
-  VERTEX_GEMINI_ADAPTER_ID,
-  makeVertexGeminiAdapter,
-} from './inference/vertex-gemini-adapter'
-import { tokenProviderFromSecret } from './inference/vertex-token'
-import { readAgentBalance } from './payments-ledger'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import {
   handleProgrammaticAgentHome,
@@ -223,11 +60,20 @@ import {
 } from './agent-scoped-grant-routes'
 import { makeAgentSearchRoutes } from './agent-search-routes'
 import { makeAgentSiteRoutes } from './agent-site-routes'
+import {
+  AgenticLaborProductEndpoint,
+  handleAgenticLaborProductApi,
+  isAgenticLaborProductsEnabled,
+} from './agentic-labor-product-routes'
 import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
+import {
+  boundedDistillationDatasetLimit,
+  readArtanisDistillationDatasetReceipt,
+} from './artanis-distillation-dataset-receipt'
 import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
@@ -235,19 +81,19 @@ import {
   ARTANIS_REGISTERED_ACTOR_REF,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
+import { handlePublicArtanisLaborReceiptsApi } from './artanis-labor-receipt-routes'
+import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
-import { handlePublicArtanisLaborReceiptsApi } from './artanis-labor-receipt-routes'
-import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
+import {
+  boundedResponderSupportLimit,
+  readArtanisResponderSupport,
+} from './artanis-responder-provenance'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
 import { runArtanisSpendDecision } from './artanis-spend'
-import {
-  boundedDistillationDatasetLimit,
-  readArtanisDistillationDatasetReceipt,
-} from './artanis-distillation-dataset-receipt'
 import {
   boundedTickMonitorLimit,
   readArtanisTickMonitor,
@@ -256,10 +102,6 @@ import {
   boundedTickStreakLimit,
   readArtanisTickStreak,
 } from './artanis-tick-streak'
-import {
-  boundedResponderSupportLimit,
-  readArtanisResponderSupport,
-} from './artanis-responder-provenance'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -288,14 +130,19 @@ import {
   makeBrowserSessionBoundary,
 } from './auth/session'
 import {
+  AutopilotComposedRunEndpoint,
+  handleAutopilotComposedRunApi,
+  isAutopilotComposedRunEnabled,
+} from './autopilot-composed-run-routes'
+import {
   listAutopilotContinuationRunCandidates,
   makeD1AutopilotContinuationStore,
   runAutopilotContinuationSweep,
 } from './autopilot-continuation-policy'
 import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
 import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
-import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
 import { makeHostedGeminiExecuteReadyWork } from './autopilot-hosted-gemini-executor-env'
+import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
 import {
   type AutopilotWorkOrderRecord,
   dispatchDueScheduledAutopilotWork,
@@ -316,7 +163,6 @@ import {
   withBillingCreditPackages,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
-import { readBillingCreditPackages } from './stripe-billing'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -336,6 +182,27 @@ import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
 import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
+// Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
+// "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
+// (default off). Ships wired to the stub/accepting runtime adapter + no-op
+// metering stub; the managed GCE control-plane adapter + live receipt-first
+// metering plug into its seams. The promise STAYS red — no real VM, no real
+// repo-edit, no paid receipt; no green flip lands here.
+import {
+  isCloudCodingSessionsEnabled,
+  routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
+} from './cloud/cloud-coding-session-routes'
+// Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
+// promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
+// STAY red until a dereferenceable paid receipt lands. No green flip here.
+import {
+  handleFineTuningJobSubmit,
+  isFineTuningServiceEnabled,
+} from './cloud/fine-tuning-service-routes'
+import {
+  handleSandboxRequest,
+  isSandboxComputeServiceEnabled,
+} from './cloud/sandbox-compute-service-routes'
 import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
@@ -347,6 +214,9 @@ import {
   handlePublicCustomerOneCohortApi,
 } from './customer-one-cohort-routes'
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
+import { handleDemandProvenanceApi } from './demand-provenance-routes'
+import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
+import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -362,6 +232,8 @@ import {
 } from './email-campaign-dispatcher'
 import type { OnboardingDripOrderState } from './email-onboarding-drip'
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
+import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
+import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { archiveStaleDirectTipRecoveries } from './forum/paid-actions'
@@ -414,12 +286,50 @@ import {
 } from './http/responses'
 import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
+import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
+import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
-import { makeExactRouteRegistry } from './routing/exact-routes'
+import { makeD1InferenceReceiptStore } from './inference-receipts'
 import {
-  cleanProductRouteRedirectLocation,
-  githubWriteResultRedirectLocation,
-} from './routing/redirect-policy'
+  handleChatCompletions,
+  isInferenceGatewayEnabled,
+} from './inference/chat-completions-routes'
+import { fireworksAdapter } from './inference/fireworks-adapter'
+import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
+import {
+  checkFreeAllowancePreflight,
+  withFreeAllowance,
+} from './inference/inference-free-allowance'
+import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
+import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
+import { withReferralAccrual } from './inference/inference-referral-accrual'
+import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
+import { makeLedgerMeteringHook } from './inference/metering-hook'
+import { selectAdapterPlan } from './inference/model-router'
+import { resolveSupplyLaneArming } from './inference/model-serving-policy'
+import {
+  handleModelsList,
+  routeModelRetrieveRequest,
+} from './inference/models-routes'
+import {
+  type PassthroughAdapterConfig,
+  makePassthroughAdapter,
+} from './inference/passthrough-adapter'
+import {
+  InferenceAdapterError,
+  InferenceProviderRegistry,
+} from './inference/provider-adapter'
+import { handleQuote } from './inference/quote-routes'
+import { stubEchoAdapter } from './inference/stub-echo-adapter'
+import {
+  VERTEX_ANTHROPIC_ADAPTER_ID,
+  makeVertexAnthropicAdapter,
+} from './inference/vertex-anthropic-adapter'
+import {
+  VERTEX_GEMINI_ADAPTER_ID,
+  makeVertexGeminiAdapter,
+} from './inference/vertex-gemini-adapter'
+import { tokenProviderFromSecret } from './inference/vertex-token'
 import {
   decodeUnknownWithSchema,
   isRecord,
@@ -433,17 +343,27 @@ import {
 } from './json-boundary'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import {
+  MarketplaceComposeListEndpoint,
+  handleMarketplaceCompositionApi,
+  isMarketplaceComposeAndListEnabled,
+} from './marketplace-composition-routes'
+import {
+  MarketplaceWorkClassCatalogEndpoint,
+  handleMarketplaceWorkClassCatalogApi,
+} from './marketplace-work-class-catalog-routes'
+import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
 } from './mdk-container-env'
+import { hostedMdkDirectPayoutDisabledGate } from './mdk-payout-mode-gate'
+import {
+  MobileWorkroomApprovalProjectionEndpoint,
+  handleMobileWorkroomApprovalProjectionApi,
+  isMobileWorkroomApprovalProjectionEnabled,
+} from './mobile-workroom-approval-projection-routes'
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
-import {
-  isSiteFormCaptureEnabled,
-  makeSitePageFormCaptureRoutes,
-} from './site-page-form-capture-routes'
-import { resolveSiteFormSpec } from './site-form-spec-registry'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
@@ -455,6 +375,12 @@ import {
 } from './observability'
 import { handleOmniApiSdkSeedApi } from './omni-api-sdk-seed-routes'
 import { makeOmniBundleRoutes } from './omni-bundle-routes'
+import {
+  OmniClientDeliveryProjectionEndpoint,
+  handleOmniClientDeliveryProjectionApi,
+  isOmniClientDeliveryProjectionEnabled,
+} from './omni-client-delivery-projection-routes'
+import { handleOmniContributorAccrualBundleApi } from './omni-contributor-accrual-bundle-routes'
 import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
 import { makeOmniHandlers } from './omni-handlers'
 import { makeOmniHandoffRoutes } from './omni-handoff-routes'
@@ -474,6 +400,11 @@ import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
 import { githubIdentityTokenKey } from './onboarding/github'
 import { readOnboardingStatusForUser } from './onboarding/repository'
 import { makeOnboardingRoutes } from './onboarding/routes'
+import {
+  handleLiquidityMarketSkeletonApi,
+  handleOpenMarketsSurfaceApi,
+  handleRiskMarketSkeletonApi,
+} from './open-markets-routes'
 import {
   handleOpenAgentsAgentOnboarding,
   handleOpenAgentsCompanionFile,
@@ -499,6 +430,7 @@ import {
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
+import { readAgentBalance } from './payments-ledger'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
 import {
@@ -530,18 +462,13 @@ import {
   handlePublicActivityTimelineStreamApiForEnv,
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
+import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
-import { makeEcommerceCampaignReceiptRoutes } from "./ecommerce-campaign-receipt-routes"
-import { makeD1EcommerceCampaignReceiptStore } from "./ecommerce-campaign-receipt-store"
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
-import {
-  TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
-  buildPublicTassadarCompiledModuleMarketplaceEnvelope,
-} from './tassadar-compiled-module-marketplace'
 import {
   makeD1PylonApiStore,
   makeD1PylonSparkPayoutTargetStore,
@@ -554,7 +481,16 @@ import {
   makeD1PylonCapacityFunnelSnapshotStore,
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
+import {
+  PylonLargestDecentralizedTrainingClaimEndpoint,
+  handlePylonLargestDecentralizedTrainingClaimStatusApi,
+} from './pylon-largest-decentralized-training-claim-status-routes'
 import { makeD1PylonMarketplaceJobStore } from './pylon-marketplace-service'
+import {
+  PylonMultiEarningNodeEndpoint,
+  handlePylonMultiEarningNodeApi,
+  isPylonMultiEarningProjectionEnabled,
+} from './pylon-multi-earning-node-routes'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -563,6 +499,11 @@ import {
 } from './relay-health'
 import { handlePublicRelayHealthApi } from './relay-health-routes'
 import { handleResendWebhook } from './resend-webhooks'
+import { makeExactRouteRegistry } from './routing/exact-routes'
+import {
+  cleanProductRouteRedirectLocation,
+  githubWriteResultRedirectLocation,
+} from './routing/redirect-policy'
 import {
   OpenAgentsWorkerRequest,
   WorkerRequestLayer,
@@ -578,13 +519,28 @@ import {
   isoTimestampAfter,
   randomUuid,
 } from './runtime-primitives'
+import {
+  SelfServeFanoutEndpoint,
+  handleSelfServeFanoutApi,
+  isSelfServeFanoutEnabled,
+} from './self-serve-fanout-routes'
 import { makeShareRoutes } from './share-routes'
 import { handleSignaturePackageValidationApi } from './signature-package-validation-routes'
+import {
+  SignatureUsageMeteringEndpoint,
+  handleSignatureUsageMeteringApi,
+  isSignatureUsageMeteringEnabled,
+} from './signature-usage-metering-routes'
 import { makeD1SiteCommerceReviewStore } from './site-commerce-review'
 import { makeSiteCommerceRoutes } from './site-commerce-routes'
+import { resolveSiteFormSpec } from './site-form-spec-registry'
 import { makeD1SiteMdkAccountBindingStore } from './site-mdk-account-bindings'
 import { makeD1SiteMdkCheckoutIntentStore } from './site-mdk-checkout-intents'
 import { omegaMdkDemoSitePaymentCatalog } from './site-mdk-demo-product'
+import {
+  isSiteFormCaptureEnabled,
+  makeSitePageFormCaptureRoutes,
+} from './site-page-form-capture-routes'
 import {
   type ReferralConsumptionResult,
   consumePendingReferralForUser,
@@ -598,6 +554,7 @@ import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
+import { readBillingCreditPackages } from './stripe-billing'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -606,10 +563,28 @@ import {
   publishTeamThreadFileSync,
 } from './sync-notifier'
 import { type ParsedSyncPath, makeSyncRoutes } from './sync-routes'
+import { autoSettleVerifiedPair } from './tassadar-auto-settlement'
+import {
+  TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
+  buildPublicTassadarCompiledModuleMarketplaceEnvelope,
+} from './tassadar-compiled-module-marketplace'
+import {
+  TassadarPerceptaArchitectureReceiptsEndpoint,
+  handleTassadarPerceptaArchitectureReceiptsApi,
+} from './tassadar-percepta-architecture-receipts-routes'
 import {
   TassadarReplayRequest,
   runTassadarReplayValidation,
 } from './tassadar-replay-validator'
+import {
+  readTassadarRealSettlementGate,
+  tassadarRealSettledSatsForDay,
+  tassadarRealSettlementUtcDayKey,
+} from './tassadar-run-settlement-gate'
+import {
+  buildSettledFeedEvents,
+  publishSettledFeedEvents,
+} from './tassadar-settled-feed-sync'
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
@@ -635,8 +610,8 @@ import {
 } from './team-repository'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
-import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantClientRoutes } from './tenant-client-routes'
+import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
   type RouteAccessError,
@@ -663,20 +638,42 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
-import { autoSettleVerifiedPair } from './tassadar-auto-settlement'
 import {
-  buildSettledFeedEvents,
-  publishSettledFeedEvents,
-} from './tassadar-settled-feed-sync'
+  TrainingAblationDeriskingLedgerEndpoint,
+  handleTrainingAblationDeriskingLedgerApi,
+} from './training-ablation-derisking-ledger-routes'
 import {
-  readTassadarRealSettlementGate,
-  tassadarRealSettledSatsForDay,
-  tassadarRealSettlementUtcDayKey,
-} from './tassadar-run-settlement-gate'
-import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
-import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
-import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
-import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
+  TrainingFullPipelineProgramEndpoint,
+  handleTrainingFullPipelineProgramApi,
+} from './training-full-pipeline-program-routes'
+import {
+  TrainingMarathonOperationsEndpoint,
+  handleTrainingMarathonOperationsApi,
+} from './training-marathon-operations-routes'
+import {
+  TrainingModelLadderRungsEndpoint,
+  handleTrainingModelLadderRungsApi,
+} from './training-model-ladder-rungs-routes'
+import {
+  TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
+  handleTrainingPostTrainingDpoPreferenceWorkloadApi,
+} from './training-post-training-dpo-preference-workload-routes'
+import {
+  TrainingPostTrainingInstructSftEndpoint,
+  handleTrainingPostTrainingInstructSftApi,
+} from './training-post-training-instruct-sft-routes'
+import {
+  TrainingPostTrainingVibeTestRubricEndpoint,
+  handleTrainingPostTrainingVibeTestRubricApi,
+} from './training-post-training-vibe-test-rubric-routes'
+import {
+  TrainingPublicDistributedRunScaleEndpoint,
+  handleTrainingPublicDistributedRunScaleApi,
+} from './training-public-distributed-run-scale-routes'
+import {
+  TrainingPublicGradientWindowsEndpoint,
+  handleTrainingPublicGradientWindowsApi,
+} from './training-public-gradient-windows-routes'
 import {
   buildTrainingWindowRecord,
   makeD1TrainingAuthorityStore,
@@ -718,6 +715,11 @@ import {
   type ViralAgentFunnelEventKind,
   recordViralAgentFunnelEvent,
 } from './viral-agent-funnel'
+import {
+  VoiceProgramIngestEndpoint,
+  handleVoiceProgramIngestApi,
+  isVoiceProgramIngestEnabled,
+} from './voice-program-ingest-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 import {
   makeD1XClaimRewardTreasuryDispatchStore,
@@ -6870,19 +6872,21 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
 // through the native-lists addSubscriber sink. The registry is the authority on
 // whether a formId is published (spec.id === formId); the SQL only narrows
 // candidate active versions whose metadata_json mentions the form key.
-const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>({
-  isEnabled: env =>
-    isSiteFormCaptureEnabled(
-      (env as unknown as { SITE_FORM_CAPTURE_ENABLED?: string })
-        .SITE_FORM_CAPTURE_ENABLED,
-    ),
-  makeSink: env => ({
-    addSubscriber: makeNativeListsService(openAgentsDatabase(env)).addSubscriber,
-  }),
-  readSiteFormMetadata: async (env, formId) => {
-    const row = await openAgentsDatabase(env)
-      .prepare(
-        `SELECT site_versions.metadata_json AS metadata_json
+const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
+  {
+    isEnabled: env =>
+      isSiteFormCaptureEnabled(
+        (env as unknown as { SITE_FORM_CAPTURE_ENABLED?: string })
+          .SITE_FORM_CAPTURE_ENABLED,
+      ),
+    makeSink: env => ({
+      addSubscriber: makeNativeListsService(openAgentsDatabase(env))
+        .addSubscriber,
+    }),
+    readSiteFormMetadata: async (env, formId) => {
+      const row = await openAgentsDatabase(env)
+        .prepare(
+          `SELECT site_versions.metadata_json AS metadata_json
            FROM site_projects
            JOIN site_versions
              ON site_versions.id = site_projects.active_version_id
@@ -6894,25 +6898,26 @@ const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>(
             AND instr(site_versions.metadata_json, ?1) > 0
           ORDER BY site_versions.created_at DESC
           LIMIT 25`,
-      )
-      .bind(formId)
-      .all<{ metadata_json: string }>()
-      .then(result => result.results)
+        )
+        .bind(formId)
+        .all<{ metadata_json: string }>()
+        .then(result => result.results)
 
-    // The registry validates spec.id === formId and decodes defensively, so the
-    // first candidate whose metadata actually publishes this formId wins; a
-    // metadata blob that merely mentions the id as a substring resolves to
-    // undefined here and is skipped.
-    for (const candidate of row) {
-      const spec = resolveSiteFormSpec(candidate.metadata_json, formId)
-      if (spec !== undefined) {
-        return candidate.metadata_json
+      // The registry validates spec.id === formId and decodes defensively, so the
+      // first candidate whose metadata actually publishes this formId wins; a
+      // metadata blob that merely mentions the id as a substring resolves to
+      // undefined here and is skipped.
+      for (const candidate of row) {
+        const spec = resolveSiteFormSpec(candidate.metadata_json, formId)
+        if (spec !== undefined) {
+          return candidate.metadata_json
+        }
       }
-    }
 
-    return undefined
+      return undefined
+    },
   },
-})
+)
 
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
@@ -7042,13 +7047,21 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   requireAdminApiToken,
 })
 
-
 const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
-  makeStore: env => makeD1EcommerceCampaignReceiptStore(openAgentsDatabase(env), currentIsoTimestamp),
+  makeStore: env =>
+    makeD1EcommerceCampaignReceiptStore(
+      openAgentsDatabase(env),
+      currentIsoTimestamp,
+    ),
 })
 
 const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
   makeStore: env => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
+})
+
+const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
+  makeStore: env => makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+  nowIso: currentIsoTimestamp,
 })
 
 const blueprintRoutes = makeBlueprintRoutes<Env>({
@@ -7994,7 +8007,9 @@ inferenceProviderRegistry.register(
     tokenProvider: () => {
       const env = inferenceAdapterEnv
       const provider =
-        env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+        env === undefined
+          ? undefined
+          : tokenProviderFromSecret(env.VERTEX_SA_KEY)
       return provider === undefined
         ? Effect.fail(
             new InferenceAdapterError({
@@ -8022,7 +8037,9 @@ inferenceProviderRegistry.register(
     tokenProvider: () => {
       const env = inferenceAdapterEnv
       const provider =
-        env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+        env === undefined
+          ? undefined
+          : tokenProviderFromSecret(env.VERTEX_SA_KEY)
       return provider === undefined
         ? Effect.fail(
             new InferenceAdapterError({
@@ -8071,7 +8088,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     path: '/api/public/activity-timeline',
-    handler: (request, env) => handlePublicActivityTimelineApiForEnv(request, env),
+    handler: (request, env) =>
+      handlePublicActivityTimelineApiForEnv(request, env),
   },
   {
     path: '/api/public/activity-timeline/stream',
@@ -8211,8 +8229,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Pylon CPU-transform training receipts remain missing. No trained model,
     // inference endpoint, spend, settlement, promotion, or green claim.
     path: TassadarPerceptaArchitectureReceiptsEndpoint,
-    handler: request =>
-      handleTassadarPerceptaArchitectureReceiptsApi(request),
+    handler: request => handleTassadarPerceptaArchitectureReceiptsApi(request),
   },
   {
     path: '/api/public/demand-provenance',
@@ -8725,8 +8742,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     path: '/api/public/site-referral-payouts',
-    handler: (request, env) =>
-      handleSiteReferralPayoutsPublicApi(request, env),
+    handler: (request, env) => handleSiteReferralPayoutsPublicApi(request, env),
   },
   {
     path: '/api/public/partner-payouts',
@@ -9340,7 +9356,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // #5486 light-KYC gate reads), so the Sybil-resistant free pool and the
       // premium allowlist both key on one owner across all of that owner's
       // accounts. INERT regardless — only reached when the gateway is enabled.
-      const ownerClaimStore = makeD1AgentOwnerClaimStore(openAgentsDatabase(env))
+      const ownerClaimStore = makeD1AgentOwnerClaimStore(
+        openAgentsDatabase(env),
+      )
       const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
@@ -9557,7 +9575,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ? undefined
             : { accountRef: `agent:${session.user.id}` }
         },
-        enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
+        enabled: isSandboxComputeServiceEnabled(
+          env.CLOUD_SANDBOX_COMPUTE_ENABLED,
+        ),
       }),
   },
 ])
@@ -9742,6 +9762,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
+  routePublicInferenceReceiptRequest:
+    publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
   routeEcommerceCampaignReceiptRequest:
