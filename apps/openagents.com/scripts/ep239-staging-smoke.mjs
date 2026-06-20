@@ -26,6 +26,7 @@
 //   # optional overrides:
 //   #   --base-url <url>       (default openagents-staging.openagents.workers.dev)
 //   #   --json                 (emit a machine-readable JSON report to stdout tail)
+//   #   --require-complete     (exit non-zero unless the #5520 gate is complete)
 //   #   --help
 
 const DEFAULT_BASE = 'https://openagents-staging.openagents.workers.dev'
@@ -37,6 +38,20 @@ const PROD_HOSTS = new Set([
 
 const ADMIN_ENV = 'OPENAGENTS_ADMIN_API_TOKEN'
 
+const EP239_PROMISE_IDS = [
+  'sites.referral_bitcoin_stream.v1',
+  'referral.refer_once_earn_forever.v1',
+  'payments.autopilot_credits_purchase.v1',
+  'inference.gateway_credits_business.v1',
+  'payments.accepted_outcome_economics.v1',
+  'cloud.fine_tuning_service.v1',
+  'cloud.sandbox_compute_service.v1',
+  'markets.open_protocol_markets.v1',
+  'marketplace.compose_and_list_products.v1',
+  'marketplace.monetize_any_layer_with_referral.v1',
+  'autopilot.all_in_one_business_system.v1',
+]
+
 // ---------------------------------------------------------------------------
 // arg parsing
 // ---------------------------------------------------------------------------
@@ -45,6 +60,7 @@ export const parseArgs = argv => {
   const options = {
     baseUrl: process.env.OPENAGENTS_STAGING_BASE_URL || DEFAULT_BASE,
     json: false,
+    requireComplete: false,
     help: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
@@ -53,6 +69,8 @@ export const parseArgs = argv => {
       options.baseUrl = argv[++i] || options.baseUrl
     } else if (value === '--json') {
       options.json = true
+    } else if (value === '--require-complete') {
+      options.requireComplete = true
     } else if (value === '--help' || value === '-h') {
       options.help = true
     } else {
@@ -69,13 +87,18 @@ prints a PASS/FAIL/SKIP receipt-bearing report.
 
 Usage:
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs [--base-url <url>] [--json]
+  bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete
 
 Environment:
   ${ADMIN_ENV}   staging operator admin token (read from env only, never printed).
                             If unset, the funded-grant + metered-spend legs are
                             SKIPPED (not failed) with the exact owner command.
 
-This harness NEVER touches production and NEVER flips a product promise green.`
+This harness NEVER touches production and NEVER flips a product promise green.
+
+By default, unresolved owner-gated legs are reported as SKIP and the process
+exits zero if there are no FAILs. With --require-complete, the process exits
+non-zero unless every named #5520 Phase-1 gate is PROVEN.`
 
 // ---------------------------------------------------------------------------
 // redaction — defense in depth so no token can leak into the report
@@ -156,19 +179,99 @@ const requestJson = async (baseUrl, path, init = {}) => {
   }
 }
 
-const unique = prefix => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
+const unique = prefix =>
+  `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`
 
 // ---------------------------------------------------------------------------
 // report model
 // ---------------------------------------------------------------------------
 
 const legs = []
+const acceptanceGates = []
 
 const record = (name, state, detail) => {
   // state: 'PASS' | 'FAIL' | 'SKIP'
   const entry = { name, state, ...detail }
   legs.push(entry)
   return entry
+}
+
+export const buildAcceptanceGateSummary = input => {
+  const proven = 'PROVEN'
+  const unproven = 'UNPROVEN'
+  const gates = [
+    {
+      id: 'card_to_credit_stripe_test',
+      status: input.stripeTestCardCheckoutProven ? proven : unproven,
+      evidenceRefs: input.stripeTestCardCheckoutRefs ?? [],
+      blockerRefs: input.stripeTestCardCheckoutProven
+        ? []
+        : [
+            'blocker.ep239_phase1.stripe_test_checkout_not_exercised',
+            'blocker.ep239_phase1.webhook_credit_landing_not_proven',
+          ],
+      note: 'Requires Stripe TEST card -> /api/billing/checkout -> webhook -> credit balance. Operator credit grant is useful but not a substitute for this #5520 leg.',
+    },
+    {
+      id: 'operator_grant_to_credit_bridge',
+      status: input.operatorGrantProven ? proven : unproven,
+      evidenceRefs: input.operatorGrantRefs ?? [],
+      blockerRefs: input.operatorGrantProven
+        ? []
+        : ['blocker.ep239_phase1.operator_credit_grant_unproven'],
+      note: 'Proves the admin-grant USD->msat bridge seam only; it does not prove Stripe checkout.',
+    },
+    {
+      id: 'credit_to_metered_spend',
+      status: input.meteredSpendProven ? proven : unproven,
+      evidenceRefs: input.meteredSpendRefs ?? [],
+      blockerRefs: input.meteredSpendProven
+        ? []
+        : [
+            'blocker.ep239_phase1.metered_decrement_missing',
+            'blocker.ep239_phase1.charge_receipt_not_dereferenced',
+          ],
+      note: 'Requires a balance decrement plus a dereferenceable inference charge receipt. A free-taste Gemini completion is not enough.',
+    },
+    {
+      id: 'referral_accrual_and_test_settlement',
+      status: input.referralAccrualProven ? proven : unproven,
+      evidenceRefs: input.referralAccrualRefs ?? [],
+      blockerRefs: input.referralAccrualProven
+        ? []
+        : [
+            'blocker.ep239_phase1.referral_capture_claim_paid_event_unproven',
+            'blocker.ep239_phase1.referral_test_payout_settlement_unproven',
+          ],
+      note: 'Requires create source -> capture -> claim -> paid event -> cross-category eligibility -> staging/test payout settlement. 401/404 gating only proves the surface exists.',
+    },
+    {
+      id: 'new_surfaces_honest_inert',
+      status: input.newSurfacesProven ? proven : unproven,
+      evidenceRefs: input.newSurfaceRefs ?? [],
+      blockerRefs: input.newSurfacesProven
+        ? []
+        : ['blocker.ep239_phase1.new_surfaces_not_honestly_exercised'],
+      note: 'Requires markets, marketplace, fine-tuning, and sandbox surfaces to return honest inert/scaffold bodies rather than 404s or fake paid results.',
+    },
+    {
+      id: 'promise_honesty_held',
+      status: input.promiseHonestyProven ? proven : unproven,
+      evidenceRefs: input.promiseHonestyRefs ?? [],
+      blockerRefs: input.promiseHonestyProven
+        ? []
+        : ['blocker.ep239_phase1.promise_honesty_not_asserted'],
+      note: 'Requires the staging registry/audit projection to show Ep239 promises have not flipped green without the real receipts.',
+    },
+  ]
+  return {
+    complete: gates.every(gate => gate.status === proven),
+    gates,
+  }
+}
+
+const recordAcceptanceGates = gates => {
+  acceptanceGates.splice(0, acceptanceGates.length, ...gates)
 }
 
 // ---------------------------------------------------------------------------
@@ -230,7 +333,10 @@ const legFreeInference = async (base, token) => {
 
   const result = await requestJson(base, '/v1/chat/completions', {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({
       model: 'gemini-3.5-flash',
       messages: [
@@ -350,7 +456,8 @@ const legFundedGrant = async (base, userId) => {
   if (!okShape) {
     record('3. funded grant (operator credit)', 'FAIL', {
       ...detail,
-      reason: 'expected HTTP 200 + status inference_credit_granted + receiptRef',
+      reason:
+        'expected HTTP 200 + status inference_credit_granted + receiptRef',
       body: redact(result.body),
     })
     return undefined
@@ -393,7 +500,10 @@ const legMeteredSpend = async (base, token, grant) => {
   // path it meters; the charge is receipt-first and idempotent per chatcmpl id.
   const result = await requestJson(base, '/v1/chat/completions', {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({
       model: 'gemini-3.5-flash',
       messages: [
@@ -449,7 +559,7 @@ const legMeteredSpend = async (base, token, grant) => {
 
   if (decremented) {
     record('4. metered spend (decrement + charge receipt)', 'PASS', detail)
-    return
+    return { chargeReceiptRef, chatcmplId }
   }
 
   // 200 + chatcmpl but no decrement: the free taste/allowance covered it. This is
@@ -463,6 +573,7 @@ const legMeteredSpend = async (base, token, grant) => {
       'Flash calls; exhaust the taste or use a premium allowlisted model to ' +
       'force a metered decrement',
   })
+  return undefined
 }
 
 // Leg 5: referral attribution capture + cross-category accrual eligibility gate.
@@ -501,7 +612,7 @@ const legReferral = async (base, token) => {
 
   if (captureLive && dashboardGated) {
     record('5. referral attribution + accrual gating', 'PASS', detail)
-    return
+    return { gatingLive: true, fullAccrualProven: false }
   }
 
   // If the dashboard route is not present (404), that is a real surface gap.
@@ -511,6 +622,7 @@ const legReferral = async (base, token) => {
       'expected capture 404 (unknown source) AND dashboard 401 (bare token); ' +
       'a 404 on the dashboard would mean the referral surface is missing',
   })
+  return { gatingLive: false, fullAccrualProven: false }
 }
 
 // Leg 6: new Ep239 surfaces return honest inert/scaffold responses (not 404).
@@ -558,7 +670,10 @@ const legNewSurfaces = async (base, token) => {
     // Fine-tuning scaffold: 200 + status queued, metered:false, receiptRef null.
     const ft = await requestJson(base, '/v1/fine_tuning/jobs', {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({
         baseModel: 'gemini-3.5-flash',
         datasetRef: 'dataset-ep239',
@@ -591,7 +706,10 @@ const legNewSurfaces = async (base, token) => {
     // Sandbox scaffold: 200 + status provisioning, metered:false, receiptRef null.
     const sbx = await requestJson(base, '/v1/sandboxes', {
       method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
       body: JSON.stringify({ image: 'python:3.12', command: 'echo hi' }),
     })
     const sbxId = sbx.body?.id ?? sbx.body?.sandboxId ?? null
@@ -623,9 +741,83 @@ const legNewSurfaces = async (base, token) => {
   }
 
   const allPass = checks.every(c => c.pass)
-  record('6. new Ep239 surfaces (honest inert/scaffold)', allPass ? 'PASS' : 'FAIL', {
-    checks,
+  record(
+    '6. new Ep239 surfaces (honest inert/scaffold)',
+    allPass ? 'PASS' : 'FAIL',
+    {
+      checks,
+    },
+  )
+  return { allPass, refs: checks.map(c => c.ref).filter(Boolean) }
+}
+
+// Leg 7: promise honesty — the staging registry must not accidentally green any
+// Ep239 promise while the money/referral receipts are still unproven.
+const legPromiseHonesty = async base => {
+  const registry = await requestJson(base, '/api/public/product-promises', {
+    method: 'GET',
   })
+  const audit = await requestJson(base, '/api/public/product-promises/audit', {
+    method: 'GET',
+  })
+
+  const promises = Array.isArray(registry.body?.promises)
+    ? registry.body.promises
+    : []
+  const presentTargets = promises.filter(p =>
+    EP239_PROMISE_IDS.includes(p.promiseId),
+  )
+  const greenTargets = presentTargets.filter(p => p.state === 'green')
+  const missingTargets = EP239_PROMISE_IDS.filter(
+    promiseId => !presentTargets.some(p => p.promiseId === promiseId),
+  )
+  const auditAvailable = audit.status === 200 && audit.body !== undefined
+  const auditEvidenceRef = auditAvailable
+    ? `registry:${audit.body?.registryVersion ?? registry.body?.registryVersion ?? 'unknown'}`
+    : null
+
+  const detail = {
+    registryHttp: registry.status,
+    auditHttp: audit.status,
+    registryVersion: registry.body?.registryVersion ?? null,
+    generatedAt: registry.body?.generatedAt ?? null,
+    presentTargets: presentTargets.map(p => ({
+      promiseId: p.promiseId,
+      state: p.state,
+    })),
+    missingTargets,
+    auditSummary: auditAvailable ? (audit.body?.summary ?? null) : null,
+  }
+
+  if (registry.status !== 200 || !Array.isArray(registry.body?.promises)) {
+    record('7. Ep239 promise honesty held', 'FAIL', {
+      ...detail,
+      reason: 'expected public product-promise registry JSON',
+      body: redact(registry.body),
+    })
+    return { proven: false, refs: [] }
+  }
+
+  if (greenTargets.length > 0) {
+    record('7. Ep239 promise honesty held', 'FAIL', {
+      ...detail,
+      reason:
+        'one or more Ep239 target promises are green on staging; #5520 must not ' +
+        'green these without the named money/referral receipts',
+      greenTargets: greenTargets.map(p => p.promiseId),
+    })
+    return { proven: false, refs: [] }
+  }
+
+  record('7. Ep239 promise honesty held', 'PASS', {
+    ...detail,
+    evidenceRef: auditEvidenceRef,
+    note:
+      missingTargets.length > 0
+        ? 'older staging registry is missing newer target records; present Ep239 targets are non-green'
+        : 'all tracked Ep239 target promises are present and non-green',
+  })
+  return { proven: true, refs: [auditEvidenceRef].filter(Boolean) }
 }
 
 // ---------------------------------------------------------------------------
@@ -640,7 +832,9 @@ const printReport = (base, host) => {
   console.log('Episode 239 staging funded-loop smoke — receipt-bearing report')
   console.log(`base: ${base}`)
   console.log(`host: ${host} (staging-only; production untouched)`)
-  console.log(`admin token (${ADMIN_ENV}): ${presenceTag(process.env[ADMIN_ENV])}`)
+  console.log(
+    `admin token (${ADMIN_ENV}): ${presenceTag(process.env[ADMIN_ENV])}`,
+  )
   console.log(line)
 
   for (const leg of legs) {
@@ -681,6 +875,24 @@ const printReport = (base, host) => {
       console.log(`  - ${s.name}: ${s.ownerAction}`)
     }
   }
+  if (acceptanceGates.length > 0) {
+    console.log(line)
+    const complete = acceptanceGates.every(g => g.status === 'PROVEN')
+    console.log(
+      `#5520 Phase-1 gate: ${complete ? 'COMPLETE' : 'NOT COMPLETE'} ` +
+        '(PROVEN means the named acceptance leg has real evidence)',
+    )
+    for (const gate of acceptanceGates) {
+      console.log(`  - [${gate.status}] ${gate.id}`)
+      if (gate.evidenceRefs.length > 0) {
+        console.log(`      evidenceRefs: ${gate.evidenceRefs.join(', ')}`)
+      }
+      if (gate.blockerRefs.length > 0) {
+        console.log(`      blockerRefs: ${gate.blockerRefs.join(', ')}`)
+      }
+      console.log(`      note: ${gate.note}`)
+    }
+  }
   console.log(line)
 }
 
@@ -700,16 +912,35 @@ export const run = async argv => {
 
   const free = await legFreeInference(base, token)
   const grant = await legFundedGrant(base, userId)
-  await legMeteredSpend(base, token, grant)
-  await legReferral(base, token)
-  await legNewSurfaces(base, token)
+  const meteredSpend = await legMeteredSpend(base, token, grant)
+  const referral = await legReferral(base, token)
+  const newSurfaces = await legNewSurfaces(base, token)
+  const promiseHonesty = await legPromiseHonesty(base)
+
+  const phaseGate = buildAcceptanceGateSummary({
+    stripeTestCardCheckoutProven: false,
+    stripeTestCardCheckoutRefs: [],
+    operatorGrantProven: Boolean(grant),
+    operatorGrantRefs: grant?.receiptRef ? [grant.receiptRef] : [],
+    meteredSpendProven: Boolean(meteredSpend?.chargeReceiptRef),
+    meteredSpendRefs: meteredSpend?.chargeReceiptRef
+      ? [meteredSpend.chargeReceiptRef]
+      : [],
+    referralAccrualProven: Boolean(referral?.fullAccrualProven),
+    referralAccrualRefs: [],
+    newSurfacesProven: Boolean(newSurfaces?.allPass),
+    newSurfaceRefs: newSurfaces?.refs ?? [],
+    promiseHonestyProven: Boolean(promiseHonesty?.proven),
+    promiseHonestyRefs: promiseHonesty?.refs ?? [],
+  })
+  recordAcceptanceGates(phaseGate.gates)
 
   printReport(base, host)
 
   if (options.json) {
     // Machine-readable tail for verifier tooling. Already redacted upstream.
     console.log('JSON_REPORT_BEGIN')
-    console.log(redact({ base, host, legs }))
+    console.log(redact({ base, host, legs, phaseGate }))
     console.log('JSON_REPORT_END')
   }
 
@@ -719,7 +950,9 @@ export const run = async argv => {
   // reference `free` so unused-var linting stays quiet while keeping the value
   // available for future assertions.
   void free
-  return hasFail ? 1 : 0
+  if (hasFail) return 1
+  if (options.requireComplete && !phaseGate.complete) return 3
+  return 0
 }
 
 const isMain = (() => {
@@ -734,7 +967,9 @@ if (isMain) {
   run(process.argv.slice(2))
     .then(code => process.exit(code))
     .catch(error => {
-      console.error(`ep239-staging-smoke fatal: ${redact(error?.message ?? String(error))}`)
+      console.error(
+        `ep239-staging-smoke fatal: ${redact(error?.message ?? String(error))}`,
+      )
       process.exit(2)
     })
 }

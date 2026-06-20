@@ -18,6 +18,45 @@ queues). Production (`openagents.com` / `auth.openagents.com`, Worker
 
 Everything below uses `B="https://openagents-staging.openagents.workers.dev"`.
 
+## Push-button gate smoke
+
+The repeatable harness is:
+
+```sh
+bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --json
+```
+
+It prints two layers:
+
+- the operational smoke result (`PASS` / `FAIL` / `SKIP`) for each route-level
+  leg; and
+- the **#5520 Phase-1 gate matrix** (`PROVEN` / `UNPROVEN`) for the named
+  acceptance criteria.
+
+A run with `FAIL=0` is useful evidence, but it is **not automatically a complete
+Phase-1 gate**. `SKIP` means an owner-gated or deliberately unforced condition
+was not exercised, and a route-level `PASS` can still be narrower than the
+issue's acceptance text. For hard gating, run:
+
+```sh
+bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete --json
+```
+
+`--require-complete` exits non-zero unless all of these are `PROVEN`:
+
+- Stripe TEST card -> checkout -> webhook -> credit balance;
+- operator-grant USD->msat bridge (a useful bridge check, not a Stripe
+  substitute);
+- funded metered inference decrement plus charge receipt;
+- referral source/capture/claim/paid-event/accrual plus staging/test payout
+  settlement;
+- honest inert/scaffold responses for the new Ep239 surfaces; and
+- product-promise honesty: no Ep239 target promise has flipped green on staging
+  without the matching receipt.
+
+When the harness reports a Phase-1 gate as `UNPROVEN`, keep #5520 open even if
+the route smoke itself had no `FAIL`s.
+
 ## Redaction rules (read first)
 
 - **Never paste a token, secret, card number, cookie, or `Authorization`
@@ -109,6 +148,9 @@ curl -s -X POST "$B/api/omni/operator/billing/inference-credit" \
 - Without the staging admin token the route returns **401** (it is deployed and
   live — a 401, not a 404). The prod admin token is rejected on staging by
   design.
+- This path proves the operator credit-grant and USD→msat bridge seam. It does
+  **not** prove the issue's Stripe TEST card path; the gate matrix keeps
+  `card_to_credit_stripe_test` `UNPROVEN` until Option B runs.
 
 ### Option B — self-serve Stripe TEST purchase (browser session)
 
@@ -154,6 +196,9 @@ curl -s "$B/api/agents/me/balance" -H "Authorization: Bearer $TOKEN"
   receipt ref is `receipt.inference.charge.<chatcmpl id>`.
 - Report: `availableMsat` before, `availableMsat` after, the `chatcmpl_...` id,
   and the `receipt.inference.charge.*` ref.
+- A successful free-taste completion without a decrement is not enough for the
+  Phase-1 spend gate. The gate is `PROVEN` only when the balance drops and the
+  charge receipt can be dereferenced.
 
 ## Capability 4 — Referral (cross-category accrual; payout stays inert)
 
@@ -176,6 +221,10 @@ Because the full referral chain (create source → capture → claim → paid ev
 dashboard) is browser-session-driven, an external agent-tester can confirm the
 **capture redirect and the live (401/404) gating** today; the end-to-end accrual
 needs the browser sign-in owner action below.
+
+The push-button smoke treats live 401/404 referral gating as a route-level
+`PASS`, but the Phase-1 gate remains `UNPROVEN` until the full attribution,
+cross-category accrual, and staging/test payout-settlement chain runs.
 
 ## Capability 5 — New Ep239 surfaces (honest inert/scaffold responses)
 

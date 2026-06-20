@@ -58,14 +58,67 @@ describe('Ep239 staging funded-loop smoke', () => {
     const options = smoke.parseArgs([])
     expect(options.baseUrl).toContain('openagents-staging')
     expect(options.json).toBe(false)
+    expect(options.requireComplete).toBe(false)
     expect(options.help).toBe(false)
   })
 
-  test('parseArgs honors --base-url, --json, and --help; rejects unknown flags', () => {
-    const options = smoke.parseArgs(['--base-url', 'https://x.example', '--json'])
+  test('parseArgs honors --base-url, --json, --require-complete, and --help; rejects unknown flags', () => {
+    const options = smoke.parseArgs([
+      '--base-url',
+      'https://x.example',
+      '--json',
+      '--require-complete',
+    ])
     expect(options.baseUrl).toBe('https://x.example')
     expect(options.json).toBe(true)
+    expect(options.requireComplete).toBe(true)
     expect(smoke.parseArgs(['--help']).help).toBe(true)
     expect(() => smoke.parseArgs(['--nope'])).toThrowError(/Unknown argument/)
+  })
+
+  test('buildAcceptanceGateSummary keeps #5520 incomplete when Stripe/referral receipts are unproven', () => {
+    const summary = smoke.buildAcceptanceGateSummary({
+      stripeTestCardCheckoutProven: false,
+      operatorGrantProven: true,
+      operatorGrantRefs: ['receipt.inference.usd_credit_grant.ep239-stg-1'],
+      meteredSpendProven: false,
+      referralAccrualProven: false,
+      newSurfacesProven: true,
+      promiseHonestyProven: true,
+      promiseHonestyRefs: ['registry:2026-06-20.50'],
+    })
+
+    expect(summary.complete).toBe(false)
+    expect(
+      summary.gates.find(g => g.id === 'operator_grant_to_credit_bridge')
+        ?.status,
+    ).toBe('PROVEN')
+    expect(
+      summary.gates.find(g => g.id === 'card_to_credit_stripe_test')?.status,
+    ).toBe('UNPROVEN')
+    expect(
+      summary.gates.find(g => g.id === 'referral_accrual_and_test_settlement')
+        ?.blockerRefs,
+    ).toContain('blocker.ep239_phase1.referral_test_payout_settlement_unproven')
+  })
+
+  test('buildAcceptanceGateSummary marks complete only when every named gate is proven', () => {
+    const summary = smoke.buildAcceptanceGateSummary({
+      stripeTestCardCheckoutProven: true,
+      stripeTestCardCheckoutRefs: ['evidence.stripe_checkout_paid.cs_test_123'],
+      operatorGrantProven: true,
+      operatorGrantRefs: ['receipt.inference.usd_credit_grant.ep239-stg-1'],
+      meteredSpendProven: true,
+      meteredSpendRefs: ['receipt.inference.charge.chatcmpl_123'],
+      referralAccrualProven: true,
+      referralAccrualRefs: ['receipt.referral.staging_test.settled_1'],
+      newSurfacesProven: true,
+      newSurfaceRefs: ['ftjob_123', 'sbx_123'],
+      promiseHonestyProven: true,
+      promiseHonestyRefs: ['registry:2026-06-20.50'],
+    })
+
+    expect(summary.complete).toBe(true)
+    expect(summary.gates.every(g => g.status === 'PROVEN')).toBe(true)
   })
 })
