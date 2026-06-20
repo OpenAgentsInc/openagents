@@ -2,6 +2,58 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — eval-delta decontamination receipt + binding gate
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+The eval-delta bonus pays a contributor for a positive downstream eval delta
+measured by a held-constant trainer on a `heldOutEvalSetRef` the contributor
+does not control. The settlement closeout already binds the measurement to the
+shard's corpus SOURCE (`verifyCs336A4EvalDeltaMeasurementBinding`) and refuses
+to price a bonus for an unverified stage — but it has **no evidence the corpus
+was decontaminated against that held-out eval set**. That is the classic way to
+game an eval delta: leak examples from the held-out eval set into the "filtered"
+corpus and the filtered score rises for free — a positive delta that reflects
+memorisation, not data quality. Every assignment/source/recompute check still
+passes and the gamed bonus is paid. (Decontamination receipts were called out as
+planned in the promise state; this is the first deterministic piece of that.)
+
+This change adds the missing anti-gaming evidence:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-decontamination.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-decontamination.test.ts` (18 tests)
+
+`buildCs336A4EvalDeltaDecontaminationReceipt` emits a deterministic,
+content-addressed, public-safe receipt attesting that ONE shard's corpus was
+checked for overlap against ONE held-out eval set under a declared method
+(`methodRef`, `ngramSize`), with pre/post corpus digests and detected/removed
+span counts. It is `clean` only when every detected span was removed AND the
+post-removal digest recompute-verified. It fails closed when more spans were
+removed than detected, when the digest changed with nothing detected, when spans
+were detected but the corpus is byte-identical, on non-positive n-gram size /
+empty refs, and (via the public-safety guard) on raw corpus / eval-set / wallet /
+private material. `assertCs336A4EvalDeltaDecontamination(measurement, receipt)`
+is the fail-closed binding gate: it throws
+`Cs336A4EvalDeltaDecontaminationError` (carrying `source_ref_mismatch`,
+`held_out_eval_set_ref_mismatch`, or `receipt_not_clean`) unless a CLEAN receipt
+covers exactly the measurement's source AND held-out eval set, and returns the
+receipt's `receiptRef` on success.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This is the deterministic
+decontamination *receipt format + binding gate* — it scans no corpus, removes no
+spans, prices nothing, and pays nothing. It is not yet wired into
+`closeCs336A4EvalDeltaSettlement` (so the closeout does not yet REQUIRE a clean
+decontamination receipt before pricing — the natural next step), nor into the A4
+admission/projection path or the `a4_eval_delta` leaderboard. No fixed-trainer
+eval loop has produced a real measurement, no real corpus has been
+decontaminated, and no operator funding parameters are set. The promise's green
+criterion — at least one eval-delta payment computed from a fixed reference model
+and backed by a Verified `deterministic_recompute` shard — is unmet.
+`crawl_scale_corpus_missing` and `corpus_provenance_receipts_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — eval-delta settlement closeout (composes the three bonus gates)
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
