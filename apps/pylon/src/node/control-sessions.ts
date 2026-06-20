@@ -335,6 +335,14 @@ function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
+// `record.state` is mutated concurrently by `cancel()` across `await` points,
+// so a literal-narrowed read (after e.g. `record.state = "running"`) does not
+// reflect the value that may have changed during the await. Read it through
+// this helper so callers always see the full ControlSessionState union.
+function currentSessionState(record: SessionRecord): ControlSessionState {
+  return record.state
+}
+
 function nowIso() {
   return new Date().toISOString()
 }
@@ -418,7 +426,7 @@ function parseSpawnCommand(raw: ControlSessionSpawnCommand): ControlSessionSpawn
     )
   }
   const repoRef = raw.repoRef === undefined ? undefined : repositoryRefFrom(raw.repoRef)
-  if (raw.repoRef !== undefined && repoRef === null) {
+  if (repoRef === null) {
     throw new ControlCommandValidationError(
       "repo_ref_invalid",
       "session.spawn repoRef is invalid",
@@ -1128,7 +1136,7 @@ export function createControlSessionActions(options: {
         verify: record.verify,
         workspaceRef: record.workspace.workspaceRef,
       })
-      if (record.state === "cancelled" || record.abort.signal.aborted) return
+      if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) return
       if (result.cloudRunner !== undefined) record.cloudRunner = result.cloudRunner
       if (result.resourceUsageReceiptRef !== undefined && result.resourceUsageReceiptRef !== null) {
         record.resourceUsageReceiptRef = result.resourceUsageReceiptRef
@@ -1160,7 +1168,7 @@ export function createControlSessionActions(options: {
         })
       }
     } catch (error) {
-      if (record.state === "cancelled" || record.abort.signal.aborted) {
+      if (currentSessionState(record) === "cancelled" || record.abort.signal.aborted) {
         await finishCancelled(record)
         return
       }
