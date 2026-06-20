@@ -15,7 +15,6 @@ import {
 import {
   Cs336A4EvalDeltaBonusPolicyRef,
   Cs336A4EvalDeltaBoundaryRef,
-  Cs336A4EvalDeltaMeasurementRef,
   Cs336A4EvalDeltaPaymentSchemaVersion,
 } from './cs336-a4-eval-delta-payment'
 import {
