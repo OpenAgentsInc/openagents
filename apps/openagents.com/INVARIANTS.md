@@ -2087,6 +2087,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     revenue, public-claim, or registry authority. Regression coverage:
     `workers/api/src/public-partner-payout-receipt-routes.test.ts`.
   - `GET /api/public/inference/card-credit-spend-receipts/{receiptRef}` — live
+  - `GET /api/public/inference/batch-job-receipts/{receiptRef}` — live
     at read over the card-credit paid-loop ledger chain for
     `receipt.inference.card_credit_spend.*` — compliant (`generatedAt`,
     top-level `projection_staleness.v1` `live_at_read` contract,

@@ -855,6 +855,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/inference/card-credit-spend-receipts/{receiptRef}',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/inference/batch-job-routes.ts',
+    route: '/api/public/inference/batch-job-receipts',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
