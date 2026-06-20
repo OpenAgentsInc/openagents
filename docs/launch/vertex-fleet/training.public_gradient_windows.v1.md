@@ -212,3 +212,48 @@ by building the runtime's admission-to-promotion continuity edge. It does **not*
 clear it: no live runtime drives a real window from quarantine to promotion, no
 route serves these artifacts, and no public window has been accepted, promoted,
 paid, or settled. The blocker stays listed and the promise stays **planned**.
+
+## 2026-06-20 read-side promoted-window receipt verifier
+
+The promoted-window receipt emitter
+(`tassadar-gradient-window-promotion-receipt.ts`) can BUILD a public-safe receipt
+from a fully-passed regime projection, and the lineage guard
+(`tassadar-gradient-window-promotion-lineage.ts`) checks a receipt against the
+quarantine record it descends from. But a public consumer who dereferences a
+published receipt from a feed has neither the source projection nor the
+quarantine record — only the receipt bytes. Nothing let such a reader confirm,
+without trusting the emitter, that an untrusted read-back receipt is actually a
+legitimate promoted-window receipt. That read-side validator is the missing edge
+for `blocker.product_promises.public_gradient_promoted_window_receipts_missing`.
+
+This change adds it:
+
+- `tassadar-gradient-window-promotion-receipt-verify.ts`
+  - `verifyTassadarGradientWindowPromotionReceipt(receipt)` — a pure, **total**
+    function over one untrusted input. It decodes the receipt (an unparseable
+    receipt yields an invalid decision rather than an exception), then re-checks,
+    on the read-back receipt, the same invariants the emitter enforced at build
+    time: the receipt ref derives canonically from the window ref, the window ref
+    is non-empty, and the recompute / replication / canary / promotion-decision /
+    rollback lineage arrays are all non-empty, plus a public-safety scan. The
+    `promoted` stage, `compiledCoreUnchanged: true`, and `publicSafe: true`
+    literals are structurally guaranteed by the schema, so a receipt violating
+    them fails to decode and is reported as unparsed. It returns
+    `{ valid, invalidReasonRefs, receiptRef, windowRef, settlementEligible }` and
+    never throws, so it is safe at the edge of a real public feed.
+  - Schema version
+    `openagents.training.public_gradient_window.promotion_receipt_verification.v1`.
+- `tassadar-gradient-window-promotion-receipt-verify.test.ts` — exercises
+  acceptance of a builder-emitted receipt plus the rejection paths (unparseable
+  input, non-canonical receipt ref, dropped recompute lineage, unsafe material).
+- `GET /api/public/training/public-gradient-windows` now reports
+  `receiptSurface.receiptVerifierAvailable: true` and
+  `receiptSurface.receiptVerifierSchemaVersion:
+  openagents.training.public_gradient_window.promotion_receipt_verification.v1`.
+
+This advances
+`blocker.product_promises.public_gradient_promoted_window_receipts_missing` by
+building the receipt's read-side verifier. It does **not** clear it: no live
+runtime emits a real receipt, no route serves one, and no public window has been
+accepted, promoted, paid, or settled. The blocker stays listed and the promise
+stays **planned**.

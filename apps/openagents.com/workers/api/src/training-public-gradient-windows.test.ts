@@ -93,6 +93,9 @@ describe('training public gradient windows projection', () => {
       receiptRouteAvailable: false,
       receiptSchemaVersion:
         'openagents.training.public_gradient_window.promotion_receipt.v1',
+      receiptVerifierAvailable: true,
+      receiptVerifierSchemaVersion:
+        'openagents.training.public_gradient_window.promotion_receipt_verification.v1',
     })
     expect(projection.intakeSurface).toMatchObject({
       acceptedSubmissionCount: 0,
