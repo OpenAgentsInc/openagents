@@ -236,6 +236,42 @@ real workroom/contract events; and the `not_yet_evidenced` payable/settlement
 evidence that depends on the untouched `settlement_state_machine_incomplete`
 blocker. The blocker stays listed in the registry.
 
+## Follow-on change: HTTP read route (dereference over the wire)
+
+`apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.ts` —
+the wire that exposes the persisted dereference seam over HTTP, the last
+remaining "queryable by id" gap the store left open. Prior to this the
+`dereferenceOmniContributorAccrualBundle` Effect existed but nothing served it,
+so a reviewer could not dereference an outcome's accruals end to end. The route
+is wired in `index.ts` at `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>`:
+
+- read-only and money-free — it writes nothing, moves nothing, and serves the
+  PUBLIC projection only (`publicOmniContributorAccrualBundleProjection`), so
+  lifecycle + evidence labels stay visible while internal monetary cents are
+  dropped;
+- preserves the no-collapse discipline end to end: every returned contributor
+  entry keeps its payable/settlement state honestly `not_yet_evidenced` while the
+  source record disclaims settlement;
+- maps the seam's outcomes to honest HTTP status: `400 economics_id_required`
+  (missing/blank id), `404 accepted_outcome_not_found` (unknown or archived
+  outcome), `422 contributor_provenance_incomplete` (a record exists but names no
+  contributor parties — provenance absence surfaced, never papered over),
+  `500 storage_error`, and `405` for non-GET.
+
+Tests: `apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle-routes.test.ts`
+(8 tests, passing) cover the 200 public projection with sourced contributors,
+no-cents-leak + settlement-disclaimed redaction, 400 missing/blank id, 404
+unknown + archived, 422 missing-provenance, and 405 non-GET.
+
+This advances `blocker.product_promises.contributor_ledger_missing` —
+**partially advanced, NOT cleared.** It closes the "HTTP read route to dereference
+by accepted-outcome id over the wire" gap. What STILL remains for this blocker:
+the producer side that WRITES `metadata.contributors` from real workroom/contract
+events (the route only reads what is stored), and the `not_yet_evidenced`
+payable/settlement evidence that depends on the untouched
+`settlement_state_machine_incomplete` blocker. The blocker stays listed in the
+registry.
+
 ## What genuinely remains (blocker stays listed)
 
 - A persisted/queryable receipt record and a read route so a reviewer can

@@ -1731,6 +1731,15 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>` —
+    live at read over one persisted accepted-outcome economics record (promise
+    `payments.accepted_outcome_economics.v1`, red;
+    `blocker.product_promises.contributor_ledger_missing`) — compliant
+    (`generatedAt`, `live_at_read` contract). Read-only public projection of the
+    reconciled gross-margin receipt + contributor accrual ledger: lifecycle and
+    evidence labels stay visible, internal monetary cents are dropped, and every
+    contributor entry's payable/settlement state stays honestly
+    `not_yet_evidenced`. No dispatch, spend, settlement, or payout authority.
   - `GET /api/public/demand-provenance` — live at read over revenue-bearing
     public surfaces that carry typed internal/external demand splits — compliant
     (`generatedAt`, `projection_staleness.v1` live-at-read contract, AO/kWh
