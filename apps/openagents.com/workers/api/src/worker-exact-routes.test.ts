@@ -59,6 +59,7 @@ const approvedExactRoutePaths = [
   '/api/public/pylon-capacity-funnel',
   '/api/public/pylon-capacity-funnel/history',
   '/api/public/site-referral-payouts',
+  '/api/public/partner-payouts',
   '/api/public/relay-health',
   '/api/public/launch-dashboard',
   '/api/public/treasury/launch-status',

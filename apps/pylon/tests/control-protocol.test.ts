@@ -535,6 +535,30 @@ describe("control protocol", () => {
     })
   })
 
+  test("desktop PYLON_CODEX_NO_SANDBOX opt-in runs full-access with network (owner mandate)", () => {
+    // The desktop forwards this node-boot env so its Codex control sessions are
+    // never sandboxed (git / GitHub / credentials work). It is a local env, not
+    // a wire field, so the remote-spawn danger-mode rejection is unaffected.
+    expect(
+      codexControlSessionExecutionSettings({ sandboxMode: "workspace-write" }, {}, {
+        PYLON_CODEX_NO_SANDBOX: "1",
+      }),
+    ).toEqual({
+      executionMode: "local_supervised_danger",
+      networkAccessEnabled: true,
+      sandboxMode: "danger-full-access",
+    })
+
+    // Off / unset stays bounded + sandboxed.
+    expect(
+      codexControlSessionExecutionSettings({}, {}, { PYLON_CODEX_NO_SANDBOX: "0" }),
+    ).toEqual({
+      executionMode: "local_bounded",
+      networkAccessEnabled: false,
+      sandboxMode: "workspace-write",
+    })
+  })
+
   test("session commands spawn, list, retain artifacts, and replay per-session events", async () => {
     await withControlSessionFixture(async ({ accountHome, proofDir, summary, worktree }) => {
       const calls: Array<Record<string, unknown>> = []
