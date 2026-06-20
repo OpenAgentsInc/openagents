@@ -71,8 +71,12 @@ This is the rule implemented for the live metric, verbatim from the metric's own
     simulation-only (`realBitcoinMoved:false`), non-`settled`, and
     wallet-side/not-provider-confirmed receipts — closing the gap where the
     in-line `qualifiedContributorRefs` join trusts its caller to pre-filter the
-    receipt-ref map. Covered by
-    `qualified-contributor-methodology.test.ts` (13 tests, wired into
+    receipt-ref map. It also enforces **cross-contributor settlement
+    integrity**: two counted contributors with distinct `pylonRef`s but the SAME
+    provider-confirmed real-bitcoin settlement receipt do not conform
+    (`shared-settlement-receipt-across-contributors`), so a single real Bitcoin
+    movement cannot back two "distinct real-paid contributors". Covered by
+    `qualified-contributor-methodology.test.ts` (15 tests, wired into
     `check:deploy`).
 
 ## Public dereference path

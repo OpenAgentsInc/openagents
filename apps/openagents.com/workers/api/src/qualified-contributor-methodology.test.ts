@@ -179,6 +179,52 @@ describe('verifyQualifiedContributorMethodology', () => {
     expect(result.reasons).toContain(QualifiedRunReason.DuplicateContributor)
   })
 
+  test('flags two distinct contributors that share one real settlement receipt', () => {
+    const sharedRef = 'receipt.nexus.tassadar_run_settlement.worker.shared'
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.a',
+          settlementReceipts: [realSettlement({ receiptRef: sharedRef })],
+        }),
+        qualified({
+          pylonRef: 'pylon.b',
+          leaseRefs: ['lease.b.1'],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+          // Same real settlement reused: distinct pylonRefs, one Bitcoin movement.
+          settlementReceipts: [realSettlement({ receiptRef: sharedRef })],
+        }),
+      ],
+    })
+    // Both pylonRefs are distinct, so the contributor count is 2, but the shared
+    // receipt means it is not backed by two distinct real settlements.
+    expect(result.qualifiedContributorCount).toBe(2)
+    expect(result.conforms).toBe(false)
+    expect(result.reasons).toContain(QualifiedRunReason.SharedSettlementReceipt)
+    expect(result.reasons).not.toContain(QualifiedRunReason.DuplicateContributor)
+  })
+
+  test('conforms when two contributors each have their own distinct receipt', () => {
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.a',
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.a' })],
+        }),
+        qualified({
+          pylonRef: 'pylon.b',
+          leaseRefs: ['lease.b.1'],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.b' })],
+        }),
+      ],
+    })
+    expect(result.conforms).toBe(true)
+    expect(result.reasons).not.toContain(QualifiedRunReason.SharedSettlementReceipt)
+  })
+
   test('an empty run conforms only to a claimed count of zero', () => {
     expect(
       verifyQualifiedContributorMethodology({

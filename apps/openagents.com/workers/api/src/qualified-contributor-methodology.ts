@@ -46,6 +46,11 @@ export const QualifiedContributorReason = {
 export const QualifiedRunReason = {
   ClaimedCountMismatch: 'claimed-count-mismatch',
   DuplicateContributor: 'duplicate-contributor',
+  // The SAME provider-confirmed real-bitcoin settlement receipt was used to
+  // satisfy prong 3 for two or more counted contributors. Distinct pylonRefs are
+  // not enough: a single real settlement cannot back two "distinct real-paid
+  // contributors" without inflating the real-paid count.
+  SharedSettlementReceipt: 'shared-settlement-receipt-across-contributors',
 } as const
 
 export type QualifiedContributorSettlementEvidence = Readonly<{
@@ -181,6 +186,20 @@ export const verifyQualifiedContributorMethodology = (
   }
 
   const qualifiedContributorCount = distinctCountedRefs.size
+
+  // Cross-contributor settlement integrity: each counted contributor must be
+  // backed by its OWN distinct real settlement receipt. The same provider-
+  // confirmed real-bitcoin movement reused across two counted contributors
+  // inflates the real-paid count even when their pylonRefs differ, so the run
+  // does not conform to the rule.
+  const countedSettlementRefs = verdicts
+    .filter(verdict => verdict.counts)
+    .flatMap(verdict => verdict.countedSettlementReceiptRefs)
+  const distinctSettlementRefs = new Set(countedSettlementRefs)
+  if (distinctSettlementRefs.size !== countedSettlementRefs.length) {
+    reasons.push(QualifiedRunReason.SharedSettlementReceipt)
+  }
+
   if (qualifiedContributorCount !== input.claimedQualifiedContributorCount) {
     reasons.push(QualifiedRunReason.ClaimedCountMismatch)
   }
