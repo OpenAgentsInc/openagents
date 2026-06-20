@@ -38,6 +38,15 @@ if [[ -z "$IDENTITY" ]]; then
   exit 1
 fi
 
+# Pre-notarization gate: a signed/notarized recut for
+# autopilot.local_apple_fm_tool_chat.v1 must actually bundle the Apple FM bridge
+# helper at the Pylon-discovery path, else local sessions can never start. Set
+# OA_SKIP_APPLE_FM_BRIDGE_CHECK=1 to ship an intentionally Apple-FM-less build.
+if [[ "${OA_SKIP_APPLE_FM_BRIDGE_CHECK:-0}" != "1" ]]; then
+  echo "==> verifying packaged Apple FM bridge helper"
+  bun "$(dirname "${BASH_SOURCE[0]}")/verify-packaged-apple-fm-bridge.ts"
+fi
+
 echo "==> code signing $APP_PATH"
 codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
