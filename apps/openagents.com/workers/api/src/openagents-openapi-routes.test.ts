@@ -182,6 +182,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/public-distributed-run-scale',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPublicDistributedRunScaleStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/public-gradient-windows',
         'get',
       ).operationId,
@@ -627,6 +634,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/model-ladder-rungs',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/public-distributed-run-scale',
         'get',
       ).security,
     ).toEqual([])
