@@ -94,16 +94,47 @@ exactly what this blocker names.
     unknown-ref miss, and the two refusal guards (ref that does not address its
     bytes; object that disagrees with its bytes).
 
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.ts`
+  - `buildArtanisLaborReceiptFeedProjection(input)` is the public **read side**:
+    it folds a set of `ArtanisLaborSealedReceipt`s into ONE public-safe feed
+    (`schema openagents.artanis_labor_receipt_feed.v1`) with a summary (total
+    count, per-terminal-state counts in lifecycle order, placed-request count)
+    and projected rows. The summary is always computed over the full set before
+    the filter, so a filter can narrow `rows` but never hide the headline
+    counts. It re-runs `verifyArtanisLaborUnattendedRequestReceipt` on every
+    sealed receipt, so the feed can never serve a receipt whose bytes no longer
+    address its ref — even if the store is later swapped for a backing that
+    trusts itself.
+  - `handlePublicArtanisLaborReceiptsApi(request, { store, nowIso })` is the
+    GET-only, no-store handler. With `?receiptRef=` it does a point read
+    (`store.get`) instead of a list scan; an unknown ref returns an empty feed
+    (rows `[]`, all-zero summary) rather than a 404 so a client can poll a ref
+    it expects to appear without branching on status codes. `?terminalState=`
+    narrows the listed rows. It mints no payment, identity, or settlement
+    authority and carries the same `authorityBoundary` disclaimer as the other
+    public audit projections.
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.test.ts`
+  - 9 cases: zeroed empty summary, mixed-set per-terminal-state folding,
+    public-safe row shape, terminal-state filter (rows narrow, summary does
+    not), tampered-receipt refusal, non-GET rejection (405), GET list ordering,
+    single-ref point dereference, and the unknown-ref empty-feed contract.
+
 ## What remains
 
 - The receipt now has a canonical wire form, a content-addressed ref, a
-  validating read/verify path (`parse` + `verify`), a one-shot `seal`, and an
+  validating read/verify path (`parse` + `verify`), a one-shot `seal`, an
   in-memory tick-ledger **store** with idempotent writes and tamper-evident
-  reads, so it is **persistable, dereferenceable, and tamper-evident** through a
-  real store contract. What still remains is wiring that store into a public
-  route (`/api/public/...`), a durable backing (D1/KV) behind the same
-  interface, and a real unattended tick producing one of these receipts
-  end-to-end. Those remain before the blocker can be dropped.
+  reads, and a public-safe **read projection + GET handler** that dereferences
+  the whole feed or a single receipt by ref. So the receipt is now
+  **persistable, dereferenceable through a route handler, and tamper-evident**
+  end to end at the library layer. What still remains before the blocker can be
+  dropped: (1) registering the handler on a concrete path in `index.ts` backed
+  by a **durable store** — the in-memory store is per-request, so registering it
+  on its own would always serve an empty feed (theater), which is why this run
+  stops at the handler; (2) a durable backing (D1/KV) behind the
+  `ArtanisLaborUnattendedReceiptStore` interface, mirroring
+  `makeD1HygieneDebtReceiptStore`; and (3) a real unattended tick producing one
+  of these receipts end-to-end.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 
