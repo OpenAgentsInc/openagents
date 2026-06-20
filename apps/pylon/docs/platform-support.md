@@ -65,6 +65,37 @@ This was a same-state blocker/copy edit rather than a green transition:
   blocker for `pylon.release_tomorrow.v1`;
 - no Windows/WSL support claim is made.
 
+## Copy-Drift Guard (`pylon.consumer_compute_earns_bitcoin_self_serve.v1`)
+
+Blocker: `blocker.product_promises.windows_wsl_consumer_install_coverage_missing`.
+
+The Episode 238 promise copy ("anybody can plug in consumer compute") must stay
+narrowed to the platforms actually proven — macOS/Linux — and must never drift
+back to an unqualified "any platform" or a "Windows/WSL covered" claim. That
+honest-copy requirement is now machine-checkable in
+`apps/pylon/src/consumer-install-platform-support.ts`:
+
+- `classifyConsumerInstallPlatform(platform)` — pure, public-safe disposition for
+  any platform: `supported` (darwin/linux, sharing `bootstrap.isSupportedPlatform`)
+  vs `out-of-scope` (native Windows `win32`, the WSL Linux userland contributors
+  conflate with native Linux, and everything else), with honest guidance refs and
+  the blocker ref. Emits no machine identifiers, paths, usernames, or private
+  material.
+- `verifyConsumerInstallPlatformClaim(claim)` — audits an untrusted stated
+  platform-support claim and returns `{ valid, overpromises, reasons[] }`.
+  `overpromises === true` (the reviewer fail signal) when the supported set is not
+  exactly `{darwin, linux}`, when it names `win32`/`windows`/`wsl`, or when it
+  flags windows-in-scope, wsl-in-scope, or any-platform. Closed key allowlist so a
+  copy fixture cannot smuggle an unreviewed assertion past the guard.
+
+Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (14 pass).
+
+This does NOT clear the blocker and changes no promise state. It does not build
+Windows/WSL support or run a host probe; it locks the scope decision as an
+enforceable gate so launch copy cannot over-promise platform coverage. Clearing
+the blocker still requires the owner-facing copy-narrowing decision (and any
+future reopen would follow the path below).
+
 ## Future Windows/WSL Reopen Path
 
 If a future owner decision brings Windows or WSL back into scope, open a new

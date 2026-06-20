@@ -28,6 +28,7 @@
 // card->credit->inference-spend receipt the promise's verification gate needs;
 // until then it is exercised by fixtures/tests so the format is review-stable.
 
+import { parseCardCreditGrantContextRef } from './card-credit-provenance'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
 import { usdCreditGrantReceiptRef } from './usd-credit-bridge'
 import { inferenceChargeReceiptRef } from './metering-hook'
@@ -67,6 +68,11 @@ export type CreditToMsatGrantLeg = Readonly<{
   grantedCents: number
   // msat granted into `agent_balances` (USD-origin, inference-spendable).
   grantedMsat: number
+  // OPTIONAL: the grant's stored `context_ref` (the bridge writes this onto the
+  // `pay_ins` row). When present it is parsed for the card-origin session and
+  // MUST resolve to the purchase's `sessionId`, proving this grant chains to
+  // that purchase. When absent, provenance is not verified (caller-asserted).
+  contextRef?: string
 }>
 
 // The msat -> inference spend leg (hop 3): the metering hook decremented the
@@ -125,6 +131,7 @@ export type CardCreditSpendReceiptResult =
         | 'grant_exceeds_purchase'
         | 'grant_conversion_mismatch'
         | 'spend_exceeds_grant'
+        | 'provenance_mismatch'
       message: string
     }>
 
@@ -199,6 +206,30 @@ export const assembleCardCreditSpendReceipt = (
     }
   }
 
+  // PROVENANCE (hop 1 -> 2 binding): when the grant carries its stored
+  // `context_ref`, parse it for the card-origin session and require it to match
+  // the purchase that genesis-keys this chain. This is what makes the receipt
+  // DEREFERENCEABLE from stored state rather than merely caller-asserted: the
+  // grant row itself names the funding session. A context_ref that carries no
+  // card origin (legacy/generic grant) parses to undefined and fails the match,
+  // so a non-card grant cannot masquerade as funded by this purchase.
+  const provenanceContextRef = grant.contextRef
+  const provenanceSessionId =
+    provenanceContextRef === undefined
+      ? undefined
+      : parseCardCreditGrantContextRef(provenanceContextRef)
+  if (
+    provenanceContextRef !== undefined &&
+    provenanceSessionId !== purchase.sessionId
+  ) {
+    return {
+      message:
+        "The grant's stored context_ref does not bind it to this purchase's checkout session.",
+      ok: false,
+      reason: 'provenance_mismatch',
+    }
+  }
+
   return {
     ok: true,
     receipt: {
@@ -209,6 +240,13 @@ export const assembleCardCreditSpendReceipt = (
           step: 'card_to_credit',
         },
         {
+          // When provenance was proven from the grant's stored context_ref, the
+          // step carries that context_ref as dereferenceable evidence of the
+          // hop-1 -> hop-2 binding to this purchase's session.
+          ...(provenanceSessionId !== undefined &&
+          provenanceContextRef !== undefined
+            ? { evidenceRef: provenanceContextRef }
+            : {}),
           receiptRef: usdCreditGrantReceiptRef(grant.grantRef),
           step: 'credit_to_msat',
         },
