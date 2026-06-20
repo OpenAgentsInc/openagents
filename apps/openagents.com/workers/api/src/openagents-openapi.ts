@@ -20,6 +20,7 @@ import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
+import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -201,6 +202,131 @@ const objectSummary = (description: string): JsonSchema => ({
   description,
   additionalProperties: true,
 })
+
+export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes candidate one-delta entries, source refs, blocker refs, and a gate that explicitly keeps harness, eval reproduction, paid dispatch, and green status false until receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'entries',
+    'gate',
+    'generatedAt',
+    'ledgerSummary',
+    'promiseRef',
+    'promiseState',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingAblationDeriskingLedgerEndpoint],
+    },
+    entries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'entryRef',
+          'oneDeltaManifestState',
+          'evalReproductionState',
+          'paidDispatchState',
+          'verdictState',
+          'blockerRefs',
+          'sourceRefs',
+        ],
+        properties: {
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          entryRef: { type: 'string' },
+          evalReproductionState: { type: 'string' },
+          oneDeltaManifestState: { type: 'string' },
+          paidDispatchState: { type: 'string' },
+          sourceRefs: { type: 'array', items: { type: 'string' } },
+          verdictState: { type: 'string' },
+        },
+      },
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'ablationHarnessAvailable',
+        'clearsBlockerRefs',
+        'evalSuiteReproductionAvailable',
+        'greenGateSatisfied',
+        'paidAblationDispatchAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+      ],
+      properties: {
+        ablationHarnessAvailable: { type: 'boolean' },
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        evalSuiteReproductionAvailable: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        paidAblationDispatchAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    generatedAt: { type: 'string', format: 'date-time' },
+    ledgerSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'acceptedVerdictCount',
+        'candidateEntryCount',
+        'entryCount',
+        'paidAblationCount',
+        'reproducedEvalCount',
+        'verifiedManifestCount',
+      ],
+      properties: {
+        acceptedVerdictCount: { type: 'integer', minimum: 0 },
+        candidateEntryCount: { type: 'integer', minimum: 0 },
+        entryCount: { type: 'integer', minimum: 0 },
+        paidAblationCount: { type: 'integer', minimum: 0 },
+        reproducedEvalCount: { type: 'integer', minimum: 0 },
+        verifiedManifestCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.ablation_system.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'composition',
+        'contractVersion',
+        'maxStalenessSeconds',
+        'rebuildsOn',
+      ],
+      properties: {
+        composition: { type: 'string', enum: ['live_at_read'] },
+        contractVersion: {
+          type: 'string',
+          enum: ['projection_staleness.v1'],
+        },
+        maxStalenessSeconds: { type: 'integer', enum: [0] },
+        rebuildsOn: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    status: { type: 'string', enum: ['candidate_ledger_projection'] },
+    unsafeCopy: { type: 'string' },
+  },
+}
 
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
@@ -465,6 +591,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingLeaderboardsEnvelope: objectSummary(
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
+  TrainingAblationDeriskingLedgerEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
     'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
@@ -4363,6 +4490,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public training-run settlement rows.',
           '#/components/schemas/TrainingRunSettlementsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingAblationDeriskingLedgerEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingAblationDeriskingLedger',
+      summary: 'Read training ablation derisking ledger',
+      description:
+        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are candidate refs only: the one-delta harness, eval reproduction receipt, paid ablation dispatch, and accepted verdict gates remain false until dereferenceable receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Training ablation derisking ledger.',
+          '#/components/schemas/TrainingAblationDeriskingLedgerEnvelope',
         ),
         ...errorResponses(),
       },
