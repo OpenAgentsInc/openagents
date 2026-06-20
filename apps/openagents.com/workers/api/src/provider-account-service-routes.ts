@@ -741,9 +741,13 @@ export const makeProviderAccountServiceHandlers = <
           dailyTokenCeiling: result.dailyTokenCeiling,
           error: 'builtin_agent_quota_exhausted',
           message:
-            'Built-in hosted-compute free daily limit reached. No grant was issued.',
+            result.reason === 'tokens'
+              ? 'Built-in hosted-compute daily token budget reached. No grant was issued.'
+              : 'Built-in hosted-compute free daily limit reached. No grant was issued.',
+          reason: result.reason,
           resetsAt: result.resetsAt,
           sessionsRemaining: result.sessionsRemaining,
+          tokensRemaining: result.tokensRemaining,
         },
         { status: 429 },
       )

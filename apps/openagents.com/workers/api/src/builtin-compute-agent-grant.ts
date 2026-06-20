@@ -89,6 +89,14 @@ export type BuiltinComputeAgentStore = Readonly<{
     actorUserId: string
     sinceIso: string
   }) => Promise<number>
+  // Total metered tokens already attributed to this user's built-in compute
+  // agent since the given instant. Used to enforce the bounded daily token
+  // ceiling — the metered path — not just the daily session count. Returns 0
+  // when no metered usage has been recorded yet.
+  sumTokensSince: (input: {
+    actorUserId: string
+    sinceIso: string
+  }) => Promise<number>
   recordGrant: (input: {
     quotaEvent: BuiltinComputeAgentQuotaEvent
     usageEvent: BuiltinComputeAgentUsageEvent
@@ -129,6 +137,7 @@ export type BuiltinComputeAgentGrant = Readonly<{
     resetsAt: string
     sessionBudgetSeconds: number
     dailyTokenCeiling: number
+    tokensRemaining: number
   }>
   materialization: Readonly<{
     kind: 'probe_gemini_api_key'
@@ -147,10 +156,77 @@ export type BuiltinComputeAgentGrantResult =
     }>
   | Readonly<{
       kind: 'quota_exhausted'
+      // Why the grant was denied: the user has spent today's free sessions, or
+      // they have burned through today's metered token ceiling. Either denial
+      // is a free-tier bound, not a fault.
+      reason: 'sessions' | 'tokens'
       resetsAt: string
       sessionsRemaining: number
       dailyTokenCeiling: number
+      tokensRemaining: number
     }>
+
+// Result of the bounded daily token-ceiling check — the metered path. This is
+// a pure decision over already-observed token usage; it neither issues grants
+// nor records anything.
+export type BuiltinComputeAgentTokenBudgetResult =
+  | Readonly<{
+      kind: 'within_budget'
+      usedTokensToday: number
+      tokensRemaining: number
+      dailyTokenCeiling: number
+      resetsAt: string
+    }>
+  | Readonly<{
+      kind: 'budget_exhausted'
+      usedTokensToday: number
+      tokensRemaining: 0
+      dailyTokenCeiling: number
+      resetsAt: string
+    }>
+
+export type BuiltinComputeAgentTokenBudgetInput = Readonly<{
+  usedTokensToday: number
+  dailyTokenCeiling: number
+  resetsAt: string
+}>
+
+// Pure, bounded daily token-ceiling decision. A built-in compute session is a
+// capability on metered, owner-funded hosted compute — once the user has spent
+// the day's token ceiling they are over budget until reset, regardless of how
+// many free sessions remain. Negative/NaN inputs are clamped so a malformed
+// counter can never silently widen the budget.
+export const evaluateBuiltinComputeAgentTokenBudget = (
+  input: BuiltinComputeAgentTokenBudgetInput,
+): BuiltinComputeAgentTokenBudgetResult => {
+  const ceiling = Math.max(
+    0,
+    Number.isFinite(input.dailyTokenCeiling) ? input.dailyTokenCeiling : 0,
+  )
+  const used = Math.max(
+    0,
+    Number.isFinite(input.usedTokensToday) ? input.usedTokensToday : ceiling,
+  )
+  const remaining = Math.max(0, ceiling - used)
+
+  if (remaining <= 0) {
+    return {
+      dailyTokenCeiling: ceiling,
+      kind: 'budget_exhausted',
+      resetsAt: input.resetsAt,
+      tokensRemaining: 0,
+      usedTokensToday: used,
+    }
+  }
+
+  return {
+    dailyTokenCeiling: ceiling,
+    kind: 'within_budget',
+    resetsAt: input.resetsAt,
+    tokensRemaining: remaining,
+    usedTokensToday: used,
+  }
+}
 
 export type BuiltinComputeAgentGrantInput = Readonly<{
   hostedKeyConfigured: boolean
@@ -202,8 +278,35 @@ export const executeBuiltinComputeAgentGrant = async (
     return {
       dailyTokenCeiling: policy.dailyTokenCeiling,
       kind: 'quota_exhausted',
+      reason: 'sessions',
       resetsAt,
       sessionsRemaining: 0,
+      tokensRemaining: 0,
+    }
+  }
+
+  // Bounded/metered path: even with free sessions left, a user who has burned
+  // through today's metered token ceiling is over budget until reset. This
+  // gates the shared, owner-funded hosted key on real token consumption, not
+  // just session starts.
+  const tokensUsed = await input.store.sumTokensSince({
+    actorUserId,
+    sinceIso: startOfDayIso,
+  })
+  const tokenBudget = evaluateBuiltinComputeAgentTokenBudget({
+    dailyTokenCeiling: policy.dailyTokenCeiling,
+    resetsAt,
+    usedTokensToday: tokensUsed,
+  })
+
+  if (tokenBudget.kind === 'budget_exhausted') {
+    return {
+      dailyTokenCeiling: tokenBudget.dailyTokenCeiling,
+      kind: 'quota_exhausted',
+      reason: 'tokens',
+      resetsAt,
+      sessionsRemaining: Math.max(0, policy.freeDailySessions - sessionsUsed),
+      tokensRemaining: 0,
     }
   }
 
@@ -244,6 +347,7 @@ export const executeBuiltinComputeAgentGrant = async (
       resetsAt,
       sessionBudgetSeconds: policy.sessionBudgetSeconds,
       sessionsRemaining,
+      tokensRemaining: tokenBudget.tokensRemaining,
     },
     grantRef,
     materialization: grantMaterialization(),
@@ -274,6 +378,29 @@ export const makeD1BuiltinComputeAgentStore = (
             AND created_at >= ?`,
       )
       .bind(input.actorUserId, input.sinceIso)
+      .first<BuiltinComputeAgentCountRow>()
+
+    return row?.count ?? 0
+  },
+  sumTokensSince: async input => {
+    // Sum metered tokens attributed to this user's built-in compute agent
+    // today. Scoped to the built-in-compute producer so a user's other,
+    // key-bearing Gemini usage is never counted against this free-tier ceiling.
+    const row = await db
+      .prepare(
+        `SELECT COALESCE(SUM(total_tokens), 0) AS count
+           FROM token_usage_events
+          WHERE actor_user_id = ?
+            AND producer_system = ?
+            AND source_route = ?
+            AND observed_at >= ?`,
+      )
+      .bind(
+        input.actorUserId,
+        BUILTIN_COMPUTE_AGENT_PRODUCER_SYSTEM,
+        BUILTIN_COMPUTE_AGENT_SOURCE_ROUTE,
+        input.sinceIso,
+      )
       .first<BuiltinComputeAgentCountRow>()
 
     return row?.count ?? 0
