@@ -88,7 +88,17 @@ honest-copy requirement is now machine-checkable in
   flags windows-in-scope, wsl-in-scope, or any-platform. Closed key allowlist so a
   copy fixture cannot smuggle an unreviewed assertion past the guard.
 
-Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (14 pass).
+- `auditReadmePlatformCopy(readmeText)` — the APPLIED guard: derives a claim from
+  the actual README copy (supported set stays `{darwin, linux}`; any over-promise
+  phrase flips the matching scope flag) and runs `verifyConsumerInstallPlatformClaim`
+  over it. Returns `copyHonest` — true only when the canonical narrowing sentence
+  (`README_NARROWED_PLATFORM_SENTENCE`) is present, no over-promise phrase matched,
+  and the derived claim does not over-promise. This binds the verifier to the
+  shipped file so real copy drift fails in CI, not just a synthetic fixture.
+
+Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (14 pass) and
+`apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` (6 pass, runs the
+applied audit against the real `apps/pylon/README.md`).
 
 This does NOT clear the blocker and changes no promise state. It does not build
 Windows/WSL support or run a host probe; it locks the scope decision as an

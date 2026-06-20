@@ -3,6 +3,33 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (c) — applied README copy-drift guard (real file, not fixture)
+
+Blocker advanced this run:
+`blocker.product_promises.windows_wsl_consumer_install_coverage_missing`
+
+The prior run made the copy-narrowing decision machine-checkable via
+`verifyConsumerInstallPlatformClaim`, but that verifier only ran against
+SYNTHETIC claim objects — it could not catch a future edit to the actual shipped
+consumer-facing copy. This run binds the verifier to the real file:
+
+- `apps/pylon/src/consumer-install-platform-support.ts` — added
+  `auditReadmePlatformCopy(readmeText)` (pure): derives a claim from the README
+  text (supported set stays `{darwin, linux}`; over-promise phrases flip the
+  matching scope flag), runs the existing verifier, and returns `copyHonest`.
+  Plus `README_NARROWED_PLATFORM_SENTENCE` (source-of-truth narrowing sentence)
+  and `OVERPROMISE_COPY_PATTERNS` (public-safe any-platform / windows / wsl
+  detectors).
+- `apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` — 6 bun:test
+  cases that read the real `apps/pylon/README.md`, assert the shipped copy is
+  honest today, and prove the guard fails on drift (reintroduced any-platform /
+  Windows claim, or removed narrowing sentence).
+- `apps/pylon/docs/platform-support.md` — documented the applied guard.
+
+No promise state changed; no Windows/WSL support claimed; no host probed. Still
+listed: clearing it needs the owner-facing copy-narrowing sign-off. This run
+makes that decision enforceable against the real shipped file, not optional.
+
 ## Update 2026-06-20 (b) — Windows/WSL platform-claim drift guard
 
 Blocker advanced this run:
