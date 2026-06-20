@@ -113,6 +113,10 @@ import {
   handleSelfServeFanoutApi,
   isSelfServeFanoutEnabled,
 } from './self-serve-fanout-routes'
+import {
+  MarketplaceWorkClassCatalogEndpoint,
+  handleMarketplaceWorkClassCatalogApi,
+} from './marketplace-work-class-catalog-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -8332,6 +8336,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleSelfServeFanoutApi(request, {
         enabled: isSelfServeFanoutEnabled(env.SELF_SERVE_FANOUT_ENABLED),
       }),
+  },
+  {
+    // Marketplace work-class catalog (promise
+    // autopilot.control_center_fanout_marketplace.v1, yellow). Read-only registry
+    // view: it lists every registered work class with its status, names the single
+    // live class (code_task), and always reports the still-uncleared
+    // plugin-marketplace-beyond-code_task blocker. No flag, no store, nothing
+    // executable — the projection's assertCatalogInvariants throws rather than let
+    // any plugin class silently flip live. Makes no broad-live-marketplace claim.
+    path: MarketplaceWorkClassCatalogEndpoint,
+    handler: request => handleMarketplaceWorkClassCatalogApi(request),
   },
   {
     path: CustomerOneCohortEndpoint,
