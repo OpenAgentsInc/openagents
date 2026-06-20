@@ -167,6 +167,23 @@ never the treasury payment id or destination) suitable for pasting into the
 issue #4626 transition receipt. A non-empty `violationReasonRefs` means do not
 publish the receipt until each listed reason clears.
 
+## Transition-receipt proposal
+
+Once the post-settlement audit passes, assemble the registry proposal with the
+pure builder (`buildXClaimRewardSmokeTransitionRequest` in
+`apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.ts`). It
+runs the audit and, only when it passes, returns a public-safe
+`transitionRequest` — the exact `POST /api/operator/product-promises/transitions`
+body (`promiseId`, `toState: "green"`, deduped public evidence refs: the receipt
+ref plus public settlement evidence refs). It defensively re-scans the assembled
+refs for payment material and emits `transitionRequest: null` with
+`blockingReasonRefs` if anything leaks or the audit fails.
+
+Building this proposal flips no promise state and moves no funds: the registry
+route re-evaluates blockers on submit, and the green flip still requires owner
+sign-off. A non-empty `blockingReasonRefs` means do not submit until each listed
+reason clears.
+
 After the settled response, verify the public promise remains honest until the
 operator records the transition receipt:
 
