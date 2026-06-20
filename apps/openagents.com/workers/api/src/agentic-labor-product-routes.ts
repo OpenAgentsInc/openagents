@@ -21,15 +21,18 @@ import { Effect } from 'effect'
 
 import {
   type LaborProductFlowStore,
+  type LaborProductReceiptStore,
   AGENTIC_LABOR_PRODUCT_SCHEMA,
   AGENTIC_LABOR_PRODUCTS_PROMISE,
   LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF,
   LaborProductFlowStaleness,
   decodeLaborProductOrderRequest,
   emptyLaborProductFlowStore,
+  emptyLaborProductReceiptStore,
   listLaborProductFlows,
   planSelfServeLaborProductOrder,
   readLaborProductFlow,
+  readLaborProductSettlementReceipt,
 } from './agentic-labor-product'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { currentIsoTimestamp } from './runtime-primitives'
@@ -54,6 +57,9 @@ export type AgenticLaborProductDeps = Readonly<{
   enabled: boolean
   // The labor-product flow store. The Worker passes the empty store while INERT.
   store?: LaborProductFlowStore
+  // The settlement-receipt store a `?receiptRef=` GET dereferences against. The
+  // Worker passes the empty store while INERT (no real receipt is published).
+  receiptStore?: LaborProductReceiptStore
 }>
 
 const resolveStore = (
@@ -62,6 +68,13 @@ const resolveStore = (
   deps.enabled && deps.store !== undefined
     ? deps.store
     : emptyLaborProductFlowStore
+
+const resolveReceiptStore = (
+  deps: AgenticLaborProductDeps,
+): LaborProductReceiptStore =>
+  deps.enabled && deps.receiptStore !== undefined
+    ? deps.receiptStore
+    : emptyLaborProductReceiptStore
 
 /**
  * SELF-SERVE POST: plan a labor-product order from the buyer's own request body
@@ -166,7 +179,29 @@ export const handleAgenticLaborProductApi = (
 
   const store = resolveStore(deps)
   const url = new URL(request.url)
+  const receiptRef = url.searchParams.get('receiptRef')
   const orderId = url.searchParams.get('orderId')
+
+  // Dereference a published settlement receipt by its public-safe receiptRef.
+  // Read-only and INERT: in production the receipt store is empty (no real
+  // settled receipt has been published), so this returns `receipt: null`.
+  if (receiptRef !== null && receiptRef.trim().length > 0) {
+    return Effect.succeed(
+      noStoreJsonResponse({
+        schema: 'openagents.agentic_labor_product.settlement_receipt.v1',
+        promiseIds: [AGENTIC_LABOR_PRODUCTS_PROMISE],
+        promiseState: 'yellow',
+        unclearedBlockerRefs: [LABOR_PRODUCT_NO_REAL_SALE_RECEIPT_REF],
+        generatedAt: currentIsoTimestamp(),
+        maxStalenessSeconds: LaborProductFlowStaleness.maxStalenessSeconds,
+        staleness: LaborProductFlowStaleness,
+        receipt: readLaborProductSettlementReceipt(
+          resolveReceiptStore(deps),
+          receiptRef.trim(),
+        ),
+      }),
+    )
+  }
 
   if (orderId !== null && orderId.trim().length > 0) {
     return Effect.succeed(
