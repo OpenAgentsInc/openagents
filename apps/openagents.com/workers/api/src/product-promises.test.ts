@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.16')
+    expect(decoded.version).toBe('2026-06-20.17')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -174,6 +174,12 @@ describe('public product promises document', () => {
     // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
     // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
     // without flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.17 custom-hostname self-serve pass clears
+    // hostname_customer_self_serve_missing on
+    // autopilot_sites.custom_tenant_hostnames.v1 (deployed customer-gated
+    // claim/list path at /api/tenant/hostnames that writes only pending rows;
+    // live provisioning stays owner-gated and INERT default-OFF), without
+    // flipping the promise (stays yellow), so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -863,12 +869,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.16', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.17', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.16',
+      expectedVersion: '2026-06-20.17',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.16',
+      servedVersion: '2026-06-20.17',
       status: 'ready',
     })
     expect(
@@ -878,7 +884,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.16',
+      servedVersion: '2026-06-20.17',
       status: 'blocked',
     })
   })
