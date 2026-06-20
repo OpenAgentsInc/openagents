@@ -48,12 +48,32 @@ layer, and it needs to be deterministic enough to test without a real Mac.
 - `apps/openagents.com/workers/api`: `bunx tsc -p tsconfig.json --noEmit` → 0 errors.
 - `apps/pylon`: `bun test tests/apple-fm-bridge-supervisor.test.ts` → 8 pass.
 
+## Follow-up run (2026-06-20): supervisor phase is now observable
+
+- `apps/pylon/src/node/apple-fm-bridge-supervisor-status.ts` —
+  `summarizeAppleFmBridgeSupervisor(state, nowMs)` projects the internal reducer
+  state into a stable, public-safe summary
+  (`openagents.pylon.apple_fm.supervisor.v0.1`): coarse `health`
+  (`idle`/`starting`/`running`/`recovering`/`stopped`), `supervised`,
+  `consecutiveRestarts`, window-pruned `restartsInWindow`, clamped
+  `backoffRemainingMs`, the crash-loop `blockerRefs`, and `contentRedacted`.
+  `nowMs` is injected (no clock read); the summary carries no prompts, file
+  contents, paths, tokens, URLs, or bearer material.
+- `apps/pylon/tests/apple-fm-bridge-supervisor-status.test.ts` — 7 tests
+  (idle/running/recovering health, non-negative backoff clamp, window pruning,
+  crash-loop → stopped + blocker ref, and a no-sensitive-keys assertion).
+  `bun test` green (7 pass / 27 assertions).
+- This makes supervision *observable* by `apple_fm.status` / Autopilot Desktop,
+  but the live launcher that actually feeds events and the `apple_fm.status`
+  wiring still do not exist — the blocker stays open.
+
 ## What genuinely remains (blocker NOT cleared)
 
 - Wire a real launcher (`Bun.spawn`/`child_process`) on top of this policy that
   feeds `process_started`/`process_exited`/`health_ok` events from the live
   bridge and performs the emitted `spawn`/`schedule_restart`/`give_up` actions,
-  surfacing the supervisor phase through `apple_fm.status`.
+  then embed `summarizeAppleFmBridgeSupervisor(...)` output into the
+  `apple_fm.status` projection so the supervisor phase reaches the surface.
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a
