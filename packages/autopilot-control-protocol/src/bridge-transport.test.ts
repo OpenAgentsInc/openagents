@@ -58,6 +58,52 @@ describe("client bridge transport (CL-14)", () => {
     expect(result.recentEvents.length).toBe(1)
   })
 
+  test("transport.subscribe sends session.subscribe + cursor and returns the parsed event batch", async () => {
+    let body: any = null
+    let auth: string | null = null
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      auth = (init!.headers as Record<string, string>).authorization
+      body = JSON.parse(init!.body as string)
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          result: {
+            sessionRef: "sess.42",
+            state: "running",
+            recentEvents: [
+              { eventIndex: 2, phase: "composer_event", state: "running", observedAt: "t2", messageText: "edit" },
+              { eventIndex: 3, phase: "completed", state: "completed", observedAt: "t3", artifactRef: "art.1" },
+            ],
+          },
+        }),
+        { status: 200 },
+      )
+    }) as unknown as typeof fetch
+    const t = createBridgeTransport({
+      baseUrl: "https://node.example",
+      credential: { pairingRef: "p1", jti: "j1", capabilityRef: "observe_private" },
+      fetchImpl,
+    })
+    const batch = await t.subscribe({ sessionRef: "sess.42", cursor: 1 })
+    expect(auth as string | null).toBe("Bridge p1:j1")
+    expect(body.verb).toBe("session.subscribe")
+    expect(body.sessionRef).toBe("sess.42")
+    expect(body.cursor).toBe(1)
+    expect(body.capabilityRef).toBe("observe_private")
+    expect(batch.events.map((e) => e.eventIndex)).toEqual([2, 3])
+    expect(batch.events[1]?.artifactRef).toBe("art.1")
+    expect(batch.cursor).toBe(3)
+
+    const errFetch = (async () =>
+      new Response(JSON.stringify({ ok: false, error: "capability not granted" }), { status: 403 })) as unknown as typeof fetch
+    const t2 = createBridgeTransport({
+      baseUrl: "https://node.example",
+      credential: { pairingRef: "p1", jti: "j1" },
+      fetchImpl: errFetch,
+    })
+    await expect(t2.subscribe({ sessionRef: "sess.42" })).rejects.toThrow(/capability not granted/)
+  })
+
   test("transport.readArtifact sends artifact.read + read_artifact cap and parses the envelope", async () => {
     let body: any = null
     let auth: string | null = null
