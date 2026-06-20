@@ -465,6 +465,7 @@ import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-rout
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
+import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
@@ -7064,6 +7065,8 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
+const marketingAgencyReceiptPublicRoutes = makeMarketingAgencyReceiptPublicRoutes()
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -9768,7 +9771,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
   routeEcommerceCampaignReceiptRequest:
     ecommerceCampaignReceiptRoutes.routeEcommerceCampaignReceiptRequest,
-
+  routeMarketingAgencyReceiptRequest:
+    marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),

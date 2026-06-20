@@ -205,3 +205,13 @@ describe('marketing-agency white-label delivery receipt', () => {
     )
   })
 })
+
+import { firstPaidMarketingAgencyDeliveryReceiptFixture } from './marketing-agency-delivery-receipt-fixture'
+
+describe('firstPaidMarketingAgencyDeliveryReceiptFixture', () => {
+  test('qualifies as a valid evidenced paid delivery receipt', () => {
+    expect(verifyMarketingAgencyPaidDelivery(firstPaidMarketingAgencyDeliveryReceiptFixture)).toEqual([])
+    expect(firstPaidMarketingAgencyDeliveryReceiptFixture.deliveryStage).toBe('delivered')
+    expect(firstPaidMarketingAgencyDeliveryReceiptFixture.evidenceState).toBe('paid')
+  })
+})
