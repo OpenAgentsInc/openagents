@@ -2,6 +2,58 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — eval-delta settlement closeout (composes the three bonus gates)
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+Three deterministic eval-delta gates already exist —
+`verifyCs336A4EvalDeltaMeasurementBinding` (was the delta measured on the
+shard's source?), `settleCs336A4EvalDeltaPayment` (price a bonus), and
+`buildCs336A4EvalDeltaSettlementReceipt` (bind the decision to provenance) —
+but **nothing composed them**, so the one path that actually records a bonus
+left two doors open:
+
+1. The settlement-receipt builder enforces matching `assignmentRef` and a
+   recompute-verified receipt, but it never enforces that the eval delta was
+   measured on the shard's REAL corpus source. The measurement-binding gate
+   answers exactly that, yet nothing on the settlement path called it — a
+   contributor could attach a genuine positive delta measured on an easier,
+   unrelated source and every assignment-ref check would still pass.
+2. `settleCs336A4EvalDeltaPayment` took a free `stageRecomputeVerified` flag
+   that could disagree with the bound provenance receipt's own
+   `recomputeVerified`, letting a priced settlement claim a verification the
+   bound receipt denies.
+
+This change adds the fail-closed composition that closes both doors:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-settlement-closeout.test.ts` (8 tests)
+
+`closeCs336A4EvalDeltaSettlement` is the single entry point a settlement
+closeout should call. It derives every authority field from the trusted
+provenance receipt rather than a loose caller copy: the `assignmentRef` settled
+and recorded is the receipt's (so settlement and receipt cannot name different
+shards), and `stageRecomputeVerified` is the receipt's `recomputeVerified` (so
+the priced settlement cannot out-claim the bound receipt). BEFORE pricing it
+asserts the measurement binds the receipt's source via
+`assertCs336A4EvalDeltaMeasurementBinding`, so a wrong-source delta hard-fails
+with `Cs336A4EvalDeltaMeasurementBindingError` and is never priced or recorded.
+It fabricates no eval score, sets no funding, and emits refs/digests/sats only;
+the underlying builders' public-safety guards still fire through it.
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This is the deterministic
+*composition* of the three existing gates — it measures nothing, funds nothing,
+and pays nothing. No fixed-trainer eval loop has produced a real eval-delta
+measurement, no operator funding parameters are set, and this closeout is not
+yet wired into the live A4 closeout/admission path
+(`training-data-refinery.ts`), the `a4_eval_delta` leaderboard, or a provider
+settlement. The promise's green criterion — at least one eval-delta payment
+computed from a fixed reference model and backed by a Verified
+`deterministic_recompute` shard — is unmet. `crawl_scale_corpus_missing` and
+`corpus_provenance_receipts_missing` are untouched by this update.
+
 ## 2026-06-20 update — crawl-shard assignment re-derivation authenticity gate
 
 **Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
