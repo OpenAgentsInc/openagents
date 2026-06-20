@@ -59,6 +59,13 @@ import type {
   PylonNetworkNode,
   PylonNetworkScene,
 } from "../shared/pylon-network-scene"
+// #5730 (P2.5): feed the LIVE pylon scene + Bitcoin payment particles into the
+// chat background scene. Pure projections live in shared/chat-world-*.ts.
+import {
+  liveChatWorldNetworkScene,
+  withChatWorldPaymentLayer,
+} from "../shared/chat-world-visualization"
+import { chatWorldBuildFlags } from "../shared/chat-world-flags"
 
 import type {
   AccountRow,
@@ -131,6 +138,7 @@ import {
   ClickedLoadGeneratedProofReplay,
   ClickedRefreshManagedAccounts,
   ClickedRemoveManagedAccount,
+  SelectedChatWorldNode,
   SelectedComposerAccount,
   ClickedCancelSession,
   ClickedOpenSessionInComposer,
@@ -289,6 +297,8 @@ import {
   modelInstallReadiness,
   modelOnboardingStatus,
   modelIdentityChoiceState,
+  modelChatWorldParticles,
+  modelChatWorldScene,
   modelManagedAccounts,
   modelPaneLayer,
   modelPromiseSurfacingReadiness,
@@ -5739,10 +5749,14 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
 // is byte-for-byte the current pane unless the flag is explicitly enabled. When
 // on, the chat thread + composer render as translucent glass over a full-bleed
 // 3D pylon scene (mirrors the .training-fullscreen-scene/-overlay pattern).
-// Live data is a separate issue (#5736); this seeds a static scene.
-const CHAT_WORLD_SCENE: boolean =
-  ((import.meta as { env?: Record<string, string | undefined> }).env
-    ?.VITE_CHAT_WORLD_SCENE ?? "0") === "1"
+// #5730 (P2.5): the static seed is now only a zero-state/pre-load fallback —
+// when the flag is on AND live pylon-stats have arrived, the scene shows the
+// REAL pylons (modelChatWorldScene), and with CHAT_WORLD_PAYMENTS on, real
+// Bitcoin payment beams fly between them. Resolved from the shared build-flag
+// reader so the view and the subscriptions agree on what is on.
+const CHAT_WORLD_FLAGS = chatWorldBuildFlags()
+const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
+const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
 
 // A calm static seed scene: one hub + ~8 ring pylons. A couple are "working"
 // so the graph reads as a living-but-idle network rather than dead. This is a
@@ -5780,12 +5794,38 @@ const CHAT_SCENE: PylonNetworkScene = {
   asOfLabel: null,
 }
 
-const chatSceneBackground = (): Html =>
+// #5730: build the chat-background visualization from LIVE state, falling back
+// to the calm static seed for the zero-state / pre-load moment. With the
+// payments flag on, evidence-bound payment beams/bursts overlay the graph.
+const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions => {
+  // Live pylons replace the seed once a non-empty snapshot has landed.
+  const liveScene = liveChatWorldNetworkScene(modelChatWorldScene(model))
+  const base = pylonNetworkVisualizationOptions(liveScene ?? CHAT_SCENE)
+  // Payment particles only when their flag is on; each is already evidence-bound.
+  return CHAT_WORLD_PAYMENTS
+    ? withChatWorldPaymentLayer(base, modelChatWorldParticles(model))
+    : base
+}
+
+// A small inspector chip naming the receipt the last-clicked payment beam ties
+// to (evidence-bound: every beam carries a real sourceRef). Absent until a click.
+const chatSceneInspector = (model: Model): Html =>
+  model.chatWorldInspectedRef !== null
+    ? h.div([cls("chat-scene-inspector mono")], [
+        h.span([cls("chat-scene-inspector-label")], ["receipt "]),
+        h.span([cls("chat-scene-inspector-ref")], [model.chatWorldInspectedRef]),
+      ])
+    : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
+
+const chatSceneBackground = (model: Model): Html =>
   h.div([cls("chat-scene-background")], [
     trainingRunView<Message>(
       [cls("three-effect-chat-scene")],
-      pylonNetworkVisualizationOptions(CHAT_SCENE),
+      chatSceneVisualization(model),
+      // Click a payment endpoint → surface its receipt ref in the inspector.
+      (node) => SelectedChatWorldNode({ id: node.id, label: node.label }),
     ),
+    chatSceneInspector(model),
   ])
 
 // The chat thread + composer, shared by both the plain and world-scene layouts.
@@ -5841,7 +5881,7 @@ const chatComposer = (model: Model): Html =>
 const chatPane = (model: Model): Html =>
   CHAT_WORLD_SCENE
     ? h.div([cls("chat-pane chat-pane-world")], [
-        chatSceneBackground(),
+        chatSceneBackground(model),
         h.div([cls("chat-content-overlay")], [
           paneTitle("Chat"),
           chatThread(model),

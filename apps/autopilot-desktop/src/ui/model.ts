@@ -35,6 +35,10 @@ import {
 // VALUE from this file; this file imports only the `PaneLayer` TYPE from there).
 import type { PaneLayer } from "./pane-manager"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+import type {
+  ChatWorldPylonScene,
+  PaymentParticle,
+} from "../shared/chat-world-scene"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG as DefaultDesktopProofReplaySlug,
@@ -338,6 +342,22 @@ export const Model = ts("AutopilotDesktop", {
   // pushed from the Bun poller. Opaque PylonStatsSnapshot; projected to the
   // home scene via projectPylonNetworkScene. Null until the first poll lands.
   pylonStats: S.NullOr(S.Unknown),
+
+  // #5730 (P2.5 chat-world wiring): live chat-world-behind-chat state, fed by
+  // the flag-gated chat-world subscriptions (chat-world-subscriptions.ts) and
+  // read by chatPane to drive the scene. Both stay at their empty defaults (and
+  // the subscriptions stay noop) when the chat-world flags are OFF, so the chat
+  // pane is byte-identical to current main unless the flags are built in.
+  //   - chatWorldScene: latest projected ChatWorldPylonScene (opaque; read via
+  //     modelChatWorldScene). Null until the first pylon poll lands → static seed.
+  //   - chatWorldParticles: the bounded set of active payment-particle
+  //     descriptors (opaque PaymentParticle[]; read via modelChatWorldParticles),
+  //     each evidence-bound to a real sourceRef.
+  chatWorldScene: S.NullOr(S.Unknown),
+  chatWorldParticles: S.Array(S.Unknown),
+  // #5730: the receipt/source ref of the last-clicked payment beam endpoint, for
+  // the inspector chip. Null when nothing is selected. Click → SelectedChatWorldNode.
+  chatWorldInspectedRef: S.NullOr(S.String),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -682,6 +702,16 @@ export const modelManagedAccounts = (
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
 
+// #5730: typed read boundary for the opaque chat-world state.
+export const modelChatWorldScene = (
+  model: Model,
+): ChatWorldPylonScene | null => model.chatWorldScene as ChatWorldPylonScene | null
+
+export const modelChatWorldParticles = (
+  model: Model,
+): ReadonlyArray<PaymentParticle> =>
+  model.chatWorldParticles as ReadonlyArray<PaymentParticle>
+
 export const modelPublicActivityTimeline = (
   model: Model,
 ): PublicActivityTimelineResponse | null =>
@@ -961,6 +991,9 @@ export const initialModel: Model = Model.make({
   node: null,
   notifications: null,
   pylonStats: null,
+  chatWorldScene: null,
+  chatWorldParticles: [],
+  chatWorldInspectedRef: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

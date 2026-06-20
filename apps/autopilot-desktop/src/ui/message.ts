@@ -33,6 +33,20 @@ export const GotNodeState = m("GotNodeState", { node: S.Unknown })
 // #5049: public pylon-network stats push (drives the home network scene).
 export const GotPylonStats = m("GotPylonStats", { stats: S.Unknown })
 export const GotNotifications = m("GotNotifications", { view: S.Unknown })
+// #5730 (P2.5 chat-world wiring): live chat-world scene + payment-particle
+// pushes from the flag-gated chat-world subscriptions. `scene` is an opaque
+// ChatWorldPylonScene; `particle` an opaque evidence-bound PaymentParticle.
+export const GotChatWorldScene = m("GotChatWorldScene", { scene: S.Unknown })
+export const GotChatWorldPaymentParticle = m("GotChatWorldPaymentParticle", {
+  particle: S.Unknown,
+})
+// #5730: a click on a scene node/entity. For a payment endpoint the id encodes
+// the particle (`pay:<eventRef>:from|to`) and the label carries the receipt
+// sourceRef, so the reducer can surface the inspected ref (tooltip/inspector).
+export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
+  id: S.String,
+  label: S.String,
+})
 // #5025: honest node-launch lifecycle status from the Bun supervisor.
 export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String })
 
@@ -609,6 +623,9 @@ export const EndedPaneDrag = m("EndedPaneDrag")
 export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
+  GotChatWorldScene,
+  GotChatWorldPaymentParticle,
+  SelectedChatWorldNode,
   GotNotifications,
   GotNodeLaunchStatus,
   NavigatedTo,
