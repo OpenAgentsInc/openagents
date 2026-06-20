@@ -118,4 +118,39 @@ describe('business route', () => {
       'Usage is billed as clear token-based credits — buy credits and spend them as you go. No monthly AI subscription, and your credits never expire.',
     )
   })
+
+  test('renders the offering menu with honest availability badges', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain('What we can do')
+    // Offering buckets from the intake spec.
+    expect(rendered).toContain('Coding & agent work')
+    expect(rendered).toContain('Inference / AI on tap')
+    expect(rendered).toContain('Autopilot business automation')
+    expect(rendered).toContain('Payments rails')
+
+    // Honest now/soon/roadmap framing is present (no overselling).
+    expect(rendered).toContain('Available now')
+    expect(rendered).toContain('Available soon')
+  })
+
+  test('renders the quick-win to Autopilot ladder', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain(
+      'Quick win → put your business on Autopilot',
+    )
+    expect(rendered).toContain('Day 1 — Quick win')
+    expect(rendered).toContain('Week 1 — Repeatable lane')
+    expect(rendered).toContain('Ongoing — On Autopilot')
+  })
+
+  test('renders the hidden referral-code field for referral attribution', () => {
+    const rendered = renderHtml(Business.view({ _tag: 'LoggedOut' }))
+
+    expect(rendered).toContain('name="referralCode"')
+    expect(rendered).toContain('id="business-referral-code"')
+    // The capture script reads ?ref= into the hidden field.
+    expect(rendered).toContain("p.get('ref')")
+  })
 })

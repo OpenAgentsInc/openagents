@@ -1873,7 +1873,18 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `POST /api/public/business-signup` — live-at-write intake receipt over the
     inserted business signup row — compliant (`generatedAt`, contract,
     public-safe request id/status only; no email, phone, website, or freeform
-    request text echoed).
+    request text echoed). A converted signup may bind to the referral
+    attribution spine (issue #5809): a bounded inbound `?ref=`/`referralCode`
+    (a `site_referral_sources.public_source_ref`) or an already-captured
+    `oa_pending_referral_attribution` cookie resolves a pending attribution that
+    is consumed exactly once into `business_signup_referral_attributions` (keyed
+    on the signup id; PRIMARY KEY + pending->claimed guard prevent
+    double-credit) and recorded on the row as `referral_attribution_id`. This is
+    ATTRIBUTION ELIGIBILITY ONLY — it moves no money and accrues no payout
+    (refer-once-earn-forever payout stays usage-funded via
+    `accrueCrossCategoryReferral`, never on signups). The public response echoes
+    only a `referralAttributed` boolean — never the code or the internal
+    attribution id. A referral resolution failure never fails the intake.
   - `GET /api/public/training/runs/{trainingRunRef}` — live at read over the
     Worker-authoritative training run, window, lease, verification challenge,
     and provider-confirmed settlement receipt rows — compliant (`generatedAt`,

@@ -44,14 +44,23 @@ class SqliteD1 {
   }
 }
 
-const migrationSql = readFileSync(
-  join(__dirname, '..', 'migrations', '0191_business_signup_requests.sql'),
-  'utf8',
-)
+const migration = (name: string): string =>
+  readFileSync(join(__dirname, '..', 'migrations', name), 'utf8')
+
+// 0191 creates business_signup_requests; 0216 adds the referral columns
+// (referral_code, referral_attribution_id) that the insert now writes, plus the
+// consume-once binding table. node:sqlite keeps foreign_keys OFF, so 0216's
+// references to referral_attributions / site_referral_sources are inert here.
+const SCHEMA = [
+  '0191_business_signup_requests.sql',
+  '0216_business_signup_referral_attribution.sql',
+].map(migration)
 
 const makeDb = (): D1Database => {
   const db = new DatabaseSync(':memory:')
-  db.exec(migrationSql)
+  for (const sql of SCHEMA) {
+    db.exec(sql)
+  }
   return new SqliteD1(db) as unknown as D1Database
 }
 
@@ -60,6 +69,7 @@ let counter = 0
 const runtime: BusinessSignupRuntime = {
   makeId: (prefix: string) => `${prefix}_${(counter += 1)}`,
   nowIso: () => '2026-06-16T12:00:00.000Z',
+  expiresAtFromNow: () => '2026-07-16T12:00:00.000Z',
 }
 
 const run = (request: Request, db: D1Database) =>
