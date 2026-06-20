@@ -112,3 +112,43 @@ carry-through.
 This does **not** clear the blocker: it only makes a settlement *recordable*. A
 real external sale (demand provenance) settled under an armed, owner-signed seam
 with a published receipt is still required for green.
+
+## Follow-up run (2026-06-20): composed end-to-end sale carry-through + real-SQL proof
+
+Every step of the sale flow now existed in isolation (plan self-serve order ->
+`advanceLaborProductFlow` dispatch -> deliver -> `settleLaborProductOrder` ->
+`recordLaborProductSettlement`), but there was **no single entry point** a real
+sale flows through: a caller had to hand-thread five functions and re-feed the
+seam's `settled` result back into the recorder. And no test exercised the WHOLE
+chain against a real ledger — the unit carry-through used a *fabricated* `settled`
+result, and the real-SQL settlement test settled but never minted a receipt.
+
+This run adds the connective entry point and the missing proof:
+
+- `carryLaborProductOrderToSettlement(deps, input)` in
+  `apps/openagents.com/workers/api/src/agentic-labor-product.ts` — a **composed**
+  effectful function carrying ONE sale `order -> dispatch -> deliver -> settle ->
+  recorded receipt` in a single call. The PURE steps are composed exactly as the
+  unit functions define them (every coherence + receipt-matching guard holds);
+  the only side effect is the FLAG-GATED, owner-gated `settleLaborProductOrder`.
+  Honest result union: `recorded` (money moved + dereferenceable receipt),
+  `rejected` (a pure step failed, with the failing stage), `disabled` (flag off —
+  the default INERT path), `not_authorized` (armed but no owner sign-off), and
+  `not_settled` (seam ran but moved no money, so NO receipt is fabricated).
+- It changes **no defaults**: the seam is still `disabled` unless armed and
+  `not_authorized` without an owner sign-off, so the composition settles nothing
+  until those gates are deliberately opened. Promise stays `yellow`.
+
+Tests: new `carryLaborProductOrderToSettlement end-to-end against real SQL` block
+in `agentic-labor-product-settlement.test.ts` (real `node:sqlite` ledger with the
+never-negative balance CHECK + idempotency UNIQUE) covering: the funded
+armed+owner-signed happy path (money genuinely debited, receipt dereferenceable
+and matching the order ref), `disabled` default (no ledger IO), missing owner
+sign-off, under-funded (`not_settled`, no receipt), malformed-request rejection,
+and idempotent replay (records again, never double-charges).
+
+Still does **not** clear the blocker: this proves the chain *composes against a
+real ledger* and is the one path a real sale invokes, but a REAL external sale
+(demand provenance per `proof.demand_provenance.v1`) settled under an armed,
+owner-signed seam with a **published** receipt on the `labor` stream is still
+required for green.

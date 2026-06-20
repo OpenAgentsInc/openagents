@@ -705,6 +705,162 @@ export const advanceLaborProductFlow = (
 }
 
 // ---------------------------------------------------------------------------
+// End-to-end sale carry-through (COMPOSED, settlement-effectful)
+// ---------------------------------------------------------------------------
+//
+// Advances the real-sale-receipt blocker
+// (blocker.product_promises.agentic_labor_product_real_sale_receipt_missing) by
+// supplying the ONE composed entry point a real sale actually flows through.
+// Every step already existed in isolation — plan the self-serve order, dispatch,
+// deliver, settle on the ledger, record the receipt — but a caller had to
+// hand-thread FIVE functions and re-feed the seam's `settled` result back into
+// `recordLaborProductSettlement` by hand. Nothing carried an order from a buyer's
+// order request all the way to a recorded, dereferenceable settlement receipt in
+// one call, so there was no single thing a real-sale path (or a claim-upgrade
+// review) could invoke and point at. This composes that path.
+//
+// It does NOT clear the blocker: it changes no defaults. The settlement seam is
+// still FLAG-GATED INERT (`disabled` unless armed) and owner-gated
+// (`not_authorized` without an owner sign-off ref), so this composition settles
+// nothing until those gates are deliberately opened. Green still needs a REAL
+// external sale (demand provenance per proof.demand_provenance.v1) carried
+// through an armed, owner-signed seam with a published receipt.
+
+/** A request to carry ONE labor-product sale end to end, order -> receipt. */
+export type CarryLaborProductSaleInput = Readonly<{
+  /** The self-serve order request the buyer submits. */
+  request: LaborProductOrderRequest
+  /** Neutral worker ref the order is dispatched to. */
+  workerRef: string
+  /** Public-safe delivered artifact ref. */
+  artifactRef: string
+  /** Public-safe adapter/runtime id that produced the delivery (attribution). */
+  adapterId: string
+  /**
+   * Owner sign-off ref authorizing settlement. Absent => the seam returns
+   * `not_authorized` and no money moves (green is owner-gated).
+   */
+  ownerSignOffRef?: string | undefined
+  /** ISO clock override for the order's createdAt (tests). */
+  createdAt?: string | undefined
+  /** ISO clock override for the receipt's settledAt (tests). */
+  settledAt?: string | undefined
+}>
+
+/**
+ * The outcome of carrying a sale end to end:
+ *   - `recorded`: the order settled on the ledger AND a dereferenceable receipt
+ *     was minted (the only success — money moved and is provable);
+ *   - `rejected`: a PURE step failed (bad order request, or a coherence guard on
+ *     dispatch/deliver), carrying the failing stage;
+ *   - `disabled`: the settlement flag is off (the default INERT path);
+ *   - `not_authorized`: armed but no owner sign-off (or order not delivered);
+ *   - `not_settled`: the seam ran but moved no money (zero-charge / under-funded),
+ *     so no receipt is minted — honest about a settlement that did not happen.
+ */
+export type CarryLaborProductSaleResult =
+  | Readonly<{
+      _tag: 'recorded'
+      plan: LaborProductFlowPlan
+      receipt: LaborProductSettlementReceipt
+      outcome: CloudMeteringOutcome
+    }>
+  | Readonly<{ _tag: 'rejected'; stage: LaborProductStage; reason: string }>
+  | Readonly<{ _tag: 'disabled'; receiptRef: string }>
+  | Readonly<{ _tag: 'not_authorized'; receiptRef: string; reason: string }>
+  | Readonly<{ _tag: 'not_settled'; receiptRef: string; reason: string }>
+
+/**
+ * Carry ONE labor-product sale end to end: plan the self-serve order, dispatch
+ * it to a worker, deliver the artifact, settle the order on the shared ledger,
+ * and record the settled-stage flow plan + dereferenceable receipt — in a single
+ * call. The PURE steps are composed exactly as the unit functions define them
+ * (so every coherence and receipt-matching guard still holds); the only
+ * side-effecting step is the FLAG-GATED, owner-gated `settleLaborProductOrder`.
+ *
+ * Honest by construction: it returns `disabled`/`not_authorized`/`not_settled`
+ * rather than fabricating a receipt, so a receipt is minted ONLY when money
+ * genuinely moved on the ledger. The promise stays yellow.
+ */
+export const carryLaborProductOrderToSettlement = (
+  deps: CloudMeteringDeps & SettleLaborProductOrderDeps,
+  input: CarryLaborProductSaleInput,
+): Effect.Effect<CarryLaborProductSaleResult> =>
+  Effect.gen(function* () {
+    const ordered = planSelfServeLaborProductOrder(
+      input.request,
+      input.createdAt !== undefined ? { createdAt: input.createdAt } : undefined,
+    )
+    if (!ordered.ok) {
+      return { _tag: 'rejected', stage: 'ordered', reason: ordered.error.reason }
+    }
+
+    const dispatched = advanceLaborProductFlow(ordered.plan, {
+      kind: 'dispatch',
+      workerRef: input.workerRef,
+    })
+    if (!dispatched.ok) {
+      return {
+        _tag: 'rejected',
+        stage: 'dispatched',
+        reason: dispatched.error.reason,
+      }
+    }
+
+    const delivered = advanceLaborProductFlow(dispatched.plan, {
+      kind: 'deliver',
+      artifactRef: input.artifactRef,
+    })
+    if (!delivered.ok) {
+      return {
+        _tag: 'rejected',
+        stage: 'delivered',
+        reason: delivered.error.reason,
+      }
+    }
+
+    const settlement = yield* settleLaborProductOrder(deps, {
+      plan: delivered.plan,
+      adapterId: input.adapterId,
+      ...(input.ownerSignOffRef !== undefined
+        ? { ownerSignOffRef: input.ownerSignOffRef }
+        : {}),
+    })
+    if (settlement._tag === 'disabled') {
+      return { _tag: 'disabled', receiptRef: settlement.receiptRef }
+    }
+    if (settlement._tag === 'not_authorized') {
+      return {
+        _tag: 'not_authorized',
+        receiptRef: settlement.receiptRef,
+        reason: settlement.reason,
+      }
+    }
+
+    const recorded = recordLaborProductSettlement(
+      delivered.plan,
+      settlement,
+      input.settledAt !== undefined ? { settledAt: input.settledAt } : undefined,
+    )
+    if (!recorded.ok) {
+      // Settled on the ledger but moved no money (zero-charge / under-funded):
+      // no receipt is minted. Honest, not a failure of the carry-through.
+      return {
+        _tag: 'not_settled',
+        receiptRef: settlement.receiptRef,
+        reason: recorded.error.reason,
+      }
+    }
+
+    return {
+      _tag: 'recorded',
+      plan: recorded.plan,
+      receipt: recorded.receipt,
+      outcome: settlement.outcome,
+    }
+  })
+
+// ---------------------------------------------------------------------------
 // Read-only store + public projection
 // ---------------------------------------------------------------------------
 
