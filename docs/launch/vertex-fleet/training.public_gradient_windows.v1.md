@@ -298,3 +298,55 @@ building the receipt feed's aggregation layer. It does **not** clear it: no live
 runtime emits a real receipt, no route serves the feed, and no public window has
 been accepted, promoted, paid, or settled — so a real feed is empty. The blocker
 stays listed and the promise stays **planned**.
+
+## 2026-06-20 read-side quarantine record verifier
+
+The promoted-window receipt already had three layers — emitter, read-side
+verifier (`tassadar-gradient-window-promotion-receipt-verify.ts`), and feed. The
+quarantine record (the live-window-runtime side) had only a builder
+(`tassadar-gradient-window-quarantine-record.ts`). A runtime or public reader
+who dereferences a *persisted* quarantine record from a store or route holds
+only the record bytes — neither the source submission nor the builder — so
+nothing let such a reader confirm, without trusting the writer, that an untrusted
+read-back record is a legitimate residency-only quarantine record that still owes
+its full verification debt. That read-side validator is the symmetric missing
+edge for `blocker.product_promises.public_gradient_live_window_runtime_missing`.
+
+This change adds it:
+
+- `tassadar-gradient-window-quarantine-record-verify.ts`
+  - `verifyTassadarGradientWindowQuarantineRecord(record)` — a pure, **total**
+    function over one untrusted input. It decodes the record (an unparseable
+    record yields an invalid decision rather than an exception), then re-checks,
+    on the read-back record, the invariants the builder enforced at build time:
+    the record ref derives canonically from the window ref, the window ref is
+    non-empty, the curated-data / construction / verification / psionic-H1
+    evidence the window was admitted on is all still present, and the pending
+    verification stages are exactly the canonical `recomputed → replicated →
+    canary_passed → promoted` debt, plus a public-safety scan. The `quarantined`
+    stage, residency-only (all-false) authority, `compiledCoreUnchanged: true`,
+    and `publicSafe: true` literals are structurally guaranteed by the schema, so
+    a record violating them fails to decode and is reported as unparsed. It
+    returns `{ valid, invalidReasonRefs, recordRef, windowRef,
+    pendingVerificationStages, promotionEligible }` and never throws.
+    `promotionEligible` is always `false`: a valid quarantine record asserts only
+    residency plus outstanding debt — admission is not acceptance.
+  - Schema version
+    `openagents.training.public_gradient_window.quarantine_record_verification.v1`.
+- `tassadar-gradient-window-quarantine-record-verify.test.ts` — exercises
+  acceptance of a builder-emitted record plus the rejection paths (unparseable
+  input, non-canonical record ref, dropped admission evidence, tampered pending
+  verification debt, unsafe material).
+- `GET /api/public/training/public-gradient-windows` now reports
+  `intakeSurface.quarantineRecordVerifierAvailable: true` and
+  `intakeSurface.quarantineRecordVerifierSchemaVersion:
+  openagents.training.public_gradient_window.quarantine_record_verification.v1`,
+  while `quarantineRouteAvailable`, `acceptedSubmissionCount`, and
+  `admittedQuarantineRecordCount` stay `false`/`0`.
+
+This advances
+`blocker.product_promises.public_gradient_live_window_runtime_missing` by
+building the quarantine record's read-side verifier. It does **not** clear it: no
+live store persists these records, no route serves them, and no public window has
+been accepted, promoted, paid, or settled. The blocker stays listed and the
+promise stays **planned**.
