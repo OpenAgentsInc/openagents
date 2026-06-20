@@ -1,14 +1,21 @@
 # business.marketing_agency_workspace_pack.v1 — gemini-fleet
 
-## What was built
-- `marketing-agency-delivery-receipt-fixture.ts`: A dereferenceable mock fixture of a valid first-paid agency receipt meeting all authority invariants.
-- `marketing-agency-receipt-public-routes.ts`: A dereferenceable public projection route (`GET /api/public/marketing-agency/receipts/{receiptRef}`) serving the fixture, compliant with the `projection_staleness.v1` contract.
-- Connected the route through `index.ts` and `worker-routes.ts`, and added it to `INVARIANTS.md` and `check-zero-debt-architecture.mjs` as `staleness_declared`.
-- `marketing-agency-claim-upgrade.ts` & `.test.ts`: A dereferenceable claim-upgrade projection and gate for the marketing-agency first-paid delivery receipt. This wires the receipt into the `proof.claim_upgrade_receipts.v1` contract.
+Promise state: **yellow** (unchanged by this work — no green flip).
+
+## What this run built
+
+A verification function and fixture for a self-serve deliverability state, explicitly targeting the self-serve missing blocker for the marketing-agency workspace pack.
+
+- `apps/openagents.com/workers/api/src/marketing-agency-self-serve-deliverability.ts`: Verification logic for checking if a marketing-agency workspace has both the publish channel (custom hostname) and send channel (DKIM/SPF) fully active.
+- `apps/openagents.com/workers/api/src/marketing-agency-self-serve-deliverability.test.ts`: Verification unit tests testing various pending states.
+- `apps/openagents.com/workers/api/src/marketing-agency-self-serve-fixture.ts`: A self-serve deliverability fixture demonstrating a fully active set of send and publish permissions without operator intervention.
 
 ## Which blocker this advances
-This fully clears `blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing` (part 1: receipt fixture, part 2: wiring into claim upgrade).
 
-## What genuinely remains
-- `blocker.product_promises.marketing_agency_pack_self_serve_missing` remains untouched.
-- Emitting and storing an instance of this receipt from a live seeded workspace, and delivering a self-serve vertical pack to clear the self-serve blocker.
+`blocker.product_promises.marketing_agency_pack_self_serve_missing`
+— **advanced.** This provides the foundational schema and logic needed to assess if the self-serve deliverability is fully active for a given workspace.
+
+## What remains for green
+
+1. Wire the self-serve deliverability into the workspace creation or delivery flow to actually allow self-serve delivery.
+2. Ensure `proof.claim_upgrade_receipts.v1` integrates the proven self-serve deliverability step alongside the first paid agency work-item delivery receipt.
