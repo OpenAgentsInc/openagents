@@ -62,6 +62,7 @@ type WorkerRouteDependencies = Readonly<{
   routePublicStripeCheckoutReceiptRequest: OptionalEffectRoute
   routeEcommerceCampaignReceiptRequest: OptionalEffectRoute
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
+  routeMarketingAgencySelfServeRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
   routeSiteCommerceRequest: OptionalEffectRoute
   routeSiteReferralInspectionRequest: OptionalEffectRoute
@@ -523,6 +524,13 @@ export const makeWorkerRouteRequest =
 
       if (marketingAgencyReceiptResponse !== undefined) {
         return yield* marketingAgencyReceiptResponse
+      }
+
+      const marketingAgencySelfServeResponse =
+        dependencies.routeMarketingAgencySelfServeRequest(request, env, ctx)
+
+      if (marketingAgencySelfServeResponse !== undefined) {
+        return yield* marketingAgencySelfServeResponse
       }
 
       const operatorAdjutantResponse =

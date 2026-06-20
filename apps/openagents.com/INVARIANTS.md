@@ -1681,6 +1681,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
+  - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read
     over the static mocked delivery-receipt fixture. `staleness_declared`.
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale

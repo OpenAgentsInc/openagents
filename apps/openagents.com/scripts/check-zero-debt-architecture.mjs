@@ -586,6 +586,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/marketing-agency-self-serve-public-routes.ts',
+    route: '/api/public/marketing-agency/self-serve/deliverability',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/artanis-public-report.ts',
     route: '/api/public/artanis/report',
     status: 'staleness_declared',

@@ -20,3 +20,9 @@ A verification function and fixture for a self-serve deliverability state, expli
 
 1. Wire the self-serve deliverability into the workspace creation or delivery flow to actually allow self-serve delivery.
 2. Ensure the paid delivery receipt and self-serve proven status are exposed over public HTTP routes.
+
+## Follow-up (Self-Serve Delivery Route)
+
+A subsequent run exposed the self-serve deliverability fixture over a public HTTP route, advancing the exposure requirement:
+- `apps/openagents.com/workers/api/src/marketing-agency-self-serve-public-routes.ts` & `.test.ts`: Exposes the self-serve deliverability proof at `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}`.
+- Registered the new route into the `check-zero-debt-architecture.mjs` staleness ledger and `INVARIANTS.md`.
