@@ -16,3 +16,12 @@ Specifically, I:
 What genuinely remains to fully clear the `inference_batch_job_paid_receipt_missing` blocker:
 - The async background processing pipeline that reads the dataset, executes inference calls against the provider, and persists the results.
 - The UI (product surface) for customers to submit batch jobs and download results.
+
+I further advanced `blocker.product_promises.inference_batch_job_paid_receipt_missing` by defining the Batch Job Closeout Receipt and the state persistence required to back it.
+Specifically, I:
+1. Defined `BatchJobCloseoutReceiptSchema` and its public projection `projectBatchJobCloseoutReceipt` in `apps/openagents.com/workers/api/src/inference/batch-job-closeout-receipts.ts` with unit tests. This fulfills the "paid batch-job receipt" readback contract for completed jobs.
+2. Created the D1 persistence schema migration (`0217_inference_batch_jobs.sql`) and Effect `BatchJobStore` in `apps/openagents.com/workers/api/src/inference/batch-job-store.ts` to track dataset size, processed items, and the R2 results pointer needed by the async processing pipeline.
+
+What genuinely remains to fully clear the `inference_batch_job_paid_receipt_missing` blocker:
+- The async worker (Queue consumer) to read the dataset from R2, process items, update the D1 store, and emit the final `BatchJobCloseoutReceipt`.
+- The product surface (UI) to upload the initial dataset to R2, dispatch to the Queue, and download the results via the closeout receipt.
