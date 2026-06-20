@@ -1,0 +1,57 @@
+# training.post_training_arc.v1 — DPO preference-pair reference workload
+
+Date: 2026-06-20
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+## Blocker advanced
+
+`blocker.product_promises.preference_rollout_work_missing` — advanced, **not
+cleared**.
+
+The promise already holds GRPO rollout/grading as paid network work (the
+2026-06-11 CS336 A5 alignment run). What was missing for the preference lane was
+the pairwise-preference (DPO) side: there was no reference math and no
+deterministic grading function for preference pairs. This change adds that
+reference math with committed tests — the verifiable grading function a paid
+`cs336_a5_dpo_grading` dispatch would settle against.
+
+## What was built
+
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts`
+  - Exact DPO reference math: `softplus` (numerically stable),
+    `dpoImplicitReward` (`beta * (logpPolicy - logpReference)`), `dpoPairLoss`
+    (`-log sigmoid(margin) = softplus(-margin)`), and `gradeDpoPreferenceBatch`
+    (mean loss, ranking accuracy, mean implicit rewards).
+  - `buildCs336A5PreferencePairs`: constructs bounded (chosen, rejected) pairs
+    from the SAME seeded synthetic math environment as the existing GRPO rollout
+    workload (`cs336-a5-rollout-workload.ts`), reusing `buildCs336A5Tasks`,
+    `runCs336A5RolloutBatch`, and the exact-match `parseCs336A5FinalValue`
+    reward. Pair records expose only numeric log-probs and refs — no prompts,
+    completions, or weights.
+  - `runCs336A5DpoPreferenceGrading`: end-to-end `deterministic_recompute`
+    grading that reproduces its `outputDigestHex` bit-for-bit on re-run.
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts`
+  - 9 committed tests: softplus stability at extremes, implicit-reward formula,
+    zero-margin loss = `log 2`, loss-decreases-when-policy-prefers-chosen,
+    beta/empty-batch guards, batch aggregation, public-safety of pairs, and
+    cross-split deterministic digest recompute.
+
+## Honesty boundary (why the blocker stays open)
+
+The per-response log-probs are **synthetic** — derived deterministically from
+the completion text and the exact-match reward (the policy is nudged toward the
+chosen response). No hosted LLM and no real policy/reference model is queried.
+The contribution is the exact, unit-tested DPO reference math plus a
+deterministic grading digest; it is a prerequisite for paid preference work, not
+the paid work itself. The DPO/policy-gradient update step also stays behind the
+`#4669` training boundary.
+
+## What genuinely remains for this promise
+
+- `blocker.product_promises.preference_rollout_work_missing` — still open: no
+  paid `cs336_a5_dpo_grading` dispatch / settlement / Verified challenge over
+  preference pairs has run; real model log-probs are not yet wired.
+- `blocker.product_promises.instruct_sft_paid_dispatch_missing` — unchanged.
+- `blocker.product_promises.vibe_test_artifact_missing` — unchanged.
