@@ -434,6 +434,68 @@ before producing any acceptance verdict.
   a counterpart proof (output parity means optimized outputs == baseline
   outputs, but the bounded-workload replay engine re-executes one graph, not a
   two-graph equivalence). Cross-graph output-equivalence binding remains.
+  (Addressed by the 2026-06-20 update below.)
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces feeding the verdict
+  (numbers are still caller-supplied), and real escrow settled into
+  dereferenceable receipts + owner sign-off. The March 2026 result stays
+  historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — cross-graph output-equivalence gate (faster-but-different guard)
+
+Advances `blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing`
+by closing the gap the prior trace-binding update explicitly named: the verifier
+proved the optimized tok/s record was measured on the SAME graph the validator
+replayed, but that parity verdict only proves the optimized kernel is
+*self-consistent* (the worker did not lie about its OWN outputs). The work
+definition's actual correctness anchor is stronger — "the optimized kernel must
+produce IDENTICAL outputs to the baseline" — which is a TWO-graph claim. Nothing
+compared the optimized outputs to the baseline's, so a faster kernel that
+computes DIFFERENT outputs than the baseline (e.g. a fused kernel that drops a
+term) passed every gate: it was bound to its own verified replay, it was faster,
+and it got paid. Self-consistent but wrong.
+
+New artifact (in `packages/tassadar-executor`, the green parity engine):
+
+- `src/kernel-optimization-parity.ts` — `verifyKernelOptimizationParity` now
+  takes a second replay verdict, `baselineParityVerdict`: the BASELINE kernel
+  replayed on the SAME validator device, establishing the reference output. The
+  bounded-workload replay engine re-executes ONE graph, so output parity is
+  established as the equivalence of two single-graph replays: baseline graph and
+  optimized graph (intentionally different kernel impls) must yield byte-for-byte
+  identical output traces. A new `output_parity_mismatch` rejection (checked
+  after the optimized parity gate, before throughput, so faster-but-different is
+  never accepted) fires when: the baseline reference is not itself reproducible,
+  the two references ran on different validator devices (a byte-for-byte
+  comparison is only meaningful on one device), an output trace digest is
+  missing, or — the core case — the optimized recomputed output trace differs
+  from the baseline reference. The structural trace-binding gate is also extended
+  symmetrically: the baseline record's `graphDigest` must bind to the baseline
+  replay's graph, else the "reference" is some other graph's outputs
+  (`parity_trace_unbound`). No change to the exact-trace-replay engine; no new
+  money path.
+- `src/kernel-optimization-parity.test.ts` — 6 new tests (26 total): cross-graph
+  accept (different graphs, identical outputs), faster-but-different rejection,
+  non-reproducible baseline reference, different-validator-device rejection,
+  baseline graph-unbound rejection, and output-parity-before-throughput (a 9999
+  tok/s kernel with different outputs is rejected on parity, not accepted).
+- `apps/openagents.com/workers/api/src/kernel-optimization-campaign.test.ts` —
+  the campaign `verdictFor` helper now supplies the matching `baselineParity`
+  reference, keeping all 25 campaign tests green.
+
+This is the "bind the baseline record to a counterpart proof / cross-graph
+output-equivalence" piece the prior update deferred — now the verifier proves the
+optimized kernel computes the SAME outputs as the baseline (not just that it is
+self-consistent) before producing any acceptance verdict.
+
+### What still remains (blocker NOT cleared)
+
+- Output equivalence is now byte-for-byte over the full trace digest on one
+  device; it does not yet model legitimate cross-device numerics (a kernel that
+  is bit-identical on the validator but would diverge on the worker's own
+  hardware), nor tolerance-bounded equivalence for ops where exact bitwise match
+  is not the acceptance criterion. Both records' outputs are still validator-
+  replayed digests, not derived from the worker's live run.
 - Everything from the prior updates still stands: live dispatch through the
   forum route, real worker tok/s + replayed output traces feeding the verdict
   (numbers are still caller-supplied), and real escrow settled into
