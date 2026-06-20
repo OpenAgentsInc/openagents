@@ -125,6 +125,31 @@ wires it into the dispatch route so leaky material never reaches the row.
 - `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
   — the `mark_settled` step documents the pre-persistence gate.
 
+## Follow-up: worker-side dispatch run outcome auditor (this run)
+
+The candidate gate, settlement-evidence gate, and post-settlement receipt audit
+all inspect ledger *rows*; the aggregate preflight inspects *stats* before the
+run. But when the smoke runs through the flag-gated worker-side dispatcher
+(`runXClaimRewardTreasuryDispatch`), nothing audited the
+`XClaimRewardTreasuryDispatchSummary` it returns — i.e. whether the run itself
+did exactly the bounded single-reward smoke and nothing more. This run adds that
+missing run-level gate.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-dispatch-outcome.ts`
+  — `assertXClaimRewardSmokeDispatchOutcome(summary)` plus the
+  `XClaimRewardSmokeDispatchOutcomeReport` / `XClaimRewardSmokeDispatchOutcomeCheck`
+  types. Checks: dispatch flag was on, exactly one reward settled, no reward
+  failed, no payment left pending, the dispatch queue drained (no residual
+  `dispatch_requested` or pending-payment rows), and the run skipped nothing
+  (no liquidity/daily-cap stop). Emits a public-safe `outcomeSummary` (aggregate
+  counters and skip-reason refs only). It moves no funds and flips no state.
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-dispatch-outcome.test.ts`
+  — covers the clean fresh-dispatch pass, the pending-payment polling pass, each
+  blocking reason, and a no-payment-material assertion on the serialized summary.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — a "Worker-side dispatch run outcome audit" section wiring the auditor in
+  before the per-row post-settlement receipt audit for flag-gated smoke runs.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —

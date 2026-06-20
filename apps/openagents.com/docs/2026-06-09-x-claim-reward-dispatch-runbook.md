@@ -177,6 +177,33 @@ All calls use the worker admin API token as the bearer.
 5. Failures: `{"action":"mark_failed","stateReasonRef":"reason.public.<why>"}`.
    Refusals (fraud, duplicate human, policy): `{"action":"refuse", ...}`.
 
+## Worker-side dispatch run outcome audit
+
+If the smoke runs through the flag-gated worker-side dispatcher
+(`runXClaimRewardTreasuryDispatch`, behind `TREASURY_DISPATCH_ENABLED=true`)
+rather than the manual curl flow above, audit the run's returned summary with
+the pure outcome auditor (`assertXClaimRewardSmokeDispatchOutcome` in
+`apps/openagents.com/workers/api/src/x-claim-reward-smoke-dispatch-outcome.ts`).
+It complements the per-row post-settlement audit: that one confirms the settled
+*record* is clean, while this confirms the *run* did exactly the bounded smoke.
+It moves no funds and reads only the summary's aggregate counters. It passes
+only when:
+
+- `dispatch_run_enabled` — the run executed with the dispatch flag on.
+- `exactly_one_settled` — exactly one reward reached `settled`.
+- `no_reward_failed` — no reward failed during the run.
+- `no_payment_pending` — no payment was left pending.
+- `dispatch_queue_drained` — no `dispatch_requested` or pending-payment rows
+  remain (`pending`, `stats.pendingPaymentCount`, and
+  `stats.requestedDispatchCount` are all zero).
+- `no_skipped_reasons` — the run skipped nothing (no liquidity or daily-cap
+  stop).
+
+A non-empty `blockingReasonRefs` means the run did not complete a clean
+single-reward smoke; resolve each reason before running the per-row audit. The
+public-safe `outcomeSummary` (aggregate counters and skip-reason refs only) is
+safe to paste into issue #4626.
+
 ## Post-settlement receipt audit
 
 Before recording the smoke as complete, run the pure post-settlement auditor
