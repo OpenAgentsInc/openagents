@@ -2,8 +2,7 @@
 
 Date: 2026-06-20
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
-registry edit).
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip).
 
 ## Blocker advanced
 
@@ -37,6 +36,33 @@ reference math with committed tests — the verifiable grading function a paid
     zero-margin loss = `log 2`, loss-decreases-when-policy-prefers-chosen,
     beta/empty-batch guards, batch aggregation, public-safety of pairs, and
     cross-split deterministic digest recompute.
+
+## 2026-06-20 public projection wiring
+
+The DPO reference workload now has a public-safe live-at-read projection:
+
+- `GET /api/public/training/post-training-arc/dpo-preference-workload`
+- `apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.ts`
+- `apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.test.ts`
+
+The projection publishes the deterministic reference receipt for
+`workload.cs336_a5.dpo_preference_pair_reference_grading.v1`:
+
+- `deterministicReferenceWorkloadAvailable=true`
+- `splitRef=split_a`
+- `pairCount=25`
+- `outputDigestHex=ad419c324105c46a889bd5cd13a9e94d66fe9166b6763a0a2add0c77c938ac62`
+- `paidPreferenceDispatchAvailable=false`
+- `realModelLogprobMeasurementAvailable=false`
+- `verifiedChallengeAvailable=false`
+- `settlementReceiptAvailable=false`
+- `dpoUpdateAvailable=false`
+- `preferenceRolloutWorkAvailable=false`
+- `greenGateSatisfied=false`
+
+This makes the missing paid-work boundary inspectable. It does not claim a paid
+`cs336_a5_dpo_grading` dispatch, real policy/reference-model log-probs,
+settlement, DPO update, model promotion, or green transition.
 
 ## Honesty boundary (why the blocker stays open)
 

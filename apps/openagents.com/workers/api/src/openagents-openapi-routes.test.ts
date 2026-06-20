@@ -189,6 +189,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/post-training-arc/dpo-preference-workload',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPostTrainingDpoPreferenceWorkload')
+    expect(
+      operationAt(
+        body,
         '/api/public/models/tassadar-percepta-executor/architecture-receipts',
         'get',
       ).operationId,

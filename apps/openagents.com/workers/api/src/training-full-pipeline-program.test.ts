@@ -151,6 +151,9 @@ describe('training full pipeline program status projection', () => {
           stage.stageId === 'post_training' &&
           stage.endpointRefs.includes(
             '/api/public/training/post-training-arc/instruct-sft-lane',
+          ) &&
+          stage.endpointRefs.includes(
+            '/api/public/training/post-training-arc/dpo-preference-workload',
           ),
       ),
     ).toBe(true)
