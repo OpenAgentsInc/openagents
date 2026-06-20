@@ -1689,6 +1689,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     artanis.tassadar_evolution_loop.v1: currentStreak/longestStreak/
     targetReached against streakTarget 10, each currentStreak assignment
     dereferenceable as an artanis_admin_closeout receipt).
+  - `GET /api/public/artanis/tassadar-distillation-dataset` — live at read over
+    the tick-decision and exact-replay closeout-verdict ledgers — compliant
+    (`generatedAt`, `staleness` contract `projection_staleness.v1`
+    live_at_read, a refs-only Tassadar distillation dataset-curation receipt
+    for artanis.tassadar_evolution_loop.v1: receiptState, datasetRef,
+    required/source verified trace counts, digest prefixes, closeout receipt
+    refs, and blocker-clearing refs; no raw trace bodies, runner logs,
+    settlement, model-training, or model-promotion authority).
   - `GET /api/public/artanis/responder-support` — live at read over the
     Artanis responder-action ledger — compliant (`generatedAt`, `staleness`
     contract `projection_staleness.v1` live_at_read, the external-contributor

@@ -528,6 +528,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/artanis-distillation-dataset-receipt.ts',
+    route: '/api/public/artanis/tassadar-distillation-dataset',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/artanis-responder-provenance.ts',
     route: '/api/public/artanis/responder-support',
     status: 'staleness_declared',
