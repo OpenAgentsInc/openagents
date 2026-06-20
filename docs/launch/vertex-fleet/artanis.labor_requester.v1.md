@@ -71,14 +71,39 @@ exactly what this blocker names.
     invariant on read, non-canonical wire-form rejection, and ref verify
     match/mismatch.
 
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-store.ts`
+  - `sealArtanisLaborUnattendedRequestReceipt(input)` folds
+    build -> serialize -> derive-ref into ONE `ArtanisLaborSealedReceipt`
+    (`{ receipt, receiptRef, serialized }`) a caller can hand straight to a
+    store/route. Because the ref is content-addressed over the canonical bytes,
+    the same lifecycle always seals to the same ref, so idempotent persistence
+    falls out for free.
+  - `ArtanisLaborUnattendedReceiptStore` (interface) + in-memory
+    `makeInMemoryArtanisLaborUnattendedReceiptStore()` — the persistence
+    boundary that was still missing. `put` writes a sealed receipt keyed by its
+    own content address (idempotent: a re-put of the same lifecycle returns
+    `already_stored`, never overwrites; refuses an internally inconsistent sealed
+    receipt). `get` re-verifies the persisted bytes still address the ref they
+    are keyed under (tamper-evident read), and `list` returns rows in
+    deterministic insertion order. It mirrors the hygiene debt-receipt store
+    contract so a durable KV/D1 backing can later replace the in-memory map, and
+    mints no payment, identity, or settlement authority.
+- `apps/openagents.com/workers/api/src/artanis-labor-receipt-store.test.ts`
+  - 8 cases: seal consistency + determinism, put/get round-trip, idempotent put
+    on the content-addressed ref, distinct lifecycles under distinct refs,
+    unknown-ref miss, and the two refusal guards (ref that does not address its
+    bytes; object that disagrees with its bytes).
+
 ## What remains
 
-- The receipt now has a canonical wire form, a content-addressed ref, and a
-  validating read/verify path (`parse` + `verify`), so it is **persistable,
-  dereferenceable, and tamper-evident on read**. What still remains is wiring it
-  into a public route (`/api/public/...`) and writing it to the tick ledger
-  store, plus a real unattended tick producing one of these receipts end-to-end.
-  Those remain before the blocker can be dropped.
+- The receipt now has a canonical wire form, a content-addressed ref, a
+  validating read/verify path (`parse` + `verify`), a one-shot `seal`, and an
+  in-memory tick-ledger **store** with idempotent writes and tamper-evident
+  reads, so it is **persistable, dereferenceable, and tamper-evident** through a
+  real store contract. What still remains is wiring that store into a public
+  route (`/api/public/...`), a durable backing (D1/KV) behind the same
+  interface, and a real unattended tick producing one of these receipts
+  end-to-end. Those remain before the blocker can be dropped.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 
