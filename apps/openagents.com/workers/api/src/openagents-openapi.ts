@@ -208,7 +208,7 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
   description:
-    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes candidate one-delta entries, source refs, blocker refs, and a gate that explicitly keeps harness, eval reproduction, paid dispatch, and green status false until receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
+    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes one-delta manifest-verified candidate entries, source refs, blocker refs, and a gate that explicitly keeps eval reproduction, paid dispatch, and green status false until receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
   required: [
     'authorityBoundary',
     'endpoint',
@@ -237,6 +237,7 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
         additionalProperties: true,
         required: [
           'entryRef',
+          'manifestRef',
           'oneDeltaManifestState',
           'evalReproductionState',
           'paidDispatchState',
@@ -248,6 +249,7 @@ export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
           blockerRefs: { type: 'array', items: { type: 'string' } },
           entryRef: { type: 'string' },
           evalReproductionState: { type: 'string' },
+          manifestRef: { type: 'string' },
           oneDeltaManifestState: { type: 'string' },
           paidDispatchState: { type: 'string' },
           sourceRefs: { type: 'array', items: { type: 'string' } },
@@ -4544,7 +4546,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingAblationDeriskingLedger',
       summary: 'Read training ablation derisking ledger',
       description:
-        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are candidate refs only: the one-delta harness, eval reproduction receipt, paid ablation dispatch, and accepted verdict gates remain false until dereferenceable receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
+        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are one-delta manifest-verified candidates only: eval reproduction receipt, paid ablation dispatch, and accepted verdict gates remain false until dereferenceable receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {

@@ -2,9 +2,14 @@ import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  TrainingAblationManifestDelta,
+  TrainingAblationOneDeltaHarnessError,
+  TrainingAblationOneDeltaHarnessRef,
+  TrainingAblationOneDeltaManifestInput,
   TrainingAblationDeriskingLedgerEndpoint,
   TrainingAblationDeriskingLedgerProjection,
   projectTrainingAblationDeriskingLedger,
+  verifyTrainingAblationOneDeltaManifest,
 } from './training-ablation-derisking-ledger'
 import { handleTrainingAblationDeriskingLedgerApi } from './training-ablation-derisking-ledger-routes'
 
@@ -18,7 +23,7 @@ type TrainingAblationLedgerBody = Readonly<{
 }>
 
 describe('training ablation derisking ledger projection', () => {
-  test('publishes a public-safe candidate ledger without claiming ablation execution', () => {
+  test('publishes a public-safe one-delta manifest ledger without claiming ablation execution', () => {
     const projection = projectTrainingAblationDeriskingLedger({
       generatedAt: '2026-06-20T12:00:00.000Z',
     })
@@ -37,7 +42,7 @@ describe('training ablation derisking ledger projection', () => {
       maxStalenessSeconds: 0,
     })
     expect(projection.gate).toMatchObject({
-      ablationHarnessAvailable: false,
+      ablationHarnessAvailable: true,
       evalSuiteReproductionAvailable: false,
       greenGateSatisfied: false,
       paidAblationDispatchAvailable: false,
@@ -46,21 +51,25 @@ describe('training ablation derisking ledger projection', () => {
     expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.ablation_ledger_projection_missing',
     )
-    expect(projection.gate.remainingBlockerRefs).toEqual([
+    expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.ablation_harness_missing',
+    )
+    expect(projection.gate.remainingBlockerRefs).toEqual([
       'blocker.product_promises.eval_suite_reproduction_missing',
+      'blocker.product_promises.paid_ablation_dispatch_missing',
     ])
     expect(projection.ledgerSummary).toMatchObject({
       acceptedVerdictCount: 0,
       entryCount: 3,
       paidAblationCount: 0,
       reproducedEvalCount: 0,
-      verifiedManifestCount: 0,
+      verifiedManifestCount: 3,
     })
     expect(
       projection.entries.every(
         entry =>
-          entry.oneDeltaManifestState === 'candidate_ref_only' &&
+          entry.manifestRef.startsWith('manifest.training_ablation.') &&
+          entry.oneDeltaManifestState === 'manifest_verified' &&
           entry.evalReproductionState === 'missing' &&
           entry.paidDispatchState === 'not_dispatched' &&
           entry.verdictState === 'no_openagents_verdict',
@@ -97,6 +106,96 @@ describe('training ablation derisking ledger projection', () => {
     expect(body.promiseRef).toBe('promise:training.ablation_system.v1')
     expect(body.gate.publicProjectionAvailable).toBe(true)
     expect(body.gate.greenGateSatisfied).toBe(false)
+  })
+
+  test('verifies exactly one public-safe ablation delta', () => {
+    const manifest = new TrainingAblationOneDeltaManifestInput({
+      baselineRef: 'baseline.psion.r1_reference_optimizer',
+      caveatRefs: ['caveat.training_ablation.test'],
+      candidateRef: 'ablation.derisking.test_candidate',
+      deltas: [
+        new TrainingAblationManifestDelta({
+          deltaRef: 'delta.training.test_schedule',
+          kind: 'optimizer_schedule',
+          sourceRefs: ['docs/training/2026-06-19-model-ladder-rung-economics.md'],
+          summary: 'Change only the optimizer schedule.',
+          targetRef: 'target.training.optimizer_schedule',
+        }),
+      ],
+      evaluationPlanRefs: ['eval_plan.psion.r1.fixed_suite'],
+      frozenRefSet: ['frozen.training.r1_reference_corpus'],
+      manifestRef: 'manifest.training_ablation.test.one_delta.v1',
+      sourceRefs: ['docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md'],
+    })
+
+    const verification = verifyTrainingAblationOneDeltaManifest(manifest)
+
+    expect(verification).toMatchObject({
+      accepted: true,
+      changedDeltaCount: 1,
+      harnessRef: TrainingAblationOneDeltaHarnessRef,
+      manifestRef: 'manifest.training_ablation.test.one_delta.v1',
+    })
+    expect(verification.clearsBlockerRefs).toEqual([
+      'blocker.product_promises.ablation_harness_missing',
+    ])
+    expect(verification.authorityBoundary).toContain('grants no')
+  })
+
+  test('rejects multi-delta manifests before projection', () => {
+    const delta = new TrainingAblationManifestDelta({
+      deltaRef: 'delta.training.test_schedule',
+      kind: 'optimizer_schedule',
+      sourceRefs: ['docs/training/2026-06-19-model-ladder-rung-economics.md'],
+      summary: 'Change only the optimizer schedule.',
+      targetRef: 'target.training.optimizer_schedule',
+    })
+    const manifest = new TrainingAblationOneDeltaManifestInput({
+      baselineRef: 'baseline.psion.r1_reference_optimizer',
+      caveatRefs: ['caveat.training_ablation.test'],
+      candidateRef: 'ablation.derisking.test_candidate',
+      deltas: [
+        delta,
+        new TrainingAblationManifestDelta({
+          deltaRef: 'delta.training.second_change',
+          kind: 'runtime_config',
+          sourceRefs: ['docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md'],
+          summary: 'Change only the runtime config.',
+          targetRef: 'target.training.runtime_config',
+        }),
+      ],
+      evaluationPlanRefs: ['eval_plan.psion.r1.fixed_suite'],
+      frozenRefSet: ['frozen.training.r1_reference_corpus'],
+      manifestRef: 'manifest.training_ablation.test.multi_delta.v1',
+      sourceRefs: ['docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md'],
+    })
+
+    expect(() => verifyTrainingAblationOneDeltaManifest(manifest)).toThrow(
+      TrainingAblationOneDeltaHarnessError,
+    )
+  })
+
+  test('rejects private material in a manifest', () => {
+    expect(() =>
+      verifyTrainingAblationOneDeltaManifest({
+        baselineRef: 'baseline.psion.r1_reference_optimizer',
+        caveatRefs: ['caveat.training_ablation.test'],
+        candidateRef: 'ablation.derisking.test_candidate',
+        deltas: [
+          {
+            deltaRef: 'delta.training.test_schedule',
+            kind: 'optimizer_schedule',
+            sourceRefs: ['docs/training/2026-06-19-model-ladder-rung-economics.md'],
+            summary: 'Uses /home/operator/raw_prompt.txt',
+            targetRef: 'target.training.optimizer_schedule',
+          },
+        ],
+        evaluationPlanRefs: ['eval_plan.psion.r1.fixed_suite'],
+        frozenRefSet: ['frozen.training.r1_reference_corpus'],
+        manifestRef: 'manifest.training_ablation.test.private.v1',
+        sourceRefs: ['docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md'],
+      }),
+    ).toThrow(TrainingAblationOneDeltaHarnessError)
   })
 
   test('rejects non-GET methods', async () => {
