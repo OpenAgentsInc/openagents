@@ -1,10 +1,8 @@
 import {
   createHudDotGrid,
-  createHudFrameCorners,
   createHudLabel,
   createHudMeter,
   createHudStatusLight,
-  HUD_STATUS_COLORS,
   hudStatusColor,
   type HudStatus,
 } from "@openagentsinc/three-effect/core"
@@ -15,11 +13,11 @@ import type {
   HudStatusLightState,
   HudStatusProjection,
 } from "../shared/hud-status-projection"
+import { HUD_SKIN_COLORS } from "../shared/hud-skin"
 
 // HUD H7 (#5504): the small live status/meters HUD overlay scene. It composes
-// the H2 three-effect HUD kit primitives — `createHudFrameCorners` (the
-// Arwes-style bracket frame), `createHudStatusLight` (the node LED),
-// `createHudMeter` (sessions + balance gauges), `createHudDotGrid` (faint
+// the H2 three-effect HUD kit primitives — `createHudStatusLight` (the node
+// LED), `createHudMeter` (sessions + balance gauges), `createHudDotGrid` (faint
 // backdrop) and `createHudLabel` (crisp 3D text) — onto one orthographic,
 // white-on-black canvas. It does NOT reimplement any primitive; it imports them
 // (workspace contract: extend three-effect, don't fork it). The desktop view
@@ -123,7 +121,7 @@ export const mountHudStatusScene = (
   })
   // Transparent clear so the overlay floats over the app shell rather than
   // painting its own black block.
-  renderer.setClearColor(HUD_STATUS_COLORS.background, 0)
+  renderer.setClearColor(HUD_SKIN_COLORS.background, 0)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
 
   const scene = new Three.Scene()
@@ -139,22 +137,11 @@ export const mountHudStatusScene = (
     height: WORLD_HEIGHT - 0.2,
     spacing: 0.22,
     opacity: 0.16,
-    color: HUD_STATUS_COLORS.primary,
+    color: HUD_SKIN_COLORS.primary,
     z: -0.2,
   })
   scene.add(dots.points)
   disposables.push(dots)
-
-  // The Arwes-style corner-bracket frame around the whole card.
-  const frame = createHudFrameCorners({
-    width: CARD_WIDTH,
-    height: WORLD_HEIGHT - 0.2,
-    color: HUD_STATUS_COLORS.primary,
-    cornerLength: 0.32,
-    backgroundOpacity: 0.4,
-  })
-  scene.add(frame.group)
-  disposables.push(frame)
 
   // Title.
   const title = createHudLabel({

@@ -30,22 +30,20 @@
   --success: #00c853;
   --warning: #ffb400;
   --danger: #d32f2f;
-  --info: #2979ff;
+  --info: #fff;
 
   /*
-   * HUD H4 (#5502): the Arwes / WGPUI sci-fi HUD skin palette. White-on-black
-   * with a cyan primary — the recurring OpenAgents HUD look (see
+   * HUD H4 (#5502): the simple WGPUI HUD skin palette. White-on-black
+   * with a white primary — the current OpenAgents HUD look (see
    * docs/launch/2026-06-19-previous-hud-systems-audit.md §4.5). These hex
-   * values MIRROR `HUD_STATUS_COLORS` in @openagentsinc/three-effect/core (the
-   * H2 kit) and the local copy in src/shared/hud-skin.ts — kept in lockstep by
-   * the hud-skin.test.ts `kit parity` + `css tokens` cases so the HTML chrome
-   * and the three-effect canvas accents read as one HUD. Token names match
-   * HUD_SKIN_CSS_VARS in hud-skin.ts.
+   * values mirror the local copy in src/shared/hud-skin.ts; the palette
+   * regression test guards against the old accent/frame HUD tokens returning.
+   * Token names match HUD_SKIN_CSS_VARS in hud-skin.ts.
    */
-  --hud-primary: #00f0ff;
-  --hud-secondary: #7dd3fc;
+  --hud-primary: #ffffff;
+  --hud-secondary: #f2f4f8;
   --hud-success: #2bd576;
-  --hud-info: #4ca3ff;
+  --hud-info: #ffffff;
   --hud-warning: #f5c542;
   --hud-error: #ff4d4d;
   --hud-neutral: #9aa6b2;
@@ -54,39 +52,13 @@
 }
 
 /*
- * HUD H4 (#5502): shared sci-fi-HUD surface ingredients, reused by the hotbar,
- * the pane windows, and the full-UI chrome so every skinned surface speaks the
- * same Arwes vocabulary:
- *   - .hud-corners — four corner-bracket notches (Arwes `FrameCorners`), drawn
- *     with layered linear-gradient slices so they cost no extra DOM nodes;
+ * HUD H4 (#5502): shared HUD surface ingredient, reused by the hotbar and
+ * the full-UI chrome without bracket chrome:
  *   - .hud-scanlines — a faint dot-grid + horizontal scanline backdrop (the
  *     WGPUI `DotGridBackground` / scanline surface), confined to the element.
- * Both are decorative ::before/::after layers and are pointer-transparent, so
- * they never affect layout or interaction.
+ * It is decorative and pointer-transparent, so it never affects layout or
+ * interaction.
  */
-.hud-corners {
-  position: relative;
-}
-.hud-corners::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  /* Four ~14px L-shaped brackets, one per corner, in the cyan primary. */
-  --hud-corner: 14px;
-  --hud-corner-w: 1px;
-  --hud-corner-c: color-mix(in srgb, var(--hud-primary) 55%, transparent);
-  background:
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top left / var(--hud-corner) var(--hud-corner-w) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top left / var(--hud-corner-w) var(--hud-corner) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top right / var(--hud-corner) var(--hud-corner-w) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) top right / var(--hud-corner-w) var(--hud-corner) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom left / var(--hud-corner) var(--hud-corner-w) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom left / var(--hud-corner-w) var(--hud-corner) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom right / var(--hud-corner) var(--hud-corner-w) no-repeat,
-    linear-gradient(var(--hud-corner-c), var(--hud-corner-c)) bottom right / var(--hud-corner-w) var(--hud-corner) no-repeat;
-}
 .hud-scanlines::after {
   content: "";
   position: absolute;
@@ -94,7 +66,7 @@
   pointer-events: none;
   border-radius: inherit;
   opacity: 0.5;
-  /* A faint cyan dot-grid (radial) over horizontal scanlines (repeating
+  /* A faint white dot-grid (radial) over horizontal scanlines (repeating
      linear) — the WGPUI DotGrid + scanline surface, dialed way down. */
   background-image:
     radial-gradient(color-mix(in srgb, var(--hud-primary) 22%, transparent) 0.5px, transparent 0.5px),
@@ -201,8 +173,8 @@ body {
   color: rgb(255 255 255 / 0.25);
 }
 /* HUD H4 (#5502): the ONLY accent the minimal black shell gets — a very subtle
-   cyan focus ring on the text bar. The empty zero-base shell stays clean black
-   (no corner brackets, no scanlines, no frame); the HUD skin lives on the
+   white focus ring on the text bar. The empty zero-base shell stays clean black
+   (no bracket chrome, no scanlines, no frame); the HUD skin lives on the
    hotbar / panes / full UI, not on the quiet default surface. */
 .shell-input:focus {
   border-color: color-mix(in srgb, var(--hud-primary) 32%, transparent);
@@ -224,7 +196,7 @@ body {
   padding: 0.5rem 0.6rem;
 }
 .shell-open-panes:hover {
-  color: var(--hud-secondary, #7dd3fc);
+  color: var(--hud-secondary, #f2f4f8);
   border-color: color-mix(in srgb, var(--hud-primary) 35%, transparent);
 }
 /* Always-visible return to the zero-base shell from the full UI (owner
@@ -256,10 +228,10 @@ body {
    Fixed, blurred, high-z (below the palette backdrop at z-index 50). Slots are
    derived from the nav registry (nav.ts HOTBAR_SLOTS); the active group's slot
    is highlighted. White-on-black to match the zero-base shell. */
-/* HUD H4 (#5502): the Arwes-skinned command bar. Cyan corner brackets +
-   scanline backdrop over the blurred black bar; the active slot lights up in the
-   HUD primary; the ⌘K palette slot reads as the cyan accent slot. White-on-black
-   base preserved so it sits cleanly on the shell. */
+/* HUD H4 (#5502): the plain rectangular command bar. A scanline backdrop sits
+   over the blurred black bar; the active slot lights up in the HUD primary; the
+   ⌘K palette slot reads as the white accent slot. White-on-black base preserved
+   so it sits cleanly on the shell. */
 .hotbar {
   position: fixed;
   left: 50%;
@@ -310,7 +282,7 @@ body {
   background: rgb(255 255 255 / 0.06);
 }
 .hotbar-slot.active {
-  color: var(--hud-primary, #00f0ff);
+  color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
   background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--hud-primary) 28%, transparent);
@@ -327,14 +299,14 @@ body {
   text-transform: uppercase;
   line-height: 1;
 }
-/* The ⌘K palette slot is the always-cyan accent slot (the StarCraft command
+/* The ⌘K palette slot is the always-white accent slot (the StarCraft command
    slot), distinguishing the launcher from the numbered group slots. */
 .hotbar-slot-palette {
   border-color: color-mix(in srgb, var(--hud-primary) 40%, transparent);
-  color: var(--hud-secondary, #7dd3fc);
+  color: var(--hud-secondary, #f2f4f8);
 }
 .hotbar-slot-palette:hover {
-  color: var(--hud-primary, #00f0ff);
+  color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 65%, transparent);
 }
 /* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card
@@ -372,9 +344,7 @@ body {
   z-index: 30;
   pointer-events: none;
 }
-/* HUD H4 (#5502): Arwes-skinned floating window. Every pane gets the cyan
-   corner-bracket frame (.hud-corners is added in the view) over a faint
-   dot-grid/scanline body (.hud-scanlines on the body). The FOCUSED pane (top of
+/* HUD H4 (#5502): plain rectangular floating window. The focused pane (top of
    the z-stack) gets a brighter accent border + glow whose color echoes the live
    node status tone via .pane-window-accent-<tone> (see hud-skin.ts), so the HUD
    reads as one vocabulary with the H7 status overlay. */
@@ -401,15 +371,12 @@ body {
     0 24px 64px rgb(0 0 0 / 0.6),
     0 0 20px color-mix(in srgb, var(--pane-accent) 26%, transparent);
 }
-.pane-window-focused.hud-corners::before {
-  --hud-corner-c: color-mix(in srgb, var(--pane-accent) 75%, transparent);
-}
 /* Tone → accent color (mirrors hud-skin.ts paneWindowAccentClass). */
 .pane-window-accent-success {
   --pane-accent: var(--hud-success, #2bd576);
 }
 .pane-window-accent-info {
-  --pane-accent: var(--hud-info, #4ca3ff);
+  --pane-accent: var(--hud-info, #fff);
 }
 .pane-window-accent-warning {
   --pane-accent: var(--hud-warning, #f5c542);
@@ -420,11 +387,8 @@ body {
 .pane-window-accent-neutral {
   --pane-accent: var(--hud-neutral, #9aa6b2);
 }
-/* Keep the decorative HUD layers BEHIND the window's real content: the
-   scanline/dot-grid backdrop sits at z 0, the window's children (titlebar,
-   body, resize handles) lift above it, and the corner brackets stay crisp on
-   top of the edges. This makes the skin a pure backdrop — text is never dimmed
-   and clicks are never intercepted. */
+/* Keep decorative HUD layers behind the window's real content: the scanline /
+   dot-grid backdrop sits at z 0, and the window's children lift above it. */
 .pane-window.hud-scanlines::after {
   z-index: 0;
 }
@@ -437,9 +401,6 @@ body {
    only lift their stacking so they remain grabbable above the backdrop. */
 .pane-window > .pane-window-resize {
   z-index: 3;
-}
-.pane-window.hud-corners::before {
-  z-index: 2;
 }
 .pane-window-titlebar {
   flex: 0 0 auto;
@@ -465,7 +426,7 @@ body {
   font-size: 0.72rem;
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--hud-secondary, #7dd3fc);
+  color: var(--hud-secondary, #f2f4f8);
 }
 .pane-window-focused .pane-window-title {
   color: color-mix(in srgb, var(--pane-accent) 80%, var(--hud-line));
@@ -486,7 +447,7 @@ body {
   line-height: 1;
 }
 .pane-window-close:hover {
-  color: var(--hud-primary, #00f0ff);
+  color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 50%, transparent);
   background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
 }
@@ -707,7 +668,7 @@ body {
   gap: 0.45rem;
   min-width: 0;
   border: 1px solid rgb(255 255 255 / 0.1);
-  border-left: 3px solid rgb(141 211 199 / 0.64);
+  border-left: 3px solid rgb(255 255 255 / 0.64);
   background: rgb(255 255 255 / 0.035);
   padding: 0.55rem;
 }
@@ -739,7 +700,7 @@ body {
   font-size: 0.72rem;
 }
 .public-activity-link {
-  color: #8dd3c7;
+  color: #f2f4f8;
   text-decoration: underline;
   text-underline-offset: 0.16rem;
 }
@@ -790,8 +751,8 @@ body {
   pointer-events: none;
   opacity: calc(0.72 + (var(--network-activity, 0) * 0.2));
   filter:
-    drop-shadow(0 0 calc(18px + (var(--network-activity, 0) * 28px)) rgb(41 121 255 / 0.45))
-    drop-shadow(0 0 52px rgb(214 246 255 / 0.12));
+    drop-shadow(0 0 calc(18px + (var(--network-activity, 0) * 28px)) rgb(255 255 255 / 0.45))
+    drop-shadow(0 0 52px rgb(255 255 255 / 0.12));
 }
 
 .training-proof-replay-viewport {
@@ -843,8 +804,8 @@ body {
   overflow-wrap: anywhere;
 }
 .training-replay-filter-input:focus-visible {
-  border-color: rgb(141 211 199 / 0.65);
-  box-shadow: 0 0 0 2px rgb(141 211 199 / 0.2);
+  border-color: rgb(255 255 255 / 0.65);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.2);
 }
 .training-replay-filter-input::placeholder {
   color: rgb(138 140 147 / 0.72);
@@ -876,7 +837,7 @@ body {
   font-size: 0.75rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--info, #2979ff);
+  color: var(--info, #fff);
 }
 .network-headline {
   font-size: clamp(1.75rem, 4vw, 3rem);
@@ -916,7 +877,7 @@ body {
   font-size: clamp(1.25rem, 2.6vw, 2rem);
 }
 .network-stat-hero .network-stat-value {
-  color: var(--info, #2979ff);
+  color: var(--info, #fff);
 }
 .network-stat-label {
   font-size: 0.7rem;
@@ -1057,7 +1018,7 @@ body {
   background: rgb(22 27 34 / 0.82);
 }
 .chat-message-user {
-  border-color: rgb(88 166 255 / 0.36);
+  border-color: rgb(255 255 255 / 0.22);
 }
 .chat-message-assistant {
   border-color: rgb(63 185 80 / 0.28);
@@ -1105,7 +1066,7 @@ body {
   border-left-color: var(--success, #3fb950);
 }
 .chat-step-waiting {
-  border-left-color: var(--accent, #58a6ff);
+  border-left-color: var(--accent, #fff);
 }
 .chat-step-blocked {
   border-left-color: var(--danger, #f85149);
@@ -1212,7 +1173,7 @@ body {
   margin-left: 0.75rem;
 }
 .swarm-cell.swarm-running {
-  border-left-color: var(--info, #2979ff);
+  border-left-color: var(--info, #fff);
 }
 .swarm-cell.swarm-queued {
   border-left-color: var(--text-secondary, #8a8c93);
@@ -1238,7 +1199,7 @@ body {
   letter-spacing: 0.04em;
 }
 .swarm-status.swarm-running {
-  color: var(--info, #2979ff);
+  color: var(--info, #fff);
 }
 .swarm-status.swarm-completed {
   color: var(--success, #00c853);
@@ -1357,10 +1318,10 @@ body {
   color: var(--text, #d7d8e5);
 }
 .loop-stage-active .loop-stage-dot {
-  background: var(--accent, #58a6ff);
+  background: var(--accent, #fff);
 }
 .loop-stage-active .loop-stage-label {
-  color: var(--accent, #58a6ff);
+  color: var(--accent, #fff);
 }
 .loop-stage-failed .loop-stage-dot {
   background: var(--danger, #f85149);
@@ -1397,7 +1358,7 @@ body {
   font-size: 0.8rem;
 }
 .loop-session-adapter {
-  color: var(--accent, #58a6ff);
+  color: var(--accent, #fff);
 }
 .loop-session-ref {
   color: var(--text-secondary, #8a8c93);

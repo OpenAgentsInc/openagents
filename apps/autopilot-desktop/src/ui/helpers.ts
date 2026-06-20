@@ -59,9 +59,9 @@ export function shipStatusLine(status: string): ShipStatusLine {
     case "received":
       return { text: "received", terminal: false, dotColor: "#8b949e" }
     case "planning":
-      return { text: "planning…", terminal: false, dotColor: "#58a6ff" }
+      return { text: "planning…", terminal: false, dotColor: "#fff" }
     case "fanning_out":
-      return { text: "agents working…", terminal: false, dotColor: "#58a6ff" }
+      return { text: "agents working…", terminal: false, dotColor: "#fff" }
     case "shipping":
       return { text: "shipping…", terminal: false, dotColor: "#d29922" }
     case "shipped":

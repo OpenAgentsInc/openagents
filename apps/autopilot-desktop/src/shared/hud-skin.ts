@@ -2,7 +2,7 @@ import type { HudStatusTone } from "./hud-status-projection"
 import type { ManagedPane, PaneLayer } from "../ui/pane-manager"
 
 // HUD H4 (#5502): the PURE skin vocabulary + small mapping logic for the
-// Arwes-style sci-fi HUD skin applied to the HTML chrome (shell bar, hotbar,
+// simple white-on-black HUD skin applied to the HTML chrome (shell bar, hotbar,
 // pane windows, full UI). The *aesthetic* lives in CSS (styles.css + index.html
 // `:root` tokens); this module owns the bits of skin LOGIC that are worth a unit
 // test, framework-free and DOM-free so the view and the tests agree:
@@ -10,11 +10,10 @@ import type { ManagedPane, PaneLayer } from "../ui/pane-manager"
 //   - the canonical HUD palette as CSS-ready hex strings, mirroring
 //     `HUD_STATUS_COLORS` in `@openagentsinc/three-effect/core` so the CSS
 //     tokens and the three-effect H2 kit never drift (single source of the
-//     Arwes/WGPUI white-on-black + cyan-primary look — see
-//     `docs/launch/2026-06-19-previous-hud-systems-audit.md` §4.5 and the H2
-//     kit's `arwesHudPrimitiveSourceRefs`);
+//     WGPUI white-on-black + white-primary look — see
+//     `docs/launch/2026-06-19-previous-hud-systems-audit.md` §4.5);
 //   - which open pane is FOCUSED (top of the z-stack) so the view can give only
-//     that window the bright corner-bracket frame + glow (the rest read dim);
+//     that window the bright rectangular frame + glow (the rest read dim);
 //   - the status-tone → accent CSS class map, so a focused pane window's frame
 //     can echo the live node status tone the H7 status overlay already projects
 //     (one tone vocabulary across the HUD), degrading any unknown tone to the
@@ -23,18 +22,18 @@ import type { ManagedPane, PaneLayer } from "../ui/pane-manager"
 // Nothing here imports Three.js or the DOM; it is the same discipline as
 // `hud-status-projection.ts`.
 
-// The Arwes/WGPUI HUD palette as CSS hex strings. Keys + values mirror
+// The white/WGPUI HUD palette as CSS hex strings. Keys + values mirror
 // `HUD_STATUS_COLORS` (hex *numbers*) in the H2 three-effect kit
 // (`@openagentsinc/three-effect/core/hudPrimitives.ts`). Kept as a local copy of
 // the strings so this pure module has no Three.js import, exactly like
 // `hud-status-projection.ts` keeps its own copy of the tone keys. The
-// `hud-skin.test.ts` `kit parity` case asserts these stay in lockstep with the
-// kit's `HUD_STATUS_COLORS`.
+// `desktop-style-palette.test.ts` guards these against the old accent/frame
+// tokens returning to the desktop source.
 export const HUD_SKIN_COLORS = {
-  primary: "#00f0ff",
-  secondary: "#7dd3fc",
+  primary: "#ffffff",
+  secondary: "#f2f4f8",
   success: "#2bd576",
-  info: "#4ca3ff",
+  info: "#ffffff",
   warning: "#f5c542",
   error: "#ff4d4d",
   neutral: "#9aa6b2",
@@ -61,7 +60,7 @@ export const HUD_SKIN_CSS_VARS: Readonly<Record<HudSkinColorKey, string>> = {
 }
 
 // Render the `:root` token block the skin needs, e.g.
-// `--hud-primary:#00f0ff;--hud-secondary:#7dd3fc;…`. The CSS file embeds the
+// `--hud-primary:#ffffff;--hud-secondary:#f2f4f8;…`. The CSS file embeds the
 // equivalent literally (Tailwind does not run TS), but exposing it keeps the
 // values authoritative here and lets the test assert the CSS file matches.
 export const hudSkinCssVarDeclarations = (): string =>
@@ -101,7 +100,7 @@ export const hudAccentTone = (
     : "neutral"
 
 // The CSS class for the focused pane window's accent frame, so its bright
-// corner-bracket frame echoes the H7 status light's tone (one HUD vocabulary).
+// rectangular frame echoes the H7 status light's tone (one HUD vocabulary).
 // Consumed in CSS as `.pane-window-accent-${tone}`.
 export const paneWindowAccentClass = (
   tone: HudStatusTone | string | null | undefined,
