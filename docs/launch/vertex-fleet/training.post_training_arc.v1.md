@@ -4,6 +4,66 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (g) — instruct-SFT lane grading challenge bridge
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.instruct_sft_paid_dispatch_missing` — advanced, **not
+cleared**. This is the first piece built toward paid SFT dispatch; prior passes
+only published the fixture-scale lane receipt.
+
+The instruct-SFT lane receipt commits a deterministic `reportDigest` answer key
+for the `psion_instruct_sft_v1` smoke run, but there was no committed bridge
+from that answer key to the verification layer a paid `psion_instruct_sft`
+dispatch would settle against — the same `deterministic_recompute` challenge
+shape the 2026-06-11 alignment run used for its four Verified challenges. This
+change adds that bridge, mirroring the committed DPO grading-challenge pattern.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/psion-instruct-sft-grading-challenge.ts`
+  - `buildPsionInstructSftGradingChallengeSpec`: packages the committed lane
+    report digest into a public-safe `deterministic_recompute` challenge spec
+    (`expectedReportDigest`, `completedSteps`, template/manifest digests, refs).
+    Exposes only digests/counts/refs — never prompts, completions, or weights.
+  - `verifyPsionInstructSftGradingResponse`: verifies a worker's CLAIMED lane
+    report digest against the committed answer key and returns a
+    `TrainingVerificationVerdict` (`Verified` only when the well-formed expected
+    digest, the claim, and any supplied completed-step count agree; otherwise
+    `Rejected` with `DigestMismatch` / `OutputDigestMissing` /
+    `DimensionMismatch` / `VerificationClassUnknown`).
+  - `buildPsionInstructSftGradingChallengeCreateRequest`: bridges the spec into
+    the rail-side `TrainingVerificationChallengeCreateRequest` envelope a paid
+    dispatch would POST and **decodes it against the real `training-verification`
+    schema**, throwing `PsionInstructSftGradingChallengeError` on a
+    structurally invalid request (e.g. a non-public-safe `trainingRunRef`).
+- `apps/openagents.com/workers/api/src/psion-instruct-sft-grading-challenge.test.ts`
+  - 15 committed tests, including a guard test asserting the answer-key
+    constants stay in sync with the published instruct-SFT lane receipt
+    (`projectTrainingPostTrainingInstructSft`), so a digest drift fails loudly.
+
+### Honesty boundary (why the blocker stays open)
+
+The SFT lane runs in the Psionic Rust crate, not this worker, so there is **no
+in-repo recompute** — the spec's answer key is the committed fixture report
+digest, and the verifier compares a claim against that committed answer key. A
+real paid dispatch's rail-side `deterministic_recompute` verifier would re-run
+the Psionic lane. This module only constructs/validates the request and computes
+the verdict math; it submits nothing, takes no lease, spends no sats, settles
+nothing, and creates no rail-side challenge. No public route, registry edit, or
+green transition is added.
+
+### What genuinely remains for `instruct_sft_paid_dispatch_missing`
+
+Still open: no paid `psion_instruct_sft` dispatch / lease / settlement / on-rail
+Verified challenge has run, and the rail-side verifier that re-runs the Psionic
+lane (rather than comparing against the committed answer key) is not yet wired.
+
+---
+
 ## 2026-06-20 (f) — DPO grading challenge create-request builder
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
