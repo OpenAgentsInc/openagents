@@ -70,6 +70,30 @@ as `X_CLAIM_REWARD_ID`. Expected precondition:
 - no raw invoice, preimage, payment hash, mnemonic, wallet path, or payout
   target in the response.
 
+## Preflight readiness gate
+
+Before enabling the live run, confirm the bounded wallet and ledger are clean
+with the pure preflight evaluator
+(`evaluateXClaimRewardSmokePreflight` in
+`apps/openagents.com/workers/api/src/x-claim-reward-treasury-dispatcher.ts`).
+It moves no funds and emits only aggregate, public-safe checks. The smoke is
+ready only when every check passes:
+
+- `dispatch_flag_enabled` — `TREASURY_DISPATCH_ENABLED=true`.
+- `per_run_cap_allows_one` — per-run reward cap is at least 1.
+- `exactly_one_approved_reward` — exactly one row in `dispatch_requested`
+  (the first green-path smoke uses exactly one reward).
+- `no_pending_payment_in_flight` — no `dispatched` row already has a treasury
+  payment id, so the smoke starts clean.
+- `daily_cap_headroom` — the daily sats cap leaves room for one 1000-sat reward.
+- `treasury_liquidity_sufficient` — the campaign wallet's max sendable balance
+  covers 1000 sats plus the liquidity buffer.
+
+Feed it the aggregate dispatch stats from
+`GET /api/operator/treasury/status` (`rewardDispatch`) plus the wallet's max
+sendable balance; a non-empty `blockingReasonRefs` means do not start the live
+smoke until each listed reason clears.
+
 ## Dispatch flow (per reward)
 
 All calls use the worker admin API token as the bearer.

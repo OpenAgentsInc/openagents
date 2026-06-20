@@ -30,6 +30,12 @@ const TreasuryPaymentFailedReasonRef =
   'reason.public.x_claim_reward_treasury_payment_failed'
 const TreasuryPayFailedReasonRef =
   'reason.public.x_claim_reward_treasury_pay_failed'
+const DispatchDisabledReasonRef =
+  'reason.public.x_claim_reward_treasury_dispatch_disabled'
+const NoApprovedRewardReasonRef =
+  'reason.public.x_claim_reward_no_approved_reward'
+const DailyCapReachedReasonRef =
+  'reason.public.x_claim_reward_treasury_daily_cap_reached'
 
 type XClaimRewardRow = Readonly<{
   agent_user_id: string | null
@@ -878,6 +884,97 @@ export const runXClaimRewardTreasuryDispatch = async (
       dayStartIso,
       dependencies.config,
     ),
+  }
+}
+
+export type XClaimRewardSmokePreflightCheck = Readonly<{
+  name: string
+  ok: boolean
+  reasonRef: string | null
+}>
+
+export type XClaimRewardSmokePreflightReport = Readonly<{
+  blockingReasonRefs: ReadonlyArray<string>
+  checks: ReadonlyArray<XClaimRewardSmokePreflightCheck>
+  ready: boolean
+}>
+
+export type XClaimRewardSmokePreflightInput = Readonly<{
+  balanceMaxSendableSat: number | null
+  stats: XClaimRewardTreasuryDispatchStats
+}>
+
+/**
+ * Evaluates whether the bounded treasury wallet and ledger are in a clean state
+ * to run the first live single-reward dispatch smoke. This is a pure,
+ * public-safe gate: it moves no funds and emits no payment material, only
+ * aggregate readiness checks the operator confirms before enabling the live run.
+ */
+export const evaluateXClaimRewardSmokePreflight = (
+  input: XClaimRewardSmokePreflightInput,
+): XClaimRewardSmokePreflightReport => {
+  const { balanceMaxSendableSat, stats } = input
+  const liquidityThreshold =
+    X_CLAIM_REWARD_AMOUNT_SATS + stats.liquidityBufferSats
+  const dailyHeadroomSats = stats.dailySatsCap - stats.todayReservedSats
+
+  const checks: ReadonlyArray<XClaimRewardSmokePreflightCheck> = [
+    {
+      name: 'dispatch_flag_enabled',
+      ok: stats.enabled,
+      reasonRef: stats.enabled ? null : DispatchDisabledReasonRef,
+    },
+    {
+      name: 'per_run_cap_allows_one',
+      ok: stats.perRunRewardCap >= 1,
+      reasonRef: stats.perRunRewardCap >= 1 ? null : DailyCapReachedReasonRef,
+    },
+    {
+      name: 'exactly_one_approved_reward',
+      ok: stats.requestedDispatchCount === 1,
+      reasonRef:
+        stats.requestedDispatchCount === 1 ? null : NoApprovedRewardReasonRef,
+    },
+    {
+      name: 'no_pending_payment_in_flight',
+      ok: stats.pendingPaymentCount === 0,
+      reasonRef:
+        stats.pendingPaymentCount === 0 ? null : PaymentPendingReasonRef,
+    },
+    {
+      name: 'daily_cap_headroom',
+      ok: dailyHeadroomSats >= X_CLAIM_REWARD_AMOUNT_SATS,
+      reasonRef:
+        dailyHeadroomSats >= X_CLAIM_REWARD_AMOUNT_SATS
+          ? null
+          : DailyCapReachedReasonRef,
+    },
+    {
+      name: 'treasury_liquidity_sufficient',
+      ok:
+        balanceMaxSendableSat !== null &&
+        balanceMaxSendableSat >= liquidityThreshold,
+      reasonRef:
+        balanceMaxSendableSat === null
+          ? TreasuryBalanceUnavailableReasonRef
+          : balanceMaxSendableSat >= liquidityThreshold
+            ? null
+            : TreasuryLiquidityInsufficientReasonRef,
+    },
+  ]
+
+  const blockingReasonRefs = Array.from(
+    new Set(
+      checks
+        .filter(check => !check.ok && check.reasonRef !== null)
+        .map(check => check.reasonRef as string),
+    ),
+  )
+
+  return {
+    blockingReasonRefs,
+    checks,
+    ready: blockingReasonRefs.length === 0,
   }
 }
 
