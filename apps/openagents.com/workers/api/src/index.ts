@@ -22,6 +22,7 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import { handleOmniContributorAccrualBundleApi } from './omni-contributor-accrual-bundle-routes'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import {
   handleLiquidityMarketSkeletonApi,
@@ -8112,6 +8113,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Contributor accrual bundle dereference, addressed by accepted-outcome
+    // economics id (?economicsId=...) for payments.accepted_outcome_economics.v1
+    // (blocker.product_promises.contributor_ledger_missing). Read-only public
+    // projection: returns the reconciled gross-margin receipt + contributor
+    // accrual ledger with lifecycle/evidence labels visible and internal monetary
+    // figures dropped. No dispatch, spend, settlement, or payout — every entry's
+    // payable/settlement state stays honestly not_yet_evidenced.
+    path: '/api/public/payments/contributor-accrual-bundle',
+    handler: (request, env) =>
+      handleOmniContributorAccrualBundleApi(request, openAgentsDatabase(env)),
   },
   {
     // Full training-pipeline program status (#5523 / DE-5 #5528; promise

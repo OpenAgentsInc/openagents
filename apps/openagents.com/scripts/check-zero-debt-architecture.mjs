@@ -628,6 +628,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/omni-contributor-accrual-bundle-routes.ts',
+    route: '/api/public/payments/contributor-accrual-bundle',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/demand-provenance.ts',
     route: '/api/public/demand-provenance',
     status: 'staleness_declared',
