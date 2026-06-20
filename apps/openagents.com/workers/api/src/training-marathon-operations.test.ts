@@ -1,6 +1,11 @@
 import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import {
+  CurtailmentDrillSchemaVersion,
+  MaxCurtailmentAckLatencyMs,
+  MaxCurtailmentHaltLatencyMs,
+} from './training-curtailment-drill'
 import { DurableCheckpointSealBlocker } from './training-durable-checkpoint-seal'
 import {
   TrainingMarathonCurtailmentDrillBlocker,
@@ -20,10 +25,14 @@ type MarathonOperationsBody = Readonly<{
     remoteCheckpointStoreReadbackReceiptAvailable: boolean
   }>
   curtailmentSurface: Readonly<{
+    ackSlaMs: number
     checkpointResumeReceiptAvailable: boolean
     curtailmentDrillReceiptAvailable: boolean
     drillScheduled: boolean
     flexibleLoadEvidenceCreated: boolean
+    haltSlaMs: number
+    predicateAvailable: boolean
+    schemaVersion: string
   }>
   endpoint: string
   gate: Readonly<{
@@ -105,15 +114,19 @@ describe('training marathon operations projection', () => {
       receiptBackedPromotionAvailable: false,
     })
     expect(projection.curtailmentSurface).toMatchObject({
+      ackSlaMs: MaxCurtailmentAckLatencyMs,
       checkpointResumeReceiptAvailable: false,
       curtailmentDrillReceiptAvailable: false,
       drillScheduled: false,
       flexibleLoadEvidenceCreated: false,
+      haltSlaMs: MaxCurtailmentHaltLatencyMs,
+      predicateAvailable: true,
+      schemaVersion: CurtailmentDrillSchemaVersion,
     })
     expect(projection.operationsSummary).toEqual({
       blockerCount: 3,
       openReceiptGateCount: 3,
-      predicateSurfaceCount: 2,
+      predicateSurfaceCount: 3,
       publicEndpointCount: 1,
       receiptBackedLiveOperationCount: 0,
     })
@@ -164,12 +177,22 @@ describe('training marathon operations projection', () => {
     expect(body.standbySurface.predicateAvailable).toBe(true)
     expect(body.standbySurface.preflightRouteAvailable).toBe(true)
     expect(body.standbySurface.livePromotionReceiptAvailable).toBe(false)
+    expect(body.curtailmentSurface.predicateAvailable).toBe(true)
+    expect(body.curtailmentSurface.schemaVersion).toBe(
+      CurtailmentDrillSchemaVersion,
+    )
+    expect(body.curtailmentSurface.ackSlaMs).toBe(
+      MaxCurtailmentAckLatencyMs,
+    )
+    expect(body.curtailmentSurface.haltSlaMs).toBe(
+      MaxCurtailmentHaltLatencyMs,
+    )
     expect(body.curtailmentSurface.drillScheduled).toBe(false)
     expect(body.curtailmentSurface.flexibleLoadEvidenceCreated).toBe(false)
     expect(body.operationsSummary).toMatchObject({
       blockerCount: 3,
       openReceiptGateCount: 3,
-      predicateSurfaceCount: 2,
+      predicateSurfaceCount: 3,
       receiptBackedLiveOperationCount: 0,
     })
   })

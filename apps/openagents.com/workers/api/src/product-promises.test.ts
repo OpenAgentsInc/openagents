@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.44')
+    expect(decoded.version).toBe('2026-06-20.45')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -280,6 +280,8 @@ describe('public product promises document', () => {
     // projection but keeps the contributor-receipts blocker active.
     // The 2026-06-20.44 vibe-test rubric pass adds a public deterministic
     // closeout projection but keeps the reviewed-artifact blocker active.
+    // The 2026-06-20.45 marathon curtailment pass exposes the drill predicate
+    // but keeps the drill-receipt blocker active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -414,6 +416,8 @@ describe('public product promises document', () => {
             'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
             'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
             'apps/openagents.com/workers/api/src/training-standby-dispatch.test.ts',
+            'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
+            'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
             'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
           ]),
           blockerRefs: [
@@ -425,7 +429,7 @@ describe('public product promises document', () => {
             '/api/public/training/marathon-operations',
           ),
           verification: expect.stringContaining(
-            'durableCheckpointRemoteReadbackReceiptAvailable=false',
+            'curtailmentSurface.predicateAvailable=true',
           ),
         }),
         expect.objectContaining({
@@ -1267,12 +1271,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.44', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.45', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.44',
+      expectedVersion: '2026-06-20.45',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.44',
+      servedVersion: '2026-06-20.45',
       status: 'ready',
     })
     expect(
@@ -1282,7 +1286,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.44',
+      servedVersion: '2026-06-20.45',
       status: 'blocked',
     })
   })

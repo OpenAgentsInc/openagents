@@ -7,6 +7,12 @@ import {
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
+  CurtailmentDrillBlocker,
+  CurtailmentDrillSchemaVersion,
+  MaxCurtailmentAckLatencyMs,
+  MaxCurtailmentHaltLatencyMs,
+} from './training-curtailment-drill'
+import {
   DurableCheckpointSealBlocker,
   DurableCheckpointSealSchemaVersion,
   MinDurableReplicationFactor,
@@ -21,8 +27,7 @@ export const TrainingMarathonOperationsEndpoint =
   '/api/public/training/marathon-operations'
 export const TrainingMarathonOperationsSchemaVersion =
   'openagents.training.marathon_operations.status.v1'
-export const TrainingMarathonCurtailmentDrillBlocker =
-  'blocker.product_promises.curtailment_drill_missing'
+export const TrainingMarathonCurtailmentDrillBlocker = CurtailmentDrillBlocker
 
 export const TrainingMarathonOperationsStaleness = liveAtReadStaleness([
   'product_promise_registry_updated',
@@ -76,10 +81,14 @@ export class TrainingMarathonCurtailmentSurface extends S.Class<TrainingMarathon
   'TrainingMarathonCurtailmentSurface',
 )({
   blockerRef: S.Literal(TrainingMarathonCurtailmentDrillBlocker),
+  ackSlaMs: S.Int,
   checkpointResumeReceiptAvailable: S.Boolean,
   curtailmentDrillReceiptAvailable: S.Boolean,
   drillScheduled: S.Boolean,
+  haltSlaMs: S.Int,
   flexibleLoadEvidenceCreated: S.Boolean,
+  predicateAvailable: S.Boolean,
+  schemaVersion: S.Literal(CurtailmentDrillSchemaVersion),
   sourceRefs: S.Array(S.String),
   statusLabel: S.String,
 }) {}
@@ -145,6 +154,7 @@ const sourceRefs = [
   pluralisRoadmapRef,
   'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
   'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
+  'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
   'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
   'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
   'apps/openagents.com/workers/api/src/training-marathon-operations.ts',
@@ -176,13 +186,22 @@ export const projectTrainingMarathonOperations = (
     }),
     curtailmentSurface: new TrainingMarathonCurtailmentSurface({
       blockerRef: TrainingMarathonCurtailmentDrillBlocker,
+      ackSlaMs: MaxCurtailmentAckLatencyMs,
       checkpointResumeReceiptAvailable: false,
       curtailmentDrillReceiptAvailable: false,
       drillScheduled: false,
+      haltSlaMs: MaxCurtailmentHaltLatencyMs,
       flexibleLoadEvidenceCreated: false,
-      sourceRefs: [buildoutPlanRef, worklogRef],
+      predicateAvailable: true,
+      schemaVersion: CurtailmentDrillSchemaVersion,
+      sourceRefs: [
+        'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
+        'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
+        buildoutPlanRef,
+        worklogRef,
+      ],
       statusLabel:
-        'The curtailment drill remains planned; no scheduled shed-and-resume drill receipt or flexible-load proof has been produced.',
+        'Curtailment-drill outcome predicate is available; no scheduled shed-and-resume drill receipt or flexible-load proof has been produced.',
     }),
     endpoint: TrainingMarathonOperationsEndpoint,
     gate: {
@@ -199,7 +218,7 @@ export const projectTrainingMarathonOperations = (
     operationsSummary: {
       blockerCount: MarathonRemainingBlockerRefs.length,
       openReceiptGateCount: 3,
-      predicateSurfaceCount: 2,
+      predicateSurfaceCount: 3,
       publicEndpointCount: 1,
       receiptBackedLiveOperationCount: 0,
     },
@@ -231,7 +250,7 @@ export const projectTrainingMarathonOperations = (
     staleness: TrainingMarathonOperationsStaleness,
     status: 'training_marathon_operations_status_projection',
     statusLabel:
-      'Marathon operation predicates are visible; remote checkpoint read-back, live standby promotion, and curtailment drill receipts remain absent.',
+      'Marathon operation predicates are visible, including curtailment-drill evaluation; remote checkpoint read-back, live standby promotion, and curtailment drill receipts remain absent.',
     unsafeCopy:
       'Do not claim multi-day or multi-week network training is operationally supported, that standby dispatch is live, that durable remote checkpoint storage has been proven, that a curtailment drill happened, that training load is dispatchable for grid value, or that training.marathon_operations.v1 is green.',
   })
