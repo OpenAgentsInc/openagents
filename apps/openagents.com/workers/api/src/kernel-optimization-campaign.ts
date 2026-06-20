@@ -57,6 +57,35 @@ export type KernelOptimizationSettlementItem = Readonly<{
   verdict: KernelOptimizationVerdict
 }>
 
+/**
+ * The result of reconciling a dispatched campaign against its settlement ledger.
+ *
+ * At scale the dangerous failure modes are not bad verdicts (those are caught by
+ * the parity verifier) but accounting drift: a dispatched job that never gets
+ * settled, an extra settlement that no dispatched job backs, or escrow that does
+ * not conserve (sats created or destroyed across the fan-out). This report makes
+ * all three mechanically checkable before any payout/refund is released.
+ */
+export type KernelOptimizationCampaignReconciliation = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff every check below passed — safe to release payout/refund. */
+  ok: boolean
+  /** Number of dispatch-valid requests the campaign fanned out. */
+  dispatchedJobs: number
+  /** Number of jobs the settlement ledger accounted for. */
+  settledJobs: number
+  jobCountReconciled: boolean
+  /** Total escrow the campaign locked, in whole sats. */
+  escrowSats: number
+  /** payoutOwed + refunded from the settlement, in whole sats. */
+  accountedSats: number
+  /** True iff escrow conserves: nothing created or destroyed in settlement. */
+  escrowConserved: boolean
+  /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
+  discrepancies: ReadonlyArray<string>
+}>
+
 /** The settlement ledger reducing many verdicts back into one campaign result. */
 export type KernelOptimizationCampaignSettlement = Readonly<{
   classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
@@ -204,5 +233,70 @@ export const summarizeKernelOptimizationCampaignSettlement = (
     rejectedCount,
     speedup,
     totalJobs: items.length,
+  }
+}
+
+/**
+ * Reconcile a dispatched campaign against its settlement ledger.
+ *
+ * This is the at-scale safety net the two halves above cannot provide on their
+ * own: `buildKernelOptimizationCampaign` produces the dispatch set and
+ * `summarizeKernelOptimizationCampaignSettlement` reduces the verdicts, but
+ * nothing yet asserts they describe the SAME campaign. Across a many-job mesh
+ * run the dangerous drift is accounting, not correctness:
+ *
+ *   1. campaignRef drift — settling one campaign's verdicts against another's
+ *      dispatch set.
+ *   2. job-count drift — a dispatched job never settled, or an extra settlement
+ *      no dispatched job backs.
+ *   3. escrow drift — payout + refund != the escrow the campaign actually locked
+ *      (sats created or destroyed in settlement).
+ *
+ * It moves no money; it returns a verdict-style report whose `ok` gate must hold
+ * before the verified-work rail releases any payout or refund. It never throws:
+ * a mismatch is a finding to surface (listed in `discrepancies`), not a
+ * programming error.
+ */
+export const reconcileKernelOptimizationCampaignSettlement = (
+  campaign: KernelOptimizationCampaign,
+  settlement: KernelOptimizationCampaignSettlement,
+): KernelOptimizationCampaignReconciliation => {
+  const discrepancies: string[] = []
+
+  if (campaign.campaignRef !== settlement.campaignRef) {
+    discrepancies.push(
+      `campaignRef mismatch: dispatched "${campaign.campaignRef}" vs settled "${settlement.campaignRef}"`,
+    )
+  }
+
+  const dispatchedJobs = campaign.requests.length
+  const settledJobs = settlement.totalJobs
+  const jobCountReconciled = dispatchedJobs === settledJobs
+  if (!jobCountReconciled) {
+    discrepancies.push(
+      `job-count drift: dispatched ${dispatchedJobs} job(s) but settled ${settledJobs}`,
+    )
+  }
+
+  const escrowSats = campaign.totalBudgetSats
+  const accountedSats = settlement.payoutOwedSats + settlement.refundedSats
+  const escrowConserved = escrowSats === accountedSats
+  if (!escrowConserved) {
+    discrepancies.push(
+      `escrow drift: locked ${escrowSats} sat(s) but settlement accounts for ${accountedSats} (payout ${settlement.payoutOwedSats} + refund ${settlement.refundedSats})`,
+    )
+  }
+
+  return {
+    accountedSats,
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    dispatchedJobs,
+    escrowConserved,
+    escrowSats,
+    jobCountReconciled,
+    ok: discrepancies.length === 0,
+    settledJobs,
   }
 }
