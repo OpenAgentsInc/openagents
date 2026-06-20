@@ -9433,7 +9433,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // moves no money, and writes no ledger row. It returns the exact
     // credit/USD/msat charge the metering hook WOULD settle for a given model +
     // token estimate + funding rail (`isEstimate: true`), so a credits customer
-    // can size a deliberate spend before funding a balance. Computed from the
+    // can size a deliberate spend before funding a balance. Additively, when the
+    // body carries `budgetCredits` it answers the INVERSE affordability question
+    // ("how many such requests does N credits buy?") via `estimateBudgetCapacity`,
+    // embedding the same per-request estimate under `perRequest`. Computed from the
     // SAME pricing engine (`priceRequest`) the metering hook bills against, so a
     // quote cannot drift from the eventual billed charge. No promise state
     // changes; the paid loop is still secrets-gated.

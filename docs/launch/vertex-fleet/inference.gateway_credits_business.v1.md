@@ -273,6 +273,46 @@ object. This does NOT by itself let a customer buy inference — the paid-credit
 funding loop is still secrets-gated — so the blocker stays listed. No promise
 state changed; any future green flip remains receipt-first and owner-signed.
 
+## Budget (affordability) quote — `/v1/quote` inverse mode (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The gateway could answer the FORWARD funding question ("for THIS model and THIS
+many tokens, how many credits will it cost?", `/v1/quote` token mode) but not the
+INVERSE one that actually sizes a top-up: "if I fund N credits for THIS model on
+THIS rail, how many requests of my typical shape can I run, and how many tokens is
+that?" This run adds that:
+
+- `apps/openagents.com/workers/api/src/inference/budget-estimate.ts`
+  (+ `budget-estimate.test.ts`): `estimateBudgetCapacity` — a PURE affordability
+  estimator. It prices ONE representative request through the SAME
+  `estimateRequestCost` the forward quote uses (which reuses `priceRequest`, the
+  exact engine the metering hook bills with), then floors the credit budget by
+  that per-request cost. So an affordability estimate can never disagree with the
+  per-request quote nor the eventual billed charge (a test asserts the embedded
+  `perRequest` equals the forward estimate byte-for-byte). It reports affordable
+  whole-request count, total tokens, spent/leftover credits (reconciling to the
+  budget), the budget as spendable msat at the SAME `usdCentsToMsatFloor` rate the
+  bridge grants with (never overstating balance), surfaces the Bitcoin-rail
+  advantage (more requests per credit), flags the degenerate zero-cost shape as
+  `affordableRequestsUnbounded`, and clamps negative/NaN budgets to zero. 11 tests.
+- `quote-routes.ts` (+ `quote-routes.test.ts`): `POST /v1/quote` gains an
+  ADDITIVE optional `budgetCredits` field. When present it returns the budget
+  estimate (embedding the per-request `CostEstimate` under `perRequest`); when
+  omitted it returns the per-request quote EXACTLY as before (backward-compatible —
+  a test asserts the prior shape and that `affordableRequests` is absent). Thin
+  pass-through, so the zero-debt Worker Response-return budget is UNCHANGED.
+- `index.ts`: route comment updated to document the additive budget mode (same
+  `INFERENCE_GATEWAY_ENABLED` gate, public + unauthenticated, public-safe).
+
+RECEIPT-FIRST DISCIPLINE PRESERVED: a budget quote is an estimate
+(`isEstimate: true`), never a receipt or a grant; it moves no money and writes no
+ledger row. This does NOT by itself let a customer buy inference — the
+paid-credits funding loop is still secrets-gated — so the blocker stays listed. No
+promise state changed; any future green flip remains receipt-first and
+owner-signed.
+
 ## What remains (both blockers, unchanged)
 
 - `inference_card_credit_inference_spend_receipt_missing`: still no real
