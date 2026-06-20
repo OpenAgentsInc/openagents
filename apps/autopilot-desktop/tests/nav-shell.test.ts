@@ -360,8 +360,24 @@ describe("#5499 HUD H1 hotbar — derived from the SAME nav registry", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "shell" })).body)
     expect(tree).toContain("hotbar")
     expect(tree).toContain("hotbar-slot")
+    expect(tree).toContain("hotbar-slot-icon")
+    expect(tree).toContain("hotbar-slot-key")
+    expect(tree).toContain("hotbar-slot-tooltip")
+    expect(tree).not.toContain("hotbar-slot-label")
     // The ⌘K slot is present on the shell.
     expect(tree).toContain("⌘K")
+  })
+
+  test("the hotbar slot face is icon-only, with the shortcut badge and label tooltip", () => {
+    const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
+    // Slot 2 = Code group. The face uses the code glyph and a top-right 2 badge;
+    // the actual label is exposed through the tooltip/title rather than printed
+    // below the icon.
+    expect(tree).toContain("</>")
+    expect(tree).toContain("Code — press 2 or ⌘2")
+    expect(tree).toContain("Command palette (⌘K)")
+    expect(tree).toContain("hotbar-slot-tooltip")
+    expect(tree).not.toContain("hotbar-slot-label")
   })
 
   test("the hotbar renders on the full UI and highlights the active group's slot", () => {

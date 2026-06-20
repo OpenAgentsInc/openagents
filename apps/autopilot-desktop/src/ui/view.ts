@@ -553,43 +553,67 @@ const commandPalette = (model: Model): Html => {
 // Rendered on the zero-base shell AND the full UI so the command bar is always
 // the launcher. The active group's slot is highlighted from `groupForPane` so
 // the hotbar, sidebar, and current pane never disagree.
+const hotbarSlotIcon = (slot: HotbarSlot): string => {
+  if (slot.kind === "palette") return "⌘"
+  switch (slot.group) {
+    case "chat":
+      return "···"
+    case "code":
+      return "</>"
+    case "supervise":
+      return "✓"
+    case "explore":
+      return "◎"
+    case "settings":
+      return "⚙"
+    default:
+      return String(slot.number)
+  }
+}
+
 const hotbarSlotView = (slot: HotbarSlot, activeGroup: string | null): Html => {
   if (slot.kind === "palette") {
+    const title = `${slot.label} (${slot.chord})`
     return h.button(
       [
         cls("hotbar-slot hotbar-slot-palette"),
         h.Type("button"),
-        h.Title(`${slot.label} (${slot.chord})`),
+        h.Title(title),
+        h.AriaLabel(title),
         h.OnClick(OpenedCommandPalette()),
       ],
       [
-        h.span([cls("hotbar-slot-key")], [slot.chord]),
-        h.span([cls("hotbar-slot-label")], [slot.label]),
+        h.span([cls("hotbar-slot-icon"), h.AriaHidden("true")], [hotbarSlotIcon(slot)]),
+        h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], ["K"]),
+        h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
     )
   }
   const active = slot.group === activeGroup
+  const title = `${slot.label} — press ${slot.number} or ⌘${slot.number}`
   return h.button(
     [
       cls(`hotbar-slot hotbar-slot-group${active ? " active" : ""}`),
       h.Type("button"),
-      h.Title(`${slot.label} — press ${slot.number} or ⌘${slot.number}`),
+      h.Title(title),
+      h.AriaLabel(title),
       h.OnClick(NavigatedToGroup({ group: slot.group })),
     ],
     [
-      h.span([cls("hotbar-slot-key")], [String(slot.number)]),
-      h.span([cls("hotbar-slot-label")], [slot.label]),
+      h.span([cls("hotbar-slot-icon"), h.AriaHidden("true")], [hotbarSlotIcon(slot)]),
+      h.span([cls("hotbar-slot-key"), h.AriaHidden("true")], [String(slot.number)]),
+      h.span([cls("hotbar-slot-tooltip")], [title]),
     ],
   )
 }
 
 const hotbar = (model: Model): Html => {
   const activeGroup = groupForPane(model.pane)?.id ?? null
-  // HUD H4 (#5502): plain rectangular command bar with a faint scanline /
-  // dot-grid backdrop (decorative ::after, pointer-transparent).
+  // HUD H4 (#5502): Commander-style square icon slots. Text labels stay in the
+  // hover/focus tooltip so the bar stays compact.
   return h.div(
     [
-      cls("hotbar hud-scanlines"),
+      cls("hotbar"),
       h.Role("toolbar"),
       h.AriaLabel("Hotbar"),
     ],

@@ -228,10 +228,8 @@ body {
    Fixed, blurred, high-z (below the palette backdrop at z-index 50). Slots are
    derived from the nav registry (nav.ts HOTBAR_SLOTS); the active group's slot
    is highlighted. White-on-black to match the zero-base shell. */
-/* HUD H4 (#5502): the plain rectangular command bar. A scanline backdrop sits
-   over the blurred black bar; the active slot lights up in the HUD primary; the
-   ⌘K palette slot reads as the white accent slot. White-on-black base preserved
-   so it sits cleanly on the shell. */
+/* HUD H4 (#5502): Commander-style square icon slots. The face shows only the
+   icon + top-right shortcut badge; labels live in the hover/focus tooltip. */
 .hotbar {
   position: fixed;
   left: 50%;
@@ -240,14 +238,15 @@ body {
   z-index: 40;
   display: flex;
   align-items: stretch;
-  gap: 0.4rem;
-  padding: 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--hud-primary) 22%, transparent);
-  border-radius: 12px;
-  background: rgb(4 7 11 / 0.72);
+  gap: 0.25rem;
+  overflow: visible;
+  padding: 0.25rem;
+  border: 1px solid rgb(255 255 255 / 0.24);
+  border-radius: 6px;
+  background: rgb(4 7 11 / 0.68);
   box-shadow:
-    0 16px 48px rgb(0 0 0 / 0.45),
-    inset 0 0 0 1px rgb(255 255 255 / 0.02);
+    0 16px 44px rgb(0 0 0 / 0.5),
+    inset 0 0 0 1px rgb(255 255 255 / 0.04);
   backdrop-filter: blur(16px);
   pointer-events: auto;
 }
@@ -258,28 +257,25 @@ body {
 .hotbar-slot {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
-  min-width: 3.25rem;
-  padding: 0.4rem 0.55rem;
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.03);
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.04);
   color: rgb(255 255 255 / 0.62);
   cursor: pointer;
   font: inherit;
-  transition:
-    color 0.12s ease,
-    border-color 0.12s ease,
-    background 0.12s ease,
-    box-shadow 0.12s ease;
+  overflow: visible;
 }
-.hotbar-slot:hover {
+.hotbar-slot:hover,
+.hotbar-slot:focus-visible {
   color: var(--hud-line, #e6e9ef);
   border-color: color-mix(in srgb, var(--hud-primary) 45%, transparent);
   background: rgb(255 255 255 / 0.06);
+  outline: none;
 }
 .hotbar-slot.active {
   color: var(--hud-primary, #fff);
@@ -287,17 +283,70 @@ body {
   background: color-mix(in srgb, var(--hud-primary) 12%, transparent);
   box-shadow: 0 0 14px color-mix(in srgb, var(--hud-primary) 28%, transparent);
 }
-.hotbar-slot-key {
-  font-size: 0.8rem;
+.hotbar-slot-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  color: currentColor;
+  font-family: ui-monospace, monospace;
+  font-size: 1.02rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
   line-height: 1;
 }
-.hotbar-slot-label {
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.hotbar-slot-key {
+  position: absolute;
+  top: 0.18rem;
+  right: 0.22rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.82rem;
+  height: 0.72rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 2px;
+  background: rgb(0 0 0 / 0.46);
+  color: rgb(255 255 255 / 0.72);
+  font-family: ui-monospace, monospace;
+  font-size: 0.58rem;
+  font-weight: 700;
   line-height: 1;
+}
+.hotbar-slot-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  z-index: 2;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 3px;
+  background: rgb(6 9 13 / 0.98);
+  color: rgb(255 255 255 / 0.9);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.45);
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  line-height: 1;
+  padding: 0.35rem 0.45rem;
+}
+.hotbar-slot-tooltip::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 1px solid rgb(255 255 255 / 0.22);
+  border-bottom: 1px solid rgb(255 255 255 / 0.22);
+  background: rgb(6 9 13 / 0.98);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.hotbar-slot:hover .hotbar-slot-tooltip,
+.hotbar-slot:focus-visible .hotbar-slot-tooltip {
+  opacity: 1;
 }
 /* The ⌘K palette slot is the always-white accent slot (the StarCraft command
    slot), distinguishing the launcher from the numbered group slots. */
