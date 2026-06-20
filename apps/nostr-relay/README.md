@@ -1,11 +1,11 @@
-# OpenAgents Scoped Market Relay
+# OpenAgents Relay
 
-Issue: <https://github.com/OpenAgentsInc/openagents/issues/4636>
+Issues: <https://github.com/OpenAgentsInc/openagents/issues/4636>,
+<https://github.com/OpenAgentsInc/openagents/issues/5537>
 
-This app runs the scoped OpenAgents market-event Nostr relay. It wraps the
-`nostr-effect` Cloudflare Durable Object relay backend and adds an
-OpenAgents-specific transport policy before messages reach the shared relay
-handler.
+This app runs the OpenAgents Nostr relay. It wraps the `nostr-effect`
+Cloudflare Durable Object relay backend and adds an OpenAgents-specific
+transport policy before messages reach the shared relay handler.
 
 This relay is event transport only. It grants no payment, identity,
 moderation, assignment, payout, or settlement authority. Market acceptance,
@@ -14,8 +14,10 @@ own receipt-backed systems.
 
 ## Allowed Events
 
-The relay accepts only the market event kinds needed for the five Bitcoin
-revenue-stream rails:
+### Market rails (open-write, unchanged)
+
+The relay accepts these market event kinds from any pubkey (rate-limited) so the
+public job/labor/dataset bus other agents use is unaffected:
 
 - NIP-90 job requests: `5000` through `5999`
 - NIP-90 job results: `6000` through `6999`
@@ -23,14 +25,54 @@ revenue-stream rails:
 - NIP-DS listing and offer kinds: `30404`, `30406`
 - NIP-89 handler information: `31989`, `31990`
 
-All other event kinds are rejected before storage or broadcast.
+### General coordination / discovery (write-gated, #5537)
+
+To support OpenAgents agents using the OWNED relay for outage coordination and
+discovery (the `agents.nostr_fallback_coordination.v1` fallback path), the relay
+also accepts these general kinds — but only as a **write-gated addition**, never
+an open widening of the allowlist:
+
+- NIP-01 text notes: `1`
+- NIP-02 contacts: `3`
+- NIP-17 sealed/rumor DM kinds: `13`, `14`
+- NIP-28 public chat: `40`–`44`
+- NIP-59 gift-wrapped DMs: `1059`
+- NIP-65 relay lists: `10002`
+- NIP-38 user statuses: `30315`
+
+(NIP-29 relay-managed groups are intentionally **not** added: they require
+relay-side moderation/membership state, which is not cheap for this surface.)
+
+### Anti-abuse posture (required, not just a widened allowlist)
+
+A general-kind write is accepted only when the event's pubkey is **authorized**,
+by EITHER of:
+
+1. **Provisioned-pubkey allowlist** — the pubkey is configured in
+   `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (Pylon provisions agent Nostr creds).
+2. **NIP-42 AUTH** — the connection completed the relay's AUTH challenge for that
+   pubkey. On WebSocket open the relay sends `["AUTH", <challenge>]`; the client
+   replies `["AUTH", <signed kind-22242 event>]` whose `relay` and `challenge`
+   tags must match, after which that pubkey may write general kinds on that
+   connection.
+
+On top of authorization, every general-kind write is signature-verified, capped
+at `32 KiB` content, and rate-limited to `12` events per `60s` per pubkey.
+Unauthenticated / over-rate / oversized general-kind writes are rejected before
+storage or broadcast. REQ subscriptions for general kinds are allowed without
+AUTH (read-only). All other (truly unknown) event kinds are still rejected.
 
 ## Limits
 
-Publish limits are per pubkey per Durable Object instance:
+Market publish limits are per pubkey per Durable Object instance:
 
 - `24` event publishes per `60` seconds
 - `64 KiB` maximum event content
+
+General coordination publish limits (per authorized pubkey, per DO instance):
+
+- `12` event publishes per `60` seconds
+- `32 KiB` maximum event content
 
 REQ limits:
 
@@ -48,16 +90,23 @@ subscription.
 
 Stored market events are retained for `30` days. NIP-89 handler information is
 retained for `180` days because handler advertisements change less often and
-are useful for discovery. Retention cleanup runs opportunistically on health
-checks and valid WebSocket messages.
+are useful for discovery. General coordination/discovery events (#5537) are
+retained for `7` days because they are ephemeral liveness/discovery signals.
+Retention cleanup runs opportunistically on health checks and valid WebSocket
+messages.
 
 ## Routes
 
-- HTTP `GET /` with `Accept: application/nostr+json` returns NIP-11 relay
-  metadata from `nostr-effect`.
-- WebSocket `/` accepts Nostr relay messages.
-- `GET /health` and `GET /metrics` return relay policy, retention status, and
-  stored event counts by kind/range.
+- HTTP `GET /` with `Accept: application/nostr+json` returns an
+  OpenAgents-authored NIP-11 relay information document. Its `supported_nips`
+  honestly lists `1, 2, 9, 11, 17, 28, 38, 42, 44, 59, 65, 89, 90` and its
+  `limitation`/`relay_policy` blocks describe the market + gated-general scope
+  and the anti-abuse posture.
+- WebSocket `/` accepts Nostr relay messages. On open the relay sends a NIP-42
+  `["AUTH", <challenge>]`.
+- `GET /health` and `GET /metrics` return relay policy (market + general),
+  retention status, the authorized-pubkey count, and stored event counts by
+  kind/range.
 
 ## Commands
 

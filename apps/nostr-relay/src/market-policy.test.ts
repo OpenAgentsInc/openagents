@@ -78,8 +78,11 @@ describe("market relay policy", () => {
   })
 
   test("rejects disallowed kind filters", () => {
-    expect(validateReqFilters([{ kinds: [5050, 1], limit: 10 }])).toContain(
-      "kind 1",
+    // Kind 9999 is neither a market kind nor a general coordination kind (#5537),
+    // so it is still rejected. Kind 1 is now a subscribable general kind and is
+    // covered by general-policy.test.ts.
+    expect(validateReqFilters([{ kinds: [5050, 9999], limit: 10 }])).toContain(
+      "kind 9999",
     )
     expect(validateReqFilters([{ kinds: [5050], limit: 10 }])).toBeNull()
   })

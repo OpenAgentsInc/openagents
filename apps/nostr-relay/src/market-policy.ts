@@ -1,3 +1,5 @@
+import { isGeneralCoordinationKind } from "./general-policy"
+
 export type MarketKindBucket =
   | "nip90_request"
   | "nip90_result"
@@ -166,12 +168,18 @@ export const validateReqFilters = (
     }
 
     if (Array.isArray(filter.kinds)) {
+      // REQ is read-only: both the scoped market kinds and the general
+      // coordination/discovery kinds (#5537) are subscribable. The general
+      // WRITE gate (allowlist / NIP-42 AUTH) is enforced on EVENT, not REQ.
       const disallowedKind = filter.kinds.find(
-        kind => typeof kind === "number" && !isAllowedMarketKind(kind),
+        kind =>
+          typeof kind === "number" &&
+          !isAllowedMarketKind(kind) &&
+          !isGeneralCoordinationKind(kind),
       )
 
       if (typeof disallowedKind === "number") {
-        return `kind ${disallowedKind} is outside the OpenAgents scoped market relay policy`
+        return `kind ${disallowedKind} is outside the OpenAgents relay policy`
       }
     }
   }

@@ -35,6 +35,7 @@ change, update its linked runbook **and** fix the pointer here.
 | **Mobile (AutopilotRemoteControl)** | iOS owner operator app | `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md` | **NO Expo/EAS cloud (owner mandate).** Native `.ipa` builds locally (`expo prebuild` → `xcodebuild`/`fastlane`), TestFlight via `xcrun altool`; JS-only ships OTA via `apps/oa-updates/scripts/publish-ota.sh` (never `eas build/submit/update`) | — |
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
+| **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
 
 ## Owned Visibility Freshness Smoke
 

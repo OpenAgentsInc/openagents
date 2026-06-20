@@ -32,9 +32,14 @@
   },
   "vars": {
     "OPENAGENTS_NOSTR_RELAY_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/4636",
-    "RELAY_NAME": "OpenAgents Scoped Market Relay",
-    "RELAY_DESCRIPTION": "Scoped OpenAgents market-event relay for NIP-90, NIP-DS, and NIP-89 transport. It grants no payment, identity, moderation, assignment, or settlement authority.",
+    "RELAY_NAME": "OpenAgents Relay",
+    "RELAY_DESCRIPTION": "OpenAgents relay: open-write market rails (NIP-90/DS/89) plus general coordination/discovery kinds (NIP-01/02/17/28/38/65) write-gated by a provisioned-pubkey allowlist or NIP-42 AUTH. Event transport only; no payment, identity, moderation, assignment, or settlement authority.",
     "RELAY_CONTACT": "https://github.com/OpenAgentsInc/openagents/issues/4636",
+    // Comma/whitespace-separated 64-char-hex pubkeys allowed to write the
+    // general coordination/discovery kinds (#5537). Empty by default: with no
+    // allowlisted pubkeys, general kinds require NIP-42 AUTH. Pylon-provisioned
+    // agent pubkeys go here (set via wrangler vars/secret by the owner).
+    "OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS": "",
   },
   "durable_objects": {
     "bindings": [

@@ -54,6 +54,7 @@ import {
   type VerifiedEvent,
 } from "../../../../nostr-effect/src/wrappers/pure.ts"
 import { wrapEvent } from "../../../../nostr-effect/src/wrappers/nip17.ts"
+import { makeAuthEvent } from "../../../../nostr-effect/src/wrappers/nip42.ts"
 
 type Flags = Record<string, string | true>
 type RelayMessage = ReadonlyArray<unknown>
@@ -155,9 +156,58 @@ const waitForMessage = (
     })
   })
 
-const publishEvent = async (relayUrl: string, event: PublishableEvent): Promise<RelayMessage> => {
+// Wait briefly for an optional NIP-42 ["AUTH", <challenge>] frame the relay may
+// send on open. Public relays do not send one; the owned relay (#5537) does, to
+// gate the general coordination kinds. Returns the challenge string or null.
+const waitForAuthChallenge = (socket: WebSocket, timeoutMs: number): Promise<string | null> =>
+  new Promise(resolve => {
+    const timeout = setTimeout(() => resolve(null), timeoutMs)
+    const onMessage = (event: MessageEvent) => {
+      const decoded: unknown = JSON.parse(String(event.data))
+      if (Array.isArray(decoded) && decoded[0] === "AUTH" && typeof decoded[1] === "string") {
+        clearTimeout(timeout)
+        socket.removeEventListener("message", onMessage)
+        resolve(decoded[1])
+      }
+    }
+    socket.addEventListener("message", onMessage)
+  })
+
+// Complete the relay's NIP-42 AUTH handshake for `authSecretKey`. The auth event
+// (kind 22242) references the relay URL and the relay-issued challenge. The
+// secret key is used only to sign locally; it is never sent or logged.
+const authenticate = async (
+  socket: WebSocket,
+  relayUrl: string,
+  challenge: string,
+  authSecretKey: Uint8Array,
+): Promise<void> => {
+  const template = makeAuthEvent(relayUrl, challenge)
+  const authEvent = finalizeEvent(template, authSecretKey)
+  socket.send(JSON.stringify(["AUTH", authEvent]))
+  const ok = await waitForMessage(
+    socket,
+    `AUTH OK for ${authEvent.id}`,
+    message => message[0] === "OK" && message[1] === authEvent.id,
+  )
+  if (ok[2] !== true) {
+    throw new Error(`Relay rejected NIP-42 AUTH: ${JSON.stringify(ok)}`)
+  }
+}
+
+const publishEvent = async (
+  relayUrl: string,
+  event: PublishableEvent,
+  authSecretKey: Uint8Array,
+): Promise<RelayMessage> => {
   const socket = new WebSocket(relayUrl)
   await waitForOpen(socket)
+  // If the relay issues a NIP-42 challenge, authenticate this connection before
+  // publishing so the owned relay accepts general coordination kinds.
+  const challenge = await waitForAuthChallenge(socket, 1_000)
+  if (challenge !== null) {
+    await authenticate(socket, relayUrl, challenge, authSecretKey)
+  }
   socket.send(JSON.stringify(["EVENT", event]))
   const ok = await waitForMessage(
     socket,
@@ -209,6 +259,14 @@ type Phase = {
   readonly nip: string
   readonly note: string
   readonly event: PublishableEvent
+  /**
+   * Secret key used to satisfy a relay's NIP-42 AUTH challenge when publishing
+   * this event (#5537). The OWNED relay write-gates general coordination kinds
+   * behind AUTH; public relays ignore it. For gift wraps (ephemeral wire key)
+   * any held key authenticates the connection; the relay allows kind 1059 on any
+   * authenticated connection. Never logged.
+   */
+  readonly authSecretKey: Uint8Array
 }
 
 /**
@@ -250,6 +308,7 @@ const buildDrill = () => {
     nip: "NIP-38 (kind 30315)",
     note: "HTTP unreachable; requester advertises liveness over Nostr",
     event: requesterStatus,
+    authSecretKey: requesterSk,
   })
   const providerStatus = sign(
     {
@@ -269,6 +328,7 @@ const buildDrill = () => {
     nip: "NIP-38 (kind 30315)",
     note: "provider advertises liveness over Nostr",
     event: providerStatus,
+    authSecretKey: providerSk,
   })
 
   // Phase 3: discovery. Requester advertises its fallback relay set (NIP-65 kind
@@ -288,6 +348,7 @@ const buildDrill = () => {
     nip: "NIP-65 (kind 10002)",
     note: "requester advertises its fallback relay set",
     event: requesterRelayList,
+    authSecretKey: requesterSk,
   })
   const requesterContacts = sign(
     {
@@ -303,6 +364,7 @@ const buildDrill = () => {
     nip: "NIP-02 (kind 3)",
     note: "requester contact list points at the provider",
     event: requesterContacts,
+    authSecretKey: requesterSk,
   })
 
   // Phase 4: NIP-17 gift-wrapped DM (kind 1059). Requester tells the provider:
@@ -318,6 +380,7 @@ const buildDrill = () => {
     nip: "NIP-17 gift wrap (kind 1059)",
     note: "requester -> provider encrypted coordination DM (content is ciphertext)",
     event: giftWrap,
+    authSecretKey: requesterSk,
   })
 
   // Phase 5: NIP-90 labor job keeps moving over Nostr (LBR: request/quote/accept/
@@ -346,6 +409,7 @@ const buildDrill = () => {
     nip: `NIP-90 LBR request (kind ${LBR_AGENTIC_CODING_REQUEST_KIND})`,
     note: "labor request published over Nostr while HTTP is down",
     event: requestEvent,
+    authSecretKey: requesterSk,
   })
 
   const lbrQuote = makeLbrQuote({
@@ -367,6 +431,7 @@ const buildDrill = () => {
     nip: `NIP-90 LBR quote (kind ${LBR_FEEDBACK_KIND})`,
     note: "provider quotes the job over Nostr",
     event: quoteEvent,
+    authSecretKey: providerSk,
   })
 
   const lbrAcceptance = makeLbrAcceptance({
@@ -391,6 +456,7 @@ const buildDrill = () => {
     nip: `NIP-90 LBR acceptance (kind ${LBR_FEEDBACK_KIND})`,
     note: "requester accepts the quote over Nostr",
     event: acceptanceEvent,
+    authSecretKey: requesterSk,
   })
 
   const lbrResult = makeLbrResult({
@@ -412,6 +478,7 @@ const buildDrill = () => {
     nip: `NIP-90 LBR result (kind ${LBR_AGENTIC_CODING_RESULT_KIND})`,
     note: "provider delivers the result over Nostr",
     event: resultEvent,
+    authSecretKey: providerSk,
   })
 
   // Phase 6: recovery / reconcile. HTTP is back; each agent publishes an "online"
@@ -430,6 +497,7 @@ const buildDrill = () => {
     nip: "NIP-38 (kind 30315)",
     note: "requester reconciles on recovery",
     event: requesterRecovered,
+    authSecretKey: requesterSk,
   })
   const providerRecovered = sign(
     {
@@ -445,6 +513,7 @@ const buildDrill = () => {
     nip: "NIP-38 (kind 30315)",
     note: "provider reconciles on recovery",
     event: providerRecovered,
+    authSecretKey: providerSk,
   })
 
   return { requesterPk, providerPk, phases }
@@ -496,7 +565,7 @@ const runSmoke = async (flags: Flags) => {
   for (const p of phases) {
     if (!first) await sleep(publishDelayMs)
     first = false
-    await publishEvent(relayUrl, p.event)
+    await publishEvent(relayUrl, p.event, p.authSecretKey)
   }
   const readBack: Array<string> = []
   for (const p of phases) {
