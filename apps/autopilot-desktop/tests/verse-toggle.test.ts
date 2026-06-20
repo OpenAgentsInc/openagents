@@ -16,6 +16,7 @@ import { PressedKey, ToggleVerse } from "../src/ui/message"
 import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
+  chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 
 const VERSE_ENV_KEYS = [
@@ -24,6 +25,7 @@ const VERSE_ENV_KEYS = [
   "VITE_VERSE_DISABLED",
   "VITE_CHAT_WORLD_SCENE",
   "VITE_CHAT_WORLD_PAYMENTS",
+  "VITE_CHAT_WORLD_MULTIPLAYER",
   "VITE_AGENT_CHARACTER_CREATION",
 ] as const
 
@@ -55,6 +57,7 @@ describe("The Verse runtime toggle (#5730)", () => {
       CHAT_WORLD_PAYMENTS: true,
     })
     expect(agentCharacterCreationFlag()).toBe(true)
+    expect(chatWorldMultiplayerFlag()).toBe(true)
   })
 
   test("launch build keeps an explicit Verse kill switch", () => {
@@ -69,6 +72,7 @@ describe("The Verse runtime toggle (#5730)", () => {
       CHAT_WORLD_PAYMENTS: false,
     })
     expect(agentCharacterCreationFlag()).toBe(false)
+    expect(chatWorldMultiplayerFlag()).toBe(false)
   })
 
   test("legacy per-feature flags can still enable a partial debug bundle", () => {
@@ -76,6 +80,7 @@ describe("The Verse runtime toggle (#5730)", () => {
     process.env.VITE_VERSE_ENABLED = "0"
     process.env.VITE_CHAT_WORLD_SCENE = "1"
     process.env.VITE_CHAT_WORLD_PAYMENTS = "0"
+    process.env.VITE_CHAT_WORLD_MULTIPLAYER = "0"
     process.env.VITE_AGENT_CHARACTER_CREATION = "0"
 
     expect(chatWorldBuildFlags()).toEqual({
@@ -83,6 +88,7 @@ describe("The Verse runtime toggle (#5730)", () => {
       CHAT_WORLD_PAYMENTS: false,
     })
     expect(agentCharacterCreationFlag()).toBe(false)
+    expect(chatWorldMultiplayerFlag()).toBe(false)
   })
 
   test("ToggleVerse flips the flag and is its own inverse", () => {

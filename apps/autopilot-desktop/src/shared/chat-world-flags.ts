@@ -53,7 +53,7 @@ export const agentCharacterCreationFlag = (): boolean =>
   verseFeatureFlag("VITE_AGENT_CHARACTER_CREATION")
 
 export const chatWorldMultiplayerFlag = (): boolean =>
-  envFlag("VITE_CHAT_WORLD_MULTIPLAYER")
+  verseFeatureFlag("VITE_CHAT_WORLD_MULTIPLAYER")
 
 export const chatWorldGameLayerFlags = (): {
   readonly hotbar: boolean

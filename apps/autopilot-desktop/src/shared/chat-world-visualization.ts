@@ -143,6 +143,51 @@ const vectorFromXYZ = (
       ]
     : null
 
+// ── Public SpacetimeDB world → visible station/avatar entities ──────────────
+
+export const CHAT_WORLD_STATION_NODE_PREFIX = "world:station:"
+export const CHAT_WORLD_AVATAR_NODE_PREFIX = "world:avatar:"
+
+export type ChatWorldMultiplayerLayer = {
+  readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
+}
+
+export const chatWorldMultiplayerLayer = (
+  world: ChatWorldMultiplayerProjection | null | undefined,
+): ChatWorldMultiplayerLayer => {
+  if (world?.connected !== true) return { entities: [] }
+
+  const entities: TrainingRunEntityDefinition[] = []
+
+  for (const station of world.stations) {
+    const position = vectorFromXYZ(station.x, station.y, station.z)
+    if (position === null) continue
+    entities.push({
+      id: `${CHAT_WORLD_STATION_NODE_PREFIX}${station.pylonRef}`,
+      label: station.label,
+      status: "verified",
+      position,
+    })
+  }
+
+  for (const agent of world.agents) {
+    const position = vectorFromXYZ(agent.x, agent.y, agent.z)
+    if (position === null) continue
+    const chats =
+      agent.chatMessages.length > 0
+        ? ` · ${agent.chatMessages.length} chat`
+        : ""
+    entities.push({
+      id: `${CHAT_WORLD_AVATAR_NODE_PREFIX}${agent.avatarRef}`,
+      label: `${agent.label} · ${agent.movementMode}${chats}`,
+      status: agent.attentionRefs.length > 0 ? "sync" : "active",
+      position,
+    })
+  }
+
+  return { entities }
+}
+
 const endpointRefKeys = (ref: string): ReadonlyArray<string> => {
   const trimmed = ref.trim()
   if (trimmed.length === 0) return []
@@ -304,7 +349,19 @@ export const chatWorldPaymentLayer = (
   return { entities: [...entityById.values()], beams, bursts }
 }
 
-// ── Compose pylons + payments into one visualization options object ───────────
+// ── Compose pylons + multiplayer + payments into one visualization object ────
+
+export const withChatWorldMultiplayerLayer = (
+  base: TrainingRunVisualizationOptions,
+  world: ChatWorldMultiplayerProjection | null | undefined,
+): TrainingRunVisualizationOptions => {
+  const layer = chatWorldMultiplayerLayer(world)
+  if (layer.entities.length === 0) return base
+  return {
+    ...base,
+    entities: [...(base.entities ?? []), ...layer.entities],
+  }
+}
 
 // Take the pylon-graph options (already built from the live-or-seed network) and
 // overlay the evidence-bound payment layer. motionPolicy.evidence is forced to

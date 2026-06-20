@@ -12,10 +12,14 @@ const regionRef = chatWorldRegionRefForRun(runRef)
 describe("chat world multiplayer projection (#5739)", () => {
   test("builds the desktop SpacetimeDB subscription query set", () => {
     const queries = chatWorldMultiplayerSubscriptionQueries(runRef)
+    expect(queries).toContain(`SELECT * FROM world_region WHERE region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM pylon_station WHERE run_ref = '${runRef}'`)
     expect(queries).toContain("SELECT * FROM agent_avatar")
     expect(queries).toContain(`SELECT * FROM avatar_position WHERE region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM local_chat_message WHERE region_ref = '${regionRef}'`)
+    expect(queries).toContain("SELECT * FROM chat_bubble")
+    expect(queries).toContain(`SELECT * FROM local_emote WHERE region_ref = '${regionRef}'`)
+    expect(queries).toContain("SELECT * FROM agent_intent")
   })
 
   test("projects only row-backed avatars with live positions and chat", () => {

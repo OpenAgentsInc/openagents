@@ -40,6 +40,9 @@ export const GotChatWorldScene = m("GotChatWorldScene", { scene: S.Unknown })
 export const GotChatWorldPaymentParticle = m("GotChatWorldPaymentParticle", {
   particle: S.Unknown,
 })
+export const GotChatWorldMultiplayer = m("GotChatWorldMultiplayer", {
+  world: S.Unknown,
+})
 // #5730/#5822: a click on a scene node/entity. Payment endpoints encode their
 // particle (`pay:<eventRef>:from|to`) and labels carry receipt refs. Verse
 // training stages use the same label slot for their public-ref detail string.
@@ -637,6 +640,7 @@ export const Message = S.Union([
   GotNodeState,
   GotPylonStats,
   GotChatWorldScene,
+  GotChatWorldMultiplayer,
   GotChatWorldPaymentParticle,
   SelectedChatWorldNode,
   GotNotifications,

@@ -39,6 +39,7 @@ import type {
   ChatWorldPylonScene,
   PaymentParticle,
 } from "../shared/chat-world-scene"
+import type { ChatWorldMultiplayerProjection } from "../shared/chat-world-multiplayer"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG as DefaultDesktopProofReplaySlug,
@@ -353,8 +354,11 @@ export const Model = ts("AutopilotDesktop", {
   //   - chatWorldParticles: the bounded set of active payment-particle
   //     descriptors (opaque PaymentParticle[]; read via modelChatWorldParticles),
   //     each evidence-bound to a real sourceRef.
+  //   - chatWorldMultiplayer: latest public SpacetimeDB world projection
+  //     (stations, avatars, proximity chat) or null while disconnected.
   chatWorldScene: S.NullOr(S.Unknown),
   chatWorldParticles: S.Array(S.Unknown),
+  chatWorldMultiplayer: S.NullOr(S.Unknown),
   // #5730: the receipt/source ref of the last-clicked payment beam endpoint, for
   // the inspector chip. Null when nothing is selected. Click → SelectedChatWorldNode.
   chatWorldInspectedRef: S.NullOr(S.String),
@@ -717,6 +721,11 @@ export const modelChatWorldParticles = (
 ): ReadonlyArray<PaymentParticle> =>
   model.chatWorldParticles as ReadonlyArray<PaymentParticle>
 
+export const modelChatWorldMultiplayer = (
+  model: Model,
+): ChatWorldMultiplayerProjection | null =>
+  model.chatWorldMultiplayer as ChatWorldMultiplayerProjection | null
+
 export const modelPublicActivityTimeline = (
   model: Model,
 ): PublicActivityTimelineResponse | null =>
@@ -998,6 +1007,7 @@ export const initialModel: Model = Model.make({
   pylonStats: null,
   chatWorldScene: null,
   chatWorldParticles: [],
+  chatWorldMultiplayer: null,
   chatWorldInspectedRef: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },

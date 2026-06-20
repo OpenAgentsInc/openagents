@@ -18,6 +18,7 @@ import { Subscription } from "foldkit"
 import { setEmit } from "./bridge"
 import {
   EndedPaneDrag,
+  GotChatWorldMultiplayer,
   GotChatWorldPaymentParticle,
   GotChatWorldScene,
   MovedPaneDragPointer,
@@ -28,8 +29,12 @@ import type { Model } from "./model"
 import {
   subscribePaymentParticles,
   subscribePylonScene,
+  subscribeSpacetimeWorld,
 } from "./chat-world-subscriptions"
-import { chatWorldBuildFlags } from "../shared/chat-world-flags"
+import {
+  chatWorldBuildFlags,
+  chatWorldMultiplayerFlag,
+} from "../shared/chat-world-flags"
 
 // The inbound push stream. We stash a queue-backed emitter in the bridge so the
 // Electroview handlers can feed messages in; teardown clears it.
@@ -251,6 +256,23 @@ const paymentParticleStream: Stream.Stream<Message> = Stream.callback<Message>((
   ).pipe(Effect.flatMap(() => Effect.never)),
 )
 
+const chatWorldSubscriptionFlags = () => ({
+  ...chatWorldBuildFlags(),
+  CHAT_WORLD_MULTIPLAYER: chatWorldMultiplayerFlag(),
+})
+
+const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() =>
+      subscribeSpacetimeWorld(
+        (world) => Queue.offerUnsafe(queue, GotChatWorldMultiplayer({ world })),
+        { flags: chatWorldSubscriptionFlags() },
+      ),
+    ),
+    (unsubscribe) => Effect.sync(() => unsubscribe()),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
 export const subscriptions = Subscription.make<Model, Message>()(() => ({
   inbound: Subscription.persistent(inboundStream),
   // #5465: route window keydown into the reducer as PressedKey.
@@ -261,4 +283,5 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   // (no I/O) unless their build flag is on, so flag-OFF behavior is unchanged.
   chatWorldScene: Subscription.persistent(pylonSceneStream),
   chatWorldPayments: Subscription.persistent(paymentParticleStream),
+  chatWorldSpacetime: Subscription.persistent(spacetimeWorldStream),
 }))

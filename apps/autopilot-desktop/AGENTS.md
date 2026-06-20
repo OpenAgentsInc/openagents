@@ -82,6 +82,13 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   payment beams must use those coordinates. Missing endpoints stay explicitly
   labeled as fallback/unresolved; never invent a fake location or animate a
   payment without source refs.
+- **SpacetimeDB is a public world projection, not authority.** The Desktop
+  webview may subscribe to `openagents-world` public rows for regions, Pylon
+  stations, avatars, positions, proximity chat, bubbles, emotes, and intents.
+  Browser/user reducers are limited to explicit interaction state such as
+  `join_region` and guarded `set_avatar_position` writes. Never call service-only
+  projection reducers from Desktop, and never treat SpacetimeDB rows as
+  training, settlement, proof, product-promise, wallet, or private-data truth.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches

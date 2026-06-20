@@ -6,11 +6,12 @@
 //                                        ChatWorldPylonScene (live nodes + growth)
 //   - subscribePaymentParticles(dispatch) P2: SSE /api/public/activity-timeline/
 //                                        stream (poll fallback) → PaymentParticle
+//   - subscribeSpacetimeWorld(dispatch)   P2: openagents-world SpacetimeDB
+//                                        public rows → multiplayer projection
 //
-// Both are FLAG-GATED (default OFF) and return an unsubscribe() the scene calls
-// on teardown. They are intentionally NOT registered in the static Foldkit
-// `subscriptions` (subscriptions.ts) — the P0 scene owns its own lifecycle and
-// will call these when the scene mounts (see the TODO in subscriptions.ts).
+// All feeds are FLAG-GATED and return an unsubscribe() the scene calls
+// on teardown. The Foldkit subscription layer owns their lifecycle and the
+// hooks themselves stay inert when the matching Verse flags are disabled.
 //
 // "browser UA": these run inside the Electrobun webview and fetch the public
 // openagents.com endpoints directly, so requests carry the webview's browser
@@ -27,7 +28,22 @@ import {
   type ChatWorldPylonScene,
   type PaymentParticle,
 } from "../shared/chat-world-scene"
+import {
+  DEFAULT_TASSADAR_WORLD_RUN_REF,
+  OPENAGENTS_WORLD_DATABASE,
+  OPENAGENTS_WORLD_URL,
+  chatWorldMultiplayerSubscriptionQueries,
+  type ChatWorldMultiplayerProjection,
+} from "../shared/chat-world-multiplayer"
+import {
+  chatWorldDesktopAvatarIdentity,
+  defaultChatWorldRegionForRun,
+  projectChatWorldSpacetimeRows,
+  type ChatWorldAvatarPositionPlan,
+  type ChatWorldSpacetimeRows,
+} from "../shared/chat-world-spacetimedb"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+import { DbConnection as GeneratedWorldConnection } from "../../../openagents.com/apps/web/src/scene/spacetimeWorldBindings"
 
 const PUBLIC_BASE_URL = "https://openagents.com"
 const PYLON_STATS_PATH = "/api/public/pylon-stats"
@@ -50,7 +66,11 @@ export type ChatWorldSubscriptionDeps = {
   readonly setInterval?: (handler: () => void, ms: number) => unknown
   readonly clearInterval?: (handle: unknown) => void
   /** override flags (default: chatWorldFlags() from globalThis.__OA_FLAGS). */
-  readonly flags?: { readonly CHAT_WORLD_SCENE?: boolean; readonly CHAT_WORLD_PAYMENTS?: boolean }
+  readonly flags?: {
+    readonly CHAT_WORLD_SCENE?: boolean
+    readonly CHAT_WORLD_PAYMENTS?: boolean
+    readonly CHAT_WORLD_MULTIPLAYER?: boolean
+  }
 }
 
 const resolveBaseUrl = (deps?: ChatWorldSubscriptionDeps): string =>
@@ -221,5 +241,348 @@ export const subscribePaymentParticles = (
     source.removeEventListener("settlement_recorded", onMessage as EventListener)
     source.removeEventListener("message", onMessage as EventListener)
     source.close()
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2 — SpacetimeDB world rows
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SpacetimeTableRef = Readonly<{
+  iter?: () => Iterable<unknown>
+  onInsert?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+  onUpdate?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+  onDelete?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+  removeOnInsert?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+  removeOnUpdate?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+  removeOnDelete?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
+}>
+
+export type SpacetimeWorldConnection = Readonly<{
+  db?: Record<string, SpacetimeTableRef | undefined>
+  reducers?: {
+    readonly joinRegion?: (args: {
+      readonly regionRef: string
+      readonly displayName: string
+    }) => unknown
+    readonly setAvatarPosition?: (args: {
+      readonly regionRef: string
+      readonly positionX: number
+      readonly positionY: number
+      readonly positionZ: number
+      readonly yaw: number
+      readonly pitch: number
+      readonly movementMode: string
+    }) => unknown
+  }
+  subscriptionBuilder?: () => {
+    onApplied?: (cb: (...args: ReadonlyArray<unknown>) => void) => unknown
+    onError?: (cb: (...args: ReadonlyArray<unknown>) => void) => unknown
+    subscribe?: (queries: ReadonlyArray<string>) => { unsubscribe?: () => void }
+  }
+  disconnect?: () => void
+}>
+
+type SpacetimeWorldConnectInput = Readonly<{
+  database: string
+  token: string | null
+  worldUrl: string
+  onConnected: (token: string | null) => void
+  onDisconnected: () => void
+  onUnavailable: () => void
+}>
+
+export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
+  readonly connect?: (input: SpacetimeWorldConnectInput) => SpacetimeWorldConnection
+  readonly database?: string
+  readonly worldUrl?: string
+  readonly runRef?: string
+  readonly nowMs?: () => number
+  readonly storage?: {
+    readonly getItem: (key: string) => string | null
+    readonly setItem: (key: string, value: string) => void
+    readonly removeItem?: (key: string) => void
+  } | null
+  readonly setTimeout?: (handler: () => void, ms: number) => unknown
+  readonly clearTimeout?: (handle: unknown) => void
+  readonly maxReconnectAttempts?: number
+  readonly reconnectBaseMs?: number
+  readonly identity?: {
+    readonly pylonRef?: string | null
+    readonly nodeLabel?: string | null
+    readonly fallbackActorRef?: string | null
+  }
+}
+
+export type SpacetimeWorldDispatch = (
+  world: ChatWorldMultiplayerProjection,
+) => void
+
+const SPACETIME_TOKEN_STORAGE_KEY = "openagents.world.spacetimedb.token.v1"
+
+const resolveStorage = (
+  deps?: ChatWorldSpacetimeSubscriptionDeps,
+): ChatWorldSpacetimeSubscriptionDeps["storage"] => {
+  if (deps?.storage !== undefined) return deps.storage
+  const storage = (globalThis as { localStorage?: Storage }).localStorage
+  return storage ?? null
+}
+
+const resolveTimeout = (
+  deps?: ChatWorldSpacetimeSubscriptionDeps,
+): ((handler: () => void, ms: number) => unknown) =>
+  deps?.setTimeout ??
+  ((handler, ms) =>
+    (globalThis as unknown as { setTimeout: (h: () => void, m: number) => unknown })
+      .setTimeout(handler, ms))
+
+const resolveClearTimeout = (
+  deps?: ChatWorldSpacetimeSubscriptionDeps,
+): ((handle: unknown) => void) =>
+  deps?.clearTimeout ??
+  ((handle) =>
+    (globalThis as unknown as { clearTimeout: (h: unknown) => void })
+      .clearTimeout(handle))
+
+const defaultSpacetimeConnect = (
+  input: SpacetimeWorldConnectInput,
+): SpacetimeWorldConnection => {
+  let builder = GeneratedWorldConnection
+    .builder()
+    .withUri(input.worldUrl)
+    .withDatabaseName(input.database)
+    .onConnect((_ctx: unknown, _identity: unknown, token: string) =>
+      input.onConnected(typeof token === "string" ? token : null),
+    )
+    .onConnectError(() => input.onUnavailable())
+    .onDisconnect(() => input.onDisconnected())
+
+  if (input.token !== null && input.token.length > 0) {
+    builder = builder.withToken(input.token)
+  }
+  return builder.build() as unknown as SpacetimeWorldConnection
+}
+
+const collectRows = (table: SpacetimeTableRef | undefined): ReadonlyArray<unknown> =>
+  table?.iter === undefined ? [] : [...table.iter()]
+
+const worldRowsFromConnection = (
+  connection: SpacetimeWorldConnection,
+): ChatWorldSpacetimeRows => ({
+  regions: collectRows(connection.db?.worldRegion),
+  stations: collectRows(connection.db?.pylonStation),
+  avatars: collectRows(connection.db?.agentAvatar),
+  positions: collectRows(connection.db?.avatarPosition),
+  messages: collectRows(connection.db?.localChatMessage),
+  attention: collectRows(connection.db?.pylonAttention),
+})
+
+const invokeMaybePromise = (value: unknown): void => {
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as { catch?: unknown }).catch === "function"
+  ) {
+    void (value as Promise<unknown>).catch(() => null)
+  }
+}
+
+export const publishSpacetimeAvatarPosition = (
+  connection: SpacetimeWorldConnection,
+  plan: ChatWorldAvatarPositionPlan,
+): boolean => {
+  if (plan.ok !== true) return false
+  const reducer = connection.reducers?.setAvatarPosition
+  if (reducer === undefined) return false
+  invokeMaybePromise(reducer(plan.write))
+  return true
+}
+
+const attachWorldConnection = (input: {
+  readonly connection: SpacetimeWorldConnection
+  readonly dispatch: SpacetimeWorldDispatch
+  readonly database: string
+  readonly runRef: string
+  readonly nowMs: () => number
+  readonly worldUrl: string
+  readonly displayName: string
+  readonly onUnavailable: () => void
+}): Unsubscribe => {
+  const tables = [
+    input.connection.db?.worldRegion,
+    input.connection.db?.pylonStation,
+    input.connection.db?.agentAvatar,
+    input.connection.db?.avatarPosition,
+    input.connection.db?.pylonAttention,
+    input.connection.db?.localChatMessage,
+    input.connection.db?.chatBubble,
+    input.connection.db?.localEmote,
+    input.connection.db?.agentIntent,
+  ]
+  let subscriptionHandle: { unsubscribe?: () => void } | null = null
+
+  const dispatchSnapshot = (): void => {
+    const projection = projectChatWorldSpacetimeRows({
+      flagEnabled: true,
+      runRef: input.runRef,
+      rows: worldRowsFromConnection(input.connection),
+      nowMs: input.nowMs(),
+      worldUrl: input.worldUrl,
+      database: input.database,
+    })
+    input.dispatch(projection.world)
+  }
+
+  const joinRegion = (): void => {
+    const rows = worldRowsFromConnection(input.connection)
+    const projection = projectChatWorldSpacetimeRows({
+      flagEnabled: true,
+      runRef: input.runRef,
+      rows,
+      nowMs: input.nowMs(),
+      worldUrl: input.worldUrl,
+      database: input.database,
+    })
+    const region = defaultChatWorldRegionForRun(projection.regions, input.runRef)
+    if (region === null) return
+    invokeMaybePromise(input.connection.reducers?.joinRegion?.({
+      regionRef: region.regionRef,
+      displayName: input.displayName,
+    }))
+  }
+
+  const onRowsChanged = (): void => dispatchSnapshot()
+
+  for (const table of tables) {
+    table?.onInsert?.(onRowsChanged)
+    table?.onUpdate?.(onRowsChanged)
+    table?.onDelete?.(onRowsChanged)
+  }
+
+  try {
+    const builder = input.connection.subscriptionBuilder?.()
+    builder?.onApplied?.(() => {
+      dispatchSnapshot()
+      joinRegion()
+    })
+    builder?.onError?.(() => input.onUnavailable())
+    subscriptionHandle = builder?.subscribe?.(
+      chatWorldMultiplayerSubscriptionQueries(input.runRef),
+    ) ?? null
+  } catch {
+    input.onUnavailable()
+  }
+
+  return () => {
+    for (const table of tables) {
+      table?.removeOnInsert?.(onRowsChanged)
+      table?.removeOnUpdate?.(onRowsChanged)
+      table?.removeOnDelete?.(onRowsChanged)
+    }
+    try {
+      subscriptionHandle?.unsubscribe?.()
+    } catch {
+      // The SDK only allows unsubscribe after a subscription is active. Teardown
+      // may happen during connect/reconnect; disconnect below is the hard stop.
+    }
+    input.connection.disconnect?.()
+  }
+}
+
+export const subscribeSpacetimeWorld = (
+  dispatch: SpacetimeWorldDispatch,
+  deps?: ChatWorldSpacetimeSubscriptionDeps,
+): Unsubscribe => {
+  const flags = deps?.flags ?? chatWorldFlags()
+  if (flags.CHAT_WORLD_MULTIPLAYER !== true) return noop
+
+  const database = deps?.database ?? OPENAGENTS_WORLD_DATABASE
+  const worldUrl = deps?.worldUrl ?? OPENAGENTS_WORLD_URL
+  const runRef = deps?.runRef ?? DEFAULT_TASSADAR_WORLD_RUN_REF
+  const nowMs = deps?.nowMs ?? (() => Date.now())
+  const storage = resolveStorage(deps)
+  const connect = deps?.connect ?? defaultSpacetimeConnect
+  const setTimeoutFn = resolveTimeout(deps)
+  const clearTimeoutFn = resolveClearTimeout(deps)
+  const maxReconnectAttempts = deps?.maxReconnectAttempts ?? Number.POSITIVE_INFINITY
+  const reconnectBaseMs = deps?.reconnectBaseMs ?? 2_000
+  const identity = chatWorldDesktopAvatarIdentity(deps?.identity ?? {})
+
+  let stopped = false
+  let retryHandle: unknown = null
+  let cleanupConnection: Unsubscribe | null = null
+  let reconnectAttempt = 0
+
+  const dispatchUnavailable = (): void => {
+    dispatch(projectChatWorldSpacetimeRows({
+      flagEnabled: false,
+      runRef,
+      rows: null,
+      nowMs: nowMs(),
+      worldUrl,
+      database,
+    }).world)
+  }
+
+  const clearRetry = (): void => {
+    if (retryHandle !== null) {
+      clearTimeoutFn(retryHandle)
+      retryHandle = null
+    }
+  }
+
+  const scheduleReconnect = (): void => {
+    if (stopped || reconnectAttempt >= maxReconnectAttempts) return
+    clearRetry()
+    const delay = Math.min(30_000, reconnectBaseMs * (2 ** reconnectAttempt))
+    reconnectAttempt += 1
+    retryHandle = setTimeoutFn(() => connectOnce(), delay)
+  }
+
+  const unavailable = (): void => {
+    if (stopped) return
+    storage?.removeItem?.(SPACETIME_TOKEN_STORAGE_KEY)
+    dispatchUnavailable()
+    scheduleReconnect()
+  }
+
+  function connectOnce(): void {
+    if (stopped) return
+    cleanupConnection?.()
+    cleanupConnection = null
+    try {
+      const connection = connect({
+        database,
+        token: storage?.getItem(SPACETIME_TOKEN_STORAGE_KEY) ?? null,
+        worldUrl,
+        onConnected: (token) => {
+          reconnectAttempt = 0
+          if (token !== null) storage?.setItem(SPACETIME_TOKEN_STORAGE_KEY, token)
+        },
+        onDisconnected: unavailable,
+        onUnavailable: unavailable,
+      })
+      cleanupConnection = attachWorldConnection({
+        connection,
+        database,
+        dispatch,
+        displayName: identity.displayName,
+        nowMs,
+        onUnavailable: unavailable,
+        runRef,
+        worldUrl,
+      })
+    } catch {
+      unavailable()
+    }
+  }
+
+  connectOnce()
+
+  return () => {
+    stopped = true
+    clearRetry()
+    cleanupConnection?.()
+    cleanupConnection = null
   }
 }

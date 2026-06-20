@@ -11,10 +11,12 @@ import {
   pylonGrowthTier,
 } from "../src/shared/chat-world-scene"
 import {
+  chatWorldMultiplayerLayer,
   chatWorldPaymentEndpointIndex,
   chatWorldPaymentLayer,
   liveChatWorldNetworkScene,
   resolveChatWorldPaymentEndpoint,
+  withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
 } from "../src/shared/chat-world-visualization"
 import { pylonNetworkVisualizationOptions } from "../src/ui/pylon-network-visualization"
@@ -220,6 +222,31 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
   })
 })
 
+describe("chatWorldMultiplayerLayer", () => {
+  test("renders public stations and avatars as Verse entities", () => {
+    const layer = chatWorldMultiplayerLayer(worldProjection())
+    expect(layer.entities).toHaveLength(2)
+    expect(layer.entities[0]).toMatchObject({
+      id: "world:station:pylon.alpha",
+      label: "Alpha Pylon",
+      status: "verified",
+      position: [1.25, 0.5, -2],
+    })
+    expect(layer.entities[1]).toMatchObject({
+      id: "world:avatar:avatar.bravo",
+      status: "active",
+      position: [-3, 1, 2.75],
+    })
+    expect(layer.entities[1]!.label).toContain("Tassadar")
+  })
+
+  test("stays inert while disconnected", () => {
+    expect(
+      chatWorldMultiplayerLayer(worldProjection({ connected: false })).entities,
+    ).toEqual([])
+  })
+})
+
 describe("withChatWorldPaymentLayer", () => {
   const base = pylonNetworkVisualizationOptions(
     liveChatWorldNetworkScene(liveScene())!,
@@ -239,5 +266,19 @@ describe("withChatWorldPaymentLayer", () => {
     expect(out.motionPolicy?.evidence).toBe("required")
     // the base pylon graph nodes survive the overlay
     expect(out.nodes).toBe(base.nodes)
+  })
+
+  test("world layer composes before payment layer so beams can resolve endpoints", () => {
+    const withWorld = withChatWorldMultiplayerLayer(base, worldProjection())
+    const out = withChatWorldPaymentLayer(
+      withWorld,
+      [particle({ fromRef: "pylon:alpha", toRef: "agent.bravo" })],
+      worldProjection(),
+    )
+
+    expect((out.entities ?? []).some((entity) => entity.id === "world:station:pylon.alpha")).toBe(true)
+    expect((out.entities ?? []).some((entity) => entity.id === "world:avatar:avatar.bravo")).toBe(true)
+    expect(out.entities?.find((entity) => entity.id === "pay:evt-1:from")?.position).toEqual([1.25, 0.5, -2])
+    expect(out.entities?.find((entity) => entity.id === "pay:evt-1:to")?.position).toEqual([-3, 1, 2.75])
   })
 })

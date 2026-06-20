@@ -63,6 +63,7 @@ import type {
 // chat background scene. Pure projections live in shared/chat-world-*.ts.
 import {
   liveChatWorldNetworkScene,
+  withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization"
 import {
@@ -316,6 +317,7 @@ import {
   modelOnboardingStatus,
   modelIdentityChoiceState,
   modelChatWorldParticles,
+  modelChatWorldMultiplayer,
   modelChatWorldScene,
   modelManagedAccounts,
   modelPaneLayer,
@@ -5854,10 +5856,16 @@ const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions =
     trainingRuns: modelTrainingRuns(model),
   })
   const withBase = withPylonBaseLayer(withTraining, pylonBase)
+  const multiplayer = modelChatWorldMultiplayer(model)
+  const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer)
   // Payment particles only when their flag is on; each is already evidence-bound.
   return CHAT_WORLD_PAYMENTS
-    ? withChatWorldPaymentLayer(withBase, modelChatWorldParticles(model))
-    : withBase
+    ? withChatWorldPaymentLayer(
+        withWorld,
+        modelChatWorldParticles(model),
+        multiplayer,
+      )
+    : withWorld
 }
 
 const pylonBaseProjectionFor = (model: Model): PylonBaseProjection =>

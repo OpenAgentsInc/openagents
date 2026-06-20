@@ -33,6 +33,7 @@
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1",
+    "spacetimedb": "2.6.0",
     "three": "0.184.0"
   },
   "devDependencies": {

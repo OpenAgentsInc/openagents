@@ -800,6 +800,14 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+    case "GotChatWorldMultiplayer":
+      // #5825: public SpacetimeDB world projection for the Verse. The webview
+      // stores it opaque and the view composes it read-only with training,
+      // pylon, and payment layers; reducer never owns world authority.
+      return [
+        Model.make({ ...model, chatWorldMultiplayer: message.world }),
+        noCommands,
+      ]
     case "SelectedChatWorldNode":
       // #5730/#5822: surface either payment receipt refs or a Verse training
       // stage's public-ref detail. Plain pylon nodes still clear the inspector.

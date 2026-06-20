@@ -1,5 +1,6 @@
 export const OPENAGENTS_WORLD_DATABASE = "openagents-world"
 export const OPENAGENTS_WORLD_URL = "https://spacetime.openagents.com"
+export const DEFAULT_TASSADAR_WORLD_RUN_REF = "run.tassadar.executor.20260615"
 export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timeline"
 
 export type ChatWorldStationRow = Readonly<{
@@ -92,7 +93,7 @@ export type ChatWorldMultiplayerProjection = Readonly<{
 const sqlString = (value: string): string => `'${value.replace(/'/g, "''")}'`
 
 export const chatWorldRegionRefForRun = (runRef: string): string =>
-  `region.${runRef.replace(/[^a-zA-Z0-9._-]/g, "_")}`
+  `region.${runRef}.main`
 
 export const chatWorldMultiplayerSubscriptionQueries = (
   runRef: string,
@@ -103,11 +104,15 @@ export const chatWorldMultiplayerSubscriptionQueries = (
   return [
     `SELECT * FROM world_event WHERE run_ref = ${run}`,
     `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
+    `SELECT * FROM world_region WHERE region_ref = ${region}`,
     `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
     "SELECT * FROM agent_avatar",
     `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
     "SELECT * FROM pylon_attention",
     `SELECT * FROM local_chat_message WHERE region_ref = ${region}`,
+    "SELECT * FROM chat_bubble",
+    `SELECT * FROM local_emote WHERE region_ref = ${region}`,
+    "SELECT * FROM agent_intent",
   ]
 }
 

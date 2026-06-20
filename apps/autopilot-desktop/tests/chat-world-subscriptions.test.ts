@@ -2,13 +2,19 @@ import { describe, expect, test } from "bun:test"
 
 import {
   parseActivityStreamData,
+  publishSpacetimeAvatarPosition,
   subscribePaymentParticles,
   subscribePylonScene,
+  subscribeSpacetimeWorld,
 } from "../src/ui/chat-world-subscriptions"
 import type {
   ChatWorldPylonScene,
   PaymentParticle,
 } from "../src/shared/chat-world-scene"
+import {
+  chatWorldRegionRefForRun,
+  type ChatWorldMultiplayerProjection,
+} from "../src/shared/chat-world-multiplayer"
 
 const jsonResponse = (body: unknown, ok = true): Response =>
   ({
@@ -16,6 +22,108 @@ const jsonResponse = (body: unknown, ok = true): Response =>
     status: ok ? 200 : 500,
     json: async () => body,
   }) as unknown as Response
+
+type TableCallback = (...args: ReadonlyArray<unknown>) => void
+
+class FakeTable {
+  rows: unknown[]
+  inserts: TableCallback[] = []
+  updates: TableCallback[] = []
+  deletes: TableCallback[] = []
+
+  constructor(rows: ReadonlyArray<unknown> = []) {
+    this.rows = [...rows]
+  }
+
+  iter(): Iterable<unknown> {
+    return this.rows
+  }
+
+  onInsert(cb: TableCallback): void {
+    this.inserts.push(cb)
+  }
+
+  onUpdate(cb: TableCallback): void {
+    this.updates.push(cb)
+  }
+
+  onDelete(cb: TableCallback): void {
+    this.deletes.push(cb)
+  }
+
+  removeOnInsert(cb: TableCallback): void {
+    this.inserts = this.inserts.filter((item) => item !== cb)
+  }
+
+  removeOnUpdate(cb: TableCallback): void {
+    this.updates = this.updates.filter((item) => item !== cb)
+  }
+
+  removeOnDelete(cb: TableCallback): void {
+    this.deletes = this.deletes.filter((item) => item !== cb)
+  }
+
+  insert(row: unknown): void {
+    this.rows.push(row)
+    for (const cb of this.inserts) cb(row)
+  }
+}
+
+const runRef = "run.tassadar.executor.20260615"
+const regionRef = chatWorldRegionRefForRun(runRef)
+
+const fakeWorldRows = () => ({
+  worldRegion: new FakeTable([{
+    regionRef,
+    runRef,
+    label: "Tassadar main",
+    minX: -10,
+    minY: -2,
+    minZ: -10,
+    maxX: 10,
+    maxY: 8,
+    maxZ: 10,
+    proximityRadiusMeters: 8,
+    avatarPositionMinIntervalMs: 1_000,
+  }]),
+  pylonStation: new FakeTable([{
+    pylonRef: "pylon.public.1",
+    runRef,
+    regionRef,
+    label: "Public Pylon",
+    positionX: 1,
+    positionY: 0,
+    positionZ: 2,
+  }]),
+  agentAvatar: new FakeTable([{
+    avatarRef: "avatar.public.1",
+    actorRef: "agent.public.1",
+    actorKind: "pylon_agent",
+    displayName: "Agent One",
+  }]),
+  avatarPosition: new FakeTable([{
+    avatarRef: "avatar.public.1",
+    regionRef,
+    positionX: 3,
+    positionY: 0,
+    positionZ: 4,
+    yaw: 0,
+    movementMode: "walking",
+    lastSeenEpochMs: 900,
+  }]),
+  pylonAttention: new FakeTable([]),
+  localChatMessage: new FakeTable([{
+    messageRef: "chat.public.1",
+    speakerAvatarRef: "avatar.public.1",
+    regionRef,
+    body: "hello nearby",
+    radiusMeters: 8,
+    expiresAtEpochMs: 2_000,
+  }]),
+  chatBubble: new FakeTable([]),
+  localEmote: new FakeTable([]),
+  agentIntent: new FakeTable([]),
+})
 
 describe("subscribePylonScene (flag-gated poll)", () => {
   test("returns noop and does not fetch when CHAT_WORLD_SCENE is off", () => {
@@ -145,5 +253,189 @@ describe("subscribePaymentParticles (flag-gated, evidence-bound)", () => {
     expect(particles).toHaveLength(1)
     expect(particles[0]!.id).toBe("ok")
     expect(particles[0]!.sourceRefs).toContain("receipt.ok")
+  })
+})
+
+describe("subscribeSpacetimeWorld", () => {
+  test("noop when CHAT_WORLD_MULTIPLAYER is off", () => {
+    let connected = 0
+    const stop = subscribeSpacetimeWorld(() => {}, {
+      flags: { CHAT_WORLD_MULTIPLAYER: false },
+      connect: () => {
+        connected += 1
+        return {}
+      },
+    })
+
+    stop()
+    expect(connected).toBe(0)
+  })
+
+  test("subscribes to public world rows, dispatches a projection, and joins region", () => {
+    const worlds: ChatWorldMultiplayerProjection[] = []
+    const joins: unknown[] = []
+    const rows = fakeWorldRows()
+    let applied: (() => void) | null = null
+    let capturedQueries: ReadonlyArray<string> = []
+    let disconnected = false
+    let unsubscribed = false
+    let tokenRead: string | null = null
+    let tokenWritten: string | null = null
+
+    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+      flags: { CHAT_WORLD_MULTIPLAYER: true },
+      runRef,
+      nowMs: () => 1_000,
+      identity: { pylonRef: "pylon.public.1", nodeLabel: "Local Pylon" },
+      storage: {
+        getItem: (key) => {
+          tokenRead = key
+          return "stored-token"
+        },
+        setItem: (_key, value) => {
+          tokenWritten = value
+        },
+      },
+      connect: (input) => {
+        input.onConnected("fresh-token")
+        const builder = {
+          onApplied: (cb: () => void) => {
+            applied = cb
+            return builder
+          },
+          onError: () => builder,
+          subscribe: (queries: ReadonlyArray<string>) => {
+            capturedQueries = queries
+            return {
+              unsubscribe: () => {
+                unsubscribed = true
+              },
+            }
+          },
+        }
+        return {
+          db: rows,
+          reducers: {
+            joinRegion: (args: unknown) => {
+              joins.push(args)
+            },
+          },
+          subscriptionBuilder: () => builder,
+          disconnect: () => {
+            disconnected = true
+          },
+        }
+      },
+    })
+
+    expect(tokenRead).toBe("openagents.world.spacetimedb.token.v1")
+    expect(tokenWritten).toBe("fresh-token")
+    expect(capturedQueries).toContain(
+      `SELECT * FROM world_region WHERE region_ref = '${regionRef}'`,
+    )
+
+    applied?.()
+
+    expect(worlds).toHaveLength(1)
+    expect(worlds[0]!.connected).toBe(true)
+    expect(worlds[0]!.stations[0]?.pylonRef).toBe("pylon.public.1")
+    expect(worlds[0]!.agents[0]?.chatMessages).toEqual(["hello nearby"])
+    expect(joins).toEqual([{
+      regionRef,
+      displayName: "Local Pylon",
+    }])
+
+    rows.avatarPosition.insert({
+      avatarRef: "avatar.public.1",
+      regionRef,
+      positionX: 4,
+      positionY: 0,
+      positionZ: 5,
+      yaw: 0,
+      movementMode: "running",
+      lastSeenEpochMs: 1_000,
+    })
+    expect(worlds.length).toBeGreaterThanOrEqual(2)
+
+    stop()
+    expect(unsubscribed).toBe(true)
+    expect(disconnected).toBe(true)
+  })
+
+  test("dispatches disconnected fallback and removes stale token when connect fails", () => {
+    const worlds: ChatWorldMultiplayerProjection[] = []
+    let removed: string | null = null
+    let scheduled = false
+
+    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+      flags: { CHAT_WORLD_MULTIPLAYER: true },
+      runRef,
+      nowMs: () => 1_000,
+      maxReconnectAttempts: 0,
+      storage: {
+        getItem: () => "stale-token",
+        setItem: () => {},
+        removeItem: (key) => {
+          removed = key
+        },
+      },
+      setTimeout: () => {
+        scheduled = true
+        return 0
+      },
+      clearTimeout: () => {},
+      connect: () => {
+        throw new Error("offline")
+      },
+    })
+
+    stop()
+    expect(worlds).toHaveLength(1)
+    expect(worlds[0]!.connected).toBe(false)
+    expect(removed).toBe("openagents.world.spacetimedb.token.v1")
+    expect(scheduled).toBe(false)
+  })
+
+  test("publishes local avatar position only after a safe movement plan", () => {
+    const writes: unknown[] = []
+    const connection = {
+      reducers: {
+        setAvatarPosition: (args: unknown) => {
+          writes.push(args)
+        },
+      },
+    }
+
+    expect(
+      publishSpacetimeAvatarPosition(connection, {
+        ok: false,
+        reason: "position outside region bounds",
+      }),
+    ).toBe(false)
+    expect(writes).toEqual([])
+
+    expect(
+      publishSpacetimeAvatarPosition(connection, {
+        ok: true,
+        write: {
+          regionRef,
+          positionX: 1,
+          positionY: 0,
+          positionZ: 2,
+          yaw: 0,
+          pitch: 0,
+          movementMode: "walking",
+        },
+      }),
+    ).toBe(true)
+    expect(writes).toEqual([{
+      regionRef,
+      positionX: 1,
+      positionY: 0,
+      positionZ: 2,
+      yaw: 0,
+      pitch: 0,
+      movementMode: "walking",
+    }])
   })
 })

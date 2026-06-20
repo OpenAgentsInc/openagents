@@ -41,14 +41,24 @@ not authority.
   public `pylonRef`, first paint warms identity/onboarding/operator readiness,
   and `projectPylonBase` splits local readiness, mana, blockers, and
   receipt-backed settled sats from fleet-wide Pylon growth.
+- 2026-06-20: #5824 resolved payment endpoints against public world positions.
+  Payment particles now prefer SpacetimeDB Pylon station and avatar coordinates
+  when a public `ChatWorldMultiplayerProjection` is present, while unresolved
+  endpoints stay visibly fallback-labeled and receipt-backed.
+- 2026-06-20: #5825 connected Autopilot Desktop to the public
+  `openagents-world` SpacetimeDB projection. The Desktop webview now has a
+  flag-gated generated-binding client with reconnect/backoff, token persistence,
+  public row projection, region join, safe avatar-position write planning, and
+  live station/avatar entities composed into the Verse scene.
 
 ## Executive read
 
 The Verse is conceptually correct and now has real implementation seams. After
-#5819-#5824 it is the default first surface, includes Tassadar training state,
-shows a distinct local Pylon base, and resolves receipt-backed payment motion to
-real station/avatar positions when a public world projection is present. It is
-not yet the complete hands-off experience the owner is asking for.
+#5819-#5825 it is the default first surface, includes Tassadar training state,
+shows a distinct local Pylon base, resolves receipt-backed payment motion to
+real station/avatar positions when public world rows exist, and subscribes to
+the public SpacetimeDB world projection. It is not yet the complete hands-off
+experience the owner is asking for.
 
 What exists:
 
@@ -72,6 +82,10 @@ What exists:
 - A SpacetimeDB `openagents-world` module with public projection tables,
   interaction tables, service-only projection reducers, and browser-safe
   interaction reducers.
+- A Desktop SpacetimeDB client that subscribes to public world rows, joins the
+  active Tassadar region with a browser-safe display identity, feeds live
+  stations/avatars into the Verse scene, and falls back to Worker/Pylon/activity
+  feeds when unavailable.
 - Default Verse chat with Tassadar/OpenAgents model responses over public
   Pylon/training context.
 - Blueprint/Tassadar chat-step scaffolding that can show semantic signature
@@ -87,11 +101,12 @@ What is wrong for the requested product direction:
   needs careful framing so it does not become the mental model of the app.
 - The Verse is still controlled by build flags and lives behind the Chat pane,
   not as the default mental model of the app.
-- The default Verse training layer is still fed by the Desktop public
-  projections, not by a live SpacetimeDB Desktop client.
-- Multiplayer/SpacetimeDB Desktop integration is still projection/query shape,
-  not a connected client with live rows in the app. Payment endpoint resolution
-  is ready for those rows, but the rows are not live in the runtime yet.
+- The default Verse training layer is still fed by Desktop public Worker
+  projections, not live SpacetimeDB training-run rows. This is intentional until
+  a later authority change promotes SpacetimeDB beyond public scene enrichment.
+- The live SpacetimeDB client renders public stations/avatars/chat, but Desktop
+  does not yet have a user movement UI loop that continuously publishes guarded
+  avatar positions.
 - The open issue backlog still frames DE-3 as "Autopilot product surface -
   coding agent." The owner's current launch intent is different: Pylons,
   Tassadar, training visibility, and an autopilot world first; coding controls
@@ -145,7 +160,8 @@ Working pieces:
 - `VITE_CHAT_WORLD_SCENE` mounts a full-bleed world behind chat.
 - `VITE_CHAT_WORLD_PAYMENTS` overlays evidence-bound payment beams/bursts.
 - `VITE_AGENT_CHARACTER_CREATION` enables the character-creation overlay.
-- `VITE_CHAT_WORLD_MULTIPLAYER` exists as a build flag and pure projection.
+- `VITE_CHAT_WORLD_MULTIPLAYER` follows the Verse launch default and subscribes
+  Desktop to the public `openagents-world` projection when enabled.
 - `VITE_CHAT_WORLD_HOTBAR`, `VITE_CHAT_WORLD_REPUTATION`,
   `VITE_CHAT_WORLD_MANA_HUD`, and `VITE_CHAT_WORLD_HAND_TRACKING` exist as
   game-layer flags and pure projections.
@@ -154,16 +170,26 @@ Working pieces:
 - `subscribePaymentParticles` subscribes to
   `https://openagents.com/api/public/activity-timeline/stream`, with polling
   fallback.
+- `subscribeSpacetimeWorld` connects to
+  `https://spacetime.openagents.com`, database `openagents-world`, uses the
+  generated SpacetimeDB bindings, subscribes the active Tassadar region rows,
+  stores the SDK token locally, reconnects with backoff, and dispatches an
+  explicit disconnected projection on outage.
 - `activityEventToParticle` refuses to emit payment motion without payment kind,
   endpoints, and at least one source ref.
 - `chatSceneVisualization` renders the Pylon network through
-  `trainingRunView`, composes the Tassadar training run layer, then overlays
-  payment layers when enabled.
+  `trainingRunView`, composes the Tassadar training run layer, overlays public
+  SpacetimeDB station/avatar entities, then overlays payment layers when
+  enabled.
 - `chatWorldPaymentLayer` now resolves payment endpoints through
   `ChatWorldMultiplayerProjection` when available: `pylonRef` maps to station
   positions, `actorRef`/`avatarRef` maps to avatar positions, and unresolved
   endpoints are explicitly labeled fallback while still carrying the receipt
   source ref in the click label.
+- `planChatWorldAvatarPositionWrite` validates client-side avatar movement
+  before a browser path can call `set_avatar_position`: region present, finite
+  coordinates, bounds, mode allowlist, region continuity, rate limit, and
+  movement-jump limit.
 - `characterCreationOverlay` projects onboarding status into character-creation
   beats and a compute/mana bar.
 - `trainingPane` and `trainingFullscreenPane` already render `trainingRunView`
@@ -199,9 +225,8 @@ Working pieces:
 
 Missing for hands-off:
 
-- Pylon station/avatar rows from SpacetimeDB are not yet connected to the
-  Desktop runtime, so the new payment resolver usually receives no live world
-  projection outside tests/smokes.
+- The local avatar movement UI loop is not yet mounted, so Desktop joins the
+  region and renders live rows but does not continuously publish owner movement.
 - The UI does not yet make Pylon readiness, wallet readiness, assignment
   readiness, and compute/mana feel like one base status.
 
@@ -258,19 +283,21 @@ Working pieces:
 - Browser/user reducers are constrained to interaction state and cannot create
   product truth.
 - Bridge scripts can project public Tassadar summary and activity timeline data.
-- Desktop has pure row types, subscription query strings, and projection logic.
+- Desktop has pure row types, subscription query strings, projection logic,
+  generated-binding connection code, reconnect/backoff, token persistence,
+  region join, and explicit disconnected fallback.
 
 Missing for hands-off:
 
-- Desktop does not yet run a live SpacetimeDB client.
-- Desktop does not yet use generated bindings from the world module.
-- There is no Desktop auth/identity binding between the local Pylon identity and
-  `agent_avatar`.
+- Desktop currently reuses the generated bindings under
+  `apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings`; a later
+  cleanup should make binding generation/ownership explicit for Desktop.
+- Desktop binds a browser-safe display identity for `join_region`, but a richer
+  local avatar customization/profile flow is still missing.
 - There is no live position write loop from the Desktop character/spawner into
   `avatar_position`.
-- Payment particles have projection-level pylon station/avatar position
-  resolution, but live SpacetimeDB rows are not yet feeding it in Desktop; focus
-  beams and proximity chat still need the same treatment.
+- Focus beams and richer proximity chat rendering still need the same treatment
+  as stations, avatars, and payment endpoints.
 
 ## Open issue audit
 
@@ -504,12 +531,15 @@ Implementation shape:
 
 ### P4 - Connect SpacetimeDB to Desktop
 
+Status: partially landed by #5825 on 2026-06-20.
+
 Acceptance:
 
 - Desktop subscribes to `openagents-world`.
 - Pylon stations, agent avatars, positions, local chat, and attention rows
   update live in the Verse.
-- The local avatar can publish position updates within bounds/rate limits.
+- The local avatar can publish position updates within bounds/rate limits
+  once a movement UI loop is mounted.
 - Payment particles resolve endpoints to actual station/avatar positions when
   possible.
 - If SpacetimeDB is down, direct Worker/Pylon/activity feeds keep the Verse
@@ -519,10 +549,12 @@ Implementation shape:
 
 - Generate or vendor Desktop-safe TypeScript bindings for
   `apps/openagents-world-spacetimedb`.
-- Add a Desktop SpacetimeDB client module with reconnect/backoff and public-safe
-  auth.
+- Keep the Desktop SpacetimeDB client module reconnect/backoff and public-safe
+  auth/token path.
 - Feed `projectChatWorldMultiplayer` from live rows, not test rows.
-- Wire movement only after the render path is stable.
+- Use `planChatWorldAvatarPositionWrite` before any browser path calls
+  `set_avatar_position`.
+- Wire the movement loop after the render path is stable and covered by smoke.
 
 ### P5 - Hands-off autopilot loop
 
@@ -558,6 +590,8 @@ Before calling this hands-off:
   - Tassadar summary -> central run core.
   - chat submit -> Tassadar/model response, not coding session spawn.
   - SpacetimeDB unavailable -> Worker direct fallback.
+  - SpacetimeDB rows -> live station/avatar entities in the Verse.
+  - local avatar movement planner rejects out-of-bounds/rate-limited writes.
 - Visual smoke:
   - fresh launch;
   - no blank canvas;
