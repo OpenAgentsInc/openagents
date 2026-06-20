@@ -5945,6 +5945,9 @@ const characterCreationBeat = (beat: CharacterCreationBeat): Html =>
     h.div([cls("character-creation-beat-copy")], [
       h.strong([], [beat.label]),
       h.span([], [beat.message]),
+      beat.blockerRefs.length > 0
+        ? h.span([cls("character-creation-ref mono")], [beat.blockerRefs[0] as string])
+        : h.empty,
     ]),
   ])
 
@@ -5953,6 +5956,7 @@ const characterCreationOverlay = (model: Model): Html => {
     flagEnabled: AGENT_CHARACTER_CREATION,
     onboardingStatus: modelOnboardingStatus(model),
     chatWorldScene: modelChatWorldScene(model),
+    forumReadiness: modelPromiseSurfacingReadiness(model),
   })
   return projection.enabled
     ? h.div([cls("character-creation-overlay")], [

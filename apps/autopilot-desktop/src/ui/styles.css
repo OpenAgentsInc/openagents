@@ -1034,12 +1034,19 @@ body {
   background: #4ade80;
 }
 
+.character-creation-accepted .character-creation-dot {
+  background: #4ade80;
+  box-shadow: 0 0 18px rgb(74 222 128 / 0.35);
+}
+
 .character-creation-active .character-creation-dot {
   background: #ffb400;
   box-shadow: 0 0 18px rgb(255 180 0 / 0.45);
 }
 
-.character-creation-failed .character-creation-dot {
+.character-creation-failed .character-creation-dot,
+.character-creation-blocked .character-creation-dot,
+.character-creation-rejected .character-creation-dot {
   background: #ff7070;
 }
 
@@ -1058,6 +1065,11 @@ body {
   color: rgb(255 255 255 / 0.6);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.character-creation-beat-copy .character-creation-ref {
+  color: rgb(255 180 0 / 0.82);
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 760px) {

@@ -4,6 +4,7 @@ import type { Message } from "./message"
 import {
   LoadIdentityChoiceState,
   LoadOnboardingStatus,
+  LoadPromiseSurfacingReadiness,
   LoadTrainingOperatorReadiness,
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
@@ -44,6 +45,7 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     pane: "chat",
     identityChoicePending: true,
     onboardingPending: true,
+    promiseSurfacingReadinessPending: true,
     trainingOperatorReadinessPending: true,
   })
 
@@ -54,6 +56,7 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     [
       LoadIdentityChoiceState(),
       LoadOnboardingStatus(),
+      LoadPromiseSurfacingReadiness(),
       LoadTrainingRuns(),
       LoadTrainingPromiseGates(),
       LoadTrainingOperatorReadiness(),

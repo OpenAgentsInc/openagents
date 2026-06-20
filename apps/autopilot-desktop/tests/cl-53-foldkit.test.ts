@@ -182,12 +182,14 @@ describe("helpers (CL-47..CL-58 parity, pure)", () => {
     expect(commands.map(command => command.name)).toEqual([
       "LoadIdentityChoiceState",
       "LoadOnboardingStatus",
+      "LoadPromiseSurfacingReadiness",
       "LoadTrainingRuns",
       "LoadTrainingPromiseGates",
       "LoadTrainingOperatorReadiness",
     ])
     expect(model.identityChoicePending).toBe(true)
     expect(model.onboardingPending).toBe(true)
+    expect(model.promiseSurfacingReadinessPending).toBe(true)
     expect(model.trainingOperatorReadinessPending).toBe(true)
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")
