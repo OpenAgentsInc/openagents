@@ -73,6 +73,29 @@ partner-rail analogue of `recordReferralPayoutForPaidEvent`:
   self-attribution skip, expired-window skip, default-reader query/binding map,
   malformed-id no-query guard).
 
+### Follow-up (this run): the attribution basis is now persisted on the row
+
+The previously-deferred "recording the attribution basis on the ledger row" step
+is now built. The feed already surfaced the winning `agreementRef`/`policyRef`,
+but the ledger row did not record them — so a credited partner payout could not
+be audited back to the explicit agreement that authorised it.
+
+- `partner-payout-ledger.ts` — `CreatePartnerPayoutEligibilityInput` now accepts
+  optional public-safe `evidenceRefs` and `policyRefs`. They are validated with
+  the same `assertSafeRefs` ref discipline (provider-secret / prohibited-pattern
+  rejection), merged AFTER the required refs, and order-preservingly
+  de-duplicated, so `PARTNER_PAYOUT_POLICY_REF` and the qualifying event ref are
+  always present and never doubled.
+- `partner-attribution-eligibility.ts` — the bridge now passes the winning
+  `agreementRef` as `evidenceRefs` and the attribution `policyRef` as
+  `policyRefs`, so every credited partner payout row names the explicit
+  agreement + policy that authorised it (the audit distinction from the
+  inferred-click referral rail is now persisted, not just computed).
+- Tests: `partner-payout-ledger.test.ts` (+2: dedupe/required-ref merge, unsafe
+  evidence-ref rejection), `partner-attribution-eligibility.test.ts` (+1: basis
+  persisted; exact-match input updated), `partner-payout-feed.test.ts` (recorded
+  input carries the basis). 27 tests pass across the three files.
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
@@ -83,12 +106,6 @@ partner-rail analogue of `recordReferralPayoutForPaidEvent`:
   production caller yet — a real paid-event source (e.g. the Stripe/credit
   webhook path that already feeds `recordReferralPayoutForPaidEvent`) still
   needs to invoke it, and rows must be seeded into `partner_agreements`.
-- **Recording the attribution basis on the ledger row**: the feed surfaces the
-  winning `agreementRef`/`policyRef` in its result, but the ledger's
-  `CreatePartnerPayoutEligibilityInput` does not yet accept extra
-  `policyRefs`/`evidenceRefs`, so the explicit attribution basis is not yet
-  persisted on the row. Wiring that through is a small, separate ledger change
-  kept out of scope here.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 

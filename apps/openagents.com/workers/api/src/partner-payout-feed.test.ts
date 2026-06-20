@@ -116,10 +116,13 @@ describe('recordPartnerPayoutForPaidEvent', () => {
     expect(captured[0]).toMatchObject({
       asset: 'usd',
       beneficiaryUserId: 'github:client',
+      // the explicit attribution basis is carried onto the ledger input
+      evidenceRefs: ['partner_agreement_acme'],
       idempotencyKey: 'partner-payout:feed:1',
       partnerRef: 'design_partner_acme',
       partnerRole: 'design_partner',
       partnerUserId: 'github:acme_agency',
+      policyRefs: ['policy.partner_attribution.v1'],
       qualifyingAmount: 10000,
       qualifyingEventRef: 'partner_event_engagement_1',
     })

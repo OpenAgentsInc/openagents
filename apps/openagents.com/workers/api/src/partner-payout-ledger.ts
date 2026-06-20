@@ -198,6 +198,12 @@ export type PartnerPayoutProjection = Readonly<{
 export type CreatePartnerPayoutEligibilityInput = Readonly<{
   asset: PartnerPayoutAsset
   beneficiaryUserId?: string | null
+  /**
+   * Optional public-safe evidence refs recording the attribution basis (e.g. the
+   * winning partner-agreement ref). Merged after the qualifying event ref and
+   * de-duplicated; the required qualifying event ref is always present.
+   */
+  evidenceRefs?: ReadonlyArray<string>
   id?: string
   idempotencyKey: string
   nowIso: string
@@ -206,6 +212,12 @@ export type CreatePartnerPayoutEligibilityInput = Readonly<{
   partnerUserId: string
   payoutRef?: string
   periodKey: string
+  /**
+   * Optional public-safe policy refs recording the attribution basis (e.g. the
+   * partner-attribution policy ref). Merged after the required payout policy ref
+   * and de-duplicated; `PARTNER_PAYOUT_POLICY_REF` is always present.
+   */
+  policyRefs?: ReadonlyArray<string>
   qualifyingAmount: number
   qualifyingEventKind: string
   qualifyingEventRef: string
@@ -268,6 +280,11 @@ const assertSafeRefs = (
   field: string,
   values: ReadonlyArray<string> | undefined,
 ): void => values?.forEach(value => assertSafeRef(field, value))
+
+/** Order-preserving de-duplication for ref lists. */
+const dedupeRefs = (values: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(values),
+]
 
 const rowToEntry = (row: PartnerPayoutLedgerRow): PartnerPayoutLedgerEntry => ({
   amount: Number(row.amount),
@@ -461,6 +478,8 @@ export const createPartnerPayoutEligibility = async (
   assertSafeRef('partnerRef', input.partnerRef)
   assertSafeRef('partnerUserId', input.partnerUserId)
   assertSafeRef('beneficiaryUserId', input.beneficiaryUserId)
+  assertSafeRefs('evidenceRefs', input.evidenceRefs)
+  assertSafeRefs('policyRefs', input.policyRefs)
 
   if (!Number.isFinite(input.qualifyingAmount) || input.qualifyingAmount < 0) {
     throw new PartnerPayoutLedgerValidationError({
@@ -515,7 +534,10 @@ export const createPartnerPayoutEligibility = async (
     beneficiaryUserId: input.beneficiaryUserId ?? null,
     caveatRefs: requiredCaveatRefs,
     createdAt: input.nowIso,
-    evidenceRefs: [input.qualifyingEventRef],
+    evidenceRefs: dedupeRefs([
+      input.qualifyingEventRef,
+      ...(input.evidenceRefs ?? []),
+    ]),
     id: input.id ?? compactRandomId('partner_payout_entry'),
     idempotencyKey: input.idempotencyKey,
     partnerRef: input.partnerRef,
@@ -525,7 +547,7 @@ export const createPartnerPayoutEligibility = async (
       input.payoutRef ??
       `partner_payout_${input.partnerRole}_${input.partnerRef}`,
     periodKey: input.periodKey,
-    policyRefs: requiredPolicyRefs,
+    policyRefs: dedupeRefs([...requiredPolicyRefs, ...(input.policyRefs ?? [])]),
     previousEntryId: null,
     qualifyingAmount: Math.floor(input.qualifyingAmount),
     qualifyingEventKind: input.qualifyingEventKind,

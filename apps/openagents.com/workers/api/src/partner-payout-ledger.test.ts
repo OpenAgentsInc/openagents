@@ -316,6 +316,43 @@ describe('Partner payout ledger eligibility', () => {
     expect(sats.state).toBe('eligible')
   })
 
+  test('persists the attribution basis refs, deduped, with required refs', async () => {
+    const store = new PayoutStore()
+    const entry = await createPartnerPayoutEligibility(payoutDb(store), {
+      ...baseDesignPartner,
+      evidenceRefs: [
+        'partner_agreement_acme',
+        // a duplicate of the qualifying event ref must not be doubled up
+        'partner_event_engagement_1',
+      ],
+      policyRefs: ['policy.partner_attribution.v1'],
+    })
+
+    // qualifying event ref stays first, the agreement ref is appended, and the
+    // duplicate qualifying ref is collapsed.
+    expect(entry.evidenceRefs).toEqual([
+      'partner_event_engagement_1',
+      'partner_agreement_acme',
+    ])
+    // required payout policy ref is always present alongside the attribution one.
+    expect(entry.policyRefs).toEqual([
+      'policy.partner_payout.v1',
+      'policy.partner_attribution.v1',
+    ])
+  })
+
+  test('rejects an unsafe attribution evidence ref', async () => {
+    const store = new PayoutStore()
+
+    await expect(
+      createPartnerPayoutEligibility(payoutDb(store), {
+        ...baseDesignPartner,
+        evidenceRefs: ['payment_preimage_should_be_refused'],
+      }),
+    ).rejects.toMatchObject({ _tag: 'PartnerPayoutLedgerValidationError' })
+    expect(store.rows).toHaveLength(0)
+  })
+
   test('is idempotent on repeated eligibility writes', async () => {
     const store = new PayoutStore()
     const first = await createPartnerPayoutEligibility(

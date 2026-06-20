@@ -118,12 +118,19 @@ export const resolvePartnerPayoutEligibilityInput = (
   const input: CreatePartnerPayoutEligibilityInput = {
     asset: event.asset,
     beneficiaryUserId: event.customerUserId,
+    // Persist the explicit attribution basis on the ledger row: the winning
+    // agreement ref as evidence, the attribution policy ref alongside the payout
+    // policy ref. This is what makes the partner rail auditable AND distinct
+    // from the referral rail — every credited partner payout names the explicit
+    // agreement that authorised it, never an inferred click.
+    evidenceRefs: [decision.agreementRef],
     idempotencyKey: event.idempotencyKey,
     nowIso: event.eventIso,
     partnerRef: decision.partnerRef,
     partnerRole: decision.partnerRole,
     partnerUserId: decision.partnerUserId,
     periodKey: event.periodKey,
+    policyRefs: [decision.policyRef],
     qualifyingAmount: event.qualifyingAmount,
     qualifyingEventKind: event.qualifyingEventKind,
     qualifyingEventRef: event.qualifyingEventRef,
