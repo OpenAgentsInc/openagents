@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.6'
+export const PublicProductPromisesVersion = '2026-06-19.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -60,6 +60,7 @@ const sourceRefs = [
   'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
   'docs/launch/2026-06-19-credits-purchase-collect-money-audit.md',
   'docs/launch/2026-06-19-near-term-product-priorities.md',
+  'docs/promises/2026-06-19-weekend-assault-tail-domains.md',
 ]
 
 const basePromiseFields = {
@@ -1861,18 +1862,21 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Every revenue-bearing public number carries demand provenance — internal versus external dollars — as strictly as modeled versus measured versus settled, under the rule: no external dollar, no demand claim.',
         safeCopy:
-          'Provenance discipline already exists for promise states and settlement evidence, and the training program explicitly labels its own internal demand (ablations, sweeps, corpus work, conformance runs) as plumbing proof rather than market proof. A typed internal/external split on revenue-bearing projections is planned.',
+          'Provenance discipline already exists for promise states and settlement evidence, and the training program explicitly labels its own internal demand (ablations, sweeps, corpus work, conformance runs) as plumbing proof rather than market proof. First serving surface: the AO/kWh metric (GET /api/public/metrics/accepted-outcomes-per-kwh) now carries a typed internal/external demand split with the rule no_external_dollar_no_demand_claim — every datapoint is labeled internal or external, the projection serves reconciling internal/external counts, externalDemandClaimAllowed stays false until a real external dollar backs an outcome, and the copy gate forbids presenting the operator-staged #4777 outcome as market demand. Broad coverage across the other revenue-bearing projections (stats, leaderboards, run pages, economics gates) is still planned.',
         unsafeCopy:
           'Do not present first-party or internally-dispatched demand as market demand, and do not aggregate internal and external revenue into one undifferentiated public number.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/promises/2026-06-09-product-promises-gap-audit.md',
+          'route:/api/public/metrics/accepted-outcomes-per-kwh',
+          'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.ts',
+          'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.test.ts',
         ],
         blockerRefs: [
           'blocker.product_promises.demand_provenance_projection_missing',
         ],
         verification:
-          'Green requires revenue-bearing public projections (stats, leaderboards, run pages, economics gates) to carry a typed internal/external demand field, with at least one surface serving real split data and a copy gate forbidding unlabeled aggregates.',
+          'Green requires revenue-bearing public projections (stats, leaderboards, run pages, economics gates) to carry a typed internal/external demand field, with at least one surface serving real split data and a copy gate forbidding unlabeled aggregates. First serving surface met by the AO/kWh metric (accepted-outcomes-per-kwh.test.ts: demand-provenance split reconciles to the accepted-outcome total, externalDemandClaimAllowed is false, copy gate present); green still requires the remaining revenue-bearing projections to carry the same typed split and a transition receipt.',
         authorityBoundary:
           'Demand provenance is a labeling discipline; it does not validate any revenue claim by itself and grants no settlement or reporting authority.',
       },
@@ -2551,7 +2555,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents defines and will measure Accepted Outcomes Per Kilowatt-Hour (AO/kWh) — verified, accepted outcomes produced per kilowatt-hour of energy — as the primary efficiency metric for converting electricity into accepted agent work.',
         safeCopy:
-          'AO/kWh is now instrumented as a yellow, caveated metric: /api/public/metrics/accepted-outcomes-per-kwh publishes the frozen definition plus one receipt-backed modeled seed datapoint from the first settled labor job (#4777). The seed is explicitly modeled, not measured: it uses acceptance-to-result wall-clock timing and a documented 100 W provider-power assumption. Describe it only as a modeled seed datapoint while measured energy telemetry is still missing.',
+          'AO/kWh is now instrumented as a yellow, caveated metric: /api/public/metrics/accepted-outcomes-per-kwh publishes the frozen definition plus one receipt-backed modeled seed datapoint from the first settled labor job (#4777). The seed is explicitly modeled, not measured: it uses acceptance-to-result wall-clock timing and a documented 100 W provider-power assumption. The projection also carries a typed demand-provenance split (proof.demand_provenance.v1): the seed outcome is labeled internal (operator-staged, credit-ledger), externalDemandClaimAllowed stays false, and the copy gate forbids presenting it as external market demand. Describe it only as a modeled, internal-demand seed datapoint while measured energy telemetry is still missing.',
         unsafeCopy:
           'Do not describe the AO/kWh seed as measured, broadly representative, a provider ranking, a production routing policy, investment advice, grid advice, or proof that live energy dispatch is running. Do not cite any figure without the modeled/measurement evidence label and caveats.',
         evidenceRefs: [
@@ -2563,6 +2567,7 @@ export const publicProductPromisesDocument = () => {
           'https://openagents.com/api/forum/work-requests/b74bb55c-849c-43a3-b8d9-9a741316b528',
           'promise:payments.accepted_outcome_economics.v1',
           'promise:energy.flexible_load_proof.v1',
+          'promise:proof.demand_provenance.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.energy_accounting_measured_telemetry_missing',

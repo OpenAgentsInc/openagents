@@ -15,6 +15,11 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises',
   '/api/public/product-promises/transitions',
   '/api/public/metrics/accepted-outcomes-per-kwh',
+  '/api/public/markets/open-markets',
+  '/api/public/markets/liquidity/skeleton',
+  '/api/public/markets/risk/skeleton',
+  '/api/public/marketplace/composed-products',
+  '/api/public/autopilot/composed-runs',
   '/api/public/customer-one-cohort',
   '/api/operator/customer-one-cohort/rows',
   '/api/operator/product-promises/transitions',
@@ -91,6 +96,8 @@ const approvedExactRoutePaths = [
   '/api/agents/me/balance/preferences',
   '/api/agents/home',
   '/v1/chat/completions',
+  '/v1/fine_tuning/jobs',
+  '/v1/sandboxes',
 ] as const
 
 describe('Worker exact route manifest', () => {
