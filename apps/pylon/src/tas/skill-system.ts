@@ -15,7 +15,7 @@ export type SkillInvocationResult =
 export function createSkillRegistry(
   skills: readonly SkillDescriptor[] = [],
 ): SkillRegistry {
-  return skills.reduce(
+  return skills.reduce<SkillRegistry>(
     (registry, skill) => registerSkill(registry, skill),
     { skills: new Map<string, SkillDescriptor>() },
   )

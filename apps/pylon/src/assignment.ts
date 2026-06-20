@@ -469,6 +469,7 @@ export function tassadarPayloadFrom(codingAssignment: unknown): TassadarAssignme
     | null
     | undefined
   const kind = record?.kind
+  if (record === null || record === undefined) return null
   if (kind !== TASSADAR_EXECUTOR_TRACE_JOB_KIND && kind !== TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND) {
     return null
   }
@@ -790,7 +791,7 @@ function isExpired(lease: PylonAssignmentLease, now: Date) {
 export async function computeAssignmentAdmission(
   state: PylonLocalState,
   lease: PylonAssignmentLease,
-  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "psionicQwenAdmission"> = {},
+  options: Pick<AssignmentClientOptions, "now" | "staleAfterMs" | "psionicQwenAdmission" | "gepaEnvelope"> = {},
 ) {
   const now = options.now?.() ?? new Date()
   const presence = await loadOrCreatePresenceState(state.paths, state.identity)
@@ -835,7 +836,7 @@ export async function computeAssignmentAdmission(
   return { admissible: blockerRefs.size === 0, blockerRefs: [...blockerRefs] }
 }
 
-async function postJson(options: AssignmentClientOptions, path: string, body: JsonRecord, state: PylonLocalState) {
+async function postJson(options: AssignmentClientOptions, path: string, body: JsonRecord, state: PylonLocalState): Promise<JsonRecord> {
   assertPublicProjectionSafe(body)
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()

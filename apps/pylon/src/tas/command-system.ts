@@ -38,7 +38,7 @@ export type CommandParseResult =
 export function createCommandRegistry(
   commands: readonly CommandDescriptor[] = [],
 ): CommandRegistry {
-  return commands.reduce(
+  return commands.reduce<CommandRegistry>(
     (registry, command) => registerCommand(registry, command),
     { commands: new Map<string, CommandDescriptor>() },
   )
