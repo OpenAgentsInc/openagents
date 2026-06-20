@@ -6,6 +6,7 @@
 
 import { buildArtifactReadRequest, buildCancelRequest, buildHistoryRequest, buildListRequest } from "./bridge-client.js"
 import { buildDecisionResolveEnvelope } from "./bridge-decision-client.js"
+import { buildSubscribeEnvelope, parseBridgeEventBatch, type BridgeEventBatch } from "./bridge-subscribe-client.js"
 import { parseArtifactReadResponse, type ArtifactReadResponse } from "./artifact-content-view.js"
 import {
   buildCoordinatorPauseEnvelope,
@@ -68,6 +69,15 @@ export type BridgeTransport = {
   // session.history). Returns the node's session-events projection (e.g.
   // { recentEvents }); the caller dedups/resumes via the shared cursor model.
   history: (sessionRef: string) => Promise<unknown>
+  // #5000 cursor-resumable LIVE event poll over the bridge (session.subscribe,
+  // observe-class capability). The remote-bridge transport leg that lets an
+  // Expo/web/desktop client render a live session timeline and feed
+  // RemoteDecisionQueue.ingestMany WITHOUT consuming the SSE stream (which RN
+  // fetch can't do cleanly): returns the node's bounded event tail parsed and
+  // filtered to rows newer than `cursor`, with the resume cursor for the next
+  // poll. Throws on a non-ok response (e.g. the node's 403 when the credential
+  // lacks an observe capability).
+  subscribe: (input: { sessionRef: string; cursor?: number }) => Promise<BridgeEventBatch>
   // #5002 write actions (capability-gated by the node's stored claims):
   // decision.resolve (answer_decision) and session.cancel (cancel). Throw on a
   // non-ok response; callers classify the error via classifyActionOutcome.
@@ -142,6 +152,17 @@ export function createBridgeTransport(input: {
         idempotencyKey: requestId,
       })
       return send(envelope)
+    },
+    async subscribe({ sessionRef, cursor }) {
+      const requestId = nextId()
+      const envelope = buildSubscribeEnvelope({
+        sessionRef,
+        pairingRef: input.credential.pairingRef,
+        capabilityRef: input.credential.capabilityRef ?? "observe_public",
+        clientRequestId: requestId,
+        ...(cursor === undefined ? {} : { cursor }),
+      })
+      return parseBridgeEventBatch(await send(envelope), cursor ?? -1)
     },
     async resolveDecision({ requestId, verb, answer }) {
       const clientRequestId = nextId()
