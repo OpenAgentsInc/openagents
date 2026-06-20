@@ -173,3 +173,59 @@ backing an ARMED clearance; and an ARMED ingestion against a real customer uploa
 with a dereferenceable closeout receipt and owner sign-off per
 `proof.claim_upgrade_receipts.v1`. No promise state changed; any future green
 flip remains receipt-first and owner-signed.
+
+---
+
+## Update (2026-06-20): published privacy policy + registry
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+Until now the privacy-review and self-serve upload preflights checked only that a
+study's `dataProcessingAgreementRef` / `retentionPolicyRef` were *present* (any
+non-empty string passed) — and there was no published, canonical privacy policy
+for a customer or reviewer to actually read. This change publishes that policy
+and makes it a verifiable, content-hashed, canonical reference.
+
+### What was built
+
+- `docs/legal/external-repo-studying-privacy-policy.v0.md`
+  — the customer-facing privacy policy / DPA for the external-repo-studying
+  pilot: scope, the refs-only boundary (`customer_refs_withheld`), lawful basis +
+  customer authorization, the closed PII-category set, the 365-day retention cap,
+  data-subject rights, no-widened-claims, and an explicit "what this does NOT yet
+  establish" section. Status `published_inert` — the pilot stays gated.
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-privacy-policy-registry.ts`
+  - `buildOpenAgentsExternalRepoStudyPrivacyPolicyRegistry(...)`
+  - Schema `openagents.external_repo_study_privacy_policy_registry.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `registryHash`; each published version carries a `termsDigest` =
+    `sha256(stableJson(terms))`.
+  - The published caps **mirror what the privacy-review preflight enforces** —
+    it imports `PRIVACY_REVIEW_MAX_RETENTION_DAYS` and
+    `PrivacyReviewAllowedPiiCategory`, so the published policy cannot silently
+    drift from the code (a test asserts they match).
+  - `isPublishedExternalRepoStudyPrivacyPolicyRef(registry, ref)` closes the
+    forgeable-string seam: a policy ref must match a KNOWN published version, not
+    just be non-empty.
+  - **Inert by construction**: `effectsApplied` / `customerPublicClaimAllowed` /
+    `marketplacePackageAllowed` / `payoutEligible` are ALWAYS false. Publishing
+    policy text grants no clearance and ingests no repository.
+- `packages/probe/packages/runtime/tests/external-repo-studying-privacy-policy-registry.test.ts`
+  — 5 passing tests (canonical/inert publish, caps-mirror-code, known-vs-forged
+  ref check, deterministic stable hash, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+Publishing the policy text and its canonical reference does not by itself clear
+`privacy_policy_missing`. Still required, all owner/legal-gated and out of scope
+here: legal/owner ratification of the policy text; a real human/legal review
+against a real customer study (not a ref/digest check); durable,
+access-controlled storage that enforces the declared retention window; and an
+owner-signed armed clearance with a dereferenceable closeout receipt per
+`proof.claim_upgrade_receipts.v1`. The remaining blockers
+(`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
