@@ -2009,6 +2009,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     settlement, model promotion, model-service, fine-tuning-service, or
     public-claim authority and flips no promise. Regression coverage:
     `workers/api/src/training-post-training-instruct-sft.test.ts`.
+  - `GET /api/public/accepted-outcome/settlement/{economicsId}` — live at read
+    over one accepted outcome's INERT settlement bundle (promise
+    `payments.accepted_outcome_economics.v1`, planned) — compliant
+    (`generatedAt`, top-level `projection_staleness.v1` `live_at_read` contract
+    re-derived from the source economics row on every read). The surface
+    projects the eight ordered settlement states (with honest evidence labels
+    and `movedMoney` flags), the contributor accrual ledger, and the
+    gross-margin receipt lifecycle, all with internal monetary figures dropped.
+    The bundle is built disarmed (`dispatchArmed=false`): producing a complete
+    bundle MOVES NO MONEY and is NOT a green flip. It grants no dispatch,
+    assignment, spend, settlement, payout, or public-claim authority and flips
+    no promise. Regression coverage:
+    `workers/api/src/public-accepted-outcome-settlement-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read over the versioned

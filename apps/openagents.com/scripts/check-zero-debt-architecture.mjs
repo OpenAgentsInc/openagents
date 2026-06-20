@@ -787,6 +787,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/training/post-training-arc/instruct-sft-lane',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/public-accepted-outcome-settlement-routes.ts',
+    route: '/api/public/accepted-outcome/settlement/{economicsId}',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
