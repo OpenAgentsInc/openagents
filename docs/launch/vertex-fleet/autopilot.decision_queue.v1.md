@@ -2,7 +2,30 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## What was built
+## Latest run (2026-06-20) — cross-client coordinator
+
+**Blocker advanced:** `blocker.product_promises.cross_client_exactly_once_decisions_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `packages/autopilot-control-protocol/src/decision-closeout-coordinator.ts` | `createDecisionCloseoutCoordinator()` — the composing layer that wires N per-surface `RemoteDecisionQueue`s (desktop / web / Expo) to ONE shared `DecisionCloseoutLedger`. `ingest()` fans a node decision event out to every paired surface; `resolve({client, …})` relays on that surface's own bridge, builds exactly ONE canonical closeout receipt on a terminal outcome, appends it to the shared ledger, and broadcasts the resolution to the OTHER surfaces so their cards disable. A second surface resolving the same decision hits the local exactly-once gate (already-resolved via broadcast), never reaches the wire, and produces NO second receipt (`alreadyClosed: true`). |
+| `packages/autopilot-control-protocol/src/decision-closeout-coordinator.test.ts` | 9 tests: empty/duplicate-surface guards, `ingest` fan-out to all surfaces, single-closeout-on-resolve with the other surfaces disabled and off-wire, second-surface no-double-closeout proof, answer-verb passthrough, injected shared ledger (persistent-store seam), unknown-surface throw, node-reported duplicate. |
+
+**What it proves:** the dereferenceable cross-client exactly-once flow that was
+previously only available per-client now exists end-to-end: a decision resolved
+on one client surface is **seen as closed on the others** (state → `resolved`
+via the subscribe/history broadcast, pending list emptied, transport never
+called) and the shared audit ledger holds **exactly one** canonical closeout
+receipt attributed to the surface that actually resolved it. Each surface still
+relays through its own capability-scoped `BridgeTransport` — no new authority.
+
+Exported from `packages/autopilot-control-protocol/src/index.ts`.
+
+---
+
+## Earlier run — receipt closeout storage layer
 
 **Blocker advanced:** `blocker.product_promises.receipt_backed_command_closeout_missing`
 
@@ -47,11 +70,15 @@ and is shared across desktop / web / Expo (the three client surfaces).
   into the Worker API. The blueprint continuation-decision-queue service exists
   but has no HTTP surface.
 
-- **`blocker.product_promises.cross_client_exactly_once_decisions_missing`** — The
-  `remote-decision-queue.ts` protocol module provides exactly-once semantics
-  locally, but a real cross-client coordination proof (a decision resolved on
-  one client and seen as closed on another via the subscribe/history broadcast)
-  hasn't been exercised in a dereferenceable end-to-end receipt yet.
+- **`blocker.product_promises.cross_client_exactly_once_decisions_missing`** —
+  *Partially advanced (2026-06-20).* `createDecisionCloseoutCoordinator` now
+  exercises the cross-client coordination in a pure, test-backed harness: a
+  decision resolved on one surface is seen as closed on the others and yields
+  exactly one closeout receipt. The remaining gap is the *live* wiring — feeding
+  the coordinator real `session.subscribe`/`session.history` events from a
+  remote-reachable paired node and capturing one receipt from an actual
+  phone/web/desktop resolution (gated behind the Pylon remote bridge transport,
+  #5000 / #5004).
 
 - **`blocker.product_promises.receipt_backed_command_closeout_missing`** —
   *Partially advanced* (further this run). The receipt type, builder, and
