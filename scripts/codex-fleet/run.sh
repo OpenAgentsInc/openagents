@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
-# RETIRED 2026-06-20: Anthropic-Claude-on-Vertex is NOT covered by the GFS credit
-# (third-party SKU) -> direct card spend. Do NOT launch new Vertex batches.
-# Superseded by scripts/codex-fleet/ (Codex subscription via central device-flow
-# auth; same PR-per-agent shape, branch prefix codex-fleet/<promise>).
-# See scripts/vertex-fleet/DEPRECATED.md. Kept for history only.
-#
-# run.sh — orchestrator for the Vertex fleet.
+# run.sh — orchestrator for the CODEX fleet (replaces the retired vertex-fleet).
 #
 # 1. assign: pick N non-green promises with buildable, non-owner-gated blockers.
-# 2. fan out: run one worker.sh per promise (each = one Vertex-powered claude -p
-#    agent in its own worktree on its own branch).
-# 3. report: print resulting PR URLs + per-worker check:deploy status + cost.
+# 2. fan out: run one worker.sh per promise (each = one `codex exec` agent on the
+#    OpenAgents ChatGPT/Codex SUBSCRIPTION, in its own worktree on its own branch,
+#    with a per-promise CODEX_HOME and a leased subscription seat).
+# 3. report: print resulting PR URLs + per-worker check:deploy status + tokens.
 #
 # PR-PER-AGENT only. NO green flips. Workers push BRANCHES and open PRs; nothing
-# touches main. Keep the wave SMALL — it bills Vertex per token.
+# touches main. Same PR shape as the retired vertex-fleet (branch prefix only
+# differs: codex-fleet/<promise>), so the existing gate /tmp/fleet-merge.sh works.
+#
+# Auth note: this fleet uses OUR Codex subscription via the CENTRAL device-flow
+# provider-account store. Workers do NOT spend pay-per-token Vertex money. They
+# DO consume shared subscription quota and lease one Codex account per promise —
+# keep waves modest. Required env (names only): OPENAGENTS_ADMIN_API_TOKEN,
+# OPENAGENTS_AGENT_TOKEN. See scripts/codex-fleet/README.md.
 #
 # Usage:
 #   run.sh [--count N] [--state red|yellow|planned|any]
-#          [--model claude-sonnet-4-6] [--ids a,b,c]
+#          [--model gpt-5.5] [--ids a,b,c] [--priority business|any]
 #          [--parallel] [--dry-run] [--no-pr]
 #
-# Default: 3 workers, sonnet, sequential (gentler on shared Vertex quota).
+# Default: 3 workers, gpt-5.5, sequential, business-fulfillment priority.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COUNT=3
 STATE="any"
-MODEL="claude-sonnet-4-6"
+MODEL="gpt-5.5"
 IDS=""
+PRIORITY="business"
 PARALLEL=0
 DRY_RUN=0
 NO_PR=0
@@ -39,6 +42,7 @@ while [[ $# -gt 0 ]]; do
     --state) STATE="$2"; shift 2;;
     --model) MODEL="$2"; shift 2;;
     --ids) IDS="$2"; shift 2;;
+    --priority) PRIORITY="$2"; shift 2;;
     --parallel) PARALLEL=1; shift;;
     --dry-run) DRY_RUN=1; shift;;
     --no-pr) NO_PR=1; shift;;
@@ -46,15 +50,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-OUT_DIR="/tmp/vf-assignments"
-RESULTS="/tmp/vf-results.jsonl"
+OUT_DIR="/tmp/cf-assignments"
+RESULTS="/tmp/cf-results.jsonl"
 : > "$RESULTS"
 
-echo "==> vertex-fleet orchestrator" >&2
-echo "    count=$COUNT state=$STATE model=$MODEL parallel=$PARALLEL dry_run=$DRY_RUN no_pr=$NO_PR" >&2
+echo "==> codex-fleet orchestrator" >&2
+echo "    count=$COUNT state=$STATE model=$MODEL priority=$PRIORITY parallel=$PARALLEL dry_run=$DRY_RUN no_pr=$NO_PR" >&2
 
 # 1. assignments
-ASSIGN_ARGS=(--count "$COUNT" --state "$STATE" --model "$MODEL" --out "$OUT_DIR")
+ASSIGN_ARGS=(--count "$COUNT" --state "$STATE" --model "$MODEL" --priority "$PRIORITY" --out "$OUT_DIR")
 [[ -n "$IDS" ]] && ASSIGN_ARGS+=(--ids "$IDS")
 node "$SCRIPT_DIR/assign.mjs" "${ASSIGN_ARGS[@]}" >/dev/null || { echo "run: assign failed" >&2; exit 1; }
 
@@ -100,21 +104,21 @@ fi
 
 # 3. report
 echo "" >&2
-echo "================ VERTEX FLEET RESULTS ================" >&2
+echo "================ CODEX FLEET RESULTS ================" >&2
 node -e '
   const fs=require("fs");
   const lines=fs.readFileSync("'"$RESULTS"'","utf8").trim().split("\n").filter(Boolean);
   let total=0, n=0;
   for (const l of lines) {
     let r; try { r=JSON.parse(l); } catch { console.error("  [bad result line]", l); continue; }
-    const cost = (r.cost_usd==null) ? "n/a" : ("$"+Number(r.cost_usd).toFixed(4));
-    if (r.cost_usd!=null) { total+=Number(r.cost_usd); n++; }
+    let tok="n/a";
+    if (r.tokens && typeof r.tokens==="object") { tok=`${r.tokens.total} (in ${r.tokens.input}/out ${r.tokens.output})`; total+=Number(r.tokens.total)||0; n++; }
     console.error(`  ${r.promise}`);
-    console.error(`      status=${r.status}  check:deploy=${r.check_deploy}  cost=${cost}`);
+    console.error(`      status=${r.status}  check:deploy=${r.check_deploy}  tokens=${tok}`);
     console.error(`      PR=${r.pr_url||"(none)"}`);
   }
   console.error("  ---------------------------------------------------");
-  console.error(`  workers=${lines.length}  with_cost=${n}  total_cost=$${total.toFixed(4)}`);
+  console.error(`  workers=${lines.length}  with_tokens=${n}  total_tokens=${total}`);
 '
-echo "=====================================================" >&2
+echo "====================================================" >&2
 echo "results: $RESULTS" >&2
