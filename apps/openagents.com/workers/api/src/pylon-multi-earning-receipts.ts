@@ -29,6 +29,7 @@
 import { Schema as S } from 'effect'
 
 import {
+  PYLON_MULTI_EARNING_PROMISE,
   PylonMultiEarningError,
   type PylonMultiEarningStore,
   isPublicSafeToken,
@@ -274,6 +275,110 @@ export const verifyWorkReceiptSettlementCoverage = (
     totalDistinctSettlementRefCount,
     crossModeSettlementReuse,
     allModesSettlementCovered,
+  }
+}
+
+/**
+ * One per-mode entry of the settlement MANIFEST. INERT and public-safe. Unlike
+ * the coverage report (which carries only integer COUNTS), this carries the
+ * actual DISTINCT settlement-receipt refs that back a mode's settled units, in
+ * first-seen order — so each settled unit the projection counts is individually
+ * dereferenceable, not collapsed to a single representative ref.
+ */
+export type ModeSettlementManifestEntry = {
+  mode: string
+  settledReceiptCount: number
+  settlementReceiptRefs: ReadonlyArray<string>
+}
+
+/**
+ * Whole-install settlement MANIFEST. INERT, public-safe, still red. It is the
+ * EVIDENCE companion to verifyWorkReceiptSettlementCoverage: the auditor states
+ * THAT every settled unit is backed by its own distinct settlement; this
+ * manifest enumerates the actual distinct refs so an owner can dereference each
+ * one when verifying a (receipt-first, owner-signed) green flip. The projection
+ * record keeps only one representative ref per mode; this fills that gap.
+ *
+ * `coverageComplete` mirrors the auditor's `allModesSettlementCovered`, so a
+ * consumer reading the manifest knows whether per-mode `settledReceiptCount`
+ * equals the number of distinct refs listed (no over-claim, no cross-mode reuse).
+ */
+export type PylonSettlementManifest = {
+  schema: typeof PYLON_MULTI_EARNING_RECEIPT_SCHEMA
+  promiseId: typeof PYLON_MULTI_EARNING_PROMISE
+  promiseState: 'red'
+  inert: true
+  perMode: ReadonlyArray<ModeSettlementManifestEntry>
+  totalSettledReceiptCount: number
+  totalDistinctSettlementRefCount: number
+  coverageComplete: boolean
+}
+
+/**
+ * Build the public-safe settlement manifest for a set of work receipts. PURE /
+ * INERT and always `promiseState: 'red'`. Receipts are first deduped by
+ * receiptRef, then settled receipts are grouped by mode and their
+ * settlement-receipt refs collected DISTINCT in first-seen order. The totals and
+ * `coverageComplete` are taken from verifyWorkReceiptSettlementCoverage, so the
+ * manifest and the auditor can never disagree about whether settlement is fully
+ * covered. Surfacing this list is the per-mode receipt evidence the projection
+ * needs to be fully dereferenceable.
+ */
+export const projectPylonSettlementManifest = (
+  receipts: ReadonlyArray<PylonModeWorkReceipt>,
+): PylonSettlementManifest => {
+  const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+  const settled = deduped.filter(r => r.amountClass === 'settled')
+
+  // Preserve first-seen mode order for a stable manifest.
+  const order: string[] = []
+  const refsByMode = new Map<string, string[]>()
+  for (const receipt of settled) {
+    // A settled receipt always carries a settlementReceiptRef (enforced by
+    // recordModeWorkReceipt); guard defensively for hand-built inputs.
+    const ref = receipt.settlementReceiptRef
+    if (ref === undefined) {
+      continue
+    }
+    const existing = refsByMode.get(receipt.mode)
+    if (existing === undefined) {
+      order.push(receipt.mode)
+      refsByMode.set(receipt.mode, [ref])
+    } else {
+      existing.push(ref)
+    }
+  }
+
+  const perMode: ModeSettlementManifestEntry[] = []
+  for (const mode of order) {
+    const refs = refsByMode.get(mode) ?? []
+    const seen = new Set<string>()
+    const distinct: string[] = []
+    for (const ref of refs) {
+      if (!seen.has(ref)) {
+        seen.add(ref)
+        distinct.push(ref)
+      }
+    }
+    perMode.push({
+      mode,
+      settledReceiptCount: refs.length,
+      settlementReceiptRefs: distinct,
+    })
+  }
+
+  // Single source of truth for totals + the coverage gate.
+  const coverage = verifyWorkReceiptSettlementCoverage(deduped)
+
+  return {
+    schema: PYLON_MULTI_EARNING_RECEIPT_SCHEMA,
+    promiseId: PYLON_MULTI_EARNING_PROMISE,
+    promiseState: 'red',
+    inert: true,
+    perMode,
+    totalSettledReceiptCount: coverage.totalSettledReceiptCount,
+    totalDistinctSettlementRefCount: coverage.totalDistinctSettlementRefCount,
+    coverageComplete: coverage.allModesSettlementCovered,
   }
 }
 
