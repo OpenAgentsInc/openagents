@@ -337,3 +337,64 @@ owner-signed armed clearance with a dereferenceable closeout receipt per
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): clean-scan attestation registry
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The upload↔privacy binding (earlier update) closed the forgeable-string seam for
+the upload preflight's `privacyReviewRef`. The upload preflight's OTHER refs-only
+gate — the malware/secret clean-scan attestation — was still a plain
+string-presence check: any non-empty `scanAttestationRef` satisfied it, including
+a forged or stale string pointing at no real scan, or a clean scan of a
+*different* upload manifest. This change introduces the verification primitive
+that closes that seam, mirroring the privacy-policy registry.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-scan-attestation-registry.ts`
+  - `buildOpenAgentsExternalRepoStudyScanAttestationRegistry(...)`
+  - Schema `openagents.external_repo_study_scan_attestation_registry.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `registryHash`. Records issued scan verdicts as refs/digests/enums/counts
+    only; each attestation is bound to a SPECIFIC `(customerRef, repo,
+    uploadManifestDigest)` and pinned with a deterministic `attestationDigest`
+    (`externalRepoStudyScanAttestationDigest`), from which `attestationRef` is
+    derived — so a recorded verdict cannot drift from the manifest it covered.
+  - `isCleanScanAttestationRef(registry, ref, { customerRef, repo, uploadManifestDigest })`
+    closes the forgeable-string seam exactly as `isPublished…PolicyRef` did: an
+    upload's scan ref must match a KNOWN, CLEAN attestation for THAT exact
+    manifest. A non-clean (`findings`) verdict, an unknown/empty ref, or any
+    customer/repo/manifest mismatch returns false.
+  - Validator enforces verdict↔findings-count consistency (clean ⇒ 0 findings,
+    findings ⇒ ≥1), unique refs, sha256 digests, and digest/ref recomputation.
+  - **Inert by construction**: `effectsApplied` / `customerPublicClaimAllowed` /
+    `marketplacePackageAllowed` / `payoutEligible` are ALWAYS false. Recording a
+    verdict runs NO scan, reads no repo bytes, and grants no ingestion.
+    `sourceBoundary = "customer_refs_withheld"`. Refuses `OpenAgentsInc/openagents`.
+- `packages/probe/packages/runtime/tests/external-repo-studying-scan-attestation-registry.test.ts`
+  — 7 passing tests (inert clean record, empty registry verifies nothing,
+  known-clean-ref-only matching with forged/mismatch rejection, findings never
+  verifies clean, verdict/count inconsistency rejected, OpenAgents-repo rejection,
+  no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+This registry is the *verification primitive* only. The next step (a future run,
+mirroring how the policy registry was later consumed by the review↔policy
+binding) is a scan↔upload binding that DERIVES the upload preflight's
+`scanAttestationRef` from a registry-known clean attestation, so the upload's
+clean-scan gate can no longer accept a caller-supplied string. The self-serve
+upload blocker also still requires real malware/secret-scan EXECUTION (this
+registry only mirrors a verdict), real durable, access-controlled upload storage +
+signed-URL intake, and an ARMED ingestion against a real customer upload with a
+dereferenceable closeout receipt and owner sign-off per
+`proof.claim_upgrade_receipts.v1`. The remaining blockers
+(`privacy_policy_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
