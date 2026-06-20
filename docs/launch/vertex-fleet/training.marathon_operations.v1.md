@@ -129,6 +129,49 @@ real receipts exist.
   is decided from a declared descriptor, not yet fed by live heartbeat/vacancy
   telemetry.
 
-## Other blockers (out of scope this run)
+## 2026-06-20 curtailment drill outcome predicate
 
-- `blocker.product_promises.curtailment_drill_missing` — untouched.
+Blocker advanced: **`blocker.product_promises.curtailment_drill_missing`**
+(partially — still listed).
+
+The marathon promise includes a *scheduled curtailment drill*: proving the run
+can respond to a grid demand-response / curtailment signal — acknowledge it
+promptly, ramp down within the load-shed SLA, seal the in-flight window on a
+durable content-addressed checkpoint *before* halting, then resume from that
+seal with verified state. The durable seal (#4849 + the durability predicate)
+and the bootstrap-from-seal resume path (#4850/#4851) already exist, but nothing
+decided whether a *scheduled curtailment drill* actually PASSED. This change
+supplies that missing outcome predicate as a self-contained, contract-level
+module:
+
+- `apps/openagents.com/workers/api/src/training-curtailment-drill.ts`
+  - `TrainingCurtailmentDrill` typed descriptor: scheduled flag, signal-ack flag
+    + ack latency, halt-completed flag + halt latency, durable-checkpoint-sealed
+    flag, and resume-verified flag.
+  - `evaluateCurtailmentDrill` / `evaluateUntrustedCurtailmentDrill`: pure
+    evaluator returning a `drill_passed` vs `drill_incomplete` verdict with
+    enumerated reasons. It **fails toward INCOMPLETE** — a drill is never scored
+    as passed on missing or out-of-SLA evidence (unscheduled, slow ack, halt SLA
+    breach, halt without a durable seal, or unverified resume all yield
+    INCOMPLETE), mirroring the join barrier that fails toward queueing. A
+    malformed descriptor also fails toward INCOMPLETE.
+  - Two SLA constants: `MaxCurtailmentAckLatencyMs` (signal→ack) and
+    `MaxCurtailmentHaltLatencyMs` (signal→sealed halt / load-shed response).
+- `apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts`
+  - 10 tests: passing drill; not-scheduled, signal-not-acked, ack-SLA breach,
+    halt-not-completed, halt-SLA breach, halt-without-durable-seal, and
+    resume-not-verified each yield INCOMPLETE; a malformed descriptor fails
+    toward INCOMPLETE; a well-formed untrusted descriptor decodes.
+
+This is contract-level only: a `drill_passed` verdict means a recorded drill
+outcome satisfies the curtailment-readiness conditions. It grants no dispatch,
+settlement, promise-state, or green-claim authority, and no promise state or
+blocker list was changed.
+
+### What genuinely remains for the curtailment blocker
+
+- An actual scheduled curtailment drill run end-to-end against a live run and a
+  real (or staged) grid curtailment signal, with a recorded, receipt-backed
+  drill outcome feeding this predicate. The evaluator is decided from a declared
+  descriptor, not yet fed by a live curtailment-event telemetry feed, and there
+  is no Worker route exposing it yet.
