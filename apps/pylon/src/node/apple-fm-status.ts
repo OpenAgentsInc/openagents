@@ -5,6 +5,7 @@ import {
   type ProbeBackendCapabilityReport,
   type ProbeRunnerIdentity,
 } from "../../packages/runtime/src/index.js"
+import type { PylonAppleFmSupervisorStatus } from "./apple-fm-bridge-supervisor-status.js"
 
 export const PYLON_APPLE_FM_STATUS_SCHEMA = "openagents.pylon.apple_fm.status.v0.1" as const
 
@@ -30,6 +31,13 @@ export type PylonAppleFmStatusProjection = {
   readonly blueprintSupport: ProbeBackendCapabilityReport["blueprintSupport"]
   readonly receipt: ProbeBackendCapabilityReport["receipt"]
   readonly blockerRefs: ReadonlyArray<string>
+  /**
+   * Public-safe local helper-supervision phase, present only when a supervisor
+   * is driving the Foundation Models bridge helper for this runner. Absent when
+   * supervision has not been wired (e.g. hosted readiness or a pre-launch
+   * probe). Its blocker refs are merged into the top-level `blockerRefs`.
+   */
+  readonly supervisor?: PylonAppleFmSupervisorStatus
   readonly observedAt: string
   readonly contentRedacted: true
 }
@@ -125,4 +133,35 @@ function appleFmBlockerRefs(report: ProbeBackendCapabilityReport): ReadonlyArray
   }
 
   return [...blockers].sort()
+}
+
+/**
+ * Embed a local bridge-supervisor summary into the Apple FM status projection so
+ * the supervision phase (running / recovering / stopped) reaches the
+ * `apple_fm.status` surface and Autopilot Desktop.
+ *
+ * This is the surface-observability half of
+ * `blocker.product_promises.local_apple_fm_helper_supervision_missing`: the pure
+ * reducer (`apple-fm-bridge-supervisor.ts`) decides the lifecycle and
+ * `summarizeAppleFmBridgeSupervisor(...)` projects it; this function carries that
+ * summary out on the same projection the desktop already consumes, merging the
+ * supervisor's blocker refs into the top-level set (deduped + sorted) so a
+ * crash-looped helper is visible even when the capability probe itself reads
+ * ready. It is purely additive and side-effect-free: the base projection (no
+ * supervisor) is unchanged, no clock is read, and no prompts, file contents,
+ * paths, tokens, URLs, or bearer material are introduced.
+ */
+export function withAppleFmSupervisorStatus(
+  projection: PylonAppleFmStatusProjection,
+  supervisor: PylonAppleFmSupervisorStatus,
+): PylonAppleFmStatusProjection {
+  const mergedBlockers = [
+    ...new Set([...projection.blockerRefs, ...supervisor.blockerRefs]),
+  ].sort()
+
+  return {
+    ...projection,
+    supervisor,
+    blockerRefs: mergedBlockers,
+  }
 }

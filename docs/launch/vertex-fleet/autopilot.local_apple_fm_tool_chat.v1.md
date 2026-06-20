@@ -102,6 +102,36 @@ Advances (does **not** clear)
   non-existent source would break non-Mac `bun run build`). Real signing,
   notarization, and a from-install smoke on admitted hardware remain.
 
+## Follow-up run (2026-06-20): supervisor phase now reaches the `apple_fm.status` surface
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: `summarizeAppleFmBridgeSupervisor(...)` produced a public-safe
+  supervision summary, but nothing carried it onto the `apple_fm.status`
+  projection that Autopilot Desktop already consumes. A crash-looped helper was
+  therefore invisible to the surface — the capability probe could read `ready`
+  while the supervisor had given up.
+- `apps/pylon/src/node/apple-fm-status.ts` — added an optional `supervisor` field
+  to `PylonAppleFmStatusProjection` and a pure, additive
+  `withAppleFmSupervisorStatus(projection, supervisor)` that embeds the
+  supervisor summary and merges its blocker refs into the top-level
+  `blockerRefs` (deduped + sorted). The base projection (no supervisor) is
+  unchanged, no clock is read, and no prompts/paths/tokens/URLs/bearer material
+  are introduced.
+- `apps/pylon/tests/apple-fm-status-supervisor.test.ts` — 5 tests: base
+  projection has no supervisor; attaching a running supervisor surfaces health
+  without adding blockers and does not mutate the base; a crash-looped
+  supervisor merges its blocker even when health reads ready; blocker refs are
+  deduped + sorted; the merged projection carries no sensitive content.
+  `bun test` green (5 pass / 18 assertions).
+- Still open: the live launcher that actually feeds
+  `process_started`/`process_exited`/`health_ok` events and performs the emitted
+  `spawn`/`schedule_restart`/`give_up` actions still does not exist, and the
+  Pylon `apple_fm.status` action does not yet attach a real supervisor instance
+  (no supervisor is live to attach). This wires the *projection plumbing* so the
+  phase reaches the surface the moment a launcher exists.
+
 ## What genuinely remains (blocker NOT cleared)
 
 - Wire a real launcher (`Bun.spawn`/`child_process`) on top of this policy that
