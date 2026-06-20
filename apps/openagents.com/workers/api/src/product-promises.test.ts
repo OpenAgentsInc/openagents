@@ -233,6 +233,9 @@ describe('public product promises document', () => {
     // only instruct_sft_lane_missing by replacing it with narrower fixture-sync
     // and paid SFT dispatch blockers; paid dispatch, preference rollout, and
     // vibe-test gates remain blocked, so green remains exactly 24.
+    // The 2026-06-20.30 autopilot.decision_queue.v1 receipt-closeout pass
+    // adds DecisionCloseoutReceipt (evidence-only, no promise state change);
+    // green count stays exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
