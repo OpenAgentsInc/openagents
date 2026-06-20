@@ -10,6 +10,7 @@ export const AcceptedOutcomesPerKwhEndpoint =
   '/api/public/metrics/accepted-outcomes-per-kwh'
 export const AcceptedOutcomesPerKwhSchemaVersion =
   'openagents.metrics.accepted_outcomes_per_kwh.v1'
+export const AcceptedOutcomesPerKwhRequiredMeasuredDatapoints = 2
 export const AcceptedOutcomesPerKwhStaleness = liveAtReadStaleness([
   'accepted_outcome_receipt_published',
   'labor_escrow_release_receipt_published',
@@ -77,9 +78,13 @@ export class AcceptedOutcomesPerKwhGate extends S.Class<AcceptedOutcomesPerKwhGa
   'AcceptedOutcomesPerKwhGate',
 )({
   state: S.Literals(['yellow', 'green']),
+  currentMeasuredDatapointCount: S.Int,
   modeledFigurePublicationAllowed: S.Boolean,
+  measuredDatapointShortfall: S.Int,
   measuredFigurePublicationAllowed: S.Boolean,
+  measuredTelemetryGateSatisfied: S.Boolean,
   greenGateSatisfied: S.Boolean,
+  requiredMeasuredDatapointCount: S.Int,
   blockerRefs: S.Array(S.String),
   caveatRefs: S.Array(S.String),
 }) {}
@@ -209,6 +214,15 @@ export const projectAcceptedOutcomesPerKwh = (
   input: { generatedAt?: string | undefined } = {},
 ): AcceptedOutcomesPerKwhProjection => {
   const datapoints = [modeledLabor4777AoKwhDatapoint()]
+  const measuredDatapointCount = datapoints.filter(
+    datapoint => datapoint.energyEvidenceState !== 'modeled',
+  ).length
+  const measuredDatapointShortfall = Math.max(
+    0,
+    AcceptedOutcomesPerKwhRequiredMeasuredDatapoints - measuredDatapointCount,
+  )
+  const measuredTelemetryGateSatisfied =
+    measuredDatapointCount >= AcceptedOutcomesPerKwhRequiredMeasuredDatapoints
 
   const internalAcceptedOutcomeCount = datapoints
     .filter(datapoint => datapoint.demandProvenance.kind === 'internal')
@@ -243,9 +257,7 @@ export const projectAcceptedOutcomesPerKwh = (
     },
     energyAccounting: {
       evidenceState: 'modeled_seed',
-      measuredDatapointCount: datapoints.filter(
-        datapoint => datapoint.energyEvidenceState !== 'modeled',
-      ).length,
+      measuredDatapointCount,
       modeledDatapointCount: datapoints.filter(
         datapoint => datapoint.energyEvidenceState === 'modeled',
       ).length,
@@ -258,14 +270,20 @@ export const projectAcceptedOutcomesPerKwh = (
       blockerRefs: [
         'blocker.product_promises.energy_accounting_measured_telemetry_missing',
         'blocker.product_promises.ao_kwh_only_single_modeled_seed_datapoint',
+        'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
       ],
       caveatRefs: [
         'caveat.ao_kwh.figures_must_label_modeled_vs_measured',
         'caveat.ao_kwh.seed_not_a_ranking_or_efficiency_claim',
       ],
+      currentMeasuredDatapointCount: measuredDatapointCount,
       greenGateSatisfied: false,
+      measuredDatapointShortfall,
       measuredFigurePublicationAllowed: false,
+      measuredTelemetryGateSatisfied,
       modeledFigurePublicationAllowed: true,
+      requiredMeasuredDatapointCount:
+        AcceptedOutcomesPerKwhRequiredMeasuredDatapoints,
       state: 'yellow',
     }),
     generatedAt: input.generatedAt ?? currentIsoTimestamp(),
@@ -280,8 +298,8 @@ export const projectAcceptedOutcomesPerKwh = (
     staleness: AcceptedOutcomesPerKwhStaleness,
     status: 'instrumented_modeled_seed',
     statusLabel:
-      'AO/kWh has one receipt-backed modeled seed datapoint; measured energy telemetry remains missing.',
+      'AO/kWh has one receipt-backed modeled seed datapoint; measured energy telemetry remains missing (0 of 2 measured datapoints).',
     unsafeCopy:
-      'Do not describe the seed datapoint as measured, broadly representative, a ranking, a provider efficiency claim, investment advice, grid advice, or proof that production energy routing is live. Do not present the internal, operator-staged accepted outcome as external market demand or revenue: no external dollar, no demand claim.',
+      'Do not describe the seed datapoint as measured, broadly representative, a ranking, a provider efficiency claim, investment advice, grid advice, or proof that production energy routing is live. Do not present AO/kWh as green or measured until at least two real telemetry datapoints are published with evidence-state labels and transition receipts. Do not present the internal, operator-staged accepted outcome as external market demand or revenue: no external dollar, no demand claim.',
   })
 }
