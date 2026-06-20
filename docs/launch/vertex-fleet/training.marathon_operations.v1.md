@@ -439,3 +439,45 @@ list was changed. `standby_dispatch_missing` stays listed: what remains is a rea
 standby promoted into a live run (live heartbeat/vacancy telemetry feeding the
 predicate) producing a published, receipt-backed promotion that this verifier would
 then confirm.
+
+## 2026-06-20 — Curtailment-drill receipt verifier (consumption side)
+
+**Blocker advanced:** `blocker.product_promises.curtailment_drill_missing`
+(NOT cleared — see below).
+
+The curtailment-drill lane had a receipt EMITTER
+(`training-curtailment-drill-receipt.ts`) but, unlike the durable-checkpoint-seal
+and standby-dispatch lanes, no receipt VERIFIER. This change closes that
+asymmetry by adding the CONSUMPTION side of the curtailment-drill receipt
+contract, mirroring the existing two verifiers:
+
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-verifier.ts`
+  - `verifyCurtailmentDrillReceipt` / `verifyUntrustedCurtailmentDrillReceipt`:
+    pure verifiers returning a `verified` vs `not_verified` verdict with
+    enumerated reasons. They re-derive the canonical receipt ref from the
+    receipt's own `drillRef` and confirm it matches, re-check that `drillRef`
+    and `runRef` are public-safe, and re-check that the measured `ackLatencyMs`
+    / `haltLatencyMs` are within their SLA literals (`MaxCurtailmentAckLatencyMs`
+    / `MaxCurtailmentHaltLatencyMs`). They **fail toward `not_verified`** — a
+    malformed, ref-mismatched, non-public-safe, or SLA-breaching receipt is never
+    reported as verified — mirroring the drill predicate's fail-toward-INCOMPLETE
+    posture.
+  - Reuses a shared `CurtailmentDrillPublicSafeRefPattern` now exported from
+    `training-curtailment-drill.ts` (mirroring `StandbyDispatchPublicSafeRefPattern`).
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-verifier.test.ts`
+  - 8 tests: a genuine emitted receipt verifies (trusted + untrusted-decode
+    paths); ref mismatch, non-public-safe run ref, and ack/halt latencies that
+    breach their SLA literals each fail to verify; a malformed receipt and a
+    forged-outcome receipt that does not decode each fail toward `not_verified`.
+
+Contract-level only: a `verified` verdict reports a published receipt is
+internally authentic and consistent with the emitter invariants. It does **not**
+assert any real scheduled curtailment drill was run, and grants no dispatch,
+settlement, flexible-load-market, promise-state, or green-claim authority. No
+promise state or blocker list was changed.
+
+**What remains (`curtailment_drill_missing` stays listed):** no real scheduled
+shed-and-resume drill has run against a live training run, so no genuine drill
+receipt exists to publish or verify, and the public projection's
+`curtailmentDrillReceiptAvailable` flag correctly stays `false`. A flexible-load
+proof and the drill receipt itself remain unproven.
