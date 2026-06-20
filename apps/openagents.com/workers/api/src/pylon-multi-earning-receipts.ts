@@ -600,6 +600,82 @@ export const projectPylonWorkReceiptManifest = (
 }
 
 /**
+ * Whole-install ref-namespace-disjointness report. INERT and public-safe: it
+ * carries only integer overlap counts. A work receipt names up to THREE genuinely
+ * distinct evidence artifacts — `assignmentRef` (the work UNIT), `receiptRef` (the
+ * WORK proof) and `settlementReceiptRef` (the SETTLEMENT proof). The "earning
+ * depth" claim (work was assigned -> work was done -> it settled) rests on these
+ * being three SEPARATE, independently dereferenceable artifacts. This report
+ * states how many distinct tokens appear in more than one namespace; each such
+ * overlap is one artifact masquerading as two distinct pieces of evidence.
+ * `allRefNamespacesDisjoint` is true only when no token is shared across the
+ * assignment / receipt / settlement namespaces.
+ */
+export type WorkReceiptRefDisjointness = {
+  schema: typeof PYLON_MULTI_EARNING_RECEIPT_SCHEMA
+  /** Distinct tokens used as BOTH an assignmentRef and a receiptRef. */
+  assignmentReceiptOverlapCount: number
+  /** Distinct tokens used as BOTH an assignmentRef and a settlementReceiptRef. */
+  assignmentSettlementOverlapCount: number
+  /** Distinct tokens used as BOTH a receiptRef and a settlementReceiptRef. */
+  receiptSettlementOverlapCount: number
+  /** Distinct tokens that appear in more than one namespace (the union). */
+  totalOverlapTokenCount: number
+  allRefNamespacesDisjoint: boolean
+}
+
+/**
+ * Verify that the three ref NAMESPACES of a set of work receipts are mutually
+ * disjoint. PURE / INERT. Receipts are first deduped by receiptRef, then their
+ * `assignmentRef`s, `receiptRef`s, and `settlementReceiptRef`s are collected into
+ * three sets; the report counts how many distinct tokens fall into more than one
+ * set. This is the integrity check that lets the three refs on each receipt be
+ * TRUSTED as three genuinely distinct artifacts — without it, a single token
+ * could pose as a work UNIT, its WORK proof, AND its SETTLEMENT proof at once,
+ * faking evidence depth that does not exist. It is the cross-namespace analogue of
+ * the per-namespace auditors (work-unit / settlement coverage), which only check
+ * distinctness WITHIN a single namespace.
+ */
+export const verifyWorkReceiptRefDisjointness = (
+  receipts: ReadonlyArray<PylonModeWorkReceipt>,
+): WorkReceiptRefDisjointness => {
+  const deduped = makeInMemoryPylonModeWorkReceiptStore(receipts).list()
+
+  const assignmentRefs = new Set<string>()
+  const receiptRefs = new Set<string>()
+  const settlementRefs = new Set<string>()
+  for (const receipt of deduped) {
+    assignmentRefs.add(receipt.assignmentRef)
+    receiptRefs.add(receipt.receiptRef)
+    if (receipt.settlementReceiptRef !== undefined) {
+      settlementRefs.add(receipt.settlementReceiptRef)
+    }
+  }
+
+  const intersection = (a: Set<string>, b: Set<string>): string[] =>
+    [...a].filter(token => b.has(token))
+
+  const assignmentReceipt = intersection(assignmentRefs, receiptRefs)
+  const assignmentSettlement = intersection(assignmentRefs, settlementRefs)
+  const receiptSettlement = intersection(receiptRefs, settlementRefs)
+
+  const overlapping = new Set<string>([
+    ...assignmentReceipt,
+    ...assignmentSettlement,
+    ...receiptSettlement,
+  ])
+
+  return {
+    schema: PYLON_MULTI_EARNING_RECEIPT_SCHEMA,
+    assignmentReceiptOverlapCount: assignmentReceipt.length,
+    assignmentSettlementOverlapCount: assignmentSettlement.length,
+    receiptSettlementOverlapCount: receiptSettlement.length,
+    totalOverlapTokenCount: overlapping.size,
+    allRefNamespacesDisjoint: overlapping.size === 0,
+  }
+}
+
+/**
  * Fold a set of per-mode work receipts into the projection's earning store.
  * PURE. Receipts are first deduped by receiptRef, then grouped by mode; each
  * mode's amount-class counts come from its receipts, and a mode that carries any
@@ -608,12 +684,14 @@ export const projectPylonWorkReceiptManifest = (
  * work-receipt store). The resulting store feeds projectPylonMultiEarningNode
  * unchanged, so the projection's counts are now backed by receipts.
  *
- * Before folding, two integrity checks run. Work-unit coverage: if any mode's
+ * Before folding, three integrity checks run. Work-unit coverage: if any mode's
  * amount-class counts would be inflated by two receipts re-counting one work unit
  * (a shared `assignmentRef` within a mode or reused across modes), the fold
  * REJECTS. Settlement coverage: if any settled count would not be backed by that
  * many DISTINCT settlement receipts (within a mode or reused across modes), the
- * fold REJECTS. Either rejection prevents a projection that over-claims.
+ * fold REJECTS. Ref-namespace disjointness: if any single token poses in more than
+ * one of the assignment / receipt / settlement namespaces (faking evidence depth),
+ * the fold REJECTS. Any rejection prevents a projection that over-claims.
  *
  * `modeledCount` is always 0 here: `modeled` is an estimate with no work event,
  * so it has no receipt and cannot be folded in.
@@ -645,6 +723,17 @@ export const foldWorkReceiptsIntoEarningStore = (
         reason: coverage.crossModeSettlementReuse
           ? 'settlement over-claim: a settlementReceiptRef is reused across earning modes; each settled unit requires its own distinct settlement receipt'
           : 'settlement over-claim: a mode has more settled receipts than distinct settlement receipts; each settled unit requires its own distinct settlement receipt',
+      }),
+    }
+  }
+
+  const disjointness = verifyWorkReceiptRefDisjointness(deduped)
+  if (!disjointness.allRefNamespacesDisjoint) {
+    return {
+      ok: false,
+      error: new PylonMultiEarningError({
+        reason:
+          'ref over-claim: a token is shared across the assignment / receipt / settlement namespaces; the work unit, its work receipt, and its settlement receipt must be three genuinely distinct artifacts',
       }),
     }
   }

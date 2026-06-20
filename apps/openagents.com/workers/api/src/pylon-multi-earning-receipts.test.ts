@@ -10,6 +10,7 @@ import {
   projectPylonSettlementManifest,
   projectPylonWorkReceiptManifest,
   recordModeWorkReceipt,
+  verifyWorkReceiptRefDisjointness,
   verifyWorkReceiptSettlementCoverage,
   verifyWorkReceiptWorkUnitCoverage,
 } from './pylon-multi-earning-receipts'
@@ -766,5 +767,136 @@ describe('pylon multi-earning work-receipt manifest (#5527)', () => {
     expect(manifest.perMode[0]?.observedReceiptRefs).toEqual([
       'receipt.public.pylon.training.work_a',
     ])
+  })
+})
+
+describe('pylon work-receipt ref-namespace disjointness (#5527)', () => {
+  test('empty receipts are vacuously disjoint', () => {
+    const report = verifyWorkReceiptRefDisjointness([])
+    expect(report.assignmentReceiptOverlapCount).toBe(0)
+    expect(report.assignmentSettlementOverlapCount).toBe(0)
+    expect(report.receiptSettlementOverlapCount).toBe(0)
+    expect(report.totalOverlapTokenCount).toBe(0)
+    expect(report.allRefNamespacesDisjoint).toBe(true)
+  })
+
+  test('three genuinely distinct artifacts per receipt are disjoint', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+      okReceipt({
+        mode: 'forum_tips',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.forum_tips.a',
+        receiptRef: 'receipt.public.pylon.forum_tips.work_a',
+      }),
+    ]
+    const report = verifyWorkReceiptRefDisjointness(receipts)
+    expect(report.totalOverlapTokenCount).toBe(0)
+    expect(report.allRefNamespacesDisjoint).toBe(true)
+  })
+
+  test('a token used as both an assignmentRef and a receiptRef is not disjoint', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'shared.public.pylon.training.shared',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        // Reuses the first receipt's assignmentRef as THIS receipt's receiptRef:
+        // one token posing as both a work unit and a work receipt.
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'shared.public.pylon.training.shared',
+      }),
+    ]
+    const report = verifyWorkReceiptRefDisjointness(receipts)
+    expect(report.assignmentReceiptOverlapCount).toBe(1)
+    expect(report.totalOverlapTokenCount).toBe(1)
+    expect(report.allRefNamespacesDisjoint).toBe(false)
+  })
+
+  test('a settlement ref reused as another receipt-work ref is not disjoint', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'shared.public.pylon.shared',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        // Reuses the settlement proof token as a WORK proof token.
+        receiptRef: 'shared.public.pylon.shared',
+      }),
+    ]
+    const report = verifyWorkReceiptRefDisjointness(receipts)
+    expect(report.receiptSettlementOverlapCount).toBe(1)
+    expect(report.totalOverlapTokenCount).toBe(1)
+    expect(report.allRefNamespacesDisjoint).toBe(false)
+  })
+
+  test('fold REJECTS when a settlement ref poses as a work-unit ref', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        // The work unit and the settlement proof are the SAME token.
+        assignmentRef: 'shared.public.pylon.training.collapsed',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'shared.public.pylon.training.collapsed',
+      }),
+    ]
+    const report = verifyWorkReceiptRefDisjointness(receipts)
+    expect(report.assignmentSettlementOverlapCount).toBe(1)
+    expect(report.allRefNamespacesDisjoint).toBe(false)
+
+    const folded = foldWorkReceiptsIntoEarningStore(receipts)
+    expect(folded.ok).toBe(false)
+    if (!folded.ok) {
+      expect(folded.error.reason).toMatch(/genuinely distinct artifacts/)
+    }
+  })
+
+  test('fold ACCEPTS two settled modes when all three namespaces are disjoint, still red', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'settlement.public.pylon.training.a',
+      }),
+      okReceipt({
+        mode: 'forum_tips',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.forum_tips.a',
+        receiptRef: 'receipt.public.pylon.forum_tips.work_a',
+        settlementReceiptRef: 'settlement.public.pylon.forum_tips.a',
+      }),
+    ]
+    expect(verifyWorkReceiptRefDisjointness(receipts).allRefNamespacesDisjoint).toBe(
+      true,
+    )
+    const folded = foldWorkReceiptsIntoEarningStore(receipts)
+    expect(folded.ok).toBe(true)
+    if (folded.ok) {
+      const projection = projectPylonMultiEarningNode(folded.store)
+      expect(projection.settledModeFamilyCount).toBe(2)
+      // Even with the bar met, the projection stays honest and red/inert.
+      expect(projection.promiseState).toBe('red')
+      expect(projection.inert).toBe(true)
+    }
   })
 })

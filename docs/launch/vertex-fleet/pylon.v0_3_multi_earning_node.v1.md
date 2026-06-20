@@ -154,6 +154,34 @@ work-unit axis:
 INERT and PURE: mints no money, reads no wallet, admits no live receipt. The
 empty manifest reports `promiseState: 'red'`, `inert: true`, no modes.
 
+### Follow-up (this run): cross-namespace ref-disjointness integrity
+
+The per-namespace auditors stop one work unit / one settlement being reused
+WITHIN or across modes, but each only checks distinctness inside a SINGLE ref
+namespace. Nothing stopped a single token from posing in MORE THAN ONE namespace:
+a receipt names up to three genuinely distinct evidence artifacts —
+`assignmentRef` (the work UNIT), `receiptRef` (the WORK proof), and
+`settlementReceiptRef` (the SETTLEMENT proof) — and the "earning depth" claim
+(work assigned -> work done -> it settled) rests on these being three SEPARATE,
+independently dereferenceable artifacts. One token serving as both the work proof
+and the settlement proof (or as both the work unit and its settlement) fakes
+evidence depth that does not exist. This run closes that hole:
+
+- `verifyWorkReceiptRefDisjointness(...)` — PURE/INERT auditor returning a
+  public-safe report of the pairwise overlaps
+  (`assignmentReceiptOverlapCount`, `assignmentSettlementOverlapCount`,
+  `receiptSettlementOverlapCount`), the de-duplicated `totalOverlapTokenCount`,
+  and the single `allRefNamespacesDisjoint` gate.
+- `foldWorkReceiptsIntoEarningStore(...)` now also REJECTS (returns `ok: false`)
+  when any token is shared across the three namespaces, so a projection can never
+  be backed by an evidence chain that is one artifact wearing three hats.
+- New tests: empty/disjoint/assignment-receipt-overlap/receipt-settlement-overlap
+  cases for the auditor, fold-rejection for an assignment==settlement collapse,
+  and a two-distinct-settled-modes accept case that still reports red/inert.
+
+INERT and PURE: mints no money, reads no wallet, admits no live settled receipt.
+Two disjoint settled modes still report `promiseState: 'red'`, `inert: true`.
+
 ## What genuinely remains (blocker stays listed)
 
 `multi_earning_mode_receipts_missing` is **partially advanced, not cleared**:
