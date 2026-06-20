@@ -145,7 +145,16 @@ describe('promise transition receipts', () => {
       ),
     )
     const feedBody = (await publicFeed.json()) as Readonly<{
+      generatedAt: string
+      maxStalenessSeconds: number
       receipts: ReadonlyArray<PromiseTransitionReceipt>
+      registryGeneratedAt: string
+      registryVersion: string
+      staleness: Readonly<{
+        composition: string
+        maxStalenessSeconds: number
+        rebuildsOn: ReadonlyArray<string>
+      }>
     }>
 
     expect(denied.status).toBe(401)
@@ -159,6 +168,18 @@ describe('promise transition receipts', () => {
     })
     expect(exceptionBody.receipt.result).toBe('exception')
     expect(publicFeed.status).toBe(200)
+    expect(feedBody.generatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(feedBody.registryGeneratedAt).toBe(feedBody.generatedAt)
+    expect(feedBody.registryVersion).toMatch(/^\d{4}-\d{2}-\d{2}\./)
+    expect(feedBody.maxStalenessSeconds).toBe(0)
+    expect(feedBody.staleness.composition).toBe('live_at_read')
+    expect(feedBody.staleness.maxStalenessSeconds).toBe(0)
+    expect(feedBody.staleness.rebuildsOn).toContain(
+      'product_promise_registry_changed',
+    )
+    expect(feedBody.staleness.rebuildsOn).toContain(
+      'product_promise_transition_receipt_recorded',
+    )
     expect(feedBody.receipts).toHaveLength(2)
 
     const verified = lastVerifiedAtByPromise(feedBody.receipts)

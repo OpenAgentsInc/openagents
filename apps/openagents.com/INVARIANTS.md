@@ -1954,8 +1954,11 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no
     payload-level `generatedAt`/contract).
-  - `GET /api/public/product-promises/transitions` — stored receipt rows —
-    NON-COMPLIANT (per-item timestamps only).
+  - `GET /api/public/product-promises/transitions` — stored receipt rows,
+    served with live registry context — compliant (`generatedAt`,
+    `registryVersion`, `registryGeneratedAt`, and the top-level
+    `projection_staleness.v1` `live_at_read` contract; receipt rows remain
+    transition evidence only and do not mutate registry state).
   - `GET /api/public/proof/otec` — stored snapshot — NON-COMPLIANT (no
     freshness fields at all).
   - `GET /api/public/pylon-stats` — live at read — NON-COMPLIANT
