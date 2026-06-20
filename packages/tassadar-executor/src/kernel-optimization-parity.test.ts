@@ -16,6 +16,7 @@ const baseline: KernelThroughputRecord = {
   device: "cuda",
   hardwareRef: "single-machine-demo-gpu",
   kernelRef: "baseline-runtime",
+  opRef: "rmsnorm",
   targetModel: "qwen-3.5-0.5b",
   tokensPerSecond: 328,
 }
@@ -23,6 +24,7 @@ const optimized: KernelThroughputRecord = {
   device: "cuda",
   hardwareRef: "single-machine-demo-gpu",
   kernelRef: "psionic-custom-cuda",
+  opRef: "rmsnorm",
   targetModel: "qwen-3.5-0.5b",
   tokensPerSecond: 523,
 }
@@ -70,12 +72,69 @@ describe("kernel-optimization throughput-parity verdict", () => {
 
   test("surfaces the trimmed op ref so settlements can bind by op", () => {
     const verdict = verifyKernelOptimizationParity({
-      baseline,
-      optimized,
+      baseline: { ...baseline, opRef: "attention.flash" },
+      optimized: { ...optimized, opRef: "attention.flash" },
       optimizedOpRef: "  attention.flash  ",
       parityVerdict: verifiedParity,
     })
     expect(verdict.optimizedOpRef).toBe("attention.flash")
+  })
+
+  test("accepts when record op provenance matches case-insensitively", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline: { ...baseline, opRef: "RMSNorm" },
+      optimized: { ...optimized, opRef: " rmsnorm " },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("accepted")
+  })
+
+  test("rejects when a throughput record measures a different op", () => {
+    // Apples-to-oranges: optimized record is for a different op than claimed,
+    // so its (higher) tok/s is not a speedup of the claimed op.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, opRef: "attention.flash" },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("op_mismatch")
+  })
+
+  test("rejects when the claimed op disagrees with both records", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized,
+      optimizedOpRef: "attention.flash",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("op_mismatch")
+  })
+
+  test("rejects a blank claimed op (no provenance to bind a settlement to)", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized,
+      optimizedOpRef: "   ",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("op_mismatch")
+  })
+
+  test("op-mismatch wins over a faster-but-wrong parity verdict", () => {
+    // Op provenance is structural and checked before the parity gate.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, opRef: "attention.flash" },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: rejectedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("op_mismatch")
   })
 
   test("speed never overrides correctness: faster-but-wrong is rejected", () => {

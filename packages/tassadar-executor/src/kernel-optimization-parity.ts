@@ -31,6 +31,16 @@ export type KernelThroughputRecord = Readonly<{
   device: string
   /** Declared hardware the tok/s number was measured on. */
   hardwareRef: string
+  /**
+   * The op this record's kernel implements (e.g. "rmsnorm",
+   * "attention.flash"). Distinct from `kernelRef`, which names the *kernel
+   * implementation* of that op (baseline vs optimized intentionally differ).
+   * Both the baseline and optimized record must declare the SAME op as the one
+   * the job claims to optimize, otherwise the tok/s numbers are not comparable
+   * (a "rmsnorm" baseline vs an "attention.flash" optimized is apples-to-
+   * oranges and must never be accepted as a speedup).
+   */
+  opRef: string
   /** Kernel/op identifier this record measures. */
   kernelRef: string
   /** Measured throughput in tokens per second (must be finite and > 0). */
@@ -39,6 +49,7 @@ export type KernelThroughputRecord = Readonly<{
 
 export type KernelOptimizationRejection =
   | Readonly<{ reason: "target_mismatch"; detail: string }>
+  | Readonly<{ reason: "op_mismatch"; detail: string }>
   | Readonly<{ reason: "invalid_throughput"; detail: string }>
   | Readonly<{
       reason: "parity_rejected"
@@ -80,9 +91,12 @@ const isPositiveFinite = (value: number): boolean =>
  * record, and the independent-device exact-trace-replay parity verdict into a
  * single kernel-optimization acceptance verdict.
  *
- * Gate order is intentional: structural validity (same target, valid numbers)
- * first, then the parity correctness gate, then throughput. Parity is checked
- * before throughput so that "faster but wrong" can never be accepted.
+ * Gate order is intentional: structural validity (same target, same op
+ * provenance, valid numbers) first, then the parity correctness gate, then
+ * throughput. Op provenance is checked before throughput because comparing
+ * tok/s across different ops is meaningless — a faster number for a different
+ * op is not a speedup of the claimed op. Parity is checked before throughput
+ * so that "faster but wrong" can never be accepted.
  */
 export const verifyKernelOptimizationParity = (
   input: Readonly<{
@@ -126,6 +140,23 @@ export const verifyKernelOptimizationParity = (
     return rejected({
       detail: `baseline ${baseline.targetModel}/${baseline.device}/${baseline.hardwareRef} != optimized ${optimized.targetModel}/${optimized.device}/${optimized.hardwareRef}`,
       reason: "target_mismatch",
+    })
+  }
+
+  const normalizeOp = (value: string): string => value.trim().toLowerCase()
+  const claimedOp = normalizeOp(input.optimizedOpRef)
+  const baselineOp = normalizeOp(baseline.opRef)
+  const optimizedOp = normalizeOp(optimized.opRef)
+  if (claimedOp.length === 0) {
+    return rejected({
+      detail: "optimizedOpRef must name a non-empty op",
+      reason: "op_mismatch",
+    })
+  }
+  if (baselineOp !== claimedOp || optimizedOp !== claimedOp) {
+    return rejected({
+      detail: `op provenance mismatch: claimed "${input.optimizedOpRef.trim()}" but baseline record op "${baseline.opRef.trim()}", optimized record op "${optimized.opRef.trim()}"`,
+      reason: "op_mismatch",
     })
   }
 
