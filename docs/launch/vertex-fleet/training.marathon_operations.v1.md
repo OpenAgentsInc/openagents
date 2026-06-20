@@ -522,3 +522,44 @@ scheduled drill ran. No promise state or blocker list was changed.
 no scheduled live shed-and-resume drill has run, so no genuine receipt exists and a
 real feed is empty. A flexible-load proof and the drill receipt itself remain
 unproven.
+
+## 2026-06-20 — Standby-promotion receipt feed (collection aggregation)
+
+**Blocker advanced:** `blocker.product_promises.standby_dispatch_missing`
+(NOT cleared — see below).
+
+The standby lane had a receipt EMITTER and a single-receipt VERIFIER, but — unlike
+the curtailment lane, which already has its feed — no aggregation layer. A public
+receipt route does not serve one receipt; it serves a COLLECTION. Nothing turned an
+untrusted list of published promotion receipts into the one public-safe, verified,
+de-duplicated, ordered feed such a route would publish. This change adds that layer
+for the standby lane, mirroring the curtailment-drill receipt feed
+(`training-curtailment-drill-receipt-feed.ts`):
+
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-feed.ts`
+  - `buildStandbyDispatchReceiptFeed`: a pure, TOTAL function over an array of
+    untrusted receipts. It decodes and runs each through the read-side verifier,
+    admits only receipts that pass every authenticity invariant, drops duplicate
+    receipt refs (keeping the first), counts and explains every rejection
+    (`receipt_malformed` / `receipt_not_verified` / `duplicate_receipt_ref`), and
+    returns accepted entries deterministically ordered by receipt ref. It never
+    throws, so it is safe at the edge of a real public feed. The feed carries the
+    blocker ref and `publicSafe: true`.
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-feed.test.ts`
+  - 6 tests: empty list yields an empty public-safe feed; genuine receipts are
+    admitted ordered by receipt ref; duplicate refs drop keeping the first; a
+    malformed receipt is rejected without throwing; a decodable-but-ref-mismatched
+    receipt is rejected as not-verified; a mixed accepted/rejected batch is
+    deterministic.
+- `training-marathon-operations.ts` lists the feed module in the standby surface
+  `sourceRefs`. All projection flags stay false.
+
+Contract-level only: this is the aggregation layer a public promotion-receipt feed
+needs, not a completed promotion. It grants no dispatch, settlement, promise-state,
+or green-claim authority, and asserts no real standby was promoted. No promise state
+or blocker list was changed.
+
+**What remains (`standby_dispatch_missing` stays listed):** unchanged from above —
+no live standby has been promoted into a real run (no live heartbeat/vacancy
+telemetry feeds the predicate), so no genuine receipt exists and a real feed is
+empty. A receipt-backed live promotion remains unproven.
