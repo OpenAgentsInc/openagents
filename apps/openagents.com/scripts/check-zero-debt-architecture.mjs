@@ -283,7 +283,16 @@ const budgetChecks = [
     // returns `Effect.Effect<Response>` like the sibling public read handlers.
     // Ratchet back down when these public-projection handlers are extracted
     // behind shared route mappers.
-    budget: 92,
+    // +1 (92 -> 93) for the Omni client-delivery business-object projection
+    // surface (omni-client-delivery-projection-routes.ts,
+    // workrooms.omni_client_delivery_workrooms.v1, yellow): a flag-gated INERT
+    // read-only projection over the existing source-authorized
+    // business-object delivery seam, clearing only
+    // blocker.product_promises.omni_client_delivery_projection_missing. The
+    // handler returns `Response` directly (wrapped in `Effect.succeed` at the
+    // mount). Ratchet back down when these public-projection handlers are
+    // extracted behind shared route mappers.
+    budget: 93,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -625,6 +634,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/pylon-multi-earning-node.ts',
     route: '/api/public/pylon/multi-earning-node',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/omni-client-delivery-projection-routes.ts',
+    route: '/api/public/omni/client-delivery-projection',
     status: 'staleness_declared',
   },
   {
