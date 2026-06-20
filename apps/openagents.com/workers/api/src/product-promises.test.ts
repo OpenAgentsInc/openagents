@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.6')
+    expect(decoded.version).toBe('2026-06-20.7')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -141,7 +141,10 @@ describe('public product promises document', () => {
     // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
     // 2026-06-20.5 signature-metering de-stale pass and 2026-06-20.6
     // partner-payout projection de-stale pass flip no promise state, so green
-    // remains exactly 24.
+    // remains exactly 24. The 2026-06-20.7 pass clears the Nostr-export blocker
+    // on identity.orange_check_forum_signal.v1 (a real dereferenceable kind-1
+    // attestation on wss://relay.openagents.com); the promise stays yellow and
+    // green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -734,12 +737,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.6', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.7', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.6',
+      expectedVersion: '2026-06-20.7',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.6',
+      servedVersion: '2026-06-20.7',
       status: 'ready',
     })
     expect(
@@ -749,7 +752,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.6',
+      servedVersion: '2026-06-20.7',
       status: 'blocked',
     })
   })
