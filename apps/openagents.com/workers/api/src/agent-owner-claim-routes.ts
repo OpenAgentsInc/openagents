@@ -32,6 +32,7 @@ import {
   xClaimRewardEligibilityListResponse,
   xClaimRewardEligibilityStatusResponse,
 } from './x-claim-reward-eligibility-routes'
+import { assertXClaimRewardSettlementEvidenceRefs } from './x-claim-reward-settlement-evidence'
 
 const CLAIM_TTL_MS = 1000 * 60 * 60 * 48
 const DEFAULT_CREDENTIAL_TTL_MS = 1000 * 60 * 60 * 24 * 90
@@ -1743,12 +1744,15 @@ const dispatchRewardResponse = async <
     )
   }
 
-  if (
-    transition.to === 'settled' &&
-    (parsed.evidenceRefs ?? []).length === 0
-  ) {
+  const settlementEvidenceGate =
+    transition.to === 'settled'
+      ? assertXClaimRewardSettlementEvidenceRefs(parsed.evidenceRefs ?? [])
+      : undefined
+
+  if (settlementEvidenceGate !== undefined && !settlementEvidenceGate.ok) {
     return noStoreJsonResponse(
       {
+        blockingReasonRefs: settlementEvidenceGate.blockingReasonRefs,
         error: 'x_claim_reward_settlement_requires_evidence',
         reason:
           'mark_settled requires public-safe settlement evidence refs from the dispatch wallet path.',
@@ -1760,7 +1764,10 @@ const dispatchRewardResponse = async <
 
   const now = (dependencies.nowIso ?? currentIsoTimestamp)()
   const updated = await store.updateXClaimRewardState({
-    evidenceRefs: [...reward.evidenceRefs, ...(parsed.evidenceRefs ?? [])],
+    evidenceRefs: [
+      ...reward.evidenceRefs,
+      ...(settlementEvidenceGate?.acceptedRefs ?? parsed.evidenceRefs ?? []),
+    ],
     now,
     rewardId,
     stateReasonRef: parsed.stateReasonRef ?? reward.stateReasonRef,

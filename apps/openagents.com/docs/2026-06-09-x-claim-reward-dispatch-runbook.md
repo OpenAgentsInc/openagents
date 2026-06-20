@@ -163,6 +163,17 @@ All calls use the worker admin API token as the bearer.
    Expected row state: `settled`, with `evidenceRefs` containing only the
    public-safe settlement ref.
 
+   The dispatch route validates the submitted `evidenceRefs` BEFORE persisting
+   them with the pure pre-persistence gate
+   (`assertXClaimRewardSettlementEvidenceRefs` in
+   `apps/openagents.com/workers/api/src/x-claim-reward-settlement-evidence.ts`).
+   It is the middle bookend between the candidate gate and the post-settlement
+   audit: it rejects `mark_settled` (HTTP 400, `blockingReasonRefs` listed) when
+   the refs carry no `settlement_evidence.public.*` ref or leak any payment
+   material (invoice, BOLT12 offer, lightning address, preimage, or payment
+   hash), so leaky material never lands on the public ledger row in the first
+   place. It trims and dedupes the accepted refs before they are stored.
+
 5. Failures: `{"action":"mark_failed","stateReasonRef":"reason.public.<why>"}`.
    Refusals (fraud, duplicate human, policy): `{"action":"refuse", ...}`.
 

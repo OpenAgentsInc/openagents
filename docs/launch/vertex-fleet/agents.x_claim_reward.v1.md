@@ -97,6 +97,34 @@ the front bookend — a pure, public-safe per-row candidate gate.
   — a "Candidate pre-dispatch gate" section wiring the gate in before the
   `approve_dispatch` step.
 
+## Follow-up: settlement-evidence pre-persistence gate (this run)
+
+The candidate gate inspects the `eligible` row before dispatch and the
+post-settlement audit inspects the `settled` row after the fact, but the
+evidence refs the operator passes to `mark_settled` were only checked for
+non-emptiness before being written to the public ledger — a malformed or leaky
+ref would have been PERSISTED and only caught after landing. This run adds the
+missing middle bookend that validates the settle input before persistence, and
+wires it into the dispatch route so leaky material never reaches the row.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-settlement-evidence.ts`
+  — `assertXClaimRewardSettlementEvidenceRefs(evidenceRefs)` plus the
+  `XClaimRewardSettlementEvidenceGate` / `XClaimRewardSettlementEvidenceCheck`
+  types. Checks: at least one `settlement_evidence.public.*` ref present (also
+  rejects empty) and no leaked payment material (lightning invoice, BOLT12
+  offer, lightning address, preimage, or payment hash) in any submitted ref. It
+  returns trimmed, deduped `acceptedRefs` for safe persistence.
+- `apps/openagents.com/workers/api/src/agent-owner-claim-routes.ts`
+  — the `mark_settled` branch of the dispatch route now runs the gate before
+  persistence, returns HTTP 400 with `blockingReasonRefs` when it fails, and
+  stores only the gate's `acceptedRefs`.
+- `apps/openagents.com/workers/api/src/x-claim-reward-settlement-evidence.test.ts`
+  — covers the clean pass, trim/dedupe, empty rejection, missing-public-ref
+  rejection, every leaked-material pattern, and a no-payment-material assertion
+  on the serialized gate.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — the `mark_settled` step documents the pre-persistence gate.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —
