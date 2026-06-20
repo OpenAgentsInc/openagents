@@ -27,6 +27,8 @@
 //   #   --base-url <url>       (default openagents-staging.openagents.workers.dev)
 //   #   --json                 (emit a machine-readable JSON report to stdout tail)
 //   #   --require-complete     (exit non-zero unless the #5520 gate is complete)
+//   #   --stripe-checkout-session-id <cs_test_...>
+//   #   --stripe-checkout-receipt-ref <receipt.billing.stripe_checkout.cs_test_...>
 //   #   --help
 
 const DEFAULT_BASE = 'https://openagents-staging.openagents.workers.dev'
@@ -37,6 +39,10 @@ const PROD_HOSTS = new Set([
 ])
 
 const ADMIN_ENV = 'OPENAGENTS_ADMIN_API_TOKEN'
+const STRIPE_CHECKOUT_SESSION_ENV =
+  'OPENAGENTS_STAGING_STRIPE_CHECKOUT_SESSION_ID'
+const STRIPE_CHECKOUT_RECEIPT_ENV =
+  'OPENAGENTS_STAGING_STRIPE_CHECKOUT_RECEIPT_REF'
 
 const EP239_PROMISE_IDS = [
   'sites.referral_bitcoin_stream.v1',
@@ -62,6 +68,8 @@ export const parseArgs = argv => {
     json: false,
     requireComplete: false,
     help: false,
+    stripeCheckoutSessionId: process.env[STRIPE_CHECKOUT_SESSION_ENV],
+    stripeCheckoutReceiptRef: process.env[STRIPE_CHECKOUT_RECEIPT_ENV],
   }
   for (let i = 0; i < argv.length; i += 1) {
     const value = argv[i]
@@ -71,6 +79,12 @@ export const parseArgs = argv => {
       options.json = true
     } else if (value === '--require-complete') {
       options.requireComplete = true
+    } else if (value === '--stripe-checkout-session-id') {
+      options.stripeCheckoutSessionId =
+        argv[++i] || options.stripeCheckoutSessionId
+    } else if (value === '--stripe-checkout-receipt-ref') {
+      options.stripeCheckoutReceiptRef =
+        argv[++i] || options.stripeCheckoutReceiptRef
     } else if (value === '--help' || value === '-h') {
       options.help = true
     } else {
@@ -88,11 +102,18 @@ prints a PASS/FAIL/SKIP receipt-bearing report.
 Usage:
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs [--base-url <url>] [--json]
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete
+  bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --stripe-checkout-session-id cs_test_...
 
 Environment:
   ${ADMIN_ENV}   staging operator admin token (read from env only, never printed).
                             If unset, the funded-grant + metered-spend legs are
                             SKIPPED (not failed) with the exact owner command.
+  ${STRIPE_CHECKOUT_SESSION_ENV}
+                            fulfilled Stripe TEST Checkout Session id from the
+                            browser test card flow.
+  ${STRIPE_CHECKOUT_RECEIPT_ENV}
+                            public receipt ref
+                            receipt.billing.stripe_checkout.<cs_test_...>.
 
 This harness NEVER touches production and NEVER flips a product promise green.
 
@@ -195,6 +216,33 @@ const readPublicInferenceReceipt = async (base, receiptRef, expectedKind) => {
     receipt?.kind === expectedKind &&
     receipt?.ledgerState === 'paid' &&
     receipt?.schemaVersion === 'openagents.inference.receipt.v1'
+
+  return { ok, result }
+}
+
+export const stripeCheckoutReceiptRefForSession = sessionId =>
+  `receipt.billing.stripe_checkout.${sessionId}`
+
+const readPublicStripeCheckoutReceipt = async (base, receiptRef) => {
+  const result = await requestJson(
+    base,
+    `/api/public/billing/stripe-checkout-receipts/${encodeURIComponent(
+      receiptRef,
+    )}`,
+    { method: 'GET' },
+  )
+  const receipt = result.body?.receipt
+  const resolution = receipt?.resolution
+  const ok =
+    result.status === 200 &&
+    receipt?.receiptRef === receiptRef &&
+    receipt?.schemaVersion ===
+      'openagents.billing.stripe_checkout_receipt.v1' &&
+    resolution?.status === 'ok' &&
+    resolution?.sessionMode === 'test' &&
+    resolution?.paymentState === 'paid' &&
+    resolution?.fulfillmentState === 'fulfilled' &&
+    resolution?.creditLedgerState === 'credited'
 
   return { ok, result }
 }
@@ -403,6 +451,57 @@ const legFreeInference = async (base, token) => {
 
   record('2. free inference call', 'PASS', detail)
   return { chatcmplId, afterMsat }
+}
+
+// Leg 2b: optional browser-completed Stripe TEST checkout receipt readback.
+const legStripeTestCheckoutCredit = async (base, options) => {
+  const receiptRef =
+    options.stripeCheckoutReceiptRef ||
+    (options.stripeCheckoutSessionId
+      ? stripeCheckoutReceiptRefForSession(options.stripeCheckoutSessionId)
+      : undefined)
+
+  if (receiptRef === undefined || receiptRef.trim() === '') {
+    record('2b. Stripe TEST checkout credit receipt', 'SKIP', {
+      reason:
+        'no fulfilled Stripe TEST Checkout Session supplied; run the browser ' +
+        'test-card flow, then re-run with --stripe-checkout-session-id cs_test_...',
+    })
+    return undefined
+  }
+
+  const readback = await readPublicStripeCheckoutReceipt(base, receiptRef)
+  const receipt = readback.result.body?.receipt
+  const resolution = receipt?.resolution
+  const detail = {
+    http: readback.result.status,
+    ms: readback.result.ms,
+    receiptRef,
+    resolutionStatus: resolution?.status ?? null,
+    sessionMode: resolution?.sessionMode ?? null,
+    receiptReadbackHttp: readback.result.status,
+  }
+
+  if (!readback.ok) {
+    record('2b. Stripe TEST checkout credit receipt', 'FAIL', {
+      ...detail,
+      reason:
+        'expected a public Stripe checkout receipt with resolution.status ok, ' +
+        'sessionMode test, paymentState paid, fulfillmentState fulfilled, and ' +
+        'creditLedgerState credited',
+      receiptReadbackBody: redact(readback.result.body),
+    })
+    return {
+      proven: false,
+      receiptRef,
+    }
+  }
+
+  record('2b. Stripe TEST checkout credit receipt', 'PASS', detail)
+  return {
+    proven: true,
+    receiptRef,
+  }
 }
 
 // Leg 3: funded grant via operator credit-grant (admin-token gated; SKIP if unset).
@@ -965,6 +1064,7 @@ export const run = async argv => {
   const userId = registration?.userId
 
   const free = await legFreeInference(base, token)
+  const stripeCheckout = await legStripeTestCheckoutCredit(base, options)
   const grant = await legFundedGrant(base, userId)
   const meteredSpend = await legMeteredSpend(base, token, grant)
   const referral = await legReferral(base, token)
@@ -972,8 +1072,10 @@ export const run = async argv => {
   const promiseHonesty = await legPromiseHonesty(base)
 
   const phaseGate = buildAcceptanceGateSummary({
-    stripeTestCardCheckoutProven: false,
-    stripeTestCardCheckoutRefs: [],
+    stripeTestCardCheckoutProven: Boolean(stripeCheckout?.proven),
+    stripeTestCardCheckoutRefs: stripeCheckout?.receiptRef
+      ? [stripeCheckout.receiptRef]
+      : [],
     operatorGrantProven: Boolean(grant),
     operatorGrantRefs: grant?.receiptRef ? [grant.receiptRef] : [],
     meteredSpendProven: Boolean(

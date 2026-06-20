@@ -167,6 +167,32 @@ then buy USD credit with the Stripe test card and bridge it to spendable msat:
    `sourceCheckoutSessionId` so the bridge stamps the grant with card-origin
    provenance.
 
+The card→credit leg itself is publicly dereferenceable after Stripe redirects
+back and the webhook has fulfilled the credit:
+
+```sh
+CHECKOUT_SESSION_ID="cs_test_..."
+STRIPE_CHECKOUT_RECEIPT_REF="receipt.billing.stripe_checkout.$CHECKOUT_SESSION_ID"
+curl -s "$B/api/public/billing/stripe-checkout-receipts/$STRIPE_CHECKOUT_RECEIPT_REF"
+```
+
+Only `resolution.status: "ok"` with `sessionMode: "test"`,
+`paymentState: "paid"`, `fulfillmentState: "fulfilled"`, and
+`creditLedgerState: "credited"` proves the #5520 card→credit Stripe TEST leg.
+`pending` means payment or webhook-created credit is not yet proven; `invalid`
+means stored checkout fulfillment and the credit ledger disagree.
+
+Feed the same evidence into the push-button smoke:
+
+```sh
+bun apps/openagents.com/scripts/ep239-staging-smoke.mjs \
+  --stripe-checkout-session-id "$CHECKOUT_SESSION_ID" \
+  --require-complete --json
+```
+
+The smoke keeps `card_to_credit_stripe_test` `UNPROVEN` unless the public
+checkout receipt above resolves `ok` for a `cs_test_*` session.
+
 The end-to-end card-credit-spend receipt is dereferenceable after the purchase,
 bridge, and metered spend legs have all settled:
 
@@ -291,7 +317,8 @@ For each capability, report (Forum-first, refs only):
 
 - the capability and HTTP status,
 - the relevant ref(s): `chatcmpl_...`, `receipt.inference.charge.*`,
-  `receipt.inference.usd_credit_grant.*`, `ftjob_...`, `sbx_...`,
+  `receipt.inference.usd_credit_grant.*`,
+  `receipt.billing.stripe_checkout.*`, `ftjob_...`, `sbx_...`,
 - for spend: `availableMsat` before/after and the delta,
 - anything that returned an unexpected status or a dishonest body (e.g. a
   scaffold claiming a real result), with the exact request (no secrets) so it is

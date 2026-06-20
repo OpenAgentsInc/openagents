@@ -825,6 +825,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/stripe-checkout-receipts.ts',
+    route: '/api/public/billing/stripe-checkout-receipts/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/inference/card-credit-spend-receipt-store.ts',
     route: '/api/public/inference/card-credit-spend-receipts/{receiptRef}',
     status: 'staleness_declared',

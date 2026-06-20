@@ -62,18 +62,32 @@ describe('Ep239 staging funded-loop smoke', () => {
     expect(options.help).toBe(false)
   })
 
-  test('parseArgs honors --base-url, --json, --require-complete, and --help; rejects unknown flags', () => {
+  test('parseArgs honors --base-url, --json, --require-complete, Stripe receipt flags, and --help; rejects unknown flags', () => {
     const options = smoke.parseArgs([
       '--base-url',
       'https://x.example',
       '--json',
       '--require-complete',
+      '--stripe-checkout-session-id',
+      'cs_test_123',
+      '--stripe-checkout-receipt-ref',
+      'receipt.billing.stripe_checkout.cs_test_456',
     ])
     expect(options.baseUrl).toBe('https://x.example')
     expect(options.json).toBe(true)
     expect(options.requireComplete).toBe(true)
+    expect(options.stripeCheckoutSessionId).toBe('cs_test_123')
+    expect(options.stripeCheckoutReceiptRef).toBe(
+      'receipt.billing.stripe_checkout.cs_test_456',
+    )
     expect(smoke.parseArgs(['--help']).help).toBe(true)
     expect(() => smoke.parseArgs(['--nope'])).toThrowError(/Unknown argument/)
+  })
+
+  test('stripeCheckoutReceiptRefForSession derives the public receipt ref', () => {
+    expect(smoke.stripeCheckoutReceiptRefForSession('cs_test_123')).toBe(
+      'receipt.billing.stripe_checkout.cs_test_123',
+    )
   })
 
   test('buildAcceptanceGateSummary keeps #5520 incomplete when Stripe/referral receipts are unproven', () => {

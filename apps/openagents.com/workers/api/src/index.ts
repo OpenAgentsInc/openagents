@@ -471,6 +471,7 @@ import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receip
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
+import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-receipt-routes'
 import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
 import {
   makeD1PylonApiStore,
@@ -558,6 +559,7 @@ import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import { readBillingCreditPackages } from './stripe-billing'
+import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -7077,6 +7079,12 @@ const publicCardCreditSpendReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const publicStripeCheckoutReceiptRoutes =
+  makePublicStripeCheckoutReceiptRoutes<Env>({
+    makeStore: env => makeD1StripeCheckoutReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -9781,6 +9789,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
+  routePublicStripeCheckoutReceiptRequest:
+    publicStripeCheckoutReceiptRoutes.routePublicStripeCheckoutReceiptRequest,
   routeEcommerceCampaignReceiptRequest:
     ecommerceCampaignReceiptRoutes.routeEcommerceCampaignReceiptRequest,
   routeMarketingAgencyReceiptRequest:

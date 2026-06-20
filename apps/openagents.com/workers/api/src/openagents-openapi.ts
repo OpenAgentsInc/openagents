@@ -1325,6 +1325,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicInferenceReceiptEnvelope: objectSummary(
     'Public-safe inference ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn pay_ins.public_receipt_ref). It proves that a paid `receipt.inference.charge.*` or `receipt.inference.usd_credit_grant.*` ledger row exists without exposing account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, or raw prompts. Read-only; grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
   ),
+  PublicStripeCheckoutReceiptEnvelope: objectSummary(
+    'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
+  ),
   PublicCardCreditSpendReceiptEnvelope: objectSummary(
     'Public card-credit-spend receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.inference.card_credit_spend.*` as pending, invalid, or ok from the checkout credit row, card-origin USD-credit grant row, and inference charge row without granting checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
@@ -4327,6 +4330,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public inference receipt.',
           '#/components/schemas/PublicInferenceReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/billing/stripe-checkout-receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicStripeCheckoutReceipt',
+      summary: 'Read public Stripe checkout credit receipt',
+      description:
+        'Returns a live-at-read public-safe receipt projection for `receipt.billing.stripe_checkout.*`. The response proves only stored checkout fulfillment plus the positive Stripe checkout credit ledger row, and is honest about pending payment/webhook-credit states or invalid ledger gaps. It excludes customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, and wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
+      tags: ['Public Proof', 'Billing'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Stripe checkout credit receipt ref, such as receipt.billing.stripe_checkout.<sessionId>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Stripe checkout credit receipt.',
+          '#/components/schemas/PublicStripeCheckoutReceiptEnvelope',
         ),
         ...errorResponses(),
       },

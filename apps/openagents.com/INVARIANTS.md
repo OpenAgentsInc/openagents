@@ -2046,6 +2046,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     checkout, settlement, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-inference-receipt-routes.test.ts`.
+  - `GET /api/public/billing/stripe-checkout-receipts/{receiptRef}` — live at
+    read over `stripe_checkout_sessions` plus `billing_ledger_entries` for
+    `receipt.billing.stripe_checkout.*` — compliant (`generatedAt`, top-level
+    `projection_staleness.v1` `live_at_read` contract, pending/invalid/ok
+    resolution). It proves only that a stored Checkout Session is paid and
+    fulfilled and that the webhook-created positive Stripe checkout credit row
+    exists. It omits customer ids, checkout URLs, email, raw Stripe payloads,
+    secrets, ledger ids, invoices, payment material, wallet material, and raw
+    account data. Read-only; grants no checkout, spend, refund, payout,
+    settlement, provider, public-claim, or registry authority. Regression
+    coverage: `workers/api/src/public-stripe-checkout-receipt-routes.test.ts`.
   - `GET /api/public/inference/card-credit-spend-receipts/{receiptRef}` — live
     at read over the card-credit paid-loop ledger chain for
     `receipt.inference.card_credit_spend.*` — compliant (`generatedAt`,
