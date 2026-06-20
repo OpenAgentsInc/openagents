@@ -137,6 +137,7 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
+import { resolveSupplyLaneArming } from './inference/model-serving-policy'
 import { handleQuote } from './inference/quote-routes'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
@@ -9431,6 +9432,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleModelsList(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        laneArming: resolveSupplyLaneArming(env),
       }),
   },
   {
@@ -9632,6 +9634,7 @@ const routeRequest = makeWorkerRouteRequest({
   routeModelRetrieveRequest: (request, env) =>
     routeModelRetrieveRequest(request, {
       enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+      laneArming: resolveSupplyLaneArming(env),
     }),
   routeMulletRequest: mulletRoutes.routeMulletRequest,
   routeOmniRequest: (request, env, ctx) =>

@@ -25,6 +25,11 @@ import {
   toOpenAiModelObject,
   toOpenAiModelsResponse,
 } from './model-catalog'
+import {
+  filterServableCatalog,
+  isModelServable,
+  type SupplyLaneArming,
+} from './model-serving-policy'
 
 export type ModelsListDeps = Readonly<{
   // Whether the gateway is enabled. The Worker passes
@@ -35,6 +40,12 @@ export type ModelsListDeps = Readonly<{
   nowEpochSeconds?: () => number
   // Catalog margin override (defaults to the launch margin inside the catalog).
   margin?: number
+  // Provider serving policy: which supply lanes are armed (credential present).
+  // When supplied, the catalog is narrowed to ONLY models the gateway can
+  // actually serve, so a paid gateway never advertises an unservable model
+  // (model-serving-policy.ts). When omitted, every catalog model is listed
+  // (the prior behaviour — preserved for callers that do not gate on arming).
+  laneArming?: SupplyLaneArming
 }>
 
 // Serve the OpenAI-compatible `/v1/models` listing for the gateway.
@@ -57,7 +68,14 @@ export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
     }
 
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
-    const catalog = buildModelCatalog(deps.margin)
+    const fullCatalog = buildModelCatalog(deps.margin)
+    // PROVIDER POLICY: when the worker supplies lane arming, advertise only the
+    // models whose supply lane is actually servable right now; otherwise list
+    // the full catalog (prior behaviour).
+    const catalog =
+      deps.laneArming === undefined
+        ? fullCatalog
+        : filterServableCatalog(fullCatalog, deps.laneArming)
     return noStoreJsonResponse(toOpenAiModelsResponse(catalog, now))
   })
 
@@ -90,7 +108,13 @@ export const handleModelRetrieve = (
     }
 
     const entry = findModelCatalogEntry(modelId, deps.margin)
-    if (entry === undefined) {
+    // PROVIDER POLICY: when lane arming is supplied, a model whose lane is not
+    // servable right now is reported `model_not_found` (same as an unknown id),
+    // so the retrieve surface never confirms a model the gateway cannot serve.
+    const servable =
+      entry !== undefined &&
+      (deps.laneArming === undefined || isModelServable(entry, deps.laneArming))
+    if (entry === undefined || !servable) {
       // OpenAI's standard 404 retrieve error shape; clients key off
       // `error.code === 'model_not_found'`.
       return noStoreJsonResponse(
