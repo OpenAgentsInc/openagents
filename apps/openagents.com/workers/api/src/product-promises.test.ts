@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.16')
+    expect(decoded.version).toBe('2026-06-20.17')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -171,7 +171,10 @@ describe('public product promises document', () => {
     // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
     // single-action fanout planner/route + INERT public projection); the
     // promise STAYS yellow, so green remains exactly 24. The 2026-06-20.16
-    // repo-study customer-private-validation pass drops
+    // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
+    // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
+    // without flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.17 repo-study customer-private-validation pass drops
     // repo_studying_customer_private_validation_missing on
     // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
     // validation module + delivery seam); the promise STAYS yellow, so green
@@ -866,12 +869,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.16', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.17', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.16',
+      expectedVersion: '2026-06-20.17',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.16',
+      servedVersion: '2026-06-20.17',
       status: 'ready',
     })
     expect(
@@ -881,7 +884,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.16',
+      servedVersion: '2026-06-20.17',
       status: 'blocked',
     })
   })
