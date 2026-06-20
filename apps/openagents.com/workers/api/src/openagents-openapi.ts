@@ -2872,6 +2872,12 @@ const requestSchemas = (): JsonSchema => ({
   TrainingWindowBootstrapGrantEnvelope: objectSummary(
     "Typed bootstrap outcome envelope. A granted outcome carries the grant ref, the sealed window ref, the seal's checkpoint digest ref, seal receipt refs, echoed joiner receipt refs, and a display-only seal age; a queued outcome carries the join-lifecycle seal-in-flight deferral reason code; a refused outcome carries a typed no-durable-seal reason. None of the outcomes grant payout, settlement, or wallet authority.",
   ),
+  TrainingStandbyDispatchPreflightRequest: objectSummary(
+    'Admin-only standby dispatch preflight descriptor for training.marathon_operations.v1. The descriptor carries public-safe refs for the standby contributor, run, bootstrap/live seal windows, qualification and ban flags, live vacancy count, bootstrap-seal verification state, and heartbeat age. It is evaluated as an admissibility predicate only.',
+  ),
+  TrainingStandbyDispatchPreflightEnvelope: objectSummary(
+    'Admin-only standby dispatch preflight response with the public-safe run projection and a standbyDispatch gate. The gate returns promote_standby only when the descriptor is qualified, unbanned, bootstrap-verified against the live sealed window, has a live vacancy, and has a fresh heartbeat; malformed or stale descriptors hold_standby. It performs no dispatch, settlement, promotion, or promise transition.',
+  ),
   TrainingVerificationChallengeCreateRequest: objectSummary(
     'Admin-only request to enqueue a training verification challenge with public-safe training/window/contribution refs, verificationClass, aggregate or per-contribution samplingPolicy, commitment refs, and class-specific payload metadata.',
   ),
@@ -5153,6 +5159,27 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Typed bootstrap outcome: granted, queued, or refused.',
           '#/components/schemas/TrainingWindowBootstrapGrantEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/training/runs/{trainingRunRef}/standby-dispatch-preflight': {
+    post: operation({
+      operationId: 'preflightTrainingStandbyDispatch',
+      summary: 'Preflight standby promotion admissibility',
+      description:
+        'Admin-only route to evaluate whether a specific pre-warmed standby Pylon is eligible to be promoted into a live training run vacancy. This is a typed preflight only: malformed, mismatched, stale, unqualified, banned, unbootstrapped, or no-vacancy descriptors return hold_standby; a promote_standby verdict grants no dispatch, settlement, promotion record, or promise-state authority.',
+      tags: ['Training', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('trainingRunRef', 'Training run ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/TrainingStandbyDispatchPreflightRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Typed standby dispatch preflight verdict.',
+          '#/components/schemas/TrainingStandbyDispatchPreflightEnvelope',
         ),
         ...errorResponses(),
       },

@@ -106,6 +106,15 @@ export type StandbyDispatchGate = Readonly<{
 const dispatchAuthorityBoundary =
   'Standby dispatch evaluation is a promotion-admissibility predicate only. A promote verdict means a standby is eligible to join a live run; it grants no dispatch, settlement, promise-state, or green-claim authority, and a hold verdict is the safe default — the run keeps its existing contributors or escalates to the standby-gated abort path, never silently admitting an unqualified node.'
 
+export const malformedStandbyDispatchGate = (): StandbyDispatchGate => ({
+  authorityBoundary: dispatchAuthorityBoundary,
+  blockerRef: StandbyDispatchBlocker,
+  decision: 'hold_standby',
+  promotable: false,
+  reasons: ['dispatch_descriptor_malformed'],
+  schemaVersion: StandbyDispatchSchemaVersion,
+})
+
 /**
  * Pure promotion-admissibility predicate for an already-decoded dispatch
  * descriptor. A standby may be promoted only when every condition holds; any
@@ -160,14 +169,7 @@ export const evaluateUntrustedStandbyDispatch = (
   try {
     decoded = S.decodeUnknownSync(TrainingStandbyDispatch)(input)
   } catch {
-    return {
-      authorityBoundary: dispatchAuthorityBoundary,
-      blockerRef: StandbyDispatchBlocker,
-      decision: 'hold_standby',
-      promotable: false,
-      reasons: ['dispatch_descriptor_malformed'],
-      schemaVersion: StandbyDispatchSchemaVersion,
-    }
+    return malformedStandbyDispatchGate()
   }
   return evaluateStandbyDispatch(decoded)
 }

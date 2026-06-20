@@ -2630,6 +2630,125 @@ describe('training run window routes', () => {
       },
     })
   })
+
+  it('admin preflights standby dispatch without mutating or promoting a standby', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeStore: () => store,
+      nowIso: () => '2026-06-20T10:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const run = buildTrainingRunRecord({
+      makeId: () => 'standby-run',
+      nowIso: '2026-06-20T09:55:00.000Z',
+      request: {
+        promiseRef: 'training.marathon_operations.v1',
+        trainingRunRef: 'training.run.standby.preflight',
+      },
+    })
+    const standbyDispatch = {
+      bannedForRound: false,
+      bootstrapSealVerified: true,
+      bootstrapSealWindowRef: 'training.window.standby.0007',
+      lastHeartbeatAgeMs: 5_000,
+      liveSealedWindowRef: 'training.window.standby.0007',
+      liveVacancyCount: 1,
+      qualified: true,
+      runRef: 'training.run.standby.preflight',
+      standbyContributorRef: 'pylon.standby.0003',
+    }
+    const path =
+      '/api/training/runs/training.run.standby.preflight/standby-dispatch-preflight'
+
+    store._testSeedRun(run)
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(path, standbyDispatch),
+        {},
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const malformed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          path,
+          { standbyContributorRef: 'pylon.standby.0003' },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const malformedBody = (await malformed.json()) as Readonly<{
+      standbyDispatch: Readonly<{
+        decision: string
+        promotable: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(malformed.status).toBe(200)
+    expect(malformedBody.standbyDispatch).toMatchObject({
+      decision: 'hold_standby',
+      promotable: false,
+      reasons: ['dispatch_descriptor_malformed'],
+    })
+
+    const mismatchedRun = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          path,
+          { ...standbyDispatch, runRef: 'training.run.other' },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const mismatchedBody = (await mismatchedRun.json()) as Readonly<{
+      standbyDispatch: Readonly<{
+        decision: string
+        promotable: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(mismatchedRun.status).toBe(200)
+    expect(mismatchedBody.standbyDispatch).toMatchObject({
+      decision: 'hold_standby',
+      promotable: false,
+      reasons: ['dispatch_descriptor_malformed'],
+    })
+
+    const preflight = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(path, standbyDispatch, { headers: adminHeaders }),
+        {},
+      ),
+    )
+    const preflightBody = (await preflight.json()) as Readonly<{
+      run: Readonly<{ trainingRunRef: string }>
+      standbyDispatch: Readonly<{
+        decision: string
+        promotable: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(preflight.status).toBe(200)
+    expect(preflightBody.run.trainingRunRef).toBe(
+      'training.run.standby.preflight',
+    )
+    expect(preflightBody.standbyDispatch).toMatchObject({
+      decision: 'promote_standby',
+      promotable: true,
+      reasons: [],
+    })
+    expect(await store.readRun('training.run.standby.preflight')).toEqual(run)
+  })
 })
 
 // REAL Bitcoin settlement route wiring (openagents #5232, Gate 2).
