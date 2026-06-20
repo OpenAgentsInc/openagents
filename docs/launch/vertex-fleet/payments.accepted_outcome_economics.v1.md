@@ -80,6 +80,46 @@ for the currently `not_yet_evidenced` payable/settlement states, which depend on
 the untouched `settlement_state_machine_incomplete` blocker. The blocker stays
 listed in the registry.
 
+## Follow-on change: contributor share policy
+
+`apps/openagents.com/workers/api/src/omni-contributor-share-policy.ts` — a pure,
+deterministic policy that answers the *upstream* half of
+`blocker.product_promises.contributor_ledger_missing` that the accrual ledger
+left to the caller: WHO the contributors are and at WHAT split. Given the
+identified parties for one accepted outcome (`runnerId` always; `reviewerId`,
+`originatorId`, `referrerId` optional; platform always retains a share),
+`resolveOmniContributorShares` emits a canonical `OmniContributorAccrualShare[]`
+that:
+
+- assigns roles fixed relative weights (runner 60, reviewer/originator 10,
+  referrer 5, platform 15) and includes only roles with an identified party;
+- renormalizes the participating weights to sum to **exactly 10000 basis points**
+  by the same largest-remainder + input-order tie-break the ledger uses, so the
+  output never trips the ledger's share-sum invariant and the whole pipeline is
+  deterministic;
+- rejects unsafe contributor refs and any id reused across roles
+  (`OmniContributorSharePolicyError`).
+
+It is a SPLIT policy only — it never reads funding mode or gross-margin sign, so a
+loss or free_beta outcome still has a canonical split while the ledger builder is
+what turns a non-positive margin into zero accruals. Keeping the two concerns
+separate preserves the promise's no-collapse discipline.
+
+Tests: `apps/openagents.com/workers/api/src/omni-contributor-share-policy.test.ts`
+(10 tests, passing) cover the default runner/platform split, the all-roles split,
+partial-role renormalization, canonical ordering, end-to-end feeding of the
+accrual ledger, unsafe/duplicate/platform-collision rejection, determinism, and
+the error type.
+
+`blocker.product_promises.contributor_ledger_missing` remains **partially
+advanced, NOT cleared.** This closes the "who/what split" gap with a real,
+testable default policy; what still remains for this blocker is a persisted/
+queryable ledger record + read route to dereference accruals by accepted-outcome
+id, real per-outcome party sourcing (which workroom/contract event names each
+runner/reviewer/originator/referrer), and the `not_yet_evidenced`
+payable/settlement evidence that depends on the untouched
+`settlement_state_machine_incomplete` blocker. The blocker stays listed.
+
 ## What genuinely remains (blocker stays listed)
 
 - A persisted/queryable receipt record and a read route so a reviewer can
