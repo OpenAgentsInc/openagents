@@ -22,11 +22,16 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import {
   handleLiquidityMarketSkeletonApi,
   handleOpenMarketsSurfaceApi,
   handleRiskMarketSkeletonApi,
 } from './open-markets-routes'
+import {
+  TrainingAblationDeriskingLedgerEndpoint,
+  handleTrainingAblationDeriskingLedgerApi,
+} from './training-ablation-derisking-ledger-routes'
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
@@ -62,6 +67,11 @@ import {
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
 } from './agentic-labor-product-routes'
+import {
+  SelfServeFanoutEndpoint,
+  handleSelfServeFanoutApi,
+  isSelfServeFanoutEnabled,
+} from './self-serve-fanout-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -179,6 +189,14 @@ import {
   boundedTickMonitorLimit,
   readArtanisTickMonitor,
 } from './artanis-tick-monitor'
+import {
+  boundedTickStreakLimit,
+  readArtanisTickStreak,
+} from './artanis-tick-streak'
+import {
+  boundedResponderSupportLimit,
+  readArtanisResponderSupport,
+} from './artanis-responder-provenance'
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -423,6 +441,7 @@ import {
   makePrivateProjectWorkspaceRoutes,
 } from './private-project-workspace-routes'
 import { publicProductPromisesDocument } from './product-promises'
+import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
@@ -549,6 +568,7 @@ import {
 } from './team-repository'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
+import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
@@ -6881,6 +6901,18 @@ const tenantClientRoutes = makeTenantClientRoutes({
   },
 })
 
+// CUSTOMER self-serve custom-hostname routes (#4988 follow-up). Browser-session
+// + team-role gated; writes only the tenant_custom_hostnames table (pending
+// rows), never live DNS/SSL/origin binding/spend. Live provisioning to `active`
+// stays the owner-gated provisioning core's job (default-OFF Cloudflare
+// secrets), so config stays INERT here (servingLive=false, no live DNS check).
+const tenantHostnameSelfServeRoutes = makeTenantHostnameSelfServeRoutes({
+  database: (env: WorkerBindings) => openAgentsDatabase(env),
+  requireBrowserSession,
+  readTeamRole: (db, teamId, userId) =>
+    readActiveTeamMembershipRole(db, teamId, userId),
+})
+
 const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -7982,8 +8014,33 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1).
+    // Read-only: joins the transition-receipt feed against the live registry so
+    // a third party can audit every green flip (promiseId, from->to,
+    // registryVersion, receiptRef, lastVerifiedAt) with filtering + summary.
+    path: '/api/public/product-promises/audit',
+    handler: (request, env) =>
+      handlePublicPromiseAuditApi(request, {
+        store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Training ablation derisking ledger projection (#5523 / DE-5 #5528;
+    // promise training.ablation_system.v1, planned). Read-only candidate
+    // ledger: clears only the missing public projection blocker while the
+    // one-delta harness, eval reproduction, paid dispatch, and verdict gates
+    // remain false. No ablation execution, spend, settlement, model promotion,
+    // or green claim.
+    path: TrainingAblationDeriskingLedgerEndpoint,
+    handler: request => handleTrainingAblationDeriskingLedgerApi(request),
+  },
+  {
+    path: '/api/public/demand-provenance',
+    handler: request => handleDemandProvenanceApi(request),
   },
   {
     path: '/api/public/markets/open-markets',
@@ -8045,14 +8102,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     // Mobile workroom approval projection (promise
-    // mobile.voice_approval_companion.v1, planned). INERT by default: the store
+    // mobile.voice_approval_companion.v1, yellow). INERT by default: the store
     // is empty unless MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED is armed. When
     // armed it returns the existing read-only mobile approval-card projection:
     // no approval, execution, notification, payment, provider mutation, runner
     // launch, or public-claim upgrade. This clears ONLY
     // blocker.product_promises.mobile_projection_missing; voice-command
     // approval receipts and cross-device sync stay open, and the promise stays
-    // planned. GET only.
+    // yellow. GET only.
     path: MobileWorkroomApprovalProjectionEndpoint,
     handler: (request, env) =>
       handleMobileWorkroomApprovalProjectionApi(request, {
@@ -8105,13 +8162,34 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // unless AGENTIC_LABOR_PRODUCTS_ENABLED is armed, and the response always
     // reports inert/yellow. It models the end-to-end labor-product flow (post ->
     // order -> dispatch -> deliver -> settle) with a settlement receipt seam that
-    // is flag-gated INERT and owner-gated; it makes no live-sale claim. Read-only.
+    // is flag-gated INERT and owner-gated; it makes no live-sale claim.
+    // GET lists flows (read-only). POST is the SELF-SERVE order-planning path: a
+    // buyer/agent posts a listing and orders it in one request and gets back the
+    // typed `ordered`-stage flow plan with no operator staging (still INERT —
+    // dispatches nothing, debits nothing, settles nothing). POST returns 503
+    // unless the flag is armed.
     path: AgenticLaborProductEndpoint,
     handler: (request, env) =>
       handleAgenticLaborProductApi(request, {
         enabled: isAgenticLaborProductsEnabled(
           env.AGENTIC_LABOR_PRODUCTS_ENABLED,
         ),
+      }),
+  },
+  {
+    // Self-serve control-center fanout scaffold (promise
+    // autopilot.control_center_fanout_marketplace.v1, yellow). INERT: the store
+    // is empty unless SELF_SERVE_FANOUT_ENABLED is armed, and the response
+    // always reports inert/yellow/selfServe with workClass code_task. It models
+    // a customer-initiated single-action fanout plan (gate decision + the linked
+    // market work-request the fanout would list) over the existing lane-C gate;
+    // the dispatch seam (dispatchSelfServeFanout) lists nothing. It clears only
+    // the self-serve blocker (the plugin-marketplace-beyond-code_task blocker
+    // stays uncleared) and makes no broad-live-marketplace claim. Read-only.
+    path: SelfServeFanoutEndpoint,
+    handler: (request, env) =>
+      handleSelfServeFanoutApi(request, {
+        enabled: isSelfServeFanoutEnabled(env.SELF_SERVE_FANOUT_ENABLED),
       }),
   },
   {
@@ -8774,6 +8852,45 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    path: '/api/public/artanis/tick-streak',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const streak = await readArtanisTickStreak(openAgentsDatabase(env), {
+          limit: boundedTickStreakLimit(
+            new URL(request.url).searchParams.get('limit'),
+          ),
+          nowIso: currentIsoTimestamp(),
+        })
+        return Response.json(streak, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
+    path: '/api/public/artanis/responder-support',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const projection = await readArtanisResponderSupport(
+          openAgentsDatabase(env),
+          {
+            limit: boundedResponderSupportLimit(
+              new URL(request.url).searchParams.get('limit'),
+            ),
+            nowIso: currentIsoTimestamp(),
+          },
+        )
+        return Response.json(projection, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
     path: '/api/blueprint/program-registry',
     handler: (request, env) =>
       blueprintRoutes.handleBlueprintProgramRegistryApi(request, env),
@@ -9276,6 +9393,11 @@ const routeRequest = makeWorkerRouteRequest({
       ctx,
     ) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
+    tenantHostnameSelfServeRoutes.routeTenantHostnameSelfServeRequest(
+      request,
+      env,
+      ctx,
+    ) ??
     emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
       request,
       env,

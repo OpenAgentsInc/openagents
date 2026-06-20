@@ -1682,6 +1682,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).
+  - `GET /api/public/artanis/tick-streak` — live at read over the
+    tick-decision and exact-replay closeout-verdict ledgers — compliant
+    (`generatedAt`, `staleness` contract `projection_staleness.v1`
+    live_at_read, the consecutive unattended-tick-streak counter for
+    artanis.tassadar_evolution_loop.v1: currentStreak/longestStreak/
+    targetReached against streakTarget 10, each currentStreak assignment
+    dereferenceable as an artanis_admin_closeout receipt).
+  - `GET /api/public/artanis/responder-support` — live at read over the
+    Artanis responder-action ledger — compliant (`generatedAt`, `staleness`
+    contract `projection_staleness.v1` live_at_read, the external-contributor
+    Pylon-support flow projection for artanis.pylon_support_responder.v1:
+    per-asker-provenance answered counts, externalContributorFlowProven, and
+    each external interaction's dereferenceable reply-post ref).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
     honesty caveat refs).
@@ -1704,6 +1717,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/demand-provenance` — live at read over revenue-bearing
+    public surfaces that carry typed internal/external demand splits — compliant
+    (`generatedAt`, `projection_staleness.v1` live-at-read contract, AO/kWh
+    surface summary, internal/external/unlabeled counts, zero external-demand
+    claim, remaining coverage refs, and authority boundary). It is proof-copy
+    discipline only: no revenue, demand, payout, settlement, reporting, or
+    public-claim upgrade authority.
   - `GET /api/public/marketplace/composed-products` — live at read over the
     INERT compose-and-list listing store (EPIC #5510, #5515; promise
     `marketplace.compose_and_list_products.v1`, planned) — compliant
@@ -1735,6 +1755,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
     flag-gated INERT and owner-gated and is unreachable from this read-only
     route; the surface debits no balance and makes no live-sale claim.
+  - `GET /api/public/autopilot/self-serve-fanout` — live at read over the INERT
+    self-serve fanout plan store (promise
+    `autopilot.control_center_fanout_marketplace.v1`, yellow) — compliant
+    (`generatedAt`, `live_at_read` contract). The surface is flag-gated
+    (`SELF_SERVE_FANOUT_ENABLED`, default off => empty store) and the payload
+    always reports `inert: true` / `promiseState: 'yellow'` / `selfServe: true`
+    / `workClass: 'code_task'`, surfacing the cleared self-serve blocker and the
+    still-uncleared plugin-marketplace blocker. It models a customer-initiated
+    single-action fanout plan (the lane-C gate decision plus the linked market
+    work-request the fanout would list) over the existing server-side lane-C
+    gate. The dispatch seam (`dispatchSelfServeFanout`) is flag-gated INERT and
+    is unreachable from this read-only route; the surface lists nothing on the
+    market and moves no money.
   - `GET /api/public/markets/signature-monetization/metering` — live at read
     over the INERT signature usage-metering store (promise
     `marketplace.signature_monetization.v1`, red) — compliant (`generatedAt`,
@@ -1866,6 +1899,31 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     flips no promise; the `referral.refer_once_earn_forever.v1` promise stays
     red/owner-gated. Regression coverage:
     `workers/api/src/site-referral-payout-public-projection.test.ts`.
+  - `GET /api/public/product-promises/audit` — live at read over the live
+    product-promise registry joined against the promise transition-receipt feed
+    (proof.claim_upgrade_receipts.v1) — compliant (`generatedAt`, top-level
+    `projection_staleness.v1` `live_at_read` contract, `maxStalenessSeconds` 0,
+    `rebuildsOn` registry/receipt transitions). Read-only enterprise audit
+    surface: per promise it projects promiseId, productArea, currentState,
+    lastVerifiedAt, blockerRefs, and the backing transition receipts (from->to
+    state, registryVersion, receiptRef, result, evidence refs, owner signoff),
+    plus a registry-wide summary listing any green promises with no recorded
+    green-flip receipt. Filterable by promiseId/state/greenOnly. It re-projects
+    only already-public data, exposes no private data, moves no money, grants no
+    authority, and flips no promise. Regression coverage:
+    `workers/api/src/promise-transition-audit-routes.test.ts`.
+  - `GET /api/public/training/ablation-derisking-ledger` — live at read over
+    the candidate-only training ablation derisking ledger (promise
+    `training.ablation_system.v1`, planned) — compliant (`generatedAt`,
+    top-level `projection_staleness.v1` `live_at_read` contract, explicit gate
+    with `publicProjectionAvailable=true` and `greenGateSatisfied=false`,
+    public-safe candidate entries, remaining blocker refs, and no private
+    training, provider, payment, wallet, or customer material). The surface
+    clears only `blocker.product_promises.ablation_ledger_projection_missing`;
+    the harness and eval-reproduction blockers remain. It grants no dispatch,
+    assignment, spend, settlement, model-promotion, verdict, or public-claim
+    authority and flips no promise. Regression coverage:
+    `workers/api/src/training-ablation-derisking-ledger.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

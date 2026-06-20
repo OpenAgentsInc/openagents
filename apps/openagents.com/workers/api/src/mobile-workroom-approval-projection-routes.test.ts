@@ -55,7 +55,7 @@ describe('mobile workroom approval projection route', () => {
     expect(response.headers.get('allow')).toBe('GET')
   })
 
-  test('INERT by default: disabled ignores an injected store and stays planned', async () => {
+  test('INERT by default: disabled ignores an injected store and stays yellow', async () => {
     const response = await Effect.runPromise(
       handleMobileWorkroomApprovalProjectionApi(request(), {
         enabled: false,
@@ -68,7 +68,7 @@ describe('mobile workroom approval projection route', () => {
 
     const payload = (await response.json()) as Record<string, unknown>
     expect(payload.promiseId).toBe('mobile.voice_approval_companion.v1')
-    expect(payload.promiseState).toBe('planned')
+    expect(payload.promiseState).toBe('yellow')
     expect(payload.enabled).toBe(false)
     expect(payload.inert).toBe(true)
     expect(payload.projectionAvailable).toBe(true)
@@ -98,7 +98,7 @@ describe('mobile workroom approval projection route', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
 
     const payload = (await response.json()) as Record<string, unknown>
-    expect(payload.promiseState).toBe('planned')
+    expect(payload.promiseState).toBe('yellow')
     expect(payload.enabled).toBe(true)
     expect(payload.inert).toBe(false)
     expect(payload.audience).toBe('public')

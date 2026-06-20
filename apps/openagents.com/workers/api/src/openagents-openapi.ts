@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
+import { DemandProvenanceEndpoint } from './demand-provenance'
 import {
   LiquidityMarketSkeletonEndpoint,
   RiskMarketSkeletonEndpoint,
@@ -20,6 +21,7 @@ import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
+import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -202,6 +204,131 @@ const objectSummary = (description: string): JsonSchema => ({
   additionalProperties: true,
 })
 
+export const TrainingAblationDeriskingLedgerEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe ablation derisking ledger projection for training.ablation_system.v1 with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes candidate one-delta entries, source refs, blocker refs, and a gate that explicitly keeps harness, eval reproduction, paid dispatch, and green status false until receipts exist. It contains no raw training data, prompts, logs, wallet material, payment material, private paths, or dispatch authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'entries',
+    'gate',
+    'generatedAt',
+    'ledgerSummary',
+    'promiseRef',
+    'promiseState',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingAblationDeriskingLedgerEndpoint],
+    },
+    entries: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'entryRef',
+          'oneDeltaManifestState',
+          'evalReproductionState',
+          'paidDispatchState',
+          'verdictState',
+          'blockerRefs',
+          'sourceRefs',
+        ],
+        properties: {
+          blockerRefs: { type: 'array', items: { type: 'string' } },
+          entryRef: { type: 'string' },
+          evalReproductionState: { type: 'string' },
+          oneDeltaManifestState: { type: 'string' },
+          paidDispatchState: { type: 'string' },
+          sourceRefs: { type: 'array', items: { type: 'string' } },
+          verdictState: { type: 'string' },
+        },
+      },
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'ablationHarnessAvailable',
+        'clearsBlockerRefs',
+        'evalSuiteReproductionAvailable',
+        'greenGateSatisfied',
+        'paidAblationDispatchAvailable',
+        'publicProjectionAvailable',
+        'remainingBlockerRefs',
+      ],
+      properties: {
+        ablationHarnessAvailable: { type: 'boolean' },
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        evalSuiteReproductionAvailable: { type: 'boolean' },
+        greenGateSatisfied: { type: 'boolean' },
+        paidAblationDispatchAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    generatedAt: { type: 'string', format: 'date-time' },
+    ledgerSummary: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'acceptedVerdictCount',
+        'candidateEntryCount',
+        'entryCount',
+        'paidAblationCount',
+        'reproducedEvalCount',
+        'verifiedManifestCount',
+      ],
+      properties: {
+        acceptedVerdictCount: { type: 'integer', minimum: 0 },
+        candidateEntryCount: { type: 'integer', minimum: 0 },
+        entryCount: { type: 'integer', minimum: 0 },
+        paidAblationCount: { type: 'integer', minimum: 0 },
+        reproducedEvalCount: { type: 'integer', minimum: 0 },
+        verifiedManifestCount: { type: 'integer', minimum: 0 },
+      },
+    },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.ablation_system.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'composition',
+        'contractVersion',
+        'maxStalenessSeconds',
+        'rebuildsOn',
+      ],
+      properties: {
+        composition: { type: 'string', enum: ['live_at_read'] },
+        contractVersion: {
+          type: 'string',
+          enum: ['projection_staleness.v1'],
+        },
+        maxStalenessSeconds: { type: 'integer', enum: [0] },
+        rebuildsOn: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    status: { type: 'string', enum: ['candidate_ledger_projection'] },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 const hygieneDebtReceiptRef = (description: string): JsonSchema => ({
   type: 'string',
   minLength: 1,
@@ -346,8 +473,14 @@ const schemaComponents = (): JsonSchema => ({
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed: receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
+  ProductPromiseClaimUpgradeAudit: objectSummary(
+    'Public-safe enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1). Joins the transition-receipt feed against the live product-promise registry so a third party can audit every state change, especially every green flip. Per promise: promiseId, productArea, currentState, lastVerifiedAt, blockerRefs, and the transition receipts backing it (from->to, registryVersion, receiptRef, result, evidenceRefs, owner signoff, alreadyApplied/isGreenFlip flags). A registry-wide summary reports promiseCount, transitionReceiptCount, greenPromiseCount, greenPromisesReceiptBacked, the explicit greenPromisesWithoutReceipt list (green promises with no recorded green-flip receipt), greenFlipReceiptCount, ownerSignedExceptionCount, and failedReceiptCount. Filterable by promiseId, state, and greenOnly. Carries generatedAt and a live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn registry/receipt transitions) because it is composed live at read from the registry and receipt feed. Read-only: exposes no private data, moves no money, and changes no registry state.',
+  ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, a typed internal/external demand-provenance split (proof.demand_provenance.v1, rule no_external_dollar_no_demand_claim, with externalDemandClaimAllowed gating market-demand claims), gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority, and internal demand is never presented as external market demand.',
+  ),
+  DemandProvenanceProjection: objectSummary(
+    'Public-safe demand-provenance projection. Includes generatedAt and the projection_staleness.v1 live_at_read staleness contract with maxStalenessSeconds 0. Summarizes revenue-bearing public surfaces that carry typed internal/external demand splits, starts with the AO/kWh surface, reports internal/external/unlabeled accepted-outcome counts, enforces the no_external_dollar_no_demand_claim copy gate, names remaining coverage gaps, and grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
   ),
   OpenMarketsSurfaceProjection: objectSummary(
     'Public-safe unified open-markets surface enumerating the six Episode 213 markets (compute, data, labor, liquidity, risk, verification). Includes generatedAt, the declared live_at_read staleness contract, honest per-market state (live_scoped/shipped_not_broadly_live/skeleton/unbuilt), whether a settled receipt exists, protocol and promise refs, evidence refs, blockers, state counts, and the skeleton market ids. It is evidence-only and grants no market-making, matching, quoting, settlement, custody, underwriting, payout, or public-market-claim authority; liquidity and risk are inert skeletons.',
@@ -402,6 +535,12 @@ const schemaComponents = (): JsonSchema => ({
   ),
   ArtanisAdminTickMonitorResponse: objectSummary(
     'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, or settlement authority.',
+  ),
+  ArtanisTickStreakResponse: objectSummary(
+    'Public-safe Artanis unattended tick-streak projection: the count of CONSECUTIVE unattended ticks that both dispatched executor-trace work and carry an accepted exact-replay closeout verdict (outcome=verified, accept_state=accepted). Returns currentStreak, longestStreak, streakTarget, targetReached, verifiedTickCount, the ordered tick window with per-tick qualifies flags, and currentStreakAssignmentRefs - each dereferenceable as an artanis_admin_closeout receipt for independent replay-verdict inspection. A pending or unverified tick can only shorten the streak, never lengthen it. Read-only projection; it grants no dispatch, spend, assignment, or settlement authority and cannot create a tick or verdict.',
+  ),
+  ArtanisResponderSupportResponse: objectSummary(
+    'Public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, and the external-contributor interactions with their dereferenceable reply-post refs. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus the projection_staleness.v1 staleness contract (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip.',
   ),
   PublicTreasuryResponse: objectSummary(
     'Public-safe treasury projection with one aggregate live balance across available treasury rails (MDK + Spark) plus a small rail breakout and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
@@ -462,11 +601,12 @@ const schemaComponents = (): JsonSchema => ({
   TrainingLeaderboardsEnvelope: objectSummary(
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
+  TrainingAblationDeriskingLedgerEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
-    'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
+    'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, and earning estimates explicitly labeled modeled-from-measured. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes) and observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row). It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
   TrainingA2DeviceBenchmarkEvidenceRequest: objectSummary(
-    'Admin-only request to admit receipted CS336 A2 benchmark measurements into a training run projection. Each measurement carries class-level statistics only (metric, unit, sampleCount, p50/p90/min/max), receipt refs, verification refs, and an optional earning estimate that is always relabeled modeled-from-measured. Device identifiers, wallet material, and payment material are rejected by the privacy guard at admission time.',
+    'Admin-only request to admit CS336 A2 benchmark measurements into a training run projection. Each measurement carries class-level statistics only (metric, unit, sampleCount, p50/p90/min/max), and an optional measurementProvenance. settled_cross_checked rows (default) require at least one receipt ref and may carry verification refs and an earning estimate (always relabeled modeled-from-measured). measured_unsettled rows are genuinely measured but unpaid: they require at least one digest-commitment ref and must NOT carry a settlement receipt or an earning estimate. Device identifiers, wallet material, and payment material are rejected by the privacy guard at admission time.',
   ),
   TrainingA2DeviceBenchmarkEvidenceEnvelope: objectSummary(
     'Admission result envelope with the updated public-safe run projection and the recomputed CS336 A2 device-capability dataset projection for that run.',
@@ -2968,6 +3108,23 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  [DemandProvenanceEndpoint]: {
+    get: operation({
+      operationId: 'getPublicDemandProvenance',
+      summary: 'Read public demand-provenance projection',
+      description:
+        'Returns the public demand-provenance projection for revenue-bearing public numbers. The current response summarizes the AO/kWh internal/external split, reports zero external accepted outcomes, keeps externalDemandClaimAllowed false, names remaining coverage gaps, and grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public demand-provenance projection.',
+          '#/components/schemas/DemandProvenanceProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   [OpenMarketsSurfaceEndpoint]: {
     get: operation({
       operationId: 'getOpenMarketsSurface',
@@ -3203,6 +3360,46 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis administrator-tick monitor.',
           '#/components/schemas/ArtanisAdminTickMonitorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/tick-streak': {
+    get: operation({
+      operationId: 'getPublicArtanisTickStreak',
+      summary: 'Read the Artanis unattended tick-streak projection',
+      description:
+        'Returns the public-safe Artanis unattended tick-streak projection: the count of consecutive unattended ticks that both dispatched executor-trace work and carry an accepted exact-replay closeout verdict. Includes currentStreak, longestStreak, streakTarget, targetReached, verifiedTickCount, the ordered tick window with per-tick qualifies flags, and currentStreakAssignmentRefs (each dereferenceable as an artanis_admin_closeout receipt). A pending or unverified tick can only shorten the streak. Read-only projection with no dispatch, spend, assignment, or settlement authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum tick decisions to scan for the streak.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Artanis unattended tick-streak projection.',
+          '#/components/schemas/ArtanisTickStreakResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/responder-support': {
+    get: operation({
+      operationId: 'getPublicArtanisResponderSupport',
+      summary: 'Read the Artanis Pylon-support responder external-flow projection',
+      description:
+        'Returns the public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance answered counts, externalContributorFlowProven, and the external-contributor interactions each with a dereferenceable reply-post ref (fetchable at publicUrl). An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor); operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate. Read-only projection with no dispatch, spend, assignment, settlement, moderation, or registry authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum answered responder actions to scan.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Artanis Pylon-support responder external-contributor-flow projection.',
+          '#/components/schemas/ArtanisResponderSupportResponse',
         ),
         ...errorResponses(),
       },
@@ -4360,6 +4557,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public training-run settlement rows.',
           '#/components/schemas/TrainingRunSettlementsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingAblationDeriskingLedgerEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingAblationDeriskingLedger',
+      summary: 'Read training ablation derisking ledger',
+      description:
+        'Returns the public-safe ablation derisking ledger projection for training.ablation_system.v1. Current entries are candidate refs only: the one-delta harness, eval reproduction receipt, paid ablation dispatch, and accepted verdict gates remain false until dereferenceable receipts exist. Read-only; grants no training-dispatch, spend, settlement, model-promotion, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Training ablation derisking ledger.',
+          '#/components/schemas/TrainingAblationDeriskingLedgerEnvelope',
         ),
         ...errorResponses(),
       },
@@ -6026,6 +6240,34 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Promise transition receipt feed.',
           '#/components/schemas/ProductPromiseTransitions',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/product-promises/audit': {
+    get: operation({
+      operationId: 'getProductPromiseClaimUpgradeAudit',
+      summary: 'Enterprise claim-upgrade audit projection',
+      description:
+        'Returns a read-only audit projection joining the promise transition-receipt feed against the live product-promise registry, so a third party can audit every state change — especially every green flip — without trusting narrative copy. Per promise it returns promiseId, productArea, currentState, lastVerifiedAt, blockerRefs, and the transition receipts backing it (from->to state, registryVersion, receiptRef, result, evidence refs, owner signoff). A registry-wide summary reports how many green promises are receipt-backed and explicitly lists any green promises with no recorded green-flip receipt (greenPromisesWithoutReceipt). Filterable via promiseId, state, and greenOnly query parameters. Read-only: exposes no private data, moves no money, and changes no registry state.',
+      tags: ['Public Proof'],
+      security: [],
+      parameters: [
+        queryParam('promiseId', 'Filter rows to a single promise id.'),
+        queryParam(
+          'state',
+          'Filter rows to a single current registry state (green, yellow, red, degraded, planned, withdrawn).',
+        ),
+        queryParam(
+          'greenOnly',
+          'Set to true or 1 to include only promises whose current state is green.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Claim-upgrade audit projection.',
+          '#/components/schemas/ProductPromiseClaimUpgradeAudit',
         ),
         ...errorResponses(),
       },

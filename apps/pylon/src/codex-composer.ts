@@ -546,8 +546,11 @@ async function runCodexHumanComposerStream(
         emit(`agent: ${clipOneLine(parsed.text, 200)}`)
         callbacks.onText?.(textResult)
       } else if (parsed.type === "tokens") {
+        // Capture the token total for usage accounting (onUsage below), but do
+        // NOT emit it as a transcript event: a raw "tokens used: 51342" line is
+        // exactly the scrollback noise the readable stream must keep out (it
+        // belongs in a footer, not the transcript). #stream-ux 2026-06-19.
         totalTokens = parsed.totalTokens
-        emit(`tokens used: ${parsed.totalTokens}`)
       }
     }
     const { code, signal } = await exitPromise

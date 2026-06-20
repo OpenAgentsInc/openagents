@@ -364,6 +364,18 @@ export const ensureManagedNode = async (
   }
   childEnv.PYLON_HOME = managedHome
 
+  // Owner mandate (2026-06-19): nothing the desktop runs is sandboxed. The
+  // desktop launches its OWN authenticated local Pylon node, so its Codex
+  // control sessions run full-access with network enabled (git / GitHub /
+  // credentials work — a no-network sandbox is exactly why "Codex didn't connect
+  // to GitHub"). This forwards the node-boot opt-in the control-session executor
+  // reads (codexControlSessionNoSandboxOptIn); it is a local node-boot env, not a
+  // `session.spawn` wire field, so the remote-spawn danger-mode rejection stays
+  // intact. An explicit operator override still wins.
+  if (childEnv.PYLON_CODEX_NO_SANDBOX === undefined) {
+    childEnv.PYLON_CODEX_NO_SANDBOX = "1"
+  }
+
   // AO-2 (#5443): when auto-onboarding is on, inject the env switches the
   // existing Pylon runtime reads at boot so presence / payout-target / the
   // Tassadar assignment worker light up — reusing the already-built runtime, no

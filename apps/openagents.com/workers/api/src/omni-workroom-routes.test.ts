@@ -406,6 +406,152 @@ describe('Omni workroom routes', () => {
     expect(store.workrooms).toHaveLength(0)
   })
 
+  test('reads the INERT source-authority delivery plan for a live workroom', async () => {
+    const store = new OmniWorkroomStore()
+    const routes = makeRoutes(store)
+
+    await runRequest(
+      routes,
+      postRequest(
+        createBody({
+          id: 'omni_workroom_business_sa',
+          idempotencyKey: 'omni-workroom:business-sa',
+          metadata: {
+            sourceAuthority: {
+              bindings: [
+                {
+                  allowedOperations: ['append', 'create', 'update'],
+                  allowedSourceKinds: [
+                    'approval_decision',
+                    'connector_read',
+                    'verified_chat_extraction',
+                  ],
+                  authority: {
+                    authorityBoundary: 'contract_projection_only',
+                    noBusinessObjectMutationWithoutApproval: true,
+                    noConnectorWritebackWithoutApproval: true,
+                    noNotificationSend: true,
+                    noSettlementImplication: true,
+                    noSpendAuthority: true,
+                  },
+                  businessObjectKinds: ['contact', 'company', 'task'],
+                  caveatRefs: ['caveat.source_authority.proposals_until_approved'],
+                  createdAtIso: '2026-06-19T05:00:00.000Z',
+                  id: 'source_authority_binding.acme_crm_operator',
+                  principalKind: 'authorized_user',
+                  principalRef: 'principal.workroom_owner',
+                  requiresApproval: true,
+                  updatedAtIso: '2026-06-19T05:05:00.000Z',
+                  workroomRef: 'workroom.acme_delivery',
+                },
+              ],
+              writes: [
+                {
+                  appliedReceiptRefs: [],
+                  approvalRefs: [],
+                  authority: {
+                    authorityBoundary: 'contract_projection_only',
+                    noBusinessObjectMutationWithoutApproval: true,
+                    noConnectorWritebackWithoutApproval: true,
+                    noNotificationSend: true,
+                    noSettlementImplication: true,
+                    noSpendAuthority: true,
+                  },
+                  blockerRefs: [],
+                  bindingRef: 'source_authority_binding.acme_crm_operator',
+                  businessObjectKind: 'contact',
+                  businessObjectRef: 'business_object.contact.acme_primary',
+                  caveatRefs: [],
+                  closeoutRefs: [],
+                  createdAtIso: '2026-06-19T05:10:00.000Z',
+                  evidenceRefs: [],
+                  id: 'business_object_write.acme_contact_1',
+                  operation: 'update',
+                  operatorDiagnosticRefs: [],
+                  principalKind: 'authorized_user',
+                  principalRef: 'principal.workroom_owner',
+                  proposedChangeRefs: ['proposed_change.contact.title_updated'],
+                  sourceKind: 'verified_chat_extraction',
+                  sourceRefs: ['source.workroom.chat_extraction_summary'],
+                  state: 'proposed',
+                  updatedAtIso: '2026-06-19T05:25:00.000Z',
+                  workroomRef: 'workroom.acme_delivery',
+                },
+              ],
+            },
+          },
+        }),
+      ),
+      store,
+    )
+
+    const response = await runRequest(
+      routes,
+      new Request(
+        'https://openagents.com/api/omni/workrooms/omni_workroom_business_sa/source-authority?surface=operator',
+      ),
+      store,
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      sourceAuthorityDelivery: {
+        applyableCount: number
+        effectsApplied: boolean
+        gateState: string
+        proposedCount: number
+      }
+      surface: string
+      workroomId: string
+    }
+    expect(json.surface).toBe('operator')
+    expect(json.workroomId).toBe('omni_workroom_business_sa')
+    // INERT integration: reachable on the live surface, never applies anything.
+    expect(json.sourceAuthorityDelivery.gateState).toBe('inert_disabled')
+    expect(json.sourceAuthorityDelivery.effectsApplied).toBe(false)
+    expect(json.sourceAuthorityDelivery.applyableCount).toBe(0)
+    expect(json.sourceAuthorityDelivery.proposedCount).toBe(1)
+  })
+
+  test('requires an operator session for operator source-authority reads', async () => {
+    const store = new OmniWorkroomStore()
+    const denyRoutes = makeRoutes(store, () => Promise.resolve(undefined))
+    const allowRoutes = makeRoutes(store)
+
+    await runRequest(
+      allowRoutes,
+      postRequest(
+        createBody({
+          id: 'omni_workroom_business_sa2',
+          idempotencyKey: 'omni-workroom:business-sa2',
+        }),
+      ),
+      store,
+    )
+
+    const denied = await runRequest(
+      denyRoutes,
+      new Request(
+        'https://openagents.com/api/omni/workrooms/omni_workroom_business_sa2/source-authority?surface=operator',
+      ),
+      store,
+    )
+    expect(denied.status).toBe(401)
+  })
+
+  test('returns 404 for source-authority on an unknown workroom', async () => {
+    const store = new OmniWorkroomStore()
+    const routes = makeRoutes(store)
+
+    const response = await runRequest(
+      routes,
+      new Request(
+        'https://openagents.com/api/omni/workrooms/missing_sa/source-authority?surface=public',
+      ),
+      store,
+    )
+    expect(response.status).toBe(404)
+  })
+
   test('rejects unsupported HTTP methods', async () => {
     const store = new OmniWorkroomStore()
     const routes = makeRoutes(store)

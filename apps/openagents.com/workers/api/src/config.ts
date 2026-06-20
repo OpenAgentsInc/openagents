@@ -22,6 +22,18 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // live-sale claim and the promise stays yellow regardless; a green flip stays
   // receipt-first and owner-signed with a dereferenceable settlement receipt.
   AGENTIC_LABOR_PRODUCTS_ENABLED?: string | undefined
+  // Self-serve control-center fanout flag (promise
+  // autopilot.control_center_fanout_marketplace.v1, yellow). Default OFF: the
+  // `/api/public/autopilot/self-serve-fanout` listing surface is INERT (empty
+  // store) and the dispatch seam (dispatchSelfServeFanout) lists nothing. Set
+  // "true"/"1"/"on" to arm the (still yellow/inert) surface. The plan makes no
+  // broad-live-marketplace claim and the promise stays yellow regardless; the
+  // capability clears only blocker.product_promises.self_serve_fanout_missing
+  // (a customer-initiated single-action fanout planner/route exists), while
+  // blocker.product_promises.plugin_marketplace_beyond_code_task_missing stays
+  // uncleared (code_task work class only). A green flip stays receipt-first and
+  // owner-signed with a dereferenceable settlement receipt.
+  SELF_SERVE_FANOUT_ENABLED?: string | undefined
   // Signature usage-metering surface flag (EPIC #5523 / DE-6 #5529; promise
   // marketplace.signature_monetization.v1, red). Default OFF: the
   // `/api/public/markets/signature-monetization/metering` surface is INERT
@@ -50,12 +62,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // stay owner/product-gated and the promise stays yellow.
   SITE_FORM_CAPTURE_ENABLED?: string | undefined
   // Mobile workroom approval projection flag (promise
-  // mobile.voice_approval_companion.v1, planned). Default OFF: the
+  // mobile.voice_approval_companion.v1, yellow). Default OFF: the
   // `/api/mobile/workroom-approval-projection` route is INERT (empty store) on
   // the live Worker. Set "true"/"1"/"on" to arm the read-only projection over
   // an injected authorized store. It clears only the mobile-projection blocker;
   // voice-command approval receipts + cross-device sync stay open and the
-  // promise stays planned regardless.
+  // promise stays yellow regardless.
   MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED?: string | undefined
   // Pylon multi-earning-node projection flag (EPIC #5523 / DE-4 #5527; promise
   // pylon.v0_3_multi_earning_node.v1, red). Default OFF: the

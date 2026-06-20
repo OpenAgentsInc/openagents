@@ -1047,6 +1047,10 @@ const auditPanel = (
             '/api/public/product-promises/transitions',
             'Receipt feed JSON',
           ),
+          navLink(
+            '/api/public/product-promises/audit',
+            'Enterprise audit projection JSON',
+          ),
         ],
       ),
       failed

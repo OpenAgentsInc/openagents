@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.6')
+    expect(decoded.version).toBe('2026-06-20.19')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -141,7 +141,57 @@ describe('public product promises document', () => {
     // now exactly 24. The 2026-06-20.4 Pylon green-quality pass and
     // 2026-06-20.5 signature-metering de-stale pass and 2026-06-20.6
     // partner-payout projection de-stale pass flip no promise state, so green
-    // remains exactly 24.
+    // remains exactly 24. The 2026-06-20.7 pass clears the Nostr-export blocker
+    // on identity.orange_check_forum_signal.v1 (a real dereferenceable kind-1
+    // attestation on wss://relay.openagents.com); the promise stays yellow and
+    // green remains exactly 24. The 2026-06-20.8 workrooms live integration
+    // pass and 2026-06-20.9 mobile approval projection honesty pass move
+    // mobile.voice_approval_companion.v1 planned -> yellow without flipping
+    // green, so green remains exactly 24. The 2026-06-20.10 pass ships the
+    // enterprise claim-upgrade audit panel for proof.claim_upgrade_receipts.v1
+    // (GET /api/public/product-promises/audit) and drops that promise's
+    // enterprise_audit_panel_missing blocker, but the promise STAYS yellow
+    // (green flip is owner-gated), so green remains exactly 24. The
+    // 2026-06-20.11 ablation derisking ledger pass flips no promise state, so
+    // green remains exactly 24. The 2026-06-20.12 pass builds the Artanis
+    // unattended tick-streak counter/projection for
+    // artanis.tassadar_evolution_loop.v1 (the missing piece of the
+    // artanis_unattended_tick_streak_missing blocker) and exposes it at
+    // GET /api/public/artanis/tick-streak; the blocker STAYS (no real 10-tick
+    // streak has been driven live), the promise stays yellow, and green remains
+    // exactly 24. The 2026-06-20.13 device-capability second-device-class pass
+    // drops second_device_class_missing on
+    // training.device_capability_dataset.v1 (the dataset gains a genuine
+    // measured_unsettled x86_64-Linux/Intel class); the promise STAYS yellow,
+    // so green remains exactly 24. The 2026-06-20.14 demand-provenance
+    // projection
+    // pass moves proof.demand_provenance.v1 planned -> yellow without flipping
+    // green, so green remains exactly 24. The 2026-06-20.15 control-center
+    // self-serve-fanout pass clears the self_serve_fanout_missing blocker on
+    // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
+    // single-action fanout planner/route + INERT public projection); the
+    // promise STAYS yellow, so green remains exactly 24. The 2026-06-20.16
+    // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
+    // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
+    // without flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.17 repo-study customer-private-validation pass drops
+    // repo_studying_customer_private_validation_missing on
+    // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
+    // validation module + delivery seam); the promise STAYS yellow, so green
+    // remains exactly 24. The 2026-06-20.18 two-record artanis-area pass drops
+    // artanis_unattended_tick_streak_missing on
+    // artanis.tassadar_evolution_loop.v1 (the deployed tick-streak gate is met:
+    // longestStreak 12 >= 10, dereferenceable closeout receipts) and adds the
+    // external-contributor responder-support projection
+    // (GET /api/public/artanis/responder-support) on
+    // artanis.pylon_support_responder.v1 while KEEPING its
+    // external_contributor_flow_unproven blocker; both promises STAY yellow, so
+    // green remains exactly 24. The 2026-06-20.19 custom-hostname self-serve
+    // pass clears hostname_customer_self_serve_missing on
+    // autopilot_sites.custom_tenant_hostnames.v1 (deployed customer-gated
+    // claim/list path at /api/tenant/hostnames that writes only pending rows;
+    // live provisioning stays owner-gated and INERT default-OFF), without
+    // flipping the promise (stays yellow), so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -178,7 +228,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
-          state: 'planned',
+          state: 'yellow',
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
             'route:/api/mobile/workroom-approval-projection',
@@ -210,6 +260,23 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.ablation_system.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'https://openagents.com/api/public/training/ablation-derisking-ledger',
+            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+          ]),
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.ablation_harness_missing',
+            'blocker.product_promises.eval_suite_reproduction_missing',
+          ]),
+          safeCopy: expect.stringContaining(
+            '/api/public/training/ablation-derisking-ledger',
+          ),
+          verification: expect.stringContaining('candidate-only'),
         }),
         expect.objectContaining({
           promiseId: 'training.model_ladder.v1',
@@ -368,7 +435,16 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'proof.demand_provenance.v1',
-          state: 'planned',
+          state: 'yellow',
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/demand-provenance',
+            'apps/openagents.com/workers/api/src/demand-provenance.ts',
+            'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
+            'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
+          ]),
+          blockerRefs: expect.not.arrayContaining([
+            'blocker.product_promises.demand_provenance_projection_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'proof.claim_upgrade_receipts.v1',
@@ -390,7 +466,7 @@ describe('public product promises document', () => {
         expect.objectContaining({
           audience: expect.arrayContaining(['agent', 'operator', 'developer']),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.repo_studying_customer_private_validation_missing',
+            'blocker.product_promises.repo_studying_privacy_review_missing',
             'blocker.product_promises.repo_studying_marketplace_metering_missing',
             'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
           ]),
@@ -398,6 +474,7 @@ describe('public product promises document', () => {
             'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
             'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
             'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
+            'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
             'promise:repo.open_source_code_map.v1',
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
@@ -522,6 +599,19 @@ describe('public product promises document', () => {
           state: 'yellow',
         }),
       ]),
+    )
+    const mobileApprovalPromise = decoded.promises.find(
+      promise => promise.promiseId === 'mobile.voice_approval_companion.v1',
+    )
+    expect(mobileApprovalPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.voice_command_approval_receipts_missing',
+      'blocker.product_promises.cross_device_workroom_sync_missing',
+    ])
+    expect(mobileApprovalPromise?.safeCopy).toContain(
+      'Voice/mobile approval is partially wired',
+    )
+    expect(mobileApprovalPromise?.verification).toContain(
+      'Yellow is supported by the live read-only mobile workroom approval projection route',
     )
     const localAppleFmPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.local_apple_fm_tool_chat.v1',
@@ -730,16 +820,74 @@ describe('public product promises document', () => {
     )
   })
 
+  test('ablation derisking ledger clears only the projection blocker', () => {
+    const document = publicProductPromisesDocument()
+    const ablationPromise = document.promises.find(
+      promise => promise.promiseId === 'training.ablation_system.v1',
+    )
+
+    expect(ablationPromise).toMatchObject({
+      state: 'planned',
+      blockerRefs: [
+        'blocker.product_promises.ablation_harness_missing',
+        'blocker.product_promises.eval_suite_reproduction_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'https://openagents.com/api/public/training/ablation-derisking-ledger',
+        'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+        'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+      ]),
+    })
+    expect(ablationPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.ablation_ledger_projection_missing',
+    )
+    expect(ablationPromise?.safeCopy).toContain(
+      'public, read-only ablation derisking ledger projection',
+    )
+    expect(ablationPromise?.verification).toContain(
+      'zero paid ablations, zero reproduced evals, and zero accepted verdicts',
+    )
+    expect(ablationPromise?.authorityBoundary).toContain(
+      'no dispatch or spend authority',
+    )
+  })
+
+  test('keeps demand provenance yellow after the first public projection', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const demandProvenancePromise = decoded.promises.find(
+      promise => promise.promiseId === 'proof.demand_provenance.v1',
+    )
+
+    expect(demandProvenancePromise?.state).toBe('yellow')
+    expect(demandProvenancePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
+    ])
+    expect(demandProvenancePromise?.safeCopy).toContain(
+      'GET /api/public/demand-provenance',
+    )
+    expect(demandProvenancePromise?.safeCopy).toContain(
+      'externalDemandClaimAllowed:false',
+    )
+    expect(demandProvenancePromise?.verification).toContain(
+      'summarizes the AO/kWh internal/external split',
+    )
+    expect(demandProvenancePromise?.authorityBoundary).toContain(
+      'grants no settlement or reporting authority',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.6', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.19', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.6',
+      expectedVersion: '2026-06-20.19',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.6',
+      servedVersion: '2026-06-20.19',
       status: 'ready',
     })
     expect(
@@ -749,7 +897,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.6',
+      servedVersion: '2026-06-20.19',
       status: 'blocked',
     })
   })

@@ -268,7 +268,22 @@ const budgetChecks = [
     // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
     // back down when these public-projection handlers are extracted behind
     // shared route mappers.
-    budget: 90,
+    // +1 (90 -> 91) for the enterprise claim-upgrade audit projection
+    // (promise-transition-audit-routes.ts, proof.claim_upgrade_receipts.v1): a
+    // read-only public projection joining the transition-receipt feed against
+    // the live registry so a third party can audit every green flip. It returns
+    // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
+    // back down when these public-projection handlers are extracted behind
+    // shared route mappers.
+    // +1 (91 -> 92) for the self-serve control-center fanout surface
+    // (self-serve-fanout-routes.ts,
+    // autopilot.control_center_fanout_marketplace.v1, yellow): a flag-gated
+    // INERT read-only projection of customer-initiated self-serve fanout plans,
+    // clearing only blocker.product_promises.self_serve_fanout_missing. It
+    // returns `Effect.Effect<Response>` like the sibling public read handlers.
+    // Ratchet back down when these public-projection handlers are extracted
+    // behind shared route mappers.
+    budget: 92,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -508,6 +523,16 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/artanis-tick-streak.ts',
+    route: '/api/public/artanis/tick-streak',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/artanis-responder-provenance.ts',
+    route: '/api/public/artanis/responder-support',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/forum/tip-earnings.ts',
     route: '/api/forum/tip-leaderboards',
     status: 'staleness_declared',
@@ -558,6 +583,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/demand-provenance.ts',
+    route: '/api/public/demand-provenance',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/open-markets-surface.ts',
     route: '/api/public/markets/open-markets',
     status: 'staleness_declared',
@@ -585,6 +615,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/agentic-labor-product.ts',
     route: '/api/public/autopilot/labor-products',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/self-serve-fanout.ts',
+    route: '/api/public/autopilot/self-serve-fanout',
     status: 'staleness_declared',
   },
   {
@@ -665,6 +700,16 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/partner-payout-public-projection.ts',
     route: '/api/public/partner-payouts',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/promise-transition-audit-routes.ts',
+    route: '/api/public/product-promises/audit',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/training-ablation-derisking-ledger.ts',
+    route: '/api/public/training/ablation-derisking-ledger',
     status: 'staleness_declared',
   },
   // Static contract documents, not state projections.
