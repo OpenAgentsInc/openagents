@@ -202,3 +202,38 @@ published price before funding a balance. This does NOT by itself let a customer
 buy inference — the paid-credits funding loop is still secrets-gated — so the
 blocker stays listed. No promise state changed; any future green flip remains
 receipt-first and owner-signed.
+
+## Pre-purchase cost estimator (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The gateway now PUBLISHES per-1M-token prices, but a credits customer who wants
+to "spend deliberately" still had to do the arithmetic by hand to answer the
+question that actually gates a funding decision: "for THIS model and THIS many
+tokens, on THIS funding rail, how many credits will it cost?" This run adds the
+single pure answer to that question:
+
+- `apps/openagents.com/workers/api/src/inference/cost-estimate.ts`
+  (+ `cost-estimate.test.ts`): `estimateRequestCost` — a PURE pre-purchase
+  estimator that reuses `priceRequest` (the EXACT pricing engine the metering
+  hook charges against), fed with the customer's ESTIMATED token counts. It
+  returns the customer-facing charge in USD, the legible credit unit, AND the
+  integer msat the metering hook would actually decrement (`usdToMsatCeil`, the
+  same ceiling the ledger uses), so an estimate cannot drift from the billed
+  charge (a test asserts equality against `priceRequest`/`sellPricePerMtok`).
+  It surfaces the exact Bitcoin-rail saving versus card (the on-brand pull onto
+  Bitcoin), flags free-tier-eligible models while still quoting the PAID price
+  (conservative planning for when the free pool is exhausted), flags unknown
+  models, and clamps negative/fractional/NaN token inputs to non-negative ints.
+
+RECEIPT-FIRST DISCIPLINE PRESERVED: the output carries `isEstimate: true`, moves
+no money, writes no ledger row, and OMITS our cost basis / margin (`costUsd`) so
+the estimate never leaks unit economics — only the customer-facing charge already
+implied by the published catalog price. 11 tests pass.
+
+No route is wired yet (kept to the smallest self-contained unit; the estimator is
+the reusable core a future `POST /v1/quote`-style surface or price page reads).
+This does NOT by itself let a customer buy inference — the paid-credits funding
+loop is still secrets-gated — so the blocker stays listed. No promise state
+changed; any future green flip remains receipt-first and owner-signed.
