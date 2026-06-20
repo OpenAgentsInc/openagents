@@ -665,6 +665,51 @@ export type ShellTurnResponse = {
   readonly text: string
 }
 
+// #5821: the Verse chat bar talks to Tassadar/OpenAgents by default. Bun owns
+// the OpenAgents token and public context fetches; the webview receives only the
+// plain response, source refs, and public-safe blocker refs. No raw token, raw
+// private trace, session ref, repo path, or coding-agent payload crosses here.
+export type VerseTurnContextSummary = {
+  readonly fetchedAt: string
+  readonly sourceRefs: readonly string[]
+  readonly blockerRefs: readonly string[]
+  readonly pylon: {
+    readonly onlineNow: number | null
+    readonly assignmentReadyNow: number | null
+    readonly walletReadyNow: number | null
+    readonly satsSettled24h: number | null
+    readonly satsSettledTotal: number | null
+  }
+  readonly training: {
+    readonly runRef: string | null
+    readonly runState: string | null
+    readonly acceptedTraceCount: number | null
+    readonly qualifiedContributorCount: number | null
+    readonly settledPayoutSats: number | null
+  }
+  readonly promises: {
+    readonly registryVersion: string | null
+    readonly green: number | null
+    readonly yellow: number | null
+    readonly red: number | null
+    readonly trackedTrainingPromises: number | null
+  }
+  readonly activity: {
+    readonly eventCount: number | null
+    readonly recent: readonly {
+      readonly kind: string
+      readonly text: string
+      readonly refs: readonly string[]
+    }[]
+  }
+}
+
+export type VerseTurnResponse = {
+  readonly ok: boolean
+  readonly text: string
+  readonly context: VerseTurnContextSummary
+}
+
 export type { InstallReadinessResponse } from "./install-readiness"
 export type {
   OnboardingStatusResponse,
@@ -883,6 +928,16 @@ export type DesktopRPCSchema = {
       readonly shellTurn: {
         readonly params: { prompt: string }
         readonly response: ShellTurnResponse
+      }
+      // #5821: one default Verse/Tassadar turn. The Bun host builds a bounded
+      // public context pack from /api/public/tassadar-run-summary,
+      // /api/public/pylon-stats, /api/public/activity-timeline, and the
+      // product-promise registry, then calls the same OpenAgents model gateway
+      // token path as shellTurn. Missing auth/credits returns one clean Verse
+      // blocker; it never spawns a Codex/Claude/session turn.
+      readonly verseTurn: {
+        readonly params: { prompt: string }
+        readonly response: VerseTurnResponse
       }
       // #5064: one public-safe first-run health projection for normal installs.
       readonly installReadiness: {

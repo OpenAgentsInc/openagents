@@ -62,6 +62,7 @@ import {
   SucceededBuiltInAgent,
   SucceededAppleFmSession,
   SucceededChatTurn,
+  SucceededVerseTurn,
   SucceededComposerTurn,
   SucceededShellCodingTurn,
   SucceededDeploy,
@@ -69,6 +70,7 @@ import {
   SucceededSwarmBatchSpawn,
   FailedSwarmBatchSpawn,
   GotPublicActivityTimeline,
+  FailedVerseTurn,
   RespondedShell,
 } from "./message"
 
@@ -1383,6 +1385,37 @@ export const SpawnChatTurn = Command.define(
     ),
     Effect.catch((error) =>
       Effect.succeed(FailedChatTurn({ error: errorText(error) })),
+    ),
+  ),
+)
+
+const VERSE_BRIDGE_ERROR_TEXT =
+  "I couldn't reach the local app service to ask Tassadar. Please try again in a moment."
+
+// #5821: default Verse chat turn. This is intentionally NOT session.spawn. Bun
+// builds a public-safe context pack and calls the OpenAgents model gateway with
+// the host-side token; the webview receives only text plus source/blocker refs.
+export const RespondToVerseInput = Command.define(
+  "RespondToVerseInput",
+  { prompt: S.String },
+  SucceededVerseTurn,
+  FailedVerseTurn,
+)(({ prompt }) =>
+  Effect.tryPromise(() => getRequest().verseTurn({ prompt })).pipe(
+    Effect.map((result) =>
+      SucceededVerseTurn({
+        ok: result.ok,
+        text: result.text,
+        sourceRefs: [...result.context.sourceRefs],
+        blockerRefs: [...result.context.blockerRefs],
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        FailedVerseTurn({
+          error: errorText(error) || VERSE_BRIDGE_ERROR_TEXT,
+        }),
+      ),
     ),
   ),
 )

@@ -40,6 +40,7 @@ import {
   ReconcileTrainingWindow,
   RemoveManagedAccount,
   RequestTrainingBootstrapGrant,
+  RespondToVerseInput,
   RespondToShellInput,
   ResolveApproval,
   ResolveManagedWorktree,
@@ -73,6 +74,7 @@ import {
   type ManagedWorktreeRequest,
 } from "./composer-workspace"
 import {
+  ClickedBlueprintChatSubmit,
   ClickedChatSubmit,
   ClickedComposerReply,
   ClickedComposerSpawn,
@@ -739,6 +741,8 @@ const messageForPaletteCommand = (command: PaletteCommand): Message | null => {
     }
     case "ClickedSubmitIntent":
       return ClickedSubmitIntent()
+    case "ClickedBlueprintChatSubmit":
+      return ClickedBlueprintChatSubmit()
     case "ClickedCoordinatorToggle":
       return ClickedCoordinatorToggle({ paused: Boolean(command.args?.paused) })
     default:
@@ -748,7 +752,7 @@ const messageForPaletteCommand = (command: PaletteCommand): Message | null => {
 
 // #5465: the submit message for the current Chat/Composer turn. Composer's first
 // turn spawns (ClickedComposerSpawn); subsequent turns continue the thread
-// (ClickedComposerReply). Chat always uses ClickedChatSubmit.
+// (ClickedComposerReply). Chat uses the #5821 Verse/Tassadar path by default.
 const submitTurnMessage = (model: Model, pane: PaneId): Message | null => {
   if (pane === "chat") return ClickedChatSubmit()
   if (pane === "composer") {
@@ -2834,10 +2838,45 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
 
-    // ── #5453: Blueprint program chat ─────────────────────────────────────────
+    // ── #5821: Verse/Tassadar chat, plus explicit Blueprint program chat ──────
     case "ChangedChatInput":
       return [Model.make({ ...model, chatInput: message.value }), noCommands]
     case "ClickedChatSubmit": {
+      const prompt = model.chatInput.trim()
+      if (prompt === "") {
+        return [
+          Model.make({
+            ...model,
+            chatStatus: { text: "message must be non-empty", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        Model.make({
+          ...model,
+          chatInput: "",
+          chatPending: true,
+          chatStatus: {
+            text: "asking Tassadar with public Pylon and training context...",
+            tone: "info",
+          },
+          chatMessages: [
+            ...model.chatMessages,
+            {
+              id: chatMessageId("chat.user"),
+              role: "user",
+              body: prompt,
+              timestamp: chatTimestamp(),
+              linkedSessionRef: null,
+              steps: [],
+            },
+          ],
+        }),
+        [RespondToVerseInput({ prompt })],
+      ]
+    }
+    case "ClickedBlueprintChatSubmit": {
       const prompt = model.chatInput.trim()
       if (prompt === "") {
         return [
@@ -2898,6 +2937,56 @@ export const update = (model: Model, message: Message): Result => {
         ],
       ]
     }
+    case "SucceededVerseTurn":
+      return [
+        Model.make({
+          ...model,
+          chatPending: false,
+          chatStatus: {
+            text: message.ok
+              ? "Tassadar answered from public Verse context"
+              : message.blockerRefs.length > 0
+                ? `Verse blocker: ${message.blockerRefs[0]}`
+                : "Tassadar could not answer yet",
+            tone: message.ok ? "success" : "error",
+          },
+          chatMessages: [
+            ...model.chatMessages,
+            {
+              id: chatMessageId("chat.assistant"),
+              role: "assistant",
+              body: message.text,
+              timestamp: chatTimestamp(),
+              linkedSessionRef: null,
+              // #5821: no Blueprint/exact-replay step chrome on the default
+              // Verse path. Program steps appear only when the explicit
+              // Blueprint command is invoked.
+              steps: [],
+            },
+          ],
+        }),
+        noCommands,
+      ]
+    case "FailedVerseTurn":
+      return [
+        Model.make({
+          ...model,
+          chatPending: false,
+          chatStatus: { text: message.error, tone: "error" },
+          chatMessages: [
+            ...model.chatMessages,
+            {
+              id: chatMessageId("chat.assistant"),
+              role: "assistant",
+              body: message.error,
+              timestamp: chatTimestamp(),
+              linkedSessionRef: null,
+              steps: [],
+            },
+          ],
+        }),
+        noCommands,
+      ]
     case "SucceededChatTurn": {
       // #5466: the assistant message links to the live session. Its program
       // steps start in a queued/running state and are reconciled to real

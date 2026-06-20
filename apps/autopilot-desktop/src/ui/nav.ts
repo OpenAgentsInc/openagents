@@ -226,6 +226,14 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
   },
   {
     kind: "action",
+    id: "action.blueprint-chat",
+    label: "Run Blueprint exact replay chat",
+    group: "code",
+    messageTag: "ClickedBlueprintChatSubmit",
+    keywords: ["blueprint", "exact", "replay", "tassadar", "signature", "advanced", "code"],
+  },
+  {
+    kind: "action",
     id: "action.submit-intent",
     label: "Submit an intent (Ask Autopilot)",
     group: "supervise",

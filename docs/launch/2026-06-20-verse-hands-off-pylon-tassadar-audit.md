@@ -23,6 +23,13 @@ not authority.
   tabs, Spawn/Sessions/Swarm/Deploy labels, or repo/worktree/cloud-code copy;
   Cmd-K/Advanced opens the command palette and the explicit shell open path
   lands on the Code composer.
+- 2026-06-20: #5821 split default Verse chat from the advanced
+  Blueprint/session path. Visible Send now dispatches `RespondToVerseInput`;
+  the Bun host builds a bounded public Tassadar context pack from
+  `/api/public/tassadar-run-summary`, `/api/public/pylon-stats`,
+  `/api/public/activity-timeline`, and product-promise state before calling the
+  OpenAgents model gateway. `SpawnChatTurn` remains only on the explicit
+  Blueprint command-palette action.
 
 ## Executive read
 
@@ -44,6 +51,8 @@ What exists:
 - A SpacetimeDB `openagents-world` module with public projection tables,
   interaction tables, service-only projection reducers, and browser-safe
   interaction reducers.
+- Default Verse chat with Tassadar/OpenAgents model responses over public
+  Pylon/training context.
 - Blueprint/Tassadar chat-step scaffolding that can show semantic signature
   routing and exact-replay verdicts.
 
@@ -52,9 +61,9 @@ What is wrong for the requested product direction:
 - The fallback shell still exposes `Current`, `Claude Code`, and `Codex` when
   explicitly opened. Those controls are no longer first paint, but they still
   need further advanced/developer framing.
-- The main chat submit path still spawns a coding session through the selected
-  coding adapter. That makes "chat with Tassadar" feel like shelling out to a
-  coding agent, not talking to the model/world.
+- The explicit Blueprint chat command still spawns a coding session through
+  the selected coding adapter. That is now advanced behavior, but it still
+  needs careful framing so it does not become the mental model of the app.
 - The Verse is still controlled by build flags and lives behind the Chat pane,
   not as the default mental model of the app.
 - The current chat-world renderer is primarily a Pylon/payment network scene.
@@ -137,11 +146,9 @@ Remaining launch mismatch:
 
 - The fallback shell exposes `Current`, `Claude Code`, and `Codex` as target
   tabs when explicitly opened.
-- `ClickedChatSubmit` selects a Blueprint signature but then spawns a bounded
-  coding session through `SpawnChatTurn` using `claude_agent` or `codex`.
-- The default flow still speaks in sessions, adapters, worktrees, and coding
-  turns. That is useful infrastructure, but it is not the requested first
-  experience.
+- The explicit Blueprint flow still speaks in sessions, adapters, worktrees,
+  and coding turns. That is useful infrastructure, but it is not the requested
+  first experience and no longer owns the default Send button.
 
 ### Pylon network and payments
 
@@ -422,6 +429,8 @@ Implementation shape:
 - Move dense training operations into an overlay drawer.
 
 ### P2 - Make chat actually talk to Tassadar/OpenAgents
+
+Status: landed by #5821 on 2026-06-20.
 
 Acceptance:
 
