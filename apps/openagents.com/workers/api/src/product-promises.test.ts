@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.31')
+    expect(decoded.version).toBe('2026-06-20.32')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -242,6 +242,9 @@ describe('public product promises document', () => {
     // The 2026-06-20.31 fixture-sync receipt pass clears only the fixture-sync
     // blocker; paid dispatch, preference rollout, and vibe-test gates remain
     // blocked, so green remains exactly 24.
+    // The 2026-06-20.32 full-pipeline program pass adds a public stage-status
+    // projection but keeps training_pipeline_rails_incomplete active, so green
+    // remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -309,7 +312,18 @@ describe('public product promises document', () => {
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
+            'docs/training/2026-06-20-training-full-pipeline-program-status.md',
+            'route:/api/public/training/full-pipeline-program',
+            'apps/openagents.com/workers/api/src/training-full-pipeline-program.ts',
+            'apps/openagents.com/workers/api/src/training-full-pipeline-program.test.ts',
           ]),
+          blockerRefs: [
+            'blocker.product_promises.training_pipeline_rails_incomplete',
+          ],
+          safeCopy: expect.stringContaining(
+            '/api/public/training/full-pipeline-program',
+          ),
+          verification: expect.stringContaining('greenGateSatisfied=false'),
         }),
         expect.objectContaining({
           promiseId: 'training.ablation_system.v1',
@@ -1054,12 +1068,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.31', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.32', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.31',
+      expectedVersion: '2026-06-20.32',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.31',
+      servedVersion: '2026-06-20.32',
       status: 'ready',
     })
     expect(
@@ -1069,7 +1083,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.31',
+      servedVersion: '2026-06-20.32',
       status: 'blocked',
     })
   })

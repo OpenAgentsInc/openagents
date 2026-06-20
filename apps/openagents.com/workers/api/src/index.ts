@@ -33,6 +33,10 @@ import {
   handleTrainingAblationDeriskingLedgerApi,
 } from './training-ablation-derisking-ledger-routes'
 import {
+  TrainingFullPipelineProgramEndpoint,
+  handleTrainingFullPipelineProgramApi,
+} from './training-full-pipeline-program-routes'
+import {
   TrainingPostTrainingInstructSftEndpoint,
   handleTrainingPostTrainingInstructSftApi,
 } from './training-post-training-instruct-sft-routes'
@@ -8044,6 +8048,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Full training-pipeline program status (#5523 / DE-5 #5528; promise
+    // training.full_pipeline_program.v1, planned). Read-only stage map: exposes
+    // current stage receipt surfaces and blockers while keeping the umbrella
+    // blocker active. No dispatch, spend, settlement, model promotion, or green
+    // claim.
+    path: TrainingFullPipelineProgramEndpoint,
+    handler: request => handleTrainingFullPipelineProgramApi(request),
   },
   {
     // Training ablation derisking ledger projection (#5523 / DE-5 #5528;

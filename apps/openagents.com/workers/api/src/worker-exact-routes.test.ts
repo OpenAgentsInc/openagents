@@ -16,6 +16,7 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',
+  '/api/public/training/full-pipeline-program',
   '/api/public/training/ablation-derisking-ledger',
   '/api/public/training/post-training-arc/instruct-sft-lane',
   '/api/public/models/tassadar-percepta-executor/architecture-receipts',
