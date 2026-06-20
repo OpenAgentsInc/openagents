@@ -3,6 +3,33 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (b) — Windows/WSL platform-claim drift guard
+
+Blocker advanced this run:
+`blocker.product_promises.windows_wsl_consumer_install_coverage_missing`
+
+This blocker previously had only prose (`apps/pylon/docs/platform-support.md`)
+and no code. Per the promise verification text, the honest path is NOT to build
+Windows support — it is to keep the public copy narrowed to the proven platforms
+(macOS/Linux) and stop it drifting back to "anybody on any platform" / "Windows
+covered". This run made that requirement machine-checkable:
+
+- `apps/pylon/src/consumer-install-platform-support.ts` —
+  `classifyConsumerInstallPlatform` (pure, public-safe per-platform disposition;
+  `supported` for darwin/linux via the shared `bootstrap.isSupportedPlatform`,
+  `out-of-scope` for `win32`/WSL/other with honest guidance + blocker ref) and
+  `verifyConsumerInstallPlatformClaim` (audits an untrusted stated claim, flags
+  `overpromises` when the supported set isn't exactly `{darwin, linux}` or names
+  windows/wsl/any-platform; closed key allowlist).
+- `apps/pylon/src/consumer-install-platform-support.test.ts` — 14 bun:test cases
+  (pass).
+- `apps/pylon/docs/platform-support.md` — added a "Copy-Drift Guard" section
+  dereferencing the verifier.
+
+No promise state changed; no Windows/WSL support claimed; no host probed. Still
+listed: clearing it needs the owner-facing copy-narrowing sign-off (the guard
+now makes that decision enforceable, not optional).
+
 ## Update 2026-06-20 — scale-methodology conformance verifier
 
 Blocker advanced this run:

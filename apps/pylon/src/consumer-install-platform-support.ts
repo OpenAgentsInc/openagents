@@ -1,0 +1,234 @@
+// Consumer-install platform-support classifier + claim guard.
+//
+// Promise: pylon.consumer_compute_earns_bitcoin_self_serve.v1
+// Blocker:  blocker.product_promises.windows_wsl_consumer_install_coverage_missing
+//
+// The Episode 238 core promise is phrased "anybody can plug in consumer compute
+// and get paid Bitcoin". Current install evidence is macOS/Linux only; native
+// Windows and WSL are a DELIBERATE owner scope-out (apps/pylon/docs/platform-support.md,
+// registry decision 2026-06-10). Per the promise verification text, the honest
+// path for this blocker is NOT to build Windows support — it is to keep the
+// public copy/claim narrowed to the platforms actually proven (macOS/Linux) and
+// to prevent it drifting back to an unqualified "anybody on any platform" or a
+// "Windows/WSL covered" claim.
+//
+// This module supplies that as a machine-checkable gate WITHOUT changing any
+// live behavior:
+//
+//   - `classifyConsumerInstallPlatform` is a pure classifier giving a public-safe
+//     disposition for any platform: `supported` (darwin/linux) vs `out-of-scope`
+//     (win32/WSL and everything else), with honest guidance refs. It mirrors the
+//     existing bootstrap supported-target set; it never emits machine
+//     identifiers, paths, usernames, or any private material.
+//   - `verifyConsumerInstallPlatformClaim` audits an untrusted stated
+//     platform-support claim and flags over-promises: a supported set that is not
+//     exactly {darwin, linux}, any inclusion of windows/win32/wsl, a
+//     windows-in-scope or wsl-in-scope flag, or an "any platform" claim. This is
+//     the regression guard a reviewer runs so launch copy cannot silently claim
+//     coverage the evidence does not support.
+//
+// Nothing here installs, probes a host, or flips a promise state.
+
+import { isSupportedPlatform, type SupportedPlatform } from "./bootstrap.js"
+
+export const WINDOWS_WSL_BLOCKER_REF =
+  "blocker.product_promises.windows_wsl_consumer_install_coverage_missing" as const
+
+// The exact, authoritative supported-target set for the self-serve consumer
+// install path. Single source of truth shared with `bootstrap.isSupportedPlatform`.
+export const CONSUMER_INSTALL_SUPPORTED_TARGETS: readonly SupportedPlatform[] = [
+  "darwin",
+  "linux",
+] as const
+
+export type ConsumerInstallPlatformDisposition = "supported" | "out-of-scope"
+
+export type ConsumerInstallPlatformSupport = {
+  schema: "openagents.pylon.consumer_install_platform_support.v0.1"
+  platform: NodeJS.Platform
+  disposition: ConsumerInstallPlatformDisposition
+  supportedTargets: SupportedPlatform[]
+  // Public-safe reason label for the disposition. Never a raw machine identifier.
+  reasonRef: string
+  // Public-safe next-step / documentation refs for an out-of-scope platform.
+  guidanceRefs: string[]
+  // The blocker this disposition relates to, present only when out-of-scope.
+  blockerRefs: string[]
+  contentRedacted: true
+}
+
+/**
+ * Classify the self-serve consumer-install disposition for a platform.
+ *
+ * Pure and side-effect-free. `supported` exactly when the bootstrap
+ * supported-target set covers the platform (macOS/Linux). Everything else —
+ * including native Windows (`win32`) and the WSL Linux userland that contributors
+ * often conflate with native Linux — is `out-of-scope` with honest guidance.
+ */
+export function classifyConsumerInstallPlatform(
+  platform: NodeJS.Platform = process.platform,
+): ConsumerInstallPlatformSupport {
+  const supportedTargets = [...CONSUMER_INSTALL_SUPPORTED_TARGETS]
+  const base = {
+    schema: "openagents.pylon.consumer_install_platform_support.v0.1",
+    platform,
+    supportedTargets,
+    contentRedacted: true,
+  } as const
+
+  if (isSupportedPlatform(platform)) {
+    return {
+      ...base,
+      disposition: "supported",
+      reasonRef: "reason.platform.supported_target",
+      guidanceRefs: [],
+      blockerRefs: [],
+    }
+  }
+
+  if (platform === "win32") {
+    return {
+      ...base,
+      disposition: "out-of-scope",
+      reasonRef: "reason.platform.windows_out_of_scope",
+      guidanceRefs: [
+        "doc.pylon.platform_support",
+        "guidance.platform.use_supported_macos_or_linux_host",
+      ],
+      blockerRefs: [WINDOWS_WSL_BLOCKER_REF],
+    }
+  }
+
+  return {
+    ...base,
+    disposition: "out-of-scope",
+    reasonRef: "reason.platform.unsupported_target",
+    guidanceRefs: [
+      "doc.pylon.platform_support",
+      "guidance.platform.use_supported_macos_or_linux_host",
+    ],
+    blockerRefs: [WINDOWS_WSL_BLOCKER_REF],
+  }
+}
+
+/**
+ * A stated platform-support claim, e.g. parsed from launch copy or a docs
+ * front-matter fixture, to be audited before publication.
+ */
+export type ConsumerInstallPlatformClaim = {
+  schema: "openagents.pylon.consumer_install_platform_claim.v0.1"
+  // The platforms the copy asserts are supported.
+  supportedTargets: string[]
+  // Whether the copy asserts native Windows is in scope.
+  windowsInScope: boolean
+  // Whether the copy asserts WSL is in scope.
+  wslInScope: boolean
+  // Whether the copy makes an unqualified "anybody on any platform" claim.
+  anyPlatformClaimed: boolean
+}
+
+export type ConsumerInstallPlatformClaimVerification = {
+  // The candidate is a well-formed claim object (correct schema/types, closed
+  // key set).
+  valid: boolean
+  // The claim asserts coverage the macOS/Linux evidence does not support
+  // (Windows, WSL, or "any platform"), or its supported set is not exactly
+  // {darwin, linux}. True is the FAIL signal for launch copy.
+  overpromises: boolean
+  reasons: string[]
+}
+
+// Closed allowlist of claim keys. An unexpected key fails the audit so a copy
+// fixture cannot smuggle an unreviewed assertion past the guard.
+const ALLOWED_CLAIM_KEYS: ReadonlySet<string> = new Set<string>([
+  "schema",
+  "supportedTargets",
+  "windowsInScope",
+  "wslInScope",
+  "anyPlatformClaimed",
+])
+
+// Tokens that, if present in a stated supported-target list, mean the copy is
+// claiming Windows/WSL coverage that is deliberately out of scope.
+const OUT_OF_SCOPE_TARGET_TOKENS: ReadonlySet<string> = new Set<string>([
+  "win32",
+  "windows",
+  "wsl",
+])
+
+/**
+ * Audit a stated platform-support claim for over-promising.
+ *
+ * Pure and side-effect-free. `valid` reflects well-formedness; `overpromises`
+ * is the reviewer-facing fail signal — true when the claim asserts Windows, WSL,
+ * or any-platform coverage, or when its supported set is not exactly the proven
+ * {darwin, linux}. This does NOT clear the blocker; it keeps copy honest.
+ */
+export function verifyConsumerInstallPlatformClaim(
+  candidate: unknown,
+): ConsumerInstallPlatformClaimVerification {
+  const reasons: string[] = []
+
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+    return { valid: false, overpromises: true, reasons: ["not-an-object"] }
+  }
+
+  const record = candidate as Record<string, unknown>
+
+  for (const key of Object.keys(record)) {
+    if (!ALLOWED_CLAIM_KEYS.has(key)) {
+      reasons.push(`unexpected-key:${key}`)
+    }
+  }
+
+  if (record.schema !== "openagents.pylon.consumer_install_platform_claim.v0.1") {
+    reasons.push("bad-schema")
+  }
+
+  const targets = record.supportedTargets
+  let normalizedTargets: string[] | null = null
+  if (!Array.isArray(targets) || !targets.every((t) => typeof t === "string")) {
+    reasons.push("bad-supported-targets")
+  } else {
+    normalizedTargets = (targets as string[]).map((t) => t.toLowerCase())
+  }
+
+  for (const flag of ["windowsInScope", "wslInScope", "anyPlatformClaimed"] as const) {
+    if (typeof record[flag] !== "boolean") {
+      reasons.push(`bad-${flag}`)
+    }
+  }
+
+  // Well-formedness decided before evaluating over-promise content.
+  const valid = reasons.length === 0
+
+  const overpromiseReasons: string[] = []
+
+  if (normalizedTargets) {
+    for (const token of normalizedTargets) {
+      if (OUT_OF_SCOPE_TARGET_TOKENS.has(token)) {
+        overpromiseReasons.push(`out-of-scope-target:${token}`)
+      }
+    }
+    const expected = new Set<string>(CONSUMER_INSTALL_SUPPORTED_TARGETS)
+    const actual = new Set<string>(normalizedTargets)
+    const missing = [...expected].filter((t) => !actual.has(t))
+    const extra = [...actual].filter(
+      (t) => !expected.has(t) && !OUT_OF_SCOPE_TARGET_TOKENS.has(t),
+    )
+    for (const t of missing) overpromiseReasons.push(`missing-required-target:${t}`)
+    for (const t of extra) overpromiseReasons.push(`unexpected-extra-target:${t}`)
+  }
+
+  if (record.windowsInScope === true) overpromiseReasons.push("windows-claimed-in-scope")
+  if (record.wslInScope === true) overpromiseReasons.push("wsl-claimed-in-scope")
+  if (record.anyPlatformClaimed === true) overpromiseReasons.push("any-platform-claimed")
+
+  const overpromises = !valid || overpromiseReasons.length > 0
+
+  return {
+    valid,
+    overpromises,
+    reasons: [...reasons, ...overpromiseReasons],
+  }
+}
