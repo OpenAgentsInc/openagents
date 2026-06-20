@@ -7,6 +7,7 @@ import {
 import { artanisOperationalGrounding } from './artanis-operational-grounding'
 import { publicProductPromisesDocument } from './product-promises'
 import {
+  TIP_LADDER_RECEIPT_REF_PREFIX,
   artanisResponderTipReceiptRef,
   isTipLadderReceiptRef,
 } from './tip-ladder'
@@ -54,6 +55,47 @@ export type ComposerTickOutcome = Readonly<{
   blocked: number
   skippedReason: string | null
 }>
+
+const tipReceiptRefIsDereferenceable = async (
+  db: D1Database,
+  receiptRef: string,
+): Promise<boolean> => {
+  if (!isTipLadderReceiptRef(receiptRef)) {
+    return false
+  }
+
+  const row = await db
+    .prepare(
+      `SELECT COALESCE(
+                p.public_receipt_ref,
+                ? || 'payin.' || p.id
+              ) AS receipt_ref
+         FROM pay_ins p
+         JOIN pay_in_legs payout
+           ON payout.pay_in_id = p.id
+          AND payout.direction = 'out'
+        WHERE p.pay_in_type = 'tip'
+          AND (p.public_receipt_ref = ?
+               OR (p.public_receipt_ref IS NULL
+                   AND ? || 'payin.' || p.id = ?))
+          AND p.state IN ('paid', 'forwarding')
+          AND p.context_ref LIKE 'forum.post.%'
+        ORDER BY CASE WHEN p.state = 'paid' THEN 0 ELSE 1 END,
+                 p.created_at DESC,
+                 p.id DESC
+        LIMIT 1`,
+    )
+    .bind(
+      TIP_LADDER_RECEIPT_REF_PREFIX,
+      receiptRef,
+      TIP_LADDER_RECEIPT_REF_PREFIX,
+      receiptRef,
+    )
+    .first<{ receipt_ref: string | null }>()
+    .catch(() => null)
+
+  return row?.receipt_ref === receiptRef
+}
 
 const groundingPromises = () => {
   const document = publicProductPromisesDocument()
@@ -217,11 +259,12 @@ export const runArtanisComposerTick = async (
         postId: String(proposal.first_post_id),
         publicReceiptRef: artanisResponderTipReceiptRef(topicId),
       })
-      // Trust only a settled tip whose returned ref is a well-formed tip
-      // ladder receipt ref; anything else gets no ref in the public reply.
+      // Trust only a settled tip whose returned ref resolves through the
+      // public Forum receipt API; a syntactically valid 404 still gets no
+      // public ref.
       if (
         !('error' in tipResult) &&
-        isTipLadderReceiptRef(tipResult.receiptRef)
+        (await tipReceiptRefIsDereferenceable(db, tipResult.receiptRef))
       ) {
         settledTip = tipResult
       }

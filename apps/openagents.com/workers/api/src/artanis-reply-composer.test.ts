@@ -74,27 +74,60 @@ const makeDb = (): D1Database => {
      )`,
   )
   db.exec(
+    `CREATE TABLE forum_posts (
+       id TEXT PRIMARY KEY,
+       topic_id TEXT NOT NULL,
+       forum_id TEXT NOT NULL,
+       archived_at TEXT
+     )`,
+  )
+  db.exec(
     `CREATE TABLE forum_post_bodies (
        post_id TEXT PRIMARY KEY,
        body_text TEXT NOT NULL
      )`,
   )
-  db.exec(migration('0161_artanis_responder.sql'))
-  // 0169 adds the public_receipt_ref column to pay_ins; stub the minimal
-  // pay_ins table so the budget query and the ALTERs apply cleanly.
   db.exec(
-    `CREATE TABLE pay_ins (
+    `CREATE TABLE forum_receipts (
        id TEXT PRIMARY KEY,
-       payer_ref TEXT,
-       pay_in_type TEXT,
-       state TEXT,
-       rung TEXT,
-       cost_msat INTEGER,
-       idempotency_key TEXT,
-       context_ref TEXT,
-       created_at TEXT
+       receipt_ref TEXT NOT NULL,
+       action_kind TEXT,
+       target_forum_id TEXT,
+       target_topic_id TEXT,
+       target_post_id TEXT,
+       amount_asset TEXT,
+       amount_value INTEGER,
+       recipient_actor_ref TEXT,
+       public_projection_json TEXT,
+       created_at TEXT,
+       archived_at TEXT
      )`,
   )
+  db.exec(
+    `CREATE TABLE forum_money_actions (
+       id TEXT PRIMARY KEY,
+       receipt_id TEXT,
+       payment_event_id TEXT,
+       archived_at TEXT
+     )`,
+  )
+  db.exec(
+    `CREATE TABLE forum_payment_events (
+       id TEXT PRIMARY KEY,
+       public_projection_json TEXT,
+       archived_at TEXT
+     )`,
+  )
+  db.exec(
+    `CREATE TABLE forum_tip_settlement_claims (
+       id TEXT PRIMARY KEY,
+       receipt_id TEXT NOT NULL,
+       public_projection_json TEXT,
+       archived_at TEXT
+     )`,
+  )
+  db.exec(migration('0161_artanis_responder.sql'))
+  db.exec(migration('0160_payments_ledger.sql'))
   db.exec(migration('0169_tip_ladder_public_receipts.sql'))
 
   // Seed one proposed responder action with an operational question.
@@ -107,6 +140,10 @@ const makeDb = (): D1Database => {
     'How do I make sparkPayoutTargetReady true?',
     '2026-06-19T00:00:00.000Z',
   )
+  db.prepare(
+    `INSERT INTO forum_posts (id, topic_id, forum_id, archived_at)
+     VALUES (?, ?, ?, NULL)`,
+  ).run(FIRST_POST_ID, TOPIC_ID, 'forum_pylon')
   db.prepare(
     `INSERT INTO forum_post_bodies (post_id, body_text) VALUES (?, ?)`,
   ).run(
@@ -128,6 +165,68 @@ const makeDb = (): D1Database => {
   )
 
   return new SqliteD1(db) as unknown as D1Database
+}
+
+const seedDereferenceableTipReceipt = async (
+  db: D1Database,
+  input: Readonly<{
+    payInId: string
+    receiptRef: string
+  }>,
+) => {
+  await db
+    .prepare(
+      `INSERT INTO pay_ins (
+         id,
+         pay_in_type,
+         payer_ref,
+         cost_msat,
+         state,
+         failure_reason,
+         rung,
+         context_ref,
+         idempotency_key,
+         genesis_id,
+         successor_id,
+         created_at,
+         state_changed_at,
+         public_receipt_ref
+       ) VALUES (?, 'tip', ?, 50000, 'paid', NULL, 'credited', ?, ?, NULL, NULL, ?, ?, ?)`,
+    )
+    .bind(
+      input.payInId,
+      ARTANIS_ACTOR,
+      `forum.post.${FIRST_POST_ID}`,
+      `artanis-responder-tip:${TOPIC_ID}`,
+      '2026-06-19T01:00:00.000Z',
+      '2026-06-19T01:00:00.000Z',
+      input.receiptRef,
+    )
+    .run()
+
+  await db
+    .prepare(
+      `INSERT INTO pay_in_legs (
+         id,
+         pay_in_id,
+         direction,
+         kind,
+         party_ref,
+         amount_msat,
+         resulting_balance_msat,
+         external_ref,
+         refund_of_leg_id,
+         created_at
+       ) VALUES (?, ?, 'out', 'balance', ?, 50000, 50000, ?, NULL, ?)`,
+    )
+    .bind(
+      `${input.payInId}_out`,
+      input.payInId,
+      'agent:pylon_question_asker',
+      'ladder.recipient_destination_missing',
+      '2026-06-19T01:00:00.000Z',
+    )
+    .run()
 }
 
 // Capture what the composer posts so we can assert on the reply body.
@@ -210,12 +309,18 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
     const db = makeDb()
     const capture = makeCapturingForumPost()
     const settledRef = 'receipt.forum.tip_ladder.artanis_responder.topic_abc'
-    const settlingTip: ComposerTip = async () => ({
-      ladderReason: 'below_send_threshold',
-      payInId: 'payin_1',
-      receiptRef: settledRef,
-      rung: 'credited',
-    })
+    const settlingTip: ComposerTip = async () => {
+      await seedDereferenceableTipReceipt(db, {
+        payInId: 'payin_1',
+        receiptRef: settledRef,
+      })
+      return {
+        ladderReason: 'below_send_threshold',
+        payInId: 'payin_1',
+        receiptRef: settledRef,
+        rung: 'credited',
+      }
+    }
 
     const outcome = await runArtanisComposerTick(
       db,
@@ -260,6 +365,37 @@ describe('artanis reply composer - receipt honesty (#5540 defect 1)', () => {
     )
 
     expect(capture.posts[0]!.bodyText).not.toContain('Responder tip receipt')
+  })
+
+  test('emits NO receipt ref when the tip returns a well-formed ref that still 404s', async () => {
+    const db = makeDb()
+    const capture = makeCapturingForumPost()
+    const danglingRef = 'receipt.forum.tip_ladder.artanis_responder.topic_abc'
+    const danglingTip: ComposerTip = async () => ({
+      ladderReason: 'credited',
+      payInId: 'payin_missing',
+      receiptRef: danglingRef,
+      rung: 'credited',
+    })
+
+    const outcome = await runArtanisComposerTick(
+      db,
+      baseDeps({ forumPost: capture.fn, tip: danglingTip }),
+    )
+
+    expect(outcome.responded).toBe(1)
+    expect(outcome.tipped).toBe(0)
+    expect(isTipLadderReceiptRef(danglingRef)).toBe(true)
+    expect(capture.posts[0]!.bodyText).not.toContain('Responder tip receipt')
+    expect(capture.posts[0]!.bodyText).not.toContain(danglingRef)
+
+    const action = (await db
+      .prepare(
+        `SELECT state, tip_receipt_ref FROM artanis_responder_actions WHERE id = 'action_1'`,
+      )
+      .first()) as { state: string; tip_receipt_ref: string | null }
+    expect(action.state).toBe('responded')
+    expect(action.tip_receipt_ref).toBeNull()
   })
 })
 
