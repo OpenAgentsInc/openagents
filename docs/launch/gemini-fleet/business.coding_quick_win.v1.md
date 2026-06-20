@@ -48,3 +48,27 @@ This explicitly addresses the "repo provisioning" step.
 
 - Self-serve: `blocker.product_promises.business_coding_quick_win_self_serve_missing` (the gap is now just runtime invocation, and orchestrating these deterministic steps into a pipeline).
 - Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
+
+---
+
+# business.coding_quick_win.v1 — machine-checkable runtime invocation
+
+## What this change adds
+
+A machine-checkable **runtime invocation** contract for the self-serve loop:
+
+- `apps/openagents.com/workers/api/src/coding-quick-win-runtime-invocation.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-runtime-invocation.test.ts`
+
+To reach self-serve delivery, the loop must execute the runtime against the provisioned repository. This module defines the verifiable structure for a runtime invocation event. It enforces invariants like: the invocation must bind to a verified provisioned worktree, it must record an execution log for completed/failed runs, and only a completed run can yield a candidate patch for the verification delivery step.
+
+## Which blocker this advances
+
+`blocker.product_promises.business_coding_quick_win_self_serve_missing` (partial).
+
+This explicitly addresses the "runtime invocation" step, bridging repo provisioning to delivery verification.
+
+## What genuinely remains (blockers stay listed)
+
+- Self-serve: `blocker.product_promises.business_coding_quick_win_self_serve_missing` (the remaining gap is orchestrating these deterministic steps into a pipeline).
+- Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
