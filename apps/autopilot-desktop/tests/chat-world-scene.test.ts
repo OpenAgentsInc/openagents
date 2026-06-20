@@ -10,10 +10,14 @@ import {
   particleSize,
   PAYMENT_PARTICLE_DIM,
   PAYMENT_PARTICLE_GOLD,
+  PAYMENT_PARTICLE_WINDOW_MS,
+  paymentParticleTsMs,
   projectChatWorldPylonScene,
+  prunePaymentParticlesByRecency,
   pylonGrowthTier,
   type ActivityEvent,
   type LiveRecentPylon,
+  type PaymentParticle,
 } from "../src/shared/chat-world-scene"
 import type { PylonStatsSnapshot } from "../src/shared/pylon-network-scene"
 
@@ -234,5 +238,88 @@ describe("activityEventToParticle (evidence-bound §5)", () => {
     ])
     expect(particles).toHaveLength(1)
     expect(particles[0]!.id).toBe("ok")
+  })
+})
+
+// ── P2.5: payment-particle recency window (#5730 live wiring) ─────────────────
+
+const particleAt = (id: string, ts: string | null): PaymentParticle => ({
+  id,
+  fromRef: "pylon:payer",
+  toRef: "pylon:payee",
+  amountSats: 1_000,
+  realBitcoinMoved: true,
+  color: PAYMENT_PARTICLE_GOLD,
+  size: 0.5,
+  sourceRefs: [`receipt:${id}`],
+  ts,
+  text: null,
+})
+
+const MINUTE_MS = 60_000
+
+describe("paymentParticleTsMs", () => {
+  test("parses an ISO ts into epoch ms", () => {
+    expect(paymentParticleTsMs(particleAt("a", "2026-06-20T00:00:00Z"))).toBe(
+      Date.parse("2026-06-20T00:00:00Z"),
+    )
+  })
+
+  test("returns null for a missing or unparseable ts (never invents a time)", () => {
+    expect(paymentParticleTsMs(particleAt("a", null))).toBeNull()
+    expect(paymentParticleTsMs(particleAt("a", "not-a-date"))).toBeNull()
+  })
+})
+
+describe("prunePaymentParticlesByRecency (P2.5: stale beams expire)", () => {
+  const t0 = Date.parse("2026-06-20T00:00:00Z")
+  const isoAt = (offsetMs: number): string => new Date(t0 + offsetMs).toISOString()
+
+  test("keeps particles inside the window and drops older ones", () => {
+    const particles = [
+      particleAt("old", isoAt(-5 * MINUTE_MS)), // well outside the 90s window
+      particleAt("recent", isoAt(-MINUTE_MS)), // inside the window
+      particleAt("now", isoAt(0)),
+    ]
+    const kept = prunePaymentParticlesByRecency(particles, t0)
+    expect(kept.map((p) => p.id)).toEqual(["recent", "now"])
+  })
+
+  test("preserves input order", () => {
+    const particles = [
+      particleAt("a", isoAt(-1_000)),
+      particleAt("b", isoAt(-2_000)),
+      particleAt("c", isoAt(0)),
+    ]
+    expect(prunePaymentParticlesByRecency(particles, t0).map((p) => p.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ])
+  })
+
+  test("keeps a particle exactly on the cutoff boundary", () => {
+    const onCutoff = particleAt("edge", isoAt(-PAYMENT_PARTICLE_WINDOW_MS))
+    expect(prunePaymentParticlesByRecency([onCutoff], t0)).toHaveLength(1)
+  })
+
+  test("keeps particles with no parseable ts (count cap bounds them instead)", () => {
+    const particles = [
+      particleAt("no-ts", null),
+      particleAt("old", isoAt(-5 * MINUTE_MS)),
+    ]
+    expect(prunePaymentParticlesByRecency(particles, t0).map((p) => p.id)).toEqual([
+      "no-ts",
+    ])
+  })
+
+  test("a non-finite reference time is a no-op (never prunes against an unknown clock)", () => {
+    const particles = [particleAt("old", isoAt(-5 * MINUTE_MS))]
+    expect(prunePaymentParticlesByRecency(particles, Number.NaN)).toEqual(particles)
+  })
+
+  test("a custom window widens what stays renderable", () => {
+    const particles = [particleAt("old", isoAt(-5 * MINUTE_MS))]
+    expect(prunePaymentParticlesByRecency(particles, t0, 10 * MINUTE_MS)).toHaveLength(1)
   })
 })

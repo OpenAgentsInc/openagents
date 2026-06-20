@@ -120,6 +120,11 @@ import {
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
+import {
+  paymentParticleTsMs,
+  prunePaymentParticlesByRecency,
+  type PaymentParticle,
+} from "../shared/chat-world-scene"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -152,9 +157,12 @@ const noCommands: ReadonlyArray<Command.Command<Message>> = []
 // the renderer diffs on, so a busy stream cannot grow the set without limit.
 const MAX_CHAT_WORLD_PARTICLES = 24
 
-// Append a new payment particle to the bounded active set, de-duped by id and
-// keeping the most recent MAX_CHAT_WORLD_PARTICLES. Opaque in/out (the runtime
-// stores PaymentParticle as S.Unknown); we read only the `id` for dedupe.
+// Append a new payment particle to the bounded active set, de-duped by id, then
+// recency-pruned (P2.5 #5730) so stale beams expire instead of flying forever on
+// a quiet network, then capped at MAX_CHAT_WORLD_PARTICLES. Opaque in/out (the
+// runtime stores PaymentParticle as S.Unknown); we read `id` for dedupe and `ts`
+// (via paymentParticleTsMs) for the pure recency window, casting only at this
+// boundary the way modelChatWorldParticles already does.
 const appendChatWorldParticle = (
   current: ReadonlyArray<unknown>,
   particle: unknown,
@@ -164,10 +172,21 @@ const appendChatWorldParticle = (
     typeof id === "string"
       ? current.filter((p) => (p as { id?: unknown } | null)?.id !== id)
       : current
-  const next = [...withoutDup, particle]
-  return next.length > MAX_CHAT_WORLD_PARTICLES
-    ? next.slice(next.length - MAX_CHAT_WORLD_PARTICLES)
-    : next
+  const appended = [...withoutDup, particle]
+  // Expire beams older than the recency window, using the NEW particle's own ts
+  // as the reference clock (pure, deterministic). A null/unknown ts skips the
+  // recency prune — the count cap below still bounds the set.
+  const referenceTsMs = paymentParticleTsMs(particle as PaymentParticle)
+  const pruned =
+    referenceTsMs === null
+      ? appended
+      : prunePaymentParticlesByRecency(
+          appended as ReadonlyArray<PaymentParticle>,
+          referenceTsMs,
+        )
+  return pruned.length > MAX_CHAT_WORLD_PARTICLES
+    ? pruned.slice(pruned.length - MAX_CHAT_WORLD_PARTICLES)
+    : pruned
 }
 
 // #5730: recover the receipt sourceRef from a payment-endpoint entity label.
