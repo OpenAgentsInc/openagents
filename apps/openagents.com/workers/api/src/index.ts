@@ -8057,14 +8057,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     // Mobile workroom approval projection (promise
-    // mobile.voice_approval_companion.v1, planned). INERT by default: the store
+    // mobile.voice_approval_companion.v1, yellow). INERT by default: the store
     // is empty unless MOBILE_WORKROOM_APPROVAL_PROJECTION_ENABLED is armed. When
     // armed it returns the existing read-only mobile approval-card projection:
     // no approval, execution, notification, payment, provider mutation, runner
     // launch, or public-claim upgrade. This clears ONLY
     // blocker.product_promises.mobile_projection_missing; voice-command
     // approval receipts and cross-device sync stay open, and the promise stays
-    // planned. GET only.
+    // yellow. GET only.
     path: MobileWorkroomApprovalProjectionEndpoint,
     handler: (request, env) =>
       handleMobileWorkroomApprovalProjectionApi(request, {

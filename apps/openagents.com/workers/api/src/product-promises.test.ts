@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.8')
+    expect(decoded.version).toBe('2026-06-20.10')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -144,8 +144,11 @@ describe('public product promises document', () => {
     // remains exactly 24. The 2026-06-20.7 pass clears the Nostr-export blocker
     // on identity.orange_check_forum_signal.v1 (a real dereferenceable kind-1
     // attestation on wss://relay.openagents.com); the promise stays yellow and
-    // green remains exactly 24. The 2026-06-20.8 pass ships the enterprise
-    // claim-upgrade audit panel for proof.claim_upgrade_receipts.v1
+    // green remains exactly 24. The 2026-06-20.8 workrooms live integration
+    // pass and 2026-06-20.9 mobile approval projection honesty pass move
+    // mobile.voice_approval_companion.v1 planned -> yellow without flipping
+    // green, so green remains exactly 24. The 2026-06-20.10 pass ships the
+    // enterprise claim-upgrade audit panel for proof.claim_upgrade_receipts.v1
     // (GET /api/public/product-promises/audit) and drops that promise's
     // enterprise_audit_panel_missing blocker, but the promise STAYS yellow
     // (green flip is owner-gated), so green remains exactly 24.
@@ -185,7 +188,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
-          state: 'planned',
+          state: 'yellow',
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
             'route:/api/mobile/workroom-approval-projection',
@@ -530,6 +533,19 @@ describe('public product promises document', () => {
         }),
       ]),
     )
+    const mobileApprovalPromise = decoded.promises.find(
+      promise => promise.promiseId === 'mobile.voice_approval_companion.v1',
+    )
+    expect(mobileApprovalPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.voice_command_approval_receipts_missing',
+      'blocker.product_promises.cross_device_workroom_sync_missing',
+    ])
+    expect(mobileApprovalPromise?.safeCopy).toContain(
+      'Voice/mobile approval is partially wired',
+    )
+    expect(mobileApprovalPromise?.verification).toContain(
+      'Yellow is supported by the live read-only mobile workroom approval projection route',
+    )
     const localAppleFmPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.local_apple_fm_tool_chat.v1',
     )
@@ -741,12 +757,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.8', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.10', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.8',
+      expectedVersion: '2026-06-20.10',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.8',
+      servedVersion: '2026-06-20.10',
       status: 'ready',
     })
     expect(
@@ -756,7 +772,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.8',
+      servedVersion: '2026-06-20.10',
       status: 'blocked',
     })
   })

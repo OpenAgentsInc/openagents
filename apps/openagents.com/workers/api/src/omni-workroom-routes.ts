@@ -38,6 +38,8 @@ import {
   OmniWorkroomProjectionSurface as OmniWorkroomProjectionSurfaceSchema,
   buildOmniWorkroomSurfaceProjection,
 } from './omni-workroom-surface-projections'
+import { buildOmniWorkroomSourceAuthorityDeliveryPlan } from './omni-workroom-business-object-delivery'
+import type { OmniProjectionAudience } from './omni-data-classification'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -337,6 +339,92 @@ const readWorkroom = <Bindings extends OmniWorkroomRouteEnv>(
     ),
   )
 
+const audienceForSurface = (
+  surface: OmniWorkroomProjectionSurface,
+): OmniProjectionAudience => {
+  switch (surface) {
+    case 'agent':
+      return 'customer'
+    case 'customer':
+      return 'customer'
+    case 'operator':
+      return 'operator'
+    case 'public':
+      return 'public'
+    case 'team':
+      return 'team'
+  }
+}
+
+// Read-only, INERT source-authority delivery projection for a live workroom.
+//
+// This is the seam that wires the source-authority + approval-gated write
+// model (omni-source-authorized-business-objects.ts) onto the LIVE omni
+// client-delivery workroom surface. It reads the workroom's projection-only
+// `metadata.sourceAuthority` bindings/writes and returns the FLAG-GATED INERT
+// delivery plan: it never applies a write, never sends, never settles, and
+// `effectsApplied` is always false. Operator/team surfaces require a session.
+const readWorkroomSourceAuthority = <Bindings extends OmniWorkroomRouteEnv>(
+  dependencies: OmniWorkroomRoutesDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  workroomId: string,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const url = new URL(request.url)
+    const surface = yield* surfaceFromUrl(url)
+
+    if (surface === 'operator' || surface === 'team') {
+      yield* requireOperatorSession(dependencies, request, env, ctx)
+    }
+
+    const nowIso = routeNowIso(dependencies)
+    const record = yield* readWorkroomById(dependencies.db(env), workroomId)
+
+    if (record === null) {
+      return noStoreJsonResponse(
+        {
+          error: 'omni_workroom_not_found',
+          reason: `Omni workroom ${workroomId} was not found.`,
+        },
+        { status: 404 },
+      )
+    }
+
+    const plan = buildOmniWorkroomSourceAuthorityDeliveryPlan({
+      audience: audienceForSurface(surface),
+      nowIso,
+      workroom: record,
+    })
+
+    return noStoreJsonResponse({
+      generatedAt: nowIso,
+      sourceAuthorityDelivery: plan,
+      surface,
+      workroomId,
+    })
+  }).pipe(
+    Effect.catchTag('OmniWorkroomRequestError', error =>
+      Effect.succeed(
+        error.reason.includes('session') || error.reason.includes('operator')
+          ? unauthorized()
+          : noStoreJsonResponse(
+              { error: 'omni_workroom_request_error', reason: error.reason },
+              { status: 400 },
+            ),
+      ),
+    ),
+    Effect.catchDefect(() =>
+      Effect.succeed(
+        noStoreJsonResponse(
+          { error: 'omni_workroom_source_authority_error' },
+          { status: 500 },
+        ),
+      ),
+    ),
+  )
+
 type WorkroomRow = Readonly<{
   accepted_outcome_contract_id: string | null
   archived_at: string | null
@@ -463,6 +551,16 @@ const workroomIdFromPath = (pathname: string): string | undefined => {
   return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
 }
 
+const workroomSourceAuthorityIdFromPath = (
+  pathname: string,
+): string | undefined => {
+  const match = /^\/api\/omni\/workrooms\/([^/]+)\/source-authority$/.exec(
+    pathname,
+  )
+
+  return match?.[1] === undefined ? undefined : decodeURIComponent(match[1])
+}
+
 export const makeOmniWorkroomRoutes = <Bindings extends OmniWorkroomRouteEnv>(
   dependencies: OmniWorkroomRoutesDependencies<Bindings>,
 ) => ({
@@ -477,6 +575,23 @@ export const makeOmniWorkroomRoutes = <Bindings extends OmniWorkroomRouteEnv>(
       return M.value(request.method).pipe(
         M.when('POST', () => createWorkroom(dependencies, request, env, ctx)),
         M.orElse(() => Effect.succeed(methodNotAllowed(['POST']))),
+      )
+    }
+
+    const sourceAuthorityId = workroomSourceAuthorityIdFromPath(url.pathname)
+
+    if (sourceAuthorityId !== undefined) {
+      return M.value(request.method).pipe(
+        M.when('GET', () =>
+          readWorkroomSourceAuthority(
+            dependencies,
+            request,
+            env,
+            ctx,
+            sourceAuthorityId,
+          ),
+        ),
+        M.orElse(() => Effect.succeed(methodNotAllowed(['GET']))),
       )
     }
 
