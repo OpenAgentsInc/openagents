@@ -150,7 +150,7 @@ export const stubFineTuningAdapter: FineTuningRuntimeAdapter = {
   // The stub has no persistence: a submitted job is not retained, so a later
   // status read resolves to undefined (the route maps that to 404). #5516's real
   // adapter reads the training-lane job store.
-  get: () => Effect.succeed(undefined),
+  get: () => Effect.sync((): FineTuningJob | undefined => undefined),
 }
 
 // Public-safe primitive tag for fine-tuning charges, receipt refs, and metering

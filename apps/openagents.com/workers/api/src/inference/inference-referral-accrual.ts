@@ -57,6 +57,18 @@ import {
   computeInferenceSplit,
 } from './inference-referral-split'
 
+class InferenceReferralAccrualPersistenceError extends Error {
+  readonly _tag = 'InferenceReferralAccrualPersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'InferenceReferralAccrualPersistenceError'
+  }
+}
+
+const inferenceReferralAccrualPersistenceError = (error: unknown) =>
+  new InferenceReferralAccrualPersistenceError(error)
+
 // Bounded, structural parse of a metering accountRef into the referred party.
 // This is NOT intent routing — it is a fixed-shape principal-kind prefix on an
 // already-authenticated account ref, so deterministic parsing is the correct
@@ -342,8 +354,7 @@ export const withReferralAccrual = (
       }
 
       const result = yield* Effect.tryPromise({
-        catch: (error: unknown) =>
-          error instanceof Error ? error : new Error(String(error)),
+        catch: inferenceReferralAccrualPersistenceError,
         try: () =>
           accrueInferenceReferral(deps.db, {
             context,
