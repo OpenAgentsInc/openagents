@@ -96,6 +96,9 @@ describe('training public gradient windows projection', () => {
       receiptVerifierAvailable: true,
       receiptVerifierSchemaVersion:
         'openagents.training.public_gradient_window.promotion_receipt_verification.v1',
+      receiptFeedFormatAvailable: true,
+      receiptFeedSchemaVersion:
+        'openagents.training.public_gradient_window.promotion_receipt_feed.v1',
     })
     expect(projection.intakeSurface).toMatchObject({
       acceptedSubmissionCount: 0,

@@ -257,3 +257,44 @@ building the receipt's read-side verifier. It does **not** clear it: no live
 runtime emits a real receipt, no route serves one, and no public window has been
 accepted, promoted, paid, or settled. The blocker stays listed and the promise
 stays **planned**.
+
+## 2026-06-20 promoted-window receipt feed builder (read-side aggregation)
+
+The read-side verifier
+(`tassadar-gradient-window-promotion-receipt-verify.ts`) validates exactly one
+untrusted read-back receipt. But a public receipt route does not serve a single
+receipt — it serves a **collection**. Nothing turned an untrusted list of
+read-back receipts into the one public-safe, verified, de-duplicated, ordered
+feed such a route would publish. That aggregation layer is the next edge for
+`blocker.product_promises.public_gradient_promoted_window_receipts_missing`.
+
+This change adds it:
+
+- `tassadar-gradient-window-promotion-receipt-feed.ts`
+  - `buildTassadarGradientWindowPromotionReceiptFeed(receipts)` — a pure,
+    **total** function over an array of untrusted receipts. It runs each through
+    the read-side verifier, admits only receipts that pass every invariant, drops
+    duplicates (same canonical receipt ref) keeping the first, counts and
+    explains every rejection, and returns `acceptedEntries` (each
+    `{ receiptRef, windowRef, settlementEligible }`) deterministically ordered by
+    receipt ref, plus `acceptedReceiptCount`, `rejectedReceiptCount`,
+    `settlementEligibleReceiptCount`, and a de-duplicated sorted
+    `rejectionReasonRefs`. It never throws, so it is safe at the edge of a real
+    public feed; an empty input yields an empty feed (the live state today).
+  - Schema version
+    `openagents.training.public_gradient_window.promotion_receipt_feed.v1`.
+- `tassadar-gradient-window-promotion-receipt-feed.test.ts` — exercises the empty
+  feed, ordered admission of builder-emitted receipts, duplicate-ref dropping, and
+  rejection of an invalid receipt without dropping valid ones.
+- `GET /api/public/training/public-gradient-windows` now reports
+  `receiptSurface.receiptFeedFormatAvailable: true` and
+  `receiptSurface.receiptFeedSchemaVersion:
+  openagents.training.public_gradient_window.promotion_receipt_feed.v1`, while
+  `receiptRouteAvailable` and `emittedReceiptCount` stay `false`/`0`.
+
+This advances
+`blocker.product_promises.public_gradient_promoted_window_receipts_missing` by
+building the receipt feed's aggregation layer. It does **not** clear it: no live
+runtime emits a real receipt, no route serves the feed, and no public window has
+been accepted, promoted, paid, or settled — so a real feed is empty. The blocker
+stays listed and the promise stays **planned**.
