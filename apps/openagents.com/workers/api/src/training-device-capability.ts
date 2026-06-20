@@ -67,6 +67,25 @@ export const DeviceCapabilityThermalThrottleDetectionStatuses = [
 export type DeviceCapabilityThermalThrottleDetectionStatus =
   (typeof DeviceCapabilityThermalThrottleDetectionStatuses)[number]
 
+export const DeviceCapabilitySameClassReplicationScopes = [
+  'cross_machine_same_class',
+  'cross_process_same_host',
+  'single_observation',
+  'unknown',
+] as const
+export type DeviceCapabilitySameClassReplicationScope =
+  (typeof DeviceCapabilitySameClassReplicationScopes)[number]
+
+export const DeviceCapabilitySameClassReplicationStatuses = [
+  'missing',
+  'cross_machine_replicated',
+  'same_host_only',
+  'single_observation',
+  'unknown_scope',
+] as const
+export type DeviceCapabilitySameClassReplicationStatus =
+  (typeof DeviceCapabilitySameClassReplicationStatuses)[number]
+
 export const Cs336A2QualificationProbeMeasurements = [
   ...Cs336A2BenchmarkMeasurements,
   ...Cs336A2HostProbeMeasurements,
@@ -141,6 +160,12 @@ export type DeviceCapabilityDistribution = Readonly<{
   sourceRefs: ReadonlyArray<string>
   unit: string
   verificationRefs: ReadonlyArray<string>
+  sameClassReplicationBlockerRefs: ReadonlyArray<string>
+  sameClassReplicationScope: DeviceCapabilitySameClassReplicationScope
+  sameClassReplicationStatus: Exclude<
+    DeviceCapabilitySameClassReplicationStatus,
+    'missing'
+  >
   verified: boolean
   workClass: string
 }>
@@ -169,6 +194,26 @@ export type DeviceCapabilityThermalThrottleSignal = Readonly<{
   workClass: string
 }>
 
+export type DeviceCapabilitySameClassReplicationSignal = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  crossCheckState: DeviceCapabilityDistribution['crossCheckState']
+  deviceClassRef: string
+  measurementProvenance: DeviceCapabilityMeasurementProvenance
+  measurementRef: string
+  metric: Cs336A2QualificationProbeMeasurement
+  reasonCode:
+    | 'device_capability.public.same_class_replication_cross_machine'
+    | 'device_capability.public.same_class_replication_same_host_only'
+    | 'device_capability.public.same_class_replication_single_observation'
+    | 'device_capability.public.same_class_replication_scope_unknown'
+  sampleCount: number
+  scope: DeviceCapabilitySameClassReplicationScope
+  sourceRefs: ReadonlyArray<string>
+  state: Exclude<DeviceCapabilitySameClassReplicationStatus, 'missing'>
+  verified: boolean
+  workClass: string
+}>
+
 export type DeviceCapabilityDatasetProjection = Readonly<{
   benchmarkSuiteRef: typeof Cs336A2DeviceBenchmarkSuiteRef
   blockerRefs: ReadonlyArray<string>
@@ -180,6 +225,9 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   privacyBoundaryRefs: ReadonlyArray<string>
   requiredSameClassSampleCount: number
   schemaVersion: 'openagents.training.device_capability_dataset.v1'
+  sameClassReplicationBlockerRefs: ReadonlyArray<string>
+  sameClassReplicationSignals: ReadonlyArray<DeviceCapabilitySameClassReplicationSignal>
+  sameClassReplicationStatus: DeviceCapabilitySameClassReplicationStatus
   scopeBoundaryRefs: ReadonlyArray<string>
   sourceRefs: ReadonlyArray<string>
   thermalThrottleBlockerRefs: ReadonlyArray<string>
@@ -219,6 +267,9 @@ export const Cs336A2MeasurementEvidence = S.Struct({
   p50: S.Number,
   p90: S.Number,
   receiptRefs: S.Array(PublicSafeRef),
+  sameClassReplicationScope: S.optionalKey(
+    S.Literals(DeviceCapabilitySameClassReplicationScopes),
+  ),
   sampleCount: S.Number,
   sourceRefs: PublicSafeRefs,
   unit: PublicSafeRef,
@@ -373,6 +424,56 @@ const crossCheckState = (
   return 'insufficient_same_class_samples'
 }
 
+const sameClassReplicationScopeFromUnknown = (
+  value: unknown,
+  provenance: DeviceCapabilityMeasurementProvenance,
+): DeviceCapabilitySameClassReplicationScope => {
+  const text = optionalString(value)
+  const match = DeviceCapabilitySameClassReplicationScopes.find(
+    scope => scope === text,
+  )
+
+  if (match !== undefined) {
+    return match
+  }
+
+  // Fail closed for legacy rows. The first receipted A2 rows were two Pylons
+  // on the same physical host, so an omitted scope may not become a
+  // cross-machine replication claim. Measured-only rows default even lower:
+  // one public observation until a second same-class machine is admitted.
+  return provenance === 'measured_unsettled'
+    ? 'single_observation'
+    : 'cross_process_same_host'
+}
+
+const sameClassReplicationStatusFromScope = (
+  scope: DeviceCapabilitySameClassReplicationScope,
+): Exclude<DeviceCapabilitySameClassReplicationStatus, 'missing'> => {
+  switch (scope) {
+    case 'cross_machine_same_class':
+      return 'cross_machine_replicated'
+    case 'cross_process_same_host':
+      return 'same_host_only'
+    case 'single_observation':
+      return 'single_observation'
+    case 'unknown':
+      return 'unknown_scope'
+  }
+}
+
+const sameClassReplicationBlockersForStatus = (
+  status: Exclude<DeviceCapabilitySameClassReplicationStatus, 'missing'>,
+): ReadonlyArray<string> => {
+  switch (status) {
+    case 'cross_machine_replicated':
+      return []
+    case 'same_host_only':
+    case 'single_observation':
+    case 'unknown_scope':
+      return ['blocker.cs336_a2.requires_cross_machine_same_class_replication']
+  }
+}
+
 const distributionsFromEvidence = (
   input: Readonly<{
     challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
@@ -437,6 +538,12 @@ const distributionsFromEvidence = (
         ...(provenance === 'measured_unsettled' ? [] : verifiedChallengeRefs),
       ])
       const state = crossCheckState(sampleCount, verificationRefs, provenance)
+      const sameClassReplicationScope = sameClassReplicationScopeFromUnknown(
+        measurement.sameClassReplicationScope,
+        provenance,
+      )
+      const sameClassReplicationStatus =
+        sameClassReplicationStatusFromScope(sameClassReplicationScope)
       const projected: DeviceCapabilityDistribution = {
         crossCheckState: state,
         deviceClassRef,
@@ -456,6 +563,10 @@ const distributionsFromEvidence = (
         p50,
         p90,
         receiptRefs: uniqueRefs(stringArrayFromUnknown(measurement.receiptRefs)),
+        sameClassReplicationBlockerRefs:
+          sameClassReplicationBlockersForStatus(sameClassReplicationStatus),
+        sameClassReplicationScope,
+        sameClassReplicationStatus,
         sampleCount,
         sourceRefs: uniqueRefs([
           ...stringArrayFromUnknown(measurement.sourceRefs),
@@ -473,6 +584,72 @@ const distributionsFromEvidence = (
       return [projected]
     },
   )
+}
+
+export const buildDeviceCapabilitySameClassReplicationSignals = (
+  distributions: ReadonlyArray<DeviceCapabilityDistribution>,
+): ReadonlyArray<DeviceCapabilitySameClassReplicationSignal> =>
+  distributions.map(distribution => {
+    const state = distribution.sameClassReplicationStatus
+    const reasonCode =
+      state === 'cross_machine_replicated'
+        ? 'device_capability.public.same_class_replication_cross_machine'
+        : state === 'same_host_only'
+          ? 'device_capability.public.same_class_replication_same_host_only'
+          : state === 'single_observation'
+            ? 'device_capability.public.same_class_replication_single_observation'
+            : 'device_capability.public.same_class_replication_scope_unknown'
+    const signal: DeviceCapabilitySameClassReplicationSignal = {
+      blockerRefs: distribution.sameClassReplicationBlockerRefs,
+      crossCheckState: distribution.crossCheckState,
+      deviceClassRef: distribution.deviceClassRef,
+      measurementProvenance: distribution.measurementProvenance,
+      measurementRef: distribution.measurementRef,
+      metric: distribution.metric,
+      reasonCode,
+      sampleCount: distribution.sampleCount,
+      scope: distribution.sameClassReplicationScope,
+      sourceRefs: distribution.sourceRefs,
+      state,
+      verified: distribution.verified,
+      workClass: distribution.workClass,
+    }
+
+    publicSafeJson(signal)
+
+    return signal
+  })
+
+export const sameClassReplicationStatus = (
+  signals: ReadonlyArray<DeviceCapabilitySameClassReplicationSignal>,
+): DeviceCapabilitySameClassReplicationStatus => {
+  if (signals.length === 0) {
+    return 'missing'
+  }
+
+  if (signals.some(signal => signal.state === 'cross_machine_replicated')) {
+    return 'cross_machine_replicated'
+  }
+
+  if (signals.some(signal => signal.state === 'same_host_only')) {
+    return 'same_host_only'
+  }
+
+  if (signals.some(signal => signal.state === 'single_observation')) {
+    return 'single_observation'
+  }
+
+  return 'unknown_scope'
+}
+
+export const sameClassReplicationBlockerRefs = (
+  signals: ReadonlyArray<DeviceCapabilitySameClassReplicationSignal>,
+): ReadonlyArray<string> => {
+  if (signals.length === 0) {
+    return ['blocker.cs336_a2.requires_replication_across_same_class_devices']
+  }
+
+  return uniqueRefs(signals.flatMap(signal => signal.blockerRefs))
 }
 
 export const buildDeviceCapabilityThermalThrottleSignals = (
@@ -734,19 +911,25 @@ export const publicDeviceCapabilityProjection = (
       .filter(distribution => distribution.verified)
       .map(distribution => distribution.deviceClassRef),
   ).size
+  const sameClassReplicationSignals =
+    buildDeviceCapabilitySameClassReplicationSignals(classDistributions)
+  const replicationBlockers = sameClassReplicationBlockerRefs(
+    sameClassReplicationSignals,
+  )
+  const measurementBlockers =
+    observedMeasurementCount > 0 && verifiedCount === observedMeasurementCount
+      ? []
+      : [
+          'blocker.cs336_a2.requires_receipted_benchmark_results',
+          'blocker.cs336_a2.requires_statistical_cross_check',
+          'blocker.cs336_a2.requires_replication_across_same_class_devices',
+        ]
   const thermalThrottleSignals =
     buildDeviceCapabilityThermalThrottleSignals(classDistributions)
 
   return {
     benchmarkSuiteRef: Cs336A2DeviceBenchmarkSuiteRef,
-    blockerRefs:
-      observedMeasurementCount > 0 && verifiedCount === observedMeasurementCount
-        ? []
-        : [
-            'blocker.cs336_a2.requires_receipted_benchmark_results',
-            'blocker.cs336_a2.requires_statistical_cross_check',
-            'blocker.cs336_a2.requires_replication_across_same_class_devices',
-          ],
+    blockerRefs: uniqueRefs([...measurementBlockers, ...replicationBlockers]),
     classDistributions,
     jobKind: Cs336A2DeviceBenchmarkJobKind,
     observedDeviceClassCount,
@@ -759,10 +942,16 @@ export const publicDeviceCapabilityProjection = (
     ],
     requiredSameClassSampleCount: 3,
     schemaVersion: 'openagents.training.device_capability_dataset.v1',
+    sameClassReplicationBlockerRefs: replicationBlockers,
+    sameClassReplicationSignals,
+    sameClassReplicationStatus: sameClassReplicationStatus(
+      sameClassReplicationSignals,
+    ),
     scopeBoundaryRefs: [
       'scope.cs336_a2.benchmark_measurement_not_assignment_settlement',
       'scope.cs336_a2.earning_estimates_modeled_from_measured',
       'scope.cs336_a2.psionic_kernel_and_transport_parity_external',
+      'scope.cs336_a2.same_class_replication_requires_cross_machine_scope',
       'scope.cs336_a2.thermal_probe_classifier_not_continuous_fleet_monitoring',
     ],
     sourceRefs: uniqueRefs([
