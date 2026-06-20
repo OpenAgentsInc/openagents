@@ -226,3 +226,37 @@ This still does **not** clear `curtailment_drill_missing`: there is no live
 curtailment-event telemetry feed and no receipt-backed scheduled drill on a real
 run. The predicate is decided from a declared descriptor, not yet fed by a live
 grid demand-response signal. No promise state or blocker list was changed.
+
+## 2026-06-20 curtailment drill receipt emitter
+
+Blocker advanced: **`blocker.product_promises.curtailment_drill_missing`**
+(still listed).
+
+The public marathon projection has carried `curtailmentDrillReceiptAvailable=false`
+because, although the drill predicate and preflight route exist, there was no
+canonical receipt FORMAT to convert a passing drill into the public-safe artifact
+the runtime must publish. This change supplies that missing emitter, mirroring the
+gradient-window promotion-receipt pattern:
+
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt.ts`
+  - `CurtailmentDrillReceipt` typed, public-safe receipt: drill/run refs, both
+    SLA constants, the recorded ack/halt latencies, `outcome: 'drill_passed'`,
+    a deterministic content-addressed `receiptRef` derived from the drill ref,
+    and lineage `sourceRefs`.
+  - `buildCurtailmentDrillReceipt` / `buildUntrustedCurtailmentDrillReceipt`:
+    re-run the drill predicate and **refuse to emit** (throw
+    `CurtailmentDrillReceiptUnsafe`) for any non-passing or malformed drill, so
+    a receipt can never be minted for an unscheduled, out-of-SLA, unsealed, or
+    unverified-resume drill.
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt.test.ts`
+  - 8 tests: passing drill emits a public-safe receipt; deterministic ref;
+    unscheduled / halt-SLA-breach / missing-seal / unverified-resume each refuse;
+    well-formed untrusted descriptor builds; malformed untrusted descriptor
+    refuses.
+
+This is the receipt FORMAT only. No scheduled live drill has run, so the public
+projection's `curtailmentDrillReceiptAvailable` flag stays false and the blocker
+stays listed. It grants no dispatch, settlement, flexible-load-claim,
+promise-state, or green-claim authority, and no promise state or blocker list was
+changed. What genuinely remains is identical to above: a real scheduled drill on
+a live run feeding this emitter to produce a published receipt.
