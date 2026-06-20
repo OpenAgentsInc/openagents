@@ -250,6 +250,7 @@ export const projectTrainingMarathonOperations = (
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
         'apps/openagents.com/workers/api/src/training-standby-dispatch-receipt.ts',
+        'apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-verifier.ts',
         'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
         worklogRef,
       ],

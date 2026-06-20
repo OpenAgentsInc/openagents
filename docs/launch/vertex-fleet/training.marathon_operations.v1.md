@@ -393,3 +393,49 @@ state or blocker list was changed. `durable_checkpoint_seal_missing` stays liste
 what remains is the end-to-end seal against a real remote content-addressed
 checkpoint store (read-back actually fetched and re-hashed) producing a published
 receipt that this verifier would then confirm.
+
+## 2026-06-20 standby promotion receipt verifier
+
+Blocker advanced: **`blocker.product_promises.standby_dispatch_missing`**
+(still listed).
+
+The durable-checkpoint-seal receipt gained a CONSUMPTION-side verifier, but the
+standby-promotion receipt had only the EMITTER (the production side: the artifact
+the runtime publishes once a standby is actually promoted) — nothing on the
+consumption side. A consumer that later dereferences a published promotion receipt
+must treat it as untrusted input and confirm it is authentic and self-consistent
+*before* relying on it. Decoding alone is insufficient: the receipt schema pins the
+literal `outcome`, `publicSafe`, `blockerRef`, and schema versions, but it does not
+bind the deterministic content-addressed `receiptRef` to its `runRef` +
+`standbyContributorRef`, and the ref fields decode as free `S.String` — a
+forged/tampered receipt can decode cleanly while carrying a mismatched ref or a
+non-public-safe run/standby/promoted-window ref. This change supplies that missing
+verifier, mirroring the durable-checkpoint-seal verifier:
+
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-verifier.ts`
+  - `verifyStandbyDispatchReceipt` / `verifyUntrustedStandbyDispatchReceipt`: pure
+    verifiers returning a `verified` vs `not_verified` verdict with enumerated
+    reasons. They re-derive the canonical receipt ref from the receipt's own
+    run/standby fields and confirm it matches, and re-check that the run, standby,
+    and promoted-window refs are public-safe. They **fail toward `not_verified`** —
+    a malformed, ref-mismatched, or non-public-safe receipt is never reported as
+    verified — mirroring the dispatch predicate's fail-toward-HOLD posture.
+  - Exports a shared `StandbyDispatchPublicSafeRefPattern` from
+    `training-standby-dispatch.ts` so the verifier reuses a single source of truth.
+- `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-verifier.test.ts`
+  - 8 tests: a genuine emitted receipt verifies (trusted + untrusted-decode paths);
+    ref mismatch, non-public-safe run ref, non-public-safe standby ref, and
+    non-public-safe promoted-window ref each fail to verify; a malformed receipt and
+    a forged-outcome receipt that does not decode each fail toward `not_verified`.
+- `training-marathon-operations.ts` now lists the verifier module in the standby
+  surface `sourceRefs`. All projection flags stay false — no live standby has been
+  promoted into a real run, so there is no real receipt to verify yet.
+
+This is contract-level only: a `verified` verdict reports a published receipt is
+internally authentic and consistent with the emitter invariants. It does **not**
+assert any real standby was promoted into a live run, and grants no dispatch,
+settlement, promise-state, or green-claim authority. No promise state or blocker
+list was changed. `standby_dispatch_missing` stays listed: what remains is a real
+standby promoted into a live run (live heartbeat/vacancy telemetry feeding the
+predicate) producing a published, receipt-backed promotion that this verifier would
+then confirm.
