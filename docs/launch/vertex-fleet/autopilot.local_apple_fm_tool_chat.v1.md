@@ -67,6 +67,41 @@ layer, and it needs to be deterministic enough to test without a real Mac.
   but the live launcher that actually feeds events and the `apple_fm.status`
   wiring still do not exist — the blocker stays open.
 
+## Follow-up run (2026-06-20): signed-installer recut now has a helper-bundling gate
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_signed_installer_recut_missing`.
+
+- What was missing: `notarize-macos.sh` would deep code-sign and notarize an
+  Autopilot Desktop `.app` even if it shipped **no** Apple FM bridge helper, and
+  electrobun's `build.copy` had no entry coupling the helper to the path Pylon's
+  `discoverAppleFmBridgeHelper` packaged-resource lookup expects
+  (`<Resources>/app/apple-fm-bridge/foundation-bridge`). A signed recut could
+  therefore look green while being unable to start any local Apple FM session.
+- `apps/autopilot-desktop/src/shared/apple-fm-packaging.ts` — pure packaging
+  contract: the helper basename, the Resources sub-path, the electrobun
+  `build.copy` dest that lands it there, macOS-arm64-only built-`.app` candidates,
+  and `verifyPackagedAppleFmBridge({ probe })` — a side-effect-free verifier that
+  checks the helper exists, is non-empty, and is executable *inside* the bundle
+  root (so deep code-sign + notarization cover it). Returns structural facts
+  only — no prompts, file contents, secrets, or paths beyond the bundle dir.
+- `apps/autopilot-desktop/scripts/verify-packaged-apple-fm-bridge.ts` — a real
+  filesystem-backed runner over the pure verifier (exit 0/1 with secret-free
+  diagnostics), intended to run after `electrobun build` and before notarization.
+- `apps/autopilot-desktop/scripts/notarize-macos.sh` — now runs that gate before
+  `codesign` (opt out with `OA_SKIP_APPLE_FM_BRIDGE_CHECK=1` for intentionally
+  Apple-FM-less builds).
+- `apps/autopilot-desktop/tests/apple-fm-packaging.test.ts` — 8 tests
+  (copy-dest↔discovery-path coupling, bundle path derivation, accept/first-match,
+  missing/empty/non-executable rejection, and a no-secret-leak assertion).
+  `bun test` green (8 pass / 21 assertions).
+- Still open: the helper binary is built by the Swift `foundation-bridge` package
+  only on a macOS build host, so the electrobun `build.copy` entry
+  (`"<built helper>": APPLE_FM_BRIDGE_ELECTROBUN_COPY_DEST`) and a Swift release
+  build step in the desktop build pipeline are NOT added here (adding a copy of a
+  non-existent source would break non-Mac `bun run build`). Real signing,
+  notarization, and a from-install smoke on admitted hardware remain.
+
 ## What genuinely remains (blocker NOT cleared)
 
 - Wire a real launcher (`Bun.spawn`/`child_process`) on top of this policy that
