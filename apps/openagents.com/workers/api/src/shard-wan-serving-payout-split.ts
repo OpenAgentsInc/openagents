@@ -1,4 +1,5 @@
 import { Schema as S } from 'effect'
+import { type PayInLegPlan, type PayInPlan } from './payments-ledger'
 
 /**
  * Product-layer per-stage payout split for the decentralized serving fabric's
@@ -342,4 +343,87 @@ export const evaluateShardWanServingPayout = (input: {
     validationErrors: [],
     weightingRule: 'per_layer_block',
   })
+}
+
+/**
+ * Stable idempotency key for the WHOLE serving payout of one sharded run.
+ */
+export const shardWanServingPayoutIdempotencyKey = (servingRunRef: string): string =>
+  `shard_wan_serving:payout:${servingRunRef}`
+
+/**
+ * Stable idempotency key for ONE stage's leg.
+ */
+export const shardWanServingPayoutStageLegId = (
+  servingRunRef: string,
+  nodeRef: string,
+): string => `${servingRunRef}:stage:${nodeRef}`
+
+/**
+ * Public-safe receipt ref for a serving payout.
+ */
+export const shardWanServingPayoutReceiptRef = (servingRunRef: string): string =>
+  `receipt.shard_wan_serving.payout.${servingRunRef}`
+
+/**
+ * Build the PayIn-shaped payout plan for a PAYABLE shard-WAN decision.
+ * This wires the pure product-side split into the RL-2/RL-3 settlement spine.
+ *
+ * The Psionic receipt intentionally omits identity (nodeRef). The caller must
+ * provide the identity binding `stageNodeRefs` mapping stageIndex -> nodeRef.
+ */
+export const buildShardWanServingPayoutPayInPlan = (input: {
+  decision: ShardWanServingPayoutDecision
+  houseMarginAccountRef: string
+  ownerArmed: boolean
+  servingRunRef: string
+  stageNodeRefs: ReadonlyMap<number, string>
+}): PayInPlan | undefined => {
+  const { decision, houseMarginAccountRef, ownerArmed, servingRunRef, stageNodeRefs } = input
+
+  if (!decision.payable || !ownerArmed || decision.split === null || decision.totalSplitSats <= 0) {
+    return undefined
+  }
+
+  // The split is in SATS, but the ledger operates in MSAT.
+  const costMsat = decision.totalSplitSats * 1000
+
+  const payoutLegs: Array<PayInLegPlan> = []
+  for (const stageSplit of decision.split) {
+    const nodeRef = stageNodeRefs.get(stageSplit.stageIndex)
+    if (nodeRef === undefined) {
+      return undefined
+    }
+    payoutLegs.push({
+      amountMsat: stageSplit.payoutSats * 1000,
+      direction: 'out',
+      externalRef: 'shard_wan_serving_payout',
+      kind: 'balance',
+      legId: shardWanServingPayoutStageLegId(servingRunRef, nodeRef),
+      partyRef: nodeRef,
+    })
+  }
+
+  return {
+    contextRef: `inference:shard_wan_serving:${servingRunRef}`,
+    costMsat,
+    genesisId: null,
+    idempotencyKey: shardWanServingPayoutIdempotencyKey(servingRunRef),
+    legs: [
+      {
+        amountMsat: costMsat,
+        direction: 'in',
+        externalRef: 'shard_wan_serving_payout_margin',
+        kind: 'balance',
+        legId: `${servingRunRef}:margin`,
+        partyRef: houseMarginAccountRef,
+      },
+      ...payoutLegs,
+    ],
+    payInId: `shard_wan_serving:payin:${servingRunRef}`,
+    payInType: 'reward',
+    payerRef: houseMarginAccountRef,
+    publicReceiptRef: shardWanServingPayoutReceiptRef(servingRunRef),
+    rung: null,
+  }
 }

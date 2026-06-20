@@ -2756,8 +2756,6 @@
 
     "@moneydevkit/core/@orpc/client": ["@orpc/client@1.13.6", "", { "dependencies": { "@orpc/shared": "1.13.6", "@orpc/standard-server": "1.13.6", "@orpc/standard-server-fetch": "1.13.6", "@orpc/standard-server-peer": "1.13.6" } }, "sha512-M6lYM6fJUFp9GR+It/qglYTeXwspb6sGj46xXWHqHS6iDVquqju0bdYuLOfHx8CGJcUSzi0aKUcqMXiGJhBG3w=="],
 
-    "@openagentsinc/autopilot-web/@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#f9b5341", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-f9b5341", "sha512-M2Vc2xjLZ/DBXMdpEDnXd+/R8hrQEZAOKe+jXhiRASJ0Oe9qP6/XyVbPqLnfIIyd1+JGPGz6L5rB0TSo1R4lwQ=="],
-
     "@openagentsinc/nostr-relay/nostr-effect": ["nostr-effect@0.0.12", "", { "dependencies": { "@effect/platform": "0.93.5", "@effect/schema": "0.75.5", "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "3.19.8", "pako": "2.1.0" } }, "sha512-mrBi/thtI+NvDsZJsPKexkzsqlfnzM4L26klgrwTAyzwoDx486emeQkVFMkB3iuc3sSiwNPoFrVNCxUlV30oMw=="],
 
     "@openauthjs/openauth/@standard-schema/spec": ["@standard-schema/spec@1.0.0-beta.3", "", {}, "sha512-0ifF3BjA1E8SY9C+nUew8RefNOIq0cDlYALPty4rhUm8Rrl6tCM8hBT4bhGhx7I7iXD0uAgt50lgo8dD73ACMw=="],
