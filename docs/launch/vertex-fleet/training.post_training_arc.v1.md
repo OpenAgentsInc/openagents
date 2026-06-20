@@ -4,6 +4,70 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (h) — vibe-test closeout grading challenge bridge
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.vibe_test_artifact_missing` — advanced, **not
+cleared**.
+
+The DPO and instruct-SFT lanes already had a committed grading-challenge bridge
+(`cs336-a5-dpo-grading-challenge.ts`, `psion-instruct-sft-grading-challenge.ts`)
+turning their deterministic answer keys into the `deterministic_recompute`
+challenge shape the 2026-06-11 alignment run used for its four Verified
+challenges. The vibe-test lane had the rubric + closeout digest + public
+projection but **no such bridge** — there was no committed path from the
+`closeoutDigestHex` answer key to the verification envelope a paid/reviewed
+vibe-test grading dispatch would settle against. This change adds that bridge.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/post-training-vibe-test-grading-challenge.ts`
+  - `buildPostTrainingVibeTestGradingChallengeSpec`: recomputes the closeout
+    in-repo and packages a public-safe `deterministic_recompute` challenge spec
+    (`expectedDigestHex`, `transcriptCount`, `meanScoreMicro`, `thresholdMicro`,
+    `closeoutAcceptable`, `reviewerSigned=false`, refs). Exposes only
+    digests/counts/refs/stats — never prompts, completions, or transcript text.
+  - `verifyPostTrainingVibeTestGradingResponse`: performs a TRUE in-repo
+    recompute (the rubric scorer runs in this worker, unlike the SFT Rust lane),
+    rejecting a stale/forged spec and verifying a worker's CLAIMED closeout
+    digest. `Verified` only when stored expected, fresh recompute, and the claim
+    all agree; otherwise `Rejected` with `DigestMismatch` /
+    `OutputDigestMissing` / `DimensionMismatch` / `VerificationClassUnknown`.
+  - `buildPostTrainingVibeTestGradingChallengeCreateRequest`: bridges the spec
+    into the rail-side `TrainingVerificationChallengeCreateRequest` envelope and
+    **decodes it against the real `training-verification` schema**, throwing
+    `PostTrainingVibeTestGradingChallengeError` on a structurally invalid
+    request (e.g. a non-public-safe `trainingRunRef`).
+- `apps/openagents.com/workers/api/src/post-training-vibe-test-grading-challenge.test.ts`
+  - 16 committed tests: deterministic answer-key spec build matching the
+    closeout, re-build stability, threshold-range guard, spec public-safety,
+    Verified happy path, case-insensitive digest, tampered/malformed-claim
+    rejects, transcript-count-mismatch reject, stale-spec reject,
+    malformed-expected-digest reject, schema-valid create-request with
+    round-trip decode, `windowRef` omission, payload public-safety,
+    non-public-safe `trainingRunRef` reject, and malformed-spec-digest reject.
+
+### Honesty boundary (why the blocker stays open)
+
+The transcripts remain REPO-OWNED FIXTURE TEXT, not real Psion instruct-model
+outputs, and `reviewerSigned` is hard-coded `false` — this module never forges a
+reviewer signature. It only constructs/verifies/validates the challenge request;
+it submits nothing, takes no lease, spends no sats, settles nothing, and creates
+no rail-side challenge. No public route, registry edit, or green transition is
+added.
+
+### What genuinely remains for `vibe_test_artifact_missing`
+
+Still open: no real Psion instruct-model transcripts have been graded, no
+reviewer-signed closeout artifact exists, and no paid/reviewed vibe-test grading
+dispatch / lease / settlement / on-rail Verified challenge has run.
+
+---
+
 ## 2026-06-20 (g) — instruct-SFT lane grading challenge bridge
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
