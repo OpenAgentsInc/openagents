@@ -145,6 +145,13 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getPublicTrainingVerificationChallenge')
     expect(
+      operationAt(
+        body,
+        '/api/public/training/ablation-derisking-ledger',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingAblationDeriskingLedger')
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
     const activityTimelineOperation = operationAt(
@@ -995,6 +1002,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/workrooms/{param}',
   '/api/omni/workrooms/{param}/handoff',
   '/api/omni/workrooms/{param}/lifecycle-decisions',
+  '/api/omni/workrooms/{param}/source-authority',
   '/api/operator/email-sequences',
   '/api/operator/email-sequences/{param}/enroll',
   '/api/operator/email-sequences/{param}/status',

@@ -679,6 +679,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/product-promises/audit',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/training-ablation-derisking-ledger.ts',
+    route: '/api/public/training/ablation-derisking-ledger',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
