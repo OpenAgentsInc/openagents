@@ -741,6 +741,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/training/ablation-derisking-ledger',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/training-post-training-instruct-sft.ts',
+    route: '/api/public/training/post-training-arc/instruct-sft-lane',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
