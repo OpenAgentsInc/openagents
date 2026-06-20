@@ -66,6 +66,10 @@ import {
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization"
 import {
+  VERSE_TRAINING_NODE_PREFIX,
+  withVerseTrainingLayer,
+} from "../shared/verse-training-visualization"
+import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
 } from "../shared/chat-world-flags"
@@ -5796,31 +5800,29 @@ const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
 const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
 const AGENT_CHARACTER_CREATION: boolean = agentCharacterCreationFlag()
 
-// A calm static seed scene: one hub + ~8 ring pylons. A couple are "working"
-// so the graph reads as a living-but-idle network rather than dead. This is a
-// placeholder until #5736 wires the live PylonNetworkScene snapshot in.
+// A calm static seed scene: one core + inert ring pylons. It gives first paint a
+// spatial Verse without claiming live online/assigned pylons before the public
+// Pylon snapshot arrives.
 const CHAT_SCENE_RING_NODES: ReadonlyArray<PylonNetworkNode> = Array.from(
   { length: 8 },
   (_unused, index): PylonNetworkNode => {
-    const tone: PylonNetworkNode["tone"] =
-      index === 1 || index === 5 ? "working" : index % 3 === 0 ? "online" : "offline"
     return {
       id: `seed-pylon-${index}`,
       label: "pylon",
-      tone,
-      flowing: tone === "working",
+      tone: "offline",
+      flowing: false,
     }
   },
 )
 
 const CHAT_SCENE: PylonNetworkScene = {
-  activityIntensity: 0.18,
-  dormant: false,
-  onlineNow: 6,
-  sessionsOnlineNow: 2,
-  sellableOnlineNow: 2,
-  walletReadyNow: 4,
-  assignmentReadyNow: 2,
+  activityIntensity: 0,
+  dormant: true,
+  onlineNow: 0,
+  sessionsOnlineNow: 0,
+  sellableOnlineNow: 0,
+  walletReadyNow: 0,
+  assignmentReadyNow: 0,
   seen24h: 8,
   registeredTotal: 8,
   satsSettled24h: 0,
@@ -5832,17 +5834,22 @@ const CHAT_SCENE: PylonNetworkScene = {
   asOfLabel: null,
 }
 
-// #5730: build the chat-background visualization from LIVE state, falling back
-// to the calm static seed for the zero-state / pre-load moment. With the
-// payments flag on, evidence-bound payment beams/bursts overlay the graph.
+// #5730/#5822: build the Verse background from LIVE Pylon state plus the public
+// Tassadar training projection. The static seed is inert until public data
+// arrives; the training layer pins motion to public refs and keeps dense
+// controls in Training Live.
 const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions => {
   // Live pylons replace the seed once a non-empty snapshot has landed.
   const liveScene = liveChatWorldNetworkScene(modelChatWorldScene(model))
   const base = pylonNetworkVisualizationOptions(liveScene ?? CHAT_SCENE)
+  const withTraining = withVerseTrainingLayer(base, {
+    promiseGates: modelTrainingPromiseGates(model),
+    trainingRuns: modelTrainingRuns(model),
+  })
   // Payment particles only when their flag is on; each is already evidence-bound.
   return CHAT_WORLD_PAYMENTS
-    ? withChatWorldPaymentLayer(base, modelChatWorldParticles(model))
-    : base
+    ? withChatWorldPaymentLayer(withTraining, modelChatWorldParticles(model))
+    : withTraining
 }
 
 // A small inspector chip naming the receipt the last-clicked payment beam ties
@@ -5850,7 +5857,9 @@ const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions =
 const chatSceneInspector = (model: Model): Html =>
   model.chatWorldInspectedRef !== null
     ? h.div([cls("chat-scene-inspector mono")], [
-        h.span([cls("chat-scene-inspector-label")], ["receipt "]),
+        h.span([cls("chat-scene-inspector-label")], [
+          model.chatWorldInspectedRef.startsWith("receipt") ? "receipt " : "refs ",
+        ]),
         h.span([cls("chat-scene-inspector-ref")], [model.chatWorldInspectedRef]),
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
@@ -5861,7 +5870,13 @@ const chatSceneBackground = (model: Model): Html =>
       [cls("three-effect-chat-scene")],
       chatSceneVisualization(model),
       // Click a payment endpoint → surface its receipt ref in the inspector.
-      (node) => SelectedChatWorldNode({ id: node.id, label: node.label }),
+      (node) =>
+        SelectedChatWorldNode({
+          id: node.id,
+          label: node.id.startsWith(VERSE_TRAINING_NODE_PREFIX)
+            ? node.detail
+            : node.label,
+        }),
     ),
     chatSceneInspector(model),
   ])

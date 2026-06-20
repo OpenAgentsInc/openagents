@@ -127,6 +127,7 @@ import {
   prunePaymentParticlesByRecency,
   type PaymentParticle,
 } from "../shared/chat-world-scene"
+import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -800,14 +801,15 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     case "SelectedChatWorldNode":
-      // #5730: surface the clicked payment endpoint's receipt ref in the
-      // inspector. Only payment endpoints carry a ref (id `pay:…`); other scene
-      // nodes clear the inspector. The label is `<ref> · <sats> sats` or `<ref>`.
+      // #5730/#5822: surface either payment receipt refs or a Verse training
+      // stage's public-ref detail. Plain pylon nodes still clear the inspector.
       return [
         Model.make({
           ...model,
           chatWorldInspectedRef: message.id.startsWith("pay:")
             ? chatWorldRefFromLabel(message.label)
+            : message.id.startsWith(VERSE_TRAINING_NODE_PREFIX)
+              ? message.label
             : null,
         }),
         noCommands,

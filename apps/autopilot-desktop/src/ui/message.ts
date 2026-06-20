@@ -40,9 +40,9 @@ export const GotChatWorldScene = m("GotChatWorldScene", { scene: S.Unknown })
 export const GotChatWorldPaymentParticle = m("GotChatWorldPaymentParticle", {
   particle: S.Unknown,
 })
-// #5730: a click on a scene node/entity. For a payment endpoint the id encodes
-// the particle (`pay:<eventRef>:from|to`) and the label carries the receipt
-// sourceRef, so the reducer can surface the inspected ref (tooltip/inspector).
+// #5730/#5822: a click on a scene node/entity. Payment endpoints encode their
+// particle (`pay:<eventRef>:from|to`) and labels carry receipt refs. Verse
+// training stages use the same label slot for their public-ref detail string.
 export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
   id: S.String,
   label: S.String,

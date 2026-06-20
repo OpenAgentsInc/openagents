@@ -1,7 +1,11 @@
 import type { Command } from "foldkit"
 
 import type { Message } from "./message"
-import { LoadOnboardingStatus } from "./commands"
+import {
+  LoadOnboardingStatus,
+  LoadTrainingPromiseGates,
+  LoadTrainingRuns,
+} from "./commands"
 import { initialModel, Model } from "./model"
 // #5472: load the locally-persisted Settings preferences and apply them to the
 // initial model so theme + spawn defaults take effect from app entry. Loaded
@@ -39,8 +43,10 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     onboardingPending: true,
   })
 
-  // Warm the character-creation/Pylon readiness projection on first paint so
-  // the Verse can show an honest ready/loading/blocker state without requiring
-  // the user to open another pane.
-  return [model, [LoadOnboardingStatus()]]
+  // Warm character creation plus the lightweight public Tassadar run/gate
+  // projections so the Verse scene can show an honest run core immediately.
+  return [
+    model,
+    [LoadOnboardingStatus(), LoadTrainingRuns(), LoadTrainingPromiseGates()],
+  ]
 }

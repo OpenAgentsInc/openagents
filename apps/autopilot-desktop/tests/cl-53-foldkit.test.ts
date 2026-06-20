@@ -170,15 +170,19 @@ const onboardingProjection = (
 })
 
 describe("helpers (CL-47..CL-58 parity, pure)", () => {
-  test("desktop startup lands on the Verse chat home and warms onboarding only", () => {
+  test("desktop startup lands on the Verse chat home and warms public training context", () => {
     // VERSE HOME (owner directive, 2026-06-20): the app now launches to the
-    // Pylon/Tassadar Verse surface. It warms only onboarding so the
-    // character-creation/readiness overlay has an honest state; the older
-    // multi-loader startup remains gone.
+    // Pylon/Tassadar Verse surface. It warms onboarding plus lightweight public
+    // training projections so the default scene can render the Tassadar run
+    // core without opening Training Live; the older multi-loader startup remains gone.
     const [model, commands] = initialRuntimeState()
 
     expect(model.pane).toBe("chat")
-    expect(commands.map(command => command.name)).toEqual(["LoadOnboardingStatus"])
+    expect(commands.map(command => command.name)).toEqual([
+      "LoadOnboardingStatus",
+      "LoadTrainingRuns",
+      "LoadTrainingPromiseGates",
+    ])
     expect(model.onboardingPending).toBe(true)
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")

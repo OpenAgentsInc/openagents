@@ -30,12 +30,19 @@ not authority.
   `/api/public/activity-timeline`, and product-promise state before calling the
   OpenAgents model gateway. `SpawnChatTurn` remains only on the explicit
   Blueprint command-palette action.
+- 2026-06-20: #5822 put the Tassadar training run into the default Verse scene.
+  The chat-world visualization now rewrites the center node into a Tassadar run
+  core, adds public-ref-bearing lifecycle stages for assignment, trace/workload,
+  exact replay, verdict, settlement, recipient confirmation, and blockers, and
+  pins training motion to `motionPolicy.evidence = required`. First paint also
+  warms the public training run and promise-gate projections.
 
 ## Executive read
 
 The Verse is conceptually correct and now has real implementation seams. After
-#5819 it is also the default first surface, but it is not yet the complete
-hands-off experience the owner is asking for.
+#5819-#5822 it is the default first surface and includes Tassadar training
+state, but it is not yet the complete hands-off experience the owner is asking
+for.
 
 What exists:
 
@@ -48,6 +55,8 @@ What exists:
 - A character-creation overlay projection tied to real onboarding status.
 - A training scene and Training Live pane that already render a
   `three-effect` run visualization.
+- A default Verse scene with a central Tassadar run core and public-ref-backed
+  training/benchmark stages.
 - A SpacetimeDB `openagents-world` module with public projection tables,
   interaction tables, service-only projection reducers, and browser-safe
   interaction reducers.
@@ -66,9 +75,8 @@ What is wrong for the requested product direction:
   needs careful framing so it does not become the mental model of the app.
 - The Verse is still controlled by build flags and lives behind the Chat pane,
   not as the default mental model of the app.
-- The current chat-world renderer is primarily a Pylon/payment network scene.
-  It does not yet put the Tassadar training run core and live training state in
-  the same default scene.
+- The default Verse training layer is still fed by the Desktop public
+  projections, not by a live SpacetimeDB Desktop client.
 - Multiplayer/SpacetimeDB Desktop integration is still projection/query shape,
   not a connected client with live rows in the app.
 - The open issue backlog still frames DE-3 as "Autopilot product surface -
@@ -136,7 +144,8 @@ Working pieces:
 - `activityEventToParticle` refuses to emit payment motion without payment kind,
   endpoints, and at least one source ref.
 - `chatSceneVisualization` renders the Pylon network through
-  `trainingRunView`, then overlays payment layers when enabled.
+  `trainingRunView`, composes the Tassadar training run layer, then overlays
+  payment layers when enabled.
 - `characterCreationOverlay` projects onboarding status into character-creation
   beats and a compute/mana bar.
 - `trainingPane` and `trainingFullscreenPane` already render `trainingRunView`
@@ -188,6 +197,8 @@ Relevant files/docs:
 Working pieces:
 
 - Desktop can load training projections and show Training / Training Live.
+- The default Verse scene now shows a Tassadar run core and the benchmark flow
+  stages from public Desktop training projections.
 - The visual grammar already distinguishes run projection, public activity,
   dashboard, promise gates, operator readiness, evidence packet, closeout, and
   selected-node overlays.
@@ -200,15 +211,8 @@ Working pieces:
 
 Missing for hands-off:
 
-- Tassadar is not the center of the default Verse scene.
-- Training state is in `Explore -> Training` or `Training Live`, not in first
-  paint.
-- The chat path does not directly talk to a Tassadar model/context. It routes
-  through Blueprint and then coding session infrastructure.
-- The app does not yet show a benchmark flow for Tassadar in the Verse:
-  workload -> trace -> replay -> verdict -> accepted/rejected -> settlement.
-- Training operations panels are too operator-oriented for the default launch
-  surface. They should become support drawers, not the primary scene.
+- Training operations panels are still operator-oriented and live in Training /
+  Training Live rather than refined support drawers.
 
 ### SpacetimeDB world
 
@@ -411,6 +415,8 @@ Implementation shape:
 
 ### P1 - Put Tassadar in the default scene
 
+Status: landed by #5822 on 2026-06-20.
+
 Acceptance:
 
 - The Verse scene includes a central Tassadar run core.
@@ -423,8 +429,9 @@ Acceptance:
 
 Implementation shape:
 
-- Compose the existing `trainingSceneOptions(model)` with
-  `chatSceneVisualization(model)` instead of treating Training Live as separate.
+- Compose the chat-world `trainingRunView` options with the Desktop public
+  training projection instead of treating Training Live as the only training
+  scene.
 - Start with a calm central run core plus Pylon ring and payment layer.
 - Move dense training operations into an overlay drawer.
 

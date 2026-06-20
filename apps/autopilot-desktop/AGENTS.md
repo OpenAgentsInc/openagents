@@ -64,6 +64,14 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   with public Pylon/training context and must not spawn Codex/Claude/cloud-code
   sessions. Blueprint/exact-replay session chat remains an explicit advanced
   command, not the first-paint mechanic.
+- **The Verse scene owns the training run overview.** First paint should include
+  a central Tassadar run core with public-ref-backed lifecycle stages
+  (assignment, trace/workload, exact replay, verdict, acceptance/rejection,
+  settlement, recipient confirmation, blockers) and surrounding Pylons. Do not
+  render training beams, bursts, or active/pulsing training motion without
+  public source refs or a measured live state transition. Dense training
+  controls stay in Training Live and overlays/drawers, not in the first-paint
+  chat surface.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches
