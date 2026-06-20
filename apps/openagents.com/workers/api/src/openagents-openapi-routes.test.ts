@@ -145,6 +145,13 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getPublicTrainingVerificationChallenge')
     expect(
+      operationAt(
+        body,
+        '/api/public/training/ablation-derisking-ledger',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingAblationDeriskingLedger')
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
     const activityTimelineOperation = operationAt(

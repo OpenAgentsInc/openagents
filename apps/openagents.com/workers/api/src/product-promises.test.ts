@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.9')
+    expect(decoded.version).toBe('2026-06-20.12')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -144,8 +144,16 @@ describe('public product promises document', () => {
     // remains exactly 24. The 2026-06-20.7 pass clears the Nostr-export blocker
     // on identity.orange_check_forum_signal.v1 (a real dereferenceable kind-1
     // attestation on wss://relay.openagents.com); the promise stays yellow and
-    // green remains exactly 24. The 2026-06-20.8 workrooms integration pass
-    // flips no state (green stays 24). The 2026-06-20.9 pass builds the Artanis
+    // green remains exactly 24. The 2026-06-20.8 workrooms live integration
+    // pass and 2026-06-20.9 mobile approval projection honesty pass move
+    // mobile.voice_approval_companion.v1 planned -> yellow without flipping
+    // green, so green remains exactly 24. The 2026-06-20.10 pass ships the
+    // enterprise claim-upgrade audit panel for proof.claim_upgrade_receipts.v1
+    // (GET /api/public/product-promises/audit) and drops that promise's
+    // enterprise_audit_panel_missing blocker, but the promise STAYS yellow
+    // (green flip is owner-gated), so green remains exactly 24. The
+    // 2026-06-20.11 ablation derisking ledger pass flips no promise state, so
+    // green remains exactly 24. The 2026-06-20.12 pass builds the Artanis
     // unattended tick-streak counter/projection for
     // artanis.tassadar_evolution_loop.v1 (the missing piece of the
     // artanis_unattended_tick_streak_missing blocker) and exposes it at
@@ -188,7 +196,7 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'mobile.voice_approval_companion.v1',
-          state: 'planned',
+          state: 'yellow',
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/mobile-workroom-approval-projection-routes.ts',
             'route:/api/mobile/workroom-approval-projection',
@@ -220,6 +228,23 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           ]),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.ablation_system.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'https://openagents.com/api/public/training/ablation-derisking-ledger',
+            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+            'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+          ]),
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.ablation_harness_missing',
+            'blocker.product_promises.eval_suite_reproduction_missing',
+          ]),
+          safeCopy: expect.stringContaining(
+            '/api/public/training/ablation-derisking-ledger',
+          ),
+          verification: expect.stringContaining('candidate-only'),
         }),
         expect.objectContaining({
           promiseId: 'training.model_ladder.v1',
@@ -533,6 +558,19 @@ describe('public product promises document', () => {
         }),
       ]),
     )
+    const mobileApprovalPromise = decoded.promises.find(
+      promise => promise.promiseId === 'mobile.voice_approval_companion.v1',
+    )
+    expect(mobileApprovalPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.voice_command_approval_receipts_missing',
+      'blocker.product_promises.cross_device_workroom_sync_missing',
+    ])
+    expect(mobileApprovalPromise?.safeCopy).toContain(
+      'Voice/mobile approval is partially wired',
+    )
+    expect(mobileApprovalPromise?.verification).toContain(
+      'Yellow is supported by the live read-only mobile workroom approval projection route',
+    )
     const localAppleFmPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.local_apple_fm_tool_chat.v1',
     )
@@ -740,16 +778,48 @@ describe('public product promises document', () => {
     )
   })
 
+  test('ablation derisking ledger clears only the projection blocker', () => {
+    const document = publicProductPromisesDocument()
+    const ablationPromise = document.promises.find(
+      promise => promise.promiseId === 'training.ablation_system.v1',
+    )
+
+    expect(ablationPromise).toMatchObject({
+      state: 'planned',
+      blockerRefs: [
+        'blocker.product_promises.ablation_harness_missing',
+        'blocker.product_promises.eval_suite_reproduction_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'https://openagents.com/api/public/training/ablation-derisking-ledger',
+        'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+        'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+      ]),
+    })
+    expect(ablationPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.ablation_ledger_projection_missing',
+    )
+    expect(ablationPromise?.safeCopy).toContain(
+      'public, read-only ablation derisking ledger projection',
+    )
+    expect(ablationPromise?.verification).toContain(
+      'zero paid ablations, zero reproduced evals, and zero accepted verdicts',
+    )
+    expect(ablationPromise?.authorityBoundary).toContain(
+      'no dispatch or spend authority',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.9', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.12', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.9',
+      expectedVersion: '2026-06-20.12',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.9',
+      servedVersion: '2026-06-20.12',
       status: 'ready',
     })
     expect(
@@ -759,7 +829,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.9',
+      servedVersion: '2026-06-20.12',
       status: 'blocked',
     })
   })
