@@ -10,6 +10,7 @@ import {
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
   PublicProductPromises,
+  PublicPromiseTransitions,
   PublicPylonStats,
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
@@ -112,6 +113,18 @@ export const FailedLoadPublicProductPromises = m(
     error: S.String,
   },
 )
+export const SucceededLoadPublicPromiseTransitions = m(
+  'SucceededLoadPublicPromiseTransitions',
+  {
+    transitions: PublicPromiseTransitions,
+  },
+)
+export const FailedLoadPublicPromiseTransitions = m(
+  'FailedLoadPublicPromiseTransitions',
+  {
+    error: S.String,
+  },
+)
 export const SucceededLoadPublicTrainingRuns = m(
   'SucceededLoadPublicTrainingRuns',
   {
@@ -187,6 +200,8 @@ export const Message = S.Union([
   FailedLoadPublicForumTipLeaderboards,
   SucceededLoadPublicProductPromises,
   FailedLoadPublicProductPromises,
+  SucceededLoadPublicPromiseTransitions,
+  FailedLoadPublicPromiseTransitions,
   SucceededLoadPublicTrainingRuns,
   FailedLoadPublicTrainingRuns,
   SucceededLoadShareProjection,
