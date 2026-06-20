@@ -3,6 +3,47 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (k) — autostart receipts: fail-closed capture orchestrator
+
+Blocker advanced this run:
+`blocker.product_promises.spark_helper_autostart_receipt_missing`
+
+Prior runs built the classifier, the receipt builder, and the single/set
+verifiers — every piece a capture needs — but NO code path actually produced a
+gate-valid artifact. The capture runbook's step 4 ("classify the receive
+projection, then build the receipt … and write the JSON artifact") was manual
+prose, so nothing guaranteed the written artifact passes
+`verifySparkHelperAutostartReceipt`; only an auditor running the verifier
+afterward would catch a non-conforming or leaky file. That is a real integrity
+gap on the actual capture step.
+
+- `apps/pylon/src/spark-helper-autostart.ts` — added
+  `captureSparkHelperAutostartReceipt(receive, observedAt, opts)`: a pure,
+  fail-closed orchestrator that composes classify → build → **self-verify** →
+  canonical serialize. It returns `{ captured: true, receipt, verification,
+  serialized }` ONLY when the built receipt passes its own single-receipt audit
+  AND survives a JSON round-trip re-audit; otherwise `{ captured: false,
+  reasons[], projection }` and emits nothing. So any artifact the self-serve path
+  persists is gate-valid by construction. Also added
+  `serializeSparkHelperAutostartReceipt` (canonical, fixed-key-order JSON over the
+  closed allowlist, key-insertion-order independent). Writes no file; inert when
+  not opted in.
+- `apps/pylon/src/spark-helper-autostart.test.ts` — +6 bun:test cases (inert /
+  helper-not-ready → not captured; ready → self-verified + round-trip-valid
+  artifact; deterministic canonical serialization; non-canonical timestamp
+  fail-closed; two distinct captures differ only by `observedAt` and pass the set
+  verifier as distinct). 32 pass (was 26).
+- `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — capture step 4 now
+  dereferences `captureSparkHelperAutostartReceipt` (persist `result.serialized`
+  verbatim only when `captured`); documented both new functions.
+
+No promise state changed; nothing started, no funds moved, no host probed, no
+file written. Still listed: clearing the blocker needs a REAL captured receipt
+from ≥1 distinct normal contributor that this orchestrator produces with
+`captured:true` and that passes `verifySparkHelperAutostartReceiptSet` with
+`clearsBlocker:true`, plus owner sign-off. This run closes the "no code path
+emits a verified artifact" gap so the capture step is fail-closed, not manual.
+
 ## Update 2026-06-20 (j) — WSL scope-out: wire it into the runtime install path
 
 Blocker advanced this run:
