@@ -247,6 +247,7 @@ export const projectTrainingMarathonOperations = (
       schemaVersion: StandbyDispatchSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-standby-dispatch.ts',
+        'apps/openagents.com/workers/api/src/training-standby-dispatch-receipt.ts',
         'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
         worklogRef,
       ],
