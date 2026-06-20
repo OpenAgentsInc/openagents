@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.42')
+    expect(decoded.version).toBe('2026-06-20.43')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -109,6 +109,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
@@ -270,6 +273,8 @@ describe('public product promises document', () => {
     // receipt-backed live standby promotion exists, so green remains exactly 24.
     // The 2026-06-20.42 public distributed-run scale pass adds a public status
     // projection but keeps the network-scale receipt blocker active.
+    // The 2026-06-20.43 largest-run claim pass adds a public benchmark
+    // projection but keeps the contributor-receipts blocker active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -545,12 +550,16 @@ describe('public product promises document', () => {
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
             'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+            'docs/launch/vertex-fleet/pylon.largest_decentralized_training_claim.v1.md',
+            'route:/api/public/pylon/largest-decentralized-training-claim',
+            'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts',
+            'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.test.ts',
           ]),
           safeCopy: expect.stringContaining(
-            'count methodology plus comparable training-run research are now documented',
+            'GET /api/public/pylon/largest-decentralized-training-claim',
           ),
           verification: expect.stringContaining(
-            'five counted realBitcoinMoved:true contributors',
+            'transcriptTargetThresholdMet=false',
           ),
         }),
         expect.objectContaining({
@@ -1034,6 +1043,8 @@ describe('public product promises document', () => {
       expect.arrayContaining([
         'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
         'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+        'route:/api/public/pylon/largest-decentralized-training-claim',
+        'apps/openagents.com/workers/api/src/pylon-largest-decentralized-training-claim-status.ts',
       ]),
     )
     expect(
@@ -1235,12 +1246,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.42', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.43', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.42',
+      expectedVersion: '2026-06-20.43',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.42',
+      servedVersion: '2026-06-20.43',
       status: 'ready',
     })
     expect(
@@ -1250,7 +1261,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.42',
+      servedVersion: '2026-06-20.43',
       status: 'blocked',
     })
   })

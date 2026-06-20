@@ -189,6 +189,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/pylon/largest-decentralized-training-claim',
+        'get',
+      ).operationId,
+    ).toBe('getPylonLargestDecentralizedTrainingClaimStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/public-gradient-windows',
         'get',
       ).operationId,
@@ -641,6 +648,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/public-distributed-run-scale',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/pylon/largest-decentralized-training-claim',
         'get',
       ).security,
     ).toEqual([])

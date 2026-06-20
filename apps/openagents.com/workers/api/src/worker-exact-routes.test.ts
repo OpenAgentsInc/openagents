@@ -8,6 +8,7 @@ const approvedExactRoutePaths = [
   '/api/public/business-signup',
   '/api/public/tassadar-run-summary',
   '/api/public/training/public-distributed-run-scale',
+  '/api/public/pylon/largest-decentralized-training-claim',
   '/api/public/activity-timeline',
   '/api/public/activity-timeline/stream',
   '/api/public/tassadar/compiled-module-marketplace',
