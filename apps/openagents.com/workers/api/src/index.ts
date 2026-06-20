@@ -105,6 +105,7 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import { handleModelsList } from './inference/models-routes'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -9296,6 +9297,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         registry: inferenceProviderRegistry,
       })
     },
+  },
+  {
+    // Public model catalog (OpenAI-compatible GET /v1/models) for the inference
+    // gateway. INERT by default: gated behind the SAME INFERENCE_GATEWAY_ENABLED
+    // flag as /v1/chat/completions, so it 404s when the gateway is off. Public,
+    // unauthenticated, public-safe (published sell prices + free-tier flag only,
+    // no prompts/credentials/balances) — the pre-purchase discovery surface a
+    // credits customer reads to learn what each model costs before funding a
+    // balance. Derived from the SAME pricing table the metering hook charges
+    // against, so the published price cannot drift from the billed price. No
+    // promise state changes; the paid loop is still secrets-gated.
+    path: '/v1/models',
+    handler: (request, env) =>
+      handleModelsList(request, {
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+      }),
   },
   {
     // Fine-tuning service (EPIC #5510, #5516) — sellable Cloud primitive
