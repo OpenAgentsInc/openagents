@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  createSessionEventStreamer,
   mergeSessionEventRows,
   sessionRefsToStream,
 } from "../src/bun/session-event-stream"
@@ -67,5 +68,37 @@ describe("desktop session event stream helpers", () => {
     )
 
     expect(merged.map((event) => event.detail)).toEqual(["start", "new"])
+  })
+
+  test("watch opens a session event stream before the next node poll", async () => {
+    const urls: string[] = []
+    const rows: Array<{ sessionRef: string; detail: string }> = []
+    const streamer = createSessionEventStreamer({
+      baseUrl: "http://127.0.0.1:4716",
+      tokenProvider: async () => "tok",
+      fetchFn: (async (url: string) => {
+        urls.push(url)
+        return new Response(
+          `data: ${JSON.stringify({
+            eventIndex: 1,
+            phase: "composer_event",
+            state: "running",
+            observedAt: "t",
+            messageText: "agent: live",
+          })}\n\n`,
+          { status: 200 },
+        )
+      }) as unknown as typeof fetch,
+      onEvent: (sessionRef, event) => rows.push({ sessionRef, detail: event.detail }),
+    })
+
+    streamer.watch("session.pylon.control.live")
+    for (let i = 0; rows.length === 0 && i < 20; i += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1))
+    }
+    streamer.stop()
+
+    expect(urls[0]).toBe("http://127.0.0.1:4716/sessions/session.pylon.control.live/events")
+    expect(rows).toEqual([{ sessionRef: "session.pylon.control.live", detail: "agent: live" }])
   })
 })

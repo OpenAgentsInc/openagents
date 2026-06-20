@@ -256,21 +256,32 @@ const shellEventDisplayLine = (event: {
 const shellStreamText = (
   events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
 ): string | null => {
-  const lines: string[] = []
+  let tokenLine: string | null = null
+  const reasoningLines: string[] = []
+  const bodyLines: string[] = []
   const seen = new Set<string>()
   for (const event of events) {
     const line = shellEventDisplayLine(event)
     if (line === null) continue
     if (line.startsWith("thinking tokens:")) {
-      const existing = lines.findIndex((entry) => entry.startsWith("thinking tokens:"))
-      if (existing >= 0) lines[existing] = line
-      else lines.push(line)
+      tokenLine = line
+      continue
+    }
+    if (line.startsWith("thinking:")) {
+      if (seen.has(line)) continue
+      seen.add(line)
+      reasoningLines.push(line)
       continue
     }
     if (seen.has(line)) continue
     seen.add(line)
-    lines.push(line)
+    bodyLines.push(line)
   }
+  const lines = [
+    ...(tokenLine === null ? [] : [tokenLine]),
+    ...reasoningLines,
+    ...bodyLines,
+  ]
   return lines.length > 0 ? lines.join("\n") : null
 }
 

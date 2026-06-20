@@ -1002,7 +1002,7 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           params.useDefaultWorktree === true && !params.worktreePath && !params.repoRef
             ? defaultCodingWorktreePath()
             : null
-        return spawnSession({
+        const result = await spawnSession({
           baseUrl: controlBaseUrl,
           token,
           adapter: params.adapter,
@@ -1024,6 +1024,8 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           // its registry and rejects an unknown ref.
           ...(params.accountRef ? { accountRef: params.accountRef } : {}),
         })
+        if (result.ok) sessionEventStreamer.watch(result.sessionRef)
+        return result
       },
       // #5471: resolve a managed-worktree request (repo + base ref) to a
       // concrete repoRef the webview can pass to spawnSession. Bun runs git.
@@ -1168,14 +1170,25 @@ const pushNodeState = (rawMessage: NodeStateMessage): void => {
   sessionEventStreamer.reconcile(message)
 }
 
+const mergeStreamedEvent = (
+  sessionRef: string,
+  event: Parameters<typeof mergeSessionEventRows>[1],
+): void => {
+  const current = latestNodeState ?? {
+    ok: true,
+    schema: "openagents.pylon.control.v0.3",
+    sessions: [],
+  }
+  const nextEvents = { ...(current.events ?? {}) }
+  nextEvents[sessionRef] = mergeSessionEventRows(nextEvents[sessionRef] ?? [], event)
+  pushNodeState({ ...current, events: nextEvents })
+}
+
 const sessionEventStreamer = createSessionEventStreamer({
   baseUrl: controlBaseUrl,
   tokenProvider: acceptedControlTokenForCommand,
   onEvent(sessionRef, event) {
-    if (latestNodeState === null) return
-    const nextEvents = { ...(latestNodeState.events ?? {}) }
-    nextEvents[sessionRef] = mergeSessionEventRows(nextEvents[sessionRef] ?? [], event)
-    pushNodeState({ ...latestNodeState, events: nextEvents })
+    mergeStreamedEvent(sessionRef, event)
   },
 })
 

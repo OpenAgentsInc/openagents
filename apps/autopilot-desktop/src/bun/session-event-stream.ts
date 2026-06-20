@@ -71,6 +71,7 @@ function eventRowFromSsePayload(payload: string): SessionEventRow | null {
 
 export type SessionEventStreamer = {
   reconcile(message: NodeStateMessage): void
+  watch(sessionRef: string): void
   stop(): void
 }
 
@@ -83,6 +84,7 @@ export function createSessionEventStreamer(input: {
   const fetchFn = input.fetchFn ?? fetch
   const baseUrl = input.baseUrl.replace(/\/+$/, "")
   const active = new Map<string, AbortController>()
+  const watched = new Set<string>()
   let desired = new Set<string>()
 
   const start = (sessionRef: string): void => {
@@ -133,13 +135,23 @@ export function createSessionEventStreamer(input: {
 
   return {
     reconcile(message) {
-      desired = new Set(sessionRefsToStream(message))
+      for (const session of message.sessions) {
+        if (session.state !== "running") watched.delete(session.sessionRef)
+      }
+      desired = new Set([...sessionRefsToStream(message), ...watched])
       for (const ref of desired) start(ref)
       for (const ref of [...active.keys()]) {
         if (!desired.has(ref)) stopRef(ref)
       }
     },
+    watch(sessionRef) {
+      if (sessionRef.trim() === "") return
+      watched.add(sessionRef)
+      desired.add(sessionRef)
+      start(sessionRef)
+    },
     stop() {
+      watched.clear()
       desired = new Set()
       for (const ref of [...active.keys()]) stopRef(ref)
     },
