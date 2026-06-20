@@ -72,3 +72,26 @@ This explicitly addresses the "runtime invocation" step, bridging repo provision
 
 - Self-serve: `blocker.product_promises.business_coding_quick_win_self_serve_missing` (the remaining gap is orchestrating these deterministic steps into a pipeline).
 - Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
+
+---
+
+# business.coding_quick_win.v1 — machine-checkable self-serve pipeline orchestrator
+
+## What this change adds
+
+A deterministic **self-serve pipeline orchestrator** for a business quick win:
+
+- `apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-pipeline.test.ts`
+
+This module tackles the final remaining gap for the self-serve loop: orchestrating the deterministic step events (scope, provisioning, invocation, delivery, acceptance, payment) into a single verifiable pipeline. It enforces that the events link to each other correctly (e.g., the invocation matches the provisioned worktree, the delivery diff matches the accepted diff) and produces the final `BusinessQuickWinReceipt`.
+
+## Which blocker this advances
+
+`blocker.product_promises.business_coding_quick_win_self_serve_missing` (fully cleared).
+
+By strongly typing and orchestrating the entire lifecycle of a coding quick win into a verifiable sequence, the pipeline itself requires zero human intervention to judge or accept evidence across steps. This explicitly closes the self-serve gap, orchestrating the deterministic steps into a pipeline. 
+
+## What genuinely remains (blockers stay listed)
+
+- Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
