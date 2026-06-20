@@ -96,8 +96,13 @@ describe('training full pipeline program status projection', () => {
       ),
     ).toMatchObject({
       endpointRefs: ['/api/public/training/public-gradient-windows'],
+      evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.test.ts',
+      ]),
       promiseId: 'training.public_gradient_windows.v1',
       receiptState: 'partial_receipt_surface_live',
+      statusLabel: expect.stringContaining('intake admission predicate'),
     })
     expect(
       projection.stages.find(
