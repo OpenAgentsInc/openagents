@@ -37,6 +37,10 @@ import {
   handleTrainingFullPipelineProgramApi,
 } from './training-full-pipeline-program-routes'
 import {
+  TrainingPublicGradientWindowsEndpoint,
+  handleTrainingPublicGradientWindowsApi,
+} from './training-public-gradient-windows-routes'
+import {
   TrainingPostTrainingInstructSftEndpoint,
   handleTrainingPostTrainingInstructSftApi,
 } from './training-post-training-instruct-sft-routes'
@@ -8057,6 +8061,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // claim.
     path: TrainingFullPipelineProgramEndpoint,
     handler: request => handleTrainingFullPipelineProgramApi(request),
+  },
+  {
+    // Public gradient-window status projection (#5523 / DE-5 #5528; promise
+    // training.public_gradient_windows.v1, planned). Read-only regime/receipt
+    // surface: exposes the gate and promoted-window receipt emitter while no
+    // live public window, promotion receipt, settlement, or green claim exists.
+    path: TrainingPublicGradientWindowsEndpoint,
+    handler: request => handleTrainingPublicGradientWindowsApi(request),
   },
   {
     // Training ablation derisking ledger projection (#5523 / DE-5 #5528;

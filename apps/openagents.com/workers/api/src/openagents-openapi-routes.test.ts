@@ -168,6 +168,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/public-gradient-windows',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPublicGradientWindowsStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/ablation-derisking-ledger',
         'get',
       ).operationId,
@@ -585,6 +592,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/verification-challenges/{challengeRef}',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/public-gradient-windows',
         'get',
       ).security,
     ).toEqual([])

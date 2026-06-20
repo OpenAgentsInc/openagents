@@ -130,17 +130,19 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
       'Ablation ledger, one-delta manifest checks, and retained eval reproduction are live; paid ablation dispatch remains missing.',
   },
   {
-    endpointRefs: [],
+    endpointRefs: ['/api/public/training/public-gradient-windows'],
     evidenceRefs: [
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-regime.test.ts',
+      'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.ts',
+      'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
     ],
     promiseId: 'training.public_gradient_windows.v1',
-    receiptState: 'contract_only',
+    receiptState: 'partial_receipt_surface_live',
     role: 'Public gradient-window quarantine, recompute, canary, promotion, and rollback gate.',
     stageId: 'public_gradient_windows',
     statusLabel:
-      'The promotion regime is code-backed, but no public contributor gradient window has been accepted, promoted, paid, or settled.',
+      'The promotion regime, promoted-window receipt emitter, and public status projection are code-backed, but no public contributor gradient window has been accepted, promoted, paid, or settled.',
   },
   {
     endpointRefs: [
