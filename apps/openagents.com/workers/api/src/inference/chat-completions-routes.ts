@@ -29,6 +29,10 @@ import {
 } from './provider-adapter'
 import { type MeteringHook, stubMeteringHook } from './metering-hook'
 import { type FundingKind } from './pricing'
+import {
+  type SupplyLaneArming,
+  resolveNamedModelServability,
+} from './model-serving-policy'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { type DispatchDeps, dispatchWithOverflow } from './model-router'
 import {
@@ -117,6 +121,18 @@ export type ChatCompletionsDeps = Readonly<{
   // When present, the route dispatches across the plan with bounded-backoff
   // overflow on retryable failures. The Worker wires this to `selectAdapterPlan`.
   lanePlan?: ModelLanePlanner
+  // PROVIDER SERVING POLICY (blocker.product_promises.public_paid_model_gateway_missing
+  // on api.hosted_gemini.v1). The SAME presence-derived lane arming the public
+  // catalog (`/v1/models`) and the pre-purchase quote (`/v1/quote`) are gated on.
+  // When supplied, a request for a KNOWN model whose supply lane is NOT armed is
+  // rejected with a clean `model_unavailable` (400) BEFORE any account-state gate
+  // or provider dispatch — so the gateway serves exactly what it advertises and
+  // quotes, instead of accepting the request and failing deep at dispatch with a
+  // generic `provider_error` (502). An UNKNOWN model id is not gated (the
+  // estimator prices it at the conservative fallback rate, consistent with
+  // `/v1/quote`). Omitting it preserves the prior serve-everything behaviour.
+  // Presence-only; no secret value is read here.
+  laneArming?: SupplyLaneArming
   // Routing overflow knobs (backoff + injected sleep) forwarded to
   // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
   // never waits. Ignored unless `lanePlan` is supplied.
@@ -356,6 +372,25 @@ export const handleChatCompletions = (
     // the free-tier default (Gemini 3.5 Flash). Used for premium gating,
     // routing, response echo, and metering.
     const requestedModel = resolveRequestedModel(body.model)
+
+    // PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing). Reject a
+    // KNOWN model whose supply lane is NOT armed with the SAME clean
+    // `model_unavailable` the catalog hides and the quote 404s — keeping
+    // advertise == quote == serve. Checked BEFORE the account-state gates
+    // (premium / balance / spend-cap) and before dispatch, because servability is
+    // a property of the model + supply, independent of the account: an unservable
+    // model is never the customer's balance/allowlist problem. An UNKNOWN model id
+    // (servability `undefined`) falls through unchanged, as on `/v1/quote`. Open
+    // (no-op) when `laneArming` is omitted.
+    if (
+      deps.laneArming !== undefined &&
+      resolveNamedModelServability(requestedModel, deps.laneArming) === false
+    ) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: requestedModel },
+        { status: 400 },
+      )
+    }
 
     // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Premium models
     // require the account's resolved OWNER identity to be allowlisted. Checked
