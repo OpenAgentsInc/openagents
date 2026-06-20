@@ -7,6 +7,7 @@ import {
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
 import { TassadarGradientWindowIntakeSchemaVersion } from './tassadar-gradient-window-intake'
+import { TassadarGradientWindowPromotionLineageSchemaVersion } from './tassadar-gradient-window-promotion-lineage'
 import { TassadarGradientWindowPromotionReceiptSchemaVersion } from './tassadar-gradient-window-promotion-receipt'
 import { TassadarGradientWindowQuarantineRecordSchemaVersion } from './tassadar-gradient-window-quarantine-record'
 
@@ -73,6 +74,10 @@ export class TrainingPublicGradientWindowsProjection extends S.Class<TrainingPub
   receiptSurface: S.Struct({
     emittedReceiptCount: S.Int,
     expectedReceiptRefPattern: S.String,
+    promotionLineageGuardAvailable: S.Boolean,
+    promotionLineageSchemaVersion: S.Literal(
+      TassadarGradientWindowPromotionLineageSchemaVersion,
+    ),
     receiptRouteAvailable: S.Boolean,
     receiptSchemaVersion: S.Literal(
       TassadarGradientWindowPromotionReceiptSchemaVersion,
@@ -150,12 +155,17 @@ export const projectTrainingPublicGradientWindows = (
       emittedReceiptCount: 0,
       expectedReceiptRefPattern:
         'receipt.public.tassadar_gradient_window.promoted.{windowRef}',
+      promotionLineageGuardAvailable: true,
+      promotionLineageSchemaVersion:
+        TassadarGradientWindowPromotionLineageSchemaVersion,
       receiptRouteAvailable: false,
       receiptSchemaVersion:
         TassadarGradientWindowPromotionReceiptSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.ts',
         'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.test.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-lineage.ts',
+        'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-lineage.test.ts',
       ],
     },
     registryVersion: PublicProductPromisesVersion,
@@ -175,6 +185,7 @@ export const projectTrainingPublicGradientWindows = (
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-quarantine-record.ts',
       'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-receipt.ts',
+      'apps/openagents.com/workers/api/src/tassadar-gradient-window-promotion-lineage.ts',
       'apps/openagents.com/workers/api/src/training-public-gradient-windows.ts',
     ],
     stageRefs: [

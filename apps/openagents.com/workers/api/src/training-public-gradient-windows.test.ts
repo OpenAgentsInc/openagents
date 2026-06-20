@@ -87,6 +87,9 @@ describe('training public gradient windows projection', () => {
     })
     expect(projection.receiptSurface).toMatchObject({
       emittedReceiptCount: 0,
+      promotionLineageGuardAvailable: true,
+      promotionLineageSchemaVersion:
+        'openagents.training.public_gradient_window.promotion_lineage.v1',
       receiptRouteAvailable: false,
       receiptSchemaVersion:
         'openagents.training.public_gradient_window.promotion_receipt.v1',
