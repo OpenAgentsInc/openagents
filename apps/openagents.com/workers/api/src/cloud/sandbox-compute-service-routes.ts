@@ -155,7 +155,7 @@ export const stubSandboxAdapter: SandboxRuntimeAdapter = {
   // The stub has no persistence: a provisioned sandbox is not retained, so a
   // later status read resolves to undefined (the route maps that to 404).
   // #5517's real adapter reads the isolated-session substrate.
-  get: () => Effect.succeed(undefined),
+  get: () => Effect.sync((): Sandbox | undefined => undefined),
 }
 
 // Public-safe primitive tag for sandbox charges, receipt refs, and metering

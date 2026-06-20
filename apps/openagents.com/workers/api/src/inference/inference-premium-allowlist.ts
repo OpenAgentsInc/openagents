@@ -33,6 +33,18 @@ import {
   resolveOwnerKey,
 } from './inference-owner-identity'
 
+class PremiumAllowlistPersistenceError extends Error {
+  readonly _tag = 'PremiumAllowlistPersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'PremiumAllowlistPersistenceError'
+  }
+}
+
+const premiumAllowlistPersistenceError = (error: unknown) =>
+  new PremiumAllowlistPersistenceError(error)
+
 // ----------------------------------------------------------------------------
 // Premium classification (bounded model-class set)
 // ----------------------------------------------------------------------------
@@ -180,8 +192,7 @@ export const grantPremiumAccess = (
     }
     const nowIso = (input.nowIso ?? currentIsoTimestamp)()
     return yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: premiumAllowlistPersistenceError,
       try: async () => {
         await db
           .prepare(
@@ -215,8 +226,7 @@ export const revokePremiumAccess = (
   ownerKey: string,
 ): Effect.Effect<boolean> =>
   Effect.tryPromise({
-    catch: (error: unknown) =>
-      error instanceof Error ? error : new Error(String(error)),
+    catch: premiumAllowlistPersistenceError,
     try: async () => {
       await db
         .prepare(`DELETE FROM inference_premium_allowlist WHERE owner_key = ?`)

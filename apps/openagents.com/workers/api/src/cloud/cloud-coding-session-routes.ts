@@ -243,7 +243,7 @@ export const STUB_CLOUD_CODING_ADAPTER_ID = 'stub-cloud-coding'
 // EPIC build replaces dispatch to this with the real cloud control-plane adapter.
 export const stubCloudCodingAdapter: CloudCodingRuntimeAdapter = {
   id: STUB_CLOUD_CODING_ADAPTER_ID,
-  get: () => Effect.succeed(undefined),
+  get: () => Effect.sync((): CloudCodingSession | undefined => undefined),
   launch: ({ sessionId, accountRef, request, lane }) =>
     Effect.sync(
       (): CloudCodingSession => ({
