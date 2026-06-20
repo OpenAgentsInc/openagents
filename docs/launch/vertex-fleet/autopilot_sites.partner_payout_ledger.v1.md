@@ -121,18 +121,51 @@ could land in storage and later be read back and credited. Now:
   seed+readback, idempotent no-second-insert, referral/self/unsafe-ref rejection
   before storage). 25 tests pass across the two files.
 
+### Follow-up (this run): the agreement writer now has an operator HTTP surface
+
+The writer (`recordPartnerAgreement`) and reader
+(`readActivePartnerAgreementsForCustomer`) shipped and were tested at the storage
+layer, but neither had an HTTP caller — so the only way to create the EXPLICIT
+`partner_agreements` rows the attribution policy depends on was a raw SQL insert,
+and operators had no sanctioned path to seed one. Without an agreement, no
+partner is ever attributed (the no-fallback rule), so this was the load-bearing
+call-site gap on the code side of the blocker.
+
+- `apps/openagents.com/workers/api/src/partner-agreement-routes.ts` — an
+  admin-gated route module modeled on `partner-payout-ledger-routes.ts`:
+  - `POST /api/operator/partners/agreements` decodes a seed and calls
+    `recordPartnerAgreement` (idempotent on `agreementRef`; a policy-violating
+    seed — referral role, self-agreement, inverted window — is a 422 carrying the
+    writer's reason; the writer remains the single source of truth for the
+    attribution invariants). `role` accepts the full `PartnerPayoutRole` set so a
+    `referral` seed yields the informative 422, not a generic schema error.
+  - `GET /api/operator/partners/agreements?customerUserId=<id>` calls
+    `readActivePartnerAgreementsForCustomer` for read-back verification.
+  - Returns an operator projection that omits `customerUserId` (mirrors the
+    `PartnerAgreement` DTO). This is NOT the public count-only projection surface.
+  - Like the ledger routes, it does NOT touch `index.ts` / `worker-routes.ts`;
+    coordinator wiring notes are in the module header.
+- `apps/openagents.com/workers/api/src/partner-agreement-routes.test.ts` — 12
+  tests (seed+project, idempotent replay, referral/self/inverted-window 422,
+  malformed-body 400, create/list 401, list-by-customer, missing-query 400,
+  route passthrough, 405 on unsupported method).
+
+The agreement WRITER is now reachable end-to-end; `recordPartnerPayoutForPaidEvent`
+(the paid-event feed) still awaits a production caller (see below).
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
   `PARTNER_PAYOUT_ROLE_POLICY` and on this attribution model (caveat
   `caveat.public.partner_payouts.partner_policy_not_owner_signed`). This is a
   product decision and is the load-bearing remainder of this blocker.
-- **Call-site wiring**: `recordPartnerPayoutForPaidEvent` and
-  `recordPartnerAgreement` now exist but have no production callers yet — a real
-  paid-event source (e.g. the Stripe/credit webhook path that already feeds
-  `recordReferralPayoutForPaidEvent`) still needs to invoke the payout feed, and
-  an operator/admin path still needs to call `recordPartnerAgreement` to seed
-  real `partner_agreements` rows.
+- **Call-site wiring**: `recordPartnerAgreement` now has an admin HTTP surface
+  (`partner-agreement-routes.ts`), but like the ledger routes it is NOT yet
+  chained into `index.ts` / `worker-routes.ts` — coordinator integration is
+  still required to serve it. `recordPartnerPayoutForPaidEvent` still has no
+  production caller: a real paid-event source (e.g. the Stripe/credit webhook
+  path that already feeds `recordReferralPayoutForPaidEvent`) still needs to
+  invoke the payout feed.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 
