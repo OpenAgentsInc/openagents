@@ -105,6 +105,23 @@ This still does **not** clear `standby_dispatch_missing`: there is no live
 heartbeat/vacancy telemetry feed and no receipt-backed standby promotion in a
 real run.
 
+## 2026-06-20 public marathon status projection
+
+`GET /api/public/training/marathon-operations` is the public-safe, live-at-read
+status projection for this promise. It exposes the durable-checkpoint seal
+predicate, the standby-dispatch predicate/preflight route, and the curtailment
+drill gate in one payload.
+
+The route is status-only. It reports the existing contract surfaces as visible,
+but keeps `durableCheckpointRemoteReadbackReceiptAvailable=false`,
+`liveStandbyPromotionReceiptAvailable=false`,
+`curtailmentDrillReceiptAvailable=false`, `marathonCloseoutReceiptAvailable=false`,
+and `greenGateSatisfied=false`.
+
+This clears no blocker. `durable_checkpoint_seal_missing`,
+`standby_dispatch_missing`, and `curtailment_drill_missing` all remain open until
+real receipts exist.
+
 ### What genuinely remains for the standby blocker
 
 - A real standby promoted into a live run (a recorded, receipt-backed live

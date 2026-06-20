@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.40')
+    expect(decoded.version).toBe('2026-06-20.41')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -265,6 +265,8 @@ describe('public product promises document', () => {
     // green remains exactly 24.
     // The 2026-06-20.36 marathon pass wires standby-dispatch preflight but no
     // receipt-backed live standby promotion exists, so green remains exactly 24.
+    // The 2026-06-20.41 marathon pass adds a public status projection but keeps
+    // durable checkpoint, standby, and curtailment receipt blockers active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -391,6 +393,9 @@ describe('public product promises document', () => {
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+            'route:/api/public/training/marathon-operations',
+            'apps/openagents.com/workers/api/src/training-marathon-operations.ts',
+            'apps/openagents.com/workers/api/src/training-marathon-operations.test.ts',
             'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
             'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
             'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
@@ -403,9 +408,11 @@ describe('public product promises document', () => {
             'blocker.product_promises.standby_dispatch_missing',
             'blocker.product_promises.curtailment_drill_missing',
           ],
-          safeCopy: expect.stringContaining('standby-dispatch-preflight'),
+          safeCopy: expect.stringContaining(
+            '/api/public/training/marathon-operations',
+          ),
           verification: expect.stringContaining(
-            'no receipt-backed live standby promotion',
+            'durableCheckpointRemoteReadbackReceiptAvailable=false',
           ),
         }),
         expect.objectContaining({
@@ -1210,12 +1217,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.40', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.41', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.40',
+      expectedVersion: '2026-06-20.41',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.40',
+      servedVersion: '2026-06-20.41',
       status: 'ready',
     })
     expect(
@@ -1225,7 +1232,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.40',
+      servedVersion: '2026-06-20.41',
       status: 'blocked',
     })
   })

@@ -37,6 +37,10 @@ import {
   handleTrainingFullPipelineProgramApi,
 } from './training-full-pipeline-program-routes'
 import {
+  TrainingMarathonOperationsEndpoint,
+  handleTrainingMarathonOperationsApi,
+} from './training-marathon-operations-routes'
+import {
   TrainingModelLadderRungsEndpoint,
   handleTrainingModelLadderRungsApi,
 } from './training-model-ladder-rungs-routes'
@@ -8069,6 +8073,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // claim.
     path: TrainingFullPipelineProgramEndpoint,
     handler: request => handleTrainingFullPipelineProgramApi(request),
+  },
+  {
+    // Marathon-operations status projection (#5523 / DE-5 #5528; promise
+    // training.marathon_operations.v1, planned). Read-only status surface:
+    // exposes durable-seal and standby predicates while real checkpoint
+    // read-back, standby-promotion, and curtailment-drill receipts remain false.
+    path: TrainingMarathonOperationsEndpoint,
+    handler: request => handleTrainingMarathonOperationsApi(request),
   },
   {
     // Model-ladder rung status projection (#5523 / DE-5 #5528; promise

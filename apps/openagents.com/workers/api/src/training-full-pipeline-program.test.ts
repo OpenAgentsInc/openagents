@@ -66,8 +66,8 @@ describe('training full pipeline program status projection', () => {
     })
     expect(projection.stageSummary).toMatchObject({
       greenReadyOwnerGatedStageCount: 1,
-      liveEndpointCount: 10,
-      partialReceiptSurfaceCount: 8,
+      liveEndpointCount: 11,
+      partialReceiptSurfaceCount: 9,
       stageCount: 11,
     })
     expect(projection.stages.map(stage => stage.stageId)).toEqual([
@@ -97,6 +97,13 @@ describe('training full pipeline program status projection', () => {
     ).toMatchObject({
       endpointRefs: ['/api/public/training/public-gradient-windows'],
       promiseId: 'training.public_gradient_windows.v1',
+      receiptState: 'partial_receipt_surface_live',
+    })
+    expect(
+      projection.stages.find(stage => stage.stageId === 'marathon_operations'),
+    ).toMatchObject({
+      endpointRefs: ['/api/public/training/marathon-operations'],
+      promiseId: 'training.marathon_operations.v1',
       receiptState: 'partial_receipt_surface_live',
     })
     expect(
