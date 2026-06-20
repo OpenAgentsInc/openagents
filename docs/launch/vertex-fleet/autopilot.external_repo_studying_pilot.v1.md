@@ -518,3 +518,67 @@ dereferenceable closeout receipt and owner sign-off per
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): data-subject request (DSR) preflight
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+Section 6 ("Data subject rights") of the published privacy policy
+(`docs/legal/external-repo-studying-privacy-policy.v0.md`) PROMISES that a
+customer may request access to, rectification of, or deletion of artifacts
+derived from their authorized study, and may withdraw authorization. Until now
+that promise was published text with NO operational control surface: nothing
+intook or evaluated such a request, and nothing tied a request to a KNOWN
+published policy. A privacy policy that grants data-subject rights but cannot
+evaluate a request is incomplete. This change adds that missing intake/decision
+layer.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-data-subject-request.ts`
+  - `buildOpenAgentsExternalRepoStudyDataSubjectRequestPreflight(...)`
+  - Schema `openagents.external_repo_study_data_subject_request_preflight.v0`,
+    decoded through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `preflightHash`.
+  - Evaluates a data-subject request expressed as **refs/enums only** (request
+    ref, an OPAQUE subject ref — never a PII value, request type from the closed
+    set `access | rectification | erasure | authorization_withdrawal`,
+    customer-authorization ref, governing policy ref). No PII value, subject
+    identity, repository content, or handler notes cross the boundary
+    (`sourceBoundary = "customer_refs_withheld"`).
+  - Reuses `isPublishedExternalRepoStudyPrivacyPolicyRef` so the request's
+    `policyRef` must match a KNOWN published version — the same forgeable-string
+    seam the review↔policy binding closed. Preflight gates: policy published,
+    request ref present, subject ref present, customer authorization present,
+    request type supported. Derives an `acknowledgementRef` ONLY when admitted;
+    a blocked request derives `null`.
+  - **Inert by construction**: `requestHonored`, `dataExported`, `dataErased`,
+    `authorizationWithdrawn`, and `effectsApplied` are ALWAYS false;
+    `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
+    are ALWAYS false. The flag-gated seam
+    (`EXTERNAL_REPO_STUDY_DATA_SUBJECT_REQUEST_ENABLED`, default OFF) computes
+    `wouldFulfillWhenArmed` (armed + handler sign-off + preflight passed) but
+    never exports, erases, or withdraws anything. Refuses
+    `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-data-subject-request.test.ts`
+  — 10 passing tests (admitted-inert, forged-policy / missing-request-ref /
+  missing-subject / missing-auth blocked, distinct ack ref per request type,
+  armed-ready-still-inert, armed-without-signoff blocked, OpenAgents rejection,
+  no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+This preflight is the *intake/decision* layer only. The privacy-policy blocker
+stays listed because it still requires, all owner/legal-gated and out of scope
+here: a real human/legal DSR fulfilment process backed by durable,
+access-controlled storage that can actually export or erase derived artifacts;
+legal/owner ratification of the policy text; and an owner-signed armed run with a
+dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
+remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
