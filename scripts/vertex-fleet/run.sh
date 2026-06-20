@@ -70,7 +70,7 @@ for p in "${PROMISE_IDS[@]}"; do echo "      - $p" >&2; done
 
 run_one() {
   local promise="$1"
-  local safe; safe="$(echo "$promise" | tr -c 'a-zA-Z0-9._-' '_')"
+  local safe; safe="$(printf '%s' "$promise" | tr -c 'a-zA-Z0-9._-' '_')"
   local brief="$OUT_DIR/${safe}.brief.txt"
   local wargs=(--promise "$promise" --brief-file "$brief" --model "$MODEL")
   [[ "$DRY_RUN" == "1" ]] && wargs+=(--dry-run)

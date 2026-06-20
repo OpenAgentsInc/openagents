@@ -54,7 +54,7 @@ fi
 
 export ANTHROPIC_MODEL="$MODEL"
 
-SAFE="$(echo "$PROMISE" | tr -c 'a-zA-Z0-9._-' '_')"
+SAFE="$(printf '%s' "$PROMISE" | tr -c 'a-zA-Z0-9._-' '_')"
 WORKTREE="/tmp/vf-${SAFE}"
 BRANCH="vertex-fleet/${SAFE}"
 LOG_DIR="/tmp/vf-logs"
