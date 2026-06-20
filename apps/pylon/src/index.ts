@@ -4241,6 +4241,24 @@ async function main() {
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
+      if (command === "earnings") {
+        const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+        if (!baseUrl) {
+          throw new Error("provider earnings requires --base-url or PYLON_OPENAGENTS_BASE_URL")
+        }
+        const url = new URL("/api/public/labor-earnings", baseUrl)
+        url.searchParams.set("providerRef", state.identity.pylonRef)
+        if (options.limit) {
+          url.searchParams.set("limit", options.limit as string)
+        }
+        const response = await fetch(url.toString())
+        if (!response.ok) {
+          throw new Error(`labor earnings fetch failed: ${response.status} ${await response.text()}`)
+        }
+        const result = await response.json()
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+        return
+      }
       if (command === "go-offline" || command === "offline") {
         const nextRuntime = {
           ...state.runtime,
