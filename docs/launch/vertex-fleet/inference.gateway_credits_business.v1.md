@@ -237,3 +237,49 @@ the reusable core a future `POST /v1/quote`-style surface or price page reads).
 This does NOT by itself let a customer buy inference — the paid-credits funding
 loop is still secrets-gated — so the blocker stays listed. No promise state
 changed; any future green flip remains receipt-first and owner-signed.
+
+## `POST /v1/quote` route (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The previous run built the pure pre-purchase estimator (`cost-estimate.ts`) but
+left it un-wired: "No route is wired yet … the estimator is the reusable core a
+future `POST /v1/quote`-style surface or price page reads." This run adds exactly
+that surface — the thin, callable HTTP route over the existing estimator so a
+credits customer can actually GET a quote before funding a balance:
+
+- `apps/openagents.com/workers/api/src/inference/quote-routes.ts`
+  (+ `quote-routes.test.ts`): `handleQuote` — `POST /v1/quote`. It validates the
+  body (Effect Schema; `model` + `promptTokens` + `completionTokens` required,
+  `fundingKind` constrained to `card | bitcoin` and defaulted to the conservative
+  card rail, `cachedPromptTokens`/`batch` optional) and delegates to
+  `estimateRequestCost`, returning the exact credit/USD/msat charge the metering
+  hook WOULD settle, with `isEstimate: true`. 9 tests pass (inert 404, 405, 400
+  invalid-json / invalid-request / out-of-range fundingKind, byte-for-byte parity
+  with the pure estimator, card default, Bitcoin-saving surface, sloppy-token
+  clamp).
+- `index.ts`: registers `/v1/quote`, gated by the SAME `INFERENCE_GATEWAY_ENABLED`
+  flag as `/v1/chat/completions` and `/v1/models`. Public + unauthenticated like
+  `/v1/models`: it reads only published catalog prices (the estimator omits our
+  cost basis / margin), moves no money, and writes no ledger row.
+
+The route is a thin pass-through — no explicit `Response`-typed surface — so the
+zero-debt Worker Response-return budget is UNCHANGED (96/96).
+
+RECEIPT-FIRST DISCIPLINE PRESERVED: a quote is an estimate, never a receipt; the
+real charge is still metered receipt-first from the provider's actual `usage`
+object. This does NOT by itself let a customer buy inference — the paid-credits
+funding loop is still secrets-gated — so the blocker stays listed. No promise
+state changed; any future green flip remains receipt-first and owner-signed.
+
+## What remains (both blockers, unchanged)
+
+- `inference_card_credit_inference_spend_receipt_missing`: still no real
+  card→credit purchase on prod (no Stripe secrets), so no dereferenceable
+  end-to-end card→credit→inference-spend receipt exists yet. The assembler +
+  provenance binding are wired in source and waiting on a real upstream purchase.
+- `public_paid_model_gateway_missing`: discovery (`/v1/models`,
+  `/v1/models/{model}`) and now pre-purchase quoting (`/v1/quote`) are live
+  (flag-gated), but a customer still cannot FUND a balance with a card or Bitcoin
+  in prod, so the paid gateway loop is not closed.
