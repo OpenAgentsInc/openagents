@@ -34,6 +34,18 @@ import {
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
 
+class CloudMeteringPersistenceError extends Error {
+  readonly _tag = 'CloudMeteringPersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'CloudMeteringPersistenceError'
+  }
+}
+
+const cloudMeteringPersistenceError = (error: unknown) =>
+  new CloudMeteringPersistenceError(error)
+
 // A single billable charge for a cloud-primitive unit of work (a finished
 // fine-tune job, a closed sandbox rental). `chargeMsat` is the receipt-first
 // amount computed by the caller's pure pricing function from REAL runtime usage;
@@ -144,8 +156,7 @@ export const settleCloudPrimitiveCharge = (
     const plan = cloudChargePayInPlan(charge)
 
     const settle = yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: cloudMeteringPersistenceError,
       try: () =>
         runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
     }).pipe(
@@ -168,8 +179,7 @@ export const settleCloudPrimitiveCharge = (
     // The batch failed. Re-read: if the charge row already exists, this was an
     // idempotent duplicate (already charged) — report metered, no re-charge.
     const already = yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: cloudMeteringPersistenceError,
       try: () =>
         deps.db
           .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1')

@@ -40,6 +40,13 @@ export type ComposerTip = (input: {
   | { error: string }
 >
 
+type ComposerMindComplete = typeof artanisMindComplete
+
+type SuccessfulComposerTip = Exclude<
+  Awaited<ReturnType<ComposerTip>>,
+  { error: string }
+>
+
 export type ComposerTickOutcome = Readonly<{
   considered: number
   responded: number
@@ -72,6 +79,7 @@ export const runArtanisComposerTick = async (
     gatewayToken?: string | undefined
     forumPost: ComposerForumPost
     tip: ComposerTip
+    mindComplete?: ComposerMindComplete | undefined
     artanisActorRef: string
     nowIso: string
   }>,
@@ -134,6 +142,7 @@ export const runArtanisComposerTick = async (
   let responded = 0
   let tipped = 0
   let blocked = 0
+  const mindComplete = deps.mindComplete ?? artanisMindComplete
 
   for (const proposal of proposals) {
     const topicId = String(proposal.topic_id)
@@ -147,13 +156,13 @@ export const runArtanisComposerTick = async (
       },
     }
 
-    const mindResult = await artanisMindComplete({
+    const mindResult = await mindComplete({
       apiKey: deps.geminiApiKey,
       ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
         ? {}
         : { gatewayToken: deps.gatewayToken }),
       prompt: [
-        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
+        'Compose a reply to this Pylon contributor question. Answer the concrete operational question first, using only the question body and grounding JSON. Do not recap product-promise registry entries unless they directly answer the question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text, complete sentences only; shorten by removing whole sentences rather than emitting clipped fragments. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
         `GROUNDING: ${JSON.stringify(grounding)}`,
       ].join('\n\n'),
       system:
@@ -179,9 +188,26 @@ export const runArtanisComposerTick = async (
 
     const tipReceiptRef = artanisResponderTipReceiptRef(topicId)
     const shouldTip = tipBudgetLeftSat >= ARTANIS_TIP_AMOUNT_SAT
-    const replyBodyText = shouldTip
-      ? `${mindResult.text}\n\nResponder tip receipt: ${tipReceiptRef}`
-      : mindResult.text
+    let successfulTip: SuccessfulComposerTip | null = null
+
+    if (shouldTip) {
+      const tipResult = await deps.tip({
+        amountSat: ARTANIS_TIP_AMOUNT_SAT,
+        idempotencyKey: `artanis-responder-tip:${topicId}`,
+        postId: String(proposal.first_post_id),
+        publicReceiptRef: tipReceiptRef,
+      })
+
+      if (!('error' in tipResult)) {
+        successfulTip = tipResult
+        tipBudgetLeftSat -= ARTANIS_TIP_AMOUNT_SAT
+      }
+    }
+
+    const replyBodyText =
+      successfulTip === null
+        ? mindResult.text
+        : `${mindResult.text}\n\nResponder tip receipt: ${successfulTip.receiptRef}`
 
     const posted = await deps.forumPost({
       bodyText: replyBodyText,
@@ -200,6 +226,7 @@ export const runArtanisComposerTick = async (
         .bind(
           JSON.stringify({
             reason: `forum_post_failed:${posted.error}`.slice(0, 200),
+            tipReceiptRef: successfulTip?.receiptRef ?? null,
           }),
           deps.nowIso,
           actionId,
@@ -227,39 +254,28 @@ export const runArtanisComposerTick = async (
       .bind(deps.nowIso.slice(0, 10), deps.nowIso.slice(0, 10), deps.nowIso)
       .run()
 
-    // Tip the question post under the budget; failure to tip never blocks
-    // the response.
-    if (shouldTip) {
-      const tipResult = await deps.tip({
-        amountSat: ARTANIS_TIP_AMOUNT_SAT,
-        idempotencyKey: `artanis-responder-tip:${topicId}`,
-        postId: String(proposal.first_post_id),
-        publicReceiptRef: tipReceiptRef,
-      })
-      if (!('error' in tipResult)) {
-        tipped += 1
-        tipBudgetLeftSat -= ARTANIS_TIP_AMOUNT_SAT
-        await db
-          .prepare(
-            `UPDATE artanis_responder_actions
-             SET state = 'tipped',
-                 tip_receipt_ref = ?,
-                 tip_pay_in_id = ?,
-                 tip_ladder_rung = ?,
-                 tip_ladder_reason = ?,
-                 updated_at = ?
-             WHERE id = ?`,
-          )
-          .bind(
-            tipResult.receiptRef,
-            tipResult.payInId,
-            tipResult.rung,
-            tipResult.ladderReason,
-            deps.nowIso,
-            actionId,
-          )
-          .run()
-      }
+    if (successfulTip !== null) {
+      tipped += 1
+      await db
+        .prepare(
+          `UPDATE artanis_responder_actions
+           SET state = 'tipped',
+               tip_receipt_ref = ?,
+               tip_pay_in_id = ?,
+               tip_ladder_rung = ?,
+               tip_ladder_reason = ?,
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          successfulTip.receiptRef,
+          successfulTip.payInId,
+          successfulTip.rung,
+          successfulTip.ladderReason,
+          deps.nowIso,
+          actionId,
+        )
+        .run()
     }
   }
 
@@ -280,6 +296,7 @@ export const runArtanisComposerScheduled = (
     gatewayToken?: string | undefined
     forumPost: ComposerForumPost
     tip: ComposerTip
+    mindComplete?: ComposerMindComplete | undefined
     artanisActorRef: string
     nowIso: string
   }>,

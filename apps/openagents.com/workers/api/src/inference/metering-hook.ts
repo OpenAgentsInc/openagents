@@ -47,6 +47,18 @@ import {
   servingContributorCutMsat,
 } from './serving-node-payout'
 
+class InferenceMeteringPersistenceError extends Error {
+  readonly _tag = 'InferenceMeteringPersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'InferenceMeteringPersistenceError'
+  }
+}
+
+const inferenceMeteringPersistenceError = (error: unknown) =>
+  new InferenceMeteringPersistenceError(error)
+
 // Context handed to the metering hook when a request completes.
 export type MeteringContext = Readonly<{
   // Authenticated account ref (e.g. "agent:<id>"), the principal whose balance
@@ -346,8 +358,7 @@ export const makeLedgerMeteringHook = (
       // Both surface as a caught batch failure; we classify by re-reading whether
       // the charge row already exists.
       const settle = yield* Effect.tryPromise({
-        catch: (error: unknown) =>
-          error instanceof Error ? error : new Error(String(error)),
+        catch: inferenceMeteringPersistenceError,
         try: () =>
           runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
       }).pipe(
@@ -378,8 +389,7 @@ export const makeLedgerMeteringHook = (
       // The batch failed. Re-read: if the charge row already exists, this was an
       // idempotent duplicate (already charged) — report metered, no re-charge.
       const already = yield* Effect.tryPromise({
-        catch: (error: unknown) =>
-          error instanceof Error ? error : new Error(String(error)),
+        catch: inferenceMeteringPersistenceError,
         try: () =>
           deps.db
             .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1')

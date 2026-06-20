@@ -61,6 +61,18 @@ import {
   resolveOwnerKey,
 } from './inference-owner-identity'
 
+class FreeAllowancePersistenceError extends Error {
+  readonly _tag = 'FreeAllowancePersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'FreeAllowancePersistenceError'
+  }
+}
+
+const freeAllowancePersistenceError = (error: unknown) =>
+  new FreeAllowancePersistenceError(error)
+
 // ----------------------------------------------------------------------------
 // Tunable constants (all free-tier thresholds in ONE place)
 // ----------------------------------------------------------------------------
@@ -409,8 +421,7 @@ export const accrueEarnedAllowance = (
     const eventRef = earnedAllowanceEventRef(input.kind, input.sourceRef)
     const amount = earnedAllowanceForKind(input.kind)
     const recorded = yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: freeAllowancePersistenceError,
       try: async () => {
         // Read current earned total so the ceiling caps the new accrual without
         // a non-portable SQL MIN-on-update expression.
@@ -516,8 +527,7 @@ export const withFreeAllowance = (
       const chargeUsdMicros = usdToMicrosCeil(priced.grossChargeUsd)
 
       const gated = yield* Effect.tryPromise({
-        catch: (error: unknown) =>
-          error instanceof Error ? error : new Error(String(error)),
+        catch: freeAllowancePersistenceError,
         try: async () => {
           const identity = await deps.resolveOwnerIdentity(context.accountRef)
           const ownerKey = resolveOwnerKey(context.accountRef, identity)

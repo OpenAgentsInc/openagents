@@ -40,6 +40,18 @@ import {
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { AgentRateLimitPolicy } from '../agent-rate-limit-policy'
 
+class InferenceClawbackPersistenceError extends Error {
+  readonly _tag = 'InferenceClawbackPersistenceError'
+
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause))
+    this.name = 'InferenceClawbackPersistenceError'
+  }
+}
+
+const inferenceClawbackPersistenceError = (error: unknown) =>
+  new InferenceClawbackPersistenceError(error)
+
 // ----------------------------------------------------------------------------
 // 1. Per-customer rate / fair-share limits
 // ----------------------------------------------------------------------------
@@ -613,8 +625,7 @@ export const clawbackInferenceCredits = (
     })
 
     const settle = yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: inferenceClawbackPersistenceError,
       try: () =>
         runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
     }).pipe(
@@ -640,8 +651,7 @@ export const clawbackInferenceCredits = (
     // Batch failed. Re-read: an existing clawback row means an idempotent replay
     // (already clawed back) — report success, no re-claw.
     const already = yield* Effect.tryPromise({
-      catch: (error: unknown) =>
-        error instanceof Error ? error : new Error(String(error)),
+      catch: inferenceClawbackPersistenceError,
       try: () =>
         deps.db
           .prepare('SELECT id FROM pay_ins WHERE idempotency_key = ? LIMIT 1')
