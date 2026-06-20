@@ -8342,7 +8342,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // order -> dispatch -> deliver -> settle) with a settlement receipt seam that
     // is flag-gated INERT and owner-gated; it makes no live-sale claim.
     // GET lists flows (read-only); GET ?receiptRef= dereferences a published
-    // settlement receipt (empty store in prod => receipt:null, INERT). POST is
+    // settlement receipt (empty store in prod => receipt:null, INERT);
+    // GET ?view=real-sale-claims surfaces the claim-upgrade verdict over
+    // published evidence bundles (empty store in prod => nothing substantiated,
+    // blocker surfaced, never flips a promise). POST is
     // the SELF-SERVE order-planning path: a buyer/agent posts a listing and
     // orders it in one request and gets back the typed `ordered`-stage flow plan
     // with no operator staging (still INERT — dispatches nothing, debits nothing,
