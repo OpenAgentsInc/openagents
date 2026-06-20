@@ -8040,8 +8040,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     // Training ablation derisking ledger projection (#5523 / DE-5 #5528;
     // promise training.ablation_system.v1, planned). Read-only candidate
-    // ledger: clears the projection + one-delta harness blockers while eval
-    // reproduction, paid dispatch, and verdict gates remain false. No ablation
+    // ledger: clears the projection + one-delta harness + eval-reproduction
+    // blockers while paid dispatch and verdict gates remain false. No ablation
     // execution, spend, settlement, model promotion, or green claim.
     path: TrainingAblationDeriskingLedgerEndpoint,
     handler: request => handleTrainingAblationDeriskingLedgerApi(request),

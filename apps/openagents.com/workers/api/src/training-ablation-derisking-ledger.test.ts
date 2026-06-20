@@ -43,7 +43,7 @@ describe('training ablation derisking ledger projection', () => {
     })
     expect(projection.gate).toMatchObject({
       ablationHarnessAvailable: true,
-      evalSuiteReproductionAvailable: false,
+      evalSuiteReproductionAvailable: true,
       greenGateSatisfied: false,
       paidAblationDispatchAvailable: false,
       publicProjectionAvailable: true,
@@ -54,25 +54,48 @@ describe('training ablation derisking ledger projection', () => {
     expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.ablation_harness_missing',
     )
-    expect(projection.gate.remainingBlockerRefs).toEqual([
+    expect(projection.gate.clearsBlockerRefs).toContain(
       'blocker.product_promises.eval_suite_reproduction_missing',
+    )
+    expect(projection.gate.remainingBlockerRefs).toEqual([
       'blocker.product_promises.paid_ablation_dispatch_missing',
     ])
     expect(projection.ledgerSummary).toMatchObject({
       acceptedVerdictCount: 0,
       entryCount: 3,
+      evalSuiteReproductionReceiptCount: 1,
       paidAblationCount: 0,
-      reproducedEvalCount: 0,
+      reproducedEvalCount: 3,
       verifiedManifestCount: 3,
+    })
+    expect(projection.evalReproductionReceipts[0]).toMatchObject({
+      aggregatePassRateBps: 10000,
+      aggregateScoreBps: 8532,
+      benchmarkPackageRef:
+        'benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02',
+      decisionState: 'continue',
+      metricGateCount: 4,
+      passedMetricGateCount: 4,
+      receiptRef:
+        'receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1',
+      sourceSchemaVersion: 'psion.actual_pretraining_checkpoint_eval_decision.v1',
     })
     expect(
       projection.entries.every(
         entry =>
           entry.manifestRef.startsWith('manifest.training_ablation.') &&
           entry.oneDeltaManifestState === 'manifest_verified' &&
-          entry.evalReproductionState === 'missing' &&
+          entry.evalReproductionState === 'reproduced' &&
           entry.paidDispatchState === 'not_dispatched' &&
           entry.verdictState === 'no_openagents_verdict',
+      ),
+    ).toBe(true)
+    expect(
+      projection.entries.every(
+        entry =>
+          !entry.blockerRefs.includes(
+            'blocker.product_promises.eval_suite_reproduction_missing',
+          ),
       ),
     ).toBe(true)
   })

@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.26')
+    expect(decoded.version).toBe('2026-06-20.27')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -221,6 +221,10 @@ describe('public product promises document', () => {
     // thermalThrottleSignals/status/blockers from sustained-vs-burst rows but
     // keeps thermal_throttle_detection_missing because no live verified thermal
     // probe row exists, so green remains exactly 24.
+    // The 2026-06-20.27 ablation eval-reproduction pass clears only
+    // eval_suite_reproduction_missing by projecting the retained Psion
+    // checkpoint-eval decision; paid ablation dispatch remains blocked, so
+    // green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -295,12 +299,12 @@ describe('public product promises document', () => {
           state: 'planned',
           evidenceRefs: expect.arrayContaining([
             'docs/training/2026-06-20-ablation-one-delta-harness.md',
+            'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
             'https://openagents.com/api/public/training/ablation-derisking-ledger',
             'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
             'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
           ]),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.eval_suite_reproduction_missing',
             'blocker.product_promises.paid_ablation_dispatch_missing',
           ]),
           safeCopy: expect.stringContaining(
@@ -895,7 +899,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('ablation derisking ledger clears projection and harness blockers only', () => {
+  test('ablation derisking ledger clears projection, harness, and eval-reproduction blockers only', () => {
     const document = publicProductPromisesDocument()
     const ablationPromise = document.promises.find(
       promise => promise.promiseId === 'training.ablation_system.v1',
@@ -904,11 +908,11 @@ describe('public product promises document', () => {
     expect(ablationPromise).toMatchObject({
       state: 'planned',
       blockerRefs: [
-        'blocker.product_promises.eval_suite_reproduction_missing',
         'blocker.product_promises.paid_ablation_dispatch_missing',
       ],
       evidenceRefs: expect.arrayContaining([
         'docs/training/2026-06-20-ablation-one-delta-harness.md',
+        'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
         'https://openagents.com/api/public/training/ablation-derisking-ledger',
         'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
         'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
@@ -920,11 +924,14 @@ describe('public product promises document', () => {
     expect(ablationPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.ablation_harness_missing',
     )
+    expect(ablationPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.eval_suite_reproduction_missing',
+    )
     expect(ablationPromise?.safeCopy).toContain(
-      'one-delta manifest-verified candidate entries',
+      'retained Psion checkpoint-eval reproduction receipt',
     )
     expect(ablationPromise?.verification).toContain(
-      'zero paid ablations, zero reproduced evals, and zero accepted verdicts',
+      'zero paid ablations and zero accepted verdicts',
     )
     expect(ablationPromise?.authorityBoundary).toContain(
       'no dispatch or spend authority',
@@ -961,12 +968,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.26', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.27', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.26',
+      expectedVersion: '2026-06-20.27',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.26',
+      servedVersion: '2026-06-20.27',
       status: 'ready',
     })
     expect(
@@ -976,7 +983,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.26',
+      servedVersion: '2026-06-20.27',
       status: 'blocked',
     })
   })

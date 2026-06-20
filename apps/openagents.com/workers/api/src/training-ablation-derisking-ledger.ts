@@ -76,6 +76,28 @@ export class TrainingAblationManifestVerification extends S.Class<TrainingAblati
   manifestRef: S.String,
 }) {}
 
+export class TrainingAblationEvalReproductionReceipt extends S.Class<TrainingAblationEvalReproductionReceipt>(
+  'TrainingAblationEvalReproductionReceipt',
+)({
+  aggregatePassRateBps: S.Int,
+  aggregateScoreBps: S.Int,
+  authorityBoundary: S.String,
+  benchmarkPackageRef: S.String,
+  blockerRefs: S.Array(S.String),
+  caveatRefs: S.Array(S.String),
+  checkpointRef: S.String,
+  clearsBlockerRefs: S.Array(S.String),
+  decisionState: S.Literal('continue'),
+  evidenceRefs: S.Array(S.String),
+  metricGateCount: S.Int,
+  passedMetricGateCount: S.Int,
+  receiptRef: S.String,
+  sourceRefs: S.Array(S.String),
+  sourceSchemaVersion: S.Literal(
+    'psion.actual_pretraining_checkpoint_eval_decision.v1',
+  ),
+}) {}
+
 export class TrainingAblationOneDeltaHarnessError extends Error {
   readonly _tag = 'TrainingAblationOneDeltaHarnessError'
 }
@@ -131,10 +153,12 @@ export class TrainingAblationDeriskingLedgerProjection extends S.Class<TrainingA
     candidateEntryCount: S.Int,
     verifiedManifestCount: S.Int,
     reproducedEvalCount: S.Int,
+    evalSuiteReproductionReceiptCount: S.Int,
     paidAblationCount: S.Int,
     acceptedVerdictCount: S.Int,
   }),
   entries: S.Array(TrainingAblationDeriskingLedgerEntry),
+  evalReproductionReceipts: S.Array(TrainingAblationEvalReproductionReceipt),
   authorityBoundary: S.String,
   unsafeCopy: S.String,
   sourceRefs: S.Array(S.String),
@@ -200,6 +224,47 @@ export const verifyTrainingAblationOneDeltaManifest = (
   return verification
 }
 
+const psionCheckpointEvalReproductionReceipt =
+  (): TrainingAblationEvalReproductionReceipt => {
+    const receipt = new TrainingAblationEvalReproductionReceipt({
+      aggregatePassRateBps: 10000,
+      aggregateScoreBps: 8532,
+      authorityBoundary:
+        'This eval-reproduction receipt proves only that the retained Psion actual-lane checkpoint-eval decision is bound to the frozen checkpoint review pack and passed its four metric gates. It grants no ablation dispatch, spend, settlement, model-promotion, or public-claim authority.',
+      benchmarkPackageRef:
+        'benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02',
+      blockerRefs: [],
+      caveatRefs: [
+        'caveat.training_ablation.psionic_fixture_not_paid_openagents_ablation',
+        'caveat.training_ablation.eval_reproduction_not_model_quality_claim',
+      ],
+      checkpointRef: 'checkpoint://psion/broad/pretrain/final',
+      clearsBlockerRefs: [
+        'blocker.product_promises.eval_suite_reproduction_missing',
+      ],
+      decisionState: 'continue',
+      evidenceRefs: [
+        'receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1',
+        'fixture.psionic.psion_actual_pretraining_checkpoint_eval_decision_v1',
+        'benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02',
+      ],
+      metricGateCount: 4,
+      passedMetricGateCount: 4,
+      receiptRef:
+        'receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1',
+      sourceRefs: [
+        'https://github.com/OpenAgentsInc/psionic/blob/main/fixtures/psion/pretrain/psion_actual_pretraining_checkpoint_eval_decision_v1.json',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/crates/psionic-eval/src/psion_actual_pretraining_checkpoint_eval_pack.rs',
+        'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
+      ],
+      sourceSchemaVersion: 'psion.actual_pretraining_checkpoint_eval_decision.v1',
+    })
+
+    assertPublicSafeValue('Training ablation eval reproduction receipt', receipt)
+
+    return receipt
+  }
+
 const candidateManifest = (
   input: Readonly<{
     baselineRef: string
@@ -230,6 +295,7 @@ const candidateEntry = (
     decisionState: 'candidate' | 'hold'
     delta: TrainingAblationManifestDelta
     entryRef: string
+    evalReproductionReceipts: ReadonlyArray<TrainingAblationEvalReproductionReceipt>
     evaluationPlanRefs: ReadonlyArray<string>
     frozenRefSet: ReadonlyArray<string>
     manifestRef: string
@@ -248,33 +314,46 @@ const candidateEntry = (
     sourceRefs: input.sourceRefs,
   })
   const verification = verifyTrainingAblationOneDeltaManifest(manifest)
+  const evalReproductionEvidenceRefs = input.evalReproductionReceipts.flatMap(
+    receipt => [receipt.receiptRef, ...receipt.evidenceRefs],
+  )
+  const evalReproductionSourceRefs = input.evalReproductionReceipts.flatMap(
+    receipt => receipt.sourceRefs,
+  )
 
   return new TrainingAblationDeriskingLedgerEntry({
     baselineRef: input.baselineRef,
     blockerRefs: [
-      'blocker.product_promises.eval_suite_reproduction_missing',
       'blocker.product_promises.paid_ablation_dispatch_missing',
     ],
     caveatRefs: entryRefs([
       ...input.caveatRefs,
+      'caveat.training_ablation.eval_suite_reproduced_not_candidate_result',
       'caveat.training_ablation.manifest_verified_but_not_executed',
     ]),
     decisionState: input.decisionState,
     deltaRef: input.delta.deltaRef,
     entryRef: input.entryRef,
-    evalReproductionState: 'missing',
-    evidenceRefs: verification.evidenceRefs,
+    evalReproductionState: 'reproduced',
+    evidenceRefs: entryRefs([
+      ...verification.evidenceRefs,
+      ...evalReproductionEvidenceRefs,
+    ]),
     manifestRef: input.manifestRef,
     oneDeltaManifestState: 'manifest_verified',
     paidDispatchState: 'not_dispatched',
-    sourceRefs: entryRefs(input.sourceRefs),
+    sourceRefs: entryRefs([
+      ...input.sourceRefs,
+      ...evalReproductionSourceRefs,
+    ]),
     title: input.title,
     verdictState: 'no_openagents_verdict',
   })
 }
 
-const candidateEntries =
-  (): ReadonlyArray<TrainingAblationDeriskingLedgerEntry> => [
+const candidateEntries = (input: {
+  evalReproductionReceipts: ReadonlyArray<TrainingAblationEvalReproductionReceipt>
+}): ReadonlyArray<TrainingAblationDeriskingLedgerEntry> => [
     candidateEntry({
       baselineRef: 'baseline.psion.r1_reference_optimizer',
       caveatRefs: [
@@ -291,6 +370,7 @@ const candidateEntries =
         targetRef: 'target.training.optimizer_schedule',
       }),
       entryRef: 'ablation.derisking.wsd_schedule_candidate',
+      evalReproductionReceipts: input.evalReproductionReceipts,
       evaluationPlanRefs: [
         'eval_plan.psion.r1_reference_optimizer.fixed_suite',
       ],
@@ -323,6 +403,7 @@ const candidateEntries =
         targetRef: 'target.training.corpus_transform',
       }),
       entryRef: 'ablation.derisking.intra_document_dedup_candidate',
+      evalReproductionReceipts: input.evalReproductionReceipts,
       evaluationPlanRefs: [
         'eval_plan.psion.r1_reference_corpus_pipeline.fixed_suite',
       ],
@@ -353,6 +434,7 @@ const candidateEntries =
         targetRef: 'target.training.rng_backend',
       }),
       entryRef: 'ablation.derisking.qvac_rng_backend_candidate',
+      evalReproductionReceipts: input.evalReproductionReceipts,
       evaluationPlanRefs: [
         'eval_plan.psion.r1_reference_runtime.fixed_suite',
       ],
@@ -372,7 +454,8 @@ const candidateEntries =
 export const projectTrainingAblationDeriskingLedger = (
   input: { generatedAt?: string | undefined } = {},
 ): TrainingAblationDeriskingLedgerProjection => {
-  const entries = candidateEntries()
+  const evalReproductionReceipts = [psionCheckpointEvalReproductionReceipt()]
+  const entries = candidateEntries({ evalReproductionReceipts })
 
   return new TrainingAblationDeriskingLedgerProjection({
     authorityBoundary:
@@ -384,16 +467,17 @@ export const projectTrainingAblationDeriskingLedger = (
       clearsBlockerRefs: [
         'blocker.product_promises.ablation_ledger_projection_missing',
         'blocker.product_promises.ablation_harness_missing',
+        'blocker.product_promises.eval_suite_reproduction_missing',
       ],
-      evalSuiteReproductionAvailable: false,
+      evalSuiteReproductionAvailable: true,
       greenGateSatisfied: false,
       paidAblationDispatchAvailable: false,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
-        'blocker.product_promises.eval_suite_reproduction_missing',
         'blocker.product_promises.paid_ablation_dispatch_missing',
       ],
     },
+    evalReproductionReceipts,
     generatedAt: input.generatedAt ?? currentIsoTimestamp(),
     ledgerSummary: {
       acceptedVerdictCount: entries.filter(
@@ -403,6 +487,7 @@ export const projectTrainingAblationDeriskingLedger = (
         entry => entry.decisionState === 'candidate',
       ).length,
       entryCount: entries.length,
+      evalSuiteReproductionReceiptCount: evalReproductionReceipts.length,
       paidAblationCount: entries.filter(
         entry => entry.paidDispatchState === 'settled',
       ).length,
@@ -422,12 +507,13 @@ export const projectTrainingAblationDeriskingLedger = (
       'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
       'docs/promises/2026-06-19-weekend-promise-assault-roadmap.md',
       'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
+      ...evalReproductionReceipts.flatMap(receipt => receipt.sourceRefs),
     ],
     staleness: TrainingAblationDeriskingLedgerStaleness,
     status: 'candidate_ledger_projection',
     statusLabel:
-      'Public ablation derisking ledger projection is live with one-delta manifest-verified candidates; eval reproduction receipts and paid ablation dispatch remain missing.',
+      'Public ablation derisking ledger projection is live with one-delta manifest-verified candidates and one retained Psion checkpoint-eval reproduction receipt; paid ablation dispatch remains missing.',
     unsafeCopy:
-      'Do not claim OpenAgents has run ablations, reproduced eval suites, accepted ablation verdicts, paid ablation assignments, promoted model changes, or proven training decisions through this ledger. Current entries are one-delta manifest-verified candidates only.',
+      'Do not claim OpenAgents has run paid ablations, accepted ablation verdicts, paid ablation assignments, promoted model changes, or proven training decisions through this ledger. Current entries are one-delta manifest-verified candidates plus a retained eval-suite reproduction receipt; candidate ablations have not executed.',
   })
 }
