@@ -38,6 +38,7 @@ type WorkerRouteDependencies = Readonly<{
   ) => RouteEffect
   optionalUuid: (value: string | undefined) => string | undefined
   routeAutopilotWorkRequest: OptionalEffectRoute
+  routeCloudCodingSessionRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
   routeCheckoutPageRequest: OptionalEffectRoute
@@ -189,6 +190,16 @@ export const makeWorkerRouteRequest =
 
       if (exactResponse !== undefined) {
         return yield* exactResponse
+      }
+
+      // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red).
+      // INERT by default; the dispatcher routes both the launch base path and
+      // the /:id lifecycle read, returning undefined for any other path.
+      const cloudCodingSessionResponse =
+        dependencies.routeCloudCodingSessionRequest(request, env, ctx)
+
+      if (cloudCodingSessionResponse !== undefined) {
+        return yield* cloudCodingSessionResponse
       }
 
       const teamChatResponse = dependencies.routeTeamChatRequest(
