@@ -1433,6 +1433,23 @@ body {
 .pylon-base-status-blocked .pylon-base-status-mana {
   color: #f5b73a;
 }
+
+.app-shell-verse .pylon-base-status {
+  right: clamp(0.8rem, 2.4vw, 1.35rem);
+  bottom: clamp(0.9rem, 2.4vh, 1.5rem);
+  left: auto;
+  width: min(21rem, calc(100% - 1.6rem));
+}
+
+@media (max-width: 760px) {
+  .app-shell-verse .pylon-base-status {
+    right: 0.8rem;
+    bottom: 0.8rem;
+    left: 0.8rem;
+    width: auto;
+  }
+}
+
 .chat-thread-shell {
   min-height: 18rem;
   max-height: min(58vh, 38rem);
