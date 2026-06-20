@@ -4,6 +4,63 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (i) — DPO grading challenge lifecycle harness
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.preference_rollout_work_missing` — advanced, **not
+cleared**.
+
+Pass (f) added `buildCs336A5DpoGradingChallengeCreateRequest`, which only proves
+the DPO grading create-request DECODES against the `training-verification`
+schema. Schema validity alone does not prove the request actually drives the
+rail-side challenge **state machine** to a terminal verdict. This change adds the
+missing piece: a deterministic in-repo harness that pushes the create-request
+through the SAME state-machine functions a paid `cs336_a5_dpo_grading` dispatch
+would use, and proves an honest claim reaches `Verified` while a forged claim
+reaches `Rejected`.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-lifecycle.ts`
+  - `runCs336A5DpoGradingChallengeLifecycle`: builds the create-request via the
+    pass-(f) bridge, then drives it through the real
+    `buildTrainingVerificationChallengeRecord` (Queued) ->
+    `leaseTrainingVerificationChallengeRecord` (Leased) -> in-repo
+    `verifyCs336A5DpoGradingResponse` recompute verifier ->
+    `finalizeTrainingVerificationChallengeRecord` (Verified/Rejected). Returns
+    the Queued/Leased/finalized records, the three transition events, the
+    verdict, and the public-safe validatorRef. Clock and id generator are
+    injectable so the lifecycle is fully deterministic.
+- `apps/openagents.com/workers/api/src/cs336-a5-dpo-grading-lifecycle.test.ts`
+  - 7 committed tests: honest claim Queued -> Leased -> Verified with matching
+    transition kinds, recompute pair-count surfaced on Verified, forged-digest
+    claim finalizes Rejected with `DigestMismatch`, pair-count-mismatch claim
+    Rejected with `DimensionMismatch`, create-request validatorRef/windowRef
+    propagation, cross-run determinism (stable challengeRef/event ids/verdict
+    refs), and public-safety of the whole lifecycle result.
+
+### Honesty boundary (why the blocker stays open)
+
+This is a deterministic in-memory simulation. It takes an injectable clock and
+id generator and never touches D1, takes no real lease, creates no rail-side
+challenge, dispatches no work, spends no sats, and settles nothing. It
+demonstrates the verification lifecycle a paid dispatch would follow, NOT the
+paid work itself. The DPO/policy-gradient update step also stays behind the
+`#4669` training boundary. No public route, registry edit, or green transition
+is added.
+
+### What genuinely remains for `preference_rollout_work_missing`
+
+Still open: no paid `cs336_a5_dpo_grading` dispatch / lease / settlement /
+on-rail Verified challenge over preference pairs has run, and real model
+log-probs are not yet wired.
+
+---
+
 ## 2026-06-20 (h) — vibe-test closeout grading challenge bridge
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
