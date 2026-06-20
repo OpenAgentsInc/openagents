@@ -209,13 +209,15 @@ function redactValue(
 
 export function redactTelemetry(event: TasTelemetryEvent): PublicTelemetryEvent {
   const redactionRefs: TelemetryRedactionRef[] = []
-  const redacted = redactValue(event, "", redactionRefs) as Omit<
-    PublicTelemetryEvent,
-    "redactionRefs"
-  >
+  // redactValue walks the event and returns a structurally-equivalent record
+  // with sensitive fields removed; it is typed `unknown`, so we treat it as a
+  // public-safe record and attach the collected redaction refs. PublicTelemetryEvent
+  // carries an open `[key: string]: unknown` index, so the concrete event-shape
+  // fields flow through that index.
+  const redacted = redactValue(event, "", redactionRefs) as Record<string, unknown>
 
   return {
     ...redacted,
     redactionRefs,
-  }
+  } as PublicTelemetryEvent
 }
