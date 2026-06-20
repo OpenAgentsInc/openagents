@@ -308,6 +308,24 @@ export function verifyConsumerInstallPlatformClaim(
 export const README_NARROWED_PLATFORM_SENTENCE =
   "Initial supported operator platforms are macOS and Linux. No other operator platforms are in scope for the first v1.0 launch path."
 
+// Coverage verbs/phrases that, paired with a platform token, mean the copy is
+// claiming that platform is supported. Matched in EITHER order relative to the
+// platform token (see `coverageNear`), because the verb commonly appears BEFORE
+// the platform ("works on Windows", "runs on WSL", "we support Windows") just as
+// often as after it ("Windows is supported"). The earlier verb-after-only
+// patterns silently let the verb-first phrasings drift through the guard.
+const COVERAGE_VERB = "(?:supports?|supported|in scope|works?|runs?|covered)"
+
+// Build a bidirectional detector for one platform token: the coverage verb may
+// sit within 40 non-sentence-breaking chars before OR after the platform word.
+function coverageNear(platformToken: string): RegExp {
+  return new RegExp(
+    `\\b${platformToken}\\b[^.\n]{0,40}\\b${COVERAGE_VERB}\\b` +
+      `|\\b${COVERAGE_VERB}\\b[^.\n]{0,40}\\b${platformToken}\\b`,
+    "i",
+  )
+}
+
 // Public-safe over-promise phrase detectors. Each names a drift class and a
 // pattern that, if it appears in the copy, means the README is claiming coverage
 // the macOS/Linux evidence does not support.
@@ -317,15 +335,19 @@ export const OVERPROMISE_COPY_PATTERNS: ReadonlyArray<{
 }> = [
   {
     ref: "any-platform-copy",
-    pattern: /\bany (?:platform|os|machine|computer|device|laptop)\b/i,
+    // Catches "any/all/every/whatever platform(s)" and the obvious synonyms,
+    // singular or plural — "runs on all platforms" is the same over-promise as
+    // "runs on any platform" and was previously uncaught.
+    pattern:
+      /\b(?:any|all|every|whatever) (?:platforms?|os(?:es)?|machines?|computers?|devices?|laptops?)\b/i,
   },
   {
     ref: "windows-supported-copy",
-    pattern: /\bwindows\b[^.\n]{0,40}\b(?:supported|in scope|works|covered)\b/i,
+    pattern: coverageNear("windows"),
   },
   {
     ref: "wsl-supported-copy",
-    pattern: /\bwsl\b[^.\n]{0,40}\b(?:supported|in scope|works|covered)\b/i,
+    pattern: coverageNear("wsl"),
   },
 ]
 

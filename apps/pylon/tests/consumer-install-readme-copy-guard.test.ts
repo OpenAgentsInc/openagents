@@ -50,6 +50,31 @@ describe("README consumer-install platform copy guard", () => {
     expect(driftAudit.claimVerification.overpromises).toBe(true)
   })
 
+  test("auditor catches verb-first drift the old verb-after-only patterns missed", () => {
+    // Regression: previously the windows/wsl detectors required the coverage
+    // verb to appear AFTER the platform word, so these common phrasings (verb
+    // first) silently passed the guard. They must now be caught.
+    for (const drift of [
+      "Pylon also works on Windows now.",
+      "Now runs on Windows too.",
+      "We support Windows.",
+      "Fully supported on WSL.",
+      "Pylon runs on all platforms.",
+    ]) {
+      const driftAudit = auditReadmePlatformCopy(readme + "\n\n" + drift + "\n")
+      expect(driftAudit.copyHonest).toBe(false)
+    }
+  })
+
+  test("auditor still accepts honest macOS/Linux-only mentions (no false positive)", () => {
+    // The coverage verbs must only fire when paired with an out-of-scope
+    // platform token; honest macOS/Linux copy must stay honest.
+    const honest =
+      readme +
+      "\n\nPylon works great and runs on macOS and Linux laptops.\n"
+    expect(auditReadmePlatformCopy(honest).copyHonest).toBe(true)
+  })
+
   test("auditor fails if the narrowing sentence is removed", () => {
     // The sentence wraps in the file, so normalize first (as the auditor does)
     // before removing it, to confirm removal is actually detected.

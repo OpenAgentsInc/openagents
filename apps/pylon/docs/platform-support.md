@@ -104,10 +104,17 @@ honest-copy requirement is now machine-checkable in
   (`README_NARROWED_PLATFORM_SENTENCE`) is present, no over-promise phrase matched,
   and the derived claim does not over-promise. This binds the verifier to the
   shipped file so real copy drift fails in CI, not just a synthetic fixture.
+  The `windows-supported-copy` / `wsl-supported-copy` detectors are
+  **bidirectional** (`coverageNear`): the coverage verb may sit before OR after
+  the platform token, so verb-first phrasings ("works on Windows", "runs on WSL",
+  "we support Windows") are caught, not just verb-after ("Windows is supported").
+  The `any-platform-copy` detector covers `any|all|every|whatever` + singular or
+  plural platform synonyms.
 
-Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` (23 pass) and
-`apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` (6 pass, runs the
-applied audit against the real `apps/pylon/README.md`).
+Tests: `apps/pylon/src/consumer-install-platform-support.test.ts` and
+`apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` (runs the applied
+audit against the real `apps/pylon/README.md`, including the verb-first
+drift-catch and no-false-positive regression cases).
 
 ### Runtime install path: WSL scope-out is now wired (not just classifier-only)
 

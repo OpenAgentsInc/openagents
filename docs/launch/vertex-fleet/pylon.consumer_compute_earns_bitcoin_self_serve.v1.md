@@ -3,6 +3,43 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (n) — WSL/Windows copy guard: catch verb-first over-promise phrasings
+
+Blocker advanced this run:
+`blocker.product_promises.windows_wsl_consumer_install_coverage_missing`
+
+Updates (b)/(c) built `verifyConsumerInstallPlatformClaim` and bound it to the
+real README via `auditReadmePlatformCopy` + `OVERPROMISE_COPY_PATTERNS`. But the
+windows/wsl detectors required the coverage verb to appear AFTER the platform
+word (`/\bwindows\b[^.\n]{0,40}\b(?:supported|in scope|works|covered)\b/i`). That
+is a real false-negative: the most common drift phrasings put the verb FIRST —
+"works on Windows", "runs on Windows", "supported on WSL", "we support Windows" —
+and every one of those slipped through the applied guard (verified directly
+against the patterns before the fix). The any-platform detector likewise only
+matched the singular "any platform", missing "all/every platforms".
+
+- `apps/pylon/src/consumer-install-platform-support.ts` — added `COVERAGE_VERB` +
+  `coverageNear(platformToken)`, which builds a BIDIRECTIONAL detector (verb
+  within 40 non-sentence-breaking chars before OR after the platform token), and
+  rebuilt the `windows-supported-copy` / `wsl-supported-copy` patterns on it (now
+  also covering `support(s)`/`run(s)`). Broadened `any-platform-copy` to
+  `any|all|every|whatever` + singular/plural platform synonyms. Ref names and the
+  public surface are unchanged, so the existing verifier/derived-claim flow is
+  intact.
+- `apps/pylon/tests/consumer-install-readme-copy-guard.test.ts` — +2 cases: five
+  verb-first drift phrasings appended to the REAL README are now caught
+  (`copyHonest:false`), and an honest "runs on macOS and Linux laptops" mention
+  stays honest (no false positive). 31 pass (was 29) across the two copy-guard
+  files.
+
+Validation: pylon `tsc` 0 errors; workers/api `tsc` 0 errors;
+`apps/openagents.com` `check:deploy` passes (see summary).
+
+No promise state changed; no Windows/WSL support claimed; no host probed. Still
+listed: clearing the blocker still needs the owner-facing copy-narrowing
+sign-off. This run closes a false-negative so the applied guard actually catches
+the verb-first over-promise phrasings drift most naturally takes.
+
 ## Update 2026-06-20 (m) — scale methodology: cross-contributor check no longer false-flags within-contributor repeats
 
 Blocker advanced this run:
