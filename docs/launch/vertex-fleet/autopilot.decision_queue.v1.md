@@ -2,7 +2,26 @@
 
 **Promise state:** `planned` (no state change this run — Hard Rule 1)
 
-## Latest run (2026-06-20) — full-vocabulary decision-act contract
+## Latest run (2026-06-20) — route-side act classification
+
+**Blocker advanced:** `blocker.product_promises.decision_queue_api_missing`
+
+**New files:**
+
+| File | Purpose |
+|---|---|
+| `apps/openagents.com/workers/api/src/autopilot-decision-act-routing.ts` | `classifyAutopilotDecisionActRoute()` — the branch decision the queue route is missing. `autopilot-decision-routes.ts#actOnDecision` hard-codes a single path (only `approve_pr_draft` → work-order review store; everything else rejected). The full-vocabulary act contract (`authorizeAutopilotDecisionAct`) already exists, but nothing decides *which* handler a given stored decision flows to. This pure module classifies a decision projection into one of three mutually-exclusive routes — `work_order_review` (legacy PR approval), `evidence_command` (the full vocabulary, carrying the `AutopilotDecisionActTarget` the authorizer needs), or `not_actionable` (informational/blocked kinds like `request_customer_input` / `create_followup_mission` / `mark_unavailable`). Routing is decided by kind only; status is carried on the target so `authorizeAutopilotDecisionAct` stays the single owner of the actionability ("too late") refusal. Also exports `isWorkOrderReviewDecision()` and `AUTOPILOT_DECISION_REVIEW_KIND`. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-act-routing.test.ts` | 8 tests: review-kind flag, review route, every evidence-command kind routed with correct target, informational kinds marked not-actionable with kind-named reason, routing-by-kind-carries-status, end-to-end handoff proving the produced target is *accepted* by `authorizeAutopilotDecisionAct` for an available decision and *refused* (`not_actionable`) once completed, and the full-projection convenience wrapper. |
+
+**What it proves:** the route now has a tested, pure way to fan a stored
+decision into the correct handler instead of rejecting all non-review kinds.
+This is the missing link between the queue projection and the existing act
+contract: `classify → (evidence_command) authorizeAutopilotDecisionAct → apply`.
+No promise state changes; no store/route wiring is claimed (see "What remains").
+
+---
+
+## Earlier run (2026-06-20) — full-vocabulary decision-act contract
 
 **Blocker advanced:** `blocker.product_promises.decision_queue_api_missing`
 
@@ -89,12 +108,18 @@ and is shared across desktop / web / Expo (the three client surfaces).
   for the full decision-type vocabulary (continue / steer / provide context /
   rerun tests / retry / stop, plus `approve_pr_draft`) now exists and is tested
   (`apps/openagents.com/workers/api/src/autopilot-decision-act.ts`,
-  `authorizeAutopilotDecisionAct`). The remaining gap is the *wiring*:
-  `autopilot-decision-routes.ts#actOnDecision` still only resolves
-  `approve_pr_draft` via the work-order review store — it needs to (a) read the
-  stored decision facts for non-review kinds, (b) call
-  `authorizeAutopilotDecisionAct`, and (c) persist the resulting evidence-only
-  command + closeout, with idempotency on `closeoutRef`. The blueprint
+  `authorizeAutopilotDecisionAct`). The route-side branch decision that picks
+  the handler per stored decision now also exists and is tested
+  (`autopilot-decision-act-routing.ts`, `classifyAutopilotDecisionActRoute`).
+  The remaining gap is the *wiring*: `autopilot-decision-routes.ts#actOnDecision`
+  still only resolves `approve_pr_draft` via the work-order review store — it
+  needs to (a) call `classifyAutopilotDecisionActRoute` on the stored decision,
+  (b) for the `evidence_command` route, call `authorizeAutopilotDecisionAct`,
+  and (c) persist the resulting evidence-only command + closeout, with
+  idempotency on `closeoutRef`. (A prerequisite for non-review kinds: the queue
+  only projects review/blocked decision records from work orders today, so an
+  evidence-command act needs a stored decision-record source to read facts
+  from.) The blueprint
   continuation-decision-queue projection service is still read-only (no act
   surface). No promise state changes until a real act over a live paired node
   produces a dereferenceable receipt.
