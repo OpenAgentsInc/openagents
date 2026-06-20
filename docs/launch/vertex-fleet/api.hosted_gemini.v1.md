@@ -49,14 +49,40 @@ production binding shape the harness was missing.
   hosted Gemini inference caller behind it, nor a registered-agent production
   smoke. The blocker therefore REMAINS listed.
 
+### 2026-06-20 update — hosted Gemini gateway metering lane
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **partially advanced, NOT cleared.** Until now the `hosted_gemini` runner
+  kind had **no metered pricing lane**: `pricingLaneForRunnerKind('hosted_gemini')`
+  returned `null`, so a hosted Gemini placement exposed `activeLane: null` and
+  zero pricing reason refs — i.e. no metering/pricing policy for the gateway.
+  This change adds the missing buyer-funded, `usd_credits`-metered gateway lane:
+  - `apps/openagents.com/workers/api/src/autopilot-work-pricing-policy.ts`
+    — new `lane.autopilot_work.hosted_gemini_gateway` lane
+    (`buyerDebitRequired: true`, `meterKind: 'usd_credits'`, per-unit charge),
+    with `pricing.autopilot_work.hosted_gemini_metered` /
+    `placement.reason.hosted_gemini_gateway_metered` reason refs now surfaced in
+    hosted Gemini placement decisions.
+  - `apps/openagents.com/workers/api/src/autopilot-work-pricing-policy.test.ts`
+    (new, 4 cases): asserts the lane is buyer-funded + metered with a positive
+    unit charge, that the metering reason refs surface, that every metered lane
+    is buyer-funded (and free lanes unmetered), and that lanes are unique per
+    runner kind.
+
+  **Honest scope:** this defines the meter only. It does NOT create billing,
+  entitlement, quota, provider policy, or settlement, and it is inert until the
+  (still-missing) armed executor delivers hosted Gemini work. The gateway
+  blocker REMAINS listed.
+
 ## What remains (for green)
 
 - A real deployed `HostedGeminiInferenceCaller` (the hosted Gemini inference
   call) wired into the worker dependency graph behind an armed flag.
 - A registered-agent production smoke proving a paid hosted Gemini work order
   delivered end-to-end.
-- `blocker.product_promises.public_paid_model_gateway_missing` — billing,
-  entitlement, provider policy, quota, metering, and settlement refs for a
-  public paid model gateway (untouched by this change).
+- `blocker.product_promises.public_paid_model_gateway_missing` — the hosted
+  Gemini metering lane now exists (2026-06-20 update above), but billing,
+  entitlement, provider policy, quota, and settlement refs for a public paid
+  model gateway still remain.
 - Any green flip remains receipt-first and owner-signed per
   `proof.claim_upgrade_receipts.v1`.

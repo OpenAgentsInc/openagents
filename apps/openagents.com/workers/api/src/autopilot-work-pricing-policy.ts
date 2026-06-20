@@ -45,6 +45,24 @@ export const autopilotWorkPricingPolicy = {
       runnerKind: 'openagents_shc',
       unitAmountCents: 1,
     },
+    {
+      // Public paid model gateway lane for the hosted Gemini placement.
+      // Advances blocker.product_promises.public_paid_model_gateway_missing on
+      // api.hosted_gemini.v1: a buyer-funded, usd_credits-metered lane is the
+      // metering/pricing-policy piece a paid model gateway needs. It defines
+      // the meter only — it does NOT settle, pay out, or imply a live product,
+      // and remains inert until the (still-missing) armed executor delivers
+      // hosted Gemini work. See docs/launch/vertex-fleet/api.hosted_gemini.v1.md.
+      buyerDebitRequired: true,
+      laneRef: 'lane.autopilot_work.hosted_gemini_gateway',
+      meterKind: 'usd_credits',
+      reasonRefs: [
+        'pricing.autopilot_work.hosted_gemini_metered',
+        'placement.reason.hosted_gemini_gateway_metered',
+      ],
+      runnerKind: 'hosted_gemini',
+      unitAmountCents: 1,
+    },
   ],
   policyRef: 'pricing_policy.autopilot_work.v0_3.lane_meter_mapping',
   version: 'openagents.autopilot_work_pricing_policy.v0.3',
