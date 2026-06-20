@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.13')
+    expect(decoded.version).toBe('2026-06-20.14')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -159,8 +159,12 @@ describe('public product promises document', () => {
     // artanis_unattended_tick_streak_missing blocker) and exposes it at
     // GET /api/public/artanis/tick-streak; the blocker STAYS (no real 10-tick
     // streak has been driven live), the promise stays yellow, and green remains
-    // exactly 24. The 2026-06-20.13 control-center self-serve-fanout pass clears
-    // the self_serve_fanout_missing blocker on
+    // exactly 24. The 2026-06-20.13 device-capability second-device-class pass
+    // drops second_device_class_missing on
+    // training.device_capability_dataset.v1 (the dataset gains a genuine
+    // measured_unsettled x86_64-Linux/Intel class); the promise STAYS yellow,
+    // so green remains exactly 24. The 2026-06-20.14 control-center
+    // self-serve-fanout pass clears the self_serve_fanout_missing blocker on
     // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
     // single-action fanout planner/route + INERT public projection); the
     // promise STAYS yellow, so green remains exactly 24.
@@ -818,12 +822,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.13', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.14', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.13',
+      expectedVersion: '2026-06-20.14',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.13',
+      servedVersion: '2026-06-20.14',
       status: 'ready',
     })
     expect(
@@ -833,7 +837,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.13',
+      servedVersion: '2026-06-20.14',
       status: 'blocked',
     })
   })

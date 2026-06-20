@@ -1,0 +1,112 @@
+{
+  "trainingRunRef": "run.cs336.a2.device_capability.x86_64_linux_intel",
+  "promiseRef": "training.device_capability_dataset.v1",
+  "request": {
+    "measurements": [
+      {
+        "deviceClassRef": "device_class.x86_64_linux.intel",
+        "digestCommitmentRefs": [
+          "commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0",
+          "commitment.cs336_a2.memory_bandwidth.sha256_02d2cf92913ee000",
+          "commitment.cs336_a2.tokens_per_second.sha256_6b8502b3d1f381d1",
+          "commitment.cs336_a2.step_time_ms.sha256_1bde26dbb6c833ce"
+        ],
+        "max": 3203.38704,
+        "measurementProvenance": "measured_unsettled",
+        "measurementRef": "measurement.cs336_a2.x86_64_linux_intel.attention_throughput",
+        "metric": "attention_throughput",
+        "min": 174.233597,
+        "p50": 3109.921163,
+        "p90": 3169.043007,
+        "sampleCount": 24,
+        "sourceRefs": [
+          "route:/api/training/device-capabilities/a2",
+          "tailnet.device_class.x86_64_linux.intel.node25_self_characterization"
+        ],
+        "unit": "megaflops",
+        "verificationRefs": [],
+        "workClass": "cs336_a2_device_benchmark",
+        "receiptRefs": []
+      },
+      {
+        "deviceClassRef": "device_class.x86_64_linux.intel",
+        "digestCommitmentRefs": [
+          "commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0",
+          "commitment.cs336_a2.memory_bandwidth.sha256_02d2cf92913ee000",
+          "commitment.cs336_a2.tokens_per_second.sha256_6b8502b3d1f381d1",
+          "commitment.cs336_a2.step_time_ms.sha256_1bde26dbb6c833ce"
+        ],
+        "max": 13.533702,
+        "measurementProvenance": "measured_unsettled",
+        "measurementRef": "measurement.cs336_a2.x86_64_linux_intel.memory_bandwidth",
+        "metric": "memory_bandwidth",
+        "min": 8.222723,
+        "p50": 10.670506,
+        "p90": 12.332779,
+        "sampleCount": 24,
+        "sourceRefs": [
+          "route:/api/training/device-capabilities/a2",
+          "tailnet.device_class.x86_64_linux.intel.node25_self_characterization"
+        ],
+        "unit": "gigabytes_per_second",
+        "verificationRefs": [],
+        "workClass": "cs336_a2_device_benchmark",
+        "receiptRefs": []
+      },
+      {
+        "deviceClassRef": "device_class.x86_64_linux.intel",
+        "digestCommitmentRefs": [
+          "commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0",
+          "commitment.cs336_a2.memory_bandwidth.sha256_02d2cf92913ee000",
+          "commitment.cs336_a2.tokens_per_second.sha256_6b8502b3d1f381d1",
+          "commitment.cs336_a2.step_time_ms.sha256_1bde26dbb6c833ce"
+        ],
+        "max": 366764.980057,
+        "measurementProvenance": "measured_unsettled",
+        "measurementRef": "measurement.cs336_a2.x86_64_linux_intel.tokens_per_second",
+        "metric": "tokens_per_second",
+        "min": 13096.951548,
+        "p50": 352479.842559,
+        "p90": 364722.241218,
+        "sampleCount": 24,
+        "sourceRefs": [
+          "route:/api/training/device-capabilities/a2",
+          "tailnet.device_class.x86_64_linux.intel.node25_self_characterization"
+        ],
+        "unit": "tokens_per_second",
+        "verificationRefs": [],
+        "workClass": "cs336_a2_device_benchmark",
+        "receiptRefs": []
+      },
+      {
+        "deviceClassRef": "device_class.x86_64_linux.intel",
+        "digestCommitmentRefs": [
+          "commitment.cs336_a2.attention_throughput.sha256_70b508a8a655e0b0",
+          "commitment.cs336_a2.memory_bandwidth.sha256_02d2cf92913ee000",
+          "commitment.cs336_a2.tokens_per_second.sha256_6b8502b3d1f381d1",
+          "commitment.cs336_a2.step_time_ms.sha256_1bde26dbb6c833ce"
+        ],
+        "max": 2.913394,
+        "measurementProvenance": "measured_unsettled",
+        "measurementRef": "measurement.cs336_a2.x86_64_linux_intel.step_time_ms",
+        "metric": "step_time_ms",
+        "min": 0.096773,
+        "p50": 0.101765,
+        "p90": 1.667418,
+        "sampleCount": 24,
+        "sourceRefs": [
+          "route:/api/training/device-capabilities/a2",
+          "tailnet.device_class.x86_64_linux.intel.node25_self_characterization"
+        ],
+        "unit": "milliseconds",
+        "verificationRefs": [],
+        "workClass": "cs336_a2_device_benchmark",
+        "receiptRefs": []
+      }
+    ],
+    "sourceRefs": [
+      "tailnet.x86_64_linux_intel.self_characterization.20260620",
+      "route:/api/training/device-capabilities/a2"
+    ]
+  }
+}
