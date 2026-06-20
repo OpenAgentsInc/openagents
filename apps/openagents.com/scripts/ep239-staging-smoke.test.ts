@@ -72,6 +72,10 @@ describe('Ep239 staging funded-loop smoke', () => {
       'cs_test_123',
       '--stripe-checkout-receipt-ref',
       'receipt.billing.stripe_checkout.cs_test_456',
+      '--card-credit-spend-session-id',
+      'cs_test_spend_123',
+      '--card-credit-spend-receipt-ref',
+      'receipt.inference.card_credit_spend.cs_test_spend_456',
       '--referral-payout-receipt-ref',
       'receipt.site_referral_payout.staging_test.settled_1',
     ])
@@ -81,6 +85,10 @@ describe('Ep239 staging funded-loop smoke', () => {
     expect(options.stripeCheckoutSessionId).toBe('cs_test_123')
     expect(options.stripeCheckoutReceiptRef).toBe(
       'receipt.billing.stripe_checkout.cs_test_456',
+    )
+    expect(options.cardCreditSpendSessionId).toBe('cs_test_spend_123')
+    expect(options.cardCreditSpendReceiptRef).toBe(
+      'receipt.inference.card_credit_spend.cs_test_spend_456',
     )
     expect(options.referralPayoutReceiptRef).toBe(
       'receipt.site_referral_payout.staging_test.settled_1',
@@ -92,6 +100,12 @@ describe('Ep239 staging funded-loop smoke', () => {
   test('stripeCheckoutReceiptRefForSession derives the public receipt ref', () => {
     expect(smoke.stripeCheckoutReceiptRefForSession('cs_test_123')).toBe(
       'receipt.billing.stripe_checkout.cs_test_123',
+    )
+  })
+
+  test('cardCreditSpendReceiptRefForSession derives the composite public receipt ref', () => {
+    expect(smoke.cardCreditSpendReceiptRefForSession('cs_test_123')).toBe(
+      'receipt.inference.card_credit_spend.cs_test_123',
     )
   })
 
@@ -128,7 +142,10 @@ describe('Ep239 staging funded-loop smoke', () => {
       operatorGrantProven: true,
       operatorGrantRefs: ['receipt.inference.usd_credit_grant.ep239-stg-1'],
       meteredSpendProven: true,
-      meteredSpendRefs: ['receipt.inference.charge.chatcmpl_123'],
+      meteredSpendRefs: [
+        'receipt.inference.charge.chatcmpl_123',
+        'receipt.inference.card_credit_spend.cs_test_123',
+      ],
       referralAccrualProven: true,
       referralAccrualRefs: [
         'receipt.site_referral_payout.staging_test.settled_1',

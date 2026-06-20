@@ -29,6 +29,8 @@
 //   #   --require-complete     (exit non-zero unless the #5520 gate is complete)
 //   #   --stripe-checkout-session-id <cs_test_...>
 //   #   --stripe-checkout-receipt-ref <receipt.billing.stripe_checkout.cs_test_...>
+//   #   --card-credit-spend-session-id <cs_test_...>
+//   #   --card-credit-spend-receipt-ref <receipt.inference.card_credit_spend.cs_test_...>
 //   #   --referral-payout-receipt-ref <receipt.site_referral_payout...>
 //   #   --help
 
@@ -44,6 +46,10 @@ const STRIPE_CHECKOUT_SESSION_ENV =
   'OPENAGENTS_STAGING_STRIPE_CHECKOUT_SESSION_ID'
 const STRIPE_CHECKOUT_RECEIPT_ENV =
   'OPENAGENTS_STAGING_STRIPE_CHECKOUT_RECEIPT_REF'
+const CARD_CREDIT_SPEND_SESSION_ENV =
+  'OPENAGENTS_STAGING_CARD_CREDIT_SPEND_SESSION_ID'
+const CARD_CREDIT_SPEND_RECEIPT_ENV =
+  'OPENAGENTS_STAGING_CARD_CREDIT_SPEND_RECEIPT_REF'
 const REFERRAL_PAYOUT_RECEIPT_ENV =
   'OPENAGENTS_STAGING_REFERRAL_PAYOUT_RECEIPT_REF'
 
@@ -71,6 +77,8 @@ export const parseArgs = argv => {
     json: false,
     requireComplete: false,
     help: false,
+    cardCreditSpendSessionId: process.env[CARD_CREDIT_SPEND_SESSION_ENV],
+    cardCreditSpendReceiptRef: process.env[CARD_CREDIT_SPEND_RECEIPT_ENV],
     referralPayoutReceiptRef: process.env[REFERRAL_PAYOUT_RECEIPT_ENV],
     stripeCheckoutSessionId: process.env[STRIPE_CHECKOUT_SESSION_ENV],
     stripeCheckoutReceiptRef: process.env[STRIPE_CHECKOUT_RECEIPT_ENV],
@@ -89,6 +97,12 @@ export const parseArgs = argv => {
     } else if (value === '--stripe-checkout-receipt-ref') {
       options.stripeCheckoutReceiptRef =
         argv[++i] || options.stripeCheckoutReceiptRef
+    } else if (value === '--card-credit-spend-session-id') {
+      options.cardCreditSpendSessionId =
+        argv[++i] || options.cardCreditSpendSessionId
+    } else if (value === '--card-credit-spend-receipt-ref') {
+      options.cardCreditSpendReceiptRef =
+        argv[++i] || options.cardCreditSpendReceiptRef
     } else if (value === '--referral-payout-receipt-ref') {
       options.referralPayoutReceiptRef =
         argv[++i] || options.referralPayoutReceiptRef
@@ -110,6 +124,7 @@ Usage:
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs [--base-url <url>] [--json]
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --require-complete
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --stripe-checkout-session-id cs_test_...
+  bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --card-credit-spend-session-id cs_test_...
   bun apps/openagents.com/scripts/ep239-staging-smoke.mjs --referral-payout-receipt-ref receipt.site_referral_payout.staging_test...
 
 Environment:
@@ -122,6 +137,12 @@ Environment:
   ${STRIPE_CHECKOUT_RECEIPT_ENV}
                             public receipt ref
                             receipt.billing.stripe_checkout.<cs_test_...>.
+  ${CARD_CREDIT_SPEND_SESSION_ENV}
+                            fulfilled TEST Checkout Session id whose
+                            card->credit->msat->spend chain has settled.
+  ${CARD_CREDIT_SPEND_RECEIPT_ENV}
+                            public receipt ref
+                            receipt.inference.card_credit_spend.<cs_test_...>.
   ${REFERRAL_PAYOUT_RECEIPT_ENV}
                             settled referral payout receipt ref from the
                             staging/test rail:
@@ -235,6 +256,9 @@ const readPublicInferenceReceipt = async (base, receiptRef, expectedKind) => {
 export const stripeCheckoutReceiptRefForSession = sessionId =>
   `receipt.billing.stripe_checkout.${sessionId}`
 
+export const cardCreditSpendReceiptRefForSession = sessionId =>
+  `receipt.inference.card_credit_spend.${sessionId}`
+
 const readPublicStripeCheckoutReceipt = async (base, receiptRef) => {
   const result = await requestJson(
     base,
@@ -255,6 +279,32 @@ const readPublicStripeCheckoutReceipt = async (base, receiptRef) => {
     resolution?.paymentState === 'paid' &&
     resolution?.fulfillmentState === 'fulfilled' &&
     resolution?.creditLedgerState === 'credited'
+
+  return { ok, result }
+}
+
+const readPublicCardCreditSpendReceipt = async (base, receiptRef) => {
+  const result = await requestJson(
+    base,
+    `/api/public/inference/card-credit-spend-receipts/${encodeURIComponent(
+      receiptRef,
+    )}`,
+    { method: 'GET' },
+  )
+  const receipt = result.body?.receipt
+  const resolution = receipt?.resolution
+  const chainReceipt = resolution?.receipt
+  const ok =
+    result.status === 200 &&
+    receipt?.receiptRef === receiptRef &&
+    receipt?.schemaVersion ===
+      'openagents.inference.card_credit_spend_receipt.v1' &&
+    resolution?.status === 'ok' &&
+    chainReceipt?.receiptRef === receiptRef &&
+    typeof chainReceipt?.sessionId === 'string' &&
+    chainReceipt.sessionId.startsWith('cs_test_') &&
+    Array.isArray(chainReceipt?.chain) &&
+    chainReceipt.chain.some(step => step?.step === 'msat_to_inference')
 
   return { ok, result }
 }
@@ -534,6 +584,59 @@ const legStripeTestCheckoutCredit = async (base, options) => {
   }
 
   record('2b. Stripe TEST checkout credit receipt', 'PASS', detail)
+  return {
+    proven: true,
+    receiptRef,
+  }
+}
+
+// Leg 4b: optional browser-completed card->credit->msat->spend receipt readback.
+const legCardCreditSpendReceipt = async (base, options) => {
+  const receiptRef =
+    options.cardCreditSpendReceiptRef ||
+    (options.cardCreditSpendSessionId
+      ? cardCreditSpendReceiptRefForSession(options.cardCreditSpendSessionId)
+      : undefined)
+
+  if (receiptRef === undefined || receiptRef.trim() === '') {
+    record('4b. card-credit-spend composite receipt', 'SKIP', {
+      reason:
+        'no completed card-credit-spend receipt supplied; finish the browser ' +
+        'Stripe TEST checkout -> USD->msat bridge -> metered spend chain, then ' +
+        're-run with --card-credit-spend-session-id cs_test_...',
+    })
+    return undefined
+  }
+
+  const readback = await readPublicCardCreditSpendReceipt(base, receiptRef)
+  const receipt = readback.result.body?.receipt
+  const resolution = receipt?.resolution
+  const chainReceipt = resolution?.receipt
+  const detail = {
+    http: readback.result.status,
+    ms: readback.result.ms,
+    receiptRef,
+    resolutionStatus: resolution?.status ?? null,
+    sessionId: chainReceipt?.sessionId ?? null,
+    servedModel: chainReceipt?.servedModel ?? null,
+    receiptReadbackHttp: readback.result.status,
+  }
+
+  if (!readback.ok) {
+    record('4b. card-credit-spend composite receipt', 'FAIL', {
+      ...detail,
+      reason:
+        'expected a public card-credit-spend receipt with resolution.status ok, ' +
+        'a cs_test_* session id, and an msat_to_inference chain step',
+      receiptReadbackBody: redact(readback.result.body),
+    })
+    return {
+      proven: false,
+      receiptRef,
+    }
+  }
+
+  record('4b. card-credit-spend composite receipt', 'PASS', detail)
   return {
     proven: true,
     receiptRef,
@@ -1129,6 +1232,7 @@ export const run = async argv => {
   const stripeCheckout = await legStripeTestCheckoutCredit(base, options)
   const grant = await legFundedGrant(base, userId)
   const meteredSpend = await legMeteredSpend(base, token, grant)
+  const cardCreditSpend = await legCardCreditSpendReceipt(base, options)
   const referral = await legReferral(base, token, options)
   const newSurfaces = await legNewSurfaces(base, token)
   const promiseHonesty = await legPromiseHonesty(base)
@@ -1141,11 +1245,13 @@ export const run = async argv => {
     operatorGrantProven: Boolean(grant),
     operatorGrantRefs: grant?.receiptRef ? [grant.receiptRef] : [],
     meteredSpendProven: Boolean(
-      meteredSpend?.chargeReceiptRef && meteredSpend?.receiptDereferenced,
+      (meteredSpend?.chargeReceiptRef && meteredSpend?.receiptDereferenced) ||
+        cardCreditSpend?.proven,
     ),
-    meteredSpendRefs: meteredSpend?.chargeReceiptRef
-      ? [meteredSpend.chargeReceiptRef]
-      : [],
+    meteredSpendRefs: [
+      ...(meteredSpend?.chargeReceiptRef ? [meteredSpend.chargeReceiptRef] : []),
+      ...(cardCreditSpend?.receiptRef ? [cardCreditSpend.receiptRef] : []),
+    ],
     referralAccrualProven: Boolean(referral?.fullAccrualProven),
     referralAccrualRefs: referral?.receiptRef ? [referral.receiptRef] : [],
     newSurfacesProven: Boolean(newSurfaces?.allPass),

@@ -207,6 +207,20 @@ that checkout session; `invalid` means the stored chain violated provenance or
 conservation. Only `resolution.status: "ok"` is evidence for the
 card→credit→inference-spend receipt.
 
+Feed the composite receipt into the push-button smoke as the spend-gate proof:
+
+```sh
+bun apps/openagents.com/scripts/ep239-staging-smoke.mjs \
+  --stripe-checkout-session-id "$CHECKOUT_SESSION_ID" \
+  --card-credit-spend-session-id "$CHECKOUT_SESSION_ID" \
+  --require-complete --json
+```
+
+The smoke keeps `credit_to_metered_spend` `UNPROVEN` unless either its own
+headless metered-spend leg sees a balance decrement plus dereferenceable charge
+receipt, or the supplied `receipt.inference.card_credit_spend.*` readback
+resolves `ok` for a `cs_test_*` session with an `msat_to_inference` chain step.
+
 Both `POST /api/billing/checkout` and `POST /api/billing/inference-credit`
 require a **browser session** (they return **401** to a bare agent token — they
 are live, not 404). They cannot be driven headlessly with an agent token.
