@@ -168,3 +168,71 @@ describe('evaluateShardWanServingPayout', () => {
     expect(decision.validationErrors[0]).toContain('non-negative')
   })
 })
+
+describe('buildShardWanServingPayoutPayInPlan', () => {
+  const { buildShardWanServingPayoutPayInPlan } = require('./shard-wan-serving-payout-split')
+
+  test('builds a PayInPlan when payable and owner armed', () => {
+    const decision = evaluateShardWanServingPayout({
+      contributorCutSats: 1000,
+      receipt: validReceipt(),
+    })
+    const stageNodeRefs = new Map<number, string>([
+      [0, 'node:abc'],
+      [1, 'node:def'],
+    ])
+
+    const plan = buildShardWanServingPayoutPayInPlan({
+      decision,
+      houseMarginAccountRef: 'account:margin',
+      ownerArmed: true,
+      servingRunRef: 'run:123',
+      stageNodeRefs,
+    })
+
+    expect(plan).toBeDefined()
+    expect(plan?.costMsat).toBe(1000000)
+    expect(plan?.legs.length).toBe(3) // 1 in, 2 out
+    expect(plan?.legs[0]?.direction).toBe('in')
+    expect(plan?.legs[0]?.partyRef).toBe('account:margin')
+    expect(plan?.legs[0]?.amountMsat).toBe(1000000)
+
+    expect(plan?.legs[1]?.direction).toBe('out')
+    expect(plan?.legs[1]?.partyRef).toBe('node:abc')
+    expect(plan?.legs[1]?.amountMsat).toBe(400000)
+
+    expect(plan?.legs[2]?.direction).toBe('out')
+    expect(plan?.legs[2]?.partyRef).toBe('node:def')
+    expect(plan?.legs[2]?.amountMsat).toBe(600000)
+  })
+
+  test('returns undefined when not owner armed', () => {
+    const decision = evaluateShardWanServingPayout({
+      contributorCutSats: 1000,
+      receipt: validReceipt(),
+    })
+    const plan = buildShardWanServingPayoutPayInPlan({
+      decision,
+      houseMarginAccountRef: 'account:margin',
+      ownerArmed: false,
+      servingRunRef: 'run:123',
+      stageNodeRefs: new Map(),
+    })
+    expect(plan).toBeUndefined()
+  })
+
+  test('returns undefined when not payable', () => {
+    const decision = evaluateShardWanServingPayout({
+      contributorCutSats: 1000,
+      receipt: validReceipt({ parityMode: 'mismatch' }),
+    })
+    const plan = buildShardWanServingPayoutPayInPlan({
+      decision,
+      houseMarginAccountRef: 'account:margin',
+      ownerArmed: true,
+      servingRunRef: 'run:123',
+      stageNodeRefs: new Map(),
+    })
+    expect(plan).toBeUndefined()
+  })
+})
