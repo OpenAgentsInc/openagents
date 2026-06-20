@@ -234,6 +234,8 @@ import {
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
+import { handlePublicArtanisLaborReceiptsApi } from './artanis-labor-receipt-routes'
+import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
@@ -9005,6 +9007,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
+  },
+  {
+    path: '/api/public/artanis/labor-receipts',
+    handler: (request, env) =>
+      handlePublicArtanisLaborReceiptsApi(request, {
+        nowIso: currentIsoTimestamp,
+        store: makeD1ArtanisLaborUnattendedReceiptStore(
+          openAgentsDatabase(env),
+          currentIsoTimestamp,
+        ),
+      }),
   },
   {
     path: '/api/public/artanis/admin-ticks',

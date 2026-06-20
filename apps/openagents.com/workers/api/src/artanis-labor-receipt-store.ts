@@ -119,3 +119,106 @@ export const makeInMemoryArtanisLaborUnattendedReceiptStore =
       rows,
     }
   }
+
+// ---------------------------------------------------------------------------
+// D1 store. Persists the canonical serialized bytes keyed by content-addressed
+// ref; re-verifies on every read so the durable backing never trusts itself to
+// have kept the bytes intact. Mirrors the in-memory contract exactly (#4731,
+// blocker artanis_labor_unattended_request_receipts_missing). See migration
+// 0215_artanis_labor_unattended_receipts.sql.
+// ---------------------------------------------------------------------------
+
+type D1ArtanisLaborReceiptRow = {
+  receipt_ref: string
+  serialized_json: string
+}
+
+// Reconstruct a sealed receipt from a durable row by re-verifying the persisted
+// bytes against the ref they are keyed under. A row whose bytes no longer
+// address their key throws ArtanisLaborReceiptError (tamper-evident read), so a
+// corrupted/edited row can never be served as a valid receipt.
+const sealedFromRow = (
+  row: D1ArtanisLaborReceiptRow,
+): ArtanisLaborSealedReceipt => {
+  const receipt = verifyArtanisLaborUnattendedRequestReceipt(
+    row.serialized_json,
+    row.receipt_ref,
+  )
+  return {
+    receipt,
+    receiptRef: row.receipt_ref,
+    serialized: row.serialized_json,
+  }
+}
+
+export const makeD1ArtanisLaborUnattendedReceiptStore = (
+  db: D1Database,
+  // Deterministic clock for the created_at audit column (insertion order is kept
+  // by rowid regardless; created_at is denormalized for query/audit only).
+  nowIso: () => string,
+): ArtanisLaborUnattendedReceiptStore => ({
+  get: async receiptRef => {
+    const row = await db
+      .prepare(
+        `SELECT receipt_ref, serialized_json
+           FROM artanis_labor_unattended_receipts
+          WHERE receipt_ref = ?
+          LIMIT 1`,
+      )
+      .bind(receiptRef)
+      .first<D1ArtanisLaborReceiptRow>()
+    return row === null ? undefined : sealedFromRow(row)
+  },
+  list: async () => {
+    const result = await db
+      .prepare(
+        `SELECT receipt_ref, serialized_json
+           FROM artanis_labor_unattended_receipts
+          ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all<D1ArtanisLaborReceiptRow>()
+    return (result.results ?? []).map(sealedFromRow)
+  },
+  put: async sealed => {
+    // Refuse an internally inconsistent sealed receipt before it can be written.
+    const checked = assertSealedConsistent(sealed)
+    // INSERT OR IGNORE on the content-addressed primary key makes the write
+    // idempotent: re-storing the same lifecycle is a no-op. We then re-read so
+    // the returned row is always the stored canonical bytes.
+    const inserted = await db
+      .prepare(
+        `INSERT OR IGNORE INTO artanis_labor_unattended_receipts
+           (receipt_ref, serialized_json, terminal_state, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .bind(
+        checked.receiptRef,
+        checked.serialized,
+        checked.receipt.terminalState,
+        nowIso(),
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `SELECT receipt_ref, serialized_json
+           FROM artanis_labor_unattended_receipts
+          WHERE receipt_ref = ?
+          LIMIT 1`,
+      )
+      .bind(checked.receiptRef)
+      .first<D1ArtanisLaborReceiptRow>()
+
+    if (row === null) {
+      throw new ArtanisLaborReceiptError(
+        'Durable receipt insert succeeded but the row could not be read back.',
+      )
+    }
+
+    const stored = sealedFromRow(row)
+    // changes === 0 means the ref already existed and the insert was ignored.
+    return (inserted.meta?.changes ?? 0) > 0
+      ? { kind: 'stored', sealed: stored }
+      : { kind: 'already_stored', sealed: stored }
+  },
+})

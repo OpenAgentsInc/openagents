@@ -309,7 +309,16 @@ const budgetChecks = [
     // `Effect.Effect<Response> | undefined` like the sibling cloud-coding-session
     // dispatcher. Ratchet back down when these path-param dispatchers are
     // extracted behind a shared prefix-route mapper.
-    budget: 95,
+    // +1 (95 -> 96) for the Artanis labor receipt feed read handler
+    // (artanis-labor-receipt-routes.ts, artanis.labor_requester.v1, yellow):
+    // handlePublicArtanisLaborReceiptsApi is a GET-only public-safe read of the
+    // consolidated unattended-labor-request receipt store (whole feed or a single
+    // receipt by content-addressed ref), advancing but NOT clearing
+    // blocker.product_promises.artanis_labor_unattended_request_receipts_missing.
+    // It returns `Effect.Effect<Response>` like the sibling public read handlers.
+    // Ratchet back down when these public-projection handlers are extracted behind
+    // shared route mappers.
+    budget: 96,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -561,6 +570,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/artanis-responder-provenance.ts',
     route: '/api/public/artanis/responder-support',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/artanis-labor-receipt-routes.ts',
+    route: '/api/public/artanis/labor-receipts',
     status: 'staleness_declared',
   },
   {
