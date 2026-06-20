@@ -528,6 +528,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/artanis-responder-provenance.ts',
+    route: '/api/public/artanis/responder-support',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/forum/tip-earnings.ts',
     route: '/api/forum/tip-leaderboards',
     status: 'staleness_declared',

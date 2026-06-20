@@ -541,6 +541,9 @@ const schemaComponents = (): JsonSchema => ({
   ArtanisTickStreakResponse: objectSummary(
     'Public-safe Artanis unattended tick-streak projection: the count of CONSECUTIVE unattended ticks that both dispatched executor-trace work and carry an accepted exact-replay closeout verdict (outcome=verified, accept_state=accepted). Returns currentStreak, longestStreak, streakTarget, targetReached, verifiedTickCount, the ordered tick window with per-tick qualifies flags, and currentStreakAssignmentRefs - each dereferenceable as an artanis_admin_closeout receipt for independent replay-verdict inspection. A pending or unverified tick can only shorten the streak, never lengthen it. Read-only projection; it grants no dispatch, spend, assignment, or settlement authority and cannot create a tick or verdict.',
   ),
+  ArtanisResponderSupportResponse: objectSummary(
+    'Public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, and the external-contributor interactions with their dereferenceable reply-post refs. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus the projection_staleness.v1 staleness contract (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip.',
+  ),
   PublicTreasuryResponse: objectSummary(
     'Public-safe treasury projection with one aggregate live balance across available treasury rails (MDK + Spark) plus a small rail breakout and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
   ),
@@ -3379,6 +3382,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis unattended tick-streak projection.',
           '#/components/schemas/ArtanisTickStreakResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/responder-support': {
+    get: operation({
+      operationId: 'getPublicArtanisResponderSupport',
+      summary: 'Read the Artanis Pylon-support responder external-flow projection',
+      description:
+        'Returns the public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance answered counts, externalContributorFlowProven, and the external-contributor interactions each with a dereferenceable reply-post ref (fetchable at publicUrl). An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor); operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate. Read-only projection with no dispatch, spend, assignment, settlement, moderation, or registry authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum answered responder actions to scan.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Artanis Pylon-support responder external-contributor-flow projection.',
+          '#/components/schemas/ArtanisResponderSupportResponse',
         ),
         ...errorResponses(),
       },

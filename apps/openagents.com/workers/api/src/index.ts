@@ -194,6 +194,10 @@ import {
   readArtanisTickStreak,
 } from './artanis-tick-streak'
 import {
+  boundedResponderSupportLimit,
+  readArtanisResponderSupport,
+} from './artanis-responder-provenance'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -8847,6 +8851,27 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           nowIso: currentIsoTimestamp(),
         })
         return Response.json(streak, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
+    path: '/api/public/artanis/responder-support',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const projection = await readArtanisResponderSupport(
+          openAgentsDatabase(env),
+          {
+            limit: boundedResponderSupportLimit(
+              new URL(request.url).searchParams.get('limit'),
+            ),
+            nowIso: currentIsoTimestamp(),
+          },
+        )
+        return Response.json(projection, {
           headers: { 'cache-control': 'no-store' },
         })
       }),

@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.18')
+    expect(decoded.version).toBe('2026-06-20.19')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -178,8 +178,16 @@ describe('public product promises document', () => {
     // repo_studying_customer_private_validation_missing on
     // autopilot.repo_study_packets.v1 (refs-only INERT private-holdout
     // validation module + delivery seam); the promise STAYS yellow, so green
-    // remains exactly 24. The 2026-06-20.18 training ablation one-delta harness
-    // pass clears the
+    // remains exactly 24. The 2026-06-20.18 two-record artanis-area pass drops
+    // artanis_unattended_tick_streak_missing on
+    // artanis.tassadar_evolution_loop.v1 (the deployed tick-streak gate is met:
+    // longestStreak 12 >= 10, dereferenceable closeout receipts) and adds the
+    // external-contributor responder-support projection
+    // (GET /api/public/artanis/responder-support) on
+    // artanis.pylon_support_responder.v1 while KEEPING its
+    // external_contributor_flow_unproven blocker; both promises STAY yellow, so
+    // green remains exactly 24.
+    // The 2026-06-20.19 training ablation one-delta harness pass clears the
     // ablation_harness_missing blocker on training.ablation_system.v1 while
     // eval reproduction and paid dispatch remain blocked, so green remains
     // exactly 24.
@@ -878,12 +886,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.18', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.19', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.18',
+      expectedVersion: '2026-06-20.19',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.18',
+      servedVersion: '2026-06-20.19',
       status: 'ready',
     })
     expect(
@@ -893,7 +901,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.18',
+      servedVersion: '2026-06-20.19',
       status: 'blocked',
     })
   })
