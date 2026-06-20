@@ -47,7 +47,9 @@ export const MaxCurtailmentAckLatencyMs = 30_000
  */
 export const MaxCurtailmentHaltLatencyMs = 300_000
 
-const PublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+export const CurtailmentDrillPublicSafeRefPattern =
+  /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+const PublicSafeRefPattern = CurtailmentDrillPublicSafeRefPattern
 const PublicSafeRef = S.Trim.check(
   S.isNonEmpty(),
   S.isMinLength(3),
