@@ -14,7 +14,7 @@ export const OpenAgentsAgentOnboardingSourceRef =
 export const OpenAgentsAgentCoreSourceRef =
   'https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents.com/docs/live/AGENTS-CORE.md'
 export const OpenAgentsAgentOnboardingSha256 =
-  '63b50bc789080044ccf20328ee83d2627d40420f9498359beff645fee72fd90d'
+  'ce7a829a4d9714ebbbcb74770de3583518b9d6636382d558f8f2ad0ff38cf0e3'
 export const OpenAgentsAgentCoreSha256 =
   'c0bc97ae132334026ee578e44e1d70d55301413b3aa210ed6da760eb265e839a'
 
