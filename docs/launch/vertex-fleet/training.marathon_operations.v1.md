@@ -607,3 +607,52 @@ sealed on a real remote content-addressed checkpoint store, no runtime emits a r
 seal receipt, and no route serves this feed — so a real feed is empty. A real remote
 checkpoint-store read-back receipt
 (`durableCheckpointRemoteReadbackReceiptAvailable`) remains unproven.
+
+## 2026-06-20 — Durable-checkpoint-seal receipt FEED verifier (consumption side)
+
+**Blocker advanced:** `blocker.product_promises.durable_checkpoint_seal_missing`
+(NOT cleared — see below).
+
+Each receipt EMITTER gained a single-receipt VERIFIER, and each lane gained a feed
+BUILDER, but no lane had a FEED-level verifier. A feed builder aggregates a
+*trusted local* list; a downstream service instead dereferences a feed some OTHER
+process published and must treat the whole feed object as untrusted input and
+re-validate it before relying on it. Decoding alone is insufficient: the feed
+schema pins `schemaVersion`, `blockerRef`, and `publicSafe`, but it does not
+re-check the builder's structural invariants — a forged/corrupted feed can decode
+cleanly while carrying a mismatched accepted-count, unordered or duplicate entries,
+an entry whose content-addressed `receiptRef` is not bound to its window + digest,
+a non-content-addressed digest, sub-minimum replication, or an inconsistent
+rejection tally. This change supplies that missing consumption side of the FEED
+contract for the durable-checkpoint-seal lane:
+
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed-verifier.ts`
+  - `verifyDurableCheckpointSealReceiptFeed` /
+    `verifyUntrustedDurableCheckpointSealReceiptFeed`: pure, TOTAL verifiers
+    returning a `verified` vs `not_verified` verdict with enumerated reasons. They
+    re-derive every canonical entry ref from the entry's own window/digest fields,
+    re-check each digest is content-addressed and each replication factor meets the
+    durable minimum, and re-check the feed-level invariants (accepted-count match,
+    deterministic ref ordering, no duplicate accepted refs, consistent rejection
+    tally). They **fail toward `not_verified`** and never throw, mirroring the seal
+    predicate's fail-toward-HOLD posture.
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed-verifier.test.ts`
+  - 9 tests: a genuine built feed verifies (trusted + untrusted-decode paths); an
+    empty feed verifies; accepted-count mismatch, out-of-order entries, duplicate
+    accepted ref, ref-not-bound-to-window+digest, sub-minimum replication, and an
+    inconsistent rejection tally each fail to verify; a malformed feed fails toward
+    `not_verified` without throwing.
+- `training-marathon-operations.ts` lists the feed verifier module in the checkpoint
+  surface `sourceRefs`. All projection flags stay false.
+
+Contract-level only: a `verified` verdict reports a published feed is internally
+authentic and self-consistent with the builder invariants. It does **not** assert
+any real remote checkpoint store was read back, and grants no dispatch, settlement,
+storage-backend, promise-state, or green-claim authority. No promise state or
+blocker list was changed.
+
+**What remains (`durable_checkpoint_seal_missing` stays listed):** unchanged from
+above — no window has been sealed on a real remote content-addressed checkpoint
+store, so no genuine receipt or feed exists to verify yet. A real remote
+checkpoint-store read-back receipt
+(`durableCheckpointRemoteReadbackReceiptAvailable`) remains unproven.
