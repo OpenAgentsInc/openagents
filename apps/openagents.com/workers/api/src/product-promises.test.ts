@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.33')
+    expect(decoded.version).toBe('2026-06-20.34')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -109,6 +109,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
@@ -251,6 +254,9 @@ describe('public product promises document', () => {
     // The 2026-06-20.33 marathon pass binds durable-checkpoint seal evaluation
     // into live seal/bootstrap authority but keeps real remote checkpoint,
     // standby, and curtailment blockers active, so green remains exactly 24.
+    // The 2026-06-20.34 device-capability pass exposes same-class replication
+    // status but keeps same-host and thermal blockers active, so green remains
+    // exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -366,6 +372,24 @@ describe('public product promises document', () => {
           safeCopy: expect.stringContaining('durableCheckpointSeal'),
           verification: expect.stringContaining(
             'no real remote content-addressed checkpoint store',
+          ),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.device_capability_dataset.v1',
+          state: 'yellow',
+          evidenceRefs: expect.arrayContaining([
+            'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
+            'apps/openagents.com/workers/api/src/training-device-capability.ts',
+            'apps/openagents.com/workers/api/src/training-device-capability.test.ts',
+            'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.thermal_throttle_detection_missing',
+            'blocker.product_promises.same_host_replication_caveat',
+          ],
+          safeCopy: expect.stringContaining('sameClassReplicationStatus'),
+          verification: expect.stringContaining(
+            'legacy settled rows fail closed to same_host_only',
           ),
         }),
         expect.objectContaining({
@@ -1093,12 +1117,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.33', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.34', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.33',
+      expectedVersion: '2026-06-20.34',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.33',
+      servedVersion: '2026-06-20.34',
       status: 'ready',
     })
     expect(
@@ -1108,7 +1132,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.33',
+      servedVersion: '2026-06-20.34',
       status: 'blocked',
     })
   })

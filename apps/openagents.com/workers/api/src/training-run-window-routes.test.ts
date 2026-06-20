@@ -162,6 +162,9 @@ type TrainingDeviceCapabilityJson = Readonly<{
     verified: boolean
   }>
   schemaVersion: string
+  sameClassReplicationBlockerRefs: ReadonlyArray<string>
+  sameClassReplicationSignals: ReadonlyArray<Readonly<{ state: string }>>
+  sameClassReplicationStatus: string
   thermalThrottleBlockerRefs: ReadonlyArray<string>
   thermalThrottleDetectionStatus: string
   thermalThrottleSignals: ReadonlyArray<Readonly<{ state: string }>>
@@ -521,7 +524,9 @@ describe('training run window routes', () => {
 
     expect(deviceCapabilityResponse.status).toBe(200)
     expect(deviceCapability).toMatchObject({
-      blockerRefs: [],
+      blockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
       classDistributions: [
         {
           deviceClassRef: 'device_class.apple_silicon.m3_pro_18gb',
@@ -532,6 +537,11 @@ describe('training run window routes', () => {
         },
       ],
       schemaVersion: 'openagents.training.device_capability_dashboard.v1',
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      sameClassReplicationSignals: [{ state: 'same_host_only' }],
+      sameClassReplicationStatus: 'same_host_only',
       thermalThrottleBlockerRefs: [
         'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
       ],
@@ -2091,7 +2101,9 @@ describe('training run window routes', () => {
 
     expect(admitted.status).toBe(200)
     expect(admittedBody.dataset).toMatchObject({
-      blockerRefs: [],
+      blockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
       classDistributions: [
         {
           deviceClassRef: 'device_class.apple_silicon_macos.arm64',
@@ -2102,6 +2114,11 @@ describe('training run window routes', () => {
         },
       ],
       schemaVersion: 'openagents.training.device_capability_dataset.v1',
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      sameClassReplicationSignals: [{ state: 'same_host_only' }],
+      sameClassReplicationStatus: 'same_host_only',
       thermalThrottleBlockerRefs: [
         'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
       ],
@@ -2122,13 +2139,20 @@ describe('training run window routes', () => {
 
     expect(dashboard.status).toBe(200)
     expect(dashboardBody).toMatchObject({
-      blockerRefs: [],
+      blockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
       classDistributions: [
         {
           deviceClassRef: 'device_class.apple_silicon_macos.arm64',
           verified: true,
         },
       ],
+      sameClassReplicationBlockerRefs: [
+        'blocker.cs336_a2.requires_cross_machine_same_class_replication',
+      ],
+      sameClassReplicationSignals: [{ state: 'same_host_only' }],
+      sameClassReplicationStatus: 'same_host_only',
       thermalThrottleBlockerRefs: [
         'blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe',
       ],
