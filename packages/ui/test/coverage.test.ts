@@ -184,6 +184,17 @@ describe('Tailwind UI v4 family coverage', () => {
   it('maps every local Tailwind UI HTML variant file to a registered family when downloads are present', () => {
     const presentKits = localKits.filter(kit => existsSync(kit.root))
 
+    // The per-file coverage check reads the proprietary Tailwind UI v4 HTML
+    // exports from ~/Downloads, which are never committed to the repo. On a
+    // clean checkout (CI, fresh clone, any machine without the local kits)
+    // none are present and there is nothing to verify, so skip the body
+    // rather than fail. When ANY kit is present we still require that the
+    // full set is present and run the complete per-file coverage assertions —
+    // a partial download is a real coverage gap and stays caught.
+    if (presentKits.length === 0) {
+      return
+    }
+
     expect(presentKits.map(kit => kit.name)).toEqual([
       'application-ui-v4',
       'ecommerce-v4',
