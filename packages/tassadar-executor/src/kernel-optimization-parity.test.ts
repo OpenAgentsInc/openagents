@@ -137,6 +137,53 @@ describe("kernel-optimization throughput-parity verdict", () => {
     expect(verdict.rejection?.reason).toBe("op_mismatch")
   })
 
+  test("rejects when baseline and optimized name the same kernel impl", () => {
+    // No new kernel delivered: the tok/s delta is remeasurement / cherry-picking
+    // the same implementation, not an optimization. The deliverable gate catches
+    // it even though parity is verified and the optimized number is faster.
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, kernelRef: "baseline-runtime" },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("kernel_not_optimized")
+  })
+
+  test("same-kernel detection is trim/case-insensitive", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline: { ...baseline, kernelRef: "Baseline-Runtime" },
+      optimized: { ...optimized, kernelRef: "  baseline-runtime  " },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("kernel_not_optimized")
+  })
+
+  test("rejects a blank optimized kernel ref (no deliverable to attest)", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, kernelRef: "   " },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: verifiedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("kernel_not_optimized")
+  })
+
+  test("deliverable gate is structural: it wins over a faster-but-wrong parity verdict", () => {
+    const verdict = verifyKernelOptimizationParity({
+      baseline,
+      optimized: { ...optimized, kernelRef: "baseline-runtime" },
+      optimizedOpRef: "rmsnorm",
+      parityVerdict: rejectedParity,
+    })
+    expect(verdict.outcome).toBe("rejected")
+    expect(verdict.rejection?.reason).toBe("kernel_not_optimized")
+  })
+
   test("speed never overrides correctness: faster-but-wrong is rejected", () => {
     const verdict = verifyKernelOptimizationParity({
       baseline,

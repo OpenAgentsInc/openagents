@@ -50,6 +50,7 @@ export type KernelThroughputRecord = Readonly<{
 export type KernelOptimizationRejection =
   | Readonly<{ reason: "target_mismatch"; detail: string }>
   | Readonly<{ reason: "op_mismatch"; detail: string }>
+  | Readonly<{ reason: "kernel_not_optimized"; detail: string }>
   | Readonly<{ reason: "invalid_throughput"; detail: string }>
   | Readonly<{
       reason: "parity_rejected"
@@ -92,11 +93,15 @@ const isPositiveFinite = (value: number): boolean =>
  * single kernel-optimization acceptance verdict.
  *
  * Gate order is intentional: structural validity (same target, same op
- * provenance, valid numbers) first, then the parity correctness gate, then
- * throughput. Op provenance is checked before throughput because comparing
- * tok/s across different ops is meaningless — a faster number for a different
- * op is not a speedup of the claimed op. Parity is checked before throughput
- * so that "faster but wrong" can never be accepted.
+ * provenance, a genuinely distinct delivered kernel, valid numbers) first, then
+ * the parity correctness gate, then throughput. Op provenance is checked before
+ * throughput because comparing tok/s across different ops is meaningless — a
+ * faster number for a different op is not a speedup of the claimed op. The
+ * delivered-kernel gate is also checked before throughput because if the
+ * optimized record names the SAME kernel implementation as the baseline, no new
+ * kernel was delivered and the tok/s delta is remeasurement (or a cherry-picked
+ * run), not an optimization. Parity is checked before throughput so that
+ * "faster but wrong" can never be accepted.
  */
 export const verifyKernelOptimizationParity = (
   input: Readonly<{
@@ -157,6 +162,28 @@ export const verifyKernelOptimizationParity = (
     return rejected({
       detail: `op provenance mismatch: claimed "${input.optimizedOpRef.trim()}" but baseline record op "${baseline.opRef.trim()}", optimized record op "${optimized.opRef.trim()}"`,
       reason: "op_mismatch",
+    })
+  }
+
+  // Deliverable gate: the work definition requires an agent-authored optimized
+  // kernel DISTINCT from the baseline kernel. If the optimized record names the
+  // same kernel implementation as the baseline (or no implementation at all),
+  // no new kernel was delivered, so any tok/s delta is remeasurement noise or a
+  // cherry-picked run, not an optimization — never an accepted speedup.
+  const normalizeKernel = (value: string): string => value.trim().toLowerCase()
+  const baselineKernel = normalizeKernel(baseline.kernelRef)
+  const optimizedKernel = normalizeKernel(optimized.kernelRef)
+  if (optimizedKernel.length === 0) {
+    return rejected({
+      detail:
+        "optimized record must name a non-empty kernel implementation (the delivered kernel)",
+      reason: "kernel_not_optimized",
+    })
+  }
+  if (optimizedKernel === baselineKernel) {
+    return rejected({
+      detail: `optimized record names the same kernel implementation as the baseline ("${optimized.kernelRef.trim()}"); no new kernel was delivered, so the tok/s delta is remeasurement, not an optimization`,
+      reason: "kernel_not_optimized",
     })
   }
 
