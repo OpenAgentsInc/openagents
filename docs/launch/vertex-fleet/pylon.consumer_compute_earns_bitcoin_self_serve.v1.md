@@ -3,6 +3,40 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (i) — WSL scope-out: enforce it in code, not just prose
+
+Blocker advanced this run:
+`blocker.product_promises.windows_wsl_consumer_install_coverage_missing`
+
+Prior runs (b, c) built the copy-drift guard and bound it to the real README, but
+a structural hole remained on the WSL half of this blocker: the classifier's own
+comments and `platform-support.md` claimed "the WSL Linux userland that
+contributors conflate with native Linux is out-of-scope", yet the code could not
+enforce that. `classifyConsumerInstallPlatform` only takes a `NodeJS.Platform`,
+and **WSL reports `process.platform === "linux"`** — so `isSupportedPlatform`
+returned `supported` for a WSL host, directly contradicting the documented
+scope-out. The WSL scope-out was prose-only.
+
+- `apps/pylon/src/consumer-install-platform-support.ts` — added pure, public-safe
+  `detectWslHost(env, procVersion?)` (boolean over `WSL_DISTRO_NAME` /
+  `WSL_INTEROP` / `WSLENV` presence and optional `/proc/version` `microsoft`/`wsl`
+  text; reads no files, emits no env value/path/identifier) and
+  `classifyConsumerInstallHost({ platform, wsl })`, which classifies a WSL host
+  (`wsl:true` on linux) `out-of-scope` with `reason.platform.wsl_out_of_scope` and
+  the blocker ref. `classifyConsumerInstallPlatform` is now a thin no-WSL wrapper
+  over it (existing behavior unchanged).
+- `apps/pylon/src/consumer-install-platform-support.test.ts` — +9 bun:test cases
+  (WSL detection per signal, empty-value rejection, /proc/version, parity with the
+  platform classifier, public-safety key audit). 23 pass (was 14).
+- `apps/pylon/docs/platform-support.md` — documented the WSL detector/host
+  classifier and that the WSL scope-out is now enforced in code.
+
+No promise state changed; no Windows/WSL support claimed; no host probed; no env
+value emitted. Still listed: the runtime install/bootstrap path does not yet WIRE
+`detectWslHost` to refuse/guide a WSL contributor, and clearing the blocker still
+needs the owner-facing copy-narrowing sign-off. This run closes the prose-vs-code
+gap so a WSL host can no longer be silently classified as a supported platform.
+
 ## Update 2026-06-20 (h) — scale methodology: untrusted-input parse boundary
 
 Blocker advanced this run:

@@ -16,10 +16,15 @@
 // live behavior:
 //
 //   - `classifyConsumerInstallPlatform` is a pure classifier giving a public-safe
-//     disposition for any platform: `supported` (darwin/linux) vs `out-of-scope`
-//     (win32/WSL and everything else), with honest guidance refs. It mirrors the
-//     existing bootstrap supported-target set; it never emits machine
+//     disposition for a `NodeJS.Platform`: `supported` (darwin/linux) vs
+//     `out-of-scope` (win32 and everything else), with honest guidance refs. It
+//     mirrors the existing bootstrap supported-target set; it never emits machine
 //     identifiers, paths, usernames, or any private material.
+//   - `classifyConsumerInstallHost` extends that to WSL. WSL reports
+//     `process.platform === "linux"`, so a platform-only check would mis-classify
+//     a WSL host as `supported` — silently contradicting the documented
+//     macOS/Linux-only scope-out. The host classifier takes an explicit WSL signal
+//     (derived by `detectWslHost`) and classifies a WSL host `out-of-scope`.
 //   - `verifyConsumerInstallPlatformClaim` audits an untrusted stated
 //     platform-support claim and flags over-promises: a supported set that is not
 //     exactly {darwin, linux}, any inclusion of windows/win32/wsl, a
@@ -58,16 +63,32 @@ export type ConsumerInstallPlatformSupport = {
 }
 
 /**
- * Classify the self-serve consumer-install disposition for a platform.
+ * Public-safe host signals for the self-serve consumer-install classifier.
  *
- * Pure and side-effect-free. `supported` exactly when the bootstrap
- * supported-target set covers the platform (macOS/Linux). Everything else —
- * including native Windows (`win32`) and the WSL Linux userland that contributors
- * often conflate with native Linux — is `out-of-scope` with honest guidance.
+ * `platform` is the reported `NodeJS.Platform`. `wsl` is an explicit
+ * "running under WSL" signal — WSL reports `platform === "linux"`, so it cannot
+ * be inferred from `platform` alone; derive it with `detectWslHost`.
  */
-export function classifyConsumerInstallPlatform(
-  platform: NodeJS.Platform = process.platform,
+export type ConsumerInstallHostSignals = {
+  platform?: NodeJS.Platform
+  wsl?: boolean
+}
+
+/**
+ * Classify the self-serve consumer-install disposition for a host, accounting
+ * for WSL.
+ *
+ * Pure and side-effect-free. A WSL host (`wsl === true`, which reports
+ * `platform === "linux"`) is `out-of-scope` per the documented macOS/Linux-only
+ * scope decision — even though its raw platform string is the supported `linux`.
+ * Otherwise `supported` exactly when the bootstrap supported-target set covers
+ * the platform (macOS/Linux); native Windows (`win32`) and everything else are
+ * `out-of-scope` with honest guidance.
+ */
+export function classifyConsumerInstallHost(
+  signals: ConsumerInstallHostSignals = {},
 ): ConsumerInstallPlatformSupport {
+  const platform = signals.platform ?? process.platform
   const supportedTargets = [...CONSUMER_INSTALL_SUPPORTED_TARGETS]
   const base = {
     schema: "openagents.pylon.consumer_install_platform_support.v0.1",
@@ -75,6 +96,22 @@ export function classifyConsumerInstallPlatform(
     supportedTargets,
     contentRedacted: true,
   } as const
+
+  // WSL reports `platform === "linux"`; without this guard a platform-only check
+  // would mis-classify a WSL host as `supported`, silently contradicting the
+  // documented scope-out. The WSL signal is only meaningful on linux.
+  if (signals.wsl === true && platform === "linux") {
+    return {
+      ...base,
+      disposition: "out-of-scope",
+      reasonRef: "reason.platform.wsl_out_of_scope",
+      guidanceRefs: [
+        "doc.pylon.platform_support",
+        "guidance.platform.use_native_macos_or_linux_host_not_wsl",
+      ],
+      blockerRefs: [WINDOWS_WSL_BLOCKER_REF],
+    }
+  }
 
   if (isSupportedPlatform(platform)) {
     return {
@@ -109,6 +146,56 @@ export function classifyConsumerInstallPlatform(
     ],
     blockerRefs: [WINDOWS_WSL_BLOCKER_REF],
   }
+}
+
+/**
+ * Classify the self-serve consumer-install disposition for a `NodeJS.Platform`.
+ *
+ * Pure and side-effect-free. Thin wrapper over `classifyConsumerInstallHost`
+ * with no WSL signal: a bare platform string cannot reveal WSL (WSL reports
+ * `linux`), so callers that want WSL handling must use `classifyConsumerInstallHost`
+ * with `detectWslHost`. `supported` exactly for macOS/Linux; native Windows
+ * (`win32`) and everything else are `out-of-scope`.
+ */
+export function classifyConsumerInstallPlatform(
+  platform: NodeJS.Platform = process.platform,
+): ConsumerInstallPlatformSupport {
+  return classifyConsumerInstallHost({ platform })
+}
+
+// Environment variables WSL sets in its Linux userland. Their mere presence is a
+// reliable, public-safe WSL signal; we never read or emit their VALUES.
+const WSL_ENV_SIGNALS: readonly string[] = [
+  "WSL_DISTRO_NAME",
+  "WSL_INTEROP",
+  "WSLENV",
+]
+
+/**
+ * Detect whether the current host is running under WSL.
+ *
+ * Pure and side-effect-free: the caller supplies the environment and, optionally,
+ * the text of `/proc/version` (which on WSL contains "microsoft"/"WSL"). Returns a
+ * plain boolean — it never reads files itself and never emits any environment
+ * value, path, or machine identifier. Use its result as the `wsl` signal for
+ * `classifyConsumerInstallHost` so a WSL host (which reports `platform === "linux"`)
+ * is classified `out-of-scope` per the documented scope decision.
+ */
+export function detectWslHost(
+  env: NodeJS.ProcessEnv = process.env,
+  procVersionText?: string,
+): boolean {
+  for (const key of WSL_ENV_SIGNALS) {
+    const value = env[key]
+    if (typeof value === "string" && value.trim().length > 0) return true
+  }
+  if (
+    typeof procVersionText === "string" &&
+    /\b(?:microsoft|wsl)\b/i.test(procVersionText)
+  ) {
+    return true
+  }
+  return false
 }
 
 /**
