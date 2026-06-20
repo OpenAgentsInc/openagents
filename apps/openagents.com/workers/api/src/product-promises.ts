@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.5'
+export const PublicProductPromisesVersion = '2026-06-20.6'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2522,7 +2522,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot Sites/Agency partners can earn Bitcoin payouts when their referred customers become paying OpenAgents customers.',
         safeCopy:
-          'An operator-gated partner-payout ledger and state-transition routes shipped in wave-3 (#4986): operators can move a payout through approve/dispatch/settle/reverse states. The adjacent Sites referral payout rail was wired in source on RL-1 (#5458) — a paid-event eligibility feed (referral attribution -> referring user) plus a readiness-gated, idempotent approved -> dispatched -> settled dispatch that invokes the MDK/Spark payout adapter before recording settled and refuses non-Bitcoin (Stripe credit) revenue — so the attribution->settlement mechanism now has a tested reference implementation (sites.referral_bitcoin_stream.v1). Remaining work is part product decision, part code: owner sign-off on payout percentage and caps, a partner-attribution policy distinct from the referral feed, settlement dispatch wiring to a public partner receipt, a real settled partner payout, and a partner-facing projection or API.',
+          'An operator-gated partner-payout ledger, state-transition routes, and a public-safe count-only partner-payout projection API shipped in wave-3/#5524 follow-up work: operators can move a payout through approve/dispatch/settle/reverse states, and GET /api/public/partner-payouts exposes aggregate current states, roles, assets, policy shape, and settled sats without partner refs, user ids, payout refs, qualifying event refs, payout destinations, invoices, preimages, or provider payloads. The adjacent Sites referral payout rail was wired in source on RL-1 (#5458) as a tested attribution->settlement reference implementation. Remaining work is part product decision, part code: owner sign-off on payout percentage and caps, a partner-attribution policy distinct from the referral feed, settlement dispatch wiring to a public partner receipt, and a real settled partner payout.',
         unsafeCopy:
           'Do not claim partners are earning, can withdraw payouts, or have an earnings dashboard, and do not describe this as a live partner revenue stream; the ledger exists, the referral payout dispatch rail is wired and tested but has never settled a real payout, and partner payout percentage/caps and a partner attribution policy are still unsigned/undecided.',
         evidenceRefs: [
@@ -2534,21 +2534,25 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/site-referral-payout-public-routes.ts',
           'route:/api/public/site-referral-payouts',
           'https://openagents.com/api/public/site-referral-payouts',
+          'apps/openagents.com/workers/api/src/partner-payout-public-projection.ts',
+          'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
+          'apps/openagents.com/workers/api/src/partner-payout-public-projection.test.ts',
+          'route:/api/public/partner-payouts',
           'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4986',
           'https://github.com/OpenAgentsInc/openagents/issues/5458',
+          'https://github.com/OpenAgentsInc/openagents/issues/5524',
           'promise:sites.referral_bitcoin_stream.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.partner_attribution_policy_missing',
           'blocker.product_promises.partner_payout_settlement_not_wired',
           'blocker.product_promises.partner_first_real_payout_pending',
-          'blocker.product_promises.partner_projection_api_missing',
         ],
         verification:
-          'Operator routes and the ledger module pass type/unit tests, and the referral payout feed + readiness-gated dispatch pass site-referral-payout-wire.test.ts against a mock adapter (RL-1 #5458). Green requires a partner-specific attribution policy (referral->customer mapping), payout-ledger linkage to a real dereferenceable public settlement receipt for an actually settled partner payout, and a partner-accessible earnings projection.',
+          'Operator routes and the ledger module pass type/unit tests, the referral payout feed + readiness-gated dispatch pass site-referral-payout-wire.test.ts against a mock adapter (RL-1 #5458), and the partner payout public projection route passes count-only/no-leak tests. This clears the projection API blocker only. Green still requires a partner-specific attribution policy (referral->customer mapping), payout-ledger linkage to a real dereferenceable public settlement receipt for an actually settled partner payout, and owner sign-off.',
         authorityBoundary:
-          'Ledger state is not spendable value; settlement requires separate dispatch authority and public-safe settlement evidence.',
+          'Ledger state and public aggregate projections are not spendable value; settlement requires separate dispatch authority and public-safe settlement evidence.',
       },
       {
         ...basePromiseFields,
@@ -3443,6 +3447,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.3: Pylon v1.0.5 signed-binary release shipped + verified — pylon.v03_release_candidate.v1 + pylon.release_tomorrow.v1 yellow -> green (owner-authorized 2026-06-20). Signed binaries (macOS+Linux, 4 targets) signed with pinned ed25519 kid 2dbe811d19f67528, published to updates.openagents.com (Cloud Run oa-updates-00041-b7b, rollout 100, full rc history preserved); live feed verified serving v1.0.5 with sha256+ed25519 against apps/oa-updates/keys/release-pubkey.json (fail-closed, tamper rejected); live network smoke registered+heartbeated online in /api/pylons as pylon.33afd48282a649047e3a (openagents.pylon@1.0.5). Both blockers cleared. Green 22 -> 24. Honest bound: macOS+Linux only (Windows out of scope); network-scale earning separate. Flip applied in source ahead of the operator-route transition receipt.',
         'Registry 2026-06-20.4: green-quality fix on pylon.release_tomorrow.v1 (conceding Orrery audit, forum topic 415e16a7) — its green previously rested on the sibling pylon.v03_release_candidate.v1 evidence array; it now carries its OWN dereferenceable refs (the signed darwin-arm64 feed https://updates.openagents.com/pylon/rc/darwin-arm64/feed.json and the live registration route:/api/pylons#pylon.33afd48282a649047e3a). No state change (stays green), green count unchanged at 24. The transitions-feed backfill for the four post-2026-06-17.5 flips remains the owner-gated item (prod admin token).',
         'Registry 2026-06-20.5 is a marketplace.signature_monetization.v1 de-stale pass and flips NO promise state. The already-deployed inert usage-metering model and public read-only projection (GET /api/public/markets/signature-monetization/metering) prove validation+metering can reach the metered rung while the promise remains red/inert and settlement stays blocked. This clears blocker.product_promises.signature_usage_metering_missing only; blocker.product_promises.signature_settlement_missing remains. No billing, pricing, rev-share, payout, settlement, or revenue claim is created.',
+        'Registry 2026-06-20.6 is an autopilot_sites.partner_payout_ledger.v1 projection de-stale pass and flips NO promise state. The public-safe count-only partner payout projection (GET /api/public/partner-payouts) exposes aggregate current states, roles, assets, policy shape, and settled sats while withholding partner refs, user ids, payout refs, qualifying event refs, payout destinations, invoices, preimages, and provider payloads. This clears blocker.product_promises.partner_projection_api_missing only; partner attribution policy, settlement wiring, and first real payout remain blocked. No partner earning, withdrawal, revenue, payout, settlement, or green claim is created.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
