@@ -293,6 +293,7 @@ import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-route
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
+import { handleBatchJobsSubmit } from './inference/batch-job-routes'
 import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
@@ -9405,6 +9406,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         handleProgrammaticAgentHome(request, openAgentsDatabase(env)),
       ),
+  },
+  {
+    path: '/v1/inference/batches',
+    handler: (request, env) =>
+      handleBatchJobsSubmit(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+      }),
   },
   {
     // Inference gateway (EPIC #5474, #5476). INERT by default: gated behind
