@@ -120,6 +120,41 @@ runner/reviewer/originator/referrer), and the `not_yet_evidenced`
 payable/settlement evidence that depends on the untouched
 `settlement_state_machine_incomplete` blocker. The blocker stays listed.
 
+## Follow-on change: contributor accrual bundle (composition root)
+
+`apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.ts` — a
+pure, deterministic composition root that ties the three previously-independent
+pieces together for one accepted outcome: it resolves the share split
+(share policy), builds the contributor accrual ledger AND the gross-margin
+receipt from the same economics record, and returns a single
+`OmniContributorAccrualBundle` keyed by accepted-outcome id.
+
+Its purpose is the missing *seam* between the two parallel views. Before this,
+nothing proved the receipt and the ledger agreed; the builder now enforces a
+cross-view reconciliation invariant (`OmniContributorAccrualBundleInvariantError`):
+same `economicsId`, the same single gross-margin figure across the receipt, its
+`gross_margin` lifecycle line, and the ledger; the ledger's distributable pool =
+`max(0, grossMargin)` with accruals summing to it exactly (no margin invented or
+lost between receipt and attribution); and both halves agreeing that settlement
+is disclaimed. `publicOmniContributorAccrualBundleProjection` composes the two
+existing public projections and likewise drops monetary figures.
+
+Tests: `apps/openagents.com/workers/api/src/omni-contributor-accrual-bundle.test.ts`
+(8 tests, passing) cover same-id composition, single-gross-margin reconciliation,
+accruals summing to the reconciled margin, loss → zero distributable, settlement
+staying disclaimed across both halves, determinism, public redaction, and the
+invariant error type.
+
+This advances `blocker.product_promises.contributor_ledger_missing` —
+**partially advanced, NOT cleared.** It closes the "single dereference point that
+binds accruals to the receipt" gap with a real, testable composition + a
+cross-view reconciliation invariant. What still remains for this blocker: a
+PERSISTED/queryable bundle record + read route to dereference by accepted-outcome
+id over HTTP, real per-outcome party sourcing (which workroom/contract event
+names each runner/reviewer/originator/referrer), and the `not_yet_evidenced`
+payable/settlement evidence that depends on the untouched
+`settlement_state_machine_incomplete` blocker. The blocker stays listed.
+
 ## What genuinely remains (blocker stays listed)
 
 - A persisted/queryable receipt record and a read route so a reviewer can
