@@ -359,3 +359,44 @@ export const activityEventsToParticles = (
   events
     .map(activityEventToParticle)
     .filter((p): p is PaymentParticle => p !== null)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2.5 — payment-particle recency window (#5730 live wiring)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// How long a payment beam stays in the live scene after its event timestamp.
+// Beyond this, a beam no longer represents *recent* activity and is pruned, so a
+// quiet network does not keep flying a stale beam forever — the active-set count
+// cap alone would let an old beam linger until enough newer payments push it out.
+// Pruning is bound to the event's OWN ts (not a wall clock), so it stays pure and
+// deterministic: replaying the same stream always yields the same active set.
+export const PAYMENT_PARTICLE_WINDOW_MS = 90_000
+
+// Parse a particle's ISO ts into epoch ms, or null when absent/unparseable. We
+// never invent a timestamp — a particle the worker emitted without a ts simply
+// cannot be recency-pruned (the count cap still bounds it).
+export const paymentParticleTsMs = (particle: PaymentParticle): number | null => {
+  const ts = particle.ts
+  if (typeof ts !== "string") return null
+  const ms = Date.parse(ts)
+  return Number.isFinite(ms) ? ms : null
+}
+
+// Drop payment particles whose event ts is older than `referenceTsMs - windowMs`.
+// Particles with no parseable ts are KEPT (we never fabricate a time to expire
+// them; the caller's count cap bounds them). Input order is preserved. Pure: the
+// caller passes the reference time — typically the newest incoming particle's ts
+// (paymentParticleTsMs) — so there is no hidden clock and the result is testable.
+// A non-finite referenceTsMs is a no-op (we never prune against an unknown clock).
+export const prunePaymentParticlesByRecency = (
+  particles: ReadonlyArray<PaymentParticle>,
+  referenceTsMs: number,
+  windowMs: number = PAYMENT_PARTICLE_WINDOW_MS,
+): ReadonlyArray<PaymentParticle> => {
+  if (!Number.isFinite(referenceTsMs)) return particles
+  const cutoff = referenceTsMs - Math.max(0, windowMs)
+  return particles.filter((p) => {
+    const ms = paymentParticleTsMs(p)
+    return ms === null || ms >= cutoff
+  })
+}
