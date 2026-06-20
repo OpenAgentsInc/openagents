@@ -42,6 +42,39 @@ refuse to publish a dishonest receipt. Pure: no D1, clock, network, or secrets;
 no payment material in the output (refs, token counts, and owner-visible amounts
 only). 9 tests pass.
 
+## Provenance binding follow-up (this run)
+
+The assembler above could only link three legs a caller *asserted* belonged
+together — nothing in stored state proved the `credit_to_msat` grant came from
+the `card_to_credit` purchase. The bridge wrote every grant with a generic
+`context_ref` of `inference:usd-credit:<userId>`, which names WHO was funded but
+not WHICH Stripe checkout session funded them. This run makes a card-origin
+grant **dereferenceable back to its purchase**:
+
+- `apps/openagents.com/workers/api/src/inference/card-credit-provenance.ts`
+  (+ `card-credit-provenance.test.ts`): the single source of truth for the
+  card-origin grant `context_ref` format —
+  `cardCreditGrantContextRef(sessionId)` →
+  `inference:usd-credit:card:<sessionId>` and the inverse
+  `parseCardCreditGrantContextRef`. Legacy/generic grants parse to `undefined`,
+  so the change is purely additive and never misreads a non-card grant as
+  card-funded.
+- `usd-credit-bridge.ts`: `fundInferenceFromCredit` takes an OPTIONAL
+  `sourceCheckoutSessionId`; when present the grant's `context_ref` is stamped
+  with the card-origin format (else the legacy generic format is kept). Verified
+  against real `node:sqlite` SQL that the stored `pay_ins.context_ref`
+  round-trips back to the funding session.
+- `card-credit-spend-receipt.ts`: the assembler now accepts the grant's stored
+  `contextRef` and, when present, REQUIRES it to parse to the purchase's
+  `sessionId` (new typed failure `provenance_mismatch`); on success the
+  `credit_to_msat` chain step carries that `context_ref` as dereferenceable
+  evidence of the hop-1→hop-2 binding. Omitting it preserves the prior
+  caller-asserted behaviour.
+
+This closes the *stored-linkage* gap so that once a real card purchase funds a
+grant, the chain can be proven from the ledger rows themselves — it does not by
+itself produce a live receipt (still secrets-gated, see below).
+
 ## What remains (blocker NOT cleared)
 
 The receipt FORMAT + linker now exist and are review-stable, but the blocker

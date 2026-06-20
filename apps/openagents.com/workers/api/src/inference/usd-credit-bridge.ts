@@ -41,6 +41,7 @@ import {
 } from '../billing'
 import { workerLogEntry } from '../observability'
 import { type LedgerStatement, runLedgerStatements } from '../payments-ledger'
+import { cardCreditGrantContextRef } from './card-credit-provenance'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
 
 // Infrastructure failure (D1 read/write) while funding inference credit. Domain
@@ -252,6 +253,13 @@ export const fundInferenceFromCredit = (
     // Idempotency/correlation ref for THIS fund action (e.g. a request id or a
     // client-supplied token). One ref = one grant.
     grantRef: string
+    // OPTIONAL provenance: the Stripe checkout session that funded this grant.
+    // When present, the grant's `context_ref` is stamped with the card-origin
+    // format (`card-credit-provenance.ts`) so the grant is dereferenceable back
+    // to its purchase for the card->credit->inference-spend chain receipt. When
+    // absent (Lightning-/balance-funded grants), the legacy generic context_ref
+    // is used and the chain has no card origin to bind.
+    sourceCheckoutSessionId?: string
   }>,
   deps: FundInferenceFromCreditDeps,
 ): Effect.Effect<FundInferenceFromCreditOutcome, UsdCreditBridgeError> =>
@@ -328,6 +336,15 @@ export const fundInferenceFromCredit = (
     const accountRef = agentRefForUser(input.userId)
     const now = nowIso()
 
+    // Stamp the grant with its card-purchase origin when we know it, so the
+    // grant row is dereferenceable back to the funding Stripe session for the
+    // card->credit->inference-spend chain receipt. Falls back to the legacy
+    // generic context_ref for non-card (Lightning/balance) grants.
+    const contextRef =
+      (input.sourceCheckoutSessionId !== undefined
+        ? cardCreditGrantContextRef(input.sourceCheckoutSessionId)
+        : undefined) ?? `inference:usd-credit:${input.userId}`
+
     // Atomic: USD debit + msat grant in ONE D1 batch. The USD debit uses
     // INSERT OR IGNORE on a UNIQUE idempotency key and the msat grant uses the
     // UNIQUE pay_ins idempotency key, so a replayed fund (same grantRef) is a
@@ -349,7 +366,7 @@ export const fundInferenceFromCredit = (
           ...usdCreditGrantStatements(
             {
               accountRef,
-              contextRef: `inference:usd-credit:${input.userId}`,
+              contextRef,
               grantMsat,
               grantRef: input.grantRef,
             },
