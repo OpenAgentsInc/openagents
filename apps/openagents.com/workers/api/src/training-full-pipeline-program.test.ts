@@ -100,6 +100,19 @@ describe('training full pipeline program status projection', () => {
       receiptState: 'partial_receipt_surface_live',
     })
     expect(
+      projection.stages.find(
+        stage => stage.stageId === 'public_distributed_run',
+      ),
+    ).toMatchObject({
+      endpointRefs: [
+        '/api/public/training/public-distributed-run-scale',
+        '/api/public/training/runs/run.tassadar.executor.20260615',
+        '/api/public/training/runs/run.tassadar.executor.20260615/settlements',
+      ],
+      promiseId: 'training.public_distributed_training_run.v1',
+      receiptState: 'partial_receipt_surface_live',
+    })
+    expect(
       projection.stages.find(stage => stage.stageId === 'marathon_operations'),
     ).toMatchObject({
       endpointRefs: ['/api/public/training/marathon-operations'],

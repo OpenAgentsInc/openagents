@@ -11,6 +11,7 @@ import {
 import { currentIsoTimestamp } from './runtime-primitives'
 import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
+import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
 
 export const TrainingFullPipelineProgramEndpoint =
   '/api/public/training/full-pipeline-program'
@@ -148,19 +149,21 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
   },
   {
     endpointRefs: [
+      TrainingPublicDistributedRunScaleEndpoint,
       '/api/public/training/runs/run.tassadar.executor.20260615',
       '/api/public/training/runs/run.tassadar.executor.20260615/settlements',
     ],
     evidenceRefs: [
       'docs/promises/2026-06-19-training-live-run-evidence-destale.md',
       'docs/training/2026-06-19-public-distributed-training-run-scale-methodology.md',
+      'apps/openagents.com/workers/api/src/training-public-distributed-run-scale.ts',
     ],
     promiseId: 'training.public_distributed_training_run.v1',
     receiptState: 'partial_receipt_surface_live',
     role: 'Public distributed run scale, accepted work, validation, and settlement.',
     stageId: 'public_distributed_run',
     statusLabel:
-      'The bounded live run has canary-scale accepted and settled receipts; network-scale broad receipts remain missing.',
+      'The bounded live run has canary-scale accepted and settled receipts, now projected against the >=50 qualified-contributor threshold; network-scale broad receipts remain missing.',
   },
   {
     endpointRefs: [TrainingMarathonOperationsEndpoint],

@@ -49,6 +49,10 @@ import {
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
 import {
+  TrainingPublicDistributedRunScaleEndpoint,
+  handleTrainingPublicDistributedRunScaleApi,
+} from './training-public-distributed-run-scale-routes'
+import {
   TrainingPostTrainingInstructSftEndpoint,
   handleTrainingPostTrainingInstructSftApi,
 } from './training-post-training-instruct-sft-routes'
@@ -8012,6 +8016,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() =>
         buildPublicTassadarRunSummaryEnvelopeForRequest(request, env),
       ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
+  },
+  {
+    path: TrainingPublicDistributedRunScaleEndpoint,
+    handler: (request, env) =>
+      handleTrainingPublicDistributedRunScaleApi(request, env),
   },
   {
     path: '/api/public/activity-timeline',
