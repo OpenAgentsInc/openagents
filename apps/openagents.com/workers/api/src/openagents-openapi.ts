@@ -24,6 +24,7 @@ import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
+import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
 import { TrainingPostTrainingInstructSftEndpoint } from './training-post-training-instruct-sft'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -548,6 +549,112 @@ export const TrainingFullPipelineProgramEnvelope: JsonSchema = {
   },
 }
 
+export const TrainingPublicGradientWindowsEnvelope: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe public-gradient-window status projection for training.public_gradient_windows.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, the regime gate, the promoted-window receipt emitter surface, current zero-count runtime state, and explicit blocker refs. It keeps liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false until a real public window is accepted, promoted, paid, and settled. It exposes refs and status only: no raw gradients, raw traces, private runner logs, provider payloads, wallet material, payment material, dispatch authority, settlement, checkpoint mutation, or green product-promise authority.',
+  required: [
+    'authorityBoundary',
+    'endpoint',
+    'gate',
+    'generatedAt',
+    'promiseRef',
+    'promiseState',
+    'receiptSurface',
+    'registryVersion',
+    'runtimeSurface',
+    'schemaVersion',
+    'sourceRefs',
+    'stageRefs',
+    'staleness',
+    'status',
+    'unsafeCopy',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    endpoint: {
+      type: 'string',
+      enum: [TrainingPublicGradientWindowsEndpoint],
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'clearsBlockerRefs',
+        'greenGateSatisfied',
+        'liveWindowRuntimeAvailable',
+        'promotedWindowReceiptAvailable',
+        'promotionReceiptEmitterAvailable',
+        'publicProjectionAvailable',
+        'regimeGateAvailable',
+        'remainingBlockerRefs',
+        'settlementReceiptAvailable',
+      ],
+      properties: {
+        clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+        greenGateSatisfied: { type: 'boolean' },
+        liveWindowRuntimeAvailable: { type: 'boolean' },
+        promotedWindowReceiptAvailable: { type: 'boolean' },
+        promotionReceiptEmitterAvailable: { type: 'boolean' },
+        publicProjectionAvailable: { type: 'boolean' },
+        regimeGateAvailable: { type: 'boolean' },
+        remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+        settlementReceiptAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    promiseRef: {
+      type: 'string',
+      enum: ['promise:training.public_gradient_windows.v1'],
+    },
+    promiseState: { type: 'string', enum: ['planned'] },
+    receiptSurface: {
+      type: 'object',
+      additionalProperties: true,
+      required: [
+        'emittedReceiptCount',
+        'expectedReceiptRefPattern',
+        'receiptRouteAvailable',
+        'receiptSchemaVersion',
+        'sourceRefs',
+      ],
+      properties: {
+        emittedReceiptCount: { type: 'integer' },
+        expectedReceiptRefPattern: { type: 'string' },
+        receiptRouteAvailable: { type: 'boolean' },
+        receiptSchemaVersion: { type: 'string' },
+        sourceRefs: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    registryVersion: { type: 'string' },
+    runtimeSurface: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'acceptedPublicWindowCount',
+        'canonicalCheckpointMutationCount',
+        'currentRuntimeState',
+        'promotedPublicWindowCount',
+        'settlementReceiptCount',
+      ],
+      properties: {
+        acceptedPublicWindowCount: { type: 'integer' },
+        canonicalCheckpointMutationCount: { type: 'integer' },
+        currentRuntimeState: { type: 'string', enum: ['not_live'] },
+        promotedPublicWindowCount: { type: 'integer' },
+        settlementReceiptCount: { type: 'integer' },
+      },
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    stageRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: { type: 'string' },
+    unsafeCopy: { type: 'string' },
+  },
+}
+
 export const TrainingPostTrainingInstructSftEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
@@ -933,6 +1040,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe CS336 per-assignment leaderboard envelope keyed by lanes such as a1_loss, a2_throughput, a3_isoflop, a4_eval_delta, and a5_accuracy. Rows rank only verified closeout-backed entries, expose public-safe contributor refs, receipt refs, provenance labels, settledPayoutSats linked only from provider-confirmed settlement receipts, and source refs, and exclude unverified results from ranking. Pending, offered, claimed, or wallet-side records never count as paid.',
   ),
   TrainingFullPipelineProgramEnvelope,
+  TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
   TrainingPostTrainingInstructSftEnvelope,
@@ -4937,6 +5045,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Full training-pipeline program status.',
           '#/components/schemas/TrainingFullPipelineProgramEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TrainingPublicGradientWindowsEndpoint]: {
+    get: operation({
+      operationId: 'getTrainingPublicGradientWindowsStatus',
+      summary: 'Read public gradient-window status',
+      description:
+        'Returns the public-safe public-gradient-window status projection for training.public_gradient_windows.v1. It exposes the regime gate and promoted-window receipt emitter surface while keeping liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, aggregation, canonical-checkpoint mutation, model promotion, or public-claim authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public gradient-window status.',
+          '#/components/schemas/TrainingPublicGradientWindowsEnvelope',
         ),
         ...errorResponses(),
       },

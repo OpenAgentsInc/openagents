@@ -50,3 +50,33 @@ been emitted from a live window. The blocker therefore stays listed.
   promoted public window, plus a public route/feed serving it.
 - Settlement receipts where real money moved
   (`blocker.product_promises.public_gradient_settlement_receipts_missing`).
+
+## 2026-06-20 status projection slice
+
+`GET /api/public/training/public-gradient-windows` now exposes a public-safe,
+live-at-read status projection for this promise.
+
+The projection makes the current boundary machine-readable:
+
+- `regimeGateAvailable: true`
+- `promotionReceiptEmitterAvailable: true`
+- `publicProjectionAvailable: true`
+- `liveWindowRuntimeAvailable: false`
+- `promotedWindowReceiptAvailable: false`
+- `settlementReceiptAvailable: false`
+- `emittedReceiptCount: 0`
+- `acceptedPublicWindowCount: 0`
+- `promotedPublicWindowCount: 0`
+- `settlementReceiptCount: 0`
+- `canonicalCheckpointMutationCount: 0`
+- `greenGateSatisfied: false`
+
+This does not clear any product blocker. It only gives reviewers and agents one
+dereferenceable status endpoint for the already-landed regime gate and receipt
+emitter. The promise remains **planned** until a real public window runtime
+accepts candidate windows, at least one public window emits a promoted-window
+receipt, and settlement receipts exist where real money moved.
+
+No public window was accepted, no checkpoint was mutated, no assignment, spend,
+or settlement occurred, no receipt-backed promotion row exists, and no green
+transition is created by this slice.
