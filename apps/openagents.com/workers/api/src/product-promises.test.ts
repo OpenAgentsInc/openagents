@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.49')
+    expect(decoded.version).toBe('2026-06-20.50')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -296,6 +296,14 @@ describe('public product promises document', () => {
     // marketplace + advanced/research-training promises (yellow/red -> planned)
     // and flips NO green promise, so green remains exactly 26 (yellow 28, red 15,
     // planned 34, withdrawn 2, total 105).
+    // The 2026-06-20.50 business-fulfillment coverage pass adds SEVEN new
+    // records to fully cover the OpenAgents Business offering menu
+    // (business.intake_quick_win_offering.v1, business.coding_quick_win.v1,
+    // inference.free_tier_taste.v1, business.ecommerce_workspace_pack.v1,
+    // business.legal_workspace_pack.v1, business.marketing_agency_workspace_pack.v1
+    // yellow; inference.batch_processing_jobs.v1 planned) and flips NO promise
+    // state, so green remains exactly 26 (yellow 28 -> 34, planned 34 -> 35,
+    // red 15, withdrawn 2, total 105 -> 112).
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -1294,12 +1302,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.49', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.50', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.49',
+      expectedVersion: '2026-06-20.50',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.49',
+      servedVersion: '2026-06-20.50',
       status: 'ready',
     })
     expect(
@@ -1309,7 +1317,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.49',
+      servedVersion: '2026-06-20.50',
       status: 'blocked',
     })
   })

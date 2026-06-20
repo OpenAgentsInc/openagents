@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.49'
+export const PublicProductPromisesVersion = '2026-06-20.50'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -75,6 +75,8 @@ const sourceRefs = [
   'docs/launch/2026-06-19-near-term-product-priorities.md',
   'docs/promises/2026-06-19-weekend-assault-tail-domains.md',
   'apps/openagents.com/docs/labor/2026-06-19-agentic-labor-product-flow-scaffold.md',
+  'docs/business/2026-06-20-openagents-business-intake-spec.md',
+  'docs/business/2026-06-20-business-offering-promise-coverage.md',
 ]
 
 const basePromiseFields = {
@@ -3688,6 +3690,224 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'A multiplayer world, when built, grants no spend, payout, settlement, or moderation authority. Every moving thing stays bound to a real receipt or event, and shared presence asserts no authority over the agents, humans, or balances it depicts.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.intake_quick_win_offering.v1',
+        productArea: 'business',
+        audience: ['agent', 'user', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'OpenAgents Business is a buyable offering: a customer (or the customer\'s agent) reads the published offering menu, runs an intake, and lands on a fast quick win plus a picture of the ongoing Autopilot relationship.',
+        safeCopy:
+          'The OpenAgents Business intake is live: the public offering menu (docs/business/2026-06-20-openagents-business-intake-spec.md) is grounded one-for-one in this product-promise registry, and the /business signup route accepts a real intake and records it. Quick-win delivery and the move onto Autopilot are operator-assisted today, not a one-click self-serve product.',
+        unsafeCopy:
+          'Do not say OpenAgents Business is a finished self-serve product, that any offering on the menu is delivered automatically without an operator, or that the intake commits OpenAgents to anything beyond what each backing promise record actually supports.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/business/2026-06-20-business-offering-promise-coverage.md',
+          'apps/openagents.com/workers/api/src/business-signup-routes.ts',
+          'apps/openagents.com/workers/api/src/business-signup-routes.test.ts',
+          'apps/openagents.com/apps/web/src/business-route.ts',
+          'https://openagents.com/business',
+          'https://openagents.com/api/public/product-promises',
+          'promise:repo.open_source_code_map.v1',
+          'promise:promises.registry.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.business_quick_win_self_serve_delivery_missing',
+          'blocker.product_promises.business_first_paid_quick_win_receipt_missing',
+        ],
+        verification:
+          'Yellow is limited to what is shipped: the offering menu document is grounded in the live registry (each offering maps to a backing promiseId in docs/business/2026-06-20-business-offering-promise-coverage.md), and the /business intake route accepts and records a real signup (business-signup-routes.ts, business-signup-routes.test.ts). True today: a customer/agent can read the menu, run the interview, and submit an intake. Green requires a self-serve quick-win delivery loop and at least one dereferenceable first paid business quick-win receipt (intake -> delivery -> accepted outcome -> receipt), with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The business intake is an offering menu plus a signup capture. It grants no automatic delivery, spend, payout, or settlement authority, makes no separate offering green, and never promises beyond the state of each backing promise record it points at.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.coding_quick_win.v1',
+        productArea: 'business',
+        audience: ['agent', 'user', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'A business customer can buy a coding quick win: a written objective is taken into a repository, the customer\'s verification command is run, and a reviewable change is handed back with verification evidence.',
+        safeCopy:
+          'Coding quick wins are available as an operator-assisted business offering. The coding-agent runtime (local Claude/Codex bridge, Probe/Pylon CLI/TUI background execution) and the negotiated forum labor market are live and green, so OpenAgents can take a bounded coding objective and return a diff with verification evidence. Packaging this as a priced intake -> delivery -> accepted-outcome -> receipt business product is operator-assisted today, not self-serve.',
+        unsafeCopy:
+          'Do not say coding quick wins are a one-click self-serve product, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/launch/2026-06-19-coding-agent-live-verification.md',
+          'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'promise:pylon.local_claude_agent_bridge.v1',
+          'promise:autopilot.codex_probe_pylon_successor.v1',
+          'promise:pylon.cli_tui_probe_background.v1',
+          'promise:pylon.agent_steerable_cli.v1',
+          'promise:labor.forum_work_requests.v1',
+          'promise:labor.nostr_negotiation_market.v1',
+          'promise:business.intake_quick_win_offering.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+          'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+        ],
+        verification:
+          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). True today: OpenAgents can run a bounded coding objective and return a verified diff, operator-assisted. Green requires a packaged, repeatable coding-quick-win business product (priced intake -> delivery -> accepted outcome) with a dereferenceable first paid customer receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'A coding quick win delivers a reviewable change with evidence under a human review gate. It grants no auto-merge, deploy, spend, payout, or settlement authority, and accepting an outcome is the customer\'s decision, not an automatic one.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.free_tier_taste.v1',
+        productArea: 'inference gateway',
+        audience: ['agent', 'user', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'A customer or agent can taste OpenAgents inference for free: free-eligible open/hosted models run through the gateway without spending credits, under a Sybil-resistant per-owner free allowance.',
+        safeCopy:
+          'Free inference is live: the deployed OpenAI-compatible gateway serves free-eligible models (Gemini Flash today) without a credit decrement, metered against a Sybil-resistant per-verified-owner free pool (a small unclaimed taste, a larger claimed pool). It is a free taste to start, deliberately scoped: it is not unlimited free inference and the paid credits business it sits on top of is not yet collectable end-to-end.',
+        unsafeCopy:
+          'Do not say OpenAgents offers unlimited free inference, that every model is free, that the free taste implies a live paid credits product, or that an unclaimed account gets the full pool.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/inference/2026-06-19-gateway-gemini-live-verification.md',
+          'apps/openagents.com/workers/api/src/inference/inference-free-allowance.ts',
+          'apps/openagents.com/workers/api/src/inference/inference-free-allowance.test.ts',
+          'apps/openagents.com/workers/api/src/inference/model-catalog.ts',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:inference.fireworks_open_model_provider.v1',
+          'promise:api.hosted_gemini.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.inference_free_taste_paid_upgrade_not_collectable',
+        ],
+        verification:
+          'Yellow is the live, tested free-allowance system: withFreeAllowance eats the priced charge for a free-eligible model under the per-owner cap (idempotent per request, no credit decrement, no referral accrual) and falls through to normal metering over the cap or for non-free-eligible models (inference-free-allowance.ts, inference-free-allowance.test.ts); the gateway free path is verified live 2026-06-19. True today: free inference works as a Sybil-gated taste. It stays yellow because it is a bounded taste on top of a credits business whose paid upgrade is not collectable end-to-end (see inference.gateway_credits_business.v1); green for a standalone sellable free-to-paid inference product needs the collectable paid loop plus a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The free taste grants bounded, metered free inference only. It grants no unlimited usage, no spend authority on the customer\'s behalf, and no paid-product, payout, or settlement authority, and it does not make the inference credits business green.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.batch_processing_jobs.v1',
+        productArea: 'inference gateway',
+        audience: ['agent', 'user', 'operator'],
+        state: 'planned',
+        claim:
+          'A business customer can hand OpenAgents a batch of items (summaries, classifications, extractions) and get the processed results back as a buyable, metered inference job.',
+        safeCopy:
+          'Batch inference processing as a buyable business offering is planned roadmap scope. The underlying single-request gateway is live and free inference works, but there is no batch-job product surface (submit a dataset, meter it, return results with a receipt) and the paid credits loop it would bill against is not yet collectable.',
+        unsafeCopy:
+          'Do not say OpenAgents has a live batch-processing product, that customers can submit datasets for metered batch inference today, or that batch jobs return billed receipts.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/inference/README.md',
+          'docs/inference/2026-06-19-inference-gateway-business.md',
+          'promise:inference.gateway_credits_business.v1',
+          'promise:inference.free_tier_taste.v1',
+          'promise:business.intake_quick_win_offering.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.inference_batch_job_surface_unbuilt',
+          'blocker.product_promises.inference_batch_job_paid_receipt_missing',
+        ],
+        verification:
+          'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, but no batch-job offering exists — there is no dataset-submission surface, no batch metering/result-return loop, and the paid credits path it would bill against is not collectable (see inference.gateway_credits_business.v1). Green requires a built, tested batch-processing product with a dereferenceable first paid batch-job receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'A batch inference job, when built, grants no spend authority beyond the customer\'s funded balance, no payout, and no settlement authority, and processing results never asserts an outcome the underlying model run did not produce.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.ecommerce_workspace_pack.v1',
+        productArea: 'business',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'A business customer in e-commerce can start from a prefilled workspace seeded for inventory-aware ad campaigns, run through the Signal -> Triage -> Build -> Validate -> Release -> Document -> Monitor -> Deploy pipeline with a human-review gate before anything publishes or spends.',
+        safeCopy:
+          'The e-commerce vertical pack is shipped as an operator tool: the forge.template.ecommerce.inventory_campaign.v1 prefilled-workspace template seeds stages, starter workflows, and memory for inventory-aware ad campaigns (prefilled-workspace-vertical-templates.ts). It is delivered as a guided, operator-assisted workspace, not a one-click self-serve product, and no campaign auto-publishes or auto-spends.',
+        unsafeCopy:
+          'Do not say the e-commerce pack is a finished self-serve product, that it launches or spends on ad campaigns automatically, or that any campaign publishes without a human-review gate.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md#e-commerce-template',
+          'docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5099',
+          'promise:autopilot.all_in_one_business_system.v1',
+          'promise:business.intake_quick_win_offering.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.ecommerce_pack_self_serve_missing',
+          'blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing',
+        ],
+        verification:
+          'Yellow is the shipped, tested prefilled e-commerce template (forge.template.ecommerce.inventory_campaign.v1) that seeds an inventory-aware-ad-campaign workspace through the prefilled-workspace routes (prefilled-workspace-vertical-templates.ts, .test.ts). True today: an operator can stand up the seeded workspace and run a first work item, drafted under a review gate. Green requires a self-serve vertical pack and a dereferenceable first paid e-commerce work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The e-commerce pack seeds a workspace and pipeline. It grants no ad-account, publish, or spend authority; campaigns are drafted and never auto-published or auto-funded, and every stage keeps a human-review gate.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.legal_workspace_pack.v1',
+        productArea: 'business',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'A business customer in legal can start from a prefilled, review-gated forms/intake copilot workspace (e.g. NDA intake packets) that drafts work for human review and never gives legal advice.',
+        safeCopy:
+          'The legal vertical pack is shipped as an operator tool: the forge.template.legal.forms_intake_copilot.v1 prefilled-workspace template seeds a review-gated forms/intake copilot workspace (prefilled-workspace-vertical-templates.ts). It is explicitly review-gated, gives no legal advice, and is delivered as a guided, operator-assisted design-partner workspace, not a self-serve product.',
+        unsafeCopy:
+          'Do not say the legal pack gives legal advice, that it is a finished self-serve product, that any document is filed or sent automatically, or that it operates without an attorney/human-review gate.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md#legal-template',
+          'docs/blitz/forge/2026-06-16-legal-prefilled-workspace.md',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5100',
+          'promise:autopilot.all_in_one_business_system.v1',
+          'promise:business.intake_quick_win_offering.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.legal_pack_self_serve_missing',
+          'blocker.product_promises.legal_pack_first_paid_delivery_receipt_missing',
+        ],
+        verification:
+          'Yellow is the shipped, tested prefilled legal template (forge.template.legal.forms_intake_copilot.v1, design_partner.legal.forms_intake_copilot.v1) that seeds a review-gated forms/intake copilot workspace (prefilled-workspace-vertical-templates.ts, .test.ts). True today: an operator can stand up the seeded workspace and run a first intake packet, drafted under a review gate with no legal advice. Green requires a self-serve vertical pack and a dereferenceable first paid legal work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The legal pack seeds a review-gated drafting workspace. It is not a law firm, gives no legal advice, and grants no filing, sending, or spend authority; every output is drafted for human/attorney review before anything leaves the workspace.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'business.marketing_agency_workspace_pack.v1',
+        productArea: 'business',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'A business customer running a marketing agency can start from a prefilled white-label workspace that drafts landing pages and email sequences through the review-gated Autopilot pipeline.',
+        safeCopy:
+          'The marketing-agency vertical pack is shipped as an operator tool: the forge.template.marketing_agency.white_label_launch.v1 prefilled-workspace template seeds a white-label landing-page + email workspace (prefilled-workspace-vertical-templates.ts), and the Autopilot Sites surfaces (site build/host, custom hostnames, native email sequences) are partial/flag-gated. It is delivered as a guided, operator-assisted workspace, not a self-serve product, and nothing publishes or sends without a review gate.',
+        unsafeCopy:
+          'Do not say the marketing-agency pack is a finished self-serve product, that pages publish or emails send automatically, or that the white-label flow is fully self-serve without operator assistance.',
+        evidenceRefs: [
+          'docs/business/2026-06-20-openagents-business-intake-spec.md',
+          'docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md#marketing-agency-template',
+          'docs/blitz/forge/2026-06-16-marketing-agency-prefilled-workspace.md',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts',
+          'apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts',
+          'https://github.com/OpenAgentsInc/openagents/issues/5102',
+          'promise:autopilot_sites.site_build_and_host.v1',
+          'promise:autopilot_sites.native_email_sequences.v1',
+          'promise:business.intake_quick_win_offering.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.marketing_agency_pack_self_serve_missing',
+          'blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing',
+        ],
+        verification:
+          'Yellow is the shipped, tested prefilled marketing-agency template (forge.template.marketing_agency.white_label_launch.v1) seeding a white-label landing-page + email workspace (prefilled-workspace-vertical-templates.ts, .test.ts), composed with the yellow Autopilot Sites records (site build/host, custom hostnames, native email sequences). True today: an operator can stand up the seeded workspace and draft pages/emails under a review gate. Green requires a self-serve vertical pack with proven send/publish deliverability and a dereferenceable first paid agency work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The marketing-agency pack seeds a drafting workspace and composes the Sites surfaces. It grants no publish, send, or spend authority beyond what those backing Sites promises support; pages and emails are drafted under a review gate and never auto-published or auto-sent.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -3778,6 +3998,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.47: owner DELEGATED per-flip green sign-off to the operating agent (2026-06-20). Green transitions remain receipt-first and gates-must-be-met; they no longer require a separate owner sign-off when the operating agent is satisfied the promise is genuinely kept with a dereferenceable receipt. Under that delegation two promises flip yellow->green: proof.claim_upgrade_receipts.v1 (transition receipt promise_transition_20680b41-30ca-47d8-b265-bd5ed6fb7ea2, all checks passed) and artanis.tassadar_evolution_loop.v1 (transition receipt promise_transition_5df6cd60-a145-40d3-87e4-33422b2204f3, all checks passed; tick-streak 12>=10 + dereferenceable distillation dataset receipt). Green 24 -> 26. The receipt + gates-met integrity gate is unchanged; only the human sign-off step is delegated.',
         'Registry 2026-06-20.48 adds FIVE conservative new records for the agent-MMORPG / agent-world buildout (EPIC #5730, plan docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md) and flips NO existing promise (green count unchanged at 26). Three are yellow on what is MERGED to main behind default-off flags: autopilot.agent_world_scene.v1 (P0 scene-behind-chat mount, PR #5742, flag CHAT_WORLD_SCENE) + P1 live Pylon crystals from the public pylon-stats projection (PR #5743), autopilot.bitcoin_payment_visualization.v1 (P2 gold payment particles, PR #5743, evidence-bound — the mappers in chat-world-scene.ts refuse any particle without a sourceRef and PAYMENT_EVENT_KINDS is exactly {real_bitcoin_moved, settlement_recorded}), and autopilot.pylon_growth_visualization.v1 (P2 per-Pylon growth tiers from cumulative settled sats, #5737). All three stay yellow: the flags are OFF by default and the live in-app wiring (P2.5) plus default-on decision are pending; they are presentational projections of already-public Pylon/settlement data with no spend, payout, or settlement authority. Two are planned roadmap scope: autopilot.agent_character_creation.v1 (P3 #5738 — onboarding as warp-in spawn + customize + automated Forum intro + work search, building on the three-effect#10 W0 spawner/avatar/warp-in/bar primitives) and world.multiplayer_agent_world.v1 (P4 #5739 — walkable third-person multiplayer world over a SpacetimeDB openagents-world, de-risked behind the HTTP/SSE single-view path first). No new earning, multiplayer, onboarding, or settlement capability is asserted; every moving thing in the scene is bound to a real receipt or event. No promise_transition is required (new yellow/planned records create no state flip); any future green flip remains receipt-first and gates-must-be-met per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-20.49: owner-directed 48h revenue-loop tightening — postpone (yellow/red -> planned) 7 marketplace + advanced/research-training promises not on the revenue critical path (marketplace.signature_monetization, pylon.first_real_model_training_run, training.public_distributed_training_run, pylon.largest_decentralized_training_claim, models.tassadar_percepta_executor, training.device_capability_dataset, compute.agentic_kernel_optimization_at_scale). Code + promises retained; deprioritized from active driving. No green changed (green stays 26). Per docs/launch/2026-06-20-revenue-loop-promise-audit-and-tightening.md.',
+        'Registry 2026-06-20.50: BUSINESS-FULFILLMENT COVERAGE pass (owner directive: "I DO want everything needed to fulfill on OpenAgents Business specs prioritized, if we need more promises add them"). The OpenAgents Business offering menu (docs/business/2026-06-20-openagents-business-intake-spec.md) was mapped offering-by-offering to the registry, and SEVEN conservative new records were added to close real gaps so the registry fully covers what the business menu advertises; this flips NO existing promise (green count unchanged at 26) and does NOT undo the 2026-06-20.49 postpone. New records: business.intake_quick_win_offering.v1 (yellow — live /business intake route + menu grounded in this registry; self-serve quick-win delivery operator-assisted), business.coding_quick_win.v1 (yellow — green coding runtime + green labor market; priced packaged business product operator-assisted), inference.free_tier_taste.v1 (yellow — live Sybil-gated free-allowance taste on the deployed gateway; bounded, not unlimited, paid upgrade not collectable), inference.batch_processing_jobs.v1 (planned — no batch-job product surface; paid loop not collectable), business.ecommerce_workspace_pack.v1 (yellow — forge.template.ecommerce.inventory_campaign.v1 prefilled workspace shipped as operator tool), business.legal_workspace_pack.v1 (yellow — forge.template.legal.forms_intake_copilot.v1 review-gated, no legal advice), business.marketing_agency_workspace_pack.v1 (yellow — forge.template.marketing_agency.white_label_launch.v1 + yellow Sites surfaces). States are honest: NO new green, no inflation; planned for the unbuilt batch product, yellow for operator-assisted/flag-gated surfaces with real shipped+tested backing code. The full offering->promiseId mapping and the BUSINESS-FULFILLMENT PRIORITY SET that the fleet must drive are in docs/business/2026-06-20-business-offering-promise-coverage.md. No promise_transition is required (new yellow/planned records create no state flip); any future green flip remains receipt-first and gates-must-be-met per proof.claim_upgrade_receipts.v1.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
