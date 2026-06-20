@@ -457,3 +457,51 @@ export const parseQualifiedContributorMethodologyInput = (
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Safe single entry: parse -> verify, fused.
+//
+// The documented remaining step for this blocker is "run the verifier against
+// the live run's real evidence". That real evidence arrives as an UNTRUSTED JSON
+// document, so the correct flow is two steps: parse it through the boundary, then
+// (only if it parsed) verify the typed value. Exposing both halves separately
+// leaves a footgun — a caller can skip the parse boundary entirely by
+// type-asserting the raw document straight into `verifyQualifiedContributorMethodology`,
+// silently defeating the closed key allowlist and type checks the boundary
+// exists to enforce. `verifyQualifiedContributorMethodologyDocument` removes that
+// footgun: it is the single public entry an auditor runs against a real captured
+// document, and the parse boundary is unbypassable by construction. It performs
+// NO counting beyond what the existing verifier already does and asserts NO scale
+// claim — it only fuses the two steps so "run against real evidence" is one call.
+// ---------------------------------------------------------------------------
+
+export type QualifiedContributorMethodologyDocumentResult =
+  // The document failed the untrusted-input parse boundary; nothing was verified.
+  | Readonly<{ ok: false; errors: ReadonlyArray<string> }>
+  // The document parsed; `verdict` is the run-level conformance result.
+  | Readonly<{ ok: true; verdict: QualifiedContributorMethodologyVerdict }>
+
+/**
+ * Parse an untrusted methodology evidence document (e.g. JSON an auditor loaded
+ * from a file) and, only if it is structurally sound and public-safe, run the
+ * run-level conformance verifier over it. Pure and side-effect-free.
+ *
+ * Returns `{ ok: false, errors }` with path-qualified parse reasons when the
+ * document does not pass the boundary (nothing is verified in that case), or
+ * `{ ok: true, verdict }` with the conformance verdict otherwise. This is the
+ * single safe entry point for the documented "run the verifier against the live
+ * run's real evidence" step — it makes the parse boundary unbypassable. It
+ * neither counts beyond the existing rule nor asserts any scale claim.
+ */
+export const verifyQualifiedContributorMethodologyDocument = (
+  candidate: unknown,
+): QualifiedContributorMethodologyDocumentResult => {
+  const parsed = parseQualifiedContributorMethodologyInput(candidate)
+  if (!parsed.ok) {
+    return { ok: false, errors: parsed.errors }
+  }
+  return {
+    ok: true,
+    verdict: verifyQualifiedContributorMethodology(parsed.value),
+  }
+}
