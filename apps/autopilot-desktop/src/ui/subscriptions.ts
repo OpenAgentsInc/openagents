@@ -207,3 +207,23 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   // HUD H3 (#5501): route window pointer move/up into the pane-layer drag reducer.
   paneDrag: Subscription.persistent(pointerStream),
 }))
+
+// TODO(P0 chat-world wiring · #5736 #5737): the live chat-world scene owns its
+// own feed lifecycle (it mounts/unmounts with the canvas), so its subscriptions
+// are NOT registered here. When P0 mounts the pylon scene behind chatPane
+// (flag CHAT_WORLD_SCENE) and the payment layer (flag CHAT_WORLD_PAYMENTS),
+// call these from the scene's mount and store the returned unsubscribe() to call
+// on unmount:
+//
+//   import {
+//     subscribePylonScene,
+//     subscribePaymentParticles,
+//   } from "./chat-world-subscriptions"
+//
+//   const stopPylons   = subscribePylonScene(scene.applyPylonScene)
+//   const stopPayments = subscribePaymentParticles(scene.spawnPaymentParticle)
+//   // ... on unmount: stopPylons(); stopPayments()
+//
+// Both are flag-gated (default OFF) and return noop when their flag is unset, so
+// wiring them in is safe before the flags flip on. The pure mappers they use
+// live in shared/chat-world-scene.ts (unit-tested in tests/chat-world-scene.test.ts).
