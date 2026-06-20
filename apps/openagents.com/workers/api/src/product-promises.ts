@@ -671,6 +671,7 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/238.md',
           'docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md',
           'docs/launch/2026-06-18-world-firsts-verification.md',
+          'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
           'promise:compute.tassadar_executor_poc.v1',
           'promise:models.tassadar_percepta_executor.v1',
           'promise:promises.registry.v1',
@@ -679,10 +680,9 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.world_first_evidence_pack_missing',
           'blocker.product_promises.world_first_owner_signed_upgrade_missing',
-          'blocker.product_promises.llm_computer_training_run_definition_missing',
         ],
         verification:
-          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. Green still requires (1) a precise definition of "LLM-computer training run" that does not overclaim against the no-gradient-descent executor PoC; (2) a dereferenceable evidence pack; and (3) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'An independent prior-art/competing-claim search now exists (docs/launch/2026-06-18-world-firsts-verification.md) with a defensible narrowed wording crediting Percepta as the paradigm originator. A precise definition of "LLM-computer training run" now exists (docs/launch/2026-06-20-llm-computer-training-run-definition.md): it pins the phrase to the executor-construction / exact-trace sense (sense B), distinguishes it from gradient-descent model training (sense A), credits Percepta, and enumerates the refuse-list so the phrase cannot overclaim against the no-gradient-descent executor PoC. Green still requires (1) a dereferenceable evidence pack tying the qualified world-first specifically to the live-run receipts; and (2) an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A bounded exact-trace executor proof of concept grants no general LLM-computer capability claim and no world-first claim. The Tassadar research publication gates stay closed for everything beyond the scoped compute.tassadar_executor_poc.v1 promise.',
       },
