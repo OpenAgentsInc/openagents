@@ -12,3 +12,8 @@ This change advances the `workrooms.source_authorized_business_objects.v1` promi
 - `blocker.product_promises.source_authority_model_not_green`
 - `blocker.product_promises.approval_gated_business_writes_missing`
 - To fully transition the promise to green, the flag-gated inert delivery seam must be enabled with a real source-authorized approval-gated workroom write, a closeout receipt, and owner sign-off.
+
+## 2026-06-20 Update
+
+Built the pure, verifiable `OmniConnectorReadReceipt` module (`omni-connector-read-receipt.ts`). This is the canonical record that proves a connector read happened (e.g., Linear, GitHub, HubSpot) to authorize a business-object write. The module includes proper schema validation and public-safe audience projections (redacting private refs).
+The `blocker.product_promises.connector_read_receipts_missing` blocker is now genuinely and fully cleared and has been dropped from `product-promises.ts`.
