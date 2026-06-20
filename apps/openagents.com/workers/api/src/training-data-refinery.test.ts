@@ -98,6 +98,66 @@ describe('CS336 A4 data-refinery projection', () => {
     expect(projection.evalDeltaBonusBlockerRefs).toContain(
       'blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus',
     )
+    expect(projection.evalDeltaPaymentGate).toMatchObject({
+      fixedTrainerEvalMeasurementAvailable: false,
+      greenGateSatisfied: false,
+      leaderboardLane: 'a4_eval_delta',
+      operatorFundingParametersAvailable: false,
+      payableSettlementCount: 0,
+      paymentComputationAvailable: true,
+      paymentSchemaVersion:
+        'openagents.training.data_refinery.eval_delta_payment.v1',
+      remainingProductBlockerRefs: [
+        'blocker.product_promises.eval_delta_payment_missing',
+      ],
+      settlementReceiptAvailable: false,
+      settledBonusSats: 0,
+      verifiedMeasurementRowCount: 0,
+    })
+    expect(projection.evalDeltaPaymentGate.blockerRefs).toEqual([
+      'blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus',
+      'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
+      'blocker.cs336_a4.psionic_classifier_adapters_partial',
+    ])
+  })
+
+  it('projects verified eval-delta rows without fabricating payment', () => {
+    const projection = publicDataRefineryProjection({
+      challenges: [],
+      leases: [],
+      run: {
+        ...buildRun(),
+        publicProjectionJson: JSON.stringify({
+          a4DataRefinery: {
+            leaderboardRows: [
+              {
+                contributorRef: 'pylon.public.a4.eval_delta.1',
+                evalDelta: 0.12,
+                receiptRefs: ['receipt.cs336_a4.base_shard.1'],
+                sourceRefs: ['measurement.cs336_a4.fixed_reference.1'],
+                verificationRefs: ['challenge.cs336_a4.eval_delta.1'],
+              },
+            ],
+          },
+        }),
+      },
+      windows: [],
+    })
+
+    expect(projection.evalDeltaPaymentGate).toMatchObject({
+      fixedTrainerEvalMeasurementAvailable: true,
+      greenGateSatisfied: false,
+      operatorFundingParametersAvailable: false,
+      payableSettlementCount: 0,
+      paymentComputationAvailable: true,
+      settlementReceiptAvailable: false,
+      settledBonusSats: 0,
+      verifiedMeasurementRowCount: 1,
+    })
+    expect(projection.evalDeltaPaymentGate.blockerRefs).toEqual([
+      'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
+      'blocker.cs336_a4.psionic_classifier_adapters_partial',
+    ])
   })
 
   it('admits receipted shards and rejects unreceipted, unsafe, empty, or unprovenanced evidence', async () => {

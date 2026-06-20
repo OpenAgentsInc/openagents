@@ -1851,6 +1851,12 @@ describe('training run window routes', () => {
     )
     const admittedBody = (await admitted.json()) as Readonly<{
       refinery: Readonly<{
+        evalDeltaPaymentGate: Readonly<{
+          greenGateSatisfied: boolean
+          paymentComputationAvailable: boolean
+          settlementReceiptAvailable: boolean
+          verifiedMeasurementRowCount: number
+        }>
         shards: ReadonlyArray<Record<string, unknown>>
         status: string
       }>
@@ -1868,6 +1874,12 @@ describe('training run window routes', () => {
       corpusProvenanceReceiptBlockerRefs: [],
       corpusProvenanceReceiptRefs: [corpusProvenanceReceipt.receiptRef],
       corpusProvenanceReceiptStatus: 'available',
+      evalDeltaPaymentGate: {
+        greenGateSatisfied: false,
+        paymentComputationAvailable: true,
+        settlementReceiptAvailable: false,
+        verifiedMeasurementRowCount: 0,
+      },
     })
 
     const dashboard = await runRoute(
@@ -1878,6 +1890,12 @@ describe('training run window routes', () => {
     )
     const dashboardBody = (await dashboard.json()) as Readonly<{
       corpusProvenanceReceiptStatus: string
+      evalDeltaPaymentGate: Readonly<{
+        greenGateSatisfied: boolean
+        paymentComputationAvailable: boolean
+        settlementReceiptAvailable: boolean
+        verifiedMeasurementRowCount: number
+      }>
       schemaVersion: string
       shards: ReadonlyArray<unknown>
     }>
@@ -1887,6 +1905,12 @@ describe('training run window routes', () => {
       'openagents.training.data_refinery_dashboard.v1',
     )
     expect(dashboardBody.corpusProvenanceReceiptStatus).toBe('available')
+    expect(dashboardBody.evalDeltaPaymentGate).toMatchObject({
+      greenGateSatisfied: false,
+      paymentComputationAvailable: true,
+      settlementReceiptAvailable: false,
+      verifiedMeasurementRowCount: 0,
+    })
     expect(dashboardBody.shards).toHaveLength(1)
   })
 
