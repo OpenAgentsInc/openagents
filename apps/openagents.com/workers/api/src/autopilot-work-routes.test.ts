@@ -6,6 +6,10 @@ import {
   type AgentRegistrationStore,
 } from './agent-registration'
 import {
+  createHostedGeminiWorkExecutor,
+  type HostedGeminiInferenceCaller,
+} from './autopilot-hosted-gemini-executor'
+import {
   OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
 } from './autopilot-work-request'
 import {
@@ -3550,6 +3554,135 @@ describe('Autopilot work routes', () => {
         sequence: 2,
       }),
     ])
+  })
+
+  const hostedGeminiClosateRequest = () => ({
+    ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1],
+    clientRequestRef: 'client.example.20260620.hosted_gemini_binding',
+    paymentPolicy: {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].paymentPolicy,
+      maxSpendCents: 5000,
+      quoteRef: null,
+      quotedAmountCents: null,
+    },
+    placementPolicy: {
+      ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].placementPolicy,
+      allowedRunnerKinds: ['hosted_gemini'] as const,
+      preferredRunnerKinds: ['hosted_gemini'] as const,
+      privacyTier: 'cloud_allowed' as const,
+      publicTraceAllowed: true,
+    },
+    tasks: [
+      {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[1].tasks[0],
+        acceptanceCriteriaRefs: [
+          'acceptance.audit.updated_with_hosted_gemini_binding',
+        ],
+        kind: 'research_and_patch' as const,
+        objective:
+          'Audit the hosted Gemini product promise and return a public-safe closeout.',
+        taskRef: 'task.product_promise_docs_hosted_gemini_binding',
+      },
+    ],
+  })
+
+  const driveHostedGeminiBinding = async (
+    store: MemoryAutopilotWorkStore,
+    executeReadyWork: AutopilotWorkExecutor,
+    idempotencyKey: string,
+    paidProofRef: string,
+  ) => {
+    const first = await route(store, '/api/autopilot/work', {
+      body: hostedGeminiClosateRequest(),
+      executeReadyWork,
+      idempotencyKey,
+      pylonRegistrations: [],
+    })
+    verifiedAutopilotProofRefs.add(paidProofRef)
+    const paid = await route(store, '/api/autopilot/work', {
+      body: { ignored: 'paid retry does not replace stored request' },
+      executeReadyWork,
+      headers: {
+        'X-OpenAgents-L402': authorizeAutopilotL402(
+          first.headers.get('x-openagents-l402-credential'),
+          paidProofRef,
+        ),
+      },
+      idempotencyKey,
+      pylonRegistrations: [],
+    })
+    return { paid, paidJson: await responseJson(paid) }
+  }
+
+  test('production hosted Gemini executor binding delivers a paid work order through the route harness when armed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const inferenceCaller: HostedGeminiInferenceCaller = async ({
+      assignmentRef,
+    }) => ({
+      modelRef: 'model.hosted_gemini.gemini-2.5-flash',
+      responseDigestRef: `digest.${assignmentRef}.sha256.deadbeef`,
+      usageRef: `usage.${assignmentRef}.io_units`,
+    })
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiWorkExecutor({ enabled: true, inferenceCaller }),
+      'idem-autopilot-work-hosted-gemini-binding',
+      'payment_proof.autopilot_work.hosted_gemini_binding',
+    )
+
+    const assignmentRef =
+      'fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_binding'
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('delivered')
+    expect(paidJson.work?.executionCloseout).toMatchObject({
+      assignmentRefs: [assignmentRef],
+      proofRefs: [
+        `proof.${assignmentRef}.hosted_gemini_executor`,
+        'model.hosted_gemini.gemini-2.5-flash',
+        `digest.${assignmentRef}.sha256.deadbeef`,
+      ],
+      publicSafe: true,
+      runnerKind: 'hosted_gemini',
+      summaryRefs: [`summary.${assignmentRef}.hosted_gemini_closeout`],
+      verificationRefs: [`usage.${assignmentRef}.io_units`],
+    })
+  })
+
+  test('production hosted Gemini executor binding stays INERT (no delivery) when not armed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const inferenceCaller: HostedGeminiInferenceCaller = async () => {
+      throw new Error('inert binding must never call the provider')
+    }
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiWorkExecutor({ enabled: false, inferenceCaller }),
+      'idem-autopilot-work-hosted-gemini-inert',
+      'payment_proof.autopilot_work.hosted_gemini_inert',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('paid_ready')
+    expect(paidJson.work?.executionCloseout).toBeNull()
+  })
+
+  test('production hosted Gemini executor binding refuses to deliver when an inference ref is not public-safe', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const inferenceCaller: HostedGeminiInferenceCaller = async ({
+      assignmentRef,
+    }) => ({
+      modelRef: 'model.hosted_gemini.gemini-2.5-flash',
+      responseDigestRef: `digest.${assignmentRef}.access_token.leak`,
+    })
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiWorkExecutor({ enabled: true, inferenceCaller }),
+      'idem-autopilot-work-hosted-gemini-unsafe',
+      'payment_proof.autopilot_work.hosted_gemini_unsafe',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('paid_ready')
+    expect(paidJson.work?.executionCloseout).toBeNull()
   })
 
   test('keeps MDK checkout proof retries payment-required until checkout verification is wired', async () => {

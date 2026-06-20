@@ -1169,7 +1169,7 @@ const safeBuyerPaymentProofRef = (value: string | null): string | undefined =>
     ? value
     : undefined
 
-const publicSafeExecutionCloseoutRef = (value: string): boolean =>
+export const publicSafeExecutionCloseoutRef = (value: string): boolean =>
   safeExecutionCloseoutRefPattern.test(value) &&
   !unsafeExecutionCloseoutRefPattern.test(value)
 
