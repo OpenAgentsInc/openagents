@@ -38,6 +38,11 @@ import {
   isSignatureUsageMeteringEnabled,
 } from './signature-usage-metering-routes'
 import {
+  VoiceProgramIngestEndpoint,
+  handleVoiceProgramIngestApi,
+  isVoiceProgramIngestEnabled,
+} from './voice-program-ingest-routes'
+import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
@@ -5989,10 +5994,6 @@ export const handleProgrammaticAgentRegistration = async (
       parsed,
     )
 
-    const autoClaimSparkAddress =
-      typeof parsed.sparkAddress === 'string' && parsed.sparkAddress.trim() !== ''
-        ? parsed.sparkAddress.trim()
-        : null
     const autoClaimLightningAddress =
       typeof parsed.lightningAddress === 'string' &&
       parsed.lightningAddress.trim() !== ''
@@ -6003,46 +6004,18 @@ export const handleProgrammaticAgentRegistration = async (
         ? parsed.bolt12Offer.trim()
         : null
 
-    if (
-      autoClaimSparkAddress !== null ||
-      autoClaimLightningAddress !== null ||
-      autoClaimBolt12Offer !== null
-    ) {
+    if (autoClaimLightningAddress !== null || autoClaimBolt12Offer !== null) {
       // Automatically register the tip wallet so the user doesn't have to call
-      // claim-tip-wallet. Native Spark is the preferred agent path; Spark
-      // Lightning Address and BOLT 12 remain accepted for legacy registrations.
+      // claim-tip-wallet. Spark Lightning Address is the preferred agent path;
+      // BOLT 12 remains accepted for legacy registrations.
       const { upsertForumTipRecipientWallet } =
         await import('./forum/repository')
       const db = openAgentsDatabase(env)
-      const sparkPrimary = autoClaimSparkAddress !== null
-      const lightningPrimary =
-        autoClaimSparkAddress === null && autoClaimLightningAddress !== null
-      const autoClaimCustodyPolicyRefs = sparkPrimary
-        ? ['policy.public.forum_tip_recipient.spark_self_custody']
-        : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
-      const autoClaimProviderClass = lightningPrimary
-        ? 'external_lightning'
-        : 'mdk_agent_wallet'
-      const autoClaimReadinessRefs = sparkPrimary
-        ? [
-            'readiness.public.spark_address.offline_receive_ready',
-            'readiness.public.spark_primary.agent_balance',
-          ]
-        : lightningPrimary
-          ? [
-              'readiness.public.spark_lightning_address.receive_ready',
-              'readiness.public.spark_primary.agent_balance',
-            ]
-          : [
-              'readiness.public.mdk_agent.daemon_running',
-              'readiness.public.mdk_agent.receive_ready',
-              'readiness.public.mdk_agent.setup_present',
-            ]
+      const sparkPrimary = autoClaimLightningAddress !== null
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
           actorRef: `agent:${registration.user.id}`,
-          sparkAddress: autoClaimSparkAddress,
           bolt12Offer: autoClaimBolt12Offer,
           lightningAddress: autoClaimLightningAddress,
           caveatRefs: [
@@ -6051,12 +6024,27 @@ export const handleProgrammaticAgentRegistration = async (
           claimPolicyRefs: [
             'policy.public.forum_tip_recipient.agent_registration_auto_claimed',
           ],
-          custodyPolicyRefs: autoClaimCustodyPolicyRefs,
+          custodyPolicyRefs: sparkPrimary
+            ? ['policy.public.forum_tip_recipient.spark_self_custody']
+            : [
+                'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+              ],
           disabledAt: null,
           id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
           payoutTargetApprovalRef: null,
-          providerClass: autoClaimProviderClass,
-          readinessRefs: autoClaimReadinessRefs,
+          providerClass: sparkPrimary
+            ? 'external_lightning'
+            : 'mdk_agent_wallet',
+          readinessRefs: sparkPrimary
+            ? [
+                'readiness.public.spark_lightning_address.receive_ready',
+                'readiness.public.spark_primary.agent_balance',
+              ]
+            : [
+                'readiness.public.mdk_agent.daemon_running',
+                'readiness.public.mdk_agent.receive_ready',
+                'readiness.public.mdk_agent.setup_present',
+              ],
           receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
           sourceRef:
             'source.public.forum_tip_recipient.agent_registration_auto_claim',
@@ -7967,6 +7955,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.SIGNATURE_USAGE_METERING_ENABLED,
         ),
       }),
+  },
+  {
+    // Voice-session transcript ingestion endpoint (#5523 / DE-7 #5530; promise
+    // mobile.voice_session_evidence_transcript_ingest.v1, red). INERT by
+    // default: when VOICE_PROGRAM_INGEST_ENABLED is OFF the endpoint returns an
+    // honest inert/red payload and never runs the ingest core. When armed it
+    // decodes already-transcribed, redacted, ref-only segments and runs the
+    // existing pure buildVoiceProgramIngestProposal core to return an
+    // approval-gated program-input proposal (no STT, no audio capture, no
+    // mutation, no execution, no settlement). This clears ONLY
+    // blocker.product_promises.voice_ingestion_endpoint_missing; the
+    // transcription-service and approval-UI blockers stay owner/product-gated
+    // and the promise stays red. POST only.
+    path: VoiceProgramIngestEndpoint,
+    handler: (request, env) =>
+      Effect.promise(() =>
+        handleVoiceProgramIngestApi(request, {
+          enabled: isVoiceProgramIngestEnabled(
+            env.VOICE_PROGRAM_INGEST_ENABLED,
+          ),
+        }),
+      ),
   },
   {
     // Autopilot all-in-one composed-run scaffold (#5510, #5519). INERT: the
