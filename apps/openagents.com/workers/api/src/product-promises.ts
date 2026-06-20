@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.32'
+export const PublicProductPromisesVersion = '2026-06-20.33'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -28,6 +28,7 @@ const sourceRefs = [
   'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
   'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
   'docs/training/2026-06-20-training-full-pipeline-program-status.md',
+  'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -1827,7 +1828,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Long training runs operate with marathon discipline: preflight qualification, monitoring against a reference trajectory, loss-spike triage with window rewind, durable checkpoint-sealed windows, standby contributors, written restart criteria, and a schedulable curtailment drill.',
         safeCopy:
-          'Psionic’s actual-pretraining lane has local hardware qualification, checkpoint/resume drills, and continue/hold/restart checkpoint decisions. Durable remote checkpoint storage bound into the window seal, standby-Pylon dispatch, public run monitoring against a prior rung’s eval series, restart-decision receipts, and the scheduled curtailment drill are planned. Contract-level pieces landed 2026-06-12: window-seal metadata carrying staleness, churn, and verification-overhead fields (#4849), bootstrap-from-durable-seal grants behind a seal-in-flight join barrier that fails toward queueing (#4850/#4851), and collective failure semantics with ban-for-round, partial-result preservation, and standby-gated abort (psionic#1126). Durable remote checkpoint storage, a live standby promotion, and the drill itself remain unproven.',
+          'Psionic’s actual-pretraining lane has local hardware qualification, checkpoint/resume drills, and continue/hold/restart checkpoint decisions. Durable remote checkpoint storage bound into the window seal, standby-Pylon dispatch, public run monitoring against a prior rung’s eval series, restart-decision receipts, and the scheduled curtailment drill are planned. Contract-level pieces landed 2026-06-12: window-seal metadata carrying staleness, churn, and verification-overhead fields (#4849), bootstrap-from-durable-seal grants behind a seal-in-flight join barrier that fails toward queueing (#4850/#4851), and collective failure semantics with ban-for-round, partial-result preservation, and standby-gated abort (psionic#1126). The seal boundary now requires checkpoint-backed window seals to carry a durableCheckpointSeal descriptor that passes the durable checkpoint evaluator, and bootstrap grants ignore legacy digest-only or failed-durability seal rows. A real remote checkpoint-store read-back receipt, a live standby promotion, and the drill itself remain unproven.',
         unsafeCopy:
           'Do not claim multi-day or multi-week network training runs are operationally supported, or that training load is proven dispatchable/curtailable for grid value.',
         evidenceRefs: [
@@ -1835,6 +1836,13 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4673',
           'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
+          'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+          'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+          'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.test.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-authority.test.ts',
+          'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
+          'apps/openagents.com/workers/api/src/training-window-bootstrap.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4849',
           'https://github.com/OpenAgentsInc/openagents/issues/4850',
           'https://github.com/OpenAgentsInc/openagents/issues/4851',
@@ -1846,7 +1854,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.curtailment_drill_missing',
         ],
         verification:
-          'Green requires a window sealed only on durable content-addressed checkpoint storage, a standby contributor promoted into a live run, one restart-or-continue decision recorded as a receipt, and a scheduled drill that sheds part of the fleet on time, resumes from checkpoints, and publishes the receipt — the same drill that becomes evidence for energy.flexible_load_proof.v1.',
+          'Checkpoint-backed window seals now require a matching durableCheckpointSeal descriptor, the descriptor must pass evaluateDurableCheckpointSeal before transitionTrainingWindowRecord can seal, and selectLastDurableSealWindow ignores legacy digest-only or failed-durability rows before issuing bootstrap grants. This narrows the durable-seal path but does not clear durable_checkpoint_seal_missing: no real remote content-addressed checkpoint store has produced a read-back-and-rehash receipt yet. Green requires a window sealed only on durable content-addressed checkpoint storage backed by that real retrieval receipt, a standby contributor promoted into a live run, one restart-or-continue decision recorded as a receipt, and a scheduled drill that sheds part of the fleet on time, resumes from checkpoints, and publishes the receipt — the same drill that becomes evidence for energy.flexible_load_proof.v1.',
         authorityBoundary:
           'Marathon machinery is run-operations authority only; it does not move energy, payout, or settlement promises, and a drill receipt is not a grid-services revenue claim.',
       },
@@ -3538,7 +3546,8 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.30 partially advances autopilot.decision_queue.v1 on blocker.product_promises.receipt_backed_command_closeout_missing and flips NO promise state (stays planned, green count unchanged at 24). Adds DecisionCloseoutReceipt (packages/autopilot-control-protocol/src/decision-closeout-receipt.ts) — the canonical, tamper-verifiable receipt type for a resolved remote Pylon bridge decision: captures requestId (exactly-once key), actionRef, verb (approve/deny/answer), terminal outcome (applied/duplicate/expired/revoked/stale/unauthorized/unsupported/error), client surface (desktop/web/expo), actor, decidedAt, hasAnswer, and a deterministic line reconstructed by validateDecisionCloseoutReceipt for audit integrity. 20 tests across all terminal outcomes, all client surfaces, answer-verb hasAnswer, terminal-vs-transient classification, and field-tamper detection. Transient outcomes (offline/overloaded) excluded by type — the queue replays them on drain. No receipt storage layer, no HTTP surface change, no end-to-end proof: the remaining gap on receipt_backed_command_closeout_missing is a persistent store and at least one live receipt from a real paired-node resolution. decision_queue_api_missing and cross_client_exactly_once_decisions_missing remain fully open. Evidence: docs/launch/vertex-fleet/autopilot.decision_queue.v1.md.',
         'Registry 2026-06-20.31 is a training.post_training_arc.v1 fixture-sync receipt pass and flips NO promise state (stays planned, green count unchanged at 24). Psionic PR #1132 synchronizes the committed fixtures/psion/instruct/psion_instruct_sft_lane_report_v1.json report with deterministic generator output, and scripts/check-psion-instruct-sft-lane.sh now verifies the committed fixture with report digest sha256:76b5524234b4dd6507560c0cda6f28e782fe097c1fb022108aaaae40794d6871. GET /api/public/training/post-training-arc/instruct-sft-lane now reports committedReportFixtureSyncAvailable=true and drops blocker.product_promises.instruct_sft_fixture_sync_missing only. The promise remains planned because no paid OpenAgents SFT assignment has run, preference/DPO pairwise rollout work is still missing, and no reviewed vibe-test closeout artifact exists. No assignment, spend, settlement, instruct model, fine-tuning service, preference optimization, model promotion, or green claim is created. Evidence: docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md and https://github.com/OpenAgentsInc/psionic/pull/1132.',
         'Registry 2026-06-20.32 is a training.full_pipeline_program.v1 stage-status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/full-pipeline-program now serves a public-safe, live-at-read map of DE-5 training stages to their promise state, endpoint refs, evidence refs, receipt-surface state, and blocker refs. It makes the umbrella program auditable without widening the claim: greenGateSatisfied=false, endToEndRunReceiptAvailable=false, ladderRungEndToEndReceiptAvailable=false, paidNetworkWorkloadBroadlyLive=false, and blocker.product_promises.training_pipeline_rails_incomplete remains. No training dispatch, corpus admission, public-gradient acceptance, checkpoint mutation, spend, settlement, model promotion, service claim, or green transition is created. Evidence: docs/training/2026-06-20-training-full-pipeline-program-status.md.',
-      'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
+        'Registry 2026-06-20.33 is a training.marathon_operations.v1 durable-checkpoint seal-boundary pass and flips NO promise state (stays planned, green count unchanged at 24). Checkpoint-backed window seals now require a matching durableCheckpointSeal descriptor that passes evaluateDurableCheckpointSeal before transitionTrainingWindowRecord can seal, and selectLastDurableSealWindow now ignores legacy digest-only rows and failed-durability descriptors before issuing bootstrap grants. This binds the durability predicate into the live seal/bootstrap authority, but blocker.product_promises.durable_checkpoint_seal_missing remains because no real remote content-addressed checkpoint store has produced a read-back-and-rehash receipt. standby_dispatch_missing and curtailment_drill_missing are untouched. No dispatch, spend, settlement, storage-backend, standby promotion, curtailment drill, energy claim, or green transition is created. Evidence: docs/launch/vertex-fleet/training.marathon_operations.v1.md.',
+        'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
 

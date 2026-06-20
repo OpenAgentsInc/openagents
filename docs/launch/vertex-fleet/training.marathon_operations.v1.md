@@ -29,16 +29,29 @@ contract-level module:
     digest, sub-minimum replication, and missing read-back each HOLD; malformed
     descriptor fails toward HOLD; well-formed untrusted descriptor decodes.
 
-No promise state, registry field, or blocker list was changed. This grants no
-dispatch, settlement, or green-claim authority.
+## 2026-06-20 live-boundary wiring
+
+The durability predicate is now bound into the live seal/bootstrap authority:
+
+- `TrainingWindowSealMetadata` may carry a `checkpointDigestRef` only when it
+  also carries a matching `durableCheckpointSeal` descriptor.
+- `transitionTrainingWindowRecord` rejects checkpoint-backed seals unless the
+  descriptor passes `evaluateDurableCheckpointSeal`, and the descriptor's
+  `windowRef` matches the sealed window.
+- `selectLastDurableSealWindow` now ignores legacy digest-only rows and any
+  descriptor that fails durability evaluation, so bootstrap grants are issued
+  only from evaluator-approved durable seal metadata.
+- Tests cover successful descriptor-backed sealing, missing-descriptor
+  rejection, failed-durability rejection, window-ref mismatch rejection, and
+  bootstrap skipping of legacy/failed durable-seal rows.
+
+No promise state or blocker list was changed. This grants no dispatch,
+settlement, storage-backend, or green-claim authority.
 
 ## What genuinely remains for this blocker
 
-- Bind `evaluateDurableCheckpointSeal` into the live window-seal transition in
-  `training-run-window-authority.ts` so a window seal is rejected/queued when the
-  checkpoint is not durable.
 - Prove it end-to-end against a real remote content-addressed checkpoint store
-  (the read-back is currently a declared flag, not a wired fetch).
+  (the read-back is still a declared descriptor/proof ref, not a wired fetch).
 
 ## Other blockers (out of scope this run)
 

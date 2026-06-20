@@ -2432,9 +2432,21 @@ describe('training run window routes', () => {
       nowIso: () => currentIso,
       requireAdminApiToken: async () => true,
     })
-    const sealMetadataWithDigest = (checkpointDigestRef: string) => ({
+    const sealMetadataWithDigest = (
+      checkpointDigestRef: string,
+      windowRef: string,
+    ) => ({
       checkpointDigestRef,
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
+      durableCheckpointSeal: {
+        checkpointDigestRef,
+        replicationFactor: 2,
+        retrievalProofRef: `receipt.${windowRef}.checkpoint.readback`,
+        retrievalVerified: true,
+        sizeBytes: 1_048_576,
+        storageClass: 'content_addressed_object_store',
+        windowRef,
+      },
       staleness: {
         contributionCount: 0,
         stepsBehindMax: 0,
@@ -2469,7 +2481,7 @@ describe('training run window routes', () => {
         routes.routeTrainingRunWindowRequest(
           jsonRequest(`/api/training/windows/${windowRef}/seal`, {
             receiptRef: `receipt.${windowRef}.seal`,
-            sealMetadata: sealMetadataWithDigest(digestRef),
+            sealMetadata: sealMetadataWithDigest(digestRef, windowRef),
           }),
           {},
         ),
@@ -2511,7 +2523,8 @@ describe('training run window routes', () => {
 
     // First durable seal: grant pins its checkpoint digest. The seal
     // route raised and cleared the run-level barrier around the write.
-    await sealWindow('training.window.4850.a', 'digest.checkpoint.a')
+    const firstDigestRef = `sha256:${'a'.repeat(64)}`
+    await sealWindow('training.window.4850.a', firstDigestRef)
     expect(barrierCalls).toEqual([
       'begin:training.run.4850',
       'clear:training.run.4850',
@@ -2519,7 +2532,7 @@ describe('training run window routes', () => {
     expect(await requestGrant()).toMatchObject({
       outcome: {
         grant: {
-          checkpointDigestRef: 'digest.checkpoint.a',
+          checkpointDigestRef: firstDigestRef,
           joinerReceiptRefs: ['receipt.joiner.qualification'],
           joinerRef: 'pylon.joiner.1',
           sealReceiptRefs: [
@@ -2548,11 +2561,12 @@ describe('training run window routes', () => {
     // proceeds against the NEW last durable seal.
     await store.clearRunSealBarrier('training.run.4850')
     currentIso = '2026-06-12T11:00:00.000Z'
-    await sealWindow('training.window.4850.b', 'digest.checkpoint.b')
+    const secondDigestRef = `sha256:${'b'.repeat(64)}`
+    await sealWindow('training.window.4850.b', secondDigestRef)
     expect(await requestGrant()).toMatchObject({
       outcome: {
         grant: {
-          checkpointDigestRef: 'digest.checkpoint.b',
+          checkpointDigestRef: secondDigestRef,
           sealedWindowRef: 'training.window.4850.b',
         },
         kind: 'granted',

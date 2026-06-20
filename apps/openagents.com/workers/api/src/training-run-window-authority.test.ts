@@ -222,6 +222,68 @@ describe('training run window authority', () => {
     expect(JSON.parse(sealed.publicProjectionJson).sealMetadata).toBeNull()
   })
 
+  it('requires checkpoint-backed seals to carry a passing durable checkpoint descriptor', () => {
+    const checkpointDigestRef = `sha256:${'a'.repeat(64)}`
+    const sealMetadata: TrainingWindowSealMetadata = {
+      checkpointDigestRef,
+      churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
+      durableCheckpointSeal: {
+        checkpointDigestRef,
+        replicationFactor: 2,
+        retrievalProofRef: 'receipt.training.checkpoint_readback.window.0001',
+        retrievalVerified: true,
+        sizeBytes: 1_048_576,
+        storageClass: 'content_addressed_object_store',
+        windowRef: 'training.window.0001',
+      },
+      staleness: {
+        contributionCount: 0,
+        stepsBehindMax: 0,
+        stepsBehindMin: 0,
+        stepsBehindP50: 0,
+        stepsBehindP90: 0,
+      },
+      verificationOverhead: {
+        fraction: 0.1,
+        ladderRungRef: 'ladder.rung.r1',
+      },
+    }
+    const active = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'activate',
+      nextState: 'active',
+      nowIso: '2026-06-12T10:05:00.000Z',
+      receiptRef: 'receipt.training.activate',
+      transitionKind: 'window_activate',
+      window: buildTrainingWindowRecord({
+        makeId: () => 'window',
+        nowIso: '2026-06-12T10:00:00.000Z',
+        request: {
+          trainingRunRef: 'training.run.0001',
+          windowRef: 'training.window.0001',
+        },
+      }),
+    }).window
+
+    const sealed = transitionTrainingWindowRecord({
+      actorRef: 'operator.training',
+      eventId: 'seal',
+      nextState: 'sealed',
+      nowIso: '2026-06-12T10:10:00.000Z',
+      receiptRef: 'receipt.training.seal',
+      sealMetadata,
+      transitionKind: 'window_seal',
+      window: active,
+    }).window
+
+    expect(sealed.sealMetadata?.durableCheckpointSeal).toMatchObject({
+      checkpointDigestRef,
+      retrievalVerified: true,
+      storageClass: 'content_addressed_object_store',
+      windowRef: 'training.window.0001',
+    })
+  })
+
   it('rejects malformed or misplaced seal metadata', () => {
     const validSealMetadata: TrainingWindowSealMetadata = {
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
@@ -369,6 +431,45 @@ describe('training run window authority', () => {
         },
       }),
       /more join refs than the declared join count/,
+    )
+
+    const checkpointDigestRef = `sha256:${'b'.repeat(64)}`
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        checkpointDigestRef,
+      }),
+      /requires a durableCheckpointSeal descriptor/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        checkpointDigestRef,
+        durableCheckpointSeal: {
+          checkpointDigestRef,
+          replicationFactor: 1,
+          retrievalVerified: true,
+          sizeBytes: 1_048_576,
+          storageClass: 'content_addressed_object_store',
+          windowRef: 'training.window.0001',
+        },
+      }),
+      /replication_factor_below_durable_minimum/,
+    )
+    expectSealValidationError(
+      sealAttempt({
+        ...validSealMetadata,
+        checkpointDigestRef,
+        durableCheckpointSeal: {
+          checkpointDigestRef,
+          replicationFactor: 2,
+          retrievalVerified: true,
+          sizeBytes: 1_048_576,
+          storageClass: 'content_addressed_object_store',
+          windowRef: 'training.window.other',
+        },
+      }),
+      /must match the sealed windowRef/,
     )
   })
 
