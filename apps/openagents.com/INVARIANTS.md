@@ -1952,8 +1952,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `workers/api/src/training-ablation-derisking-ledger.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
-  - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no
-    payload-level `generatedAt`/contract).
+  - `GET /api/public/product-promises` — live at read over the versioned
+    product-promise registry — compliant (`generatedAt`, `registryVersion`,
+    `maxStalenessSeconds`, top-level `projection_staleness.v1`
+    `live_at_read` contract, and blocker/evidence verification summary). It
+    grants no write, deploy, spend, settlement, or public-claim authority and
+    flips no promise by itself.
   - `GET /api/public/product-promises/transitions` — stored receipt rows,
     served with live registry context — compliant (`generatedAt`,
     `registryVersion`, `registryGeneratedAt`, and the top-level
