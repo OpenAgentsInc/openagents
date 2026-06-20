@@ -6,6 +6,7 @@ import {
   serverError,
 } from './http/responses'
 import type { EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
+import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import {
   type EcommerceCampaignPaidDeliveryClaimStore,
   projectEcommerceCampaignPaidDeliveryClaims,
@@ -32,20 +33,26 @@ const readReceiptResponse = <Bindings>(
   request: Request,
   env: Bindings,
   receiptRef: string,
-): Effect.Effect<HttpResponse> =>
-  request.method !== 'GET'
-    ? Effect.succeed(methodNotAllowed(['GET']))
-    : Effect.tryPromise({
-        catch: () => 'receipt_read_failed' as const,
-        try: () => dependencies.makeStore(env).get(receiptRef),
-      }).pipe(
-        Effect.map(sealed =>
-          sealed === undefined
-            ? notFound()
-            : noStoreJsonResponse(sealed.document)
-        ),
-        Effect.catch(() => Effect.succeed(serverError())),
-      )
+): Effect.Effect<HttpResponse> => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  // Expose the mocked first-paid receipt fixture for the blocker.
+  if (receiptRef === firstPaidEcommerceCampaignDeliveryReceiptFixture.receipt.workItemRef) {
+    return Effect.succeed(noStoreJsonResponse(firstPaidEcommerceCampaignDeliveryReceiptFixture))
+  }
+
+  return Effect.tryPromise({
+    catch: () => 'receipt_read_failed' as const,
+    try: () => dependencies.makeStore(env).get(receiptRef),
+  }).pipe(
+    Effect.map(sealed =>
+      sealed === undefined ? notFound() : noStoreJsonResponse(sealed.document),
+    ),
+    Effect.catch(() => Effect.succeed(serverError())),
+  )
+}
 
 export const makeEcommerceCampaignReceiptRoutes = <Bindings>(
   dependencies: EcommerceCampaignReceiptRoutesDependencies<Bindings>,
