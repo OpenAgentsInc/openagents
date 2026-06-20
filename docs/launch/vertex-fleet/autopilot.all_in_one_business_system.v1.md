@@ -100,6 +100,36 @@ Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-manif
 gate criteria, the inert receipt names exactly the honest unmet artifacts with their
 governing proof primitives, and fully-armed evidence owes no outstanding artifact.
 
+## Follow-up: real-business-receipt readiness report (this run)
+
+`apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-readiness.ts` —
+a PURE module that produces the ONE reviewer-facing artifact joining the two
+upstream halves. The gate answers "does this evidence satisfy each criterion?"
+(satisfied + detail); the manifest answers "WHERE does each criterion's evidence
+come from / what artifact must a real run produce?" (governingRef +
+requiredArtifact). Neither alone is the single thing a reviewer (or a future armed
+run) reads to see, in one ordered list: per criterion, whether it currently holds,
+why, and — when it does not — exactly which dereferenceable artifact is still owed
+and which seam/proof primitive governs it.
+
+`buildRealBusinessReceiptReadinessReport(evidence)` runs the existing gate, joins
+each criterion to its manifest requirement, projects a public-safe receipt context
+(refs only — no amounts, idempotency keys, or destinations), and reports the
+satisfied/total tally, the outstanding artifacts, and the overall verdict. It
+INTRODUCES no new pass/fail rule — `clearsBlocker` mirrors the gate exactly. It
+DECIDES NOTHING IRREVERSIBLE: flips no promise, drops no blocker, moves no money;
+a `true` verdict is a REPORT, not an action. `inertReadinessReport(receipt)`
+renders the honest status quo (not billed, no owner sign-off, internal first-party
+demand): verdict `clearsBlocker: false`, naming the outstanding artifacts with
+their governing proof primitives.
+
+Tests: `apps/openagents.com/workers/api/src/autopilot-composed-run-receipt-readiness.test.ts`
+(5 tests) — one line per gate criterion in gate order each joined to its manifest
+requirement, public-safe receipt context (no amounts leak), fully-armed evidence
+clears with no outstanding artifact, the inert report fails honestly and names the
+outstanding artifacts (= the unsatisfied lines), and outstanding artifacts carry
+their governing proof primitives.
+
 ## What remains (blocker stays listed)
 
 This is the receipt **shape**, reconciled over an INERT execution. The blocker stays
