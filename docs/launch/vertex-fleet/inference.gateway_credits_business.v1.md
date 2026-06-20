@@ -91,3 +91,43 @@ produced in prod:
 Wiring the assembler into a resolvable `GET` endpoint and producing the first
 real instance is the follow-up once the paid loop is collectable. No promise
 state changed; any future green flip remains receipt-first and owner-signed.
+
+## Public paid-model gateway surface (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The OpenAI-compatible gateway accepted requests (`POST /v1/chat/completions`)
+but had **no public discovery + price surface**: nothing told a client which
+models the gateway serves or what each PAID model costs. An OpenAI-compatible
+gateway is expected to answer `GET /v1/models`, and a credits business needs a
+published price per model before a customer can fund a balance and spend it
+deliberately. This run adds that surface:
+
+- `apps/openagents.com/workers/api/src/inference/model-catalog.ts`
+  (+ `model-catalog.test.ts`): a PURE catalog builder over the existing
+  `MODEL_PRICING_TABLE`. For every served model it publishes the supply lane,
+  the per-1M-token sell price (USD + credits, in both input/cached/output
+  dimensions), the published multiplier, the free-tier-eligibility flag (single
+  source of truth reused from `FREE_ELIGIBLE_MODEL_CLASSES`), and the cost-basis
+  provenance (`verified` for the real Fireworks rates vs `list_placeholder` for
+  the Vertex Claude/Gemini billing TODO). Prices are derived from the SAME table
+  the metering hook charges against, and a test asserts they equal
+  `sellPricePerMtok`, so the **published price can never drift from the billed
+  price**. `toOpenAiModelsResponse` projects this into the OpenAI `/v1/models`
+  list shape (standard fields + `oa_*` extensions; clients ignore unknowns).
+- `apps/openagents.com/workers/api/src/inference/models-routes.ts`
+  (+ `models-routes.test.ts`): `handleModelsList`, a flag-gated GET handler that
+  404s when the gateway is off (same inert posture as `/v1/chat/completions`),
+  405s on non-GET, and otherwise serves the catalog. Public + unauthenticated
+  (pre-purchase discovery, public-safe: published sell prices only — no prompts,
+  credentials, or balances).
+- `index.ts`: registers `GET /v1/models`, gated by the SAME
+  `INFERENCE_GATEWAY_ENABLED` flag, alongside the existing chat-completions route.
+
+This makes the paid model gateway publicly **discoverable and priced** — the
+catalog every paid client and price page reads. It does NOT by itself let a
+customer buy inference: the blocker stays listed because the paid-credits funding
+loop above is still secrets-gated, so no published-priced model can yet be paid
+for end to end. No promise state changed; any future green flip remains
+receipt-first and owner-signed.
