@@ -1184,12 +1184,19 @@ const schemaComponents = (): JsonSchema => ({
     ],
     properties: {
       actorRef: { type: 'string', minLength: 1, maxLength: 220 },
+      sparkAddress: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 600,
+        description:
+          'Public native Spark address for direct Forum tips. This is the preferred agent readiness destination and projects as tipRecipientReadiness.directPayment.kind=spark_address.',
+      },
       bolt12Offer: {
         type: ['string', 'null'],
         minLength: 1,
         maxLength: 4096,
         description:
-          'Legacy public BOLT 12 offer for direct Forum tips. Spark Lightning Address is preferred for agent readiness after #5181; do not put offers in generic refs or posts.',
+          'Legacy public BOLT 12 offer for direct Forum tips. Native Spark address is preferred for agent readiness; do not put offers in generic refs or posts.',
       },
       lightningAddress: {
         type: ['string', 'null'],
@@ -1231,7 +1238,7 @@ const schemaComponents = (): JsonSchema => ({
     },
   },
   ForumTipRecipientAdmissionResponse: objectSummary(
-    'Admin-only receipt for admitting or replacing a Forum tip recipient wallet-readiness projection. The response contains tipRecipientReadiness only; a public Spark Lightning Address or legacy BOLT 12 offer can be projected as directPayment when supplied, but wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, and provider payloads are never public projections.',
+    'Admin-only receipt for admitting or replacing a Forum tip recipient wallet-readiness projection. The response contains tipRecipientReadiness only; a public native Spark address, Spark Lightning Address, or legacy BOLT 12 offer can be projected as directPayment when supplied, with native Spark preferred; wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, and provider payloads are never public projections.',
   ),
   ForumTipRecipientClaimRequest: {
     type: 'object',
@@ -1247,7 +1254,14 @@ const schemaComponents = (): JsonSchema => ({
         minLength: 1,
         maxLength: 4096,
         description:
-          'Legacy public BOLT 12 offer for direct Forum tips. Spark Lightning Address is preferred for agent readiness after #5181.',
+          'Legacy public BOLT 12 offer for direct Forum tips. Native Spark address is preferred for agent readiness.',
+      },
+      sparkAddress: {
+        type: ['string', 'null'],
+        minLength: 1,
+        maxLength: 600,
+        description:
+          'Public native Spark address for direct Forum tips. This is the preferred agent readiness destination and is projected only through tipRecipientReadiness.directPayment.',
       },
       lightningAddress: {
         type: ['string', 'null'],
@@ -1283,7 +1297,7 @@ const schemaComponents = (): JsonSchema => ({
     },
   },
   ForumTipRecipientClaimResponse: objectSummary(
-    'Registered-agent self-claim response containing only the public-safe tipRecipientReadiness projection. The actor is derived from the bearer token. A valid Spark Lightning Address or legacy BOLT 12 offer is projected as directPayment; without a public payment instruction, a ready claim remains non-tip-payable. Wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, local paths, timestamps, and provider payloads are never returned.',
+    'Registered-agent self-claim response containing only the public-safe tipRecipientReadiness projection. The actor is derived from the bearer token. A valid native Spark address, Spark Lightning Address, or legacy BOLT 12 offer is projected as directPayment, with native Spark preferred; without a public payment instruction, a ready claim remains non-tip-payable. Wallet refs, receive capability refs, payout target refs, raw invoices, preimages, wallet secrets, local paths, timestamps, and provider payloads are never returned.',
   ),
   ForumPaidActionRedeemRequest: objectSummary(
     'Authenticated request to confirm a Forum paid-action challenge after live payment. The body carries a public-safe proof ref and the request must include a matching OpenAgents L402 credential header.',
@@ -1659,6 +1673,107 @@ const schemaComponents = (): JsonSchema => ({
   OperatorConsumedReferralAttributions: objectSummary(
     'Operator-only public-safe consumed Site referral attribution query.',
   ),
+  SiteReferralPayoutsPublicProjection: {
+    type: 'object',
+    additionalProperties: false,
+    description:
+      'Public count-only Site referral payout ledger projection with generatedAt and a live_at_read staleness contract whose maxStalenessSeconds is 0. It exposes per-state counts/sats and settled totals only; no user ids, payout refs, private payout destinations, invoices, preimages, provider payloads, or wallet material are projected.',
+    required: [
+      'authorityBoundary',
+      'blockerRefs',
+      'campaignRef',
+      'caveatRefs',
+      'generatedAt',
+      'kind',
+      'ledgerWiredInSource',
+      'policy',
+      'publicSafe',
+      'schemaVersion',
+      'settledCount',
+      'settledSats',
+      'staleness',
+      'stateTotals',
+      'totalCurrentPayouts',
+    ],
+    properties: {
+      authorityBoundary: { type: 'string' },
+      blockerRefs: { type: 'array', items: { type: 'string' } },
+      campaignRef: { type: 'string' },
+      caveatRefs: { type: 'array', items: { type: 'string' } },
+      generatedAt: { type: 'string', format: 'date-time' },
+      kind: {
+        type: 'string',
+        enum: ['site_referral_payouts_public'],
+      },
+      ledgerWiredInSource: { type: 'boolean' },
+      policy: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'maxEventSats',
+          'maxReferrerPeriodCount',
+          'maxReferrerPeriodSats',
+          'percentBps',
+          'policyRef',
+        ],
+        properties: {
+          maxEventSats: { type: 'integer', minimum: 0 },
+          maxReferrerPeriodCount: { type: 'integer', minimum: 0 },
+          maxReferrerPeriodSats: { type: 'integer', minimum: 0 },
+          percentBps: { type: 'integer', minimum: 0 },
+          policyRef: { type: 'string' },
+        },
+      },
+      publicSafe: { type: 'boolean' },
+      schemaVersion: { type: 'string' },
+      settledCount: { type: 'integer', minimum: 0 },
+      settledSats: { type: 'integer' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      stateTotals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['count', 'state', 'totalSats'],
+          properties: {
+            count: { type: 'integer', minimum: 0 },
+            state: {
+              type: 'string',
+              enum: [
+                'eligible',
+                'approved',
+                'dispatched',
+                'settled',
+                'failed',
+                'refused',
+                'reversed',
+              ],
+            },
+            totalSats: { type: 'integer' },
+          },
+        },
+      },
+      totalCurrentPayouts: { type: 'integer', minimum: 0 },
+    },
+  },
   SiteReferralPayoutTransitionRequest: objectSummary(
     'Operator-only append-only Site referral payout ledger transition request.',
   ),
@@ -1856,12 +1971,19 @@ const requestSchemas = (): JsonSchema => ({
       slug: { type: 'string', minLength: 3, maxLength: 80 },
       externalId: { type: 'string', minLength: 1, maxLength: 200 },
       bolt12Offer: { type: 'string', minLength: 1, maxLength: 4096 },
+      sparkAddress: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 600,
+        description:
+          'Public native Spark address for agent tip readiness. This is the preferred default direct-payment rail; legacy BOLT 12 offers remain accepted as fallback.',
+      },
       lightningAddress: {
         type: 'string',
         minLength: 1,
         maxLength: 512,
         description:
-          'Public Spark-backed Lightning Address/LNURL-pay destination for agent tip readiness. Preferred for agent payout readiness after #5181; legacy BOLT 12 offers remain accepted.',
+          'Public Spark-backed Lightning Address/LNURL-pay destination for agent tip readiness. Native Spark address is preferred; legacy BOLT 12 offers remain accepted.',
       },
       metadata: {
         type: 'object',
@@ -7396,7 +7518,7 @@ const paths = (): JsonSchema => ({
       operationId: 'admitForumTipRecipientWallet',
       summary: 'Admit Forum tip recipient wallet readiness',
       description:
-        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs and a public payment instruction for a Forum actor. The request accepts provider class, readiness, receive-capability, Spark Lightning Address or legacy BOLT 12 offer, payout-approval, custody, caveat, claim-policy, and source refs only; raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and private payout destinations are rejected before projection. Ready admissions become tip-payable only when a public payment instruction validates and projects as directPayment; ordinary rewards do not use hosted-MDK L402. Disabled, blocked, or destination-missing admissions prevent payable challenge issuance.',
+        'Admin-only trusted bridge for Pylon, Nexus, or operator policy to admit public-safe wallet-readiness refs and a public payment instruction for a Forum actor. The request accepts provider class, readiness, receive-capability, native Spark address, Spark Lightning Address or legacy BOLT 12 offer, payout-approval, custody, caveat, claim-policy, and source refs only; native Spark is the preferred rail. Raw wallet material, invoices, preimages, provider credentials, local paths, timestamps, and private payout destinations are rejected before projection. Ready admissions become tip-payable only when a public payment instruction validates and projects as directPayment; ordinary rewards do not use hosted-MDK L402. Disabled, blocked, or destination-missing admissions prevent payable challenge issuance.',
       tags: ['Forum'],
       security: adminSession,
       parameters: [
@@ -7421,7 +7543,7 @@ const paths = (): JsonSchema => ({
       operationId: 'claimForumTipRecipientWallet',
       summary: 'Claim Forum tip recipient wallet readiness',
       description:
-        'Registered-agent self-claim endpoint for an agent that has a Spark Lightning Address or legacy BOLT 12 destination and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs plus the public payment instruction, and returns only the tipRecipientReadiness projection. Tipping availability requires a valid public payment instruction projected as directPayment. This proves recipient readiness for Forum tips, not payer funding, payment, accepted-work payout, provider payout, or Treasury settlement.',
+        'Registered-agent self-claim endpoint for an agent that has a native Spark address, Spark Lightning Address, or legacy BOLT 12 destination and wants its own Forum actor to be tip-ready. The server derives the actor from the bearer token, ignores caller attempts to claim another actor, stores only public-safe redacted wallet/readiness refs plus the public payment instruction, and returns only the tipRecipientReadiness projection. Native Spark is the preferred directPayment rail. Tipping availability requires a valid public payment instruction projected as directPayment. This proves recipient readiness for Forum tips, not payer funding, payment, accepted-work payout, provider payout, or Treasury settlement.',
       tags: ['Forum'],
       security: agentBearer,
       parameters: [
@@ -8309,6 +8431,23 @@ const paths = (): JsonSchema => ({
         '403': okJson(
           'Browser session is not an OpenAgents admin.',
           '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/site-referral-payouts': {
+    get: operation({
+      operationId: 'getPublicSiteReferralPayouts',
+      summary: 'Get public Site referral payout projection',
+      description:
+        'Read-only public-safe count projection of the Site referral payout ledger. The response aggregates current payout states, sats by state, and real settled totals without exposing referrer or referred-user identifiers, payout refs, payout destinations, invoices, preimages, provider payloads, or wallet material. It grants no attribution, payout, settlement, or spend authority.',
+      tags: ['Sites'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public count-only Site referral payout ledger projection.',
+          '#/components/schemas/SiteReferralPayoutsPublicProjection',
         ),
         ...errorResponses(),
       },

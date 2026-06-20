@@ -115,6 +115,15 @@ export type SiteReferralPayoutPublicProjection = Readonly<{
   settledSats: number
 }>
 
+export type SiteReferralPayoutsPublicProjection =
+  SiteReferralPayoutPublicProjection &
+    Readonly<{
+      /** ISO response timestamp for public freshness checks. */
+      generatedAt: string
+      /** Declared live_at_read staleness contract with maxStalenessSeconds 0. */
+      staleness: PublicProjectionStalenessContract
+    }>
+
 const ALL_STATES: ReadonlyArray<SiteReferralPayoutState> = [
   'eligible',
   'approved',

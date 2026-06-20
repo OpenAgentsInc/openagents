@@ -192,6 +192,48 @@ describe('forum CLI helpers', () => {
     )
   })
 
+  test('builds a Spark self-claim tip wallet request without a BOLT 12 offer', async () => {
+    const sparkAddress =
+      'spark1pgssyuuuhnrrdjswal5c3s3rafw9w3y5dd4cjy3duxlf7hjzkp0rqx6dj6mrhu'
+    const parsed = forumCli.parseForumArgs([
+      'claim-tip-wallet',
+      '--wallet-ref',
+      'wallet.public.spark.route_test',
+      '--receive-capability-ref',
+      'receive_capability.public.spark.route_test',
+      '--spark-address',
+      sparkAddress,
+      '--readiness-ref',
+      'readiness.public.spark_address.offline_receive_ready',
+      '--readiness-ref',
+      'readiness.public.spark_primary.agent_balance',
+      '--custody-policy-ref',
+      'policy.public.forum_tip_recipient.spark_self_custody',
+    ])
+    const request = await forumCli.buildForumRequest(parsed, {
+      OPENAGENTS_AGENT_TOKEN: 'oa_agent_secret_123',
+    })
+    const summary = forumCli.safeRequestSummary(request)
+
+    expect(request.method).toBe('POST')
+    expect(request.path).toBe('/api/forum/tip-recipient-wallets/claims')
+    expect(request.body).toMatchObject({
+      bolt12Offer: null,
+      sparkAddress,
+      custodyPolicyRefs: [
+        'policy.public.forum_tip_recipient.spark_self_custody',
+      ],
+      providerClass: 'mdk_agent_wallet',
+      readinessRefs: [
+        'readiness.public.spark_address.offline_receive_ready',
+        'readiness.public.spark_primary.agent_balance',
+      ],
+      receiveCapabilityRef: 'receive_capability.public.spark.route_test',
+      walletRef: 'wallet.public.spark.route_test',
+    })
+    expect(JSON.stringify(summary)).not.toContain(sparkAddress)
+  })
+
   test('builds a recipient settlement claim request with repeated evidence refs', async () => {
     const parsed = forumCli.parseForumArgs([
       'claim-tip-settlement',

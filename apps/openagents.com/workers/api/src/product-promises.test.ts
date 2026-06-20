@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.13')
+    expect(decoded.version).toBe('2026-06-20.1')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -130,7 +130,9 @@ describe('public product promises document', () => {
     // autopilot_sites.partner_payout_ledger.v1 (stays red) — flip nothing. The
     // 2026-06-19.13 pass is the FIRST green flip of the assault:
     // agents.nostr_fallback_coordination.v1 yellow -> green (owner-authorized
-    // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly 21.
+    // 2026-06-19, outage-coordination drill PR #5535), so green is now exactly
+    // 21. The 2026-06-20.1 pass is a Spark-first Forum wallet copy/default
+    // update with no state flips, so the count remains 21.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(21)
@@ -654,12 +656,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.13', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.1', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.13',
+      expectedVersion: '2026-06-20.1',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.13',
+      servedVersion: '2026-06-20.1',
       status: 'ready',
     })
     expect(
@@ -669,7 +671,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.13',
+      servedVersion: '2026-06-20.1',
       status: 'blocked',
     })
   })

@@ -31,7 +31,7 @@ export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs watch-topic --topic TOPIC_ID
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs bookmark-post --post POST_ID
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs follow-actor --actor actor.ref
-  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --bolt12-offer lno1... --readiness-ref readiness.public.mdk_agent.daemon_running --readiness-ref readiness.public.mdk_agent.setup_present --readiness-ref readiness.public.mdk_agent.receive_ready
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-wallet --wallet-ref wallet.public.your_agent.redacted --receive-capability-ref receive_capability.public.your_agent.redacted --spark-address spark1... --readiness-ref readiness.public.spark_address.offline_receive_ready --readiness-ref readiness.public.spark_primary.agent_balance
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs claim-tip-settlement --receipt RECEIPT_REF --settlement-ref settlement.public.your_agent.receipt_ref --settlement-evidence-ref settlement_evidence.public.mdk_agent_wallet.receive_confirmed --source-ref source.public.your_agent.mdk_agent_wallet
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tip-post --post POST_ID --tip-amount 15 --approve-live-spend
   OPENAGENTS_AGENT_TOKEN=oa_agent_... node scripts/forum.mjs tip-post-smoke --post POST_ID --tip-amount 15 --approve-live-spend --strict-smooth
@@ -70,6 +70,8 @@ Options:
   --route-params-json <json> Public-safe route params for generic paid-action redeem/preview.
   --spend-cap-amount <n>    Paid-action spend cap amount.
   --spend-cap-asset <asset> Paid-action spend cap asset: credits, usd, bitcoin, or sats.
+  --spark-address <spark1...>
+                            Public native Spark address for Forum tip readiness.
   --strict-smooth           Fail tip-post-smoke when timeout recovery is needed.
   --diagnostic              Let tip-post-smoke report recovery as a known blocker instead of failing.
   --reward-amount <n>       Optional sats amount for Forum post rewards.
@@ -178,6 +180,8 @@ const valueFlags = new Set([
   'slug',
   'source-ref',
   'sourceRef',
+  'spark-address',
+  'sparkAddress',
   'settlement-evidence-ref',
   'settlementEvidenceRef',
   'settlement-ref',
@@ -260,6 +264,7 @@ const canonicalFlagName = name =>
     sourceRef: 'source-ref',
     settlementEvidenceRef: 'settlement-evidence-ref',
     settlementRef: 'settlement-ref',
+    sparkAddress: 'spark-address',
     spendCapAmount: 'spend-cap-amount',
     spendCapAsset: 'spend-cap-asset',
     strictSmooth: 'strict-smooth',
@@ -388,6 +393,10 @@ export const redactSecrets = value =>
   value
     .replace(/Bearer\s+[A-Za-z0-9._:-]+/g, 'Bearer <redacted>')
     .replace(/oa_agent_[A-Za-z0-9._:-]+/g, 'oa_agent_<redacted>')
+    .replace(
+      /\b(?:spark|sparkt|sparkrt|sparks|sp|spt|sprt|sps)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,512}\b/gi,
+      '<redacted_spark_address>',
+    )
     .replace(/\blno1[A-Za-z0-9]+/gi, '<redacted_bolt12_offer>')
     .replace(/\b(?:lnbc|lntb|lntbs|lnbcrt)[A-Za-z0-9]+/gi, '<redacted_invoice>')
     .replace(/\boa-l402-v1\.[A-Za-z0-9._-]+/g, '<redacted_l402_credential>')
@@ -2580,6 +2589,7 @@ export const buildForumRequest = async (parsed, env = process.env) => {
 
       const body = {
         bolt12Offer: flagText(parsed.flags, 'bolt12-offer') || null,
+        sparkAddress: flagText(parsed.flags, 'spark-address') || null,
         caveatRefs: flagTexts(parsed.flags, 'caveat-ref'),
         claimPolicyRefs: flagTexts(parsed.flags, 'claim-policy-ref'),
         custodyPolicyRefs: flagTexts(parsed.flags, 'custody-policy-ref'),
@@ -2602,6 +2612,7 @@ export const buildForumRequest = async (parsed, env = process.env) => {
         'tip-wallet-claim',
         {
           providerClass: body.providerClass,
+          sparkAddress: body.sparkAddress,
           bolt12Offer: body.bolt12Offer,
           readinessRefs: body.readinessRefs,
           receiveCapabilityRef: body.receiveCapabilityRef,
