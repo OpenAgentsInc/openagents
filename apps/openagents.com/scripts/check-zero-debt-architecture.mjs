@@ -708,6 +708,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/promise-transition-receipt-routes.ts',
+    route: '/api/public/product-promises/transitions',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/training-ablation-derisking-ledger.ts',
     route: '/api/public/training/ablation-derisking-ledger',
     status: 'staleness_declared',
@@ -722,11 +727,6 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/product-promises.ts',
     route: '/api/public/product-promises',
-    status: 'legacy_missing_staleness_contract',
-  },
-  {
-    module: 'workers/api/src/promise-transition-receipt-routes.ts',
-    route: '/api/public/product-promises/transitions',
     status: 'legacy_missing_staleness_contract',
   },
   {
@@ -813,7 +813,7 @@ const publicProjectionSurfaces = [
   },
 ]
 
-const PUBLIC_PROJECTION_LEGACY_BUDGET = 18
+const PUBLIC_PROJECTION_LEGACY_BUDGET = 17
 
 const normalizedPublicRoute = value =>
   value.replaceAll('\\', '').replace(/\/+$/, '')

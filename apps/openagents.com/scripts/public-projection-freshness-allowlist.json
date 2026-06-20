@@ -25,11 +25,6 @@
     "reason": "Grandfathered registry projection; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
   },
   {
-    "surface": "/api/public/product-promises/transitions -> ProductPromiseTransitions",
-    "issueRef": "OpenAgentsInc/openagents#4751",
-    "reason": "Grandfathered promise transition feed; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
-  },
-  {
     "surface": "/api/public/pylon-capacity-funnel -> PublicPylonCapacityFunnel",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered public capacity funnel; add generatedAt or lastRebuiltAt and an explicit staleness contract before removing this entry."
