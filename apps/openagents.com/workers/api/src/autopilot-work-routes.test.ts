@@ -897,6 +897,22 @@ const responseJson = async (response: Response) =>
     briefing?: Readonly<{
       briefingRef: string
       drilldown: ReadonlyArray<Readonly<{ kind: string; refs: ReadonlyArray<string> }>>
+      receipts: Readonly<{
+        authorityReceiptRefs: ReadonlyArray<string>
+        buyerPaymentProofRef: string | null
+        proofRefs: ReadonlyArray<string>
+        settlementEligible: boolean
+        verificationRefs: ReadonlyArray<string>
+      }>
+      risk: Readonly<{
+        blockerCount: number
+        changeCaptureStatus: string | null
+        deliveryReadinessStatus: string | null
+        level: string
+        reviewCaveatRefs: ReadonlyArray<string>
+        settlementBlockedReasonRef: string
+        worktreeIdentityStatus: string | null
+      }>
       whatHappened: ReadonlyArray<Readonly<{ eventKind: string; sequence: number }>>
     }>
     error?: string
@@ -2007,6 +2023,22 @@ describe('Autopilot work routes', () => {
       'summary',
       'test',
     ])
+    expect(briefingJson.briefing?.receipts).toEqual({
+      authorityReceiptRefs: ['authority.public.autopilot_docs.writeback_ready'],
+      buyerPaymentProofRef: null,
+      proofRefs: ['proof.public.autopilot_docs.worker_closeout'],
+      settlementEligible: false,
+      verificationRefs: ['verification.public.autopilot_docs.bun_test'],
+    })
+    expect(briefingJson.briefing?.risk).toEqual({
+      blockerCount: 0,
+      changeCaptureStatus: 'review_ready',
+      deliveryReadinessStatus: 'ready',
+      level: 'attention',
+      reviewCaveatRefs: ['review-caveat.public.autopilot_docs.summary_only'],
+      settlementBlockedReasonRef: 'settlement.no_worker_payout_mode',
+      worktreeIdentityStatus: 'ready',
+    })
     expect(JSON.stringify(briefingJson)).not.toMatch(
       /mnemonic|invoice|preimage|\/Users\//,
     )

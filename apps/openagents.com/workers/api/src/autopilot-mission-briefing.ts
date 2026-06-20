@@ -41,6 +41,22 @@ export type AutopilotMissionBriefingProjection = Readonly<{
   kind: 'autopilot_mission_briefing'
   promiseRef: AutopilotWorkOrderProjection['promiseRef']
   publicSafe: true
+  receipts: Readonly<{
+    authorityReceiptRefs: ReadonlyArray<string>
+    buyerPaymentProofRef: string | null
+    proofRefs: ReadonlyArray<string>
+    settlementEligible: AutopilotWorkOrderProjection['funding']['settlementEligible']
+    verificationRefs: ReadonlyArray<string>
+  }>
+  risk: Readonly<{
+    blockerCount: number
+    changeCaptureStatus: 'blocked' | 'review_ready' | 'stale' | null
+    deliveryReadinessStatus: 'blocked' | 'ready' | 'scoped_exception' | null
+    level: 'attention' | 'blocked' | 'clear'
+    reviewCaveatRefs: ReadonlyArray<string>
+    settlementBlockedReasonRef: AutopilotWorkOrderProjection['funding']['settlementBlockedReasonRef']
+    worktreeIdentityStatus: 'blocked' | 'ready' | 'stale' | null
+  }>
   state: AutopilotWorkOrderProjection['state']
   whatChanged: Readonly<{
     artifactRefs: ReadonlyArray<string>
@@ -86,6 +102,25 @@ export const missionBriefingForWorkOrder = (
   const { events, nowIso, work } = input
   const closeout = work.executionCloseout
 
+  const reviewCaveatRefs = closeout?.reviewCaveatRefs ?? []
+  const blockerRefs = closeout?.blockerRefs ?? []
+  const deliveryReadinessStatus = closeout?.deliveryReadinessStatus ?? null
+  const changeCaptureStatus = closeout?.changeCaptureStatus ?? null
+  const worktreeIdentityStatus = closeout?.worktreeIdentityStatus ?? null
+  const hasBlockedStatus =
+    deliveryReadinessStatus === 'blocked' ||
+    changeCaptureStatus === 'blocked' ||
+    worktreeIdentityStatus === 'blocked'
+  const hasAttentionStatus =
+    blockerRefs.length > 0 ||
+    reviewCaveatRefs.length > 0 ||
+    changeCaptureStatus === 'stale' ||
+    worktreeIdentityStatus === 'stale' ||
+    deliveryReadinessStatus === 'scoped_exception' ||
+    work.placementDecision.source === 'none_available'
+  const riskLevel: AutopilotMissionBriefingProjection['risk']['level'] =
+    hasBlockedStatus ? 'blocked' : hasAttentionStatus ? 'attention' : 'clear'
+
   return {
     briefingRef: `briefing.${work.workOrderRef}`,
     costs: {
@@ -120,6 +155,22 @@ export const missionBriefingForWorkOrder = (
     kind: 'autopilot_mission_briefing',
     promiseRef: work.promiseRef,
     publicSafe: true,
+    receipts: {
+      authorityReceiptRefs: closeout?.authorityReceiptRefs ?? [],
+      buyerPaymentProofRef: work.buyerPaymentProofRef,
+      proofRefs: closeout?.proofRefs ?? [],
+      settlementEligible: work.funding.settlementEligible,
+      verificationRefs: closeout?.verificationRefs ?? [],
+    },
+    risk: {
+      blockerCount: blockerRefs.length,
+      changeCaptureStatus,
+      deliveryReadinessStatus,
+      level: riskLevel,
+      reviewCaveatRefs,
+      settlementBlockedReasonRef: work.funding.settlementBlockedReasonRef,
+      worktreeIdentityStatus,
+    },
     state: work.state,
     whatChanged: {
       artifactRefs: closeout?.artifactRefs ?? [],
