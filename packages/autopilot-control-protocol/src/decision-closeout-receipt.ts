@@ -24,6 +24,22 @@ export type TerminalDecisionOutcome = Exclude<ActionOutcome, "offline" | "overlo
 // the three Autopilot clients.
 export type DecisionClient = "desktop" | "web" | "expo"
 
+// The terminal outcomes, enumerated. Single-sourced so the validator and any
+// audit consumer (e.g. the closeout ledger) iterate the same vocabulary.
+export const TERMINAL_DECISION_OUTCOMES = [
+  "applied",
+  "duplicate",
+  "expired",
+  "revoked",
+  "stale",
+  "unauthorized",
+  "unsupported",
+  "error",
+] as const satisfies ReadonlyArray<TerminalDecisionOutcome>
+
+// The client surfaces, enumerated, same single-sourcing rationale.
+export const DECISION_CLIENTS = ["desktop", "web", "expo"] as const satisfies ReadonlyArray<DecisionClient>
+
 export type BuildDecisionCloseoutReceiptInput = {
   // The node's exactly-once decision key (the decision requestId).
   requestId: string
@@ -133,16 +149,7 @@ function formatDecisionCloseoutLine(receipt: {
   return `Decision ${receipt.requestId} (${receipt.actionRef}) ${receipt.verb}${answer} closed out as ${receipt.outcome} on ${receipt.client} by ${receipt.actor} at ${receipt.decidedAt}.`
 }
 
-const TERMINAL_OUTCOMES: ReadonlySet<string> = new Set([
-  "applied",
-  "duplicate",
-  "expired",
-  "revoked",
-  "stale",
-  "unauthorized",
-  "unsupported",
-  "error",
-])
+const TERMINAL_OUTCOMES: ReadonlySet<string> = new Set(TERMINAL_DECISION_OUTCOMES)
 
 function isTerminalOutcomeValue(value: unknown): value is TerminalDecisionOutcome {
   return typeof value === "string" && TERMINAL_OUTCOMES.has(value)
@@ -153,7 +160,7 @@ function isDecisionVerb(value: unknown): value is DecisionVerb {
 }
 
 function isDecisionClient(value: unknown): value is DecisionClient {
-  return value === "desktop" || value === "web" || value === "expo"
+  return typeof value === "string" && (DECISION_CLIENTS as ReadonlyArray<string>).includes(value)
 }
 
 function isReceiptRecord(value: unknown): value is Record<string, unknown> {
