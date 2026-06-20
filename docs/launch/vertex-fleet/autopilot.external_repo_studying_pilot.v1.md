@@ -458,3 +458,63 @@ dereferenceable closeout receipt and owner sign-off per
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): combined upload-intake binding (both gates at once)
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The two earlier bindings each closed only ONE of the upload preflight's two
+refs-only gates: `upload<->privacy` derives the `privacyReviewRef` but still lets
+a caller pass an arbitrary `scanAttestationRef`, and `scan<->upload` derives the
+`scanAttestationRef` but still lets a caller pass an arbitrary `privacyReviewRef`.
+So a single caller composing one binding by hand could STILL forge whichever ref
+that binding left open. Nothing yet derived BOTH refs in one place. This change
+adds that composition so the upload has NO forgeable ref input at all.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-upload-intake-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyUploadIntakeBinding(...)`
+  - Schema `openagents.external_repo_study_upload_intake_binding.v0`, decoded
+    through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes a privacy-review preflight, a scan-attestation registry + candidate
+    ref, and an upload request **with BOTH `privacyReviewRef` and
+    `scanAttestationRef` omitted from the input type**
+    (`Omit<…, "privacyReviewRef" | "scanAttestationRef">`). It derives the
+    privacy ref from a cleared, customer/repo-matched review AND the scan ref from
+    a registry-verified clean attestation for the same customer + repo + manifest,
+    then builds the upload preflight from both. `bound_held` requires BOTH gates
+    genuinely backed; each gate independently controls its own ref, so a failure
+    in one gate blocks only that gate's upload check (the validator asserts an
+    unbacked gate derives no ref and never leaves the upload's gate satisfied).
+  - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
+    are ALWAYS false (asserted on both the binding and the nested upload
+    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
+    Refuses `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-upload-intake-binding.test.ts`
+  — 8 passing tests (both-gates bound + inert, blocked-review→privacy unbound,
+  forged-scan→scan unbound, customer mismatch, different-manifest scan unbound,
+  armed-still-inert, OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+With this, BOTH refs-only gates of the upload preflight are now derived in a
+single binding from verified, content-bound sources — no forgeable ref input
+remains on the self-serve upload path. The binding is still the *decision/control*
+layer only. The self-serve upload blocker stays listed because it still requires,
+all owner/product-gated and out of scope here: real malware/secret-scan EXECUTION
+(the registry only mirrors a verdict); a real customer-data privacy review backing
+an ARMED clearance; real durable, access-controlled upload storage + signed-URL
+intake; and an ARMED ingestion against a real customer upload with a
+dereferenceable closeout receipt and owner sign-off per
+`proof.claim_upgrade_receipts.v1`. The remaining blockers
+(`privacy_policy_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
