@@ -218,6 +218,7 @@ import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
 import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
+import { emptyEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -7082,6 +7083,7 @@ const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
       openAgentsDatabase(env),
       currentIsoTimestamp,
     ),
+  makeClaimStore: () => emptyEcommerceCampaignPaidDeliveryClaimStore,
 })
 
 const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
