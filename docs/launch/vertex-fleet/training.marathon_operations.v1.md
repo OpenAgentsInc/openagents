@@ -173,5 +173,28 @@ blocker list was changed.
 - An actual scheduled curtailment drill run end-to-end against a live run and a
   real (or staged) grid curtailment signal, with a recorded, receipt-backed
   drill outcome feeding this predicate. The evaluator is decided from a declared
-  descriptor, not yet fed by a live curtailment-event telemetry feed, and there
-  is no Worker route exposing it yet.
+  descriptor and now appears in the public marathon status projection, but it is
+  not yet fed by a live curtailment-event telemetry feed.
+
+## 2026-06-20 curtailment drill public projection
+
+Blocker advanced: **`blocker.product_promises.curtailment_drill_missing`**
+(still listed).
+
+`GET /api/public/training/marathon-operations` now exposes the curtailment-drill
+predicate surface alongside the durable-checkpoint and standby-dispatch
+surfaces:
+
+- `curtailmentSurface.predicateAvailable=true`
+- `schemaVersion=openagents.training.marathon_operations.curtailment_drill.v1`
+- `ackSlaMs=30000`
+- `haltSlaMs=300000`
+- `curtailmentDrillReceiptAvailable=false`
+- `flexibleLoadEvidenceCreated=false`
+- `greenGateSatisfied=false`
+
+This is still evidence-only. It publishes the contract a drill receipt must
+satisfy, not a completed drill. `curtailment_drill_missing` remains active until
+a scheduled live drill produces a receipt-backed outcome feeding the predicate.
+No curtailment event, load-shed proof, flexible-load claim, spend, settlement,
+model promotion, or green transition is created.
