@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.47'
+export const PublicProductPromisesVersion = '2026-06-20.48'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3534,6 +3534,160 @@ export const publicProductPromisesDocument = () => {
         authorityBoundary:
           'Building and previewing a Site grants no production-deploy authority, no customer-order-on-behalf-of-owner authority without a scoped grant, no custom-hostname/SSL or email-send authority, and no billing or settlement authority. Each Sites monetization and delivery add-on is gated by its own promise record.',
       },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.agent_world_scene.v1',
+        productArea: 'Autopilot desktop',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'The Autopilot chat is set inside a living 3D Pylon world: a glass-over-canvas scene rendered behind the conversation where each live Pylon appears as a crystal, driven by real pylon-stats data.',
+        safeCopy:
+          'The agent world scene exists behind the Autopilot chat as a flag-gated, glass-over-canvas 3D render. The P0 scene mount and P1 live Pylon crystals (fed from the public pylon-stats projection) are merged to main behind the default-off CHAT_WORLD_SCENE flag. It is not on by default, and the live in-app wiring polish (P2.5) is still pending.',
+        unsafeCopy:
+          'Do not say the 3D agent world is on by default for all users, that it is a finished shipped feature, that it is a walkable or multiplayer world (see world.multiplayer_agent_world.v1), or that the scene shows anything other than evidence-bound live Pylon state.',
+        evidenceRefs: [
+          'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/pull/5742',
+          'https://github.com/OpenAgentsInc/openagents/pull/5743',
+          'https://github.com/OpenAgentsInc/openagents/issues/5730',
+          'https://github.com/OpenAgentsInc/openagents/issues/5735',
+          'https://github.com/OpenAgentsInc/openagents/issues/5736',
+          'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
+          'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
+          'apps/autopilot-desktop/src/ui/view.ts',
+          'https://openagents.com/api/public/pylon-stats',
+          'promise:repo.open_source_code_map.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.agent_world_scene_not_default_on',
+          'blocker.product_promises.agent_world_scene_live_wiring_p2_5_pending',
+        ],
+        verification:
+          'Yellow is limited to what is merged to main: the P0 scene mount behind the default-off CHAT_WORLD_SCENE flag (PR #5742) and P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), with primitives from three-effect#10 (spawner/avatar/warp-in/bars). True today: the scene renders behind chat when the flag is enabled and crystals reflect live Pylon state. Green requires the scene on by default (or an explicit owner decision that it stays flag-gated as the product), the P2.5 live in-app wiring polish landed, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'The agent world scene is a presentational projection of already-public Pylon state. It grants no runtime mutation, no spend, no settlement, no payout, and no authority over the data it visualizes, and it makes no separate Pylon earning, payment, multiplayer, or onboarding claim green.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.bitcoin_payment_visualization.v1',
+        productArea: 'Autopilot desktop',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'Real Bitcoin settlements are visualized in the agent world as gold particles flying agent-to-agent, each particle bound to a real settlement receipt and clickable to its evidence.',
+        safeCopy:
+          'The Bitcoin payment visualization is merged to main behind the default-off CHAT_WORLD_PAYMENTS flag (PR #5743). It is evidence-bound by construction: a payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef. It is not yet wired into the live running scene and the flag is off by default.',
+        unsafeCopy:
+          'Do not say payment particles are live for all users, that the visualization is on by default, that it shows simulated or unbacked payments, or that visualizing a settlement implies any new earning, payout, or settlement authority.',
+        evidenceRefs: [
+          'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/pull/5743',
+          'https://github.com/OpenAgentsInc/openagents/issues/5730',
+          'https://github.com/OpenAgentsInc/openagents/issues/5736',
+          'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
+          'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
+          'promise:autopilot.agent_world_scene.v1',
+          'promise:training.decentralized_training_launch.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.payment_visualization_not_wired_into_live_scene',
+          'blocker.product_promises.payment_visualization_flag_default_off',
+        ],
+        verification:
+          'Yellow is limited to the merged, tested mappers in chat-world-scene.ts (PR #5743): PAYMENT_EVENT_KINDS is exactly {real_bitcoin_moved, settlement_recorded}, sourceRefs is required and non-empty so every particle is clickable to a real receipt, and an event with no sourceRef returns null (never a faked clickable receipt). True today: the descriptor builder is evidence-bound and flag-gated. Green requires the visualization wired into the live running scene end to end, an owner decision on default-on, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'Visualizing a Bitcoin settlement grants no payment authority, no spend, no payout, and no settlement authority. The particle is a clickable projection of an already-public receipt or event; it never moves money and never asserts a settlement that the underlying receipt does not.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.pylon_growth_visualization.v1',
+        productArea: 'Autopilot desktop',
+        audience: ['agent', 'user', 'operator'],
+        state: 'yellow',
+        claim:
+          'A Pylon visibly grows in the agent world — crystal scale, facets, and brightness step up by tier — as it earns cumulative settled sats.',
+        safeCopy:
+          'Pylon growth tiers are merged to main (PR #5743): cumulative settled sats map to a monotonic growth tier that the renderer turns into crystal scale/facets/brightness, with tier 0 an honest still crystal for a Pylon that has not settled any earnings yet. It rides the same default-off CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS flags and is not yet wired on by default.',
+        unsafeCopy:
+          'Do not say Pylon growth is live for all users by default, that growth reflects anything other than real settled sats, or that a larger crystal implies any new earning, payout, or settlement capability.',
+        evidenceRefs: [
+          'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/pull/5743',
+          'https://github.com/OpenAgentsInc/openagents/issues/5730',
+          'https://github.com/OpenAgentsInc/openagents/issues/5737',
+          'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
+          'promise:autopilot.agent_world_scene.v1',
+          'promise:autopilot.bitcoin_payment_visualization.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.pylon_growth_not_wired_into_live_scene',
+          'blocker.product_promises.pylon_growth_flag_default_off',
+        ],
+        verification:
+          'Yellow is limited to the merged growth-tier model in chat-world-scene.ts (#5737): PYLON_GROWTH_TIER_THRESHOLDS_SATS defines monotonic sats thresholds, tier 0 is the honest no-earnings still crystal, and the descriptor maps tier to scale/facet/brightness consistently. True today: the growth-tier descriptor is computed from cumulative settled sats. Green requires the growth wired into the live running scene end to end, an owner decision on default-on, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'Pylon growth visualization is a presentational projection of already-public settled-sats data. It grants no earning, spend, payout, or settlement authority, and a crystal tier never asserts earnings the underlying settlement receipts do not.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'autopilot.agent_character_creation.v1',
+        productArea: 'Autopilot desktop',
+        audience: ['agent', 'user', 'operator'],
+        state: 'planned',
+        claim:
+          'Autopilot onboarding is agent character creation: your Pylon warps in and spawns your agent into the world, you customize it, and it automatically introduces itself on the Forum and starts searching for work.',
+        safeCopy:
+          'Agent character creation is planned, in-progress design and build work (P3, issue #5738) that reframes onboarding as spawning and customizing your agent, with an automated Forum introduction and work search. It builds on the merged scene/payment/growth surfaces and the three-effect#10 W0 primitives (spawner/avatar/warp-in/bars). It is not a shipped onboarding flow.',
+        unsafeCopy:
+          'Do not say character-creation onboarding is live, that it spawns agents for real users today, or that it automatically posts to the Forum or searches for paid work for anyone yet.',
+        evidenceRefs: [
+          'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5730',
+          'https://github.com/OpenAgentsInc/openagents/issues/5738',
+          'promise:autopilot.agent_world_scene.v1',
+          'promise:autopilot.desktop_gui_client.v1',
+          'promise:labor.forum_work_requests.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.agent_character_creation_not_built',
+          'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
+          'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+        ],
+        verification:
+          'Planned: the P3 onboarding-as-character-creation flow (warp-in spawn, customize, automated Forum intro + work search) is design/build scope under issue #5738 in EPIC #5730, reusing the merged P0/P1/P2 scene surfaces and the three-effect#10 W0 primitives. Nothing is live. Green requires a built, tested onboarding flow that spawns and customizes a real user agent, a demonstrated automated Forum introduction and work-search step, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'Character-creation onboarding, when built, grants no spend, payout, settlement, or moderation authority. Any automated Forum posting or work search it performs stays bound to existing agent-posting, labor-market, and approval gates and asserts no new authority on its own.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'world.multiplayer_agent_world.v1',
+        productArea: 'agent world',
+        audience: ['agent', 'user', 'operator'],
+        state: 'planned',
+        claim:
+          'OpenAgents is a walkable, inhabited multiplayer world where agents and humans share one space — moving avatars, proximity chat, and focus beams — backed by a realtime multiplayer database.',
+        safeCopy:
+          'The walkable multiplayer agent world is planned roadmap scope (P4, issue #5739): third-person movement over the scene with a SpacetimeDB-backed openagents-world for real agents/humans, proximity chat bubbles, and focus beams. It is design/build direction only; the shipped surfaces today are the flag-gated single-view scene, payment particles, and growth tiers — not a multiplayer world.',
+        unsafeCopy:
+          'Do not say OpenAgents has a live walkable or multiplayer world, that agents and humans can move around a shared space today, or that the SpacetimeDB openagents-world is shipped or inhabited.',
+        evidenceRefs: [
+          'docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md',
+          'https://github.com/OpenAgentsInc/openagents/issues/5730',
+          'https://github.com/OpenAgentsInc/openagents/issues/5739',
+          'promise:autopilot.agent_world_scene.v1',
+          'promise:autopilot.agent_character_creation.v1',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.multiplayer_world_not_built',
+          'blocker.product_promises.multiplayer_world_spacetimedb_client_unshipped',
+          'blocker.product_promises.multiplayer_world_walkable_navigation_unbuilt',
+        ],
+        verification:
+          'Planned: the P4 walkable multiplayer world (WASD over the scene, SpacetimeDB openagents-world client for real avatar_position/agent_avatar state, proximity chat, focus beams) is roadmap scope under issue #5739 in EPIC #5730, explicitly sequenced after P0-P3 and de-risked by shipping the HTTP/SSE single-view path first. Nothing is live. Green requires a built, tested walkable multiplayer world with a live SpacetimeDB client carrying real agent/human presence, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+        authorityBoundary:
+          'A multiplayer world, when built, grants no spend, payout, settlement, or moderation authority. Every moving thing stays bound to a real receipt or event, and shared presence asserts no authority over the agents, humans, or balances it depicts.',
+      },
     ],
     notes: [
       `Include version ${PublicProductPromisesVersion} and the relevant promiseId when reporting a mismatch.`,
@@ -3622,6 +3776,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.45 is a training.marathon_operations.v1 curtailment-drill predicate projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/marathon-operations now reports curtailmentSurface.predicateAvailable=true with schemaVersion openagents.training.marathon_operations.curtailment_drill.v1, ackSlaMs=30000, and haltSlaMs=300000, while curtailmentDrillReceiptAvailable=false, durableCheckpointRemoteReadbackReceiptAvailable=false, liveStandbyPromotionReceiptAvailable=false, marathonCloseoutReceiptAvailable=false, and greenGateSatisfied=false. blocker.product_promises.curtailment_drill_missing remains active because no scheduled live curtailment drill receipt exists, and durable_checkpoint_seal_missing plus standby_dispatch_missing are unchanged. No curtailment event, load-shed proof, checkpoint-store read-back, standby promotion, assignment, spend, settlement, flexible-load claim, model promotion, or green transition is created. Evidence: docs/launch/vertex-fleet/training.marathon_operations.v1.md and apps/openagents.com/workers/api/src/training-curtailment-drill.ts.',
         'Registry 2026-06-20.46 is a training.public_gradient_windows.v1 intake-predicate projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/public-gradient-windows now reports intakeAdmissionPredicateAvailable=true and intakeSurface.predicateAvailable=true with schemaVersion openagents.training.public_gradient_window.intake_admission.v1, while intakeSurface.quarantineRouteAvailable=false, acceptedSubmissionCount=0, admittedQuarantineRecordCount=0, liveWindowRuntimeAvailable=false, promotedWindowReceiptAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. blocker.product_promises.public_gradient_live_window_runtime_missing remains active because no live route receives public submissions and no quarantine store persists admitted windows; promoted-window and settlement blockers are unchanged. No public window acceptance, checkpoint mutation, assignment, spend, settlement, promoted-window receipt, model promotion, or green transition is created. Evidence: docs/launch/vertex-fleet/training.public_gradient_windows.v1.md and apps/openagents.com/workers/api/src/tassadar-gradient-window-intake.ts.',
         'Registry 2026-06-20.47: owner DELEGATED per-flip green sign-off to the operating agent (2026-06-20). Green transitions remain receipt-first and gates-must-be-met; they no longer require a separate owner sign-off when the operating agent is satisfied the promise is genuinely kept with a dereferenceable receipt. Under that delegation two promises flip yellow->green: proof.claim_upgrade_receipts.v1 (transition receipt promise_transition_20680b41-30ca-47d8-b265-bd5ed6fb7ea2, all checks passed) and artanis.tassadar_evolution_loop.v1 (transition receipt promise_transition_5df6cd60-a145-40d3-87e4-33422b2204f3, all checks passed; tick-streak 12>=10 + dereferenceable distillation dataset receipt). Green 24 -> 26. The receipt + gates-met integrity gate is unchanged; only the human sign-off step is delegated.',
+        'Registry 2026-06-20.48 adds FIVE conservative new records for the agent-MMORPG / agent-world buildout (EPIC #5730, plan docs/launch/2026-06-20-agent-mmorpg-hud-autopilot-audit-and-plan.md) and flips NO existing promise (green count unchanged at 26). Three are yellow on what is MERGED to main behind default-off flags: autopilot.agent_world_scene.v1 (P0 scene-behind-chat mount, PR #5742, flag CHAT_WORLD_SCENE) + P1 live Pylon crystals from the public pylon-stats projection (PR #5743), autopilot.bitcoin_payment_visualization.v1 (P2 gold payment particles, PR #5743, evidence-bound — the mappers in chat-world-scene.ts refuse any particle without a sourceRef and PAYMENT_EVENT_KINDS is exactly {real_bitcoin_moved, settlement_recorded}), and autopilot.pylon_growth_visualization.v1 (P2 per-Pylon growth tiers from cumulative settled sats, #5737). All three stay yellow: the flags are OFF by default and the live in-app wiring (P2.5) plus default-on decision are pending; they are presentational projections of already-public Pylon/settlement data with no spend, payout, or settlement authority. Two are planned roadmap scope: autopilot.agent_character_creation.v1 (P3 #5738 — onboarding as warp-in spawn + customize + automated Forum intro + work search, building on the three-effect#10 W0 spawner/avatar/warp-in/bar primitives) and world.multiplayer_agent_world.v1 (P4 #5739 — walkable third-person multiplayer world over a SpacetimeDB openagents-world, de-risked behind the HTTP/SSE single-view path first). No new earning, multiplayer, onboarding, or settlement capability is asserted; every moving thing in the scene is bound to a real receipt or event. No promise_transition is required (new yellow/planned records create no state flip); any future green flip remains receipt-first and gates-must-be-met per proof.claim_upgrade_receipts.v1.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

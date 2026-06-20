@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.47')
+    expect(decoded.version).toBe('2026-06-20.48')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -287,6 +287,11 @@ describe('public product promises document', () => {
     // but keeps the drill-receipt blocker active.
     // The 2026-06-20.46 public-gradient pass exposes the intake predicate but
     // keeps the live-runtime blocker active.
+    // The 2026-06-20.48 agent-MMORPG / agent-world pass adds five new records
+    // (autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1,
+    // autopilot.pylon_growth_visualization.v1 yellow; autopilot.agent_character_creation.v1,
+    // world.multiplayer_agent_world.v1 planned) and flips NO promise state, so
+    // green remains exactly 26.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -1278,12 +1283,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.47', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.48', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.47',
+      expectedVersion: '2026-06-20.48',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.47',
+      servedVersion: '2026-06-20.48',
       status: 'ready',
     })
     expect(
@@ -1293,7 +1298,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.47',
+      servedVersion: '2026-06-20.48',
       status: 'blocked',
     })
   })
