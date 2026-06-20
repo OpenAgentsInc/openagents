@@ -3,6 +3,40 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (g) — scale methodology: per-prong cross-contributor integrity
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+Update (d) closed the shared-*settlement-receipt* hole (one real Bitcoin movement
+can't back two counted contributors). But two parallel integrity holes of the
+EXACT same shape remained open on the other two prongs: two counted contributors
+with distinct `pylonRef`s could still share the SAME admitted window lease
+(prong 1) or the SAME replay-verified exact_trace work challenge (prong 2), each
+inflating the qualified count just as a shared settlement inflates the real-paid
+count. The promise claim rests on "two distinct *independent* contributors" who
+each independently held a lease and did real verified work — so distinct pylonRefs
+alone is necessary but not sufficient; the underlying evidence must be distinct too.
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  the per-contributor verdict now surfaces `countedLeaseRefs` and
+  `countedVerifiedWorkRefs` (the refs that satisfied prongs 1 & 2 when counting),
+  alongside the existing `countedSettlementReceiptRefs`. The run-level verifier
+  flattens each across counted contributors and adds
+  `QualifiedRunReason.SharedLease` (`shared-lease-across-contributors`) and
+  `QualifiedRunReason.SharedVerifiedWork` (`shared-verified-work-across-contributors`),
+  mirroring the existing shared-settlement check via one `hasSharedRef` helper.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +2 vitest cases (shared lease fails; shared verified work fails), and the
+  conform/verdict tests assert the new fields/reasons; now 17 tests, wired into
+  `check:deploy`.
+- Methodology doc updated to document cross-contributor integrity across all
+  three prongs (15→17 tests).
+
+No promise state changed; no scale claim asserted. Still listed: clearing it
+needs running the verifier against the live run's real evidence and citing
+`conforms:true`, plus owner sign-off.
+
 ## Update 2026-06-20 (f) — autostart receipts: reject a replicated receipt artifact
 
 Blocker advanced this run:

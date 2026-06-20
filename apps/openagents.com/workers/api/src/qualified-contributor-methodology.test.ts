@@ -38,6 +38,8 @@ describe('verifyQualifiedContributor', () => {
     const verdict = verifyQualifiedContributor(qualified())
     expect(verdict.counts).toBe(true)
     expect(verdict.reasons).toEqual([])
+    expect(verdict.countedLeaseRefs).toEqual(['lease.a.1'])
+    expect(verdict.countedVerifiedWorkRefs).toEqual(['challenge.a.1'])
     expect(verdict.countedSettlementReceiptRefs).toEqual([
       'receipt.nexus.tassadar_run_settlement.worker.a',
     ])
@@ -205,6 +207,56 @@ describe('verifyQualifiedContributorMethodology', () => {
     expect(result.reasons).not.toContain(QualifiedRunReason.DuplicateContributor)
   })
 
+  test('flags two distinct contributors that share one window lease', () => {
+    const sharedLease = 'lease.tassadar.window.shared'
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.a',
+          leaseRefs: [sharedLease],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.a' })],
+        }),
+        qualified({
+          pylonRef: 'pylon.b',
+          // Same admitted lease reused: distinct pylonRefs, one admitted window.
+          leaseRefs: [sharedLease],
+          verifiedExactTraceReplayChallengeRefs: ['challenge.b.1'],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.b' })],
+        }),
+      ],
+    })
+    expect(result.qualifiedContributorCount).toBe(2)
+    expect(result.conforms).toBe(false)
+    expect(result.reasons).toContain(QualifiedRunReason.SharedLease)
+    expect(result.reasons).not.toContain(QualifiedRunReason.DuplicateContributor)
+  })
+
+  test('flags two distinct contributors that share one verified work challenge', () => {
+    const sharedChallenge = 'challenge.tassadar.exact_trace.shared'
+    const result = verifyQualifiedContributorMethodology({
+      claimedQualifiedContributorCount: 2,
+      contributors: [
+        qualified({
+          pylonRef: 'pylon.a',
+          verifiedExactTraceReplayChallengeRefs: [sharedChallenge],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.a' })],
+        }),
+        qualified({
+          pylonRef: 'pylon.b',
+          leaseRefs: ['lease.b.1'],
+          // Same verified work credited twice: distinct pylonRefs, one piece of work.
+          verifiedExactTraceReplayChallengeRefs: [sharedChallenge],
+          settlementReceipts: [realSettlement({ receiptRef: 'receipt.b' })],
+        }),
+      ],
+    })
+    expect(result.qualifiedContributorCount).toBe(2)
+    expect(result.conforms).toBe(false)
+    expect(result.reasons).toContain(QualifiedRunReason.SharedVerifiedWork)
+    expect(result.reasons).not.toContain(QualifiedRunReason.DuplicateContributor)
+  })
+
   test('conforms when two contributors each have their own distinct receipt', () => {
     const result = verifyQualifiedContributorMethodology({
       claimedQualifiedContributorCount: 2,
@@ -223,6 +275,8 @@ describe('verifyQualifiedContributorMethodology', () => {
     })
     expect(result.conforms).toBe(true)
     expect(result.reasons).not.toContain(QualifiedRunReason.SharedSettlementReceipt)
+    expect(result.reasons).not.toContain(QualifiedRunReason.SharedLease)
+    expect(result.reasons).not.toContain(QualifiedRunReason.SharedVerifiedWork)
   })
 
   test('an empty run conforms only to a claimed count of zero', () => {

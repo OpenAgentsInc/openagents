@@ -51,6 +51,15 @@ export const QualifiedRunReason = {
   // not enough: a single real settlement cannot back two "distinct real-paid
   // contributors" without inflating the real-paid count.
   SharedSettlementReceipt: 'shared-settlement-receipt-across-contributors',
+  // The SAME window-lease ref satisfied prong 1 (admitted) for two or more
+  // counted contributors. A lease identifies one contributor's admitted window;
+  // reusing it across distinct pylonRefs inflates the admitted-contributor count
+  // exactly as a shared settlement inflates the real-paid count.
+  SharedLease: 'shared-lease-across-contributors',
+  // The SAME replay-verified exact_trace challenge satisfied prong 2 for two or
+  // more counted contributors. One piece of verified useful work cannot be
+  // credited to two "distinct independent contributors".
+  SharedVerifiedWork: 'shared-verified-work-across-contributors',
 } as const
 
 export type QualifiedContributorSettlementEvidence = Readonly<{
@@ -78,6 +87,10 @@ export type QualifiedContributorVerdict = Readonly<{
   pylonRef: string
   counts: boolean
   reasons: ReadonlyArray<string>
+  // The lease refs that satisfied prong 1, when counts is true.
+  countedLeaseRefs: ReadonlyArray<string>
+  // The replay-verified challenge refs that satisfied prong 2, when counts is true.
+  countedVerifiedWorkRefs: ReadonlyArray<string>
   // The receipt refs that satisfied prong 3, when counts is true.
   countedSettlementReceiptRefs: ReadonlyArray<string>
 }>
@@ -136,14 +149,14 @@ export const verifyQualifiedContributor = (
     reasons.push(QualifiedContributorReason.PylonRefEmpty)
   }
 
-  const admitted = evidence.leaseRefs.some(isNonEmptyRef)
-  if (!admitted) {
+  const countedLeaseRefs = evidence.leaseRefs.filter(isNonEmptyRef)
+  if (countedLeaseRefs.length === 0) {
     reasons.push(QualifiedContributorReason.NotAdmittedNoLease)
   }
 
-  const replayVerified =
-    evidence.verifiedExactTraceReplayChallengeRefs.some(isNonEmptyRef)
-  if (!replayVerified) {
+  const countedVerifiedWorkRefs =
+    evidence.verifiedExactTraceReplayChallengeRefs.filter(isNonEmptyRef)
+  if (countedVerifiedWorkRefs.length === 0) {
     reasons.push(QualifiedContributorReason.NoReplayVerifiedWork)
   }
 
@@ -156,12 +169,14 @@ export const verifyQualifiedContributor = (
     }
   }
 
+  const counts = reasons.length === 0
   return {
     pylonRef: evidence.pylonRef,
-    counts: reasons.length === 0,
+    counts,
     reasons,
-    countedSettlementReceiptRefs:
-      reasons.length === 0 ? countedSettlementReceiptRefs : [],
+    countedLeaseRefs: counts ? countedLeaseRefs : [],
+    countedVerifiedWorkRefs: counts ? countedVerifiedWorkRefs : [],
+    countedSettlementReceiptRefs: counts ? countedSettlementReceiptRefs : [],
   }
 }
 
@@ -187,16 +202,22 @@ export const verifyQualifiedContributorMethodology = (
 
   const qualifiedContributorCount = distinctCountedRefs.size
 
-  // Cross-contributor settlement integrity: each counted contributor must be
-  // backed by its OWN distinct real settlement receipt. The same provider-
-  // confirmed real-bitcoin movement reused across two counted contributors
-  // inflates the real-paid count even when their pylonRefs differ, so the run
-  // does not conform to the rule.
-  const countedSettlementRefs = verdicts
-    .filter(verdict => verdict.counts)
-    .flatMap(verdict => verdict.countedSettlementReceiptRefs)
-  const distinctSettlementRefs = new Set(countedSettlementRefs)
-  if (distinctSettlementRefs.size !== countedSettlementRefs.length) {
+  // Cross-contributor evidence integrity: each counted contributor must be
+  // backed by its OWN distinct evidence for every prong. A single lease, a single
+  // replay-verified work challenge, or a single real-bitcoin settlement reused
+  // across two counted contributors inflates the qualified count even when their
+  // pylonRefs differ, so the run does not conform to the rule. Distinct pylonRefs
+  // are necessary but not sufficient — the underlying work must be distinct too.
+  const counted = verdicts.filter(verdict => verdict.counts)
+  const hasSharedRef = (refs: ReadonlyArray<string>): boolean =>
+    new Set(refs).size !== refs.length
+  if (hasSharedRef(counted.flatMap(verdict => verdict.countedLeaseRefs))) {
+    reasons.push(QualifiedRunReason.SharedLease)
+  }
+  if (hasSharedRef(counted.flatMap(verdict => verdict.countedVerifiedWorkRefs))) {
+    reasons.push(QualifiedRunReason.SharedVerifiedWork)
+  }
+  if (hasSharedRef(counted.flatMap(verdict => verdict.countedSettlementReceiptRefs))) {
     reasons.push(QualifiedRunReason.SharedSettlementReceipt)
   }
 
