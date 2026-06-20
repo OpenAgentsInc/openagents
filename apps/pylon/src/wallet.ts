@@ -1332,6 +1332,77 @@ export function classifyMdkReceiveFailure(result: WalletCommandResult): {
 }
 
 /**
+ * The default TCP port the MDK agent-wallet daemon binds when `MDK_WALLET_PORT`
+ * is unset. Collides with other common local Bitcoin tools (e.g. the Orange
+ * wallet webhook also listens on `:3456`), which is the first-run conflict
+ * reported in #5505. Kept as a named constant so the conflict guidance and any
+ * future free-port probe share one source of truth.
+ */
+export const DEFAULT_MDK_WALLET_PORT = 3456
+
+/**
+ * Detect whether an MDK agent-wallet command failed because its daemon port was
+ * already in use (a bind/EADDRINUSE-class failure), and — if so — produce a
+ * clear, actionable, public-safe message instead of an opaque crash dump.
+ *
+ * Pylon shells out to `@moneydevkit/agent-wallet` (see `defaultWalletCommandRunner`),
+ * so the daemon — not Pylon — owns the actual `listen()`. When that bind
+ * collides on the default `:3456` (the #5505 report: an Orange wallet webhook
+ * already held the port), the operator only saw an opaque failure and had to
+ * discover `MDK_WALLET_PORT` themselves. This mirrors the proven control-port
+ * conflict guidance in `formatNodeStartupError` (index.ts) so the wallet path
+ * surfaces the same kind of actionable remediation.
+ *
+ * Pure + deterministic over the command result text; emits no secrets (only the
+ * env var name, the numeric port, and a redacted stable ref), so the projection
+ * is public-safe by construction.
+ */
+export function describeMdkPortConflict(
+  result: WalletCommandResult,
+  env: NodeJS.ProcessEnv = process.env,
+): {
+  isPortConflict: boolean
+  port: number
+  portConfigured: boolean
+  ref: string
+  message: string | null
+} {
+  const text = `${result.stderr}\n${result.stdout}`.toLowerCase()
+  const isPortConflict =
+    /eaddrinuse/.test(text) ||
+    /address (already )?in use/.test(text) ||
+    /port\s+\d*\s*(is\s+)?(already\s+)?in use/.test(text) ||
+    /(bind|listen)(ing)?\b.*\b(failed|error)/.test(text) ||
+    /failed to (bind|listen)/.test(text)
+
+  const configuredRaw = env.MDK_WALLET_PORT
+  const portConfigured = typeof configuredRaw === "string" && configuredRaw.trim() !== ""
+  const parsedConfigured = portConfigured ? Number(configuredRaw!.trim()) : NaN
+  const port =
+    portConfigured && Number.isInteger(parsedConfigured) && parsedConfigured > 0
+      ? parsedConfigured
+      : DEFAULT_MDK_WALLET_PORT
+
+  const ref = stableRef("wallet.mdk_port_conflict", result.stderr || result.stdout || "unknown")
+
+  if (!isPortConflict) {
+    return { isPortConflict: false, port, portConfigured, ref, message: null }
+  }
+
+  const message = [
+    `MDK wallet daemon could not start: port ${port} is already in use.`,
+    portConfigured
+      ? `Another process is bound to 127.0.0.1:${port} (your configured MDK_WALLET_PORT).`
+      : `Another local service (e.g. an Orange wallet webhook) is already bound to 127.0.0.1:${port}, the MDK default.`,
+    `Set a free port and rerun, e.g.:`,
+    `  MDK_WALLET_PORT=3458 pylon`,
+    `Or stop the process already holding ${port} before starting the wallet daemon.`,
+  ].join("\n")
+
+  return { isPortConflict: true, port, portConfigured, ref, message }
+}
+
+/**
  * Public-projection guard specialized for Spark backup. Runs the shared
  * `assertPublicProjectionSafe` (which now rejects raw Spark address/invoice
  * material via the state.ts forbidden patterns) and additionally rejects raw

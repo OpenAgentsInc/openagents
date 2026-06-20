@@ -58,6 +58,32 @@ is known and positive, the wallet is not a mnemonic-only restore, and
 `blocker.wallet.mdk_port_unset` because MDK daemon restarts can fall back to the
 default port and cross-talk with the wrong wallet.
 
+## Daemon Port Conflict (`MDK_WALLET_PORT`)
+
+The MDK agent-wallet daemon binds a TCP port to serve wallet commands. When
+`MDK_WALLET_PORT` is unset it falls back to the default port **3456**, which
+collides with other common local Bitcoin tools — e.g. the Orange wallet webhook
+also listens on `:3456` (reported in #5505). On a fresh machine that already
+runs such a tool, the daemon's bind fails with an `EADDRINUSE`-class error.
+
+To make that first-run failure actionable instead of opaque, Pylon classifies
+the daemon's command output with `describeMdkPortConflict` (`src/wallet.ts`),
+mirroring the control-port guidance in `formatNodeStartupError`. On a detected
+bind conflict it surfaces a clear remediation:
+
+```
+MDK wallet daemon could not start: port 3456 is already in use.
+Another local service (e.g. an Orange wallet webhook) is already bound to 127.0.0.1:3456, the MDK default.
+Set a free port and rerun, e.g.:
+  MDK_WALLET_PORT=3458 pylon
+Or stop the process already holding 3456 before starting the wallet daemon.
+```
+
+Set `MDK_WALLET_PORT` to any free port to avoid the collision entirely; this is
+also what clears `blocker.wallet.mdk_port_unset` in the send-readiness preflight
+above. The classifier emits only the env-var name, the numeric port, and a
+redacted stable ref — never any wallet secret — so it is public-projection safe.
+
 ## Daemon Pidfile Recovery
 
 Before invoking `@moneydevkit/agent-wallet`, Pylon now checks the local
