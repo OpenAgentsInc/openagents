@@ -132,6 +132,7 @@ export type DesktopRequests = {
     lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
     timeoutSeconds?: number
     worktreePath?: string
+    useDefaultWorktree?: boolean
     // #5471: managed-worktree selector (mutually exclusive with worktreePath).
     repoRef?: {
       provider: "github"

@@ -212,6 +212,7 @@ export const ShellTurn = S.Struct({
   id: S.String,
   role: ShellRole,
   target: ShellTarget,
+  sessionRef: S.NullOr(S.String),
   text: S.String,
 })
 export type ShellTurn = typeof ShellTurn.Type

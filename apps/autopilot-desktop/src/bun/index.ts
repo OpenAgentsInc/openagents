@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import {
   ApplicationMenu,
   BrowserView,
@@ -347,6 +347,52 @@ function ensureDirectory(path: string): boolean {
   } catch {
     return false
   }
+}
+
+function isGitCheckout(path: string): boolean {
+  return existsSync(join(path, ".git"))
+}
+
+function nearestGitAncestor(start: string): string | null {
+  let current = start
+  for (let i = 0; i < 16; i += 1) {
+    if (isGitCheckout(current)) return current
+    const parent = dirname(current)
+    if (parent === current) return null
+    current = parent
+  }
+  return null
+}
+
+function configuredCodexWorkspacePath(home = resolveHome()): string | null {
+  if (home === null) return null
+  try {
+    const config = JSON.parse(readFileSync(join(home, "config.json"), "utf8")) as {
+      codex_workspaces?: unknown
+    }
+    if (!Array.isArray(config.codex_workspaces)) return null
+    const rows = config.codex_workspaces
+      .map((row) => row as { id?: unknown; label?: unknown; root?: unknown })
+      .filter((row): row is { id?: string; label?: string; root: string } =>
+        typeof row.root === "string" && row.root.trim() !== "",
+      )
+    const preferred = rows.filter((row) => {
+      const id = row.id ?? ""
+      const label = row.label ?? ""
+      return id === "openagents" || id === "openagents-short" ||
+        label.toLowerCase().includes("openagents")
+    })
+    const selected = [...preferred, ...rows].find((row) => isGitCheckout(row.root))
+    return selected?.root ?? null
+  } catch {
+    return null
+  }
+}
+
+function defaultCodingWorktreePath(home = resolveHome()): string | null {
+  const configured = Bun.env.OPENAGENTS_DESKTOP_CODING_WORKTREE?.trim() ?? ""
+  if (configured !== "" && isGitCheckout(configured)) return configured
+  return configuredCodexWorkspacePath(home) ?? nearestGitAncestor(process.cwd())
 }
 
 function builtInAgentWorktreePath(home = resolveHome()): string | null {
@@ -947,6 +993,10 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       async spawnSession(params) {
         const token = await acceptedControlTokenForCommand()
         if (token === null) return { ok: false, sessionRef: "", error: CONTROL_TOKEN_NOT_ACCEPTED }
+        const defaultWorktree =
+          params.useDefaultWorktree === true && !params.worktreePath && !params.repoRef
+            ? defaultCodingWorktreePath()
+            : null
         return spawnSession({
           baseUrl: controlBaseUrl,
           token,
@@ -962,6 +1012,8 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
             ? { repoRef: params.repoRef }
             : params.worktreePath
               ? { worktreePath: params.worktreePath }
+              : defaultWorktree !== null
+                ? { worktreePath: defaultWorktree }
               : {}),
           // CS-A1: per-session provider account. The node resolves it against
           // its registry and rejects an unknown ref.

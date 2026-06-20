@@ -1006,6 +1006,10 @@ export type DesktopRPCSchema = {
           lane?: "auto" | "local" | "cloud-gcp" | "cloud-shc"
           timeoutSeconds?: number
           worktreePath?: string
+          // Desktop shell coding turns do not expose the full composer workspace
+          // picker. When set, Bun may fill an omitted worktreePath with a safe
+          // local git checkout from config / dev checkout discovery.
+          useDefaultWorktree?: boolean
           // #5471: managed-worktree selector. Mutually exclusive with
           // `worktreePath`; when present the node's workspace-materializer
           // checks out `commitSha`. No new wire contract — `session.spawn`

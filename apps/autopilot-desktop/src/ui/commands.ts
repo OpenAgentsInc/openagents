@@ -1603,11 +1603,12 @@ export const SpawnShellCodingTurn = Command.define(
     verify: S.Array(S.String),
     lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
     worktreePath: S.NullOr(S.String),
+    useDefaultWorktree: S.Boolean,
     accountRef: S.NullOr(S.String),
   },
   SucceededShellCodingTurn,
   FailedShellCodingTurn,
-)(({ target, adapter, prompt, objective, verify, lane, worktreePath, accountRef }) =>
+)(({ target, adapter, prompt, objective, verify, lane, worktreePath, useDefaultWorktree, accountRef }) =>
   Effect.tryPromise(() =>
     getRequest().spawnSession({
       adapter,
@@ -1617,6 +1618,7 @@ export const SpawnShellCodingTurn = Command.define(
       ...(worktreePath !== null && worktreePath.trim() !== ""
         ? { worktreePath: worktreePath.trim() }
         : {}),
+      ...(useDefaultWorktree ? { useDefaultWorktree } : {}),
       ...(accountRef !== null && accountRef.trim() !== ""
         ? { accountRef: accountRef.trim() }
         : {}),

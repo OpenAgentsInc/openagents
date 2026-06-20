@@ -103,6 +103,7 @@ import {
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   Model,
+  modelNode,
   modelPaneLayer,
   type ChatMessage,
   type PaneId,
@@ -196,6 +197,79 @@ const writeShellCodingSuccess = (
         shellCodexSessionRef: sessionRef,
         shellCodexTurns: [...model.shellCodexTurns, prompt],
       })
+
+const shellEventText = (event: {
+  readonly detail: string
+  readonly full?: string
+}): string => {
+  const text =
+    typeof event.full === "string" && event.full.trim() !== ""
+      ? event.full
+      : event.detail
+  return text.trim()
+}
+
+const latestShellAgentText = (
+  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+): string | null => {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const text = shellEventText(events[i] ?? { detail: "" })
+    const match = /^agent:\s*(.+)$/is.exec(text)
+    if (match?.[1] && match[1].trim() !== "") return match[1].trim()
+  }
+  return null
+}
+
+const shellTerminalFailureText = (
+  model: Model,
+  target: ShellCodingTarget,
+  sessionRef: string,
+): string | null => {
+  const node = modelNode(model)
+  const session = node?.sessions.find((row) => row.sessionRef === sessionRef) as
+    | { state?: string; errorClass?: string | null }
+    | undefined
+  if (session?.state !== "failed") return null
+  const suffix =
+    typeof session.errorClass === "string" && session.errorClass.trim() !== ""
+      ? ` (${session.errorClass})`
+      : ""
+  return `${shellTargetLabel(target)} failed${suffix}`
+}
+
+const reconcileShellCodingTarget = (
+  model: Model,
+  target: ShellCodingTarget,
+): Model => {
+  const sessionRef =
+    target === "claude_code" ? model.shellClaudeSessionRef : model.shellCodexSessionRef
+  if (sessionRef === null) return model
+  const node = modelNode(model)
+  const events = node?.events?.[sessionRef] ?? []
+  const text =
+    latestShellAgentText(events) ?? shellTerminalFailureText(model, target, sessionRef)
+  if (text === null) return model
+  let changed = false
+  const turns = model.shellTurns.map((turn) => {
+    if (
+      turn.role === "autopilot" &&
+      turn.target === target &&
+      turn.sessionRef === sessionRef &&
+      turn.text !== text
+    ) {
+      changed = true
+      return { ...turn, text }
+    }
+    return turn
+  })
+  return changed ? Model.make({ ...model, shellTurns: turns }) : model
+}
+
+const reconcileShellCodingTurns = (model: Model): Model =>
+  reconcileShellCodingTarget(
+    reconcileShellCodingTarget(model, "claude_code"),
+    "codex",
+  )
 
 // HUD H3 (#5501): the live viewport for managed-pane cascade/clamp. Reads the
 // real webview window when present; falls back to a fixed desktop size under
@@ -511,7 +585,9 @@ export const update = (model: Model, message: Message): Result => {
       // #5466: each poll reconciles the live chat turn's program steps from the
       // real session events (verified only on real terminal evidence).
       return [
-        reconcileChatTurn(Model.make({ ...model, node: message.node })),
+        reconcileShellCodingTurns(
+          reconcileChatTurn(Model.make({ ...model, node: message.node })),
+        ),
         noCommands,
       ]
     case "GotPylonStats":
@@ -2663,6 +2739,7 @@ export const update = (model: Model, message: Message): Result => {
         id: chatMessageId("shell.you"),
         role: "you" as const,
         target,
+        sessionRef: null,
         text: prompt,
       }
       if (target !== "current") {
@@ -2689,6 +2766,7 @@ export const update = (model: Model, message: Message): Result => {
               verify: parseVerifyLines(model.spawnVerify),
               lane: model.spawnLane,
               worktreePath,
+              useDefaultWorktree: worktreePath === null,
               accountRef: model.composerAccountRef,
             }),
           ],
@@ -2715,6 +2793,7 @@ export const update = (model: Model, message: Message): Result => {
               id: chatMessageId("shell.autopilot"),
               role: "autopilot",
               target: "current",
+              sessionRef: null,
               text: message.text,
             },
           ],
@@ -2740,6 +2819,7 @@ export const update = (model: Model, message: Message): Result => {
               id: chatMessageId("shell.autopilot"),
               role: "autopilot",
               target: message.target,
+              sessionRef: message.sessionRef,
               text: `${label} ${verb}: ${message.sessionRef}`,
             },
           ],
@@ -2758,6 +2838,7 @@ export const update = (model: Model, message: Message): Result => {
               id: chatMessageId("shell.autopilot"),
               role: "autopilot",
               target: message.target,
+              sessionRef: null,
               text: `${shellTargetLabel(message.target)} failed: ${message.error}`,
             },
           ],

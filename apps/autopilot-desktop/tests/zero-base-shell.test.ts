@@ -25,6 +25,7 @@ import {
   CycledShellTarget,
   ClosedPanes,
   FailedShellCodingTurn,
+  GotNodeState,
   OpenedPanes,
   RespondedShell,
   SelectedShellTarget,
@@ -178,6 +179,7 @@ describe("zero-base shell: text bar → response loop", () => {
       adapter: "claude_agent",
       prompt: "fix the crash",
       objective: "fix the crash",
+      useDefaultWorktree: true,
     })
 
     const [m4] = update(
@@ -214,6 +216,7 @@ describe("zero-base shell: text bar → response loop", () => {
       target: "codex",
       adapter: "codex",
       prompt: "follow up",
+      useDefaultWorktree: true,
     })
     expect(String(commands[0]?.args.objective)).toContain("first task")
     expect(String(commands[0]?.args.objective)).toContain("follow up")
@@ -229,6 +232,52 @@ describe("zero-base shell: text bar → response loop", () => {
     expect(settled.shellCodexSessionRef).toBe("session.pylon.codex.second")
     expect(settled.shellCodexTurns).toEqual(["first task", "follow up"])
     expect(settled.shellClaudeTurns).toEqual([])
+  })
+
+  test("Codex shell turns reconcile the visible answer from node events", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "codex",
+      shellInput: "who are you",
+    })
+    const [submitted] = update(start, SubmittedShell())
+    const sessionRef = "session.pylon.control.2fbd41b3c640b32b6b44cfb1"
+    const [spawned] = update(
+      submitted,
+      SucceededShellCodingTurn({
+        target: "codex",
+        prompt: "who are you",
+        sessionRef,
+      }),
+    )
+    expect(spawned.shellTurns.at(-1)?.text).toContain("Codex started")
+
+    const [reconciled] = update(
+      spawned,
+      GotNodeState({
+        node: {
+          ok: true,
+          schema: "test.node",
+          sessions: [{ sessionRef, state: "failed", errorClass: "verification_failed" }],
+          events: {
+            [sessionRef]: [
+              {
+                eventIndex: 4,
+                phase: "composer_event",
+                state: "running",
+                observedAt: "2026-06-20T02:38:55.507Z",
+                detail: "agent: I’m Codex, a coding agent based on GPT-5.",
+              },
+            ],
+          },
+        },
+      }),
+    )
+
+    expect(reconciled.shellTurns.at(-1)?.text).toBe(
+      "I’m Codex, a coding agent based on GPT-5.",
+    )
   })
 
   test("coding target failures clear pending without adding to continuation state", () => {
