@@ -55,6 +55,11 @@ The useful answer is therefore:
   (`businessName`, `contactEmail`, `website`, `phone`, `helpWith`,
   `requestSlackChannel`, `referralCode`), and route tests assert the major
   `data-ui-family` markers plus light/dark shell rendering.
+- 2026-06-20 / #5836: Updated the Tailwind UI coverage docs to point at
+  `packages/ui`, documented the family-level completion standard and current
+  local inventory counts, and added a pre-push architecture guard so `/business`
+  cannot drift back into a class-only landing page without the shared public
+  theme/business component calls.
 
 ## Sources Reviewed
 
@@ -129,6 +134,13 @@ The reusable exports are split sensibly:
   browser script that resolves system preference without touching the app root.
 - `page-examples.ts`: larger app/page composites
 - `workroom.ts`, `v4.ts`, `ai-elements/*`: operational/chat/workroom families
+
+Coverage docs now live in two places:
+
+- `apps/openagents.com/docs/2026-06-03-tailwind-ui-foldkit-port-coverage.md`:
+  detailed package/kit coverage note.
+- `docs/launch/2026-06-19-tailwind-ui-foldkit-coverage.md`: launch-folder
+  pointer with the current family-level standard, inventory counts, and guards.
 
 ### Forum Theme Study
 

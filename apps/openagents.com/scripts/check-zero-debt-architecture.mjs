@@ -520,6 +520,28 @@ const deletedFileChecks = [
   },
 ]
 
+// Public landing pages may use a little local layout glue, but they must not
+// drift back into page-local Tailwind-only composition. Keep route-specific
+// shared component symbols here; DOM-level marker assertions live with the
+// route tests where Foldkit rendering is available.
+const publicLandingCompositionChecks = [
+  {
+    maxLocalClassCalls: 8,
+    module: 'apps/web/src/page/business.ts',
+    requiredSymbols: [
+      'Ui.publicLandingThemeShell',
+      'Ui.publicLandingThemeSelector',
+      'Ui.publicLandingThemeScript',
+      'Ui.businessLandingHero',
+      'Ui.businessOfferingMenu',
+      'Ui.quickWinLadder',
+      'Ui.businessProjectInvite',
+      'Ui.businessIntakeForm',
+    ],
+    route: '/business',
+  },
+]
+
 // ---------------------------------------------------------------------------
 // Public projection staleness ratchet (epic #4751).
 //
@@ -979,6 +1001,41 @@ const deletedFileProblems = deletedFileChecks.flatMap(check =>
     : [],
 )
 
+const publicLandingCompositionResults = publicLandingCompositionChecks.map(
+  check => {
+    const text = existsSync(check.module) ? read(check.module) : ''
+
+    return {
+      ...check,
+      localClassCalls: countMatches(text, /Ui\.className(?:<|\()/g),
+      missingSymbols: check.requiredSymbols.filter(
+        symbol => !text.includes(symbol),
+      ),
+      present: existsSync(check.module),
+    }
+  },
+)
+
+const publicLandingCompositionProblems =
+  publicLandingCompositionResults.flatMap(result => [
+    ...(result.present
+      ? []
+      : [
+          `public landing route ${result.route}: ${result.module} is missing.`,
+        ]),
+    ...result.missingSymbols.map(
+      symbol =>
+        `public landing route ${result.route}: ${result.module} is missing shared component ${symbol}. ` +
+        'Public landing pages must compose through @openagentsinc/ui families, not only local Ui.className blocks.',
+    ),
+    ...(result.localClassCalls > result.maxLocalClassCalls
+      ? [
+          `public landing route ${result.route}: ${result.module} has ${result.localClassCalls} ` +
+            `Ui.className calls, budget ${result.maxLocalClassCalls}. Keep local classes to layout glue and move repeated sections into @openagentsinc/ui.`,
+        ]
+      : []),
+  ])
+
 console.log('Zero-debt architecture budget report')
 console.log('')
 
@@ -1012,6 +1069,22 @@ deletedFileChecks.forEach(check => {
 })
 console.log('')
 
+console.log('public landing shared component composition:')
+publicLandingCompositionResults.forEach(result => {
+  console.log(
+    `${result.route}: ${result.module} ` +
+      `${result.localClassCalls}/${result.maxLocalClassCalls} local Ui.className calls`,
+  )
+  console.log(
+    `  required shared symbols: ${
+      result.missingSymbols.length === 0
+        ? 'all present'
+        : `missing ${result.missingSymbols.join(', ')}`
+    }`,
+  )
+})
+console.log('')
+
 const legacyProjectionCount = publicProjectionSurfaces.filter(
   surface => surface.status === 'legacy_missing_staleness_contract',
 ).length
@@ -1029,6 +1102,7 @@ const problems = [
   ...runPromiseProblems,
   ...lineBudgetProblems,
   ...deletedFileProblems,
+  ...publicLandingCompositionProblems,
   ...publicProjectionProblems,
 ]
 
