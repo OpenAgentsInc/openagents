@@ -1821,6 +1821,20 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     deployment, accepted-work, provider, wallet, or public-claim authority.
     Regression coverage:
     `workers/api/src/replay-clip-job-routes.test.ts`.
+  - `GET /api/public/site-referral-payouts` — live at read over the latest
+    non-archived RL-1 Sites referral payout ledger entry per payout ref (#5458)
+    — compliant (`generatedAt`, top-level `projection_staleness.v1`
+    `live_at_read` contract; count-only per-state counts/sats plus real settled
+    figures, the policy shape, campaign/policy refs, caveat/blocker refs, and a
+    `ledgerWiredInSource` source-wiring flag). It selects ONLY `state` and
+    `amount_sats` from the ledger — no user id, attribution id, payout ref,
+    qualifying event ref, address, preimage, or invoice leaves the Worker — and
+    is honest that no real referral payout has settled (`settledCount` /
+    `settledSats` expected `0` while the wiring is present). The surface grants
+    no attribution, accrual, eligibility, payout, or settlement authority and
+    flips no promise; the `referral.refer_once_earn_forever.v1` promise stays
+    red/owner-gated. Regression coverage:
+    `workers/api/src/site-referral-payout-public-projection.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read — NON-COMPLIANT (no

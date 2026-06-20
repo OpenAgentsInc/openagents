@@ -481,6 +481,7 @@ import { makeSiteReferralInspectionRoutes } from './site-referral-inspection-rou
 import { sendSiteReferralOnboardingForConsumption } from './site-referral-onboarding'
 import { makeSiteReferralPayoutAdapter } from './site-referral-payout-adapter'
 import { makeSiteReferralPayoutLedgerRoutes } from './site-referral-payout-ledger-routes'
+import { handleSiteReferralPayoutsPublicApi } from './site-referral-payout-public-routes'
 import { makeSiteReferralRoutes } from './site-referral-routes'
 import { PENDING_REFERRAL_COOKIE } from './site-referrals'
 import { makeSiteRuntimeRoutes } from './site-runtime-routes'
@@ -8274,6 +8275,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/pylon-capacity-funnel/history',
     handler: (request, env) =>
       handlePylonCapacityFunnelHistoryApi(request, env),
+  },
+  {
+    path: '/api/public/site-referral-payouts',
+    handler: (request, env) =>
+      handleSiteReferralPayoutsPublicApi(request, env),
   },
   {
     path: '/api/public/relay-health',

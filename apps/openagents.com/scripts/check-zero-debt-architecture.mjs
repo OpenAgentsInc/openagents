@@ -623,6 +623,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/replay-clips/{jobRef}',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/site-referral-payout-public-projection.ts',
+    route: '/api/public/site-referral-payouts',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
