@@ -352,6 +352,11 @@ import {
 import { makeMulletRoutes } from './mullet/routes'
 import { makeNativeListsService } from './native-lists'
 import { makeNativeListsRoutes } from './native-lists-routes'
+import {
+  isSiteFormCaptureEnabled,
+  makeSitePageFormCaptureRoutes,
+} from './site-page-form-capture-routes'
+import { resolveSiteFormSpec } from './site-form-spec-registry'
 import { makeNexusPylonVisibilityRoutes } from './nexus-pylon-visibility-routes'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
@@ -6756,6 +6761,59 @@ const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
   requireOperator: (request, env) => requireAdminApiToken(request, env),
 })
 
+// Site page form-capture wiring (#5523 / DE-9 #5532; promise
+// autopilot_sites.native_email_sequences.v1, yellow). Default OFF via
+// SITE_FORM_CAPTURE_ENABLED: when the flag is unset the route returns undefined
+// for every request and the omni chain falls through exactly as today. When
+// armed it resolves a page's FormCaptureSpec from the active site version's
+// metadata_json (via site-form-spec-registry) and persists captured leads
+// through the native-lists addSubscriber sink. The registry is the authority on
+// whether a formId is published (spec.id === formId); the SQL only narrows
+// candidate active versions whose metadata_json mentions the form key.
+const sitePageFormCaptureRoutes = makeSitePageFormCaptureRoutes<WorkerBindings>({
+  isEnabled: env =>
+    isSiteFormCaptureEnabled(
+      (env as unknown as { SITE_FORM_CAPTURE_ENABLED?: string })
+        .SITE_FORM_CAPTURE_ENABLED,
+    ),
+  makeSink: env => ({
+    addSubscriber: makeNativeListsService(openAgentsDatabase(env)).addSubscriber,
+  }),
+  readSiteFormMetadata: async (env, formId) => {
+    const row = await openAgentsDatabase(env)
+      .prepare(
+        `SELECT site_versions.metadata_json AS metadata_json
+           FROM site_projects
+           JOIN site_versions
+             ON site_versions.id = site_projects.active_version_id
+            AND site_versions.site_id = site_projects.id
+          WHERE site_projects.archived_at IS NULL
+            AND site_projects.active_version_id IS NOT NULL
+            AND json_extract(site_versions.metadata_json, '$.formSpecs')
+                IS NOT NULL
+            AND instr(site_versions.metadata_json, ?1) > 0
+          ORDER BY site_versions.created_at DESC
+          LIMIT 25`,
+      )
+      .bind(formId)
+      .all<{ metadata_json: string }>()
+      .then(result => result.results)
+
+    // The registry validates spec.id === formId and decodes defensively, so the
+    // first candidate whose metadata actually publishes this formId wins; a
+    // metadata blob that merely mentions the id as a substring resolves to
+    // undefined here and is skipped.
+    for (const candidate of row) {
+      const spec = resolveSiteFormSpec(candidate.metadata_json, formId)
+      if (spec !== undefined) {
+        return candidate.metadata_json
+      }
+    }
+
+    return undefined
+  },
+})
+
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
   makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
   requireHolderUserId: async (request, env, ctx) => {
@@ -9168,6 +9226,11 @@ const routeRequest = makeWorkerRouteRequest({
     omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
+    sitePageFormCaptureRoutes.routeSitePageFormCaptureRequest(
+      request,
+      env,
+      ctx,
+    ) ??
     prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
       request,
       env,
