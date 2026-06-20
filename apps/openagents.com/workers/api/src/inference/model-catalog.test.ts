@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildModelCatalog,
+  findModelCatalogEntry,
+  toOpenAiModelObject,
   toOpenAiModelsResponse,
 } from './model-catalog'
 import {
@@ -125,5 +127,45 @@ describe('toOpenAiModelsResponse', () => {
         entry.cost.outputUsdPerMtok,
       )
     }
+  })
+})
+
+describe('findModelCatalogEntry', () => {
+  it('resolves a served model to its catalog entry', () => {
+    const id = MODEL_PRICING_TABLE[0]!.model
+    const entry = findModelCatalogEntry(id)
+    expect(entry?.id).toBe(id)
+  })
+
+  it('returns the SAME entry the list catalog publishes (no divergence)', () => {
+    const id = MODEL_PRICING_TABLE[0]!.model
+    const fromList = buildModelCatalog().find(m => m.id === id)
+    expect(findModelCatalogEntry(id)).toEqual(fromList)
+  })
+
+  it('returns undefined for an unknown model', () => {
+    expect(findModelCatalogEntry('nope-not-served')).toBeUndefined()
+  })
+
+  it('returns undefined for a blank id', () => {
+    expect(findModelCatalogEntry('')).toBeUndefined()
+    expect(findModelCatalogEntry('   ')).toBeUndefined()
+  })
+
+  it('honours the margin override like the list builder', () => {
+    const id = 'glm-5p2'
+    expect(findModelCatalogEntry(id, 1)).toEqual(
+      buildModelCatalog(1).find(m => m.id === id),
+    )
+  })
+})
+
+describe('toOpenAiModelObject', () => {
+  it('projects a single model object matching the list projection', () => {
+    const entry = findModelCatalogEntry('gemini-3.5-flash')!
+    const single = toOpenAiModelObject(entry, 1_700_000_000)
+    const fromList = toOpenAiModelsResponse(buildModelCatalog(), 1_700_000_000)
+      .data.find(m => m.id === 'gemini-3.5-flash')!
+    expect(single).toEqual(fromList)
   })
 })
