@@ -44,18 +44,41 @@ exactly what this blocker names.
     persisted alongside the tick ledger nor dereferenced from a route; this gives
     it a stable, collision-resistant name without minting any payment, identity,
     or settlement authority.
+- `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.ts` (extended again)
+  - `parseArtanisLaborUnattendedRequestReceipt(serialized)` is the read side of
+    `serialize`: before any public route or the tick ledger store can serve a
+    persisted receipt it must turn untrusted wire bytes back into a validated,
+    typed, public-safe receipt — or refuse. It validates every field type and the
+    terminal-state enum, enforces the placed-vs-pre-request invariant
+    (budget/`workRequestId` presence must match the terminal state), re-runs
+    `assertArtanisLaborPublicSafe`, and requires the input to already be in
+    canonical form by re-serializing the reconstructed receipt and rejecting any
+    mismatch (extra keys, reordered keys, non-canonical spacing all fail). It
+    parses through the sanctioned `parseJsonUnknown` json-boundary, not raw
+    `JSON.parse`, so the zero-debt architecture check stays green.
+  - `verifyArtanisLaborUnattendedRequestReceipt(serialized, expectedRef)` is the
+    tamper check: it parses the wire form and confirms its content-addressed ref
+    matches the name it was stored or served under, returning the validated
+    receipt or throwing so a route/store can never hand back a receipt addressed
+    by the wrong name. Neither function mints any payment, identity, or
+    settlement authority.
 - `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.test.ts`
-  - 11 cases: every terminal state, ref folding, public-safety refusal, the
-    impossible-combination guard, plus canonical-serialization determinism, ref
-    stability across rebuilds, and distinct-state ref divergence.
+  - 17 cases: every terminal state, ref folding, public-safety refusal, the
+    impossible-combination guard, canonical-serialization determinism, ref
+    stability across rebuilds, distinct-state ref divergence, plus the new read
+    side — round-trip for every terminal state, non-JSON/non-object rejection,
+    unrecognized schema/terminal-state rejection, the placed-vs-pre-request
+    invariant on read, non-canonical wire-form rejection, and ref verify
+    match/mismatch.
 
 ## What remains
 
-- The receipt now has a canonical wire form and a content-addressed ref, so it is
-  **persistable and dereferenceable**, but it is not yet wired into a public route
-  (`/api/public/...`) or written to the tick ledger store. That route/persistence
-  wiring, plus a real unattended tick producing one of these receipts end-to-end,
-  remains before the blocker can be dropped.
+- The receipt now has a canonical wire form, a content-addressed ref, and a
+  validating read/verify path (`parse` + `verify`), so it is **persistable,
+  dereferenceable, and tamper-evident on read**. What still remains is wiring it
+  into a public route (`/api/public/...`) and writing it to the tick ledger
+  store, plus a real unattended tick producing one of these receipts end-to-end.
+  Those remain before the blocker can be dropped.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 

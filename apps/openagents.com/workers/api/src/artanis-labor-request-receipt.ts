@@ -5,6 +5,7 @@ import {
   type ArtanisLaborAcceptanceOutcome,
   type ArtanisLaborRequesterOutcome,
 } from './artanis-labor-requester'
+import { parseJsonUnknown } from './json-boundary'
 
 // Consolidated, public-safe receipt for a single unattended Artanis labor
 // request lifecycle (#4731, blocker
@@ -207,4 +208,142 @@ export const deriveArtanisLaborUnattendedRequestReceiptRef = (
     .update(serializeArtanisLaborUnattendedRequestReceipt(receipt), 'utf8')
     .digest('hex')
   return `receipt.artanis_labor.unattended_request.${digest.slice(0, 16)}`
+}
+
+const TERMINAL_STATES: ReadonlyArray<ArtanisLaborReceiptTerminalState> = [
+  'skipped_config_disabled',
+  'refused',
+  'requested_pending_delivery',
+  'accepted_released',
+  'rejected_refunded',
+]
+
+// Terminal states that name a placed work request: they MUST carry a numeric
+// budget and a work-request id. The pre-request terminals (skipped/refused) MUST
+// carry neither, because no escrow was ever reserved. Enforcing this on read
+// means a tampered or hand-edited receipt that, say, attaches a budget to a
+// "refused" tick can never be parsed back into a typed receipt.
+const PLACED_TERMINAL_STATES: ReadonlySet<ArtanisLaborReceiptTerminalState> =
+  new Set(['requested_pending_delivery', 'accepted_released', 'rejected_refunded'])
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isTerminalState = (
+  value: unknown,
+): value is ArtanisLaborReceiptTerminalState =>
+  typeof value === 'string' &&
+  (TERMINAL_STATES as ReadonlyArray<string>).includes(value)
+
+const requireParsedString = (value: unknown, label: string): string => {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new ArtanisLaborReceiptError(`${label} must be a non-empty string.`)
+  }
+  return value
+}
+
+// Read side of `serializeArtanisLaborUnattendedRequestReceipt`. Before a public
+// route or the tick ledger store can serve a persisted receipt it must be able
+// to take untrusted wire bytes and reconstruct a validated, typed, public-safe
+// receipt - or refuse. This:
+//   1. parses the JSON and validates every field's type and the terminal-state
+//      enum,
+//   2. enforces the placed-vs-pre-request invariant (budget/workRequestId
+//      presence must match the terminal state),
+//   3. re-runs assertArtanisLaborPublicSafe so nothing private survives a round
+//      trip, and
+//   4. requires the input to already be in canonical form by re-serializing the
+//      reconstructed receipt and rejecting any mismatch (extra keys, reordered
+//      keys, or non-canonical spacing all fail).
+// It mints no payment, identity, or settlement authority - it only validates and
+// re-types an already public-safe artifact.
+export const parseArtanisLaborUnattendedRequestReceipt = (
+  serialized: string,
+): ArtanisLaborUnattendedRequestReceipt => {
+  let decoded: unknown
+  try {
+    decoded = parseJsonUnknown(serialized)
+  } catch {
+    throw new ArtanisLaborReceiptError('Receipt wire form is not valid JSON.')
+  }
+  if (!isRecord(decoded)) {
+    throw new ArtanisLaborReceiptError('Receipt wire form must be a JSON object.')
+  }
+
+  if (decoded.schema !== 'artanis.labor.unattended_request_receipt.v1') {
+    throw new ArtanisLaborReceiptError('Receipt schema is unrecognized.')
+  }
+  if (!isTerminalState(decoded.terminalState)) {
+    throw new ArtanisLaborReceiptError('Receipt terminalState is unrecognized.')
+  }
+
+  const { budgetMsat, lifecycleRefs, workRequestId } = decoded
+
+  if (
+    budgetMsat !== null &&
+    !(typeof budgetMsat === 'number' && Number.isFinite(budgetMsat))
+  ) {
+    throw new ArtanisLaborReceiptError('Receipt budgetMsat must be a number or null.')
+  }
+  if (workRequestId !== null && typeof workRequestId !== 'string') {
+    throw new ArtanisLaborReceiptError('Receipt workRequestId must be a string or null.')
+  }
+  if (
+    !Array.isArray(lifecycleRefs) ||
+    lifecycleRefs.length === 0 ||
+    !lifecycleRefs.every((ref) => typeof ref === 'string' && ref.trim().length > 0)
+  ) {
+    throw new ArtanisLaborReceiptError(
+      'Receipt lifecycleRefs must be a non-empty array of non-empty strings.',
+    )
+  }
+
+  const placed = PLACED_TERMINAL_STATES.has(decoded.terminalState)
+  if (placed && (typeof budgetMsat !== 'number' || typeof workRequestId !== 'string')) {
+    throw new ArtanisLaborReceiptError(
+      'A placed-request receipt must carry a numeric budget and a work-request id.',
+    )
+  }
+  if (!placed && (budgetMsat !== null || workRequestId !== null)) {
+    throw new ArtanisLaborReceiptError(
+      'A pre-request receipt must not carry a budget or a work-request id.',
+    )
+  }
+
+  const receipt: ArtanisLaborUnattendedRequestReceipt = {
+    artanisActorRef: requireParsedString(decoded.artanisActorRef, 'artanisActorRef'),
+    budgetMsat: budgetMsat as number | null,
+    issuedAtIso: requireParsedString(decoded.issuedAtIso, 'issuedAtIso'),
+    lifecycleRefs: [...(lifecycleRefs as ReadonlyArray<string>)],
+    schema: 'artanis.labor.unattended_request_receipt.v1',
+    terminalState: decoded.terminalState,
+    tickRef: requireParsedString(decoded.tickRef, 'tickRef'),
+    workRequestId: workRequestId as string | null,
+  }
+
+  // Canonical-form gate: re-serializing the reconstructed receipt must reproduce
+  // the input byte-for-byte, so only the canonical wire form is accepted back.
+  if (serializeArtanisLaborUnattendedRequestReceipt(receipt) !== serialized) {
+    throw new ArtanisLaborReceiptError('Receipt wire form is not canonical.')
+  }
+  return receipt
+}
+
+// Tamper check for a persisted/transported receipt: parse the wire form and
+// confirm its content-addressed ref matches the one it was stored or served
+// under. Returns the validated receipt on success; throws on any mismatch so a
+// route or store can never hand back a receipt addressed by the wrong name. It
+// asserts no authority - it only confirms a name still addresses its bytes.
+export const verifyArtanisLaborUnattendedRequestReceipt = (
+  serialized: string,
+  expectedRef: string,
+): ArtanisLaborUnattendedRequestReceipt => {
+  const receipt = parseArtanisLaborUnattendedRequestReceipt(serialized)
+  const actualRef = deriveArtanisLaborUnattendedRequestReceiptRef(receipt)
+  if (actualRef !== expectedRef) {
+    throw new ArtanisLaborReceiptError(
+      `Receipt ref mismatch: expected ${expectedRef}, derived ${actualRef}.`,
+    )
+  }
+  return receipt
 }

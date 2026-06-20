@@ -4,7 +4,9 @@ import {
   ArtanisLaborReceiptError,
   buildArtanisLaborUnattendedRequestReceipt,
   deriveArtanisLaborUnattendedRequestReceiptRef,
+  parseArtanisLaborUnattendedRequestReceipt,
   serializeArtanisLaborUnattendedRequestReceipt,
+  verifyArtanisLaborUnattendedRequestReceipt,
 } from './artanis-labor-request-receipt'
 import type {
   ArtanisLaborAcceptanceOutcome,
@@ -207,5 +209,148 @@ describe('artanis unattended labor request receipt', () => {
         },
       }),
     ).toThrow()
+  })
+
+  test('parse round-trips every terminal state byte-for-byte', () => {
+    const receipts = [
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        requestOutcome: { kind: 'skipped', reason: 'config_disabled' },
+      }),
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        requestOutcome: {
+          kind: 'refused',
+          reason: 'per_tick_labor_budget_exceeded',
+          refusalRef: 'refusal.artanis_labor_request.per_tick_labor_budget_exceeded',
+        },
+      }),
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        requestOutcome: requestedOutcome,
+      }),
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        acceptanceOutcome: {
+          kind: 'accepted',
+          releaseReceiptRef: 'receipt.labor_escrow.release.artanis_1',
+        },
+        requestOutcome: requestedOutcome,
+      }),
+      buildArtanisLaborUnattendedRequestReceipt({
+        ...base,
+        acceptanceOutcome: {
+          kind: 'rejected_refunded',
+          reasonRef: 'verifier.public.artanis_labor.bun_test.failed',
+          refundReceiptRef: 'receipt.labor_escrow.refund.artanis_1',
+        },
+        requestOutcome: requestedOutcome,
+      }),
+    ]
+    for (const receipt of receipts) {
+      const wire = serializeArtanisLaborUnattendedRequestReceipt(receipt)
+      expect(parseArtanisLaborUnattendedRequestReceipt(wire)).toEqual(receipt)
+    }
+  })
+
+  test('parse rejects non-JSON and non-object wire forms', () => {
+    expect(() => parseArtanisLaborUnattendedRequestReceipt('not json')).toThrow(
+      ArtanisLaborReceiptError,
+    )
+    expect(() => parseArtanisLaborUnattendedRequestReceipt('[]')).toThrow(
+      ArtanisLaborReceiptError,
+    )
+  })
+
+  test('parse rejects an unrecognized schema or terminal state', () => {
+    const receipt = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    const decoded = JSON.parse(serializeArtanisLaborUnattendedRequestReceipt(receipt))
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ ...decoded, schema: 'artanis.labor.other.v1' }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ ...decoded, terminalState: 'mystery' }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+  })
+
+  test('parse enforces the placed-vs-pre-request budget/work-request invariant', () => {
+    const refused = JSON.parse(
+      serializeArtanisLaborUnattendedRequestReceipt(
+        buildArtanisLaborUnattendedRequestReceipt({
+          ...base,
+          requestOutcome: {
+            kind: 'refused',
+            reason: 'schema_invalid',
+            refusalRef: 'refusal.artanis_labor_request.schema_invalid',
+          },
+        }),
+      ),
+    )
+    // A pre-request receipt that smuggles in a budget is rejected.
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ ...refused, budgetMsat: 2_000_000 }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+
+    const placed = JSON.parse(
+      serializeArtanisLaborUnattendedRequestReceipt(
+        buildArtanisLaborUnattendedRequestReceipt({
+          ...base,
+          requestOutcome: requestedOutcome,
+        }),
+      ),
+    )
+    // A placed receipt that drops its work-request id is rejected.
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ ...placed, workRequestId: null }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+  })
+
+  test('parse rejects a non-canonical wire form (extra or reordered keys)', () => {
+    const receipt = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    const canonical = serializeArtanisLaborUnattendedRequestReceipt(receipt)
+    expect(parseArtanisLaborUnattendedRequestReceipt(canonical)).toEqual(receipt)
+    const decoded = JSON.parse(canonical)
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ ...decoded, extra: 'field' }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+    // Hoisting workRequestId to the front keeps it first, so the wire form is
+    // no longer in canonical key order and is refused.
+    expect(() =>
+      parseArtanisLaborUnattendedRequestReceipt(
+        JSON.stringify({ workRequestId: decoded.workRequestId, ...decoded }),
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
+  })
+
+  test('verify confirms a matching ref and rejects a tampered one', () => {
+    const receipt = buildArtanisLaborUnattendedRequestReceipt({
+      ...base,
+      requestOutcome: requestedOutcome,
+    })
+    const wire = serializeArtanisLaborUnattendedRequestReceipt(receipt)
+    const ref = deriveArtanisLaborUnattendedRequestReceiptRef(receipt)
+    expect(verifyArtanisLaborUnattendedRequestReceipt(wire, ref)).toEqual(receipt)
+    expect(() =>
+      verifyArtanisLaborUnattendedRequestReceipt(
+        wire,
+        'receipt.artanis_labor.unattended_request.0000000000000000',
+      ),
+    ).toThrow(ArtanisLaborReceiptError)
   })
 })
