@@ -392,6 +392,39 @@ production binding shape the harness was missing.
   arming is still PRESENCE-derived (it does not prove a lane's credential
   authenticates upstream). The gateway blocker REMAINS listed.
 
+### 2026-06-20 update — single gateway readiness projection
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **further advanced, still NOT cleared.** The serving policy already gates all
+  three public gateway surfaces (`/v1/models`, `/v1/quote`, the
+  `/v1/chat/completions` dispatch path), but that gating is applied surface by
+  surface: there was NO single dereferenceable fact answering the launch question
+  "can the paid gateway serve anything right now, and how degraded is its
+  catalog?" An operator (or the launch dashboard) had to replay each surface and
+  count by hand. This change adds that summary:
+  - `apps/openagents.com/workers/api/src/inference/gateway-readiness.ts`
+    — `projectGatewayReadiness(arming, catalog?)` derives a `GatewayReadiness`
+    from the SAME published catalog (`buildModelCatalog`) and the SAME serving
+    policy (`isModelServable`/`isLaneArmed`) the three surfaces use, so it can
+    never disagree with what the gateway will actually serve. It reports an
+    overall `status` (`unavailable` = zero servable models / `degraded` = some
+    hidden because their lane is unarmed / `ready` = every published model
+    servable), total/servable/hidden model counts, a per-lane breakdown in a
+    stable order, and public-safe `reasonRefs`. PURE + presence-only: arming is
+    already reduced to booleans, so no credential value is ever read or emitted.
+  - `apps/openagents.com/workers/api/src/inference/gateway-readiness.test.ts`
+    (new, 8 cases): unavailable with no lane armed, ready when all servable,
+    degraded with mixed arming (naming the unarmed lane that hides a model),
+    stable per-lane breakdown + counts, empty-catalog unavailable, per-lane
+    counts summing to the total, no secret-shaped material in the output, and a
+    live-catalog check under a Vertex-armed env.
+
+  **Honest scope:** this is a public-safe READINESS PROJECTION only. It does NOT
+  add billing, entitlement, quota, or settlement, it is not yet wired to a route
+  or the launch dashboard, and arming is still PRESENCE-derived (it does not
+  prove a lane's credential authenticates upstream). The gateway blocker REMAINS
+  listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
