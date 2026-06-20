@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.13')
+    expect(decoded.version).toBe('2026-06-20.14')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -163,7 +163,10 @@ describe('public product promises document', () => {
     // drops second_device_class_missing on
     // training.device_capability_dataset.v1 (the dataset gains a genuine
     // measured_unsettled x86_64-Linux/Intel class); the promise STAYS yellow,
-    // so green remains exactly 24.
+    // so green remains exactly 24. The 2026-06-20.14 demand-provenance
+    // projection
+    // pass moves proof.demand_provenance.v1 planned -> yellow without flipping
+    // green, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -407,7 +410,16 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'proof.demand_provenance.v1',
-          state: 'planned',
+          state: 'yellow',
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/demand-provenance',
+            'apps/openagents.com/workers/api/src/demand-provenance.ts',
+            'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
+            'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
+          ]),
+          blockerRefs: expect.not.arrayContaining([
+            'blocker.product_promises.demand_provenance_projection_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'proof.claim_upgrade_receipts.v1',
@@ -814,16 +826,42 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps demand provenance yellow after the first public projection', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const demandProvenancePromise = decoded.promises.find(
+      promise => promise.promiseId === 'proof.demand_provenance.v1',
+    )
+
+    expect(demandProvenancePromise?.state).toBe('yellow')
+    expect(demandProvenancePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
+    ])
+    expect(demandProvenancePromise?.safeCopy).toContain(
+      'GET /api/public/demand-provenance',
+    )
+    expect(demandProvenancePromise?.safeCopy).toContain(
+      'externalDemandClaimAllowed:false',
+    )
+    expect(demandProvenancePromise?.verification).toContain(
+      'summarizes the AO/kWh internal/external split',
+    )
+    expect(demandProvenancePromise?.authorityBoundary).toContain(
+      'grants no settlement or reporting authority',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.13', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.14', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.13',
+      expectedVersion: '2026-06-20.14',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.13',
+      servedVersion: '2026-06-20.14',
       status: 'ready',
     })
     expect(
@@ -833,7 +871,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.13',
+      servedVersion: '2026-06-20.14',
       status: 'blocked',
     })
   })

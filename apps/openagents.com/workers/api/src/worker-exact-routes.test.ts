@@ -17,6 +17,7 @@ const approvedExactRoutePaths = [
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',
   '/api/public/training/ablation-derisking-ledger',
+  '/api/public/demand-provenance',
   '/api/public/markets/open-markets',
   '/api/public/markets/liquidity/skeleton',
   '/api/public/markets/risk/skeleton',
