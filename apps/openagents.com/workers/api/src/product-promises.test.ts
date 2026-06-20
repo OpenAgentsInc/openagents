@@ -601,11 +601,15 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'claims.world_first_public_llm_computer_training_run.v1',
           state: 'red',
+          // The definition-missing blocker is cleared by
+          // docs/launch/2026-06-20-llm-computer-training-run-definition.md;
+          // the evidence-pack and owner-signed-upgrade blockers still stand.
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.llm_computer_training_run_definition_missing',
+            'blocker.product_promises.world_first_evidence_pack_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'promise:compute.tassadar_executor_poc.v1',
+            'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
           ]),
         }),
         expect.objectContaining({
