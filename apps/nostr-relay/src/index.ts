@@ -8,9 +8,11 @@ import {
   MarketRelayPolicy,
   type PublishBucket,
   isAllowedMarketKind,
+  isParameterizedReplaceableMarketKind,
   marketKindBucket,
   marketKindPolicySummary,
   nextPublishBucket,
+  relayInformationDocument,
   validateReqFilters,
 } from "./market-policy"
 
@@ -26,6 +28,16 @@ const json = (value: unknown, init: ResponseInit = {}) =>
       ...init.headers,
     },
   })
+
+const relayInfoResponse = () =>
+  json(relayInformationDocument, {
+    headers: { "content-type": "application/nostr+json; charset=utf-8" },
+  })
+
+const isRelayInfoRequest = (request: Request, url: URL): boolean =>
+  request.method === "GET" &&
+  url.pathname === "/" &&
+  (request.headers.get("accept") ?? "").includes("application/nostr+json")
 
 type SqlStorage = {
   exec<T = Record<string, unknown>>(
@@ -69,7 +81,7 @@ type MarketRelayMetrics = Readonly<{
   }>
 }>
 
-const marketRelayName = "openagents-scoped-market-relay"
+const marketRelayName = "openagents-market-and-coordination-relay"
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
@@ -122,6 +134,11 @@ const filtersFromReqMessage = (message: unknown): ReadonlyArray<Record<string, u
     : null
 
 const kindCountsDefault = () => ({
+  nip01_text_note: 0,
+  nip02_contacts: 0,
+  nip17_private_dm: 0,
+  nip38_status: 0,
+  nip65_relay_list: 0,
   nip90_request: 0,
   nip90_result: 0,
   nip90_feedback: 0,
@@ -178,6 +195,10 @@ export class NostrRelayDO extends BaseNostrRelayDO {
       return json(this.metrics())
     }
 
+    if (isRelayInfoRequest(request, url)) {
+      return relayInfoResponse()
+    }
+
     return super.fetch(request)
   }
 
@@ -203,8 +224,9 @@ export class NostrRelayDO extends BaseNostrRelayDO {
     const event = eventFromMessage(parsed)
     if (
       event !== null &&
-      (event.kind === 30404 || event.kind === 30406) &&
-      this.storeAddressableMarketEvent(event, ws)
+      typeof event.kind === "number" &&
+      isParameterizedReplaceableMarketKind(event.kind) &&
+      this.storeParameterizedReplaceableMarketEvent(event, ws)
     ) {
       return
     }
@@ -247,7 +269,7 @@ export class NostrRelayDO extends BaseNostrRelayDO {
       return relayOk(
         event.id,
         false,
-        `blocked: kind ${event.kind} is outside the OpenAgents scoped market relay policy`,
+        `blocked: kind ${event.kind} is outside the OpenAgents scoped market and coordination relay policy`,
       )
     }
 
@@ -273,12 +295,14 @@ export class NostrRelayDO extends BaseNostrRelayDO {
       : relayOk(event.id, false, "rate-limited: per-pubkey publish limit exceeded")
   }
 
-  private storeAddressableMarketEvent(
+  private storeParameterizedReplaceableMarketEvent(
     event: MarketRelayEvent,
     ws: WebSocket,
   ): boolean {
     if (!isSignedNostrEvent(event)) {
-      ws.send(relayOk(event.id, false, "blocked: malformed addressable market event"))
+      ws.send(
+        relayOk(event.id, false, "blocked: malformed parameterized replaceable event"),
+      )
       return true
     }
 
@@ -289,7 +313,13 @@ export class NostrRelayDO extends BaseNostrRelayDO {
 
     const dTag = dTagValue(event)
     if (dTag === null) {
-      ws.send(relayOk(event.id, false, "blocked: addressable market event requires d tag"))
+      ws.send(
+        relayOk(
+          event.id,
+          false,
+          "blocked: parameterized replaceable event requires d tag",
+        ),
+      )
       return true
     }
 
@@ -341,7 +371,7 @@ export class NostrRelayDO extends BaseNostrRelayDO {
         relayOk(
           event.id,
           false,
-          `error: addressable market storage failed: ${(error as Error).message}`,
+          `error: parameterized replaceable storage failed: ${(error as Error).message}`,
         ),
       )
       return true
@@ -442,6 +472,10 @@ export default {
       const id = env.NOSTR_RELAY.idFromName("global")
       const stub = env.NOSTR_RELAY.get(id)
       return stub.fetch(request)
+    }
+
+    if (isRelayInfoRequest(request, url)) {
+      return relayInfoResponse()
     }
 
     return relayWorker.fetch(request, env)

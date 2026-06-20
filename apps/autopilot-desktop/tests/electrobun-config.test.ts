@@ -7,7 +7,7 @@ import { desktopApplicationMenu } from "../src/bun/application-menu"
 import config from "../electrobun.config"
 
 const mokshaAssetSource =
-  "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha"
+  "../../node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha"
 
 describe("ElectroBun packaging", () => {
   test("uses the concise Autopilot app title", () => {

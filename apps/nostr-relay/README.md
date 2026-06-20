@@ -1,9 +1,9 @@
-# OpenAgents Scoped Market Relay
+# OpenAgents Market and Coordination Relay
 
 Issue: <https://github.com/OpenAgentsInc/openagents/issues/4636>
 
-This app runs the scoped OpenAgents market-event Nostr relay. It wraps the
-`nostr-effect` Cloudflare Durable Object relay backend and adds an
+This app runs the scoped OpenAgents market-event and coordination Nostr relay.
+It wraps the `nostr-effect` Cloudflare Durable Object relay backend and adds an
 OpenAgents-specific transport policy before messages reach the shared relay
 handler.
 
@@ -14,8 +14,15 @@ own receipt-backed systems.
 
 ## Allowed Events
 
-The relay accepts only the market event kinds needed for the five Bitcoin
-revenue-stream rails:
+The relay accepts the market event kinds needed for the five Bitcoin
+revenue-stream rails plus the coordination/discovery kinds OpenAgents agents use
+for outage fallback and agent-to-agent status:
+
+- NIP-01 text notes: `1`
+- NIP-02 contact lists: `3`
+- NIP-17/44/59 private direct-message transport: `13`, `14`, `1059`
+- NIP-38 user statuses: `30315`
+- NIP-65 relay lists: `10002`
 
 - NIP-90 job requests: `5000` through `5999`
 - NIP-90 job results: `6000` through `6999`
@@ -23,7 +30,9 @@ revenue-stream rails:
 - NIP-DS listing and offer kinds: `30404`, `30406`
 - NIP-89 handler information: `31989`, `31990`
 
-All other event kinds are rejected before storage or broadcast.
+All other event kinds are rejected before storage or broadcast. The expanded
+coordination scope does not add authority: the relay remains transport-only and
+does not verify identity, authorize work, moderate content, or settle payments.
 
 ## Limits
 
@@ -44,12 +53,17 @@ REQ limits:
 REQ filters that name disallowed kinds are closed without creating a
 subscription.
 
+General coordination writes are intentionally covered by the same anti-abuse
+posture as market writes: per-pubkey publish rate limits, bounded event content,
+bounded REQ filters, and an explicit allowlist of supported event kinds. NIP-42
+AUTH is not advertised until an authenticated write policy is implemented.
+
 ## Retention
 
-Stored market events are retained for `30` days. NIP-89 handler information is
-retained for `180` days because handler advertisements change less often and
-are useful for discovery. Retention cleanup runs opportunistically on health
-checks and valid WebSocket messages.
+Stored market and coordination events are retained for `30` days. NIP-89
+handler information is retained for `180` days because handler advertisements
+change less often and are useful for discovery. Retention cleanup runs
+opportunistically on health checks and valid WebSocket messages.
 
 ## Routes
 

@@ -1,4 +1,9 @@
 export type MarketKindBucket =
+  | "nip01_text_note"
+  | "nip02_contacts"
+  | "nip17_private_dm"
+  | "nip38_status"
+  | "nip65_relay_list"
   | "nip90_request"
   | "nip90_result"
   | "nip90_feedback"
@@ -36,7 +41,32 @@ export const MarketRelayPolicy = {
   publishRateLimitWindowMs: 60_000,
 } as const
 
+const privateDirectMessageKinds = [13, 14, 1059] as const
+
+const isPrivateDirectMessageKind = (kind: number): boolean =>
+  privateDirectMessageKinds.some(candidate => candidate === kind)
+
 export const marketKindBucket = (kind: number): MarketKindBucket | null => {
+  if (kind === 1) {
+    return "nip01_text_note"
+  }
+
+  if (kind === 3) {
+    return "nip02_contacts"
+  }
+
+  if (isPrivateDirectMessageKind(kind)) {
+    return "nip17_private_dm"
+  }
+
+  if (kind === 10002) {
+    return "nip65_relay_list"
+  }
+
+  if (kind === 30315) {
+    return "nip38_status"
+  }
+
   if (kind >= 5000 && kind <= 5999) {
     return "nip90_request"
   }
@@ -63,8 +93,20 @@ export const marketKindBucket = (kind: number): MarketKindBucket | null => {
 export const isAllowedMarketKind = (kind: number): boolean =>
   marketKindBucket(kind) !== null
 
+export const isParameterizedReplaceableMarketKind = (kind: number): boolean =>
+  kind >= 30000 && kind <= 39999 && isAllowedMarketKind(kind)
+
+export const relaySupportedNips = [
+  1, 2, 11, 17, 38, 44, 59, 65, 89, 90,
+] as const
+
 export const marketKindPolicySummary = {
   allowedKinds: {
+    nip01TextNotes: [1],
+    nip02Contacts: [3],
+    nip17PrivateDirectMessages: privateDirectMessageKinds,
+    nip38UserStatuses: [30315],
+    nip65RelayLists: [10002],
     nip90Requests: "5000-5999",
     nip90Results: "6000-6999",
     nip90Feedback: [7000],
@@ -87,6 +129,53 @@ export const marketKindPolicySummary = {
     maxEvents: MarketRelayPolicy.publishRateLimitMaxEvents,
     windowMs: MarketRelayPolicy.publishRateLimitWindowMs,
   },
+  antiAbuse: {
+    perPubkeyPublishLimit: true,
+    maxEventContentBytes: MarketRelayPolicy.maxEventContentBytes,
+    boundedReqFilters: true,
+    authority:
+      "event_transport_only_no_payment_identity_moderation_assignment_or_settlement_authority",
+  },
+} as const
+
+export const relayInformationDocument = {
+  name: "OpenAgents Market and Coordination Relay",
+  description:
+    "OpenAgents-owned Nostr relay for scoped market events and OpenAgents coordination/discovery traffic. Event transport only; no payment, identity, moderation, assignment, payout, or settlement authority.",
+  pubkey: "",
+  contact: "https://openagents.com",
+  supported_nips: relaySupportedNips,
+  software:
+    "https://github.com/OpenAgentsInc/openagents/tree/main/apps/nostr-relay",
+  version: "0.1.0",
+  limitation: {
+    max_content_length: MarketRelayPolicy.maxEventContentBytes,
+    max_filters: MarketRelayPolicy.maxFiltersPerReq,
+    max_limit: MarketRelayPolicy.maxReqLimit,
+    auth_required: false,
+    payment_required: false,
+    restricted_writes: true,
+  },
+  retention: [
+    { kinds: [31989, 31990], time: MarketRelayPolicy.handlerRetentionSeconds },
+    {
+      kinds: [
+        1,
+        3,
+        13,
+        14,
+        1059,
+        7000,
+        10002,
+        30315,
+        30404,
+        30406,
+        [5000, 5999],
+        [6000, 6999],
+      ],
+      time: MarketRelayPolicy.eventRetentionSeconds,
+    },
+  ],
 } as const
 
 const arrayLength = (value: unknown): number =>
@@ -171,7 +260,7 @@ export const validateReqFilters = (
       )
 
       if (typeof disallowedKind === "number") {
-        return `kind ${disallowedKind} is outside the OpenAgents scoped market relay policy`
+        return `kind ${disallowedKind} is outside the OpenAgents scoped market and coordination relay policy`
       }
     }
   }

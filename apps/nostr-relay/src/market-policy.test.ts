@@ -3,13 +3,22 @@ import { describe, expect, test } from "bun:test"
 import {
   MarketRelayPolicy,
   isAllowedMarketKind,
+  isParameterizedReplaceableMarketKind,
   marketKindBucket,
   nextPublishBucket,
+  relayInformationDocument,
   validateReqFilters,
 } from "./market-policy"
 
 describe("market relay policy", () => {
-  test("allows only scoped market event kinds", () => {
+  test("allows scoped market and OpenAgents coordination event kinds", () => {
+    expect(isAllowedMarketKind(1)).toBe(true)
+    expect(isAllowedMarketKind(3)).toBe(true)
+    expect(isAllowedMarketKind(13)).toBe(true)
+    expect(isAllowedMarketKind(14)).toBe(true)
+    expect(isAllowedMarketKind(1059)).toBe(true)
+    expect(isAllowedMarketKind(10002)).toBe(true)
+    expect(isAllowedMarketKind(30315)).toBe(true)
     expect(isAllowedMarketKind(5000)).toBe(true)
     expect(isAllowedMarketKind(5050)).toBe(true)
     expect(isAllowedMarketKind(5999)).toBe(true)
@@ -21,18 +30,24 @@ describe("market relay policy", () => {
     expect(isAllowedMarketKind(31989)).toBe(true)
     expect(isAllowedMarketKind(31990)).toBe(true)
 
-    expect(isAllowedMarketKind(1)).toBe(false)
     expect(isAllowedMarketKind(4999)).toBe(false)
     expect(isAllowedMarketKind(60000)).toBe(false)
   })
 
   test("classifies health metrics buckets", () => {
+    expect(marketKindBucket(1)).toBe("nip01_text_note")
+    expect(marketKindBucket(3)).toBe("nip02_contacts")
+    expect(marketKindBucket(13)).toBe("nip17_private_dm")
+    expect(marketKindBucket(14)).toBe("nip17_private_dm")
+    expect(marketKindBucket(1059)).toBe("nip17_private_dm")
+    expect(marketKindBucket(10002)).toBe("nip65_relay_list")
+    expect(marketKindBucket(30315)).toBe("nip38_status")
     expect(marketKindBucket(5050)).toBe("nip90_request")
     expect(marketKindBucket(6050)).toBe("nip90_result")
     expect(marketKindBucket(7000)).toBe("nip90_feedback")
     expect(marketKindBucket(30404)).toBe("nip_ds")
     expect(marketKindBucket(31989)).toBe("nip89_handler")
-    expect(marketKindBucket(1)).toBeNull()
+    expect(marketKindBucket(60000)).toBeNull()
   })
 
   test("allows NIP-LBR labor transport kinds", () => {
@@ -78,10 +93,31 @@ describe("market relay policy", () => {
   })
 
   test("rejects disallowed kind filters", () => {
-    expect(validateReqFilters([{ kinds: [5050, 1], limit: 10 }])).toContain(
-      "kind 1",
+    expect(validateReqFilters([{ kinds: [5050, 60000], limit: 10 }])).toContain(
+      "kind 60000",
     )
-    expect(validateReqFilters([{ kinds: [5050], limit: 10 }])).toBeNull()
+    expect(
+      validateReqFilters([{ kinds: [5050, 1, 3, 10002], limit: 10 }]),
+    ).toBeNull()
+  })
+
+  test("identifies parameterized replaceable coordination and market kinds", () => {
+    expect(isParameterizedReplaceableMarketKind(30315)).toBe(true)
+    expect(isParameterizedReplaceableMarketKind(30404)).toBe(true)
+    expect(isParameterizedReplaceableMarketKind(30406)).toBe(true)
+    expect(isParameterizedReplaceableMarketKind(31989)).toBe(true)
+    expect(isParameterizedReplaceableMarketKind(31990)).toBe(true)
+    expect(isParameterizedReplaceableMarketKind(10002)).toBe(false)
+    expect(isParameterizedReplaceableMarketKind(1)).toBe(false)
+  })
+
+  test("advertises expanded coordination scope in NIP-11 metadata", () => {
+    expect(relayInformationDocument.supported_nips).toContain(17)
+    expect(relayInformationDocument.supported_nips).toContain(38)
+    expect(relayInformationDocument.supported_nips).toContain(59)
+    expect(relayInformationDocument.supported_nips).toContain(65)
+    expect(relayInformationDocument.supported_nips).toContain(90)
+    expect(relayInformationDocument.limitation.restricted_writes).toBe(true)
   })
 
   test("enforces per-pubkey publish buckets", () => {
