@@ -3928,7 +3928,6 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.marketing_agency_pack_self_serve_missing',
-          'blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing',
         ],
         verification:
           'Yellow is the shipped, tested prefilled marketing-agency template (forge.template.marketing_agency.white_label_launch.v1) seeding a white-label landing-page + email workspace (prefilled-workspace-vertical-templates.ts, .test.ts), composed with the yellow Autopilot Sites records (site build/host, custom hostnames, native email sequences). True today: an operator can stand up the seeded workspace and draft pages/emails under a review gate. Green requires a self-serve vertical pack with proven send/publish deliverability and a dereferenceable first paid agency work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
