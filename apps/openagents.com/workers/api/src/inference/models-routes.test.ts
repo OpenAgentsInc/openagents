@@ -1,11 +1,17 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { handleModelsList } from './models-routes'
+import { handleModelRetrieve, handleModelsList } from './models-routes'
 import { MODEL_PRICING_TABLE } from './pricing'
 
 const run = (request: Request, deps: Parameters<typeof handleModelsList>[1]) =>
   Effect.runPromise(handleModelsList(request, deps))
+
+const runRetrieve = (
+  request: Request,
+  modelId: string,
+  deps: Parameters<typeof handleModelRetrieve>[2],
+) => Effect.runPromise(handleModelRetrieve(request, modelId, deps))
 
 describe('handleModelsList', () => {
   it('404s when the gateway is disabled (inert posture)', async () => {
@@ -40,5 +46,74 @@ describe('handleModelsList', () => {
     expect(body.data.length).toBe(MODEL_PRICING_TABLE.length)
     expect(body.data.every(m => m.object === 'model')).toBe(true)
     expect(body.data.every(m => m.created === 1_700_000_000)).toBe(true)
+  })
+})
+
+describe('handleModelRetrieve', () => {
+  const servedModelId = MODEL_PRICING_TABLE[0]!.model
+
+  it('404s when the gateway is disabled (inert posture)', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'GET' }),
+      servedModelId,
+      { enabled: false },
+    )
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'inference_gateway_disabled' })
+  })
+
+  it('405s on non-GET methods', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'DELETE' }),
+      servedModelId,
+      { enabled: true },
+    )
+    expect(response.status).toBe(405)
+  })
+
+  it('returns the OpenAI model object for a served model', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'GET' }),
+      servedModelId,
+      { enabled: true, nowEpochSeconds: () => 1_700_000_000 },
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const body = (await response.json()) as {
+      id: string
+      object: string
+      created: number
+      oa_price: { inputUsdPerMtok: number }
+    }
+    expect(body.id).toBe(servedModelId)
+    expect(body.object).toBe('model')
+    expect(body.created).toBe(1_700_000_000)
+    expect(typeof body.oa_price.inputUsdPerMtok).toBe('number')
+  })
+
+  it('404s with the OpenAI model_not_found shape for an unknown model', async () => {
+    const response = await runRetrieve(
+      new Request('https://x/v1/models/nope-not-served', { method: 'GET' }),
+      'nope-not-served',
+      { enabled: true },
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as {
+      error: { code: string; type: string; param: string }
+    }
+    expect(body.error.code).toBe('model_not_found')
+    expect(body.error.type).toBe('invalid_request_error')
+    expect(body.error.param).toBe('model')
+  })
+
+  it('404s (model_not_found) for a blank model id', async () => {
+    const response = await runRetrieve(
+      new Request('https://x/v1/models/', { method: 'GET' }),
+      '',
+      { enabled: true },
+    )
+    expect(response.status).toBe(404)
+    const body = (await response.json()) as { error: { code: string } }
+    expect(body.error.code).toBe('model_not_found')
   })
 })

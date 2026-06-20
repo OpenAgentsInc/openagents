@@ -131,3 +131,38 @@ customer buy inference: the blocker stays listed because the paid-credits fundin
 loop above is still secrets-gated, so no published-priced model can yet be paid
 for end to end. No promise state changed; any future green flip remains
 receipt-first and owner-signed.
+
+## OpenAI-compatible single-model retrieve (this run)
+
+Blocker advanced: `public_paid_model_gateway_missing` — *partially advanced*
+(left listed; see "What remains" below).
+
+The gateway answered `GET /v1/models` (the list) but not the OpenAI standard
+`GET /v1/models/{model}` (retrieve one). Off-the-shelf OpenAI clients call the
+retrieve to verify a model exists and read its price before use, and a credits
+customer wants to resolve a single model's published price before funding a
+balance. This run adds that surface:
+
+- `model-catalog.ts`: `findModelCatalogEntry(modelId, margin?)` (single source
+  of model lookup; blank/unknown id → `undefined`) and `toOpenAiModelObject`
+  (the single source of the OpenAI model-object shape, now reused by BOTH the
+  list and retrieve projections so they can never disagree on a model's price or
+  policy). A test asserts the retrieve entry equals the entry the list catalog
+  publishes (no divergence) and that the single-model projection equals the
+  per-model object the list emits.
+- `models-routes.ts`: `handleModelRetrieve(request, modelId, deps)` — same inert
+  posture as the list (404 when the gateway is off, 405 on non-GET), public +
+  unauthenticated (published price/policy only), and an unknown/blank model id
+  returns OpenAI's standard `model_not_found` error shape (`error.code`,
+  `error.type: invalid_request_error`, `error.param: model`) so clients surface
+  it correctly. Prices are the SAME pricing-table-derived sell rate the metering
+  hook charges, so the resolved price cannot drift from the billed price.
+
+Dispatch wiring is intentionally NOT added yet, mirroring the established repo
+pattern for `GET /v1/fine_tuning/jobs/:jobId` and `GET /v1/sandboxes/:id`
+(`handleFineTuningJobGet` / `handleSandboxGet`): those `/:id` lifecycle handlers
+were landed built + fully tested ahead of their dispatcher path-param wiring.
+The handler + lookup + projection + tests are review-stable here; the remaining
+step is to register a `/v1/models/{model}` path-param route in the worker
+dispatcher (the exact-route registry is exact-match only). This does NOT by
+itself let a customer buy inference, so the blocker stays listed.

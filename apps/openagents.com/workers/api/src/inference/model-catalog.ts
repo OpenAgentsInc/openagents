@@ -156,6 +156,26 @@ export type OpenAiModelsResponse = Readonly<{
   data: ReadonlyArray<OpenAiModelObject>
 }>
 
+// Project ONE catalog entry into the OpenAI `/v1/models` model object. `created`
+// is the injected epoch-seconds timestamp (the route supplies the clock; this
+// stays pure). The single source of the model-object shape, reused by both the
+// list (`/v1/models`) and the retrieve (`/v1/models/{model}`) surfaces so they
+// can never disagree on a model's published price or policy.
+export const toOpenAiModelObject = (
+  model: ModelCatalogEntry,
+  createdEpochSeconds: number,
+): OpenAiModelObject => ({
+  created: createdEpochSeconds,
+  id: model.id,
+  oa_cost_basis: model.costBasis,
+  oa_free_tier_eligible: model.freeTierEligible,
+  oa_lane: model.lane,
+  oa_multiplier: model.multiplier,
+  oa_price: model.price,
+  object: 'model' as const,
+  owned_by: model.ownedBy,
+})
+
 // Project the catalog into the OpenAI `/v1/models` response shape. `created` is
 // the injected epoch-seconds timestamp (the route supplies the clock; this stays
 // pure). One model object per catalog entry, in table order.
@@ -163,16 +183,23 @@ export const toOpenAiModelsResponse = (
   catalog: ReadonlyArray<ModelCatalogEntry>,
   createdEpochSeconds: number,
 ): OpenAiModelsResponse => ({
-  data: catalog.map(model => ({
-    created: createdEpochSeconds,
-    id: model.id,
-    oa_cost_basis: model.costBasis,
-    oa_free_tier_eligible: model.freeTierEligible,
-    oa_lane: model.lane,
-    oa_multiplier: model.multiplier,
-    oa_price: model.price,
-    object: 'model' as const,
-    owned_by: model.ownedBy,
-  })),
+  data: catalog.map(model => toOpenAiModelObject(model, createdEpochSeconds)),
   object: 'list' as const,
 })
+
+// Look up a single served model by its canonical id, returning its public
+// catalog entry or `undefined` when the gateway does not serve it. Backs the
+// OpenAI-compatible `GET /v1/models/{model}` retrieve surface: a credits
+// customer (or off-the-shelf client) verifies a model exists and reads its
+// published price before funding a balance. Derived from the SAME pricing table
+// the metering hook charges against, so a resolved price cannot drift from the
+// billed price. Pure: an empty/blank id never matches.
+export const findModelCatalogEntry = (
+  modelId: string,
+  margin: number = DEFAULT_MARGIN,
+): ModelCatalogEntry | undefined => {
+  if (modelId.trim() === '') {
+    return undefined
+  }
+  return buildModelCatalog(margin).find(entry => entry.id === modelId)
+}

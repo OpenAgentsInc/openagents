@@ -19,7 +19,12 @@ import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { currentEpochSeconds } from '../runtime-primitives'
-import { buildModelCatalog, toOpenAiModelsResponse } from './model-catalog'
+import {
+  buildModelCatalog,
+  findModelCatalogEntry,
+  toOpenAiModelObject,
+  toOpenAiModelsResponse,
+} from './model-catalog'
 
 export type ModelsListDeps = Readonly<{
   // Whether the gateway is enabled. The Worker passes
@@ -54,4 +59,53 @@ export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
     const catalog = buildModelCatalog(deps.margin)
     return noStoreJsonResponse(toOpenAiModelsResponse(catalog, now))
+  })
+
+// Serve the OpenAI-compatible `GET /v1/models/{model}` retrieve for a single
+// model. Mirrors the list route's inert posture (404 when the gateway is off,
+// 405 on non-GET) and is likewise public + unauthenticated (published price +
+// policy only — public-safe pre-purchase discovery). An unknown/blank model id
+// returns OpenAI's standard `model_not_found` error so off-the-shelf clients
+// surface it correctly. The route is expected to extract `{model}` from the
+// path and pass it as `modelId`.
+export const handleModelRetrieve = (
+  request: Request,
+  modelId: string,
+  deps: ModelsListDeps,
+) =>
+  Effect.sync<Response>(() => {
+    // INERT GATE: 404 when the gateway is flagged off, matching the list route.
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_gateway_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
+    }
+
+    const entry = findModelCatalogEntry(modelId, deps.margin)
+    if (entry === undefined) {
+      // OpenAI's standard 404 retrieve error shape; clients key off
+      // `error.code === 'model_not_found'`.
+      return noStoreJsonResponse(
+        {
+          error: {
+            code: 'model_not_found',
+            message: `The model '${modelId}' does not exist or is not served by this gateway.`,
+            param: 'model',
+            type: 'invalid_request_error',
+          },
+        },
+        { status: 404 },
+      )
+    }
+
+    const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
+    return noStoreJsonResponse(toOpenAiModelObject(entry, now))
   })
