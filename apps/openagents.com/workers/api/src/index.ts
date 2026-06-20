@@ -22,6 +22,7 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import {
   handleLiquidityMarketSkeletonApi,
   handleOpenMarketsSurfaceApi,
@@ -8019,6 +8020,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // or green claim.
     path: TrainingAblationDeriskingLedgerEndpoint,
     handler: request => handleTrainingAblationDeriskingLedgerApi(request),
+  },
+  {
+    path: '/api/public/demand-provenance',
+    handler: request => handleDemandProvenanceApi(request),
   },
   {
     path: '/api/public/markets/open-markets',

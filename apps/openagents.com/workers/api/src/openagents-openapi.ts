@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 
 import { AcceptedOutcomesPerKwhEndpoint } from './accepted-outcomes-per-kwh'
 import { PublicAgentProposalRecoveryRoute } from './agent-rate-limit-recovery'
+import { DemandProvenanceEndpoint } from './demand-provenance'
 import {
   LiquidityMarketSkeletonEndpoint,
   RiskMarketSkeletonEndpoint,
@@ -477,6 +478,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, a typed internal/external demand-provenance split (proof.demand_provenance.v1, rule no_external_dollar_no_demand_claim, with externalDemandClaimAllowed gating market-demand claims), gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority, and internal demand is never presented as external market demand.',
+  ),
+  DemandProvenanceProjection: objectSummary(
+    'Public-safe demand-provenance projection. Includes generatedAt and the projection_staleness.v1 live_at_read staleness contract with maxStalenessSeconds 0. Summarizes revenue-bearing public surfaces that carry typed internal/external demand splits, starts with the AO/kWh surface, reports internal/external/unlabeled accepted-outcome counts, enforces the no_external_dollar_no_demand_claim copy gate, names remaining coverage gaps, and grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
   ),
   OpenMarketsSurfaceProjection: objectSummary(
     'Public-safe unified open-markets surface enumerating the six Episode 213 markets (compute, data, labor, liquidity, risk, verification). Includes generatedAt, the declared live_at_read staleness contract, honest per-market state (live_scoped/shipped_not_broadly_live/skeleton/unbuilt), whether a settled receipt exists, protocol and promise refs, evidence refs, blockers, state counts, and the skeleton market ids. It is evidence-only and grants no market-making, matching, quoting, settlement, custody, underwriting, payout, or public-market-claim authority; liquidity and risk are inert skeletons.',
@@ -3096,6 +3100,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Accepted Outcomes per kWh metric.',
           '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [DemandProvenanceEndpoint]: {
+    get: operation({
+      operationId: 'getPublicDemandProvenance',
+      summary: 'Read public demand-provenance projection',
+      description:
+        'Returns the public demand-provenance projection for revenue-bearing public numbers. The current response summarizes the AO/kWh internal/external split, reports zero external accepted outcomes, keeps externalDemandClaimAllowed false, names remaining coverage gaps, and grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public demand-provenance projection.',
+          '#/components/schemas/DemandProvenanceProjection',
         ),
         ...errorResponses(),
       },
