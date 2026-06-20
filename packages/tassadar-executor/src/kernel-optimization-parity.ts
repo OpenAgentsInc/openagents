@@ -43,6 +43,17 @@ export type KernelThroughputRecord = Readonly<{
   opRef: string
   /** Kernel/op identifier this record measures. */
   kernelRef: string
+  /**
+   * The model-graph digest the tok/s number was measured on — the same
+   * `graph_digest` the exact-trace-replay engine reports as `graphDigest` on its
+   * verdict. This is what BINDS the measured kernel to the artifact the
+   * independent validator actually replayed: for the optimized record it must
+   * equal the parity verdict's `graphDigest`, otherwise the tok/s number and the
+   * correctness proof describe different artifacts (a "verified" parity for one
+   * graph paired with a tok/s record for another, unverified kernel). Hex digest,
+   * compared trim + case-insensitively.
+   */
+  graphDigest: string
   /** Measured throughput in tokens per second (must be finite and > 0). */
   tokensPerSecond: number
 }>
@@ -51,6 +62,7 @@ export type KernelOptimizationRejection =
   | Readonly<{ reason: "target_mismatch"; detail: string }>
   | Readonly<{ reason: "op_mismatch"; detail: string }>
   | Readonly<{ reason: "kernel_not_optimized"; detail: string }>
+  | Readonly<{ reason: "parity_trace_unbound"; detail: string }>
   | Readonly<{ reason: "invalid_throughput"; detail: string }>
   | Readonly<{
       reason: "parity_rejected"
@@ -100,8 +112,12 @@ const isPositiveFinite = (value: number): boolean =>
  * delivered-kernel gate is also checked before throughput because if the
  * optimized record names the SAME kernel implementation as the baseline, no new
  * kernel was delivered and the tok/s delta is remeasurement (or a cherry-picked
- * run), not an optimization. Parity is checked before throughput so that
- * "faster but wrong" can never be accepted.
+ * run), not an optimization. The trace-binding gate is also checked before
+ * throughput AND before the parity outcome: if the optimized record's graph
+ * digest does not match the graph the validator actually replayed, the parity
+ * proof does not pertain to the measured kernel, so even a "verified" verdict is
+ * meaningless for it. Parity is checked before throughput so that "faster but
+ * wrong" can never be accepted.
  */
 export const verifyKernelOptimizationParity = (
   input: Readonly<{
@@ -184,6 +200,33 @@ export const verifyKernelOptimizationParity = (
     return rejected({
       detail: `optimized record names the same kernel implementation as the baseline ("${optimized.kernelRef.trim()}"); no new kernel was delivered, so the tok/s delta is remeasurement, not an optimization`,
       reason: "kernel_not_optimized",
+    })
+  }
+
+  // Trace-binding gate: the optimized tok/s record must have been measured on the
+  // SAME model graph the independent validator replayed for parity. The parity
+  // engine reports that graph as `parityVerdict.graphDigest`; the optimized
+  // record carries the graph its tok/s was measured on. If they differ (or the
+  // record names none), the throughput number and the correctness proof describe
+  // different artifacts — a "verified" parity for one graph paired with a tok/s
+  // record for another, unverified kernel — so the proof does not pertain to the
+  // measured kernel and acceptance must be refused. Structural and checked before
+  // the parity outcome, since an unbound parity proof says nothing about THIS
+  // kernel even when its own verdict reads "verified".
+  const normalizeDigest = (value: string): string => value.trim().toLowerCase()
+  const optimizedGraph = normalizeDigest(optimized.graphDigest)
+  const replayedGraph = normalizeDigest(parityVerdict.graphDigest)
+  if (optimizedGraph.length === 0) {
+    return rejected({
+      detail:
+        "optimized record must name the graph digest its tok/s was measured on (to bind it to the replayed parity trace)",
+      reason: "parity_trace_unbound",
+    })
+  }
+  if (optimizedGraph !== replayedGraph) {
+    return rejected({
+      detail: `optimized record graph "${optimized.graphDigest.trim()}" != replayed parity-trace graph "${parityVerdict.graphDigest.trim()}"; the tok/s record and the correctness proof describe different artifacts`,
+      reason: "parity_trace_unbound",
     })
   }
 

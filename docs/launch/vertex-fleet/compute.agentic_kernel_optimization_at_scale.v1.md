@@ -383,6 +383,57 @@ New artifact (in `packages/tassadar-executor`, the green parity engine):
   the one whose output trace was replayed on the validator device (the
   `kernelRef` is a declared label, not derived from the replayed graph). Binding
   the optimized `kernelRef` to the parity trace's graph digest remains.
+  (Addressed by the 2026-06-20 update below.)
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces feeding the verdict
+  (numbers are still caller-supplied), and real escrow settled into
+  dereferenceable receipts + owner sign-off. The March 2026 result stays
+  historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — trace-binding gate (graph-swap / unbound-proof guard)
+
+Advances `blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing`
+by closing the gap the prior delivered-kernel update explicitly named: the
+verifier proved the optimized record names a distinct kernel *label* but never
+proved that label is the artifact the independent validator actually replayed.
+Nothing bound the tok/s-measured kernel to the parity proof, so a `verified`
+parity verdict for one model graph could be paired with a tok/s record for a
+different, unverified kernel — the accounting balanced, the parity read
+"verified", and an unproven kernel got paid as if correctness-anchored.
+
+New artifact (in `packages/tassadar-executor`, the green parity engine):
+
+- `src/kernel-optimization-parity.ts` — `KernelThroughputRecord` now carries a
+  `graphDigest` (the model-graph digest the tok/s was measured on, same shape as
+  the exact-trace-replay engine's `TassadarReplayVerdict.graphDigest`).
+  `verifyKernelOptimizationParity` gains a `parity_trace_unbound` rejection: the
+  optimized record's `graphDigest` must be non-empty AND normalize (trim +
+  lowercase) to the SAME graph the parity verdict reports as replayed, else the
+  tok/s number and the correctness proof describe different artifacts and the
+  kernel is rejected. The gate is structural — placed after `kernel_not_optimized`
+  and before the parity-outcome gate — so an unbound parity proof is refused even
+  when its own verdict reads "verified" (the proof says nothing about THIS
+  kernel). No change to the exact-trace-replay engine; no new money path.
+- `src/kernel-optimization-parity.test.ts` — 5 new tests (20 total): the bound
+  accept, trim/case-insensitive digest binding, a different-graph rejection, a
+  blank-digest rejection, and the structural case where an unbound graph beats a
+  verified-but-irrelevant parity verdict.
+- `apps/openagents.com/workers/api/src/kernel-optimization-campaign.test.ts` —
+  the campaign `verdictFor` helper now binds both records' `graphDigest` to the
+  parity verdict's replayed graph, keeping all 25 campaign tests green.
+
+This is the "bind the optimized kernel to the parity trace's graph digest" piece
+the prior update deferred — now the verifier proves the throughput-measured
+kernel and the independently-replayed correctness proof are the same artifact
+before producing any acceptance verdict.
+
+### What still remains (blocker NOT cleared)
+
+- Binding is on the declared `graphDigest` field of the optimized record matched
+  to the verdict's replayed graph; it does not yet bind the *baseline* record to
+  a counterpart proof (output parity means optimized outputs == baseline
+  outputs, but the bounded-workload replay engine re-executes one graph, not a
+  two-graph equivalence). Cross-graph output-equivalence binding remains.
 - Everything from the prior updates still stands: live dispatch through the
   forum route, real worker tok/s + replayed output traces feeding the verdict
   (numbers are still caller-supplied), and real escrow settled into
