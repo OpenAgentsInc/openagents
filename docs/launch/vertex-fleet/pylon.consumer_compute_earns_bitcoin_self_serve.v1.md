@@ -3,6 +3,46 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (o) — scale methodology: prove the real file→parse→verify path with a canonical evidence template
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+The verifier, parse boundary, and fused `verifyQualifiedContributorMethodologyDocument`
+entry are all built, but the documented remaining step — "run the verifier
+against the live run's REAL evidence **file**" — was never exercised end to end:
+every existing test builds the document in-memory (even the "JSON round-trip"
+case stringifies an in-memory object). There was also no checked-in TEMPLATE an
+auditor could copy to assemble the real evidence file, so the exact on-disk shape
+the verifier expects was only implicit in code.
+
+- `apps/openagents.com/workers/api/src/fixtures/qualified-contributor-methodology-evidence.template.json`
+  — NEW canonical, public-safe SHAPE TEMPLATE for the per-run evidence document
+  (two distinct contributors, each with distinct lease / verified-work /
+  provider-confirmed settlement refs). Strictly schema-conformant so it passes the
+  closed key allowlist; every ref is a self-evident placeholder
+  (`pylon.example.*`, `lease.example.*`, `receipt.example.*`). It is synthetic and
+  asserts no real claim.
+- `apps/openagents.com/workers/api/src/fixtures/qualified-contributor-methodology-evidence.template.README.md`
+  — NEW note documenting that the template is synthetic, why annotation keys can't
+  live in the JSON (the allowlist would reject them), and exactly what still
+  remains to clear the blocker.
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +4 vitest cases in a new "evidence document template" suite that READ the
+  template from disk (`readFileSync` + `import.meta.url`) and run the real
+  file→`JSON.parse`→verify path: template parses + conforms (count 2); refs are
+  all synthetic placeholders; a leak-prone extra field on the loaded file fails
+  the boundary; an inflated claimed count parses but does not conform. 35→39
+  tests, wired into `check:deploy`.
+- Methodology doc updated to dereference the template + on-disk harness (35→39).
+
+No promise state changed; no scale claim asserted; the template is synthetic. Still
+listed: clearing the blocker still needs dropping the run's REAL per-contributor
+evidence into this proven harness and citing the `ok:true` / `conforms:true`
+verdict, plus owner sign-off. This run closes the "real file path is untested and
+there is no document template" gap so the real-evidence run is copy-the-template,
+drop-in, one call.
+
 ## Update 2026-06-20 (n) — WSL/Windows copy guard: catch verb-first over-promise phrasings
 
 Blocker advanced this run:

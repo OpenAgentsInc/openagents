@@ -100,8 +100,16 @@ This is the rule implemented for the live metric, verbatim from the metric's own
     contributor) before flattening, so a single legitimate contributor whose own
     evidence harmlessly lists a ref twice is never falsely flagged
     `*-across-contributors`, while genuine reuse across two contributors is still
-    caught. Covered by `qualified-contributor-methodology.test.ts` (35 tests,
-    wired into `check:deploy`).
+    caught. A checked-in, public-safe **evidence-document SHAPE TEMPLATE**
+    (`src/fixtures/qualified-contributor-methodology-evidence.template.json`, see
+    its README) gives auditors the exact document shape the real run's evidence
+    file must take, and the test suite exercises the actual **file → parse →
+    verify** path against it (every other test builds the document in-memory) — so
+    the "run against the live run's real evidence file" harness is proven before
+    the real file is dropped in. The template is synthetic (placeholder refs only)
+    and asserts no real claim. Covered by
+    `qualified-contributor-methodology.test.ts` (39 tests, wired into
+    `check:deploy`).
 
 ## Public dereference path
 
