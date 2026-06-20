@@ -38,6 +38,30 @@ function reasoningSummaryText(summary: unknown): string {
     .trim()
 }
 
+function reasoningText(payload: Record<string, any>): string {
+  for (const key of ["text", "message", "content", "thinking"]) {
+    const value = payload[key]
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.replace(/\s+/g, " ").trim()
+    }
+    if (Array.isArray(value)) {
+      const text = value
+        .map((entry) =>
+          entry !== null &&
+          typeof entry === "object" &&
+          typeof (entry as { text?: unknown }).text === "string"
+            ? (entry as { text: string }).text
+            : "",
+        )
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim()
+      if (text.length > 0) return text
+    }
+  }
+  return reasoningSummaryText(payload.summary)
+}
+
 function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
@@ -122,11 +146,13 @@ export function normalizeCodexLine(raw: unknown): ExternalEvent | null {
   if (type !== "response_item") return null
 
   if (payloadType === "reasoning") {
-    const text = reasoningSummaryText(payload.summary)
+    const text = reasoningText(payload)
+    if (text.length === 0 && typeof payload.encrypted_content === "string") return null
     return {
       observedAt,
       phase: "reasoning",
-      messageText: text.length > 0 ? `thinking: ${clip(text, 160)}` : "thinking…",
+      messageText: text.length > 0 ? `thinking: ${clip(text, 1800)}` : "thinking…",
+      ...(text.length > 0 ? { messageFull: `thinking: ${text.slice(0, 8000)}` } : {}),
     }
   }
 

@@ -8,7 +8,7 @@ import {
   type SelfRegisterResult,
 } from "./agent-onboarding"
 import { discoverPylonHome } from "./node-home"
-import { readControlToken } from "./pylon-control"
+import { probeControlCompatibility, readControlToken } from "./pylon-control"
 import type { NodeLaunchStatus } from "../shared/rpc"
 
 // #5011 (JUNE15_LAUNCH_PLAN §0/§4.F): the install seam. Today the desktop only
@@ -85,6 +85,7 @@ export type EnsureManagedNodeOptions = {
   readonly fileExists?: (path: string) => boolean
   readonly spawnNode?: (input: SpawnNodeInput) => LaunchedProcess
   readonly probeReady?: (baseUrl: string) => Promise<boolean>
+  readonly probeCompatible?: (baseUrl: string) => Promise<boolean>
   readonly sleep?: (ms: number) => Promise<void>
   readonly bunBin?: string
   readonly readinessTimeoutMs?: number
@@ -285,6 +286,7 @@ export const ensureManagedNode = async (
   const fileExists = options.fileExists ?? existsSync
   const spawnNode = options.spawnNode ?? defaultSpawnNode
   const probeReady = options.probeReady ?? defaultProbeReady
+  const probeCompatible = options.probeCompatible ?? ((baseUrl: string) => probeControlCompatibility({ baseUrl }))
   const sleep = options.sleep ?? defaultSleep
   const bunBin = options.bunBin ?? process.execPath
   const homeDir = options.homeDir ?? homedir()
@@ -308,6 +310,10 @@ export const ensureManagedNode = async (
   // 1. Adopt an already-running node — never double-spawn.
   const discovered = discover({ env: discoveryEnvHome, cwd: options.cwd })
   if (discovered !== null) {
+    if (!(await probeCompatible(options.controlBaseUrl))) {
+      emit("failed")
+      return unavailable
+    }
     emit("adopted")
     return adopted(discovered)
   }

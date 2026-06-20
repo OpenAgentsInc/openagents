@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto"
+import { spawn } from "node:child_process"
+import { statSync } from "node:fs"
+import { createRequire } from "node:module"
+import path from "node:path"
+import readline from "node:readline"
 import {
   CODEX_AGENT_SDK_PACKAGE,
   probeCodexAgentReadiness,
@@ -48,6 +53,7 @@ export interface CodexComposerOptions {
   env?: Record<string, string | undefined>
   platform?: string
   codexCliLoginPresent?: boolean
+  humanReadableReasoning?: boolean
 }
 
 export function sandboxModeForCodexComposerExecutionMode(
@@ -77,7 +83,10 @@ export interface CodexComposerResult {
 }
 
 type CodexSdkModule = {
-  Codex: new (options?: { env?: Record<string, string | undefined> }) => {
+  Codex: new (options?: {
+    env?: Record<string, string | undefined>
+    config?: Record<string, unknown>
+  }) => {
     startThread: (options: Record<string, unknown>) => {
       runStreamed: (
         prompt: string,
@@ -122,12 +131,173 @@ type CodexThreadEvent = {
   }
 }
 
+type CodexCliPath = {
+  executablePath: string
+  pathDirs: string[]
+}
+
+type CodexHumanOutputParserState = {
+  phase: "header" | "user" | "reasoning" | "agent" | "tokens"
+}
+
+type CodexHumanOutputLine =
+  | { type: "thread"; threadId: string }
+  | { type: "reasoning"; text: string }
+  | { type: "agent"; text: string }
+  | { type: "tokens"; totalTokens: number }
+  | null
+
+const CODEX_PLATFORM_PACKAGE_BY_TARGET: Record<string, string> = {
+  "x86_64-unknown-linux-musl": "@openai/codex-linux-x64",
+  "aarch64-unknown-linux-musl": "@openai/codex-linux-arm64",
+  "x86_64-apple-darwin": "@openai/codex-darwin-x64",
+  "aarch64-apple-darwin": "@openai/codex-darwin-arm64",
+  "x86_64-pc-windows-msvc": "@openai/codex-win32-x64",
+  "aarch64-pc-windows-msvc": "@openai/codex-win32-arm64",
+}
+
 function numberOrZero(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+function isFile(value: string): boolean {
+  try {
+    return statSync(value).isFile()
+  } catch {
+    return false
+  }
+}
+
+function isDirectory(value: string): boolean {
+  try {
+    return statSync(value).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function targetTripleFor(platform: string, arch: string): string | null {
+  if ((platform === "linux" || platform === "android") && arch === "x64") return "x86_64-unknown-linux-musl"
+  if ((platform === "linux" || platform === "android") && arch === "arm64") return "aarch64-unknown-linux-musl"
+  if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin"
+  if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin"
+  if (platform === "win32" && arch === "x64") return "x86_64-pc-windows-msvc"
+  if (platform === "win32" && arch === "arm64") return "aarch64-pc-windows-msvc"
+  return null
+}
+
+function resolveCodexCliPath(): CodexCliPath {
+  const targetTriple = targetTripleFor(process.platform, process.arch)
+  if (targetTriple === null) throw new Error(`Unsupported Codex CLI platform: ${process.platform} (${process.arch})`)
+  const platformPackage = CODEX_PLATFORM_PACKAGE_BY_TARGET[targetTriple]
+  if (platformPackage === undefined) throw new Error(`Unsupported Codex CLI target: ${targetTriple}`)
+
+  const requireFromHere = createRequire(import.meta.url)
+  const sdkPackageJsonPath = requireFromHere.resolve(`${CODEX_AGENT_SDK_PACKAGE}/package.json`)
+  const sdkRequire = createRequire(sdkPackageJsonPath)
+  const codexPackageJsonPath = sdkRequire.resolve("@openai/codex/package.json")
+  const codexRequire = createRequire(codexPackageJsonPath)
+  const platformPackageJsonPath = codexRequire.resolve(`${platformPackage}/package.json`)
+  const vendorRoot = path.join(path.dirname(platformPackageJsonPath), "vendor")
+  const packageRoot = path.join(vendorRoot, targetTriple)
+  const executablePath = path.join(packageRoot, "bin", process.platform === "win32" ? "codex.exe" : "codex")
+  if (!isFile(executablePath) || !isFile(path.join(packageRoot, "codex-package.json"))) {
+    throw new Error(`Unable to locate Codex CLI binary for ${targetTriple}`)
+  }
+  const codexPathDir = path.join(packageRoot, "codex-path")
+  return {
+    executablePath,
+    pathDirs: isDirectory(codexPathDir) ? [codexPathDir] : [],
+  }
+}
+
+function cliEnvironment(
+  env: Record<string, string | undefined>,
+  pathDirs: ReadonlyArray<string>,
+): Record<string, string> {
+  const next: Record<string, string> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined) next[key] = value
+  }
+  if (pathDirs.length > 0) {
+    next.PATH = `${pathDirs.join(path.delimiter)}${next.PATH ? `${path.delimiter}${next.PATH}` : ""}`
+  }
+  if (next.CODEX_INTERNAL_ORIGINATOR_OVERRIDE === undefined) {
+    next.CODEX_INTERNAL_ORIGINATOR_OVERRIDE = "pylon_codex_human_stream"
+  }
+  return next
+}
+
+function clipOneLine(value: string, max: number): string {
+  const oneLine = value.replace(/\s+/g, " ").trim()
+  return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine
+}
+
+function cleanHumanReasoningLine(value: string): string {
+  return value
+    .replace(/^\*\*(.+)\*\*$/, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function isCodexHumanMetadataLine(line: string): boolean {
+  return (
+    line === "" ||
+    line === "--------" ||
+    line.startsWith("OpenAI Codex v") ||
+    line.startsWith("workdir: ") ||
+    line.startsWith("model: ") ||
+    line.startsWith("provider: ") ||
+    line.startsWith("approval: ") ||
+    line.startsWith("sandbox: ") ||
+    line.startsWith("reasoning effort: ") ||
+    line.startsWith("reasoning summaries: ") ||
+    line.startsWith("hook: ") ||
+    /^\d{4}-\d{2}-\d{2}T.*\sERROR\s/.test(line)
+  )
+}
+
+export function createCodexHumanOutputParser(): (line: string) => CodexHumanOutputLine {
+  const state: CodexHumanOutputParserState = { phase: "header" }
+  return (rawLine: string): CodexHumanOutputLine => {
+    const line = rawLine.trim()
+    const sessionMatch = /^session id:\s*(\S+)/.exec(line)
+    if (sessionMatch?.[1]) return { type: "thread", threadId: sessionMatch[1] }
+    if (line === "user") {
+      state.phase = "user"
+      return null
+    }
+    if (line === "codex") {
+      state.phase = "agent"
+      return null
+    }
+    if (line === "tokens used") {
+      state.phase = "tokens"
+      return null
+    }
+    if (line === "hook: UserPromptSubmit Completed") {
+      state.phase = "reasoning"
+      return null
+    }
+    if (isCodexHumanMetadataLine(line)) return null
+
+    if (state.phase === "tokens") {
+      const totalTokens = Number.parseInt(line.replace(/,/g, ""), 10)
+      return Number.isFinite(totalTokens) ? { type: "tokens", totalTokens } : null
+    }
+    if (state.phase === "agent") {
+      return { type: "agent", text: line }
+    }
+    if (state.phase === "reasoning") {
+      const text = cleanHumanReasoningLine(line)
+      return text.length > 0 ? { type: "reasoning", text } : null
+    }
+    return null
+  }
 }
 
 function summarizeChanges(changes: unknown): string {
@@ -213,24 +383,24 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
       const text = typeof payload?.last_agent_message === "string"
         ? payload.last_agent_message.replace(/\s+/g, " ").trim()
         : ""
-      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "task complete"
+      return text.length > 0 ? `agent: ${clipOneLine(text, 200)}` : "task complete"
     }
     if (payloadType === "agent_message") {
       const text = typeof payload?.message === "string"
         ? payload.message.replace(/\s+/g, " ").trim()
         : ""
-      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "agent message"
+      return text.length > 0 ? `agent: ${clipOneLine(text, 200)}` : "agent message"
     }
     if (payloadType === "token_count") return tokenUsageMessage(payload?.info) ?? "token count"
   }
   if (type === "response_item" && payload !== null) {
     if (payloadType === "reasoning") {
       const text = reasoningSummaryText(payload.summary)
-      return text.length > 0 ? `thinking: ${text.slice(0, 160)}` : "thinking…"
+      return text.length > 0 ? `thinking: ${clipOneLine(text, 1800)}` : "thinking…"
     }
     if (payloadType === "message" && payload.role === "assistant") {
       const text = textFromContent(payload.content, "output_text").replace(/\s+/g, " ").trim()
-      return text.length > 0 ? `agent: ${text.slice(0, 200)}` : "agent message"
+      return text.length > 0 ? `agent: ${clipOneLine(text, 200)}` : "agent message"
     }
   }
 
@@ -245,10 +415,10 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
     const contentText = textFromContent((item as Record<string, unknown>).content, "output_text")
     return contentText.replace(/\s+/g, " ").trim()
   })()
-  if (item.type === "agent_message") return itemText ? `agent: ${itemText.slice(0, 200)}` : "agent message"
+  if (item.type === "agent_message") return itemText ? `agent: ${clipOneLine(itemText, 200)}` : "agent message"
   if (item.type === "reasoning") {
     const text = itemText || reasoningSummaryText((item as Record<string, unknown>).summary)
-    return text ? `thinking: ${text.slice(0, 160)}` : "thinking…"
+    return text ? `thinking: ${clipOneLine(text, 1800)}` : "thinking…"
   }
   if (item.type === "command_execution") {
     const command = typeof item.command === "string" ? item.command : "command"
@@ -276,6 +446,151 @@ export function summarizeCodexThreadEvent(raw: unknown): string {
     return `error: ${message}`
   }
   return `${type}: ${item.type}`
+}
+
+async function runCodexHumanComposerStream(
+  prompt: string,
+  options: CodexComposerOptions,
+  resolved: {
+    account: ResolvedPylonAccountSelection | null
+    config: CodexAgentConfig
+    env: Record<string, string | undefined>
+    sandboxMode: CodexComposerSandboxMode
+  },
+  callbacks: CodexComposerCallbacks,
+): Promise<CodexComposerResult> {
+  const codexPath = resolveCodexCliPath()
+  const cliEnv = cliEnvironment(resolved.env, codexPath.pathDirs)
+  const args = [
+    "exec",
+    "-C",
+    options.cwd,
+    "--skip-git-repo-check",
+    "-s",
+    resolved.sandboxMode,
+    "--color",
+    "never",
+    "-c",
+    `approval_policy="${options.approvalPolicy ?? "never"}"`,
+    "-c",
+    `sandbox_workspace_write.network_access=${options.networkAccessEnabled ?? false}`,
+    "-c",
+    `model_reasoning_summary="detailed"`,
+    "-c",
+    "show_raw_agent_reasoning=true",
+    "-c",
+    "hide_agent_reasoning=false",
+  ]
+  const model = options.model ?? resolved.config.model
+  if (model !== undefined) args.push("--model", model)
+  args.push("-")
+
+  const abort = new AbortController()
+  const abortFromCaller = () => abort.abort()
+  if (options.abortSignal?.aborted) abort.abort()
+  else options.abortSignal?.addEventListener("abort", abortFromCaller, { once: true })
+  const timer = options.timeoutMs === undefined
+    ? null
+    : setTimeout(() => abort.abort(), options.timeoutMs)
+
+  let eventCount = 0
+  let textResult = ""
+  let threadId: string | null = null
+  let totalTokens = 0
+  const emit = (summary: string) => {
+    eventCount += 1
+    callbacks.onEvent?.(summary, eventCount)
+  }
+
+  emit("thread started")
+  emit("turn started")
+
+  const child = spawn(codexPath.executablePath, args, {
+    env: cliEnv,
+    stdio: ["pipe", "pipe", "pipe"],
+  })
+  if (!child.stdin || !child.stdout || !child.stderr) {
+    child.kill()
+    throw new Error("Codex exec failed to open stdio pipes")
+  }
+  const killChild = () => {
+    try {
+      child.kill("SIGTERM")
+    } catch {
+      // best effort cancellation
+    }
+  }
+  abort.signal.addEventListener("abort", killChild, { once: true })
+  child.stdin.end(prompt)
+
+  child.stdout?.resume()
+  const stderrLines: string[] = []
+  const exitPromise = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+    child.once("exit", (code, signal) => resolve({ code, signal }))
+  })
+
+  const parser = createCodexHumanOutputParser()
+  const transcript = readline.createInterface({ input: child.stderr, crlfDelay: Infinity })
+  try {
+    for await (const line of transcript) {
+      stderrLines.push(line)
+      const parsed = parser(line)
+      if (parsed === null) continue
+      if (parsed.type === "thread") {
+        threadId = parsed.threadId
+        callbacks.onThreadId?.(threadId, stableRef("session.pylon.codex_composer", threadId))
+      } else if (parsed.type === "reasoning") {
+        emit(`thinking: ${clipOneLine(parsed.text, 1800)}`)
+      } else if (parsed.type === "agent") {
+        textResult = textResult.length === 0 ? parsed.text : `${textResult}\n${parsed.text}`
+        emit(`agent: ${clipOneLine(parsed.text, 200)}`)
+        callbacks.onText?.(textResult)
+      } else if (parsed.type === "tokens") {
+        totalTokens = parsed.totalTokens
+        emit(`tokens used: ${parsed.totalTokens}`)
+      }
+    }
+    const { code, signal } = await exitPromise
+    if (abort.signal.aborted) {
+      throw new Error(options.abortSignal?.aborted ? "Codex composer cancelled" : "Codex composer timed out")
+    }
+    if (code !== 0 || signal !== null) {
+      const detail = signal === null ? `code ${code ?? 1}` : `signal ${signal}`
+      throw new Error(`Codex exec exited with ${detail}: ${stderrLines.join("\n")}`)
+    }
+    if (totalTokens > 0) {
+      callbacks.onUsage?.({ inputTokens: 0, outputTokens: totalTokens, totalTokens })
+      if (options.usageStateSummary) {
+        await recordPylonAccountUsageObservation(options.usageStateSummary, {
+          provider: "codex",
+          account: resolved.account,
+          localSessionUsage: {
+            provider: "codex",
+            sessionRef: threadId === null ? null : stableRef("session.pylon.codex_composer", threadId),
+            inputTokens: 0,
+            outputTokens: totalTokens,
+            totalTokens,
+          },
+        })
+      }
+    }
+    emit("turn completed")
+    return {
+      commandCount: 0,
+      editedFileCount: 0,
+      eventCount,
+      inputTokens: 0,
+      outputTokens: totalTokens,
+      text: textResult,
+      threadId,
+      totalTokens,
+    }
+  } finally {
+    transcript.close()
+    if (timer !== null) clearTimeout(timer)
+    options.abortSignal?.removeEventListener("abort", abortFromCaller)
+    abort.signal.removeEventListener("abort", killChild)
+  }
 }
 
 export async function runCodexComposerStream(
@@ -317,6 +632,14 @@ export async function runCodexComposerStream(
     const blockers = readiness.blockerRefs.length > 0 ? ` (${readiness.blockerRefs.join(", ")})` : ""
     throw new Error(`Codex composer unavailable: ${readiness.state}${blockers}`)
   }
+  if (options.humanReadableReasoning === true && options.importer === undefined) {
+    return runCodexHumanComposerStream(
+      prompt,
+      options,
+      { account, config, env, sandboxMode },
+      callbacks,
+    )
+  }
 
   const importer = options.importer ?? ((specifier: string) => import(specifier))
   const sdk = (await importer(CODEX_AGENT_SDK_PACKAGE)) as CodexSdkModule
@@ -336,7 +659,13 @@ export async function runCodexComposerStream(
   let threadId: string | null = null
 
   try {
-    const codex = new sdk.Codex({ env })
+    const codex = new sdk.Codex({
+      env,
+      config: {
+        model_reasoning_summary: "detailed",
+        show_raw_agent_reasoning: true,
+      },
+    })
     const thread = codex.startThread({
       workingDirectory: options.cwd,
       sandboxMode,

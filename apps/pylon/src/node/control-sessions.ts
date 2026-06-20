@@ -751,6 +751,7 @@ async function defaultControlSessionExecutor(
         cwd: input.cwd,
         env: input.env,
         executionMode,
+        humanReadableReasoning: true,
         ...(config.model === undefined ? {} : { model: config.model }),
         networkAccessEnabled,
         sandboxMode,

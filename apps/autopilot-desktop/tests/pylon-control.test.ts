@@ -49,6 +49,7 @@ describe("Pylon control client", () => {
 
     test("rejects a 401 (stale/wrong token)", async () => {
       const fetchFn: typeof fetch = async (input, init) => {
+        if (String(input).endsWith("/health")) return Response.json(healthFixture)
         expect(String(input)).toBe(`${baseUrl}/command`)
         expect(init?.method).toBe("POST")
         expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer stale")
@@ -59,14 +60,27 @@ describe("Pylon control client", () => {
     })
 
     test("accepts a 200 (server authenticated the token)", async () => {
-      const fetchFn: typeof fetch = async () =>
-        Response.json({ ok: true, result: sessionListFixture })
+      const fetchFn: typeof fetch = async (input) =>
+        String(input).endsWith("/health")
+          ? Response.json(healthFixture)
+          : Response.json({ ok: true, result: sessionListFixture })
       expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(true)
     })
 
     test("accepts any non-401 status (e.g. 500) — reachable + authenticated", async () => {
-      const fetchFn: typeof fetch = async () => new Response("boom", { status: 500 })
+      const fetchFn: typeof fetch = async (input) =>
+        String(input).endsWith("/health")
+          ? Response.json(healthFixture)
+          : new Response("boom", { status: 500 })
       expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(true)
+    })
+
+    test("rejects an otherwise reachable old node without desktop capabilities", async () => {
+      const fetchFn: typeof fetch = async (input) =>
+        String(input).endsWith("/health")
+          ? Response.json({ ok: true, schema: "openagents.pylon.control.v0.3" })
+          : Response.json({ ok: true, result: sessionListFixture })
+      expect(await probeControlToken({ baseUrl, token: "good", fetchFn })).toBe(false)
     })
 
     test("treats a transport error as not-accepted", async () => {

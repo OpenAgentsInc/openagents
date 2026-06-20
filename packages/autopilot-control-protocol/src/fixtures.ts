@@ -1,10 +1,14 @@
 // Shared node fixtures (CL-1) so every client tests against the same node
 // behavior without a live node. Refs only — no secrets, paths, or raw payloads.
 
-import { CONTROL_SCHEMA_TAG } from "./control.js"
+import { CONTROL_HEALTH_CAPABILITIES, CONTROL_SCHEMA_TAG } from "./control.js"
 import type { SessionEvent, SessionSummary } from "./control.js"
 
-export const healthFixture = { ok: true, schema: CONTROL_SCHEMA_TAG }
+export const healthFixture = {
+  ok: true,
+  schema: CONTROL_SCHEMA_TAG,
+  capabilities: [...CONTROL_HEALTH_CAPABILITIES],
+}
 
 export const sessionListFixture: SessionSummary[] = [
   {

@@ -20,8 +20,16 @@ describe("external Codex session normalization (#4951)", () => {
       .toMatchObject({ phase: "tool_result", messageText: "result: exit 0 ok" })
     expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", summary: [{ text: "checking files" }] } }))
       .toMatchObject({ phase: "reasoning", messageText: "thinking: checking files" })
+    expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", text: "checking live logs" } }))
+      .toMatchObject({
+        phase: "reasoning",
+        messageText: "thinking: checking live logs",
+        messageFull: "thinking: checking live logs",
+      })
     expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", summary: [] } }))
       .toMatchObject({ phase: "reasoning", messageText: "thinking…" })
+    expect(ev({ timestamp: "t", type: "response_item", payload: { type: "reasoning", summary: [], encrypted_content: "sealed" } }))
+      .toBeNull()
   })
 
   test("normalizes Codex task status and thinking token counts", () => {

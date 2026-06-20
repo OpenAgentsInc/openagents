@@ -13,7 +13,14 @@ import type { PylonEvent, PylonLogEntry, TelemetryPaneState, WalletPaneState } f
 import type { PylonNodeRuntime } from "./runtime"
 import { createBridgePairingService } from "./bridge-pairing-service"
 import { controlCommandValidationReason } from "./control-command-error"
-import { verbAllowedByCapabilities, type BridgeRequestVerb, type Capability } from "@openagentsinc/autopilot-control-protocol"
+import {
+  CONTROL_HEALTH_CAPABILITIES,
+  CONTROL_SCHEMA_TAG,
+  verbAllowedByCapabilities,
+  type BridgeRequestVerb,
+  type Capability,
+} from "@openagentsinc/autopilot-control-protocol"
+import { PYLON_VERSION } from "../version"
 import type {
   ControlSessionActions,
   AppleFmSessionStartCommand,
@@ -368,7 +375,12 @@ export const startControlServer = (
           fetch: async (request) => {
             const url = new URL(request.url)
             if (url.pathname === "/health") {
-              return Response.json({ ok: true, schema: "openagents.pylon.control.v0.3" })
+              return Response.json({
+                ok: true,
+                schema: CONTROL_SCHEMA_TAG,
+                version: PYLON_VERSION,
+                capabilities: [...CONTROL_HEALTH_CAPABILITIES],
+              })
             }
 
             // CL-14 bridge pairing exchange: pre-bearer (the single-use

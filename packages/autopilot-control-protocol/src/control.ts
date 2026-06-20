@@ -6,6 +6,12 @@ import { Effect, Schema as S } from "effect"
 // `openagents.pylon.control.v0.3` (Pylon is the internal node/runtime name).
 
 export const CONTROL_SCHEMA_TAG = "openagents.pylon.control.v0.3" as const
+export const CONTROL_HEALTH_CAPABILITIES = [
+  "session.event_stream.v1",
+  "session.external_alias.v1",
+  "codex.reasoning_summary.v1",
+] as const
+export type ControlHealthCapability = typeof CONTROL_HEALTH_CAPABILITIES[number]
 
 export const Adapter = S.Literals(["codex", "claude_agent", "apple_fm"])
 export type Adapter = typeof Adapter.Type

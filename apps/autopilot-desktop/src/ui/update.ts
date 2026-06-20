@@ -202,11 +202,20 @@ const shellEventText = (event: {
   readonly detail: string
   readonly full?: string
 }): string => {
+  const detail = event.detail.trim()
   const text =
     typeof event.full === "string" && event.full.trim() !== ""
       ? event.full
-      : event.detail
-  return text.trim()
+      : detail
+  const trimmed = text.trim()
+  if (
+    trimmed !== "" &&
+    /^thinking[:…]/i.test(detail) &&
+    !/^thinking[:…]/i.test(trimmed)
+  ) {
+    return `thinking: ${trimmed}`
+  }
+  return trimmed
 }
 
 const latestShellAgentText = (

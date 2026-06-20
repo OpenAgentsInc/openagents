@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import {
   CODEX_LOCAL_DANGER_PUBLIC_PATH_BLOCKER_REF,
   CODEX_LOCAL_DANGER_REQUIRES_OPT_IN_BLOCKER_REF,
+  createCodexHumanOutputParser,
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
   sandboxModeForCodexComposerExecutionMode,
@@ -89,7 +90,7 @@ async function* fakeCodexEvents() {
 describe("Codex composer SDK stream", () => {
   test("runs the TypeScript SDK in the selected cwd and surfaces typed events", async () => {
     let threadOptions: Record<string, unknown> | null = null
-    let clientEnv: Record<string, string | undefined> | null = null
+    let clientOptions: { env?: Record<string, string | undefined>; config?: Record<string, unknown> } | null = null
     let promptSeen = ""
     let signalSeen = false
     const eventSummaries: string[] = []
@@ -100,8 +101,8 @@ describe("Codex composer SDK stream", () => {
       if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
       return {
         Codex: class {
-          constructor(options?: { env?: Record<string, string | undefined> }) {
-            clientEnv = options?.env ?? null
+          constructor(options?: { env?: Record<string, string | undefined>; config?: Record<string, unknown> }) {
+            clientOptions = options ?? null
           }
           startThread(options: Record<string, unknown>) {
             threadOptions = options
@@ -148,7 +149,11 @@ describe("Codex composer SDK stream", () => {
       skipGitRepoCheck: true,
       workingDirectory: "/tmp/current-repo",
     })
-    expect(clientEnv).toMatchObject({ CODEX_API_KEY: "test-key-shape" })
+    expect(clientOptions?.env).toMatchObject({ CODEX_API_KEY: "test-key-shape" })
+    expect(clientOptions?.config).toMatchObject({
+      model_reasoning_summary: "detailed",
+      show_raw_agent_reasoning: true,
+    })
     expect(textUpdates).toEqual(["Patched the composer."])
     expect(threadRefs).toEqual(["session.pylon.codex_composer.17d51880c7bad062ae498c8e"])
     expect(usageUpdates).toEqual([15])
@@ -166,6 +171,38 @@ describe("Codex composer SDK stream", () => {
       threadId: "thread.test.codex",
       totalTokens: 15,
     })
+  })
+
+  test("summarizes raw reasoning item text instead of a placeholder", () => {
+    expect(summarizeCodexThreadEvent({
+      type: "item.completed",
+      item: {
+        id: "reasoning-1",
+        type: "reasoning",
+        text: "Inspect the current process and compare its health capabilities.",
+      },
+    })).toBe("thinking: Inspect the current process and compare its health capabilities.")
+  })
+
+  test("parses readable reasoning from Codex human output", () => {
+    const parse = createCodexHumanOutputParser()
+    expect(parse("session id: 019ee33e-5a66-7ac2-ad23-bf6cc50ef822")).toEqual({
+      type: "thread",
+      threadId: "019ee33e-5a66-7ac2-ad23-bf6cc50ef822",
+    })
+    expect(parse("hook: UserPromptSubmit Completed")).toBeNull()
+    expect(parse("**Verifying prime status**")).toEqual({
+      type: "reasoning",
+      text: "Verifying prime status",
+    })
+    expect(parse("I checked primes up to the square root.")).toEqual({
+      type: "reasoning",
+      text: "I checked primes up to the square root.",
+    })
+    expect(parse("codex")).toBeNull()
+    expect(parse("ready")).toEqual({ type: "agent", text: "ready" })
+    expect(parse("tokens used")).toBeNull()
+    expect(parse("11,868")).toEqual({ type: "tokens", totalTokens: 11868 })
   })
 
   test("reports readiness blockers before starting the SDK thread", async () => {

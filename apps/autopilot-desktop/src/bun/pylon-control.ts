@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
+  CONTROL_HEALTH_CAPABILITIES,
   decodeSessionSummary,
   pairBridge,
   createBridgeTransport,
@@ -68,6 +69,7 @@ export async function connectBridgeDesktop(input: {
 type NodeHealth = {
   ok?: unknown
   schema?: unknown
+  capabilities?: unknown
 }
 
 type CommandResponse = {
@@ -112,6 +114,29 @@ const optionalString = (value: unknown): string | null =>
 const requiredString = (value: unknown, fallback: string): string =>
   typeof value === "string" && value.trim() !== "" ? value : fallback
 
+export function controlHealthSupportsDesktop(health: NodeHealth): boolean {
+  if (health.ok !== true || typeof health.schema !== "string") return false
+  if (!Array.isArray(health.capabilities)) return false
+  const capabilities = new Set(
+    health.capabilities.filter((capability): capability is string => typeof capability === "string"),
+  )
+  return CONTROL_HEALTH_CAPABILITIES.every(capability => capabilities.has(capability))
+}
+
+export async function probeControlCompatibility(input: {
+  baseUrl: string
+  fetchFn?: typeof fetch
+}): Promise<boolean> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/health`)
+    if (!res.ok) return false
+    return controlHealthSupportsDesktop((await res.json()) as NodeHealth)
+  } catch {
+    return false
+  }
+}
+
 export function readControlToken(pylonHome: string): string | null {
   const tokenPath = join(pylonHome, "control-token")
   if (!existsSync(tokenPath)) return null
@@ -136,7 +161,9 @@ export async function probeControlToken(input: {
 }): Promise<boolean> {
   const fetchFn = input.fetchFn ?? fetch
   try {
-    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+    const baseUrl = input.baseUrl.replace(/\/+$/, "")
+    if (!(await probeControlCompatibility({ baseUrl, fetchFn }))) return false
+    const res = await fetchFn(`${baseUrl}/command`, {
       method: "POST",
       headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
       body: JSON.stringify({ type: "session.list" }),
@@ -735,6 +762,9 @@ export async function fetchNodeState(input: {
   const health = (await healthResponse.json()) as NodeHealth
   if (typeof health.ok !== "boolean" || typeof health.schema !== "string") {
     throw new Error("Pylon health response was not a control health payload")
+  }
+  if (!controlHealthSupportsDesktop(health)) {
+    throw new Error("Pylon control server is missing required desktop capabilities")
   }
 
   const commandResponse = await fetchFn(`${baseUrl}/command`, {

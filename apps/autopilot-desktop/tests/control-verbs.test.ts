@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { healthFixture } from "@openagentsinc/autopilot-control-protocol/fixtures"
 import {
   cancelSession,
   fetchAppleFmReadiness,
@@ -14,7 +15,7 @@ import {
 function stubFetch(routes: Record<string, unknown>): typeof fetch {
   return (async (url: string, init?: RequestInit) => {
     if (String(url).endsWith("/health")) {
-      return new Response(JSON.stringify(routes["__health"] ?? { ok: true, schema: "openagents.pylon.control.v0.3" }), {
+      return new Response(JSON.stringify(routes["__health"] ?? healthFixture), {
         status: 200,
       })
     }
@@ -91,7 +92,7 @@ describe("CL-46 control verbs", () => {
     let captured: Record<string, unknown> | null = null
     const captureFetch = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       captured = init?.body ? JSON.parse(String(init.body)) : null
       return new Response(JSON.stringify({ ok: true, result: { sessionRef: "sess-gce" } }), { status: 200 })
@@ -120,7 +121,7 @@ describe("CL-46 control verbs", () => {
     let captured: Record<string, unknown> | null = null
     const captureFetch = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       captured = init?.body ? JSON.parse(String(init.body)) : null
       return new Response(JSON.stringify({ ok: true, result: { sessionRef: "sess-x" } }), { status: 200 })
@@ -138,7 +139,7 @@ describe("CL-46 control verbs", () => {
   test("spawnSession surfaces the node's typed error body over a bare control status", async () => {
     const typedErrorFetch = (async (url: string) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       return new Response(
         JSON.stringify({
@@ -160,7 +161,7 @@ describe("CL-46 control verbs", () => {
   test("spawnSession falls back to control <status> when the error body is unparseable", async () => {
     const opaqueFetch = (async (url: string) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       return new Response("not json", { status: 503 })
     }) as unknown as typeof fetch
@@ -194,7 +195,7 @@ describe("CL-46 control verbs", () => {
     const externalSessionRef = "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be"
     const fetchFn = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       const body = init?.body ? JSON.parse(String(init.body)) : {}
       if (body.type === "session.list") {
@@ -271,7 +272,7 @@ describe("CL-46 control verbs", () => {
     const externalSessionRef = "session.pylon.codex_composer.live"
     const fetchFn = (async (url: string, init?: RequestInit) => {
       if (String(url).endsWith("/health")) {
-        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+        return new Response(JSON.stringify(healthFixture), { status: 200 })
       }
       const body = init?.body ? JSON.parse(String(init.body)) : {}
       if (body.type === "session.list") {

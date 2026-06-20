@@ -158,6 +158,7 @@ describe("ensureManagedNode", () => {
     env: {} as Record<string, string | undefined>,
     fileExists: (path: string) => path === pylonEntry,
     probeReady: async () => true,
+    probeCompatible: async () => true,
     sleep: async () => {},
     bunBin: "/usr/bin/bun",
   }
@@ -179,6 +180,26 @@ describe("ensureManagedNode", () => {
     expect(spawned).toBe(0)
     // stop() is a no-op for an adopted node.
     expect(() => node.stop()).not.toThrow()
+  })
+
+  it("refuses to adopt an incompatible already-running node", async () => {
+    let spawned = 0
+    const statuses: NodeLaunchStatus[] = []
+    const node = await ensureManagedNode({
+      ...baseOptions,
+      discover: () => "/work/openagents/.pylon-tailnet",
+      probeCompatible: async () => false,
+      spawnNode: () => {
+        spawned += 1
+        return { pid: 1, kill: () => {} }
+      },
+      onStatus: status => statuses.push(status),
+    })
+
+    expect(node.mode).toBe("unavailable")
+    expect(node.home).toBeNull()
+    expect(spawned).toBe(0)
+    expect(statuses).toEqual(["failed"])
   })
 
   it("launches the repo node into a discoverable .pylon-local home when none is found", async () => {
@@ -382,6 +403,7 @@ describe("superviseManagedNode (restart / lifecycle)", () => {
     env: {} as Record<string, string | undefined>,
     fileExists: (path: string) => path === pylonEntry,
     probeReady: async () => true,
+    probeCompatible: async () => true,
     sleep: async () => {},
     bunBin: "/usr/bin/bun",
     readToken: () => "tok",
@@ -414,6 +436,25 @@ describe("superviseManagedNode (restart / lifecycle)", () => {
     await flush()
     expect(sup.mode()).toBe("adopted")
     expect(sup.status()).toBe("adopted")
+    expect(spawned).toBe(0)
+    sup.stop()
+  })
+
+  it("refuses incompatible already-running nodes without spawning over them", async () => {
+    let spawned = 0
+    const sup = superviseManagedNode({
+      ...baseOptions,
+      discover: () => "/work/openagents/.pylon-tailnet",
+      probeCompatible: async () => false,
+      spawnNode: () => {
+        spawned += 1
+        return { pid: 1, kill: () => {}, onExit: undefined }
+      },
+      schedule: immediateSchedule,
+    })
+    await flush()
+    expect(sup.mode()).toBe("unavailable")
+    expect(sup.status()).toBe("failed")
     expect(spawned).toBe(0)
     sup.stop()
   })
@@ -587,6 +628,7 @@ describe("ensureManagedNode auto-onboarding (AO-1/AO-2)", () => {
     env: {} as Record<string, string | undefined>,
     fileExists: (path: string) => path === pylonEntry,
     probeReady: async () => true,
+    probeCompatible: async () => true,
     sleep: async () => {},
     bunBin: "/usr/bin/bun",
     readToken: () => "tok",
@@ -822,6 +864,7 @@ describe("superviseManagedNode token-minted restart (AO-1/AO-2)", () => {
     env: {} as Record<string, string | undefined>,
     fileExists: (path: string) => path === pylonEntry,
     probeReady: async () => true,
+    probeCompatible: async () => true,
     sleep: async () => {},
     bunBin: "/usr/bin/bun",
     readinessIntervalMs: 1,
