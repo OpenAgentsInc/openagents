@@ -104,6 +104,30 @@ INERT and PURE: mints no money, reads no wallet, admits no settlement. The empty
 store still reports `settledModeFamilyCount: 0`, `settledModesBarMet: false`,
 `promiseState: 'red'`, `inert: true`.
 
+### Follow-up (this run): public-safe per-mode settlement MANIFEST
+
+The settlement-coverage auditor reports per-mode COUNTS (`settledReceiptCount`,
+`distinctSettlementRefCount`) but never the actual refs, and the projection's
+`PylonModeEarningRecord` collapses a mode's settled units to ONE representative
+`settlementReceiptRef`. So a mode with `settledCount: 3` exposed only one
+dereferenceable ref in any public surface — the other two settlements lived only
+inside the raw work-receipt store. An owner verifying a (receipt-first,
+owner-signed) green flip could not dereference each settled unit from a
+public-safe surface. This run closes that evidence gap:
+
+- `projectPylonSettlementManifest(receipts)` — PURE/INERT, always
+  `promiseState: 'red'`. Returns a public-safe per-mode manifest listing the
+  DISTINCT `settlementReceiptRefs` (first-seen order) backing each mode's
+  settled units, plus install-level totals and `coverageComplete`. Totals and
+  the coverage gate are delegated to `verifyWorkReceiptSettlementCoverage`, so
+  the manifest (evidence) and auditor (gate) can never disagree. An over-claim
+  surfaces honestly as `settledReceiptCount > settlementReceiptRefs.length`.
+- New tests: empty/covered/non-settled cases, distinct-refs enumeration,
+  in-mode over-claim visibility, and a manifest-vs-auditor agreement test.
+
+INERT and PURE: mints no money, reads no wallet, admits no live settled receipt.
+The empty manifest reports `promiseState: 'red'`, `inert: true`, no modes.
+
 ## What genuinely remains (blocker stays listed)
 
 `multi_earning_mode_receipts_missing` is **partially advanced, not cleared**:

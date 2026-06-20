@@ -7,6 +7,7 @@ import {
   RECEIPTABLE_AMOUNT_CLASSES,
   foldWorkReceiptsIntoEarningStore,
   makeInMemoryPylonModeWorkReceiptStore,
+  projectPylonSettlementManifest,
   recordModeWorkReceipt,
   verifyWorkReceiptSettlementCoverage,
   verifyWorkReceiptWorkUnitCoverage,
@@ -342,6 +343,137 @@ describe('pylon multi-earning settlement coverage (#5527)', () => {
     expect(coverage.allModesSettlementCovered).toBe(true)
     expect(coverage.perMode).toHaveLength(0)
     expect(coverage.totalSettledReceiptCount).toBe(0)
+  })
+})
+
+describe('pylon multi-earning settlement manifest (#5527)', () => {
+  test('empty receipts yield an empty, still-red, covered manifest', () => {
+    const manifest = projectPylonSettlementManifest([])
+    expect(manifest.promiseState).toBe('red')
+    expect(manifest.inert).toBe(true)
+    expect(manifest.perMode).toHaveLength(0)
+    expect(manifest.totalSettledReceiptCount).toBe(0)
+    expect(manifest.totalDistinctSettlementRefCount).toBe(0)
+    expect(manifest.coverageComplete).toBe(true)
+  })
+
+  test('enumerates the DISTINCT settlement refs per mode (not just a count)', () => {
+    const manifest = projectPylonSettlementManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_b',
+      }),
+      okReceipt({
+        mode: 'forum_tips',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.forum_tips.a',
+        receiptRef: 'receipt.public.pylon.forum_tips.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.forum_tips.settlement_a',
+      }),
+    ])
+    expect(manifest.coverageComplete).toBe(true)
+    expect(manifest.totalSettledReceiptCount).toBe(3)
+    expect(manifest.totalDistinctSettlementRefCount).toBe(3)
+    expect(manifest.perMode).toEqual([
+      {
+        mode: 'training',
+        settledReceiptCount: 2,
+        settlementReceiptRefs: [
+          'receipt.public.pylon.training.settlement_a',
+          'receipt.public.pylon.training.settlement_b',
+        ],
+      },
+      {
+        mode: 'forum_tips',
+        settledReceiptCount: 1,
+        settlementReceiptRefs: ['receipt.public.pylon.forum_tips.settlement_a'],
+      },
+    ])
+  })
+
+  test('non-settled receipts contribute nothing to the manifest', () => {
+    const manifest = projectPylonSettlementManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(manifest.perMode).toHaveLength(0)
+    expect(manifest.totalSettledReceiptCount).toBe(0)
+    expect(manifest.coverageComplete).toBe(true)
+  })
+
+  test('an in-mode shared settlement surfaces as count>refs and not covered', () => {
+    const manifest = projectPylonSettlementManifest([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+    ])
+    expect(manifest.coverageComplete).toBe(false)
+    expect(manifest.perMode[0]).toEqual({
+      mode: 'training',
+      settledReceiptCount: 2,
+      settlementReceiptRefs: ['receipt.public.pylon.training.settlement_shared'],
+    })
+    // The over-claim is visible: 2 settled units behind 1 dereferenceable ref.
+    expect(manifest.perMode[0]?.settledReceiptCount).toBeGreaterThan(
+      manifest.perMode[0]?.settlementReceiptRefs.length ?? 0,
+    )
+  })
+
+  test('manifest and coverage auditor never disagree on coverage', () => {
+    const receipts = [
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.shared.settlement',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.shared.settlement',
+      }),
+    ]
+    const manifest = projectPylonSettlementManifest(receipts)
+    const coverage = verifyWorkReceiptSettlementCoverage(receipts)
+    expect(manifest.coverageComplete).toBe(coverage.allModesSettlementCovered)
+    expect(manifest.coverageComplete).toBe(false)
+    expect(manifest.totalDistinctSettlementRefCount).toBe(
+      coverage.totalDistinctSettlementRefCount,
+    )
   })
 })
 
