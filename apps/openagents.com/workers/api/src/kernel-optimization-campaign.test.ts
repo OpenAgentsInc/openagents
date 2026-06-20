@@ -16,6 +16,7 @@ import {
   type KernelOptimizationSettlementItem,
   buildKernelOptimizationCampaign,
   evaluateKernelOptimizationCampaignRelease,
+  reconcileKernelOptimizationCampaignBaselines,
   reconcileKernelOptimizationCampaignOps,
   reconcileKernelOptimizationCampaignPerJob,
   reconcileKernelOptimizationCampaignSettlement,
@@ -661,6 +662,165 @@ describe('kernel-optimization campaign op reconciliation', () => {
   })
 })
 
+describe('kernel-optimization campaign baseline reconciliation', () => {
+  // Two ops on the same target, each dispatched to beat a named 328 tok/s
+  // baseline (see `job`/`opJob` above: baselineTokensPerSecond: 328).
+  const opJob = (
+    targetModel: string,
+    kernelRef: string,
+  ): KernelOptimizationJobSpec => ({
+    baselineRecordRef: `record.public.${targetModel}.cuda.a10g.${kernelRef}.328tps`,
+    baselineTokensPerSecond: 328,
+    budgetSats: 50_000,
+    deadlineRef: 'deadline.public.2026-07-01',
+    device: 'cuda',
+    hardwareRef: 'nvidia-a10g',
+    kernelRef,
+    targetModel,
+    validatorDeviceRef: 'device.public.validator.metal.m3',
+  })
+
+  const campaignRef = 'campaign.qwen35-0.5b-baseline'
+  const spec = {
+    campaignRef,
+    jobs: [
+      opJob('qwen-3.5-0.5b', 'rmsnorm'),
+      opJob('qwen-3.5-0.5b', 'attention.flash'),
+    ],
+  }
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  // An ACCEPTED verdict (verified parity + improvement) whose speedup was scored
+  // against a weaker baseline than the dispatched named 328 tok/s floor.
+  const verdictAgainstBaseline = (
+    op: string,
+    baselineTokensPerSecond: number,
+    optimizedTokensPerSecond: number,
+  ) =>
+    verifyKernelOptimizationParity({
+      baseline: {
+        device: 'cuda',
+        graphDigest: verifiedParity.graphDigest,
+        hardwareRef: 'nvidia-a10g',
+        kernelRef: 'baseline-runtime',
+        opRef: op,
+        targetModel: 'qwen-3.5-0.5b',
+        tokensPerSecond: baselineTokensPerSecond,
+      },
+      baselineParityVerdict: {
+        ...baselineParity,
+        graphDigest: verifiedParity.graphDigest,
+      },
+      optimized: {
+        device: 'cuda',
+        graphDigest: verifiedParity.graphDigest,
+        hardwareRef: 'nvidia-a10g',
+        kernelRef: `${op}-optimized`,
+        opRef: op,
+        targetModel: 'qwen-3.5-0.5b',
+        tokensPerSecond: optimizedTokensPerSecond,
+      },
+      optimizedOpRef: op,
+      parityVerdict: verifiedParity,
+    })
+
+  test('passes when every verdict scored against its dispatched named baseline', () => {
+    const items: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[0]!.requestedSlug ?? '',
+        verdict: verdictAgainstBaseline('rmsnorm', 328, 523),
+      },
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[1]!.requestedSlug ?? '',
+        verdict: verdictAgainstBaseline('attention.flash', 328, 401),
+      },
+    ]
+    const report = reconcileKernelOptimizationCampaignBaselines(spec, items)
+
+    expect(report.classId).toBe(KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID)
+    expect(report.campaignRef).toBe(campaignRef)
+    expect(report.ok).toBe(true)
+    expect(report.matchedSlugs).toHaveLength(2)
+    expect(report.baselineMismatches).toEqual([])
+    expect(report.discrepancies).toEqual([])
+  })
+
+  test('catches a baseline swap the target, op, and per-job checks all miss', () => {
+    // The rmsnorm job's verdict was scored against a cherry-picked 200 tok/s
+    // baseline (beating it at 250) instead of the dispatched named 328 floor.
+    // Same slug, escrow, target, and op, so every other reconciler passes.
+    const swapped: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[0]!.requestedSlug ?? '',
+        verdict: verdictAgainstBaseline('rmsnorm', 200, 250),
+      },
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[1]!.requestedSlug ?? '',
+        verdict: verdictAgainstBaseline('attention.flash', 328, 401),
+      },
+    ]
+
+    // Every other reconciler is blind to it.
+    expect(reconcileKernelOptimizationCampaignTargets(spec, swapped).ok).toBe(true)
+    expect(reconcileKernelOptimizationCampaignOps(spec, swapped).ok).toBe(true)
+    expect(
+      reconcileKernelOptimizationCampaignPerJob(campaign, swapped).ok,
+    ).toBe(true)
+
+    // Only the baseline reconciler catches it.
+    const report = reconcileKernelOptimizationCampaignBaselines(spec, swapped)
+    expect(report.ok).toBe(false)
+    expect(report.matchedSlugs).toHaveLength(1)
+    expect(report.baselineMismatches).toHaveLength(1)
+    expect(report.baselineMismatches[0]?.requestedSlug).toBe(
+      campaign.requests[0]!.requestedSlug ?? '',
+    )
+    expect(
+      report.baselineMismatches[0]?.dispatchedBaselineTokensPerSecond,
+    ).toBe(328)
+    expect(
+      report.baselineMismatches[0]?.settledVerdictBaselineTokensPerSecond,
+    ).toBe(200)
+    expect(report.discrepancies.some((d) => d.includes('baseline swap'))).toBe(
+      true,
+    )
+  })
+
+  test('flags a settlement for a slug this campaign never dispatched', () => {
+    const items: KernelOptimizationKeyedSettlementItem[] = [
+      {
+        budgetSats: 50_000,
+        requestedSlug: campaign.requests[0]!.requestedSlug ?? '',
+        verdict: verdictAgainstBaseline('rmsnorm', 328, 523),
+      },
+      {
+        budgetSats: 50_000,
+        requestedSlug: 'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+        verdict: verdictAgainstBaseline('rmsnorm', 328, 523),
+      },
+    ]
+    const report = reconcileKernelOptimizationCampaignBaselines(spec, items)
+
+    expect(report.ok).toBe(false)
+    expect(report.unmatchedSlugs).toEqual([
+      'kernel-opt-rmsnorm-not-in-this-campaign-cuda',
+    ])
+    expect(
+      report.discrepancies.some((d) => d.includes('never dispatched')),
+    ).toBe(true)
+  })
+
+  test('rejects a spec the campaign builder would reject (empty jobs)', () => {
+    expect(() =>
+      reconcileKernelOptimizationCampaignBaselines({ campaignRef, jobs: [] }, []),
+    ).toThrow(KernelOptimizationDispatchError)
+  })
+})
+
 describe('kernel-optimization campaign release gate', () => {
   // A campaign hosting two ops on the SAME target, so every gate is exercised:
   // the totals/per-job gates are blind to op swaps, and the coarse target gate
@@ -713,6 +873,7 @@ describe('kernel-optimization campaign release gate', () => {
     expect(gate.perJob.ok).toBe(true)
     expect(gate.targets.ok).toBe(true)
     expect(gate.ops.ok).toBe(true)
+    expect(gate.baselines.ok).toBe(true)
     // The settlement the gate evaluated is exposed: both accepted, full payout.
     expect(gate.settlement.acceptedCount).toBe(2)
     expect(gate.settlement.payoutOwedSats).toBe(100_000)
@@ -738,6 +899,54 @@ describe('kernel-optimization campaign release gate', () => {
     expect(gate.ops.ok).toBe(false)
     expect(gate.discrepancies.some((d) => d.startsWith('op: '))).toBe(true)
     expect(gate.discrepancies.some((d) => d.includes('op swap'))).toBe(true)
+  })
+
+  test('fails when only the baseline gate catches a cherry-picked baseline', () => {
+    // Both items filed under their dispatched slug, escrow, target, and op, but
+    // the rmsnorm verdict scored its speedup against a weaker 200 tok/s baseline
+    // instead of the dispatched named 328 floor. Totals + per-job + target + op
+    // all pass; only the baseline gate catches it — proving the composite gate is
+    // not redundant with any single reconciler.
+    const cherryPicked = verifyKernelOptimizationParity({
+      baseline: {
+        device: 'cuda',
+        graphDigest: verifiedParity.graphDigest,
+        hardwareRef: 'nvidia-a10g',
+        kernelRef: 'baseline-runtime',
+        opRef: 'rmsnorm',
+        targetModel: 'qwen-3.5-0.5b',
+        tokensPerSecond: 200,
+      },
+      baselineParityVerdict: {
+        ...baselineParity,
+        graphDigest: verifiedParity.graphDigest,
+      },
+      optimized: {
+        device: 'cuda',
+        graphDigest: verifiedParity.graphDigest,
+        hardwareRef: 'nvidia-a10g',
+        kernelRef: 'rmsnorm-optimized',
+        opRef: 'rmsnorm',
+        targetModel: 'qwen-3.5-0.5b',
+        tokensPerSecond: 250,
+      },
+      optimizedOpRef: 'rmsnorm',
+      parityVerdict: verifiedParity,
+    })
+    const items = [
+      keyedFor(0, 'rmsnorm', { verdict: cherryPicked }),
+      keyedFor(1, 'attention.flash'),
+    ]
+    const gate = evaluateKernelOptimizationCampaignRelease(spec, items)
+
+    expect(gate.ok).toBe(false)
+    expect(gate.totals.ok).toBe(true)
+    expect(gate.perJob.ok).toBe(true)
+    expect(gate.targets.ok).toBe(true)
+    expect(gate.ops.ok).toBe(true)
+    expect(gate.baselines.ok).toBe(false)
+    expect(gate.discrepancies.some((d) => d.startsWith('baseline: '))).toBe(true)
+    expect(gate.discrepancies.some((d) => d.includes('baseline swap'))).toBe(true)
   })
 
   test('fails and prefixes per-job drift when a job is settled twice', () => {

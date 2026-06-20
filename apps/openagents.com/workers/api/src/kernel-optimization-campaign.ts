@@ -113,6 +113,28 @@ export type KernelOptimizationOpMismatch = Readonly<{
 }>
 
 /**
+ * One per-job disagreement between the NAMED-BASELINE tok/s the dispatched job
+ * promised to beat and the baseline tok/s the settlement's parity verdict
+ * actually measured its speedup against — a "baseline swap".
+ *
+ * The work definition requires the optimized kernel to beat a NAMED baseline on
+ * the declared hardware. The parity verdict carries the baseline it was scored
+ * against (`baselineTokensPerSecond`), but it does not know the named baseline
+ * the job was dispatched with — the verifier computes the speedup against
+ * whatever baseline record it was handed. So a settlement can carry a verdict
+ * whose baseline is WEAKER than the dispatched named baseline (e.g. dispatched
+ * to beat 328 tok/s, but the verdict measured a speedup against a cherry-picked
+ * 200 tok/s baseline), manufacturing an "improvement" that never cleared the
+ * named floor — while the (model/device/hardware) target and the op both still
+ * match. This binds the verdict's baseline back to the dispatched named baseline.
+ */
+export type KernelOptimizationBaselineMismatch = Readonly<{
+  requestedSlug: string
+  dispatchedBaselineTokensPerSecond: number
+  settledVerdictBaselineTokensPerSecond: number
+}>
+
+/**
  * The result of binding each settlement's parity verdict back to the SPECIFIC
  * dispatched job it claims to settle, by target.
  *
@@ -165,6 +187,37 @@ export type KernelOptimizationCampaignOpReconciliation = Readonly<{
   unmatchedSlugs: ReadonlyArray<string>
   /** Slugs whose settled verdict optimizes a different op than dispatched. */
   opMismatches: ReadonlyArray<KernelOptimizationOpMismatch>
+  /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
+  discrepancies: ReadonlyArray<string>
+}>
+
+/**
+ * The result of binding each settlement's parity verdict back to the SPECIFIC
+ * dispatched job it claims to settle, by NAMED BASELINE.
+ *
+ * `reconcileKernelOptimizationCampaignTargets` and `...Ops` bind a verdict to
+ * its job by (model, device, hardware) and by op, but neither checks WHICH
+ * baseline the verdict actually measured its speedup against. The dispatched job
+ * names a baseline tok/s the optimized kernel must beat; the verdict carries the
+ * baseline it was scored against. A settlement filed under a job's slug, with
+ * that job's exact budget, the right target, and the right op, but carrying a
+ * verdict whose baseline is WEAKER than the dispatched named baseline, clears
+ * the per-job, totals, target, AND op reconcilers — yet the "improvement" was
+ * scored against a baseline the job never named, so the named floor was never
+ * cleared. This report checks the verdict's own `baselineTokensPerSecond` equals
+ * the named-baseline tok/s the dispatched job under that slug promised to beat.
+ */
+export type KernelOptimizationCampaignBaselineReconciliation = Readonly<{
+  classId: typeof KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID
+  campaignRef: string
+  /** True iff every settled verdict scored against its dispatched baseline. */
+  ok: boolean
+  /** Slugs whose settled verdict baseline matched the dispatched named baseline. */
+  matchedSlugs: ReadonlyArray<string>
+  /** Slugs settled but not dispatched by this campaign (baseline unknowable). */
+  unmatchedSlugs: ReadonlyArray<string>
+  /** Slugs whose settled verdict scored against a different baseline tok/s. */
+  baselineMismatches: ReadonlyArray<KernelOptimizationBaselineMismatch>
   /** Human-readable reasons the reconciliation failed; empty iff `ok`. */
   discrepancies: ReadonlyArray<string>
 }>
@@ -756,10 +809,99 @@ export const reconcileKernelOptimizationCampaignOps = (
 }
 
 /**
+ * Bind each settlement's parity verdict back to the specific dispatched job it
+ * claims to settle, BY NAMED BASELINE.
+ *
+ * This closes the gap the target and op reconcilers leave open: both bind a
+ * verdict to its dispatched job by identity (model/device/hardware, then op),
+ * but neither checks the baseline the speedup was actually measured against. The
+ * work definition requires the optimized kernel to beat a NAMED baseline tok/s
+ * on declared hardware. The parity verifier scores the speedup against whatever
+ * baseline record it is handed and does not know the named baseline the job was
+ * dispatched with, so a settlement can carry a verdict scored against a WEAKER
+ * baseline than the dispatched one (e.g. dispatched to beat 328 tok/s but the
+ * verdict measured against a cherry-picked 200 tok/s baseline). That settlement
+ * clears the per-job, totals, target, AND op reconcilers — same slug, escrow,
+ * target, and op — yet the named throughput floor the job promised was never
+ * cleared.
+ *
+ * Like the target/op reconcilers it recomputes each dispatched job's requested
+ * slug from the campaign spec (via the same dispatch encoder, so it cannot drift
+ * from the real slug) to learn that slug's named baseline tok/s, then checks the
+ * settled verdict's own `baselineTokensPerSecond` equals it exactly (the named
+ * baseline is a fixed number the job carried, not a fresh measurement, so any
+ * deviation is a swap). It takes the campaign SPEC (only the spec carries the
+ * named baseline) and the keyed settlement items; it moves no money and never
+ * throws. The `ok` gate must hold before the verified-work rail releases any
+ * payout/refund.
+ */
+export const reconcileKernelOptimizationCampaignBaselines = (
+  spec: KernelOptimizationCampaignSpec,
+  items: ReadonlyArray<KernelOptimizationKeyedSettlementItem>,
+): KernelOptimizationCampaignBaselineReconciliation => {
+  // Build the campaign once: validates the spec (non-empty, unique targets,
+  // unique slugs) and yields the slug per job in spec order.
+  const campaign = buildKernelOptimizationCampaign(spec)
+
+  // Map each unique requested slug to the named baseline tok/s the dispatched
+  // job under it promised to beat. spec.jobs[i] <-> campaign.requests[i] by order.
+  const dispatchedBaselineBySlug = new Map<string, number>()
+  spec.jobs.forEach((job, index) => {
+    const slug = campaign.requests[index]?.requestedSlug ?? ''
+    dispatchedBaselineBySlug.set(slug, job.baselineTokensPerSecond)
+  })
+
+  const matchedSlugs: string[] = []
+  const unmatchedSlugs: string[] = []
+  const baselineMismatches: KernelOptimizationBaselineMismatch[] = []
+
+  for (const item of items) {
+    const slug = item.requestedSlug.trim()
+    const dispatchedBaseline = dispatchedBaselineBySlug.get(slug)
+    if (dispatchedBaseline === undefined) {
+      unmatchedSlugs.push(slug)
+      continue
+    }
+    const settledBaseline = item.verdict.baselineTokensPerSecond
+    if (settledBaseline === dispatchedBaseline) {
+      matchedSlugs.push(slug)
+    } else {
+      baselineMismatches.push({
+        dispatchedBaselineTokensPerSecond: dispatchedBaseline,
+        requestedSlug: slug,
+        settledVerdictBaselineTokensPerSecond: settledBaseline,
+      })
+    }
+  }
+
+  const discrepancies: string[] = []
+  if (unmatchedSlugs.length > 0) {
+    discrepancies.push(
+      `settlement(s) for slug(s) this campaign never dispatched: ${unmatchedSlugs.join(', ')}`,
+    )
+  }
+  for (const mismatch of baselineMismatches) {
+    discrepancies.push(
+      `baseline swap on "${mismatch.requestedSlug}": dispatched named baseline ${mismatch.dispatchedBaselineTokensPerSecond} tok/s but settled verdict scored its speedup against ${mismatch.settledVerdictBaselineTokensPerSecond} tok/s`,
+    )
+  }
+
+  return {
+    baselineMismatches,
+    campaignRef: campaign.campaignRef,
+    classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
+    discrepancies,
+    matchedSlugs,
+    ok: discrepancies.length === 0,
+    unmatchedSlugs,
+  }
+}
+
+/**
  * The single all-gates-must-hold verdict for releasing an at-scale campaign's
  * payouts and refunds.
  *
- * Each of the four reconcilers above guards a DIFFERENT at-scale failure mode,
+ * Each of the five reconcilers above guards a DIFFERENT at-scale failure mode,
  * and none subsumes another:
  *
  *   - totals (`reconcileKernelOptimizationCampaignSettlement`): job count + total
@@ -771,16 +913,20 @@ export const reconcileKernelOptimizationCampaignOps = (
  *     verdict's model/device/hardware matches the slug it is filed under.
  *   - op (`reconcileKernelOptimizationCampaignOps`): each settled verdict's op
  *     matches the slug it is filed under (catches same-target op swaps).
+ *   - baseline (`reconcileKernelOptimizationCampaignBaselines`): each settled
+ *     verdict scored its speedup against the named baseline the slug was
+ *     dispatched with (catches a speedup measured against a weaker baseline than
+ *     the named floor, which target + op + per-job + totals are all blind to).
  *
- * Releasing money safely requires ALL FOUR to hold. Until now a caller had to
+ * Releasing money safely requires ALL FIVE to hold. Until now a caller had to
  * remember to run each one and AND the results by hand; forgetting any single
- * gate (most easily the op reconciler, which only matters when one target hosts
- * several ops) silently re-opens exactly the drift that gate exists to catch.
- * This gate makes the "safe to release" decision atomic and auditable: it runs
- * all four against ONE (spec, keyed settlement) pair, derives the campaign and
- * settlement once, and is `ok` iff every constituent report is `ok`. It also
- * surfaces the settlement ledger so payout/refund totals are visible alongside
- * the verdict.
+ * gate (most easily the op or baseline reconciler, which only bite in
+ * many-ops-per-target or cherry-picked-baseline runs) silently re-opens exactly
+ * the drift that gate exists to catch. This gate makes the "safe to release"
+ * decision atomic and auditable: it runs all five against ONE (spec, keyed
+ * settlement) pair, derives the campaign and settlement once, and is `ok` iff
+ * every constituent report is `ok`. It also surfaces the settlement ledger so
+ * payout/refund totals are visible alongside the verdict.
  *
  * It moves no money and never throws on a reconciliation finding (those are
  * reported); it only re-raises a `KernelOptimizationDispatchError` when the spec
@@ -802,6 +948,8 @@ export type KernelOptimizationCampaignReleaseGate = Readonly<{
   targets: KernelOptimizationCampaignTargetReconciliation
   /** Per-job verdict-op reconciliation. */
   ops: KernelOptimizationCampaignOpReconciliation
+  /** Per-job verdict-named-baseline reconciliation. */
+  baselines: KernelOptimizationCampaignBaselineReconciliation
   /**
    * Every constituent discrepancy, each prefixed with the gate that raised it,
    * so a single read tells an operator exactly which gate(s) failed and why.
@@ -843,19 +991,22 @@ export const evaluateKernelOptimizationCampaignRelease = (
   const perJob = reconcileKernelOptimizationCampaignPerJob(campaign, items)
   const targets = reconcileKernelOptimizationCampaignTargets(spec, items)
   const ops = reconcileKernelOptimizationCampaignOps(spec, items)
+  const baselines = reconcileKernelOptimizationCampaignBaselines(spec, items)
 
   const discrepancies: string[] = [
     ...totals.discrepancies.map((d) => `totals: ${d}`),
     ...perJob.discrepancies.map((d) => `per-job: ${d}`),
     ...targets.discrepancies.map((d) => `target: ${d}`),
     ...ops.discrepancies.map((d) => `op: ${d}`),
+    ...baselines.discrepancies.map((d) => `baseline: ${d}`),
   ]
 
   return {
+    baselines,
     campaignRef: campaign.campaignRef,
     classId: KERNEL_OPTIMIZATION_CAMPAIGN_CLASS_ID,
     discrepancies,
-    ok: totals.ok && perJob.ok && targets.ok && ops.ok,
+    ok: totals.ok && perJob.ok && targets.ok && ops.ok && baselines.ok,
     ops,
     perJob,
     settlement,

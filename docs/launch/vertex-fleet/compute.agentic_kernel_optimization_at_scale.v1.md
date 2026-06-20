@@ -96,3 +96,49 @@ independent-device `Verified` parity and **settled** receipts, the at-scale
 across-the-mesh run (`agentic_kernel_optimization_at_scale_run_missing`), and
 owner sign-off. The March-2026 Psionic/Qwen 3.5 result stays historical-demo
 evidence only. No promise state changed; no blocker dropped from the registry.
+
+---
+
+## 2026-06-20 update — campaign named-baseline reconciler (blocker: at_scale_run_missing)
+
+State: **red** (unchanged — no flip).
+
+Advances **`blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`**
+by closing a real, non-redundant wiring gap in the at-scale campaign settlement
+gate (`apps/openagents.com/workers/api/src/kernel-optimization-campaign.ts`).
+
+The release gate already composed four reconcilers — totals (job count + escrow),
+per-job (slug + escrow), verdict-target (model/device/hardware), and verdict-op.
+None of them checks WHICH baseline a settled parity verdict actually scored its
+speedup against. The parity verifier computes the speedup against whatever
+baseline record it is handed and does not know the **named baseline** the job was
+dispatched with, so a settlement could carry an `accepted` verdict scored against
+a WEAKER, cherry-picked baseline (e.g. dispatched to beat 328 tok/s but the
+verdict measured a speedup against a 200 tok/s baseline). Such a settlement
+clears all four existing gates — same slug, escrow, target, and op — yet the
+named throughput floor the job promised was never cleared, so a payout would be
+released for work that did not meet the dispatched bar.
+
+Added `reconcileKernelOptimizationCampaignBaselines(spec, items)` +
+`KernelOptimizationCampaignBaselineReconciliation`: it recomputes each dispatched
+job's slug from the spec (via the same dispatch encoder, so it cannot drift),
+learns that slug's named baseline tok/s, and checks each settled verdict's own
+`baselineTokensPerSecond` equals it exactly — a "baseline swap" otherwise. Wired
+into `evaluateKernelOptimizationCampaignRelease` as a fifth gate (`baselines`),
+ANDed into the composite `ok` with a `baseline:`-prefixed discrepancy line. Moves
+no money, never throws on a finding (only on a structurally invalid spec).
+
+Tests (`kernel-optimization-campaign.test.ts`, +7, 27 → 34 passing): a
+baselines-hold ok path; a cherry-picked-baseline swap that ONLY the baseline gate
+catches (target/op/per-job all pass), proving non-redundancy; an unknown-slug
+finding; an invalid-spec throw; plus a release-gate test where only the baseline
+gate fails and the all-gates-hold test now asserts `baselines.ok`.
+
+### What remains (still red)
+
+Same as above — this is still DEFINED-not-EXECUTED plumbing for the at-scale run.
+Green still needs a live across-the-mesh run with these gates run on REAL
+settlements (agent-authored kernels, live tok/s vs named baselines on declared
+hardware, independent-device `Verified` parity) and dereferenceable accepted-work
++ settlement receipts plus owner sign-off. No promise state changed; no blocker
+dropped from the registry.
