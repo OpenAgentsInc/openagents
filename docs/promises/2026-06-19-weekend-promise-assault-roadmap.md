@@ -258,21 +258,25 @@ runs on DE-4 Pylon supply, paid through DE-1, attested by DE-8.
 **The protocol substrate everything clears on.** The six Episode 213 markets
 (compute · data · labor · liquidity · risk · verification) as open protocols,
 plus the composable/listable marketplace on top. Labor + (parts of) compute/data
-are live; liquidity, risk, and the unified surface are unbuilt. First wave filed
-under EPIC #5510 (markets surface + liquidity/risk skeletons; compose-and-list
-MVP).
+are live/scoped, and the unified surface scaffold now exists at
+`/api/public/markets/open-markets`; liquidity and risk are still inert
+skeleton-only, and compute/data are not broadly live paid markets. First wave
+filed under EPIC #5510 (markets surface + liquidity/risk skeletons;
+compose-and-list MVP).
 
 | Promise id | State | Work to EARN green | Dereferenceable-receipt acceptance | Claimability |
 |---|---|---|---|---|
-| `markets.open_protocol_markets.v1` | planned | Build liquidity + risk protocol skeletons; publish unified open-markets surface; broaden compute/data live | All six markets dippable via open protocol + unified surface receipt | Agent-claimable (liquidity/risk skeletons, surface); see `packages/nip90` |
+| `markets.open_protocol_markets.v1` | planned | Turn liquidity + risk skeletons into real markets; broaden compute/data live | All six markets dippable via open protocol + dereferenceable participant transaction and settlement receipts | Agent-claimable only for more scaffolding; live transactions/settlement owner-gated; see `packages/nip90` |
 | `marketplace.compose_and_list_products.v1` | planned | Composition runtime + listing lifecycle + billing/settlement | Compose primitives → list → sell → settled receipt | Agent-claimable (MVP) |
 | `marketplace.agentic_npm_module_registry.v1` | planned | Agentic-npm registry + module composition runtime + billing | Verified module published, composed, and billed with a receipt | Agent-claimable |
 | `marketplace.wasm_plugins.v1` | planned | WASM-plugin registry + execution sandbox + billing | WASM plugin published, sandbox-executed, billed with a receipt | Agent-claimable (see `agent-os`, `firecracker` refs) |
 | `marketplace.signature_monetization.v1` | red | DSPy/GEPA signature usage metering + settlement | Signature listed, metered on use, settled with a receipt | Agent-claimable |
 | `marketplace.monetize_any_layer_with_referral.v1` | planned | Access product over ANY layer + referral accrual + resale receipt | Resell access to any layer → referral cut → settled receipt | Owner-gated (capstone); depends on DE-1, DE-2, DE-6 |
 
-**Sequencing:** liquidity + risk skeletons + unified surface → compose-and-list
-MVP → agentic-npm / WASM / signature monetization → monetize-any-layer capstone.
+**Sequencing:** liquidity + risk skeletons + unified surface scaffold are done;
+next is real liquidity/risk transactions and broad compute/data receipts →
+compose-and-list MVP → agentic-npm / WASM / signature monetization →
+monetize-any-layer capstone.
 **Interlock:** the substrate DE-4 supplies and DE-2 packages; capstone depends
 on DE-1 referral.
 
@@ -380,8 +384,8 @@ revenue ring), then ship the anchor product, then broaden the rails.
    green flip is reviewable; underpins the whole assault's honesty rule.
 
 ### Wave 2 — broaden the rails (agent-claimable, parallelizable now)
-5. **DE-6: liquidity + risk market skeletons + unified open-markets surface**
-   *(agent-claimable)*.
+5. **DE-6: real liquidity/risk transactions + broad compute/data receipts**
+   *(live transaction/settlement owner-gated; scaffolding agent-claimable)*.
 6. **DE-2: fine-tuning + sandbox compute MVPs** *(agent-claimable; settlement
    owner-gated)*.
 7. **DE-1: accepted-outcome economics state machine + contributor ledger +

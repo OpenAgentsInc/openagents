@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.53')
+    expect(decoded.version).toBe('2026-06-20.54')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -304,6 +304,11 @@ describe('public product promises document', () => {
     // yellow; inference.batch_processing_jobs.v1 planned) and flips NO promise
     // state, so green remains exactly 26 (yellow 28 -> 34, planned 34 -> 35,
     // red 15, withdrawn 2, total 105 -> 112).
+    // The 2026-06-20.54 open-markets de-stale pass clears only the stale
+    // unified-surface blocker on markets.open_protocol_markets.v1 because
+    // GET /api/public/markets/open-markets and the inert liquidity/risk
+    // skeleton routes already exist; liquidity/risk and broad compute/data
+    // blockers remain, so green remains exactly 26.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -315,6 +320,18 @@ describe('public product promises document', () => {
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
+    const openMarketsPromise = decoded.promises.find(
+      promise => promise.promiseId === 'markets.open_protocol_markets.v1',
+    )
+    expect(openMarketsPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.open_markets_unified_surface_missing',
+    )
+    expect(openMarketsPromise?.safeCopy).toContain(
+      'GET /api/public/markets/open-markets',
+    )
+    expect(openMarketsPromise?.verification).toContain(
+      'green still requires real market transactions plus settlement receipts for all six markets',
+    )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
       ...decoded.currentMonorepoStatus.caveats,
@@ -680,6 +697,15 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.liquidity_market_unbuilt',
             'blocker.product_promises.risk_market_unbuilt',
+            'blocker.product_promises.compute_data_markets_not_broadly_live',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/open-markets-surface.ts',
+            'apps/openagents.com/workers/api/src/open-markets-routes.ts',
+            'apps/openagents.com/workers/api/src/open-markets-skeletons.ts',
+            'route:/api/public/markets/open-markets',
+            'route:/api/public/markets/liquidity/skeleton',
+            'route:/api/public/markets/risk/skeleton',
           ]),
         }),
         expect.objectContaining({
@@ -1314,22 +1340,22 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.53', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.54', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.53',
+      expectedVersion: '2026-06-20.54',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.53',
+      servedVersion: '2026-06-20.54',
       status: 'ready',
     })
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.52', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.53', document),
     ).toMatchObject({
       blockerRefs: [
-        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.52',
+        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.53',
       ],
-      expectedVersion: '2026-06-20.52',
-      servedVersion: '2026-06-20.53',
+      expectedVersion: '2026-06-20.53',
+      servedVersion: '2026-06-20.54',
       status: 'blocked',
     })
   })

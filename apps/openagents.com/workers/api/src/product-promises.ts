@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.53'
+export const PublicProductPromisesVersion = '2026-06-20.54'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3341,13 +3341,19 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The six Episode 213 markets — compute, data, labor, liquidity, risk, and verification — are exposed as open protocols / open markets that agents can dip into to do things like build an agentic insurance policy, offer new compute, or sell data.',
         safeCopy:
-          'The open-markets vision (Episode 213, restated in Episode 239) is partly real and mostly roadmap. Live/scoped: the LABOR market crossed its first end-to-end settled milestone (labor.forum_work_requests.v1 / labor.nostr_negotiation_market.v1, green; first job #4777) and VERIFICATION exists as exact-trace replay (compute.tassadar_executor_poc.v1, green for a bounded PoC). The COMPUTE and DATA market rails shipped over NIP-90 in earlier releases (in repo history) but are not broadly live as paid markets. The LIQUIDITY and RISK markets are not built. There is no unified open-markets surface and no settled receipts across the full six-market set.',
+          'The open-markets vision (Episode 213, restated in Episode 239) is partly real and mostly roadmap. Live/scoped: the LABOR market crossed its first end-to-end settled milestone (labor.forum_work_requests.v1 / labor.nostr_negotiation_market.v1, green; first job #4777) and VERIFICATION exists as exact-trace replay (compute.tassadar_executor_poc.v1, green for a bounded PoC). The COMPUTE and DATA market rails shipped over NIP-90 in earlier releases (in repo history) but are not broadly live as paid markets. A public unified open-markets scaffold now exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeletons at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton. The LIQUIDITY and RISK markets are still skeleton-only, and there are no settled receipts across the full six-market set.',
         unsafeCopy:
           'Do not claim all six markets are live, that liquidity or risk markets exist, that compute/data are broadly live paid markets, or that an agentic insurance policy can be built and settled today. Do not let the green labor and verification scopes stand in for the whole market set.',
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/transcripts/213.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
+          'apps/openagents.com/workers/api/src/open-markets-surface.ts',
+          'apps/openagents.com/workers/api/src/open-markets-routes.ts',
+          'apps/openagents.com/workers/api/src/open-markets-skeletons.ts',
+          'route:/api/public/markets/open-markets',
+          'route:/api/public/markets/liquidity/skeleton',
+          'route:/api/public/markets/risk/skeleton',
           'packages/nip90',
           'promise:labor.forum_work_requests.v1',
           'promise:labor.nostr_negotiation_market.v1',
@@ -3358,10 +3364,9 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.liquidity_market_unbuilt',
           'blocker.product_promises.risk_market_unbuilt',
           'blocker.product_promises.compute_data_markets_not_broadly_live',
-          'blocker.product_promises.open_markets_unified_surface_missing',
         ],
         verification:
-          'Planned until each of the six markets is at least individually exercisable with a dereferenceable receipt for a real participant transaction, and a unified open-markets surface documents the protocols. Liquidity and risk markets each need a built protocol, a real transaction, and a settlement receipt before any market-set green claim.',
+          'Planned until each of the six markets is at least individually exercisable with a dereferenceable receipt for a real participant transaction. The unified open-markets surface is now present and public-safe, but it is a scaffold: liquidity and risk market endpoints are inert skeleton projections, compute/data are not broadly live paid markets, and green still requires real market transactions plus settlement receipts for all six markets.',
         authorityBoundary:
           'Naming the six markets grants no market-making, matching, settlement, custody, insurance-underwriting, or public-market-claim authority. Each market is gated by its own evidence.',
       },
@@ -4022,6 +4027,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.51 is an autopilot_sites.partner_payout_ledger.v1 attribution-policy de-stale pass and flips NO promise state. The explicit-agreement partner-attribution path is now recorded as built in source: partner-attribution-policy.ts enforces no inferred fallback, referral-role exclusion, active windows, role precedence, and self-payout exclusion; partner-attribution-eligibility.ts maps the winning agreement into a ledger eligibility input; partner-payout-feed.ts reads active partner_agreements and records at most one operator-gated eligibility row; stripe-billing.ts feeds fulfilled Stripe credit purchases into that path; and POST/GET /api/operator/partners/agreements gives operators an admin-token-gated seed/readback surface for agreements. This clears blocker.product_promises.partner_attribution_policy_missing only. The promise remains RED: settlement dispatch to a public partner receipt, a first real settled partner payout, live earning/withdrawal claims, and owner sign-off remain blocked. No partner revenue, payout, settlement, withdrawal, or green claim is created.',
         'Registry 2026-06-20.52 is an autopilot_sites.partner_payout_ledger.v1 receipt-readback pass and flips NO promise state. GET /api/public/partner-payout-receipts/{receiptRef} now resolves `receipt.partner_payout.*` only when a settled partner payout ledger row cites the exact public-safe evidence ref, returning amount, asset, settlement state, qualifying event kind, policy refs, caveats, filtered evidence refs, generatedAt, and a live_at_read staleness contract while withholding partner refs, user ids, payout refs, qualifying-event refs, payout destinations, invoices, payment hashes, preimages, provider payloads, wallet material, and ledger ids. This prepares the public receipt surface needed by the future real settlement step but does NOT clear blocker.product_promises.partner_payout_settlement_not_wired or blocker.product_promises.partner_first_real_payout_pending: no dispatch adapter call, real payout, settlement evidence, earning/withdrawal claim, revenue claim, or green transition is created.',
         'Registry 2026-06-20.53 is an autopilot_sites.partner_payout_ledger.v1 dispatch-coordinator pass and flips NO promise state. POST /api/operator/partners/payout-ledger/{payoutRef}/dispatch now mirrors the referral payout dispatch pattern for partner payouts: it is admin-token gated, owner-readiness gated, idempotency-keyed by payout ref, refuses non-sats rows before adapter call, invokes an injected adapter before recording settled for sats rows, and appends public-safe `receipt.partner_payout.*` + adapter evidence refs so GET /api/public/partner-payout-receipts/{receiptRef} can dereference the settled proof. Default production wiring remains inert/fail-closed (`hostedMdkDirectPayoutDisabledGate` + unconfigured adapter), so no real payout, earning/withdrawal claim, revenue claim, or green transition is created. This clears blocker.product_promises.partner_payout_settlement_not_wired only; blocker.product_promises.partner_first_real_payout_pending remains.',
+        'Registry 2026-06-20.54 is a markets.open_protocol_markets.v1 de-stale pass and flips NO promise state. The public unified open-markets surface already exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeleton projections at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton, so blocker.product_promises.open_markets_unified_surface_missing is removed. The promise remains planned: liquidity/risk are skeleton-only, compute/data are not broadly live paid markets, and green still requires real participant transactions plus dereferenceable settlement receipts across all six markets. No market-making, matching, insurance underwriting, liquidity transaction, settlement, payout, or green claim is created.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
