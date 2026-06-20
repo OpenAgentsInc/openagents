@@ -204,6 +204,9 @@ export const projectTrainingMarathonOperations = (
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
         'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
+        'apps/openagents.com/workers/api/src/training-curtailment-drill-receipt.ts',
+        'apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-verifier.ts',
+        'apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-feed.ts',
         'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
         buildoutPlanRef,
         worklogRef,

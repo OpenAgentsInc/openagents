@@ -481,3 +481,44 @@ shed-and-resume drill has run against a live training run, so no genuine drill
 receipt exists to publish or verify, and the public projection's
 `curtailmentDrillReceiptAvailable` flag correctly stays `false`. A flexible-load
 proof and the drill receipt itself remain unproven.
+
+## 2026-06-20 — Curtailment-drill receipt feed (collection aggregation)
+
+**Blocker advanced:** `blocker.product_promises.curtailment_drill_missing`
+(NOT cleared — see below).
+
+The curtailment lane had a receipt EMITTER and a single-receipt VERIFIER, but a
+public receipt route does not serve one receipt — it serves a COLLECTION. Nothing
+turned an untrusted list of published drill receipts into the one public-safe,
+verified, de-duplicated, ordered feed such a route would publish. (The
+durable-checkpoint-seal and standby-dispatch lanes share this gap.) This change
+adds the aggregation layer for the curtailment lane, mirroring the gradient-window
+promotion-receipt feed (`tassadar-gradient-window-promotion-receipt-feed.ts`):
+
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-feed.ts`
+  - `buildCurtailmentDrillReceiptFeed`: a pure, TOTAL function over an array of
+    untrusted receipts. It decodes and runs each through the read-side verifier,
+    admits only receipts that pass every authenticity invariant, drops duplicate
+    receipt refs (keeping the first), counts and explains every rejection
+    (`receipt_malformed` / `receipt_not_verified` / `duplicate_receipt_ref`), and
+    returns accepted entries deterministically ordered by receipt ref. It never
+    throws, so it is safe at the edge of a real public feed. The feed carries both
+    SLA literals, the blocker ref, and `publicSafe: true`.
+- `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-feed.test.ts`
+  - 6 tests: empty list yields an empty public-safe feed; genuine receipts are
+    admitted ordered by receipt ref; duplicate refs drop keeping the first; a
+    malformed receipt is rejected without throwing; a decodable-but-ref-mismatched
+    receipt is rejected as not-verified; a mixed accepted/rejected batch is
+    deterministic.
+- `training-marathon-operations.ts` lists the feed module in the curtailment
+  surface `sourceRefs`. All projection flags stay false.
+
+Contract-level only: this is the aggregation layer a public drill-receipt feed
+needs, not a completed drill. It grants no dispatch, settlement,
+flexible-load-market, promise-state, or green-claim authority, and asserts no real
+scheduled drill ran. No promise state or blocker list was changed.
+
+**What remains (`curtailment_drill_missing` stays listed):** unchanged from above —
+no scheduled live shed-and-resume drill has run, so no genuine receipt exists and a
+real feed is empty. A flexible-load proof and the drill receipt itself remain
+unproven.
