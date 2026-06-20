@@ -53,7 +53,10 @@ export interface OmegaAccountClientOptions {
 
 export function makeOmegaAccountClient(options: OmegaAccountClientOptions): OmegaAccountClient {
   return {
-    listProviderAccounts: () =>
+    listProviderAccounts: (): Effect.Effect<
+      OmegaProviderAccountsResponse,
+      OmegaAccountClientError | ProbePublicProjectionUnsafe
+    > =>
       requestOmegaJson(options, "/api/provider-accounts", "GET").pipe(
         Effect.flatMap((payload) => decodeOmegaPayload(OmegaProviderAccountsResponse, payload, "provider accounts")),
         Effect.tap((payload) => validateProbePublicProjection(payload, "providerAccounts")),
@@ -131,12 +134,17 @@ function requestOmegaJson(
   });
 }
 
-function decodeOmegaPayload<A, I, R>(
-  schema: S.Codec<A, I, R>,
+// These Omega contract schemas are pure (no service-dependent decoders), so the
+// decode requires no Effect services. We pin the requirements channel to `never`
+// because `decodeUnknownEffect` surfaces the schema's `DecodingServices`, which
+// for deeply-branded structs is inferred as the `unknown` upper bound rather
+// than the actual `never`.
+function decodeOmegaPayload<Sch extends S.Top>(
+  schema: Sch,
   payload: unknown,
   label: string,
-): Effect.Effect<A, OmegaAccountClientError, R> {
+): Effect.Effect<Sch["Type"], OmegaAccountClientError> {
   return S.decodeUnknownEffect(schema)(payload).pipe(
     Effect.mapError((error) => new OmegaAccountClientError({ reason: `invalid ${label} payload: ${String(error)}` })),
-  );
+  ) as Effect.Effect<Sch["Type"], OmegaAccountClientError>;
 }
