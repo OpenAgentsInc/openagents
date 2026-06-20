@@ -23,17 +23,16 @@
 // metering is live (stub => `metered: false`; live => `metered: true` + a
 // public-safe receipt ref). The hook NEVER surfaces raw amounts, destinations,
 // or payment material — only public-safe refs and token counts (observability).
-
 import { Effect } from 'effect'
 
 import {
-  hostedMdkDirectPayoutDisabledGate,
   type MdkPayoutModeGateProjection,
+  hostedMdkDirectPayoutDisabledGate,
 } from '../mdk-payout-mode-gate'
 import { workerLogEntry } from '../observability'
 import {
-  createPayInStatements,
   type PayInPlan,
+  createPayInStatements,
   runLedgerStatements,
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
@@ -42,10 +41,11 @@ import { type FundingKind, priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
 import {
   type ServingNodePayoutDecision,
-  decideServingNodePayout,
   type ServingRevenueAsset,
+  decideServingNodePayout,
   servingContributorCutMsat,
 } from './serving-node-payout'
+import { usdToMsatCeil } from './usd-msat-conversion'
 
 class InferenceMeteringPersistenceError extends Error {
   readonly _tag = 'InferenceMeteringPersistenceError'
@@ -151,7 +151,6 @@ export const stubMeteringHook: MeteringHook = (context: MeteringContext) =>
 // here so the existing metering importers/tests that read `DEFAULT_BTC_USD` /
 // `usdToMsatCeil` from this module keep working unchanged.
 export { DEFAULT_BTC_USD, usdToMsatCeil } from './usd-msat-conversion'
-import { usdToMsatCeil } from './usd-msat-conversion'
 
 // Deps for the live ledger metering hook.
 export type LedgerMeteringDeps = Readonly<{
@@ -196,6 +195,34 @@ export const inferenceChargeIdempotencyKey = (requestId: string): string =>
 // the idempotency key, amount, destination, or any payment material.
 export const inferenceChargeReceiptRef = (requestId: string): string =>
   `receipt.inference.charge.${requestId}`
+
+export const inferenceChargeContextRef = (
+  input: Readonly<{
+    adapterId: string
+    servedModel: string
+    totalTokens: number
+  }>,
+): string =>
+  `inference:${encodeURIComponent(input.adapterId)}:served:${encodeURIComponent(input.servedModel)}:tokens:${Math.max(0, Math.trunc(input.totalTokens))}`
+
+export const parseInferenceChargeContextRef = (
+  value: string,
+): Readonly<{ servedModel: string; totalTokens: number }> | undefined => {
+  const match = /^inference:[^:]+:served:([^:]+):tokens:(\d+)$/.exec(value)
+  if (match === null) {
+    return undefined
+  }
+
+  const totalTokens = Number(match[2])
+  if (!Number.isSafeInteger(totalTokens)) {
+    return undefined
+  }
+
+  return {
+    servedModel: decodeURIComponent(match[1] ?? ''),
+    totalTokens,
+  }
+}
 
 // Build the debit-only PayIn plan for an inference charge: a single `adjustment`
 // pay-in funded by one `in` balance leg from the account (which debits the
@@ -344,7 +371,11 @@ export const makeLedgerMeteringHook = (
 
       const plan = inferenceChargePayInPlan({
         accountRef: context.accountRef,
-        contextRef: `inference:${context.adapterId}`,
+        contextRef: inferenceChargeContextRef({
+          adapterId: context.adapterId,
+          servedModel: priced.model,
+          totalTokens: context.usage.totalTokens,
+        }),
         costMsat,
         requestId: context.requestId,
       })

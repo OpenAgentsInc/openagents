@@ -1325,6 +1325,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicInferenceReceiptEnvelope: objectSummary(
     'Public-safe inference ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn pay_ins.public_receipt_ref). It proves that a paid `receipt.inference.charge.*` or `receipt.inference.usd_credit_grant.*` ledger row exists without exposing account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, or raw prompts. Read-only; grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
   ),
+  PublicCardCreditSpendReceiptEnvelope: objectSummary(
+    'Public card-credit-spend receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.inference.card_credit_spend.*` as pending, invalid, or ok from the checkout credit row, card-origin USD-credit grant row, and inference charge row without granting checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
+  ),
   BusinessSignupRequest: {
     type: 'object',
     additionalProperties: false,
@@ -4324,6 +4327,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public inference receipt.',
           '#/components/schemas/PublicInferenceReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/inference/card-credit-spend-receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicCardCreditSpendReceipt',
+      summary: 'Read card-credit inference spend receipt',
+      description:
+        'Returns a live-at-read card→credit→inference-spend receipt projection for `receipt.inference.card_credit_spend.*`. The response is honest about incomplete chains (`pending`), conservation/provenance failures (`invalid`), and complete receipt resolution (`ok`). Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
+      tags: ['Public Proof', 'Billing'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Card-credit-spend receipt ref, such as receipt.inference.card_credit_spend.<sessionId>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public card-credit inference spend receipt.',
+          '#/components/schemas/PublicCardCreditSpendReceiptEnvelope',
         ),
         ...errorResponses(),
       },

@@ -163,7 +163,23 @@ then buy USD credit with the Stripe test card and bridge it to spendable msat:
    `4242 4242 4242 4242`, any future expiry, any CVC, any ZIP.
 3. The checkout → webhook → credit path lands the USD credit; then
    `POST /api/billing/inference-credit` (browser session) bridges USD → spendable
-   msat for your own account.
+   msat for your own account. Include the fulfilled checkout session as
+   `sourceCheckoutSessionId` so the bridge stamps the grant with card-origin
+   provenance.
+
+The end-to-end card-credit-spend receipt is dereferenceable after the purchase,
+bridge, and metered spend legs have all settled:
+
+```sh
+CARD_SPEND_RECEIPT_REF="receipt.inference.card_credit_spend.$CHECKOUT_SESSION_ID"
+curl -s "$B/api/public/inference/card-credit-spend-receipts/$CARD_SPEND_RECEIPT_REF"
+```
+
+The response is honest about incomplete chains: `pending.purchase`,
+`pending.grant`, or `pending.spend` means #5520/#5512 are still unproven for
+that checkout session; `invalid` means the stored chain violated provenance or
+conservation. Only `resolution.status: "ok"` is evidence for the
+card→credit→inference-spend receipt.
 
 Both `POST /api/billing/checkout` and `POST /api/billing/inference-credit`
 require a **browser session** (they return **401** to a bare agent token — they

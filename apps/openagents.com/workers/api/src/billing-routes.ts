@@ -1,3 +1,5 @@
+import { Effect } from 'effect'
+
 import {
   type BillingSummary,
   readBillingSummary,
@@ -5,10 +7,8 @@ import {
   upsertBillingAutoTopUpPolicy,
   withBillingCreditPackages,
 } from './billing'
-import { Effect } from 'effect'
-
-import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { fundInferenceFromCredit } from './inference/usd-credit-bridge'
 import { readJsonObject } from './json-boundary'
 import { firstText } from './omni-runs'
 import { openAgentsDatabase } from './runtime'
@@ -108,6 +108,42 @@ const firstNumber = (...values: ReadonlyArray<unknown>): number | undefined => {
     .find(value => Number.isFinite(value))
 
   return number === undefined ? undefined : Math.trunc(number)
+}
+
+const readFulfilledCheckoutSessionForUser = async (
+  db: D1Database,
+  input: Readonly<{ sessionId: string; userId: string }>,
+): Promise<string | undefined> => {
+  const row = await db
+    .prepare(
+      `SELECT session_id
+         FROM stripe_checkout_sessions
+        WHERE session_id = ?
+          AND user_id = ?
+          AND payment_status = 'paid'
+          AND fulfillment_status = 'fulfilled'
+        LIMIT 1`,
+    )
+    .bind(input.sessionId, input.userId)
+    .first<Readonly<{ session_id: string }>>()
+
+  if (row === null) {
+    return undefined
+  }
+
+  const ledger = await db
+    .prepare(
+      `SELECT id
+         FROM billing_ledger_entries
+        WHERE source = 'stripe_checkout'
+          AND amount_cents > 0
+          AND idempotency_key = ?
+        LIMIT 1`,
+    )
+    .bind(`billing:stripe-checkout:${input.sessionId}`)
+    .first()
+
+  return ledger === null ? undefined : row.session_id
 }
 
 type BillingApiDependencies<
@@ -371,6 +407,10 @@ export const makeBillingApiHandlers = <
     const grantRef =
       firstText(body.grantRef, body.grant_ref) ??
       `${session.user.userId}:${compactRandomId('credit')}`
+    const requestedCheckoutSessionId = firstText(
+      body.sourceCheckoutSessionId,
+      body.source_checkout_session_id,
+    )
 
     if (amountCents === undefined) {
       return dependencies.appendRefreshedSessionCookies(
@@ -389,11 +429,46 @@ export const makeBillingApiHandlers = <
       )
     }
 
+    const sourceCheckoutSessionId =
+      requestedCheckoutSessionId === undefined
+        ? undefined
+        : await readFulfilledCheckoutSessionForUser(
+            openAgentsDatabase(environment),
+            {
+              sessionId: requestedCheckoutSessionId,
+              userId: session.user.userId,
+            },
+          )
+
+    if (
+      requestedCheckoutSessionId !== undefined &&
+      sourceCheckoutSessionId === undefined
+    ) {
+      return dependencies.appendRefreshedSessionCookies(
+        noStoreJsonResponse(
+          {
+            billing: await readBillingSummaryWithPackages(
+              environment,
+              session.user.userId,
+            ),
+            error: 'checkout_session_not_fulfilled',
+            message:
+              'The checkout session must belong to this user and be fulfilled before it can fund inference.',
+          },
+          { status: 400 },
+        ),
+        session,
+      )
+    }
+
     const outcome = await Effect.runPromise(
       fundInferenceFromCredit(
         {
           amountCents,
           grantRef,
+          ...(sourceCheckoutSessionId === undefined
+            ? {}
+            : { sourceCheckoutSessionId }),
           userId: session.user.userId,
         },
         { db: openAgentsDatabase(environment) },

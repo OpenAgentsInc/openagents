@@ -290,6 +290,7 @@ import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
+import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
@@ -342,6 +343,7 @@ import {
   stringArrayFromUnknown,
 } from './json-boundary'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
+import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
@@ -462,10 +464,10 @@ import {
   handlePublicActivityTimelineStreamApiForEnv,
 } from './public-activity-timeline-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
+import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
-import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
@@ -7065,7 +7067,15 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
-const marketingAgencyReceiptPublicRoutes = makeMarketingAgencyReceiptPublicRoutes()
+const marketingAgencyReceiptPublicRoutes =
+  makeMarketingAgencyReceiptPublicRoutes()
+
+const publicCardCreditSpendReceiptRoutes =
+  makePublicCardCreditSpendReceiptRoutes<Env>({
+    makeStore: env =>
+      makeD1CardCreditSpendReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
 
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
@@ -9765,6 +9775,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
+  routePublicCardCreditSpendReceiptRequest:
+    publicCardCreditSpendReceiptRoutes.routePublicCardCreditSpendReceiptRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicNip90MarketReceiptRequest:

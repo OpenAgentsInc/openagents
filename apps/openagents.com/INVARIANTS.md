@@ -2046,6 +2046,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     checkout, settlement, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-inference-receipt-routes.test.ts`.
+  - `GET /api/public/inference/card-credit-spend-receipts/{receiptRef}` — live
+    at read over the card-credit paid-loop ledger chain for
+    `receipt.inference.card_credit_spend.*` — compliant (`generatedAt`,
+    top-level `projection_staleness.v1` `live_at_read` contract,
+    pending/invalid/ok resolution). It reads the Stripe checkout credit row,
+    the card-origin `usd_credit_grant` row, and future inference charge rows
+    with served-model/token context. Pending means the paid loop is not proven;
+    invalid means the stored chain violates conservation/provenance. Read-only;
+    grants no checkout, spend, refund, payout, settlement, provider,
+    public-claim, or registry authority. Regression coverage:
+    `workers/api/src/public-card-credit-spend-receipt-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
   - `GET /api/public/product-promises` — live at read over the versioned
