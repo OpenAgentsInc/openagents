@@ -1,5 +1,6 @@
 import { Effect, Schema as S } from 'effect'
 
+import { parseCookies } from './auth-cookies'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import {
   isRecord,
@@ -8,7 +9,18 @@ import {
   readJsonObject,
 } from './json-boundary'
 import { liveAtReadStaleness } from './public-projection-staleness'
-import { compactRandomId, currentIsoTimestamp } from './runtime-primitives'
+import {
+  capturePendingReferralBySourceRef,
+  isSafeReferralSourceRef,
+} from './referral-source-capture'
+import {
+  compactRandomId,
+  currentDate,
+  currentIsoTimestamp,
+  isoTimestampAfter,
+} from './runtime-primitives'
+import { linkPendingReferralToBusinessSignup } from './site-referral-attribution-consumption'
+import { PENDING_REFERRAL_MAX_AGE_SECONDS } from './site-referrals'
 
 const maxSignupBodyBytes = 16_384
 const emailPattern = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/
@@ -32,11 +44,14 @@ class BusinessSignupIntakeFailure extends S.TaggedErrorClass<BusinessSignupIntak
 export type BusinessSignupRuntime = Readonly<{
   makeId: (prefix: string) => string
   nowIso: () => string
+  expiresAtFromNow: () => string
 }>
 
 export const systemBusinessSignupRuntime: BusinessSignupRuntime = {
   makeId: compactRandomId,
   nowIso: currentIsoTimestamp,
+  expiresAtFromNow: () =>
+    isoTimestampAfter(currentDate(), PENDING_REFERRAL_MAX_AGE_SECONDS * 1000),
 }
 
 export type BusinessSignupInput = Readonly<{
@@ -46,6 +61,10 @@ export type BusinessSignupInput = Readonly<{
   phone: string
   helpWith: string | null
   requestSlackChannel: boolean
+  // Inbound referral code (a site_referral_sources.public_source_ref). Captured
+  // from the /business ?ref= query param or a `referralCode` form field; null
+  // when no code was present.
+  referralCode: string | null
 }>
 
 export type BusinessSignupRecord = BusinessSignupInput &
@@ -53,6 +72,10 @@ export type BusinessSignupRecord = BusinessSignupInput &
     id: string
     slackConnectStatus: SlackConnectStatus
     sourceRoute: '/business'
+    // The pending referral_attributions.id bound to this signup once a valid
+    // active referral source was resolved (consume-once via the spine); null
+    // when there was no captured/resolvable attribution.
+    referralAttributionId: string | null
     createdAt: string
     updatedAt: string
   }>
@@ -67,6 +90,8 @@ type BusinessSignupRow = Readonly<{
   request_slack_channel: number
   slack_connect_status: SlackConnectStatus
   source_route: string
+  referral_code: string | null
+  referral_attribution_id: string | null
   created_at: string
   updated_at: string
 }>
@@ -247,8 +272,22 @@ const decodeSignupInput = (
       phone,
       helpWith: normalizeMultiline(fields.helpWith, 2_000) ?? null,
       requestSlackChannel: booleanFromUnknown(fields.requestSlackChannel),
+      referralCode: normalizeReferralCode(fields.referralCode ?? fields.ref),
     },
   }
+}
+
+// A referral code is a site_referral_sources.public_source_ref. We only keep it
+// when it matches the bounded safe shape; anything else is dropped (null) so a
+// hostile value can never reach the referral query.
+const normalizeReferralCode = (value: unknown): string | null => {
+  const raw = normalizeText(value, 190)
+
+  if (raw === undefined || !isSafeReferralSourceRef(raw)) {
+    return null
+  }
+
+  return raw
 }
 
 export const makeBusinessSignupRecord = (
@@ -264,6 +303,7 @@ export const makeBusinessSignupRecord = (
       ? 'manual_invite_pending'
       : 'not_requested',
     sourceRoute: '/business',
+    referralAttributionId: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -279,6 +319,8 @@ const rowToRecord = (row: BusinessSignupRow): BusinessSignupRecord => ({
   requestSlackChannel: row.request_slack_channel === 1,
   slackConnectStatus: row.slack_connect_status,
   sourceRoute: '/business',
+  referralCode: row.referral_code,
+  referralAttributionId: row.referral_attribution_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
@@ -302,9 +344,11 @@ export const insertBusinessSignupRequest = async (
         request_slack_channel,
         slack_connect_status,
         source_route,
+        referral_code,
+        referral_attribution_id,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       record.id,
@@ -316,12 +360,36 @@ export const insertBusinessSignupRequest = async (
       record.requestSlackChannel ? 1 : 0,
       record.slackConnectStatus,
       record.sourceRoute,
+      record.referralCode,
+      record.referralAttributionId,
       record.createdAt,
       record.updatedAt,
     )
     .run()
 
   return record
+}
+
+// Persist the resolved pending attribution id onto the signup row after the
+// referral spine binding has been recorded.
+const updateBusinessSignupReferralAttribution = async (
+  db: D1Database,
+  input: Readonly<{
+    id: string
+    referralAttributionId: string
+    updatedAt: string
+  }>,
+): Promise<void> => {
+  await db
+    .prepare(
+      `UPDATE business_signup_requests
+          SET referral_attribution_id = ?,
+              updated_at = ?
+        WHERE id = ?
+          AND referral_attribution_id IS NULL`,
+    )
+    .bind(input.referralAttributionId, input.updatedAt, input.id)
+    .run()
 }
 
 export const readBusinessSignupRequest = async (
@@ -340,6 +408,8 @@ export const readBusinessSignupRequest = async (
         request_slack_channel,
         slack_connect_status,
         source_route,
+        referral_code,
+        referral_attribution_id,
         created_at,
         updated_at
       FROM business_signup_requests
@@ -351,6 +421,72 @@ export const readBusinessSignupRequest = async (
   return row === null ? undefined : rowToRecord(row)
 }
 
+const pendingReferralCookieValue = (
+  request: Request,
+): string | undefined => {
+  const value = parseCookies(request).get('oa_pending_referral_attribution')
+
+  return value === undefined || value === '' ? undefined : value
+}
+
+// Resolve and bind a referral for a converted business signup, REUSING the
+// existing referral spine. Last-touch wins, mirroring site-referral
+// consumption: an already-captured pending attribution cookie (from a prior
+// /r/<ref> redirect) is preferred; otherwise a bare ?ref=/referralCode is
+// captured into a fresh pending attribution. Binding is consume-once and
+// receipt-first (the business_signup_referral_attributions PRIMARY KEY plus the
+// pending->claimed guard prevent double-credit). A referral failure never fails
+// the signup; intake is the primary contract.
+//
+// Returns the bound attribution id (so the signup row can record it), or null
+// when there was no resolvable referral.
+const bindBusinessSignupReferral = async (
+  request: Request,
+  db: D1Database,
+  runtime: BusinessSignupRuntime,
+  input: Readonly<{
+    businessSignupRequestId: string
+    referralCode: string | null
+  }>,
+): Promise<string | null> => {
+  const cookieAttributionId = pendingReferralCookieValue(request)
+
+  let pendingAttributionId = cookieAttributionId
+
+  if (pendingAttributionId === undefined && input.referralCode !== null) {
+    const captured = await capturePendingReferralBySourceRef(db, runtime, {
+      publicSourceRef: input.referralCode,
+      capturePath: 'human',
+      target: 'order',
+    })
+
+    if (captured._tag === 'captured') {
+      pendingAttributionId = captured.attribution.id
+    }
+  }
+
+  if (pendingAttributionId === undefined) {
+    return null
+  }
+
+  const result = await linkPendingReferralToBusinessSignup(db, runtime, {
+    businessSignupRequestId: input.businessSignupRequestId,
+    pendingAttributionId,
+  })
+
+  if (result._tag === 'consumed' || result._tag === 'already_verified') {
+    await updateBusinessSignupReferralAttribution(db, {
+      id: input.businessSignupRequestId,
+      referralAttributionId: result.attributionId,
+      updatedAt: runtime.nowIso(),
+    })
+
+    return result.attributionId
+  }
+
+  return null
+}
+
 const publicResponseBody = (record: BusinessSignupRecord) => ({
   generatedAt: record.updatedAt,
   staleness: liveAtReadStaleness(['business_signup_request.insert']),
@@ -359,6 +495,9 @@ const publicResponseBody = (record: BusinessSignupRecord) => ({
     sourceRoute: record.sourceRoute,
     requestedSlackChannel: record.requestSlackChannel,
     slackConnectStatus: record.slackConnectStatus,
+    // Public-safe: a boolean only; never echoes the referral code or the
+    // internal attribution id.
+    referralAttributed: record.referralAttributionId !== null,
     nextAction: record.requestSlackChannel
       ? 'operator_manual_slack_connect_invite'
       : 'operator_workspace_intake',
@@ -401,14 +540,47 @@ export const handleBusinessSignupApi = (
       return validationError(decoded.reason, request)
     }
 
+    // A bare ?ref= on the POST URL is honored as a fallback referral code when
+    // the form body carries none (e.g. a referral landed straight on the
+    // signup endpoint). Body fields still take precedence.
+    const urlRef = (() => {
+      const value = new URL(request.url).searchParams.get('ref')?.trim()
+
+      return value !== undefined &&
+        value !== '' &&
+        isSafeReferralSourceRef(value)
+        ? value
+        : null
+    })()
+    const input: BusinessSignupInput = {
+      ...decoded.input,
+      referralCode: decoded.input.referralCode ?? urlRef,
+    }
+
     const record = yield* Effect.tryPromise({
-      try: () => insertBusinessSignupRequest(db, decoded.input, runtime),
+      try: () => insertBusinessSignupRequest(db, input, runtime),
       catch: cause => new BusinessSignupIntakeFailure({ cause }),
     })
 
+    // Bind the referral after the signup is durably stored. A referral failure
+    // must not fail the intake, so it is caught and dropped to null.
+    const referralAttributionId = yield* Effect.tryPromise({
+      try: () =>
+        bindBusinessSignupReferral(request, db, runtime, {
+          businessSignupRequestId: record.id,
+          referralCode: input.referralCode,
+        }),
+      catch: cause => new BusinessSignupIntakeFailure({ cause }),
+    }).pipe(Effect.catch(() => Effect.succeed(null)))
+
+    const storedRecord: BusinessSignupRecord =
+      referralAttributionId === null
+        ? record
+        : { ...record, referralAttributionId }
+
     return wantsJsonResponse(request)
-      ? noStoreJsonResponse(publicResponseBody(record), { status: 201 })
-      : textResponse(successHtml(record), { status: 201 })
+      ? noStoreJsonResponse(publicResponseBody(storedRecord), { status: 201 })
+      : textResponse(successHtml(storedRecord), { status: 201 })
   }).pipe(
     Effect.catch(() => {
       return Effect.succeed(

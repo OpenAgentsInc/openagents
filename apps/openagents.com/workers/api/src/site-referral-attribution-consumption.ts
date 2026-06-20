@@ -64,6 +64,10 @@ type AgentAttributionRow = Readonly<{
   referral_attribution_id: string
 }>
 
+type BusinessSignupAttributionRow = Readonly<{
+  referral_attribution_id: string
+}>
+
 const SAFE_ATTRIBUTION_ID_PATTERN =
   /^referral_attribution_[A-Za-z0-9_-]{1,190}$/
 
@@ -153,6 +157,23 @@ const existingAgentAttribution = (
       )
       .bind(agentUserId)
       .first<AgentAttributionRow>(),
+  )
+
+const existingBusinessSignupAttribution = (
+  db: D1Database,
+  businessSignupRequestId: string,
+): Promise<BusinessSignupAttributionRow | null> =>
+  storage('siteReferralConsumption.businessSignupAttribution.read', () =>
+    db
+      .prepare(
+        `SELECT referral_attribution_id
+           FROM business_signup_referral_attributions
+          WHERE business_signup_request_id = ?
+            AND archived_at IS NULL
+          LIMIT 1`,
+      )
+      .bind(businessSignupRequestId)
+      .first<BusinessSignupAttributionRow>(),
   )
 
 const userAttributionStatement = (
@@ -269,6 +290,42 @@ const agentAttributionStatement = (
       input.nowIso,
     )
 
+const businessSignupAttributionStatement = (
+  db: D1Database,
+  input: Readonly<{
+    attribution: ReferralAttributionRow
+    businessSignupRequestId: string
+    nowIso: string
+  }>,
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `INSERT OR IGNORE INTO business_signup_referral_attributions
+           (business_signup_request_id,
+            referral_attribution_id,
+            referral_source_id,
+            referral_invite_id,
+            capture_path,
+            target,
+            linked_at,
+            policy_state,
+            created_at,
+            updated_at,
+            archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, NULL)`,
+    )
+    .bind(
+      input.businessSignupRequestId,
+      input.attribution.id,
+      input.attribution.referral_source_id,
+      input.attribution.referral_invite_id,
+      input.attribution.capture_path,
+      input.attribution.target,
+      input.nowIso,
+      input.nowIso,
+      input.nowIso,
+    )
+
 const markClaimedStatement = (
   db: D1Database,
   input: Readonly<{
@@ -289,6 +346,31 @@ const markClaimedStatement = (
             AND archived_at IS NULL`,
     )
     .bind(input.userId, input.nowIso, input.nowIso, input.attributionId)
+
+// A converted business signup is a pre-account lead: there is no users.id to
+// credit yet, so the pending attribution is flipped to 'claimed' without
+// setting claimed_user_id. The referral source still earns the credit via the
+// referral_source_id recorded on the consume-once business-signup row; if the
+// same lead later creates an account, the standard user-path consumption is a
+// no-op because this attribution is already claimed (consume-once holds).
+const markClaimedNoUserStatement = (
+  db: D1Database,
+  input: Readonly<{
+    attributionId: string
+    nowIso: string
+  }>,
+): D1PreparedStatement =>
+  db
+    .prepare(
+      `UPDATE referral_attributions
+            SET policy_state = 'claimed',
+                first_verified_at = COALESCE(first_verified_at, ?),
+                updated_at = ?
+          WHERE id = ?
+            AND policy_state = 'pending'
+            AND archived_at IS NULL`,
+    )
+    .bind(input.nowIso, input.nowIso, input.attributionId)
 
 const batchReferralConsumption = (
   db: D1Database,
@@ -456,6 +538,68 @@ export const linkPendingReferralToAgentClaim = async (
       userId: input.ownerUserId ?? input.agentUserId,
     }),
   ])
+
+  return { _tag: 'consumed', attributionId: attribution.id }
+}
+
+// Bind a converted business signup to the referral spine. Mirrors the
+// agent-claim path: the binding is keyed on the business_signup_request_id, the
+// pending attribution is consumed exactly once (PRIMARY KEY on the consume-once
+// table + the pending->claimed guard prevent double-credit), and no users.id is
+// required because a business signup is a pre-account lead.
+export const linkPendingReferralToBusinessSignup = async (
+  db: D1Database,
+  runtime: ReferralConsumptionRuntime,
+  input: Readonly<{
+    businessSignupRequestId: string
+    pendingAttributionId: string | undefined
+  }>,
+): Promise<ReferralConsumptionResult> => {
+  const nowIso = runtime.nowIso()
+  const existing = await existingBusinessSignupAttribution(
+    db,
+    input.businessSignupRequestId,
+  )
+
+  if (existing !== null) {
+    return {
+      _tag: 'already_verified',
+      attributionId: existing.referral_attribution_id,
+    }
+  }
+
+  const attribution = await pendingAttribution(
+    db,
+    input.pendingAttributionId,
+    nowIso,
+  )
+
+  if (attribution === null) {
+    return { _tag: 'none' }
+  }
+
+  if (
+    attribution.policy_state !== 'pending' ||
+    attribution.expires_at <= nowIso
+  ) {
+    return { _tag: 'expired', attributionId: attribution.id }
+  }
+
+  await batchReferralConsumption(
+    db,
+    'siteReferralConsumption.businessSignup.batch',
+    [
+      businessSignupAttributionStatement(db, {
+        attribution,
+        businessSignupRequestId: input.businessSignupRequestId,
+        nowIso,
+      }),
+      markClaimedNoUserStatement(db, {
+        attributionId: attribution.id,
+        nowIso,
+      }),
+    ],
+  )
 
   return { _tag: 'consumed', attributionId: attribution.id }
 }

@@ -61,9 +61,242 @@ const heroView = <Message>(): Html => {
           'Tell us what you want help with. We set up a workspace seeded with your details so you can hand off work and watch it get done.',
         ],
       ),
+      h.p(
+        [Ui.className<Message>('m-0 max-w-[68ch] text-base/7 text-white/55')],
+        [
+          // Plain-English framing of the product, drawn from the intake spec
+          // (docs/business/2026-06-20-openagents-business-intake-spec.md).
+          'OpenAgents sells machine work with receipts: agents and compute that do real work, where every accepted outcome ties to verifiable evidence. Start with a fast quick win, then put parts of your business on Autopilot. Pay how you want, including in Bitcoin, only as work is accepted.',
+        ],
+      ),
+      h.a(
+        [
+          h.Href('#business-signup'),
+          Ui.className<Message>(
+            'mt-2 inline-flex min-h-10 w-fit items-center border border-[#f1efe8] bg-[#f1efe8] px-4 font-mono text-[0.8125rem] text-[#000] hover:bg-white',
+          ),
+        ],
+        ['Start with a quick win'],
+      ),
     ],
   )
 }
+
+// One offering bucket from the menu in the intake spec. Availability is honest:
+// "Available now" maps to shipped/green, "Available soon" to partial/yellow,
+// "Roadmap" to planned-but-not-shipped. Copy is grounded in the coverage doc
+// (docs/business/2026-06-20-business-offering-promise-coverage.md). Do NOT flip
+// any of these to "now" without a real shipped proof.
+type Availability = 'now' | 'soon' | 'roadmap'
+
+const availabilityLabel: Record<Availability, string> = {
+  now: 'Available now',
+  soon: 'Available soon',
+  roadmap: 'Roadmap',
+}
+
+const availabilityBadgeClass: Record<Availability, string> = {
+  now: 'border-[#1f4d2b] bg-[#06140a] text-[#7fdc9b]',
+  soon: 'border-[#4d3f00] bg-[#141004] text-[#ffd54a]',
+  roadmap: 'border-[#222] bg-[#070707] text-white/55',
+}
+
+type Offering = Readonly<{
+  title: string
+  availability: Availability
+  what: string
+  quickWin: string
+}>
+
+const offerings: ReadonlyArray<Offering> = [
+  {
+    title: 'Coding & agent work',
+    availability: 'now',
+    what: 'A coding agent takes a written objective, works in your repo, runs your verification command, and hands back a reviewable change with evidence.',
+    quickWin:
+      'Quick win: fix a failing test suite, refactor a messy module, or add one feature with passing tests.',
+  },
+  {
+    title: 'Inference / AI on tap',
+    availability: 'now',
+    what: 'Open-weight model inference through OpenAgents (Gemini and Fireworks-hosted open models), with a free taste and credit-funded metered usage after that.',
+    quickWin:
+      'Quick win: run a batch of summaries, classifications, or extractions and get the results back.',
+  },
+  {
+    title: 'Forum / community agents',
+    availability: 'now',
+    what: 'A registered agent identity that posts on the OpenAgents Forum, requests and fulfills labor jobs, and sends and receives content tips.',
+    quickWin:
+      'Quick win: stand up your own agent to post updates, field questions, or pick up small labor jobs.',
+  },
+  {
+    title: 'Distributed compute & training',
+    availability: 'now',
+    what: 'Scoped, verified training runs over the Pylon contributor network, with a public device-capability dataset. Fine-tuning and rentable sandbox compute are being stood up.',
+    quickWin:
+      'Quick win: a bounded, verified training or compute task with a reported result and receipt — best scoped with us first.',
+  },
+  {
+    title: 'Sites + commerce',
+    availability: 'soon',
+    what: 'An Autopilot Site served at a stable URL, with optional custom branded hostnames, native email sequences, and built-in referral links. Partial/flag-gated today.',
+    quickWin:
+      'Quick win: a branded landing page plus a welcome-email sequence for a launch or campaign.',
+  },
+  {
+    title: 'Autopilot business automation',
+    availability: 'soon',
+    what: 'Recurring work run by agents through a factory pipeline (Signal → Triage → Build → Validate → Release → Document → Monitor → Deploy), with prefilled e-commerce, legal, and marketing workspaces. A human-review gate sits before anything publishes or spends. Operator-assisted today, not one-click.',
+    quickWin:
+      'Quick win: one prefilled workspace seeded for your vertical with a first real work item run through it — drafted, never auto-published.',
+  },
+  {
+    title: 'Payments rails (Bitcoin-native)',
+    availability: 'soon',
+    what: 'Bitcoin-native payments: self-custodial Lightning wallets, reliable tips with offline fallback, and USD-credit funding for usage. The USD-credit→usage loop and reliable tips are live; the broader self-custodial wallet flow is behind a flag, and native-sat live settlement for general payout is the next proof.',
+    quickWin:
+      'Quick win: fund an account and run paid work end-to-end with a dereferenceable receipt.',
+  },
+]
+
+const offeringCardView = <Message>(offering: Offering): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border border-[#222] bg-[#010102] p-4 list-none',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex items-center justify-between gap-3')],
+        [
+          h.h3(
+            [
+              Ui.className<Message>(
+                'm-0 text-base font-medium text-[#f1efe8]',
+              ),
+            ],
+            [offering.title],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                `shrink-0 border px-2 py-0.5 font-mono text-[0.6875rem] uppercase tracking-wide ${availabilityBadgeClass[offering.availability]}`,
+              ),
+            ],
+            [availabilityLabel[offering.availability]],
+          ),
+        ],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 text-sm/6 text-white/65')],
+        [offering.what],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 font-mono text-xs text-white/40')],
+        [offering.quickWin],
+      ),
+    ],
+  )
+}
+
+const offeringsView = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3')],
+    [
+      h.h2(
+        [Ui.className<Message>('m-0 text-lg font-medium text-[#f1efe8]')],
+        ['What we can do'],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 max-w-[68ch] text-sm/6 text-white/55')],
+        [
+          'An honest menu of what OpenAgents can deliver. Availability is grounded in our public product-promise registry — shipped (now), behind a flag or with a caveat (soon), or planned (roadmap). We say so in writing and scope the smallest honest version.',
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('m-0 grid gap-3 p-0')],
+        offerings.map(offering => offeringCardView<Message>(offering)),
+      ),
+    ],
+  )
+}
+
+type LadderStep = Readonly<{ when: string; title: string; body: string }>
+
+const ladderSteps: ReadonlyArray<LadderStep> = [
+  {
+    when: 'Day 1',
+    title: 'Quick win',
+    body: 'One small, well-scoped task delivered with evidence: a code fix with passing tests, a batch of model-processed items, a draft campaign, or a funded paid run with a receipt. Low budget, fast turnaround, no big commitment.',
+  },
+  {
+    when: 'Week 1',
+    title: 'Repeatable lane',
+    body: 'Turn the quick win into a repeatable workflow: a prefilled workspace for your vertical, a recurring work item, a site plus email sequence, or a standing processing job. You review outputs; agents do the legwork.',
+  },
+  {
+    when: 'Ongoing',
+    title: 'On Autopilot',
+    body: 'Hand a slice of your business to agents that run in the background through the pipeline, always with a human-review gate. You get accepted outcomes with receipts, and the option to pay or settle in Bitcoin. Expand to more lanes as trust grows.',
+  },
+]
+
+const ladderView = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3 border-t border-[#222] pt-8')],
+    [
+      h.h2(
+        [Ui.className<Message>('m-0 text-lg font-medium text-[#f1efe8]')],
+        ['Quick win → put your business on Autopilot'],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 max-w-[68ch] text-sm/6 text-white/55')],
+        [
+          'You do not commit to the whole journey up front. We pick one small first win, then grow the relationship only if it works.',
+        ],
+      ),
+      h.ol(
+        [Ui.className<Message>('m-0 grid gap-3 p-0')],
+        ladderSteps.map(step =>
+          h.li(
+            [
+              Ui.className<Message>(
+                'grid gap-1 border border-[#222] bg-[#010102] p-4 list-none',
+              ),
+            ],
+            [
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'm-0 font-mono text-[0.6875rem] uppercase tracking-wide text-[#ffb400]',
+                  ),
+                ],
+                [`${step.when} — ${step.title}`],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 text-sm/6 text-white/65')],
+                [step.body],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
+// Copy a bounded ?ref=<code> from the page URL into the hidden referralCode
+// field so a converted signup credits the referrer through the existing
+// referral spine. No-JS visitors still attribute via the /r/<ref> cookie path.
+const referralCaptureScript = `(function(){try{var p=new URLSearchParams(window.location.search);var ref=(p.get('ref')||'').trim();if(!/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,190}$/.test(ref))return;var el=document.getElementById('business-referral-code');if(el)el.value=ref;}catch(e){}})();`
 
 const labelledField = <Message>(input: {
   readonly id: string
@@ -202,6 +435,7 @@ const signupFormView = <Message>(): Html => {
 
   return h.form(
     [
+      h.Id('business-signup'),
       h.Method('post'),
       h.Action(intakeAction),
       h.AriaLabel('Business signup'),
@@ -210,6 +444,15 @@ const signupFormView = <Message>(): Html => {
       ),
     ],
     [
+      // Inbound referral code (a public referral source ref). Hidden; populated
+      // from ?ref= by referralCaptureScript. Server-side validated + bound to
+      // the referral attribution spine on a converted signup.
+      h.input([
+        h.Id('business-referral-code'),
+        h.Name('referralCode'),
+        h.Type('hidden'),
+        h.Value(''),
+      ]),
       labelledField<Message>({
         id: 'business-name',
         name: 'businessName',
@@ -309,11 +552,17 @@ export const view = <Message>(
         [
           h.div(
             [Ui.className<Message>('grid content-start gap-6')],
-            [heroView<Message>(), workspaceInviteView<Message>()],
+            [
+              heroView<Message>(),
+              offeringsView<Message>(),
+              ladderView<Message>(),
+              workspaceInviteView<Message>(),
+            ],
           ),
           signupFormView<Message>(),
         ],
       ),
+      h.script([], [referralCaptureScript]),
     ],
   )
 }
