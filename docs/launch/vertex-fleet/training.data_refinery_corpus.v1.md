@@ -2,6 +2,53 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — eval-delta measurement ↔ provenance source binding gate
+
+**Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
+
+`settleCs336A4EvalDeltaPayment` prices a bonus from a
+`Cs336A4EvalDeltaMeasurement` (a filtered-vs-baseline downstream eval score
+measured on a `sourceRef`), and `buildCs336A4EvalDeltaSettlementReceipt` binds
+that settlement to the shard's provenance receipt by `assignmentRef` and
+refuses a payable bonus unless the receipt's deterministic recompute verified.
+A gap sat between those two: the settlement decision **drops the measurement's
+`sourceRef`**, so the settlement receipt can confirm a payment points at the
+right ASSIGNMENT but cannot confirm the eval delta was actually measured on
+that shard's real corpus SOURCE. A contributor could measure a genuine positive
+delta on an easy/unrelated source and attach it to a shard whose admitted
+corpus is a different (harder) source — every assignment-ref check would still
+pass and the bonus would be recorded against a delta never measured on the
+shard it pays for. This change adds the missing precondition:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-measurement-binding.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-eval-delta-measurement-binding.test.ts` (7 tests)
+
+`verifyCs336A4EvalDeltaMeasurementBinding` is a pure comparison over two
+already-built artifacts (the measurement + the shard's
+`Cs336A4ProvenanceReceipt`). It returns `bound` / not bound and reports the
+`source_ref_mismatch` reason when the measurement's `sourceRef` does not equal
+the receipt's `provenance.sourceRef` (compared after trimming; empty refs on
+either side fail closed with a validation error rather than comparing equal).
+`assertCs336A4EvalDeltaMeasurementBinding` is the fail-closed wrapper for a
+settlement/closeout path: it throws `Cs336A4EvalDeltaMeasurementBindingError`
+(carrying the reason) on an unbound measurement and returns the provenance
+receipt's content-addressed `receiptRef` on success. The gate deliberately does
+NOT re-price the bonus, does NOT re-validate the transform chain, and does NOT
+settle payment; it answers exactly one question: was this eval delta measured on
+the source this shard's provenance admits?
+
+### What genuinely remains (blocker NOT cleared)
+
+`eval_delta_payment_missing` stays listed. This is the deterministic *binding
+check* between a measurement and a shard's provenance source — it prices
+nothing and pays nothing. No fixed-trainer eval loop has produced a real
+eval-delta measurement, no operator funding parameters are set, and this gate
+is not yet wired into the settlement-receipt builder, A4 closeout, or the
+`a4_eval_delta` leaderboard. The promise's green criterion — at least one
+eval-delta payment computed from a fixed reference model and backed by a
+Verified `deterministic_recompute` shard — is unmet. `crawl_scale_corpus_missing`
+and `corpus_provenance_receipts_missing` are untouched by this update.
+
 ## 2026-06-20 update — provenance receipt ↔ crawl-shard assignment binding gate
 
 **Blocker advanced:** `blocker.product_promises.corpus_provenance_receipts_missing`.
