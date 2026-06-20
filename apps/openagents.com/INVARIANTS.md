@@ -2071,6 +2071,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     settlement, wallet, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-site-referral-payout-receipt-routes.test.ts`.
+  - `GET /api/public/partner-payout-receipts/{receiptRef}` — live at read over
+    `partner_payout_ledger_entries` for `receipt.partner_payout.*` settlement
+    evidence refs — compliant (`generatedAt`, top-level
+    `projection_staleness.v1` `live_at_read` contract, settled-row proof only).
+    It resolves only a settled partner payout row that cites the exact
+    public-safe receipt ref, exposing settlement state, amount, asset,
+    qualifying-event kind, policy refs, caveats, and public-safe evidence refs
+    while omitting partner refs, user ids, payout refs, qualifying-event refs,
+    payout destinations, invoices, payment hashes, preimages, provider payloads,
+    wallet material, and ledger ids. Read-only; grants no attribution,
+    eligibility, checkout, spend, refund, payout, settlement, wallet, provider,
+    revenue, public-claim, or registry authority. Regression coverage:
+    `workers/api/src/public-partner-payout-receipt-routes.test.ts`.
   - `GET /api/public/inference/card-credit-spend-receipts/{receiptRef}` — live
     at read over the card-credit paid-loop ledger chain for
     `receipt.inference.card_credit_spend.*` — compliant (`generatedAt`,

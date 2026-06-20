@@ -57,6 +57,7 @@ type WorkerRouteDependencies = Readonly<{
   routePublicCardCreditSpendReceiptRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicNip90MarketReceiptRequest: OptionalEffectRoute
+  routePublicPartnerPayoutReceiptRequest: OptionalEffectRoute
   routePublicSiteReferralPayoutReceiptRequest: OptionalEffectRoute
   routePublicStripeCheckoutReceiptRequest: OptionalEffectRoute
   routeEcommerceCampaignReceiptRequest: OptionalEffectRoute
@@ -494,6 +495,13 @@ export const makeWorkerRouteRequest =
 
       if (publicSiteReferralPayoutReceiptResponse !== undefined) {
         return yield* publicSiteReferralPayoutReceiptResponse
+      }
+
+      const publicPartnerPayoutReceiptResponse =
+        dependencies.routePublicPartnerPayoutReceiptRequest(request, env, ctx)
+
+      if (publicPartnerPayoutReceiptResponse !== undefined) {
+        return yield* publicPartnerPayoutReceiptResponse
       }
 
       const publicNip90MarketReceiptResponse =

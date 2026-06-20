@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.51')
+    expect(decoded.version).toBe('2026-06-20.52')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -1150,8 +1150,10 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/partner-payout-public-routes.ts',
         'apps/openagents.com/workers/api/src/partner-attribution-policy.ts',
         'apps/openagents.com/workers/api/src/partner-agreement-routes.ts',
+        'apps/openagents.com/workers/api/src/public-partner-payout-receipt-routes.ts',
         'route:/api/operator/partners/agreements',
         'route:/api/public/partner-payouts',
+        'route:/api/public/partner-payout-receipts/{receiptRef}',
       ]),
     })
     expect(partnerPromise?.blockerRefs).not.toContain(
@@ -1164,7 +1166,7 @@ describe('public product promises document', () => {
       'explicit-agreement-only attribution policy',
     )
     expect(partnerPromise?.verification).toContain(
-      'clears the projection API and partner-attribution-policy blockers only',
+      'prepares the dereferenceable receipt surface',
     )
     expect(partnerPromise?.authorityBoundary).toContain(
       'public aggregate projections are not spendable value',
@@ -1308,12 +1310,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.51', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.52', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.51',
+      expectedVersion: '2026-06-20.52',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.51',
+      servedVersion: '2026-06-20.52',
       status: 'ready',
     })
     expect(
@@ -1323,7 +1325,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.51',
+      servedVersion: '2026-06-20.52',
       status: 'blocked',
     })
   })

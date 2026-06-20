@@ -751,6 +751,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only partner agreement seed/readback route for the explicit-agreement partner-attribution policy. It records or lists who may be attributed for a paying customer and does not create payout eligibility by itself, move money, expose payout destinations, or grant settlement authority.',
       },
       {
+        id: 'public_partner_payout_receipt',
+        href: 'https://openagents.com/api/public/partner-payout-receipts/{receiptRef}',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe partner payout receipt readback. It resolves `receipt.partner_payout.*` only when a settled partner payout ledger row cites that exact evidence ref, and returns redacted amount/asset/state/policy/caveat/evidence/staleness fields without partner refs, user ids, payout refs, qualifying-event refs, payout destinations, invoices, preimages, provider payloads, wallet material, or ledger ids.',
+      },
+      {
         id: 'operator_site_referral_payout_ledger_transition',
         href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions',
         method: 'POST',

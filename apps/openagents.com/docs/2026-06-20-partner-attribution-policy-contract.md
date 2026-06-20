@@ -40,6 +40,23 @@ money. It records who may be attributed later; payout eligibility is created
 only when a real paid event is processed and the active agreement wins the
 policy decision.
 
+## Public Receipt Route
+
+Read back a settled partner payout receipt:
+
+```sh
+PARTNER_PAYOUT_RECEIPT_REF="receipt.partner_payout.hosted_mdk.example"
+curl -fsS \
+  "https://openagents.com/api/public/partner-payout-receipts/$PARTNER_PAYOUT_RECEIPT_REF"
+```
+
+The route resolves only settled ledger rows whose evidence refs cite the exact
+public receipt ref. It returns amount, asset, settlement state, policy refs,
+caveats, filtered public evidence refs, and staleness metadata. It does not
+expose partner refs, user ids, payout refs, qualifying event refs, payout
+destinations, invoices, preimages, provider payloads, wallet material, or ledger
+ids.
+
 ## Policy Rules
 
 - `referral` is rejected. The referral rail owns referral payouts.
@@ -52,7 +69,8 @@ policy decision.
 
 ## Remaining Blockers
 
-This clears the stale source-level `partner_attribution_policy_missing` blocker.
-It does not claim a live partner revenue stream. The promise remains red until
-partner settlement dispatch has a dereferenceable public receipt and at least
-one real partner payout settles with owner sign-off.
+This clears the stale source-level `partner_attribution_policy_missing` blocker
+and prepares the dereferenceable public receipt route. It does not claim a live
+partner revenue stream. The promise remains red until partner settlement
+dispatch records a real public receipt and at least one real partner payout
+settles with owner sign-off.

@@ -795,6 +795,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/partner-payout-receipts.ts',
+    route: '/api/public/partner-payout-receipts/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/promise-transition-audit-routes.ts',
     route: '/api/public/product-promises/audit',
     status: 'staleness_declared',

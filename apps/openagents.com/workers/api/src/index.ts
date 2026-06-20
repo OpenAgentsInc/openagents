@@ -432,6 +432,7 @@ import {
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
+import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { readAgentBalance } from './payments-ledger'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
@@ -469,6 +470,7 @@ import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-rou
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
+import { makePublicPartnerPayoutReceiptRoutes } from './public-partner-payout-receipt-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
 import { makePublicSiteReferralPayoutReceiptRoutes } from './public-site-referral-payout-receipt-routes'
@@ -7100,6 +7102,12 @@ const publicSiteReferralPayoutReceiptRoutes =
     nowIso: currentIsoTimestamp,
   })
 
+const publicPartnerPayoutReceiptRoutes =
+  makePublicPartnerPayoutReceiptRoutes<Env>({
+    makeStore: env => makeD1PartnerPayoutReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const blueprintRoutes = makeBlueprintRoutes<Env>({
   listActionSubmissions: env =>
     listBlueprintActionSubmissions(openAgentsDatabase(env)),
@@ -9804,6 +9812,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
+  routePublicPartnerPayoutReceiptRequest:
+    publicPartnerPayoutReceiptRoutes.routePublicPartnerPayoutReceiptRequest,
   routePublicSiteReferralPayoutReceiptRequest:
     publicSiteReferralPayoutReceiptRoutes
       .routePublicSiteReferralPayoutReceiptRequest,
