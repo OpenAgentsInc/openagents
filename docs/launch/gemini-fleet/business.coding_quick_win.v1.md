@@ -1,26 +1,26 @@
-# business.coding_quick_win.v1 — self-serve acceptance gate
+# business.coding_quick_win.v1 — machine-checkable payment gate
 
 (Appending to the delivery work tracked in `docs/launch/vertex-fleet/business.coding_quick_win.v1.md`)
 
 ## What this change adds
 
-A machine-checkable **acceptance-evidence contract** for a coding quick win:
+A machine-checkable **payment-evidence contract** for a business quick win:
 
-- `apps/openagents.com/workers/api/src/coding-quick-win-acceptance.ts`
-- `apps/openagents.com/workers/api/src/coding-quick-win-acceptance.test.ts`
+- `apps/openagents.com/workers/api/src/business-quick-win-payment.ts`
+- `apps/openagents.com/workers/api/src/business-quick-win-payment.test.ts`
 
-Just as the previous delivery-gate change allowed the self-serve loop to generate a `delivered_with_evidence` reference without an operator, this new module allows the self-serve loop to deterministically evaluate whether the outcome was accepted (`outcome_accepted` in `business-quick-win-receipt.ts`).
+The promise claims that business quick wins are packaged as a priced product. The generic receipt module treats the `buyer_paid` state as an opaque string. This module makes that judgement deterministic and self-checkable for a self-serve loop:
 
-- `buildCodingQuickWinAcceptanceEvidence` derives `isAccepted` based on an explicit customer action (`diff_approved` or `diff_merged`).
-- `codingQuickWinAcceptedEvidenceRef` acts as the verifier gate, returning the attestation reference (e.g. PR review URL or merge SHA) ONLY if the customer action qualifies as an acceptance.
+- `buildBusinessQuickWinPaymentEvidence` records the payment amount, currency, status, and reference. It ensures the status is explicitly tracked.
+- `businessQuickWinPaidEvidenceRef` produces the `buyerPaidRef` string for the receipt ONLY for a settled payment. It rejects pending or failed payments, ensuring the loop never claims `buyer_paid` prematurely.
 
 ## Which blocker this advances
 
-`blocker.product_promises.business_coding_quick_win_self_serve_missing` (partial). 
+`blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (partial).
 
-The self-serve loop now has machine-checkable gates for both the delivery and the outcome acceptance steps, allowing it to feed the core receipt module deterministically.
+The self-serve loop now has machine-checkable gates for all lifecycle evidence steps (delivery, acceptance, and payment), setting the foundation for generating a verifiable paid receipt automatically without operator intervention.
 
 ## What genuinely remains (blockers stay listed)
 
-- Self-serve: automated intake -> repo provisioning -> runtime invocation -> the delivery and acceptance gates -> receipt.
+- Self-serve: `blocker.product_promises.business_coding_quick_win_self_serve_missing` (automated intake -> repo provisioning -> runtime invocation -> the delivery, acceptance, and payment gates -> receipt).
 - Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
