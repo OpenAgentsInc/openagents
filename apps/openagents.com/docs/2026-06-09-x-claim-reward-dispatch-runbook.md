@@ -94,6 +94,28 @@ Feed it the aggregate dispatch stats from
 sendable balance; a non-empty `blockingReasonRefs` means do not start the live
 smoke until each listed reason clears.
 
+## Candidate pre-dispatch gate (per reward)
+
+After the aggregate preflight is green, confirm the *specific* reward row you
+picked for the smoke is a clean starting point with the pure per-row gate
+(`assertXClaimRewardSmokeCandidate` in
+`apps/openagents.com/workers/api/src/x-claim-reward-smoke-candidate.ts`). It is
+the front bookend that complements the post-settlement receipt audit: it moves
+no funds and passes only when the row is the right candidate to `approve_dispatch`:
+
+- `state_is_eligible` — the row is still in `eligible` (not already approved,
+  dispatched, settled, refused, or failed).
+- `amount_is_campaign_reward` — `amountSats` is the bounded 1000-sat reward.
+- `receipt_ref_well_formed` — `receiptRef` matches `x_claim_reward_receipt_*`.
+- `no_treasury_payment_attached` — no `treasuryPaymentId` is attached yet, so the
+  smoke starts clean.
+- `no_payment_material_leaked` — no invoice, BOLT12 offer, lightning address,
+  preimage, or payment hash appears in any public-facing field.
+
+A non-empty `blockingReasonRefs` means do not run `approve_dispatch` on this row
+until each listed reason clears. The public-safe `candidateSummary` (rewardId,
+state, amountSats, receiptRef only) is safe to paste into issue #4626.
+
 ## Dispatch flow (per reward)
 
 All calls use the worker admin API token as the bearer.
