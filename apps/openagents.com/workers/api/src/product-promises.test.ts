@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.11')
+    expect(decoded.version).toBe('2026-06-19.12')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -122,7 +122,12 @@ describe('public product promises document', () => {
     // + referral seams) — and the 2026-06-19.11 pass — the agentic labor-product
     // flow scaffold (a typed post->order->dispatch->deliver->settle flow with a
     // flag-gated INERT, owner-gated settlement seam) advancing
-    // autopilot.agentic_labor_products.v1 (stays yellow) — flip nothing, so the
+    // autopilot.agentic_labor_products.v1 (stays yellow) — and the 2026-06-19.12
+    // pass — the RL-1 Sites referral payout public projection
+    // (GET /api/public/site-referral-payouts) turning the referral ledger from
+    // "wired in source" into "wired + dereferenceable" on
+    // referral.refer_once_earn_forever.v1 (stays red) and
+    // autopilot_sites.partner_payout_ledger.v1 (stays red) — flip nothing, so the
     // green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
@@ -647,12 +652,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.11', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.12', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.11',
+      expectedVersion: '2026-06-19.12',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.11',
+      servedVersion: '2026-06-19.12',
       status: 'ready',
     })
     expect(
@@ -662,7 +667,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.11',
+      servedVersion: '2026-06-19.12',
       status: 'blocked',
     })
   })
