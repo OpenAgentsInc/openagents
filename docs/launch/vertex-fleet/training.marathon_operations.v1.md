@@ -563,3 +563,47 @@ or blocker list was changed.
 no live standby has been promoted into a real run (no live heartbeat/vacancy
 telemetry feeds the predicate), so no genuine receipt exists and a real feed is
 empty. A receipt-backed live promotion remains unproven.
+
+## 2026-06-20 — Durable-checkpoint-seal receipt feed (collection aggregation)
+
+**Blocker advanced:** `blocker.product_promises.durable_checkpoint_seal_missing`
+(NOT cleared — see below).
+
+The durable-checkpoint-seal lane had a receipt EMITTER
+(`training-durable-checkpoint-seal-receipt.ts`) and a single-receipt VERIFIER
+(`training-durable-checkpoint-seal-receipt-verifier.ts`), but — unlike the
+standby-dispatch and curtailment-drill lanes, which already have their feeds — no
+aggregation layer. A public receipt route does not serve one receipt; it serves a
+COLLECTION. Nothing turned an untrusted list of published seal receipts into the one
+public-safe, verified, de-duplicated, ordered feed such a route would publish. This
+change adds that layer for the durable-checkpoint-seal lane, mirroring the existing
+standby (`training-standby-dispatch-receipt-feed.ts`) and curtailment
+(`training-curtailment-drill-receipt-feed.ts`) feeds:
+
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed.ts`
+  - `buildDurableCheckpointSealReceiptFeed`: a pure, TOTAL function over an array of
+    untrusted receipts. It decodes and runs each through the read-side verifier
+    (canonical content-addressed ref bound to window + digest, content-addressed
+    digest, durable-minimum replication), admits only receipts that pass every
+    authenticity invariant, drops duplicate receipt refs (keeping the first), counts
+    and explains every rejection (`receipt_malformed` / `receipt_not_verified` /
+    `duplicate_receipt_ref`), and returns accepted entries deterministically ordered
+    by receipt ref. It never throws, so it is safe at the edge of a real public
+    feed. The feed carries the blocker ref and `publicSafe: true`.
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed.test.ts`
+  - 6 tests: empty list yields an empty public-safe feed; genuine receipts admitted
+    ordered by receipt ref; duplicate refs drop keeping the first; malformed receipt
+    rejected without throwing; decodable-but-ref-mismatched receipt rejected as
+    not-verified; mixed accepted/rejected batch is deterministic.
+
+Contract-level only: this is the aggregation layer a public read-back-receipt feed
+needs, not a proven remote checkpoint store read-back. It grants no dispatch,
+settlement, storage-backend, promise-state, or green-claim authority, and asserts no
+real remote checkpoint store was ever read back. No promise state or blocker list
+was changed; all projection flags stay false.
+
+**What remains (`durable_checkpoint_seal_missing` stays listed):** no window has been
+sealed on a real remote content-addressed checkpoint store, no runtime emits a real
+seal receipt, and no route serves this feed — so a real feed is empty. A real remote
+checkpoint-store read-back receipt
+(`durableCheckpointRemoteReadbackReceiptAvailable`) remains unproven.
