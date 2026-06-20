@@ -232,3 +232,102 @@ export function verifyConsumerInstallPlatformClaim(
     reasons: [...reasons, ...overpromiseReasons],
   }
 }
+
+// ---------------------------------------------------------------------------
+// Applied guard: bind the verifier to the ACTUAL shipped README copy.
+//
+// `verifyConsumerInstallPlatformClaim` above audits a structured claim, but a
+// synthetic claim object cannot regress when someone edits the real consumer-
+// facing copy. `auditReadmePlatformCopy` closes that gap: it derives the claim
+// from the README text itself and runs the verifier, so a future copy edit that
+// drops the narrowing sentence or reintroduces a Windows/WSL/any-platform claim
+// fails in the suite — not just in a hypothetical fixture.
+// ---------------------------------------------------------------------------
+
+// The canonical, source-of-truth narrowing sentence the README must keep. Stored
+// with single spaces; the audit normalizes whitespace before matching so a line
+// wrap in the file does not defeat the check.
+export const README_NARROWED_PLATFORM_SENTENCE =
+  "Initial supported operator platforms are macOS and Linux. No other operator platforms are in scope for the first v1.0 launch path."
+
+// Public-safe over-promise phrase detectors. Each names a drift class and a
+// pattern that, if it appears in the copy, means the README is claiming coverage
+// the macOS/Linux evidence does not support.
+export const OVERPROMISE_COPY_PATTERNS: ReadonlyArray<{
+  ref: string
+  pattern: RegExp
+}> = [
+  {
+    ref: "any-platform-copy",
+    pattern: /\bany (?:platform|os|machine|computer|device|laptop)\b/i,
+  },
+  {
+    ref: "windows-supported-copy",
+    pattern: /\bwindows\b[^.\n]{0,40}\b(?:supported|in scope|works|covered)\b/i,
+  },
+  {
+    ref: "wsl-supported-copy",
+    pattern: /\bwsl\b[^.\n]{0,40}\b(?:supported|in scope|works|covered)\b/i,
+  },
+]
+
+export type ReadmePlatformCopyAudit = {
+  schema: "openagents.pylon.readme_platform_copy_audit.v0.1"
+  // The canonical narrowing sentence is present (whitespace-normalized).
+  narrowedClaimPresent: boolean
+  // Refs of any over-promise phrases detected in the copy.
+  overpromisePhraseRefs: string[]
+  // The structured claim derived from the actual copy.
+  derivedClaim: ConsumerInstallPlatformClaim
+  // The verifier verdict over the derived claim.
+  claimVerification: ConsumerInstallPlatformClaimVerification
+  // True only when the narrowing sentence is present, no over-promise phrase was
+  // detected, and the derived claim does not over-promise. This is the
+  // reviewer/CI signal that the shipped copy is still honest.
+  copyHonest: boolean
+}
+
+/**
+ * Audit the actual README platform copy for honesty.
+ *
+ * Pure and side-effect-free (the caller supplies the README text). Derives a
+ * structured claim from the copy: the supported set stays the proven
+ * `{darwin, linux}`, and each over-promise phrase flips the matching scope flag
+ * so the existing verifier flags it. The README is honest only when the
+ * narrowing sentence is present, no over-promise phrase matched, and the derived
+ * claim does not over-promise.
+ *
+ * This does NOT clear the blocker or change any promise state; it locks the
+ * owner copy-narrowing decision as an enforceable regression against real copy.
+ */
+export function auditReadmePlatformCopy(readmeText: string): ReadmePlatformCopyAudit {
+  const normalized = readmeText.replace(/\s+/g, " ")
+  const narrowedClaimPresent = normalized.includes(README_NARROWED_PLATFORM_SENTENCE)
+
+  const overpromisePhraseRefs: string[] = []
+  for (const { ref, pattern } of OVERPROMISE_COPY_PATTERNS) {
+    if (pattern.test(readmeText)) overpromisePhraseRefs.push(ref)
+  }
+
+  const derivedClaim: ConsumerInstallPlatformClaim = {
+    schema: "openagents.pylon.consumer_install_platform_claim.v0.1",
+    supportedTargets: [...CONSUMER_INSTALL_SUPPORTED_TARGETS],
+    windowsInScope: overpromisePhraseRefs.includes("windows-supported-copy"),
+    wslInScope: overpromisePhraseRefs.includes("wsl-supported-copy"),
+    anyPlatformClaimed: overpromisePhraseRefs.includes("any-platform-copy"),
+  }
+
+  const claimVerification = verifyConsumerInstallPlatformClaim(derivedClaim)
+
+  return {
+    schema: "openagents.pylon.readme_platform_copy_audit.v0.1",
+    narrowedClaimPresent,
+    overpromisePhraseRefs,
+    derivedClaim,
+    claimVerification,
+    copyHonest:
+      narrowedClaimPresent &&
+      overpromisePhraseRefs.length === 0 &&
+      !claimVerification.overpromises,
+  }
+}
