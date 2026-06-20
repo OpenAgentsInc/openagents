@@ -995,6 +995,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/workrooms/{param}',
   '/api/omni/workrooms/{param}/handoff',
   '/api/omni/workrooms/{param}/lifecycle-decisions',
+  '/api/omni/workrooms/{param}/source-authority',
   '/api/operator/email-sequences',
   '/api/operator/email-sequences/{param}/enroll',
   '/api/operator/email-sequences/{param}/status',

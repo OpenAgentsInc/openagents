@@ -77,6 +77,7 @@ const approvedExactRoutePaths = [
   '/api/operator/tips-buffer/payout',
   '/api/public/artanis/report',
   '/api/public/artanis/admin-ticks',
+  '/api/public/artanis/tick-streak',
   '/api/blueprint/program-registry',
   '/api/blueprint/program-runs',
   '/api/blueprint/action-submissions',

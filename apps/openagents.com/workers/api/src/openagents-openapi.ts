@@ -403,6 +403,9 @@ const schemaComponents = (): JsonSchema => ({
   ArtanisAdminTickMonitorResponse: objectSummary(
     'Public-safe Artanis administrator-tick monitor: persisted tick decisions (dispatched, no_action, blocked, dispatch_failed) with redaction-scanned reasons, assignment refs, countsByState, the daily dispatch bound, dispatchedToday, generatedAt, and explanatory notes. Pre-mind skips are not persisted rows. Read-only projection; it grants no dispatch, spend, or settlement authority.',
   ),
+  ArtanisTickStreakResponse: objectSummary(
+    'Public-safe Artanis unattended tick-streak projection: the count of CONSECUTIVE unattended ticks that both dispatched executor-trace work and carry an accepted exact-replay closeout verdict (outcome=verified, accept_state=accepted). Returns currentStreak, longestStreak, streakTarget, targetReached, verifiedTickCount, the ordered tick window with per-tick qualifies flags, and currentStreakAssignmentRefs - each dereferenceable as an artanis_admin_closeout receipt for independent replay-verdict inspection. A pending or unverified tick can only shorten the streak, never lengthen it. Read-only projection; it grants no dispatch, spend, assignment, or settlement authority and cannot create a tick or verdict.',
+  ),
   PublicTreasuryResponse: objectSummary(
     'Public-safe treasury projection with one aggregate live balance across available treasury rails (MDK + Spark) plus a small rail breakout and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
   ),
@@ -3203,6 +3206,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis administrator-tick monitor.',
           '#/components/schemas/ArtanisAdminTickMonitorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/tick-streak': {
+    get: operation({
+      operationId: 'getPublicArtanisTickStreak',
+      summary: 'Read the Artanis unattended tick-streak projection',
+      description:
+        'Returns the public-safe Artanis unattended tick-streak projection: the count of consecutive unattended ticks that both dispatched executor-trace work and carry an accepted exact-replay closeout verdict. Includes currentStreak, longestStreak, streakTarget, targetReached, verifiedTickCount, the ordered tick window with per-tick qualifies flags, and currentStreakAssignmentRefs (each dereferenceable as an artanis_admin_closeout receipt). A pending or unverified tick can only shorten the streak. Read-only projection with no dispatch, spend, assignment, or settlement authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum tick decisions to scan for the streak.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Artanis unattended tick-streak projection.',
+          '#/components/schemas/ArtanisTickStreakResponse',
         ),
         ...errorResponses(),
       },

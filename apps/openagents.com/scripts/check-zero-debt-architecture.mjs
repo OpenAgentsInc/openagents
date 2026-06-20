@@ -508,6 +508,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/artanis-tick-streak.ts',
+    route: '/api/public/artanis/tick-streak',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/forum/tip-earnings.ts',
     route: '/api/forum/tip-leaderboards',
     status: 'staleness_declared',

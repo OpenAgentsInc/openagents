@@ -1682,6 +1682,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).
+  - `GET /api/public/artanis/tick-streak` — live at read over the
+    tick-decision and exact-replay closeout-verdict ledgers — compliant
+    (`generatedAt`, `staleness` contract `projection_staleness.v1`
+    live_at_read, the consecutive unattended-tick-streak counter for
+    artanis.tassadar_evolution_loop.v1: currentStreak/longestStreak/
+    targetReached against streakTarget 10, each currentStreak assignment
+    dereferenceable as an artanis_admin_closeout receipt).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
     honesty caveat refs).
