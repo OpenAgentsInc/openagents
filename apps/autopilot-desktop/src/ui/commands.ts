@@ -16,7 +16,7 @@ import {
   loadDesktopProofReplayProjection,
 } from "../shared/proof-replays"
 import type { OnboardingStatusResponse } from "../shared/rpc"
-import { ProofReplayCommandRequest } from "./model"
+import { ProofReplayCommandRequest, ShellCodingTarget } from "./model"
 // #5472: local preference persistence (no RPC verb — writes localStorage).
 import { savePreferences } from "./preferences"
 import {
@@ -26,6 +26,7 @@ import {
   FailedAppleFmSession,
   FailedChatTurn,
   FailedComposerTurn,
+  FailedShellCodingTurn,
   FailedSpawn,
   GotAppleFmReadiness,
   GotBuiltInAgentReadiness,
@@ -62,6 +63,7 @@ import {
   SucceededAppleFmSession,
   SucceededChatTurn,
   SucceededComposerTurn,
+  SucceededShellCodingTurn,
   SucceededDeploy,
   SucceededSpawn,
   SucceededSwarmBatchSpawn,
@@ -1587,6 +1589,52 @@ export const RespondToShellInput = Command.define(
     // Surface a clean, honest connection-error message instead.
     Effect.catch(() =>
       Effect.succeed(RespondedShell({ prompt, text: SHELL_BRIDGE_ERROR_TEXT })),
+    ),
+  ),
+)
+
+export const SpawnShellCodingTurn = Command.define(
+  "SpawnShellCodingTurn",
+  {
+    target: ShellCodingTarget,
+    adapter: S.Literals(["codex", "claude_agent"]),
+    prompt: S.String,
+    objective: S.String,
+    verify: S.Array(S.String),
+    lane: S.Literals(["auto", "local", "cloud-gcp", "cloud-shc"]),
+    worktreePath: S.NullOr(S.String),
+    accountRef: S.NullOr(S.String),
+  },
+  SucceededShellCodingTurn,
+  FailedShellCodingTurn,
+)(({ target, adapter, prompt, objective, verify, lane, worktreePath, accountRef }) =>
+  Effect.tryPromise(() =>
+    getRequest().spawnSession({
+      adapter,
+      objective,
+      verify: verify.length > 0 ? [...verify] : undefined,
+      lane,
+      ...(worktreePath !== null && worktreePath.trim() !== ""
+        ? { worktreePath: worktreePath.trim() }
+        : {}),
+      ...(accountRef !== null && accountRef.trim() !== ""
+        ? { accountRef: accountRef.trim() }
+        : {}),
+    }),
+  ).pipe(
+    Effect.map((r) =>
+      r.ok
+        ? SucceededShellCodingTurn({ target, prompt, sessionRef: r.sessionRef })
+        : FailedShellCodingTurn({
+            target,
+            prompt,
+            error: r.error ?? "spawn failed",
+          }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        FailedShellCodingTurn({ target, prompt, error: errorText(error) }),
+      ),
     ),
   ),
 )

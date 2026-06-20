@@ -3,6 +3,7 @@ import { join } from "node:path"
 import { describe, expect, test } from "bun:test"
 
 import { DESKTOP_RPC_MAX_REQUEST_TIME_MS } from "../src/shared/rpc"
+import { desktopApplicationMenu } from "../src/bun/application-menu"
 import config from "../electrobun.config"
 
 const mokshaAssetSource =
@@ -30,5 +31,28 @@ describe("ElectroBun packaging", () => {
 
     expect(bunEntry).toContain("maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS")
     expect(viewEntry).toContain("maxRequestTime: DESKTOP_RPC_MAX_REQUEST_TIME_MS")
+  })
+
+  test("installs native edit menu accelerators for WebKit text editing", () => {
+    const edit = desktopApplicationMenu.find(
+      (item) => "label" in item && item.label === "Edit",
+    ) as { submenu?: Array<{ role?: string; accelerator?: string }> } | undefined
+    expect(edit).toBeDefined()
+    const byRole = new Map(
+      (edit?.submenu ?? [])
+        .filter((item) => typeof item.role === "string")
+        .map((item) => [item.role, item]),
+    )
+
+    expect(byRole.get("copy")?.accelerator).toBe("CommandOrControl+C")
+    expect(byRole.get("paste")?.accelerator).toBe("CommandOrControl+V")
+    expect(byRole.get("cut")?.accelerator).toBe("CommandOrControl+X")
+    expect(byRole.get("selectAll")?.accelerator).toBe("CommandOrControl+A")
+    expect(byRole.get("undo")?.accelerator).toBe("CommandOrControl+Z")
+
+    const bunEntry = readFileSync(join(process.cwd(), "src/bun/index.ts"), "utf8")
+    expect(bunEntry).toContain(
+      "ApplicationMenu.setApplicationMenu(desktopApplicationMenu)",
+    )
   })
 })

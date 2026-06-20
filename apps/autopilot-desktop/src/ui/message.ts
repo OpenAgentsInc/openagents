@@ -8,7 +8,13 @@
 import { Schema as S } from "effect"
 import { m } from "foldkit/message"
 
-import { PaneId, ProofReplaySlug, SessionFilter } from "./model"
+import {
+  PaneId,
+  ProofReplaySlug,
+  SessionFilter,
+  ShellCodingTarget,
+  ShellTarget,
+} from "./model"
 // HUD H3 (#5501): the drag/handle literal schemas for the managed pane-layer
 // messages. Imported as VALUES (the `m()` constructors need the runtime schema);
 // pane-manager imports only the `PaneId` value from model.ts, so there is no
@@ -551,10 +557,22 @@ export const SettledPersistPreferences = m("SettledPersistPreferences")
 // full multi-pane UI (explicit open → lands on the chat pane); `ClosedPanes`
 // returns to the black shell. These are the only verbs the shell needs.
 export const ChangedShellInput = m("ChangedShellInput", { value: S.String })
+export const CycledShellTarget = m("CycledShellTarget")
+export const SelectedShellTarget = m("SelectedShellTarget", { target: ShellTarget })
 export const SubmittedShell = m("SubmittedShell")
 export const RespondedShell = m("RespondedShell", {
   prompt: S.String,
   text: S.String,
+})
+export const SucceededShellCodingTurn = m("SucceededShellCodingTurn", {
+  target: ShellCodingTarget,
+  prompt: S.String,
+  sessionRef: S.String,
+})
+export const FailedShellCodingTurn = m("FailedShellCodingTurn", {
+  target: ShellCodingTarget,
+  prompt: S.String,
+  error: S.String,
 })
 export const OpenedPanes = m("OpenedPanes")
 export const ClosedPanes = m("ClosedPanes")
@@ -743,8 +761,12 @@ export const Message = S.Union([
   ChangedGatewayInferenceFallback,
   SettledPersistPreferences,
   ChangedShellInput,
+  CycledShellTarget,
+  SelectedShellTarget,
   SubmittedShell,
   RespondedShell,
+  SucceededShellCodingTurn,
+  FailedShellCodingTurn,
   OpenedPanes,
   ClosedPanes,
   OpenedManagedPane,

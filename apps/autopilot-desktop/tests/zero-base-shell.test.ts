@@ -22,10 +22,14 @@ import { update } from "../src/ui/update"
 import { view } from "../src/ui/view"
 import {
   ChangedShellInput,
+  CycledShellTarget,
   ClosedPanes,
+  FailedShellCodingTurn,
   OpenedPanes,
   RespondedShell,
+  SelectedShellTarget,
   SubmittedShell,
+  SucceededShellCodingTurn,
 } from "../src/ui/message"
 import { shellLoopbackReply } from "../src/ui/commands"
 import { interpretKey } from "../src/ui/keyboard"
@@ -54,6 +58,7 @@ describe("zero-base shell: the minimal default surface", () => {
     // The shell starts empty (truly black: no conversation, empty input).
     expect(model.shellTurns).toHaveLength(0)
     expect(model.shellInput).toBe("")
+    expect(model.shellTarget).toBe("current")
     expect(model.shellPending).toBe(false)
   })
 
@@ -66,6 +71,8 @@ describe("zero-base shell: the minimal default surface", () => {
     // The one surface: the bottom text bar exists.
     expect(tree).toContain("shell-input")
     expect(tree).toContain("shell-bar")
+    expect(tree).toContain("shell-target-tabs")
+    expect(tree).toContain("Shift+Tab cycles shell target")
     expect(tree).toContain("hotbar-inline")
     expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).not.toContain("shell-open-panes")
@@ -84,6 +91,19 @@ describe("zero-base shell: the minimal default surface", () => {
 })
 
 describe("zero-base shell: text bar → response loop", () => {
+  test("Shift+Tab cycles the shell target; selecting a target is pure state", () => {
+    const [m0] = initialRuntimeState()
+    const [m1, c1] = update(m0, CycledShellTarget())
+    expect(m1.shellTarget).toBe("claude_code")
+    expect(c1).toHaveLength(0)
+    const [m2] = update(m1, CycledShellTarget())
+    expect(m2.shellTarget).toBe("codex")
+    const [m3] = update(m2, CycledShellTarget())
+    expect(m3.shellTarget).toBe("current")
+    const [selected] = update(m3, SelectedShellTarget({ target: "codex" }))
+    expect(selected.shellTarget).toBe("codex")
+  })
+
   test("typing tracks the input; an empty submit is a no-op (no error chrome)", () => {
     const [m0] = initialRuntimeState()
     const [m1, c1] = update(m0, ChangedShellInput({ value: "  " }))
@@ -138,6 +158,98 @@ describe("zero-base shell: text bar → response loop", () => {
     const tree = serialize(view(m3).body)
     expect(tree).toContain("shell-conversation")
     expect(tree).toContain("ping")
+  })
+
+  test("Claude Code target submits through the coding session bridge", () => {
+    const [m0] = initialRuntimeState()
+    const [m1] = update(m0, SelectedShellTarget({ target: "claude_code" }))
+    const [m2] = update(m1, ChangedShellInput({ value: "fix the crash" }))
+    const [m3, commands] = update(m2, SubmittedShell())
+    expect(m3.shellInput).toBe("")
+    expect(m3.shellPending).toBe(true)
+    expect(m3.shellTurns[0]).toMatchObject({
+      role: "you",
+      target: "claude_code",
+      text: "fix the crash",
+    })
+    expect(commands).toHaveLength(1)
+    expect(commands[0]?.args).toMatchObject({
+      target: "claude_code",
+      adapter: "claude_agent",
+      prompt: "fix the crash",
+      objective: "fix the crash",
+    })
+
+    const [m4] = update(
+      m3,
+      SucceededShellCodingTurn({
+        target: "claude_code",
+        prompt: "fix the crash",
+        sessionRef: "session.pylon.claude_agent.abc",
+      }),
+    )
+    expect(m4.shellPending).toBe(false)
+    expect(m4.shellClaudeSessionRef).toBe("session.pylon.claude_agent.abc")
+    expect(m4.shellCodexSessionRef).toBe(null)
+    expect(m4.shellClaudeTurns).toEqual(["fix the crash"])
+    expect(m4.shellTurns[1]).toMatchObject({
+      role: "autopilot",
+      target: "claude_code",
+    })
+    expect(m4.shellTurns[1]?.text).toContain("Claude Code started")
+  })
+
+  test("Codex target keeps its own continuation state", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "codex",
+      shellCodexSessionRef: "session.pylon.codex.first",
+      shellCodexTurns: ["first task"],
+      shellInput: "follow up",
+    })
+    const [submitted, commands] = update(start, SubmittedShell())
+    expect(commands).toHaveLength(1)
+    expect(commands[0]?.args).toMatchObject({
+      target: "codex",
+      adapter: "codex",
+      prompt: "follow up",
+    })
+    expect(String(commands[0]?.args.objective)).toContain("first task")
+    expect(String(commands[0]?.args.objective)).toContain("follow up")
+
+    const [settled] = update(
+      submitted,
+      SucceededShellCodingTurn({
+        target: "codex",
+        prompt: "follow up",
+        sessionRef: "session.pylon.codex.second",
+      }),
+    )
+    expect(settled.shellCodexSessionRef).toBe("session.pylon.codex.second")
+    expect(settled.shellCodexTurns).toEqual(["first task", "follow up"])
+    expect(settled.shellClaudeTurns).toEqual([])
+  })
+
+  test("coding target failures clear pending without adding to continuation state", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "claude_code",
+      shellInput: "do it",
+    })
+    const [submitted] = update(start, SubmittedShell())
+    const [failed] = update(
+      submitted,
+      FailedShellCodingTurn({
+        target: "claude_code",
+        prompt: "do it",
+        error: "no auth",
+      }),
+    )
+    expect(failed.shellPending).toBe(false)
+    expect(failed.shellClaudeTurns).toEqual([])
+    expect(failed.shellTurns.at(-1)?.text).toBe("Claude Code failed: no auth")
   })
 })
 

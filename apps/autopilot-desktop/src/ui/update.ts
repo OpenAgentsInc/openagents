@@ -49,6 +49,7 @@ import {
   SpawnBatchSession,
   SpawnChatTurn,
   SpawnComposerTurn,
+  SpawnShellCodingTurn,
   StartAppleFmSession,
   StartBuiltInAgent,
   SurfacePromiseGap,
@@ -84,7 +85,6 @@ import {
   OpenedCommandPalette,
   OpenedManagedPane,
   RanPaletteCommand,
-  RespondedShell,
   type Message,
 } from "./message"
 import { interpretKey } from "./keyboard"
@@ -107,6 +107,8 @@ import {
   type ChatMessage,
   type PaneId,
   type ProofReplayCommandRequest,
+  type ShellCodingTarget,
+  type ShellTarget,
 } from "./model"
 // #5466 (EPIC #5461): live Blueprint chat — SEMANTIC signature routing + runtime
 // step derivation from real session events (replaces the seeded path).
@@ -143,6 +145,57 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+const SHELL_TARGET_ORDER: ReadonlyArray<ShellTarget> = [
+  "current",
+  "claude_code",
+  "codex",
+]
+
+const nextShellTarget = (target: ShellTarget): ShellTarget => {
+  const index = SHELL_TARGET_ORDER.indexOf(target)
+  return SHELL_TARGET_ORDER[(index + 1) % SHELL_TARGET_ORDER.length] ?? "current"
+}
+
+const shellTargetLabel = (target: ShellTarget): string =>
+  target === "claude_code"
+    ? "Claude Code"
+    : target === "codex"
+      ? "Codex"
+      : "Current"
+
+const shellCodingAdapter = (
+  target: ShellCodingTarget,
+): "codex" | "claude_agent" =>
+  target === "claude_code" ? "claude_agent" : "codex"
+
+const shellCodingState = (
+  model: Model,
+  target: ShellCodingTarget,
+): { readonly sessionRef: string | null; readonly turns: ReadonlyArray<string> } =>
+  target === "claude_code"
+    ? { sessionRef: model.shellClaudeSessionRef, turns: model.shellClaudeTurns }
+    : { sessionRef: model.shellCodexSessionRef, turns: model.shellCodexTurns }
+
+const writeShellCodingSuccess = (
+  model: Model,
+  target: ShellCodingTarget,
+  prompt: string,
+  sessionRef: string,
+): Model =>
+  target === "claude_code"
+    ? Model.make({
+        ...model,
+        shellPending: false,
+        shellClaudeSessionRef: sessionRef,
+        shellClaudeTurns: [...model.shellClaudeTurns, prompt],
+      })
+    : Model.make({
+        ...model,
+        shellPending: false,
+        shellCodexSessionRef: sessionRef,
+        shellCodexTurns: [...model.shellCodexTurns, prompt],
+      })
 
 // HUD H3 (#5501): the live viewport for managed-pane cascade/clamp. Reads the
 // real webview window when present; falls back to a fixed desktop size under
@@ -2594,19 +2647,59 @@ export const update = (model: Model, message: Message): Result => {
     // sees (model.shellTurns → shellTranscriptText).
     case "ChangedShellInput":
       return [Model.make({ ...model, shellInput: message.value }), noCommands]
+    case "CycledShellTarget":
+      return [
+        Model.make({ ...model, shellTarget: nextShellTarget(model.shellTarget) }),
+        noCommands,
+      ]
+    case "SelectedShellTarget":
+      return [Model.make({ ...model, shellTarget: message.target }), noCommands]
     case "SubmittedShell": {
       const prompt = model.shellInput.trim()
       // Empty submit is a no-op (no error chrome on the clean surface).
       if (prompt === "" || model.shellPending) return [model, noCommands]
+      const target = model.shellTarget
+      const userTurn = {
+        id: chatMessageId("shell.you"),
+        role: "you" as const,
+        target,
+        text: prompt,
+      }
+      if (target !== "current") {
+        const state = shellCodingState(model, target)
+        const objective =
+          state.turns.length === 0
+            ? prompt
+            : buildComposerContinuationObjective(state.turns, prompt)
+        const worktreePath =
+          model.composerRepoPath.trim() === "" ? null : model.composerRepoPath.trim()
+        return [
+          Model.make({
+            ...model,
+            shellInput: "",
+            shellPending: true,
+            shellTurns: [...model.shellTurns, userTurn],
+          }),
+          [
+            SpawnShellCodingTurn({
+              target,
+              adapter: shellCodingAdapter(target),
+              prompt,
+              objective,
+              verify: parseVerifyLines(model.spawnVerify),
+              lane: model.spawnLane,
+              worktreePath,
+              accountRef: model.composerAccountRef,
+            }),
+          ],
+        ]
+      }
       return [
         Model.make({
           ...model,
           shellInput: "",
           shellPending: true,
-          shellTurns: [
-            ...model.shellTurns,
-            { id: chatMessageId("shell.you"), role: "you", text: prompt },
-          ],
+          shellTurns: [...model.shellTurns, userTurn],
         }),
         [RespondToShellInput({ prompt })],
       ]
@@ -2621,7 +2714,51 @@ export const update = (model: Model, message: Message): Result => {
             {
               id: chatMessageId("shell.autopilot"),
               role: "autopilot",
+              target: "current",
               text: message.text,
+            },
+          ],
+        }),
+        noCommands,
+      ]
+    case "SucceededShellCodingTurn": {
+      const state = shellCodingState(model, message.target)
+      const label = shellTargetLabel(message.target)
+      const verb = state.sessionRef === null ? "started" : "continued"
+      const next = writeShellCodingSuccess(
+        model,
+        message.target,
+        message.prompt,
+        message.sessionRef,
+      )
+      return [
+        Model.make({
+          ...next,
+          shellTurns: [
+            ...next.shellTurns,
+            {
+              id: chatMessageId("shell.autopilot"),
+              role: "autopilot",
+              target: message.target,
+              text: `${label} ${verb}: ${message.sessionRef}`,
+            },
+          ],
+        }),
+        noCommands,
+      ]
+    }
+    case "FailedShellCodingTurn":
+      return [
+        Model.make({
+          ...model,
+          shellPending: false,
+          shellTurns: [
+            ...model.shellTurns,
+            {
+              id: chatMessageId("shell.autopilot"),
+              role: "autopilot",
+              target: message.target,
+              text: `${shellTargetLabel(message.target)} failed: ${message.error}`,
             },
           ],
         }),

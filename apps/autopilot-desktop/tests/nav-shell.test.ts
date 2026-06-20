@@ -25,6 +25,7 @@ import {
 } from "../src/ui/nav"
 import { update } from "../src/ui/update"
 import { view } from "../src/ui/view"
+import { keyboardForwardDecision } from "../src/ui/subscriptions"
 
 const key = (over: Partial<KeyEvent>): KeyEvent => ({
   key: "",
@@ -210,6 +211,33 @@ describe("#5465 keyboard layer", () => {
     }
   })
 
+  test("native edit shortcuts are not intercepted by the webview shortcut filter", () => {
+    for (const key of ["c", "v", "x", "a", "z"]) {
+      expect(
+        keyboardForwardDecision({ key, meta: true, ctrl: false, inEditable: true }),
+      ).toEqual({ forward: false, preventDefault: false })
+    }
+    expect(
+      keyboardForwardDecision({
+        key: "ArrowUp",
+        meta: true,
+        ctrl: false,
+        inEditable: true,
+      }),
+    ).toEqual({ forward: false, preventDefault: false })
+    expect(
+      keyboardForwardDecision({ key: "k", meta: true, ctrl: false, inEditable: true }),
+    ).toEqual({ forward: true, preventDefault: true })
+    expect(
+      keyboardForwardDecision({
+        key: "Escape",
+        meta: false,
+        ctrl: false,
+        inEditable: true,
+      }),
+    ).toEqual({ forward: true, preventDefault: true })
+  })
+
   test("Cmd-Enter submits in chat/composer, and is a no-op elsewhere", () => {
     const chat = Model.make({ ...initialModel, pane: "chat" })
     expect(interpretKey(chat, key({ key: "Enter", meta: true })).kind).toBe("submit-turn")
@@ -336,6 +364,9 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
     expect(tree).toContain("shell-bar")
     expect(tree).toContain("hotbar")
     expect(tree).toContain("hotbar-inline")
+    expect(tree).toContain("shell-target-tabs")
+    expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-target-tabs"))
+    expect(tree.indexOf("shell-target-tabs")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).toContain("shell-input")
     expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).toContain("hotbar-slot")

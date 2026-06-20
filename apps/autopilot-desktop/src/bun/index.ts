@@ -1,6 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { BrowserView, BrowserWindow, PATHS, Updater } from "electrobun/bun"
+import {
+  ApplicationMenu,
+  BrowserView,
+  BrowserWindow,
+  PATHS,
+  Updater,
+} from "electrobun/bun"
+import { desktopApplicationMenu } from "./application-menu"
 import { createControlTokenResolver, discoverPylonHome } from "./node-home"
 import {
   type NodeLaunchStatus,
@@ -1006,6 +1013,11 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
     messages: {},
   },
 })
+
+// macOS needs a native Edit menu for WebKit text editing accelerators. Without
+// these roles, Cmd-C/Cmd-V/Cmd-A can fall through to the system error beep
+// instead of copy/paste/select-all inside the focused webview field.
+ApplicationMenu.setApplicationMenu(desktopApplicationMenu)
 
 const window = new BrowserWindow({
   title: "Autopilot",

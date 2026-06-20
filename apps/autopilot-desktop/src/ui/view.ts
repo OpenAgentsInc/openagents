@@ -180,6 +180,8 @@ import {
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
+  CycledShellTarget,
+  SelectedShellTarget,
   SubmittedShell,
   ClosedPanes,
   // HUD H3 (#5501): managed pane-layer verbs.
@@ -261,6 +263,7 @@ import {
   type ChatStep,
   type PaneId,
   type SessionFilter,
+  type ShellTarget,
   modelTrainingActivation,
   modelTrainingBootstrap,
   modelTrainingDashboard,
@@ -5799,11 +5802,57 @@ const composerPane = (model: Model): Html => {
 // The bottom-left ⌘K hotbar slot opens the command palette over the shell.
 // Everything the old UI did is preserved and reachable through the palette/sidebar
 // once open; it just no longer renders by default.
-const shellTurnView = (turn: { role: string; text: string }): Html =>
+const shellTargetOptions: ReadonlyArray<{
+  readonly target: ShellTarget
+  readonly label: string
+  readonly title: string
+}> = [
+  { target: "current", label: "Current", title: "Current shell model" },
+  { target: "claude_code", label: "Claude", title: "Claude Code" },
+  { target: "codex", label: "Codex", title: "Codex" },
+]
+
+const shellTargetLabel = (target: ShellTarget): string =>
+  shellTargetOptions.find((option) => option.target === target)?.title ?? "Current"
+
+const shellTargetTabs = (active: ShellTarget): Html =>
+  h.div(
+    [
+      cls("shell-target-tabs"),
+      h.Role("tablist"),
+      h.AriaLabel("Shell target"),
+      h.Title("Shift+Tab cycles shell target"),
+    ],
+    shellTargetOptions.map((option) =>
+      h.button(
+        [
+          cls(`shell-target-tab${active === option.target ? " active" : ""}`),
+          h.Type("button"),
+          h.Role("tab"),
+          h.Title(`${option.title} (Shift+Tab)`),
+          h.OnClick(SelectedShellTarget({ target: option.target })),
+        ],
+        [option.label],
+      ),
+    ),
+  )
+
+const shellTurnView = (turn: {
+  role: string
+  target: ShellTarget
+  text: string
+}): Html =>
   h.div(
     [cls(`shell-turn shell-turn-${turn.role}`)],
     [
-      h.div([cls("shell-turn-role")], [turn.role]),
+      h.div(
+        [cls("shell-turn-role")],
+        [
+          turn.target === "current"
+            ? turn.role
+            : `${turn.role} · ${shellTargetLabel(turn.target)}`,
+        ],
+      ),
       h.div([cls("shell-turn-text")], [turn.text]),
     ],
   )
@@ -5826,6 +5875,7 @@ const shellPane = (model: Model): Html =>
           // Bottom-left hotbar; blank cells are inert, and the chat input sits
           // immediately to its right.
           hotbar("inline"),
+          shellTargetTabs(model.shellTarget),
           h.input([
             cls("shell-input"),
             h.Type("text"),
@@ -5839,9 +5889,12 @@ const shellPane = (model: Model): Html =>
             // belongs (owner directive 2026-06-19).
             h.Value(model.shellInput),
             h.OnInput((value: string) => ChangedShellInput({ value })),
-            // Enter submits (without Shift); other keys fall through untouched.
+            // Shift+Tab cycles target without letting the browser move focus or
+            // alter the input; Enter submits (without Shift).
             h.OnKeyDownPreventDefault((key, mods) =>
-              key === "Enter" && !mods.shiftKey
+              key === "Tab" && mods.shiftKey
+                ? Option.some(CycledShellTarget())
+                : key === "Enter" && !mods.shiftKey
                 ? Option.some(SubmittedShell())
                 : Option.none(),
             ),

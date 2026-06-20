@@ -196,15 +196,22 @@ export type ChatMessage = typeof ChatMessage.Type
 
 // ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
 // The minimal default surface's state. ONE text bar, a clean conversation above
-// it, and nothing else. A turn is just `{ role, text }` — NO session refs, NO
-// program-step / verdict / node-state jargon (that all lives in the hidden chat
-// pane). `shellPending` disables the input while a response is in flight.
+// it, and nothing else. `shellTarget` chooses where that bar sends a turn:
+// hosted/current model, Claude Code, or Codex. The coding targets retain their
+// own session refs/turn history so Shift-Tab never cross-wires the two agents.
 export const ShellRole = S.Literals(["you", "autopilot"])
 export type ShellRole = typeof ShellRole.Type
+
+export const ShellTarget = S.Literals(["current", "claude_code", "codex"])
+export type ShellTarget = typeof ShellTarget.Type
+
+export const ShellCodingTarget = S.Literals(["claude_code", "codex"])
+export type ShellCodingTarget = typeof ShellCodingTarget.Type
 
 export const ShellTurn = S.Struct({
   id: S.String,
   role: ShellRole,
+  target: ShellTarget,
   text: S.String,
 })
 export type ShellTurn = typeof ShellTurn.Type
@@ -612,11 +619,17 @@ export const Model = ts("AutopilotDesktop", {
   // ── Zero-base shell (owner directive, 2026-06-19) ─────────────────────────
   // The minimal default surface. `shellInput` is the bottom text bar; `shellTurns`
   // is the clean conversation rendered above it (what you typed → the answer);
-  // `shellPending` gates the input while a response is in flight. These are the
-  // ONLY fields the default screen reads — no other Model state renders there.
+  // `shellPending` gates the input while a response is in flight. Shift-Tab
+  // cycles `shellTarget`; Claude/Codex targets retain independent lightweight
+  // continuation state over the existing session.spawn bridge.
+  shellTarget: ShellTarget,
   shellInput: S.String,
   shellTurns: S.Array(ShellTurn),
   shellPending: S.Boolean,
+  shellClaudeSessionRef: S.NullOr(S.String),
+  shellCodexSessionRef: S.NullOr(S.String),
+  shellClaudeTurns: S.Array(S.String),
+  shellCodexTurns: S.Array(S.String),
 
   // ── HUD H3: the managed pane layer (#5501) ────────────────────────────────
   // The set of open managed panes (pane-as-data: id, kind, rect, z) + the
@@ -639,9 +652,17 @@ export const modelPaneLayer = (model: Model): PaneLayer =>
 // A pure, plain-text projection of exactly what the shell screen shows the user
 // (the conversation above the bar). The headless/RPC control path reads THIS so
 // a driver (Claude) sees the SAME rendered state the owner does — no DOM, no
-// hidden fields. One line per turn: "you: …" / "autopilot: …".
+// hidden fields. One line per turn: "you: …" / "autopilot: …"; non-current
+// targets include the same target label rendered in the shell turn header.
+const shellTargetTranscriptLabel = (target: ShellTarget): string =>
+  target === "claude_code" ? "Claude Code" : target === "codex" ? "Codex" : ""
+
 export const shellTranscriptText = (model: Model): string =>
-  model.shellTurns.map((turn) => `${turn.role}: ${turn.text}`).join("\n")
+  model.shellTurns.map((turn) => {
+    const target = shellTargetTranscriptLabel(turn.target)
+    const prefix = target === "" ? "" : `[${target}] `
+    return `${turn.role}: ${prefix}${turn.text}`
+  }).join("\n")
 
 // ── Typed accessors over the opaque projection fields ──────────────────────
 //
@@ -1097,9 +1118,14 @@ export const initialModel: Model = Model.make({
   // Zero-base shell: empty input, empty conversation, idle. The real app entry
   // (initial-state.ts) sets `pane: "shell"`; this neutral base keeps `pane`
   // "network" so the existing view/update tests stay deterministic.
+  shellTarget: "current",
   shellInput: "",
   shellTurns: [],
   shellPending: false,
+  shellClaudeSessionRef: null,
+  shellCodexSessionRef: null,
+  shellClaudeTurns: [],
+  shellCodexTurns: [],
   // HUD H3 (#5501): no managed panes open by default (the shell stays black).
   paneLayer: { panes: [], seq: 0, drag: null },
 })

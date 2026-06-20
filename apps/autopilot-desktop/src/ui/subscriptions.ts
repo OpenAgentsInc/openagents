@@ -58,6 +58,30 @@ const KEYBOARD_KEYS = new Set([
   "j",
 ])
 
+export const keyboardForwardDecision = (input: {
+  readonly key: string
+  readonly meta: boolean
+  readonly ctrl: boolean
+  readonly inEditable: boolean
+}): { readonly forward: boolean; readonly preventDefault: boolean } => {
+  const modified = input.meta || input.ctrl
+  const key = input.key
+  const modifiedShortcut = modified && (
+    key.toLowerCase() === "k" || key === "Enter"
+  )
+  const escapeKey = key === "Escape"
+  const paletteKey = !modified && (
+    key === "ArrowUp" || key === "ArrowDown" || key === "Enter"
+  )
+  const bareNavKey = !modified && !input.inEditable && (key === "j" || key === "k")
+  const forward =
+    KEYBOARD_KEYS.has(key) && (modifiedShortcut || escapeKey || paletteKey || bareNavKey)
+  return {
+    forward,
+    preventDefault: forward && (modifiedShortcut || escapeKey || bareNavKey),
+  }
+}
+
 const isEditableTarget = (target: EventTarget | null): boolean => {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null
   if (!el) return false
@@ -86,20 +110,12 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
         const meta = event.metaKey ?? false
         const ctrl = event.ctrlKey ?? false
         const inEditable = isEditableTarget(event.target ?? null)
-        // Only consider keys the reducer might act on (cheap pre-filter). A bare
-        // letter (j/k) is a candidate too, but only acted on outside inputs.
-        const modified = meta || ctrl
-        // Bare j/k navigates sub-panes only outside inputs.
-        const bareNavKey = !inEditable && (key === "j" || key === "k")
-        const isCandidate =
-          KEYBOARD_KEYS.has(key) &&
-          (modified || key === "Escape" || key === "ArrowUp" || key === "ArrowDown" ||
-            key === "Enter" || bareNavKey)
-        if (!isCandidate) return
-        // Stop the webview from acting on shortcut chords (e.g. Cmd-K), Escape
-        // (prevents the macOS/browser error beep), and bare sub-pane nav keys.
-        // Bare keys in an editable field are left alone unless they are Escape.
-        if (modified || bareNavKey || key === "Escape") {
+        // Only forward keys the reducer might act on. Modified keys are limited
+        // to Cmd/Ctrl-K and Cmd/Ctrl-Enter so native edit/movement commands
+        // (Cmd-C/V/X/A/Z, Cmd-arrow, etc.) keep reaching WebKit/AppKit.
+        const decision = keyboardForwardDecision({ key, meta, ctrl, inEditable })
+        if (!decision.forward) return
+        if (decision.preventDefault) {
           event.preventDefault?.()
         }
         Queue.offerUnsafe(
