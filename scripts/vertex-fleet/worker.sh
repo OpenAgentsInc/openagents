@@ -62,6 +62,14 @@ mkdir -p "$LOG_DIR"
 COST_LOG="${LOG_DIR}/${SAFE}.cost.json"
 AGENT_LOG="${LOG_DIR}/${SAFE}.agent.log"
 
+# Full-trajectory trace (stream-json events): persisted + indexed for later traversal.
+RUN_ID="$(date +%Y%m%dT%H%M%S)-$$"
+VF_TRACE_ROOT="${VF_TRACE_DIR:-$HOME/work/vertex-fleet-traces}"
+TRACE_DIR="${VF_TRACE_ROOT}/$(date +%Y-%m-%d)"
+mkdir -p "$TRACE_DIR"
+TRACE="${TRACE_DIR}/${SAFE}.${RUN_ID}.trace.jsonl"
+TRACE_INDEX="${VF_TRACE_ROOT}/index.jsonl"
+
 log() { echo "[worker:${PROMISE}] $*" >&2; }
 
 emit() { # emit final JSON result line
@@ -91,6 +99,7 @@ log "worktree: $WORKTREE  branch: $BRANCH"
 # Fresh worktree from origin/main on a new branch.
 git -C "$SRC_REPO" fetch origin main --quiet 2>>"$AGENT_LOG" || true
 git -C "$SRC_REPO" worktree remove "$WORKTREE" --force >/dev/null 2>&1 || true
+git -C "$SRC_REPO" worktree prune >/dev/null 2>&1 || true
 git -C "$SRC_REPO" branch -D "$BRANCH" >/dev/null 2>&1 || true
 if ! git -C "$SRC_REPO" worktree add -b "$BRANCH" "$WORKTREE" "$BASE" >>"$AGENT_LOG" 2>&1; then
   log "FATAL: could not create worktree"
@@ -122,25 +131,28 @@ set +e
 claude --bare -p "$BRIEF" \
   --permission-mode acceptEdits \
   --allowedTools "Bash,Read,Edit,Write" \
-  --output-format json \
-  >"$COST_LOG" 2>>"$AGENT_LOG"
+  --output-format stream-json --verbose \
+  >"$TRACE" 2>>"$AGENT_LOG"
 AGENT_RC=$?
 set -e 2>/dev/null || true
 
 # Extract cost from claude's JSON result (--output-format json -> total_cost_usd).
 COST="null"
-if [[ -s "$COST_LOG" ]]; then
+if [[ -s "$TRACE" ]]; then
   COST="$(node -e '
     try {
       const fs=require("fs");
-      const t=fs.readFileSync(process.argv[1],"utf8").trim();
-      const j=JSON.parse(t);
-      const c=j.total_cost_usd ?? j.cost_usd ?? null;
+      const lines=fs.readFileSync(process.argv[1],"utf8").trim().split("\n");
+      let c=null;
+      for (const l of lines) { try { const j=JSON.parse(l); if (j.type==="result" && (j.total_cost_usd!=null||j.cost_usd!=null)) c=j.total_cost_usd??j.cost_usd; } catch(e){} }
       process.stdout.write(c==null?"null":String(c));
     } catch(e){ process.stdout.write("null"); }
-  ' "$COST_LOG" 2>/dev/null || echo null)"
+  ' "$TRACE" 2>/dev/null || echo null)"
 fi
-log "agent rc=$AGENT_RC cost_usd=$COST"
+log "agent rc=$AGENT_RC cost_usd=$COST  trace=$TRACE"
+# Index this run for later traversal.
+printf '{"promise":"%s","model":"%s","run_id":"%s","branch":"%s","trace":"%s","agent_rc":%s,"cost_usd":%s,"ts":"%s"}\n' \
+  "$PROMISE" "$MODEL" "$RUN_ID" "$BRANCH" "$TRACE" "$AGENT_RC" "${COST:-null}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$TRACE_INDEX" 2>/dev/null || true
 
 if [[ "$AGENT_RC" != "0" ]]; then
   log "agent failed (rc=$AGENT_RC); see $AGENT_LOG"

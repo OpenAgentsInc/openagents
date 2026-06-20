@@ -1,5 +1,5 @@
-import { execSync } from 'node:child_process';
 #!/usr/bin/env node
+import { execSync } from 'node:child_process';
 // assign.mjs — promise -> assignment selector for the Vertex fleet runner.
 //
 // Fetches the live public product-promise registry, selects N non-green promises
