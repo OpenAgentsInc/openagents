@@ -37,6 +37,7 @@
  * registered-agent production smoke. See
  * docs/launch/vertex-fleet/api.hosted_gemini.v1.md.
  */
+import type { HostedGeminiRefContentResolver } from './autopilot-hosted-gemini-content-resolver'
 import type { HostedGeminiContentDigest } from './autopilot-hosted-gemini-inference-bridge'
 import { createVertexGeminiHostedCaller } from './autopilot-hosted-gemini-inference-bridge'
 import { createHostedGeminiRequestRunner } from './autopilot-hosted-gemini-request-runner'
@@ -59,6 +60,15 @@ export type HostedGeminiExecutorBindingConfig = Readonly<{
   maxOutputTokens?: number | undefined
   /** Requested Gemini model alias. */
   model?: string | undefined
+  /**
+   * Optional INJECTED resolver that dereferences the work order's task +
+   * acceptance refs into public-safe content. When provided (and the chain is
+   * armed) the request runner embeds the resolved content so the adapter acts
+   * on the real task; when absent the chain keeps its existing refs-only frame.
+   * Threading it through this single factory is the only way a deployment can
+   * provision a live datastore-backed resolver without hand-wiring the chain.
+   */
+  resolveRefContent?: HostedGeminiRefContentResolver | undefined
 }>
 
 /**
@@ -74,6 +84,7 @@ export const createHostedGeminiExecutorBinding = (
     enabled: config.enabled,
     maxOutputTokens: config.maxOutputTokens,
     model: config.model,
+    resolveRefContent: config.resolveRefContent,
   })
   const inferenceCaller = createVertexGeminiHostedCaller({
     digest: config.digest,
