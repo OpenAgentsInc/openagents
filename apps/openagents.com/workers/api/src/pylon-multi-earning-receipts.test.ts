@@ -8,6 +8,7 @@ import {
   foldWorkReceiptsIntoEarningStore,
   makeInMemoryPylonModeWorkReceiptStore,
   recordModeWorkReceipt,
+  verifyWorkReceiptSettlementCoverage,
 } from './pylon-multi-earning-receipts'
 
 const okReceipt = (input: Parameters<typeof recordModeWorkReceipt>[0]) => {
@@ -182,6 +183,52 @@ describe('pylon multi-earning receipt fold (#5527)', () => {
     expect(compute?.settlementReceiptRef).toBeUndefined()
   })
 
+  test('rejects an in-mode settlement over-claim (settled count > distinct settlements)', () => {
+    // Two DISTINCT settled work units that share ONE settlement receipt: the
+    // settled count would be 2 but only one real settlement backs them.
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+    ])
+    expect(folded.ok).toBe(false)
+    if (folded.ok) return
+    expect(folded.error.reason).toMatch(/over-claim/)
+  })
+
+  test('rejects a cross-mode settlement reuse', () => {
+    const folded = foldWorkReceiptsIntoEarningStore([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.shared.settlement',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.shared.settlement',
+      }),
+    ])
+    expect(folded.ok).toBe(false)
+    if (folded.ok) return
+    expect(folded.error.reason).toMatch(/across earning modes/)
+  })
+
   test('a settled mode always carries a settlement receipt ref after fold', () => {
     const folded = foldWorkReceiptsIntoEarningStore([
       okReceipt({
@@ -200,5 +247,99 @@ describe('pylon multi-earning receipt fold (#5527)', () => {
         m => m.settledCount === 0 || m.settlementReceiptRef !== undefined,
       ),
     ).toBe(true)
+  })
+})
+
+describe('pylon multi-earning settlement coverage (#5527)', () => {
+  test('empty receipts are trivially covered', () => {
+    const coverage = verifyWorkReceiptSettlementCoverage([])
+    expect(coverage.allModesSettlementCovered).toBe(true)
+    expect(coverage.perMode).toHaveLength(0)
+    expect(coverage.totalSettledReceiptCount).toBe(0)
+    expect(coverage.totalDistinctSettlementRefCount).toBe(0)
+    expect(coverage.crossModeSettlementReuse).toBe(false)
+  })
+
+  test('distinct settlements across two modes are fully covered', () => {
+    const coverage = verifyWorkReceiptSettlementCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_a',
+      }),
+      okReceipt({
+        mode: 'forum_tips',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.forum_tips.a',
+        receiptRef: 'receipt.public.pylon.forum_tips.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.forum_tips.settlement_a',
+      }),
+    ])
+    expect(coverage.allModesSettlementCovered).toBe(true)
+    expect(coverage.totalSettledReceiptCount).toBe(2)
+    expect(coverage.totalDistinctSettlementRefCount).toBe(2)
+    expect(coverage.crossModeSettlementReuse).toBe(false)
+    expect(coverage.perMode).toEqual([
+      {
+        mode: 'training',
+        settledReceiptCount: 1,
+        distinctSettlementRefCount: 1,
+        settlementCoverageComplete: true,
+      },
+      {
+        mode: 'forum_tips',
+        settledReceiptCount: 1,
+        distinctSettlementRefCount: 1,
+        settlementCoverageComplete: true,
+      },
+    ])
+  })
+
+  test('flags an in-mode shared settlement as incomplete coverage', () => {
+    const coverage = verifyWorkReceiptSettlementCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+      okReceipt({
+        mode: 'training',
+        amountClass: 'settled',
+        assignmentRef: 'assignment.public.pylon.training.b',
+        receiptRef: 'receipt.public.pylon.training.work_b',
+        settlementReceiptRef: 'receipt.public.pylon.training.settlement_shared',
+      }),
+    ])
+    expect(coverage.allModesSettlementCovered).toBe(false)
+    expect(coverage.perMode[0]).toEqual({
+      mode: 'training',
+      settledReceiptCount: 2,
+      distinctSettlementRefCount: 1,
+      settlementCoverageComplete: false,
+    })
+  })
+
+  test('non-settled receipts contribute nothing to coverage', () => {
+    const coverage = verifyWorkReceiptSettlementCoverage([
+      okReceipt({
+        mode: 'training',
+        amountClass: 'observed',
+        assignmentRef: 'assignment.public.pylon.training.a',
+        receiptRef: 'receipt.public.pylon.training.work_a',
+      }),
+      okReceipt({
+        mode: 'compute',
+        amountClass: 'paid',
+        assignmentRef: 'assignment.public.pylon.compute.a',
+        receiptRef: 'receipt.public.pylon.compute.work_a',
+      }),
+    ])
+    expect(coverage.allModesSettlementCovered).toBe(true)
+    expect(coverage.perMode).toHaveLength(0)
+    expect(coverage.totalSettledReceiptCount).toBe(0)
   })
 })

@@ -27,10 +27,28 @@ This change supplies the missing receipt evidence layer:
   - `foldWorkReceiptsIntoEarningStore(...)` — PURE fold turning receipts into the
     existing projection store, so every projected count is now backed by a
     dereferenceable per-mode receipt.
-- `workers/api/src/pylon-multi-earning-receipts.test.ts` — 16 tests
-  (validation, public-safe ref rejection, idempotency, fold-into-projection).
+- `workers/api/src/pylon-multi-earning-receipts.test.ts` — fold + validation
+  tests (validation, public-safe ref rejection, idempotency, fold-into-projection).
 - Minimal export from `pylon-multi-earning-node.ts`: `isPublicSafeToken`, so the
   receipt layer reuses the exact bounded/neutral token discipline.
+
+### Follow-up (this run): settlement-coverage integrity
+
+The fold previously COUNTED settled receipts per mode but never checked that each
+settled unit was backed by its OWN distinct settlement receipt. Two settled work
+receipts could silently share one `settlementReceiptRef` — reporting
+`settledCount: 2` behind a single real settlement (an over-claim), and the same
+ref could even be reused across modes. This run closes that hole:
+
+- `verifyWorkReceiptSettlementCoverage(...)` — PURE/INERT auditor returning a
+  public-safe per-mode coverage report (`settledReceiptCount`,
+  `distinctSettlementRefCount`, `settlementCoverageComplete`) plus install-level
+  `crossModeSettlementReuse` and the single `allModesSettlementCovered` gate.
+- `foldWorkReceiptsIntoEarningStore(...)` now REJECTS (returns `ok: false`) when
+  coverage is incomplete, so a projection can never emit a settled count that is
+  not backed by that many distinct, dereferenceable settlements.
+- New tests: empty/covered/in-mode-shared/cross-mode-reuse cases for the auditor,
+  plus fold-rejection for in-mode over-claim and cross-mode reuse.
 
 INERT and PURE: mints no money, reads no wallet, moves no funds, admits no live
 settled receipt. The fold of even two settled modes still reports
