@@ -76,6 +76,10 @@ import {
 } from "./node/control-server.js"
 import { createSupervisedAppleFmStatusAction } from "./node/apple-fm-supervised-status.js"
 import {
+  createAppleFmSupervisedLaunch,
+  type AppleFmSupervisedLaunch,
+} from "./node/apple-fm-supervised-launch.js"
+import {
   createControlSessionActions,
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
@@ -980,11 +984,17 @@ const runHeadlessNode = Effect.gen(function* () {
   nodeRuntime = runtime
 
   const shutdown = yield* Deferred.make<void>()
+  // Owns the supervised local Apple FM bridge launcher (when one is wired below).
+  // Stopped on shutdown so a backoff timer / live child does not outlive the node.
+  let appleFmSupervisedLaunch: AppleFmSupervisedLaunch | null = null
   const requestShutdown = () => {
     Effect.runFork(Deferred.succeed(shutdown, void 0))
     // #5207: disconnect the warm Spark session on shutdown (best-effort; never
     // throws, never blocks the exit — the 2s hard-exit below still wins).
     void closeWarmSparkSession()
+    // Stop supervising the local Apple FM bridge: cancel any pending backoff
+    // restart and kill a live helper child. Best-effort; never blocks the exit.
+    appleFmSupervisedLaunch?.stop()
     // GPU/native teardown (3D scene, WebGPU buffers) can wedge; never hold
     // the terminal hostage on exit.
     setTimeout(() => process.exit(0), 2000)
@@ -1062,6 +1072,17 @@ const runHeadlessNode = Effect.gen(function* () {
         warmSession: true,
       }),
   }
+  // Local Apple FM bridge supervision is opt-in for now (the signed-installer
+  // recut + admitted-Mac from-install smoke are still open). When
+  // PYLON_APPLE_FM_SUPERVISE=1 AND a helper is discovered on this host, construct
+  // and start the supervised launcher; its public-safe `status()` becomes the
+  // provider the apple_fm.status action attaches. When the flag is off OR no
+  // helper exists, the launch is inert (supervisorStatus undefined) and the
+  // action returns the unsupervised projection byte-for-byte unchanged.
+  appleFmSupervisedLaunch =
+    Bun.env.PYLON_APPLE_FM_SUPERVISE === "1"
+      ? createAppleFmSupervisedLaunch({ discover: { env: Bun.env } })
+      : null
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1076,10 +1097,16 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
-      // Supervisor-status provider is wired here once a live launcher is
-      // constructed on this host; until then this is the unsupervised projection
-      // unchanged. See node/apple-fm-supervised-status.ts.
-      appleFmStatus: createSupervisedAppleFmStatusAction({ summary: bootstrapSummary, env: Bun.env }),
+      // The supervisor-status provider comes from the launch lifecycle owner
+      // above (undefined unless PYLON_APPLE_FM_SUPERVISE=1 and a helper exists),
+      // so by default this is the unsupervised projection unchanged.
+      // See node/apple-fm-supervised-launch.ts + node/apple-fm-supervised-status.ts.
+      appleFmStatus: createSupervisedAppleFmStatusAction(
+        { summary: bootstrapSummary, env: Bun.env },
+        appleFmSupervisedLaunch?.supervisorStatus === undefined
+          ? {}
+          : { supervisorStatus: appleFmSupervisedLaunch.supervisorStatus },
+      ),
       approvals: makeApprovalActions(localState.paths),
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
     },

@@ -273,15 +273,59 @@ Advances (does **not** clear)
   process and admitted-Mac validation) is the remaining step; this run supplies
   the action seam it will plug its `status()` into.
 
+## Follow-up run (2026-06-20): launch lifecycle owner is constructed + (opt-in) wired into the Pylon host
+
+Advances (does **not** clear)
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: every seam existed in isolation —
+  `createDefaultAppleFmBridgeLauncher()` *assembles* a launcher, and
+  `createSupervisedAppleFmStatusAction(base, { supervisorStatus })` *consumes* a
+  provider — but nothing in the host *constructed* the launcher, called `start()`
+  to begin supervision, surfaced its `status()` as the provider, or owned its
+  `stop()` on shutdown. The previous index.ts comment said the provider gets
+  wired "once a live launcher is constructed on this host"; that owner did not
+  exist.
+- `apps/pylon/src/node/apple-fm-supervised-launch.ts` —
+  `createAppleFmSupervisedLaunch({ assemble?, ...launcherOptions })` is the
+  lifecycle owner: it assembles the launcher (injectable; defaults to the
+  production factory), and when one is present calls `start()` and returns
+  `supervised: true` with a `supervisorStatus` provider (the launcher's
+  `status`), a `notifyHealthy` heartbeat pass-through, and an idempotent `stop`.
+  When no helper is found (non-Apple host) it returns a fully inert handle
+  (`supervised: false`, `supervisorStatus: undefined`, no-op `notifyHealthy`/
+  `stop`) so the caller falls back to the unsupervised projection byte-for-byte.
+  `notifyHealthy` is also inert after `stop` (no late heartbeat reaches a
+  torn-down launcher). The module reads no wall clock and emits no prompts,
+  paths, tokens, URLs, or bearer material.
+- `apps/pylon/src/index.ts` — the headless node now constructs the launch
+  lifecycle owner behind a default-off env gate (`PYLON_APPLE_FM_SUPERVISE=1`):
+  when the flag is set AND a helper is discovered, the launcher starts and its
+  `status()` is passed as the `supervisorStatus` to the `apple_fm.status` action;
+  the owner's `stop()` is called from the existing `requestShutdown` so a backoff
+  timer / live child cannot outlive the node. With the flag off (the default) the
+  launch is `null`, no provider is passed, and the action is byte-identical to
+  before — so this introduces zero behaviour change until explicitly opted in.
+- `apps/pylon/tests/apple-fm-supervised-launch.test.ts` — 7 tests over a
+  recording fake launcher: inert handle on no-helper, start-once-before-status +
+  status pass-through, heartbeat forwarding, idempotent stop, heartbeat-inert
+  after stop, launcher-option threading, and a no-sensitive-content assertion.
+  `bun test` green (7 pass / 17 assertions; full apple-fm suite 66 pass).
+
 ## What genuinely remains (blocker NOT cleared)
 
-- Construct a launcher via `createDefaultAppleFmBridgeLauncher()` in the Pylon
-  node host, call `start()`, route the live bridge heartbeat into
-  `notifyHealthy()`, and pass the launcher's `status` as the `supervisorStatus`
-  provider to `createSupervisedAppleFmStatusAction(...)` so the supervisor phase
-  reaches the surface from a real process (the assembly seam, the action seam,
-  and the projection plumbing — `withAppleFmSupervisorStatus` — now all exist).
+- Route a *real* bridge heartbeat into `appleFmSupervisedLaunch.notifyHealthy()`
+  (the launch owner exposes the pass-through, but nothing yet feeds the live
+  Foundation Models bridge's heartbeat into it) and validate the opt-in
+  `PYLON_APPLE_FM_SUPERVISE=1` path end-to-end on admitted Apple hardware
+  (construction, start, crash→backoff→respawn, crash-loop give-up surfacing on
+  `apple_fm.status`). The construction/start/status-provider/stop lifecycle, the
+  action seam, and the projection plumbing now all exist and are wired; only the
+  live heartbeat source and the on-hardware smoke remain for this blocker.
 - Repeat the admitted-Mac smoke with supervised launch (and the still-open
   `blocker.product_promises.local_apple_fm_signed_installer_recut_missing`:
   signed/notarized installer that bundles or supervises the helper, plus a
   from-install smoke).
+
+Both blockers remain listed in the registry `blockerRefs`; nothing here flips
+any promise state.
