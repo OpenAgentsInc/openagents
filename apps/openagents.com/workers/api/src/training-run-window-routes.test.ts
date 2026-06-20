@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { buildCs336A4ProvenanceReceipt } from './cs336-a4-provenance'
 import { nexusPylonPublicReceiptDetailFromLedger } from './nexus-pylon-visibility'
 import type {
   NexusPaymentAuthorityReceiptRecord,
@@ -1765,9 +1766,32 @@ describe('training run window routes', () => {
     const adminHeaders = { authorization: 'Bearer admin-token-test' }
     const evidencePath =
       '/api/training/runs/run.cs336.a4.data_refinery.demo/data-refinery-evidence'
+    const outputDigestRef = 'digest.sha256.cs336_a4.pii_masking.aaaa'
+    const corpusProvenanceReceipt = await buildCs336A4ProvenanceReceipt({
+      assignmentRef: 'assignment.cs336_a4.pii_masking.1',
+      finalOutputDigestRef: outputDigestRef,
+      inputShardRef: 'shard.cs336_a4.pii_masking.1',
+      provenance: {
+        acquisitionMode: 'bounded_synthetic_corpus',
+        licenseRef: 'license.public.cc0.synthetic_corpus_v1',
+        snapshotRef: 'snapshot.cs336_a4.pii_masking.v1',
+        sourceRef: 'source.psion.bounded_synthetic_mixture.v1',
+      },
+      sourceInputDigestRef: 'digest.cs336_a4.pii_masking.source',
+      transformChain: [
+        {
+          codeVersionRef: 'psionic.refinery.v1.pii_masking',
+          inputDigestRef: 'digest.cs336_a4.pii_masking.source',
+          outputDigestRef,
+          recomputedDigestRef: outputDigestRef,
+          stage: 'pii_masking',
+        },
+      ],
+    })
     const shard = {
+      corpusProvenanceReceipt,
       inputDocumentCount: 64,
-      outputDigestRef: 'digest.sha256.cs336_a4.pii_masking.aaaa',
+      outputDigestRef,
       pylonRef: 'pylon.24819249b4634a4c9d5e',
       receiptRefs: ['receipt.cs336_a4.settlement.pii_masking'],
       shardRef: 'shard.cs336_a4.pii_masking.1',
@@ -1835,8 +1859,15 @@ describe('training run window routes', () => {
     expect(admitted.status).toBe(200)
     expect(admittedBody.refinery.status).toBe('collecting_shards')
     expect(admittedBody.refinery.shards[0]).toMatchObject({
+      corpusProvenanceReceiptRef: corpusProvenanceReceipt.receiptRef,
+      corpusProvenanceVerified: true,
       stage: 'pii_masking',
       verified: true,
+    })
+    expect(admittedBody.refinery).toMatchObject({
+      corpusProvenanceReceiptBlockerRefs: [],
+      corpusProvenanceReceiptRefs: [corpusProvenanceReceipt.receiptRef],
+      corpusProvenanceReceiptStatus: 'available',
     })
 
     const dashboard = await runRoute(
@@ -1846,6 +1877,7 @@ describe('training run window routes', () => {
       ),
     )
     const dashboardBody = (await dashboard.json()) as Readonly<{
+      corpusProvenanceReceiptStatus: string
       schemaVersion: string
       shards: ReadonlyArray<unknown>
     }>
@@ -1854,6 +1886,7 @@ describe('training run window routes', () => {
     expect(dashboardBody.schemaVersion).toBe(
       'openagents.training.data_refinery_dashboard.v1',
     )
+    expect(dashboardBody.corpusProvenanceReceiptStatus).toBe('available')
     expect(dashboardBody.shards).toHaveLength(1)
   })
 

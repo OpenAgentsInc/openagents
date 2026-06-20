@@ -40,6 +40,8 @@ import {
   Cs336A4DataRefineryEvidenceRequest,
   Cs336A4RequiredVerifiedStageCount,
   admitCs336A4DataRefineryEvidence,
+  corpusProvenanceReceiptBlockerRefs,
+  corpusProvenanceReceiptStatus,
   publicDataRefineryProjection,
 } from './training-data-refinery'
 import {
@@ -1600,15 +1602,29 @@ const routeA4DataRefinery = <Bindings extends TrainingRunWindowRouteEnv>(
         shards.filter(shard => shard.verified).map(shard => shard.stage),
       ),
     ].sort()
+    const stageBlockerRefs =
+      verifiedStages.length >= Cs336A4RequiredVerifiedStageCount
+        ? []
+        : [
+            'blocker.cs336_a4.requires_three_verified_stages',
+            'blocker.cs336_a4.operator_funding_required_for_paid_shards',
+          ]
+    const provenanceBlockerRefs = corpusProvenanceReceiptBlockerRefs(shards)
 
     return noStoreJsonResponse({
-      blockerRefs:
-        verifiedStages.length >= Cs336A4RequiredVerifiedStageCount
-          ? []
-          : [
-              'blocker.cs336_a4.requires_three_verified_stages',
-              'blocker.cs336_a4.operator_funding_required_for_paid_shards',
-            ],
+      blockerRefs: uniqueRouteRefs([
+        ...stageBlockerRefs,
+        ...provenanceBlockerRefs,
+      ]),
+      corpusProvenanceReceiptBlockerRefs: provenanceBlockerRefs,
+      corpusProvenanceReceiptRefs: uniqueRouteRefs(
+        shards.flatMap(shard =>
+          shard.corpusProvenanceReceiptRef === null
+            ? []
+            : [shard.corpusProvenanceReceiptRef],
+        ),
+      ),
+      corpusProvenanceReceiptStatus: corpusProvenanceReceiptStatus(shards),
       evalDeltaBonusBlockerRefs: [
         'blocker.cs336_a4.fixed_trainer_eval_loop_required_for_quality_bonus',
         'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',

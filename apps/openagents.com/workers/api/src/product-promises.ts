@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.34'
+export const PublicProductPromisesVersion = '2026-06-20.35'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -30,6 +30,7 @@ const sourceRefs = [
   'docs/training/2026-06-20-training-full-pipeline-program-status.md',
   'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
   'docs/training/2026-06-20-cs336-a2-same-class-replication-status.md',
+  'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -1772,7 +1773,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pretraining corpora are produced by an owned data refinery over public crawl-class sources, processed as paid CPU work with provenance and transform digests, mixture ablations, a multi-stage curriculum, decontamination receipts, and eval-delta payment for data quality.',
         safeCopy:
-          'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard assignments, corpus provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
+          'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. The live A4 evidence admission path now requires each newly admitted shard to carry a corpusProvenanceReceipt whose source provenance and linked transform digests validate against the shard output digest, and the A4 public projection reports corpusProvenanceReceiptStatus/Refs/BlockerRefs. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard assignments with live provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
         unsafeCopy:
           'Do not claim a crawl-scale receipted corpus exists, that contributors are currently paid for data-refinery work, or that data quality is paid on measured eval delta.',
         evidenceRefs: [
@@ -1780,6 +1781,12 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/docs/2026-06-08-data-trace-marketplace-gate.md',
           'apps/openagents.com/docs/2026-06-10-cs336-a4-data-refinery-payment-policy.md',
           'apps/openagents.com/workers/api/src/training-leaderboards.ts',
+          'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
+          'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
+          'apps/openagents.com/workers/api/src/training-data-refinery.ts',
+          'apps/openagents.com/workers/api/src/training-data-refinery.test.ts',
+          'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4680',
         ],
         blockerRefs: [
@@ -1788,7 +1795,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.eval_delta_payment_missing',
         ],
         verification:
-          'Green requires refinery shards dispatched as paid assignments with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model. The a4_eval_delta leaderboard lane is live-but-empty in training-leaderboards.ts and the payment policy is documented (2026-06-10-cs336-a4-data-refinery-payment-policy.md); the single concrete missing receipt is one Verified deterministic_recompute refinery-shard challenge whose closeout records an eval-delta payment, which would populate the first a4_eval_delta leaderboard row.',
+          'Green requires refinery shards dispatched as paid assignments with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model. The A4 route now rejects newly admitted shards without a linked, recompute-verified corpusProvenanceReceipt and projects corpusProvenanceReceiptStatus/Refs/BlockerRefs, but blocker.product_promises.corpus_provenance_receipts_missing remains because no live paid refinery shard closeout has produced one of those receipts. The a4_eval_delta leaderboard lane is live-but-empty in training-leaderboards.ts and the payment policy is documented (2026-06-10-cs336-a4-data-refinery-payment-policy.md); the single concrete missing receipt is one Verified deterministic_recompute refinery-shard challenge whose closeout records an eval-delta payment, which would populate the first a4_eval_delta leaderboard row.',
         authorityBoundary:
           'Refinery output is corpus material, not a dataset sale; the data-market promises govern selling, and privacy rules forbid publishing raw crawl or contributor content.',
       },
@@ -3552,6 +3559,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.32 is a training.full_pipeline_program.v1 stage-status projection pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/full-pipeline-program now serves a public-safe, live-at-read map of DE-5 training stages to their promise state, endpoint refs, evidence refs, receipt-surface state, and blocker refs. It makes the umbrella program auditable without widening the claim: greenGateSatisfied=false, endToEndRunReceiptAvailable=false, ladderRungEndToEndReceiptAvailable=false, paidNetworkWorkloadBroadlyLive=false, and blocker.product_promises.training_pipeline_rails_incomplete remains. No training dispatch, corpus admission, public-gradient acceptance, checkpoint mutation, spend, settlement, model promotion, service claim, or green transition is created. Evidence: docs/training/2026-06-20-training-full-pipeline-program-status.md.',
         'Registry 2026-06-20.33 is a training.marathon_operations.v1 durable-checkpoint seal-boundary pass and flips NO promise state (stays planned, green count unchanged at 24). Checkpoint-backed window seals now require a matching durableCheckpointSeal descriptor that passes evaluateDurableCheckpointSeal before transitionTrainingWindowRecord can seal, and selectLastDurableSealWindow now ignores legacy digest-only rows and failed-durability descriptors before issuing bootstrap grants. This binds the durability predicate into the live seal/bootstrap authority, but blocker.product_promises.durable_checkpoint_seal_missing remains because no real remote content-addressed checkpoint store has produced a read-back-and-rehash receipt. standby_dispatch_missing and curtailment_drill_missing are untouched. No dispatch, spend, settlement, storage-backend, standby promotion, curtailment drill, energy claim, or green transition is created. Evidence: docs/launch/vertex-fleet/training.marathon_operations.v1.md.',
         'Registry 2026-06-20.34 is a training.device_capability_dataset.v1 same-class replication-status pass and flips NO promise state (stays yellow, green count unchanged at 24). GET /api/training/device-capabilities/a2 and each A2 run-level dataset projection now expose sameClassReplicationStatus, sameClassReplicationSignals, and sameClassReplicationBlockerRefs. Legacy settled rows fail closed to cross_process_same_host/same_host_only, measured_unsettled rows fail closed to single_observation, and only explicit sameClassReplicationScope=cross_machine_same_class evidence clears the route-level replication blocker. blocker.product_promises.same_host_replication_caveat and blocker.product_promises.thermal_throttle_detection_missing remain active; no paid assignment, verification verdict, settlement, earning estimate, new device-class claim, cross-machine receipt, green flip, or capability claim is created. Evidence: docs/training/2026-06-20-cs336-a2-same-class-replication-status.md.',
+        'Registry 2026-06-20.35 is a training.data_refinery_corpus.v1 corpus-provenance admission wiring pass and flips NO promise state (stays planned, green count unchanged at 24). The A4 data-refinery evidence route now requires each newly admitted shard to carry corpusProvenanceReceipt, rejects mismatched final-output digests, unlinked transform chains, recompute mismatches, and private/payment/raw-shard material, and projects corpusProvenanceReceiptStatus, corpusProvenanceReceiptRefs, and corpusProvenanceReceiptBlockerRefs on the run-level projection and GET /api/training/refinery/a4 dashboard. blocker.product_promises.corpus_provenance_receipts_missing remains because no live paid refinery shard closeout has produced one of these receipts; crawl_scale_corpus_missing and eval_delta_payment_missing are untouched. No crawl acquisition, paid shard dispatch, deterministic-recompute verdict, settlement, decontamination receipt, eval-delta payment, corpus sale, or green transition is created. Evidence: docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

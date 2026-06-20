@@ -12,6 +12,12 @@ import {
   Cs336A4PsionicLaneRef,
   type Cs336A4HomeworkStage,
 } from './cs336-a4-data-refinery'
+import {
+  Cs336A4AcquisitionModes,
+  Cs336A4ProvenanceSchemaVersion,
+  type Cs336A4ProvenanceReceipt,
+  type Cs336A4TransformStep,
+} from './cs336-a4-provenance'
 import type {
   TrainingRunRecord,
   TrainingWindowLeaseRecord,
@@ -20,6 +26,9 @@ import type {
 import type { TrainingVerificationChallengeRecord } from './training-verification'
 
 export type DataRefineryShard = Readonly<{
+  corpusProvenanceReceipt: Cs336A4ProvenanceReceipt | null
+  corpusProvenanceReceiptRef: string | null
+  corpusProvenanceVerified: boolean
   inputDocumentCount: number | null
   outputDigestRef: string
   pylonRef: string | null
@@ -35,6 +44,9 @@ export type DataRefineryShard = Readonly<{
 
 export type DataRefineryProjection = Readonly<{
   blockerRefs: ReadonlyArray<string>
+  corpusProvenanceReceiptBlockerRefs: ReadonlyArray<string>
+  corpusProvenanceReceiptRefs: ReadonlyArray<string>
+  corpusProvenanceReceiptStatus: 'missing' | 'partial' | 'available'
   evalDeltaBonusBlockerRefs: ReadonlyArray<string>
   observedVerifiedShardCount: number
   observedVerifiedStages: ReadonlyArray<Cs336A4HomeworkStage>
@@ -59,7 +71,40 @@ const PublicSafeRef = NonEmptyTrimmedString.check(
 )
 const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
 
+const Cs336A4SourceProvenanceEvidence = S.Struct({
+  acquisitionMode: S.Literals(Cs336A4AcquisitionModes),
+  licenseRef: PublicSafeRef,
+  snapshotRef: PublicSafeRef,
+  sourceRef: PublicSafeRef,
+})
+
+const Cs336A4TransformStepEvidence = S.Struct({
+  codeVersionRef: PublicSafeRef,
+  inputDigestRef: PublicSafeRef,
+  outputDigestRef: PublicSafeRef,
+  recomputedDigestRef: PublicSafeRef,
+  stage: S.Literals([...Cs336A4HomeworkStages]),
+})
+
+const Cs336A4ProvenanceReceiptEvidence = S.Struct({
+  assignmentRef: PublicSafeRef,
+  contentDigestRef: S.Trim.check(
+    S.isNonEmpty(),
+    S.isPattern(/^[0-9a-f]{64}$/),
+  ),
+  finalOutputDigestRef: PublicSafeRef,
+  inputShardRef: PublicSafeRef,
+  jobKind: S.Literal(Cs336A4DataRefineryJobKind),
+  provenance: Cs336A4SourceProvenanceEvidence,
+  receiptRef: PublicSafeRef,
+  recomputeVerified: S.Boolean,
+  schemaVersion: S.Literal(Cs336A4ProvenanceSchemaVersion),
+  sourceInputDigestRef: PublicSafeRef,
+  transformChain: S.Array(Cs336A4TransformStepEvidence),
+})
+
 export const Cs336A4RefineryStageEvidence = S.Struct({
+  corpusProvenanceReceipt: Cs336A4ProvenanceReceiptEvidence,
   inputDocumentCount: S.optionalKey(S.Number),
   outputDigestRef: PublicSafeRef,
   pylonRef: S.optionalKey(PublicSafeRef),
@@ -127,6 +172,203 @@ const optionalNumber = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
+const isStage = (value: unknown): value is Cs336A4HomeworkStage =>
+  typeof value === 'string' &&
+  (Cs336A4HomeworkStages as ReadonlyArray<string>).includes(value)
+
+const isAcquisitionMode = (
+  value: unknown,
+): value is Cs336A4ProvenanceReceipt['provenance']['acquisitionMode'] =>
+  typeof value === 'string' &&
+  (Cs336A4AcquisitionModes as ReadonlyArray<string>).includes(value)
+
+const corpusProvenanceReceiptFromUnknown = (
+  value: unknown,
+): Cs336A4ProvenanceReceipt | null => {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const provenanceRecord = value.provenance
+  const transformChainValue = value.transformChain
+
+  if (!isRecord(provenanceRecord) || !Array.isArray(transformChainValue)) {
+    return null
+  }
+
+  const assignmentRef = optionalString(value.assignmentRef)
+  const contentDigestRef = optionalString(value.contentDigestRef)
+  const finalOutputDigestRef = optionalString(value.finalOutputDigestRef)
+  const inputShardRef = optionalString(value.inputShardRef)
+  const jobKind = optionalString(value.jobKind)
+  const receiptRef = optionalString(value.receiptRef)
+  const schemaVersion = optionalString(value.schemaVersion)
+  const sourceInputDigestRef = optionalString(value.sourceInputDigestRef)
+  const acquisitionMode = optionalString(provenanceRecord.acquisitionMode)
+  const licenseRef = optionalString(provenanceRecord.licenseRef)
+  const snapshotRef = optionalString(provenanceRecord.snapshotRef)
+  const sourceRef = optionalString(provenanceRecord.sourceRef)
+
+  if (
+    assignmentRef === undefined ||
+    contentDigestRef === undefined ||
+    !/^[0-9a-f]{64}$/.test(contentDigestRef) ||
+    finalOutputDigestRef === undefined ||
+    inputShardRef === undefined ||
+    jobKind !== Cs336A4DataRefineryJobKind ||
+    receiptRef === undefined ||
+    schemaVersion !== Cs336A4ProvenanceSchemaVersion ||
+    sourceInputDigestRef === undefined ||
+    acquisitionMode === undefined ||
+    !isAcquisitionMode(acquisitionMode) ||
+    licenseRef === undefined ||
+    snapshotRef === undefined ||
+    sourceRef === undefined ||
+    typeof value.recomputeVerified !== 'boolean'
+  ) {
+    return null
+  }
+
+  const transformChain: Array<Cs336A4TransformStep> = []
+
+  for (const step of transformChainValue) {
+    if (!isRecord(step) || !isStage(step.stage)) {
+      return null
+    }
+
+    const codeVersionRef = optionalString(step.codeVersionRef)
+    const inputDigestRef = optionalString(step.inputDigestRef)
+    const outputDigestRef = optionalString(step.outputDigestRef)
+    const recomputedDigestRef = optionalString(step.recomputedDigestRef)
+
+    if (
+      codeVersionRef === undefined ||
+      inputDigestRef === undefined ||
+      outputDigestRef === undefined ||
+      recomputedDigestRef === undefined
+    ) {
+      return null
+    }
+
+    transformChain.push({
+      codeVersionRef,
+      inputDigestRef,
+      outputDigestRef,
+      recomputedDigestRef,
+      stage: step.stage,
+    })
+  }
+
+  const receipt: Cs336A4ProvenanceReceipt = {
+    assignmentRef,
+    contentDigestRef,
+    finalOutputDigestRef,
+    inputShardRef,
+    jobKind: Cs336A4DataRefineryJobKind,
+    provenance: {
+      acquisitionMode,
+      licenseRef,
+      snapshotRef,
+      sourceRef,
+    },
+    receiptRef,
+    recomputeVerified: value.recomputeVerified,
+    schemaVersion: Cs336A4ProvenanceSchemaVersion,
+    sourceInputDigestRef,
+    transformChain,
+  }
+
+  publicSafeJson(receipt)
+
+  return receipt
+}
+
+const assertLinkedCorpusProvenanceReceipt = (
+  shard: Cs336A4RefineryStageEvidence,
+): Cs336A4ProvenanceReceipt => {
+  const receipt = shard.corpusProvenanceReceipt as
+    | Cs336A4ProvenanceReceipt
+    | undefined
+
+  if (receipt === undefined) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 refinery shard evidence requires a corpusProvenanceReceipt.',
+    )
+  }
+
+  if (receipt.jobKind !== Cs336A4DataRefineryJobKind) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt must use the CS336 A4 data-refinery job kind.',
+    )
+  }
+
+  if (receipt.schemaVersion !== Cs336A4ProvenanceSchemaVersion) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt carries an unsupported schema version.',
+    )
+  }
+
+  if (receipt.finalOutputDigestRef !== shard.outputDigestRef) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt final output digest must match the shard outputDigestRef.',
+    )
+  }
+
+  if (!receipt.recomputeVerified) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt must be recompute verified.',
+    )
+  }
+
+  if (!receipt.receiptRef.endsWith(receipt.contentDigestRef.slice(0, 16))) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receiptRef must include the content digest prefix.',
+    )
+  }
+
+  if (receipt.transformChain.length === 0) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt requires a non-empty transform chain.',
+    )
+  }
+
+  let previousOutputDigestRef = receipt.sourceInputDigestRef
+
+  for (const [index, step] of receipt.transformChain.entries()) {
+    if (step.inputDigestRef !== previousOutputDigestRef) {
+      throw new DataRefineryEvidenceValidationError(
+        `CS336 A4 corpus provenance transform chain is not linked at step ${index}.`,
+      )
+    }
+
+    if (step.recomputedDigestRef !== step.outputDigestRef) {
+      throw new DataRefineryEvidenceValidationError(
+        `CS336 A4 corpus provenance recompute digest mismatch at step ${index}.`,
+      )
+    }
+
+    previousOutputDigestRef = step.outputDigestRef
+  }
+
+  const lastStep = receipt.transformChain[receipt.transformChain.length - 1]!
+
+  if (lastStep.stage !== shard.stage) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt last transform stage must match the shard stage.',
+    )
+  }
+
+  if (lastStep.outputDigestRef !== receipt.finalOutputDigestRef) {
+    throw new DataRefineryEvidenceValidationError(
+      'CS336 A4 corpus provenance receipt final output digest must equal the last transform output digest.',
+    )
+  }
+
+  publicSafeJson(receipt)
+
+  return receipt
+}
+
 const assertAdmissibleShard = (shard: Cs336A4RefineryStageEvidence): void => {
   if (shard.receiptRefs.length === 0) {
     throw new DataRefineryEvidenceValidationError(
@@ -142,6 +384,8 @@ const assertAdmissibleShard = (shard: Cs336A4RefineryStageEvidence): void => {
       'CS336 A4 refinery shard input document count must be a positive finite number when present.',
     )
   }
+
+  assertLinkedCorpusProvenanceReceipt(shard)
 }
 
 /**
@@ -213,10 +457,6 @@ const refineryEvidenceRecord = (
   return isRecord(nested) ? nested : undefined
 }
 
-const isStage = (value: unknown): value is Cs336A4HomeworkStage =>
-  typeof value === 'string' &&
-  (Cs336A4HomeworkStages as ReadonlyArray<string>).includes(value)
-
 const shardsFromEvidence = (
   input: Readonly<{
     challenges: ReadonlyArray<TrainingVerificationChallengeRecord>
@@ -245,6 +485,14 @@ const shardsFromEvidence = (
       return []
     }
 
+    const corpusProvenanceReceipt = corpusProvenanceReceiptFromUnknown(
+      shard.corpusProvenanceReceipt,
+    )
+    const corpusProvenanceVerified =
+      corpusProvenanceReceipt !== null &&
+      corpusProvenanceReceipt.recomputeVerified &&
+      corpusProvenanceReceipt.finalOutputDigestRef === outputDigestRef
+
     const verificationRefs = uniqueRefs([
       ...stringArrayFromUnknown(shard.verificationRefs),
       ...verifiedChallengeRefs,
@@ -252,10 +500,19 @@ const shardsFromEvidence = (
 
     return [
       {
+        corpusProvenanceReceipt,
+        corpusProvenanceReceiptRef:
+          corpusProvenanceReceipt?.receiptRef ?? null,
+        corpusProvenanceVerified,
         inputDocumentCount: optionalNumber(shard.inputDocumentCount) ?? null,
         outputDigestRef,
         pylonRef: optionalString(shard.pylonRef) ?? null,
-        receiptRefs: uniqueRefs(stringArrayFromUnknown(shard.receiptRefs)),
+        receiptRefs: uniqueRefs([
+          ...stringArrayFromUnknown(shard.receiptRefs),
+          ...(corpusProvenanceReceipt === null
+            ? []
+            : [corpusProvenanceReceipt.receiptRef]),
+        ]),
         settledPayoutSats: 0,
         shardRef:
           optionalString(shard.shardRef) ??
@@ -275,6 +532,27 @@ const evalDeltaBonusBlockerRefs = (): ReadonlyArray<string> => [
   'blocker.cs336_a4.operator_funding_required_for_bonus_settlement',
   'blocker.cs336_a4.psionic_classifier_adapters_partial',
 ]
+
+export const corpusProvenanceReceiptStatus = (
+  shards: ReadonlyArray<DataRefineryShard>,
+): DataRefineryProjection['corpusProvenanceReceiptStatus'] => {
+  if (shards.length === 0) {
+    return 'missing'
+  }
+
+  if (shards.every(shard => shard.corpusProvenanceVerified)) {
+    return 'available'
+  }
+
+  return 'partial'
+}
+
+export const corpusProvenanceReceiptBlockerRefs = (
+  shards: ReadonlyArray<DataRefineryShard>,
+): ReadonlyArray<string> =>
+  corpusProvenanceReceiptStatus(shards) === 'available'
+    ? []
+    : ['blocker.cs336_a4.requires_corpus_provenance_receipts']
 
 export const Cs336A4RequiredVerifiedStageCount = 3
 
@@ -304,6 +582,13 @@ export const publicDataRefineryProjection = (
   ].sort() as ReadonlyArray<Cs336A4HomeworkStage>
   const stagesVerified =
     observedVerifiedStages.length >= Cs336A4RequiredVerifiedStageCount
+  const stageBlockerRefs = stagesVerified
+    ? []
+    : [
+        'blocker.cs336_a4.requires_three_verified_stages',
+        'blocker.cs336_a4.operator_funding_required_for_paid_shards',
+      ]
+  const provenanceBlockerRefs = corpusProvenanceReceiptBlockerRefs(shards)
   const status =
     shards.length === 0
       ? 'blocked_no_shards'
@@ -312,13 +597,16 @@ export const publicDataRefineryProjection = (
         : 'collecting_shards'
 
   return {
-    blockerRefs:
-      status === 'stages_verified'
-        ? []
-        : [
-            'blocker.cs336_a4.requires_three_verified_stages',
-            'blocker.cs336_a4.operator_funding_required_for_paid_shards',
-          ],
+    blockerRefs: uniqueRefs([...stageBlockerRefs, ...provenanceBlockerRefs]),
+    corpusProvenanceReceiptBlockerRefs: provenanceBlockerRefs,
+    corpusProvenanceReceiptRefs: uniqueRefs(
+      shards.flatMap(shard =>
+        shard.corpusProvenanceReceiptRef === null
+          ? []
+          : [shard.corpusProvenanceReceiptRef],
+      ),
+    ),
+    corpusProvenanceReceiptStatus: corpusProvenanceReceiptStatus(shards),
     evalDeltaBonusBlockerRefs: evalDeltaBonusBlockerRefs(),
     observedVerifiedShardCount: verifiedShards.length,
     observedVerifiedStages,
