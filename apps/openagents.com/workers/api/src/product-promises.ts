@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.54'
+export const PublicProductPromisesVersion = '2026-06-20.55'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3379,9 +3379,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Agents and humans build their own products out of the OpenAgents Cloud primitives and open markets, then list those products for sale in the OpenAgents marketplace.',
         safeCopy:
-          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no composition runtime that assembles primitives into a product, no listing/discovery/install lifecycle, no marketplace billing, attribution, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
+          'Compose-your-own-product-and-list-it-for-sale is the Episode 239 marketplace vision (docs/transcripts/239.md), and it is roadmap. A typed product-definition scaffold and public read-only listing/discovery projection exist at GET /api/public/marketplace/composed-products; the route is inert, planned-state, and empty by default unless injected/flag-armed. Adjacent planned lanes exist — the agentic-npm module registry (marketplace.agentic_npm_module_registry.v1) and WASM plugins (marketplace.wasm_plugins.v1) — but there is no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, no marketplace billing, attribution, rev-share, or settlement. Nobody has composed a product from the primitives and sold it through OpenAgents.',
         unsafeCopy:
-          'Do not claim users or agents can build a product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are discoverable, installable, billable, or revenue-bearing. Do not present the planned module/plugin lanes as a live compose-and-sell marketplace.',
+          'Do not claim users or agents can build a live product from the primitives and list it for sale today, that an OpenAgents product marketplace is live, or that composed products are buyable, installable, fulfillable, billable, settled, or revenue-bearing. Do not present the inert read-only listing scaffold or planned module/plugin lanes as a live compose-and-sell marketplace.',
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
@@ -3391,16 +3391,17 @@ export const publicProductPromisesDocument = () => {
           'promise:markets.open_protocol_markets.v1',
           'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
           'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
+          'route:/api/public/marketplace/composed-products',
         ],
         blockerRefs: [
           'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-          'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
+          'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
           'blocker.product_promises.marketplace_billing_settlement_missing',
         ],
         verification:
-          'Planned until a composed product can be assembled from primitives, listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. Per proof.demand_provenance.v1, an internally-built listing is plumbing proof, not market proof.',
+          'Planned until a composed product can be assembled from primitives, self-serve listed, discovered, installed/used by a buyer, and produce a dereferenceable paid receipt with attribution and rev-share to the builder. The current route proves only the inert typed definition + read-only listing/discovery scaffold. Per proof.demand_provenance.v1, an internally-built or injected listing is plumbing proof, not market proof.',
         authorityBoundary:
-          'A compose-and-list vision grants no composition runtime, listing, discovery, install, billing, rev-share, payout, or public-marketplace-claim authority.',
+          'A compose-and-list vision and read-only listing scaffold grant no live composition runtime, self-serve listing write, install/use, fulfillment, billing, rev-share, payout, or public-marketplace-claim authority.',
       },
       {
         ...basePromiseFields,
@@ -4028,6 +4029,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.52 is an autopilot_sites.partner_payout_ledger.v1 receipt-readback pass and flips NO promise state. GET /api/public/partner-payout-receipts/{receiptRef} now resolves `receipt.partner_payout.*` only when a settled partner payout ledger row cites the exact public-safe evidence ref, returning amount, asset, settlement state, qualifying event kind, policy refs, caveats, filtered evidence refs, generatedAt, and a live_at_read staleness contract while withholding partner refs, user ids, payout refs, qualifying-event refs, payout destinations, invoices, payment hashes, preimages, provider payloads, wallet material, and ledger ids. This prepares the public receipt surface needed by the future real settlement step but does NOT clear blocker.product_promises.partner_payout_settlement_not_wired or blocker.product_promises.partner_first_real_payout_pending: no dispatch adapter call, real payout, settlement evidence, earning/withdrawal claim, revenue claim, or green transition is created.',
         'Registry 2026-06-20.53 is an autopilot_sites.partner_payout_ledger.v1 dispatch-coordinator pass and flips NO promise state. POST /api/operator/partners/payout-ledger/{payoutRef}/dispatch now mirrors the referral payout dispatch pattern for partner payouts: it is admin-token gated, owner-readiness gated, idempotency-keyed by payout ref, refuses non-sats rows before adapter call, invokes an injected adapter before recording settled for sats rows, and appends public-safe `receipt.partner_payout.*` + adapter evidence refs so GET /api/public/partner-payout-receipts/{receiptRef} can dereference the settled proof. Default production wiring remains inert/fail-closed (`hostedMdkDirectPayoutDisabledGate` + unconfigured adapter), so no real payout, earning/withdrawal claim, revenue claim, or green transition is created. This clears blocker.product_promises.partner_payout_settlement_not_wired only; blocker.product_promises.partner_first_real_payout_pending remains.',
         'Registry 2026-06-20.54 is a markets.open_protocol_markets.v1 de-stale pass and flips NO promise state. The public unified open-markets surface already exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeleton projections at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton, so blocker.product_promises.open_markets_unified_surface_missing is removed. The promise remains planned: liquidity/risk are skeleton-only, compute/data are not broadly live paid markets, and green still requires real participant transactions plus dereferenceable settlement receipts across all six markets. No market-making, matching, insurance underwriting, liquidity transaction, settlement, payout, or green claim is created.',
+        'Registry 2026-06-20.55 is a marketplace.compose_and_list_products.v1 de-stale pass and flips NO promise state. The inert public composed-products surface already exists at GET /api/public/marketplace/composed-products, backed by the typed product-definition model and read-only listing/discovery projection, so the broad blocker.product_promises.marketplace_listing_lifecycle_unbuilt is replaced with the narrower blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt. The promise remains planned: there is still no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, and no billing, attribution, rev-share, sale receipt, or settlement. No marketplace sale, install, fulfillment, payout, settlement, or green claim is created.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

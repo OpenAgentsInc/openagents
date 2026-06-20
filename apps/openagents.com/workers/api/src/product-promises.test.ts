@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.54')
+    expect(decoded.version).toBe('2026-06-20.55')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -309,6 +309,11 @@ describe('public product promises document', () => {
     // GET /api/public/markets/open-markets and the inert liquidity/risk
     // skeleton routes already exist; liquidity/risk and broad compute/data
     // blockers remain, so green remains exactly 26.
+    // The 2026-06-20.55 compose-and-list de-stale pass clears only the stale
+    // broad listing/discovery blocker by acknowledging the inert
+    // /api/public/marketplace/composed-products read surface. Runtime,
+    // self-serve write/install lifecycle, and billing blockers remain, so
+    // green remains exactly 26.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -331,6 +336,26 @@ describe('public product promises document', () => {
     )
     expect(openMarketsPromise?.verification).toContain(
       'green still requires real market transactions plus settlement receipts for all six markets',
+    )
+    const composeAndListPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'marketplace.compose_and_list_products.v1',
+    )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
+    )
+    expect(composeAndListPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+        'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+        'blocker.product_promises.marketplace_billing_settlement_missing',
+      ]),
+    )
+    expect(composeAndListPromise?.evidenceRefs).toContain(
+      'route:/api/public/marketplace/composed-products',
+    )
+    expect(composeAndListPromise?.safeCopy).toContain(
+      'public read-only listing/discovery projection',
     )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
@@ -711,6 +736,16 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'marketplace.compose_and_list_products.v1',
           state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+            'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+            'blocker.product_promises.marketplace_billing_settlement_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/marketplace-product-composition.ts',
+            'apps/openagents.com/workers/api/src/marketplace-composition-routes.ts',
+            'route:/api/public/marketplace/composed-products',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'marketplace.monetize_any_layer_with_referral.v1',
@@ -1340,22 +1375,22 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.54', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.55', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.54',
+      expectedVersion: '2026-06-20.55',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.54',
+      servedVersion: '2026-06-20.55',
       status: 'ready',
     })
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.53', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.54', document),
     ).toMatchObject({
       blockerRefs: [
-        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.53',
+        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.54',
       ],
-      expectedVersion: '2026-06-20.53',
-      servedVersion: '2026-06-20.54',
+      expectedVersion: '2026-06-20.54',
+      servedVersion: '2026-06-20.55',
       status: 'blocked',
     })
   })
