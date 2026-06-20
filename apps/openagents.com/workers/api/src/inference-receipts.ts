@@ -3,7 +3,10 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 
-export type InferenceReceiptKind = 'charge' | 'usd_credit_grant'
+export type InferenceReceiptKind =
+  | 'charge'
+  | 'usd_credit_grant'
+  | 'batch_job_charge'
 
 export type InferenceReceiptRecord = Readonly<{
   createdAt: string
@@ -43,6 +46,13 @@ const kindForRecord = (
     record.payInType === 'adjustment'
   ) {
     return 'charge'
+  }
+
+  if (
+    record.receiptRef.startsWith('receipt.inference.batch_job_charge.') &&
+    record.payInType === 'adjustment'
+  ) {
+    return 'batch_job_charge'
   }
 
   if (
