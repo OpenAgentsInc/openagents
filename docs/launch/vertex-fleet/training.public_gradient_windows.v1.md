@@ -171,3 +171,44 @@ quarantine persistence format. It does **not** clear it: no live store persists
 these records, no route serves them, and no public window has been accepted,
 promoted, paid, or settled. The blocker stays listed and the promise stays
 **planned**.
+
+## 2026-06-20 promotion lineage-continuity guard (quarantine record → promotion receipt)
+
+The quarantine record format
+(`tassadar-gradient-window-quarantine-record.ts`) and the promoted-window
+receipt emitter (`tassadar-gradient-window-promotion-receipt.ts`) each bound one
+end of the runtime, but nothing verified the link **between** them: that a given
+promotion receipt is for the *same* window that actually entered quarantine
+through the front door, carrying the *same* evidence it was admitted on. Without
+that continuity check a runtime could emit a promotion receipt for a window that
+bypassed intake, or whose curated-data / construction / verification / psionic-H1
+evidence was swapped between admission and promotion.
+
+This change adds that guard:
+
+- `tassadar-gradient-window-promotion-lineage.ts`
+  - `verifyTassadarGradientWindowPromotionLineage(record, receipt)` — a pure,
+    **total** function over two untrusted inputs. It decodes both (an
+    unparseable record or receipt yields a discontinuous decision rather than an
+    exception), then confirms the window refs match, that both refs derive
+    canonically from that window ref, and that every evidence ref the quarantine
+    record was admitted on is still carried by the promotion receipt. It returns
+    `{ continuous, breakReasonRefs, recordRef, receiptRef, windowRef }` and never
+    throws, so it is safe at the edge of a real runtime. Stage and
+    compiled-core-unchanged invariants are already structurally guaranteed by the
+    two schemas, so a record/receipt that violates them fails to decode.
+  - Schema version
+    `openagents.training.public_gradient_window.promotion_lineage.v1`.
+- `tassadar-gradient-window-promotion-lineage.test.ts` — exercises continuity for
+  a matching record/receipt pair, plus the break paths (different window,
+  dropped admission evidence, malformed input).
+- `GET /api/public/training/public-gradient-windows` now reports
+  `receiptSurface.promotionLineageGuardAvailable: true` and
+  `receiptSurface.promotionLineageSchemaVersion:
+  openagents.training.public_gradient_window.promotion_lineage.v1`.
+
+This advances `blocker.product_promises.public_gradient_live_window_runtime_missing`
+by building the runtime's admission-to-promotion continuity edge. It does **not**
+clear it: no live runtime drives a real window from quarantine to promotion, no
+route serves these artifacts, and no public window has been accepted, promoted,
+paid, or settled. The blocker stays listed and the promise stays **planned**.
