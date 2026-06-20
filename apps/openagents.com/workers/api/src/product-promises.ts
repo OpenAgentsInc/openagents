@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.55'
+export const PublicProductPromisesVersion = '2026-06-20.56'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -741,25 +741,27 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Verified programs become composable modules in an "agentic npm" registry — a library of verified, composable computation modules with built-in cryptographic verification and payments (Episode 238 "learning by construction").',
         safeCopy:
-          'The agentic-npm / module marketplace is roadmap direction only. The transcript itself frames it as an upcoming video that reboots the earlier plugin marketplace. No public module registry, package discovery, install flow, composition runtime, verification-on-install, billing, or settlement is live.',
+          'The agentic-npm / module marketplace is roadmap direction only. The transcript itself frames it as an upcoming video that reboots the earlier plugin marketplace. An inert source-level resolver + verification-on-compose core exists: it deterministically resolves module dependency closures, gates every resolved module on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. No public module registry, package discovery, install flow, live install/use runtime, execution, billing, or settlement is live.',
         unsafeCopy:
-          'Do not claim a live agentic-npm module registry, a working module marketplace, verified module composition as a product, paid module installs, or settled module-registry revenue. Do not present "learning by construction" as a shipped capability.',
+          'Do not claim a live agentic-npm module registry, a working module marketplace, verified module composition as a product, public package discovery, paid module installs, execution, billing, or settled module-registry revenue. Do not present the inert resolver core or "learning by construction" as a shipped marketplace capability.',
         evidenceRefs: [
           'docs/transcripts/238.md',
           'docs/launch/2026-06-18-pylon-v1-launch-readiness-audit.md',
+          'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
+          'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
           'promise:marketplace.wasm_plugins.v1',
           'promise:marketplace.signature_monetization.v1',
           'promise:compute.tassadar_executor_poc.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.agentic_npm_registry_not_live',
-          'blocker.product_promises.agentic_npm_module_composition_runtime_missing',
+          'blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing',
           'blocker.product_promises.agentic_npm_billing_settlement_missing',
         ],
         verification:
-          'Keep this planned until there is public evidence for a module package policy, verified module composition runtime, registry discovery, install/uninstall lifecycle, verification-on-install, metering, billing, attribution, rev-share, abuse handling, and settlement receipts.',
+          'Keep this planned until there is public evidence for a module package policy, registry discovery, install/uninstall lifecycle, live install/use runtime over the resolver core, verification-on-install, metering, billing, attribution, rev-share, abuse handling, and settlement receipts. The current resolver proves only deterministic inert composition planning and verification-on-compose over supplied specs.',
         authorityBoundary:
-          'Roadmap framing of an agentic-npm registry grants no module installation, composition, execution, billing, settlement, or contributor-earning authority. The verified-module idea reuses the exact-trace verification proven under compute.tassadar_executor_poc.v1; that PoC does not make a marketplace live.',
+          'Roadmap framing and the inert resolver core grant no module discovery, installation, execution, metering, billing, settlement, or contributor-earning authority. The verified-module idea reuses the exact-trace verification proven under compute.tassadar_executor_poc.v1; that PoC does not make a marketplace live.',
       },
       {
         ...basePromiseFields,
@@ -4029,6 +4031,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.53 is an autopilot_sites.partner_payout_ledger.v1 dispatch-coordinator pass and flips NO promise state. POST /api/operator/partners/payout-ledger/{payoutRef}/dispatch now mirrors the referral payout dispatch pattern for partner payouts: it is admin-token gated, owner-readiness gated, idempotency-keyed by payout ref, refuses non-sats rows before adapter call, invokes an injected adapter before recording settled for sats rows, and appends public-safe `receipt.partner_payout.*` + adapter evidence refs so GET /api/public/partner-payout-receipts/{receiptRef} can dereference the settled proof. Default production wiring remains inert/fail-closed (`hostedMdkDirectPayoutDisabledGate` + unconfigured adapter), so no real payout, earning/withdrawal claim, revenue claim, or green transition is created. This clears blocker.product_promises.partner_payout_settlement_not_wired only; blocker.product_promises.partner_first_real_payout_pending remains.',
         'Registry 2026-06-20.54 is a markets.open_protocol_markets.v1 de-stale pass and flips NO promise state. The public unified open-markets surface already exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeleton projections at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton, so blocker.product_promises.open_markets_unified_surface_missing is removed. The promise remains planned: liquidity/risk are skeleton-only, compute/data are not broadly live paid markets, and green still requires real participant transactions plus dereferenceable settlement receipts across all six markets. No market-making, matching, insurance underwriting, liquidity transaction, settlement, payout, or green claim is created.',
         'Registry 2026-06-20.55 is a marketplace.compose_and_list_products.v1 de-stale pass and flips NO promise state. The inert public composed-products surface already exists at GET /api/public/marketplace/composed-products, backed by the typed product-definition model and read-only listing/discovery projection, so the broad blocker.product_promises.marketplace_listing_lifecycle_unbuilt is replaced with the narrower blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt. The promise remains planned: there is still no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, and no billing, attribution, rev-share, sale receipt, or settlement. No marketplace sale, install, fulfillment, payout, settlement, or green claim is created.',
+        'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

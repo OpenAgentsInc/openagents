@@ -66,7 +66,9 @@ the payments/compute/training records and needs no new promise.
   composes, kept as a distinct record so each primitive's gate is legible.
 - `marketplace.agentic_npm_module_registry.v1` / `marketplace.wasm_plugins.v1`
   (planned) — adjacent module/plugin marketplace lanes referenced by the new
-  compose-and-list record.
+  compose-and-list record. Agentic-npm has an inert source-level resolver plus
+  verification-on-compose core, but no public registry, install/use runtime,
+  billing, or settlement.
 - `pylon.five_bitcoin_revenue_streams.v1` (planned), `labor.*` (green/yellow),
   `compute.tassadar_executor_poc.v1` (green), `training.decentralized_training_launch.v1`
   (green, bounded scope) — referenced as spine/market evidence without any state

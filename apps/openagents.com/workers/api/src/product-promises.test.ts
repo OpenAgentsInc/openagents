@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.55')
+    expect(decoded.version).toBe('2026-06-20.56')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -314,6 +314,11 @@ describe('public product promises document', () => {
     // /api/public/marketplace/composed-products read surface. Runtime,
     // self-serve write/install lifecycle, and billing blockers remain, so
     // green remains exactly 26.
+    // The 2026-06-20.56 agentic-npm de-stale pass clears only the stale broad
+    // module-composition-runtime blocker by acknowledging the inert
+    // resolver/verification-on-compose core. Registry liveness,
+    // live install/use runtime, and billing/settlement blockers remain, so
+    // green remains exactly 26.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(26)
@@ -356,6 +361,29 @@ describe('public product promises document', () => {
     )
     expect(composeAndListPromise?.safeCopy).toContain(
       'public read-only listing/discovery projection',
+    )
+    const agenticNpmPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'marketplace.agentic_npm_module_registry.v1',
+    )
+    expect(agenticNpmPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.agentic_npm_module_composition_runtime_missing',
+    )
+    expect(agenticNpmPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.agentic_npm_registry_not_live',
+        'blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing',
+        'blocker.product_promises.agentic_npm_billing_settlement_missing',
+      ]),
+    )
+    expect(agenticNpmPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
+        'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
+      ]),
+    )
+    expect(agenticNpmPromise?.safeCopy).toContain(
+      'inert source-level resolver + verification-on-compose core exists',
     )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
@@ -689,6 +717,12 @@ describe('public product promises document', () => {
           state: 'planned',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.agentic_npm_registry_not_live',
+            'blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing',
+            'blocker.product_promises.agentic_npm_billing_settlement_missing',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
+            'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
           ]),
         }),
         expect.objectContaining({
@@ -1375,22 +1409,22 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.55', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.56', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.55',
+      expectedVersion: '2026-06-20.56',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.55',
+      servedVersion: '2026-06-20.56',
       status: 'ready',
     })
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.54', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.55', document),
     ).toMatchObject({
       blockerRefs: [
-        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.54',
+        'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.55',
       ],
-      expectedVersion: '2026-06-20.54',
-      servedVersion: '2026-06-20.55',
+      expectedVersion: '2026-06-20.55',
+      servedVersion: '2026-06-20.56',
       status: 'blocked',
     })
   })
