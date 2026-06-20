@@ -150,16 +150,48 @@ This run cleared remaining items (1) and (2) of the previous "What remains":
   `scripts/check-zero-debt-architecture.mjs` and to the Public Projection
   Staleness Declaration inventory in `INVARIANTS.md`.
 
+## What this run adds (tick driver: run-and-seal seam)
+
+This run builds the seam that previous item (3) named — connecting the gated
+requester surface to the durable receipt store so a **real tick ends with a
+sealed receipt persisted by content address**, not just a fixture:
+
+- `apps/openagents.com/workers/api/src/artanis-labor-tick-driver.ts`
+  - `runAndPersistArtanisLaborRequestTick({ store, requesterDeps, artanisActorRef, tickRef })`
+    runs `runArtanisLaborRequestTick`, seals the consolidated receipt from its
+    typed outcome, and `store.put`s it. **Every** terminal state is sealed —
+    `skipped_config_disabled` and `refused` included — so an operator can audit
+    that the gates ran on a tick even when no work request was placed. Returns
+    `{ requestOutcome, sealed, put }`. Persistence is idempotent by content
+    address: re-running the same tick is an `already_stored` no-op.
+  - `resolveAndPersistArtanisLaborDelivery({ store, acceptanceDeps, delivery, requestOutcome, artanisActorRef, nowIso, tickRef })`
+    runs `handleArtanisLaborResultDelivery` and seals the consolidated receipt
+    that folds the original request stage with the validator-pass release or
+    validator-fail refund (`accepted_released` / `rejected_refunded`), then
+    persists it. The original `'requested'` outcome is required and narrowed at
+    the type level (`ArtanisLaborRequestedOutcome`) so a delivery can only be
+    resolved against a request that actually reserved escrow.
+  - The driver mints no payment, identity, or settlement authority — it only
+    runs the already-gated surface, seals its public-safe projection, and
+    persists it.
+- `apps/openagents.com/workers/api/src/artanis-labor-tick-driver.test.ts`
+  - 6 cases: placed tick seals + persists a `requested_pending_delivery` receipt
+    readable by ref; disabled tick still seals a `skipped_config_disabled`
+    receipt without proposing; over-budget tick seals a `refused` receipt with a
+    null work-request id; idempotent re-run by content address; validator-pass
+    delivery seals `accepted_released`; validator-fail delivery seals
+    `rejected_refunded`.
+
 ## What remains
 
-- The receipt is now **persistable, dereferenceable, tamper-evident, durable,
-  and publicly readable**: canonical wire form, content-addressed ref,
-  `parse`/`verify`, `seal`, an in-memory AND a durable D1 store, the feed
-  projection + GET handler, and a live registered route. The one remaining item
-  before the blocker can be dropped is (3): **a real unattended tick producing
-  one of these receipts end-to-end** — the requester surface sealing a receipt
-  into the durable store on each gated tick — so the route serves a receipt
-  minted by an actual run rather than only fixtures.
+- The receipt is now **minted by a run, persistable, dereferenceable,
+  tamper-evident, durable, and publicly readable** end-to-end: the requester
+  surface → seal → store path exists as a single driver call. The last step
+  before the blocker can be dropped is operational, not structural: **wiring the
+  driver into Artanis's live minute-tick scheduler** (passing the production
+  `requesterDeps` and the D1 store) so receipts accrue from the real cron path.
+  That wiring is gated behind operator enablement and is therefore part of
+  `blocker.product_promises.artanis_labor_live_enablement_missing`.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
   still open: Artanis is not operator-enabled for a live unattended labor request.
 
