@@ -649,3 +649,64 @@ The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missi
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
 untouched. No promise state changed; any future green flip remains receipt-first
 and owner-signed.
+
+---
+
+## Update (2026-06-20): review ↔ customer-authorization binding
+
+Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
+(partially — see "What remains"; blocker NOT dropped).
+
+The customer-authorization registry (previous update) introduced
+`isActiveCustomerAuthorizationRef` to verify a ref matches a KNOWN, ACTIVE
+authorization for an exact `(customerRef, repo)` — and explicitly named the next
+step: a binding that DERIVES the privacy-review preflight's
+`customerAuthorizationRef` from such an authorization. Until this change the
+review preflight's `customerAuthorizationPresent` gate was still a plain
+string-presence check, so a forged, stale, or WITHDRAWN ref passed the
+lawful-basis gate. This change closes that LAST forgeable-string seam in the
+privacy-review preflight, mirroring the review↔policy and scan↔upload bindings.
+
+### What was built
+
+- `packages/probe/packages/runtime/src/benchmark/external-repo-studying-review-authorization-binding.ts`
+  - `buildOpenAgentsExternalRepoStudyReviewAuthorizationBinding(...)`
+  - Schema `openagents.external_repo_study_review_authorization_binding.v0`,
+    decoded through `validateProbeBenchmarkPublicProjection` + a deterministic
+    `bindingHash`.
+  - Takes the customer-authorization registry, a candidate
+    `authorizationCandidateRef`, and a privacy-review request **with its
+    `customerAuthorizationRef` omitted from the input type**
+    (`Omit<…, "customerAuthorizationRef">`), so a caller cannot inject their own
+    ref. The binding derives the review's `customerAuthorizationRef` ONLY from a
+    candidate that `isActiveCustomerAuthorizationRef` verifies as a registry-known
+    ACTIVE authorization covering the SAME customer + repo, then builds the review
+    preflight from it. An unknown / withdrawn / mismatched / empty ref binds NO
+    ref, so the review blocks on
+    `…privacy_review.customer_authorization_missing` instead of trusting a string.
+  - **Inert by construction**: `reviewCleared` and `effectsApplied` are ALWAYS
+    false (asserted on both the binding and the nested review preflight);
+    `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
+    are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
+    `OpenAgentsInc/openagents` as a target.
+- `packages/probe/packages/runtime/tests/external-repo-studying-review-authorization-binding.test.ts`
+  — 8 passing tests (bound-held inert, forged-ref→unbound + review blocked,
+  withdrawn→unbound, customer mismatch, repo mismatch, armed-still-inert,
+  OpenAgents rejection, no-leak serialization).
+- Exported from `packages/probe/packages/runtime/src/index.ts`.
+
+### What genuinely remains (blocker NOT dropped)
+
+With this, ALL THREE refs-only gates of the privacy-review preflight (DPA,
+retention policy, and lawful-basis authorization) are now backed by verified,
+content-bound references rather than arbitrary strings. The binding is still the
+*decision/control* layer only. The privacy-policy blocker stays listed because it
+still requires, all owner/legal-gated and out of scope here: legal/owner
+ratification of the policy text; a real human/legal review against a real customer
+study (not a ref check); durable, access-controlled storage that enforces the
+declared retention window and real revocation; and an owner-signed armed clearance
+with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
+remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
+`pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
+untouched. No promise state changed; any future green flip remains receipt-first
+and owner-signed.
