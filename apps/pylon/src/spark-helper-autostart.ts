@@ -308,3 +308,129 @@ export function verifySparkHelperAutostartReceipt(
     reasons,
   }
 }
+
+// ---------------------------------------------------------------------------
+// Set-level audit: bind autostart receipts to DISTINCT normal contributors.
+//
+// `verifySparkHelperAutostartReceipt` audits one anonymous receipt's shape, but
+// the blocker is specifically about the NORMAL contributor self-serve path —
+// "≥1 normal contributor reaches payout-readiness without an operator
+// hand-start". A single anonymous receipt cannot prove that: the autostart
+// receipt carries no contributor binding, so an operator could capture one
+// receipt on their own host and present it (or copies of it) as evidence for
+// "several contributors". This set verifier closes that gap by requiring each
+// receipt to be paired with a distinct contributor ref (a public-safe pylonRef),
+// auditing every receipt with the single-receipt gate, and rejecting any reused
+// contributor ref. It mirrors the cross-contributor settlement integrity rule in
+// the scale-methodology verifier. Pure and side-effect-free; captures nothing.
+// ---------------------------------------------------------------------------
+
+export type SparkHelperAutostartContributorEntry = {
+  // A public-safe contributor identifier (pylonRef). Never a raw address,
+  // balance, credential, or machine identifier.
+  contributorRef: string
+  // The captured receipt artifact for that contributor (untrusted; audited).
+  receipt: unknown
+}
+
+export type SparkHelperAutostartReceiptSetVerification = {
+  // Every entry is structurally well-formed, each receipt is valid, and the
+  // contributor refs are non-empty and distinct.
+  valid: boolean
+  // True only when valid AND at least one distinct contributor's receipt clears
+  // the single-receipt bar. This is the set-level bar a body of captured
+  // evidence must meet before it could be cited to clear the blocker.
+  clearsBlocker: boolean
+  // Count of distinct contributor refs whose receipt cleared the single bar.
+  distinctContributorCount: number
+  // Per-entry verdicts, in input order, for auditor traceability.
+  perEntry: Array<{
+    contributorRef: string
+    verification: SparkHelperAutostartReceiptVerification
+  }>
+  reasons: string[]
+}
+
+// A public-safe contributor ref must be a non-empty, single-token string (no
+// whitespace) — this rejects free-text and the obvious shapes a raw address or
+// credential would take if smuggled in as a "contributor ref".
+function isContributorRef(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !/\s/.test(value)
+}
+
+/**
+ * Audit a SET of captured autostart receipts, each bound to a contributor.
+ *
+ * Pure and side-effect-free. `valid` requires every entry to be structurally
+ * well-formed (a non-empty, whitespace-free contributor ref + a receipt that
+ * passes `verifySparkHelperAutostartReceipt`) AND all contributor refs to be
+ * distinct — so one host cannot be counted as many contributors. `clearsBlocker`
+ * additionally requires at least one distinct contributor. This does NOT clear
+ * the blocker; it is the deterministic set-level gate an auditor runs over real
+ * captured evidence before any such citation could be made.
+ */
+export function verifySparkHelperAutostartReceiptSet(
+  entries: ReadonlyArray<SparkHelperAutostartContributorEntry>,
+): SparkHelperAutostartReceiptSetVerification {
+  const reasons: string[] = []
+
+  if (!Array.isArray(entries)) {
+    return {
+      valid: false,
+      clearsBlocker: false,
+      distinctContributorCount: 0,
+      perEntry: [],
+      reasons: ["not-an-array"],
+    }
+  }
+
+  if (entries.length === 0) {
+    return {
+      valid: false,
+      clearsBlocker: false,
+      distinctContributorCount: 0,
+      perEntry: [],
+      reasons: ["empty-set"],
+    }
+  }
+
+  const perEntry: SparkHelperAutostartReceiptSetVerification["perEntry"] = []
+  const seenContributorRefs = new Set<string>()
+  const clearedContributorRefs = new Set<string>()
+
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index]
+    const refOk = isContributorRef(entry?.contributorRef)
+    const contributorRef = refOk ? entry.contributorRef : ""
+
+    if (!refOk) {
+      reasons.push(`bad-contributor-ref:${index}`)
+    } else {
+      if (seenContributorRefs.has(contributorRef)) {
+        reasons.push(`duplicate-contributor-ref:${contributorRef}`)
+      }
+      seenContributorRefs.add(contributorRef)
+    }
+
+    const verification = verifySparkHelperAutostartReceipt(entry?.receipt)
+    if (!verification.valid) {
+      reasons.push(`entry-receipt-invalid:${refOk ? contributorRef : index}`)
+    }
+    if (refOk && verification.clearsBlocker) {
+      clearedContributorRefs.add(contributorRef)
+    }
+
+    perEntry.push({ contributorRef, verification })
+  }
+
+  const valid = reasons.length === 0
+  const distinctContributorCount = clearedContributorRefs.size
+
+  return {
+    valid,
+    clearsBlocker: valid && distinctContributorCount >= 1,
+    distinctContributorCount,
+    perEntry,
+    reasons,
+  }
+}

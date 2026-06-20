@@ -9,6 +9,7 @@ import {
   classifySparkHelperAutostart,
   SPARK_AUTOSTART_ENV,
   verifySparkHelperAutostartReceipt,
+  verifySparkHelperAutostartReceiptSet,
 } from "./spark-helper-autostart.js"
 
 function receive(
@@ -233,5 +234,80 @@ describe("verifySparkHelperAutostartReceipt", () => {
     expect(
       verifySparkHelperAutostartReceipt({ ...buildReady(), observedAt: "not-a-date" }).reasons,
     ).toContain("bad-observed-at")
+  })
+})
+
+describe("verifySparkHelperAutostartReceiptSet", () => {
+  function buildReady() {
+    const ready = classifySparkHelperAutostart(
+      receive({ state: "address-ready", credentialReady: true, helperReady: true }),
+      { enabled: true },
+    )
+    const receipt = buildSparkHelperAutostartReceipt(ready, "2026-06-19T00:00:00.000Z")
+    if (receipt === null) throw new Error("expected a receipt")
+    return receipt
+  }
+
+  it("rejects a non-array or empty set (cannot prove any contributor)", () => {
+    expect(
+      // @ts-expect-error exercising the runtime guard
+      verifySparkHelperAutostartReceiptSet(null).reasons,
+    ).toContain("not-an-array")
+    const empty = verifySparkHelperAutostartReceiptSet([])
+    expect(empty.valid).toBe(false)
+    expect(empty.clearsBlocker).toBe(false)
+    expect(empty.reasons).toContain("empty-set")
+  })
+
+  it("accepts distinct contributors each with a valid receipt and clears at set level", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:contributor-a", receipt: buildReady() },
+      { contributorRef: "pylon:contributor-b", receipt: buildReady() },
+    ])
+    expect(result.valid).toBe(true)
+    expect(result.clearsBlocker).toBe(true)
+    expect(result.distinctContributorCount).toBe(2)
+    expect(result.reasons).toEqual([])
+  })
+
+  it("clears the set bar with a single distinct normal contributor", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:solo", receipt: buildReady() },
+    ])
+    expect(result.clearsBlocker).toBe(true)
+    expect(result.distinctContributorCount).toBe(1)
+  })
+
+  it("rejects one host passed off as many: a reused contributor ref", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:same", receipt: buildReady() },
+      { contributorRef: "pylon:same", receipt: buildReady() },
+    ])
+    expect(result.valid).toBe(false)
+    expect(result.clearsBlocker).toBe(false)
+    expect(result.reasons).toContain("duplicate-contributor-ref:pylon:same")
+  })
+
+  it("rejects an empty or whitespace-bearing contributor ref by index", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "  ", receipt: buildReady() },
+    ])
+    expect(result.valid).toBe(false)
+    expect(result.reasons).toContain("bad-contributor-ref:0")
+  })
+
+  it("fails the set when any entry's receipt does not pass the single bar", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:good", receipt: buildReady() },
+      {
+        contributorRef: "pylon:bad",
+        receipt: { ...buildReady(), operatorHandStartRequired: true },
+      },
+    ])
+    expect(result.valid).toBe(false)
+    expect(result.clearsBlocker).toBe(false)
+    expect(result.reasons).toContain("entry-receipt-invalid:pylon:bad")
+    // The good entry's contributor is still surfaced for traceability.
+    expect(result.distinctContributorCount).toBe(1)
   })
 })
