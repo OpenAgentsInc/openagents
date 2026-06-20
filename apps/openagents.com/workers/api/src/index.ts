@@ -62,6 +62,11 @@ import {
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
 } from './agentic-labor-product-routes'
+import {
+  SelfServeFanoutEndpoint,
+  handleSelfServeFanoutApi,
+  isSelfServeFanoutEnabled,
+} from './self-serve-fanout-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -8112,6 +8117,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isAgenticLaborProductsEnabled(
           env.AGENTIC_LABOR_PRODUCTS_ENABLED,
         ),
+      }),
+  },
+  {
+    // Self-serve control-center fanout scaffold (promise
+    // autopilot.control_center_fanout_marketplace.v1, yellow). INERT: the store
+    // is empty unless SELF_SERVE_FANOUT_ENABLED is armed, and the response
+    // always reports inert/yellow/selfServe with workClass code_task. It models
+    // a customer-initiated single-action fanout plan (gate decision + the linked
+    // market work-request the fanout would list) over the existing lane-C gate;
+    // the dispatch seam (dispatchSelfServeFanout) lists nothing. It clears only
+    // the self-serve blocker (the plugin-marketplace-beyond-code_task blocker
+    // stays uncleared) and makes no broad-live-marketplace claim. Read-only.
+    path: SelfServeFanoutEndpoint,
+    handler: (request, env) =>
+      handleSelfServeFanoutApi(request, {
+        enabled: isSelfServeFanoutEnabled(env.SELF_SERVE_FANOUT_ENABLED),
       }),
   },
   {

@@ -33,6 +33,7 @@ import {
   evaluateLaneCFanoutForWorkOrder,
   laneCFanoutObjectiveRef,
 } from './lane-c-fanout-bridge'
+import { buildSelfServeFanoutPlan } from './self-serve-fanout'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -3094,22 +3095,48 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     const budgetCapSats = typeof body.budgetCapSats === 'number' ? body.budgetCapSats : 0
 
     const work = projectionForRecord(record, false, nowIso, pylonRegistrations)
-    const fanout = evaluateLaneCFanoutForWorkOrder({
+    // Server-supplied placement/policy + readiness facts for the lane-C gate.
+    // The customer never asserts these — they come from the work order
+    // projection, so the public-trust floor stays enforced server-side.
+    const workOrderFacts = {
       placementSource: work.placementDecision.source,
       placementAvailabilityState: work.placementDecision.availabilityState,
       privacyTier: work.placementPolicy.privacyTier,
-      customerOptIn,
-      budgetCapSats,
-      // The fanout authorizes market quotes up to the budget cap; the per-quote
-      // budget check is enforced again at escrow-reserve time on acceptance.
-      quotedSats: budgetCapSats,
       settlementBridgeReady: true, // P4 (#4780) USD->sats settlement bridge is built/closed.
       marketInventoryReady: true,
       artifactAuthorityReady: true,
       validatorPolicyReady: true,
       missionWorkOrderUnified: true,
-      providerTrustTier: 'public_rung1',
+      providerTrustTier: 'public_rung1' as const,
+    }
+    const fanout = evaluateLaneCFanoutForWorkOrder({
+      ...workOrderFacts,
+      customerOptIn,
+      budgetCapSats,
+      // The fanout authorizes market quotes up to the budget cap; the per-quote
+      // budget check is enforced again at escrow-reserve time on acceptance.
+      quotedSats: budgetCapSats,
     })
+
+    // Self-serve fanout plan (autopilot.control_center_fanout_marketplace.v1):
+    // this route is customer-authenticated (customer_orders.write), so the
+    // customer (not an operator) initiates the fanout in a SINGLE self-serve
+    // action. Build the typed plan so the response is the self-serve capability,
+    // not an operator-staged two-step. The plan reuses the SAME lane-C gate, so
+    // a blocked gate yields a plan with marketWorkRequest=null. It is INERT and
+    // clears only the self-serve blocker (code_task work class only).
+    const selfServePlanResult = buildSelfServeFanoutPlan(
+      {
+        workOrderRef,
+        customerRef: `agent:${auth.ownerUserId}`,
+        customerOptIn,
+        budgetCapSats,
+        title: `Lane C fanout: ${workOrderRef}`,
+      },
+      workOrderFacts,
+      nowIso,
+    )
+    const selfServePlan = selfServePlanResult.ok ? selfServePlanResult.plan : null
 
     if (!fanout.readyForMarket) {
       return noStoreJsonResponse(
@@ -3153,6 +3180,10 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
           title: `Lane C fanout: ${workOrderRef}`.slice(0, 160),
           verificationCommandRef: 'command.public.pylon.labor.bun_test',
         },
+        // The customer-initiated self-serve fanout plan (single-action,
+        // INERT, code_task work class only). This makes the route the
+        // self-serve capability rather than an operator-staged two-step.
+        selfServeFanout: selfServePlan,
         workOrderRef,
       },
       { status: 201 },

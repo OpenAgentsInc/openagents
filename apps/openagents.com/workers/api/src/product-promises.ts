@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.6'
+export const PublicProductPromisesVersion = '2026-06-20.7'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -1217,25 +1217,28 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Control center / Autopilot can fan out work to many agents and pull from a plugin marketplace.',
         safeCopy:
-          'First-live: on 2026-06-14 one real Autopilot work order (f374a475) had its owned capacity forced dark and fanned out to the open agent labor market (market work request 432420e6) behind a server-side customerOptIn gate (opt-out returns 409 lane_c_fanout_blocked); an independent provider Pylon quoted and executed it, the validator re-ran bun test (pass), and escrow settled with public receipts (#4783, P7 lane-C). This proves single-order fanout to the market. Self-serve customer-initiated fanout (the run was operator-staged) and a general plugin marketplace beyond the code_task work class are not live.',
+          'First-live: on 2026-06-14 one real Autopilot work order (f374a475) had its owned capacity forced dark and fanned out to the open agent labor market (market work request 432420e6) behind a server-side customerOptIn gate (opt-out returns 409 lane_c_fanout_blocked); an independent provider Pylon quoted and executed it, the validator re-ran bun test (pass), and escrow settled with public receipts (#4783, P7 lane-C). This proves single-order fanout to the market. As of 2026-06-20 the fanout is also SELF-SERVE: the customer-authenticated route POST /api/autopilot/work/:ref/lane-c-fanout (customer_orders.write scope) now returns a typed self_serve_fanout plan in one action — the lane-C gate decision plus the linked market work-request the fanout would list — so the run is customer-initiated, not operator-staged; the public read-only projection is /api/public/autopilot/self-serve-fanout (INERT/yellow until SELF_SERVE_FANOUT_ENABLED is armed). The dispatch seam (dispatchSelfServeFanout) lists nothing until armed. A general plugin marketplace beyond the code_task work class is still not live.',
         unsafeCopy:
-          'Do not claim a self-serve control center fans out paid work to many agents from a broad live marketplace; the proven flow is one operator-staged order fanned to the labor market for a code_task, and plugin-marketplace execution beyond that work class is not live.',
+          'Do not claim a self-serve control center fans out paid work to many agents from a broad live marketplace; the self-serve plan and dispatch seam are INERT until armed and the only supported work class is code_task, so plugin-marketplace execution beyond that class is not live and no money moves until owner-armed.',
         evidenceRefs: [
           'docs/labor/2026-06-14-p7-lane-c-fanout-closeout.md',
           'autopilot_work_order.f374a475-0465-4f65-b9e1-c1bffb6778f6',
           'work_request:432420e6-7245-4d44-96c4-9e0b149a6020',
           'apps/openagents.com/workers/api/src/lane-c-fanout-policy.ts',
           'apps/openagents.com/workers/api/src/lane-c-fanout-bridge.ts',
+          'apps/openagents.com/workers/api/src/self-serve-fanout.ts',
+          'apps/openagents.com/workers/api/src/self-serve-fanout-routes.ts',
+          'apps/openagents.com/workers/api/src/self-serve-fanout.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/4783',
+          'route:/api/public/autopilot/self-serve-fanout',
           'route:/api/operator/pylons/assignments',
           'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.self_serve_fanout_missing',
           'blocker.product_promises.plugin_marketplace_beyond_code_task_missing',
         ],
         verification:
-          'Requires self-serve scope, marketplace policy, idempotent dispatch, no-duplicate assignment, spend cap, proof, and settlement gates. First-live single-order market fanout met by #4783 (lane-C, customerOptIn-gated, validator-accepted, escrow-settled). Green requires customer-initiated self-serve fanout and plugin-marketplace execution beyond the code_task work class. State set to yellow under owner authorization 2026-06-14; the matching promise_transition receipt must be recorded against the deployed 2026-06-14.1 version.',
+          'Requires self-serve scope, marketplace policy, idempotent dispatch, no-duplicate assignment, spend cap, proof, and settlement gates. First-live single-order market fanout met by #4783 (lane-C, customerOptIn-gated, validator-accepted, escrow-settled). Self-serve scope met (2026-06-20): buildSelfServeFanoutPlan + the customer-authenticated lane-c-fanout route produce a customer-initiated single-action fanout plan over the existing server-side lane-C gate (public-trust floor + opt-in + budget cap enforced server-side), with a public read-only projection at /api/public/autopilot/self-serve-fanout — clearing blocker.product_promises.self_serve_fanout_missing. The plan + dispatch seam are FLAG-GATED INERT (SELF_SERVE_FANOUT_ENABLED default OFF) and move no money. Green still requires plugin-marketplace execution beyond the code_task work class plus a receipt-first owner-signed settlement against an armed self-serve fanout. State stays yellow; the matching promise_transition receipt must be recorded against the deployed registry version.',
         authorityBoundary:
           'Operator-only APIs and validation gates are not public self-serve marketplace authority; the customerOptIn gate must authorize any fanout, and the market produces accepted candidate work only.',
       },
@@ -3448,6 +3451,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.4: green-quality fix on pylon.release_tomorrow.v1 (conceding Orrery audit, forum topic 415e16a7) — its green previously rested on the sibling pylon.v03_release_candidate.v1 evidence array; it now carries its OWN dereferenceable refs (the signed darwin-arm64 feed https://updates.openagents.com/pylon/rc/darwin-arm64/feed.json and the live registration route:/api/pylons#pylon.33afd48282a649047e3a). No state change (stays green), green count unchanged at 24. The transitions-feed backfill for the four post-2026-06-17.5 flips remains the owner-gated item (prod admin token).',
         'Registry 2026-06-20.5 is a marketplace.signature_monetization.v1 de-stale pass and flips NO promise state. The already-deployed inert usage-metering model and public read-only projection (GET /api/public/markets/signature-monetization/metering) prove validation+metering can reach the metered rung while the promise remains red/inert and settlement stays blocked. This clears blocker.product_promises.signature_usage_metering_missing only; blocker.product_promises.signature_settlement_missing remains. No billing, pricing, rev-share, payout, settlement, or revenue claim is created.',
         'Registry 2026-06-20.6 is an autopilot_sites.partner_payout_ledger.v1 projection de-stale pass and flips NO promise state. The public-safe count-only partner payout projection (GET /api/public/partner-payouts) exposes aggregate current states, roles, assets, policy shape, and settled sats while withholding partner refs, user ids, payout refs, qualifying event refs, payout destinations, invoices, preimages, and provider payloads. This clears blocker.product_promises.partner_projection_api_missing only; partner attribution policy, settlement wiring, and first real payout remain blocked. No partner earning, withdrawal, revenue, payout, settlement, or green claim is created.',
+        'Registry 2026-06-20.7 is an autopilot.control_center_fanout_marketplace.v1 self-serve pass and flips NO promise state (stays yellow, green count unchanged at 24). The fanout is now customer-initiated SELF-SERVE in one action: the customer-authenticated route POST /api/autopilot/work/:ref/lane-c-fanout (customer_orders.write) returns a typed self_serve_fanout plan (lane-C gate decision + the linked market work-request it would list), and a public read-only projection ships at GET /api/public/autopilot/self-serve-fanout (INERT/yellow until SELF_SERVE_FANOUT_ENABLED is armed). buildSelfServeFanoutPlan reuses the existing server-side lane-C gate so the public-trust floor + opt-in + budget cap stay enforced server-side; the dispatch seam (dispatchSelfServeFanout) lists nothing and moves no money until armed. This clears blocker.product_promises.self_serve_fanout_missing only; blocker.product_promises.plugin_marketplace_beyond_code_task_missing remains (code_task work class only) and a receipt-first owner-signed settlement against an armed self-serve fanout is still required for green.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

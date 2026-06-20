@@ -268,7 +268,15 @@ const budgetChecks = [
     // `Effect.Effect<Response>` like the sibling public read handlers. Ratchet
     // back down when these public-projection handlers are extracted behind
     // shared route mappers.
-    budget: 90,
+    // +1 (90 -> 91) for the self-serve control-center fanout surface
+    // (self-serve-fanout-routes.ts,
+    // autopilot.control_center_fanout_marketplace.v1, yellow): a flag-gated
+    // INERT read-only projection of customer-initiated self-serve fanout plans,
+    // clearing only blocker.product_promises.self_serve_fanout_missing. It
+    // returns `Effect.Effect<Response>` like the sibling public read handlers.
+    // Ratchet back down when these public-projection handlers are extracted
+    // behind shared route mappers.
+    budget: 91,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -585,6 +593,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/agentic-labor-product.ts',
     route: '/api/public/autopilot/labor-products',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/self-serve-fanout.ts',
+    route: '/api/public/autopilot/self-serve-fanout',
     status: 'staleness_declared',
   },
   {
