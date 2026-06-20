@@ -4,6 +4,81 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (d) — overlong-penalty GRPO reward-shaping reference math
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.preference_rollout_work_missing` — advanced, **not
+cleared**.
+
+The CLAIM lists "no … overlong-penalty GRPO reward-shaping receipt" among the
+missing pieces. The GRPO rollout/grading workload
+(`cs336-a5-rollout-workload.ts`) graded exact-match correctness and
+group-normalized advantages, but had no length-aware reward shaping — the DAPO
+"soft overlong punishment" that keeps the policy from being rewarded for running
+past a response budget. This change adds that reference math with committed
+tests: the verifiable reward-shaping function a paid GRPO reward-grading
+dispatch would settle against.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/cs336-a5-overlong-penalty-reward-shaping.ts`
+  - Exact DAPO soft-overlong math: `overlongLengthPenalty` (0 inside budget, a
+    linear ramp from `0` to `-1` across the soft buffer, `-1` past the hard
+    cap), `shapeOverlongReward` (`shapedReward = baseReward + penalty` over an
+    exact-match `{0,1}` base reward), and `gradeOverlongShapedBatch` (mean
+    base/shaped rewards, mean penalty, within-budget / soft-zone / over-length
+    counts).
+  - `overlongResponseTokenLength`: a deterministic whitespace-token length
+    proxy (real Psionic tokenizer-length conformance stays a Psionic ask).
+  - `buildCs336A5OverlongShapedRewards` / `runCs336A5OverlongPenaltyRewardShaping`:
+    reuse the SAME seeded synthetic math environment, rollout batch, and
+    exact-match `parseCs336A5FinalValue` base reward as the GRPO workload, then
+    shape and grade. Re-running a split reproduces its `outputDigestHex`
+    bit-for-bit (the `deterministic_recompute` property).
+- `apps/openagents.com/workers/api/src/cs336-a5-overlong-penalty-reward-shaping.test.ts`
+  - 11 committed tests: zero/budget-boundary penalty, linear soft-buffer ramp,
+    hard-cap full penalty, parameter guards, reward shaping in all three zones,
+    non-exact-match reward guard, token-length proxy, batch aggregation,
+    empty-batch guard, public-safety of shaped rows, and cross-split
+    deterministic digest recompute.
+
+Deterministic reference receipt for
+`workload.cs336_a5.overlong_penalty_reward_shaping.v1` (split_a, defaults
+`maxResponseLength=13`, `cacheLength=2`):
+
+- `rowCount=128`
+- `withinBudgetCount=124`, `overLengthCount=4`, `penalizedCount=4`
+- `outputDigestHex=35d5a0eb3ea20dc3482c4fb2e0d3e33ad30f0f1f55707a1975292a645fff10e1`
+
+### Honesty boundary (why the blocker stays open)
+
+No hosted LLM is involved: response length is a whitespace-token proxy over the
+bounded synthetic completions, and base rewards are the exact-match signal. This
+is the exact, unit-tested reward-shaping math plus a deterministic shaping
+digest — a prerequisite for paid GRPO reward grading, not the paid work itself.
+No paid OpenAgents GRPO reward-shaping dispatch, Verified challenge, settlement,
+or policy-gradient update exists; the update step stays behind the #4669
+training boundary. No public projection/route, no registry edit, and no green
+transition is created here.
+
+### Validation
+
+- `bunx tsc -p tsconfig.json --noEmit` (workers/api): **0 errors**.
+- `bun run check:deploy`: see run-log below.
+
+### What genuinely remains for `preference_rollout_work_missing`
+
+Still open: no paid `cs336_a5_overlong_penalty_reward_shaping` /
+`cs336_a5_dpo_grading` dispatch, settlement, or Verified challenge over shaped
+rewards / preference pairs has run, and real model log-probs / token lengths are
+not yet wired.
+
+---
+
 ## 2026-06-20 (c) — public vibe-test rubric projection
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip).
