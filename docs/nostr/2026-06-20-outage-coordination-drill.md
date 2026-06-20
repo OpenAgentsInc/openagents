@@ -117,3 +117,88 @@ receipt: anyone can re-fetch the events and confirm the fallback-coordination
 sequence actually happened over Nostr. Event ids are deterministic per signed
 content but the demo keys are regenerated each run, so a fresh run produces a new,
 equally-fetchable set of ids and the same `read-back verified 11/11` result.
+
+## Owned-relay run (`wss://relay.openagents.com`) — finding: BLOCKED by scope policy
+
+Auditor finding (Orrery): the original receipt above used a public relay
+(`nos.lol`) with ephemeral keys, not the OWNED relay `wss://relay.openagents.com`.
+To strengthen the receipt, the same drill was re-run against the owned relay on
+2026-06-19:
+
+```sh
+bun apps/openagents.com/scripts/nostr-fallback-drill.ts smoke --relay wss://relay.openagents.com
+```
+
+**Outcome: the owned relay rejected the first coordination event.** This is the
+correct, expected security behavior, and it is a legitimate finding rather than a
+failure of the drill. The exact relay response (verbatim, ephemeral-key event,
+no secrets):
+
+```
+["OK","70a2d198f9bbb055b3d977168e5e3e8aa43d536cccb7b9545b27678e0da9d2c6",false,
+ "blocked: kind 30315 is outside the OpenAgents scoped market relay policy"]
+```
+
+### Why this is expected and correct
+
+`wss://relay.openagents.com` is the **OpenAgents Scoped Market Relay**, not an
+open general-purpose relay. Its NIP-11 document and write policy
+(`apps/nostr-relay/src/market-policy.ts`) restrict accepted event kinds to the
+market rails only — by **kind allowlist**, not by NIP-42 auth:
+
+| Bucket | Accepted kinds |
+|---|---|
+| NIP-90 labor/compute requests | `5000`–`5999` |
+| NIP-90 results | `6000`–`6999` |
+| NIP-90 feedback | `7000` |
+| NIP-DS dataset listings/offers | `30404`, `30406` |
+| NIP-89 handler advertisements | `31989`, `31990` |
+
+Everything else is rejected with `blocked: kind <k> is outside the OpenAgents
+scoped market relay policy`. The relay's NIP-11 `supported_nips` list does **not**
+include NIP-42 (auth), so the block is a kind-scope decision, not an
+authentication/credential gate: the owned relay simply is not openly writable for
+arbitrary protocol kinds. (NIP-90 labor events from arbitrary ephemeral keys are,
+by contrast, accepted — that is the first labor job settled over this relay,
+#4777.)
+
+The drill's coordination steps that the owned relay rejects are exactly the
+discovery/liveness/DM layer:
+
+- NIP-38 user-status (kind `30315`) — liveness
+- NIP-02 contacts (kind `3`) and NIP-65 relay list (kind `10002`) — discovery
+- NIP-17 gift-wrapped DM (kind `1059`/`1059` via NIP-59) — private coordination
+
+The drill's NIP-90 LBR steps (kinds `5934` / `7000` / `6934`) are within the
+relay's allowlist, so the labor-market half of the fallback path is what the owned
+relay is scoped to carry.
+
+### Consistency with the fallback contract
+
+This finding matches the owner-directed fallback design, which scopes outage
+coordination to the owned relay **and** public relays together (see
+`docs/promises/2026-06-14-registry-reality-reconciliation-audit.md`: "coordinate
+over Nostr (NIP-01 pub/sub on `wss://relay.openagents.com` + public relays;
+NIP-02/65/66 discovery; NIP-38 status; NIP-17/44/59 private DMs; NIP-29 groups;
+NIP-90 to keep the labor market moving)"). The architecture is intentionally
+split:
+
+- The **owned scoped relay** carries the labor market (NIP-90/DS/89) — the
+  revenue-bearing, OpenAgents-relevant traffic — and refuses arbitrary kinds,
+  which is the correct security posture for an owned market surface.
+- The **public relays** (`nos.lol`, `relay.damus.io`, …) carry the open
+  discovery/liveness/DM kinds (NIP-38/02/65/17), where arbitrary keys are
+  expected to publish freely.
+
+The full-sequence public-relay receipt above therefore remains the valid
+end-to-end fallback demonstration; the owned relay correctly accepts only its
+scoped market subset. No owned-relay event ids are recorded here because no
+owned-relay event was accepted for the discovery/liveness/DM steps — and the drill
+never fabricates a receipt for an event the relay did not accept.
+
+### Public-safety note
+
+This owned-relay run used the same per-run ephemeral demo keys
+(`generateSecretKey`) and the same `assertNoSecrets` guard as the public-relay
+run. No real agent key was used, and no secret left the process; the verbatim
+relay error above is the only owned-relay material captured.
