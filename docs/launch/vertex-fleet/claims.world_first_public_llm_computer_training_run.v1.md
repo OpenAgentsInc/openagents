@@ -2,6 +2,29 @@
 
 - Promise state: **red** (unchanged — no green/yellow flip in any change here).
 
+## Run 3 (2026-06-20) — evidence-pack dereferenceability guard
+
+- Blocker hardened (already cleared, now regression-guarded):
+  `blocker.product_promises.world_first_evidence_pack_missing` (and the
+  definition blocker). No state change, no blocker re-drop.
+
+### What was built
+
+- **`apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts`**
+  — a focused regression test that machine-enforces the property the evidence
+  pack is named for (*dereferenceability*): every repo-relative `docs/...md`
+  ref the pack and its companion definition cite resolves on disk; every
+  `promise:` evidence ref on the Claim-2 registry record resolves to a real
+  registry promiseId; the cleared definition/evidence-pack blockers stay cleared
+  while `state` stays `red` and the owner-signed-upgrade blocker stays listed;
+  and the pack's refuse-list + Percepta credit stay in both the doc and the
+  public copy. Wired into the registry record's `evidenceRefs` and
+  `verification`; `product-promises.test.ts` updated to match.
+
+This converts the cleared blocker from "the doc exists" to "the doc exists and
+its load-bearing internal references provably resolve," so the pack cannot
+silently rot into a dead-link artifact.
+
 ## Run 2 (2026-06-20) — evidence-pack blocker
 
 - Blocker advanced/cleared **for this promise**:

@@ -613,6 +613,7 @@ describe('public product promises document', () => {
             'promise:compute.tassadar_executor_poc.v1',
             'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
             'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+            'apps/openagents.com/workers/api/src/world-first-llm-computer-evidence-pack.test.ts',
           ]),
         }),
         expect.objectContaining({
