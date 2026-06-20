@@ -5,6 +5,7 @@ import {
   AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
 } from './agent-registration'
+import { createHostedGeminiExecutorBinding } from './autopilot-hosted-gemini-binding'
 import {
   createHostedGeminiWorkExecutor,
   type HostedGeminiInferenceCaller,
@@ -16,6 +17,12 @@ import {
   type OpenAgentsL402CredentialPayload,
   makeOpenAgentsL402HmacSigningBoundary,
 } from './l402-credential-service'
+import {
+  InferenceAdapterError,
+  type InferenceProviderAdapter,
+  type InferenceRequest,
+  type InferenceResult,
+} from './inference/provider-adapter'
 import { formatOpenAgentsPaymentCredentialPair } from './l402-payment-headers'
 import {
   type AutopilotWorkExecutor,
@@ -3678,6 +3685,128 @@ describe('Autopilot work routes', () => {
       createHostedGeminiWorkExecutor({ enabled: true, inferenceCaller }),
       'idem-autopilot-work-hosted-gemini-unsafe',
       'payment_proof.autopilot_work.hosted_gemini_unsafe',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('paid_ready')
+    expect(paidJson.work?.executionCloseout).toBeNull()
+  })
+
+  // A spy provider adapter for the composed binding: `complete` succeeds with a
+  // fixed receipt-first result and records the request it was handed.
+  const hostedGeminiSpyAdapter = (
+    result: InferenceResult,
+  ): {
+    adapter: InferenceProviderAdapter
+    requests: Array<InferenceRequest>
+  } => {
+    const requests: Array<InferenceRequest> = []
+    return {
+      adapter: {
+        complete: (request: InferenceRequest) => {
+          requests.push(request)
+          return Effect.succeed(result)
+        },
+        id: 'vertex-gemini',
+        stream: () => Effect.succeed([]),
+      },
+      requests,
+    }
+  }
+
+  test('composed hosted Gemini binding delivers a paid work order end-to-end from a single injected adapter when armed', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'public-safe hosted Gemini closeout summary',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 7, promptTokens: 11, totalTokens: 18 },
+    })
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiExecutorBinding({ adapter, enabled: true }),
+      'idem-autopilot-work-hosted-gemini-composed',
+      'payment_proof.autopilot_work.hosted_gemini_composed',
+    )
+
+    const assignmentRef =
+      'fallback_assignment.autopilot_work_order.test_1.task.product_promise_docs_hosted_gemini_binding'
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('delivered')
+    expect(paidJson.work?.executionCloseout).toMatchObject({
+      assignmentRefs: [assignmentRef],
+      publicSafe: true,
+      runnerKind: 'hosted_gemini',
+      verificationRefs: ['usage.hosted_gemini.prompt_11.completion_7.total_18'],
+    })
+    // The closeout proof refs are PROJECTED from the real adapter result: the
+    // served model and a SHA-256 digest of the completion (never the raw text).
+    const proofRefs = paidJson.work?.executionCloseout?.proofRefs ?? []
+    expect(proofRefs).toContain('model.hosted_gemini.gemini-3.5-flash')
+    expect(
+      proofRefs.some(ref =>
+        /^proof\.hosted_gemini\.response_digest\.sha256\.[0-9a-f]{64}$/u.test(ref),
+      ),
+    ).toBe(true)
+    // The raw completion text never appears in any persisted ref.
+    expect(JSON.stringify(paidJson.work?.executionCloseout)).not.toContain(
+      'public-safe hosted Gemini closeout summary',
+    )
+    // The request the adapter saw is non-streaming and refs-only.
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.stream).toBe(false)
+    expect(requests[0]?.messages[1]?.content).toContain(
+      'task=task.product_promise_docs_hosted_gemini_binding',
+    )
+  })
+
+  test('composed hosted Gemini binding stays INERT (no delivery, adapter untouched) when the single flag is off', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const { adapter, requests } = hostedGeminiSpyAdapter({
+      content: 'must never run',
+      finishReason: 'stop',
+      servedModel: 'gemini-3.5-flash',
+      usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+    })
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiExecutorBinding({ adapter, enabled: false }),
+      'idem-autopilot-work-hosted-gemini-composed-inert',
+      'payment_proof.autopilot_work.hosted_gemini_composed_inert',
+    )
+
+    expect(paid.status).toBe(200)
+    expect(paidJson.work?.state).toBe('paid_ready')
+    expect(paidJson.work?.executionCloseout).toBeNull()
+    expect(requests).toHaveLength(0)
+  })
+
+  test('composed hosted Gemini binding declines to deliver when the provider adapter fails', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const adapter: InferenceProviderAdapter = {
+      complete: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'vertex-gemini',
+            reason: 'quota exhausted',
+            retryable: true,
+          }),
+        ),
+      id: 'vertex-gemini',
+      stream: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'vertex-gemini',
+            reason: 'quota exhausted',
+            retryable: true,
+          }),
+        ),
+    }
+    const { paid, paidJson } = await driveHostedGeminiBinding(
+      store,
+      createHostedGeminiExecutorBinding({ adapter, enabled: true }),
+      'idem-autopilot-work-hosted-gemini-composed-fail',
+      'payment_proof.autopilot_work.hosted_gemini_composed_fail',
     )
 
     expect(paid.status).toBe(200)

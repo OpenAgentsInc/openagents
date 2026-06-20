@@ -139,13 +139,48 @@ production binding shape the harness was missing.
   real content the adapter should act on is still missing — and there is no
   registered-agent production smoke. The blocker REMAINS listed.
 
+### 2026-06-20 update — single composition root for the executor binding
+
+- `blocker.product_promises.production_hosted_gemini_executor_binding_missing`
+  — **further advanced, still NOT cleared.** All four layers of the hosted
+  Gemini chain existed as separate factories (adapter → request runner → bridge
+  caller → executor), but there was no single place that assembled them into one
+  `AutopilotWorkExecutor` behind one arming flag — so binding hosted Gemini in
+  the live worker would have required hand-wiring the chain (and four flags) at
+  the call site. This change adds that composition root:
+  - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-binding.ts`
+    — `createHostedGeminiExecutorBinding(config)` takes an INJECTED
+    `InferenceProviderAdapter` (e.g. `makeVertexGeminiAdapter(...)`) plus a
+    SINGLE `enabled` flag (and optional model/maxOutputTokens/digest) and returns
+    a fully-composed `AutopilotWorkExecutor`. The one flag is propagated to every
+    layer (defense in depth): disabled → the runner never touches the adapter,
+    the caller never runs inference, and the executor returns `undefined`.
+  - 3 new cases in
+    `apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`
+    (full file 43 pass): the composed binding, driven by a spy provider adapter,
+    delivers a paid hosted Gemini work order end-to-end through the real route
+    harness — the persisted closeout carries the served-model ref + a SHA-256
+    response-digest ref PROJECTED from the real adapter result (the raw
+    completion text never appears in any ref) and a token-count usage
+    verification ref, and the adapter saw a non-streaming refs-only request;
+    the composed binding stays INERT (no delivery, adapter never invoked) when
+    the single flag is off; and a failing adapter declines to deliver (no
+    closeout) instead of throwing.
+
+  **Honest scope:** this is the composition seam only. The binding is still
+  INJECTED — it is not yet bound in the live worker dependency graph behind an
+  env-gated flag — the upstream ref-resolver that dereferences task/acceptance
+  refs into real adapter content is still missing, and there is no
+  registered-agent production smoke. The blocker REMAINS listed.
+
 ## What remains (for green)
 
 - A real deployed `HostedGeminiInferenceCaller` (the hosted Gemini inference
-  call) wired into the worker dependency graph behind an armed flag. The
-  work-order → `InferenceRequest` → adapter Effect→Promise runner now exists
-  (`createHostedGeminiRequestRunner`, 2026-06-20 update above), but it is still
-  injected, not bound in the live worker graph.
+  call) wired into the worker dependency graph behind an armed flag. The whole
+  chain is now assemblable from one factory (`createHostedGeminiExecutorBinding`,
+  2026-06-20 update above) over an injected Vertex adapter + one flag, but that
+  binding is still injected — it is not yet bound in the live worker graph
+  (`index.ts`) behind an env-gated flag.
 - An upstream ref-resolver that dereferences task/acceptance refs into the real
   content the hosted Gemini adapter should act on (the runner currently builds a
   refs-only prompt).
