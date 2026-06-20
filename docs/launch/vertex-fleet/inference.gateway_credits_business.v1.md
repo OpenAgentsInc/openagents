@@ -313,12 +313,51 @@ paid-credits funding loop is still secrets-gated — so the blocker stays listed
 promise state changed; any future green flip remains receipt-first and
 owner-signed.
 
+## Receipt resolver seam — assembler → resolvable surface (this run)
+
+Blocker advanced: `inference_card_credit_inference_spend_receipt_missing` —
+*partially advanced* (left listed; see "What remains" below).
+
+`assembleCardCreditSpendReceipt` is a PURE linker that needs all three resolved
+ledger legs handed to it; nothing turned a single Stripe checkout session id into
+those legs by READING stored ledger state, so the assembler could not back a
+resolvable surface. The "What remains" note below flagged exactly this
+("Wiring the assembler into a resolvable `GET` endpoint …"). This run builds the
+seam between them:
+
+- `apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-resolver.ts`
+  (+ `card-credit-spend-receipt-resolver.test.ts`):
+  `resolveCardCreditSpendReceipt(sessionId, readers)` — reads the three legs via
+  injected reader seams (`readPurchaseLeg` / `readGrantLeg` / `readSpendLeg`,
+  which the Worker wires to the real D1 reads; tests inject fixtures), in chain
+  order, short-circuiting on the first unsettled hop. It reports HONESTLY:
+  `blank_session` (nothing to resolve), `pending` with the first `missing` hop
+  (the EXPECTED state until the paid loop runs end to end — a card purchase
+  exists before the bridge grant, which exists before any metered spend),
+  `invalid` carrying the assembler's typed conservation/provenance failure
+  (legs present but the chain lies), or `ok` with the assembled dereferenceable
+  receipt. PURE apart from the injected readers (no D1, clock, network, or
+  secrets); adds no ledger writes and moves no money. 8 tests pass (blank
+  short-circuits all reads, full resolve, each `pending` hop, missing-grant never
+  reads spend, `spend_exceeds_grant` → invalid, cross-session `context_ref` →
+  `provenance_mismatch`).
+
+This makes a `pending` vs `invalid` vs `ok` chain a typed, route-mappable
+outcome, so a future flag-gated `GET` receipt route is a thin pass-through over
+this resolver. It does NOT by itself produce a live receipt: the readers have no
+real legs to read until the paid loop is collectable (still secrets-gated), so
+the blocker stays listed. No promise state changed; any future green flip remains
+receipt-first and owner-signed.
+
 ## What remains (both blockers, unchanged)
 
 - `inference_card_credit_inference_spend_receipt_missing`: still no real
   card→credit purchase on prod (no Stripe secrets), so no dereferenceable
-  end-to-end card→credit→inference-spend receipt exists yet. The assembler +
-  provenance binding are wired in source and waiting on a real upstream purchase.
+  end-to-end card→credit→inference-spend receipt exists yet. The assembler,
+  provenance binding, and now the resolver seam are wired in source and waiting
+  on a real upstream purchase; the remaining step is binding the resolver's three
+  reader seams to live D1 reads behind a flag-gated, owner-authenticated `GET`
+  receipt route (the resolver makes that route a thin pass-through).
 - `public_paid_model_gateway_missing`: discovery (`/v1/models`,
   `/v1/models/{model}`) and now pre-purchase quoting (`/v1/quote`) are live
   (flag-gated), but a customer still cannot FUND a balance with a card or Bitcoin
