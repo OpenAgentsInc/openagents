@@ -1749,6 +1749,19 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
     flag-gated INERT and owner-gated and is unreachable from this read-only
     route; the surface debits no balance and makes no live-sale claim.
+  - `GET /api/public/autopilot/self-serve-fanout` — live at read over the INERT
+    self-serve fanout plan store (promise
+    `autopilot.control_center_fanout_marketplace.v1`, yellow) — compliant
+    (`generatedAt`, `live_at_read` contract). The surface is flag-gated
+    (`SELF_SERVE_FANOUT_ENABLED`, default off => empty store) and the payload
+    always reports `inert: true` / `promiseState: 'yellow'` / `selfServe: true`
+    / `workClass: 'code_task'`, surfacing the cleared self-serve blocker and the
+    still-uncleared plugin-marketplace blocker. It models a customer-initiated
+    single-action fanout plan (the lane-C gate decision plus the linked market
+    work-request the fanout would list) over the existing server-side lane-C
+    gate. The dispatch seam (`dispatchSelfServeFanout`) is flag-gated INERT and
+    is unreachable from this read-only route; the surface lists nothing on the
+    market and moves no money.
   - `GET /api/public/markets/signature-monetization/metering` — live at read
     over the INERT signature usage-metering store (promise
     `marketplace.signature_monetization.v1`, red) — compliant (`generatedAt`,

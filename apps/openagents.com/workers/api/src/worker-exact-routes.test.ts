@@ -28,6 +28,7 @@ const approvedExactRoutePaths = [
   '/api/mobile/voice-sessions/ingest',
   '/api/public/autopilot/composed-runs',
   '/api/public/autopilot/labor-products',
+  '/api/public/autopilot/self-serve-fanout',
   '/api/public/customer-one-cohort',
   '/api/operator/customer-one-cohort/rows',
   '/api/operator/product-promises/transitions',
