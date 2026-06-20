@@ -85,3 +85,46 @@ forum work-request route + labor escrow; this only produces the request body.
   rather than caller-supplied numbers.
 - An at-scale, across-the-mesh run with settlement receipts
   (`blocker.*_at_scale_run_missing`).
+
+## Update 2026-06-20 — at-scale campaign fan-out + settlement aggregation
+
+Advances `blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing`
+by composing the two pieces above (the market-dispatch encoder and the
+throughput-parity verdict) into the across-the-mesh shape the promise names:
+ONE campaign that fans out across MANY targets, and a settlement ledger that
+reduces the MANY verdicts back into ONE campaign result.
+
+New artifact (in `apps/openagents.com/workers/api`):
+
+- `src/kernel-optimization-campaign.ts` —
+  - `buildKernelOptimizationCampaign(spec)` fans one campaign (a non-empty set
+    of `KernelOptimizationJobSpec`s, e.g. the four smallest Qwen 3.5 models from
+    217.md) into one dispatch-valid `CreateForumWorkRequestBody` per job. It
+    guards the at-scale invariants the single-job encoder cannot: non-empty
+    campaign, no duplicate `(kernel, model, device, hardware)` target, and — since
+    the encoder truncates slugs to 80 chars — no two jobs collapsing to the same
+    requested slug. Returns the request set + total escrow `totalBudgetSats`.
+  - `summarizeKernelOptimizationCampaignSettlement(campaignRef, items)` reduces
+    the per-job `{ budgetSats, KernelOptimizationVerdict }` pairs into a
+    `KernelOptimizationCampaignSettlement`: accepted/rejected counts, payout owed
+    (sum of accepted budgets), refund owed (sum of rejected budgets), rejection
+    reason histogram, and accepted-job speedup min/max/mean. Acceptance comes
+    straight from each verdict's `outcome` (already "faster AND still correct"),
+    so a `parity_rejected` job never accrues payout.
+- `src/kernel-optimization-campaign.test.ts` — 7 vitest tests: 4-target
+  dispatch-valid + slug-unique fan-out, empty-campaign / duplicate-target /
+  blank-campaignRef rejection, the mixed-outcome settlement (accept, faster-but-
+  wrong, no-improvement), the null-speedup all-rejected case, and non-integer
+  budget rejection. Anchored on the 217.md numbers (328 -> 523 tok/s).
+
+This moves no money, posts no request, and runs no kernel. It produces the
+dispatch set + the settlement ledger the verified-work rail would execute.
+
+### What still remains for the at-scale run (blocker NOT cleared)
+
+- Actually dispatching the campaign requests through the live forum work-request
+  route, driving every job's lifecycle across many real worker agents.
+- Live tok/s measurement + real optimized-kernel output traces replayed on
+  independent validator devices feeding the verdicts (still caller-supplied).
+- Real escrow settled from the ledger, producing dereferenceable settlement
+  receipts + owner sign-off. The March 2026 result stays historical-demo only.
