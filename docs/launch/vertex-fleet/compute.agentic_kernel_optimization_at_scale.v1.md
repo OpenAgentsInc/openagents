@@ -346,3 +346,45 @@ claimed op are the same op before producing any acceptance verdict.
   (numbers are still caller-supplied), and real escrow settled into
   dereferenceable receipts + owner sign-off. The March 2026 result stays
   historical-demo only. No promise state changed; no blocker dropped.
+
+## Update 2026-06-20 — delivered-kernel gate (same-kernel / no-deliverable guard)
+
+Advances `blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing`
+by closing a hole the op-provenance gate left open: the verifier asserted the
+baseline and optimized throughput records measure the SAME op, but never that the
+optimized record names a kernel implementation actually DISTINCT from the
+baseline. The work definition's deliverable is "an agent-authored optimized
+kernel" — a new kernel, not the baseline remeasured. Nothing stopped a settlement
+pairing the baseline kernel against ITSELF (`kernelRef` equal) and reading
+remeasurement noise — or a cherry-picked high run of the same implementation — as
+a "speedup". Every campaign reconciler passed and the parity verdict was
+`verified`; a non-optimization got paid.
+
+New artifact (in `packages/tassadar-executor`, the green parity engine):
+
+- `src/kernel-optimization-parity.ts` — `verifyKernelOptimizationParity` gains a
+  `kernel_not_optimized` rejection. After the op-provenance gate and before the
+  throughput/parity gates (structural, like target and op), it requires the
+  optimized record's `kernelRef` to (a) be non-empty and (b) normalize (trim +
+  lowercase) to something different from the baseline record's `kernelRef`. If
+  the optimized record names the same implementation as the baseline (or names
+  none), no new kernel was delivered, so the tok/s delta is not an optimization
+  and the kernel is rejected regardless of throughput or parity. No change to the
+  exact-trace-replay engine; no new money path.
+- `src/kernel-optimization-parity.test.ts` — 4 new tests (15 total): same-kernel
+  rejection, trim/case-insensitive same-kernel detection, blank optimized
+  `kernelRef` rejection, and the deliverable gate winning over a faster-but-wrong
+  parity verdict.
+
+### What still remains (blocker NOT cleared)
+
+- The gate proves the optimized record names a DIFFERENT, non-empty kernel
+  implementation than the baseline; it does not yet prove that implementation is
+  the one whose output trace was replayed on the validator device (the
+  `kernelRef` is a declared label, not derived from the replayed graph). Binding
+  the optimized `kernelRef` to the parity trace's graph digest remains.
+- Everything from the prior updates still stands: live dispatch through the
+  forum route, real worker tok/s + replayed output traces feeding the verdict
+  (numbers are still caller-supplied), and real escrow settled into
+  dereferenceable receipts + owner sign-off. The March 2026 result stays
+  historical-demo only. No promise state changed; no blocker dropped.
