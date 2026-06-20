@@ -5837,6 +5837,153 @@ const shellTargetTabs = (active: ShellTarget): Html =>
     ),
   )
 
+type ShellStreamPartKind = "answer" | "reasoning" | "result" | "status" | "tokens" | "tool"
+
+type ShellStreamPart = Readonly<{
+  kind: ShellStreamPartKind
+  label: string
+  body: string
+}>
+
+const shellToolLabels = new Set([
+  "agent",
+  "apply_patch",
+  "bash",
+  "edit",
+  "exec_command",
+  "glob",
+  "grep",
+  "list",
+  "ls",
+  "notebookedit",
+  "read",
+  "task",
+  "todowrite",
+  "web_fetch",
+  "webfetch",
+  "write",
+])
+
+const shellStreamToolLabel = (label: string): boolean => {
+  const normalized = label.trim().toLowerCase()
+  return (
+    shellToolLabels.has(normalized) ||
+    normalized.startsWith("mcp__") ||
+    normalized.includes("_") ||
+    normalized.includes(".")
+  )
+}
+
+const appendShellStreamPart = (
+  parts: ReadonlyArray<ShellStreamPart>,
+  part: ShellStreamPart,
+): ReadonlyArray<ShellStreamPart> => {
+  const previous = parts.at(-1)
+  if (previous?.kind !== part.kind || previous.label !== part.label) {
+    return [...parts, part]
+  }
+  return [
+    ...parts.slice(0, -1),
+    { ...previous, body: `${previous.body}\n${part.body}` },
+  ]
+}
+
+const appendShellStreamContinuation = (
+  parts: ReadonlyArray<ShellStreamPart>,
+  line: string,
+): ReadonlyArray<ShellStreamPart> => {
+  const previous = parts.at(-1)
+  if (!previous || previous.kind === "answer" || previous.kind === "tokens") {
+    return appendShellStreamPart(parts, {
+      kind: "answer",
+      label: "answer",
+      body: line.trim(),
+    })
+  }
+  return [
+    ...parts.slice(0, -1),
+    { ...previous, body: `${previous.body}\n${line.replace(/^\s{2}/, "")}` },
+  ]
+}
+
+const shellStreamPartFromLine = (line: string): ShellStreamPart | null => {
+  const trimmed = line.trim()
+  if (trimmed === "") return null
+  if (/^thinking tokens:/i.test(trimmed)) {
+    return { kind: "tokens", label: "usage", body: trimmed }
+  }
+  const thinking = /^thinking[:…]\s*(.*)$/is.exec(trimmed)
+  if (thinking?.[1]) {
+    return { kind: "reasoning", label: "thinking", body: thinking[1].trim() }
+  }
+  const result = /^result:\s*(.*)$/is.exec(trimmed)
+  if (result?.[1]) {
+    return { kind: "result", label: "result", body: result[1].trim() }
+  }
+  if (
+    /^(redaction blocked|task started|task complete|turn started|turn completed|thread started)$/i.test(trimmed) ||
+    /^control session mode:/i.test(trimmed)
+  ) {
+    return { kind: "status", label: "status", body: trimmed }
+  }
+  const tool = /^([A-Za-z][A-Za-z0-9_.-]{0,71}):\s*(.*)$/s.exec(trimmed)
+  if (tool?.[1] && shellStreamToolLabel(tool[1])) {
+    return { kind: "tool", label: tool[1], body: tool[2]?.trim() ?? "" }
+  }
+  return null
+}
+
+const shellStreamParts = (text: string): ReadonlyArray<ShellStreamPart> | null => {
+  let sawStreamPart = false
+  let parts: ReadonlyArray<ShellStreamPart> = []
+  for (const line of text.split("\n")) {
+    const part = shellStreamPartFromLine(line)
+    if (part !== null) {
+      sawStreamPart = true
+      parts = appendShellStreamPart(parts, part)
+      continue
+    }
+    if (line.trim() === "") continue
+    parts = /^\s+/.test(line)
+      ? appendShellStreamContinuation(parts, line)
+      : appendShellStreamPart(parts, {
+          kind: "answer",
+          label: "answer",
+          body: line.trim(),
+        })
+  }
+  return sawStreamPart && parts.length > 0 ? parts : null
+}
+
+const shellStreamPartView = (part: ShellStreamPart): Html =>
+  h.div(
+    [
+      cls(`shell-stream-part shell-stream-part-${part.kind}`),
+      h.DataAttribute("autopilot-shell-stream-part", part.kind),
+    ],
+    [
+      h.div([cls("shell-stream-part-label")], [part.label]),
+      part.kind === "answer"
+        ? h.div([cls("shell-stream-part-body shell-stream-answer")], [part.body])
+        : h.div(
+            [cls("shell-stream-part-body")],
+            [h.pre([cls("shell-stream-pre")], [part.body])],
+          ),
+    ],
+  )
+
+const shellTurnBody = (turn: {
+  role: string
+  text: string
+}): Html => {
+  const parts = turn.role === "autopilot" ? shellStreamParts(turn.text) : null
+  if (parts === null) return h.div([cls("shell-turn-text")], [turn.text])
+  return h.div(
+    [cls("shell-stream"), h.DataAttribute("autopilot-shell-stream", "")],
+    parts.map((part) => shellStreamPartView(part)),
+  )
+}
+
 const shellTurnView = (turn: {
   role: string
   target: ShellTarget
@@ -5853,7 +6000,7 @@ const shellTurnView = (turn: {
             : `${turn.role} · ${shellTargetLabel(turn.target)}`,
         ],
       ),
-      h.div([cls("shell-turn-text")], [turn.text]),
+      shellTurnBody(turn),
     ],
   )
 

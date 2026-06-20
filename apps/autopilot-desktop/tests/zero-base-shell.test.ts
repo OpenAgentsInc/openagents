@@ -418,6 +418,84 @@ describe("zero-base shell: text bar → response loop", () => {
     expect(streaming.shellTurns.at(-1)?.text).toBe(
       "thinking tokens: 5; output tokens: 12\nready",
     )
+    const tree = serialize(view(streaming).body)
+    expect(tree).toContain("shell-stream-part-tokens")
+    expect(tree).toContain("shell-stream-part-answer")
+    expect(tree).not.toContain("thinking tokens: 5; output tokens: 12\\nready")
+  })
+
+  test("Codex shell stream formats tool calls and tool results as distinct rows", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "codex",
+      shellInput: "run a few tool calls",
+    })
+    const [submitted] = update(start, SubmittedShell())
+    const sessionRef = "session.pylon.control.tools"
+    const [spawned] = update(
+      submitted,
+      SucceededShellCodingTurn({
+        target: "codex",
+        prompt: "run a few tool calls",
+        sessionRef,
+      }),
+    )
+
+    const [streaming] = update(
+      spawned,
+      GotNodeState({
+        node: {
+          ok: true,
+          schema: "test.node",
+          sessions: [{ sessionRef, state: "running" }],
+          events: {
+            [sessionRef]: [
+              {
+                eventIndex: 1,
+                phase: "tool_use",
+                state: "running",
+                observedAt: "t1",
+                detail: "exec_command: bun test",
+                full: 'exec_command\n{"cmd":"bun test"}',
+              },
+              {
+                eventIndex: 2,
+                phase: "tool_result",
+                state: "running",
+                observedAt: "t2",
+                detail: "result: 2 tests passed",
+                full: "2 tests passed\nno failures",
+              },
+              {
+                eventIndex: 3,
+                phase: "reasoning",
+                state: "running",
+                observedAt: "t3",
+                detail: "thinking…",
+                full: "checking the tool output",
+              },
+              {
+                eventIndex: 4,
+                phase: "agent_message",
+                state: "running",
+                observedAt: "t4",
+                detail: "agent: done",
+              },
+            ],
+          },
+        },
+      }),
+    )
+
+    expect(streaming.shellTurns.at(-1)?.text).toContain("exec_command:")
+    expect(streaming.shellTurns.at(-1)?.text).toContain("result: 2 tests passed")
+    const tree = serialize(view(streaming).body)
+    expect(tree).toContain("shell-stream-part-tool")
+    expect(tree).toContain("shell-stream-part-result")
+    expect(tree).toContain("shell-stream-part-reasoning")
+    expect(tree).toContain("shell-stream-part-answer")
+    expect(tree).toContain("no failures")
   })
 
   test("coding target failures clear pending without adding to continuation state", () => {

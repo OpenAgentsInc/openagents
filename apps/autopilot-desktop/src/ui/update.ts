@@ -198,9 +198,19 @@ const writeShellCodingSuccess = (
         shellCodexTurns: [...model.shellCodexTurns, prompt],
       })
 
+const prefixedShellEventBlock = (prefix: string, text: string): string =>
+  `${prefix}: ${text.replace(/\n/g, "\n  ")}`
+
+const shellEventPrefixPattern = (prefix: string): RegExp =>
+  new RegExp(
+    `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`,
+    "i",
+  )
+
 const shellEventText = (event: {
   readonly detail: string
   readonly full?: string
+  readonly phase?: string
 }): string => {
   const detail = event.detail.trim()
   const text =
@@ -208,18 +218,39 @@ const shellEventText = (event: {
       ? event.full
       : detail
   const trimmed = text.trim()
+  const detailPrefix = /^([^:\n]{1,72}):\s*/.exec(detail)?.[1]?.trim() ?? ""
   if (
     trimmed !== "" &&
-    /^thinking[:…]/i.test(detail) &&
-    !/^thinking[:…]/i.test(trimmed)
+    (/^thinking[:…]/i.test(detail) || event.phase === "reasoning") &&
+    !/^thinking[:…]/i.test(trimmed) &&
+    !/^thinking tokens:/i.test(trimmed)
   ) {
-    return `thinking: ${trimmed}`
+    return prefixedShellEventBlock("thinking", trimmed)
+  }
+  if (
+    trimmed !== "" &&
+    (/^result:/i.test(detail) || event.phase === "tool_result") &&
+    !/^result:/i.test(trimmed)
+  ) {
+    return prefixedShellEventBlock("result", trimmed)
+  }
+  if (
+    trimmed !== "" &&
+    event.phase === "tool_use" &&
+    detailPrefix !== "" &&
+    !shellEventPrefixPattern(detailPrefix).test(trimmed)
+  ) {
+    return prefixedShellEventBlock(detailPrefix, trimmed)
   }
   return trimmed
 }
 
 const latestShellAgentText = (
-  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+  events: ReadonlyArray<{
+    readonly detail: string
+    readonly full?: string
+    readonly phase?: string
+  }>,
 ): string | null => {
   for (let i = events.length - 1; i >= 0; i -= 1) {
     const text = shellEventText(events[i] ?? { detail: "" })
@@ -230,7 +261,11 @@ const latestShellAgentText = (
 }
 
 const shellExternalSessionRefFromEvents = (
-  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+  events: ReadonlyArray<{
+    readonly detail: string
+    readonly full?: string
+    readonly phase?: string
+  }>,
 ): string | null => {
   for (const event of events) {
     const text = shellEventText(event)
@@ -243,6 +278,7 @@ const shellExternalSessionRefFromEvents = (
 const shellEventDisplayLine = (event: {
   readonly detail: string
   readonly full?: string
+  readonly phase?: string
 }): string | null => {
   const text = shellEventText(event)
   if (text === "") return null
@@ -263,7 +299,11 @@ const shellEventDisplayLine = (event: {
 }
 
 const shellStreamText = (
-  events: ReadonlyArray<{ readonly detail: string; readonly full?: string }>,
+  events: ReadonlyArray<{
+    readonly detail: string
+    readonly full?: string
+    readonly phase?: string
+  }>,
 ): string | null => {
   let tokenLine: string | null = null
   const reasoningLines: string[] = []

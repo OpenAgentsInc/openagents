@@ -148,6 +148,78 @@ body {
 .shell-turn-you .shell-turn-text {
   color: rgb(255 255 255 / 0.92);
 }
+.shell-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.shell-stream-part {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 6rem) minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-left-color: rgb(255 255 255 / 0.34);
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.035);
+}
+.shell-stream-part-label {
+  min-width: 0;
+  color: rgb(255 255 255 / 0.42);
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.shell-stream-part-body {
+  min-width: 0;
+  color: rgb(255 255 255 / 0.74);
+  line-height: 1.48;
+}
+.shell-stream-pre {
+  max-height: 18rem;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.shell-stream-part-answer {
+  border-color: transparent;
+  border-left-color: rgb(255 255 255 / 0.22);
+  background: transparent;
+}
+.shell-stream-answer {
+  color: var(--text, #e6e9ef);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.shell-stream-part-reasoning .shell-stream-part-body {
+  color: rgb(255 255 255 / 0.62);
+}
+.shell-stream-part-tool {
+  background: rgb(255 255 255 / 0.045);
+}
+.shell-stream-part-result {
+  background: rgb(255 255 255 / 0.028);
+}
+.shell-stream-part-status,
+.shell-stream-part-tokens {
+  padding-block: 0.4rem;
+  background: transparent;
+}
+.shell-stream-part-status .shell-stream-part-body,
+.shell-stream-part-tokens .shell-stream-part-body {
+  color: rgb(255 255 255 / 0.5);
+}
 .shell-bar {
   flex: 0 0 auto;
   display: flex;
