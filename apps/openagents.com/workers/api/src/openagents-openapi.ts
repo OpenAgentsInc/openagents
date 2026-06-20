@@ -4845,7 +4845,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTrainingPostTrainingInstructSftLane',
       summary: 'Read post-training instruct SFT lane receipt',
       description:
-        'Returns the public-safe instruct SFT lane receipt projection for training.post_training_arc.v1. The bounded Psionic fixture-scale receipt proves an owned chat template, assistant-token generation mask, repo-owned example corpus, deterministic smoke run, and bit-exact resume drill from generator output. It clears only the generic instruct-SFT lane blocker; Psionic committed-report fixture synchronization, paid OpenAgents dispatch, preference rollout work, vibe-test artifact, and greenGateSatisfied remain false. Read-only; grants no assignment, spend, settlement, model promotion, model-service, fine-tuning-service, or green product-promise authority.',
+        'Returns the public-safe instruct SFT lane receipt projection for training.post_training_arc.v1. The bounded Psionic fixture-scale receipt proves an owned chat template, assistant-token generation mask, repo-owned example corpus, deterministic smoke run, bit-exact resume drill, and committed report fixture synchronized with generator output. It clears the generic instruct-SFT lane blocker and fixture-sync blocker; paid OpenAgents dispatch, preference rollout work, vibe-test artifact, and greenGateSatisfied remain false. Read-only; grants no assignment, spend, settlement, model promotion, model-service, fine-tuning-service, or green product-promise authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
