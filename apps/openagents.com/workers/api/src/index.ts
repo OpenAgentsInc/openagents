@@ -493,6 +493,7 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
+import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
@@ -7002,6 +7003,11 @@ const partnerPayoutLedgerRoutes = makePartnerPayoutLedgerRoutes<WorkerBindings>(
   },
 )
 
+const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -9673,7 +9679,8 @@ const routeRequest = makeWorkerRouteRequest({
       request,
       env,
       ctx,
-    ),
+    ) ??
+    partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
