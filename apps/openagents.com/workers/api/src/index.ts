@@ -194,6 +194,10 @@ import {
   readArtanisTickStreak,
 } from './artanis-tick-streak'
 import {
+  boundedResponderSupportLimit,
+  readArtanisResponderSupport,
+} from './artanis-responder-provenance'
+import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
   AUTH_STATE_MAX_AGE_SECONDS,
@@ -564,6 +568,7 @@ import {
 } from './team-repository'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
+import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
@@ -6896,6 +6901,18 @@ const tenantClientRoutes = makeTenantClientRoutes({
   },
 })
 
+// CUSTOMER self-serve custom-hostname routes (#4988 follow-up). Browser-session
+// + team-role gated; writes only the tenant_custom_hostnames table (pending
+// rows), never live DNS/SSL/origin binding/spend. Live provisioning to `active`
+// stays the owner-gated provisioning core's job (default-OFF Cloudflare
+// secrets), so config stays INERT here (servingLive=false, no live DNS check).
+const tenantHostnameSelfServeRoutes = makeTenantHostnameSelfServeRoutes({
+  database: (env: WorkerBindings) => openAgentsDatabase(env),
+  requireBrowserSession,
+  readTeamRole: (db, teamId, userId) =>
+    readActiveTeamMembershipRole(db, teamId, userId),
+})
+
 const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -8853,6 +8870,27 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    path: '/api/public/artanis/responder-support',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        }
+        const projection = await readArtanisResponderSupport(
+          openAgentsDatabase(env),
+          {
+            limit: boundedResponderSupportLimit(
+              new URL(request.url).searchParams.get('limit'),
+            ),
+            nowIso: currentIsoTimestamp(),
+          },
+        )
+        return Response.json(projection, {
+          headers: { 'cache-control': 'no-store' },
+        })
+      }),
+  },
+  {
     path: '/api/blueprint/program-registry',
     handler: (request, env) =>
       blueprintRoutes.handleBlueprintProgramRegistryApi(request, env),
@@ -9355,6 +9393,11 @@ const routeRequest = makeWorkerRouteRequest({
       ctx,
     ) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
+    tenantHostnameSelfServeRoutes.routeTenantHostnameSelfServeRequest(
+      request,
+      env,
+      ctx,
+    ) ??
     emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
       request,
       env,
