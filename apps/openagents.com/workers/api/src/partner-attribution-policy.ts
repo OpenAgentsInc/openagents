@@ -164,6 +164,90 @@ const compareAgreements = (a: PartnerAgreement, b: PartnerAgreement): number => 
 }
 
 /**
+ * Result of validating an agreement that is about to be SEEDED into storage.
+ */
+export type PartnerAgreementSeedDecision =
+  | Readonly<{ _tag: 'seedable' }>
+  | Readonly<{ _tag: 'rejected'; reason: string }>
+
+/**
+ * The policy-bearing fields of an agreement about to be persisted. Ref/id SHAPE
+ * (public-safety) is intentionally NOT checked here — that is the storage
+ * writer's job, mirroring the ledger which validates refs on eligibility insert.
+ * This validator owns the *attribution* invariants only.
+ */
+export type PartnerAgreementSeed = Readonly<{
+  customerUserId: string
+  effectiveFromIso: string
+  effectiveUntilIso: string | null
+  partnerUserId: string
+  role: PartnerPayoutRole
+}>
+
+/**
+ * Enforce the attribution policy's invariants at the WRITE boundary, so a
+ * policy-violating agreement can never land in `partner_agreements` (and so can
+ * never be read back by the feed and credited). Pure; throws nothing.
+ *
+ * This is the same rule set `decidePartnerAttribution` applies at read time, but
+ * applied BEFORE storage so the violation is rejected once, at the source,
+ * rather than silently filtered on every read:
+ *  - `referral` (and any non-attributable role) is refused — the referral rail
+ *    owns referral payouts; storing one here would risk cross-rail double-pay.
+ *  - a partner may not hold an agreement that credits them on their own
+ *    purchases (self-attribution exclusion, defense-in-depth for the ledger's
+ *    own self-payout guard).
+ *  - the effective window must be internally consistent: a parseable start, and
+ *    an end that is either open-ended or strictly after the start.
+ */
+export const assessPartnerAgreementSeed = (
+  seed: PartnerAgreementSeed,
+): PartnerAgreementSeedDecision => {
+  if (!isRoleAttributable(seed.role)) {
+    return {
+      _tag: 'rejected',
+      reason: `role ${seed.role} is not attributable; the referral rail owns referral payouts.`,
+    }
+  }
+
+  if (seed.partnerUserId === seed.customerUserId) {
+    return {
+      _tag: 'rejected',
+      reason: 'partnerUserId must differ from customerUserId (no self-agreement).',
+    }
+  }
+
+  const fromMillis = Date.parse(seed.effectiveFromIso)
+
+  if (!Number.isFinite(fromMillis)) {
+    return {
+      _tag: 'rejected',
+      reason: 'effectiveFromIso must be a valid ISO timestamp.',
+    }
+  }
+
+  if (seed.effectiveUntilIso !== null) {
+    const untilMillis = Date.parse(seed.effectiveUntilIso)
+
+    if (!Number.isFinite(untilMillis)) {
+      return {
+        _tag: 'rejected',
+        reason: 'effectiveUntilIso must be a valid ISO timestamp or null.',
+      }
+    }
+
+    if (untilMillis <= fromMillis) {
+      return {
+        _tag: 'rejected',
+        reason: 'effectiveUntilIso must be strictly after effectiveFromIso.',
+      }
+    }
+  }
+
+  return { _tag: 'seedable' }
+}
+
+/**
  * Decide which single partner, if any, a qualifying paid event is attributed to.
  *
  * Pure and side-effect free. The caller (the deferred eligibility feed) maps an

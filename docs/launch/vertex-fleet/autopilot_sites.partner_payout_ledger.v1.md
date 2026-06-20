@@ -96,16 +96,43 @@ be audited back to the explicit agreement that authorised it.
   persisted; exact-match input updated), `partner-payout-feed.test.ts` (recorded
   input carries the basis). 27 tests pass across the three files.
 
+### Follow-up (this run): the agreement WRITER + write-boundary guard is now built
+
+The feed shipped a `partner_agreements` reader but no validated WRITER, so the
+only way to seed the rows the policy depends on was a raw SQL insert that nothing
+checked. A self-agreement, an inverted effective window, or a `referral`-role row
+could land in storage and later be read back and credited. Now:
+
+- `partner-attribution-policy.ts` — `assessPartnerAgreementSeed(seed)`, a pure
+  validator that applies the SAME attribution invariants at the WRITE boundary
+  that `decidePartnerAttribution` applies at read time: role attributability
+  (the `referral` exclusion), self-agreement exclusion
+  (`partnerUserId !== customerUserId`), and effective-window consistency
+  (parseable start; end open-ended or strictly after start). Returns
+  `seedable`/`rejected`; throws nothing (policy stays pure).
+- `partner-payout-feed.ts` — `recordPartnerAgreement(db, input)`, the sanctioned
+  writer: it rejects non-public-safe refs/ids, runs `assessPartnerAgreementSeed`,
+  and only then `INSERT OR IGNORE`s into `partner_agreements` (idempotent on
+  `agreementRef`, read-back verified). A policy-violating agreement is now
+  unstorable, not just unread. New `PartnerAgreementValidationError`; DB faults
+  wrap into the existing `PartnerPayoutLedgerStorageError`.
+- Tests: `partner-attribution-policy.test.ts` (+5: seedable, referral-rejected,
+  self-rejected, inverted-window, bad-iso), `partner-payout-feed.test.ts` (+5:
+  seed+readback, idempotent no-second-insert, referral/self/unsafe-ref rejection
+  before storage). 25 tests pass across the two files.
+
 ## What genuinely remains (blocker NOT fully cleared — left listed)
 
 - **Owner sign-off** on the payout percentages/caps in
   `PARTNER_PAYOUT_ROLE_POLICY` and on this attribution model (caveat
   `caveat.public.partner_payouts.partner_policy_not_owner_signed`). This is a
   product decision and is the load-bearing remainder of this blocker.
-- **Call-site wiring**: `recordPartnerPayoutForPaidEvent` now exists but has no
-  production caller yet — a real paid-event source (e.g. the Stripe/credit
-  webhook path that already feeds `recordReferralPayoutForPaidEvent`) still
-  needs to invoke it, and rows must be seeded into `partner_agreements`.
+- **Call-site wiring**: `recordPartnerPayoutForPaidEvent` and
+  `recordPartnerAgreement` now exist but have no production callers yet — a real
+  paid-event source (e.g. the Stripe/credit webhook path that already feeds
+  `recordReferralPayoutForPaidEvent`) still needs to invoke the payout feed, and
+  an operator/admin path still needs to call `recordPartnerAgreement` to seed
+  real `partner_agreements` rows.
 - `blocker.product_promises.partner_payout_settlement_not_wired` and
   `blocker.product_promises.partner_first_real_payout_pending` are untouched.
 
