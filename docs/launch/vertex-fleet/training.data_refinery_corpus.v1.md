@@ -2,6 +2,50 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — deterministic crawl-snapshot shard plan
+
+**Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
+
+Moving off the frozen bounded synthetic mixture toward crawl scale means
+dispatching refinery work over a real crawl snapshot as **paid per-shard
+assignments**. Before any segment can be acquired, the operator dispatching paid
+work and the contributor accepting it must agree, byte-for-byte, on HOW the
+snapshot partitions into assignable units — otherwise there is no stable
+`inputShardRef` to assign, to pay for, or to bind a provenance receipt to. That
+deterministic partition did not exist. This change adds it:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-plan.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-plan.test.ts` (10 tests)
+
+`buildCs336A4CrawlShardPlan` takes a snapshot **descriptor** (immutable
+snapshot id, source/license id, total segment count) plus a target shard count
+and emits a deterministic, content-addressed, public-safe shard plan:
+
+- the segments are partitioned as evenly as possible (front-loaded remainder),
+  so the partition is a pure function of two integers — no ordering ambiguity,
+  no floating point; shard ranges tile the snapshot with no gaps/overlaps and
+  every shard's `segmentCount` sums back to the snapshot `segmentCount`;
+- each shard carries a content-addressed `shardRef` over the snapshot + segment
+  range, intended to feed the `public_crawl_snapshot` / `licensed_public_dataset`
+  acquisition modes of `cs336-a4-provenance.ts` as an `inputShardRef`;
+- the `planRef` is content-addressed via SHA-256 over a canonical body, so the
+  same descriptor + target shard count always yield the same plan;
+- it **materializes no payload**: it never fetches WARC records and fails closed
+  (`Cs336A4CrawlShardPlanUnsafeMaterialError`) on URLs, WARC/crawl payload,
+  wallet, payment, or private material; the bounded synthetic mixture is
+  rejected because it has no crawl segments to assign.
+
+### What genuinely remains (blocker NOT cleared)
+
+`crawl_scale_corpus_missing` stays listed. This is the deterministic *plan* for
+partitioning a snapshot into assignable units — it acquires nothing. No real
+crawl snapshot has been acquired, no crawl-scale shard has been dispatched as a
+paid assignment or run through the deterministic refinery, and this builder is
+not yet wired into the A4 dispatch/admission path. The promise's green criterion
+— refinery shards dispatched as paid assignments at crawl scale with
+deterministic-recompute verification — is unmet. `corpus_provenance_receipts_missing`
+and `eval_delta_payment_missing` are untouched by this update.
+
 ## 2026-06-20 update — eval-delta settlement receipt (binds payment to provenance)
 
 **Blocker advanced:** `blocker.product_promises.eval_delta_payment_missing`.
