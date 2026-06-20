@@ -9,6 +9,8 @@ import {
   projectPylonMultiEarningNode,
   recordModeEarning,
   settledModeCount,
+  settledModeFamilies,
+  settledModeFamilyCount,
 } from './pylon-multi-earning-node'
 import {
   PylonMultiEarningNodeEndpoint,
@@ -136,6 +138,34 @@ describe('pylon multi-earning record (#5527)', () => {
       ),
     ).toBe(0)
   })
+
+  test('settledModeFamilyCount collapses label-split spellings of one mode', () => {
+    // Two settled LABELS, but both are the same earning-mode FAMILY: this is a
+    // label-split over-claim and must count as ONE settled mode, not two.
+    const split = makeInMemoryPylonMultiEarningStore([
+      okRecord({
+        mode: 'training',
+        settledCount: 1,
+        settlementReceiptRef: 'receipt.public.pylon.training.s1',
+      }),
+      okRecord({
+        mode: 'training_v2',
+        settledCount: 1,
+        settlementReceiptRef: 'receipt.public.pylon.training.s2',
+      }),
+    ])
+    expect(settledModeCount(split)).toBe(2)
+    expect(settledModeFamilyCount(split)).toBe(1)
+    expect(settledModeFamilies(split)).toEqual(['training'])
+  })
+
+  test('settledModeFamilies counts genuinely distinct modes once each', () => {
+    expect(settledModeFamilies(twoSettledStore())).toEqual([
+      'training',
+      'forum_tips',
+    ])
+    expect(settledModeFamilyCount(twoSettledStore())).toBe(2)
+  })
 })
 
 describe('pylon multi-earning projection (#5527)', () => {
@@ -172,6 +202,37 @@ describe('pylon multi-earning projection (#5527)', () => {
     expect(training?.settlementReceiptRef).toBe(
       'receipt.public.pylon.training.settlement_a',
     )
+  })
+
+  test('bar measures distinct FAMILIES: label-splitting cannot fake it', () => {
+    // Two settled labels that are spellings of ONE mode must NOT meet the >=2
+    // bar — the multi-earning claim requires two genuinely distinct modes.
+    const projection = projectPylonMultiEarningNode(
+      makeInMemoryPylonMultiEarningStore([
+        okRecord({
+          mode: 'training',
+          settledCount: 1,
+          settlementReceiptRef: 'receipt.public.pylon.training.s1',
+        }),
+        okRecord({
+          mode: 'training_v2',
+          settledCount: 1,
+          settlementReceiptRef: 'receipt.public.pylon.training.s2',
+        }),
+      ]),
+    )
+    expect(projection.settledModeCount).toBe(2)
+    expect(projection.settledModeFamilyCount).toBe(1)
+    expect(projection.settledModeFamilies).toEqual(['training'])
+    expect(projection.settledModesBarMet).toBe(false)
+    expect(projection.promiseState).toBe('red')
+  })
+
+  test('bar met only with two distinct settled families', () => {
+    const projection = projectPylonMultiEarningNode(twoSettledStore())
+    expect(projection.settledModeFamilyCount).toBe(2)
+    expect(projection.settledModeFamilies).toEqual(['training', 'forum_tips'])
+    expect(projection.settledModesBarMet).toBe(true)
   })
 
   test('never reports a settled mode the store did not carry', () => {

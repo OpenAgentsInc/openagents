@@ -75,6 +75,35 @@ This run closes that hole, symmetric to the settlement auditor:
 - New tests: empty/covered/in-mode-shared/cross-mode-reuse cases for the auditor,
   plus fold-rejection for in-mode work-unit over-claim and cross-mode reuse.
 
+### Follow-up (this run): earning-mode-family integrity for the >=2-modes bar
+
+The cross-mode auditors stop one work unit / one settlement being reused across
+two labels, but nothing stopped two LABELS of the SAME earning mode (e.g.
+`training` and `training_v2`, or `forum_tips` and `forum_tips_2`) from each
+counting as a distinct settled "mode" — a label-splitting over-claim that fakes
+"earns in MULTIPLE ways" with a single earning mode. The `settledModeCount` /
+`settledModesBarMet` bar counted distinct free-form LABELS. This run closes that:
+
+- `workers/api/src/pylon-earning-mode-taxonomy.ts` — PURE/INERT canonicalizer:
+  `canonicalizeEarningModeFamily(label)` maps a label to its FAMILY by dropping
+  trailing version/variant segments and a within-segment numeric suffix
+  (`training_v2`, `training2`, `training.v02` -> `training`), while keeping
+  genuinely distinct stems distinct (no false collapse of two custom modes).
+  Plus `isSameEarningModeFamily` and `distinctEarningModeFamilies`.
+- `pylon-multi-earning-node.ts`: new `settledModeFamilies` /
+  `settledModeFamilyCount`; the projection now surfaces `settledModeFamilies` +
+  `settledModeFamilyCount` and measures `settledModesBarMet` against distinct
+  FAMILIES, not labels — so two spellings of one mode can never satisfy the
+  multi-earning requirement.
+- Tests: `pylon-earning-mode-taxonomy.test.ts` (canonicalization, no-false-
+  collapse, split detection) and new `pylon-multi-earning-node.test.ts` cases
+  (family count collapses splits; bar not met for a label-split; bar met only
+  with two genuinely distinct settled families).
+
+INERT and PURE: mints no money, reads no wallet, admits no settlement. The empty
+store still reports `settledModeFamilyCount: 0`, `settledModesBarMet: false`,
+`promiseState: 'red'`, `inert: true`.
+
 ## What genuinely remains (blocker stays listed)
 
 `multi_earning_mode_receipts_missing` is **partially advanced, not cleared**:
@@ -83,7 +112,8 @@ receipts exist yet** for an actual Pylon install. Also still open:
 `pylon_v1_default_install_not_fully_closed`,
 `multi_earning_settlement_refs_missing`. A green flip remains receipt-first and
 owner-signed per `proof.claim_upgrade_receipts.v1`, requiring settled receipts
-across >=2 modes in one install.
+across >=2 genuinely-distinct earning-mode FAMILIES in one install.
 
 Pointer: code lives at
-`apps/openagents.com/workers/api/src/pylon-multi-earning-receipts.ts`.
+`apps/openagents.com/workers/api/src/pylon-multi-earning-receipts.ts` and
+`apps/openagents.com/workers/api/src/pylon-earning-mode-taxonomy.ts`.

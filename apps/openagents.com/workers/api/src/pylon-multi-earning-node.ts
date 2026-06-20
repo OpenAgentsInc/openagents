@@ -28,6 +28,7 @@
 
 import { Schema as S } from 'effect'
 
+import { distinctEarningModeFamilies } from './pylon-earning-mode-taxonomy'
 import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -257,9 +258,30 @@ export const makeInMemoryPylonMultiEarningStore = (
   return { list: () => deduped }
 }
 
-/** The number of distinct earning modes that carry at least one settled unit. */
+/** The number of distinct earning-mode LABELS that carry a settled unit. */
 export const settledModeCount = (store: PylonMultiEarningStore): number =>
   store.list().filter(record => record.settledCount > 0).length
+
+/**
+ * The distinct earning-mode FAMILIES that carry at least one settled unit, in
+ * first-seen order. A family collapses version/variant spellings of one earning
+ * mode (e.g. "training" and "training_v2") to a single entry, so two labels of
+ * the SAME mode cannot inflate the multi-earning count. This is the over-claim
+ * guard behind the ">=2 settled modes for green" bar.
+ */
+export const settledModeFamilies = (
+  store: PylonMultiEarningStore,
+): ReadonlyArray<string> =>
+  distinctEarningModeFamilies(
+    store
+      .list()
+      .filter(record => record.settledCount > 0)
+      .map(record => record.mode),
+  )
+
+/** The number of distinct settled earning-mode families (label-split-immune). */
+export const settledModeFamilyCount = (store: PylonMultiEarningStore): number =>
+  settledModeFamilies(store).length
 
 /**
  * Staleness contract for the projection: built fresh from the injected store on
@@ -297,6 +319,11 @@ export const projectPylonMultiEarningNode = (
     settlementReceiptRef?: string
   }>
   settledModeCount: number
+  // Distinct settled earning-mode FAMILIES (version/variant spellings of one
+  // mode collapse to one entry). The >=2 bar is measured against THIS, so the
+  // multi-earning claim cannot be faked by splitting one mode into two labels.
+  settledModeFamilies: ReadonlyArray<string>
+  settledModeFamilyCount: number
   // The >=2-modes-in-one-install bar for green. Reported, not asserted: this
   // surface clears the projection blocker, not the receipt/settlement ones.
   settledModesRequiredForGreen: number
@@ -306,6 +333,8 @@ export const projectPylonMultiEarningNode = (
 } => {
   const records = store.list()
   const settled = settledModeCount(store)
+  const families = settledModeFamilies(store)
+  const settledModesRequiredForGreen = 2
   return {
     schema: PYLON_MULTI_EARNING_PROJECTION_SCHEMA,
     promiseId: PYLON_MULTI_EARNING_PROMISE,
@@ -329,8 +358,12 @@ export const projectPylonMultiEarningNode = (
         : { settlementReceiptRef: record.settlementReceiptRef }),
     })),
     settledModeCount: settled,
-    settledModesRequiredForGreen: 2,
-    settledModesBarMet: settled >= 2,
+    settledModeFamilies: families,
+    settledModeFamilyCount: families.length,
+    settledModesRequiredForGreen,
+    // Bar is measured against distinct FAMILIES, not labels: two spellings of
+    // one earning mode can never satisfy the multi-earning requirement.
+    settledModesBarMet: families.length >= settledModesRequiredForGreen,
     clearsBlocker: PYLON_SAFE_PROJECTION_BLOCKER,
     remainingOwnerGatedBlockers: PYLON_MULTI_EARNING_REMAINING_BLOCKERS,
   }
