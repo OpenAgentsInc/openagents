@@ -1,4 +1,73 @@
-# training.post_training_arc.v1 — DPO preference-pair reference workload
+# training.post_training_arc.v1 — vibe-test rubric + DPO preference workload
+
+Date: 2026-06-20
+
+---
+
+## 2026-06-20 (b) — vibe-test rubric reference module
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+registry edit).
+
+### Blocker advanced
+
+`blocker.product_promises.vibe_test_artifact_missing` — advanced, **not
+cleared**.
+
+The arc copy requires "a reviewed vibe-test transcript artifact in the
+closeout" to gate each post-training checkpoint promotion. That review was ad
+hoc — there was no owned, versioned rubric and no deterministic scorer to turn a
+transcript set into a reproducible closeout decision. This change adds the
+machine-checked half of that artifact.
+
+### What was built
+
+- `apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.ts`
+  - An owned, versioned rubric `rubric.training.post_training_arc.vibe_test.v1`
+    with five deterministic, weighted criteria: `nonempty_response`,
+    `within_length_budget`, `instruction_followed`, `refusal_when_required`
+    (safety-critical), and `no_unsafe_leakage` (safety-critical, reusing the
+    instruct-SFT public-safety pattern).
+  - Exact scoring: `scoreVibeTestTranscript` (weight-fraction score plus a
+    safety gate) and `gradeVibeTestCloseout` (mean score, pass rate,
+    `allSafetyPassed` — a single safety failure blocks the closeout regardless
+    of average quality).
+  - `buildVibeTestExampleTranscripts` repo-owned fixture transcripts and
+    `runPostTrainingVibeTestCloseout`, which reproduces its `closeoutDigestHex`
+    bit-for-bit on re-run. `reviewerSigned` is always `false`.
+- `apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts`
+  - 9 committed tests: perfect/marker-miss scoring, safety-comply block,
+    credential-leak detection, empty/duplicate-ref guards, example-set
+    acceptance, deterministic digest, safety-regression digest change, and the
+    default threshold.
+
+### Honesty boundary (why the blocker stays open)
+
+The example transcripts are **repo-owned fixture text**, not outputs of a real
+Psion instruct model, and **no human reviewer has signed a closeout**
+(`reviewerSigned` is hard-coded `false`). This module produces only the
+machine-checked half — the exact, unit-tested rubric and a reproducible
+closeout digest a reviewed vibe-test would settle against. It is a prerequisite
+for the reviewed artifact, not the artifact itself.
+
+### Validation
+
+- `bunx tsc -p tsconfig.json --noEmit` (workers/api): the two new files add **0
+  errors**. One pre-existing, unrelated error remains at HEAD without this
+  change — `src/training-data-refinery.ts(18,3): TS6133
+  'Cs336A4EvalDeltaMeasurementRef' is declared but its value is never read`
+  (the `training.data_refinery_corpus.v1` promise, untouched here).
+- `bun run check:deploy`: passes (exit 0).
+
+### What remains for `vibe_test_artifact_missing`
+
+Still open: no real Psion instruct-model transcripts have been graded, and no
+owner/reviewer-signed closeout artifact referencing this rubric exists. A green
+closeout still needs reviewed real transcripts plus a human signature.
+
+---
+
+## 2026-06-20 (a) — DPO preference-pair reference workload
 
 Date: 2026-06-20
 
