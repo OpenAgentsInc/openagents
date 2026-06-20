@@ -1,13 +1,10 @@
-# Self-serve labor earning projection
-
 Advance `provider.compliant_usage_labor.v1` by addressing `blocker.product_promises.labor_self_serve_earning_missing`.
 
-## What was built
-Added a public-safe Labor Earnings projection and the `/api/public/labor-earnings` readback endpoint (`workers/api/src/labor-earnings.ts`, `workers/api/src/labor-earnings-routes.ts`).
+Built `labor-self-serve-earning-payout.ts` and `labor-self-serve-earning-payout-routes.ts` in `workers/api` to implement the self-serve planner and route for withdrawing labor earnings to a Lightning wallet.
+- Reads `bitcoinWithdrawableMsat` from the existing `agent_balances` ledger.
+- Plans a `NexusTreasuryPayoutIntentRecord` with `sourceKind: 'accepted_work'` covering the available withdrawable balance.
+- Exposed at `POST /api/public/labor-earnings/payout` under `AgentBalanceAuth`.
+- Left FLAG-GATED INERT (`LABOR_SELF_SERVE_PAYOUT_ENABLED`) via `config.ts` so it plans but moves no money.
+- Specifically drops `blocker.product_promises.labor_self_serve_earning_missing`.
 
-Added the `pylon provider earnings` command to the Pylon CLI (`apps/pylon/src/index.ts`) to fetch and display this public-safe Labor Earnings projection.
-
-This creates the missing *readback* surface that allows a contributor to self-serve view their labor earnings without an operator in the loop, providing a feed of their NIP-LBR escrow-release receipts to show actual proof of payment before tip-ladder sweeping. 
-
-## What remains
-The promise remains yellow because the external-ladder settlement has not yet run in production for a labor job (the first job settled on the credit ledger). The remaining blocker `blocker.product_promises.labor_external_ladder_settlement_missing` must be cleared by a live execution whose payout triggers the external Lightning sweep.
+Green still requires the deployment of this flow, actual un-gated ladder-settled receipts, and owner sign-off per `proof.claim_upgrade_receipts.v1`.

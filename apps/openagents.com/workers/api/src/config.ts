@@ -34,6 +34,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // uncleared (code_task work class only). A green flip stays receipt-first and
   // owner-signed with a dereferenceable settlement receipt.
   SELF_SERVE_FANOUT_ENABLED?: string | undefined
+  // Labor self-serve earning payout flag (promise
+  // provider.compliant_usage_labor.v1, yellow). Default OFF: the
+  // `/api/public/labor-earnings/payout` route is INERT. When false, the
+  // dispatch seam returns disabled and lists/moves nothing.
+  LABOR_SELF_SERVE_PAYOUT_ENABLED?: string | undefined
   // Signature usage-metering surface flag (EPIC #5523 / DE-6 #5529; promise
   // marketplace.signature_monetization.v1, red). Default OFF: the
   // `/api/public/markets/signature-monetization/metering` surface is INERT
