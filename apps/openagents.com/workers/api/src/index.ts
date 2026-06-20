@@ -568,6 +568,7 @@ import {
 } from './team-repository'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
 import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
+import { makeTenantHostnameSelfServeRoutes } from './tenant-custom-hostname-self-serve-routes'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
@@ -6900,6 +6901,18 @@ const tenantClientRoutes = makeTenantClientRoutes({
   },
 })
 
+// CUSTOMER self-serve custom-hostname routes (#4988 follow-up). Browser-session
+// + team-role gated; writes only the tenant_custom_hostnames table (pending
+// rows), never live DNS/SSL/origin binding/spend. Live provisioning to `active`
+// stays the owner-gated provisioning core's job (default-OFF Cloudflare
+// secrets), so config stays INERT here (servingLive=false, no live DNS check).
+const tenantHostnameSelfServeRoutes = makeTenantHostnameSelfServeRoutes({
+  database: (env: WorkerBindings) => openAgentsDatabase(env),
+  requireBrowserSession,
+  readTeamRole: (db, teamId, userId) =>
+    readActiveTeamMembershipRole(db, teamId, userId),
+})
+
 const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -9379,6 +9392,11 @@ const routeRequest = makeWorkerRouteRequest({
       ctx,
     ) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
+    tenantHostnameSelfServeRoutes.routeTenantHostnameSelfServeRequest(
+      request,
+      env,
+      ctx,
+    ) ??
     emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
       request,
       env,

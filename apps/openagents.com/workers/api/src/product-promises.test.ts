@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.19')
+    expect(decoded.version).toBe('2026-06-20.20')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -186,8 +186,13 @@ describe('public product promises document', () => {
     // (GET /api/public/artanis/responder-support) on
     // artanis.pylon_support_responder.v1 while KEEPING its
     // external_contributor_flow_unproven blocker; both promises STAY yellow, so
-    // green remains exactly 24.
-    // The 2026-06-20.19 training ablation one-delta harness pass clears the
+    // green remains exactly 24. The 2026-06-20.19 custom-hostname self-serve
+    // pass clears hostname_customer_self_serve_missing on
+    // autopilot_sites.custom_tenant_hostnames.v1 (deployed customer-gated
+    // claim/list path at /api/tenant/hostnames that writes only pending rows;
+    // live provisioning stays owner-gated and INERT default-OFF), without
+    // flipping the promise (stays yellow), so green remains exactly 24.
+    // The 2026-06-20.20 training ablation one-delta harness pass clears the
     // ablation_harness_missing blocker on training.ablation_system.v1 while
     // eval reproduction and paid dispatch remain blocked, so green remains
     // exactly 24.
@@ -886,12 +891,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.19', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.20', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.19',
+      expectedVersion: '2026-06-20.20',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.19',
+      servedVersion: '2026-06-20.20',
       status: 'ready',
     })
     expect(
@@ -901,7 +906,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.19',
+      servedVersion: '2026-06-20.20',
       status: 'blocked',
     })
   })
