@@ -2,6 +2,64 @@
 
 Promise: `training.data_refinery_corpus.v1` (state: **planned** — unchanged by this work).
 
+## 2026-06-20 update — crawl-shard batch closeout receipt (composes dispatch manifest + provenance binding)
+
+**Blocker advanced:** `blocker.product_promises.corpus_provenance_receipts_missing`.
+
+Two deterministic artifacts already exist on either end of a paid crawl-shard
+batch, but nothing composed them, so an operator had no single, auditable
+record that a dispatched batch was COMPLETELY closed out with bound provenance
+receipts:
+
+1. `buildCs336A4CrawlShardDispatchManifest` emits the authoritative,
+   content-addressed list of `assignmentRefs` an operator dispatched paid work
+   against — but says nothing about what came BACK.
+2. `assertCs336A4CrawlShardProvenanceBinding` proves ONE returned provenance
+   receipt closes out ONE assignment — but says nothing about whether the SET
+   of returned receipts covers the whole dispatched batch. Every individual
+   receipt can bind correctly while the batch is left with an assignment that
+   was never closed out (corpus never delivered), carries a receipt for an
+   assignment that was never dispatched (paying for work outside the batch), or
+   has two receipts both claiming the same assignment (double-counted).
+
+This change adds the fail-closed composition that closes all of those at once:
+
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-batch-closeout.ts`
+- `apps/openagents.com/workers/api/src/cs336-a4-crawl-shard-batch-closeout.test.ts` (8 tests)
+
+`buildCs336A4CrawlShardBatchCloseoutReceipt` is the single entry point an
+admission/closeout path should call after a dispatched batch returns. It (1)
+asserts the manifest is non-empty (`empty_manifest`); (2) asserts the provided
+authentic assignments are EXACTLY the manifest's dispatched set
+(`assignment_set_mismatch`, `duplicate_assignment`); (3) asserts EVERY returned
+receipt binds to its assignment via the existing
+`assertCs336A4CrawlShardProvenanceBinding` gate — rejecting a receipt for an
+assignment outside the batch (`receipt_for_undispatched_assignment`),
+re-raising a binding rejection's underlying reason (`provenance_binding_failed`
+carrying `bindingReason`), and refusing two receipts for the same assignment
+(`duplicate_receipt`); (4) asserts every dispatched assignment is closed out
+(`unclosed_assignment`); and (5) only then emits a deterministic,
+content-addressed `Cs336A4CrawlShardBatchCloseoutReceipt` binding the manifest
+to ordered (assignmentRef → provenance receipt) closures. The `closeoutRef` is
+content-addressed via SHA-256 over a canonical body, so the same manifest +
+receipt set (in any order) yields the same ref. It re-validates no transform
+chain (the receipt builder's job), re-derives no assignment ref (the manifest's
+job), settles no payment (the eval-delta settlement's job), and fails closed via
+the public-safety guard before committing any unsafe material.
+
+### What genuinely remains (blocker NOT cleared)
+
+`corpus_provenance_receipts_missing` stays listed. This is the deterministic
+*composition* of two existing gates into one batch-closeout record — it admits
+nothing, acquires nothing, and is not yet wired into the live A4
+closeout/admission path (`training-data-refinery.ts`) or the public projection.
+No real refinery shard batch has been dispatched as paid work and closed out
+with provenance receipts populated from actual source acquisition + recompute
+verification. The promise's green criterion — every shard carrying
+source-provenance and transform digests, produced by a real paid closeout — is
+unmet. `crawl_scale_corpus_missing` and `eval_delta_payment_missing` are
+untouched by this update.
+
 ## 2026-06-20 update — crawl-shard dispatch manifest (composes authenticity + coverage)
 
 **Blocker advanced:** `blocker.product_promises.crawl_scale_corpus_missing`.
