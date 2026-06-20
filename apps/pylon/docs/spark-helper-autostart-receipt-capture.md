@@ -20,9 +20,19 @@ implemented as `verifySparkHelperAutostartReceipt`.
   returns `disabled` unless `PYLON_SPARK_AUTOSTART=1` (or `{ enabled: true }`).
 - `buildSparkHelperAutostartReceipt(projection, observedAt)` — emits a redacted,
   public-safe receipt **only** when the projection is `autostart-ready`.
-- `verifySparkHelperAutostartReceipt(candidate)` — **new**: deterministic audit
-  over an untrusted candidate (e.g. a JSON artifact a contributor captured).
-  Returns `{ valid, clearsBlocker, reasons[] }`.
+- `verifySparkHelperAutostartReceipt(candidate)` — deterministic audit over an
+  untrusted candidate (e.g. a JSON artifact a contributor captured). Returns
+  `{ valid, clearsBlocker, reasons[] }`.
+- `verifySparkHelperAutostartReceiptSet(entries)` — **new**: set-level audit over
+  `{ contributorRef, receipt }[]`. The blocker is about the NORMAL contributor
+  path, so a single anonymous receipt is not enough — the receipt itself carries
+  no contributor binding, and one operator host could be presented as "several
+  contributors". This gate runs the single-receipt audit on each receipt AND
+  requires the contributor refs (public-safe pylonRefs) to be non-empty and
+  **distinct**, rejecting a reused ref. Returns
+  `{ valid, clearsBlocker, distinctContributorCount, perEntry[], reasons[] }`.
+  It mirrors the cross-contributor settlement-integrity rule in the
+  scale-methodology verifier.
 
 ## Capture procedure (normal contributor, self-serve)
 
@@ -65,4 +75,4 @@ The audit fails (and the artifact must be rejected) on any of:
   separate copy-narrowing and scale-methodology work, plus owner sign-off
   (receipt-first per `proof.claim_upgrade_receipts.v1`).
 
-Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (18 pass).
+Tests: `apps/pylon/src/spark-helper-autostart.test.ts` (24 pass).

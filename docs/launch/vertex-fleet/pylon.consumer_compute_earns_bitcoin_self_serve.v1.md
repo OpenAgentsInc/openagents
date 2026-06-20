@@ -3,6 +3,35 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (e) — autostart receipts: distinct-normal-contributor set gate
+
+Blocker advanced this run:
+`blocker.product_promises.spark_helper_autostart_receipt_missing`
+
+The prior runs built a classifier, a redacted receipt builder, and a
+single-receipt verifier. But the blocker is specifically about the NORMAL
+contributor self-serve path ("≥1 normal contributor reaches payout-readiness
+without an operator hand-start"), and a single anonymous receipt cannot prove
+that: the autostart receipt carries no contributor binding, so an operator could
+capture one receipt on their own host and present it (or copies) as evidence for
+"several contributors". This run adds the set-level gate that closes that hole.
+
+- `apps/pylon/src/spark-helper-autostart.ts` — added
+  `verifySparkHelperAutostartReceiptSet(entries)` over
+  `{ contributorRef, receipt }[]`: audits every receipt with the existing
+  single-receipt gate AND requires the contributor refs (public-safe pylonRefs)
+  to be non-empty, whitespace-free, and **distinct**, rejecting a reused ref.
+  Returns `{ valid, clearsBlocker, distinctContributorCount, perEntry[],
+  reasons[] }`. Mirrors the scale-methodology cross-contributor integrity rule.
+- `apps/pylon/src/spark-helper-autostart.test.ts` — +6 bun:test cases (24 pass).
+- `apps/pylon/docs/spark-helper-autostart-receipt-capture.md` — documented the
+  set-level gate.
+
+No promise state changed; nothing started, no funds moved, no host probed. Still
+listed: clearing it needs REAL captured receipts from ≥1 distinct normal
+contributor that pass `verifySparkHelperAutostartReceiptSet` with
+`clearsBlocker:true`, plus owner sign-off.
+
 ## Update 2026-06-20 (d) — scale methodology: cross-contributor settlement integrity
 
 Blocker advanced this run:
