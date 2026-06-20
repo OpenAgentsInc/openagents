@@ -5,7 +5,7 @@ import {
   GeminiAuthResolutionReceipt,
   type GeminiApiKeySource,
   type GeminiAuthResolutionReceipt,
-} from "./contract";
+} from "./contract.js";
 
 export interface ResolveGeminiApiKeyOptions {
   readonly apiKey?: string;

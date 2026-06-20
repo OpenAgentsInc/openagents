@@ -1,5 +1,5 @@
 import { Schema as S } from "effect";
-import { ProbeLlmProviderMetadata } from "./usage";
+import { ProbeLlmProviderMetadata } from "./usage.js";
 
 export const ProbeLlmCacheHint = S.Struct({
   type: S.Literals(["ephemeral", "persistent"]),

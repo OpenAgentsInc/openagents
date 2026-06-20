@@ -18,8 +18,8 @@ import {
   CLAUDE_AGENT_CAPABILITY_REF,
   probeClaudeAgentReadiness,
   type ClaudeAgentProbeOptions,
-} from "./claude-agent"
-import { runWithClaudeAgentSdk, type ClaudeAgentRunner } from "./claude-agent-executor"
+} from "./claude-agent.js"
+import { runWithClaudeAgentSdk, type ClaudeAgentRunner } from "./claude-agent-executor.js"
 import {
   assertLaborPublicSafe,
   hasLaborFirstRunApproval,
@@ -28,14 +28,14 @@ import {
   type LaborLocalAgentKind,
   type LaborRuntime,
   type LaborWorkspace,
-} from "./labor"
+} from "./labor.js"
 import {
   signNostrEvent,
   type NostrEvent,
   type ProviderRelayTransport,
-} from "./provider-nip90"
-import { ensureStateDirectories, type PylonLocalState } from "./state"
-import type { PylonNostrPrivateIdentity } from "./nostr-identity"
+} from "./provider-nip90.js"
+import { ensureStateDirectories, type PylonLocalState } from "./state.js"
+import type { PylonNostrPrivateIdentity } from "./nostr-identity.js"
 
 /**
  * The Pylon labor-market provider loop (issue #4730, promise

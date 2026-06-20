@@ -1,5 +1,5 @@
 import { Effect, Schema as S } from "effect";
-import { PublicProviderAccount, validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
+import { PublicProviderAccount, validateProbePublicProjection, type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
 
 export const OmegaProviderAccountsResponse = S.Struct({
   accounts: S.Array(PublicProviderAccount),

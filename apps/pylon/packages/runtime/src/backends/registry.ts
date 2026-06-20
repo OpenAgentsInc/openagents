@@ -4,20 +4,20 @@ import {
   APPLE_FM_DEFAULT_BASE_URL,
   APPLE_FM_DEFAULT_MODEL_ID,
   APPLE_FM_LOCAL_PROFILE_ID,
-} from "./apple-fm/contract";
+} from "./apple-fm/contract.js";
 import {
   GEMINI_API_PROFILE_ID,
   GEMINI_BACKEND_KIND,
   GEMINI_DEFAULT_BASE_URL,
   GEMINI_DEFAULT_MODEL_ID,
-} from "./gemini/contract";
+} from "./gemini/contract.js";
 import {
   PSIONIC_QWEN_BACKEND_KIND,
   PSIONIC_QWEN_DEFAULT_BASE_URL,
   PSIONIC_QWEN_DEFAULT_MODEL_ID,
   PSIONIC_QWEN_LOCAL_PROFILE_ID,
-} from "./psionic-qwen/contract";
-import { type ProbeBackendProfile, type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "./backend-profile";
+} from "./psionic-qwen/contract.js";
+import { type ProbeBackendProfile, type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "./backend-profile.js";
 
 export const APPLE_FM_LOCAL_PROFILE: ProbeBackendProfile = {
   id: APPLE_FM_LOCAL_PROFILE_ID,

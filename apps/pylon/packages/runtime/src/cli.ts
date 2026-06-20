@@ -8,12 +8,12 @@ import {
   applyAnyWorkspaceFilePatch,
   editAnyWorkspaceFile,
   writeAnyWorkspaceFile as writeAnyWorkspaceFileWithBom,
-} from "./file-mutation";
+} from "./file-mutation.js";
 import {
   resolveProbeChatWorkspaceRoot,
   resolveProbeWorkspaceRoot,
   resolveWorkspacePath,
-} from "./workspace";
+} from "./workspace.js";
 import { marked } from "marked";
 import {
   AppleFmBackendError,
@@ -21,21 +21,21 @@ import {
   type AppleFmPlainTextCompletion,
   type AppleFmReadiness,
   type AppleFmToolStreamResult,
-} from "./backends/apple-fm/client";
+} from "./backends/apple-fm/client.js";
 import {
   type AppleFmBlueprintToolProjection,
   projectProbeToolMenuToAppleFm,
-} from "./backends/apple-fm/blueprint-tools";
-import { makeAppleFmToolStreamProgramRunEvidence } from "./backends/apple-fm/program-run-evidence";
-import { makeAppleFmToolCallbackSession } from "./backends/apple-fm/tools";
-import { GeminiClientError, makeGeminiClient, type GeminiClient, type GeminiCompleteResult } from "./backends/gemini/client";
-import { GEMINI_API_PROFILE_ID, GEMINI_DEFAULT_MODEL_ID } from "./backends/gemini/contract";
+} from "./backends/apple-fm/blueprint-tools.js";
+import { makeAppleFmToolStreamProgramRunEvidence } from "./backends/apple-fm/program-run-evidence.js";
+import { makeAppleFmToolCallbackSession } from "./backends/apple-fm/tools.js";
+import { GeminiClientError, makeGeminiClient, type GeminiClient, type GeminiCompleteResult } from "./backends/gemini/client.js";
+import { GEMINI_API_PROFILE_ID, GEMINI_DEFAULT_MODEL_ID } from "./backends/gemini/contract.js";
 import {
   makePsionicQwenClient,
   PsionicQwenClientError,
   type PsionicQwenCompleteResult,
   type PsionicQwenReadiness,
-} from "./backends/psionic-qwen/client";
+} from "./backends/psionic-qwen/client.js";
 import {
   loadBlueprintSignatureRegistry,
   lookupBlueprintSignatures,
@@ -51,14 +51,14 @@ import {
   type ProbeLlmRequest,
   type ProbeLlmTools,
 } from "./llm";
-import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "./runner/identity";
-import { makeOmegaAccountClient, type OmegaAccountClient } from "./omega/account-client";
-import { resolveCodexGrantResolveEndpoint } from "./omega/grant-client";
-import { sanitizeProbePublicProjection } from "./contracts/provider-account";
-import { detectFiletype } from "./opentui-filetype";
+import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "./runner/identity.js";
+import { makeOmegaAccountClient, type OmegaAccountClient } from "./omega/account-client.js";
+import { resolveCodexGrantResolveEndpoint } from "./omega/grant-client.js";
+import { sanitizeProbePublicProjection } from "./contracts/provider-account.js";
+import { detectFiletype } from "./opentui-filetype.js";
 import type { CliRenderer, ScrollBoxRenderable } from "@opentui/core";
-import type { ProbeOpentuiRendererModule } from "./opentui-renderer";
-import { type ProbeRunnerIdentity } from "./runner/identity";
+import type { ProbeOpentuiRendererModule } from "./opentui-renderer.js";
+import { type ProbeRunnerIdentity } from "./runner/identity.js";
 import {
   bestEffortRecordProbeTokenUsageEvent,
   makeAppleFmProbeTokenUsageEvent,
@@ -66,7 +66,7 @@ import {
   makeProbeTokenUsageTelemetryClientFromEnv,
   probeTokenUsageActorFromEnv,
   probeTokenUsagePrivacyFromEnv,
-} from "./fleet/token-usage";
+} from "./fleet/token-usage.js";
 
 export interface ProbeCliResult {
   readonly exitCode: number;
@@ -2099,7 +2099,7 @@ async function runGeminiTuiChat(input: {
   // dynamic (rather than a top-level static import) keeps `@opentui/core` out
   // of the runtime's static module graph so the headless Pylon node stays
   // bundle-able (#5037). Only this interactive `--tui` path ever loads it.
-  const opentui = await (await import("./opentui-renderer")).loadProbeOpentuiRenderer();
+  const opentui = await (await import("./opentui-renderer.js")).loadProbeOpentuiRenderer();
   const { createProbeRenderer, createAssistantText, parseColor, TextRenderable, BoxRenderable, ScrollBoxRenderable } = opentui;
   const renderer = await createProbeRenderer();
   const session = new ScrollBoxRenderable(renderer, {

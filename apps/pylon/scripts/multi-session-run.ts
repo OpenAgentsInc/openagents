@@ -24,22 +24,22 @@ import {
   type PublicPylonAccountSelection,
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
-} from "../src/account-registry"
-import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
-import type { PylonComposerAdapter } from "../src/codex-agent"
-import { classifySessionError } from "../src/session-error-class"
-import { assertPublicProjectionSafe } from "../src/state"
-import { scanProofSerialization } from "../src/proof-redaction"
+} from "../src/account-registry.js"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap.js"
+import type { PylonComposerAdapter } from "../src/codex-agent.js"
+import { classifySessionError } from "../src/session-error-class.js"
+import { assertPublicProjectionSafe } from "../src/state.js"
+import { scanProofSerialization } from "../src/proof-redaction.js"
 import {
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
-} from "../src/workspace-materializer"
-import { classifyQuotaSignal } from "../src/account-quota"
+} from "../src/workspace-materializer.js"
+import { classifyQuotaSignal } from "../src/account-quota.js"
 import {
   isAccountAvailable,
   loadQuotaRecord,
   recordQuotaBlock,
-} from "../src/account-quota-ledger"
+} from "../src/account-quota-ledger.js"
 
 export const MULTI_SESSION_PLAN_SCHEMA = "openagents.pylon.multi_session_plan.v0.1"
 export const MULTI_SESSION_HEARTBEAT_SCHEMA = "openagents.pylon.multi_session_heartbeat.v0.1"

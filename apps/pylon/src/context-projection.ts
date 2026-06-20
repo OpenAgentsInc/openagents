@@ -1,8 +1,8 @@
-import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent"
-import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent"
-import type { PylonAccountUsageSummary } from "./account-usage"
-import { collectPylonDevDoctor, type PylonDevDoctorOptions, type PylonDevDoctorProjection } from "./dev-doctor"
-import { assertPublicProjectionSafe } from "./state"
+import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
+import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
+import type { PylonAccountUsageSummary } from "./account-usage.js"
+import { collectPylonDevDoctor, type PylonDevDoctorOptions, type PylonDevDoctorProjection } from "./dev-doctor.js"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export const PYLON_CONTEXT_SCHEMA = "openagents.pylon.context.v0.3"
 

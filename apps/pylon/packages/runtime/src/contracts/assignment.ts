@@ -1,15 +1,15 @@
 import { Effect, Schema as S } from "effect";
-import { APPLE_FM_BACKEND_KIND, PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract";
+import { APPLE_FM_BACKEND_KIND, PROBE_APPLE_FM_BACKEND_CAPABILITY } from "../backends/apple-fm/contract.js";
 import {
   GEMINI_API_PROFILE_ID,
   GEMINI_BACKEND_KIND,
   PROBE_GEMINI_BACKEND_CAPABILITY,
-} from "../backends/gemini/contract";
+} from "../backends/gemini/contract.js";
 import {
   PROBE_PSIONIC_QWEN_BACKEND_CAPABILITY,
   PSIONIC_QWEN_BACKEND_KIND,
   PSIONIC_QWEN_LOCAL_PROFILE_ID,
-} from "../backends/psionic-qwen/contract";
+} from "../backends/psionic-qwen/contract.js";
 import {
   BlueprintContractExportSeed,
   BlueprintProgramRegistryProjection,
@@ -18,7 +18,7 @@ import {
   validateBlueprintContractExportSeed,
   validateBlueprintRegistryProjection,
   type BlueprintProjectionUnsafe,
-} from "../blueprint/contracts";
+} from "../blueprint/contracts.js";
 import {
   ProbeProvider,
   ProviderAccountRef,
@@ -27,7 +27,7 @@ import {
   sanitizeProbePublicProjection,
   validateProbePublicProjection,
   type JsonValue,
-} from "./provider-account";
+} from "./provider-account.js";
 
 export const ProbeRepositoryRef = S.Struct({
   url: S.optional(S.String),

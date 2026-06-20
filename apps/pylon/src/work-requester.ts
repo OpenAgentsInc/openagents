@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-import type { TipsNetworkOptions } from "./tips"
+import type { TipsNetworkOptions } from "./tips.js"
 
 export type PylonWorkRequestInput = {
   objective: string

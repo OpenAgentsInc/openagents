@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { createSparkBackupHelper } from "./spark-backup-helper"
+import { createSparkBackupHelper } from "./spark-backup-helper.js"
 
 const fakeModule = (sdk: unknown) =>
   ({

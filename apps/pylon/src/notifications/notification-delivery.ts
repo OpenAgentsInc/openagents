@@ -1,4 +1,4 @@
-import type { NotificationPayload } from "./notification-projection"
+import type { NotificationPayload } from "./notification-projection.js"
 
 export type NotificationDeliveryRef = {
   sessionRef: string

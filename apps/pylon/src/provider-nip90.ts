@@ -22,22 +22,22 @@ import {
   type LaborJobRequest,
 } from "@openagentsinc/nip90"
 import { Effect } from "effect"
-import type { BootstrapSummary } from "./bootstrap"
-import { loadOrCreateNostrIdentity, type PylonNostrPrivateIdentity } from "./nostr-identity"
+import type { BootstrapSummary } from "./bootstrap.js"
+import { loadOrCreateNostrIdentity, type PylonNostrPrivateIdentity } from "./nostr-identity.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
   ensureStateDirectories,
   type PylonLocalState,
   type PylonPaths,
-} from "./state"
-import { appendLedgerEvent, defaultWalletCommandRunner, type WalletCommandRunner } from "./wallet"
-import { makeAppleFmClient, type AppleFmClient } from "../packages/runtime/src/index"
+} from "./state.js"
+import { appendLedgerEvent, defaultWalletCommandRunner, type WalletCommandRunner } from "./wallet.js"
+import { makeAppleFmClient, type AppleFmClient } from "../packages/runtime/src/index.js"
 import {
   handleLaborMarketEventOnce,
   type LaborMarketHandleResult,
   type LaborMarketOptions,
-} from "./labor-market"
+} from "./labor-market.js"
 import {
   assertLaborPublicSafe,
   detectConfiguredLaborAgent,
@@ -50,7 +50,7 @@ import {
   type LaborLocalAgentKind,
   type LaborRuntime,
   type LaborWorkspace,
-} from "./labor"
+} from "./labor.js"
 
 export const NIP89_HANDLER_INFO_KIND = 31990
 export const OPENAGENTS_MARKET_RELAY_URL = "wss://relay.openagents.com"

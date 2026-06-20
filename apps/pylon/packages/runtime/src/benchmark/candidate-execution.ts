@@ -8,10 +8,10 @@ import {
   type ProbeBenchmarkFailureClassification,
   type ProbeBenchmarkFailureFamily,
   type ProbeBenchmarkPolicyFinding,
-} from "../contracts/benchmark";
-import { JsonValue, ProbePublicProjectionUnsafe, validateProbePublicProjection } from "../contracts/provider-account";
-import { makeProbeBenchmarkCloseoutBundle, type ProbeBenchmarkCloseoutBundle } from "./closeout-writer";
-import { type ProbeRetainedBenchmarkFixture, type ProbeBenchmarkToolMenuConstraints } from "./fixtures";
+} from "../contracts/benchmark.js";
+import { JsonValue, ProbePublicProjectionUnsafe, validateProbePublicProjection } from "../contracts/provider-account.js";
+import { makeProbeBenchmarkCloseoutBundle, type ProbeBenchmarkCloseoutBundle } from "./closeout-writer.js";
+import { type ProbeRetainedBenchmarkFixture, type ProbeBenchmarkToolMenuConstraints } from "./fixtures.js";
 
 export const PROBE_GEPA_CANDIDATE_MANIFEST_SCHEMA_VERSION = "psionic.probe_gepa_candidate_manifest.v1" as const;
 export const PROBE_GEPA_PROBE_IMPORT_SCHEMA_VERSION = "probe.prompt_candidate_import.v1" as const;

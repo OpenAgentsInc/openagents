@@ -1,14 +1,14 @@
 import { Effect, Schema as S } from "effect";
-import { type ResolveProbeBackendProfileOptions, type ResolvedProbeBackendProfile } from "../backend-profile";
-import { resolveGeminiBackendProfile, type ProbeBackendRegistryError } from "../registry";
-import { makeGeminiAuthHeaders, resolveGeminiApiKey, type ResolvedGeminiApiKey } from "./auth";
+import { type ResolveProbeBackendProfileOptions, type ResolvedProbeBackendProfile } from "../backend-profile.js";
+import { resolveGeminiBackendProfile, type ProbeBackendRegistryError } from "../registry.js";
+import { makeGeminiAuthHeaders, resolveGeminiApiKey, type ResolvedGeminiApiKey } from "./auth.js";
 import {
   finishGeminiSseParseState,
   geminiEndpointPath,
   lowerProbeLlmRequestToGeminiBody,
   makeGeminiSseParseState,
   parseGeminiSsePayload,
-} from "./protocol";
+} from "./protocol.js";
 import {
   ProbeLlmEvents,
   makeProbeLlmMessage,
@@ -17,8 +17,8 @@ import {
   type ProbeLlmEvent,
   type ProbeLlmRequest,
 } from "../../llm";
-import { dispatchProbeLlmTool } from "../../llm/tool-runtime";
-import { type ProbeLlmTools } from "../../llm/tool";
+import { dispatchProbeLlmTool } from "../../llm/tool-runtime.js";
+import { type ProbeLlmTools } from "../../llm/tool.js";
 import {
   GeminiBackendFailureReceipt,
   makeGeminiFailureReceipt,
@@ -26,7 +26,7 @@ import {
   makeGeminiTranscriptReceipt,
   type GeminiBackendToolCallReceipt,
   type GeminiBackendTranscriptReceipt,
-} from "./receipts";
+} from "./receipts.js";
 
 export interface GeminiClientOptions extends ResolveProbeBackendProfileOptions {
   readonly apiKey?: string;

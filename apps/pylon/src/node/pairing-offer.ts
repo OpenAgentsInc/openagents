@@ -5,7 +5,7 @@ import {
   type ProjectionLevel,
 } from "@openagentsinc/autopilot-control-protocol"
 
-import type { BindAddress } from "./bind-config"
+import type { BindAddress } from "./bind-config.js"
 
 export type BuildPairingOfferInput = {
   binds: Array<Pick<BindAddress, "address" | "requiresAuth">>

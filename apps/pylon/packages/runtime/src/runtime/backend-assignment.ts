@@ -1,10 +1,10 @@
 import { Effect, Schema as S } from "effect";
-import { AppleFmBackendError, makeAppleFmClient, type AppleFmPlainTextCompletion } from "../backends/apple-fm/client";
-import { APPLE_FM_BACKEND_KIND } from "../backends/apple-fm/contract";
-import { GeminiClientError, makeGeminiClient, type GeminiCompleteResult } from "../backends/gemini/client";
-import { GEMINI_BACKEND_KIND } from "../backends/gemini/contract";
-import { makePsionicQwenClient, PsionicQwenClientError, type PsionicQwenCompleteResult } from "../backends/psionic-qwen/client";
-import { PSIONIC_QWEN_BACKEND_KIND } from "../backends/psionic-qwen/contract";
+import { AppleFmBackendError, makeAppleFmClient, type AppleFmPlainTextCompletion } from "../backends/apple-fm/client.js";
+import { APPLE_FM_BACKEND_KIND } from "../backends/apple-fm/contract.js";
+import { GeminiClientError, makeGeminiClient, type GeminiCompleteResult } from "../backends/gemini/client.js";
+import { GEMINI_BACKEND_KIND } from "../backends/gemini/contract.js";
+import { makePsionicQwenClient, PsionicQwenClientError, type PsionicQwenCompleteResult } from "../backends/psionic-qwen/client.js";
+import { PSIONIC_QWEN_BACKEND_KIND } from "../backends/psionic-qwen/contract.js";
 import {
   assignmentSelectsGeminiBackend,
   assignmentSelectsPsionicQwenBackend,
@@ -13,21 +13,21 @@ import {
   requirePsionicQwenAssignmentBackend,
   selectedAssignmentBackendProfileId,
   type ProbeRunAssignment,
-} from "../contracts/assignment";
-import { type AppleFmBackendAvailabilityReceipt, type AppleFmBackendFailureReceipt } from "../backends/apple-fm/receipts";
+} from "../contracts/assignment.js";
+import { type AppleFmBackendAvailabilityReceipt, type AppleFmBackendFailureReceipt } from "../backends/apple-fm/receipts.js";
 import {
   type PsionicQwenAvailabilityReceipt,
   type PsionicQwenFailureReceipt,
   type PsionicQwenTranscriptReceipt,
-} from "../backends/psionic-qwen/receipts";
+} from "../backends/psionic-qwen/receipts.js";
 import {
   authorizeRunnerForAssignment,
   type ProbeRunnerAssignmentProof,
   type ProbeRunnerAuthorizationError,
   type ProbeRunnerIdentity,
-} from "../runner/identity";
-import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
-import { type ProbeBackendRegistryError } from "../backends/registry";
+} from "../runner/identity.js";
+import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
+import { type ProbeBackendRegistryError } from "../backends/registry.js";
 import { makeProbeLlmRequest } from "../llm";
 import {
   bestEffortRecordProbeTokenUsageEvent,
@@ -37,7 +37,7 @@ import {
   makeProbeTokenUsageTelemetryClientFromEnv,
   probeTokenUsageActorFromEnv,
   probeTokenUsagePrivacyFromEnv,
-} from "../fleet/token-usage";
+} from "../fleet/token-usage.js";
 
 export const ProbeBackendRunEvent = S.Struct({
   kind: S.Literals(["probe_backend_run_started", "probe_backend_run_finished", "probe_backend_run_failed"]),

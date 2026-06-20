@@ -1,6 +1,6 @@
 import { arch, cpus, freemem, networkInterfaces, platform, totalmem } from "node:os"
 import { statfs } from "node:fs/promises"
-import { assertPublicProjectionSafe } from "./state"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export type InventoryPlatform = "darwin" | "linux" | "unsupported"
 export type InventoryFreshness = "fresh" | "mock" | "unavailable" | "stale"

@@ -1,11 +1,11 @@
 import { cpus } from "node:os"
-import { assertPublicProjectionSafe } from "./state"
+import { assertPublicProjectionSafe } from "./state.js"
 import {
   PROBE_BENCHMARK_ASSIGNMENT_SCHEMA_REF,
   PROBE_BENCHMARK_CLOSEOUT_SCHEMA_REF,
   PROBE_BENCHMARK_RUN_SCHEMA_REF,
-} from "../packages/runtime/src/contracts/benchmark"
-import { STATIC_RETAINED_TERMINAL_BENCH_FIXTURES } from "../packages/runtime/src/benchmark/fixtures"
+} from "../packages/runtime/src/contracts/benchmark.js"
+import { STATIC_RETAINED_TERMINAL_BENCH_FIXTURES } from "../packages/runtime/src/benchmark/fixtures.js"
 
 export const PYLON_GEPA_BENCHMARK_RUNNER_CAPABILITY_REF = "pylon.capability.gepa.benchmark_runner.v0.3"
 export const PYLON_GEPA_RETAINED_TERMINAL_BENCH_CAPABILITY_REF =

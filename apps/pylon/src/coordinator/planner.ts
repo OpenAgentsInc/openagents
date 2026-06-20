@@ -1,7 +1,7 @@
 import type {
   MultiSessionAccountSelector,
   MultiSessionPlanEntry,
-} from "../../scripts/multi-session-run"
+} from "../../scripts/multi-session-run.js"
 
 export type CoordinatorIntent = {
   intentId: string

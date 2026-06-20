@@ -1,16 +1,16 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { runNoSpendAssignment, type AssignmentClientOptions, type PylonAssignmentLease } from "./assignment"
+import { runNoSpendAssignment, type AssignmentClientOptions, type PylonAssignmentLease } from "./assignment.js"
 import {
   CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
   CLAUDE_AGENT_TASK_SCHEMA,
   type ClaudeAgentRunner,
-} from "./claude-agent-executor"
-import { CLAUDE_AGENT_CAPABILITY_REF, CLAUDE_AGENT_SDK_PACKAGE } from "./claude-agent"
-import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap"
-import { sendHeartbeat } from "./presence"
-import { ensurePylonLocalState } from "./state"
+} from "./claude-agent-executor.js"
+import { CLAUDE_AGENT_CAPABILITY_REF, CLAUDE_AGENT_SDK_PACKAGE } from "./claude-agent.js"
+import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap.js"
+import { sendHeartbeat } from "./presence.js"
+import { ensurePylonLocalState } from "./state.js"
 
 /**
  * The bounded local-Claude real-task smoke (issue #4720, promise

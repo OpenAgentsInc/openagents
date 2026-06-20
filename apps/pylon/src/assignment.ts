@@ -9,35 +9,35 @@ import {
   TASSADAR_EXECUTOR_TRACE_HOMEWORK_JOB_KIND,
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagentsinc/tassadar-executor"
-import type { BootstrapSummary } from "./bootstrap"
-import type { ClaudeAgentProbeOptions } from "./claude-agent"
+import type { BootstrapSummary } from "./bootstrap.js"
+import type { ClaudeAgentProbeOptions } from "./claude-agent.js"
 import {
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
-} from "./claude-agent-executor"
-import type { CodexAgentProbeOptions } from "./codex-agent"
-import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor"
-import { createSignedHeaders } from "./presence"
+} from "./claude-agent-executor.js"
+import type { CodexAgentProbeOptions } from "./codex-agent.js"
+import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor.js"
+import { createSignedHeaders } from "./presence.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
   ensureStateDirectories,
   loadOrCreatePresenceState,
   type PylonLocalState,
-} from "./state"
+} from "./state.js"
 import {
   admitGepaAssignmentToEnvelope,
   createDefaultGepaCapabilityEnvelope,
   type PylonGepaAssignmentRequirements,
   type PylonGepaCapabilityEnvelope,
-} from "./gepa-capability"
+} from "./gepa-capability.js"
 import {
   PSIONIC_QWEN_MODEL_REFS,
   selectPsionicQwenModel,
   type PsionicQwenModelAdmission,
   type PsionicQwenTaskMode,
-} from "../packages/runtime/src/index"
+} from "../packages/runtime/src/index.js"
 
 export type AssignmentPaymentMode = "no-spend" | "paid"
 export type AssignmentStatus = "offered" | "accepted" | "running" | "closed" | "rejected" | "cancelled" | "timed-out" | "stale"

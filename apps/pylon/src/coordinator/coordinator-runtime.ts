@@ -6,11 +6,11 @@
 // sessions appear in session.list with live timelines, so the phone + desktop
 // show exactly what every fan-out agent is doing.
 
-import type { SubmittedWorkIntent, IntentQueue, IntentStatus } from "../node/intent-intake"
-import { planIntent } from "./planner"
-import { classifyShipModeFromFingerprint } from "./ship-mode-classify"
-import { decideShipEligibility } from "./ship-eligibility"
-import { buildShipReceipt, type ShipReceipt } from "./ship-receipt"
+import type { SubmittedWorkIntent, IntentQueue, IntentStatus } from "../node/intent-intake.js"
+import { planIntent } from "./planner.js"
+import { classifyShipModeFromFingerprint } from "./ship-mode-classify.js"
+import { decideShipEligibility } from "./ship-eligibility.js"
+import { buildShipReceipt, type ShipReceipt } from "./ship-receipt.js"
 
 // CL-37/CL-41: at the ship step, classify OTA-vs-rebuild from the Expo runtime
 // fingerprint and gate the autonomous ship on the spend decision, recording a

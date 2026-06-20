@@ -1,7 +1,7 @@
 import { Effect } from "effect";
-import { ProbeLlmEvents, type ProbeLlmEvent } from "./events";
-import { makeProbeLlmToolResultValue } from "./messages";
-import { projectProbeLlmToolResult, type ProbeLlmTools } from "./tool";
+import { ProbeLlmEvents, type ProbeLlmEvent } from "./events.js";
+import { makeProbeLlmToolResultValue } from "./messages.js";
+import { projectProbeLlmToolResult, type ProbeLlmTools } from "./tool.js";
 
 export interface ProbeLlmToolCallInput {
   readonly id: string;

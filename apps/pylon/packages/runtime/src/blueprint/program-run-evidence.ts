@@ -3,7 +3,7 @@ import { Effect, Schema as S } from "effect";
 import {
   blueprintProgramRunEvidenceFlagsAreEvidenceOnly,
   isBlueprintProjectionPrivateDataSafe,
-} from "./contracts";
+} from "./contracts.js";
 
 export const ProbeBlueprintProgramRunEvidence = S.Struct({
   actorRef: S.String,

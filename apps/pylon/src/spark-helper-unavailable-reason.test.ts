@@ -8,8 +8,8 @@ import { describe, expect, it } from "bun:test"
 import {
   classifySparkHelperFailureReason,
   createSparkBackupHelper,
-} from "./spark-backup-helper"
-import { classifySparkBackupReceive, detectSparkBackupBalance } from "./wallet"
+} from "./spark-backup-helper.js"
+import { classifySparkBackupReceive, detectSparkBackupBalance } from "./wallet.js"
 
 // A fake module whose SDK build() throws — the failure happens UPSTREAM of
 // getInfo, exactly like the corrupt-`storage.sql` case on the reporting host.

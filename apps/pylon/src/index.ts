@@ -3,10 +3,10 @@
 // MUST be the FIRST import: installs the Breez stdout guard as a top-level
 // side effect before any sibling module (or eagerly-evaluated bundled Breez SDK
 // module in the compiled binary) can print its storage banner to stdout. rc.33.
-import { installBreezStdoutGuard } from "./breez-stdout-guard"
+import { installBreezStdoutGuard } from "./breez-stdout-guard.js"
 // #5404: cross-platform Bun compiled-binary detection (POSIX `/$bunfs/` and
 // Windows `B:\~BUN\root\…`), shared with the embedded Spark WASM extraction.
-import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime"
+import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 import { readFile } from "node:fs/promises"
 import { existsSync } from "node:fs"
 import {
@@ -14,19 +14,19 @@ import {
   declareTassadarExecutorCapability,
   mergeTassadarCapabilityRefs,
   writeTassadarCapabilityEvidence,
-} from "./tassadar-capability"
+} from "./tassadar-capability.js"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
-} from "./claude-agent"
+} from "./claude-agent.js"
 import {
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   withCodexAgentCapability,
-} from "./codex-agent"
-import { withWorkspaceMaterializerCapability } from "./workspace-materializer"
-import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips"
+} from "./codex-agent.js"
+import { withWorkspaceMaterializerCapability } from "./workspace-materializer.js"
+import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips.js"
 import {
   ARTANIS_FORUM_SLUG,
   appendMemory,
@@ -36,9 +36,9 @@ import {
   forumReply,
   readMemories,
   resolveModelAdapter,
-} from "./agent-surface"
+} from "./agent-surface.js"
 import { Console, Deferred, Effect, PubSub } from "effect"
-import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state"
+import { classifyServiceLogLevel, formatLogTimestamp, type PylonLogLevel } from "./node/state.js"
 import {
   forkLogPersistence,
   forkNodeServices,
@@ -47,24 +47,24 @@ import {
   seedLogFeed,
   superviseLoop,
   type PylonNodeRuntime,
-} from "./node/runtime"
-import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist"
+} from "./node/runtime.js"
+import { createFeedLogWriter, readPersistedLogTail } from "./node/log-persist.js"
 import {
   buildBrokerRegistrationBody,
   postNodeRegistration,
   type BrokerRegistrationHosts,
-} from "./node/discovery-register"
-import { createIntentQueue } from "./node/intent-intake"
-import { createApprovalQueue } from "./node/approval-queue"
-import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime"
-import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate"
+} from "./node/discovery-register.js"
+import { createIntentQueue } from "./node/intent-intake.js"
+import { createApprovalQueue } from "./node/approval-queue.js"
+import { createCoordinatorRuntime, type CoordinatorRuntime } from "./coordinator/coordinator-runtime.js"
+import { evaluateShipSpendGate } from "./coordinator/ship-spend-gate.js"
 import {
   scanClaudeSessions,
   toEventRows,
   toSessionListEntry,
   type ExternalSession,
-} from "./node/external-sessions"
-import { scanCodexSessions } from "./node/codex-sessions"
+} from "./node/external-sessions.js"
+import { scanCodexSessions } from "./node/codex-sessions.js"
 import { homedir } from "node:os"
 import {
   defaultControlPort,
@@ -73,65 +73,65 @@ import {
   startControlServer,
   type ControlCommandActions,
   type ControlCommand,
-} from "./node/control-server"
-import { collectPylonAppleFmStatus } from "./node/apple-fm-status"
+} from "./node/control-server.js"
+import { collectPylonAppleFmStatus } from "./node/apple-fm-status.js"
 import {
   createControlSessionActions,
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
-} from "./node/control-sessions"
-import { resolveCloudControlConfig } from "./cloud-control-client"
-import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider"
-import { collectPylonContextProjection } from "./context-projection"
-import { collectPylonDevDoctor } from "./dev-doctor"
+} from "./node/control-sessions.js"
+import { resolveCloudControlConfig } from "./cloud-control-client.js"
+import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider.js"
+import { collectPylonContextProjection } from "./context-projection.js"
+import { collectPylonDevDoctor } from "./dev-doctor.js"
 import {
   collectPylonAccountsList,
   collectPylonAccountsUsage,
   parsePylonAccountsUsageArgs,
   resolvePylonAccountUsageRefreshTargets,
   type PylonAccountsUsageArgs,
-} from "./account-usage"
+} from "./account-usage.js"
 import {
   recordPylonDevCodexRun,
   runPylonDevApply,
   runPylonDevCheck,
   runPylonDevReload,
   type PylonDevCommandSpec,
-} from "./dev-loop"
+} from "./dev-loop.js"
 import {
   rejectCodexLocalDangerForPublicPath,
   runCodexComposerStream,
-} from "./codex-composer"
+} from "./codex-composer.js"
 import {
   rejectClaudeLocalDangerForPublicPath,
   runClaudeComposerStream,
-} from "./claude-composer"
-import { runProbeCli } from "../packages/runtime/src/index"
-import { PYLON_VERSION } from "./version"
+} from "./claude-composer.js"
+import { runProbeCli } from "../packages/runtime/src/index.js"
+import { PYLON_VERSION } from "./version.js"
 import {
   ControlEndpointError,
   runControlCommand,
-} from "./node/control-cli"
+} from "./node/control-cli.js"
 import {
   runSessionsExec,
   type ApprovalPolicy,
   type SessionsExecControl,
-} from "./node/sessions-exec"
+} from "./node/sessions-exec.js"
 import {
   parseSessionsBatchTasks,
   runSessionsBatch,
-} from "./node/sessions-batch"
-import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy"
+} from "./node/sessions-batch.js"
+import { createBoundedAutoApprovalPolicy } from "./node/auto-approval-policy.js"
 import {
   PYLON_COMMAND_CATALOG,
   findCommandEntry,
   projectCommandCatalog,
-} from "./cli-catalog"
+} from "./cli-catalog.js"
 import {
   formatPublicActivityCliText,
   runPublicActivityCliCommand,
   type PublicActivityCliCommand,
-} from "./public-activity-cli"
+} from "./public-activity-cli.js"
 import {
   activateTrainingWindow,
   admitTrainingEvidence,
@@ -141,14 +141,14 @@ import {
   reconcileTrainingWindow,
   readTrainingStatus,
   trainingPreflightReport,
-} from "./training-cockpit"
+} from "./training-cockpit.js"
 import {
   assertWorkloadFamily,
   parseTassadarWorkload,
   runValidatorAuto,
   submitReplayVerdict,
   submitTraceContribution,
-} from "./tassadar-trace-client"
+} from "./tassadar-trace-client.js"
 import { loadPinnedTassadarSelfTestWorkload } from "@openagentsinc/tassadar-executor/self-test"
 import { readFile as readFileForPacket } from "node:fs/promises"
 import {
@@ -157,15 +157,15 @@ import {
   parseBootstrapArgs,
   selectPylonHomeResolution,
   writeBootstrapFiles,
-} from "./bootstrap"
-import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state"
+} from "./bootstrap.js"
+import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState } from "./state.js"
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
-} from "./presence"
+} from "./presence.js"
 import {
   admitPayoutTarget,
   appendLedgerEvent,
@@ -188,7 +188,7 @@ import {
   isSparkBackupDefaultEnabled,
   type SparkBackupSendProjection,
   type WalletStatusProjection,
-} from "./wallet"
+} from "./wallet.js"
 import {
   createSparkBackupHelper,
   createSparkBackupSendTransfer,
@@ -200,8 +200,8 @@ import {
   // #5207 warm Spark session (daemon background sync + shutdown).
   syncWarmSparkSession,
   closeWarmSparkSession,
-} from "./spark-backup-helper"
-import { resolveNostrIdentityPath } from "./nostr-identity"
+} from "./spark-backup-helper.js"
+import { resolveNostrIdentityPath } from "./nostr-identity.js"
 import {
   acceptAssignment,
   pollAssignments,
@@ -211,27 +211,27 @@ import {
   type AssignmentCloseout,
   type AssignmentProgress,
   type PylonAssignmentLease,
-} from "./assignment"
-import { discoverHostInventory } from "./inventory"
+} from "./assignment.js"
+import { discoverHostInventory } from "./inventory.js"
 import {
   autoUpdateDisabledReason,
   checkForUpdate,
   downloadAndApply,
   resolveSelfBinaryPath,
-} from "./self-update"
-import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator"
-import { inspectPsionicConnector } from "./psionic-connector"
+} from "./self-update.js"
+import { createOperatorSnapshot, formatOperatorSnapshotText } from "./operator.js"
+import { inspectPsionicConnector } from "./psionic-connector.js"
 import {
   installPsionicBinary,
   installPsionicModelArtifact,
-} from "./psionic-install"
+} from "./psionic-install.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   policyFromEnv,
   relaysFromEnv,
   startNip90ProviderLoop,
-} from "./provider-nip90"
-import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor"
+} from "./provider-nip90.js"
+import { PYLON_LABOR_CAPABILITY_REF, approveLaborFirstRun } from "./labor.js"
 import {
   acceptPylonWorkOffer,
   createPylonWorkRequest,
@@ -243,7 +243,7 @@ import {
   submitPylonAutopilotWork,
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
-} from "./work-requester"
+} from "./work-requester.js"
 import { hostname } from "node:os"
 
 // Routes node lifecycle log lines from plain async call sites into the

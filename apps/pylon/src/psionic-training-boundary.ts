@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { assertPublicProjectionSafe } from "./state"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export type PsionicTrainingBoundaryState = "blocked" | "ready"
 export type PsionicTrainingSidecarState = "blocked" | "starting" | "healthy" | "crashed" | "stopped"

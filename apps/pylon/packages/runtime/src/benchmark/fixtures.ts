@@ -2,15 +2,15 @@ import { Effect, Schema as S } from "effect";
 import {
   PROBE_BENCHMARK_CLOSEOUT_BUNDLE_FILE_NAMES,
   type ProbeBenchmarkCloseoutBundleFileName,
-} from "./closeout-writer";
+} from "./closeout-writer.js";
 import {
   ProbeBenchmarkContractError,
   ProbeBenchmarkEvidenceSplit,
   ProbeBenchmarkFailureFamily,
   ProbeBenchmarkRedactionState,
   validateProbeBenchmarkPublicProjection,
-} from "../contracts/benchmark";
-import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
+} from "../contracts/benchmark.js";
+import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
 
 export const PROBE_RETAINED_BENCHMARK_FIXTURE_SCHEMA_REF = "probe.retained_benchmark_fixture.v1" as const;
 export const PROBE_RETAINED_BENCHMARK_FIXTURE_PACKAGE_SCHEMA_REF =

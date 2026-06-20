@@ -7,19 +7,19 @@ import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   type ClaudeAgentProbeOptions,
-} from "./claude-agent"
+} from "./claude-agent.js"
 import {
   defaultGitCheckoutRunner,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
-} from "./workspace-materializer"
+} from "./workspace-materializer.js"
 import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
-} from "./account-registry"
-import type { PylonLocalState } from "./state"
+} from "./account-registry.js"
+import type { PylonLocalState } from "./state.js"
 
 /**
  * The local Claude Agent executor gate (issue #4719, promise
@@ -43,7 +43,7 @@ export const CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.claude_
 // import sites working; new code should import ./workspace-materializer.
 export type ClaudeAgentGitCheckoutWorkspace = GitCheckoutWorkspace
 export type ClaudeAgentCheckoutRunner = WorkspaceCheckoutRunner
-export { gitCheckoutWorkspaceFrom } from "./workspace-materializer"
+export { gitCheckoutWorkspaceFrom } from "./workspace-materializer.js"
 export const defaultClaudeAgentCheckoutRunner: WorkspaceCheckoutRunner = defaultGitCheckoutRunner
 
 export type ClaudeAgentTaskPayload = {

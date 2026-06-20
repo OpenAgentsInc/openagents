@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { Effect, Semaphore } from "effect";
 import { createTwoFilesPatch } from "diff";
-import { getPermissionHandler } from "./permission";
-import { resolveProbeChatWorkspaceRoot, resolveWorkspacePath } from "./workspace";
+import { getPermissionHandler } from "./permission.js";
+import { resolveProbeChatWorkspaceRoot, resolveWorkspacePath } from "./workspace.js";
 
 // ── BOM handling ──────────────────────────────────────────────────────────
 

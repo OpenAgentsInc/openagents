@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import type { ControlSessionSpawnCommand } from "./control-sessions"
+import type { ControlSessionSpawnCommand } from "./control-sessions.js"
 import {
   runSessionsExec,
   type ApprovalPolicy,
@@ -7,7 +7,7 @@ import {
   type SessionsExecControl,
   type SessionsExecOptions,
   type SessionsExecResult,
-} from "./sessions-exec"
+} from "./sessions-exec.js"
 
 const RESULT_SCHEMA = "openagents.pylon.sessions_batch_result.v0.1"
 

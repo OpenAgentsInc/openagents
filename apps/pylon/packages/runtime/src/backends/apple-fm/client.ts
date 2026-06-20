@@ -1,6 +1,6 @@
 import { Effect, Schema as S } from "effect";
-import { type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "../backend-profile";
-import { resolveAppleFmBackendProfile, type ProbeBackendRegistryError } from "../registry";
+import { type ResolvedProbeBackendProfile, type ResolveProbeBackendProfileOptions } from "../backend-profile.js";
+import { resolveAppleFmBackendProfile, type ProbeBackendRegistryError } from "../registry.js";
 import {
   AppleFmChatCompletionResponse,
   AppleFmStreamSnapshotEvent,
@@ -10,7 +10,7 @@ import {
   type AppleFmHealthResponse,
   type AppleFmUnavailableReason,
   type AppleFmUsageMeasurement,
-} from "./contract";
+} from "./contract.js";
 import {
   AppleFmBackendFailureReceipt,
   makeAppleFmTranscriptReceipt,
@@ -18,12 +18,12 @@ import {
   makeAppleFmFailureReceipt,
   type AppleFmBackendAvailabilityReceipt,
   type AppleFmBackendTranscriptReceipt,
-} from "./receipts";
+} from "./receipts.js";
 import {
   startAppleFmToolCallbackServer,
   type AppleFmToolCallbackServer,
   type AppleFmToolCallbackSession,
-} from "./tools";
+} from "./tools.js";
 
 export const AppleFmHealthStatus = S.Literals(["ready", "unavailable", "unsupported", "malformed", "unreachable"]);
 export type AppleFmHealthStatus = typeof AppleFmHealthStatus.Type;

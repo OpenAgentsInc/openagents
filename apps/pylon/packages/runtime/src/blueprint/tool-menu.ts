@@ -5,8 +5,8 @@ import {
   ProbeToolMenuPlan,
   type BlueprintProgramToolScope as BlueprintProgramToolScopeType,
   type BlueprintToolAccess as BlueprintToolAccessType,
-} from "./contracts";
-import { BlueprintSignatureLookupSelection } from "./signature-lookup";
+} from "./contracts.js";
+import { BlueprintSignatureLookupSelection } from "./signature-lookup.js";
 
 export const ProbeToolName = S.Literals([
   "read_file",

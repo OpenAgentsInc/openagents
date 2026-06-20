@@ -9,17 +9,17 @@ import {
   probeCodexAgentReadiness,
   type CodexAgentConfig,
   type CodexAgentSandboxMode,
-} from "./codex-agent"
+} from "./codex-agent.js"
 import {
   hashPylonAccountRef,
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
-} from "./account-registry"
-import type { BootstrapSummary } from "./bootstrap"
+} from "./account-registry.js"
+import type { BootstrapSummary } from "./bootstrap.js"
 import {
   providerRateLimitSnapshotsFromEvent,
   recordPylonAccountUsageObservation,
-} from "./account-usage"
+} from "./account-usage.js"
 
 export type CodexComposerSandboxMode = CodexAgentSandboxMode | "danger-full-access"
 export type CodexComposerExecutionMode = "local_bounded" | "local_supervised_danger"

@@ -5,8 +5,8 @@ import { Effect } from "effect"
 import {
   makePsionicQwenClient,
   type PsionicQwenReadiness,
-} from "../packages/runtime/src/index"
-import { assertPublicProjectionSafe } from "./state"
+} from "../packages/runtime/src/index.js"
+import { assertPublicProjectionSafe } from "./state.js"
 
 export type PsionicConnectorPhase = "absent" | "configured" | "negotiated" | "refused"
 

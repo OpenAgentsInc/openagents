@@ -28,8 +28,8 @@ import {
   type ProbeBenchmarkRouteKind,
   type ProbeBenchmarkRouteScorecard,
   type ProbeBenchmarkRunStatus,
-} from "../contracts/benchmark";
-import { type JsonValue, type ProbePublicProjectionUnsafe } from "../contracts/provider-account";
+} from "../contracts/benchmark.js";
+import { type JsonValue, type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
 
 export const PROBE_BENCHMARK_CLOSEOUT_BUNDLE_SCHEMA_REF = "probe.benchmark_closeout_bundle.v1" as const;
 export const PROBE_GEPA_LIVE_RUNNER_GATE_SCHEMA_REF = "probe.gepa_live_runner_gate.v1" as const;

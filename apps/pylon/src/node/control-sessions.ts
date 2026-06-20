@@ -8,46 +8,46 @@ import {
   type PublicPylonAccountSelection,
   type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
-} from "../account-registry"
-import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent"
+} from "../account-registry.js"
+import { loadClaudeAgentConfig, loadClaudeDevConfig } from "../claude-agent.js"
 import {
   permissionModeForClaudeComposerExecutionMode,
   runClaudeComposerStream,
-} from "../claude-composer"
+} from "../claude-composer.js"
 import {
   type CodexAgentConfig,
   type CodexDevConfig,
   loadCodexAgentConfig,
   loadCodexDevConfig,
   type PylonComposerAdapter,
-} from "../codex-agent"
+} from "../codex-agent.js"
 import {
   runCodexComposerStream,
   sandboxModeForCodexComposerExecutionMode,
-} from "../codex-composer"
-import type { BootstrapSummary } from "../bootstrap"
+} from "../codex-composer.js"
+import type { BootstrapSummary } from "../bootstrap.js"
 import {
   PYLON_DEV_CHECK_SCHEMA,
   recordPylonDevCodexRun,
   runPylonDevCheck,
   type PylonDevCheckProjection,
-} from "../dev-loop"
+} from "../dev-loop.js"
 import {
   PROOF_REDACTION_PATTERN_REFS,
   scanProofSerialization,
-} from "../proof-redaction"
-import { classifySessionError } from "../session-error-class"
-import { ControlCommandValidationError } from "./control-command-error"
-import { assertPublicProjectionSafe } from "../state"
+} from "../proof-redaction.js"
+import { classifySessionError } from "../session-error-class.js"
+import { ControlCommandValidationError } from "./control-command-error.js"
+import { assertPublicProjectionSafe } from "../state.js"
 import {
   materializeGitCheckoutWorkspaceWithLease,
   releaseWorkspace,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
-} from "../workspace-materializer"
-import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate"
-import { collectPylonAppleFmStatus } from "./apple-fm-status"
-import { runAppleFmLocalControlSession } from "./apple-fm-local-session"
+} from "../workspace-materializer.js"
+import { estimateAppleFmLocalSessionEnergy } from "./apple-fm-energy-estimate.js"
+import { collectPylonAppleFmStatus } from "./apple-fm-status.js"
+import { runAppleFmLocalControlSession } from "./apple-fm-local-session.js"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"

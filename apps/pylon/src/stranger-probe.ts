@@ -9,16 +9,16 @@ import {
   jobInput,
   makeJobRequest,
 } from "@openagentsinc/nip90"
-import { deriveNip06Identity, type PylonNostrPrivateIdentity } from "./nostr-identity"
+import { deriveNip06Identity, type PylonNostrPrivateIdentity } from "./nostr-identity.js"
 import {
   OPENAGENTS_MARKET_RELAY_URL,
   WebSocketRelayTransport,
   signNostrEvent,
   type NostrEvent,
   type ProviderPublishReceipt,
-} from "./provider-nip90"
-import { assertPublicProjectionSafe } from "./state"
-import type { WalletCommandRunner } from "./wallet"
+} from "./provider-nip90.js"
+import { assertPublicProjectionSafe } from "./state.js"
+import type { WalletCommandRunner } from "./wallet.js"
 
 // #4866: repeatable stranger-buyer NIP-90 probe smoke, replaying the Orrery
 // probe shape (forum topic 499cec6e, post 7be6aa0a) against the canonical

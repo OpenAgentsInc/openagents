@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime"
+import { isBunCompiledBinaryUrl } from "./spark-wasm-runtime.js"
 
 // #5404: the compiled-binary detector decides whether `ensureSparkWasmAvailable`
 // extracts the embedded Spark WASM and sets PYLON_SPARK_WASM_PATH. It used to

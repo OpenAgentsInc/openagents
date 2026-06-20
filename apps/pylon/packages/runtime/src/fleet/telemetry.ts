@@ -6,7 +6,7 @@ import {
   validateProbePublicProjection,
   type JsonValue,
   type ProbePublicProjectionUnsafe,
-} from "../contracts/provider-account";
+} from "../contracts/provider-account.js";
 
 export const ProbeAuthFailureClass = S.Literals([
   "access_token_failed",
