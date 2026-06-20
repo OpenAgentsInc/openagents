@@ -10,7 +10,10 @@ import type {
   TreasuryTransactionRecord,
   TreasuryTransactionStore,
 } from './treasury-page-routes'
-import type { XClaimRewardTreasuryDispatchStats } from './x-claim-reward-treasury-dispatcher'
+import {
+  evaluateXClaimRewardSmokePreflight,
+  type XClaimRewardTreasuryDispatchStats,
+} from './x-claim-reward-treasury-dispatcher'
 
 export const TREASURY_SERVICE_TOKEN_HEADER = 'x-treasury-service-token'
 
@@ -498,8 +501,23 @@ export const handleOperatorTreasuryStatusApi = (
               : Effect.succeed(null),
           rewardDispatch: readRewardDispatchStats(dependencies),
         }).pipe(
-          Effect.map(({ balance, rewardDispatch }) =>
-            noStoreJsonResponse({
+          Effect.map(({ balance, rewardDispatch }) => {
+            // Surface the live single-reward dispatch smoke go/no-go directly on
+            // the operator status response so the runbook's preflight readiness
+            // gate no longer requires the operator to hand-feed these aggregate
+            // stats into the evaluator. The report is public-safe: it carries
+            // only named pass/fail checks and reason refs — never a balance
+            // figure, invoice, destination, or preimage.
+            const rewardDispatchSmokePreflight =
+              rewardDispatch === null
+                ? null
+                : evaluateXClaimRewardSmokePreflight({
+                    balanceMaxSendableSat:
+                      balancePayload(balance)?.maxSendableSat ?? null,
+                    stats: rewardDispatch,
+                  })
+
+            return noStoreJsonResponse({
               balance,
               configured:
                 health === null
@@ -510,10 +528,13 @@ export const handleOperatorTreasuryStatusApi = (
                       serviceToken: health.serviceTokenConfigured,
                     },
               ...(rewardDispatch === null ? {} : { rewardDispatch }),
+              ...(rewardDispatchSmokePreflight === null
+                ? {}
+                : { rewardDispatchSmokePreflight }),
               service: dependencies.serviceLabel ?? 'mdk_treasury',
               state: treasuryState(health),
-            }),
-          ),
+            })
+          }),
         ),
       )
     }),

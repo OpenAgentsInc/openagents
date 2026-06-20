@@ -324,6 +324,111 @@ describe('operator treasury status', () => {
 
     expect(response.status).toBe(503)
   })
+
+  test('surfaces a ready x-claim smoke preflight from dispatch stats', async () => {
+    const response = await run(
+      handleOperatorTreasuryStatusApi(
+        new Request('https://openagents.com/api/operator/treasury/status'),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, { maxSendableSat: 20700 })
+                : jsonResponse(200, healthzPayload(true)),
+            ),
+          readRewardDispatchStats: () =>
+            Promise.resolve({
+              dailySatsCap: 5000,
+              enabled: true,
+              liquidityBufferSats: 500,
+              pendingPaymentCount: 0,
+              perRunRewardCap: 1,
+              requestedDispatchCount: 1,
+              todayReservedSats: 0,
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      rewardDispatchSmokePreflight: {
+        blockingReasonRefs: ReadonlyArray<string>
+        checks: ReadonlyArray<{ name: string; ok: boolean }>
+        ready: boolean
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.rewardDispatchSmokePreflight.ready).toBe(true)
+    expect(body.rewardDispatchSmokePreflight.blockingReasonRefs).toHaveLength(0)
+    expect(
+      body.rewardDispatchSmokePreflight.checks.every(check => check.ok),
+    ).toBe(true)
+    // Public-safe: the preflight report leaks no balance figure or amount.
+    expect(JSON.stringify(body.rewardDispatchSmokePreflight)).not.toContain(
+      '20700',
+    )
+  })
+
+  test('surfaces a blocking x-claim smoke preflight when caps fail', async () => {
+    const response = await run(
+      handleOperatorTreasuryStatusApi(
+        new Request('https://openagents.com/api/operator/treasury/status'),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, { maxSendableSat: 100 })
+                : jsonResponse(200, healthzPayload(true)),
+            ),
+          readRewardDispatchStats: () =>
+            Promise.resolve({
+              dailySatsCap: 5000,
+              enabled: false,
+              liquidityBufferSats: 500,
+              pendingPaymentCount: 1,
+              perRunRewardCap: 1,
+              requestedDispatchCount: 0,
+              todayReservedSats: 0,
+            }),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as {
+      rewardDispatchSmokePreflight: {
+        blockingReasonRefs: ReadonlyArray<string>
+        ready: boolean
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.rewardDispatchSmokePreflight.ready).toBe(false)
+    expect(
+      body.rewardDispatchSmokePreflight.blockingReasonRefs.length,
+    ).toBeGreaterThan(0)
+  })
+
+  test('omits the smoke preflight when no dispatch stats reader is wired', async () => {
+    const response = await run(
+      handleOperatorTreasuryStatusApi(
+        new Request('https://openagents.com/api/operator/treasury/status'),
+        {
+          fetchTreasury: path =>
+            Promise.resolve(
+              path === '/balance'
+                ? jsonResponse(200, { maxSendableSat: 20700 })
+                : jsonResponse(200, healthzPayload(true)),
+            ),
+          requireAdminApiToken: () => Promise.resolve(true),
+        },
+      ),
+    )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect('rewardDispatchSmokePreflight' in body).toBe(false)
+  })
 })
 
 describe('operator treasury funding destination', () => {

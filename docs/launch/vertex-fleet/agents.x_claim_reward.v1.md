@@ -175,6 +175,30 @@ that closes that hole.
   — a "Smoke completion gate (run + row, one go/no-go)" section directing the
   operator to use this composite instead of the row-only builder.
 
+## Follow-up: wire the preflight evaluator into the operator status route (this run)
+
+Every smoke gate above was a pure function exercised only by tests — including
+`evaluateXClaimRewardSmokePreflight`, which the runbook told the operator to feed
+by hand from `GET /api/operator/treasury/status`. That hand-wiring was the last
+manual, error-prone step before arming the live run. This run closes it by
+computing the preflight inside the status route itself.
+
+- `apps/openagents.com/workers/api/src/treasury-routes.ts`
+  — `handleOperatorTreasuryStatusApi` now evaluates
+  `evaluateXClaimRewardSmokePreflight` from the wallet's max sendable balance and
+  the `rewardDispatch` stats and returns it as `rewardDispatchSmokePreflight`
+  (omitted when no dispatch-stats reader is wired). It reuses the existing
+  `balancePayload` parser and emits only the public-safe report (`checks`,
+  `blockingReasonRefs`, `ready`) — never the balance figure, an invoice, a
+  destination, or a preimage. It moves no funds and flips no state.
+- `apps/openagents.com/workers/api/src/treasury-routes.test.ts`
+  — adds an `operator treasury status` cases for the ready preflight (with a
+  no-balance-figure assertion on the serialized report), a blocking preflight
+  when flag/caps/pending fail, and omission when no stats reader is wired.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — the "Preflight readiness gate" section now documents the inline
+  `rewardDispatchSmokePreflight` field and the `ready` go signal.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —

@@ -94,6 +94,14 @@ Feed it the aggregate dispatch stats from
 sendable balance; a non-empty `blockingReasonRefs` means do not start the live
 smoke until each listed reason clears.
 
+As of the 2026-06-20 wiring, the operator no longer needs to run the evaluator
+by hand: `GET /api/operator/treasury/status` now computes the preflight inline
+and returns it as `rewardDispatchSmokePreflight` whenever the dispatch-stats
+reader is wired (it is omitted otherwise). The embedded report is public-safe —
+it carries only the named `checks`, `blockingReasonRefs`, and the `ready`
+boolean, never the balance figure, an invoice, a destination, or a preimage.
+Start the live smoke only when `rewardDispatchSmokePreflight.ready` is `true`.
+
 ## Candidate pre-dispatch gate (per reward)
 
 After the aggregate preflight is green, confirm the *specific* reward row you
