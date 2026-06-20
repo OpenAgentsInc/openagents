@@ -300,3 +300,49 @@ settlement, promise-state, or green-claim authority, and no promise state or
 blocker list was changed. What genuinely remains is identical to the standby
 section above: a real standby promoted into a live run (live heartbeat/vacancy
 telemetry feeding the predicate) producing a published, receipt-backed promotion.
+
+## 2026-06-20 durable checkpoint seal receipt emitter
+
+Blocker advanced: **`blocker.product_promises.durable_checkpoint_seal_missing`**
+(still listed).
+
+The standby-dispatch and curtailment-drill blockers each gained a canonical
+receipt FORMAT (the public-safe artifact the runtime publishes once the real
+operation happens), but the durable-checkpoint-seal blocker had only the
+predicate and the live seal/bootstrap wiring — no receipt emitter — even though
+the public projection already carries a `durableCheckpointSealReceiptAvailable`
+flag with no format behind it. This change supplies that missing emitter,
+mirroring the standby-dispatch and curtailment-drill patterns:
+
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.ts`
+  - `DurableCheckpointSealReceipt` typed, public-safe receipt: window ref,
+    content-addressed checkpoint digest, storage class, replication factor +
+    durable minimum, byte size, optional read-back proof ref,
+    `outcome: 'seal_on_durable_checkpoint'`, a deterministic content-addressed
+    `receiptRef` derived from the window ref + checkpoint digest, and lineage
+    `sourceRefs`.
+  - `buildDurableCheckpointSealReceipt` /
+    `buildUntrustedDurableCheckpointSealReceipt`: re-run the durability predicate
+    and **refuse to emit** (throw `DurableCheckpointSealReceiptUnsafe`) for any
+    non-content-addressed, ephemeral, under-replicated, never-read-back, or
+    malformed seal, so a receipt can never be minted for a non-durable
+    checkpoint.
+- `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.test.ts`
+  - 9 tests: durable seal emits a public-safe receipt; deterministic ref;
+    receipt omits the proof ref when the descriptor has none;
+    non-content-addressed / ephemeral-storage / under-replicated /
+    never-read-back each refuse; well-formed untrusted descriptor builds;
+    malformed untrusted descriptor refuses.
+- `training-marathon-operations.ts` now lists the receipt module in the
+  checkpoint surface `sourceRefs`. All projection flags stay false — no window
+  has been sealed on a real remote content-addressed checkpoint store.
+
+This is the receipt FORMAT only. No window has been sealed on a real remote
+content-addressed checkpoint store, so `durableCheckpointSealReceiptAvailable` /
+`remoteCheckpointStoreReadbackReceiptAvailable` stay false and
+`durable_checkpoint_seal_missing` stays listed. It grants no dispatch,
+settlement, storage-backend, promise-state, or green-claim authority, and no
+promise state or blocker list was changed. What genuinely remains is identical to
+the checkpoint section above: a window sealed end-to-end against a real remote
+content-addressed checkpoint store, with the read-back actually fetched and
+re-hashed, feeding this emitter to produce a published receipt.
