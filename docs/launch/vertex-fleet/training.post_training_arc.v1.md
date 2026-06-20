@@ -4,6 +4,50 @@ Date: 2026-06-20
 
 ---
 
+## 2026-06-20 (c) — public vibe-test rubric projection
+
+Promise: `training.post_training_arc.v1` (stays **planned**; no green flip).
+
+### Blocker advanced
+
+`blocker.product_promises.vibe_test_artifact_missing` — advanced, **not
+cleared**.
+
+The rubric module from the previous pass is now exposed as a public-safe,
+live-at-read projection:
+
+- `GET /api/public/training/post-training-arc/vibe-test-rubric`
+- `apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.ts`
+- `apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.test.ts`
+
+The projection publishes only refs, counts, aggregate stats, gate booleans, and
+the deterministic closeout digest for
+`rubric.training.post_training_arc.vibe_test.v1` /
+`receipt.training.post_training_arc.vibe_test_rubric.fixture_closeout.v1`:
+
+- `rubricAvailable=true`
+- `deterministicCloseoutDigestAvailable=true`
+- `repoOwnedFixtureTranscriptsAvailable=true`
+- `closeoutAcceptable=true`
+- `realModelTranscriptArtifactAvailable=false`
+- `reviewerSignedCloseoutAvailable=false`
+- `vibeTestArtifactAvailable=false`
+- `greenGateSatisfied=false`
+
+Registry version `2026-06-20.44` cites this projection as evidence. It does not
+clear `vibe_test_artifact_missing`, because the closeout still uses repo-owned
+fixture text rather than real Psion model transcripts and has no reviewer
+signature.
+
+### Honesty boundary
+
+No assignment, spend, settlement, model promotion, fine-tuning service, reviewed
+vibe-test artifact, or green transition is created. The remaining vibe-test gate
+is a reviewer-signed closeout over real model transcripts, referenced from the
+post-training closeout artifact.
+
+---
+
 ## 2026-06-20 (b) — vibe-test rubric reference module
 
 Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no

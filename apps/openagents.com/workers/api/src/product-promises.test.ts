@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.43')
+    expect(decoded.version).toBe('2026-06-20.44')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -106,6 +106,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/training.post_training_arc.v1.md',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.public_distributed_training_run.v1.md',
@@ -275,6 +278,8 @@ describe('public product promises document', () => {
     // projection but keeps the network-scale receipt blocker active.
     // The 2026-06-20.43 largest-run claim pass adds a public benchmark
     // projection but keeps the contributor-receipts blocker active.
+    // The 2026-06-20.44 vibe-test rubric pass adds a public deterministic
+    // closeout projection but keeps the reviewed-artifact blocker active.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -449,10 +454,15 @@ describe('public product promises document', () => {
             'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
             'route:/api/public/training/post-training-arc/instruct-sft-lane',
             'route:/api/public/training/post-training-arc/dpo-preference-workload',
+            'route:/api/public/training/post-training-arc/vibe-test-rubric',
             'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
             'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
             'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.ts',
             'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.test.ts',
+            'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.ts',
+            'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.test.ts',
+            'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.ts',
+            'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts',
             'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts',
             'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts',
             'https://github.com/OpenAgentsInc/psionic/blob/main/scripts/check-psion-instruct-sft-lane.sh',
@@ -1177,10 +1187,15 @@ describe('public product promises document', () => {
         'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
         'route:/api/public/training/post-training-arc/instruct-sft-lane',
         'route:/api/public/training/post-training-arc/dpo-preference-workload',
+        'route:/api/public/training/post-training-arc/vibe-test-rubric',
         'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
         'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.test.ts',
         'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.ts',
         'apps/openagents.com/workers/api/src/training-post-training-dpo-preference-workload.test.ts',
+        'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.ts',
+        'apps/openagents.com/workers/api/src/training-post-training-vibe-test-rubric.test.ts',
+        'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.ts',
+        'apps/openagents.com/workers/api/src/post-training-vibe-test-rubric.test.ts',
         'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.ts',
         'apps/openagents.com/workers/api/src/cs336-a5-dpo-preference-workload.test.ts',
         'https://github.com/OpenAgentsInc/psionic/pull/1132',
@@ -1202,6 +1217,9 @@ describe('public product promises document', () => {
     expect(postTrainingPromise?.safeCopy).toContain(
       'deterministicReferenceWorkloadAvailable=true',
     )
+    expect(postTrainingPromise?.safeCopy).toContain(
+      'vibeTestArtifactAvailable=false',
+    )
     expect(postTrainingPromise?.verification).toContain(
       'clears blocker.product_promises.instruct_sft_fixture_sync_missing',
     )
@@ -1210,6 +1228,9 @@ describe('public product promises document', () => {
     )
     expect(postTrainingPromise?.verification).toContain(
       'blocker.product_promises.preference_rollout_work_missing remains',
+    )
+    expect(postTrainingPromise?.verification).toContain(
+      'blocker.product_promises.vibe_test_artifact_missing remains',
     )
     expect(postTrainingPromise?.authorityBoundary).toContain(
       'not a model-quality',
@@ -1246,12 +1267,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.43', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.44', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.43',
+      expectedVersion: '2026-06-20.44',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.43',
+      servedVersion: '2026-06-20.44',
       status: 'ready',
     })
     expect(
@@ -1261,7 +1282,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.43',
+      servedVersion: '2026-06-20.44',
       status: 'blocked',
     })
   })

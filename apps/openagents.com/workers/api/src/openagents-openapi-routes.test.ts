@@ -224,6 +224,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/post-training-arc/vibe-test-rubric',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingPostTrainingVibeTestRubric')
+    expect(
+      operationAt(
+        body,
         '/api/public/models/tassadar-percepta-executor/architecture-receipts',
         'get',
       ).operationId,
@@ -662,6 +669,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/public-gradient-windows',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/post-training-arc/vibe-test-rubric',
         'get',
       ).security,
     ).toEqual([])
