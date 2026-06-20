@@ -9,6 +9,7 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
+import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
 
 export const TrainingFullPipelineProgramEndpoint =
@@ -162,18 +163,20 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
       'The bounded live run has canary-scale accepted and settled receipts; network-scale broad receipts remain missing.',
   },
   {
-    endpointRefs: [],
+    endpointRefs: [TrainingMarathonOperationsEndpoint],
     evidenceRefs: [
+      'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+      'apps/openagents.com/workers/api/src/training-marathon-operations.ts',
       'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
       'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
       'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
     ],
     promiseId: 'training.marathon_operations.v1',
-    receiptState: 'contract_only',
+    receiptState: 'partial_receipt_surface_live',
     role: 'Durable seals, standby contributors, restart criteria, and curtailment drill.',
     stageId: 'marathon_operations',
     statusLabel:
-      'Seal/bootstrap contracts exist; durable remote checkpoint storage, standby dispatch, and curtailment drill receipts remain missing.',
+      'Seal/bootstrap and standby predicates are publicly projected; durable remote checkpoint read-back, live standby promotion, and curtailment drill receipts remain missing.',
   },
   {
     endpointRefs: [

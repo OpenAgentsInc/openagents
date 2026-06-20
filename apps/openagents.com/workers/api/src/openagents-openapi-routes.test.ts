@@ -168,6 +168,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/public/training/marathon-operations',
+        'get',
+      ).operationId,
+    ).toBe('getTrainingMarathonOperationsStatus')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/model-ladder-rungs',
         'get',
       ).operationId,
@@ -606,6 +613,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/public/training/verification-challenges/{challengeRef}',
+        'get',
+      ).security,
+    ).toEqual([])
+    expect(
+      operationAt(
+        body,
+        '/api/public/training/marathon-operations',
         'get',
       ).security,
     ).toEqual([])
