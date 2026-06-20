@@ -24,6 +24,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { type BudgetEstimate, estimateBudgetCapacity } from './budget-estimate'
 import { type CostEstimate, estimateRequestCost } from './cost-estimate'
 
 export type QuoteDeps = Readonly<{
@@ -48,6 +49,12 @@ const QuoteRequestBody = S.Struct({
   cachedPromptTokens: S.optionalKey(S.Number),
   fundingKind: S.optionalKey(S.Literals(['card', 'bitcoin'])),
   batch: S.optionalKey(S.Boolean),
+  // BUDGET (affordability) MODE — purely additive. When present, the same
+  // request shape is priced once and divided into this credit budget, so the
+  // response answers the INVERSE question ("how many such requests does N
+  // credits buy?") via `estimateBudgetCapacity`. When omitted, the route returns
+  // the per-request `CostEstimate` exactly as before (backward compatible).
+  budgetCredits: S.optionalKey(S.Number),
 })
 
 const decodeBody = (value: unknown): typeof QuoteRequestBody.Type | undefined => {
@@ -93,9 +100,9 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
       return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
     }
 
-    // Spread the optional knobs only when set so `exactOptionalPropertyTypes`
-    // never sees an explicit `undefined`.
-    const estimate: CostEstimate = estimateRequestCost({
+    // Shared knobs for both modes. Spread the optionals only when set so
+    // `exactOptionalPropertyTypes` never sees an explicit `undefined`.
+    const shared = {
       completionTokens: body.completionTokens,
       fundingKind: body.fundingKind ?? 'card',
       model: body.model,
@@ -105,7 +112,21 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
         : {}),
       ...(body.batch !== undefined ? { batch: body.batch } : {}),
       ...(deps.margin !== undefined ? { margin: deps.margin } : {}),
-    })
+    } as const
+
+    // BUDGET MODE: when a credit budget is supplied, answer the inverse
+    // affordability question. The response embeds the same per-request
+    // `CostEstimate` under `perRequest`, so a token-mode client still gets it.
+    if (body.budgetCredits !== undefined) {
+      const budget: BudgetEstimate = estimateBudgetCapacity({
+        ...shared,
+        budgetCredits: body.budgetCredits,
+      })
+      return noStoreJsonResponse(budget)
+    }
+
+    // TOKEN MODE (default, unchanged): the per-request cost quote.
+    const estimate: CostEstimate = estimateRequestCost(shared)
 
     return noStoreJsonResponse(estimate)
   })

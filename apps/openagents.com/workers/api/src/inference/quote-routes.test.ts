@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
+import { estimateBudgetCapacity } from './budget-estimate'
 import { estimateRequestCost } from './cost-estimate'
 import { MODEL_PRICING_TABLE } from './pricing'
 import { handleQuote } from './quote-routes'
@@ -108,6 +109,44 @@ describe('handleQuote', () => {
     expect(card.fundingDiscountUsd).toBe(0)
     expect(btc.fundingDiscountUsd).toBeGreaterThan(0)
     expect(btc.estimatedChargeUsd).toBeLessThan(card.estimatedChargeUsd)
+  })
+
+  it('serves a budget (affordability) quote when budgetCredits is supplied', async () => {
+    const input = {
+      budgetCredits: 5_000,
+      completionTokens: 500,
+      fundingKind: 'card' as const,
+      model: servedModel,
+      promptTokens: 1_000,
+    }
+    const response = await run(post(input), { enabled: true })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const body = await response.json()
+    // Thin surface over the pure budget estimator: byte-for-byte equal.
+    expect(body).toEqual(estimateBudgetCapacity(input))
+    const typed = body as {
+      affordableRequests: number
+      perRequest: { isEstimate: boolean }
+      isEstimate: boolean
+    }
+    expect(typed.isEstimate).toBe(true)
+    // The per-request estimate is still embedded for token-mode clients.
+    expect(typed.perRequest.isEstimate).toBe(true)
+    expect(typed.affordableRequests).toBeGreaterThan(0)
+  })
+
+  it('omitting budgetCredits keeps the per-request quote shape (backward compatible)', async () => {
+    const input = {
+      completionTokens: 500,
+      fundingKind: 'card' as const,
+      model: servedModel,
+      promptTokens: 1_000,
+    }
+    const response = await run(post(input), { enabled: true })
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body).toEqual(estimateRequestCost(input))
+    expect(body.affordableRequests).toBeUndefined()
   })
 
   it('clamps sloppy (negative/fractional) token inputs to a safe quote', async () => {
