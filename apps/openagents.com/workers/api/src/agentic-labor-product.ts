@@ -459,6 +459,111 @@ export const planSelfServeLaborProductOrder = (
   })
 
 // ---------------------------------------------------------------------------
+// Forward-only flow transition (PURE, INERT)
+// ---------------------------------------------------------------------------
+//
+// Advances the real-sale-receipt blocker
+// (blocker.product_promises.agentic_labor_product_real_sale_receipt_missing) by
+// supplying the MISSING CONNECTIVE TISSUE between the self-serve order path
+// (which yields an `ordered`-stage plan) and the settlement seam (which only
+// acts on a `delivered` plan). Before this there was no typed way to carry an
+// ordered order forward through `dispatch` -> `deliver`; the seam could never be
+// reached from a self-serve order. This transition is PURE and INERT: it
+// dispatches no worker, performs no delivery effect, moves no money, and writes
+// no receipt — it only computes the next coherent flow plan, preserving the
+// order's identity (orderId, listing, buyer, and the public-safe would-be
+// receipt ref). It does NOT clear the blocker: a real external sale carried to a
+// settled receipt under an armed, owner-signed seam is still required for green.
+
+/**
+ * A forward-only transition step for a labor-product flow:
+ *   - `dispatch` assigns the worker an `ordered` order is dispatched to;
+ *   - `deliver` attaches the delivered artifact ref to a `dispatched` order.
+ * Each step advances the lifecycle by exactly one stage; there is no step that
+ * skips, reverses, or settles (settlement is the owner-gated seam, not a plan
+ * transition).
+ */
+export type LaborProductFlowTransition =
+  | Readonly<{ kind: 'dispatch'; workerRef: string }>
+  | Readonly<{ kind: 'deliver'; artifactRef: string }>
+
+/**
+ * Advance a labor-product flow plan by exactly one lifecycle stage. PURE and
+ * INERT: nothing is dispatched, delivered, metered, or settled — it returns the
+ * next coherent flow plan (rebuilt through the same `buildLaborProductFlowPlan`
+ * validator so every coherence guarantee holds) or a validation error.
+ *
+ * Forward-only:
+ *   - `dispatch` requires the flow to be `ordered` and a non-empty workerRef;
+ *     it yields a `dispatched` plan naming that worker.
+ *   - `deliver` requires the flow to be `dispatched` and a non-empty artifactRef;
+ *     it yields a `delivered` plan carrying that artifact (the only stage the
+ *     settlement seam acts on), preserving the dispatched worker.
+ * The order's identity (orderId, listing, buyerRef, createdAt, and the derived
+ * settlement receipt ref) is carried unchanged across the transition.
+ */
+export const advanceLaborProductFlow = (
+  plan: LaborProductFlowPlan,
+  transition: LaborProductFlowTransition,
+):
+  | { ok: true; plan: LaborProductFlowPlan }
+  | { ok: false; error: LaborProductValidationError } => {
+  if (transition.kind === 'dispatch') {
+    if (plan.stage !== 'ordered') {
+      return {
+        ok: false,
+        error: new LaborProductValidationError({
+          reason: `dispatch requires an ordered flow; flow is ${plan.stage}`,
+        }),
+      }
+    }
+    if (!isNonEmpty(transition.workerRef)) {
+      return {
+        ok: false,
+        error: new LaborProductValidationError({
+          reason: 'dispatch requires a non-empty workerRef',
+        }),
+      }
+    }
+    return buildLaborProductFlowPlan({
+      orderId: plan.orderId,
+      buyerRef: plan.buyerRef,
+      listing: plan.listing,
+      stage: 'dispatched',
+      workerRef: transition.workerRef,
+      artifactRef: null,
+      createdAt: plan.createdAt,
+    })
+  }
+
+  if (plan.stage !== 'dispatched') {
+    return {
+      ok: false,
+      error: new LaborProductValidationError({
+        reason: `deliver requires a dispatched flow; flow is ${plan.stage}`,
+      }),
+    }
+  }
+  if (!isNonEmpty(transition.artifactRef)) {
+    return {
+      ok: false,
+      error: new LaborProductValidationError({
+        reason: 'deliver requires a non-empty artifactRef',
+      }),
+    }
+  }
+  return buildLaborProductFlowPlan({
+    orderId: plan.orderId,
+    buyerRef: plan.buyerRef,
+    listing: plan.listing,
+    stage: 'delivered',
+    workerRef: plan.workerRef,
+    artifactRef: transition.artifactRef,
+    createdAt: plan.createdAt,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Read-only store + public projection
 // ---------------------------------------------------------------------------
 
