@@ -76,3 +76,39 @@ needs a **real** sale, not a typed carry-through:
 
 This run made the carry-through *expressible and tested*; it did not produce a
 real settled sale, so the blocker stays listed.
+
+## Follow-up run (2026-06-20): settled-receipt recording
+
+The carry-through previously stopped at the settlement seam's RESULT: nothing
+turned a `settled` result into the lifecycle's terminal `settled` stage or into a
+dereferenceable receipt artifact. The `settled` stage existed in the enum but was
+**never produced anywhere**, and there was no receipt object a claim-upgrade
+review could dereference.
+
+This run adds the last connective piece:
+
+- `recordLaborProductSettlement(plan, result)` in
+  `apps/openagents.com/workers/api/src/agentic-labor-product.ts` — a **pure**
+  transform of a genuine settlement into:
+  - a `settled`-stage flow plan (rebuilt through `buildLaborProductFlowPlan`, so
+    coherence holds), and
+  - a typed, public-safe `LaborProductSettlementReceipt`
+    (`openagents.agentic_labor_product.settlement_receipt.v1`) carrying the
+    dereferenceable `receiptRef`, neutral seller/buyer/account refs, the `labor`
+    stream, and `settled: true`.
+  - It rejects anything that is not a genuine metered settlement (non-`settled`
+    seam result, unmetered/zero-charge outcome, receipt-ref mismatch, or an
+    order that was never delivered), so a receipt is only minted when money
+    actually moved.
+  - The receipt is honestly **not** marked `inert` (a real settlement moved
+    money) but stays `promiseState: 'yellow'` — one settled order does not flip
+    the promise.
+
+Tests: new `recordLaborProductSettlement (PURE)` block in
+`agentic-labor-product.test.ts` covering the happy path, all four rejection
+guards, and the full `order -> dispatch -> deliver -> settle -> receipt`
+carry-through.
+
+This does **not** clear the blocker: it only makes a settlement *recordable*. A
+real external sale (demand provenance) settled under an armed, owner-signed seam
+with a published receipt is still required for green.
