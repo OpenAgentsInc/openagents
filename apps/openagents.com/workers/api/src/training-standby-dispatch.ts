@@ -37,7 +37,9 @@ export const StandbyDispatchSchemaVersion =
  */
 export const MaxStandbyHeartbeatStalenessMs = 120_000
 
-const PublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+export const StandbyDispatchPublicSafeRefPattern =
+  /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
+const PublicSafeRefPattern = StandbyDispatchPublicSafeRefPattern
 const PublicSafeRef = S.Trim.check(
   S.isNonEmpty(),
   S.isMinLength(3),
