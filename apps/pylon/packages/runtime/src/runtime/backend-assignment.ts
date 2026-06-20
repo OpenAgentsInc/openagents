@@ -28,7 +28,7 @@ import {
 } from "../runner/identity.js";
 import { type ProbePublicProjectionUnsafe } from "../contracts/provider-account.js";
 import { type ProbeBackendRegistryError } from "../backends/registry.js";
-import { makeProbeLlmRequest } from "../llm";
+import { makeProbeLlmRequest } from "../llm/index.js";
 import {
   bestEffortRecordProbeTokenUsageEvent,
   makeAppleFmProbeTokenUsageEvent,

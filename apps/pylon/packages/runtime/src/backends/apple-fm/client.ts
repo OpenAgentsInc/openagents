@@ -5,9 +5,7 @@ import {
   AppleFmChatCompletionResponse,
   AppleFmStreamSnapshotEvent,
   AppleFmHealthResponse,
-  type AppleFmChatCompletionResponse,
   type AppleFmChatMessage,
-  type AppleFmHealthResponse,
   type AppleFmUnavailableReason,
   type AppleFmUsageMeasurement,
 } from "./contract.js";

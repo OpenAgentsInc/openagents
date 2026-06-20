@@ -40,7 +40,7 @@ import {
   loadBlueprintSignatureRegistry,
   lookupBlueprintSignatures,
   planProbeToolMenu,
-} from "./blueprint";
+} from "./blueprint/index.js";
 import {
   defineProbeLlmTool,
   makeProbeLlmMessage,
@@ -50,7 +50,7 @@ import {
   type ProbeLlmMessage,
   type ProbeLlmRequest,
   type ProbeLlmTools,
-} from "./llm";
+} from "./llm/index.js";
 import { PROBE_APPLE_FM_BACKEND_CAPABILITY } from "./runner/identity.js";
 import { makeOmegaAccountClient, type OmegaAccountClient } from "./omega/account-client.js";
 import { resolveCodexGrantResolveEndpoint } from "./omega/grant-client.js";

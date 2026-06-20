@@ -1,6 +1,6 @@
 import { Schema as S } from "effect";
-import { ProbeLlmMessage, makeProbeLlmMessage, type ProbeLlmMessageInput } from "./messages";
-import { ProbeLlmToolDefinition } from "./tool";
+import { ProbeLlmMessage, makeProbeLlmMessage, type ProbeLlmMessageInput } from "./messages.js";
+import { ProbeLlmToolDefinition } from "./tool.js";
 
 export const ProbeLlmGenerationOptions = S.Struct({
   maxTokens: S.optional(S.Number),

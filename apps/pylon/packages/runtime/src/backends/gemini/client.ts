@@ -16,7 +16,7 @@ import {
   makeProbeLlmToolResult,
   type ProbeLlmEvent,
   type ProbeLlmRequest,
-} from "../../llm";
+} from "../../llm/index.js";
 import { dispatchProbeLlmTool } from "../../llm/tool-runtime.js";
 import { type ProbeLlmTools } from "../../llm/tool.js";
 import {

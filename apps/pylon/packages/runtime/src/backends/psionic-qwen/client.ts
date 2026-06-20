@@ -9,15 +9,13 @@ import {
   makeProbeLlmToolResult,
   type ProbeLlmEvent,
   type ProbeLlmRequest,
-} from "../../llm";
+} from "../../llm/index.js";
 import { dispatchProbeLlmTool } from "../../llm/tool-runtime.js";
 import { type ProbeLlmTools } from "../../llm/tool.js";
 import {
   PSIONIC_QWEN_SUPPORTED_ENDPOINT_REFS,
   PsionicQwenHealthResponse,
   PsionicQwenModelListResponse,
-  type PsionicQwenHealthResponse,
-  type PsionicQwenModelListResponse,
 } from "./contract.js";
 import {
   admitPsionicQwenModelRows,
