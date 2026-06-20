@@ -292,7 +292,15 @@ const budgetChecks = [
     // handler returns `Response` directly (wrapped in `Effect.succeed` at the
     // mount). Ratchet back down when these public-projection handlers are
     // extracted behind shared route mappers.
-    budget: 93,
+    // +1 (93 -> 94) for the marketplace work-class catalog surface
+    // (marketplace-work-class-catalog-routes.ts,
+    // autopilot.control_center_fanout_marketplace.v1, yellow): a read-only
+    // registry projection of the listable marketplace work classes that always
+    // reports the still-uncleared plugin-marketplace-beyond-code_task blocker and
+    // clears nothing. It returns `Effect.Effect<Response>` like the sibling
+    // public read handlers. Ratchet back down when these public-projection
+    // handlers are extracted behind shared route mappers.
+    budget: 94,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -634,6 +642,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/self-serve-fanout.ts',
     route: '/api/public/autopilot/self-serve-fanout',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/marketplace-work-class-catalog.ts',
+    route: '/api/public/autopilot/marketplace-work-classes',
     status: 'staleness_declared',
   },
   {

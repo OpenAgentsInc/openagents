@@ -61,3 +61,19 @@ flip a class to `live` against (per `proof.claim_upgrade_receipts.v1`).
 - `workers/api/src/marketplace-work-class-catalog.test.ts` — 9 tests
   (live/inert split, invariant rejection of an over-claiming live class,
   duplicate/missing-live rejection, honest projection)
+- `workers/api/src/marketplace-work-class-catalog-routes.ts` — public read-only
+  route `GET /api/public/autopilot/marketplace-work-classes` exposing the catalog
+  projection (optional `?workClass=` narrows to one class). No flag/store; honest
+  envelope (yellow/inert, plugin blocker uncleared) on every response.
+- `workers/api/src/marketplace-work-class-catalog-routes.test.ts` — 4 route tests
+  (non-GET 405, honest listing, `?workClass=` narrowing, unknown-id → null)
+- Wired into `workers/api/src/index.ts` route table (read-only, no env).
+
+## 2026-06-20 follow-up — catalog made observable
+
+The catalog projection previously had no public surface; a reviewer could only
+see it via unit tests. This change exposes it at
+`GET /api/public/autopilot/marketplace-work-classes` (read-only, alongside
+`/api/public/autopilot/self-serve-fanout`). The blocker still STAYS uncleared —
+the route reports `pluginMarketplaceBeyondCodeTaskLive: false` and lists the
+plugin classes as `inert_scaffold` on every response.
