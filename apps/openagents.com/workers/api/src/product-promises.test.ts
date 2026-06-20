@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-19.7')
+    expect(decoded.version).toBe('2026-06-19.8')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -108,10 +108,10 @@ describe('public product promises document', () => {
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
     )
-    // Honest green count: no green flip may land without a dereferenceable
     // receipt. The Episode 239 records (registry 2026-06-19.6) are all
-    // red/planned, and the 2026-06-19.7 scaffold-advancement passes flip
-    // nothing, so the green count must stay exactly 20.
+    // red/planned; the 2026-06-19.7 scaffold-advancement pass and the
+    // 2026-06-19.8 weekend-promise-assault pass (evidence docs + an inert
+    // capability) flip nothing, so the green count must stay exactly 20.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(20)
@@ -577,16 +577,70 @@ describe('public product promises document', () => {
     )
   })
 
+  test('weekend pylon promise assault attaches evidence without flipping any state', () => {
+    const document = publicProductPromisesDocument()
+    const byId = new Map(
+      document.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    // The ten non-green pylon.* promises keep their non-green states: this
+    // pass assembled evidence + an inert capability only, never a green flip.
+    const nonGreenPylonStates: Record<string, string> = {
+      'pylon.v03_release_candidate.v1': 'yellow',
+      'pylon.release_tomorrow.v1': 'yellow',
+      'pylon.first_real_model_training_run.v1': 'yellow',
+      'pylon.largest_decentralized_training_claim.v1': 'red',
+      'pylon.consumer_compute_earns_bitcoin_self_serve.v1': 'red',
+      'pylon.v0_3_multi_earning_node.v1': 'red',
+      'pylon.five_bitcoin_revenue_streams.v1': 'planned',
+      'pylon.compute_revenue_modes.v1': 'planned',
+      'pylon.data_trace_revenue.v1': 'planned',
+      'pylon.gepa_worker_loop_v03.v1': 'planned',
+    }
+    for (const [promiseId, expectedState] of Object.entries(
+      nonGreenPylonStates,
+    )) {
+      const promise = byId.get(promiseId)
+      expect(promise, `missing promise ${promiseId}`).toBeDefined()
+      expect(promise?.state).toBe(expectedState)
+      // Each non-green pylon promise now has the assault assessment as a
+      // dereferenceable evidence home.
+      expect(promise?.evidenceRefs).toContain(
+        'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+      )
+    }
+
+    // The participant/scale methodology + comparable-runs research are attached
+    // to the largest-run and consumer-self-serve promises.
+    expect(
+      byId.get('pylon.largest_decentralized_training_claim.v1')?.evidenceRefs,
+    ).toEqual(
+      expect.arrayContaining([
+        'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+        'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+      ]),
+    )
+    expect(
+      byId.get('pylon.consumer_compute_earns_bitcoin_self_serve.v1')
+        ?.evidenceRefs,
+    ).toEqual(
+      expect.arrayContaining([
+        'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+        'apps/pylon/src/spark-helper-autostart.ts',
+      ]),
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-19.7', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-19.8', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-19.7',
+      expectedVersion: '2026-06-19.8',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-19.7',
+      servedVersion: '2026-06-19.8',
       status: 'ready',
     })
     expect(
@@ -596,7 +650,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-19.7',
+      servedVersion: '2026-06-19.8',
       status: 'blocked',
     })
   })

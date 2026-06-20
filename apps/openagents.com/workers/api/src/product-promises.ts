@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-19.7'
+export const PublicProductPromisesVersion = '2026-06-19.8'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -405,10 +405,13 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/package.json',
           'apps/pylon/scripts/build-rc-binaries.sh',
           'apps/oa-updates/keys/release-pubkey.json',
+          'apps/oa-updates/docs/release-signing-runbook.md',
+          'apps/oa-updates/scripts/publish-pylon-release.ts',
           'apps/openagents.com/apps/web/public/INSTALL.md',
           'forum:release-candidates',
           'apps/pylon/docs/launch-gates-no-overclaim.md',
           'docs/autopilot-coder/2026-06-15-rc-tester-install-guide.md',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v1_live_network_smokes_incomplete',
@@ -435,6 +438,9 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/scripts/build-rc-binaries.sh',
           'apps/openagents.com/apps/web/public/INSTALL.md',
           'apps/pylon/docs/launch-gates-no-overclaim.md',
+          'apps/pylon/docs/platform-support.md',
+          'apps/oa-updates/docs/release-signing-runbook.md',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v1_signed_binary_feed_rollout_incomplete',
@@ -465,6 +471,7 @@ export const publicProductPromisesDocument = () => {
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
           'directive.owner.20260611.no_inference_focus_tassadar',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.model_ladder_network_rungs_not_run',
@@ -558,6 +565,9 @@ export const publicProductPromisesDocument = () => {
           'docs/transcripts/223.md',
           'docs/transcripts/236.md',
           'docs/promises/registry.md',
+          'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+          'docs/training/2026-06-19-comparable-decentralized-training-runs-research.md',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.largest_training_participant_methodology_missing',
@@ -565,7 +575,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.public_training_contributor_receipts_missing',
         ],
         verification:
-          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable.',
+          'Green requires participant count methodology, run definition, training evidence, accepted-work receipts, public verification, and a comparison rule that is current and comparable. The qualified-contributor counting rule is now written and dereferenceable (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts) and the comparable runs are documented with citations (docs/training/2026-06-19-comparable-decentralized-training-runs-research.md: Templar Covenant-72B ~70 contributors, ~200 is the transcript target). This clears the methodology and comparable-evidence gaps as written evidence only; the promise stays red because the live run has two counted contributors, far below the comparable scale, so public_training_contributor_receipts_missing is unmet. No green flip without an actual comparable-scale run and an owner-signed receipt-first upgrade.',
         authorityBoundary:
           'Marketing comparisons do not grant proof. Public copy must degrade to the receipts actually available.',
       },
@@ -652,6 +662,11 @@ export const publicProductPromisesDocument = () => {
           'https://openagents.com/INSTALL.md',
           'https://registry.npmjs.org/@openagentsinc/pylon',
           'proof_replay_bundle.public_activity.73e66071',
+          'docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+          'apps/pylon/src/spark-helper-autostart.ts',
+          'apps/pylon/src/spark-helper-autostart.test.ts',
+          'apps/pylon/docs/platform-support.md',
           'promise:training.decentralized_training_launch.v1',
           'promise:pylon.v03_release_candidate.v1',
           'promise:pylon.install_without_wallet_knowledge.v1',
@@ -663,7 +678,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.spark_helper_autostart_receipt_missing',
         ],
         verification:
-          'Do not upgrade to green until the current default install path, platform coverage, helper readiness, and scale methodology all match the public copy. Evidence now includes npm latest=1.0.5 (2026-06-19), bounded run settlements, and the #5438 auto-stream visibility capture. Green still requires: (1) a current documented install path proven on the platforms named by the copy, including Windows/WSL before using broad "anybody" wording; (2) Spark-helper auto-start/readiness evidence for normal contributors; (3) replay/receipt evidence for more than one normal contributor, not a single captured sequence; and (4) a participant/scale methodology before any broad earning copy. Upgrade receipt-first per proof.claim_upgrade_receipts.v1.',
+          'Do not upgrade to green until the current default install path, platform coverage, helper readiness, and scale methodology all match the public copy. Evidence now includes npm latest=1.0.5 (2026-06-19), bounded run settlements, the #5438 auto-stream visibility capture, a written participant/scale methodology (docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md, enforced in training-run-window-authority.ts), and an INERT flag-gated Spark-helper autostart readiness capability with a public-safe receipt builder (apps/pylon/src/spark-helper-autostart.ts, default off via PYLON_SPARK_AUTOSTART, 9 tests). Green still requires: (1) a current documented install path proven on the platforms named by the copy — Windows/WSL is a deliberate owner scope-out (apps/pylon/docs/platform-support.md), so the honest path is narrowing broad "anybody on any platform" wording to macOS/Linux, not building Windows support; (2) a real Spark-helper autostart-ready receipt captured for at least one normal contributor on the self-serve path (the capability is now built INERT; it must actually fire); (3) replay/receipt evidence for more than one normal contributor, not a single captured sequence; and (4) the participant/scale methodology applied before any broad earning copy. Upgrade receipt-first per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'A proven loop, two counted bounded settlements, one auto-stream visibility capture, and a v1.0 npm default do not authorize an unqualified self-serve consumer-compute earning claim, every-platform copy, automatic-payout authority, or network-scale earning copy.',
       },
@@ -809,6 +824,7 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/4652',
           'apps/openagents.com/docs/2026-06-08-pylon-agentic-revenue-gap-audit.md',
           'apps/pylon/docs/2026-06-09-pylon-v0.3-launch-promise-reconfiguration-audit.md',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.compute_stream_not_broadly_live',
@@ -840,6 +856,7 @@ export const publicProductPromisesDocument = () => {
           'promise:pylon.five_bitcoin_revenue_streams.v1',
           'promise:forum.content_tipping.v1',
           'promise:pylon.install_without_wallet_knowledge.v1',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.pylon_v1_default_install_not_fully_closed',
@@ -872,6 +889,7 @@ export const publicProductPromisesDocument = () => {
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'transition:promise_transition_4ba43958-3084-4c90-ab0d-10562a863117',
           'directive.owner.20260611.no_inference_focus_tassadar',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: ['blocker.product_promises.live_gepa_network_missing'],
         verification:
@@ -895,6 +913,8 @@ export const publicProductPromisesDocument = () => {
           'transition:promise_transition_6e6c3f7c-92f8-4e9a-b82c-f28c6271b396',
           'directive.owner.20260611.focus_tassadar_psion_cs336',
           'apps/openagents.com/docs/2026-06-08-data-trace-marketplace-gate.md',
+          'apps/pylon/src/proof-redaction.ts',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: ['blocker.product_promises.settled_trace_sale_missing'],
         verification:
@@ -1598,6 +1618,7 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/packages/runtime/src/benchmark',
           'apps/pylon/docs/2026-06-10-v03-live-worker-loop-smoke.md#recheck-2026-06-11-0110-utc',
           'promise_transition_d0f7edc5-1688-4039-bcdf-8971b79512ef',
+          'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
         ],
         blockerRefs: [
           'blocker.product_promises.paid_gepa_settlement_v03_missing',
@@ -3247,6 +3268,7 @@ export const publicProductPromisesDocument = () => {
       'The OpenAgents inference gateway / Agent Cloud vision (docs/inference/, EPIC #5474 + sub-EPIC #5475 + children #5476-#5491) is recorded across five records at registry 2026-06-19.4: it is roadmap, not a shipped product. There is no live inference API, no inference credit balance, and no customer-buyable inference today. The single piece with real evidence is a VERIFIED Fireworks provider connection (a real usage-returning OpenAI-compatible call on an OpenAgents-held key), which is upstream reachability and a cost basis only — not a sellable inference product, and deliberately not green. Cross-category referral-on-everything-forever and the one-balance one-stop Agent Cloud are design intent. Report inference-product copy gaps in the Product Promises Forum.',
       'Registry 2026-06-19.6 makes the registry reflect Episode 239 ("Let\'s Make Money" / Closing the Revenue Loop, docs/transcripts/239.md) HONESTLY, and flips NO existing promise — the green count stays 20. It adds nine conservative new records, all red or planned, never green: referral.refer_once_earn_forever.v1 (red — the ecosystem-wide refer-once-earn-forever vision; only the Sites 5% ledger is wired and it has settled NO real payout, distinct from the planned inference referral slice); autopilot.all_in_one_business_system.v1 (planned — Autopilot-as-composed-business-system); cloud.primitives_suite.v1 (planned — the inference/fine-tuning/training/agentic-tasks/sandbox/web-services primitive set as one buyable suite); cloud.fine_tuning_service.v1 (red — fine-tuning as a sellable primitive, unbuilt); cloud.sandbox_compute_service.v1 (red — sandbox compute as a sellable primitive, unbuilt); markets.open_protocol_markets.v1 (planned — the six Episode 213 markets compute/data/labor/liquidity/risk/verification; labor and verification are green only in their own bounded scopes, liquidity and risk are unbuilt); marketplace.compose_and_list_products.v1 (planned — build-your-own-product-and-list-it-for-sale); marketplace.monetize_any_layer_with_referral.v1 (planned — sell access to any layer + earn referrals, never waiving the no-resale invariant for subscription accounts); and the two PURSUED, aspirational world firsts claims.pursued_world_first_largest_agentic_sales_force.v1 and claims.pursued_world_first_largest_sales_force.v1 (both planned and intentionally never-green-from-aspiration — the video states them as pursuits, not achievements). The headline gap to make the video real is wiring the referral payout end-to-end (a real paid event -> the wired ledger -> a dispatched MDK/Spark settlement -> a dereferenceable receipt). Sources: docs/transcripts/239.md, docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md, docs/launch/2026-06-19-credits-purchase-collect-money-audit.md, docs/launch/2026-06-19-near-term-product-priorities.md. No promise_transition is required (new red/planned records create no state flip); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Registry 2026-06-19.7 advances the Episode 239 revenue scaffolds toward real WITHOUT flipping any promise — the green count is unchanged and every touched promise stays red/planned. (1) It closes the gap between the two siloed referral scaffolds: marketplace-monetize-any-layer.ts only PLANNED a cut (pure, no ledger path) and referral-cross-category-accrual.ts was the category-agnostic ledger entry point with no caller. The new marketplace-monetize-any-layer-accrual.ts bridges them — it runs the SAME no-resale / asset-boundary / self-referral guards, and ONLY when the flag is armed AND the plan is authorized does it feed the qualifying spend (msat -> whole sats) into the ONE RL-1 ledger via accrueCrossCategoryReferral, paying the referee\'s ATTRIBUTED referrer (never a seller-asserted one), idempotent per (layer, event). It is FLAG-GATED INERT: the default path computes the plan and touches no ledger, and even when armed it records eligibility only — settlement stays on the readiness-gated, owner-armed dispatch rail. (2) It adds the compose-and-list -> monetize-any-layer seam (composedProductMonetizableLayers in marketplace-product-composition.ts), a pure projection from a composed product\'s primitives to the monetizable layers a builder could attach an offer to. These advance referral.refer_once_earn_forever.v1 (binding/accrual robustness), marketplace.monetize_any_layer_with_referral.v1, and marketplace.compose_and_list_products.v1 as INERT scaffolds. referral.refer_once_earn_forever.v1 stays RED and owner-gated on the first settled payout (#5511/#5512); none of this work flips it. No promise_transition is required (no state flips); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
+      'Registry 2026-06-19.8 is an evidence-assembly pass over the ten non-green pylon.* promises (the "weekend promise assault"), and flips NO promise — the green count stays exactly 20. It adds three dereferenceable evidence docs and one INERT flag-gated capability, then attaches them to the relevant promise records: docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md writes down the qualified-contributor counting rule (admitted + accepted replay-verified work + public-safe provider-confirmed settlement receipt; never raw registrations or stale heartbeats), exactly as enforced in training-run-window-authority.ts, giving the consumer-self-serve scale-methodology blocker and the largest-run participant-methodology blocker a citeable home; docs/training/2026-06-19-comparable-decentralized-training-runs-research.md documents the comparable decentralized runs with citations (Templar Covenant-72B ~70 contributors as the cited largest; ~200 is the Episode 236 transcript target), addressing the comparable-evidence gap; and apps/pylon/src/spark-helper-autostart.ts (+ .test.ts, 9 tests) adds an INERT, default-off (PYLON_SPARK_AUTOSTART) Spark-helper autostart readiness classifier and public-safe receipt builder for the spark-helper-autostart blocker, with no live behavior change and no raw target/balance/credential leakage. The full per-promise green-readiness assessment (what was built, the exact receipt each promise still needs, and the owner gate) is docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md. CRITICAL: these are written methodology, research, and an inert capability only — they do NOT manufacture scale, do NOT prove a real autostart-ready contributor receipt, do NOT publish any npm package or signed binary feed, and do NOT move money. pylon.largest_decentralized_training_claim.v1 stays red (two counted contributors, far below comparable scale; public_training_contributor_receipts_missing unmet); pylon.consumer_compute_earns_bitcoin_self_serve.v1 stays red (autostart capability is inert and unfired, Windows/WSL is a deliberate owner scope-out so the honest path is narrowing the "anybody on any platform" copy to macOS/Linux); both yellow release promises still need the owner-gated signed-binary feed rollout; the three planned GEPA/data/multi-earning promises still need their first settled receipt. No promise_transition is required (no state flip); any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
