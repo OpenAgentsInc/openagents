@@ -19,3 +19,6 @@ var/
 *.tsbuildinfo
 *.log
 *.tgz
+
+# Agent worktrees (on-disk, never tracked)
+.worktrees/
