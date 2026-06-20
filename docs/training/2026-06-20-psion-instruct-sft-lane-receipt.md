@@ -7,6 +7,11 @@ Registry edit: `2026-06-20.29`.
 
 Issue lineage: `OpenAgentsInc/openagents#5528`.
 
+Supersession note: registry edit `2026-06-20.31` and
+`docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md` clear the
+fixture-sync blocker recorded below. The paid SFT dispatch, preference rollout,
+and vibe-test blockers remain.
+
 Public route:
 `/api/public/training/post-training-arc/instruct-sft-lane`
 

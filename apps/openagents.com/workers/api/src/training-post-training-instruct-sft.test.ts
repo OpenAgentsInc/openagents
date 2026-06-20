@@ -3,7 +3,6 @@ import { describe, expect, test } from 'vitest'
 
 import {
   InstructSftLaneMissingBlocker,
-  InstructSftFixtureSyncMissingBlocker,
   InstructSftPaidDispatchMissingBlocker,
   PreferenceRolloutWorkMissingBlocker,
   TrainingPostTrainingInstructSftEndpoint,
@@ -17,6 +16,7 @@ import { handleTrainingPostTrainingInstructSftApi } from './training-post-traini
 type InstructSftBody = Readonly<{
   endpoint: string
   gate: Readonly<{
+    committedReportFixtureSyncAvailable: boolean
     greenGateSatisfied: boolean
     instructSftLaneAvailable: boolean
     instructSftPaidDispatchAvailable: boolean
@@ -49,14 +49,13 @@ describe('training post-training instruct SFT receipt projection', () => {
     expect(projection.gate).toEqual({
       clearsBlockerRefs: [InstructSftLaneMissingBlocker],
       greenGateSatisfied: false,
-      committedReportFixtureSyncAvailable: false,
+      committedReportFixtureSyncAvailable: true,
       instructSftLaneAvailable: true,
       instructSftPaidDispatchAvailable: false,
       preferenceRolloutWorkAvailable: false,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
         InstructSftPaidDispatchMissingBlocker,
-        InstructSftFixtureSyncMissingBlocker,
         PreferenceRolloutWorkMissingBlocker,
         VibeTestArtifactMissingBlocker,
       ],
@@ -94,10 +93,12 @@ describe('training post-training instruct SFT receipt projection', () => {
     ])
     expect(projection.receipts[0]?.blockerRefs).toEqual([
       InstructSftPaidDispatchMissingBlocker,
-      InstructSftFixtureSyncMissingBlocker,
     ])
     expect(JSON.stringify(projection)).toContain(
       'scripts/check-psion-instruct-sft-lane.sh',
+    )
+    expect(JSON.stringify(projection)).toContain(
+      'https://github.com/OpenAgentsInc/psionic/pull/1132',
     )
   })
 
@@ -130,6 +131,7 @@ describe('training post-training instruct SFT receipt projection', () => {
     expect(body.promiseRef).toBe('promise:training.post_training_arc.v1')
     expect(body.promiseState).toBe('planned')
     expect(body.gate.instructSftLaneAvailable).toBe(true)
+    expect(body.gate.committedReportFixtureSyncAvailable).toBe(true)
     expect(body.gate.instructSftPaidDispatchAvailable).toBe(false)
     expect(body.gate.preferenceRolloutWorkAvailable).toBe(false)
     expect(body.gate.vibeTestArtifactAvailable).toBe(false)

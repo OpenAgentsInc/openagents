@@ -22,8 +22,6 @@ export const InstructSftLaneMissingBlocker =
   'blocker.product_promises.instruct_sft_lane_missing'
 export const InstructSftPaidDispatchMissingBlocker =
   'blocker.product_promises.instruct_sft_paid_dispatch_missing'
-export const InstructSftFixtureSyncMissingBlocker =
-  'blocker.product_promises.instruct_sft_fixture_sync_missing'
 export const PreferenceRolloutWorkMissingBlocker =
   'blocker.product_promises.preference_rollout_work_missing'
 export const VibeTestArtifactMissingBlocker =
@@ -150,6 +148,7 @@ const buildInstructSftReceipt =
       githubPsionicRef(
         'crates/psionic-train/examples/psion_instruct_sft_lane_fixtures.rs',
       ),
+      'https://github.com/OpenAgentsInc/psionic/pull/1132',
     ]
     const receipt = new TrainingPostTrainingInstructSftReceipt({
       adapterArtifactDigest:
@@ -157,20 +156,16 @@ const buildInstructSftReceipt =
       adapterIdentityDigest:
         'sha256:5b7665196d4ae78251d05b0cf4b77de0cf770c089b9787febd059d4ad516808c',
       authorityBoundary:
-        'This receipt proves only that Psionic has a bounded fixture-scale instruct SFT lane with an owned chat template, repo-owned example corpus, assistant-token loss mask, deterministic smoke run, and bit-exact resume drill. The deterministic generator currently produces a newer report digest than the committed Psionic report fixture, so fixture synchronization remains blocked. It grants no paid dispatch, settlement, preference optimization, vibe-test, model-quality, service-availability, or green-claim authority.',
-      blockerRefs: [
-        InstructSftPaidDispatchMissingBlocker,
-        InstructSftFixtureSyncMissingBlocker,
-      ],
+        'This receipt proves only that Psionic has a bounded fixture-scale instruct SFT lane with an owned chat template, repo-owned example corpus, assistant-token loss mask, deterministic smoke run, bit-exact resume drill, and committed report fixture synchronized with the deterministic generator. It grants no paid dispatch, settlement, preference optimization, vibe-test, model-quality, service-availability, or green-claim authority.',
+      blockerRefs: [InstructSftPaidDispatchMissingBlocker],
       caveatRefs: [
         'caveat.training_post_training.instruct_sft_fixture_scale_only',
-        'caveat.training_post_training.psionic_report_fixture_sync_drift',
         'caveat.training_post_training.instruct_sft_not_paid_openagents_dispatch',
         'caveat.training_post_training.no_general_instruct_capability_claim',
       ],
       clearsBlockerRefs: [InstructSftLaneMissingBlocker],
       completedSteps: 8,
-      committedReportFixtureSyncAvailable: false,
+      committedReportFixtureSyncAvailable: true,
       corpus: {
         datasetIdentity: 'psion_instruct_corpus_example@v1',
         exampleCorpus: true,
@@ -188,6 +183,7 @@ const buildInstructSftReceipt =
         'dataset.psion_instruct_corpus_example.v1',
         'report.psion_instruct_sft_lane_report.v1',
         'script:psionic/scripts/check-psion-instruct-sft-lane.sh',
+        'https://github.com/OpenAgentsInc/psionic/pull/1132',
       ],
       laneId: 'psion_instruct_sft_v1',
       learningRateRatioBps: 1000,
@@ -232,14 +228,13 @@ export const projectTrainingPostTrainingInstructSft = (
     gate: {
       clearsBlockerRefs: [InstructSftLaneMissingBlocker],
       greenGateSatisfied: false,
-      committedReportFixtureSyncAvailable: false,
+      committedReportFixtureSyncAvailable: true,
       instructSftLaneAvailable: true,
       instructSftPaidDispatchAvailable: false,
       preferenceRolloutWorkAvailable: false,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
         InstructSftPaidDispatchMissingBlocker,
-        InstructSftFixtureSyncMissingBlocker,
         PreferenceRolloutWorkMissingBlocker,
         VibeTestArtifactMissingBlocker,
       ],
@@ -260,6 +255,7 @@ export const projectTrainingPostTrainingInstructSft = (
     schemaVersion: TrainingPostTrainingInstructSftSchemaVersion,
     sourceRefs: entryRefs([
       'docs/training/2026-06-20-psion-instruct-sft-lane-receipt.md',
+      'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
       'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
       'docs/training/2026-06-10-qvac-edge-stack-analysis.md',
       'apps/openagents.com/workers/api/src/training-post-training-instruct-sft.ts',
@@ -268,7 +264,7 @@ export const projectTrainingPostTrainingInstructSft = (
     staleness: TrainingPostTrainingInstructSftStaleness,
     status: 'instruct_sft_lane_receipt_available',
     statusLabel:
-      'Psionic instruct SFT lane receipt is available from deterministic generator output; Psionic committed report fixture sync, paid OpenAgents SFT dispatch, preference rollout work, and vibe-test artifact remain missing.',
+      'Psionic instruct SFT lane receipt is available and the committed report fixture is synchronized with deterministic generator output; paid OpenAgents SFT dispatch, preference rollout work, and vibe-test artifact remain missing.',
     unsafeCopy:
       'Do not claim the post-training arc is live or green, that an instruct Psion model exists, that paid SFT or preference work ran, or that a vibe-test closeout artifact exists.',
   })

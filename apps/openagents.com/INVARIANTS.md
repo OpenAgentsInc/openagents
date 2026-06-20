@@ -1962,10 +1962,11 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `vibeTestArtifactAvailable=false`, and `greenGateSatisfied=false`). The
     surface exposes public-safe refs and digests for the owned chat template,
     assistant-token generation mask, repo-owned example corpus, deterministic
-    smoke run, and bit-exact resume drill from deterministic generator output.
-    It clears only `blocker.product_promises.instruct_sft_lane_missing`;
-    committed Psionic report-fixture synchronization, paid dispatch, preference
-    rollout, and vibe-test blockers remain. It grants no assignment, spend,
+    smoke run, bit-exact resume drill, and committed report fixture synchronized
+    with deterministic generator output. It clears
+    `blocker.product_promises.instruct_sft_lane_missing` and
+    `blocker.product_promises.instruct_sft_fixture_sync_missing`; paid dispatch,
+    preference rollout, and vibe-test blockers remain. It grants no assignment, spend,
     settlement, model promotion, model-service, fine-tuning-service, or
     public-claim authority and flips no promise. Regression coverage:
     `workers/api/src/training-post-training-instruct-sft.test.ts`.
