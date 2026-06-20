@@ -109,3 +109,34 @@ export const handleModelRetrieve = (
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
     return noStoreJsonResponse(toOpenAiModelObject(entry, now))
   })
+
+// Path prefix for the OpenAI-compatible single-model retrieve. The list path
+// (`/v1/models`) is served by the exact-route registry; this dispatcher handles
+// ONLY the `/v1/models/{model}` path-param retrieve, which the exact registry
+// (exact-match only) cannot route.
+const MODELS_BASE = '/v1/models'
+
+// Dispatch `GET /v1/models/{model}` (retrieve one) to `handleModelRetrieve`.
+// Returns `undefined` for any non-matching path so the main router falls
+// through (the `/v1/models` LIST is registered as an exact route and is
+// intentionally NOT matched here). Mirrors `routeCloudCodingSessionRequest`:
+// the INERT gate + method check live in the handler, so a matching path with an
+// unmatched method still returns the typed 404/405 rather than a fall-through.
+// Every served model id is a slash-free canonical slug (see MODEL_PRICING_TABLE),
+// so a nested path is never a valid model id and falls through.
+export const routeModelRetrieveRequest = (
+  request: Request,
+  deps: ModelsListDeps,
+): Effect.Effect<Response> | undefined => {
+  const pathname = new URL(request.url).pathname
+  const prefix = `${MODELS_BASE}/`
+  if (!pathname.startsWith(prefix)) {
+    return undefined
+  }
+  const modelId = decodeURIComponent(pathname.slice(prefix.length))
+  // A trailing-slash-only or nested path is not a valid model id.
+  if (modelId === '' || modelId.includes('/')) {
+    return undefined
+  }
+  return handleModelRetrieve(request, modelId, deps)
+}

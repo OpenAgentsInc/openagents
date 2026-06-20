@@ -49,6 +49,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAgentSiteRequest: OptionalEffectRoute
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
+  routeModelRetrieveRequest: OptionalEffectRoute
   routeMulletRequest: OptionalEffectRoute
   routeOmniRequest: OptionalEffectRoute
   routeOnboardingRequest: OptionalEffectRoute
@@ -240,6 +241,19 @@ export const makeWorkerRouteRequest =
 
       if (imageGenerationResponse !== undefined) {
         return yield* imageGenerationResponse
+      }
+
+      // OpenAI-compatible GET /v1/models/{model} retrieve (the path-param
+      // surface the exact-route registry cannot match). INERT-gated in the
+      // handler; the list /v1/models is an exact route handled above.
+      const modelRetrieveResponse = dependencies.routeModelRetrieveRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (modelRetrieveResponse !== undefined) {
+        return yield* modelRetrieveResponse
       }
 
       const threadFileResponse = dependencies.routeThreadFileRequest(

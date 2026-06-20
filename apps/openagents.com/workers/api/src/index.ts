@@ -133,7 +133,10 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
-import { handleModelsList } from './inference/models-routes'
+import {
+  handleModelsList,
+  routeModelRetrieveRequest,
+} from './inference/models-routes'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -9566,6 +9569,16 @@ const routeRequest = makeWorkerRouteRequest({
     }),
   routeImageGenerationRequest:
     imageGenerationRoutes.routeImageGenerationRequest,
+  // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
+  // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so
+  // it 404s when the gateway is off. Public + unauthenticated (published price
+  // and policy only — public-safe pre-purchase discovery), serving prices
+  // derived from the same pricing table the metering hook charges against. No
+  // promise state changes; the paid loop is still secrets-gated.
+  routeModelRetrieveRequest: (request, env) =>
+    routeModelRetrieveRequest(request, {
+      enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+    }),
   routeMulletRequest: mulletRoutes.routeMulletRequest,
   routeOmniRequest: (request, env, ctx) =>
     omniRoutes.routeOmniRequest(request, env, ctx) ??
