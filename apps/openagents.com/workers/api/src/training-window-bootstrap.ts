@@ -1,6 +1,7 @@
 import { Schema as S } from 'effect'
 
 import { friendlyBlueprintMissionBriefingTime } from './blueprint/services/continuation-mission-briefing'
+import { evaluateDurableCheckpointSeal } from './training-durable-checkpoint-seal'
 import {
   type PylonJoinLifecycleEventRecord,
   type PylonJoinLifecycleReasonCode,
@@ -112,12 +113,19 @@ export const selectLastDurableSealWindow = (
   windows: ReadonlyArray<TrainingWindowRecord>,
 ): TrainingWindowRecord | undefined =>
   windows
-    .filter(
-      window =>
+    .filter(window => {
+      const durableCheckpointSeal = window.sealMetadata?.durableCheckpointSeal
+
+      return (
         (window.state === 'sealed' || window.state === 'reconciled') &&
         window.sealedAt !== null &&
-        window.sealMetadata?.checkpointDigestRef !== undefined,
-    )
+        durableCheckpointSeal !== undefined &&
+        window.sealMetadata?.checkpointDigestRef ===
+          durableCheckpointSeal.checkpointDigestRef &&
+        durableCheckpointSeal.windowRef === window.windowRef &&
+        evaluateDurableCheckpointSeal(durableCheckpointSeal).durable
+      )
+    })
     .sort(
       (left, right) =>
         right.sealedAt!.localeCompare(left.sealedAt!) ||

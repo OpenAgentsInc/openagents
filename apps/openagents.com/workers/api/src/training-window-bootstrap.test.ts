@@ -37,8 +37,22 @@ const makeRun = (
 
 const sealMetadata = (
   checkpointDigestRef: string | undefined,
+  windowRef = 'training.window.1',
 ): TrainingWindowSealMetadata => ({
-  ...(checkpointDigestRef === undefined ? {} : { checkpointDigestRef }),
+  ...(checkpointDigestRef === undefined
+    ? {}
+    : {
+        checkpointDigestRef,
+        durableCheckpointSeal: {
+          checkpointDigestRef,
+          replicationFactor: 2,
+          retrievalProofRef: `receipt.training.checkpoint_readback.${windowRef}`,
+          retrievalVerified: true,
+          sizeBytes: 1_048_576,
+          storageClass: 'content_addressed_object_store',
+          windowRef,
+        },
+      }),
   churn: {
     joinCount: 0,
     lossCount: 0,
@@ -85,7 +99,7 @@ const sealedWindow = (
   checkpointDigestRef: string | undefined,
 ): TrainingWindowRecord =>
   makeWindow({
-    sealMetadata: sealMetadata(checkpointDigestRef),
+    sealMetadata: sealMetadata(checkpointDigestRef, windowRef),
     sealedAt,
     state: 'sealed',
     windowRef,
@@ -96,12 +110,12 @@ describe('selectLastDurableSealWindow', () => {
     const older = sealedWindow(
       'training.window.older',
       '2026-06-12T08:00:00.000Z',
-      'digest.checkpoint.older',
+      `sha256:${'6'.repeat(64)}`,
     )
     const newest = sealedWindow(
       'training.window.newest',
       '2026-06-12T09:30:00.000Z',
-      'digest.checkpoint.newest',
+      `sha256:${'7'.repeat(64)}`,
     )
 
     expect(
@@ -118,7 +132,7 @@ describe('selectLastDurableSealWindow', () => {
     const durable = sealedWindow(
       'training.window.durable',
       '2026-06-12T08:00:00.000Z',
-      'digest.checkpoint.durable',
+      `sha256:${'8'.repeat(64)}`,
     )
 
     expect(
@@ -126,10 +140,54 @@ describe('selectLastDurableSealWindow', () => {
     ).toBe('training.window.durable')
   })
 
+  it('skips legacy digest-only seals and failed durability descriptors', () => {
+    const legacyDigestOnly = makeWindow({
+      sealMetadata: {
+        ...sealMetadata(undefined),
+        checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+      },
+      sealedAt: '2026-06-12T09:45:00.000Z',
+      state: 'sealed',
+      windowRef: 'training.window.legacy',
+    })
+    const failedDurability = makeWindow({
+      sealMetadata: {
+        ...sealMetadata(`sha256:${'b'.repeat(64)}`, 'training.window.failed'),
+        durableCheckpointSeal: {
+          checkpointDigestRef: `sha256:${'b'.repeat(64)}`,
+          replicationFactor: 1,
+          retrievalVerified: true,
+          sizeBytes: 1_048_576,
+          storageClass: 'content_addressed_object_store',
+          windowRef: 'training.window.failed',
+        },
+      },
+      sealedAt: '2026-06-12T09:50:00.000Z',
+      state: 'sealed',
+      windowRef: 'training.window.failed',
+    })
+    const durable = sealedWindow(
+      'training.window.durable',
+      '2026-06-12T08:00:00.000Z',
+      `sha256:${'c'.repeat(64)}`,
+    )
+
+    expect(
+      selectLastDurableSealWindow([legacyDigestOnly, failedDurability, durable])
+        ?.windowRef,
+    ).toBe('training.window.durable')
+    expect(
+      selectLastDurableSealWindow([legacyDigestOnly, failedDurability]),
+    ).toBeUndefined()
+  })
+
   it('counts reconciled windows as durable seals but never active or planned ones', () => {
     const reconciled = makeWindow({
       reconciledAt: '2026-06-12T09:00:00.000Z',
-      sealMetadata: sealMetadata('digest.checkpoint.reconciled'),
+      sealMetadata: sealMetadata(
+        `sha256:${'d'.repeat(64)}`,
+        'training.window.reconciled',
+      ),
       sealedAt: '2026-06-12T08:30:00.000Z',
       state: 'reconciled',
       windowRef: 'training.window.reconciled',
@@ -162,19 +220,19 @@ describe('decideTrainingWindowBootstrapGrant', () => {
         sealedWindow(
           'training.window.older',
           '2026-06-12T08:00:00.000Z',
-          'digest.checkpoint.older',
+          `sha256:${'1'.repeat(64)}`,
         ),
         sealedWindow(
           'training.window.newest',
           '2026-06-12T09:30:00.000Z',
-          'digest.checkpoint.newest',
+          `sha256:${'2'.repeat(64)}`,
         ),
       ],
     })
 
     expect(outcome).toMatchObject({
       grant: {
-        checkpointDigestRef: 'digest.checkpoint.newest',
+        checkpointDigestRef: `sha256:${'2'.repeat(64)}`,
         grantRef: 'training.bootstrap.grant.0001',
         joinerReceiptRefs: ['receipt.joiner.qualification'],
         joinerRef: 'pylon.joiner.1',
@@ -217,7 +275,7 @@ describe('decideTrainingWindowBootstrapGrant', () => {
         sealedWindow(
           'training.window.durable',
           '2026-06-12T09:00:00.000Z',
-          'digest.checkpoint.durable',
+          `sha256:${'3'.repeat(64)}`,
         ),
       ],
     })
@@ -235,7 +293,7 @@ describe('decideTrainingWindowBootstrapGrant', () => {
       sealedWindow(
         'training.window.before',
         '2026-06-12T09:00:00.000Z',
-        'digest.checkpoint.before',
+        `sha256:${'4'.repeat(64)}`,
       ),
     ]
     const queued = decideTrainingWindowBootstrapGrant({
@@ -257,14 +315,14 @@ describe('decideTrainingWindowBootstrapGrant', () => {
         sealedWindow(
           'training.window.after',
           '2026-06-12T10:00:00.000Z',
-          'digest.checkpoint.after',
+          `sha256:${'5'.repeat(64)}`,
         ),
       ],
     })
 
     expect(replayed).toMatchObject({
       grant: {
-        checkpointDigestRef: 'digest.checkpoint.after',
+        checkpointDigestRef: `sha256:${'5'.repeat(64)}`,
         sealedWindowRef: 'training.window.after',
       },
       kind: 'granted',

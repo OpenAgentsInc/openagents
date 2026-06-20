@@ -88,7 +88,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.32')
+    expect(decoded.version).toBe('2026-06-20.33')
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -106,6 +106,9 @@ describe('public product promises document', () => {
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
+    )
+    expect(decoded.sourceRefs).toContain(
+      'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
@@ -245,6 +248,9 @@ describe('public product promises document', () => {
     // The 2026-06-20.32 full-pipeline program pass adds a public stage-status
     // projection but keeps training_pipeline_rails_incomplete active, so green
     // remains exactly 24.
+    // The 2026-06-20.33 marathon pass binds durable-checkpoint seal evaluation
+    // into live seal/bootstrap authority but keeps real remote checkpoint,
+    // standby, and curtailment blockers active, so green remains exactly 24.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(24)
@@ -342,6 +348,25 @@ describe('public product promises document', () => {
             '/api/public/training/ablation-derisking-ledger',
           ),
           verification: expect.stringContaining('one-delta manifest harness'),
+        }),
+        expect.objectContaining({
+          promiseId: 'training.marathon_operations.v1',
+          state: 'planned',
+          evidenceRefs: expect.arrayContaining([
+            'docs/launch/vertex-fleet/training.marathon_operations.v1.md',
+            'apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.ts',
+            'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
+            'apps/openagents.com/workers/api/src/training-window-bootstrap.ts',
+          ]),
+          blockerRefs: [
+            'blocker.product_promises.durable_checkpoint_seal_missing',
+            'blocker.product_promises.standby_dispatch_missing',
+            'blocker.product_promises.curtailment_drill_missing',
+          ],
+          safeCopy: expect.stringContaining('durableCheckpointSeal'),
+          verification: expect.stringContaining(
+            'no real remote content-addressed checkpoint store',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'training.post_training_arc.v1',
@@ -1068,12 +1093,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.32', document),
+      publicProductPromisesAnnouncementReadiness('2026-06-20.33', document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.32',
+      expectedVersion: '2026-06-20.33',
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.32',
+      servedVersion: '2026-06-20.33',
       status: 'ready',
     })
     expect(
@@ -1083,7 +1108,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-12.1',
       ],
       expectedVersion: '2026-06-12.1',
-      servedVersion: '2026-06-20.32',
+      servedVersion: '2026-06-20.33',
       status: 'blocked',
     })
   })

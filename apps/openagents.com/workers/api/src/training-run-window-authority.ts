@@ -14,6 +14,10 @@ import {
 } from './public-projection-staleness'
 import { isoTimestampAfterIso } from './runtime-primitives'
 import {
+  DurableCheckpointSeal,
+  evaluateDurableCheckpointSeal,
+} from './training-durable-checkpoint-seal'
+import {
   type TrainingVerificationChallengeRecord,
   type TrainingVerificationRow,
   rowToTrainingVerificationChallenge,
@@ -162,6 +166,7 @@ export type TrainingWindowSealVerificationOverhead =
 export const TrainingWindowSealMetadata = S.Struct({
   checkpointDigestRef: S.optionalKey(PublicSafeRef),
   churn: TrainingWindowSealChurnSummary,
+  durableCheckpointSeal: S.optionalKey(DurableCheckpointSeal),
   staleness: TrainingWindowSealStalenessSummary,
   verificationOverhead: TrainingWindowSealVerificationOverhead,
 })
@@ -1577,6 +1582,7 @@ export const assertValidTrainingWindowSealMetadata = (
   }
 
   const checkpointDigestRef = metadata.checkpointDigestRef
+  const durableCheckpointSeal = metadata.durableCheckpointSeal
 
   if (
     checkpointDigestRef !== undefined &&
@@ -1585,6 +1591,32 @@ export const assertValidTrainingWindowSealMetadata = (
       !TrainingPublicSafeRefPattern.test(checkpointDigestRef))
   ) {
     throw sealValidationError('checkpointDigestRef must be a public-safe ref.')
+  }
+
+  if (checkpointDigestRef !== undefined && durableCheckpointSeal === undefined) {
+    throw sealValidationError(
+      'checkpointDigestRef requires a durableCheckpointSeal descriptor.',
+    )
+  }
+
+  if (durableCheckpointSeal !== undefined) {
+    if (checkpointDigestRef === undefined) {
+      throw sealValidationError(
+        'durableCheckpointSeal requires checkpointDigestRef.',
+      )
+    }
+    if (durableCheckpointSeal.checkpointDigestRef !== checkpointDigestRef) {
+      throw sealValidationError(
+        'durableCheckpointSeal.checkpointDigestRef must match checkpointDigestRef.',
+      )
+    }
+
+    const gate = evaluateDurableCheckpointSeal(durableCheckpointSeal)
+    if (!gate.durable) {
+      throw sealValidationError(
+        `durableCheckpointSeal must pass durable checkpoint evaluation before sealing. Reasons: ${gate.reasons.join(', ') || 'unknown'}.`,
+      )
+    }
   }
 }
 
@@ -1623,6 +1655,15 @@ export const transitionTrainingWindowRecord = (
 
   if (input.sealMetadata !== undefined) {
     assertValidTrainingWindowSealMetadata(input.sealMetadata)
+    if (
+      input.sealMetadata.durableCheckpointSeal !== undefined &&
+      input.sealMetadata.durableCheckpointSeal.windowRef !==
+        input.window.windowRef
+    ) {
+      throw sealValidationError(
+        'durableCheckpointSeal.windowRef must match the sealed windowRef.',
+      )
+    }
   }
 
   const nextWindow: TrainingWindowRecord = {
