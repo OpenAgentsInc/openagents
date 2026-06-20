@@ -30,14 +30,30 @@ exactly what this blocker names.
   - Re-uses `assertArtanisLaborPublicSafe` so no private or payment material can
     appear in a projected receipt; rejects impossible combinations (acceptance
     without a reserved request) via `ArtanisLaborReceiptError`.
+- `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.ts` (extended)
+  - `serializeArtanisLaborUnattendedRequestReceipt(receipt)` emits a canonical,
+    deterministic wire form: top-level keys in fixed order so the same lifecycle
+    always serializes to identical bytes, with `lifecycleRefs` array order
+    preserved (it encodes the propose -> reserve -> validate -> release/refund
+    sequence). Re-runs `assertArtanisLaborPublicSafe` before emitting.
+  - `deriveArtanisLaborUnattendedRequestReceiptRef(receipt)` mints a
+    content-addressed identity
+    (`receipt.artanis_labor.unattended_request.<sha256-16>`) over that canonical
+    form, following the existing `debt-receipt-key.ts` digest pattern. The receipt
+    projection previously carried no id of its own, so it could neither be
+    persisted alongside the tick ledger nor dereferenced from a route; this gives
+    it a stable, collision-resistant name without minting any payment, identity,
+    or settlement authority.
 - `apps/openagents.com/workers/api/src/artanis-labor-request-receipt.test.ts`
-  - 8 cases covering every terminal state, ref folding, public-safety refusal, and
-    the impossible-combination guard.
+  - 11 cases: every terminal state, ref folding, public-safety refusal, the
+    impossible-combination guard, plus canonical-serialization determinism, ref
+    stability across rebuilds, and distinct-state ref divergence.
 
 ## What remains
 
-- This builds the receipt **projection**; it is not yet wired into a public route
-  (`/api/public/...`) or persisted alongside the tick ledger. That route/persistence
+- The receipt now has a canonical wire form and a content-addressed ref, so it is
+  **persistable and dereferenceable**, but it is not yet wired into a public route
+  (`/api/public/...`) or written to the tick ledger store. That route/persistence
   wiring, plus a real unattended tick producing one of these receipts end-to-end,
   remains before the blocker can be dropped.
 - `blocker.product_promises.artanis_labor_live_enablement_missing` is untouched and
