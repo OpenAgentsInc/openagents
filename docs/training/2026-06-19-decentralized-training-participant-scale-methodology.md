@@ -80,8 +80,16 @@ This is the rule implemented for the live metric, verbatim from the metric's own
     (`shared-settlement-receipt-across-contributors`). Distinct `pylonRef`s are
     necessary but not sufficient — a single lease, one piece of verified work, or
     one real Bitcoin movement cannot back two "distinct independent contributors".
-    Covered by `qualified-contributor-methodology.test.ts` (17 tests, wired into
-    `check:deploy`).
+    It also exposes `parseQualifiedContributorMethodologyInput`, the pure
+    **untrusted-input parse boundary** an auditor uses to load a real captured
+    evidence document (JSON) before verifying it: it validates structure/types
+    and enforces a closed key allowlist at every level (document, contributor,
+    settlement receipt), rejecting leak-prone extra fields (e.g. a raw address or
+    balance) with path-qualified errors, and returns the typed input only when
+    the document is sound. This makes the "run the verifier against the live
+    run's real evidence" step safe to do from a file rather than hand-built
+    objects. Covered by `qualified-contributor-methodology.test.ts` (27 tests,
+    wired into `check:deploy`).
 
 ## Public dereference path
 

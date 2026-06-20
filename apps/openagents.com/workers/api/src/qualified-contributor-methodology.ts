@@ -102,6 +102,13 @@ export type QualifiedContributorMethodologyVerdict = Readonly<{
   reasons: ReadonlyArray<string>
 }>
 
+// The full input a run-level verification consumes. Exported so a parser can
+// produce exactly this shape from an untrusted document.
+export type QualifiedContributorMethodologyInput = Readonly<{
+  claimedQualifiedContributorCount: number
+  contributors: ReadonlyArray<QualifiedContributorEvidence>
+}>
+
 const isNonEmptyRef = (value: string): boolean =>
   typeof value === 'string' && value.trim().length > 0
 
@@ -184,10 +191,7 @@ export const verifyQualifiedContributor = (
 // `conforms` is true only when every counted contributor passes all prongs, no
 // contributor is double-counted, and the recomputed count equals the claim.
 export const verifyQualifiedContributorMethodology = (
-  input: Readonly<{
-    claimedQualifiedContributorCount: number
-    contributors: ReadonlyArray<QualifiedContributorEvidence>
-  }>,
+  input: QualifiedContributorMethodologyInput,
 ): QualifiedContributorMethodologyVerdict => {
   const verdicts = input.contributors.map(verifyQualifiedContributor)
   const reasons: Array<string> = []
@@ -230,5 +234,226 @@ export const verifyQualifiedContributorMethodology = (
     qualifiedContributorCount,
     verdicts,
     reasons,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Untrusted-input parse boundary.
+//
+// `verifyQualifiedContributorMethodology` trusts its input is already typed
+// `QualifiedContributorMethodologyInput`. But the documented remaining step for
+// `consumer_compute_self_serve_scale_methodology_missing` is running the verifier
+// against the LIVE run's real evidence — which an auditor loads from an untrusted
+// JSON document. Passing such a document straight to the verifier is unsafe:
+// missing/mistyped fields would silently misbehave (e.g. a numeric `state`, a
+// `contributors` that is an object, a count that is a float), and a leak-prone
+// extra field (raw address, balance, internal id) could ride along into a
+// published evidence artifact.
+//
+// `parseQualifiedContributorMethodologyInput` is the deterministic, pure gate
+// that closes that hole — mirroring the closed key allowlist + path-qualified
+// errors already used by the Spark-helper autostart receipt verifier. It returns
+// the typed input ONLY when the document is structurally sound and public-safe;
+// otherwise it returns the precise reasons. It performs NO counting and asserts
+// NO scale claim — it only makes the existing verifier runnable against a real
+// captured JSON document.
+// ---------------------------------------------------------------------------
+
+// Closed key allowlists. Any key outside these is rejected: an unknown field is
+// exactly how a raw target/balance/credential could be smuggled into a published
+// evidence document.
+const ALLOWED_DOCUMENT_KEYS: ReadonlySet<string> = new Set<string>([
+  'claimedQualifiedContributorCount',
+  'contributors',
+])
+
+const ALLOWED_CONTRIBUTOR_KEYS: ReadonlySet<string> = new Set<string>([
+  'pylonRef',
+  'leaseRefs',
+  'verifiedExactTraceReplayChallengeRefs',
+  'settlementReceipts',
+])
+
+const ALLOWED_RECEIPT_KEYS: ReadonlySet<string> = new Set<string>([
+  'receiptRef',
+  'state',
+  'providerConfirmed',
+  'realBitcoinMoved',
+])
+
+export type QualifiedContributorMethodologyParse =
+  | Readonly<{ ok: true; value: QualifiedContributorMethodologyInput }>
+  | Readonly<{ ok: false; errors: ReadonlyArray<string> }>
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const collectUnexpectedKeys = (
+  record: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  path: string,
+  errors: Array<string>,
+): void => {
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) errors.push(`unexpected-key:${path}.${key}`)
+  }
+}
+
+const parseStringArray = (
+  value: unknown,
+  path: string,
+  errors: Array<string>,
+): ReadonlyArray<string> => {
+  if (!Array.isArray(value)) {
+    errors.push(`not-an-array:${path}`)
+    return []
+  }
+  const out: Array<string> = []
+  value.forEach((item, index) => {
+    if (typeof item !== 'string') {
+      errors.push(`not-a-string:${path}[${index}]`)
+      return
+    }
+    out.push(item)
+  })
+  return out
+}
+
+const parseSettlementReceipt = (
+  value: unknown,
+  path: string,
+  errors: Array<string>,
+): QualifiedContributorSettlementEvidence | null => {
+  if (!isPlainObject(value)) {
+    errors.push(`not-an-object:${path}`)
+    return null
+  }
+  collectUnexpectedKeys(value, ALLOWED_RECEIPT_KEYS, path, errors)
+
+  const before = errors.length
+  if (typeof value.receiptRef !== 'string') {
+    errors.push(`not-a-string:${path}.receiptRef`)
+  }
+  if (typeof value.state !== 'string') {
+    errors.push(`not-a-string:${path}.state`)
+  }
+  if (typeof value.providerConfirmed !== 'boolean') {
+    errors.push(`not-a-boolean:${path}.providerConfirmed`)
+  }
+  if (typeof value.realBitcoinMoved !== 'boolean') {
+    errors.push(`not-a-boolean:${path}.realBitcoinMoved`)
+  }
+  if (errors.length !== before) return null
+
+  return {
+    receiptRef: value.receiptRef as string,
+    state: value.state as string,
+    providerConfirmed: value.providerConfirmed as boolean,
+    realBitcoinMoved: value.realBitcoinMoved as boolean,
+  }
+}
+
+const parseContributor = (
+  value: unknown,
+  path: string,
+  errors: Array<string>,
+): QualifiedContributorEvidence | null => {
+  if (!isPlainObject(value)) {
+    errors.push(`not-an-object:${path}`)
+    return null
+  }
+  collectUnexpectedKeys(value, ALLOWED_CONTRIBUTOR_KEYS, path, errors)
+
+  const before = errors.length
+  if (typeof value.pylonRef !== 'string') {
+    errors.push(`not-a-string:${path}.pylonRef`)
+  }
+  const leaseRefs = parseStringArray(
+    value.leaseRefs,
+    `${path}.leaseRefs`,
+    errors,
+  )
+  const verifiedExactTraceReplayChallengeRefs = parseStringArray(
+    value.verifiedExactTraceReplayChallengeRefs,
+    `${path}.verifiedExactTraceReplayChallengeRefs`,
+    errors,
+  )
+
+  let settlementReceipts: Array<QualifiedContributorSettlementEvidence> = []
+  if (!Array.isArray(value.settlementReceipts)) {
+    errors.push(`not-an-array:${path}.settlementReceipts`)
+  } else {
+    settlementReceipts = value.settlementReceipts
+      .map((receipt, index) =>
+        parseSettlementReceipt(
+          receipt,
+          `${path}.settlementReceipts[${index}]`,
+          errors,
+        ),
+      )
+      .filter((r): r is QualifiedContributorSettlementEvidence => r !== null)
+  }
+
+  if (errors.length !== before) return null
+
+  return {
+    pylonRef: value.pylonRef as string,
+    leaseRefs,
+    verifiedExactTraceReplayChallengeRefs,
+    settlementReceipts,
+  }
+}
+
+/**
+ * Parse and validate an untrusted methodology evidence document (e.g. JSON an
+ * auditor loaded from a file) into the typed input the run-level verifier
+ * consumes. Pure and side-effect-free. Returns `{ ok: true, value }` only when
+ * the document is structurally sound and carries no key outside the closed
+ * allowlists; otherwise `{ ok: false, errors }` with path-qualified reasons.
+ *
+ * This neither counts contributors nor asserts any scale claim — it is solely the
+ * safe boundary that lets `verifyQualifiedContributorMethodology` be run against
+ * real captured evidence.
+ */
+export const parseQualifiedContributorMethodologyInput = (
+  candidate: unknown,
+): QualifiedContributorMethodologyParse => {
+  const errors: Array<string> = []
+
+  if (!isPlainObject(candidate)) {
+    return { ok: false, errors: ['not-an-object:$'] }
+  }
+  collectUnexpectedKeys(candidate, ALLOWED_DOCUMENT_KEYS, '$', errors)
+
+  const count = candidate.claimedQualifiedContributorCount
+  if (
+    typeof count !== 'number' ||
+    !Number.isInteger(count) ||
+    count < 0
+  ) {
+    errors.push('not-a-non-negative-integer:$.claimedQualifiedContributorCount')
+  }
+
+  let contributors: Array<QualifiedContributorEvidence> = []
+  if (!Array.isArray(candidate.contributors)) {
+    errors.push('not-an-array:$.contributors')
+  } else {
+    contributors = candidate.contributors
+      .map((contributor, index) =>
+        parseContributor(contributor, `$.contributors[${index}]`, errors),
+      )
+      .filter((c): c is QualifiedContributorEvidence => c !== null)
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors }
+  }
+
+  return {
+    ok: true,
+    value: {
+      claimedQualifiedContributorCount: count as number,
+      contributors,
+    },
   }
 }

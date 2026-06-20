@@ -3,6 +3,39 @@
 Date: 2026-06-20
 State: red (UNCHANGED — no promise flip in this change)
 
+## Update 2026-06-20 (h) — scale methodology: untrusted-input parse boundary
+
+Blocker advanced this run:
+`blocker.product_promises.consumer_compute_self_serve_scale_methodology_missing`
+
+The verifier (`verifyQualifiedContributorMethodology`) was mature but only
+consumed already-typed `QualifiedContributorEvidence[]`. The documented remaining
+step — "run the verifier against the live run's REAL evidence" — implies loading
+an untrusted JSON document from a file, and there was NO safe boundary for that:
+a mistyped field (numeric `state`, float count, `contributors` as an object) would
+silently misbehave, and a leak-prone extra field (raw address, balance, internal
+id) could ride along into a published evidence artifact. The Spark side already had
+this pattern (`verifySparkHelperAutostartReceipt` with a closed key allowlist); the
+scale side did not.
+
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.ts` —
+  added `parseQualifiedContributorMethodologyInput(candidate: unknown)`: a pure
+  parse/validate gate that enforces a closed key allowlist at every level
+  (document, contributor, settlement receipt), checks structure/types
+  (non-negative integer count; string refs; boolean receipt flags), and returns
+  the typed input only when sound, else `{ ok:false, errors }` with
+  path-qualified reasons (e.g. `unexpected-key:$.contributors[0].settlementReceipts[0].rawSparkAddress`).
+  Also exported `QualifiedContributorMethodologyInput` and threaded it into the
+  verifier signature (no behavior change).
+- `apps/openagents.com/workers/api/src/qualified-contributor-methodology.test.ts`
+  — +10 vitest cases incl. JSON round-trip and leak-prone-field rejection;
+  now 27 tests, wired into `check:deploy`.
+- Methodology doc updated to dereference the parse boundary (17→27 tests).
+
+No promise state changed; no scale claim asserted. Still listed: clearing it
+needs running the verifier against the live run's real evidence file (now safe to
+do via the parser) and citing `conforms:true`, plus owner sign-off.
+
 ## Update 2026-06-20 (g) — scale methodology: per-prong cross-contributor integrity
 
 Blocker advanced this run:
