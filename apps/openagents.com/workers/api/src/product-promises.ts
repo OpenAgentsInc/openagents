@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.26'
+export const PublicProductPromisesVersion = '2026-06-20.27'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -23,6 +23,7 @@ const sourceRefs = [
   'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
   'docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md',
   'docs/training/2026-06-20-cs336-a2-thermal-throttle-classifier.md',
+  'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
   'docs/2026-06-10-cs336-distributed-homework-continuation-audit.md',
   'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
   'docs/refactor/path-to-bolt-12.md',
@@ -1723,25 +1724,27 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Training decisions run through a receipted ablation system: one-delta manifests, a validated evaluation suite, and a public derisking ledger.',
         safeCopy:
-          'Psionic has a bounded ablation tool inside the actual-pretraining baseline bundle. A public, read-only ablation derisking ledger projection now exists at GET /api/public/training/ablation-derisking-ledger with one-delta manifest-verified candidate entries and an explicit gate: publicProjectionAvailable=true and ablationHarnessAvailable=true while evalSuiteReproductionAvailable=false, paidAblationDispatchAvailable=false, and greenGateSatisfied=false. The harness verifies exactly-one-delta manifests and rejects multi-delta or private-material inputs before projection. Eval-suite reproduction and ablation runs as dispatched paid work remain planned.',
+          'Psionic has a bounded ablation tool inside the actual-pretraining baseline bundle. A public, read-only ablation derisking ledger projection now exists at GET /api/public/training/ablation-derisking-ledger with one-delta manifest-verified candidate entries, a retained Psion checkpoint-eval reproduction receipt, and an explicit gate: publicProjectionAvailable=true, ablationHarnessAvailable=true, evalSuiteReproductionAvailable=true, paidAblationDispatchAvailable=false, and greenGateSatisfied=false. The harness verifies exactly-one-delta manifests and rejects multi-delta or private-material inputs before projection. The eval-reproduction receipt is scoped to the frozen Psion actual-pretraining checkpoint review pack (four gates passed, aggregateScoreBps 8532); ablation runs as dispatched paid work remain planned.',
         unsafeCopy:
           'Do not claim training decisions are currently ablation-receipted, that OpenAgents has run/paid/accepted ablation verdicts, or cite the Smol Training Playbook’s measurements as OpenAgents results.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/training/2026-06-20-ablation-one-delta-harness.md',
+          'docs/training/2026-06-20-ablation-eval-reproduction-receipt.md',
           'https://openagents.com/api/public/training/ablation-derisking-ledger',
           'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.ts',
           'apps/openagents.com/workers/api/src/training-ablation-derisking-ledger.test.ts',
+          'https://github.com/OpenAgentsInc/psionic/blob/main/fixtures/psion/pretrain/psion_actual_pretraining_checkpoint_eval_decision_v1.json',
+          'https://github.com/OpenAgentsInc/psionic/blob/main/crates/psionic-eval/src/psion_actual_pretraining_checkpoint_eval_pack.rs',
           'https://github.com/OpenAgentsInc/psionic/blob/main/docs/PSION_ACTUAL_PRETRAINING_RUNBOOK.md',
           'https://github.com/OpenAgentsInc/psionic/issues/1116',
           'https://github.com/OpenAgentsInc/psionic/issues/1118',
         ],
         blockerRefs: [
-          'blocker.product_promises.eval_suite_reproduction_missing',
           'blocker.product_promises.paid_ablation_dispatch_missing',
         ],
         verification:
-          'The public derisking ledger projection is now live and decode-tested, and its candidate entries are verified by the one-delta manifest harness: exactly one delta, public-safe refs, frozen baseline refs, fixed eval-plan refs, and fail-closed rejection for multi-delta or private-material manifests. It still must report zero paid ablations, zero reproduced evals, and zero accepted verdicts until real receipts exist. Green requires ablation cells dispatched and verified as paid assignments (seeded replication), reproduced eval-suite receipts, and ledger entries carrying baselines, deltas, and verdicts.',
+          'The public derisking ledger projection is now live and decode-tested, and its candidate entries are verified by the one-delta manifest harness: exactly one delta, public-safe refs, frozen baseline refs, fixed eval-plan refs, and fail-closed rejection for multi-delta or private-material manifests. The ledger now also carries one retained Psion checkpoint-eval reproduction receipt over the frozen actual-pretraining checkpoint review pack. It still must report zero paid ablations and zero accepted verdicts until paid ablation receipts exist. Green requires ablation cells dispatched and verified as paid assignments (seeded replication), settlement receipts, and ledger entries carrying baselines, deltas, evals, payment, and verdicts.',
         authorityBoundary:
           'An ablation verdict is training-decision evidence only; it grants no capability claim, no public copy upgrade, and no dispatch or spend authority.',
       },
@@ -3505,6 +3508,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.24 is a pylon.largest_decentralized_training_claim.v1 blocker-cleanup pass and flips NO promise state (stays red, green count unchanged at 24). The participant-count methodology and comparable-run research were already published and cited at docs/training/2026-06-19-decentralized-training-participant-scale-methodology.md and docs/training/2026-06-19-comparable-decentralized-training-runs-research.md, and the verification copy already states that those gaps are cleared as written evidence. This drops blocker.product_promises.largest_training_participant_methodology_missing and blocker.product_promises.comparable_training_run_evidence_missing as stale. The remaining real blocker is blocker.product_promises.public_training_contributor_receipts_missing: the current live run has five counted realBitcoinMoved:true contributors, far below the cited comparable scale. No largest-run, 200-contributor, at-scale, training-performance, settlement, or world-first claim is created.',
         'Registry 2026-06-20.25 is a models.tassadar_percepta_executor.v1 model/spec pass and flips NO promise state (stays red, green count unchanged at 24). docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md now names the Tassadar Percepta Executor lane, its runtime boundary, Pylon integration shape, staged training/eval plan, artifact-lineage requirements, safety notes, and remaining receipt gates. This clears blocker.product_promises.tassadar_model_spec_missing only. The remaining blockers are blocker.product_promises.percepta_executor_architecture_receipts_missing and blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing. No trained model, architecture receipt, CPU-transform training receipt, inference endpoint, settlement, model promotion, or model-capability claim is created.',
         'Registry 2026-06-20.26 is a training.device_capability_dataset.v1 thermal-classifier pass and flips NO promise state (stays yellow, green count unchanged at 24). GET /api/training/device-capabilities/a2 and each A2 run-level dataset projection now expose thermalThrottleSignals, thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs derived only from admitted sustained_vs_burst_throughput_ratio rows. The deterministic rule uses the existing 0.8 sustained-vs-burst ratio floor: verified rows below the floor report thermal_throttle_observed; verified rows at or above it report thermal_throttle_not_observed; measured_unsettled or otherwise unverified rows report needs_verified_thermal_probe; missing rows report missing. The product blocker blocker.product_promises.thermal_throttle_detection_missing STAYS because no live production contributor row currently reports a verified sustained-vs-burst thermal probe, and this is a projection classifier, not continuous fleet monitoring. blocker.product_promises.same_host_replication_caveat is untouched. No paid assignment, verification verdict, settlement, earning estimate, green flip, or capability claim is created. Evidence: docs/training/2026-06-20-cs336-a2-thermal-throttle-classifier.md.',
+        'Registry 2026-06-20.27 is a training.ablation_system.v1 eval-reproduction pass and flips NO promise state (stays planned, green count unchanged at 24). GET /api/public/training/ablation-derisking-ledger now carries evalReproductionReceipts with one retained Psion actual-pretraining checkpoint-eval decision projected as receipt.training_ablation.eval_reproduction.psion_actual_checkpoint_eval.v1, source schema psion.actual_pretraining_checkpoint_eval_decision.v1, frozen checkpoint eval pack benchmark://psion/actual_pretraining/checkpoint_eval@2026.04.02, four gates passed, aggregatePassRateBps 10000, aggregateScoreBps 8532, decisionState continue. This clears blocker.product_promises.eval_suite_reproduction_missing only. The promise remains planned on blocker.product_promises.paid_ablation_dispatch_missing: no OpenAgents ablation cell has been dispatched as paid work, no assignment settled, no ablation verdict was accepted, and no model promotion or training-decision claim is created. Evidence: docs/training/2026-06-20-ablation-eval-reproduction-receipt.md.',
       'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
