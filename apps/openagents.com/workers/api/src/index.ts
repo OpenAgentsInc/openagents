@@ -611,6 +611,7 @@ import {
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
+import { runErcotLmpIngestionCron } from './ercot-lmp-cron'
 import {
   type TeamChatMessage,
   type TeamChatRunSummary,
@@ -10299,6 +10300,10 @@ export default {
           resolveValidatorCandidates: async () => [],
           store: makeD1TrainingTraceContributionStore(openAgentsDatabase(env)),
         }),
+      ),
+      observedEffect(
+        'ErcotLmpIngestion.cron',
+        runErcotLmpIngestionCron(),
       ),
       observedEffect(
         'ArtanisResponder.compose',
