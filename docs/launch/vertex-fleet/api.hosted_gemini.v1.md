@@ -425,6 +425,38 @@ production binding shape the harness was missing.
   prove a lane's credential authenticates upstream). The gateway blocker REMAINS
   listed.
 
+### 2026-06-20 update — gateway readiness wired to a public route
+
+- `blocker.product_promises.public_paid_model_gateway_missing`
+  — **further advanced, still NOT cleared.** The previous update added
+  `projectGatewayReadiness` (the SINGLE readiness fact derived from the same
+  catalog + serving policy the three live surfaces gate on) but explicitly left
+  it "not yet wired to a route" — so an operator (or the launch dashboard) still
+  had no dereferenceable endpoint to read it and had to replay each surface and
+  count by hand. This change exposes it:
+  - `apps/openagents.com/workers/api/src/inference/gateway-readiness-routes.ts`
+    — `handleGatewayReadiness(request, deps)` serves the readiness projection
+    as a public-safe `GET` route. INERT GATE: 404 `inference_gateway_disabled`
+    when the gateway is flagged off (matching `/v1/models` / `/v1/quote` /
+    `/v1/chat/completions`), 405 on a non-GET. The body carries only
+    servable/hidden model COUNTS + per-lane arming booleans + dereferenceable
+    reason refs (no prompts/credentials/prices/balances), `no-store`. Catalog is
+    injectable for tests; defaults to the live published catalog.
+  - `apps/openagents.com/workers/api/src/index.ts` — registers
+    `GET /v1/gateway/readiness`, gated by the same `INFERENCE_GATEWAY_ENABLED`
+    flag and fed `laneArming: resolveSupplyLaneArming(env)`, so the LIVE endpoint
+    reports exactly what the gateway can serve.
+  - `apps/openagents.com/workers/api/src/inference/gateway-readiness-routes.test.ts`
+    (new, 7 cases): INERT 404 when off, 405 on POST, ready/unavailable/degraded
+    statuses (degraded names the unarmed lane), live-catalog default, and no
+    secret-shaped material in the body.
+
+  **Honest scope:** this exposes the readiness PROJECTION over a route only. It
+  does NOT add billing, entitlement, quota, or settlement, it is not yet
+  surfaced on the launch dashboard UI, and arming is still PRESENCE-derived (it
+  does not prove a lane's credential authenticates upstream). The gateway
+  blocker REMAINS listed.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
