@@ -238,12 +238,14 @@ describe("verifySparkHelperAutostartReceipt", () => {
 })
 
 describe("verifySparkHelperAutostartReceiptSet", () => {
-  function buildReady() {
+  // Independent captures differ at least in observedAt; the default keeps the
+  // legacy timestamp, callers pass distinct ones to model distinct contributors.
+  function buildReady(observedAt = "2026-06-19T00:00:00.000Z") {
     const ready = classifySparkHelperAutostart(
       receive({ state: "address-ready", credentialReady: true, helperReady: true }),
       { enabled: true },
     )
-    const receipt = buildSparkHelperAutostartReceipt(ready, "2026-06-19T00:00:00.000Z")
+    const receipt = buildSparkHelperAutostartReceipt(ready, observedAt)
     if (receipt === null) throw new Error("expected a receipt")
     return receipt
   }
@@ -259,15 +261,43 @@ describe("verifySparkHelperAutostartReceiptSet", () => {
     expect(empty.reasons).toContain("empty-set")
   })
 
-  it("accepts distinct contributors each with a valid receipt and clears at set level", () => {
+  it("accepts distinct contributors each with their own independent receipt and clears at set level", () => {
     const result = verifySparkHelperAutostartReceiptSet([
-      { contributorRef: "pylon:contributor-a", receipt: buildReady() },
-      { contributorRef: "pylon:contributor-b", receipt: buildReady() },
+      { contributorRef: "pylon:contributor-a", receipt: buildReady("2026-06-19T00:00:00.000Z") },
+      { contributorRef: "pylon:contributor-b", receipt: buildReady("2026-06-19T01:23:45.000Z") },
     ])
     expect(result.valid).toBe(true)
     expect(result.clearsBlocker).toBe(true)
     expect(result.distinctContributorCount).toBe(2)
     expect(result.reasons).toEqual([])
+  })
+
+  it("rejects one captured receipt replicated across two distinct contributor refs", () => {
+    const captured = buildReady()
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:real", receipt: captured },
+      // The autostart receipt has no contributor binding, so a copy of the same
+      // artifact under a fabricated ref must NOT count as a second contributor.
+      { contributorRef: "pylon:fabricated", receipt: { ...captured } },
+    ])
+    expect(result.valid).toBe(false)
+    expect(result.clearsBlocker).toBe(false)
+    expect(result.reasons).toContain("duplicate-receipt-artifact:pylon:fabricated")
+    // The smuggling is in the receipt, not the ref: refs are genuinely distinct.
+    expect(result.reasons.some((r) => r.startsWith("duplicate-contributor-ref"))).toBe(
+      false,
+    )
+  })
+
+  it("treats receipts that differ only in observedAt as distinct artifacts", () => {
+    const result = verifySparkHelperAutostartReceiptSet([
+      { contributorRef: "pylon:a", receipt: buildReady("2026-06-19T00:00:00.000Z") },
+      { contributorRef: "pylon:b", receipt: buildReady("2026-06-19T00:00:01.000Z") },
+    ])
+    expect(result.valid).toBe(true)
+    expect(result.reasons.some((r) => r.startsWith("duplicate-receipt-artifact"))).toBe(
+      false,
+    )
   })
 
   it("clears the set bar with a single distinct normal contributor", () => {

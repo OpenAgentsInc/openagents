@@ -320,9 +320,17 @@ export function verifySparkHelperAutostartReceipt(
 // receipt on their own host and present it (or copies of it) as evidence for
 // "several contributors". This set verifier closes that gap by requiring each
 // receipt to be paired with a distinct contributor ref (a public-safe pylonRef),
-// auditing every receipt with the single-receipt gate, and rejecting any reused
-// contributor ref. It mirrors the cross-contributor settlement integrity rule in
-// the scale-methodology verifier. Pure and side-effect-free; captures nothing.
+// auditing every receipt with the single-receipt gate, rejecting any reused
+// contributor ref, AND rejecting a byte-identical receipt artifact reused across
+// distinct contributor refs. That last check matters because the autostart
+// receipt carries no contributor binding: without it, one operator could capture
+// a single receipt on their own host and pair copies of it with several
+// fabricated contributor refs — every entry would pass (distinct refs + a valid
+// receipt) and the set would falsely attest "several distinct contributors". Two
+// genuinely independent captures differ at least in `observedAt`, so an exact
+// duplicate is evidence of replication, not a second contributor. It mirrors the
+// cross-contributor settlement integrity rule in the scale-methodology verifier.
+// Pure and side-effect-free; captures nothing.
 // ---------------------------------------------------------------------------
 
 export type SparkHelperAutostartContributorEntry = {
@@ -358,14 +366,28 @@ function isContributorRef(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && !/\s/.test(value)
 }
 
+// Stable fingerprint of an (already-valid) receipt for exact-duplicate detection.
+// A valid receipt carries only the closed allowlist of primitive-valued keys, so
+// serializing them in a fixed key order is deterministic and order-independent of
+// the candidate object's own key insertion order.
+const FINGERPRINT_KEY_ORDER: readonly string[] = [...ALLOWED_RECEIPT_KEYS].sort()
+
+function canonicalReceiptFingerprint(receipt: unknown): string {
+  const record = receipt as Record<string, unknown>
+  return FINGERPRINT_KEY_ORDER.map(
+    (key) => `${key}=${JSON.stringify(record[key])}`,
+  ).join("|")
+}
+
 /**
  * Audit a SET of captured autostart receipts, each bound to a contributor.
  *
  * Pure and side-effect-free. `valid` requires every entry to be structurally
  * well-formed (a non-empty, whitespace-free contributor ref + a receipt that
- * passes `verifySparkHelperAutostartReceipt`) AND all contributor refs to be
- * distinct — so one host cannot be counted as many contributors. `clearsBlocker`
- * additionally requires at least one distinct contributor. This does NOT clear
+ * passes `verifySparkHelperAutostartReceipt`), all contributor refs to be
+ * distinct, AND no receipt artifact to be reused across entries — so neither a
+ * reused ref nor a replicated receipt can pass one host off as many contributors.
+ * `clearsBlocker` additionally requires at least one distinct contributor. This does NOT clear
  * the blocker; it is the deterministic set-level gate an auditor runs over real
  * captured evidence before any such citation could be made.
  */
@@ -397,6 +419,9 @@ export function verifySparkHelperAutostartReceiptSet(
   const perEntry: SparkHelperAutostartReceiptSetVerification["perEntry"] = []
   const seenContributorRefs = new Set<string>()
   const clearedContributorRefs = new Set<string>()
+  // Maps a valid receipt's canonical fingerprint to the entry label that first
+  // presented it, so a replicated artifact under a different ref is caught.
+  const seenReceiptFingerprints = new Map<string, string>()
 
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index]
@@ -412,9 +437,19 @@ export function verifySparkHelperAutostartReceiptSet(
       seenContributorRefs.add(contributorRef)
     }
 
+    const entryLabel = refOk ? contributorRef : String(index)
     const verification = verifySparkHelperAutostartReceipt(entry?.receipt)
     if (!verification.valid) {
-      reasons.push(`entry-receipt-invalid:${refOk ? contributorRef : index}`)
+      reasons.push(`entry-receipt-invalid:${entryLabel}`)
+    } else {
+      // The receipt is well-formed; guard against the same captured artifact being
+      // replicated across entries to fake additional contributors.
+      const fingerprint = canonicalReceiptFingerprint(entry?.receipt)
+      if (seenReceiptFingerprints.has(fingerprint)) {
+        reasons.push(`duplicate-receipt-artifact:${entryLabel}`)
+      } else {
+        seenReceiptFingerprints.set(fingerprint, entryLabel)
+      }
     }
     if (refOk && verification.clearsBlocker) {
       clearedContributorRefs.add(contributorRef)
