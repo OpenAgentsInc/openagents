@@ -88,6 +88,8 @@ export class TrainingMarathonCurtailmentSurface extends S.Class<TrainingMarathon
   haltSlaMs: S.Int,
   flexibleLoadEvidenceCreated: S.Boolean,
   predicateAvailable: S.Boolean,
+  preflightEndpoint: S.String,
+  preflightRouteAvailable: S.Boolean,
   schemaVersion: S.Literal(CurtailmentDrillSchemaVersion),
   sourceRefs: S.Array(S.String),
   statusLabel: S.String,
@@ -193,15 +195,19 @@ export const projectTrainingMarathonOperations = (
       haltSlaMs: MaxCurtailmentHaltLatencyMs,
       flexibleLoadEvidenceCreated: false,
       predicateAvailable: true,
+      preflightEndpoint:
+        '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight',
+      preflightRouteAvailable: true,
       schemaVersion: CurtailmentDrillSchemaVersion,
       sourceRefs: [
         'apps/openagents.com/workers/api/src/training-curtailment-drill.ts',
         'apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts',
+        'apps/openagents.com/workers/api/src/training-run-window-routes.ts',
         buildoutPlanRef,
         worklogRef,
       ],
       statusLabel:
-        'Curtailment-drill outcome predicate is available; no scheduled shed-and-resume drill receipt or flexible-load proof has been produced.',
+        'Curtailment-drill outcome predicate and admin preflight route exist; no scheduled shed-and-resume drill receipt or flexible-load proof has been produced.',
     }),
     endpoint: TrainingMarathonOperationsEndpoint,
     gate: {

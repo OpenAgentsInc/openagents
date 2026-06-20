@@ -94,6 +94,10 @@ import {
   publicScalingSweepProjection,
 } from './training-scaling-sweep'
 import {
+  evaluateUntrustedCurtailmentDrill,
+  malformedCurtailmentDrillGate,
+} from './training-curtailment-drill'
+import {
   evaluateUntrustedStandbyDispatch,
   malformedStandbyDispatchGate,
 } from './training-standby-dispatch'
@@ -1064,6 +1068,53 @@ const routeStandbyDispatchPreflight = <
     return noStoreJsonResponse({
       run: publicTrainingRunProjection(run, nowIso),
       standbyDispatch,
+    })
+  })
+
+const routeCurtailmentDrillPreflight = <
+  Bindings extends TrainingRunWindowRouteEnv,
+>(
+  dependencies: TrainingRunWindowRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  trainingRunRef: string,
+): Effect.Effect<HttpResponse, TrainingRunWindowRouteError> =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const body = yield* Effect.tryPromise({
+      catch: error =>
+        new TrainingAuthorityStoreError({
+          kind: 'validation_error',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => readJsonObject(request),
+    })
+    const nowIso = routeNowIso(dependencies)
+    const store = dependencies.makeStore(env)
+    const run = yield* Effect.tryPromise({
+      catch: trainingAuthorityStoreErrorFromUnknown,
+      try: () => store.readRun(trainingRunRef),
+    })
+
+    if (run === undefined) {
+      return yield* new TrainingAuthorityStoreError({
+        kind: 'not_found',
+        reason: 'Training run not found.',
+      })
+    }
+
+    const requestedRunRef = body.runRef
+    const curtailmentDrill =
+      requestedRunRef !== undefined && requestedRunRef !== trainingRunRef
+        ? malformedCurtailmentDrillGate()
+        : evaluateUntrustedCurtailmentDrill({
+            ...body,
+            runRef: trainingRunRef,
+          })
+
+    return noStoreJsonResponse({
+      curtailmentDrill,
+      run: publicTrainingRunProjection(run, nowIso),
     })
   })
 
@@ -2365,6 +2416,22 @@ export const makeTrainingRunWindowRoutes = <
           request,
           env,
           decodeURIComponent(standbyDispatchPreflightMatch[1]!),
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
+      )
+    }
+
+    const curtailmentDrillPreflightMatch =
+      /^\/api\/training\/runs\/([^/]+)\/curtailment-drill-preflight$/.exec(
+        url.pathname,
+      )
+
+    if (curtailmentDrillPreflightMatch !== null) {
+      return requireMethod(request, ['POST'], () =>
+        routeCurtailmentDrillPreflight(
+          dependencies,
+          request,
+          env,
+          decodeURIComponent(curtailmentDrillPreflightMatch[1]!),
         ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error)))),
       )
     }

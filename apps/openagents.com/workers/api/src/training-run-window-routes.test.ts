@@ -2773,6 +2773,149 @@ describe('training run window routes', () => {
     })
     expect(await store.readRun('training.run.standby.preflight')).toEqual(run)
   })
+
+  it('admin preflights a curtailment drill without mutating or curtailing the run', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeStore: () => store,
+      nowIso: () => '2026-06-20T10:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const adminHeaders = { authorization: 'Bearer admin-token-test' }
+    const run = buildTrainingRunRecord({
+      makeId: () => 'curtailment-run',
+      nowIso: '2026-06-20T09:55:00.000Z',
+      request: {
+        promiseRef: 'training.marathon_operations.v1',
+        trainingRunRef: 'training.run.curtailment.preflight',
+      },
+    })
+    const drill = {
+      ackLatencyMs: 4_000,
+      drillRef: 'training.drill.curtailment.0001',
+      durableCheckpointSealed: true,
+      haltCompleted: true,
+      haltLatencyMs: 120_000,
+      resumeVerified: true,
+      runRef: 'training.run.curtailment.preflight',
+      scheduled: true,
+      signalAcknowledged: true,
+    }
+    const path =
+      '/api/training/runs/training.run.curtailment.preflight/curtailment-drill-preflight'
+
+    store._testSeedRun(run)
+
+    const unauthorized = await runRoute(
+      routes.routeTrainingRunWindowRequest(jsonRequest(path, drill), {}),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const malformed = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          path,
+          { drillRef: 'training.drill.curtailment.0001' },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const malformedBody = (await malformed.json()) as Readonly<{
+      curtailmentDrill: Readonly<{
+        decision: string
+        passed: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(malformed.status).toBe(200)
+    expect(malformedBody.curtailmentDrill).toMatchObject({
+      decision: 'drill_incomplete',
+      passed: false,
+      reasons: ['drill_descriptor_malformed'],
+    })
+
+    const mismatchedRun = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          path,
+          { ...drill, runRef: 'training.run.other' },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const mismatchedBody = (await mismatchedRun.json()) as Readonly<{
+      curtailmentDrill: Readonly<{
+        decision: string
+        passed: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(mismatchedRun.status).toBe(200)
+    expect(mismatchedBody.curtailmentDrill).toMatchObject({
+      decision: 'drill_incomplete',
+      passed: false,
+      reasons: ['drill_descriptor_malformed'],
+    })
+
+    const incomplete = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          path,
+          { ...drill, resumeVerified: false },
+          { headers: adminHeaders },
+        ),
+        {},
+      ),
+    )
+    const incompleteBody = (await incomplete.json()) as Readonly<{
+      curtailmentDrill: Readonly<{
+        decision: string
+        passed: boolean
+        reasons: ReadonlyArray<string>
+      }>
+    }>
+
+    expect(incomplete.status).toBe(200)
+    expect(incompleteBody.curtailmentDrill).toMatchObject({
+      decision: 'drill_incomplete',
+      passed: false,
+      reasons: ['resume_not_verified'],
+    })
+
+    const preflight = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(path, drill, { headers: adminHeaders }),
+        {},
+      ),
+    )
+    const preflightBody = (await preflight.json()) as Readonly<{
+      curtailmentDrill: Readonly<{
+        decision: string
+        passed: boolean
+        reasons: ReadonlyArray<string>
+      }>
+      run: Readonly<{ trainingRunRef: string }>
+    }>
+
+    expect(preflight.status).toBe(200)
+    expect(preflightBody.run.trainingRunRef).toBe(
+      'training.run.curtailment.preflight',
+    )
+    expect(preflightBody.curtailmentDrill).toMatchObject({
+      decision: 'drill_passed',
+      passed: true,
+      reasons: [],
+    })
+    expect(await store.readRun('training.run.curtailment.preflight')).toEqual(
+      run,
+    )
+  })
 })
 
 // REAL Bitcoin settlement route wiring (openagents #5232, Gate 2).

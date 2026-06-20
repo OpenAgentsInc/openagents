@@ -154,6 +154,13 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(
         body,
+        '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight',
+        'post',
+      ).operationId,
+    ).toBe('preflightTrainingCurtailmentDrill')
+    expect(
+      operationAt(
+        body,
         '/api/public/training/verification-challenges/{challengeRef}',
         'get',
       ).operationId,
@@ -715,6 +722,13 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(
         body,
         '/api/training/runs/{trainingRunRef}/standby-dispatch-preflight',
+        'post',
+      ).security,
+    ).toEqual([{ adminBearer: [] }])
+    expect(
+      operationAt(
+        body,
+        '/api/training/runs/{trainingRunRef}/curtailment-drill-preflight',
         'post',
       ).security,
     ).toEqual([{ adminBearer: [] }])
