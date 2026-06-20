@@ -3,10 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   type Cs336A5DpoGradingChallengeSpec,
   Cs336A5DpoGradingChallengeError,
+  Cs336A5DpoGradingHomeworkKind,
+  buildCs336A5DpoGradingChallengeCreateRequest,
   buildCs336A5DpoGradingChallengeSpec,
   verifyCs336A5DpoGradingResponse,
 } from './cs336-a5-dpo-grading-challenge'
 import { runCs336A5DpoPreferenceGrading } from './cs336-a5-dpo-preference-workload'
+import { TrainingVerificationChallengeCreateRequest } from './training-verification'
+import { Schema as S } from 'effect'
 
 const buildSpec = (): Promise<Cs336A5DpoGradingChallengeSpec> =>
   buildCs336A5DpoGradingChallengeSpec({ splitRef: 'split_a' })
@@ -138,5 +142,78 @@ describe('CS336 A5 DPO grading challenge verifier', () => {
 
     expect(verdict.state).toBe('Rejected')
     expect(verdict.failureCodes).toContain('VerificationClassUnknown')
+  })
+})
+
+describe('CS336 A5 DPO grading challenge create-request', () => {
+  const decode = S.decodeUnknownSync(TrainingVerificationChallengeCreateRequest)
+
+  it('builds a schema-valid deterministic_recompute challenge request from the spec', async () => {
+    const spec = await buildSpec()
+    const request = buildCs336A5DpoGradingChallengeCreateRequest({
+      spec,
+      trainingRunRef: 'run.cs336.a5.dpo.demo',
+      windowRef: 'window.cs336.a5.dpo.demo.1',
+    })
+
+    expect(request.verificationClass).toBe('deterministic_recompute')
+    expect(request.homeworkKind).toBe(Cs336A5DpoGradingHomeworkKind)
+    expect(request.samplingPolicy).toBe('per_contribution')
+    expect(request.trainingRunRef).toBe('run.cs336.a5.dpo.demo')
+    expect(request.windowRef).toBe('window.cs336.a5.dpo.demo.1')
+    expect(request.payload.expectedDigestHex).toBe(spec.expectedDigestHex)
+    expect(request.payload.pairCount).toBe(spec.pairCount)
+    expect(request.payload.jobKind).toBe('cs336_a5_dpo_grading')
+    // Round-trips through the real training-verification schema unchanged.
+    expect(decode(request)).toEqual(request)
+  })
+
+  it('omits windowRef when none is supplied', async () => {
+    const spec = await buildSpec()
+    const request = buildCs336A5DpoGradingChallengeCreateRequest({
+      spec,
+      trainingRunRef: 'run.cs336.a5.dpo.demo',
+    })
+
+    expect(request.windowRef).toBeUndefined()
+    expect(decode(request)).toEqual(request)
+  })
+
+  it('exposes no prompts, completions, or log-probs in the request payload', async () => {
+    const spec = await buildSpec()
+    const request = buildCs336A5DpoGradingChallengeCreateRequest({
+      spec,
+      trainingRunRef: 'run.cs336.a5.dpo.demo',
+    })
+
+    expect(JSON.stringify(request)).not.toMatch(
+      /prompt|completion|logp|weight|reasoning/i,
+    )
+  })
+
+  it('rejects a non-public-safe trainingRunRef via schema validation', async () => {
+    const spec = await buildSpec()
+
+    expect(() =>
+      buildCs336A5DpoGradingChallengeCreateRequest({
+        spec,
+        trainingRunRef: 'run with spaces!',
+      }),
+    ).toThrow(Cs336A5DpoGradingChallengeError)
+  })
+
+  it('rejects building a request from a spec with a malformed expected digest', async () => {
+    const spec = await buildSpec()
+    const malformed: Cs336A5DpoGradingChallengeSpec = {
+      ...spec,
+      expectedDigestHex: 'xyz',
+    }
+
+    expect(() =>
+      buildCs336A5DpoGradingChallengeCreateRequest({
+        spec: malformed,
+        trainingRunRef: 'run.cs336.a5.dpo.demo',
+      }),
+    ).toThrow(Cs336A5DpoGradingChallengeError)
   })
 })
