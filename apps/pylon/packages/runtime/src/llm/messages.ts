@@ -143,7 +143,14 @@ function normalizeContent(content: ProbeLlmMessageInput): ReadonlyArray<ProbeLlm
     return [makeProbeLlmTextPart(content)];
   }
 
-  return Array.isArray(content) ? content : [content];
+  // `Array.isArray` types its argument as `any[]`, which does not narrow a
+  // `ReadonlyArray<...>` out of the union, so guard on the readonly array shape
+  // explicitly to keep both branches typed as ProbeLlmContentPart[].
+  if (Array.isArray(content)) {
+    return content as ReadonlyArray<ProbeLlmContentPart>;
+  }
+
+  return [content as ProbeLlmContentPart];
 }
 
 function isProbeLlmToolResultValue(value: unknown): value is ProbeLlmToolResultValue {
