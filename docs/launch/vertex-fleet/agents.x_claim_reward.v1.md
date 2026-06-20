@@ -29,10 +29,32 @@ codes).
   — a "Preflight readiness gate" section wiring the evaluator to
   `GET /api/operator/treasury/status` before the live dispatch flow.
 
+## Follow-up: post-settlement receipt audit (this run)
+
+The preflight evaluator gates *before* the smoke; nothing gated the settled
+record *after* it. This run adds the after-the-fact counterpart — a pure,
+public-safe **post-settlement receipt auditor** the operator runs on the
+settled reward row before publishing the issue #4626 transition receipt.
+
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.ts`
+  — `auditXClaimRewardSmokeReceipt(reward)` plus the
+  `XClaimRewardSmokeReceiptAudit` / `XClaimRewardSmokeReceiptCheck` types.
+  Checks: settled state, bounded 1000-sat amount, well-formed public receipt
+  ref, at least one `settlement_evidence.public.*` ref, and no leaked payment
+  material (lightning invoice, BOLT12 offer, lightning address, preimage, or
+  payment hash) in any public-facing field. Emits a public-safe
+  `transitionReceiptSummary` (no treasury payment id or destination).
+- `apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.test.ts`
+  — covers the clean pass, each blocking reason, every leaked-material pattern,
+  and a no-payment-material assertion on the serialized summary.
+- `apps/openagents.com/docs/2026-06-09-x-claim-reward-dispatch-runbook.md`
+  — a "Post-settlement receipt audit" section wiring the auditor in before the
+  transition-receipt step.
+
 ## What remains
 
 The blocker is still open: an operator must run the live single-reward smoke —
 enable the flag with the preflight green, dispatch one eligible reward to a real
-owner receive code, let it settle with public-safe receipt refs, and record the
-transition receipt on issue #4626. Only then does this blocker clear and the
-promise become eligible for a green flip.
+owner receive code, let it settle with public-safe receipt refs, run the
+post-settlement audit, and record the transition receipt on issue #4626. Only
+then does this blocker clear and the promise become eligible for a green flip.

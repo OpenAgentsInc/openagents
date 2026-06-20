@@ -144,6 +144,29 @@ All calls use the worker admin API token as the bearer.
 5. Failures: `{"action":"mark_failed","stateReasonRef":"reason.public.<why>"}`.
    Refusals (fraud, duplicate human, policy): `{"action":"refuse", ...}`.
 
+## Post-settlement receipt audit
+
+Before recording the smoke as complete, run the pure post-settlement auditor
+(`auditXClaimRewardSmokeReceipt` in
+`apps/openagents.com/workers/api/src/x-claim-reward-smoke-receipt-audit.ts`) on
+the settled reward row. It is the after-the-fact counterpart to the preflight
+gate: it moves no funds and confirms the row is public-safe before the
+transition receipt is published. The audit passes only when:
+
+- `state_is_settled` — the row reached `settled`.
+- `amount_is_campaign_reward` — `amountSats` is the bounded 1000-sat reward.
+- `receipt_ref_well_formed` — `receiptRef` matches `x_claim_reward_receipt_*`.
+- `settlement_evidence_present` — at least one `settlement_evidence.public.*`
+  evidence ref is recorded.
+- `no_payment_material_leaked` — no invoice, BOLT12 offer, lightning address,
+  preimage, or payment hash appears in any public-facing field.
+
+A passing audit returns `transitionReceiptSummary` — a public-safe object
+(rewardId, receiptRef, state, amountSats, public settlement evidence refs only;
+never the treasury payment id or destination) suitable for pasting into the
+issue #4626 transition receipt. A non-empty `violationReasonRefs` means do not
+publish the receipt until each listed reason clears.
+
 After the settled response, verify the public promise remains honest until the
 operator records the transition receipt:
 
