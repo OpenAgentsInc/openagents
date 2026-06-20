@@ -161,7 +161,7 @@ export function sanitizeProbeRunAssignmentProjection<T extends JsonValue>(value:
   return {
     ...sanitized,
     blueprint: blueprint === undefined ? undefined : sanitizeBlueprintProjection(blueprint),
-  } as T;
+  } as unknown as T;
 }
 
 export function validateProbeAssignmentBlueprintScope(
@@ -285,7 +285,7 @@ function validateBackendCapabilityRefs(assignment: ProbeRunAssignment): Effect.E
     return Effect.void;
   }
 
-  const allowedRefs = assignmentSelectsAppleFmBackend(assignment)
+  const allowedRefs: readonly string[] = assignmentSelectsAppleFmBackend(assignment)
     ? [PROBE_APPLE_FM_BACKEND_CAPABILITY]
     : assignmentSelectsGeminiBackend(assignment)
       ? [PROBE_GEMINI_BACKEND_CAPABILITY]

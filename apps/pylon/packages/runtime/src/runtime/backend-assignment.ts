@@ -2,6 +2,7 @@ import { Effect, Schema as S } from "effect";
 import { AppleFmBackendError, makeAppleFmClient, type AppleFmPlainTextCompletion } from "../backends/apple-fm/client.js";
 import { APPLE_FM_BACKEND_KIND } from "../backends/apple-fm/contract.js";
 import { GeminiClientError, makeGeminiClient, type GeminiCompleteResult } from "../backends/gemini/client.js";
+import type { GeminiBackendFailureReceipt } from "../backends/gemini/receipts.js";
 import { GEMINI_BACKEND_KIND } from "../backends/gemini/contract.js";
 import { makePsionicQwenClient, PsionicQwenClientError, type PsionicQwenCompleteResult } from "../backends/psionic-qwen/client.js";
 import { PSIONIC_QWEN_BACKEND_KIND } from "../backends/psionic-qwen/contract.js";
@@ -452,6 +453,7 @@ function backendEvent(input: {
     | AppleFmBackendFailureReceipt
     | AppleFmPlainTextCompletion["receipt"]
     | GeminiCompleteResult["receipt"]
+    | GeminiBackendFailureReceipt
     | PsionicQwenAvailabilityReceipt
     | PsionicQwenFailureReceipt
     | PsionicQwenTranscriptReceipt;

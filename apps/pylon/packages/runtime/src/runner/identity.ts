@@ -91,7 +91,7 @@ export function authorizeRunnerForAssignment(
       Effect.mapError(
         (error) =>
           new ProbeRunnerAuthorizationError({
-            reason: `assignment Blueprint scope is invalid: ${"reason" in error ? error.reason : error._tag}`,
+            reason: `assignment Blueprint scope is invalid: ${error.reason}`,
           }),
       ),
     );
