@@ -360,6 +360,15 @@ const runPromiseAllowlist = new Map([
   // bridge; ratchet down if the operator billing handlers move to an Effect
   // program.
   ['workers/api/src/operator-billing-routes.ts', 1],
+  // Added 2026-06-19 (#5523 / DE-7 #5530): the voice-session transcript
+  // ingestion route runs the Effect-returning pure ingest core
+  // (`buildVoiceProgramIngestProposal`) once from the Promise-based,
+  // flag-gated `/api/mobile/voice-sessions/ingest` handler. The route awaits
+  // the request body (so the handler is Promise-shaped) and bridges the pure
+  // Effect mapping into it. Named bridge; ratchet down if the route handler
+  // moves to an Effect program. INERT by default (VOICE_PROGRAM_INGEST_ENABLED
+  // off → the core is never run); promise stays red.
+  ['workers/api/src/voice-program-ingest-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)
