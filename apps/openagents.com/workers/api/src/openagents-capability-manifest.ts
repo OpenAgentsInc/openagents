@@ -751,6 +751,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Operator-only append-only Site referral payout ledger transition route. It approves dispatch, marks dispatched, marks failed, refuses, reverses, or marks settled only with public-safe evidence refs; it does not move sats by itself.',
       },
       {
+        id: 'operator_site_referral_payout_dispatch',
+        href: 'https://openagents.com/api/operator/sites/referrals/payout-ledger/{payoutRef}/dispatch',
+        method: 'POST',
+        auth: 'admin_api_token',
+        description:
+          'Operator-only Site referral payout dispatch route. It calls the shared readiness-gated MDK/Spark adapter rail before recording settled, enforces the credit-to-Bitcoin asset boundary from the supplied revenueAsset, and returns only public-safe outcome refs/state/reasons/sats; owner-armed-off configuration refuses before adapter dispatch.',
+      },
+      {
         id: 'public_artanis_report',
         href: 'https://openagents.com/api/public/artanis/report',
         method: 'GET',

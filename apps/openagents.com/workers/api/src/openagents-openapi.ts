@@ -3039,6 +3039,12 @@ const schemaComponents = (): JsonSchema => ({
   SiteReferralPayoutTransitionResponse: objectSummary(
     'Public-safe Site referral payout ledger transition projection.',
   ),
+  SiteReferralPayoutDispatchRequest: objectSummary(
+    'Operator-only Site referral payout dispatch request. Revenue asset is required so the shared credit-to-Bitcoin boundary can refuse credit/USD-funded rows before adapter dispatch.',
+  ),
+  SiteReferralPayoutDispatchResponse: objectSummary(
+    'Public-safe Site referral payout dispatch outcome. The route calls the readiness-gated payout adapter before recording settled and returns only public refs, state, reason refs, and sats.',
+  ),
   OperatorSite: objectSummary(
     'Operator Site project projection with lifecycle state and public-safe refs.',
   ),
@@ -10223,6 +10229,35 @@ const paths = (): JsonSchema => ({
         ),
         '409': okJson(
           'Transition is invalid for the current payout state.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/sites/referrals/payout-ledger/{payoutRef}/dispatch': {
+    post: operation({
+      operationId: 'dispatchSiteReferralPayoutLedger',
+      summary: 'Dispatch Site referral payout',
+      description:
+        'Operator-only Site referral payout dispatch through the shared readiness-gated MDK/Spark adapter rail. The route advances eligible/approved/dispatched rows through the safe dispatcher, enforces the credit-to-Bitcoin asset boundary, calls the adapter before recording settled, and returns only public-safe outcome fields. Under the owner-armed-off configuration it refuses before any adapter call and records no settled state.',
+      tags: ['Sites'],
+      security: adminBearer,
+      parameters: [pathParam('payoutRef', 'Public-safe referral payout ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/SiteReferralPayoutDispatchRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Site referral payout dispatch outcome.',
+          '#/components/schemas/SiteReferralPayoutDispatchResponse',
+        ),
+        '401': okJson(
+          'Admin bearer token is missing or invalid.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        '409': okJson(
+          'Dispatch is invalid for the current payout state.',
           '#/components/schemas/ErrorResponse',
         ),
         ...errorResponses(),

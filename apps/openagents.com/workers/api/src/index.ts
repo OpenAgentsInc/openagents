@@ -6689,11 +6689,6 @@ const siteReferralInspectionRoutes = makeSiteReferralInspectionRoutes({
   requireBrowserSession,
 })
 
-const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
-  nowIso: currentIsoTimestamp,
-  requireAdminApiToken,
-})
-
 // Referral payout settlement adapter (RL-1 settle wire, #5511). This is the
 // PRODUCTION hosted-MDK programmatic-payout adapter the shared dispatcher
 // (`dispatchReferralPayoutSettlement`) invokes to record a `settled` referral
@@ -6718,6 +6713,16 @@ const referralPayoutSettlementAdapter = makeSiteReferralPayoutAdapter({
   // Not armed: referrer payout-destination registration is owner-gated (#5512).
   // Returns null so the adapter fails closed if ever reached.
   resolveDestination: async () => null,
+})
+
+const siteReferralPayoutLedgerRoutes = makeSiteReferralPayoutLedgerRoutes({
+  dispatchDependencies: {
+    adapter: referralPayoutSettlementAdapter,
+    nowIso: currentIsoTimestamp,
+    readReadiness: async () => hostedMdkDirectPayoutDisabledGate(),
+  },
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken,
 })
 
 // Inference referral revshare routes (sub-EPIC #5475: #5491 dashboard read +

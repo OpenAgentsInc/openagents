@@ -4,8 +4,8 @@ Date: 2026-06-10
 
 Promise: `sites.referral_bitcoin_stream.v1`
 
-Status: approved direction recorded on issue #4650; live sats dispatch still
-requires an explicit operator-funded smoke in issue #4651.
+Status: approved direction recorded on issue #4650; live sats dispatch remains
+owner-armed and blocked on issue #5511 producing a real settled payout receipt.
 
 ## Reward Formula
 
@@ -61,10 +61,26 @@ Additional terminal or corrective states:
 - `reversed`: append-only reversal entry for refund, chargeback, abuse, or
   later policy invalidation.
 
-Operator dispatch transitions are gated by the Worker admin token. Settlement
-requires public-safe settlement evidence refs. Reversals are represented by new
-negative-amount rows linked to the entry being reversed; prior rows are never
-mutated.
+Normal payout dispatch is gated by the Worker admin token and flows through:
+
+`POST /api/operator/sites/referrals/payout-ledger/{payoutRef}/dispatch`
+
+The dispatch request must declare the paid event's `revenueAsset`
+(`bitcoin`, `credit`, or `usd`). The Worker then uses the shared
+credit-to-Bitcoin boundary and owner-armed payout-mode gate before invoking the
+MDK/Spark adapter. A row is recorded as `settled` only after the adapter returns
+a public-safe receipt ref. Credit/USD revenue is refused for withdrawable
+Bitcoin dispatch; it is credit revshare, not a Bitcoin liability.
+
+Manual state transitions remain available for append-only ledger maintenance,
+repair, refusal, failure, reversal, and audit-recording:
+
+`POST /api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions`
+
+Manual settlement transitions require public-safe settlement evidence refs, but
+they do not move sats by themselves and are not the normal first-real-payout
+path. Reversals are represented by new negative-amount rows linked to the entry
+being reversed; prior rows are never mutated.
 
 ## Implementation Hooks
 
@@ -72,10 +88,16 @@ mutated.
   `site_referral_payout_ledger_entries`
 - Worker module:
   `workers/api/src/site-referral-payout-ledger.ts`
-- Operator transition route:
+- Operator dispatch route:
+  `POST /api/operator/sites/referrals/payout-ledger/{payoutRef}/dispatch`
+- Operator transition/repair route:
   `POST /api/operator/sites/referrals/payout-ledger/{payoutRef}/transitions`
+- Public aggregate projection:
+  `GET /api/public/site-referral-payouts`
+- Public settled receipt readback:
+  `GET /api/public/site-referral-payout-receipts/{receiptRef}`
 
 This policy should be proposed as evidence for
 `sites.referral_bitcoin_stream.v1`, but it does not clear the live payout
-blocker until issue #4651 settles a real small-sats referral payout and records
+blocker until issue #5511 settles a real small-sats referral payout and records
 the public-safe receipt.

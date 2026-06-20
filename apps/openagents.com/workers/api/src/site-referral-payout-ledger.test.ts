@@ -2,6 +2,10 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  hostedMdkDirectPayoutDisabledGate,
+  projectMdkPayoutModeGate,
+} from './mdk-payout-mode-gate'
+import {
   createReferralPayoutEligibility,
   transitionReferralPayout,
   type SiteReferralPayoutState,
@@ -184,6 +188,39 @@ const executionContext = (): ExecutionContext => ({
   waitUntil: () => undefined,
 })
 
+const makeLedgerRoute = (
+  overrides: Partial<{
+    admin: boolean
+    dispatch: (input: {
+      amountSats: number
+      idempotencyKey: string
+      payoutRef: string
+    }) => Promise<{ receiptRef: string }>
+    livePayoutClaimAllowed: boolean
+  }> = {},
+) =>
+  makeSiteReferralPayoutLedgerRoutes({
+    dispatchDependencies: {
+      adapter: {
+        adapterKind: 'test',
+        dispatch:
+          overrides.dispatch ??
+          (async () => ({ receiptRef: 'receipt.site_referral_payout.test' })),
+      },
+      nowIso: () => '2026-06-10T09:01:00.000Z',
+      readReadiness: async () =>
+        overrides.livePayoutClaimAllowed === true
+          ? projectMdkPayoutModeGate({
+              hostedFundedKeyVerified: true,
+              hostedProgrammaticPayoutsEnabled: true,
+              requestedMode: 'hosted_mdk_direct_payout',
+            })
+          : hostedMdkDirectPayoutDisabledGate(),
+    },
+    nowIso: () => '2026-06-10T09:01:00.000Z',
+    requireAdminApiToken: () => Promise.resolve(overrides.admin ?? true),
+  })
+
 describe('Site referral payout ledger', () => {
   test('creates eligible payout rows with capped percentage amount', async () => {
     const store = new PayoutStore()
@@ -302,10 +339,7 @@ describe('Site referral payout ledger routes', () => {
   test('requires admin token for operator transitions', async () => {
     const store = new PayoutStore()
     await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
-    const route = makeSiteReferralPayoutLedgerRoutes({
-      nowIso: () => '2026-06-10T09:01:00.000Z',
-      requireAdminApiToken: () => Promise.resolve(false),
-    })
+    const route = makeLedgerRoute({ admin: false })
     const response = await Effect.runPromise(
       route.routeSiteReferralPayoutLedgerRequest(
         new Request(
@@ -330,10 +364,7 @@ describe('Site referral payout ledger routes', () => {
   test('operator route records approved transition without mutating prior row', async () => {
     const store = new PayoutStore()
     await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
-    const route = makeSiteReferralPayoutLedgerRoutes({
-      nowIso: () => '2026-06-10T09:01:00.000Z',
-      requireAdminApiToken: () => Promise.resolve(true),
-    })
+    const route = makeLedgerRoute()
     const response = await Effect.runPromise(
       route.routeSiteReferralPayoutLedgerRequest(
         new Request(
@@ -358,5 +389,175 @@ describe('Site referral payout ledger routes', () => {
     expect(response.status).toBe(200)
     expect(body.payout.state).toBe('approved')
     expect(store.rows.map(row => row.state)).toEqual(['eligible', 'approved'])
+  })
+
+  test('requires admin token for operator dispatch', async () => {
+    const store = new PayoutStore()
+    await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
+    const route = makeLedgerRoute({ admin: false })
+    const response = await Effect.runPromise(
+      route.routeSiteReferralPayoutLedgerRequest(
+        new Request(
+          'https://openagents.com/api/operator/sites/referrals/payout-ledger/site_referral_payout_ref_1/dispatch',
+          {
+            body: JSON.stringify({ revenueAsset: 'bitcoin' }),
+            method: 'POST',
+          },
+        ),
+        { OPENAGENTS_DB: payoutDb(store) },
+        executionContext(),
+      )!,
+    )
+
+    expect(response.status).toBe(401)
+    expect(store.rows).toHaveLength(1)
+  })
+
+  test('operator dispatch refuses while owner-armed payout mode is disabled', async () => {
+    const store = new PayoutStore()
+    await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
+    const dispatchCalls: Array<unknown> = []
+    const route = makeLedgerRoute({
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.site_referral_payout.should_not_dispatch' }
+      },
+      livePayoutClaimAllowed: false,
+    })
+    const response = await Effect.runPromise(
+      route.routeSiteReferralPayoutLedgerRequest(
+        new Request(
+          'https://openagents.com/api/operator/sites/referrals/payout-ledger/site_referral_payout_ref_1/dispatch',
+          {
+            body: JSON.stringify({ revenueAsset: 'bitcoin' }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          },
+        ),
+        { OPENAGENTS_DB: payoutDb(store) },
+        executionContext(),
+      )!,
+    )
+    const body = (await response.json()) as {
+      dispatch: { _tag: string; reasonRef?: string; state?: string }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.dispatch).toMatchObject({
+      _tag: 'refused',
+      reasonRef: 'reason.public.site_referral_payout.payout_target_not_ready',
+      state: 'eligible',
+    })
+    expect(dispatchCalls).toHaveLength(0)
+    expect(store.rows.map(row => row.state)).toEqual(['eligible'])
+  })
+
+  test('operator dispatch refuses usd and credit revenue before adapter call', async () => {
+    const store = new PayoutStore()
+    await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
+    const dispatchCalls: Array<unknown> = []
+    const route = makeLedgerRoute({
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.site_referral_payout.should_not_dispatch' }
+      },
+      livePayoutClaimAllowed: true,
+    })
+
+    for (const revenueAsset of ['usd', 'credit'] as const) {
+      const response = await Effect.runPromise(
+        route.routeSiteReferralPayoutLedgerRequest(
+          new Request(
+            'https://openagents.com/api/operator/sites/referrals/payout-ledger/site_referral_payout_ref_1/dispatch',
+            {
+              body: JSON.stringify({ revenueAsset }),
+              headers: { 'content-type': 'application/json' },
+              method: 'POST',
+            },
+          ),
+          { OPENAGENTS_DB: payoutDb(store) },
+          executionContext(),
+        )!,
+      )
+      const body = (await response.json()) as {
+        dispatch: { _tag: string; reasonRef?: string }
+      }
+
+      expect(response.status).toBe(200)
+      expect(body.dispatch).toMatchObject({
+        _tag: 'refused',
+        reasonRef:
+          'reason.public.asset_boundary.credit_revenue_no_bitcoin_share',
+      })
+    }
+
+    expect(dispatchCalls).toHaveLength(0)
+    expect(store.rows.map(row => row.state)).toEqual(['eligible'])
+  })
+
+  test('operator dispatch settles through an armed adapter and redacted receipt', async () => {
+    const store = new PayoutStore()
+    await createReferralPayoutEligibility(payoutDb(store), baseEligibility)
+    const dispatchCalls: Array<{
+      amountSats: number
+      idempotencyKey: string
+      payoutRef: string
+    }> = []
+    const route = makeLedgerRoute({
+      dispatch: async input => {
+        dispatchCalls.push(input)
+        return { receiptRef: 'receipt.site_referral_payout.hosted_mdk.abc123' }
+      },
+      livePayoutClaimAllowed: true,
+    })
+    const response = await Effect.runPromise(
+      route.routeSiteReferralPayoutLedgerRequest(
+        new Request(
+          'https://openagents.com/api/operator/sites/referrals/payout-ledger/site_referral_payout_ref_1/dispatch',
+          {
+            body: JSON.stringify({ revenueAsset: 'bitcoin' }),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+          },
+        ),
+        { OPENAGENTS_DB: payoutDb(store) },
+        executionContext(),
+      )!,
+    )
+    const body = (await response.json()) as {
+      dispatch: {
+        _tag: string
+        amountSats: number
+        payoutRef: string
+        receiptRef: string
+        state: string
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.dispatch).toMatchObject({
+      _tag: 'settled',
+      amountSats: 125,
+      payoutRef: 'site_referral_payout_ref_1',
+      receiptRef: 'receipt.site_referral_payout.hosted_mdk.abc123',
+      state: 'settled',
+    })
+    expect(dispatchCalls).toEqual([
+      {
+        amountSats: 125,
+        idempotencyKey:
+          'site_referral_payout.adapter.site_referral_payout_ref_1',
+        payoutRef: 'site_referral_payout_ref_1',
+      },
+    ])
+    expect(store.rows.map(row => row.state)).toEqual([
+      'eligible',
+      'approved',
+      'dispatched',
+      'settled',
+    ])
+    expect(store.rows.at(-1)?.evidence_refs_json).toContain(
+      'receipt.site_referral_payout.hosted_mdk.abc123',
+    )
   })
 })

@@ -4,6 +4,11 @@ import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { decodeUnknownWithSchema } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import {
+  type SiteReferralPayoutDispatchDependencies,
+  SiteReferralPayoutDispatchError,
+  dispatchReferralPayoutSettlement,
+} from './site-referral-payout-dispatch'
+import {
   SiteReferralPayoutLedgerStorageError,
   SiteReferralPayoutLedgerValidationError,
   projectSiteReferralPayout,
@@ -19,6 +24,7 @@ type SiteReferralPayoutLedgerEnv = Readonly<{
 type SiteReferralPayoutLedgerRouteDependencies<
   Bindings extends SiteReferralPayoutLedgerEnv,
 > = Readonly<{
+  dispatchDependencies: SiteReferralPayoutDispatchDependencies
   nowIso: () => string
   requireAdminApiToken: (
     request: Request,
@@ -59,6 +65,10 @@ const TransitionRequest = S.Struct({
   evidenceRefs: S.optionalKey(S.Array(S.Trim.check(S.isMaxLength(300)))),
   idempotencyKey: S.Trim.check(S.isMinLength(1), S.isMaxLength(220)),
   stateReasonRef: S.optionalKey(S.NullOr(S.Trim.check(S.isMaxLength(300)))),
+})
+
+const DispatchRequest = S.Struct({
+  revenueAsset: S.Literals(['bitcoin', 'credit', 'usd']),
 })
 
 const routeErrorResponse = (
@@ -102,21 +112,21 @@ export const makeSiteReferralPayoutLedgerRoutes = <
     _ctx?: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
-    const match =
+    const transitionMatch =
       /^\/api\/operator\/sites\/referrals\/payout-ledger\/([^/]+)\/transitions$/.exec(
         url.pathname,
       )
+    const dispatchMatch =
+      /^\/api\/operator\/sites\/referrals\/payout-ledger\/([^/]+)\/dispatch$/.exec(
+        url.pathname,
+      )
 
-    if (match === null) {
+    if (transitionMatch === null && dispatchMatch === null) {
       return undefined
     }
 
     return runRoute(
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return methodNotAllowed(['POST'])
-        }
-
         const authorized = yield* Effect.tryPromise({
           catch: () => new SiteReferralPayoutLedgerUnauthorized({}),
           try: () => dependencies.requireAdminApiToken(request, env),
@@ -124,6 +134,78 @@ export const makeSiteReferralPayoutLedgerRoutes = <
 
         if (!authorized) {
           return yield* new SiteReferralPayoutLedgerUnauthorized({})
+        }
+
+        if (dispatchMatch !== null) {
+          if (request.method !== 'POST') {
+            return methodNotAllowed(['POST'])
+          }
+
+          const parsed = yield* Effect.tryPromise({
+            catch: error =>
+              new SiteReferralPayoutLedgerBadRequest({
+                reason: errorMessage(error),
+              }),
+            try: async () =>
+              decodeUnknownWithSchema(
+                DispatchRequest,
+                await request.json().catch(() => ({})),
+              ),
+          })
+          const payoutRef = decodeURIComponent(dispatchMatch[1] ?? '')
+          const outcome = yield* Effect.tryPromise({
+            catch: error =>
+              error instanceof SiteReferralPayoutLedgerValidationError ||
+              error instanceof SiteReferralPayoutLedgerStorageError
+                ? error
+                : error instanceof SiteReferralPayoutDispatchError
+                  ? new SiteReferralPayoutLedgerStorageError({
+                      error,
+                      operation: 'siteReferralPayoutLedger.dispatchRoute.adapter',
+                    })
+                  : new SiteReferralPayoutLedgerStorageError({
+                      error,
+                      operation: 'siteReferralPayoutLedger.dispatchRoute',
+                    }),
+            try: () =>
+              dispatchReferralPayoutSettlement(
+                openAgentsDatabase(env),
+                dependencies.dispatchDependencies,
+                { payoutRef, revenueAsset: parsed.revenueAsset },
+              ),
+          })
+
+          return noStoreJsonResponse({
+            dispatch:
+              outcome._tag === 'settled'
+                ? {
+                    _tag: outcome._tag,
+                    amountSats: outcome.entry.amountSats,
+                    payoutRef: outcome.entry.payoutRef,
+                    receiptRef: outcome.receiptRef,
+                    state: outcome.entry.state,
+                  }
+                : outcome._tag === 'already_settled'
+                  ? {
+                      _tag: outcome._tag,
+                      payoutRef: outcome.entry.payoutRef,
+                      state: outcome.entry.state,
+                    }
+                  : {
+                      _tag: outcome._tag,
+                      reasonRef: outcome.reasonRef,
+                      ...(outcome.entry === null
+                        ? {}
+                        : {
+                            payoutRef: outcome.entry.payoutRef,
+                            state: outcome.entry.state,
+                          }),
+                    },
+          })
+        }
+
+        if (request.method !== 'POST') {
+          return methodNotAllowed(['POST'])
         }
 
         const parsed = yield* Effect.tryPromise({
@@ -137,7 +219,7 @@ export const makeSiteReferralPayoutLedgerRoutes = <
               await request.json().catch(() => ({})),
             ),
         })
-        const payoutRef = decodeURIComponent(match[1] ?? '')
+        const payoutRef = decodeURIComponent(transitionMatch?.[1] ?? '')
         const payout = yield* Effect.tryPromise({
           catch: error =>
             error instanceof SiteReferralPayoutLedgerValidationError ||
