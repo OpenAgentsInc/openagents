@@ -280,6 +280,87 @@ describe("zero-base shell: text bar → response loop", () => {
     )
   })
 
+  test("Codex shell turns follow proof external-session events when control events are redacted", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "shell",
+      shellTarget: "codex",
+      shellInput: "who are you",
+    })
+    const [submitted] = update(start, SubmittedShell())
+    const sessionRef = "session.pylon.control.5ba05b978a0a8a8b5cc91551"
+    const externalSessionRef = "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be"
+    const [spawned] = update(
+      submitted,
+      SucceededShellCodingTurn({
+        target: "codex",
+        prompt: "who are you",
+        sessionRef,
+      }),
+    )
+
+    const [reconciled] = update(
+      spawned,
+      GotNodeState({
+        node: {
+          ok: true,
+          schema: "test.node",
+          sessions: [{ sessionRef, state: "completed" }],
+          events: {
+            [sessionRef]: [
+              {
+                eventIndex: 4,
+                phase: "redaction_blocked",
+                state: "running",
+                observedAt: "2026-06-20T02:47:08.000Z",
+                detail: "",
+              },
+            ],
+            [externalSessionRef]: [
+              {
+                eventIndex: 3,
+                phase: "agent_message",
+                state: "completed",
+                observedAt: "2026-06-20T02:47:09.708Z",
+                detail: "agent: I’m Codex, a GPT-5-based coding agent.",
+              },
+            ],
+          },
+          artifacts: {
+            [sessionRef]: {
+              kind: "proof",
+              outcome: "completed",
+              editedFileCount: 0,
+              commandCount: 0,
+              totalTokens: 16570,
+              detail: {
+                schema: "openagents.pylon.control_session_artifact.v0.1",
+                objectiveDigestRef: null,
+                verifyRef: null,
+                responseDigestRef: "digest.pylon.control_session.response.f06d8db3e867dbcfae487c13",
+                externalSessionRef,
+                executionPathRef: "control_session.composer",
+                executionMode: "local_bounded",
+                sandboxMode: "workspace-write",
+                permissionMode: null,
+                devCheckState: "passed",
+                deviationRefs: [],
+                redactionState: "clean",
+                errorClass: null,
+                errorDigestRef: null,
+                workspaceRef: "workspace.pylon.control_session.injected.test",
+              },
+            },
+          },
+        },
+      }),
+    )
+
+    expect(reconciled.shellTurns.at(-1)?.text).toBe(
+      "I’m Codex, a GPT-5-based coding agent.",
+    )
+  })
+
   test("coding target failures clear pending without adding to continuation state", () => {
     const start = Model.make({
       ...initialModel,

@@ -6,6 +6,7 @@
 // Each raw line is normalized to a concise one-line activity (+ a phase), so the
 // existing timeline renders it compactly; detail-on-expand is layered later.
 
+import { createHash } from "node:crypto"
 import { openSync, readSync, closeSync, fstatSync, readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { expandClaudeMessage } from "./claude-blocks"
@@ -22,6 +23,7 @@ export type ExternalEvent = {
 
 export type ExternalSession = {
   sessionRef: string
+  aliasSessionRefs?: string[]
   agentKind: ExternalAgentKind
   parentRef: string | null
   state: string
@@ -33,6 +35,10 @@ export type ExternalSession = {
 function clip(value: string, max = 200): string {
   const oneLine = value.replace(/\s+/g, " ").trim()
   return oneLine.length > max ? `${oneLine.slice(0, max)}…` : oneLine
+}
+
+export function stableExternalSessionRef(prefix: string, value: string): string {
+  return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
 // Read only the last `maxBytes` of a (possibly huge) file, dropping the first
@@ -167,6 +173,9 @@ export function buildClaudeSession(input: {
   const state = input.nowMs - input.mtimeMs < 90_000 ? "running" : "idle"
   return {
     sessionRef: `claude:${input.sessionId}`,
+    aliasSessionRefs: [
+      stableExternalSessionRef("session.pylon.claude_composer", input.sessionId),
+    ],
     agentKind: "claude",
     parentRef: input.parentRef ?? null,
     state,

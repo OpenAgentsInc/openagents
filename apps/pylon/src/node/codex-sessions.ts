@@ -3,7 +3,12 @@
 
 import { readdirSync, statSync } from "node:fs"
 import { join } from "node:path"
-import { tailLines, type ExternalEvent, type ExternalSession } from "./external-sessions"
+import {
+  stableExternalSessionRef,
+  tailLines,
+  type ExternalEvent,
+  type ExternalSession,
+} from "./external-sessions"
 
 function clip(value: string, max = 200): string {
   const oneLine = value.replace(/\s+/g, " ").trim()
@@ -35,6 +40,11 @@ function summarizeTool(name: string, input: unknown): string {
   if (name === "apply_patch" && typeof input === "string") return `${name}: ${clip(input, 160)}`
   const preview = typeof input === "string" ? clip(input, 160) : clip(JSON.stringify(rec), 160)
   return preview.length > 0 ? `${name}: ${preview}` : `${name}: ...`
+}
+
+function rolloutIdFromSessionId(sessionId: string): string | null {
+  const match = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(sessionId)
+  return match?.[1] ?? null
 }
 
 // Normalize one Codex rollout JSONL object into a compact timeline event.
@@ -102,10 +112,26 @@ export function buildCodexSession(input: {
   maxEvents?: number
 }): ExternalSession {
   const events: ExternalEvent[] = []
+  let rolloutSessionId: string | null = rolloutIdFromSessionId(input.sessionId)
   for (const line of input.lines) {
+    let raw: unknown
     let parsed: ExternalEvent | null
     try {
-      parsed = normalizeCodexLine(JSON.parse(line))
+      raw = JSON.parse(line)
+      if (
+        rolloutSessionId === null &&
+        raw !== null &&
+        typeof raw === "object" &&
+        (raw as { type?: unknown }).type === "session_meta"
+      ) {
+        const payload = (raw as { payload?: unknown }).payload
+        const id =
+          payload !== null && typeof payload === "object"
+            ? (payload as { id?: unknown }).id
+            : null
+        if (typeof id === "string" && id.trim() !== "") rolloutSessionId = id
+      }
+      parsed = normalizeCodexLine(raw)
     } catch {
       parsed = null
     }
@@ -115,6 +141,13 @@ export function buildCodexSession(input: {
   const state = input.nowMs - input.mtimeMs < 90_000 ? "running" : "idle"
   return {
     sessionRef: `codex:${input.sessionId}`,
+    ...(rolloutSessionId === null
+      ? {}
+      : {
+          aliasSessionRefs: [
+            stableExternalSessionRef("session.pylon.codex_composer", rolloutSessionId),
+          ],
+        }),
     agentKind: "codex",
     parentRef: input.parentRef ?? null,
     state,

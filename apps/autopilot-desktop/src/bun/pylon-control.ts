@@ -177,6 +177,33 @@ async function fetchSessionEventRows(input: {
   }
 }
 
+function eventRowsHaveAgentText(events: readonly SessionEventRow[]): boolean {
+  return events.some((event) => {
+    const text =
+      typeof event.full === "string" && event.full.trim() !== ""
+        ? event.full
+        : event.detail
+    return /^agent:\s*\S/is.test(text)
+  })
+}
+
+const loggedSessionBridgeDiagnostics = new Set<string>()
+
+function logSessionBridgeDiagnostic(input: {
+  sessionRef: string
+  externalSessionRef: string
+  controlEventCount: number
+  externalEventCount: number
+  externalHasAgentText: boolean
+}): void {
+  const key = `${input.sessionRef}\0${input.externalSessionRef}`
+  if (loggedSessionBridgeDiagnostics.has(key)) return
+  loggedSessionBridgeDiagnostics.add(key)
+  console.log(
+    `[autopilot-desktop] session bridge control=${input.sessionRef} external=${input.externalSessionRef} controlEvents=${input.controlEventCount} externalEvents=${input.externalEventCount} externalAgentText=${input.externalHasAgentText}`,
+  )
+}
+
 async function fetchAccountRows(input: {
   baseUrl: string
   token: string
@@ -739,7 +766,28 @@ export async function fetchNodeState(input: {
         sessionRef: session.sessionRef,
         fetchFn,
       })
-      if (stats) artifacts[session.sessionRef] = stats
+      if (stats) {
+        artifacts[session.sessionRef] = stats
+        const externalSessionRef = stats.detail?.externalSessionRef
+        if (externalSessionRef && events[externalSessionRef] === undefined) {
+          const externalEvents = await fetchSessionEventRows({
+            baseUrl,
+            token: input.token,
+            sessionRef: externalSessionRef,
+            fetchFn,
+          })
+          if (externalEvents.length > 0) events[externalSessionRef] = externalEvents
+          if (!eventRowsHaveAgentText(events[session.sessionRef] ?? [])) {
+            logSessionBridgeDiagnostic({
+              sessionRef: session.sessionRef,
+              externalSessionRef,
+              controlEventCount: events[session.sessionRef]?.length ?? 0,
+              externalEventCount: externalEvents.length,
+              externalHasAgentText: eventRowsHaveAgentText(externalEvents),
+            })
+          }
+        }
+      }
     }
   }
 

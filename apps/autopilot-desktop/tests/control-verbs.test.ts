@@ -189,6 +189,83 @@ describe("CL-46 control verbs", () => {
     expect(state.coordinatorPaused).toBe(true)
   })
 
+  test("fetchNodeState fetches proof external-session events for redacted control sessions", async () => {
+    const sessionRef = "session.pylon.control.5ba05b978a0a8a8b5cc91551"
+    const externalSessionRef = "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be"
+    const fetchFn = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, schema: "openagents.pylon.control.v0.3" }), { status: 200 })
+      }
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      if (body.type === "session.list") {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: [{
+            sessionRef,
+            adapter: "codex",
+            state: "completed",
+            accountRefHash: null,
+            updatedAt: "2026-06-20T02:47:10.326Z",
+          }],
+        }), { status: 200 })
+      }
+      if (body.type === "session.events" && body.sessionRef === sessionRef) {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            recentEvents: [
+              { eventIndex: 4, phase: "redaction_blocked", state: "running", observedAt: "t" },
+            ],
+          },
+        }), { status: 200 })
+      }
+      if (body.type === "session.artifact") {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            kind: "proof",
+            artifact: {
+              schema: "openagents.pylon.control_session_artifact.v0.1",
+              executor: {
+                outcome: "completed",
+                editedFileCount: 0,
+                commandCount: 0,
+                totalTokens: 12,
+                externalSessionRef,
+              },
+              task: {},
+              devCheck: { state: "passed" },
+              redactionScan: { state: "clean" },
+              deviations: [],
+            },
+          },
+        }), { status: 200 })
+      }
+      if (body.type === "session.events" && body.sessionRef === externalSessionRef) {
+        return new Response(JSON.stringify({
+          ok: true,
+          result: {
+            recentEvents: [
+              {
+                eventIndex: 3,
+                phase: "agent_message",
+                state: "completed",
+                observedAt: "t",
+                messageText: "agent: I am Codex.",
+              },
+            ],
+          },
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ ok: true, result: [] }), { status: 200 })
+    }) as unknown as typeof fetch
+
+    const state = await fetchNodeState({ ...base, fetchFn })
+
+    expect(state.artifacts[sessionRef]?.detail?.externalSessionRef).toBe(externalSessionRef)
+    expect(state.events[externalSessionRef]?.[0]?.detail).toBe("agent: I am Codex.")
+  })
+
   test("fetchAppleFmReadiness normalizes ready Pylon status", async () => {
     let captured: Record<string, unknown> | null = null
     const readiness = await fetchAppleFmReadiness({

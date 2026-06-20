@@ -24,11 +24,15 @@ describe("external Codex session normalization (#4951)", () => {
 
   test("builds a Codex external session shape with latest activity", () => {
     const lines = [
+      JSON.stringify({ timestamp: "t0", type: "session_meta", payload: { id: "019ee2ec-b15d-7442-8bfe-2fd3f63d57ac" } }),
       JSON.stringify({ timestamp: "t1", type: "event_msg", payload: { type: "agent_message", message: "Reading files" } }),
       JSON.stringify({ timestamp: "t2", type: "response_item", payload: { type: "function_call", name: "apply_patch", input: "*** Begin Patch\n" } }),
     ]
     const s = buildCodexSession({ sessionId: "abc123", lines, mtimeMs: 1000, nowMs: 1000, parentRef: "codex:parent" })
     expect(s.sessionRef).toBe("codex:abc123")
+    expect(s.aliasSessionRefs).toEqual([
+      "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be",
+    ])
     expect(s.agentKind).toBe("codex")
     expect(s.parentRef).toBe("codex:parent")
     expect(s.title).toBe("abc123")
@@ -39,6 +43,18 @@ describe("external Codex session normalization (#4951)", () => {
   test("uses running for fresh mtimes and idle for stale mtimes", () => {
     expect(buildCodexSession({ sessionId: "fresh", lines: [], mtimeMs: 10_000, nowMs: 99_999 }).state).toBe("running")
     expect(buildCodexSession({ sessionId: "stale", lines: [], mtimeMs: 10_000, nowMs: 100_000 }).state).toBe("idle")
+  })
+
+  test("derives the stable composer alias from rollout filenames when session_meta is outside the tail", () => {
+    const s = buildCodexSession({
+      sessionId: "rollout-2026-06-19T21-47-03-019ee2ec-b15d-7442-8bfe-2fd3f63d57ac",
+      lines: [],
+      mtimeMs: 1000,
+      nowMs: 1000,
+    })
+    expect(s.aliasSessionRefs).toEqual([
+      "session.pylon.codex_composer.be4d2b8c1eb3512e70bf59be",
+    ])
   })
 
   test("scans recent rollout files under YYYY/MM/DD", async () => {

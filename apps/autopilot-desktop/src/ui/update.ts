@@ -237,6 +237,15 @@ const shellTerminalFailureText = (
   return `${shellTargetLabel(target)} failed${suffix}`
 }
 
+const shellExternalSessionRef = (model: Model, sessionRef: string): string | null => {
+  const node = modelNode(model)
+  const artifact = node?.artifacts?.[sessionRef] as
+    | { detail?: { externalSessionRef?: unknown } }
+    | undefined
+  const external = artifact?.detail?.externalSessionRef
+  return typeof external === "string" && external.trim() !== "" ? external : null
+}
+
 const reconcileShellCodingTarget = (
   model: Model,
   target: ShellCodingTarget,
@@ -246,8 +255,13 @@ const reconcileShellCodingTarget = (
   if (sessionRef === null) return model
   const node = modelNode(model)
   const events = node?.events?.[sessionRef] ?? []
+  const externalSessionRef = shellExternalSessionRef(model, sessionRef)
+  const externalEvents =
+    externalSessionRef === null ? [] : (node?.events?.[externalSessionRef] ?? [])
   const text =
-    latestShellAgentText(events) ?? shellTerminalFailureText(model, target, sessionRef)
+    latestShellAgentText(events) ??
+    latestShellAgentText(externalEvents) ??
+    shellTerminalFailureText(model, target, sessionRef)
   if (text === null) return model
   let changed = false
   const turns = model.shellTurns.map((turn) => {

@@ -623,7 +623,13 @@ function startExternalSessionTailer(): { list: () => ExternalSession[]; find: (r
   poll()
   const timer = setInterval(poll, 5000)
   timer.unref?.()
-  return { list: () => sessions, find: (ref) => sessions.find((s) => s.sessionRef === ref) }
+  return {
+    list: () => sessions,
+    find: (ref) =>
+      sessions.find((s) =>
+        s.sessionRef === ref || (s.aliasSessionRefs ?? []).includes(ref),
+      ),
+  }
 }
 
 // Wrap the Pylon session actions so the control API also serves external
@@ -641,9 +647,8 @@ function wrapSessionsWithExternal<T extends { list: () => Promise<any[]>; events
       return [...pylon, ...external]
     },
     events: async (ref: string) => {
-      if (ref.startsWith("claude:") || ref.startsWith("codex:")) {
-        const s = store.find(ref)
-        if (s === undefined) throw new Error("external session not found")
+      const s = store.find(ref)
+      if (s !== undefined) {
         return {
           sessionRef: ref,
           eventsPath: "",
