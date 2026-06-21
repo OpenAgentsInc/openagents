@@ -2,6 +2,7 @@ import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  PublicProductPromisesVersion,
   publicProductPromisesAnnouncementReadiness,
   publicProductPromisesDocument,
 } from './product-promises'
@@ -88,7 +89,7 @@ describe('public product promises document', () => {
       publicProductPromisesDocument(),
     )
 
-    expect(decoded.version).toBe('2026-06-20.58')
+    expect(decoded.version).toBe(PublicProductPromisesVersion)
     expect(decoded.registryVersion).toBe(decoded.version)
     expect(Date.parse(decoded.generatedAt)).not.toBeNaN()
     expect(decoded.maxStalenessSeconds).toBe(0)
@@ -103,6 +104,19 @@ describe('public product promises document', () => {
     expect(decoded.sourceRefs.length).toBeGreaterThan(0)
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
+    )
+    const blockerRefs = decoded.promises.flatMap(promise => promise.blockerRefs)
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_fine_tuning_intake_unbuilt',
+    )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_fine_tuning_job_runtime_unbuilt',
+    )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_sandbox_rentable_product_unbuilt',
+    )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_sandbox_metering_billing_unbuilt',
     )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
@@ -741,14 +755,28 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'cloud.primitives_suite.v1',
           state: 'planned',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.cloud_fine_tuning_live_sellable_service_missing',
+            'blocker.product_promises.cloud_sandbox_compute_live_sellable_service_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'cloud.fine_tuning_service.v1',
           state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
+            'blocker.product_promises.cloud_fine_tuning_real_job_runtime_unwired',
+            'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'cloud.sandbox_compute_service.v1',
           state: 'red',
+          blockerRefs: expect.arrayContaining([
+            'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
+            'blocker.product_promises.cloud_sandbox_live_metering_billing_unwired',
+            'blocker.product_promises.cloud_sandbox_paid_receipt_missing',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'markets.open_protocol_markets.v1',
@@ -1409,12 +1437,12 @@ describe('public product promises document', () => {
     const document = publicProductPromisesDocument()
 
     expect(
-      publicProductPromisesAnnouncementReadiness('2026-06-20.58', document),
+      publicProductPromisesAnnouncementReadiness(PublicProductPromisesVersion, document),
     ).toMatchObject({
       blockerRefs: [],
-      expectedVersion: '2026-06-20.58',
+      expectedVersion: PublicProductPromisesVersion,
       maxStalenessSeconds: 0,
-      servedVersion: '2026-06-20.58',
+      servedVersion: PublicProductPromisesVersion,
       status: 'ready',
     })
     expect(
@@ -1424,7 +1452,7 @@ describe('public product promises document', () => {
         'product-promises-announcement-blocker:expected-version-not-served:2026-06-20.55',
       ],
       expectedVersion: '2026-06-20.55',
-      servedVersion: '2026-06-20.58',
+      servedVersion: PublicProductPromisesVersion,
       status: 'blocked',
     })
   })

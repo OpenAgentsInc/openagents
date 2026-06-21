@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.58'
+export const PublicProductPromisesVersion = '2026-06-21.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -132,7 +132,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-20',
+    lastUpdated: '2026-06-21',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -3231,7 +3231,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents Cloud exposes the full primitive set agents and humans build products from — inference, fine-tuning, training, agentic tasks, sandbox compute, and standard web services (a layer on top of Cloudflare, shipped as Autopilot Sites).',
         safeCopy:
-          'The Cloud primitive SUITE is the Episode 239 build-from-primitives vision (docs/transcripts/239.md); as a single buyable suite it is roadmap. The primitives are at very different stages: inference gateway request surface is live but free-only (inference.gateway_credits_business.v1, red); decentralized training is green only for one bounded settled scope (training.decentralized_training_launch.v1); agentic tasks / labor is green for one settled job (labor.forum_work_requests.v1); web services exist as Autopilot Sites (partly live); fine-tuning (cloud.fine_tuning_service.v1, red) and sandbox compute as a sellable service (cloud.sandbox_compute_service.v1, red) are not built. There is no one credit balance spanning the suite and no customer has bought multiple primitives end to end.',
+          'The Cloud primitive SUITE is the Episode 239 build-from-primitives vision (docs/transcripts/239.md); as a single buyable suite it is roadmap. The primitives are at very different stages: inference gateway request surface is live but free-only (inference.gateway_credits_business.v1, red); decentralized training is green only for one bounded settled scope (training.decentralized_training_launch.v1); agentic tasks / labor is green for one settled job (labor.forum_work_requests.v1); web services exist as Autopilot Sites (partly live); fine-tuning (cloud.fine_tuning_service.v1, red) and sandbox compute (cloud.sandbox_compute_service.v1, red) have flag-gated inert scaffolds but are not live sellable services. There is no one credit balance spanning the suite and no customer has bought multiple primitives end to end.',
         unsafeCopy:
           'Do not claim a complete OpenAgents Cloud primitive suite is buyable, that fine-tuning or sandbox compute are sellable services, or that the primitives can be composed-and-billed from one balance today. Do not let one green primitive (a settled training run) imply the whole suite is live.',
         evidenceRefs: [
@@ -3251,8 +3251,8 @@ export const publicProductPromisesDocument = () => {
           'promise:cloud.agent_cloud_one_stop_revshare.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.cloud_fine_tuning_service_unbuilt',
-          'blocker.product_promises.cloud_sandbox_compute_service_unbuilt',
+          'blocker.product_promises.cloud_fine_tuning_live_sellable_service_missing',
+          'blocker.product_promises.cloud_sandbox_compute_live_sellable_service_missing',
           'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
           'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
         ],
@@ -3288,8 +3288,8 @@ export const publicProductPromisesDocument = () => {
           'promise:cloud.primitives_suite.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.cloud_fine_tuning_intake_unbuilt',
-          'blocker.product_promises.cloud_fine_tuning_job_runtime_unbuilt',
+          'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
+          'blocker.product_promises.cloud_fine_tuning_real_job_runtime_unwired',
           'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
         ],
         verification:
@@ -3323,8 +3323,8 @@ export const publicProductPromisesDocument = () => {
           'promise:cloud.primitives_suite.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.cloud_sandbox_rentable_product_unbuilt',
-          'blocker.product_promises.cloud_sandbox_metering_billing_unbuilt',
+          'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
+          'blocker.product_promises.cloud_sandbox_live_metering_billing_unwired',
           'blocker.product_promises.cloud_sandbox_paid_receipt_missing',
         ],
         verification:
@@ -4031,6 +4031,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
         'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
         'Registry 2026-06-20.58 is a business.ecommerce_workspace_pack.v1 de-stale pass and flips NO promise state (stays yellow, green count unchanged at 26). The POST /api/public/ecommerce-campaign/workspaces route already exists, seeding workspaces using the forge.template.ecommerce.inventory_campaign.v1 template, so blocker.product_promises.ecommerce_pack_self_serve_missing is cleared. The promise remains yellow on blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing: no active operator route to record receipts exists, and no real paid delivery receipt, attribution, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/business.ecommerce_workspace_pack.v1.md.',
+        'Registry 2026-06-21.1 is a DE-2 cloud primitive blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; cloud.fine_tuning_service.v1 and cloud.sandbox_compute_service.v1 stay red; green count unchanged). Fine-tuning and sandbox still are not live sellable services, but their route scaffolds are no longer accurately described as simply unbuilt: /v1/fine_tuning/jobs and /v1/sandboxes exist behind default-off flags, with typed request surfaces, lifecycle reads, cross-account isolation, TTL/isolation controls where applicable, and a tested receipt-first cloud-metering seam. Stale unbuilt blocker refs are replaced with narrower live-service blockers: live fine-tuning intake disabled, real fine-tuning runtime unwired, live sandbox rent surface disabled, sandbox live metering/billing unwired, and suite-level fine-tuning/sandbox live-sellable-service missing. No flags are armed, no runtime adapter is wired, no pricing is live, no credit debit or settlement occurs, and no paid receipt or green transition is created. Evidence: docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md and apps/openagents.com/workers/api/src/cloud/*.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

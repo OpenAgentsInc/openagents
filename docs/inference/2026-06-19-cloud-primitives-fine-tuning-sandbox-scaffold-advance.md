@@ -86,10 +86,16 @@ record for the owning account, and **404 for a different account** (isolation).
 - `cloud.fine_tuning_service.v1` — **red → red.** Evidence/copy destale only:
   the intake scaffold now has a lifecycle read and a real, tested receipt-first
   metering seam (with the never-negative + idempotency guards proven against real
-  SQL). Still no real runtime, no live pricing, no paid receipt.
+  SQL). The remaining blockers are narrowed to live intake being disabled, the
+  real training-lane runtime being unwired, and billing/settlement being absent.
+  Still no real runtime, no live pricing, no paid receipt.
 - `cloud.sandbox_compute_service.v1` — **red → red.** Same advance, symmetric.
+  The remaining blockers are narrowed to the live rent surface being disabled,
+  live metering/billing being unwired, and the paid sandbox receipt being absent.
 - `cloud.primitives_suite.v1` — unchanged (planned). The suite still has no
-  unified balance and no customer buying multiple primitives end to end.
+  unified balance and no customer buying multiple primitives end to end. Its
+  blockers should name missing live sellable fine-tuning/sandbox services rather
+  than claim the inert scaffolds do not exist.
 
 No `promise_transition` is required (no state flips). Any future green flip
 remains receipt-first and owner-signed.
