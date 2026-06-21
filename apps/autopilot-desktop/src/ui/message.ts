@@ -54,6 +54,21 @@ export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
 export const ChangedVersePresenceZone = m("ChangedVersePresenceZone", {
   zone: S.NullOr(VersePresenceZone),
 })
+export const ChangedVerseLocalPose = m("ChangedVerseLocalPose", {
+  pose: S.Struct({
+    regionRef: S.String,
+    x: S.Number,
+    y: S.Number,
+    z: S.Number,
+    yaw: S.Number,
+    animation: S.Literals(["idle", "walk", "run"]),
+    capturedAtMs: S.Number,
+  }),
+})
+export const SettledVerseLocalPosePublish = m("SettledVerseLocalPosePublish", {
+  ok: S.Boolean,
+  reason: S.String,
+})
 // #5025: honest node-launch lifecycle status from the Bun supervisor.
 export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String })
 
@@ -648,6 +663,8 @@ export const Message = S.Union([
   GotChatWorldPaymentParticle,
   SelectedChatWorldNode,
   ChangedVersePresenceZone,
+  ChangedVerseLocalPose,
+  SettledVerseLocalPosePublish,
   GotNotifications,
   GotNodeLaunchStatus,
   NavigatedTo,

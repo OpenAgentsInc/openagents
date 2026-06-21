@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  createVerseMultiplayerClient,
   parseActivityStreamData,
+  publishActiveVerseLocalPose,
   publishSpacetimeAvatarPosition,
   subscribePaymentParticles,
   subscribePylonScene,
@@ -72,7 +74,9 @@ class FakeTable {
 const runRef = "run.tassadar.executor.20260615"
 const regionRef = chatWorldRegionRefForRun(runRef)
 
-const fakeWorldRows = () => ({
+const fakeWorldRows = (
+  regionOverrides: Record<string, unknown> = {},
+) => ({
   worldRegion: new FakeTable([{
     regionRef,
     runRef,
@@ -85,6 +89,7 @@ const fakeWorldRows = () => ({
     maxZ: 10,
     proximityRadiusMeters: 8,
     avatarPositionMinIntervalMs: 1_000,
+    ...regionOverrides,
   }]),
   pylonStation: new FakeTable([{
     pylonRef: "pylon.public.1",
@@ -269,11 +274,26 @@ describe("subscribeSpacetimeWorld", () => {
 
     stop()
     expect(connected).toBe(0)
+    expect(
+      publishActiveVerseLocalPose({
+        regionRef,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "idle",
+        capturedAtMs: 1_000,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "multiplayer client unavailable",
+    })
   })
 
   test("subscribes to public world rows, dispatches a projection, and joins region", () => {
     const worlds: ChatWorldMultiplayerProjection[] = []
     const joins: unknown[] = []
+    const leaves: unknown[] = []
     const rows = fakeWorldRows()
     let applied: (() => void) | null = null
     let capturedQueries: ReadonlyArray<string> = []
@@ -319,6 +339,9 @@ describe("subscribeSpacetimeWorld", () => {
             joinRegion: (args: unknown) => {
               joins.push(args)
             },
+            leaveRegion: (args: unknown) => {
+              leaves.push(args)
+            },
           },
           subscriptionBuilder: () => builder,
           disconnect: () => {
@@ -358,6 +381,7 @@ describe("subscribeSpacetimeWorld", () => {
     expect(worlds.length).toBeGreaterThanOrEqual(2)
 
     stop()
+    expect(leaves).toEqual([{ regionRef }])
     expect(unsubscribed).toBe(true)
     expect(disconnected).toBe(true)
   })
@@ -437,5 +461,175 @@ describe("subscribeSpacetimeWorld", () => {
       pitch: 0,
       movementMode: "walking",
     }])
+  })
+
+  test("publishes Verse controller poses through the multiplayer client", () => {
+    const writes: unknown[] = []
+    const joins: unknown[] = []
+    const rows = fakeWorldRows({ avatarPositionMinIntervalMs: 100 })
+    const client = createVerseMultiplayerClient({
+      connection: {
+        db: rows,
+        reducers: {
+          joinRegion: (args: unknown) => joins.push(args),
+          setAvatarPosition: (args: unknown) => writes.push(args),
+        },
+      },
+      database: "openagents-world",
+      displayName: "Local Pylon",
+      runRef,
+      nowMs: () => 2_000,
+      worldUrl: "https://spacetime.openagents.com",
+    })
+
+    client.joinRegion()
+    const plan = client.publishLocalPose({
+      regionRef,
+      x: 1.23456,
+      y: 0,
+      z: 2.34567,
+      yaw: 0.12345,
+      animation: "walk",
+      capturedAtMs: 2_000,
+    })
+
+    expect(joins).toEqual([{ regionRef, displayName: "Local Pylon" }])
+    expect(plan).toMatchObject({ ok: true })
+    expect(writes).toEqual([{
+      regionRef,
+      positionX: 1.235,
+      positionY: 0,
+      positionZ: 2.346,
+      yaw: 0.123,
+      pitch: 0,
+      movementMode: "walking",
+    }])
+  })
+
+  test("suppresses unsafe Verse pose writes before reducer calls", () => {
+    const writes: unknown[] = []
+    const client = createVerseMultiplayerClient({
+      connection: {
+        db: fakeWorldRows({ avatarPositionMinIntervalMs: 100 }),
+        reducers: {
+          setAvatarPosition: (args: unknown) => writes.push(args),
+        },
+      },
+      database: "openagents-world",
+      displayName: "Local Pylon",
+      runRef,
+      nowMs: () => 1_000,
+      worldUrl: "https://spacetime.openagents.com",
+    })
+    client.joinRegion()
+
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "run",
+        capturedAtMs: 1_000,
+      }),
+    ).toMatchObject({ ok: true })
+
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 99,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "run",
+        capturedAtMs: 2_000,
+      }),
+    ).toMatchObject({ ok: false, reason: "position outside region bounds" })
+
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 1,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "run",
+        capturedAtMs: 1_050,
+      }),
+    ).toMatchObject({ ok: false, reason: "position update rate limited" })
+
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 10,
+        y: 8,
+        z: 10,
+        yaw: 0,
+        animation: "run",
+        capturedAtMs: 2_000,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "position jump exceeds movement limit",
+    })
+
+    expect(writes).toHaveLength(1)
+  })
+
+  test("rate-limits stationary idle pose keepalives", () => {
+    const writes: unknown[] = []
+    const client = createVerseMultiplayerClient({
+      connection: {
+        db: fakeWorldRows({ avatarPositionMinIntervalMs: 100 }),
+        reducers: {
+          setAvatarPosition: (args: unknown) => writes.push(args),
+        },
+      },
+      database: "openagents-world",
+      displayName: "Local Pylon",
+      runRef,
+      nowMs: () => 1_000,
+      worldUrl: "https://spacetime.openagents.com",
+    })
+    client.joinRegion()
+
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "idle",
+        capturedAtMs: 1_000,
+      }),
+    ).toMatchObject({ ok: true })
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "idle",
+        capturedAtMs: 2_000,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "idle pose keepalive rate limited",
+    })
+    expect(
+      client.publishLocalPose({
+        regionRef,
+        x: 0,
+        y: 0,
+        z: 0,
+        yaw: 0,
+        animation: "idle",
+        capturedAtMs: 7_000,
+      }),
+    ).toMatchObject({ ok: true })
+    expect(writes).toHaveLength(2)
   })
 })

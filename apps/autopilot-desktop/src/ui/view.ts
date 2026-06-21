@@ -83,6 +83,10 @@ import {
   type PylonBaseProjection,
 } from "../shared/pylon-base-scene"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
+import {
+  DEFAULT_TASSADAR_WORLD_RUN_REF,
+  chatWorldRegionRefForRun,
+} from "../shared/chat-world-multiplayer"
 
 import type {
   AccountRow,
@@ -155,6 +159,7 @@ import {
   ClickedLoadGeneratedProofReplay,
   ClickedRefreshManagedAccounts,
   ClickedRemoveManagedAccount,
+  ChangedVerseLocalPose,
   ChangedVersePresenceZone,
   SelectedChatWorldNode,
   SelectedComposerAccount,
@@ -5986,6 +5991,24 @@ const chatSceneBackground = (model: Model): Html =>
       },
       (zone: TrainingRunPresenceZone | null) =>
         ChangedVersePresenceZone({ zone }),
+      (pose) => {
+        const regionRef =
+          modelChatWorldMultiplayer(model)?.regionRef ??
+          chatWorldRegionRefForRun(DEFAULT_TASSADAR_WORLD_RUN_REF)
+        const animation =
+          pose.action === "run" ? "run" : pose.action === "walk" ? "walk" : "idle"
+        return ChangedVerseLocalPose({
+          pose: {
+            regionRef,
+            x: pose.position[0],
+            y: pose.position[1],
+            z: pose.position[2],
+            yaw: pose.yaw,
+            animation,
+            capturedAtMs: pose.capturedAtMs,
+          },
+        })
+      },
     ),
     chatSceneInspector(model),
   ])

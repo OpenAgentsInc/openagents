@@ -58,7 +58,7 @@ export type ChatWorldAvatarPositionPlan =
   | Readonly<{ ok: true; write: ChatWorldAvatarPositionWrite }>
   | Readonly<{ ok: false; reason: string }>
 
-const DEFAULT_AVATAR_RATE_MS = 1_000
+const DEFAULT_AVATAR_RATE_MS = 100
 const MAX_AVATAR_MOVE_METERS_PER_SECOND = 14
 const POSITION_EPSILON_METERS = 0.75
 

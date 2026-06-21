@@ -176,6 +176,29 @@ This does not complete the multiplayer pose publisher, but it removes a blocker
 for #5888: a normal Pylon/training/public-activity refresh should no longer
 snap the avatar back to the default spawn while the Verse is active.
 
+### 2026-06-21 Progress: #5888 Controller Pose Publishing
+
+The first multiplayer slice now has a desktop-owned `VerseMultiplayerClient`
+around the existing SpacetimeDB subscription connection. The client owns
+join/leave lifecycle, keeps the last accepted local pose per region, and exposes
+`publishLocalPose(pose)` for the Verse controller path.
+
+Local controller pose writes now flow through the existing
+`planChatWorldAvatarPositionWrite` guard before any
+`set_avatar_position` reducer call. Moving poses can publish at the server's
+10 Hz minimum when the region allows it; stationary idle poses are reduced to a
+bounded keepalive. Out-of-bounds, too-fast, impossible-jump, missing-region, and
+missing-reducer writes are suppressed client-side before they reach
+SpacetimeDB. Subscription teardown now attempts `leave_region` before
+disconnecting.
+
+The shared `three-effect` training-run element now emits bounded
+`local-pose-changed` events from the third-person controller. Autopilot Desktop
+maps those renderer events into Foldkit messages and a fire-and-forget command
+that publishes through the active multiplayer client only while
+`CHAT_WORLD_MULTIPLAYER` is enabled and connected. The Verse remains
+single-player-first when SpacetimeDB is unavailable.
+
 ## What The SpacetimeDB References Teach
 
 ### TypeScript Quickstart

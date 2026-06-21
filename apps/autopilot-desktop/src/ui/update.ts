@@ -34,6 +34,7 @@ import {
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
   PlanTrainingRunWindow,
+  PublishVerseLocalPose,
   QueueTrainingCloseout,
   QueueTrainingLaunch,
   PersistPreferences,
@@ -836,6 +837,10 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({ ...model, versePresenceZone: message.zone }),
         noCommands,
       ]
+    case "ChangedVerseLocalPose":
+      return [model, [PublishVerseLocalPose({ pose: message.pose })]]
+    case "SettledVerseLocalPosePublish":
+      return [model, noCommands]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":

@@ -38,8 +38,11 @@ import {
 import {
   chatWorldDesktopAvatarIdentity,
   defaultChatWorldRegionForRun,
+  planChatWorldAvatarPositionWrite,
   projectChatWorldSpacetimeRows,
   type ChatWorldAvatarPositionPlan,
+  type ChatWorldAvatarPositionWrite,
+  type ChatWorldRegionRow,
   type ChatWorldSpacetimeRows,
 } from "../shared/chat-world-spacetimedb"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
@@ -274,6 +277,9 @@ export type SpacetimeWorldConnection = Readonly<{
       readonly pitch: number
       readonly movementMode: string
     }) => unknown
+    readonly leaveRegion?: (args: {
+      readonly regionRef: string
+    }) => unknown
   }
   subscriptionBuilder?: () => {
     onApplied?: (cb: (...args: ReadonlyArray<unknown>) => void) => unknown
@@ -319,6 +325,27 @@ export type SpacetimeWorldDispatch = (
 ) => void
 
 const SPACETIME_TOKEN_STORAGE_KEY = "openagents.world.spacetimedb.token.v1"
+const LOCAL_AVATAR_PUBLISH_REF = "avatar.desktop.local"
+const IDLE_POSE_KEEPALIVE_MS = 5_000
+const POSE_STATIONARY_EPSILON_METERS = 0.02
+
+export type VerseAvatarPose = Readonly<{
+  regionRef: string
+  x: number
+  y: number
+  z: number
+  yaw: number
+  animation: "idle" | "walk" | "run"
+  capturedAtMs: number
+}>
+
+export type VerseMultiplayerClient = Readonly<{
+  publishLocalPose: (pose: VerseAvatarPose) => ChatWorldAvatarPositionPlan
+  joinRegion: () => void
+  leaveRegion: () => void
+}>
+
+let activeVerseMultiplayerClient: VerseMultiplayerClient | null = null
 
 const resolveStorage = (
   deps?: ChatWorldSpacetimeSubscriptionDeps,
@@ -398,6 +425,131 @@ export const publishSpacetimeAvatarPosition = (
   return true
 }
 
+const movementModeForVerseAnimation = (
+  animation: VerseAvatarPose["animation"],
+): ChatWorldAvatarPositionWrite["movementMode"] => {
+  if (animation === "run") return "running"
+  if (animation === "walk") return "walking"
+  return "idle"
+}
+
+const regionByRef = (
+  regions: ReadonlyArray<ChatWorldRegionRow>,
+  regionRef: string,
+): ChatWorldRegionRow | null =>
+  regions.find((region) => region.regionRef === regionRef) ?? null
+
+const localPreviousFromWrite = (
+  write: ChatWorldAvatarPositionWrite,
+  capturedAtMs: number,
+) => ({
+  avatarRef: LOCAL_AVATAR_PUBLISH_REF,
+  regionRef: write.regionRef,
+  x: write.positionX,
+  y: write.positionY,
+  z: write.positionZ,
+  yaw: write.yaw,
+  movementMode: write.movementMode,
+  lastSeenEpochMs: capturedAtMs,
+})
+
+const poseDistance = (
+  pose: VerseAvatarPose,
+  previous: ReturnType<typeof localPreviousFromWrite>,
+): number => {
+  const dx = pose.x - previous.x
+  const dy = pose.y - previous.y
+  const dz = pose.z - previous.z
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}
+
+export const createVerseMultiplayerClient = (input: {
+  readonly connection: SpacetimeWorldConnection
+  readonly database: string
+  readonly displayName: string
+  readonly runRef: string
+  readonly nowMs: () => number
+  readonly worldUrl: string
+}): VerseMultiplayerClient => {
+  const lastAcceptedByRegion = new Map<string, ReturnType<typeof localPreviousFromWrite>>()
+  let joinedRegionRef: string | null = null
+
+  const projection = () =>
+    projectChatWorldSpacetimeRows({
+      flagEnabled: true,
+      runRef: input.runRef,
+      rows: worldRowsFromConnection(input.connection),
+      nowMs: input.nowMs(),
+      worldUrl: input.worldUrl,
+      database: input.database,
+    })
+
+  const joinRegion = (): void => {
+    const region = defaultChatWorldRegionForRun(projection().regions, input.runRef)
+    if (region === null) return
+    joinedRegionRef = region.regionRef
+    invokeMaybePromise(input.connection.reducers?.joinRegion?.({
+      regionRef: region.regionRef,
+      displayName: input.displayName,
+    }))
+  }
+
+  const leaveRegion = (): void => {
+    if (joinedRegionRef === null) return
+    invokeMaybePromise(input.connection.reducers?.leaveRegion?.({
+      regionRef: joinedRegionRef,
+    }))
+    joinedRegionRef = null
+  }
+
+  const publishLocalPose = (pose: VerseAvatarPose): ChatWorldAvatarPositionPlan => {
+    const regionRef = pose.regionRef.trim()
+    if (joinedRegionRef !== regionRef) {
+      return { ok: false, reason: "avatar must join region before moving" }
+    }
+    const previous = lastAcceptedByRegion.get(regionRef) ?? null
+    if (
+      previous !== null &&
+      pose.animation === "idle" &&
+      poseDistance(pose, previous) <= POSE_STATIONARY_EPSILON_METERS &&
+      pose.capturedAtMs - previous.lastSeenEpochMs < IDLE_POSE_KEEPALIVE_MS
+    ) {
+      return { ok: false, reason: "idle pose keepalive rate limited" }
+    }
+
+    const plan = planChatWorldAvatarPositionWrite({
+      region: regionByRef(projection().regions, regionRef),
+      previous,
+      nowMs: pose.capturedAtMs,
+      x: pose.x,
+      y: pose.y,
+      z: pose.z,
+      yaw: pose.yaw,
+      pitch: 0,
+      movementMode: movementModeForVerseAnimation(pose.animation),
+    })
+    if (plan.ok !== true) return plan
+    if (!publishSpacetimeAvatarPosition(input.connection, plan)) {
+      return { ok: false, reason: "position reducer unavailable" }
+    }
+    lastAcceptedByRegion.set(
+      plan.write.regionRef,
+      localPreviousFromWrite(plan.write, pose.capturedAtMs),
+    )
+    return plan
+  }
+
+  return { publishLocalPose, joinRegion, leaveRegion }
+}
+
+export const publishActiveVerseLocalPose = (
+  pose: VerseAvatarPose,
+): ChatWorldAvatarPositionPlan =>
+  activeVerseMultiplayerClient?.publishLocalPose(pose) ?? {
+    ok: false,
+    reason: "multiplayer client unavailable",
+  }
+
 const attachWorldConnection = (input: {
   readonly connection: SpacetimeWorldConnection
   readonly dispatch: SpacetimeWorldDispatch
@@ -407,6 +559,8 @@ const attachWorldConnection = (input: {
   readonly worldUrl: string
   readonly displayName: string
   readonly onUnavailable: () => void
+  readonly onClientReady?: (client: VerseMultiplayerClient) => void
+  readonly onClientGone?: (client: VerseMultiplayerClient) => void
 }): Unsubscribe => {
   const tables = [
     input.connection.db?.worldRegion,
@@ -420,6 +574,15 @@ const attachWorldConnection = (input: {
     input.connection.db?.agentIntent,
   ]
   let subscriptionHandle: { unsubscribe?: () => void } | null = null
+  const client = createVerseMultiplayerClient({
+    connection: input.connection,
+    database: input.database,
+    displayName: input.displayName,
+    runRef: input.runRef,
+    nowMs: input.nowMs,
+    worldUrl: input.worldUrl,
+  })
+  input.onClientReady?.(client)
 
   const dispatchSnapshot = (): void => {
     const projection = projectChatWorldSpacetimeRows({
@@ -431,24 +594,6 @@ const attachWorldConnection = (input: {
       database: input.database,
     })
     input.dispatch(projection.world)
-  }
-
-  const joinRegion = (): void => {
-    const rows = worldRowsFromConnection(input.connection)
-    const projection = projectChatWorldSpacetimeRows({
-      flagEnabled: true,
-      runRef: input.runRef,
-      rows,
-      nowMs: input.nowMs(),
-      worldUrl: input.worldUrl,
-      database: input.database,
-    })
-    const region = defaultChatWorldRegionForRun(projection.regions, input.runRef)
-    if (region === null) return
-    invokeMaybePromise(input.connection.reducers?.joinRegion?.({
-      regionRef: region.regionRef,
-      displayName: input.displayName,
-    }))
   }
 
   const onRowsChanged = (): void => dispatchSnapshot()
@@ -463,7 +608,7 @@ const attachWorldConnection = (input: {
     const builder = input.connection.subscriptionBuilder?.()
     builder?.onApplied?.(() => {
       dispatchSnapshot()
-      joinRegion()
+      client.joinRegion()
     })
     builder?.onError?.(() => input.onUnavailable())
     subscriptionHandle = builder?.subscribe?.(
@@ -474,6 +619,8 @@ const attachWorldConnection = (input: {
   }
 
   return () => {
+    input.onClientGone?.(client)
+    client.leaveRegion()
     for (const table of tables) {
       table?.removeOnInsert?.(onRowsChanged)
       table?.removeOnUpdate?.(onRowsChanged)
@@ -571,6 +718,14 @@ export const subscribeSpacetimeWorld = (
         onUnavailable: unavailable,
         runRef,
         worldUrl,
+        onClientReady: (client) => {
+          activeVerseMultiplayerClient = client
+        },
+        onClientGone: (client) => {
+          if (activeVerseMultiplayerClient === client) {
+            activeVerseMultiplayerClient = null
+          }
+        },
       })
     } catch {
       unavailable()

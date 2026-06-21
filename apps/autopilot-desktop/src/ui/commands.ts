@@ -20,7 +20,12 @@ import { ProofReplayCommandRequest, ShellCodingTarget } from "./model"
 // #5472: local preference persistence (no RPC verb — writes localStorage).
 import { savePreferences } from "./preferences"
 import {
+  publishActiveVerseLocalPose,
+  type VerseAvatarPose,
+} from "./chat-world-subscriptions"
+import {
   SettledPersistPreferences,
+  SettledVerseLocalPosePublish,
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
   FailedAppleFmSession,
@@ -1393,6 +1398,30 @@ export const SpawnChatTurn = Command.define(
       Effect.succeed(FailedChatTurn({ error: errorText(error) })),
     ),
   ),
+)
+
+const VerseAvatarPoseCommand = S.Struct({
+  regionRef: S.String,
+  x: S.Number,
+  y: S.Number,
+  z: S.Number,
+  yaw: S.Number,
+  animation: S.Literals(["idle", "walk", "run"]),
+  capturedAtMs: S.Number,
+})
+
+export const PublishVerseLocalPose = Command.define(
+  "PublishVerseLocalPose",
+  { pose: VerseAvatarPoseCommand },
+  SettledVerseLocalPosePublish,
+)(({ pose }) =>
+  Effect.sync(() => {
+    const plan = publishActiveVerseLocalPose(pose as VerseAvatarPose)
+    return SettledVerseLocalPosePublish({
+      ok: plan.ok,
+      reason: plan.ok ? "published" : plan.reason,
+    })
+  }),
 )
 
 const VERSE_BRIDGE_ERROR_TEXT =
