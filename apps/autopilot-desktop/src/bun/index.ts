@@ -22,6 +22,10 @@ import {
 import { persistAndMergeTranscripts } from "./transcript-store"
 import { loadPersistedCredential } from "./agent-onboarding"
 import {
+  claimForumTipRecipientReadiness,
+  isForumTipReady,
+} from "./forum-tip-recipient"
+import {
   detectExistingPylonIdentity,
   detectedIdentityShortLabel,
   loadIdentityChoice,
@@ -62,6 +66,7 @@ import {
   cancelSession,
   deployToCloud,
   fetchAppleFmReadiness,
+  fetchNodeSparkAddress,
   fetchNodeState,
   fetchOnboardingSignals,
   probeControlToken,
@@ -111,6 +116,11 @@ const trainingBaseUrl =
   "https://openagents.com"
 const activityBaseUrl =
   Bun.env.OPENAGENTS_ACTIVITY_BASE_URL ??
+  Bun.env.OPENAGENTS_COM_BASE_URL ??
+  "https://openagents.com"
+// AF-2 (#5899): product base URL for forum tip-recipient readiness claims.
+const onboardingBaseUrl =
+  Bun.env.PYLON_OPENAGENTS_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   "https://openagents.com"
 const trainingAdminToken =
@@ -606,6 +616,21 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     }
   }
 
+  // AF-2 (#5899): once the wallet is receive-ready and the agent is registered,
+  // best-effort claim forum tip-recipient readiness so the agent's forum posts
+  // can receive Spark tips. Fire-and-forget + idempotent (a persisted receipt
+  // short-circuits); never blocks the projection. Receive-only — no spend.
+  const forumTipReady = home !== null && isForumTipReady(home)
+  if (
+    home !== null &&
+    controlToken !== null &&
+    agentRegistered &&
+    walletReceiveReady &&
+    !forumTipReady
+  ) {
+    void maybeClaimForumTipReady(home, controlToken)
+  }
+
   return projectOnboardingStatus({
     fetchedAt: new Date().toISOString(),
     identityChoiceMade: choice !== null,
@@ -617,7 +642,38 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     walletReceiveReady,
     walletBalanceSats,
     openAssignmentCount,
+    forumTipReady,
   })
+}
+
+// AF-2 (#5899): single-flight driver for the forum tip-recipient readiness
+// claim. Reads the node's Spark address from the control server (payment
+// material, never logged) and runs the receive-only claim. Guarded so repeated
+// status polls don't fire overlapping claims; the persisted receipt makes it a
+// no-op once claimed.
+let tipClaimInFlight = false
+async function maybeClaimForumTipReady(
+  home: string,
+  controlToken: string,
+): Promise<void> {
+  if (tipClaimInFlight) return
+  tipClaimInFlight = true
+  try {
+    const sparkAddress = await fetchNodeSparkAddress({
+      baseUrl: controlBaseUrl,
+      token: controlToken,
+    })
+    await claimForumTipRecipientReadiness({
+      home,
+      baseUrl: onboardingBaseUrl,
+      walletReceiveReady: true,
+      sparkAddress,
+    })
+  } catch {
+    // Non-fatal: a failed claim is retried on a later poll. Never logs secrets.
+  } finally {
+    tipClaimInFlight = false
+  }
 }
 
 async function restartManagedNodeForIdentityChoice(): Promise<void> {

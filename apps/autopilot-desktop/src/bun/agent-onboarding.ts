@@ -51,8 +51,9 @@ const SPARK_ADDRESS_PATTERN =
   /^(?:spark|sparkt|sparkrt|sparks|sp|spt|sprt|sps)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,512}$/i
 
 // Normalize a candidate Spark address: trim, validate shape, else null. NEVER
-// log the input/output here — it is payment material.
-const sanitizeSparkAddress = (
+// log the input/output here — it is payment material. Exported so the forum
+// tip-recipient claim (AF-2 #5899) reuses the exact same client-side guard.
+export const sanitizeSparkAddress = (
   value: string | null | undefined,
 ): string | null => {
   if (typeof value !== "string") return null

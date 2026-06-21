@@ -63,6 +63,10 @@ export type OnboardingStatusInput = {
   // wallet.status (CL-49), read-only; null when the node has not reported it.
   readonly walletReceiveReady: boolean
   readonly walletBalanceSats: number | null
+  // AF-2 (#5899): has the node claimed forum tip-recipient readiness (so its
+  // forum posts can receive Spark tips)? Receive-only; derived from a persisted
+  // tip-ready receipt in the Bun host — never wallet material.
+  readonly forumTipReady: boolean
   // assignments.poll (CL-50): count of open work-lease assignments observed.
   readonly openAssignmentCount: number
 }
@@ -86,9 +90,6 @@ export type OnboardingStatusResponse = {
 // bring-up; an offline-only failure also converges on retry).
 const nodeFailed = (status: NodeLaunchStatus | null): boolean =>
   status === "failed"
-
-const nodeConverging = (status: NodeLaunchStatus | null): boolean =>
-  status === "launching" || status === null
 
 // --- per-step projections ---------------------------------------------------
 
@@ -252,6 +253,48 @@ const payoutStep = (input: OnboardingStatusInput): OnboardingStep =>
     input,
   )
 
+// AF-2 (#5899): forum tip-recipient readiness. Receive-only — once the wallet is
+// receive-ready and the agent is registered, the Bun host claims tip readiness so
+// the agent's forum posts can receive Spark tips. Done when the receipt exists;
+// active while the wallet is ready and the claim is converging; pending until the
+// wallet can receive. Non-blocking: a stuck claim never dead-ends the wizard.
+const tipReadyStep = (input: OnboardingStatusInput): OnboardingStep => {
+  if (input.forumTipReady) {
+    return {
+      id: "tip-ready",
+      label: "Forum tips enabled",
+      status: "done",
+      message: "Your agent's forum posts can receive Bitcoin tips.",
+      retryable: false,
+    }
+  }
+  if (!input.agentRegistered) {
+    return {
+      id: "tip-ready",
+      label: "Forum tips enabled",
+      status: "pending",
+      message: "Waiting on agent registration.",
+      retryable: false,
+    }
+  }
+  if (!input.walletReceiveReady) {
+    return {
+      id: "tip-ready",
+      label: "Forum tips enabled",
+      status: "pending",
+      message: "Waiting for the wallet to become receive-ready.",
+      retryable: false,
+    }
+  }
+  return {
+    id: "tip-ready",
+    label: "Forum tips enabled",
+    status: "active",
+    message: "Enabling tips on your agent's forum posts.",
+    retryable: false,
+  }
+}
+
 const presenceStep = (input: OnboardingStatusInput): OnboardingStep =>
   heartbeatDerivedStep(
     "presence",
@@ -370,6 +413,7 @@ export const projectOnboardingStatus = (
     nodeOnlineStep(input),
     walletStep(input),
     payoutStep(input),
+    tipReadyStep(input),
     presenceStep(input),
     tassadarStep(input),
     claimedStep(input),

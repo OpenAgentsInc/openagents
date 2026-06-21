@@ -20,6 +20,7 @@ const base: OnboardingStatusInput = {
   walletReceiveReady: false,
   walletBalanceSats: null,
   openAssignmentCount: 0,
+  forumTipReady: false,
 }
 
 const step = (steps: readonly OnboardingStep[], id: string): OnboardingStep => {
@@ -44,11 +45,46 @@ describe("projectOnboardingStatus (AO-4)", () => {
       "node-online",
       "wallet",
       "payout",
+      "tip-ready",
       "presence",
       "tassadar",
       "claimed",
       "earned",
     ])
+  })
+
+  it("AF-2: tip-ready is pending until the wallet is receive-ready, then active, then done", () => {
+    const registered = {
+      ...base,
+      identityChoiceMade: true,
+      agentRegistered: true,
+      onboardingEnvConfigured: true,
+      nodeLaunchStatus: "online" as const,
+      localPylonReady: true,
+    }
+    // Registered but wallet not receive-ready yet → pending.
+    expect(
+      step(projectOnboardingStatus(registered).steps, "tip-ready").status,
+    ).toBe("pending")
+    // Wallet receive-ready, claim not yet landed → active.
+    expect(
+      step(
+        projectOnboardingStatus({ ...registered, walletReceiveReady: true })
+          .steps,
+        "tip-ready",
+      ).status,
+    ).toBe("active")
+    // Receipt persisted (forumTipReady) → done.
+    const done = step(
+      projectOnboardingStatus({
+        ...registered,
+        walletReceiveReady: true,
+        forumTipReady: true,
+      }).steps,
+      "tip-ready",
+    )
+    expect(done.status).toBe("done")
+    expect(done.message).toContain("tips")
   })
 
   it("identity chosen, node launching: registration is active, current step advances", () => {
