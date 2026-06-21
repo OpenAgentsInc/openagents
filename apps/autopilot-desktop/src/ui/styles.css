@@ -3098,6 +3098,23 @@ body {
   white-space: nowrap;
 }
 
+.composer-run-context-action {
+  border: 1px solid var(--outline, #525458);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent, #66aaff) 16%, transparent);
+  color: var(--text-primary, #f4f4f5);
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+  padding: 0.22rem 0.42rem;
+}
+
+.composer-run-context-action:hover {
+  background: color-mix(in srgb, var(--accent, #66aaff) 24%, transparent);
+}
+
 /* #5469 (EPIC #5461): swarm batch launch + failover routing + sub-agent tree.
  * Batch form is a collapsible <details> inside the pane (no new top-level
  * button). Routing line + sub-agent count reuse the canonical tone tokens. */

@@ -534,6 +534,10 @@ export const ClickedComposerSpawn = m("ClickedComposerSpawn")
 export const ClickedComposerReply = m("ClickedComposerReply")
 // Start a brand-new composer thread (clear the active session + turn history).
 export const ClickedComposerNewThread = m("ClickedComposerNewThread")
+// VCODE-13 (#5930): cycle the same composer task to another provider account
+// using the deterministic route projection. This is a pure route override; the
+// next Start/Send click performs the actual session.spawn.
+export const ClickedOverrideComposerAccountRoute = m("ClickedOverrideComposerAccountRoute")
 // Composer turn settled (shared by first-turn + reply-turn spawns).
 export const SucceededComposerTurn = m("SucceededComposerTurn", {
   sessionRef: S.String,
@@ -827,6 +831,7 @@ export const Message = S.Union([
   ClickedComposerSpawn,
   ClickedComposerReply,
   ClickedComposerNewThread,
+  ClickedOverrideComposerAccountRoute,
   SucceededComposerTurn,
   FailedComposerTurn,
   ChangedChatInput,

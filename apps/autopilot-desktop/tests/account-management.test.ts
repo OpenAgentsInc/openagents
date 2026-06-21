@@ -397,7 +397,7 @@ describe("CS-A1 account-management reducer", () => {
     expect(removed.verseMode).toBe("code")
     tree = serializeView(view(removed).body)
     expect(tree).toContain("personal")
-    expect(tree).not.toContain("work")
+    expect(tree).not.toContain('"data-verse-code-account-ref":"work"')
   })
 })
 

@@ -117,6 +117,7 @@ import {
   modelInferenceGatewayReadiness,
   modelManagedAccounts,
   modelNode,
+  modelCodeModeSync,
   modelPaneLayer,
   type ChatMessage,
   type PaneId,
@@ -134,8 +135,15 @@ import {
 } from "../shared/proof-replays.js"
 import {
   projectCodeModeSyncSnapshot,
+  type CodeModeSyncAccountRow,
   type CodeModeSyncSource,
 } from "./code-mode-sync.js"
+import {
+  nextCodeModeAccountOverride,
+  projectCodeModeAccountRoute,
+  type CodeModeAccountRoute,
+  type CodeModeSpawnAdapter,
+} from "./code-mode-account-routing.js"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing.js"
 import {
   paymentParticleTsMs,
@@ -145,7 +153,6 @@ import {
 } from "../shared/chat-world-scene.js"
 import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
 import type {
-  AccountRow,
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   ChooseIdentityResponse,
@@ -640,49 +647,90 @@ const isAccountManagingPane = (pane: PaneId): boolean =>
 
 const managedAccountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 
-type ComposerSpawnAdapter = "codex" | "claude_agent"
-
-const composerSelectedAccountRow = (
-  model: Model,
-  adapter: ComposerSpawnAdapter,
-): AccountRow | null => {
-  const selected = model.composerAccountRef
-  if (selected === null) return null
-  return (
-    modelNode(model)?.accounts?.find(
-      (row) => row.provider === adapter && row.accountRef === selected,
-    ) ?? null
-  )
+const routeHash = (value: string): string => {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0")
 }
+
+const routeSafeSegment = (value: string): string =>
+  value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 96) || "unknown"
+
+const fallbackCodeModeAccountRows = (model: Model): readonly CodeModeSyncAccountRow[] =>
+  (modelNode(model)?.accounts ?? []).map((row) => ({
+    key:
+      row.accountRef !== null
+        ? `${row.provider}:ref:${row.accountRef}`
+        : `${row.provider}:hash:${row.accountRefHash}`,
+    provider: row.provider,
+    accountRef: row.accountRef,
+    accountRefHash: row.accountRefHash,
+    label:
+      row.accountRef !== null
+        ? `${row.provider} ${row.accountRef}`
+        : `${row.provider} default`,
+    selector: row.selector,
+    ready: row.ready,
+    managed: false,
+    live: true,
+    homePresent: null,
+    priority: row.priority,
+    blockerRefs: row.blockerRefs,
+    source: row.selector === "default_home" ? "default_home" : "live_only",
+  }))
+
+const composerRouteWorkspaceRef = (model: Model): string | null => {
+  const sessions = modelCodeModeSync(model)?.sessions ?? modelNode(model)?.sessions ?? []
+  const sessionRef = model.composerSessionRef ?? model.selectedSessionRef
+  const sessionWorkspace =
+    sessionRef === null
+      ? null
+      : (sessions.find((row) => row.sessionRef === sessionRef)?.workspaceRef ?? null)
+  if (sessionWorkspace !== null && sessionWorkspace.trim() !== "") return sessionWorkspace
+  if (model.composerWorkspaceMode === "managed") {
+    const parsed = parseManagedWorktreeRequest({
+      repo: model.composerManagedRepo,
+      baseRef: model.composerManagedBaseRef,
+    })
+    return parsed.ok
+      ? `workspace.github.${routeSafeSegment(parsed.request.fullName)}.${routeSafeSegment(parsed.request.baseRef)}`
+      : null
+  }
+  const path = model.composerRepoPath.trim()
+  return path === "" ? null : `workspace.local.${routeHash(path)}`
+}
+
+const composerAccountRoute = (
+  model: Model,
+  adapter: CodeModeSpawnAdapter,
+): CodeModeAccountRoute =>
+  projectCodeModeAccountRoute({
+    adapter,
+    selectedAccountRef: model.composerAccountRef,
+    accounts: modelCodeModeSync(model)?.accounts ?? fallbackCodeModeAccountRows(model),
+    sessions: modelCodeModeSync(model)?.sessions ?? modelNode(model)?.sessions ?? [],
+    workspaceRef: composerRouteWorkspaceRef(model),
+    allowDefaultHome: true,
+  })
 
 const composerAccountBlocker = (
   model: Model,
-  adapter: ComposerSpawnAdapter,
-): string | null => {
-  const selected = model.composerAccountRef
-  if (selected === null) return null
-  const accounts = modelNode(model)?.accounts ?? null
-  if (accounts === null) return null
-  const row = composerSelectedAccountRow(model, adapter)
-  const label = adapter === "codex" ? "Codex" : "Claude Agent"
-  if (row === null) {
-    return `selected ${label} account "${selected}" is unavailable; choose another account`
-  }
-  if (!row.ready) {
-    return `selected ${label} account "${selected}" is blocked; choose another account`
-  }
-  return null
-}
+  adapter: CodeModeSpawnAdapter,
+): string | null => composerAccountRoute(model, adapter).blocker
 
 const composerAccountRefForAdapter = (
   model: Model,
-  adapter: ComposerSpawnAdapter,
+  adapter: CodeModeSpawnAdapter,
 ): string | null => {
-  const selected = model.composerAccountRef
-  if (selected === null) return null
-  const accounts = modelNode(model)?.accounts ?? null
-  if (accounts === null) return adapter === "codex" ? selected : null
-  return composerSelectedAccountRow(model, adapter)?.ready === true ? selected : null
+  const route = composerAccountRoute(model, adapter)
+  return route.blocker === null ? route.accountRef : null
 }
 
 const onboardingCompletionPane = (
@@ -2860,6 +2908,43 @@ export const update = (model: Model, message: Message): Result => {
         ),
         noCommands,
       ]
+    case "ClickedOverrideComposerAccountRoute": {
+      if (model.spawnAdapter === "apple_fm") return [model, noCommands]
+      const override = nextCodeModeAccountOverride({
+        adapter: model.spawnAdapter,
+        selectedAccountRef: model.composerAccountRef,
+        accounts: modelCodeModeSync(model)?.accounts ?? fallbackCodeModeAccountRows(model),
+        sessions: modelCodeModeSync(model)?.sessions ?? modelNode(model)?.sessions ?? [],
+        workspaceRef: composerRouteWorkspaceRef(model),
+        allowDefaultHome: true,
+      })
+      if (override === null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: {
+              text: "no alternate account route is ready",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      return [
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            composerAccountRef: override.accountRef,
+            composerStatus: {
+              text: `next run will use ${override.label}`,
+              tone: "info",
+            },
+          }),
+          "model_tick",
+        ),
+        noCommands,
+      ]
+    }
     // #5471: repo / worktree picker inputs.
     case "ChangedComposerWorkspaceMode":
       return [

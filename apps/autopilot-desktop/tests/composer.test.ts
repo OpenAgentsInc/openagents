@@ -23,6 +23,7 @@ import {
   ChangedSpawnAdapter,
   ChangedSpawnObjective,
   ChangedVerseMode,
+  ClickedOverrideComposerAccountRoute,
   ClickedComposerNewThread,
   ClickedComposerReply,
   ClickedComposerSpawn,
@@ -212,6 +213,89 @@ describe("composer reducer (#5355)", () => {
     expect(personalCmd.args?.accountRef).toBe("personal")
   })
 
+  test("ClickedComposerSpawn sends the priority route when no account is selected", () => {
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        pane: "composer",
+        spawnAdapter: "codex",
+        spawnObjective: "ship the priority route",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([
+          { accountRef: "work", ready: true, priority: 5 },
+          { accountRef: "personal", ready: true, priority: 1 },
+        ]),
+      }),
+    )
+
+    const tree = serializeView(view(withNode))
+    expect(tree).toContain("autopilot-account-route")
+    expect(tree).toContain("priority")
+
+    const [, commands] = update(withNode, ClickedComposerSpawn())
+    const cmd = commands[0] as unknown as { args?: { accountRef?: string | null } }
+    expect(cmd.args?.accountRef).toBe("personal")
+  })
+
+  test("ClickedComposerSpawn sends the last-used workspace route before priority", () => {
+    const previousSession = {
+      sessionRef: "session.pylon.codex.previous",
+      adapter: "codex" as const,
+      state: "completed" as const,
+      objectiveRef: "objective.previous",
+      workspaceRef: "workspace.openagents.desktop",
+      accountRefHash: "account.pylon.codex.work",
+      latestActivity: "completed previous work",
+      updatedAt: "2026-06-21T23:00:00.000Z",
+    }
+    const baseNode = nodeWithCodexAccounts([
+      { accountRef: "work", ready: true, priority: 5 },
+      { accountRef: "personal", ready: true, priority: 1 },
+    ])
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        selectedSessionRef: previousSession.sessionRef,
+        spawnAdapter: "codex",
+        spawnObjective: "ship the workspace route",
+      }),
+      GotNodeState({
+        node: {
+          ...baseNode,
+          sessions: [previousSession],
+        },
+      }),
+    )
+
+    const [, commands] = update(withNode, ClickedComposerSpawn())
+    const cmd = commands[0] as unknown as { args?: { accountRef?: string | null } }
+    expect(cmd.args?.accountRef).toBe("work")
+  })
+
+  test("ClickedOverrideComposerAccountRoute cycles the same task to another account", () => {
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        spawnAdapter: "codex",
+        spawnObjective: "run the same task elsewhere",
+        composerAccountRef: "work",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([
+          { accountRef: "work", ready: true, priority: 0 },
+          { accountRef: "personal", ready: true, priority: 1 },
+        ]),
+      }),
+    )
+
+    const [model, commands] = update(withNode, ClickedOverrideComposerAccountRoute())
+    expect(commands).toHaveLength(0)
+    expect(model.composerAccountRef).toBe("personal")
+    expect(model.spawnObjective).toBe("run the same task elsewhere")
+    expect(model.composerStatus.text).toContain("personal")
+  })
+
   test("ClickedComposerSpawn blocks if the selected Codex account is unavailable", () => {
     const [withNode] = update(
       Model.make({
@@ -270,7 +354,8 @@ describe("composer reducer (#5355)", () => {
     const tree = serializeView(view(model).body)
     expect(tree).toContain("autopilot-composer-run-context")
     expect(tree).toContain("runtime: codex")
-    expect(tree).toContain("account: Codex work ready")
+    expect(tree).toContain("account: Codex work")
+    expect(tree).toContain("selected account")
     expect(tree).toContain("target: /Users/me/code/repo")
     expect(tree).toContain("verify: 2 verify commands")
   })

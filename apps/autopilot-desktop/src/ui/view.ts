@@ -200,6 +200,7 @@ import {
   ChangedSwarmBatchConcurrency,
   ClickedSwarmBatchLaunch,
   ClickedComposerNewThread,
+  ClickedOverrideComposerAccountRoute,
   ClickedComposerReply,
   ClickedComposerSpawn,
   ClickedChatSubmit,
@@ -379,6 +380,12 @@ import {
   modelTrainingRuns,
 } from "./model.js"
 import type { CodeModeSyncAccountRow } from "./code-mode-sync.js"
+import {
+  nextCodeModeAccountOverride,
+  projectCodeModeAccountRoute,
+  type CodeModeAccountRoute,
+  type CodeModeSpawnAdapter,
+} from "./code-mode-account-routing.js"
 import {
   projectSessionPane,
   sessionAccountShortLabel,
@@ -960,6 +967,108 @@ const syncAccountPickerLabel = (row: CodeModeSyncAccountRow): string => {
   return row.ready ? base : `${base} (blocked)`
 }
 
+const routeHash = (value: string): string => {
+  let hash = 2166136261
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0")
+}
+
+const routeSafeSegment = (value: string): string =>
+  value
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .slice(0, 96) || "unknown"
+
+const fallbackCodeModeAccountRows = (model: Model): readonly CodeModeSyncAccountRow[] =>
+  (modelNode(model)?.accounts ?? []).map((row) => ({
+    key:
+      row.accountRef !== null
+        ? `${row.provider}:ref:${row.accountRef}`
+        : `${row.provider}:hash:${row.accountRefHash}`,
+    provider: row.provider,
+    accountRef: row.accountRef,
+    accountRefHash: row.accountRefHash,
+    label:
+      row.accountRef !== null
+        ? `${row.provider} ${row.accountRef}`
+        : `${row.provider} default`,
+    selector: row.selector,
+    ready: row.ready,
+    managed: false,
+    live: true,
+    homePresent: null,
+    priority: row.priority,
+    blockerRefs: row.blockerRefs,
+    source: row.selector === "default_home" ? "default_home" : "live_only",
+  }))
+
+const composerRouteWorkspaceRef = (model: Model): string | null => {
+  const sessions = modelCodeModeSync(model)?.sessions ?? modelNode(model)?.sessions ?? []
+  const sessionRef = model.composerSessionRef ?? model.selectedSessionRef
+  const sessionWorkspace =
+    sessionRef === null
+      ? null
+      : (sessions.find((row) => row.sessionRef === sessionRef)?.workspaceRef ?? null)
+  if (sessionWorkspace !== null && sessionWorkspace.trim() !== "") return sessionWorkspace
+  if (model.composerWorkspaceMode === "managed") {
+    const parsed = parseManagedWorktreeRequest({
+      repo: model.composerManagedRepo,
+      baseRef: model.composerManagedBaseRef,
+    })
+    return parsed.ok
+      ? `workspace.github.${routeSafeSegment(parsed.request.fullName)}.${routeSafeSegment(parsed.request.baseRef)}`
+      : null
+  }
+  const path = model.composerRepoPath.trim()
+  return path === "" ? null : `workspace.local.${routeHash(path)}`
+}
+
+const composerRouteInput = (
+  model: Model,
+  adapter: CodeModeSpawnAdapter,
+) => ({
+  adapter,
+  selectedAccountRef: model.composerAccountRef,
+  accounts: modelCodeModeSync(model)?.accounts ?? fallbackCodeModeAccountRows(model),
+  sessions: modelCodeModeSync(model)?.sessions ?? modelNode(model)?.sessions ?? [],
+  workspaceRef: composerRouteWorkspaceRef(model),
+  allowDefaultHome: true,
+})
+
+const composerAccountRoutePreview = (model: Model): CodeModeAccountRoute | null =>
+  model.spawnAdapter === "apple_fm"
+    ? null
+    : projectCodeModeAccountRoute(composerRouteInput(model, model.spawnAdapter))
+
+const composerAccountRouteOverride = (model: Model) =>
+  model.spawnAdapter === "apple_fm"
+    ? null
+    : nextCodeModeAccountOverride(composerRouteInput(model, model.spawnAdapter))
+
+const compactDiagnosticSource = (
+  sourceRef: string | null,
+  fallback: string,
+): string => {
+  const text = sourceRef?.trim() ?? ""
+  if (text === "") return fallback
+  if (text.startsWith("account.")) return shortAccountHash(text)
+  return text.length > 36 ? `${text.slice(0, 16)}…${text.slice(-8)}` : text
+}
+
+const compactDiagnosticBody = (
+  key: string,
+  body: string,
+): string => {
+  if (key.startsWith("account.") && key.endsWith(".blocked")) {
+    return "This account is not ready; open Accounts for details."
+  }
+  return body.replace(/account\.[A-Za-z0-9._-]{16,}/g, (match) => shortAccountHash(match))
+}
+
 const codeModeSyncDiagnostics = (model: Model, limit = 3): Html => {
   const sync = modelCodeModeSync(model)
   const diagnostics = sync?.diagnostics ?? []
@@ -975,9 +1084,9 @@ const codeModeSyncDiagnostics = (model: Model, limit = 3): Html => {
         [
           cls(`code-mode-sync-diagnostic code-mode-sync-${diagnostic.severity}`),
           h.DataAttribute("autopilot-code-mode-sync-diagnostic", diagnostic.key),
-          h.Title(diagnostic.sourceRef ?? diagnostic.title),
+          h.Title(compactDiagnosticSource(diagnostic.sourceRef, diagnostic.title)),
         ],
-        [`${diagnostic.title}: ${diagnostic.body}`],
+        [`${diagnostic.title}: ${compactDiagnosticBody(diagnostic.key, diagnostic.body)}`],
       ),
     ),
   )
@@ -5933,31 +6042,12 @@ const composerAccountPicker = (model: Model): Html => {
 
 const composerSelectedAccountText = (model: Model): string => {
   if (model.spawnAdapter === "apple_fm") return "Apple FM local runtime"
-  const provider = model.spawnAdapter === "codex" ? "Codex" : "Claude"
-  const selected = model.composerAccountRef
-  if (selected === null) return `${provider} default route`
-  const sync = modelCodeModeSync(model)
-  const syncRow =
-    sync?.accounts.find(
-      (account) =>
-        account.provider === model.spawnAdapter &&
-        account.accountRef === selected,
-    ) ?? null
-  if (syncRow !== null) {
-    return `${provider} ${selected} ${
-      !syncRow.live && syncRow.managed ? "syncing" : syncRow.ready ? "ready" : "blocked"
-    }`
-  }
-  const accounts = modelNode(model)?.accounts ?? null
-  if (accounts === null) return `${provider} ${selected}`
-  const row =
-    accounts.find(
-      (account) =>
-        account.provider === model.spawnAdapter &&
-        account.accountRef === selected,
-    ) ?? null
-  if (row === null) return `${provider} ${selected} unavailable`
-  return `${provider} ${selected} ${row.ready ? "ready" : "blocked"}`
+  const route = composerAccountRoutePreview(model)
+  return route === null
+    ? "default route"
+    : route.blocker === null
+      ? `${route.label} · ${route.detail}`
+      : route.detail
 }
 
 const composerTargetText = (model: Model): string => {
@@ -5978,14 +6068,45 @@ const composerVerifyText = (model: Model): string => {
   return count === 0 ? "no verify commands" : `${count} verify command${count === 1 ? "" : "s"}`
 }
 
+const composerRoutePill = (model: Model): Html => {
+  const route = composerAccountRoutePreview(model)
+  if (route === null) {
+    return h.span([cls("composer-run-context-pill")], ["account: Apple FM local runtime"])
+  }
+  return h.span(
+    [
+      cls("composer-run-context-pill"),
+      h.DataAttribute("autopilot-account-route", route.source),
+      h.DataAttribute("autopilot-account-route-hash", route.evidence.accountHash ?? ""),
+    ],
+    [`account: ${composerSelectedAccountText(model)}`],
+  )
+}
+
+const composerRouteOverrideButton = (model: Model): Html => {
+  const override = composerAccountRouteOverride(model)
+  if (override === null) return h.empty
+  return h.button(
+    [
+      cls("composer-run-context-action"),
+      h.Type("button"),
+      h.Title(`Run this same task with ${override.label}`),
+      h.DataAttribute("autopilot-account-route-override", override.accountRef ?? "default"),
+      h.OnClick(ClickedOverrideComposerAccountRoute()),
+    ],
+    ["Use another account"],
+  )
+}
+
 const composerRunContext = (model: Model): Html =>
   h.div(
     [cls("composer-run-context"), h.DataAttribute("autopilot-composer-run-context", "")],
     [
       h.span([cls("composer-run-context-pill")], [`runtime: ${SPAWN_ADAPTER_LABEL[model.spawnAdapter]}`]),
-      h.span([cls("composer-run-context-pill")], [`account: ${composerSelectedAccountText(model)}`]),
+      composerRoutePill(model),
       h.span([cls("composer-run-context-pill")], [`target: ${composerTargetText(model)}`]),
       h.span([cls("composer-run-context-pill")], [`verify: ${composerVerifyText(model)}`]),
+      composerRouteOverrideButton(model),
     ],
   )
 
@@ -7182,6 +7303,17 @@ const verseCodeDockComposer = (model: Model): Html =>
       h.div([cls("verse-code-dock-row verse-code-dock-row-tight")], [
         h.span([cls("verse-code-dock-label")], ["Composer"]),
         h.span([cls("verse-code-dock-route")], [composerSelectedAccountText(model)]),
+        composerAccountRouteOverride(model) === null
+          ? h.empty
+          : h.button(
+              [
+                cls("verse-code-dock-button subtle"),
+                h.Type("button"),
+                h.Title("Run this same task with another account"),
+                h.OnClick(ClickedOverrideComposerAccountRoute()),
+              ],
+              ["Other"],
+            ),
       ]),
       h.p([cls("verse-code-dock-note")], [compactWorkspaceLabel(model)]),
       h.textarea(

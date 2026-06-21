@@ -1037,6 +1037,20 @@ Acceptance:
 
 ### VCODE-13 - Add Multi-Codex Account Routing Defaults
 
+Implemented on 2026-06-21. `apps/autopilot-desktop/src/ui/code-mode-account-routing.ts`
+now owns the deterministic account-route projection used by Composer, batch,
+chat-spawn, shell coding, and the Verse code dock. The precedence is explicit
+selected account, last-used account for the safe workspace ref, managed priority,
+then default home only when that fallback is allowed. Explicit blocked or
+unavailable accounts produce a blocker and never fall through to another route.
+The Composer context and Verse dock show the chosen route before spawn, with
+route data attributes limited to the route source and a short account-hash
+tail. `ClickedOverrideComposerAccountRoute` cycles the same task to the next
+ready account/default route without changing the objective or spawning
+implicitly. `tests/code-mode-account-routing.test.ts` covers precedence,
+determinism, override cycling, and route-evidence redaction; Composer reducer
+tests prove priority and last-used routes reach `session.spawn`.
+
 Build:
 
 - Define routing precedence: explicit selected account, last-used account for
