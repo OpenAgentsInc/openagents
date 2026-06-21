@@ -562,3 +562,19 @@ The same pass pinned `three-effect` `3c68f3e`, which changes the physical
 Tassadar bulletin board from the old brown wooden palette to a black, gray, and
 white Verse palette. `three-effect` now has a regression assertion that the
 board mesh colors include the grayscale palette and exclude the old wood hexes.
+
+Issue
+[`#5916`](https://github.com/OpenAgentsInc/openagents/issues/5916) applied the
+pointer-capture and hit-testing recommendation to the packaged Verse smoke. The
+Verse shell now opts out of browser text selection at the root, while the
+`oa-training-run` canvas keeps the actual third-person drag handling. The smoke
+uses Chrome DevTools Protocol mouse events to drag across the 3D scene, then
+fails if the cursor resolves to `text`, if any DOM text becomes selected, if the
+top hit stack is no longer the scene host/canvas, if the drag frame is blank, or
+if any `verse-host.remount.*` diagnostic appears during the drag.
+
+This makes the current mouselook regression observable in the same browser path
+the packaged app uses. It also keeps the audit's R3F/Effect direction intact:
+the user interaction contract is exercised outside React render timing, and the
+retained scene host must continue handling pointer updates without remounting
+the renderer, camera, controller, local avatar, or board resources.

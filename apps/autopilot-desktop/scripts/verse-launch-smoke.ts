@@ -234,6 +234,20 @@ type ContinuousMovementSmoke = {
   readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
 }
 
+type MouseLookDragSmoke = {
+  readonly ok: boolean
+  readonly cursorAfterDrag: string
+  readonly scenePointerTarget: boolean
+  readonly selectedText: string
+  readonly topElements: ReadonlyArray<string>
+  readonly frame: PixelSmoke & {
+    readonly path: string
+  }
+  readonly movement: MovementSmoke
+  readonly activeHostRemounts: ReadonlyArray<VerseSceneDiagnostic>
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
 type RetainedLiveUpdateSmoke = {
   readonly ok: boolean
   readonly boardHydrated: boolean
@@ -265,6 +279,7 @@ type VerseLaunchReceipt = {
   }
   readonly movement: MovementSmoke
   readonly continuousMovement: ContinuousMovementSmoke
+  readonly mouseLookDrag: MouseLookDragSmoke
   readonly retainedLiveUpdate: RetainedLiveUpdateSmoke
   readonly typecheckProof: string
 }
@@ -493,6 +508,92 @@ const keyUpD = async (cdp: CdpClient): Promise<void> => {
     windowsVirtualKeyCode: 68,
     nativeVirtualKeyCode: 68,
   })
+}
+
+type MouseDragPoint = {
+  readonly endX: number
+  readonly endY: number
+  readonly startX: number
+  readonly startY: number
+}
+
+const dispatchMouse = async (
+  cdp: CdpClient,
+  {
+    button = "none",
+    buttons = 0,
+    clickCount = 0,
+    type,
+    x,
+    y,
+  }: {
+    readonly button?: "none" | "left"
+    readonly buttons?: number
+    readonly clickCount?: number
+    readonly type: "mouseMoved" | "mousePressed" | "mouseReleased"
+    readonly x: number
+    readonly y: number
+  },
+): Promise<void> => {
+  await cdp.send("Input.dispatchMouseEvent", {
+    button,
+    buttons,
+    clickCount,
+    pointerType: "mouse",
+    type,
+    x,
+    y,
+  })
+}
+
+const dragSceneMouse = async (
+  cdp: CdpClient,
+  rect: Rect,
+): Promise<MouseDragPoint> => {
+  const startX = Math.floor(rect.left + rect.width * 0.58)
+  const startY = Math.floor(rect.top + rect.height * 0.46)
+  const midX = startX + 92
+  const midY = startY + 24
+  const endX = startX + 184
+  const endY = startY + 52
+
+  await dispatchMouse(cdp, { type: "mouseMoved", x: startX, y: startY })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+    type: "mousePressed",
+    x: startX,
+    y: startY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    type: "mouseMoved",
+    x: midX,
+    y: midY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    type: "mouseMoved",
+    x: endX,
+    y: endY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    clickCount: 1,
+    type: "mouseReleased",
+    x: endX,
+    y: endY,
+  })
+  await wait(180)
+
+  return { endX, endY, startX, startY }
 }
 
 const readVerseSceneDiagnostics = async (
@@ -767,6 +868,37 @@ const retainedLiveUpdateExpression = `
 })()
 `
 
+const mouseLookDragProbeExpression = (x: number, y: number): string => `
+(() => {
+  const host = document.querySelector(".three-effect-chat-scene")
+  const canvas = host?.shadowRoot?.querySelector("canvas")
+  const topElements = document.elementsFromPoint(${x}, ${y})
+    .slice(0, 8)
+    .map(element => {
+      const className = element instanceof HTMLElement ? element.className : ""
+      const normalizedClass = typeof className === "string" ? className : ""
+      return [
+        element.tagName.toLowerCase(),
+        normalizedClass.split(/\\s+/).filter(Boolean).slice(0, 3).join("."),
+      ].filter(Boolean).join(".")
+    })
+  const pointerTop = document.elementFromPoint(${x}, ${y})
+  const scenePointerTarget =
+    pointerTop === host ||
+    pointerTop === canvas ||
+    (pointerTop instanceof HTMLElement &&
+      pointerTop.closest(".three-effect-chat-scene") === host)
+  return {
+    cursorAfterDrag: canvas instanceof HTMLCanvasElement
+      ? getComputedStyle(canvas).cursor
+      : "missing",
+    scenePointerTarget,
+    selectedText: String(globalThis.getSelection?.()?.toString() ?? ""),
+    topElements,
+  }
+})()
+`
+
 const main = async (): Promise<void> => {
   const appBundle = process.env.AUTOPILOT_DESKTOP_APP_BUNDLE ??
     join(process.cwd(), "build/dev-macos-arm64/Autopilot-dev.app")
@@ -780,6 +912,10 @@ const main = async (): Promise<void> => {
     join(process.cwd(), "build/verse-launch-smoke")
   const screenshotPath = join(proofDir, "verse-launch-smoke.png")
   const movementScreenshotPath = join(proofDir, "verse-launch-smoke-after-w.png")
+  const mouseLookScreenshotPath = join(
+    proofDir,
+    "verse-launch-smoke-after-mouselook.png",
+  )
   const receiptPath = join(proofDir, "verse-launch-smoke.json")
 
   for (const [label, path] of [
@@ -991,11 +1127,87 @@ const main = async (): Promise<void> => {
       diagnosticsSample: movementDiagnostics.slice(-20),
     }
 
+    if (dom.canvas.rect === null) {
+      throw new Error("Verse mouselook smoke cannot run without a canvas rect")
+    }
+    const mouseLookBefore = await cdp.send<{ readonly data: string }>(
+      "Page.captureScreenshot",
+      { format: "png", fromSurface: true },
+    )
+    const mouseLookBeforeBytes = Buffer.from(mouseLookBefore.data, "base64")
+    const diagnosticsBeforeMouseLook = await readVerseSceneDiagnostics(cdp)
+    const dragPoint = await dragSceneMouse(cdp, dom.canvas.rect)
+    const mouseLookAfter = await cdp.send<{ readonly data: string }>(
+      "Page.captureScreenshot",
+      { format: "png", fromSurface: true },
+    )
+    const mouseLookAfterBytes = Buffer.from(mouseLookAfter.data, "base64")
+    writeFileSync(mouseLookScreenshotPath, mouseLookAfterBytes)
+    const mouseLookPixels = pixelSmoke(mouseLookAfterBytes)
+    const mouseLookMovement = movementSmoke(
+      mouseLookBeforeBytes,
+      mouseLookAfterBytes,
+      mouseLookScreenshotPath,
+    )
+    const diagnosticsAfterMouseLook = await readVerseSceneDiagnostics(cdp)
+    const mouseLookDiagnostics = diagnosticsAfterMouseLook.slice(
+      diagnosticsBeforeMouseLook.length,
+    )
+    const mouseLookProbeEvaluation = await cdp.send<{
+      readonly result?: {
+        readonly value?: {
+          readonly cursorAfterDrag?: string
+          readonly scenePointerTarget?: boolean
+          readonly selectedText?: string
+          readonly topElements?: ReadonlyArray<string>
+        }
+      }
+      readonly exceptionDetails?: unknown
+    }>("Runtime.evaluate", {
+      expression: mouseLookDragProbeExpression(dragPoint.endX, dragPoint.endY),
+      returnByValue: true,
+    })
+    if (mouseLookProbeEvaluation.exceptionDetails !== undefined) {
+      throw new Error(
+        `Verse mouselook drag probe threw in Chrome: ${JSON.stringify(mouseLookProbeEvaluation.exceptionDetails)}`,
+      )
+    }
+    const mouseLookProbe = mouseLookProbeEvaluation.result?.value
+    if (mouseLookProbe === undefined) {
+      throw new Error("Verse mouselook drag probe returned no result")
+    }
+    const mouseLookRemounts = mouseLookDiagnostics.filter(entry =>
+      entry.event === "verse-host.remount.mounted" ||
+      entry.event === "verse-host.remount.swapped" ||
+      entry.event === "verse-host.remount.scheduled",
+    )
+    const mouseLookDrag: MouseLookDragSmoke = {
+      ok:
+        mouseLookPixels.ok &&
+        mouseLookMovement.ok &&
+        mouseLookRemounts.length === 0 &&
+        mouseLookProbe.cursorAfterDrag !== "text" &&
+        mouseLookProbe.scenePointerTarget === true &&
+        (mouseLookProbe.selectedText ?? "").trim().length === 0,
+      cursorAfterDrag: mouseLookProbe.cursorAfterDrag ?? "missing",
+      scenePointerTarget: mouseLookProbe.scenePointerTarget === true,
+      selectedText: mouseLookProbe.selectedText ?? "",
+      topElements: mouseLookProbe.topElements ?? [],
+      frame: {
+        ...mouseLookPixels,
+        path: relativePath(mouseLookScreenshotPath),
+      },
+      movement: mouseLookMovement,
+      activeHostRemounts: mouseLookRemounts,
+      diagnosticsSample: mouseLookDiagnostics.slice(-20),
+    }
+
     const ok =
       dom.ok &&
       pixels.ok &&
       movement.ok &&
       continuousMovement.ok &&
+      mouseLookDrag.ok &&
       retainedLiveUpdate.ok
     const receipt: VerseLaunchReceipt = {
       ok,
@@ -1012,6 +1224,7 @@ const main = async (): Promise<void> => {
         "github:OpenAgentsInc/openagents#5914",
         "github:OpenAgentsInc/openagents#5912",
         "github:OpenAgentsInc/openagents#5917",
+        "github:OpenAgentsInc/openagents#5916",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
       packagedFiles: {
@@ -1029,6 +1242,7 @@ const main = async (): Promise<void> => {
       },
       movement,
       continuousMovement,
+      mouseLookDrag,
       retainedLiveUpdate,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
@@ -1046,6 +1260,9 @@ const main = async (): Promise<void> => {
           continuousMovement.ok
             ? ""
             : "verse.launch.continuousMovementNoBlackFramesRemountsOrBoardProximityMiss",
+          mouseLookDrag.ok
+            ? ""
+            : "verse.launch.mouseLookDragNoTextCursorSelectionBlankFrameOrRemount",
         ].filter(Boolean).join("; "),
       )
     }

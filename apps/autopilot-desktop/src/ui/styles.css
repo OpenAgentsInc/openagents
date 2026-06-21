@@ -119,6 +119,9 @@ body {
   inset: 0;
   overflow: hidden;
   background: #000;
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-shell-verse .chat-pane-world {
@@ -126,6 +129,8 @@ body {
   inset: 0;
   min-height: 100vh;
   gap: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-shell-verse .chat-scene-background {
@@ -134,6 +139,7 @@ body {
   cursor: default;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .app-shell-verse .three-effect-chat-scene {
@@ -144,6 +150,7 @@ body {
   cursor: default;
   touch-action: none;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .pylon-balance-hud {
