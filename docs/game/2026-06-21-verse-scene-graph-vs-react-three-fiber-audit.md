@@ -441,3 +441,20 @@ react-three-fiber (reference, `projects/repos/react-three-fiber/packages/fiber/s
 - `loop.ts` — global RAF, `always`/`demand`/`never`, `invalidate`, `advance`
 - `hooks.tsx` — `useThree`/`useFrame`/`useLoader`
 - `events.ts` — interaction registry, raycast, synthetic bubbling
+
+## 2026-06-21 addendum — retained Verse flicker follow-up
+
+Issue
+[`#5911`](https://github.com/OpenAgentsInc/openagents/issues/5911) applied the
+first recommendation from this audit by aligning the OpenAgents local
+`TrainingRunVisualizationHandle` declaration with the installed `three-effect`
+runtime. The shim no longer advertises stale `renderNow` / `webglAvailable`
+fields and now exposes the retained runtime capabilities actually returned by
+`mountTrainingRunVisualization`: `captureLocalPose`, `updateRemoteAvatars`, and
+`selectNextTarget`.
+
+This matters to the current Verse flicker work because stale host contracts make
+it too easy to keep treating the scene as a disposable render target. The app now
+type-checks against the same retained handle that the runtime provides, so
+future movement, proximity, and multiplayer fixes have to go through explicit
+incremental APIs instead of accidentally depending on full scene replacement.

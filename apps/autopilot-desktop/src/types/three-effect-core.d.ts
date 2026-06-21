@@ -206,14 +206,14 @@ export type TrainingRunVisualizationSnapshot = Readonly<Record<string, unknown>>
 
 export type TrainingRunVisualizationHandle = Readonly<{
   canvas: HTMLCanvasElement
+  captureLocalPose: () => TrainingRunLocalPoseSnapshot | undefined
   dispose: Effect.Effect<void>
   element: HTMLElement
-  renderNow: () => void
   resize: Effect.Effect<void>
+  selectNextTarget: (direction?: 1 | -1) => TrainingRunNodeSelection | undefined
   updateRemoteAvatars: (
     avatars: readonly TrainingRunRemoteAvatarDefinition[],
   ) => void
-  webglAvailable: boolean
 }>
 
 export const defaultTrainingRunNodes: readonly TrainingRunNodeDefinition[]
