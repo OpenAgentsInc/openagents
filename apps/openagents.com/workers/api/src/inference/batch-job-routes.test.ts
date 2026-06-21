@@ -5,6 +5,7 @@ import {
   type BatchJobRoutesDeps,
   handleBatchJobReceiptRead,
   handleBatchJobsSubmit,
+  handleBatchJobStatusRead,
 } from './batch-job-routes'
 import { inferenceBatchJobChargeReceiptRef } from './batch-job-metering'
 
@@ -225,5 +226,92 @@ describe('handleBatchJobReceiptRead', () => {
     expect(body.receipt.failedItems).toBe(1)
     expect(body.receipt.totalCostMsat).toBe(50000)
     expect(body.staleness.composition).toBe('live_at_read')
+  })
+})
+
+describe('handleBatchJobStatusRead', () => {
+  const makeReadDb = (jobStatus: string | null, accountRef = 'agent:123'): D1Database => {
+    return {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          first: async () => {
+            if (sql.includes('inference_batch_jobs')) {
+              if (jobStatus === null) return null
+              return {
+                job_id: 'batch_123',
+                account_ref: accountRef,
+                status: jobStatus,
+                charge_receipt_ref: 'receipt.inference.batch_job_charge.batch_123',
+                dataset_size: 100,
+                processed_items: 99,
+                failed_items: 1,
+                results_r2_key: 'batch_123/results.jsonl',
+                created_at: '2026-06-20T12:00:00.000Z',
+                updated_at: '2026-06-20T12:05:00.000Z',
+              }
+            }
+            return null
+          },
+        }),
+      }),
+    } as unknown as D1Database
+  }
+
+  const makeStatusRequest = (jobId: string): Request =>
+    new Request(`https://openagents.com/v1/inference/batches/${jobId}`, {
+      method: 'GET',
+    })
+
+  it('returns 404 when disabled', async () => {
+    const response = await run(
+      handleBatchJobStatusRead(makeStatusRequest('batch_123'), baseDeps({ enabled: false })),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns 405 for non-GET requests', async () => {
+    const request = new Request('https://openagents.com/v1/inference/batches/batch_123', {
+      method: 'POST',
+    })
+    const response = await run(handleBatchJobStatusRead(request, baseDeps()))
+    expect(response.status).toBe(405)
+  })
+
+  it('returns 401 when unauthenticated', async () => {
+    const deps = baseDeps({ authenticate: async () => undefined })
+    const response = await run(handleBatchJobStatusRead(makeStatusRequest('batch_123'), deps))
+    expect(response.status).toBe(401)
+  })
+
+  it('returns 404 if job not found', async () => {
+    const deps = baseDeps({ db: makeReadDb(null) })
+    const response = await run(
+      handleBatchJobStatusRead(makeStatusRequest('batch_123'), deps),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns 404 if job accountRef does not match session', async () => {
+    const deps = baseDeps({ db: makeReadDb('pending', 'agent:other') })
+    const response = await run(
+      handleBatchJobStatusRead(makeStatusRequest('batch_123'), deps),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns job status for pending job', async () => {
+    const deps = baseDeps({ db: makeReadDb('pending') })
+    const response = await run(
+      handleBatchJobStatusRead(makeStatusRequest('batch_123'), deps),
+    )
+
+    expect(response.status).toBe(200)
+
+    const body = (await response.json()) as any
+    expect(body.jobId).toBe('batch_123')
+    expect(body.status).toBe('pending')
+    expect(body.datasetSize).toBe(100)
+    expect(body.processedItems).toBe(99)
+    expect(body.failedItems).toBe(1)
   })
 })
