@@ -47,6 +47,28 @@ export type RecentPylon = {
   readonly assignmentReadyNow?: boolean | null
 }
 
+const cleanLabel = (value: string | null | undefined): string => {
+  const label = typeof value === "string" ? value.trim() : ""
+  return label.length > 0 ? label : ""
+}
+
+export const recentPylonNetworkId = (
+  pylon: RecentPylon,
+  index: number,
+): string => {
+  const ref = cleanLabel(pylon.nostrPubkeyShort)
+  return ref.length > 0 && ref !== "unknown" ? ref : `recent-pylon-${index + 1}`
+}
+
+export const recentPylonNetworkLabel = (
+  pylon: RecentPylon,
+  index: number,
+): string => {
+  const ref = recentPylonNetworkId(pylon, index)
+  const label = cleanLabel(pylon.nodeLabel)
+  return label.length > 0 && label.toLowerCase() !== "pylon" ? label : ref
+}
+
 // A graph node's visual tone (§3). blue = working, white = online idle,
 // grey = seen-but-offline.
 export type PylonNodeTone = "working" | "online" | "offline"
@@ -130,44 +152,21 @@ const recentNodeTone = (pylon: RecentPylon): PylonNodeTone => {
   return "offline"
 }
 
-const MAX_AMBIENT_NODES = 60
-
-// Build the network graph nodes: the discrete recentPylons, plus anonymous
-// ambient nodes so the visible count matches pylonsOnlineNow honestly (§3).
+// Build the network graph nodes from concrete recentPylons only. Aggregate
+// counts stay on the hub; per-node labels must correspond to a network row.
 export function buildNetworkNodes(
   snapshot: PylonStatsSnapshot,
 ): PylonNetworkNode[] {
   const recent = snapshot.recentPylons ?? []
-  const nodes: PylonNetworkNode[] = recent.map((pylon, index) => {
+  return recent.map((pylon, index) => {
     const tone = recentNodeTone(pylon)
     return {
-      id: pylon.nostrPubkeyShort ?? `recent-${index}`,
-      label: pylon.nodeLabel ?? pylon.nostrPubkeyShort ?? "pylon",
+      id: recentPylonNetworkId(pylon, index),
+      label: recentPylonNetworkLabel(pylon, index),
       tone,
       flowing: tone === "working",
     }
   })
-
-  const onlineNow = n(snapshot.pylonsOnlineNow)
-  const onlineInRecent = recent.filter((p) => p.onlineNow === true).length
-  const ambientOnline = Math.min(
-    MAX_AMBIENT_NODES,
-    Math.max(0, onlineNow - onlineInRecent),
-  )
-  const assignmentReady = n(snapshot.pylonsAssignmentReadyNow)
-  for (let index = 0; index < ambientOnline; index += 1) {
-    // Light a share of ambient nodes as "working" proportional to the
-    // assignment-ready fraction, so the graph's lit-node density tracks the
-    // reported earning activity.
-    const working = onlineNow > 0 && index < Math.round((assignmentReady / onlineNow) * ambientOnline)
-    nodes.push({
-      id: `ambient-${index}`,
-      label: "pylon",
-      tone: working ? "working" : "online",
-      flowing: working,
-    })
-  }
-  return nodes
 }
 
 export function projectPylonNetworkScene(

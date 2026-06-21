@@ -132,9 +132,42 @@ describe("projectChatWorldPylonScene", () => {
     expect(orrery!.pulseSpeed).toBeGreaterThan(0)
     expect(orrery!.products).toEqual(["compute", "labor"])
     // offline node sits still (no pulse, no glow)
+    expect(offline!.id).toBe("def456")
+    expect(offline!.label).toBe("def456")
     expect(offline!.state).toBe("offline")
     expect(offline!.online).toBe(false)
     expect(offline!.pulseSpeed).toBe(0)
+  })
+
+  test("labels live pylons from network names or refs, never generic pylon text", () => {
+    const scene = projectChatWorldPylonScene(
+      snapshot({
+        pylonsOnlineNow: 3,
+        recentPylons: [
+          {
+            nostrPubkeyShort: "pylon.public.named",
+            nodeLabel: "North Dock",
+            onlineNow: true,
+          } satisfies LiveRecentPylon,
+          {
+            nostrPubkeyShort: "pylon.public.generic",
+            nodeLabel: "pylon",
+            onlineNow: true,
+          } satisfies LiveRecentPylon,
+          {
+            nostrPubkeyShort: "pylon.public.unnamed",
+            onlineNow: false,
+          } satisfies LiveRecentPylon,
+        ] as never,
+      }),
+    )
+
+    expect(scene.nodes.map((node) => node.label)).toEqual([
+      "North Dock",
+      "pylon.public.generic",
+      "pylon.public.unnamed",
+    ])
+    expect(scene.nodes.some((node) => node.label.toLowerCase() === "pylon")).toBe(false)
   })
 
   test("fleet growth tier comes from cumulative settled sats total", () => {

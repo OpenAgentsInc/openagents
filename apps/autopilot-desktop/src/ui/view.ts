@@ -57,7 +57,6 @@ import { isGatewayBalanceLow } from "../shared/inference-routing"
 // bezier graph so the chat can render as glass over a calm 3D world scene.
 import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
 import type {
-  PylonNetworkNode,
   PylonNetworkScene,
 } from "../shared/pylon-network-scene"
 // #5730 (P2.5): feed the LIVE pylon scene + Bitcoin payment particles into the
@@ -5814,21 +5813,8 @@ const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
 const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
 const CHAT_WORLD_HUD: boolean = chatWorldHudFlag()
 
-// A calm static seed scene: one core + inert ring pylons. It gives first paint a
-// spatial Verse without claiming live online/assigned pylons before the public
-// Pylon snapshot arrives.
-const CHAT_SCENE_RING_NODES: ReadonlyArray<PylonNetworkNode> = Array.from(
-  { length: 8 },
-  (_unused, index): PylonNetworkNode => {
-    return {
-      id: `seed-pylon-${index}`,
-      label: "pylon",
-      tone: "offline",
-      flowing: false,
-    }
-  },
-)
-
+// A calm static seed scene: one core and no per-pylon nodes until the public
+// Pylon snapshot arrives. Named pylons must come from the network projection.
 const CHAT_SCENE: PylonNetworkScene = {
   activityIntensity: 0,
   dormant: true,
@@ -5837,14 +5823,14 @@ const CHAT_SCENE: PylonNetworkScene = {
   sellableOnlineNow: 0,
   walletReadyNow: 0,
   assignmentReadyNow: 0,
-  seen24h: 8,
-  registeredTotal: 8,
+  seen24h: 0,
+  registeredTotal: 0,
   satsSettled24h: 0,
   satsSettledTotal: 0,
   trainingAssignedContributors: 0,
   trainingAcceptedContributors: 0,
   trainingProgressContributors: 0,
-  nodes: CHAT_SCENE_RING_NODES,
+  nodes: [],
   asOfLabel: null,
 }
 

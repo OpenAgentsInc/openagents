@@ -55,7 +55,7 @@ describe("computeActivityIntensity (§2 glow)", () => {
 })
 
 describe("buildNetworkNodes (§3 graph)", () => {
-  test("recent pylons map to tones; ambient nodes fill to the online count", () => {
+  test("recent pylons map to tones without fabricating ambient pylon nodes", () => {
     const nodes = buildNetworkNodes(
       live({
         pylonsOnlineNow: 5,
@@ -67,12 +67,43 @@ describe("buildNetworkNodes (§3 graph)", () => {
         ],
       }),
     )
-    // 2 online in recent + (5 - 2) = 3 ambient => 6 total nodes
-    expect(nodes).toHaveLength(6)
+    // Aggregate counts live on the hub; each visible node must be a network row.
+    expect(nodes).toHaveLength(3)
     expect(nodes.find((node) => node.id === "aa")?.tone).toBe("working")
     expect(nodes.find((node) => node.id === "bb")?.tone).toBe("online")
     expect(nodes.find((node) => node.id === "cc")?.tone).toBe("offline")
-    expect(nodes.filter((node) => node.id.startsWith("ambient-"))).toHaveLength(3)
+    expect(nodes.some((node) => node.id.startsWith("ambient-"))).toBe(false)
+  })
+
+  test("uses network labels and falls back to stable pylon refs, not generic pylon text", () => {
+    const nodes = buildNetworkNodes(
+      live({
+        pylonsOnlineNow: 3,
+        recentPylons: [
+          {
+            nostrPubkeyShort: "pylon.public.studio",
+            nodeLabel: "Studio Rig",
+            onlineNow: true,
+          },
+          {
+            nostrPubkeyShort: "pylon.public.remote",
+            nodeLabel: "pylon",
+            onlineNow: true,
+          },
+          {
+            nostrPubkeyShort: "pylon.public.unnamed",
+            onlineNow: false,
+          },
+        ],
+      }),
+    )
+
+    expect(nodes.map((node) => node.label)).toEqual([
+      "Studio Rig",
+      "pylon.public.remote",
+      "pylon.public.unnamed",
+    ])
+    expect(nodes.some((node) => node.label.toLowerCase() === "pylon")).toBe(false)
   })
 
   test("working nodes flow toward the center", () => {

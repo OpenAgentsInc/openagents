@@ -151,7 +151,7 @@ describe("projectPylonBase", () => {
     )
     const baseNode = options.nodes?.find((node) => node.id === PYLON_BASE_NODE_ID)
     expect(baseNode).toBeDefined()
-    expect(baseNode?.label).toBe("My Pylon Base")
+    expect(baseNode?.label).toBe("My Pylon Base · studio")
     expect(baseNode?.connectedTo).toEqual([VERSE_TASSADAR_CORE_NODE_ID])
     expect(baseNode?.detail).toContain("pylon.local")
   })

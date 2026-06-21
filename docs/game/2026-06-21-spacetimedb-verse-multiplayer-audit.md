@@ -311,6 +311,20 @@ module README state that Autopilot Desktop imports and bundles those generated
 bindings from
 `apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings`.
 
+### 2026-06-21 Progress: Live Pylon Labels
+
+The Verse no longer renders unnamed placeholder Pylons as if they were real
+network nodes. The pre-load seed keeps the network hub inert until public Pylon
+stats arrive, and the live pylon graph now draws only rows present in
+`recentPylons` from `GET /api/public/pylon-stats`. Each visible fleet node uses
+the network display label when present, otherwise the stable public pylon ref;
+an exact generic `pylon` label falls back to that ref. Aggregate online counts
+remain on the hub instead of creating anonymous ambient dots.
+
+The local base overlay remains distinct, but when a local Pylon identity is
+known the node label includes that detected name (`My Pylon Base · <name>`) so
+the user's base is not visually confused with an unnamed fleet placeholder.
+
 ## What The SpacetimeDB References Teach
 
 ### TypeScript Quickstart

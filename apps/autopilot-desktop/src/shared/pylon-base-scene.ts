@@ -264,7 +264,11 @@ export const projectPylonBase = (
   const nextAction = nextActionFor(status, readiness)
   const projection = {
     status,
-    label: input.identityChoice?.detected.shortLabel ?? pylonRef ?? "My Pylon Base",
+    label:
+      matchedNode?.label ??
+      input.identityChoice?.detected.shortLabel ??
+      pylonRef ??
+      "My Pylon Base",
     pylonRef,
     matchedFleetNodeId: matchedNode?.id ?? null,
     readiness,
@@ -306,9 +310,13 @@ export const pylonBaseNode = (
     projection.blockerRefs.length > 0
       ? ` · blockers ${projection.blockerRefs.slice(0, 3).join(", ")}`
       : ""
+  const label =
+    projection.label === "My Pylon Base"
+      ? "My Pylon Base"
+      : `My Pylon Base · ${projection.label}`
   return {
     id: PYLON_BASE_NODE_ID,
-    label: "My Pylon Base",
+    label,
     detail: `${projection.statusLine}${refs}${blocker}`,
     role:
       projection.status === "missing" || projection.status === "blocked"

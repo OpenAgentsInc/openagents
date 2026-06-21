@@ -20,7 +20,11 @@
 // bound to a real public ref or a live state transition. These mappers refuse
 // to emit a particle that has no sourceRef.
 
-import type { PylonStatsSnapshot } from "./pylon-network-scene"
+import {
+  recentPylonNetworkId,
+  recentPylonNetworkLabel,
+  type PylonStatsSnapshot,
+} from "./pylon-network-scene"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature flags (default OFF). The renderer / P0 integration reads these before
@@ -217,8 +221,8 @@ export const projectChatWorldPylonScene = (
   const nodes: LivePylonNode[] = recent.map((pylon, index) => {
     const state = livePylonState(pylon)
     return {
-      id: pylon.nostrPubkeyShort ?? `recent-${index}`,
-      label: pylon.nodeLabel ?? pylon.nostrPubkeyShort ?? "pylon",
+      id: recentPylonNetworkId(pylon, index),
+      label: recentPylonNetworkLabel(pylon, index),
       state,
       color: LIVE_PYLON_STATE_COLOR[state],
       online: pylon.onlineNow === true,
