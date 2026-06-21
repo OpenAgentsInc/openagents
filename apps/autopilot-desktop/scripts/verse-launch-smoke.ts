@@ -200,6 +200,14 @@ type PixelSmoke = {
   readonly width: number
 }
 
+type MovementSmoke = {
+  readonly ok: boolean
+  readonly changedPixels: number
+  readonly changedPixelRatio: number
+  readonly afterSha256: string
+  readonly path: string
+}
+
 type VerseLaunchReceipt = {
   readonly ok: boolean
   readonly message: string
@@ -217,6 +225,7 @@ type VerseLaunchReceipt = {
   readonly screenshot: PixelSmoke & {
     readonly path: string
   }
+  readonly movement: MovementSmoke
   readonly typecheckCaveat: string
 }
 
@@ -357,6 +366,69 @@ const pixelSmoke = (png: Buffer): PixelSmoke => {
     distinctLumaBuckets: buckets.size,
     sha256: createHash("sha256").update(png).digest("hex"),
   }
+}
+
+const movementSmoke = (
+  before: Buffer,
+  after: Buffer,
+  afterPath: string,
+): MovementSmoke => {
+  const beforeImage = decodePng(before)
+  const afterImage = decodePng(after)
+  if (
+    beforeImage.width !== afterImage.width ||
+    beforeImage.height !== afterImage.height ||
+    beforeImage.data.length !== afterImage.data.length
+  ) {
+    throw new Error("Verse movement smoke screenshots have mismatched sizes")
+  }
+
+  let changedPixels = 0
+  for (let offset = 0; offset < beforeImage.data.length; offset += 4) {
+    const dr = Math.abs(
+      (beforeImage.data[offset] ?? 0) - (afterImage.data[offset] ?? 0),
+    )
+    const dg = Math.abs(
+      (beforeImage.data[offset + 1] ?? 0) -
+        (afterImage.data[offset + 1] ?? 0),
+    )
+    const db = Math.abs(
+      (beforeImage.data[offset + 2] ?? 0) -
+        (afterImage.data[offset + 2] ?? 0),
+    )
+    if (dr + dg + db > 18) changedPixels += 1
+  }
+  const sampledPixels = beforeImage.width * beforeImage.height
+  const changedPixelRatio = sampledPixels === 0 ? 0 : changedPixels / sampledPixels
+  const afterSha256 = createHash("sha256").update(after).digest("hex")
+  return {
+    ok: changedPixels >= 250 && changedPixelRatio >= 0.0002,
+    changedPixels,
+    changedPixelRatio,
+    afterSha256,
+    path: relativePath(afterPath),
+  }
+}
+
+const pressMovementKey = async (cdp: CdpClient): Promise<void> => {
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "w",
+    code: "KeyW",
+    text: "w",
+    unmodifiedText: "w",
+    windowsVirtualKeyCode: 87,
+    nativeVirtualKeyCode: 87,
+  })
+  await wait(900)
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "w",
+    code: "KeyW",
+    windowsVirtualKeyCode: 87,
+    nativeVirtualKeyCode: 87,
+  })
+  await wait(160)
 }
 
 const contentTypeFor = (path: string): string => {
@@ -529,6 +601,7 @@ const main = async (): Promise<void> => {
   const proofDir = process.env.AUTOPILOT_DESKTOP_VERSE_SMOKE_PROOF_DIR ??
     join(process.cwd(), "build/verse-launch-smoke")
   const screenshotPath = join(proofDir, "verse-launch-smoke.png")
+  const movementScreenshotPath = join(proofDir, "verse-launch-smoke-after-w.png")
   const receiptPath = join(proofDir, "verse-launch-smoke.json")
 
   for (const [label, path] of [
@@ -646,7 +719,20 @@ const main = async (): Promise<void> => {
     const pixels = pixelSmoke(screenshotBytes)
     writeFileSync(screenshotPath, screenshotBytes)
 
-    const ok = dom.ok && pixels.ok
+    await pressMovementKey(cdp)
+    const movementScreenshot = await cdp.send<{ readonly data: string }>(
+      "Page.captureScreenshot",
+      { format: "png", fromSurface: true },
+    )
+    const movementScreenshotBytes = Buffer.from(movementScreenshot.data, "base64")
+    writeFileSync(movementScreenshotPath, movementScreenshotBytes)
+    const movement = movementSmoke(
+      screenshotBytes,
+      movementScreenshotBytes,
+      movementScreenshotPath,
+    )
+
+    const ok = dom.ok && pixels.ok && movement.ok
     const receipt: VerseLaunchReceipt = {
       ok,
       message: ok
@@ -670,6 +756,7 @@ const main = async (): Promise<void> => {
         ...pixels,
         path: relativePath(screenshotPath),
       },
+      movement,
       typecheckCaveat:
         "Desktop full tsc remains caveated by #5556; this smoke is packaged-view/render proof plus deploy verification, not a claim that #5556 is closed.",
     }
@@ -682,6 +769,7 @@ const main = async (): Promise<void> => {
           receipt.message,
           ...dom.blockerRefs,
           pixels.ok ? "" : "verse.launch.screenshotPixels",
+          movement.ok ? "" : "verse.launch.wasdMovementPixels",
         ].filter(Boolean).join("; "),
       )
     }
