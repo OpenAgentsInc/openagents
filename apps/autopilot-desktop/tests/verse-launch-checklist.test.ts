@@ -20,6 +20,10 @@ import {
   GotTrainingRuns,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
+import {
+  clearVerseSceneDiagnosticsForTest,
+  verseSceneDiagnostics,
+} from "../src/ui/verse-scene-diagnostics"
 import { clearLatestVerseLocalPoseForTest } from "../src/ui/verse-local-pose"
 import { verseSceneVisualization, view } from "../src/ui/view"
 
@@ -91,6 +95,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
   afterEach(() => {
     clearVerseEnv()
     clearLatestVerseLocalPoseForTest()
+    clearVerseSceneDiagnosticsForTest()
   })
 
   test("launch flags default the Verse, payments, character creation, and world rows on", () => {
@@ -246,6 +251,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
       initial,
       GotChatWorldScene({ scene: livePylonScene() }),
     )
+    const before = verseSceneVisualization(withScene)
     const [heartbeatOnlyRefresh] = update(
       withScene,
       GotChatWorldScene({
@@ -277,6 +283,12 @@ describe("Verse packaged launch checklist (#5827)", () => {
 
     expect(heartbeatOnlyRefresh).toBe(withScene)
     expect(sameAgain).toBe(withScene)
+    expect(serializeView(verseSceneVisualization(sameAgain))).toBe(
+      serializeView(before),
+    )
+    expect(verseSceneDiagnostics().map(entry => entry.event)).toContain(
+      "chat-world-scene.noop",
+    )
   })
 
   test("the packaged Verse scene carries the Tassadar bulletin world item", () => {

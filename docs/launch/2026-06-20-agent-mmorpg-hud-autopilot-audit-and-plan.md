@@ -236,5 +236,20 @@ SpacetimeDB (P4). Every moving thing bound to a real receipt or event. That is t
 
 ---
 
+## 9. Live-scene stability invariant
+
+The Verse scene must treat local controller pose as runtime state, not Foldkit render state. Pose
+events may be cached and published to multiplayer, but they must not mutate `Model` or cause
+`oa-training-run` to remount. Only a material world projection change (pylon identity/state/growth,
+training/world items, multiplayer rows, or payment evidence) may refresh the visualization input.
+Cosmetic poll churn such as heartbeat labels and pulse speeds must be ignored by the reducer.
+
+Desktop now records a bounded diagnostic trail for this invariant: `[verse-scene]` console events,
+`globalThis.__OA_VERSE_SCENE_LOGS`, and `globalThis.__OA_DUMP_VERSE_SCENE_LOGS()`. Use those logs
+to correlate any black-frame/reset report with `chat-world-scene.accepted`,
+`chat-world-scene.noop`, `local-pose.cached`, and `visualization.key_changed`.
+
+---
+
 *Companion: this plan is cut into parallelizable GitHub issues (EPIC + W0/P0–P5 children). See the
 issue tracker. Existing detailed mechanic maps live in `docs/game/`.*

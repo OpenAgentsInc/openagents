@@ -43,6 +43,7 @@ import { html } from "foldkit/html"
 import { autonomousLoopPane } from "./autonomous-loop-pane.js"
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
 import { statusHudView } from "./hud-status-element.js"
+import { recordVerseSceneDiagnostic } from "./verse-scene-diagnostics.js"
 import { hudStatusProjection } from "../shared/hud-status-projection.js"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
@@ -5900,16 +5901,56 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       ? navigable
       : trainingRunVisualizationOptionsWithLocalPose(navigable, lastPose)
   // Payment particles only when their flag is on; each is already evidence-bound.
-  return CHAT_WORLD_PAYMENTS
+  const visualization = CHAT_WORLD_PAYMENTS
     ? withChatWorldPaymentLayer(
         poseStableNavigable,
         modelChatWorldParticles(model),
         multiplayer,
       )
     : poseStableNavigable
+  recordVerseVisualizationKey(visualization)
+  return visualization
 }
 
 export const chatSceneVisualization = verseSceneVisualization
+
+let lastVerseVisualizationKey: string | null = null
+
+const recordVerseVisualizationKey = (
+  visualization: TrainingRunVisualizationOptions,
+): void => {
+  const thirdPersonInitialPosition =
+    visualization.thirdPersonController === undefined
+      ? undefined
+      : (
+          visualization.thirdPersonController as {
+            readonly initialPosition?: readonly [number, number, number]
+          }
+        ).initialPosition
+  const walkInitialPosition =
+    visualization.walkController === undefined
+      ? undefined
+      : (
+          visualization.walkController as {
+            readonly initialPosition?: readonly [number, number, number]
+          }
+        ).initialPosition
+  const key = JSON.stringify({
+    nodes: visualization.nodes?.length ?? 0,
+    entities: visualization.entities?.length ?? 0,
+    worldItems: visualization.worldItems?.length ?? 0,
+    remoteAvatars: visualization.remoteAvatars?.length ?? 0,
+    beams: visualization.beams?.length ?? 0,
+    bursts: visualization.bursts?.length ?? 0,
+    controller: visualization.controller ?? "none",
+    cameraMode: visualization.cameraMode ?? "orthographic_map",
+    initialPosition:
+      thirdPersonInitialPosition ?? walkInitialPosition ?? null,
+  })
+  if (key === lastVerseVisualizationKey) return
+  recordVerseSceneDiagnostic("visualization.key_changed", { key })
+  lastVerseVisualizationKey = key
+}
 
 const pylonBaseProjectionFor = (model: Model): PylonBaseProjection =>
   projectPylonBase({

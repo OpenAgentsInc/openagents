@@ -101,6 +101,7 @@ import {
   latestVerseLocalPose,
   recordLatestVerseLocalPose,
 } from "./verse-local-pose.js"
+import { recordVerseSceneDiagnostic } from "./verse-scene-diagnostics.js"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
@@ -237,6 +238,8 @@ const chatWorldSceneMaterialKey = (
     })),
   })
 }
+
+let lastLocalPoseDiagnosticAtMs = 0
 
 const SHELL_TARGET_ORDER: ReadonlyArray<ShellTarget> = [
   "current",
@@ -824,8 +827,15 @@ export const update = (model: Model, message: Message): Result => {
         chatWorldSceneMaterialKey(model.chatWorldScene as ChatWorldPylonScene | null) ===
         chatWorldSceneMaterialKey(message.scene as ChatWorldPylonScene | null)
       ) {
+        recordVerseSceneDiagnostic("chat-world-scene.noop", {
+          reason: "material-key-unchanged",
+        })
         return [model, noCommands]
       }
+      recordVerseSceneDiagnostic("chat-world-scene.accepted", {
+        hadPrevious: model.chatWorldScene !== null,
+        hasRestorePose: latestVerseLocalPose() !== null,
+      })
       return [
         Model.make({
           ...model,
@@ -882,6 +892,18 @@ export const update = (model: Model, message: Message): Result => {
       ]
     case "ChangedVerseLocalPose":
       recordLatestVerseLocalPose(message.pose)
+      if (
+        message.pose.capturedAtMs - lastLocalPoseDiagnosticAtMs >= 1000
+      ) {
+        lastLocalPoseDiagnosticAtMs = message.pose.capturedAtMs
+        recordVerseSceneDiagnostic("local-pose.cached", {
+          x: message.pose.x,
+          y: message.pose.y,
+          z: message.pose.z,
+          animation: message.pose.animation,
+          capturedAtMs: message.pose.capturedAtMs,
+        })
+      }
       return [
         model,
         [PublishVerseLocalPose({ pose: message.pose })],
