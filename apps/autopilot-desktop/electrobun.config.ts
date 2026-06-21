@@ -7,12 +7,22 @@ const workspaceMokshaAssetSource =
   "node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha";
 const rootMokshaAssetSource =
   "../../node_modules/@openagentsinc/three-effect/packages/core/src/assets/moksha";
+const workspaceThreePlayerControllerAssetSource =
+  "node_modules/@openagentsinc/three-effect/packages/core/src/assets/three-player-controller";
+const rootThreePlayerControllerAssetSource =
+  "../../node_modules/@openagentsinc/three-effect/packages/core/src/assets/three-player-controller";
 
 export const mokshaAssetSource = existsSync(
   join(desktopRoot, workspaceMokshaAssetSource),
 )
   ? workspaceMokshaAssetSource
   : rootMokshaAssetSource;
+
+export const threePlayerControllerAssetSource = existsSync(
+  join(desktopRoot, workspaceThreePlayerControllerAssetSource),
+)
+  ? workspaceThreePlayerControllerAssetSource
+  : rootThreePlayerControllerAssetSource;
 
 export default {
   app: {
@@ -48,6 +58,11 @@ export default {
       // module (`views://autopilot-desktop/assets/moksha/...`). Copy the whole
       // asset directory so WebKit does not get empty `views://` responses.
       [mokshaAssetSource]: "views/autopilot-desktop/assets/moksha",
+      // The Verse third-person controller now uses a real model from the
+      // imported three-player-controller GLB pack instead of a procedural
+      // placeholder, so package that shared model next to the view bundle too.
+      [threePlayerControllerAssetSource]:
+        "views/autopilot-desktop/assets/three-player-controller",
       // #5027 (Phase 2, packaged build): the bundled headless Pylon node, built
       // by `bun run build:pylon-node` before electrobun build. electrobun copies
       // `build.copy` dests under `<RESOURCES_FOLDER>/app/`, so this dest lands at

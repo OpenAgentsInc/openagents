@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test"
 
 import { DESKTOP_RPC_MAX_REQUEST_TIME_MS } from "../src/shared/rpc"
 import { desktopApplicationMenu } from "../src/bun/application-menu"
-import config, { mokshaAssetSource } from "../electrobun.config"
+import config, {
+  mokshaAssetSource,
+  threePlayerControllerAssetSource,
+} from "../electrobun.config"
 
 describe("ElectroBun packaging", () => {
   test("uses the concise Autopilot app title", () => {
@@ -18,6 +21,17 @@ describe("ElectroBun packaging", () => {
     expect(existsSync(join(process.cwd(), mokshaAssetSource, "diamond.glb"))).toBe(
       true,
     )
+  })
+
+  test("copies shared three-effect controller GLB assets into the desktop view bundle", () => {
+    expect(config.build.copy[threePlayerControllerAssetSource]).toBe(
+      "views/autopilot-desktop/assets/three-player-controller",
+    )
+    expect(
+      existsSync(
+        join(process.cwd(), threePlayerControllerAssetSource, "UEPerson.glb"),
+      ),
+    ).toBe(true)
   })
 
   test("uses an explicit RPC timeout long enough for live shell model turns", () => {
