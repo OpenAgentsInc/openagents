@@ -125,6 +125,11 @@ export const ToggledArtifactBrowser = m("ToggledArtifactBrowser")
 // #5730 The Verse: flip the runtime toggle for the game-world view that renders
 // behind chat. Pure model toggle — no control verb / RPC.
 export const ToggleVerse = m("ToggleVerse")
+// VCODE-01 (#5918): switch the retained Verse runtime between clean explore
+// mode and explicit coding overlay mode. Pure model state; no host authority.
+export const ChangedVerseMode = m("ChangedVerseMode", {
+  mode: S.Literals(["explore", "code"]),
+})
 
 // Chat: expand/collapse a single chat message's "program details" disclosure
 // (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
@@ -687,6 +692,7 @@ export const Message = S.Union([
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
   ToggleVerse,
+  ChangedVerseMode,
   ToggledChatMessageDetails,
   ClickedCoordinatorToggle,
   SettledCoordinatorToggle,

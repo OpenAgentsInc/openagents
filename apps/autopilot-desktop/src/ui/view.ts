@@ -6219,6 +6219,9 @@ const chatComposer = (
 const verseVisible = (model: Model): boolean =>
   CHAT_WORLD_SCENE && model.verseEnabled
 
+const verseCodeControlsVisible = (model: Model): boolean =>
+  model.verseMode === "code" || CHAT_WORLD_HUD
+
 const versePane = (model: Model): Html =>
   h.div([cls("chat-pane chat-pane-world verse-pane")], [
     chatSceneBackground(model),
@@ -6916,12 +6919,16 @@ const rootView = (model: Model): Html => {
   // Cmd-K away, and navigating to any non-Verse pane restores the full sidebar.
   if (model.pane === "chat" && verseVisible(model)) {
     return h.div(
-      [cls("app-shell app-shell-verse"), themeData],
+      [
+        cls("app-shell app-shell-verse"),
+        themeData,
+        h.DataAttribute("verse-mode", model.verseMode),
+      ],
       [
         chatPane(model),
-        managedPaneLayer(model),
+        verseCodeControlsVisible(model) ? managedPaneLayer(model) : h.empty,
         CHAT_WORLD_HUD ? verseBottomHud(model) : h.empty,
-        CHAT_WORLD_HUD ? commandPalette(model) : h.empty,
+        verseCodeControlsVisible(model) ? commandPalette(model) : h.empty,
       ],
     )
   }

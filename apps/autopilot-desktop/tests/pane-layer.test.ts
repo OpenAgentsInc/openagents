@@ -311,7 +311,7 @@ describe("HUD H3 render: windows + handles render only when panes are open", () 
     expect(tree).toContain("shell-bar")
   })
 
-  test("the pane layer also floats over the immersive Verse home", () => {
+  test("the pane layer is hidden over the immersive Verse home until code mode", () => {
     const opened = Model.make({
       ...initialModel,
       pane: "chat",
@@ -319,6 +319,21 @@ describe("HUD H3 render: windows + handles render only when panes are open", () 
     })
     const tree = serialize(view(opened).body)
     expect(tree).toContain("app-shell-verse") // Verse base
+    expect(tree).not.toContain("sidebar")
+    expect(tree).not.toContain("pane-window")
+  })
+
+  test("the pane layer floats over the immersive Verse home in code mode", () => {
+    const opened = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      paneLayer: reducePaneLayer(emptyPaneLayer, { kind: "open", pane: "swarm" }, VIEWPORT),
+    })
+    const tree = serialize(view(opened).body)
+    expect(tree).toContain("app-shell-verse") // Verse base
+    expect(tree).toContain("data-verse-mode")
+    expect(tree).toContain("code")
     expect(tree).not.toContain("sidebar")
     expect(tree).toContain("pane-window") // + the floating managed pane
   })

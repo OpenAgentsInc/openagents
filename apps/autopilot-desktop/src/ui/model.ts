@@ -478,6 +478,10 @@ export const Model = ts("AutopilotDesktop", {
   // the chat surface. Defaults TRUE (the Verse shows by default). The build flag
   // CHAT_WORLD_SCENE remains a hard kill-switch; this is the user-facing control.
   verseEnabled: S.Boolean,
+  // VCODE-01 (#5918): explicit Verse interaction mode. Explore is the clean
+  // first-render game surface; code mode intentionally opts into Desktop
+  // palette/pane controls over the retained Three scene.
+  verseMode: S.Literals(["explore", "code"]),
   // #5730/#5887: spatially scoped Verse chrome. Null means the avatar has walked
   // away from the Tassadar lot, so run-specific HUD chrome stays hidden.
   versePresenceZone: S.NullOr(VersePresenceZone),
@@ -1079,6 +1083,7 @@ export const initialModel: Model = Model.make({
   artifactBrowserOpen: false,
   // #5730 The Verse: on by default so the game-world view is visible now.
   verseEnabled: true,
+  verseMode: "explore",
   versePresenceZone: null,
   resolvedApprovals: [],
   spawnAdapter: "codex",

@@ -689,6 +689,12 @@ account and execution substrate:
 
 ### VCODE-01 - Add Verse Code Mode State And First-Render Tests
 
+Status: implemented in #5918 on 2026-06-21. The Desktop model now has explicit
+`verseMode: "explore" | "code"` state. Explore remains the clean first-render
+Verse surface; code mode opts into the existing command palette and managed
+pane layer without changing the retained Three visualization or local restore
+pose.
+
 Build:
 
 - Add an explicit `verseMode: "explore" | "code"` state, or equivalent typed

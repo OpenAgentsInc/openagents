@@ -138,6 +138,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
 
     expect(model.pane).toBe("chat")
     expect(model.verseEnabled).toBe(true)
+    expect(model.verseMode).toBe("explore")
     expect(commands.map(command => command.name)).toEqual([
       "LoadIdentityChoiceState",
       "LoadOnboardingStatus",
@@ -148,6 +149,8 @@ describe("Verse packaged launch checklist (#5827)", () => {
     ])
 
     expect(tree).toContain("app-shell-verse")
+    expect(tree).toContain("data-verse-mode")
+    expect(tree).toContain("explore")
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("three-effect-chat-scene")
     expect(tree).toContain("pylon-balance-hud")

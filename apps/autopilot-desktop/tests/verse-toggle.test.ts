@@ -8,11 +8,17 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { initialModel, Model } from "../src/ui/model"
+import { initialModel, Model, modelPaneLayer } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import { interpretKey } from "../src/ui/keyboard"
 import { HOTBAR_SLOTS } from "../src/ui/nav"
-import { PressedKey, ToggleVerse } from "../src/ui/message"
+import { verseSceneVisualization } from "../src/ui/view"
+import {
+  ChangedVerseMode,
+  OpenedManagedPane,
+  PressedKey,
+  ToggleVerse,
+} from "../src/ui/message"
 import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
@@ -50,6 +56,7 @@ const clearVerseEnv = (): void => {
 describe("The Verse runtime toggle (#5730)", () => {
   test("defaults ON so the Verse shows by default", () => {
     expect(initialModel.verseEnabled).toBe(true)
+    expect(initialModel.verseMode).toBe("explore")
   })
 
   test("launch build flags default the whole Verse bundle ON", () => {
@@ -103,16 +110,16 @@ describe("The Verse runtime toggle (#5730)", () => {
     expect(chatWorldHudFlag()).toBe(true)
   })
 
-  test("ToggleVerse flips the flag and is its own inverse", () => {
+  test("code mode ToggleVerse flips the flag and is its own inverse", () => {
     clearVerseEnv()
-    process.env.VITE_CHAT_WORLD_HUD = "1"
-    const [off] = update(initialModel, ToggleVerse())
+    const [codeMode] = update(initialModel, ChangedVerseMode({ mode: "code" }))
+    const [off] = update(codeMode, ToggleVerse())
     expect(off.verseEnabled).toBe(false)
     const [backOn] = update(off, ToggleVerse())
     expect(backOn.verseEnabled).toBe(true)
   })
 
-  test("disabled Verse HUD/actions ignore palette and Verse toggle shortcuts", () => {
+  test("explore mode ignores palette, pane, and Verse toggle shortcuts", () => {
     clearVerseEnv()
     const verseModel = Model.make({ ...initialModel, pane: "chat" })
     const [palette] = update(verseModel, PressedKey({
@@ -135,11 +142,64 @@ describe("The Verse runtime toggle (#5730)", () => {
 
     const [directToggle] = update(verseModel, ToggleVerse())
     expect(directToggle.verseEnabled).toBe(true)
+
+    const [paneAttempt] = update(verseModel, OpenedManagedPane({ pane: "composer" }))
+    expect(modelPaneLayer(paneAttempt).panes).toHaveLength(0)
+  })
+
+  test("code mode permits palette, pane, and Verse toggle shortcuts", () => {
+    clearVerseEnv()
+    const verseModel = Model.make({ ...initialModel, pane: "chat", verseMode: "code" })
+    const [palette] = update(verseModel, PressedKey({
+      key: "k",
+      meta: true,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    }))
+    expect(palette.commandPaletteOpen).toBe(true)
+
+    const [withPane] = update(verseModel, OpenedManagedPane({ pane: "composer" }))
+    expect(modelPaneLayer(withPane).panes.map((pane) => pane.kind)).toEqual(["composer"])
+
+    const [toggle] = update(verseModel, PressedKey({
+      key: "v",
+      meta: true,
+      ctrl: false,
+      shift: true,
+      inEditable: false,
+    }))
+    expect(toggle.verseEnabled).toBe(false)
+  })
+
+  test("switching Verse modes does not change scene visualization or restore pose", () => {
+    clearVerseEnv()
+    const pose = {
+      regionRef: "world.region.tassadar",
+      x: 7.25,
+      y: 0,
+      z: -3.5,
+      yaw: 1.2,
+      animation: "run",
+      capturedAtMs: 12345,
+    } as const
+    const explore = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseSceneRestorePose: pose,
+    })
+    const before = verseSceneVisualization(explore)
+    const [code] = update(explore, ChangedVerseMode({ mode: "code" }))
+    expect(code.verseSceneRestorePose).toEqual(pose)
+    expect(verseSceneVisualization(code)).toEqual(before)
+
+    const [backToExplore] = update(code, ChangedVerseMode({ mode: "explore" }))
+    expect(backToExplore.verseSceneRestorePose).toEqual(pose)
+    expect(verseSceneVisualization(backToExplore)).toEqual(before)
   })
 
   test("⌘⇧V resolves to the toggle-verse intent and flips the flag", () => {
     clearVerseEnv()
-    process.env.VITE_CHAT_WORLD_HUD = "1"
     const intent = interpretKey(initialModel, {
       key: "v",
       meta: true,
@@ -152,7 +212,7 @@ describe("The Verse runtime toggle (#5730)", () => {
     // Through the reducer's PressedKey path (Ctrl variant, while typing — the
     // toggle is a deliberate global shortcut).
     const [next] = update(
-      initialModel,
+      Model.make({ ...initialModel, verseMode: "code" }),
       PressedKey({
         key: "v",
         meta: false,

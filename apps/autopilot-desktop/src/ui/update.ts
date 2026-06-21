@@ -167,8 +167,11 @@ const verseSceneActive = (model: Model): boolean => {
   return flags.CHAT_WORLD_SCENE && model.pane === "chat" && model.verseEnabled
 }
 
-const verseHudDisabled = (model: Model): boolean =>
-  verseSceneActive(model) && !chatWorldHudFlag()
+const verseCodeControlsEnabled = (model: Model): boolean =>
+  model.verseMode === "code" || chatWorldHudFlag()
+
+const verseControlsDisabled = (model: Model): boolean =>
+  verseSceneActive(model) && !verseCodeControlsEnabled(model)
 
 // #5730: how many active payment particles the chat-world scene keeps at once.
 // Bounds the live beam/burst count behind chat and the scene-options signature
@@ -1060,7 +1063,7 @@ export const update = (model: Model, message: Message): Result => {
 
     // ── Command palette (#5464) ─────────────────────────────────────────────
     case "OpenedCommandPalette":
-      if (verseHudDisabled(model)) return [model, noCommands]
+      if (verseControlsDisabled(model)) return [model, noCommands]
       return [
         Model.make({
           ...model,
@@ -1113,7 +1116,7 @@ export const update = (model: Model, message: Message): Result => {
     // PressedKey is interpreted purely (keyboard.ts) then re-dispatched as an
     // existing Message, so every shortcut reuses a real handler (no no-ops).
     case "PressedKey": {
-      if (verseHudDisabled(model)) return [model, noCommands]
+      if (verseControlsDisabled(model)) return [model, noCommands]
       const intent = interpretKey(model, {
         key: message.key,
         meta: message.meta,
@@ -1151,6 +1154,7 @@ export const update = (model: Model, message: Message): Result => {
         case "toggle-verse":
           // #5730 The Verse: inline the toggle (message constructors are
           // type-only imports here). Byte-identical to the ToggleVerse reducer.
+          if (verseControlsDisabled(model)) return [model, noCommands]
           return [
             Model.make({ ...model, verseEnabled: !model.verseEnabled }),
             noCommands,
@@ -1194,8 +1198,10 @@ export const update = (model: Model, message: Message): Result => {
     // #5730 The Verse: flip the runtime toggle for the game-world view. Pure
     // model toggle — the view gates the scene render on this + the build flag.
     case "ToggleVerse":
-      if (verseHudDisabled(model)) return [model, noCommands]
+      if (verseControlsDisabled(model)) return [model, noCommands]
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
+    case "ChangedVerseMode":
+      return [Model.make({ ...model, verseMode: message.mode }), noCommands]
 
     // Chat: flip a single message's "program details" disclosure (scoped-step /
     // Tassadar scaffolding). Collapsed by default; pure model toggle.
@@ -3298,6 +3304,7 @@ export const update = (model: Model, message: Message): Result => {
     // touched — the managed panes float OVER the current base surface, so the
     // shell + single-pane router never regress.
     case "OpenedManagedPane":
+      if (verseControlsDisabled(model)) return [model, noCommands]
       return applyPaneLayerAction(model, { kind: "open", pane: message.pane })
     case "ClosedManagedPane":
       return applyPaneLayerAction(model, { kind: "close", paneId: message.paneId })
