@@ -140,6 +140,54 @@ body {
   height: 100%;
 }
 
+.pylon-balance-hud {
+  position: absolute;
+  top: clamp(0.75rem, 2vw, 1.2rem);
+  left: clamp(0.75rem, 2vw, 1.2rem);
+  z-index: 4;
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+  max-width: min(18rem, calc(100% - 1.5rem));
+  padding: 0.42rem 0.58rem;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgb(8 11 15 / 0.5), rgb(2 5 8 / 0.34)),
+    rgb(0 0 0 / 0.18);
+  box-shadow:
+    0 14px 42px rgb(0 0 0 / 0.22),
+    inset 0 0 0 1px rgb(255 255 255 / 0.035);
+  color: rgb(244 247 251 / 0.9);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.pylon-balance-hud-label {
+  flex: none;
+  color: rgb(255 255 255 / 0.56);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pylon-balance-hud-value {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--hud-primary, #fff) 78%, var(--accent, #f5b73a));
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pylon-balance-hud-unknown .pylon-balance-hud-value {
+  color: rgb(255 255 255 / 0.52);
+}
+
 .app-shell-verse .chat-content-overlay {
   display: none;
 }
@@ -397,6 +445,12 @@ body {
     top: 0.8rem;
     right: 0.8rem;
     width: 9.5rem;
+  }
+
+  .pylon-balance-hud {
+    top: 0.8rem;
+    left: 0.8rem;
+    max-width: calc(100% - 1.6rem);
   }
 
   .app-shell-verse .verse-chatbar-slot {

@@ -41,6 +41,7 @@ import { html } from "foldkit/html"
 import { autonomousLoopPane } from "./autonomous-loop-pane"
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
 import { statusHudView } from "./hud-status-element"
+import { hudStatusProjection } from "../shared/hud-status-projection"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
   TASSADAR_REPLAY_ORIGIN_DATA_KEY,
@@ -5963,6 +5964,30 @@ const verseRunHud = (model: Model): Html => {
   )
 }
 
+const pylonBalanceHud = (model: Model): Html => {
+  const balance = hudStatusProjection({
+    nodeLaunchStatus: model.nodeLaunchStatus,
+    node: modelNode(model),
+  }).balanceMeter
+  const state = balance.known ? "known" : "unknown"
+  const title = balance.known
+    ? `Pylon Bitcoin balance: ${balance.valueText}`
+    : "Pylon Bitcoin balance waiting for wallet state"
+  return h.div(
+    [
+      cls(`pylon-balance-hud pylon-balance-hud-${state}`),
+      h.AriaLabel("Pylon Bitcoin sats"),
+      h.Title(title),
+      h.DataAttribute("pylon-balance-hud", state),
+      h.DataAttribute("pylon-balance-value", balance.valueText),
+    ],
+    [
+      h.span([cls("pylon-balance-hud-label mono")], ["Bitcoin"]),
+      h.span([cls("pylon-balance-hud-value mono")], [balance.valueText]),
+    ],
+  )
+}
+
 const chatSceneBackground = (model: Model): Html =>
   h.div([cls("chat-scene-background")], [
     trainingRunView<Message>(
@@ -5999,6 +6024,7 @@ const chatSceneBackground = (model: Model): Html =>
         })
       },
     ),
+    pylonBalanceHud(model),
     chatSceneInspector(model),
   ])
 

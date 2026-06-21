@@ -6,7 +6,10 @@ import {
   chatWorldHudFlag,
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
+import type { NodeStateMessage } from "../src/shared/rpc"
 import { initialRuntimeState } from "../src/ui/initial-state"
+import { GotNodeState } from "../src/ui/message"
+import { update } from "../src/ui/update"
 import { verseSceneVisualization, view } from "../src/ui/view"
 
 const verseEnvKeys = [
@@ -37,6 +40,20 @@ const serializeView = (node: unknown): string => {
     return value
   })
 }
+
+const nodeWithBalance = (balanceSats: number | null): NodeStateMessage => ({
+  ok: true,
+  schema: "control.v1",
+  sessions: [],
+  wallet: {
+    configured: true,
+    daemonOnline: true,
+    balanceSats,
+    receiveReady: true,
+    sendReady: false,
+    readiness: "ready",
+  },
+})
 
 describe("Verse packaged launch checklist (#5827)", () => {
   afterEach(clearVerseEnv)
@@ -89,6 +106,9 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("three-effect-chat-scene")
+    expect(tree).toContain("pylon-balance-hud")
+    expect(tree).toContain("Pylon Bitcoin sats")
+    expect(tree).toContain("Pylon Bitcoin balance waiting for wallet state")
     expect(tree).toContain("verse-run-hud")
     expect(tree).toContain("Tassadar run HUD")
     expect(tree).toContain("verse-presence-zone")
@@ -122,5 +142,27 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).not.toContain("Sessions")
     expect(tree).not.toContain("Swarm")
     expect(tree).not.toContain("Deploy")
+  })
+
+  test("the top-left Pylon sats HUD refreshes from live node wallet balances", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [funded] = update(
+      initial,
+      GotNodeState({ node: nodeWithBalance(2_100) }),
+    )
+    const [refreshed] = update(
+      funded,
+      GotNodeState({ node: nodeWithBalance(3_456) }),
+    )
+
+    const fundedTree = serializeView(view(funded).body)
+    const refreshedTree = serializeView(view(refreshed).body)
+
+    expect(fundedTree).toContain("pylon-balance-hud")
+    expect(fundedTree).toContain("2,100 sats")
+    expect(refreshedTree).toContain("pylon-balance-hud")
+    expect(refreshedTree).toContain("3,456 sats")
+    expect(refreshedTree).not.toContain("2,100 sats")
   })
 })
