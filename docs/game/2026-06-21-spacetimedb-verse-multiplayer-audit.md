@@ -199,6 +199,29 @@ that publishes through the active multiplayer client only while
 `CHAT_WORLD_MULTIPLAYER` is enabled and connected. The Verse remains
 single-player-first when SpacetimeDB is unavailable.
 
+### 2026-06-21 Progress: #5889 Remote Avatar Rendering
+
+Remote SpacetimeDB agents no longer render as generic training/payment
+entities. The multiplayer projection now carries `projectedAtMs` plus each
+agent position row's `lastSeenEpochMs`, and the visualization mapper converts
+non-local `agent_avatar` + `avatar_position` rows into
+`remoteAvatars` render instances for the shared `three-effect` scene.
+
+The shared renderer now owns a persistent remote-avatar path using the same
+third-person avatar model family and animation action names as the local
+controller. Foldkit treats remote-avatar-only visualization changes as live
+snapshot updates instead of full scene remounts, so the renderer can interpolate
+position/yaw between network samples. Remote labels are hidden by default; a
+selected avatar uses the existing target highlight/ring language and compact
+selection label.
+
+Autopilot Desktop filters its own fixed public avatar ref
+(`avatar.desktop.local`) out of the remote render layer, marks old avatars
+stale after the bounded presence window, and despawns avatars after the stale
+timeout. Pylon stations remain separate entity markers so training, proof,
+settlement, and payment visuals continue to use their existing authority-bound
+rendering paths.
+
 ## What The SpacetimeDB References Teach
 
 ### TypeScript Quickstart

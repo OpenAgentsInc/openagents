@@ -30,6 +30,7 @@ import type {
   TrainingRunEntityDefinition,
   TrainingRunBeamDefinition,
   TrainingRunBurstDefinition,
+  TrainingRunRemoteAvatarDefinition,
   TrainingRunVector,
   TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
@@ -148,17 +149,42 @@ const vectorFromXYZ = (
 
 export const CHAT_WORLD_STATION_NODE_PREFIX = "world:station:"
 export const CHAT_WORLD_AVATAR_NODE_PREFIX = "world:avatar:"
+export const CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS = 6_000
+export const CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS = 12_000
 
 export type ChatWorldMultiplayerLayer = {
   readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
+  readonly remoteAvatars: ReadonlyArray<TrainingRunRemoteAvatarDefinition>
+}
+
+export type ChatWorldMultiplayerLayerOptions = Readonly<{
+  localAvatarRef?: string | null
+  nowMs?: number
+  staleAfterMs?: number
+  despawnAfterMs?: number
+}>
+
+const movementModeToRemoteAvatarAnimation = (
+  movementMode: string,
+): TrainingRunRemoteAvatarDefinition["animation"] => {
+  const normalized = movementMode.trim().toLowerCase()
+  if (normalized === "running" || normalized === "run") return "run"
+  if (normalized === "walking" || normalized === "walk") return "walk"
+  return "idle"
 }
 
 export const chatWorldMultiplayerLayer = (
   world: ChatWorldMultiplayerProjection | null | undefined,
+  options: ChatWorldMultiplayerLayerOptions = {},
 ): ChatWorldMultiplayerLayer => {
-  if (world?.connected !== true) return { entities: [] }
+  if (world?.connected !== true) return { entities: [], remoteAvatars: [] }
 
   const entities: TrainingRunEntityDefinition[] = []
+  const remoteAvatars: TrainingRunRemoteAvatarDefinition[] = []
+  const nowMs = options.nowMs ?? world.projectedAtMs
+  const staleAfterMs = options.staleAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS
+  const despawnAfterMs = options.despawnAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS
+  const localAvatarRef = options.localAvatarRef?.trim() ?? ""
 
   for (const station of world.stations) {
     const position = vectorFromXYZ(station.x, station.y, station.z)
@@ -174,19 +200,25 @@ export const chatWorldMultiplayerLayer = (
   for (const agent of world.agents) {
     const position = vectorFromXYZ(agent.x, agent.y, agent.z)
     if (position === null) continue
-    const chats =
-      agent.chatMessages.length > 0
-        ? ` · ${agent.chatMessages.length} chat`
-        : ""
-    entities.push({
-      id: `${CHAT_WORLD_AVATAR_NODE_PREFIX}${agent.avatarRef}`,
-      label: `${agent.label} · ${agent.movementMode}${chats}`,
-      status: agent.attentionRefs.length > 0 ? "sync" : "active",
+    if (localAvatarRef.length > 0 && agent.avatarRef === localAvatarRef) continue
+    const ageMs = Math.max(0, nowMs - agent.lastSeenEpochMs)
+    if (ageMs >= despawnAfterMs) continue
+    remoteAvatars.push({
+      id: agent.avatarRef,
+      label: agent.label,
       position,
+      yaw: agent.yaw,
+      animation: movementModeToRemoteAvatarAnimation(agent.movementMode),
+      updatedAtMs: agent.lastSeenEpochMs,
+      stale: ageMs >= staleAfterMs,
+      color: agent.color,
+      avatarKind: agent.avatarKind,
+      actorRef: agent.actorRef,
+      labelVisibility: "hidden",
     })
   }
 
-  return { entities }
+  return { entities, remoteAvatars }
 }
 
 const endpointRefKeys = (ref: string): ReadonlyArray<string> => {
@@ -355,12 +387,19 @@ export const chatWorldPaymentLayer = (
 export const withChatWorldMultiplayerLayer = (
   base: TrainingRunVisualizationOptions,
   world: ChatWorldMultiplayerProjection | null | undefined,
+  options: ChatWorldMultiplayerLayerOptions = {},
 ): TrainingRunVisualizationOptions => {
-  const layer = chatWorldMultiplayerLayer(world)
-  if (layer.entities.length === 0) return base
+  const layer = chatWorldMultiplayerLayer(world, options)
+  if (layer.entities.length === 0 && layer.remoteAvatars.length === 0) return base
   return {
     ...base,
     entities: [...(base.entities ?? []), ...layer.entities],
+    remoteAvatars: [...(base.remoteAvatars ?? []), ...layer.remoteAvatars],
+    remoteAvatarInterpolation: {
+      ...(base.remoteAvatarInterpolation ?? {}),
+      despawnAfterMs: options.despawnAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS,
+      staleAfterMs: options.staleAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS,
+    },
   }
 }
 

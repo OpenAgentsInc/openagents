@@ -29,6 +29,7 @@ import {
   type PaymentParticle,
 } from "../shared/chat-world-scene"
 import {
+  CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
   OPENAGENTS_WORLD_DATABASE,
   OPENAGENTS_WORLD_URL,
@@ -325,7 +326,6 @@ export type SpacetimeWorldDispatch = (
 ) => void
 
 const SPACETIME_TOKEN_STORAGE_KEY = "openagents.world.spacetimedb.token.v1"
-const LOCAL_AVATAR_PUBLISH_REF = "avatar.desktop.local"
 const IDLE_POSE_KEEPALIVE_MS = 5_000
 const POSE_STATIONARY_EPSILON_METERS = 0.02
 
@@ -443,7 +443,7 @@ const localPreviousFromWrite = (
   write: ChatWorldAvatarPositionWrite,
   capturedAtMs: number,
 ) => ({
-  avatarRef: LOCAL_AVATAR_PUBLISH_REF,
+  avatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
   regionRef: write.regionRef,
   x: write.positionX,
   y: write.positionY,

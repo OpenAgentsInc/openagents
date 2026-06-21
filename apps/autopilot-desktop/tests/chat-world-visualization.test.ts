@@ -112,6 +112,7 @@ const worldProjection = (
   database: "openagents-world",
   worldUrl: "https://spacetime.openagents.com",
   regionRef: "region.run.public",
+  projectedAtMs: 10_000,
   stations: [{
     pylonRef: "pylon.alpha",
     label: "Alpha Pylon",
@@ -130,6 +131,7 @@ const worldProjection = (
     z: 2.75,
     yaw: 0,
     movementMode: "walk",
+    lastSeenEpochMs: 9_500,
     chatMessages: [],
     attentionRefs: [],
   }],
@@ -229,27 +231,93 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
 })
 
 describe("chatWorldMultiplayerLayer", () => {
-  test("renders public stations and avatars as Verse entities", () => {
+  test("renders stations as entities and users as remote avatar instances", () => {
     const layer = chatWorldMultiplayerLayer(worldProjection())
-    expect(layer.entities).toHaveLength(2)
+    expect(layer.entities).toHaveLength(1)
+    expect(layer.remoteAvatars).toHaveLength(1)
     expect(layer.entities[0]).toMatchObject({
       id: "world:station:pylon.alpha",
       label: "Alpha Pylon",
       status: "verified",
       position: [1.25, 0.5, -2],
     })
-    expect(layer.entities[1]).toMatchObject({
-      id: "world:avatar:avatar.bravo",
-      status: "active",
+    expect(layer.remoteAvatars[0]).toMatchObject({
+      id: "avatar.bravo",
+      label: "Tassadar",
       position: [-3, 1, 2.75],
+      animation: "walk",
+      updatedAtMs: 9_500,
+      stale: false,
+      labelVisibility: "hidden",
     })
-    expect(layer.entities[1]!.label).toContain("Tassadar")
+  })
+
+  test("filters the local desktop avatar and stale-despawns old remotes", () => {
+    const layer = chatWorldMultiplayerLayer(
+      worldProjection({
+        projectedAtMs: 20_000,
+        agents: [
+          {
+            avatarRef: "avatar.desktop.local",
+            actorRef: "agent.local",
+            avatarKind: "tassadar",
+            label: "Local",
+            color: "#ffffff",
+            x: 0,
+            y: 0,
+            z: 0,
+            yaw: 0,
+            movementMode: "idle",
+            lastSeenEpochMs: 20_000,
+            chatMessages: [],
+            attentionRefs: [],
+          },
+          {
+            avatarRef: "avatar.stale",
+            actorRef: "agent.stale",
+            avatarKind: "tassadar",
+            label: "Stale",
+            color: "#9ca3af",
+            x: 1,
+            y: 0,
+            z: 1,
+            yaw: 0,
+            movementMode: "running",
+            lastSeenEpochMs: 13_500,
+            chatMessages: [],
+            attentionRefs: [],
+          },
+          {
+            avatarRef: "avatar.gone",
+            actorRef: "agent.gone",
+            avatarKind: "tassadar",
+            label: "Gone",
+            color: "#9ca3af",
+            x: 2,
+            y: 0,
+            z: 2,
+            yaw: 0,
+            movementMode: "walk",
+            lastSeenEpochMs: 7_000,
+            chatMessages: [],
+            attentionRefs: [],
+          },
+        ],
+      }),
+      { localAvatarRef: "avatar.desktop.local" },
+    )
+
+    expect(layer.remoteAvatars.map(avatar => avatar.id)).toEqual(["avatar.stale"])
+    expect(layer.remoteAvatars[0]).toMatchObject({
+      animation: "run",
+      stale: true,
+    })
   })
 
   test("stays inert while disconnected", () => {
-    expect(
-      chatWorldMultiplayerLayer(worldProjection({ connected: false })).entities,
-    ).toEqual([])
+    const layer = chatWorldMultiplayerLayer(worldProjection({ connected: false }))
+    expect(layer.entities).toEqual([])
+    expect(layer.remoteAvatars).toEqual([])
   })
 })
 
@@ -283,7 +351,7 @@ describe("withChatWorldPaymentLayer", () => {
     )
 
     expect((out.entities ?? []).some((entity) => entity.id === "world:station:pylon.alpha")).toBe(true)
-    expect((out.entities ?? []).some((entity) => entity.id === "world:avatar:avatar.bravo")).toBe(true)
+    expect((out.remoteAvatars ?? []).some((avatar) => avatar.id === "avatar.bravo")).toBe(true)
     expect(out.entities?.find((entity) => entity.id === "pay:evt-1:from")?.position).toEqual([1.25, 0.5, -2])
     expect(out.entities?.find((entity) => entity.id === "pay:evt-1:to")?.position).toEqual([-3, 1, 2.75])
   })

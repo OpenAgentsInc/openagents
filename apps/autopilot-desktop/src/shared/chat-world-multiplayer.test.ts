@@ -85,8 +85,10 @@ describe("chat world multiplayer projection (#5739)", () => {
     })
 
     expect(projection.connected).toBe(true)
+    expect(projection.projectedAtMs).toBe(1_000)
     expect(projection.stations).toHaveLength(1)
     expect(projection.agents).toHaveLength(1)
+    expect(projection.agents[0]?.lastSeenEpochMs).toBe(900)
     expect(projection.agents[0]?.chatMessages).toEqual(["nearby"])
     expect(projection.agents[0]?.attentionRefs).toEqual(["attention.public.1"])
     expect(projection.proximityChatCount).toBe(1)
@@ -107,6 +109,7 @@ describe("chat world multiplayer projection (#5739)", () => {
     })
 
     expect(projection.connected).toBe(false)
+    expect(projection.projectedAtMs).toBe(1_000)
     expect(projection.agents).toEqual([])
   })
 })

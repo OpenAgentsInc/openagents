@@ -84,6 +84,7 @@ describe("projectChatWorldSpacetimeRows", () => {
     expect(projection.regions).toEqual([regionRow])
     expect(projection.world.connected).toBe(true)
     expect(projection.world.regionRef).toBe(regionRef)
+    expect(projection.world.projectedAtMs).toBe(10_000)
     expect(projection.world.stations).toEqual([{
       pylonRef: "pylon.public.1",
       label: "Public Pylon",
@@ -101,6 +102,7 @@ describe("projectChatWorldSpacetimeRows", () => {
       y: 0.5,
       z: 3,
       movementMode: "walking",
+      lastSeenEpochMs: 9_000,
       chatMessages: ["near the pylon"],
       attentionRefs: ["attention.public.1"],
     })
@@ -117,6 +119,7 @@ describe("projectChatWorldSpacetimeRows", () => {
 
     expect(projection.regions).toEqual([])
     expect(projection.world.connected).toBe(false)
+    expect(projection.world.projectedAtMs).toBe(10_000)
     expect(projection.world.agents).toEqual([])
     expect(projection.world.stations).toEqual([])
   })

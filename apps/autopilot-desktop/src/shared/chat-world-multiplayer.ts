@@ -2,6 +2,7 @@ export const OPENAGENTS_WORLD_DATABASE = "openagents-world"
 export const OPENAGENTS_WORLD_URL = "https://spacetime.openagents.com"
 export const DEFAULT_TASSADAR_WORLD_RUN_REF = "run.tassadar.executor.20260615"
 export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timeline"
+export const CHAT_WORLD_DESKTOP_AVATAR_REF = "avatar.desktop.local"
 
 export type ChatWorldStationRow = Readonly<{
   pylonRef: string
@@ -68,6 +69,7 @@ export type ChatWorldMultiplayerAgent = Readonly<{
   z: number
   yaw: number
   movementMode: string
+  lastSeenEpochMs: number
   chatMessages: ReadonlyArray<string>
   attentionRefs: ReadonlyArray<string>
 }>
@@ -85,6 +87,7 @@ export type ChatWorldMultiplayerProjection = Readonly<{
   database: string
   worldUrl: string
   regionRef: string
+  projectedAtMs: number
   agents: ReadonlyArray<ChatWorldMultiplayerAgent>
   stations: ReadonlyArray<ChatWorldMultiplayerStation>
   proximityChatCount: number
@@ -135,6 +138,7 @@ export const projectChatWorldMultiplayer = (input: {
       database: input.database ?? OPENAGENTS_WORLD_DATABASE,
       worldUrl: input.worldUrl ?? OPENAGENTS_WORLD_URL,
       regionRef,
+      projectedAtMs: input.nowMs,
       agents: [],
       stations: [],
       proximityChatCount: 0,
@@ -185,6 +189,7 @@ export const projectChatWorldMultiplayer = (input: {
         z: position.z,
         yaw: finite(position.yaw) ? position.yaw : 0,
         movementMode: position.movementMode,
+        lastSeenEpochMs: position.lastSeenEpochMs,
         chatMessages: messagesByAvatar.get(position.avatarRef) ?? [],
         attentionRefs: attentionByAvatar.get(position.avatarRef) ?? [],
       }]
@@ -206,6 +211,7 @@ export const projectChatWorldMultiplayer = (input: {
     database: input.database ?? OPENAGENTS_WORLD_DATABASE,
     worldUrl: input.worldUrl ?? OPENAGENTS_WORLD_URL,
     regionRef,
+    projectedAtMs: input.nowMs,
     agents,
     stations,
     proximityChatCount: agents.reduce(

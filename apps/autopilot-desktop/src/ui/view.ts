@@ -84,6 +84,7 @@ import {
 } from "../shared/pylon-base-scene"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
 import {
+  CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
   chatWorldRegionRefForRun,
 } from "../shared/chat-world-multiplayer"
@@ -5861,7 +5862,9 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   })
   const withBase = withPylonBaseLayer(withTraining, pylonBase)
   const multiplayer = modelChatWorldMultiplayer(model)
-  const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer)
+  const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
+    localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
+  })
   const navigable = {
     ...withWorld,
     cameraMode: "perspective_walk" as const,
