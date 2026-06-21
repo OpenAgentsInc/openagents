@@ -28,6 +28,7 @@ import {
   decideInference,
   type InferenceRoutingDecision,
 } from "../shared/inference-routing.js"
+import type { CodeModeSyncSnapshot } from "./code-mode-sync.js"
 // HUD H3 (#5501): the managed pane-layer state. Stored on the Model as
 // `S.Unknown` and re-narrowed by `modelPaneLayer` (same opaque-sub-state idiom as
 // `node`/`notifications`). This keeps the import TYPE-ONLY here, so model.ts and
@@ -605,6 +606,12 @@ export const Model = ts("AutopilotDesktop", {
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
   // the rest are the add-account form fields + transient status.
   managedAccounts: S.NullOr(S.Unknown),
+  // VCODE-12 (#5929): one de-duped code-mode sync snapshot over managed
+  // accounts, live account readiness, node sessions, event tails, artifacts,
+  // approvals, and quota/readiness projections. Opaque like `node`, read via
+  // `modelCodeModeSync` so pane updates share one model tick and never remount
+  // the retained Verse scene.
+  codeModeSync: S.NullOr(S.Unknown),
   managedAccountsPending: S.Boolean,
   managedAccountsStatus: ComposerStatus,
   addAccountRef: S.String,
@@ -765,6 +772,11 @@ export const modelManagedAccounts = (
   model: Model,
 ): ManagedAccountsResponse | null =>
   model.managedAccounts as ManagedAccountsResponse | null
+
+export const modelCodeModeSync = (
+  model: Model,
+): CodeModeSyncSnapshot | null =>
+  model.codeModeSync as CodeModeSyncSnapshot | null
 
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
@@ -1155,6 +1167,7 @@ export const initialModel: Model = Model.make({
   chatPending: false,
   chatSessionRef: null,
   managedAccounts: null,
+  codeModeSync: null,
   managedAccountsPending: false,
   managedAccountsStatus: { text: "", tone: "idle" },
   addAccountRef: "",

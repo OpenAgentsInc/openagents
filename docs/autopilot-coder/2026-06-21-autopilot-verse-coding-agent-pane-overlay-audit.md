@@ -1002,6 +1002,24 @@ Acceptance:
 
 ### VCODE-12 - Add The Codex Account And Session Sync Loop
 
+Implemented on 2026-06-21. `apps/autopilot-desktop/src/ui/code-mode-sync.ts`
+now builds one public-safe `CodeModeSyncSnapshot` from live node state,
+managed `dev.accounts`, session event tails, retained artifact stats,
+pending decisions, inference-gateway readiness, built-in agent quota, and
+Apple FM readiness. The reducer refreshes that snapshot on `GotNodeState`,
+managed-account refresh/mutation, readiness responses, selected-session
+changes, selected-account changes, and the code-mode toggle. Sessions, Swarm,
+Agent Stream, Decisions, Diff/Artifacts, Terminal/Log, Composer account
+picker, account management, and the Verse code dock now consume this same
+snapshot with raw node-state fallback during startup. The snapshot de-dupes
+sessions/events/accounts by stable refs and emits repair diagnostics for
+failed registry loads, managed-only accounts waiting for live readiness,
+blocked accounts, unavailable selected account/session, low gateway balance,
+quota exhaustion, and readiness failures. `tests/code-mode-sync.test.ts`
+proves account registry changes update picker rows and diagnostics without a
+reload, and a single node-state tick updates Sessions, Agent Stream,
+Decisions, and Diff/Artifacts together.
+
 Build:
 
 - Sync managed accounts, node state, session list, event stream, transcript

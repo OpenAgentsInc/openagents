@@ -1304,14 +1304,17 @@ const main = async (): Promise<void> => {
     cdp?.close()
     if (chrome !== null) {
       chrome.kill()
-      await chrome.exited.catch(() => null)
+      await Promise.race([chrome.exited.catch(() => null), wait(2_000)])
     }
     server?.stop(true)
     rmSync(tmpRoot, { force: true, recursive: true })
   }
 }
 
-main().catch(error => {
-  console.error(error instanceof Error ? error.message : String(error))
-  process.exit(1)
-})
+main().then(
+  () => process.exit(0),
+  error => {
+    console.error(error instanceof Error ? error.message : String(error))
+    process.exit(1)
+  },
+)

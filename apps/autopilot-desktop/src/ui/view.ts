@@ -364,6 +364,7 @@ import {
   modelChatWorldParticles,
   modelChatWorldMultiplayer,
   modelChatWorldScene,
+  modelCodeModeSync,
   modelManagedAccounts,
   modelPaneLayer,
   modelPromiseSurfacingReadiness,
@@ -377,6 +378,7 @@ import {
   modelTrainingReconcile,
   modelTrainingRuns,
 } from "./model.js"
+import type { CodeModeSyncAccountRow } from "./code-mode-sync.js"
 import {
   projectSessionPane,
   sessionAccountShortLabel,
@@ -877,6 +879,11 @@ const approvalRowView = (approval: ApprovalRow): Html => {
 }
 
 const pendingApprovals = (model: Model): ReadonlyArray<ApprovalRow> => {
+  const sync = modelCodeModeSync(model)
+  if (sync !== null) {
+    const resolved = new Set(model.resolvedApprovals)
+    return sync.approvals.filter((a) => !resolved.has(a.approvalRef))
+  }
   const node = modelNode(model)
   const resolved = new Set(model.resolvedApprovals)
   return (node?.approvals ?? []).filter((a) => !resolved.has(a.approvalRef))
@@ -944,6 +951,38 @@ const accountPickerLabel = (row: AccountRow): string => {
   return row.ready ? base : `${base} (blocked)`
 }
 
+const syncAccountPickerLabel = (row: CodeModeSyncAccountRow): string => {
+  const base =
+    row.accountRef !== null
+      ? `${row.provider} · ${row.accountRef}`
+      : `${row.provider} · default home`
+  if (!row.live && row.managed) return `${base} (syncing)`
+  return row.ready ? base : `${base} (blocked)`
+}
+
+const codeModeSyncDiagnostics = (model: Model, limit = 3): Html => {
+  const sync = modelCodeModeSync(model)
+  const diagnostics = sync?.diagnostics ?? []
+  if (diagnostics.length === 0) return h.empty
+  return h.div(
+    [
+      cls("code-mode-sync-diagnostics"),
+      h.DataAttribute("autopilot-code-mode-sync", sync?.syncRef ?? "pending"),
+      h.DataAttribute("autopilot-code-mode-sync-diagnostics", String(diagnostics.length)),
+    ],
+    diagnostics.slice(0, limit).map((diagnostic) =>
+      h.p(
+        [
+          cls(`code-mode-sync-diagnostic code-mode-sync-${diagnostic.severity}`),
+          h.DataAttribute("autopilot-code-mode-sync-diagnostic", diagnostic.key),
+          h.Title(diagnostic.sourceRef ?? diagnostic.title),
+        ],
+        [`${diagnostic.title}: ${diagnostic.body}`],
+      ),
+    ),
+  )
+}
+
 type VerseCodeAccountInventoryRow = Readonly<{
   key: string
   label: string
@@ -980,51 +1019,36 @@ const verseSelectorLabel = (selector: string | null | undefined): string => {
 const verseCodeAccountInventoryRows = (
   model: Model,
 ): ReadonlyArray<VerseCodeAccountInventoryRow> => {
-  const managedRows =
-    sortManagedAccountRows(
-      modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? [],
-    )
-  const liveRows =
-    modelNode(model)?.accounts?.filter((row) => row.provider === "codex") ?? []
-  const liveByRef = new Map<string, AccountRow>()
-  for (const row of liveRows) {
-    if (row.accountRef !== null) liveByRef.set(row.accountRef, row)
+  const sync = modelCodeModeSync(model)
+  if (sync !== null) {
+    return sync.accounts
+      .filter((row) => row.provider === "codex")
+      .map((row) => ({
+        key: row.key,
+        label: row.accountRef ?? "default",
+        state: row.ready ? "ready" : "blocked",
+        stateText: !row.live && row.managed ? "syncing" : row.ready ? "ready" : "blocked",
+        priorityText: row.priority === null ? "prio auto" : `prio ${row.priority}`,
+        selectorText: verseSelectorLabel(row.selector),
+        hashText: shortAccountHash(row.accountRefHash),
+        selected: model.composerAccountRef === row.accountRef,
+        accountRef: row.accountRef,
+      }))
   }
-  const seen = new Set<string>()
-  const rows: VerseCodeAccountInventoryRow[] = managedRows.map((row) => {
-    seen.add(`ref:${row.ref}`)
-    const live = liveByRef.get(row.ref) ?? null
-    const ready = live?.ready ?? row.homePresent
-    return {
-      key: `managed:${row.ref}`,
-      label: row.ref,
-      state: ready ? "ready" : "blocked",
-      stateText: ready ? "ready" : "blocked",
-      priorityText: row.priority === null ? "prio auto" : `prio ${row.priority}`,
-      selectorText: verseSelectorLabel(live?.selector),
-      hashText: shortAccountHash(live?.accountRefHash),
-      selected: model.composerAccountRef === row.ref,
-      accountRef: row.ref,
-    }
-  })
-  for (const live of liveRows) {
-    const seenKey = live.accountRef === null ? "default" : `ref:${live.accountRef}`
-    if (seen.has(seenKey)) continue
-    seen.add(seenKey)
-    const label = live.accountRef ?? "default"
-    rows.push({
-      key: `live:${label}`,
-      label,
-      state: live.ready ? "ready" : "blocked",
-      stateText: live.ready ? "ready" : "blocked",
-      priorityText: live.priority === null ? "prio auto" : `prio ${live.priority}`,
-      selectorText: verseSelectorLabel(live.selector),
-      hashText: shortAccountHash(live.accountRefHash),
-      selected: model.composerAccountRef === live.accountRef,
-      accountRef: live.accountRef,
-    })
-  }
-  return rows
+  const managedRows = sortManagedAccountRows(
+    modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? [],
+  )
+  return managedRows.map((row) => ({
+    key: `managed:${row.ref}`,
+    label: row.ref,
+    state: row.homePresent ? "ready" : "blocked",
+    stateText: row.homePresent ? "ready" : "blocked",
+    priorityText: row.priority === null ? "prio auto" : `prio ${row.priority}`,
+    selectorText: "managed",
+    hashText: "hash pending",
+    selected: model.composerAccountRef === row.ref,
+    accountRef: row.ref,
+  }))
 }
 
 const verseCodeAccountInventoryRowView = (
@@ -1089,6 +1113,7 @@ const verseCodeAccountInventory = (model: Model): Html => {
       model.managedAccountsPending
         ? h.p([cls("verse-code-account-status mono")], ["refreshing accounts"])
         : h.empty,
+      codeModeSyncDiagnostics(model),
       rows.length === 0
         ? h.p([cls("verse-code-account-empty")], ["No Codex accounts projected yet."])
         : h.div([cls("verse-code-account-list")], rows.map(verseCodeAccountInventoryRowView)),
@@ -3969,9 +3994,10 @@ const sessionListRow = (
 }
 
 const sessionsPane = (model: Model): Html => {
+  const sync = modelCodeModeSync(model)
   const node = modelNode(model)
-  const allSessions: ReadonlyArray<SessionSummary> = node?.sessions ?? []
-  const accounts = node?.accounts ?? []
+  const allSessions: ReadonlyArray<SessionSummary> = sync?.sessions ?? node?.sessions ?? []
+  const accounts = sync?.liveAccounts ?? node?.accounts ?? []
   const projection = projectSessionPane({
     sessions: allSessions,
     accounts,
@@ -3997,6 +4023,7 @@ const sessionsPane = (model: Model): Html => {
             : stateBreakdown(allSessions),
         ],
       ),
+      codeModeSyncDiagnostics(model),
       h.div([cls("session-filter-grid")], [
         sessionFilterGroup<SessionFilter>(
           "status",
@@ -4258,10 +4285,11 @@ const swarmBatchForm = (model: Model): Html => {
 }
 
 const swarmPane = (model: Model): Html => {
+  const sync = modelCodeModeSync(model)
   const node = modelNode(model)
-  const sessions: ReadonlyArray<SessionSummary> = node?.sessions ?? []
-  const accounts: ReadonlyArray<AccountRow> = node?.accounts ?? []
-  const events = node?.events ?? {}
+  const sessions: ReadonlyArray<SessionSummary> = sync?.sessions ?? node?.sessions ?? []
+  const accounts: ReadonlyArray<AccountRow> = sync?.liveAccounts ?? node?.accounts ?? []
+  const events = sync?.events ?? node?.events ?? {}
   const ordered = orderSwarmSessions(sessions)
   // #5469: turn the adjacency ordering into an explicit depth-annotated tree so
   // sub-agents (parentRef children) render nested instead of as flat rows.
@@ -5264,17 +5292,19 @@ type SessionDetailContext = Readonly<{
 }>
 
 const selectedSessionContext = (model: Model): SessionDetailContext | null => {
-  const node = modelNode(model)
+  const sync = modelCodeModeSync(model)
+  const node = sync?.node ?? modelNode(model)
   const ref = model.selectedSessionRef
-  const session = ref ? (node?.sessions.find((s) => s.sessionRef === ref) ?? null) : null
+  const sessions = sync?.sessions ?? node?.sessions ?? []
+  const session = ref ? (sessions.find((s) => s.sessionRef === ref) ?? null) : null
   if (node === null || ref === null || session === null) return null
   return {
     node,
     ref,
     session,
-    events: node.events?.[ref] ?? [],
-    stats: node.artifacts?.[ref],
-    accounts: node.accounts ?? [],
+    events: sync?.events[ref] ?? node.events?.[ref] ?? [],
+    stats: sync?.artifacts[ref] ?? node.artifacts?.[ref],
+    accounts: sync?.liveAccounts ?? node.accounts ?? [],
   }
 }
 
@@ -5851,11 +5881,15 @@ const SPAWN_ADAPTER_LABEL: Record<"codex" | "claude_agent" | "apple_fm", string>
 // session.spawn's accountRef). Hidden for Apple FM (no per-account selection).
 const composerAccountPicker = (model: Model): Html => {
   if (model.spawnAdapter === "apple_fm") return h.empty
-  const node = modelNode(model)
-  const accounts = (node?.accounts ?? []).filter(
+  const sync = modelCodeModeSync(model)
+  const accounts = (sync?.accounts ?? []).filter(
     (row) => row.provider === model.spawnAdapter && row.accountRef !== null,
   )
-  if (accounts.length === 0) return h.empty
+  const fallbackAccounts = (modelNode(model)?.accounts ?? []).filter(
+    (row) => row.provider === model.spawnAdapter && row.accountRef !== null,
+  )
+  const accountRows = accounts.length > 0 ? accounts : fallbackAccounts
+  if (accountRows.length === 0) return h.empty
   const defaultActive = model.composerAccountRef === null
   return h.div(
     [],
@@ -5872,7 +5906,7 @@ const composerAccountPicker = (model: Model): Html => {
             ],
             ["Default"],
           ),
-          ...accounts.map((row) =>
+          ...accountRows.map((row) =>
             h.button(
               [
                 cls(
@@ -5884,7 +5918,11 @@ const composerAccountPicker = (model: Model): Html => {
                   SelectedComposerAccount({ accountRef: row.accountRef }),
                 ),
               ],
-              [accountPickerLabel(row)],
+              [
+                "key" in row
+                  ? syncAccountPickerLabel(row as CodeModeSyncAccountRow)
+                  : accountPickerLabel(row as AccountRow),
+              ],
             ),
           ),
         ],
@@ -5898,6 +5936,18 @@ const composerSelectedAccountText = (model: Model): string => {
   const provider = model.spawnAdapter === "codex" ? "Codex" : "Claude"
   const selected = model.composerAccountRef
   if (selected === null) return `${provider} default route`
+  const sync = modelCodeModeSync(model)
+  const syncRow =
+    sync?.accounts.find(
+      (account) =>
+        account.provider === model.spawnAdapter &&
+        account.accountRef === selected,
+    ) ?? null
+  if (syncRow !== null) {
+    return `${provider} ${selected} ${
+      !syncRow.live && syncRow.managed ? "syncing" : syncRow.ready ? "ready" : "blocked"
+    }`
+  }
   const accounts = modelNode(model)?.accounts ?? null
   if (accounts === null) return `${provider} ${selected}`
   const row =
@@ -6152,11 +6202,13 @@ const composerReplyBar = (model: Model, canReply: boolean): Html =>
   ])
 
 const composerActiveSession = (model: Model): Html => {
+  const sync = modelCodeModeSync(model)
   const node = modelNode(model)
   const ref = model.composerSessionRef
-  const session = ref ? (node?.sessions.find((s) => s.sessionRef === ref) ?? null) : null
-  const events = ref ? (node?.events?.[ref] ?? []) : []
-  const stats = ref ? node?.artifacts?.[ref] : undefined
+  const sessions = sync?.sessions ?? node?.sessions ?? []
+  const session = ref ? (sessions.find((s) => s.sessionRef === ref) ?? null) : null
+  const events = ref ? (sync?.events[ref] ?? node?.events?.[ref] ?? []) : []
+  const stats = ref ? (sync?.artifacts[ref] ?? node?.artifacts?.[ref]) : undefined
   const state = session?.state ?? null
   const canReply = composerCanReply(state)
 
@@ -6311,7 +6363,7 @@ const accountManagementCard = (model: Model): Html => {
   const managed = modelManagedAccounts(model)
   const rows = sortManagedAccountRows(managed?.accounts ?? [])
   const node = modelNode(model)
-  const liveAccounts = node?.accounts ?? []
+  const liveAccounts = modelCodeModeSync(model)?.liveAccounts ?? node?.accounts ?? []
   return card("Accounts", [
     h.p([cls("card-body")], [
       "Manage which provider accounts this node can run coding sessions under. Priority orders dispatch (lower runs first).",
@@ -6322,6 +6374,7 @@ const accountManagementCard = (model: Model): Html => {
           [model.managedAccountsStatus.text],
         )
       : h.empty,
+    codeModeSyncDiagnostics(model),
     // Live readiness/quota for every discovered account (shared component).
     liveAccounts.length > 0
       ? h.div(
@@ -7021,7 +7074,7 @@ const verseCodeDockAgentStream = (
   const rows = projectAgentStreamRows({
     session,
     events,
-    accounts: modelNode(model)?.accounts ?? [],
+    accounts: modelCodeModeSync(model)?.liveAccounts ?? modelNode(model)?.accounts ?? [],
   }).slice(-6)
   return h.div(
     [cls("agent-stream"), h.DataAttribute("agent-stream", session.sessionRef)],
@@ -7039,9 +7092,11 @@ const verseCodeDockAgentStream = (
 
 const verseCodeDockActiveSession = (model: Model): Html => {
   const ref = model.composerSessionRef
+  const sync = modelCodeModeSync(model)
   const node = modelNode(model)
-  const session = ref ? (node?.sessions.find((row) => row.sessionRef === ref) ?? null) : null
-  const events = ref ? (node?.events?.[ref] ?? []) : []
+  const sessions = sync?.sessions ?? node?.sessions ?? []
+  const session = ref ? (sessions.find((row) => row.sessionRef === ref) ?? null) : null
+  const events = ref ? (sync?.events[ref] ?? node?.events?.[ref] ?? []) : []
   const state = session?.state ?? null
   const canReply = composerCanReply(state)
   const activeLabel = ref === null ? "No active Codex session" : compactSessionRef(ref)
@@ -7217,7 +7272,8 @@ const verseCodeDockPermissions = (model: Model): Html => {
 
 const verseCodeDock = (model: Model): Html => {
   if (model.verseMode !== "code") return h.empty
-  const activeCount = modelNode(model)?.sessions.length ?? 0
+  const activeCount =
+    modelCodeModeSync(model)?.counts.sessions ?? modelNode(model)?.sessions.length ?? 0
   return h.aside(
     [
       cls("verse-code-dock"),
@@ -7252,6 +7308,7 @@ const verseCodeDock = (model: Model): Html => {
             ),
           ]),
         ]),
+        codeModeSyncDiagnostics(model, 2),
         model.composerSessionRef === null
           ? verseCodeDockComposer(model)
           : verseCodeDockActiveSession(model),

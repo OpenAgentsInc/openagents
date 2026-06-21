@@ -324,6 +324,38 @@ body {
   font-size: 0.65rem;
 }
 
+.code-mode-sync-diagnostics {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.code-mode-sync-diagnostic {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.045);
+  color: rgb(255 255 255 / 0.62);
+  font-size: 0.66rem;
+  line-height: 1.25;
+  padding: 0.34rem 0.42rem;
+  text-overflow: ellipsis;
+}
+
+.code-mode-sync-error {
+  border-color: rgb(255 96 96 / 0.32);
+  color: rgb(255 196 196 / 0.9);
+}
+
+.code-mode-sync-warning {
+  border-color: rgb(255 211 112 / 0.26);
+  color: rgb(255 229 176 / 0.82);
+}
+
+.code-mode-sync-info {
+  color: rgb(214 226 240 / 0.66);
+}
+
 .palette-row-keybinding {
   margin-left: auto;
   color: rgb(255 255 255 / 0.42);

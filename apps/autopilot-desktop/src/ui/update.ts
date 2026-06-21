@@ -112,6 +112,9 @@ import {
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   Model,
+  modelAppleFmReadiness,
+  modelBuiltInAgentReadiness,
+  modelInferenceGatewayReadiness,
   modelManagedAccounts,
   modelNode,
   modelPaneLayer,
@@ -129,6 +132,10 @@ import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   type DesktopProofReplayProjection,
 } from "../shared/proof-replays.js"
+import {
+  projectCodeModeSyncSnapshot,
+  type CodeModeSyncSource,
+} from "./code-mode-sync.js"
 import { validatePromiseSurfacingInput } from "../shared/promise-surfacing.js"
 import {
   paymentParticleTsMs,
@@ -164,6 +171,24 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+const withCodeModeSync = (
+  model: Model,
+  source: CodeModeSyncSource,
+): Model =>
+  Model.make({
+    ...model,
+    codeModeSync: projectCodeModeSyncSnapshot({
+      source,
+      node: modelNode(model),
+      managedAccounts: modelManagedAccounts(model),
+      inferenceGatewayReadiness: modelInferenceGatewayReadiness(model),
+      builtInAgentReadiness: modelBuiltInAgentReadiness(model),
+      appleFmReadiness: modelAppleFmReadiness(model),
+      selectedSessionRef: model.selectedSessionRef,
+      composerAccountRef: model.composerAccountRef,
+    }),
+  })
 
 const verseSceneActive = (model: Model): boolean => {
   const flags = chatWorldBuildFlags()
@@ -873,8 +898,11 @@ export const update = (model: Model, message: Message): Result => {
       // #5466: each poll reconciles the live chat turn's program steps from the
       // real session events (verified only on real terminal evidence).
       return [
-        reconcileShellCodingTurns(
-          reconcileChatTurn(Model.make({ ...model, node: message.node })),
+        withCodeModeSync(
+          reconcileShellCodingTurns(
+            reconcileChatTurn(Model.make({ ...model, node: message.node })),
+          ),
+          "node_state",
         ),
         noCommands,
       ]
@@ -1222,14 +1250,17 @@ export const update = (model: Model, message: Message): Result => {
 
     case "SelectedSession":
       return [
-        Model.make({
-          ...model,
-          pane: "session-detail",
-          selectedSessionRef: message.sessionRef,
-          sessionDetailView: "overview",
-          expandedEvents: [],
-          selectedDiffFilePath: null,
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            pane: "session-detail",
+            selectedSessionRef: message.sessionRef,
+            sessionDetailView: "overview",
+            expandedEvents: [],
+            selectedDiffFilePath: null,
+          }),
+          "model_tick",
+        ),
         noCommands,
       ]
     case "ChangedSessionFilter":
@@ -1295,21 +1326,24 @@ export const update = (model: Model, message: Message): Result => {
     case "ChangedVerseMode": {
       const enteringCode = message.mode === "code" && model.verseMode !== "code"
       return [
-        Model.make({
-          ...model,
-          verseMode: message.mode,
-          ...(enteringCode
-            ? {
-                spawnAdapter: "codex" as const,
-                composerAccountRef: null,
-                managedAccountsPending: true,
-                managedAccountsStatus: {
-                  text: "loading Codex accounts...",
-                  tone: "info" as const,
-                },
-              }
-            : {}),
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            verseMode: message.mode,
+            ...(enteringCode
+              ? {
+                  spawnAdapter: "codex" as const,
+                  composerAccountRef: null,
+                  managedAccountsPending: true,
+                  managedAccountsStatus: {
+                    text: "loading Codex accounts...",
+                    tone: "info" as const,
+                  },
+                }
+              : {}),
+          }),
+          "model_tick",
+        ),
         enteringCode ? [LoadManagedAccounts()] : noCommands,
       ]
     }
@@ -1437,21 +1471,24 @@ export const update = (model: Model, message: Message): Result => {
       const projection = message.projection as BuiltInAgentReadinessResponse
       const blockerCount = projection.blockerRefs.length
       return [
-        Model.make({
-          ...model,
-          builtInAgentReadiness: projection,
-          builtInAgentStatus: projection.ok
-            ? {
-                text: `ready · ${projection.meteringLabel}`,
-                tone: "success",
-              }
-            : {
-                text:
-                  projection.error ??
-                  `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
-                tone: projection.error ? "error" : "info",
-              },
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            builtInAgentReadiness: projection,
+            builtInAgentStatus: projection.ok
+              ? {
+                  text: `ready · ${projection.meteringLabel}`,
+                  tone: "success",
+                }
+              : {
+                  text:
+                    projection.error ??
+                    `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
+                  tone: projection.error ? "error" : "info",
+                },
+          }),
+          "readiness",
+        ),
         noCommands,
       ]
     }
@@ -1479,23 +1516,26 @@ export const update = (model: Model, message: Message): Result => {
       const projection = message.projection as AppleFmReadinessResponse
       const blockerCount = projection.blockerRefs.length
       return [
-        Model.make({
-          ...model,
-          appleFmReadiness: projection,
-          appleFmPending: false,
-          appleFmStatus: projection.ok
-            ? {
-                text: `ready · ${projection.model}`,
-                tone: "success",
-              }
-            : {
-                text:
-                  projection.error ??
-                  projection.message ??
-                  `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
-                tone: projection.error ? "error" : "info",
-              },
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            appleFmReadiness: projection,
+            appleFmPending: false,
+            appleFmStatus: projection.ok
+              ? {
+                  text: `ready · ${projection.model}`,
+                  tone: "success",
+                }
+              : {
+                  text:
+                    projection.error ??
+                    projection.message ??
+                    `${blockerCount} blocker${blockerCount === 1 ? "" : "s"}`,
+                  tone: projection.error ? "error" : "info",
+                },
+          }),
+          "readiness",
+        ),
         noCommands,
       ]
     }
@@ -1504,7 +1544,10 @@ export const update = (model: Model, message: Message): Result => {
       // decision (decideInference) + the composer low-balance hint. No status
       // line of its own — the coding surfaces read it directly off the model.
       return [
-        Model.make({ ...model, inferenceGatewayReadiness: message.projection }),
+        withCodeModeSync(
+          Model.make({ ...model, inferenceGatewayReadiness: message.projection }),
+          "readiness",
+        ),
         noCommands,
       ]
     case "ClickedStartAppleFm":
@@ -2811,7 +2854,10 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, composerReply: message.value }), noCommands]
     case "SelectedComposerAccount":
       return [
-        Model.make({ ...model, composerAccountRef: message.accountRef }),
+        withCodeModeSync(
+          Model.make({ ...model, composerAccountRef: message.accountRef }),
+          "model_tick",
+        ),
         noCommands,
       ]
     // #5471: repo / worktree picker inputs.
@@ -3528,14 +3574,17 @@ export const update = (model: Model, message: Message): Result => {
         error?: string
       }
       return [
-        Model.make({
-          ...model,
-          managedAccounts: message.projection,
-          managedAccountsPending: false,
-          managedAccountsStatus: projection.ok
-            ? { text: "", tone: "idle" }
-            : { text: projection.error ?? "could not load accounts", tone: "error" },
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            managedAccounts: message.projection,
+            managedAccountsPending: false,
+            managedAccountsStatus: projection.ok
+              ? { text: "", tone: "idle" }
+              : { text: projection.error ?? "could not load accounts", tone: "error" },
+          }),
+          "managed_accounts",
+        ),
         noCommands,
       ]
     }
@@ -3647,17 +3696,20 @@ export const update = (model: Model, message: Message): Result => {
       // A successful mutation returns the refreshed list; clear the add-form on
       // success so the surface is ready for the next entry.
       return [
-        Model.make({
-          ...model,
-          managedAccounts: message.projection,
-          managedAccountsPending: false,
-          managedAccountsStatus: projection.ok
-            ? { text: "saved", tone: "success" }
-            : { text: projection.error ?? "account update failed", tone: "error" },
-          ...(projection.ok
-            ? { addAccountRef: "", addAccountHome: "", addAccountPriority: "" }
-            : {}),
-        }),
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            managedAccounts: message.projection,
+            managedAccountsPending: false,
+            managedAccountsStatus: projection.ok
+              ? { text: "saved", tone: "success" }
+              : { text: projection.error ?? "account update failed", tone: "error" },
+            ...(projection.ok
+              ? { addAccountRef: "", addAccountHome: "", addAccountPriority: "" }
+              : {}),
+          }),
+          "account_mutation",
+        ),
         noCommands,
       ]
     }
