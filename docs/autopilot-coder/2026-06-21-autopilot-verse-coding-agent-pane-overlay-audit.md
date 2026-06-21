@@ -1155,6 +1155,27 @@ Acceptance:
   implementation adapter.
 - Non-Codex provider claims stay scoped to implemented, tested behavior.
 
+Implementation status, 2026-06-21:
+
+- Done for the shared Claude Agent UI contract in Autopilot Desktop. The
+  code-mode sync projection now carries the active composer adapter, so a
+  selected Claude Agent account is validated against Claude Agent rows instead
+  of the previous Codex-only diagnostic. Apple FM remains outside per-account
+  routing.
+- The Verse code-mode account inventory now follows the active coding adapter:
+  Codex still renders the Codex account list, while Claude Agent renders
+  `Claude Agent accounts`, uses the same selected-account state, and exposes
+  the same public-safe provider/ref/state data attributes for smoke tests.
+- `apps/autopilot-desktop/tests/code-mode-sync.test.ts` now proves a Claude
+  Agent session can flow through the same account, stream, approval,
+  diff/artifact, diagnostics, and Verse inventory shapes. The Codex route tests
+  remain intact, and `apps/autopilot-desktop/tests/code-mode-account-routing.test.ts`
+  adds a Claude Agent routing case to prevent Codex-account fallback.
+- This does not claim a new Claude Agent execution runtime beyond what the
+  existing bridge already supports. It makes the Verse coding panes provider
+  neutral for the tested shared projection contract and keeps Codex as the
+  reference smoke path.
+
 ## 12. Bottom Line
 
 Autopilot already has most of the coding-agent runtime and most of the pane

@@ -82,6 +82,7 @@ describe("host diagnostics projection", () => {
       builtInAgentReadiness: null,
       appleFmReadiness: null,
       selectedSessionRef: null,
+      composerAdapter: "codex",
       composerAccountRef: "work",
     })
     const panel = projectHostDiagnosticsPanel({

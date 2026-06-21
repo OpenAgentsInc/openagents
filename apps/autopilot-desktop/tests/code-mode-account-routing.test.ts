@@ -160,4 +160,28 @@ describe("code mode account route projection", () => {
     expect(nextCodeModeAccountOverride({ ...input, selectedAccountRef: "beta" })?.accountRef).toBeNull()
     expect(nextCodeModeAccountOverride({ ...input, selectedAccountRef: null })?.accountRef).toBe("beta")
   })
+
+  test("Claude Agent routes through the same account projection without borrowing Codex accounts", () => {
+    const route = projectCodeModeAccountRoute({
+      adapter: "claude_agent",
+      selectedAccountRef: "review",
+      accounts: [
+        account({ accountRef: "work", provider: "codex", priority: 0 }),
+        account({
+          accountRef: "review",
+          provider: "claude_agent",
+          accountRefHash: "account.pylon.claude_agent.review.22222222222222222222222222222222",
+          priority: 1,
+        }),
+      ],
+      sessions: [],
+      workspaceRef: "workspace.repo",
+      allowDefaultHome: true,
+    })
+    expect(route.source).toBe("explicit")
+    expect(route.adapter).toBe("claude_agent")
+    expect(route.label).toBe("Claude Agent review")
+    expect(route.accountRef).toBe("review")
+    expect(route.evidence.accountHash).toBe("#22222222")
+  })
 })

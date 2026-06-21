@@ -104,6 +104,7 @@ export type CodeModeSyncInput = Readonly<{
   builtInAgentReadiness: BuiltInAgentReadinessResponse | null
   appleFmReadiness: AppleFmReadinessResponse | null
   selectedSessionRef: string | null
+  composerAdapter: "codex" | "claude_agent" | "apple_fm"
   composerAccountRef: string | null
 }>
 
@@ -330,13 +331,18 @@ const diagnosticsFor = (
   const selectedAccount = input.composerAccountRef
   if (
     selectedAccount !== null &&
-    !accounts.some((row) => row.provider === "codex" && row.accountRef === selectedAccount)
+    input.composerAdapter !== "apple_fm" &&
+    !accounts.some(
+      (row) =>
+        row.provider === input.composerAdapter && row.accountRef === selectedAccount,
+    )
   ) {
+    const label = input.composerAdapter === "claude_agent" ? "Claude Agent" : "Codex"
     add({
       key: "composer.account.unavailable",
       severity: "warning",
       title: "Selected account unavailable",
-      body: `The selected Codex account '${selectedAccount}' is not in the synchronized account model.`,
+      body: `The selected ${label} account '${selectedAccount}' is not in the synchronized account model.`,
       sourceRef: null,
     })
   }

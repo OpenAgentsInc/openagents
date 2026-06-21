@@ -60,7 +60,9 @@ const renderHtml = (node: unknown): string => {
 
 const workHash = "account.pylon.codex.work.abcdef0123456789abcdef0123456789"
 const altHash = "account.pylon.codex.alt.11111111111111111111111111111111"
+const claudeHash = "account.pylon.claude_agent.fable.22222222222222222222222222222222"
 const sessionRef = "session.pylon.codex.sync"
+const claudeSessionRef = "session.pylon.claude_agent.review"
 
 const account = (input: Partial<AccountRow> & Pick<AccountRow, "accountRefHash">): AccountRow => ({
   provider: input.provider ?? "codex",
@@ -73,11 +75,14 @@ const account = (input: Partial<AccountRow> & Pick<AccountRow, "accountRefHash">
   priority: input.priority ?? 1,
 })
 
-const managed = (refs: readonly string[]): ManagedAccountsResponse => ({
+const managed = (
+  refs: readonly string[],
+  provider: "codex" | "claude_agent" = "codex",
+): ManagedAccountsResponse => ({
   ok: true,
   accounts: refs.map((ref, index) => ({
     ref,
-    provider: "codex",
+    provider,
     homePresent: true,
     priority: index,
   })),
@@ -208,6 +213,7 @@ describe("code-mode sync projection (#5929)", () => {
       builtInAgentReadiness: builtInReadiness(),
       appleFmReadiness: null,
       selectedSessionRef: sessionRef,
+      composerAdapter: "codex",
       composerAccountRef: "alt",
     })
 
@@ -236,6 +242,7 @@ describe("code-mode sync projection (#5929)", () => {
         builtInAgentReadiness: builtInReadiness(),
         appleFmReadiness: null,
         selectedSessionRef: sessionRef,
+        composerAdapter: "codex",
         composerAccountRef: "alt",
       }).syncRef,
     )
@@ -314,5 +321,104 @@ describe("code-mode sync projection (#5929)", () => {
     const sessionsHtml = renderHtml(view(Model.make({ ...model, pane: "sessions" })).body)
     expect(sessionsHtml).toContain("codex alt")
     expect(sessionsHtml).not.toContain("Account waiting for node projection")
+  })
+
+  test("Claude Agent uses the shared account, stream, approval, diff, and diagnostics contract", () => {
+    const claudeNode = nodeState({
+      sessions: [
+        session({
+          sessionRef: claudeSessionRef,
+          adapter: "claude_agent",
+          accountRefHash: claudeHash,
+          latestActivity: "reviewing the patch",
+          workspaceRef: "workspace.openagents.desktop",
+        }),
+      ],
+      accounts: [
+        account({
+          provider: "claude_agent",
+          accountRefHash: claudeHash,
+          accountRef: "fable-review",
+          priority: 0,
+        }),
+      ],
+      events: {
+        [claudeSessionRef]: [
+          event({
+            eventIndex: 0,
+            detail: "thinking: review the implementation plan",
+          }),
+          event({
+            eventIndex: 1,
+            detail: "edited src/sync.ts (+1 -0)",
+          }),
+          event({
+            eventIndex: 2,
+            phase: "decision_requested",
+            detail: "approval required: run review checks",
+          }),
+        ],
+      },
+      artifacts: { [claudeSessionRef]: proofStats() },
+      approvals: [
+        {
+          approvalRef: "approval.claude.review",
+          kind: "shell",
+          prompt: "Run review checks?",
+          createdAt: "2026-06-21T22:05:00.000Z",
+          sessionRef: claudeSessionRef,
+          workspaceRef: "workspace.openagents.desktop",
+          commandClass: "test",
+          accountRefHash: claudeHash,
+          expiresAt: "2026-06-21T23:00:00.000Z",
+          lane: "local",
+          persistentApprovalSupported: true,
+        },
+      ],
+    })
+    let model = Model.make({
+      ...initialModel,
+      pane: "composer",
+      verseMode: "code",
+      spawnAdapter: "claude_agent",
+      composerAccountRef: "fable-review",
+      selectedSessionRef: claudeSessionRef,
+      sessionDetailView: "diff-artifacts",
+    })
+    ;[model] = update(
+      model,
+      GotManagedAccounts({ projection: managed(["fable-review"], "claude_agent") }),
+    )
+    ;[model] = update(model, GotNodeState({ node: claudeNode }))
+
+    const sync = modelCodeModeSync(model)
+    expect(sync?.accounts.map((row) => `${row.provider}:${row.accountRef}`)).toEqual([
+      "claude_agent:fable-review",
+    ])
+    expect(sync?.sessions[0]?.adapter).toBe("claude_agent")
+    expect(sync?.approvals).toHaveLength(1)
+    expect(sync?.artifacts[claudeSessionRef]?.kind).toBe("proof")
+    expect(sync?.diagnostics.map((row) => row.key)).not.toContain(
+      "composer.account.unavailable",
+    )
+
+    const composerHtml = renderHtml(view(model).body)
+    expect(composerHtml).toContain('data-autopilot-composer-account-ref="fable-review"')
+
+    const verseHtml = renderHtml(view(Model.make({ ...model, pane: "chat" })).body)
+    expect(verseHtml).toContain("Claude Agent accounts")
+    expect(verseHtml).toContain('data-verse-code-account-provider="claude_agent"')
+    expect(verseHtml).not.toContain("Codex accounts")
+
+    const streamHtml = renderHtml(view(Model.make({ ...model, pane: "agent-stream" })).body)
+    expect(streamHtml).toContain("src/sync.ts")
+
+    const decisionsHtml = renderHtml(view(Model.make({ ...model, pane: "decisions" })).body)
+    expect(decisionsHtml).toContain("Run review checks?")
+
+    const diffHtml = renderHtml(view(Model.make({ ...model, pane: "diff-artifacts" })).body)
+    expect(diffHtml).toContain(
+      'data-autopilot-diff-artifacts-panel="session.pylon.claude_agent.review"',
+    )
   })
 })

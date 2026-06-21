@@ -1101,6 +1101,7 @@ const codeModeSyncDiagnostics = (model: Model, limit = 3): Html => {
 
 type VerseCodeAccountInventoryRow = Readonly<{
   key: string
+  provider: "codex" | "claude_agent"
   label: string
   state: "ready" | "blocked"
   stateText: string
@@ -1135,12 +1136,14 @@ const verseSelectorLabel = (selector: string | null | undefined): string => {
 const verseCodeAccountInventoryRows = (
   model: Model,
 ): ReadonlyArray<VerseCodeAccountInventoryRow> => {
+  const provider = model.spawnAdapter === "claude_agent" ? "claude_agent" : "codex"
   const sync = modelCodeModeSync(model)
   if (sync !== null) {
     return sync.accounts
-      .filter((row) => row.provider === "codex")
+      .filter((row) => row.provider === provider)
       .map((row) => ({
         key: row.key,
+        provider,
         label: row.accountRef ?? "default",
         state: row.ready ? "ready" : "blocked",
         stateText: !row.live && row.managed ? "syncing" : row.ready ? "ready" : "blocked",
@@ -1152,10 +1155,11 @@ const verseCodeAccountInventoryRows = (
       }))
   }
   const managedRows = sortManagedAccountRows(
-    modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? [],
+    modelManagedAccounts(model)?.accounts.filter((row) => row.provider === provider) ?? [],
   )
   return managedRows.map((row) => ({
     key: `managed:${row.ref}`,
+    provider,
     label: row.ref,
     state: row.homePresent ? "ready" : "blocked",
     stateText: row.homePresent ? "ready" : "blocked",
@@ -1178,6 +1182,7 @@ const verseCodeAccountInventoryRowView = (
         }`,
       ),
       h.Type("button"),
+      h.DataAttribute("verse-code-account-provider", row.provider),
       h.DataAttribute("verse-code-account-ref", row.accountRef ?? "default"),
       h.DataAttribute("verse-code-account-state", row.state),
       h.OnClick(SelectedComposerAccount({ accountRef: row.accountRef })),
@@ -1205,15 +1210,18 @@ const verseCodeAccountInventory = (model: Model): Html => {
   if (model.verseMode !== "code") return h.empty
   const rows = verseCodeAccountInventoryRows(model)
   const selected = rows.find((row) => row.selected) ?? null
+  const provider = model.spawnAdapter === "claude_agent" ? "claude_agent" : "codex"
+  const providerLabel = provider === "claude_agent" ? "Claude Agent" : "Codex"
   return h.aside(
     [
       cls("verse-code-account-inventory"),
-      h.AriaLabel("Codex accounts"),
+      h.AriaLabel(`${providerLabel} accounts`),
       h.DataAttribute("verse-code-account-inventory", rows.length > 0 ? "ready" : "empty"),
+      h.DataAttribute("verse-code-account-provider", provider),
     ],
     [
       h.header([cls("verse-code-account-head")], [
-        h.span([cls("verse-code-account-title mono")], ["Codex accounts"]),
+        h.span([cls("verse-code-account-title mono")], [`${providerLabel} accounts`]),
         h.span([cls("verse-code-account-active mono")], [
           selected === null ? "default route" : `using ${selected.label}`,
         ]),
@@ -1231,7 +1239,9 @@ const verseCodeAccountInventory = (model: Model): Html => {
         : h.empty,
       codeModeSyncDiagnostics(model),
       rows.length === 0
-        ? h.p([cls("verse-code-account-empty")], ["No Codex accounts projected yet."])
+        ? h.p([cls("verse-code-account-empty")], [
+            `No ${providerLabel} accounts projected yet.`,
+          ])
         : h.div([cls("verse-code-account-list")], rows.map(verseCodeAccountInventoryRowView)),
     ],
   )

@@ -193,6 +193,7 @@ const withCodeModeSync = (
       builtInAgentReadiness: modelBuiltInAgentReadiness(model),
       appleFmReadiness: modelAppleFmReadiness(model),
       selectedSessionRef: model.selectedSessionRef,
+      composerAdapter: model.spawnAdapter,
       composerAccountRef: model.composerAccountRef,
     }),
   })
