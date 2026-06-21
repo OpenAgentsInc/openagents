@@ -874,6 +874,21 @@ Acceptance:
 
 ### VCODE-08 - Add Session List And Detail Panes Synced To Codex Accounts
 
+Status: implemented in #5925 on 2026-06-21. Desktop now has a pure
+`projectSessionPane` projection that filters existing Pylon sessions by status,
+adapter, account, and workspace while using short account/workspace labels on
+the default list surface. The Sessions pane renders compact keyed rows so poll
+updates reuse stable DOM identity, and `GotNodeState` preserves selected
+session, filters, expanded/detail view state, and the scroll-preserving list
+container instead of resetting pane state. Selecting a session opens the existing
+detail pane with deliberate full account-hash/workspace refs only in that
+selected context. Detail now links to read-only Agent Stream, Decisions,
+Diff/Artifacts, and Terminal/Log panes, all backed by the selected
+`selectedSessionRef` rather than another source of truth. Tests cover account
+filtering, short labels, no default hash exposure in the visible Sessions pane,
+selected-detail hash disclosure, linked pane opening, and poll-update state
+preservation.
+
 Build:
 
 - Make Sessions filterable by account, adapter, workspace, and status.

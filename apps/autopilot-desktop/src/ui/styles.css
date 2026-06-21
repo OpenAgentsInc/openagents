@@ -2030,6 +2030,128 @@ body {
   }
 }
 
+/* VCODE-08 (#5925): session list/detail panes synced to accounts. */
+.sessions-pane,
+.session-detail-pane,
+.session-linked-pane,
+.session-linked-body,
+.session-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.session-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.65rem;
+}
+.session-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.session-filter-label,
+.session-detail-context-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #8a8c93);
+}
+.session-filter-options {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.filter-btn {
+  appearance: none;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 6px;
+  background: var(--bg, #000);
+  color: var(--text, #d7d8e5);
+  padding: 0.25rem 0.45rem;
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.filter-btn.active {
+  border-color: var(--info, #fff);
+  background: rgb(255 255 255 / 0.1);
+}
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+.session-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border: 1px solid var(--outline, #525458);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--bg-secondary, #151515);
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+}
+.session-card.selected {
+  border-left-color: var(--info, #fff);
+  background: rgb(255 255 255 / 0.06);
+}
+.session-card-head,
+.session-card-meta,
+.session-detail-tabs,
+.session-detail-pane-links {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.session-card-title {
+  font-size: 0.84rem;
+}
+.session-card-state {
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary, #8a8c93);
+}
+.session-card-state-running,
+.session-card-state-queued {
+  color: var(--info, #fff);
+}
+.session-card-state-completed {
+  color: var(--success, #00c853);
+}
+.session-card-state-failed,
+.session-card-state-cancelled {
+  color: var(--danger, #d32f2f);
+}
+.session-card-meta {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.76rem;
+}
+.session-card-activity {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-detail-context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.6rem;
+}
+.session-detail-context-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
 /* #5355: coding composer pane. Reuses card / detail-ref / verify-line /
  * session-timeline / primary-button / link-button / spawn-status; only the
  * thread-summary line and the reply action row are net-new cosmetics. */

@@ -91,7 +91,10 @@ export const PaneId = S.Literals([
   "training",
   "training-fullscreen",
   "sessions",
+  "agent-stream",
   "decisions",
+  "diff-artifacts",
+  "terminal-log",
   // VCODE-03 (#5920): dedicated managed account pane for Verse code mode.
   // It reuses the existing dev.accounts CRUD card without forcing a full
   // navigation away from the Verse scene.
@@ -132,6 +135,23 @@ export const SessionFilter = S.Literals([
   "cancelled",
 ])
 export type SessionFilter = typeof SessionFilter.Type
+
+export const SessionAdapterFilter = S.Literals([
+  "all",
+  "codex",
+  "claude_agent",
+  "apple_fm",
+])
+export type SessionAdapterFilter = typeof SessionAdapterFilter.Type
+
+export const SessionDetailView = S.Literals([
+  "overview",
+  "agent-stream",
+  "decisions",
+  "diff-artifacts",
+  "terminal-log",
+])
+export type SessionDetailView = typeof SessionDetailView.Type
 
 export const VersePresenceZone = S.Literals(["tassadar_area"])
 export type VersePresenceZone = typeof VersePresenceZone.Type
@@ -462,6 +482,10 @@ export const Model = ts("AutopilotDesktop", {
 
   // Sessions-pane filter.
   sessionFilter: SessionFilter,
+  sessionAdapterFilter: SessionAdapterFilter,
+  sessionAccountFilter: S.String,
+  sessionWorkspaceFilter: S.String,
+  sessionDetailView: SessionDetailView,
 
   // Session-detail: which event indices are expanded (click-to-expand).
   expandedEvents: S.Array(S.Number),
@@ -1081,6 +1105,10 @@ export const initialModel: Model = Model.make({
   selectedSessionRef: null,
   selectedTrainingSceneNodeId: null,
   sessionFilter: "all",
+  sessionAdapterFilter: "all",
+  sessionAccountFilter: "all",
+  sessionWorkspaceFilter: "all",
+  sessionDetailView: "overview",
   expandedEvents: [],
   expandedDiffFiles: [],
   diffViewMode: "unified",

@@ -136,7 +136,10 @@ import {
   ChangedPromiseSurfacingSurface,
   ChangedAskBody,
   ChangedAskTitle,
+  ChangedSessionAccountFilter,
+  ChangedSessionAdapterFilter,
   ChangedSessionFilter,
+  ChangedSessionWorkspaceFilter,
   ChangedComposerRepoPath,
   ChangedComposerWorkspaceMode,
   ChangedComposerManagedRepo,
@@ -225,6 +228,7 @@ import {
   ChangedCommandPaletteQuery,
   RanPaletteCommand,
   SelectedSession,
+  SelectedSessionDetailView,
   ToggledEvent,
   ToggledDiffFile,
   ToggledDiffViewMode,
@@ -321,6 +325,8 @@ import {
   type ChatMessage,
   type ChatStep,
   type PaneId,
+  type SessionAdapterFilter,
+  type SessionDetailView,
   type SessionFilter,
   type ShellTarget,
   modelTrainingActivation,
@@ -354,6 +360,13 @@ import {
   modelTrainingReconcile,
   modelTrainingRuns,
 } from "./model.js"
+import {
+  projectSessionPane,
+  sessionAccountShortLabel,
+  sessionWorkspaceFilterValue,
+  sessionWorkspaceShortLabel,
+  type SessionFilterOption,
+} from "./session-pane-projection.js"
 
 const h = html<Message>()
 const cls = (value: string): Attribute<Message> => h.Class(value)
@@ -3835,25 +3848,93 @@ const trainingFullscreenPane = (model: Model): Html => {
 
 // ── Sessions pane ─────────────────────────────────────────────────────────────
 
-const FILTERS: ReadonlyArray<SessionFilter> = [
-  "all",
-  "running",
-  "queued",
-  "completed",
-  "failed",
-  "cancelled",
-]
+const sessionFilterButton = <T extends string>(
+  option: SessionFilterOption,
+  activeValue: T,
+  onSelect: (value: T) => Message,
+): Html =>
+  h.button(
+    [
+      cls(`filter-btn${option.value === activeValue ? " active" : ""}`),
+      h.Type("button"),
+      h.Title(option.title ?? option.label),
+      h.DataAttribute("session-filter-label", option.label),
+      h.OnClick(onSelect(option.value as T)),
+    ],
+    [`${option.label} ${option.count}`],
+  )
+
+const sessionFilterGroup = <T extends string>(
+  label: string,
+  options: ReadonlyArray<SessionFilterOption>,
+  activeValue: T,
+  onSelect: (value: T) => Message,
+): Html =>
+  h.div([cls("session-filter-group"), h.DataAttribute("session-filter-group", label)], [
+    h.span([cls("session-filter-label")], [label]),
+    h.div(
+      [cls("filter-bar session-filter-options")],
+      options.map((entry) => sessionFilterButton(entry, activeValue, onSelect)),
+    ),
+  ])
+
+const sessionListRow = (
+  session: SessionSummary,
+  accounts: ReadonlyArray<AccountRow>,
+  selectedRef: string | null,
+): Html => {
+  const accountLabel = sessionAccountShortLabel(session, accounts)
+  const workspaceLabel = sessionWorkspaceShortLabel(sessionWorkspaceFilterValue(session))
+  const titleParts = [
+    session.sessionRef,
+    session.workspaceRef ?? null,
+  ].filter((part): part is string => part !== null && part !== "")
+  return h.div(
+    [
+      cls(`session-click session-card${selectedRef === session.sessionRef ? " selected" : ""}`),
+      h.Key(session.sessionRef),
+      h.Tabindex(0),
+      h.Title(titleParts.join(" · ")),
+      h.DataAttribute("autopilot-session-ref", session.sessionRef),
+      h.DataAttribute("session-workspace-filter", sessionWorkspaceFilterValue(session)),
+      h.OnClick(SelectedSession({ sessionRef: session.sessionRef })),
+    ],
+    [
+      h.div([cls("session-card-head")], [
+        h.strong([cls("session-card-title mono")], [compactSessionRef(session.sessionRef)]),
+        h.span([cls(`session-card-state session-card-state-${session.state}`)], [
+          session.state,
+        ]),
+      ]),
+      h.div([cls("session-card-meta")], [
+        h.span([], [session.adapter === "claude_agent" ? "Claude" : session.adapter]),
+        h.span([], [accountLabel]),
+        h.span([], [workspaceLabel]),
+      ]),
+      session.latestActivity?.trim()
+        ? h.p([cls("session-card-activity")], [session.latestActivity])
+        : h.empty,
+    ],
+  )
+}
 
 const sessionsPane = (model: Model): Html => {
   const node = modelNode(model)
   const allSessions: ReadonlyArray<SessionSummary> = node?.sessions ?? []
-  const filtered =
-    model.sessionFilter === "all"
-      ? allSessions
-      : allSessions.filter((s) => s.state === model.sessionFilter)
+  const accounts = node?.accounts ?? []
+  const projection = projectSessionPane({
+    sessions: allSessions,
+    accounts,
+    filters: {
+      status: model.sessionFilter,
+      adapter: model.sessionAdapterFilter,
+      account: model.sessionAccountFilter,
+      workspace: model.sessionWorkspaceFilter,
+    },
+  })
 
   return h.div(
-    [],
+    [cls("sessions-pane")],
     [
       paneTitle("Sessions"),
       h.p(
@@ -3866,35 +3947,44 @@ const sessionsPane = (model: Model): Html => {
             : stateBreakdown(allSessions),
         ],
       ),
-      h.div(
-        [cls("filter-bar")],
-        FILTERS.map((f) =>
-          h.button(
-            [
-              cls(`filter-btn${f === model.sessionFilter ? " active" : ""}`),
-              h.Type("button"),
-              h.OnClick(ChangedSessionFilter({ filter: f })),
-            ],
-            [f === "all" ? "All" : f],
-          ),
+      h.div([cls("session-filter-grid")], [
+        sessionFilterGroup<SessionFilter>(
+          "status",
+          projection.statusOptions,
+          model.sessionFilter,
+          (filter) => ChangedSessionFilter({ filter }),
         ),
-      ),
+        sessionFilterGroup<SessionAdapterFilter>(
+          "adapter",
+          projection.adapterOptions,
+          model.sessionAdapterFilter,
+          (adapter) => ChangedSessionAdapterFilter({ adapter }),
+        ),
+        sessionFilterGroup<string>(
+          "account",
+          projection.accountOptions,
+          model.sessionAccountFilter,
+          (account) => ChangedSessionAccountFilter({ account }),
+        ),
+        sessionFilterGroup<string>(
+          "workspace",
+          projection.workspaceOptions,
+          model.sessionWorkspaceFilter,
+          (workspace) => ChangedSessionWorkspaceFilter({ workspace }),
+        ),
+      ]),
       node === null
         ? emptyLine("Connecting…")
         : h.div(
-            [cls("session-list")],
-            filtered.length === 0
+            [
+              cls("session-list"),
+              h.Key("session-list"),
+              h.DataAttribute("session-list-filtered-count", String(projection.sessions.length)),
+            ],
+            projection.sessions.length === 0
               ? [emptyLine("No sessions.")]
-              : filtered.map((session) =>
-                  h.div(
-                    [
-                      cls("session-click"),
-                      h.Tabindex(0),
-                      h.DataAttribute("autopilot-session-ref", session.sessionRef),
-                      h.OnClick(SelectedSession({ sessionRef: session.sessionRef })),
-                    ],
-                    [SessionList({ sessions: [session] })],
-                  ),
+              : projection.sessions.map((session) =>
+                  sessionListRow(session, accounts, model.selectedSessionRef),
                 ),
           ),
     ],
@@ -5105,6 +5195,7 @@ const eventTimeline = (
         attrs.push(cls("event-expandable"))
         attrs.push(h.OnClick(ToggledEvent({ eventIndex: event.eventIndex })))
       }
+      attrs.push(h.Key(`event-${event.eventIndex}`))
       return h.li(attrs, [
         h.span([cls("event-detail")], [label]),
         h.span([cls("event-meta")], [meta]),
@@ -5113,57 +5204,279 @@ const eventTimeline = (
   )
 }
 
-const sessionDetailPane = (model: Model): Html => {
+type SessionDetailContext = Readonly<{
+  node: NodeStateMessage
+  ref: string
+  session: SessionSummary
+  events: ReadonlyArray<SessionEventRow>
+  stats: SessionArtifactStats | undefined
+  accounts: ReadonlyArray<AccountRow>
+}>
+
+const selectedSessionContext = (model: Model): SessionDetailContext | null => {
   const node = modelNode(model)
   const ref = model.selectedSessionRef
   const session = ref ? (node?.sessions.find((s) => s.sessionRef === ref) ?? null) : null
+  if (node === null || ref === null || session === null) return null
+  return {
+    node,
+    ref,
+    session,
+    events: node.events?.[ref] ?? [],
+    stats: node.artifacts?.[ref],
+    accounts: node.accounts ?? [],
+  }
+}
 
+const SESSION_DETAIL_VIEWS: ReadonlyArray<Readonly<{
+  view: SessionDetailView
+  label: string
+  pane: PaneId | null
+}>> = [
+  { view: "overview", label: "Overview", pane: null },
+  { view: "agent-stream", label: "Agent Stream", pane: "agent-stream" },
+  { view: "decisions", label: "Decisions", pane: "decisions" },
+  { view: "diff-artifacts", label: "Diff & Artifacts", pane: "diff-artifacts" },
+  { view: "terminal-log", label: "Terminal / Log", pane: "terminal-log" },
+]
+
+const sessionDetailTabs = (active: SessionDetailView): Html =>
+  h.div([cls("session-detail-tabs"), h.DataAttribute("session-detail-tabs", "")], [
+    ...SESSION_DETAIL_VIEWS.map((entry) =>
+      h.button(
+        [
+          cls(`adapter-btn${active === entry.view ? " active" : ""}`),
+          h.Type("button"),
+          h.DataAttribute("session-detail-view", entry.view),
+          h.OnClick(SelectedSessionDetailView({ view: entry.view })),
+        ],
+        [entry.label],
+      ),
+    ),
+  ])
+
+const sessionDetailPaneLinks = (): Html =>
+  h.div([cls("session-detail-pane-links"), h.DataAttribute("session-detail-pane-links", "")], [
+    ...SESSION_DETAIL_VIEWS.filter((entry) => entry.pane !== null).map((entry) =>
+      h.button(
+        [
+          cls("swarm-action"),
+          h.Type("button"),
+          h.DataAttribute("session-detail-pane-target", entry.view),
+          h.OnClick(OpenedManagedPane({ pane: entry.pane! })),
+        ],
+        [`Open ${entry.label}`],
+      ),
+    ),
+  ])
+
+const sessionAccountDetailCard = (ctx: SessionDetailContext): Html => {
+  const accountLabel = sessionAccountShortLabel(ctx.session, ctx.accounts)
+  const accountHash = ctx.session.accountRefHash ?? null
+  const workspace = ctx.session.workspaceRef ?? null
+  return card("Run context", [
+    h.div([cls("session-detail-context-grid")], [
+      h.div([], [
+        h.span([cls("session-detail-context-label")], ["Account"]),
+        h.strong([], [accountLabel]),
+      ]),
+      h.div([], [
+        h.span([cls("session-detail-context-label")], ["Adapter"]),
+        h.strong([], [ctx.session.adapter]),
+      ]),
+      h.div([], [
+        h.span([cls("session-detail-context-label")], ["Workspace"]),
+        h.strong([], [
+          workspace === null ? "node default" : sessionWorkspaceShortLabel(workspace),
+        ]),
+      ]),
+    ]),
+    accountHash === null
+      ? h.p([cls("card-body")], ["Default provider account."])
+      : h.p([cls("card-body")], [
+          "Account hash: ",
+          h.code([cls("detail-ref mono"), h.Title(accountHash)], [accountHash]),
+        ]),
+    workspace === null
+      ? h.empty
+      : h.p([cls("card-body")], [
+          "Workspace ref: ",
+          h.code([cls("detail-ref mono"), h.Title(workspace)], [workspace]),
+        ]),
+  ])
+}
+
+const agentStreamPanel = (ctx: SessionDetailContext): Html => {
+  const rows = projectAgentStreamRows({
+    session: ctx.session,
+    events: ctx.events,
+    accounts: ctx.accounts,
+  })
+  return card("Agent Stream", [
+    rows.length === 0
+      ? emptyLine("No stream rows yet.")
+      : h.div([cls("agent-stream-list")], rows.map(verseCodeDockAgentStreamRow)),
+  ])
+}
+
+const decisionsPanel = (model: Model): Html => {
+  const approvals = pendingApprovals(model)
+  return card("Decisions", [
+    h.p([cls("card-body")], [
+      approvals.length === 0
+        ? "No decisions waiting."
+        : `${approvals.length} decision${approvals.length === 1 ? "" : "s"} waiting.`,
+    ]),
+    h.button(
+      [
+        cls("swarm-action"),
+        h.Type("button"),
+        h.DataAttribute("session-detail-pane-target", "decisions"),
+        h.OnClick(OpenedManagedPane({ pane: "decisions" })),
+      ],
+      ["Open Decisions pane"],
+    ),
+  ])
+}
+
+const diffArtifactsPanel = (model: Model, ctx: SessionDetailContext): Html =>
+  h.div([cls("session-detail-section")], [
+    sessionDiffCard(ctx.events, ctx.stats?.editedFileCount, {
+      fileTree: true,
+      viewMode: model.diffViewMode,
+      expandedFiles: model.expandedDiffFiles,
+    }),
+    artifactBrowserCard(ctx.stats, model.artifactBrowserOpen),
+    ctx.events.length === 0 && ctx.stats === undefined
+      ? emptyLine("No diff or artifact refs yet.")
+      : h.empty,
+  ])
+
+const terminalLogPanel = (model: Model, ctx: SessionDetailContext): Html =>
+  card("Terminal / Log Tail", [
+    h.p([cls("card-body")], [
+      "Public-safe session events only. Raw terminals, local paths, provider payloads, and secrets stay out of this default pane.",
+    ]),
+    eventTimeline(model, ctx.events),
+  ])
+
+const sessionDetailSelectedPanel = (
+  model: Model,
+  ctx: SessionDetailContext,
+  view: SessionDetailView,
+): Html => {
+  switch (view) {
+    case "agent-stream":
+      return agentStreamPanel(ctx)
+    case "decisions":
+      return decisionsPanel(model)
+    case "diff-artifacts":
+      return diffArtifactsPanel(model, ctx)
+    case "terminal-log":
+      return terminalLogPanel(model, ctx)
+    case "overview":
+      return h.div([cls("session-detail-section")], [
+        sessionAccountDetailCard(ctx),
+        diffArtifactsPanel(model, ctx),
+        terminalLogPanel(model, ctx),
+      ])
+  }
+}
+
+const sessionDetailPane = (model: Model): Html => {
+  const ctx = selectedSessionContext(model)
   const back = h.button(
-    [cls("link-button"), h.Type("button"), h.OnClick(NavigatedTo({ pane: "sessions" }))],
+    [
+      cls("link-button"),
+      h.Type("button"),
+      h.OnClick(OpenedManagedPane({ pane: "sessions" })),
+    ],
     ["‹ sessions"],
   )
 
-  if (!session || !ref) {
+  if (ctx === null) {
     return h.div([], [back, emptyLine("Session not found.")])
   }
 
-  const { text: verifyText, toneClass } = verifyLineText(session)
-  const stats = node?.artifacts?.[ref]
-  const artText = artifactLineText(stats)
-  const events = node?.events?.[ref] ?? []
+  const { text: verifyText, toneClass } = verifyLineText(ctx.session)
+  const artText = artifactLineText(ctx.stats)
 
   return h.div(
-    [],
+    [cls("session-detail-pane"), h.DataAttribute("selected-session-ref", ctx.ref)],
     [
       back,
-      h.p([cls("detail-ref")], [ref]),
+      h.p([cls("detail-ref"), h.Title(ctx.ref)], [compactSessionRef(ctx.ref)]),
       // #4998: lane provenance ("running on Google GCE / SHC / local") where the
       // session recorded a non-auto lane.
       (() => {
-        const provenance = sessionLaneProvenance(session.lane)
+        const provenance = sessionLaneProvenance(ctx.session.lane)
         return provenance === null
           ? h.empty
           : h.p([cls("session-lane-provenance")], [provenance])
       })(),
       h.p([cls(`verify-line ${toneClass}`)], [verifyText]),
       artText.length > 0 ? h.p([cls("artifact-line")], [artText]) : h.empty,
-      sessionCancellable(session.state)
+      sessionDetailTabs(model.sessionDetailView),
+      sessionDetailPaneLinks(),
+      sessionCancellable(ctx.session.state)
         ? h.button(
             [
               cls("cancel-button"),
               h.Type("button"),
-              h.OnClick(ClickedCancelSession({ sessionRef: ref })),
+              h.OnClick(ClickedCancelSession({ sessionRef: ctx.ref })),
             ],
             ["Cancel session"],
           )
         : h.empty,
-      sessionDiffCard(events, stats?.editedFileCount, {
-        fileTree: true,
-        viewMode: model.diffViewMode,
-        expandedFiles: model.expandedDiffFiles,
-      }),
-      artifactBrowserCard(stats, model.artifactBrowserOpen),
-      eventTimeline(model, events),
+      sessionDetailSelectedPanel(model, ctx, model.sessionDetailView),
+    ],
+  )
+}
+
+const agentStreamPane = (model: Model): Html => {
+  const ctx = selectedSessionContext(model)
+  return h.div(
+    [cls("session-linked-pane")],
+    [
+      paneTitle("Agent Stream"),
+      ctx === null
+        ? emptyLine("Select a session first.")
+        : h.div([cls("session-linked-body")], [
+            h.p([cls("detail-ref"), h.Title(ctx.ref)], [compactSessionRef(ctx.ref)]),
+            agentStreamPanel(ctx),
+          ]),
+    ],
+  )
+}
+
+const diffArtifactsPane = (model: Model): Html => {
+  const ctx = selectedSessionContext(model)
+  return h.div(
+    [cls("session-linked-pane")],
+    [
+      paneTitle("Diff & Artifacts"),
+      ctx === null
+        ? emptyLine("Select a session first.")
+        : h.div([cls("session-linked-body")], [
+            h.p([cls("detail-ref"), h.Title(ctx.ref)], [compactSessionRef(ctx.ref)]),
+            diffArtifactsPanel(model, ctx),
+          ]),
+    ],
+  )
+}
+
+const terminalLogPane = (model: Model): Html => {
+  const ctx = selectedSessionContext(model)
+  return h.div(
+    [cls("session-linked-pane")],
+    [
+      paneTitle("Terminal / Log"),
+      ctx === null
+        ? emptyLine("Select a session first.")
+        : h.div([cls("session-linked-body")], [
+            h.p([cls("detail-ref"), h.Title(ctx.ref)], [compactSessionRef(ctx.ref)]),
+            terminalLogPanel(model, ctx),
+          ]),
     ],
   )
 }
@@ -7259,10 +7572,16 @@ const paneContent = (model: Model, kind: PaneId): Html => {
       return trainingFullscreenPane(model)
     case "sessions":
       return sessionsPane(model)
+    case "agent-stream":
+      return agentStreamPane(model)
     case "swarm":
       return swarmPane(model)
     case "decisions":
       return decisionsPane(model)
+    case "diff-artifacts":
+      return diffArtifactsPane(model)
+    case "terminal-log":
+      return terminalLogPane(model)
     case "accounts":
       return accountsPane(model)
     case "spawn":
@@ -7325,6 +7644,9 @@ const PANE_KIND_LABELS: ReadonlyMap<PaneId, string> = (() => {
     for (const dest of group.destinations) map.set(dest.pane, dest.label)
   }
   map.set("session-detail", "Session")
+  map.set("agent-stream", "Agent Stream")
+  map.set("diff-artifacts", "Diff & Artifacts")
+  map.set("terminal-log", "Terminal / Log")
   map.set("shell", "Shell")
   map.set("accounts", "Accounts")
   return map

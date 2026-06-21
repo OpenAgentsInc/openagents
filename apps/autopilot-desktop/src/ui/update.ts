@@ -1226,12 +1226,33 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           pane: "session-detail",
           selectedSessionRef: message.sessionRef,
+          sessionDetailView: "overview",
           expandedEvents: [],
         }),
         noCommands,
       ]
     case "ChangedSessionFilter":
       return [Model.make({ ...model, sessionFilter: message.filter }), noCommands]
+    case "ChangedSessionAdapterFilter":
+      return [
+        Model.make({ ...model, sessionAdapterFilter: message.adapter }),
+        noCommands,
+      ]
+    case "ChangedSessionAccountFilter":
+      return [
+        Model.make({ ...model, sessionAccountFilter: message.account }),
+        noCommands,
+      ]
+    case "ChangedSessionWorkspaceFilter":
+      return [
+        Model.make({ ...model, sessionWorkspaceFilter: message.workspace }),
+        noCommands,
+      ]
+    case "SelectedSessionDetailView":
+      return [
+        Model.make({ ...model, sessionDetailView: message.view }),
+        noCommands,
+      ]
     case "ToggledEvent": {
       const set = new Set(model.expandedEvents)
       if (set.has(message.eventIndex)) set.delete(message.eventIndex)

@@ -10,6 +10,8 @@ import { m } from "foldkit/message"
 
 import {
   PaneId,
+  SessionAdapterFilter,
+  SessionDetailView,
   ProofReplaySlug,
   SessionFilter,
   ShellCodingTarget,
@@ -112,6 +114,18 @@ export const PressedKey = m("PressedKey", {
 export const SelectedSession = m("SelectedSession", { sessionRef: S.String })
 export const ChangedSessionFilter = m("ChangedSessionFilter", {
   filter: SessionFilter,
+})
+export const ChangedSessionAdapterFilter = m("ChangedSessionAdapterFilter", {
+  adapter: SessionAdapterFilter,
+})
+export const ChangedSessionAccountFilter = m("ChangedSessionAccountFilter", {
+  account: S.String,
+})
+export const ChangedSessionWorkspaceFilter = m("ChangedSessionWorkspaceFilter", {
+  workspace: S.String,
+})
+export const SelectedSessionDetailView = m("SelectedSessionDetailView", {
+  view: SessionDetailView,
 })
 export const ToggledEvent = m("ToggledEvent", { eventIndex: S.Number })
 
@@ -687,6 +701,10 @@ export const Message = S.Union([
   PressedKey,
   SelectedSession,
   ChangedSessionFilter,
+  ChangedSessionAdapterFilter,
+  ChangedSessionAccountFilter,
+  ChangedSessionWorkspaceFilter,
+  SelectedSessionDetailView,
   ToggledEvent,
   ToggledDiffFile,
   ToggledDiffViewMode,
