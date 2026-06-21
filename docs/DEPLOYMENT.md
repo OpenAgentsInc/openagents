@@ -37,6 +37,29 @@ change, update its linked runbook **and** fix the pointer here.
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
 
+## SpacetimeDB Verse Bindings And Desktop Gate
+
+The `openagents-world` SpacetimeDB module lives at
+`apps/openagents-world-spacetimedb/`. Public table or reducer schema changes
+must regenerate and commit the TypeScript bindings that both the web app and
+Autopilot Desktop import:
+
+```sh
+~/.local/bin/spacetime generate \
+  --lang typescript \
+  --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
+  --module-path apps/openagents-world-spacetimedb
+```
+
+Autopilot Desktop imports `DbConnection` from that generated binding directory
+in `apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts`; the Electrobun
+build bundles it from the workspace source tree. After schema or binding
+changes, run the desktop Verse tests plus the packaged smoke through
+`bun run check:deploy` before pushing to `main`. The multiplayer connection is
+a diagnostic/degraded feed only: if `https://spacetime.openagents.com` is
+unavailable, the Verse must still load and move locally while the subscription
+dispatches a disconnected projection.
+
 ## Owned Visibility Freshness Smoke
 
 Full visibility/replay operations runbook:

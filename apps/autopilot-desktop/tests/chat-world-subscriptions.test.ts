@@ -17,6 +17,7 @@ import {
   chatWorldRegionRefForRun,
   type ChatWorldMultiplayerProjection,
 } from "../src/shared/chat-world-multiplayer"
+import { chatWorldMultiplayerLayer } from "../src/shared/chat-world-visualization"
 
 const jsonResponse = (body: unknown, ok = true): Response =>
   ({
@@ -69,6 +70,33 @@ class FakeTable {
     this.rows.push(row)
     for (const cb of this.inserts) cb(row)
   }
+
+  upsertBy(key: string, row: Record<string, unknown>): void {
+    const index = this.rows.findIndex((candidate) =>
+      candidate !== null &&
+      typeof candidate === "object" &&
+      (candidate as Record<string, unknown>)[key] === row[key],
+    )
+    if (index === -1) {
+      this.insert(row)
+      return
+    }
+
+    const previous = this.rows[index]
+    this.rows[index] = row
+    for (const cb of this.updates) cb(previous, row)
+  }
+
+  deleteBy(key: string, value: unknown): void {
+    const index = this.rows.findIndex((candidate) =>
+      candidate !== null &&
+      typeof candidate === "object" &&
+      (candidate as Record<string, unknown>)[key] === value,
+    )
+    if (index === -1) return
+    const [removed] = this.rows.splice(index, 1)
+    for (const cb of this.deletes) cb(removed)
+  }
 }
 
 const runRef = "run.tassadar.executor.20260615"
@@ -116,6 +144,8 @@ const fakeWorldRows = (
     movementMode: "walking",
     lastSeenEpochMs: 900,
   }]),
+  avatarPositionNear: new FakeTable([]),
+  avatarPositionFar: new FakeTable([]),
   pylonAttention: new FakeTable([]),
   localChatMessage: new FakeTable([{
     messageRef: "chat.public.1",
@@ -426,8 +456,196 @@ describe("subscribeSpacetimeWorld", () => {
     stop()
     expect(worlds).toHaveLength(1)
     expect(worlds[0]!.connected).toBe(false)
+    expect(worlds[0]!.stations).toEqual([])
+    expect(worlds[0]!.agents).toEqual([])
+    expect(
+      publishActiveVerseLocalPose({
+        regionRef,
+        x: 1,
+        y: 0,
+        z: 2,
+        yaw: 0,
+        animation: "walk",
+        capturedAtMs: 1_100,
+      }),
+    ).toMatchObject({
+      ok: false,
+      reason: "multiplayer client unavailable",
+    })
     expect(removed).toBe("openagents.world.spacetimedb.token.v1")
     expect(scheduled).toBe(false)
+  })
+
+  test("two-client smoke joins one region, propagates movement, and filters the local duplicate", () => {
+    const rows = fakeWorldRows({ avatarPositionMinIntervalMs: 100 })
+    rows.agentAvatar = new FakeTable([])
+    rows.avatarPosition = new FakeTable([])
+    rows.avatarPositionNear = new FakeTable([])
+    rows.avatarPositionFar = new FakeTable([])
+
+    let nowMs = 1_000
+    const joins: Array<{
+      avatarRef: string
+      displayName: string
+      regionRef: string
+    }> = []
+    const capturedQueries: string[][] = []
+
+    const upsertAvatar = (avatarRef: string, displayName: string): void => {
+      rows.agentAvatar.upsertBy("avatarRef", {
+        avatarRef,
+        actorRef: `identity.${avatarRef}`,
+        actorKind: "guest",
+        displayName,
+      })
+    }
+
+    const upsertPosition = (
+      avatarRef: string,
+      write: {
+        readonly movementMode: string
+        readonly positionX: number
+        readonly positionY: number
+        readonly positionZ: number
+        readonly yaw: number
+      },
+    ): void => {
+      rows.avatarPosition.upsertBy("avatarRef", {
+        avatarRef,
+        regionRef,
+        positionX: write.positionX,
+        positionY: write.positionY,
+        positionZ: write.positionZ,
+        yaw: write.yaw,
+        movementMode: write.movementMode,
+        lastSeenEpochMs: nowMs,
+      })
+    }
+
+    const connectionFor = (avatarRef: string, fallbackDisplayName: string) => {
+      const builder = {
+        onApplied: (cb: () => void) => {
+          builder.applied = cb
+          return builder
+        },
+        onError: () => builder,
+        subscribe: (queries: ReadonlyArray<string>) => {
+          capturedQueries.push([...queries])
+          builder.applied?.()
+          return { unsubscribe: () => {} }
+        },
+        applied: null as (() => void) | null,
+      }
+
+      return {
+        db: rows,
+        reducers: {
+          joinRegion: (args: { readonly displayName: string; readonly regionRef: string }) => {
+            const displayName = args.displayName || fallbackDisplayName
+            joins.push({ avatarRef, displayName, regionRef: args.regionRef })
+            upsertAvatar(avatarRef, displayName)
+            rows.avatarPosition.upsertBy("avatarRef", {
+              avatarRef,
+              regionRef: args.regionRef,
+              positionX: 0,
+              positionY: 0,
+              positionZ: 0,
+              yaw: 0,
+              movementMode: "idle",
+              lastSeenEpochMs: nowMs,
+            })
+          },
+          leaveRegion: (args: { readonly regionRef: string }) => {
+            if (args.regionRef === regionRef) rows.avatarPosition.deleteBy("avatarRef", avatarRef)
+          },
+          setAvatarPosition: (args: {
+            readonly movementMode: string
+            readonly positionX: number
+            readonly positionY: number
+            readonly positionZ: number
+            readonly yaw: number
+          }) => upsertPosition(avatarRef, args),
+        },
+        subscriptionBuilder: () => builder,
+      }
+    }
+
+    const senderAvatarRef = "avatar.identity.sender"
+    const receiverAvatarRef = "avatar.identity.receiver"
+    const sender = createVerseMultiplayerClient({
+      connection: connectionFor(senderAvatarRef, "Sender"),
+      database: "openagents-world",
+      displayName: "Sender",
+      runRef,
+      nowMs: () => nowMs,
+      worldUrl: "https://spacetime.openagents.com",
+    })
+    sender.joinRegion()
+
+    const receiverWorlds: ChatWorldMultiplayerProjection[] = []
+    const stopReceiver = subscribeSpacetimeWorld(
+      (world) => receiverWorlds.push(world),
+      {
+        flags: { CHAT_WORLD_MULTIPLAYER: true },
+        identity: { fallbackActorRef: receiverAvatarRef, nodeLabel: "Receiver" },
+        maxReconnectAttempts: 0,
+        nowMs: () => nowMs,
+        runRef,
+        connect: () => connectionFor(receiverAvatarRef, "Receiver"),
+      },
+    )
+
+    expect(capturedQueries[0]).toContain(
+      `SELECT * FROM avatar_position WHERE avatar_position.region_ref = '${regionRef}'`,
+    )
+    expect(joins).toEqual([
+      { avatarRef: senderAvatarRef, displayName: "Sender", regionRef },
+      { avatarRef: receiverAvatarRef, displayName: "Receiver", regionRef },
+    ])
+
+    nowMs = 2_000
+    expect(
+      sender.publishLocalPose({
+        regionRef,
+        x: 3,
+        y: 0,
+        z: 4,
+        yaw: 0.5,
+        animation: "run",
+        capturedAtMs: nowMs,
+      }),
+    ).toMatchObject({ ok: true })
+
+    const receiverProjection = receiverWorlds.at(-1)!
+    const movedSender = receiverProjection.agents.find(
+      agent => agent.avatarRef === senderAvatarRef,
+    )
+    const localReceiver = receiverProjection.agents.find(
+      agent => agent.avatarRef === receiverAvatarRef,
+    )
+
+    expect(movedSender).toMatchObject({
+      avatarRef: senderAvatarRef,
+      label: "Sender",
+      x: 3,
+      y: 0,
+      z: 4,
+      movementMode: "running",
+      presenceFeed: "high",
+    })
+    expect(localReceiver).toMatchObject({
+      avatarRef: receiverAvatarRef,
+      label: "Receiver",
+    })
+    expect(receiverProjection.projectedAtMs - movedSender!.lastSeenEpochMs).toBeLessThanOrEqual(1_000)
+
+    const receiverLayer = chatWorldMultiplayerLayer(receiverProjection, {
+      localAvatarRef: receiverAvatarRef,
+      nowMs: receiverProjection.projectedAtMs,
+    })
+    expect(receiverLayer.remoteAvatars.map(avatar => avatar.id)).toEqual([senderAvatarRef])
+
+    stopReceiver()
   })
 
   test("publishes local avatar position only after a safe movement plan", () => {

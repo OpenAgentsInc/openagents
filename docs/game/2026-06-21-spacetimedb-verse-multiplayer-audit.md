@@ -288,6 +288,29 @@ rows per second; above that, the policy recommends the split near/far feed.
 Generated SpacetimeDB TypeScript bindings were regenerated for the new tables
 and the #5891 indexes.
 
+### 2026-06-21 Progress: #5893 Two-Client Smoke And Release Gates
+
+The desktop multiplayer path now has a local two-client smoke in
+`apps/autopilot-desktop/tests/chat-world-subscriptions.test.ts`. The smoke uses
+the existing fake SpacetimeDB connection seam to model two distinct
+sender-derived avatars, proves both join the same region, publishes movement
+from one participant, observes that movement in the other participant's
+projection within one second, and verifies the renderer filters the receiver's
+own avatar so it does not render a duplicate remote self.
+
+The failure path is explicitly covered as diagnostic-only. A
+`spacetime.openagents.com` connection failure dispatches an inert disconnected
+projection, removes the stale token, schedules no retry when the retry budget is
+zero, and leaves `publishActiveVerseLocalPose` unavailable rather than throwing.
+The packaged Verse smoke still proves local movement independently of
+multiplayer availability.
+
+The release path now documents the exact SpacetimeDB TypeScript binding
+regeneration command in `docs/DEPLOYMENT.md`, and both the deployment hub and
+module README state that Autopilot Desktop imports and bundles those generated
+bindings from
+`apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings`.
+
 ## What The SpacetimeDB References Teach
 
 ### TypeScript Quickstart
@@ -609,10 +632,14 @@ Acceptance:
 
 Tasks:
 
-- Add a local two-client smoke for the desktop multiplayer path.
-- Add a generated-bindings freshness check or document the exact regeneration
-  command in the deployment runbook.
-- Verify `spacetime.openagents.com` connection failure remains non-fatal.
+- Done in #5893: added a local two-client smoke for the desktop multiplayer
+  path.
+- Done in #5893: documented the exact generated-bindings regeneration command
+  in the deployment runbook.
+- Done in #5893: made the desktop packaging story for generated SpacetimeDB
+  bindings explicit.
+- Done in #5893: verified `spacetime.openagents.com` connection failure remains
+  non-fatal and diagnostic-only.
 - Keep pre-push deploy checks green.
 
 Acceptance:
@@ -639,28 +666,25 @@ Completed on 2026-06-21:
 - #5892 added high/low public avatar presence feeds, generated bindings for
   those feeds, a split-feed subscription mode, and a row-churn policy for when
   to leave the compatibility single-region feed.
+- #5893 added the local two-client multiplayer smoke, documented generated
+  binding regeneration and Desktop packaging gates, and kept the SpacetimeDB
+  outage path single-player-first.
 
 Remaining:
 
-1. The generated TypeScript bindings are imported from the web app path; the
-   desktop packaging story should be made explicit or moved into a shared
-   generated package.
-2. Selection labels and HUD details need to consume the bounded target
+1. Selection labels and HUD details need to consume the bounded target
    candidates instead of becoming permanent text in the world.
-3. Multiplayer identity currently maps from SpacetimeDB identity plus local
+2. Multiplayer identity currently maps from SpacetimeDB identity plus local
    display metadata. It must stay public and never leak private host/device
    details.
-4. The failure path needs to remain single-player-first: if SpacetimeDB is
-   down, the Verse should still load and move.
 
 ## Recommended First Issue
 
-Implement Phase 1 and Phase 2 together as the first real multiplayer slice:
+Phase 1 through Phase 6 are now implemented for the first multiplayer slice.
+The next useful slice should consume the bounded target candidates in the HUD
+selection UI without making permanent labels for every world object.
 
-> Wire the Autopilot desktop Verse controller into SpacetimeDB avatar presence
-> and render remote users as animated avatars.
-
-Definition of done:
+Original first-slice definition of done:
 
 - Start two desktop app instances or one desktop plus one test harness.
 - Both join the same `openagents-world` region.

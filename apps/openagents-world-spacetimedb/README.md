@@ -150,8 +150,8 @@ Publish through the VM-local SpacetimeDB CLI as documented in
 
 ## Client Bindings
 
-The `/tassadar` browser adapter uses generated TypeScript bindings from this
-module. They live in:
+The `/tassadar` browser adapter and Autopilot Desktop multiplayer subscription
+use generated TypeScript bindings from this module. They live in:
 
 ```text
 apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings
@@ -165,6 +165,10 @@ Regenerate those bindings after public table or reducer schema changes:
   --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
   --module-path apps/openagents-world-spacetimedb
 ```
+
+Desktop imports `DbConnection` from that generated directory during the
+Electrobun build, so schema changes need the generated binding diff committed
+before the packaged Verse launch smoke or `bun run check:deploy` release gate.
 
 ## Tassadar Bridge
 
