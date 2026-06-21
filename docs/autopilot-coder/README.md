@@ -59,6 +59,13 @@ Forum reporting.
   It also proposes a local owner-only Pylon Dev Mode for improving Pylon from
   inside Pylon with Codex fixes, optional Fable review, targeted checks, and
   safe reloads.
+- `2026-06-21-autopilot-verse-coding-agent-pane-overlay-audit.md`: current
+  audit for bringing coding agents into the Autopilot Desktop Verse surface as
+  an explicit code-mode overlay. Covers prior pane systems, the existing
+  Desktop pane manager and Pylon/Codex/Claude Agent runtime, R3F/Drei `Html`
+  lessons, the recommended `three-effect` DOM overlay host boundary, input
+  ownership, required coding panes, and the regression smokes needed before
+  calling Verse coding mode ready.
 - `pylon-multi-session-agent-runbook.md`: operator handoff for a fresh coding
   agent using Pylon as the local multi-account coding orchestrator: inspect
   connected Codex/ChatGPT and Claude accounts, run batch `multi-session`
