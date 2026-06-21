@@ -349,7 +349,9 @@ import {
 } from './json-boundary'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
+import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-self-serve-public-routes'
+import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
@@ -7107,9 +7109,13 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
 })
 
 const marketingAgencyReceiptPublicRoutes =
-  makeMarketingAgencyReceiptPublicRoutes()
+  makeMarketingAgencyReceiptPublicRoutes<Env>({
+    makeClaimStore: _env => makeInMemoryMarketingAgencyPaidDeliveryClaimStore([])
+  })
 const marketingAgencySelfServePublicRoutes =
-  makeMarketingAgencySelfServePublicRoutes()
+  makeMarketingAgencySelfServePublicRoutes<Env>({
+    makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([])
+  })
 
 const publicCardCreditSpendReceiptRoutes =
   makePublicCardCreditSpendReceiptRoutes<Env>({
