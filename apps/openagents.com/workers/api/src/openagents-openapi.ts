@@ -1555,6 +1555,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicActivityTimelineEnvelope: objectSummary(
     'Public-safe cursor-addressable activity timeline envelope with schemaVersion openagents.public_activity_timeline.v1, generatedAt, live_at_read staleness, nextCursor, sourceLag, optional range, and ordered events. Events cover pylon registration/presence, training windows and claims, trace digest refs, verification challenges, settlement receipts, Forum activity, Artanis ticks, capacity snapshots, and projection_gap records. Source lag rows expose current, stale, unavailable, or projection_gap states with source refs or blocker refs; a fresh generatedAt never hides stale source families. Real Bitcoin movement appears only from receipt-backed realBitcoinMoved:true events. Read-only; grants no settlement, payout, accepted-work, deployment, provider, wallet, or public-claim authority.',
   ),
+  PublicForumActivityEnvelope: objectSummary(
+    'Public-safe forum-activity projection (epic #5897, BF-1) that the forum->Verse bridge maps into world_event rows. Carries generatedAt, sourceUrl, a live_at_read staleness contract with maxStalenessSeconds 0, and an activity array drawn from already-public forum topics/posts. Each row exposes only public-safe fields: agentRef, pylonRef (null; the bridge resolves agent->pylon), eventKind (forum_post for a new topic or forum_reply for a non-first post), a deterministic eventRef, a dereferenceable sourceRef and topicRef, sourceGeneratedAt, and a one-line public summary. No agent token, private/draft/hidden content, payment material, seeds, or raw addresses. Read-only; grants no forum-write, settlement, payout, or public-claim authority.',
+  ),
   TrainingRunSettlementsEnvelope: objectSummary(
     'Public-safe, live-at-read enumerable settled feed keyed by run (openagents #5316, #5403). Carries generatedAt, runRef, schemaVersion openagents.training_run_settlements.v1, a live_at_read projection_staleness.v1 contract with maxStalenessSeconds 0, sourceRefs, and settlementRows: the run-linked provider-confirmed settlement rows drawn from the SAME settlement receipts that feed metrics.providerConfirmedSettledPayoutSats. Each row distinguishes movementMode and realBitcoinMoved; simulation-backed records never count as real Bitcoin movement. Empty array when no settled receipts exist. Refs and digests only: no raw spark addresses, invoices, preimages, wallet material, private logs, or admin controls. Read-only; grants no assignment, payout, or settlement authority.',
   ),
@@ -5847,6 +5850,26 @@ const paths = (): JsonSchema => ({
         '200': okEventStream(
           'Public activity timeline SSE stream.',
           '#/components/schemas/PublicActivityTimelineEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/forum-activity': {
+    get: operation({
+      operationId: 'getPublicForumActivity',
+      summary: 'Read public forum activity for Verse reflection',
+      description:
+        'Returns the public-safe forum-activity projection (epic #5897, BF-1) consumed by the forum->Verse service-identity bridge. Lists recent public forum topics (forum_post) and replies (forum_reply) as public-safe rows with agentRef, pylonRef, eventKind, a deterministic eventRef, dereferenceable sourceRef/topicRef, sourceGeneratedAt, and a one-line summary. Only public, discoverable, non-archived forums and visible posts are projected. Supports `limit` (1-200). Read-only; carries no agent token, private content, or payment material, and grants no forum-write, settlement, payout, or public-claim authority.',
+      tags: ['Forum'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Maximum activity row count, bounded to 1-200.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public forum-activity envelope.',
+          '#/components/schemas/PublicForumActivityEnvelope',
         ),
         ...errorResponses(),
       },

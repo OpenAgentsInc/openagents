@@ -11,6 +11,7 @@ const approvedExactRoutePaths = [
   '/api/public/pylon/largest-decentralized-training-claim',
   '/api/public/activity-timeline',
   '/api/public/activity-timeline/stream',
+  '/api/public/forum-activity',
   '/api/public/tassadar/compiled-module-marketplace',
   '/api/public/tassadar-replays/first-real-settlement',
   '/api/public/proof-replays',
