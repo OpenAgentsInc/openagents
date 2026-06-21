@@ -815,6 +815,18 @@ Acceptance:
 
 ### VCODE-06 - Add The Codex-First Code Dock Stack
 
+Status: implemented in #5923 on 2026-06-21. Verse code mode now renders a
+compact Codex dock as screen-space DOM over the retained scene. The dock offers
+the first-turn composer, active-session summary, follow-up prompt, compact
+permission approval/deny controls, and durable-inspector shortcuts into
+Composer, Sessions, Decisions, and Diff/Artifacts panes. The dock is hidden in
+explore mode, does not render as a managed pane by itself, keeps full inspection
+surfaces in the pane layer, and its CSS makes dock chrome pointer-pass-through
+while only focused/interactive controls opt into pointer events. Tests cover
+mode gating, active-session/permission rendering, pass-through pointer policy,
+and hiding code mode without changing open panes, active session refs, or Verse
+restore pose.
+
 Build:
 
 - Add a compact code dock over Verse for composer, permission prompt,

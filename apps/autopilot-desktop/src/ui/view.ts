@@ -225,6 +225,7 @@ import {
   ToggledDiffFile,
   ToggledDiffViewMode,
   ToggleVerse,
+  ChangedVerseMode,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
@@ -6461,6 +6462,252 @@ const versePane = (model: Model): Html =>
     verseRunHud(model),
   ])
 
+const compactSessionRef = (ref: string): string => {
+  const parts = ref.split(".").filter((part) => part.length > 0)
+  const provider = parts.length >= 2 ? parts.at(-2) ?? "session" : "session"
+  const tail = parts.at(-1) ?? ref
+  return `${provider}:${tail.slice(-6)}`
+}
+
+const compactWorkspaceLabel = (model: Model): string => {
+  if (model.composerWorkspaceMode === "managed") {
+    const parsed = parseManagedWorktreeRequest({
+      repo: model.composerManagedRepo,
+      baseRef: model.composerManagedBaseRef,
+    })
+    return parsed.ok ? managedWorktreeLabel(parsed.request) : "managed worktree"
+  }
+  return model.composerRepoPath.trim() === "" ? "node worktree" : "local worktree"
+}
+
+const verseCodeDockActiveSession = (model: Model): Html => {
+  const ref = model.composerSessionRef
+  const node = modelNode(model)
+  const session = ref ? (node?.sessions.find((row) => row.sessionRef === ref) ?? null) : null
+  const state = session?.state ?? null
+  const canReply = composerCanReply(state)
+  const activeLabel = ref === null ? "No active Codex session" : compactSessionRef(ref)
+  return h.section(
+    [cls("verse-code-dock-section"), h.DataAttribute("verse-code-dock-active-session", ref ?? "none")],
+    [
+      h.div([cls("verse-code-dock-row verse-code-dock-row-tight")], [
+        h.span([cls("verse-code-dock-label")], ["Session"]),
+        h.span([cls(`verse-code-dock-state verse-code-dock-state-${state ?? "idle"}`)], [
+          state ?? "idle",
+        ]),
+      ]),
+      h.div([cls("verse-code-dock-session-ref mono"), h.Title(ref ?? "")], [activeLabel]),
+      ref === null
+        ? h.empty
+        : h.p([cls("verse-code-dock-note")], [
+            composerTurnSummary(state, model.composerTurns.length),
+          ]),
+      ref === null
+        ? h.empty
+        : h.div([cls("verse-code-dock-actions")], [
+            h.button(
+              [
+                cls("verse-code-dock-button"),
+                h.Type("button"),
+                h.OnClick(OpenedManagedPane({ pane: "composer" })),
+              ],
+              ["Composer"],
+            ),
+            h.button(
+              [
+                cls("verse-code-dock-button"),
+                h.Type("button"),
+                h.OnClick(OpenedManagedPane({ pane: "session-detail" })),
+              ],
+              ["Diffs"],
+            ),
+            session && sessionCancellable(session.state)
+              ? h.button(
+                  [
+                    cls("verse-code-dock-button danger"),
+                    h.Type("button"),
+                    h.OnClick(ClickedCancelSession({ sessionRef: ref })),
+                  ],
+                  ["Cancel"],
+                )
+              : h.empty,
+          ]),
+      ref === null
+        ? h.empty
+        : h.div([cls("verse-code-dock-followup")], [
+            h.textarea(
+              [
+                cls("verse-code-dock-textarea"),
+                h.Rows(2),
+                h.Placeholder(
+                  canReply ? "Follow-up for this Codex session" : "Follow-up unlocks after this turn",
+                ),
+                h.Value(model.composerReply),
+                h.OnInput((value: string) => ChangedComposerReply({ value })),
+              ],
+              [],
+            ),
+            h.button(
+              [
+                cls("verse-code-dock-button primary"),
+                h.Type("button"),
+                h.Disabled(model.composerPending || !canReply),
+                h.OnClick(ClickedComposerReply()),
+              ],
+              [model.composerPending ? "Sending" : "Send"],
+            ),
+          ]),
+    ],
+  )
+}
+
+const verseCodeDockComposer = (model: Model): Html =>
+  h.section(
+    [cls("verse-code-dock-section"), h.DataAttribute("verse-code-dock-composer", "")],
+    [
+      h.div([cls("verse-code-dock-row verse-code-dock-row-tight")], [
+        h.span([cls("verse-code-dock-label")], ["Composer"]),
+        h.span([cls("verse-code-dock-route")], [composerSelectedAccountText(model)]),
+      ]),
+      h.p([cls("verse-code-dock-note")], [compactWorkspaceLabel(model)]),
+      h.textarea(
+        [
+          cls("verse-code-dock-textarea"),
+          h.Rows(3),
+          h.Placeholder("Tell Codex what to change"),
+          h.Value(model.spawnObjective),
+          h.OnInput((value: string) => ChangedSpawnObjective({ value })),
+        ],
+        [],
+      ),
+      model.composerStatus.tone !== "idle"
+        ? h.p([cls(`verse-code-dock-status verse-code-dock-status-${model.composerStatus.tone}`)], [
+            model.composerStatus.text,
+          ])
+        : h.empty,
+      h.div([cls("verse-code-dock-actions")], [
+        h.button(
+          [
+            cls("verse-code-dock-button primary"),
+            h.Type("button"),
+            h.Disabled(model.composerPending),
+            h.OnClick(ClickedComposerSpawn()),
+          ],
+          [model.composerPending ? "Starting" : "Start Codex"],
+        ),
+        h.button(
+          [
+            cls("verse-code-dock-button"),
+            h.Type("button"),
+            h.OnClick(OpenedManagedPane({ pane: "composer" })),
+          ],
+          ["Full pane"],
+        ),
+      ]),
+    ],
+  )
+
+const verseCodeDockPermissions = (model: Model): Html => {
+  const approvals = pendingApprovals(model)
+  const approval = approvals.at(0) ?? null
+  return h.section(
+    [cls("verse-code-dock-section"), h.DataAttribute("verse-code-dock-permissions", String(approvals.length))],
+    [
+      h.div([cls("verse-code-dock-row verse-code-dock-row-tight")], [
+        h.span([cls("verse-code-dock-label")], ["Permissions"]),
+        h.span([cls("verse-code-dock-count")], [String(approvals.length)]),
+      ]),
+      approval === null
+        ? h.p([cls("verse-code-dock-note")], ["No prompts waiting."])
+        : h.div([cls("verse-code-dock-permission")], [
+            h.p([cls("verse-code-dock-prompt")], [approvalLabel(approval)]),
+            h.div([cls("verse-code-dock-actions")], [
+              h.button(
+                [
+                  cls("verse-code-dock-button primary"),
+                  h.Type("button"),
+                  h.OnClick(
+                    ClickedResolveApproval({
+                      approvalRef: approval.approvalRef,
+                      decision: "approve",
+                    }),
+                  ),
+                ],
+                ["Approve"],
+              ),
+              h.button(
+                [
+                  cls("verse-code-dock-button danger"),
+                  h.Type("button"),
+                  h.OnClick(
+                    ClickedResolveApproval({
+                      approvalRef: approval.approvalRef,
+                      decision: "deny",
+                    }),
+                  ),
+                ],
+                ["Deny"],
+              ),
+            ]),
+          ]),
+      h.button(
+        [
+          cls("verse-code-dock-button subtle"),
+          h.Type("button"),
+          h.OnClick(OpenedManagedPane({ pane: "decisions" })),
+        ],
+        ["Open Decisions"],
+      ),
+    ],
+  )
+}
+
+const verseCodeDock = (model: Model): Html => {
+  if (model.verseMode !== "code") return h.empty
+  const activeCount = modelNode(model)?.sessions.length ?? 0
+  return h.aside(
+    [
+      cls("verse-code-dock"),
+      h.AriaLabel("Verse coding dock"),
+      h.DataAttribute("verse-code-dock", "codex"),
+    ],
+    [
+      h.div([cls("verse-code-dock-panel")], [
+        h.header([cls("verse-code-dock-head")], [
+          h.div([cls("verse-code-dock-title")], [
+            h.span([cls("verse-code-dock-kicker mono")], ["CODEX"]),
+            h.strong([], ["Code dock"]),
+          ]),
+          h.div([cls("verse-code-dock-head-actions")], [
+            h.button(
+              [
+                cls("verse-code-dock-icon-button"),
+                h.Type("button"),
+                h.Title("Open Sessions pane"),
+                h.OnClick(OpenedManagedPane({ pane: "sessions" })),
+              ],
+              [`${activeCount}`],
+            ),
+            h.button(
+              [
+                cls("verse-code-dock-icon-button"),
+                h.Type("button"),
+                h.Title("Hide code dock"),
+                h.OnClick(ChangedVerseMode({ mode: "explore" })),
+              ],
+              ["Hide"],
+            ),
+          ]),
+        ]),
+        model.composerSessionRef === null
+          ? verseCodeDockComposer(model)
+          : verseCodeDockActiveSession(model),
+        verseCodeDockPermissions(model),
+      ]),
+    ],
+  )
+}
+
 const verseBottomHud = (model: Model): Html =>
   h.div(
     [cls("verse-bottom-hud")],
@@ -7163,6 +7410,7 @@ const rootView = (model: Model): Html => {
       [
         chatPane(model),
         verseCodeAccountInventory(model),
+        verseCodeDock(model),
         verseCodeControlsVisible(model) ? managedPaneLayer(model) : h.empty,
         CHAT_WORLD_HUD ? verseBottomHud(model) : h.empty,
         verseCodeControlsVisible(model) ? commandPalette(model) : h.empty,

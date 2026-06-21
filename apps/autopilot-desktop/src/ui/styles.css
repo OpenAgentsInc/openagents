@@ -333,6 +333,240 @@ body {
   white-space: nowrap;
 }
 
+.verse-code-dock {
+  position: absolute;
+  right: clamp(0.75rem, 2vw, 1.2rem);
+  bottom: clamp(5.7rem, 10vw, 7.2rem);
+  z-index: 6;
+  width: min(25rem, calc(100% - 1.5rem));
+  color: rgb(244 247 251 / 0.92);
+  pointer-events: none;
+  user-select: none;
+}
+
+.verse-code-dock-panel {
+  display: grid;
+  gap: 0.58rem;
+  padding: 0.68rem;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(10 13 18 / 0.84), rgb(1 4 7 / 0.68)),
+    rgb(0 0 0 / 0.3);
+  box-shadow:
+    0 18px 54px rgb(0 0 0 / 0.38),
+    inset 0 0 0 1px rgb(255 255 255 / 0.035);
+  pointer-events: none;
+}
+
+.verse-code-dock-head,
+.verse-code-dock-row,
+.verse-code-dock-actions,
+.verse-code-dock-head-actions {
+  display: flex;
+  min-width: 0;
+}
+
+.verse-code-dock-head {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.verse-code-dock-title {
+  display: grid;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.verse-code-dock-title strong {
+  overflow: hidden;
+  font-size: 0.92rem;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verse-code-dock-kicker,
+.verse-code-dock-label,
+.verse-code-dock-count {
+  color: rgb(255 255 255 / 0.55);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.verse-code-dock-head-actions,
+.verse-code-dock-actions {
+  align-items: center;
+  gap: 0.38rem;
+  flex-wrap: wrap;
+}
+
+.verse-code-dock-section {
+  display: grid;
+  gap: 0.44rem;
+  padding: 0.58rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.045);
+  pointer-events: none;
+}
+
+.verse-code-dock-row-tight {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.verse-code-dock-route,
+.verse-code-dock-state,
+.verse-code-dock-session-ref,
+.verse-code-dock-note,
+.verse-code-dock-status,
+.verse-code-dock-prompt {
+  min-width: 0;
+  overflow: hidden;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.verse-code-dock-route {
+  max-width: 13rem;
+  color: rgb(255 255 255 / 0.68);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.verse-code-dock-state {
+  color: rgb(255 255 255 / 0.68);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.verse-code-dock-state-running,
+.verse-code-dock-state-queued {
+  color: #d7dee7;
+}
+
+.verse-code-dock-state-completed {
+  color: #d7f7df;
+}
+
+.verse-code-dock-state-failed,
+.verse-code-dock-state-cancelled {
+  color: #ffd5d5;
+}
+
+.verse-code-dock-session-ref {
+  color: rgb(255 255 255 / 0.88);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.verse-code-dock-note,
+.verse-code-dock-status,
+.verse-code-dock-prompt {
+  margin: 0;
+  color: rgb(255 255 255 / 0.6);
+  font-size: 0.72rem;
+}
+
+.verse-code-dock-prompt {
+  display: -webkit-box;
+  max-height: 2.9rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.verse-code-dock-status-error {
+  color: #ffd5d5;
+}
+
+.verse-code-dock-status-info {
+  color: #d7dee7;
+}
+
+.verse-code-dock-followup,
+.verse-code-dock-permission {
+  display: grid;
+  gap: 0.42rem;
+  min-width: 0;
+}
+
+.verse-code-dock-textarea {
+  width: 100%;
+  min-height: 3rem;
+  resize: vertical;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 0.28);
+  color: rgb(255 255 255 / 0.9);
+  font: inherit;
+  font-size: 0.76rem;
+  line-height: 1.36;
+  padding: 0.48rem 0.55rem;
+  pointer-events: auto;
+}
+
+.verse-code-dock-textarea:focus {
+  border-color: rgb(255 255 255 / 0.34);
+  outline: none;
+}
+
+.verse-code-dock-button,
+.verse-code-dock-icon-button {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.76);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0.36rem 0.52rem;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.verse-code-dock-icon-button {
+  min-width: 2rem;
+}
+
+.verse-code-dock-button:hover,
+.verse-code-dock-button:focus-visible,
+.verse-code-dock-icon-button:hover,
+.verse-code-dock-icon-button:focus-visible {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.11);
+  outline: none;
+}
+
+.verse-code-dock-button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.verse-code-dock-button.primary {
+  color: #101317;
+  background: rgb(244 247 251 / 0.9);
+  border-color: rgb(244 247 251 / 0.7);
+}
+
+.verse-code-dock-button.danger {
+  border-color: rgb(255 180 180 / 0.28);
+  color: #ffd5d5;
+}
+
+.verse-code-dock-button.subtle {
+  justify-self: start;
+  color: rgb(255 255 255 / 0.58);
+}
+
 .app-shell-verse .chat-content-overlay {
   display: none;
 }
@@ -1497,6 +1731,13 @@ body {
 }
 
 @media (max-width: 760px) {
+  .verse-code-dock {
+    right: clamp(0.75rem, 2vw, 1.2rem);
+    bottom: 6.2rem;
+    left: clamp(0.75rem, 2vw, 1.2rem);
+    width: auto;
+  }
+
   .character-creation-overlay {
     left: clamp(0.8rem, 2.4vw, 1.35rem);
     top: auto;
