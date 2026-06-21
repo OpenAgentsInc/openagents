@@ -460,7 +460,7 @@ export const withVerseTrainingLayer = (
       statusChart: "hidden",
     },
     stageNodeGlyph: "compact_gate",
-    worldLabelDensity: "compact",
+    worldLabelDensity: "pylons",
     keyboardTargeting: {
       enabled: true,
       maxTargets: 18,

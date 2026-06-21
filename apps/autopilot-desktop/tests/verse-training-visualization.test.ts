@@ -155,7 +155,7 @@ describe("withVerseTrainingLayer (#5822)", () => {
     expect(out.motionPolicy?.evidence).toBe("required")
     expect(out.motionPolicy?.structuralEdges).toBe("static")
     expect(out.motionPolicy?.ambient).toBe("static")
-    expect(out.worldLabelDensity).toBe("compact")
+    expect(out.worldLabelDensity).toBe("pylons")
     expect(out.keyboardTargeting).toEqual({
       enabled: true,
       maxTargets: 18,
