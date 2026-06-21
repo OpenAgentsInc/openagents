@@ -379,6 +379,9 @@ export const Model = ts("AutopilotDesktop", {
   // Verse world item currently in walk-up range. The view derives overlay copy
   // from server-owned public projections instead of SpacetimeDB authority.
   nearVerseWorldItemId: S.NullOr(S.String),
+  // Pose restored only when a material scene projection refresh is accepted.
+  // Plain controller pose events must not write render state or remount Three.
+  verseSceneRestorePose: S.NullOr(VerseLocalPose),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1030,6 +1033,7 @@ export const initialModel: Model = Model.make({
   chatWorldMultiplayer: null,
   chatWorldInspectedRef: null,
   nearVerseWorldItemId: null,
+  verseSceneRestorePose: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

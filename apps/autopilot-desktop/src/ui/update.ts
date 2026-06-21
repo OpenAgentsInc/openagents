@@ -97,7 +97,10 @@ import {
   type PaletteCommand,
 } from "./nav.js"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
-import { recordLatestVerseLocalPose } from "./verse-local-pose.js"
+import {
+  latestVerseLocalPose,
+  recordLatestVerseLocalPose,
+} from "./verse-local-pose.js"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
@@ -127,6 +130,7 @@ import { validatePromiseSurfacingInput } from "../shared/promise-surfacing.js"
 import {
   paymentParticleTsMs,
   prunePaymentParticlesByRecency,
+  type ChatWorldPylonScene,
   type PaymentParticle,
 } from "../shared/chat-world-scene.js"
 import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
@@ -209,6 +213,29 @@ const appendChatWorldParticle = (
 const chatWorldRefFromLabel = (label: string): string => {
   const sep = label.indexOf(" · ")
   return (sep >= 0 ? label.slice(0, sep) : label).trim()
+}
+
+const chatWorldSceneMaterialKey = (
+  scene: ChatWorldPylonScene | null,
+): string => {
+  if (scene === null) return "null"
+  return JSON.stringify({
+    empty: scene.empty,
+    onlineNow: scene.onlineNow,
+    growth: {
+      tier: scene.growth.tier,
+      scale: scene.growth.scale,
+      settledSats: scene.growth.settledSats,
+    },
+    nodes: scene.nodes.map(node => ({
+      id: node.id,
+      label: node.label,
+      state: node.state,
+      color: node.color,
+      online: node.online,
+      products: [...node.products].sort(),
+    })),
+  })
 }
 
 const SHELL_TARGET_ORDER: ReadonlyArray<ShellTarget> = [
@@ -793,8 +820,18 @@ export const update = (model: Model, message: Message): Result => {
       // #5730: latest projected live chat-world pylon scene. Stored opaque;
       // chatPane reads it via modelChatWorldScene and falls back to the static
       // seed on null/empty.
+      if (
+        chatWorldSceneMaterialKey(model.chatWorldScene as ChatWorldPylonScene | null) ===
+        chatWorldSceneMaterialKey(message.scene as ChatWorldPylonScene | null)
+      ) {
+        return [model, noCommands]
+      }
       return [
-        Model.make({ ...model, chatWorldScene: message.scene }),
+        Model.make({
+          ...model,
+          chatWorldScene: message.scene,
+          verseSceneRestorePose: latestVerseLocalPose(),
+        }),
         noCommands,
       ]
     case "GotChatWorldPaymentParticle":

@@ -66,7 +66,9 @@ const nodeWithBalance = (balanceSats: number | null): NodeStateMessage => ({
   },
 })
 
-const livePylonScene = (): ChatWorldPylonScene => ({
+const livePylonScene = (
+  overrides: Partial<ChatWorldPylonScene> = {},
+): ChatWorldPylonScene => ({
   empty: false,
   onlineNow: 1,
   nodes: [
@@ -82,6 +84,7 @@ const livePylonScene = (): ChatWorldPylonScene => ({
   ],
   growth: pylonGrowthTier(2_100),
   asOfLabel: "moments ago",
+  ...overrides,
 })
 
 describe("Verse packaged launch checklist (#5827)", () => {
@@ -234,6 +237,46 @@ describe("Verse packaged launch checklist (#5827)", () => {
           runSpeed: 6.7,
         },
       })
+  })
+
+  test("cosmetic pylon projection churn does not rerender the Verse scene", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [withScene] = update(
+      initial,
+      GotChatWorldScene({ scene: livePylonScene() }),
+    )
+    const [heartbeatOnlyRefresh] = update(
+      withScene,
+      GotChatWorldScene({
+        scene: livePylonScene({
+          asOfLabel: "4 seconds ago",
+          nodes: [
+            {
+              ...livePylonScene().nodes[0]!,
+              pulseSpeed: 1.9,
+            },
+          ],
+        }),
+      }),
+    )
+    const [sameAgain] = update(
+      heartbeatOnlyRefresh,
+      GotChatWorldScene({
+        scene: livePylonScene({
+          asOfLabel: "8 seconds ago",
+          nodes: [
+            {
+              ...livePylonScene().nodes[0]!,
+              pulseSpeed: 0.2,
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(heartbeatOnlyRefresh).toBe(withScene)
+    expect(sameAgain).toBe(withScene)
   })
 
   test("the packaged Verse scene carries the Tassadar bulletin world item", () => {
