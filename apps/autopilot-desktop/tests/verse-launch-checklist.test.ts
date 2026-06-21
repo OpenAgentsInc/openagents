@@ -91,6 +91,8 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).toContain("three-effect-chat-scene")
     expect(tree).toContain("verse-run-hud")
     expect(tree).toContain("Tassadar run HUD")
+    expect(tree).toContain("verse-presence-zone")
+    expect(tree).toContain("away")
     expect(tree).not.toContain("pylon-base-status")
     expect(tree).not.toContain("character-creation-overlay")
     expect(tree).not.toContain("The Verse")

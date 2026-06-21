@@ -14,6 +14,7 @@ import {
   SessionFilter,
   ShellCodingTarget,
   ShellTarget,
+  VersePresenceZone,
 } from "./model"
 // HUD H3 (#5501): the drag/handle literal schemas for the managed pane-layer
 // messages. Imported as VALUES (the `m()` constructors need the runtime schema);
@@ -49,6 +50,9 @@ export const GotChatWorldMultiplayer = m("GotChatWorldMultiplayer", {
 export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
   id: S.String,
   label: S.String,
+})
+export const ChangedVersePresenceZone = m("ChangedVersePresenceZone", {
+  zone: S.NullOr(VersePresenceZone),
 })
 // #5025: honest node-launch lifecycle status from the Bun supervisor.
 export const GotNodeLaunchStatus = m("GotNodeLaunchStatus", { status: S.String })
@@ -643,6 +647,7 @@ export const Message = S.Union([
   GotChatWorldMultiplayer,
   GotChatWorldPaymentParticle,
   SelectedChatWorldNode,
+  ChangedVersePresenceZone,
   GotNotifications,
   GotNodeLaunchStatus,
   NavigatedTo,

@@ -30,6 +30,7 @@ import {
   type TrainingRunNodeDefinition,
   type TrainingRunOperatorSignalDefinition,
   type TrainingRunOperatorSignalState,
+  type TrainingRunPresenceZone,
   type TrainingRunPromiseSignalDefinition,
   type TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
@@ -154,6 +155,7 @@ import {
   ClickedLoadGeneratedProofReplay,
   ClickedRefreshManagedAccounts,
   ClickedRemoveManagedAccount,
+  ChangedVersePresenceZone,
   SelectedChatWorldNode,
   SelectedComposerAccount,
   ClickedCancelSession,
@@ -5941,6 +5943,7 @@ const verseRunHud = (model: Model): Html => {
       cls("verse-run-hud"),
       h.AriaLabel("Tassadar run HUD"),
       h.DataAttribute("verse-run-hud", projection.state),
+      h.DataAttribute("verse-presence-zone", model.versePresenceZone ?? "away"),
     ],
     [
       h.div([cls("verse-run-hud-header")], [
@@ -5981,6 +5984,8 @@ const chatSceneBackground = (model: Model): Html =>
           label: hasDetailInspector ? node.detail : node.label,
         })
       },
+      (zone: TrainingRunPresenceZone | null) =>
+        ChangedVersePresenceZone({ zone }),
     ),
     chatSceneInspector(model),
   ])

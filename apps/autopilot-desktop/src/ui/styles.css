@@ -254,8 +254,20 @@ body {
     0 14px 42px rgb(0 0 0 / 0.22),
     inset 0 0 0 1px rgb(255 255 255 / 0.035);
   color: rgb(244 247 251 / 0.86);
-  opacity: 0.72;
+  opacity: 0;
   pointer-events: none;
+  transform: translateY(-0.3rem);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    visibility 150ms ease;
+  visibility: hidden;
+}
+
+.app-shell-verse .verse-run-hud[data-verse-presence-zone="tassadar_area"] {
+  opacity: 0.72;
+  transform: translateY(0);
+  visibility: visible;
 }
 
 .app-shell-verse .verse-run-hud-header,

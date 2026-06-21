@@ -129,6 +129,9 @@ export const SessionFilter = S.Literals([
 ])
 export type SessionFilter = typeof SessionFilter.Type
 
+export const VersePresenceZone = S.Literals(["tassadar_area"])
+export type VersePresenceZone = typeof VersePresenceZone.Type
+
 // Transient status for the Spawn form (validation/submit feedback). Kept in the
 // Model so the view stays a pure function of state (no hidden DOM).
 export const SpawnStatus = S.Struct({
@@ -458,6 +461,9 @@ export const Model = ts("AutopilotDesktop", {
   // the chat surface. Defaults TRUE (the Verse shows by default). The build flag
   // CHAT_WORLD_SCENE remains a hard kill-switch; this is the user-facing control.
   verseEnabled: S.Boolean,
+  // #5730/#5887: spatially scoped Verse chrome. Null means the avatar has walked
+  // away from the Tassadar lot, so run-specific HUD chrome stays hidden.
+  versePresenceZone: S.NullOr(VersePresenceZone),
 
   // Approvals optimistically resolved this session (hidden until the next poll
   // confirms). Keyed by approvalRef.
@@ -1054,6 +1060,7 @@ export const initialModel: Model = Model.make({
   artifactBrowserOpen: false,
   // #5730 The Verse: on by default so the game-world view is visible now.
   verseEnabled: true,
+  versePresenceZone: null,
   resolvedApprovals: [],
   spawnAdapter: "codex",
   spawnObjective: "",

@@ -89,6 +89,7 @@ import {
   ChangedPromiseSurfacingObservedBehavior,
   ChangedPromiseSurfacingEvidenceOrSteps,
   ChangedPromiseSurfacingImpact,
+  ChangedVersePresenceZone,
   ClickedReconcileTrainingWindow,
   ClickedResolveApproval,
   ClickedRequestTrainingBootstrap,
@@ -453,6 +454,22 @@ describe("update reducer (CL-53)", () => {
     )
     expect(model.selectedTrainingSceneNodeId).toBe("freivalds")
     expect(commands).toHaveLength(0)
+  })
+
+  test("ChangedVersePresenceZone stores the local avatar HUD zone", () => {
+    const [inside, enterCommands] = update(
+      initialModel,
+      ChangedVersePresenceZone({ zone: "tassadar_area" }),
+    )
+    expect(inside.versePresenceZone).toBe("tassadar_area")
+    expect(enterCommands).toHaveLength(0)
+
+    const [outside, leaveCommands] = update(
+      inside,
+      ChangedVersePresenceZone({ zone: null }),
+    )
+    expect(outside.versePresenceZone).toBeNull()
+    expect(leaveCommands).toHaveLength(0)
   })
 
   test("SelectedSession focuses the detail pane", () => {

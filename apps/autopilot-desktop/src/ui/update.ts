@@ -831,6 +831,11 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+    case "ChangedVersePresenceZone":
+      return [
+        Model.make({ ...model, versePresenceZone: message.zone }),
+        noCommands,
+      ]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":
