@@ -348,7 +348,7 @@ export function artifactBrowserSections(
     push("workspace", detail.workspaceRef)
     push("error class", detail.errorClass)
     push("error digest", detail.errorDigestRef)
-    for (const deviation of detail.deviationRefs) {
+    for (const deviation of Array.isArray(detail.deviationRefs) ? detail.deviationRefs : []) {
       artifactRows.push({ label: "deviation", value: deviation })
     }
   }

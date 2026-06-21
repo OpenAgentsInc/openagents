@@ -259,22 +259,89 @@ type RetainedLiveUpdateSmoke = {
   readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
 }
 
+type ScenePoint = {
+  readonly x: number
+  readonly y: number
+}
+
+type VerseCodingOverlayProbe = {
+  readonly ok: boolean
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly checks: {
+    readonly smokeHook: boolean
+    readonly enteredCodeMode: boolean
+    readonly dockVisible: boolean
+    readonly accountInventoryVisible: boolean
+    readonly selectedAccountVisible: boolean
+    readonly composerPaneOpen: boolean
+    readonly sessionsPaneOpen: boolean
+    readonly decisionsPaneOpen: boolean
+    readonly diffPaneOpen: boolean
+    readonly terminalPaneOpen: boolean
+    readonly diagnosticsPaneOpen: boolean
+    readonly streamRowsVisible: boolean
+    readonly approvalVisible: boolean
+    readonly diffVisible: boolean
+    readonly terminalVisible: boolean
+    readonly diagnosticsExportVisible: boolean
+    readonly diagnosticsExportPublicSafe: boolean
+    readonly scenePointAvailable: boolean
+    readonly focusedTextarea: boolean
+  }
+  readonly paneKinds: ReadonlyArray<string>
+  readonly openResults: Readonly<Record<string, boolean>>
+  readonly scenePoint: ScenePoint | null
+  readonly visibleTextSample: string
+  readonly diagnosticsExportSample: string
+}
+
+type FocusedTypingProbe = {
+  readonly ok: boolean
+  readonly activeTag: string
+  readonly valueTail: string
+}
+
+type VerseCodingOverlaySmoke = {
+  readonly ok: boolean
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly probe: VerseCodingOverlayProbe
+  readonly focusedTyping: FocusedTypingProbe
+  readonly screenshot: PixelSmoke & {
+    readonly path: string
+  }
+  readonly sceneInput: {
+    readonly ok: boolean
+    readonly observedDragControl: boolean
+    readonly observedWheelControl: boolean
+    readonly activeHostRemounts: ReadonlyArray<VerseSceneDiagnostic>
+    readonly blackFrameEvents: ReadonlyArray<VerseSceneDiagnostic>
+    readonly cameraControlEvents: ReadonlyArray<VerseSceneDiagnostic>
+    readonly frame: PixelSmoke & {
+      readonly path: string
+    }
+    readonly movement: MovementSmoke
+    readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+  }
+}
+
 type VerseLaunchReceipt = {
   readonly ok: boolean
   readonly message: string
   readonly generatedAt: string
-  readonly appBundle: string
+  readonly target: "packaged" | "dev"
+  readonly appBundle: string | null
+  readonly appUrl: string
   readonly sourceRefs: ReadonlyArray<string>
   readonly packagedFiles: {
     readonly html: string
     readonly css: string
     readonly main: string
     readonly pylonNode: string
-  }
+  } | null
   readonly packagedSource: {
     readonly includesFirstRenderBulletinBoard: boolean
     readonly includesVisibleBulletinPrimitive: boolean
-  }
+  } | null
   readonly viewport: typeof viewport
   readonly dom: DomProbe
   readonly screenshot: PixelSmoke & {
@@ -284,6 +351,7 @@ type VerseLaunchReceipt = {
   readonly continuousMovement: ContinuousMovementSmoke
   readonly mouseLookDrag: MouseLookDragSmoke
   readonly retainedLiveUpdate: RetainedLiveUpdateSmoke
+  readonly codingOverlay: VerseCodingOverlaySmoke
   readonly typecheckProof: string
 }
 
@@ -599,6 +667,56 @@ const dragSceneMouse = async (
   return { endX, endY, startX, startY }
 }
 
+const dragSceneMouseFromPoint = async (
+  cdp: CdpClient,
+  point: ScenePoint,
+): Promise<MouseDragPoint> => {
+  const startX = Math.floor(point.x)
+  const startY = Math.floor(point.y)
+  const midX = startX + 72
+  const midY = startY + 20
+  const endX = startX + 132
+  const endY = startY + 40
+
+  await dispatchMouse(cdp, { type: "mouseMoved", x: startX, y: startY })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+    type: "mousePressed",
+    x: startX,
+    y: startY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    type: "mouseMoved",
+    x: midX,
+    y: midY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    buttons: 1,
+    type: "mouseMoved",
+    x: endX,
+    y: endY,
+  })
+  await wait(40)
+  await dispatchMouse(cdp, {
+    button: "left",
+    clickCount: 1,
+    type: "mouseReleased",
+    x: endX,
+    y: endY,
+  })
+  await wait(180)
+
+  return { endX, endY, startX, startY }
+}
+
 const wheelSceneMouse = async (
   cdp: CdpClient,
   point: Pick<MouseDragPoint, "endX" | "endY">,
@@ -664,6 +782,116 @@ const patchedPackagedHtml = (html: string): string =>
 
 const relativePath = (path: string): string =>
   relative(process.cwd(), path) || "."
+
+const withSmokeHookParam = (urlText: string): string => {
+  const url = new URL(urlText)
+  url.searchParams.set("__oa_desktop_smoke", "1")
+  return url.toString()
+}
+
+const controlledCodingSessionRef = "session.pylon.codex.verse_smoke"
+const controlledCodingAccountHash =
+  "account.pylon.codex.smoke.abcdef0123456789abcdef0123456789"
+
+const controlledCodingNodeState = {
+  ok: true,
+  schema: "openagents.pylon.control.v0.3",
+  sessions: [
+    {
+      sessionRef: controlledCodingSessionRef,
+      adapter: "codex",
+      state: "running",
+      objectiveRef: "objective.verse_coding_overlay_smoke",
+      workspaceRef: "workspace.github.OpenAgentsInc.openagents.main",
+      accountRefHash: controlledCodingAccountHash,
+      latestActivity: "check: bun test tests/verse-code-dock.test.ts exit 0",
+      updatedAt: "2026-06-21T23:50:00.000Z",
+    },
+  ],
+  events: {
+    [controlledCodingSessionRef]: [
+      {
+        eventIndex: 0,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T23:49:55.000Z",
+        detail: "thinking: plan the controlled Verse coding overlay smoke",
+      },
+      {
+        eventIndex: 1,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T23:49:57.000Z",
+        detail: "tool: inspect apps/autopilot-desktop/src/ui/view.ts",
+      },
+      {
+        eventIndex: 2,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T23:49:59.000Z",
+        detail: "edited apps/autopilot-desktop/scripts/verse-launch-smoke.ts (+120 -0)",
+      },
+      {
+        eventIndex: 3,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T23:50:01.000Z",
+        detail: "check: bun test tests/verse-code-dock.test.ts exit 0",
+      },
+      {
+        eventIndex: 4,
+        phase: "decision_requested",
+        state: "running",
+        observedAt: "2026-06-21T23:50:03.000Z",
+        detail: "permission requested: run controlled verification command",
+      },
+    ],
+  },
+  approvals: [
+    {
+      approvalRef: "approval.codex.verse_smoke.exec",
+      kind: "exec",
+      prompt: "Run controlled verification command?",
+      createdAt: "2026-06-21T23:50:03.000Z",
+    },
+  ],
+  accounts: [
+    {
+      provider: "codex",
+      homeState: "present",
+      ready: true,
+      accountRef: "smoke",
+      accountRefHash: controlledCodingAccountHash,
+      selector: "registry_ref",
+      blockerRefs: [],
+      priority: 1,
+    },
+  ],
+  artifacts: {
+    [controlledCodingSessionRef]: {
+      kind: "proof",
+      outcome: "completed",
+      editedFileCount: 1,
+      commandCount: 1,
+      totalTokens: 120,
+      detail: {
+        schema: "schema.pylon.proof.v1",
+        objectiveDigestRef: "digest.objective.verse_smoke",
+        verifyRef: "verify.verse_smoke",
+        responseDigestRef: "digest.response.verse_smoke",
+        externalSessionRef: "session.external.verse_smoke",
+        executionPathRef: "control_session.composer",
+        executionMode: "local_bounded",
+        sandboxMode: "workspace-write",
+        permissionMode: "on-request",
+        devCheckState: "passed",
+        redactionState: "clean",
+        errorClass: null,
+        errorDigestRef: null,
+      },
+    },
+  },
+} as const
 
 const domProbeExpression = `
 (async () => {
@@ -918,15 +1146,203 @@ const mouseLookDragProbeExpression = (x: number, y: number): string => `
 })()
 `
 
+const codingOverlayProbeExpression = `
+(async () => {
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  const afterFrames = () => new Promise(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  )
+  const waitFor = async (predicate, timeout = 10000) => {
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      if (predicate()) return true
+      await wait(100)
+    }
+    return false
+  }
+  const smokeHookReady = await waitFor(() => globalThis.__OA_DESKTOP_SMOKE__ !== undefined)
+  const smoke = globalThis.__OA_DESKTOP_SMOKE__
+  if (!smokeHookReady || smoke === undefined) {
+    return {
+      ok: false,
+      blockerRefs: ["verse.coding.smokeHook"],
+      checks: {
+        smokeHook: false,
+        enteredCodeMode: false,
+        dockVisible: false,
+        accountInventoryVisible: false,
+        selectedAccountVisible: false,
+        composerPaneOpen: false,
+        sessionsPaneOpen: false,
+        decisionsPaneOpen: false,
+        diffPaneOpen: false,
+        terminalPaneOpen: false,
+        diagnosticsPaneOpen: false,
+        streamRowsVisible: false,
+        approvalVisible: false,
+        diffVisible: false,
+        terminalVisible: false,
+        diagnosticsExportVisible: false,
+        diagnosticsExportPublicSafe: false,
+        scenePointAvailable: false,
+        focusedTextarea: false,
+      },
+      paneKinds: [],
+      openResults: {},
+      scenePoint: null,
+      visibleTextSample: "",
+      diagnosticsExportSample: "",
+    }
+  }
+
+  const node = ${JSON.stringify(controlledCodingNodeState)}
+  smoke.setNodeLaunchStatus("online")
+  smoke.pushNodeState(node)
+  smoke.enterCodeMode()
+  smoke.selectComposerAccount("smoke")
+  smoke.setComposerObjective("Exercise the controlled Verse coding overlay smoke.")
+  await afterFrames()
+  await wait(450)
+  smoke.enterCodeMode()
+  smoke.selectComposerAccount("smoke")
+  smoke.pushNodeState(node)
+  smoke.setComposerSession("${controlledCodingSessionRef}")
+  const paneKindsNow = () => [...document.querySelectorAll(".pane-window")]
+    .map(element => element.getAttribute("data-pane-kind") ?? "")
+    .filter(Boolean)
+  const openResults = {}
+  for (const pane of [
+    "composer",
+    "sessions",
+    "decisions",
+    "diff-artifacts",
+    "terminal-log",
+    "diagnostics",
+  ]) {
+    openResults[pane] = smoke.openPane(pane)
+    await afterFrames()
+    await waitFor(() => paneKindsNow().includes(pane), 2500)
+  }
+  await afterFrames()
+  await wait(700)
+
+  const paneKinds = [...document.querySelectorAll(".pane-window")]
+    .map(element => element.getAttribute("data-pane-kind") ?? "")
+    .filter(Boolean)
+  const hasPane = (kind) => paneKinds.includes(kind)
+  const text = document.body.innerText || ""
+  const diagnosticsExport = document.querySelector("[data-autopilot-host-diagnostics-export]")?.textContent ?? ""
+  const rawLeaks = [
+    "${controlledCodingAccountHash}",
+    "/Users/",
+    "sk-secret",
+    "ghp_secret",
+    "provider payload",
+  ].filter(value => diagnosticsExport.includes(value))
+
+  const scenePoint = (() => {
+    const host = document.querySelector(".three-effect-chat-scene")
+    const canvas = host?.shadowRoot?.querySelector("canvas")
+    const canvasRect = canvas instanceof HTMLCanvasElement ? canvas.getBoundingClientRect() : null
+    if (host === null || canvasRect === null) return null
+    const candidates = [
+      [0.82, 0.72],
+      [0.86, 0.44],
+      [0.72, 0.82],
+      [0.18, 0.76],
+      [0.52, 0.80],
+      [0.94, 0.60],
+    ]
+    for (const [px, py] of candidates) {
+      const x = Math.floor(canvasRect.left + canvasRect.width * px)
+      const y = Math.floor(canvasRect.top + canvasRect.height * py)
+      const top = document.elementFromPoint(x, y)
+      const sceneTarget =
+        top === host ||
+        top === canvas ||
+        (top instanceof HTMLElement && top.closest(".three-effect-chat-scene") === host)
+      if (sceneTarget) return { x, y }
+    }
+    return null
+  })()
+
+  const textarea =
+    document.querySelector(".pane-window[data-pane-kind='composer'] textarea.text-area") ??
+    document.querySelector(".verse-code-dock-textarea")
+  if (textarea instanceof HTMLTextAreaElement) {
+    textarea.focus()
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+  }
+
+  const checks = {
+    smokeHook: true,
+    enteredCodeMode: document.querySelector("[data-verse-mode='code']") !== null,
+    dockVisible: document.querySelector("[data-verse-code-dock='codex']") !== null,
+    accountInventoryVisible: document.querySelector("[data-verse-code-account-inventory]") !== null,
+    selectedAccountVisible:
+      document.querySelector("[data-verse-code-account-ref='smoke']") !== null ||
+      text.includes("smoke"),
+    composerPaneOpen: hasPane("composer"),
+    sessionsPaneOpen: hasPane("sessions"),
+    decisionsPaneOpen: hasPane("decisions"),
+    diffPaneOpen: hasPane("diff-artifacts"),
+    terminalPaneOpen: hasPane("terminal-log"),
+    diagnosticsPaneOpen: hasPane("diagnostics"),
+    streamRowsVisible: document.querySelectorAll(".agent-stream-row").length >= 4,
+    approvalVisible:
+      document.querySelector("[data-autopilot-approval-ref]") !== null ||
+      document.querySelector("[data-verse-code-dock-permissions='1']") !== null,
+    diffVisible: document.querySelector("[data-autopilot-diff-artifacts-panel]") !== null,
+    terminalVisible: document.querySelector("[data-autopilot-terminal-log-session]") !== null,
+    diagnosticsExportVisible: diagnosticsExport.includes("openagents.autopilot_desktop.host_diagnostics.v1"),
+    diagnosticsExportPublicSafe: diagnosticsExport.length > 0 && rawLeaks.length === 0,
+    scenePointAvailable: scenePoint !== null,
+    focusedTextarea: document.activeElement instanceof HTMLTextAreaElement,
+  }
+  const blockerRefs = Object.entries(checks)
+    .flatMap(([key, passed]) => passed ? [] : ["verse.coding." + key])
+  return {
+    ok: blockerRefs.length === 0,
+    blockerRefs,
+    checks,
+    paneKinds,
+    openResults,
+    scenePoint,
+    visibleTextSample: text.replace(/\\s+/g, " ").trim().slice(0, 420),
+    diagnosticsExportSample: diagnosticsExport.replace(/\\s+/g, " ").trim().slice(0, 420),
+  }
+})()
+`
+
+const focusedTypingProbeExpression = `
+(() => {
+  const active = document.activeElement
+  const activeTag = active instanceof HTMLElement ? active.tagName.toLowerCase() : "none"
+  const value = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+    ? active.value
+    : ""
+  return {
+    ok: active instanceof HTMLTextAreaElement && value.endsWith("w"),
+    activeTag,
+    valueTail: value.slice(-80),
+  }
+})()
+`
+
 const main = async (): Promise<void> => {
-  const appBundle = process.env.AUTOPILOT_DESKTOP_APP_BUNDLE ??
-    join(process.cwd(), "build/dev-macos-arm64/Autopilot-dev.app")
-  const resourcesDir = join(appBundle, "Contents/Resources/app")
-  const viewDir = join(resourcesDir, "views/autopilot-desktop")
-  const htmlPath = join(viewDir, "index.html")
-  const cssPath = join(viewDir, "styles.css")
-  const mainPath = join(viewDir, "main.js")
-  const pylonNodePath = join(resourcesDir, "pylon-node/index.js")
+  const devSmokeUrl = process.env.AUTOPILOT_DESKTOP_SMOKE_URL?.trim()
+  const target: "packaged" | "dev" =
+    devSmokeUrl === undefined || devSmokeUrl === "" ? "packaged" : "dev"
+  const appBundle = target === "packaged"
+    ? (process.env.AUTOPILOT_DESKTOP_APP_BUNDLE ??
+      join(process.cwd(), "build/dev-macos-arm64/Autopilot-dev.app"))
+    : null
+  const resourcesDir = appBundle === null ? null : join(appBundle, "Contents/Resources/app")
+  const viewDir = resourcesDir === null ? null : join(resourcesDir, "views/autopilot-desktop")
+  const htmlPath = viewDir === null ? null : join(viewDir, "index.html")
+  const cssPath = viewDir === null ? null : join(viewDir, "styles.css")
+  const mainPath = viewDir === null ? null : join(viewDir, "main.js")
+  const pylonNodePath = resourcesDir === null ? null : join(resourcesDir, "pylon-node/index.js")
   const proofDir = process.env.AUTOPILOT_DESKTOP_VERSE_SMOKE_PROOF_DIR ??
     join(process.cwd(), "build/verse-launch-smoke")
   const screenshotPath = join(proofDir, "verse-launch-smoke.png")
@@ -935,16 +1351,26 @@ const main = async (): Promise<void> => {
     proofDir,
     "verse-launch-smoke-after-mouselook.png",
   )
+  const codingOverlayScreenshotPath = join(
+    proofDir,
+    "verse-coding-overlay-smoke.png",
+  )
+  const codingOverlaySceneInputScreenshotPath = join(
+    proofDir,
+    "verse-coding-overlay-after-scene-input.png",
+  )
   const receiptPath = join(proofDir, "verse-launch-smoke.json")
 
-  for (const [label, path] of [
-    ["packaged view HTML", htmlPath],
-    ["packaged view CSS", cssPath],
-    ["packaged view JS", mainPath],
-    ["packaged Pylon node", pylonNodePath],
-  ] as const) {
-    if (!existsSync(path)) {
-      throw new Error(`${label} missing at ${path}; run bun run build first`)
+  if (target === "packaged") {
+    for (const [label, path] of [
+      ["packaged view HTML", htmlPath],
+      ["packaged view CSS", cssPath],
+      ["packaged view JS", mainPath],
+      ["packaged Pylon node", pylonNodePath],
+    ] as const) {
+      if (path === null || !existsSync(path)) {
+        throw new Error(`${label} missing at ${path ?? "unknown"}; run bun run build first`)
+      }
     }
   }
 
@@ -953,22 +1379,28 @@ const main = async (): Promise<void> => {
   mkdirSync(tmpRoot, { recursive: true })
   mkdirSync(proofDir, { recursive: true })
 
-  const html = patchedPackagedHtml(readFileSync(htmlPath, "utf8"))
-  const packagedMain = readFileSync(mainPath, "utf8")
-  const packagedSource = {
-    includesFirstRenderBulletinBoard:
-      packagedMain.includes("Tassadar Board") &&
-      packagedMain.includes("Loading Tassadar run"),
-    includesVisibleBulletinPrimitive:
-      packagedMain.includes("width = 3.1") &&
-      packagedMain.includes("postHeight = 2.18"),
-  }
-  if (!packagedSource.includesFirstRenderBulletinBoard) {
+  const html = target === "packaged" && htmlPath !== null
+    ? patchedPackagedHtml(readFileSync(htmlPath, "utf8"))
+    : null
+  const packagedMain = target === "packaged" && mainPath !== null
+    ? readFileSync(mainPath, "utf8")
+    : null
+  const packagedSource = packagedMain === null
+    ? null
+    : {
+        includesFirstRenderBulletinBoard:
+          packagedMain.includes("Tassadar Board") &&
+          packagedMain.includes("Loading Tassadar run"),
+        includesVisibleBulletinPrimitive:
+          packagedMain.includes("width = 3.1") &&
+          packagedMain.includes("postHeight = 2.18"),
+      }
+  if (packagedSource !== null && !packagedSource.includesFirstRenderBulletinBoard) {
     throw new Error(
       "Packaged Verse bundle is missing the first-render Tassadar bulletin board copy; run bun run build after changing the board.",
     )
   }
-  if (!packagedSource.includesVisibleBulletinPrimitive) {
+  if (packagedSource !== null && !packagedSource.includesVisibleBulletinPrimitive) {
     throw new Error(
       "Packaged Verse bundle is missing the visible three-effect bulletin board primitive; repin/build @openagentsinc/three-effect.",
     )
@@ -978,40 +1410,54 @@ const main = async (): Promise<void> => {
   let cdp: CdpClient | null = null
 
   try {
-    server = Bun.serve({
-      hostname: "127.0.0.1",
-      port: 0,
-      fetch(request) {
-        const url = new URL(request.url)
-        if (url.pathname === "/") {
-          return new Response(html, {
-            headers: { "content-type": "text/html; charset=utf-8" },
-          })
-        }
-        if (url.pathname === "/packaged/main.js") {
-          return new Response(readFileSync(mainPath), {
-            headers: { "content-type": "text/javascript; charset=utf-8" },
-          })
-        }
-        if (url.pathname === "/packaged/styles.css") {
-          return new Response(readFileSync(cssPath), {
-            headers: { "content-type": "text/css; charset=utf-8" },
-          })
-        }
-        if (url.pathname.startsWith("/packaged/assets/")) {
-          const assetPath = safeAssetPath(viewDir, url.pathname)
-          if (assetPath !== null && existsSync(assetPath)) {
-            return new Response(readFileSync(assetPath), {
-              headers: { "content-type": contentTypeFor(assetPath) },
+    if (target === "packaged") {
+      if (
+        html === null ||
+        viewDir === null ||
+        mainPath === null ||
+        cssPath === null
+      ) {
+        throw new Error("Packaged smoke target was not initialized")
+      }
+      server = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch(request) {
+          const url = new URL(request.url)
+          if (url.pathname === "/") {
+            return new Response(html, {
+              headers: { "content-type": "text/html; charset=utf-8" },
             })
           }
-        }
-        return new Response("not found", { status: 404 })
-      },
-    })
+          if (url.pathname === "/packaged/main.js") {
+            return new Response(readFileSync(mainPath), {
+              headers: { "content-type": "text/javascript; charset=utf-8" },
+            })
+          }
+          if (url.pathname === "/packaged/styles.css") {
+            return new Response(readFileSync(cssPath), {
+              headers: { "content-type": "text/css; charset=utf-8" },
+            })
+          }
+          if (url.pathname.startsWith("/packaged/assets/")) {
+            const assetPath = safeAssetPath(viewDir, url.pathname)
+            if (assetPath !== null && existsSync(assetPath)) {
+              return new Response(readFileSync(assetPath), {
+                headers: { "content-type": contentTypeFor(assetPath) },
+              })
+            }
+          }
+          return new Response("not found", { status: 404 })
+        },
+      })
+    }
 
     const debugPort = await getFreePort()
-    const smokeUrl = `http://127.0.0.1:${server.port}/`
+    const smokeUrl = withSmokeHookParam(
+      target === "packaged"
+        ? `http://127.0.0.1:${server?.port ?? 0}/`
+        : devSmokeUrl!,
+    )
     chrome = Bun.spawn({
       cmd: [
         resolveChromePath(),
@@ -1236,20 +1682,176 @@ const main = async (): Promise<void> => {
       diagnosticsSample: mouseLookDiagnostics.slice(-20),
     }
 
+    const codingOverlayProbeEvaluation = await cdp.send<{
+      readonly result?: { readonly value?: VerseCodingOverlayProbe }
+      readonly exceptionDetails?: unknown
+    }>("Runtime.evaluate", {
+      expression: codingOverlayProbeExpression,
+      awaitPromise: true,
+      returnByValue: true,
+    })
+    if (codingOverlayProbeEvaluation.exceptionDetails !== undefined) {
+      throw new Error(
+        `Verse coding overlay smoke threw in Chrome: ${JSON.stringify(codingOverlayProbeEvaluation.exceptionDetails)}`,
+      )
+    }
+    const codingOverlayProbe = codingOverlayProbeEvaluation.result?.value
+    if (codingOverlayProbe === undefined) {
+      throw new Error("Verse coding overlay smoke returned no probe")
+    }
+    const codingOverlayScreenshot = await cdp.send<{ readonly data: string }>(
+      "Page.captureScreenshot",
+      { format: "png", fromSurface: true },
+    )
+    const codingOverlayScreenshotBytes = Buffer.from(
+      codingOverlayScreenshot.data,
+      "base64",
+    )
+    writeFileSync(codingOverlayScreenshotPath, codingOverlayScreenshotBytes)
+    const codingOverlayPixels = pixelSmoke(codingOverlayScreenshotBytes)
+
+    await keyDownW(cdp)
+    await keyUpW(cdp)
+    const focusedTypingEvaluation = await cdp.send<{
+      readonly result?: { readonly value?: FocusedTypingProbe }
+      readonly exceptionDetails?: unknown
+    }>("Runtime.evaluate", {
+      expression: focusedTypingProbeExpression,
+      returnByValue: true,
+    })
+    if (focusedTypingEvaluation.exceptionDetails !== undefined) {
+      throw new Error(
+        `Verse coding focused typing smoke threw in Chrome: ${JSON.stringify(focusedTypingEvaluation.exceptionDetails)}`,
+      )
+    }
+    const focusedTyping = focusedTypingEvaluation.result?.value ?? {
+      ok: false,
+      activeTag: "missing",
+      valueTail: "",
+    }
+
+    const diagnosticsBeforeCodingSceneInput = await readVerseSceneDiagnostics(cdp)
+    let codingSceneInputFrame: PixelSmoke & { readonly path: string } = {
+      ok: false,
+      brightPixels: 0,
+      distinctLumaBuckets: 0,
+      height: 0,
+      sampledPixels: 0,
+      sha256: "",
+      width: 0,
+      path: relativePath(codingOverlaySceneInputScreenshotPath),
+    }
+    let codingSceneInputMovement: MovementSmoke = {
+      ok: false,
+      changedPixels: 0,
+      changedPixelRatio: 0,
+      afterSha256: "",
+      path: relativePath(codingOverlaySceneInputScreenshotPath),
+    }
+    if (codingOverlayProbe.scenePoint !== null) {
+      const beforeSceneInput = await cdp.send<{ readonly data: string }>(
+        "Page.captureScreenshot",
+        { format: "png", fromSurface: true },
+      )
+      const beforeSceneInputBytes = Buffer.from(beforeSceneInput.data, "base64")
+      const dragPoint = await dragSceneMouseFromPoint(
+        cdp,
+        codingOverlayProbe.scenePoint,
+      )
+      await wheelSceneMouse(cdp, dragPoint)
+      const afterSceneInput = await cdp.send<{ readonly data: string }>(
+        "Page.captureScreenshot",
+        { format: "png", fromSurface: true },
+      )
+      const afterSceneInputBytes = Buffer.from(afterSceneInput.data, "base64")
+      writeFileSync(codingOverlaySceneInputScreenshotPath, afterSceneInputBytes)
+      const frame = pixelSmoke(afterSceneInputBytes)
+      codingSceneInputFrame = {
+        ...frame,
+        path: relativePath(codingOverlaySceneInputScreenshotPath),
+      }
+      codingSceneInputMovement = movementSmoke(
+        beforeSceneInputBytes,
+        afterSceneInputBytes,
+        codingOverlaySceneInputScreenshotPath,
+      )
+    }
+    const diagnosticsAfterCodingSceneInput = await readVerseSceneDiagnostics(cdp)
+    const codingSceneInputDiagnostics = diagnosticsAfterCodingSceneInput.slice(
+      diagnosticsBeforeCodingSceneInput.length,
+    )
+    const codingSceneRemounts = codingSceneInputDiagnostics.filter(entry =>
+      entry.event === "verse-host.remount.mounted" ||
+      entry.event === "verse-host.remount.swapped" ||
+      entry.event === "verse-host.remount.scheduled",
+    )
+    const codingBlackFrames = codingSceneInputDiagnostics.filter(entry =>
+      entry.event.includes("black-frame"),
+    )
+    const codingCameraControlEvents = codingSceneInputDiagnostics.filter(
+      entry => entry.event === "verse-host.camera-control",
+    )
+    const codingObservedDragControl = codingCameraControlEvents.some(
+      entry => entry.detail["type"] === "drag",
+    )
+    const codingObservedWheelControl = codingCameraControlEvents.some(
+      entry => entry.detail["type"] === "wheel",
+    )
+    const codingSceneInput = {
+      ok:
+        codingSceneInputFrame.ok &&
+        codingSceneInputMovement.ok &&
+        codingSceneRemounts.length === 0 &&
+        codingBlackFrames.length === 0 &&
+        codingObservedDragControl &&
+        codingObservedWheelControl,
+      observedDragControl: codingObservedDragControl,
+      observedWheelControl: codingObservedWheelControl,
+      activeHostRemounts: codingSceneRemounts,
+      blackFrameEvents: codingBlackFrames,
+      cameraControlEvents: codingCameraControlEvents,
+      frame: codingSceneInputFrame,
+      movement: codingSceneInputMovement,
+      diagnosticsSample: codingSceneInputDiagnostics.slice(-20),
+    }
+    const codingOverlay: VerseCodingOverlaySmoke = {
+      ok:
+        codingOverlayProbe.ok &&
+        focusedTyping.ok &&
+        codingOverlayPixels.ok &&
+        codingSceneInput.ok,
+      blockerRefs: [
+        ...codingOverlayProbe.blockerRefs,
+        ...(focusedTyping.ok ? [] : ["verse.coding.focusedTyping"]),
+        ...(codingOverlayPixels.ok ? [] : ["verse.coding.screenshotPixels"]),
+        ...(codingSceneInput.ok ? [] : ["verse.coding.sceneInput"]),
+      ],
+      probe: codingOverlayProbe,
+      focusedTyping,
+      screenshot: {
+        ...codingOverlayPixels,
+        path: relativePath(codingOverlayScreenshotPath),
+      },
+      sceneInput: codingSceneInput,
+    }
+
     const ok =
       dom.ok &&
       pixels.ok &&
       movement.ok &&
       continuousMovement.ok &&
       mouseLookDrag.ok &&
-      retainedLiveUpdate.ok
+      retainedLiveUpdate.ok &&
+      codingOverlay.ok
     const receipt: VerseLaunchReceipt = {
       ok,
       message: ok
-        ? "packaged Desktop Verse launch is nonblank and first-paint checks passed"
-        : "packaged Desktop Verse launch failed smoke checks",
+        ? "Desktop Verse launch and coding overlay checks passed"
+        : "Desktop Verse launch or coding overlay failed smoke checks",
       generatedAt: new Date().toISOString(),
-      appBundle: relativePath(appBundle),
+      target,
+      appBundle: appBundle === null ? null : relativePath(appBundle),
+      appUrl: smokeUrl,
       sourceRefs: [
         "github:OpenAgentsInc/openagents#5827",
         "github:OpenAgentsInc/openagents#5910",
@@ -1259,14 +1861,21 @@ const main = async (): Promise<void> => {
         "github:OpenAgentsInc/openagents#5912",
         "github:OpenAgentsInc/openagents#5917",
         "github:OpenAgentsInc/openagents#5916",
+        "github:OpenAgentsInc/openagents#5932",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
-      packagedFiles: {
-        html: relativePath(htmlPath),
-        css: relativePath(cssPath),
-        main: relativePath(mainPath),
-        pylonNode: relativePath(pylonNodePath),
-      },
+      packagedFiles:
+        htmlPath === null ||
+        cssPath === null ||
+        mainPath === null ||
+        pylonNodePath === null
+          ? null
+          : {
+              html: relativePath(htmlPath),
+              css: relativePath(cssPath),
+              main: relativePath(mainPath),
+              pylonNode: relativePath(pylonNodePath),
+            },
       packagedSource,
       viewport,
       dom,
@@ -1278,6 +1887,7 @@ const main = async (): Promise<void> => {
       continuousMovement,
       mouseLookDrag,
       retainedLiveUpdate,
+      codingOverlay,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
     }
@@ -1297,6 +1907,9 @@ const main = async (): Promise<void> => {
           mouseLookDrag.ok
             ? ""
             : "verse.launch.mouseLookDragWheelCameraControlNoTextCursorSelectionBlankFrameOrRemount",
+          codingOverlay.ok
+            ? ""
+            : `verse.launch.codingOverlay(${codingOverlay.blockerRefs.join(",")})`,
         ].filter(Boolean).join("; "),
       )
     }

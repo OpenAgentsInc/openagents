@@ -197,4 +197,38 @@ describe("Diff/Artifacts pane UI state (#5927)", () => {
     expect(rendered).toContain('data-autopilot-diff-artifact-ref-group="receipts"')
     expect(rendered).not.toContain("/Users/private")
   })
+
+  test("partial proof artifacts do not crash the artifact browser", () => {
+    const projection = projectDiffArtifactsPanel({
+      sessionRef,
+      events: [event({ detail: "edited src/smoke.ts (+1 -0)" })],
+      stats: {
+        kind: "proof",
+        outcome: "completed",
+        editedFileCount: 1,
+        commandCount: 1,
+        totalTokens: 20,
+        detail: {
+          schema: "schema.pylon.proof.v1",
+          objectiveDigestRef: "digest.objective.partial",
+          verifyRef: "verify.partial",
+          responseDigestRef: "digest.response.partial",
+          externalSessionRef: "session.external.partial",
+          executionPathRef: "control_session.composer",
+          executionMode: "local_bounded",
+          sandboxMode: "workspace-write",
+          permissionMode: "on-request",
+          devCheckState: "passed",
+          redactionState: "clean",
+          errorClass: null,
+          errorDigestRef: null,
+        } as unknown as SessionArtifactStats["detail"],
+      },
+      expandedFiles: [],
+      selectedFilePath: null,
+    })
+
+    expect(projection.artifactSections.length).toBeGreaterThan(0)
+    expect(JSON.stringify(projection)).toContain("digest.response.partial")
+  })
 })

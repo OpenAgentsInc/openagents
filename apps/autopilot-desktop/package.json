@@ -15,6 +15,7 @@
     "smoke:verse-launch": "bun scripts/verse-launch-smoke.ts",
     "smoke:forum-tipping-multiplayer": "bun test tests/forum-tipping-multiplayer-integration.test.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",
+    "proof:verse-coding-overlay": "bun scripts/verse-launch-smoke.ts",
     "proof:composer": "bun scripts/composer-loop-proof.ts",
     "proof:account-picker": "bun scripts/account-picker-proof.ts",
     "proof:swarm": "bun scripts/swarm-view-proof.ts",

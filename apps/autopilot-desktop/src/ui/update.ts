@@ -2807,6 +2807,7 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           pane: "composer",
           expandedEvents: [],
+          selectedSessionRef: message.sessionRef,
           composerSessionRef: message.sessionRef,
           composerRepoPath: message.workspaceRef ?? "",
           composerReply: "",
@@ -3260,6 +3261,7 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           composerPending: false,
           composerSessionRef: message.sessionRef,
+          selectedSessionRef: message.sessionRef,
           composerStatus: { text: "running — streaming transcript", tone: "success" },
           // First turn clears the objective box so the form is reply-ready.
           spawnObjective: "",

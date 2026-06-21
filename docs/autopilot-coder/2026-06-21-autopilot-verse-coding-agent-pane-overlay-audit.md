@@ -1113,6 +1113,32 @@ Acceptance:
 - It produces logs and screenshots useful for debugging failures.
 - It becomes the gate before claiming Verse coding mode is ready.
 
+Implementation status, 2026-06-21:
+
+- Done in `apps/autopilot-desktop/scripts/verse-launch-smoke.ts`. The existing
+  packaged Verse launch smoke now enters code mode through a gated
+  `window.__OA_DESKTOP_SMOKE__` hook, selects a controlled Codex account,
+  opens composer/sessions/decisions/diff/terminal/diagnostics panes, injects a
+  controlled running Codex node state, captures overlay screenshots, and then
+  drags/wheels the scene from an uncovered canvas point to prove the Verse host
+  keeps accepting camera input.
+- The same script now accepts `AUTOPILOT_DESKTOP_SMOKE_URL` for dev-app runs
+  and uses the packaged app path when the variable is absent. Packaged proof is
+  part of `bun run smoke:verse-launch`; `bun run proof:verse-coding-overlay`
+  is an explicit alias for the same gate.
+- The smoke fails on missing stream rows, missing approvals, missing diff or
+  terminal panes, public-unsafe diagnostics export text, active scene remounts,
+  black-frame events, or lost camera-control diagnostics during overlay input.
+  It writes `verse-coding-overlay-smoke.png` and
+  `verse-coding-overlay-after-scene-input.png` alongside the existing first
+  render/movement/mouselook screenshots.
+- The smoke exposed a partial proof-artifact crash in the diff-artifact pane:
+  `artifactBrowserSections` assumed `deviationRefs` was always present.
+  `apps/autopilot-desktop/src/ui/helpers.ts` now treats missing deviation refs
+  as an empty list, and
+  `apps/autopilot-desktop/tests/diff-artifacts-pane.test.ts` covers the
+  regression.
+
 ### VCODE-16 - Extend To Claude Agent And Fable After Codex Is Green
 
 Build:

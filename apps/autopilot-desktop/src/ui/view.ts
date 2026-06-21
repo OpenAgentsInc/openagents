@@ -8152,6 +8152,8 @@ const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
       }),
       // Clicking anywhere in the window focuses (brings to front).
       h.OnMouseDown(FocusedManagedPane({ paneId: pane.id })),
+      h.DataAttribute("pane-kind", pane.kind),
+      h.DataAttribute("pane-id", pane.id),
     ],
     [
       // Title bar — the move handle. Pointer-down starts a move gesture.
