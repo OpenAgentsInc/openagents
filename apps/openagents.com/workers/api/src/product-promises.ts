@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-21.2'
+export const PublicProductPromisesVersion = '2026-06-21.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2049,13 +2049,14 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'proof.demand_provenance.v1',
         productArea: 'public proof',
         audience: ['agent', 'operator', 'public'],
-        state: 'yellow',
+        state: 'green',
+        lastVerifiedAt: '2026-06-21',
         claim:
           'Every revenue-bearing public number carries demand provenance — internal versus external dollars — as strictly as modeled versus measured versus settled, under the rule: no external dollar, no demand claim.',
         safeCopy:
-          'Demand provenance is partially live. GET /api/public/demand-provenance summarizes revenue-bearing public surfaces that carry typed internal/external demand splits, currently starting with AO/kWh (GET /api/public/metrics/accepted-outcomes-per-kwh). It reports the operator-staged #4777 outcome as internal demand, zero external accepted outcomes, zero unlabeled outcomes, externalDemandClaimAllowed:false, and the rule no_external_dollar_no_demand_claim. Broad coverage across the other revenue-bearing projections (stats, leaderboards, run pages, economics gates) is still missing.',
+          'Demand provenance is live with broad coverage. GET /api/public/demand-provenance summarizes every revenue-bearing public surface with a typed internal/external/unlabeled demand split and reconciliation: AO/kWh (GET /api/public/metrics/accepted-outcomes-per-kwh), pylon-stats (GET /api/public/pylon-stats), the training leaderboards (GET /api/training/leaderboards/*), the training run pages (GET /api/public/training/runs/{trainingRunRef}), and the model-ladder rung economics gates (GET /api/public/training/model-ladder-rungs). It reports coveredRevenueBearingSurfaceCount with no remaining coverage gaps, and every surface keeps externalDemandClaimAllowed:false under the rule no_external_dollar_no_demand_claim because all current demand is internal first-party (e.g. the operator-staged #4777 outcome). Green means the labeling discipline is complete; it does NOT assert any external (real-dollar) market demand.',
         unsafeCopy:
-          'Do not present first-party or internally-dispatched demand as market demand, and do not aggregate internal and external revenue into one undifferentiated public number.',
+          'Do not present first-party or internally-dispatched demand as market demand, and do not aggregate internal and external revenue into one undifferentiated public number. Green coverage does not mean any external dollar exists; externalDemandClaimAllowed is false.',
         evidenceRefs: [
           'docs/training/2026-06-10-psion-full-pipeline-buildout-plan.md',
           'docs/promises/2026-06-09-product-promises-gap-audit.md',
@@ -2066,12 +2067,19 @@ export const publicProductPromisesDocument = () => {
           'route:/api/public/metrics/accepted-outcomes-per-kwh',
           'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.ts',
           'apps/openagents.com/workers/api/src/accepted-outcomes-per-kwh.test.ts',
+          'route:/api/public/pylon-stats',
+          'apps/openagents.com/workers/api/src/public-pylon-stats.ts',
+          'route:/api/training/leaderboards/*',
+          'apps/openagents.com/workers/api/src/training-leaderboards.ts',
+          'route:/api/public/training/runs/{trainingRunRef}',
+          'apps/openagents.com/workers/api/src/training-run-window-authority.ts',
+          'route:/api/public/training/model-ladder-rungs',
+          'apps/openagents.com/workers/api/src/training-model-ladder-rungs.ts',
+          'promise_transition_ccf5d7d8-5737-4949-b534-19e6fab9c157',
         ],
-        blockerRefs: [
-          'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
-        ],
+        blockerRefs: [],
         verification:
-          'Yellow is supported by GET /api/public/demand-provenance and demand-provenance.test.ts: the route is no-store, live-at-read, public-safe, summarizes the AO/kWh internal/external split, reconciles internal/external/unlabeled counts, keeps externalDemandClaimAllowed false, and names remaining coverage gaps. Green still requires the remaining revenue-bearing projections (stats, leaderboards, run pages, economics gates) to carry the same typed split plus a receipt-first transition.',
+          'Green is supported by GET /api/public/demand-provenance and demand-provenance.test.ts: the route is no-store, live-at-read, public-safe, and now summarizes ALL revenue-bearing public surfaces (AO/kWh, pylon-stats, training leaderboards, training run pages, and the model-ladder rung economics gates) with the same typed internal/external/unlabeled split and reconciliation. coveredRevenueBearingSurfaceCount is 5 with remainingSurfaceRefs empty, every surface keeps externalDemandClaimAllowed false (all current demand is internal first-party — plumbing proof, not market proof), and the receipt-first transition was recorded via POST /api/operator/product-promises/transitions. This cleared blocker.product_promises.demand_provenance_broad_projection_coverage_missing. The green is the completeness of the labeling discipline only; any future external-market-demand claim still requires a real external dollar.',
         authorityBoundary:
           'Demand provenance is a labeling discipline; it does not validate any revenue claim by itself and grants no settlement or reporting authority.',
       },
@@ -4033,6 +4041,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.58 is a business.ecommerce_workspace_pack.v1 de-stale pass and flips NO promise state (stays yellow, green count unchanged at 26). The POST /api/public/ecommerce-campaign/workspaces route already exists, seeding workspaces using the forge.template.ecommerce.inventory_campaign.v1 template, so blocker.product_promises.ecommerce_pack_self_serve_missing is cleared. The promise remains yellow on blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing: no active operator route to record receipts exists, and no real paid delivery receipt, attribution, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/business.ecommerce_workspace_pack.v1.md.',
         'Registry 2026-06-21.1 is a DE-2 cloud primitive blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; cloud.fine_tuning_service.v1 and cloud.sandbox_compute_service.v1 stay red; green count unchanged). Fine-tuning and sandbox still are not live sellable services, but their route scaffolds are no longer accurately described as simply unbuilt: /v1/fine_tuning/jobs and /v1/sandboxes exist behind default-off flags, with typed request surfaces, lifecycle reads, cross-account isolation, TTL/isolation controls where applicable, and a tested receipt-first cloud-metering seam. Stale unbuilt blocker refs are replaced with narrower live-service blockers: live fine-tuning intake disabled, real fine-tuning runtime unwired, live sandbox rent surface disabled, sandbox live metering/billing unwired, and suite-level fine-tuning/sandbox live-sellable-service missing. No flags are armed, no runtime adapter is wired, no pricing is live, no credit debit or settlement occurs, and no paid receipt or green transition is created. Evidence: docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md and apps/openagents.com/workers/api/src/cloud/*.',
         'Registry 2026-06-21.2 is a DE-2 cloud primitives unified-balance blocker de-stale pass and flips NO promise state (cloud.primitives_suite.v1 stays planned; green count unchanged). The composed-run source already models the one-shared-balance shape: buildComposedRunPlan carries a single ComposedRunBalance and receipt envelope, composeRunExecution folds component charge shapes into one composed spend, and the receipt gate checks one_shared_balance plus reconciliation. Therefore the stale blocker.product_promises.cloud_primitives_unified_balance_unbuilt is replaced with blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing. The remaining gap is live multi-primitive execution debiting one real balance and producing a dereferenceable unified-balance receipt. No route is armed, no D1 balance is read/debited, no receipt row is written, no customer composed-run claim is created, and no green transition is created.',
+        'Registry 2026-06-21.3 advances proof.demand_provenance.v1 from yellow to GREEN (green 26 -> 27) on broad projection coverage plus a receipt-first transition. GET /api/public/demand-provenance now carries the SAME typed internal/external/unlabeled demand split and reconciliation for ALL revenue-bearing public surfaces, not just AO/kWh: pylon-stats (/api/public/pylon-stats), the training leaderboards (/api/training/leaderboards/*), the training run pages (/api/public/training/runs/{trainingRunRef}), and the model-ladder rung economics gates (/api/public/training/model-ladder-rungs). coveredRevenueBearingSurfaceCount is 5 with remainingSurfaceRefs empty. This GENUINELY clears blocker.product_promises.demand_provenance_broad_projection_coverage_missing (removed from the promise blockerRefs). CRITICAL: this is a transparency/coverage flip ONLY. externalDemandClaimAllowed STAYS false on every surface and in totals — every current revenue-bearing number is backed by internal first-party demand (plumbing proof, not market proof: the operator-staged #4777 outcome, first-party training-pipeline ablations/sweeps/closeouts, and unfunded rung economics gates). NO live event, NO money moved, NO external-revenue claim, NO settlement, NO payout. Green means the labeling discipline is complete across every revenue-bearing surface; any future external-market-demand claim still requires a real external dollar under the rule no_external_dollar_no_demand_claim. The yellow->green transition is receipt-first per proof.claim_upgrade_receipts.v1: the flip is applied in source ahead of the deployed registry per the 2026-06-14 reconciliation pattern, and the matching transition receipt is recorded via POST /api/operator/product-promises/transitions as promise_transition_ccf5d7d8-5737-4949-b534-19e6fab9c157 (its blockers_clear_for_green check evaluates the still-deployed registry and clears once this version deploys). Evidence: apps/openagents.com/workers/api/src/demand-provenance.ts, demand-provenance.test.ts, and route:/api/public/demand-provenance.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

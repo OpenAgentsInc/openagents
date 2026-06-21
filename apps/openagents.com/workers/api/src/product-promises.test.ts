@@ -336,9 +336,17 @@ describe('public product promises document', () => {
     // resolver/verification-on-compose core. Registry liveness,
     // live install/use runtime, and billing/settlement blockers remain, so
     // green remains exactly 26.
+    // The 2026-06-21.3 demand-provenance broad-coverage pass flips
+    // proof.demand_provenance.v1 yellow -> green: GET /api/public/demand-provenance
+    // now carries the typed internal/external/unlabeled split + reconciliation
+    // for ALL revenue-bearing surfaces (AO/kWh, pylon-stats, training
+    // leaderboards, training run pages, rung economics gates), clearing
+    // blocker.product_promises.demand_provenance_broad_projection_coverage_missing.
+    // externalDemandClaimAllowed STAYS false (no external dollar, no demand
+    // claim); this is a transparency/coverage flip only. Green is now exactly 27.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(26)
+    ).toBe(27)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -873,16 +881,18 @@ describe('public product promises document', () => {
         }),
         expect.objectContaining({
           promiseId: 'proof.demand_provenance.v1',
-          state: 'yellow',
+          state: 'green',
           evidenceRefs: expect.arrayContaining([
             'route:/api/public/demand-provenance',
             'apps/openagents.com/workers/api/src/demand-provenance.ts',
             'apps/openagents.com/workers/api/src/demand-provenance-routes.ts',
             'apps/openagents.com/workers/api/src/demand-provenance.test.ts',
+            'route:/api/public/pylon-stats',
+            'route:/api/training/leaderboards/*',
+            'route:/api/public/training/runs/{trainingRunRef}',
+            'route:/api/public/training/model-ladder-rungs',
           ]),
-          blockerRefs: expect.not.arrayContaining([
-            'blocker.product_promises.demand_provenance_projection_missing',
-          ]),
+          blockerRefs: [],
         }),
         expect.objectContaining({
           promiseId: 'proof.claim_upgrade_receipts.v1',
@@ -1411,7 +1421,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('keeps demand provenance yellow after the first public projection', () => {
+  test('flips demand provenance green on broad projection coverage with no external claim', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -1419,18 +1429,21 @@ describe('public product promises document', () => {
       promise => promise.promiseId === 'proof.demand_provenance.v1',
     )
 
-    expect(demandProvenancePromise?.state).toBe('yellow')
-    expect(demandProvenancePromise?.blockerRefs).toEqual([
-      'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
-    ])
+    expect(demandProvenancePromise?.state).toBe('green')
+    // Broad coverage cleared the only remaining blocker.
+    expect(demandProvenancePromise?.blockerRefs).toEqual([])
     expect(demandProvenancePromise?.safeCopy).toContain(
       'GET /api/public/demand-provenance',
     )
     expect(demandProvenancePromise?.safeCopy).toContain(
       'externalDemandClaimAllowed:false',
     )
+    // The green is a coverage/labeling completeness flip, NOT an external claim.
+    expect(demandProvenancePromise?.unsafeCopy).toContain(
+      'externalDemandClaimAllowed is false',
+    )
     expect(demandProvenancePromise?.verification).toContain(
-      'summarizes the AO/kWh internal/external split',
+      'ALL revenue-bearing public surfaces',
     )
     expect(demandProvenancePromise?.authorityBoundary).toContain(
       'grants no settlement or reporting authority',

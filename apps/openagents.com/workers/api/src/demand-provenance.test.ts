@@ -27,7 +27,7 @@ describe('demand provenance public projection', () => {
 
     expect(projection.kind).toBe('demand_provenance_public')
     expect(projection.promiseId).toBe('proof.demand_provenance.v1')
-    expect(projection.promiseState).toBe('yellow')
+    expect(projection.promiseState).toBe('green')
     expect(projection.rule).toBe('no_external_dollar_no_demand_claim')
     expect(projection.publicSafe).toBe(true)
     expect(projection.staleness).toMatchObject({
@@ -35,7 +35,9 @@ describe('demand provenance public projection', () => {
       contractVersion: 'projection_staleness.v1',
       maxStalenessSeconds: 0,
     })
-    expect(projection.surfaceSummaries).toHaveLength(1)
+    // AO/kWh plus the four remaining revenue-bearing surfaces (stats,
+    // leaderboards, run pages, rung economics gates) all carry the same split.
+    expect(projection.surfaceSummaries).toHaveLength(5)
     expect(projection.surfaceSummaries[0]).toMatchObject({
       externalAcceptedOutcomeCount: 0,
       internalAcceptedOutcomeCount: 1,
@@ -44,26 +46,37 @@ describe('demand provenance public projection', () => {
       surfaceRef: 'route:/api/public/metrics/accepted-outcomes-per-kwh',
       unlabeledAcceptedOutcomeCount: 0,
     })
+    expect(
+      projection.surfaceSummaries.map(summary => summary.surfaceRef),
+    ).toEqual(
+      expect.arrayContaining([
+        'route:/api/public/metrics/accepted-outcomes-per-kwh',
+        'route:/api/public/pylon-stats',
+        'route:/api/training/leaderboards/*',
+        'route:/api/public/training/runs/{trainingRunRef}',
+        'projection:training.rung_economics_gates',
+      ]),
+    )
+    // Every covered surface keeps the typed split with externalDemandClaimAllowed=false.
+    for (const summary of projection.surfaceSummaries) {
+      expect(summary.splitState).toBe('serving_internal_external_split')
+      expect(summary.rule).toBe('no_external_dollar_no_demand_claim')
+      expect(summary.externalDemandClaimAllowed).toBe(false)
+    }
     expect(projection.totals).toEqual({
       externalAcceptedOutcomeCount: 0,
       internalAcceptedOutcomeCount: 1,
       unlabeledAcceptedOutcomeCount: 0,
     })
+    // Broad coverage is green, but no external (real-dollar) demand exists.
     expect(projection.externalDemandClaimAllowed).toBe(false)
-    expect(projection.blockerRefs).toEqual([
-      'blocker.product_promises.demand_provenance_broad_projection_coverage_missing',
-    ])
-    expect(projection.coverage.remainingSurfaceRefs).toEqual(
-      expect.arrayContaining([
-        'route:/api/public/pylon-stats',
-        'route:/api/public/training/runs/{trainingRunRef}',
-        'route:/api/training/leaderboards/*',
-        'projection:training.rung_economics_gates',
-      ]),
-    )
+    expect(projection.blockerRefs).toEqual([])
+    expect(projection.coverage.coveredRevenueBearingSurfaceCount).toBe(5)
+    expect(projection.coverage.remainingSurfaceRefs).toEqual([])
     expect(projection.unsafeCopy).toContain(
       'Do not present internal, first-party, operator-staged, or unlabeled demand as external market demand',
     )
+    expect(projection.unsafeCopy).toContain('no external dollar, no demand claim')
   })
 
   test('serves the public demand-provenance route as no-store JSON', async () => {
@@ -78,7 +91,7 @@ describe('demand provenance public projection', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(body.kind).toBe('demand_provenance_public')
     expect(body.promiseId).toBe('proof.demand_provenance.v1')
-    expect(body.promiseState).toBe('yellow')
+    expect(body.promiseState).toBe('green')
     expect(body.externalDemandClaimAllowed).toBe(false)
     expect(body.surfaceSummaries[0]).toMatchObject({
       externalAcceptedOutcomeCount: 0,
