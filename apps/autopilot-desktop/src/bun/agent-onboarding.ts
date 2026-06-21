@@ -40,6 +40,27 @@ const CREDENTIAL_FILENAME = "agent-credential.json"
 // The node writes its identity here (apps/pylon/src/state.ts `loadOrCreateIdentity`).
 const IDENTITY_FILENAME = "identity.json"
 
+// AF-1 (#5898): defensive client-side shape check for a Spark receive address
+// before we attach it to a registration body. Mirrors the server's accepted
+// `sparkAddress` pattern (apps/openagents.com/workers/api/src/agent-registration.ts):
+// a Spark HRP (`spark`/`sp`/testnet/regtest/signet/staging variants) + `1` +
+// bech32m payload. We only forward addresses that match, so a transient/garbled
+// read (e.g. an error string) is dropped rather than posted. This is a syntactic
+// guard, not a claim of on-chain validity.
+const SPARK_ADDRESS_PATTERN =
+  /^(?:spark|sparkt|sparkrt|sparks|sp|spt|sprt|sps)1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{16,512}$/i
+
+// Normalize a candidate Spark address: trim, validate shape, else null. NEVER
+// log the input/output here — it is payment material.
+const sanitizeSparkAddress = (
+  value: string | null | undefined,
+): string | null => {
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  if (trimmed.length === 0 || trimmed.length > 600) return null
+  return SPARK_ADDRESS_PATTERN.test(trimmed) ? trimmed : null
+}
+
 export type NodeIdentity = {
   // bech32 Nostr public key (npub1...) — stable per managed home; used as the
   // deterministic externalId so re-registration from the same home is a no-op
@@ -253,6 +274,17 @@ export type SelfRegisterOptions = {
   // Optional BOLT12 offer to attach for tip-readiness (audit notes this is
   // optional). Omitted when the wallet has not produced one yet.
   readonly bolt12Offer?: string | null
+  // AF-1 (#5898): the node's OWN raw Spark receive address (`spark1…`). When the
+  // wallet is receive-ready the launcher reads it from the node and passes it in
+  // here so agent registration lands tip readiness as `directPayment.kind =
+  // "spark_address"` (AGENTS.md Step 3 prefers Spark over BOLT12). PAYMENT
+  // MATERIAL: it rides ONLY the authenticated registration request body (the
+  // same trust model as the #5305 payout-target path). It is NEVER logged,
+  // printed, surfaced in a `deferred` reason, sent to the webview, or committed.
+  // Omitted/blank/malformed => registration proceeds without it (unchanged
+  // behavior); tip readiness then lands later via the payout-target + forum
+  // tip-recipient claim paths.
+  readonly sparkAddress?: string | null
   // Injectables (default to real implementations).
   readonly fetchImpl?: RegisterFetch
   readonly readFile?: ReadFile
@@ -327,6 +359,12 @@ export const selfRegisterAgent = async (
   if (slug !== undefined) body.slug = slug
   const offer = options.bolt12Offer?.trim()
   if (offer && offer.length > 0) body.bolt12Offer = offer
+  // AF-1 (#5898): attach the node's Spark receive address when available so tip
+  // readiness lands as `spark_address` (AGENTS.md Step 3). Validated client-side
+  // first; payment material, so it only ever rides this authenticated body and
+  // is never echoed into a log/reason.
+  const sparkAddress = sanitizeSparkAddress(options.sparkAddress)
+  if (sparkAddress !== null) body.sparkAddress = sparkAddress
 
   let response: { readonly status: number; json(): Promise<unknown> }
   try {

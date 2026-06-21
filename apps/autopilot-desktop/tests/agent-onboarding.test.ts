@@ -288,6 +288,76 @@ describe("selfRegisterAgent (AO-1)", () => {
       rmSync(home, { recursive: true, force: true })
     }
   })
+
+  // AF-1 (#5898): the node Spark receive address lands as `spark_address` tip
+  // readiness, is dropped when malformed, and never leaks into any log line.
+  it("attaches a valid Spark address as sparkAddress when provided", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ao-reg-"))
+    try {
+      writeFileSync(
+        join(home, "identity.json"),
+        JSON.stringify({ npub: identity.npub }),
+      )
+      const spark = "sp1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+      let sentBody: Record<string, unknown> = {}
+      await selfRegisterAgent({
+        home,
+        sparkAddress: spark,
+        fetchImpl: (async (_url, init) => {
+          sentBody = JSON.parse(init.body) as Record<string, unknown>
+          return okRegisterResponse()
+        }) as RegisterFetch,
+      })
+      expect(sentBody.sparkAddress).toBe(spark)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it("drops a malformed Spark address rather than posting it", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ao-reg-"))
+    try {
+      writeFileSync(
+        join(home, "identity.json"),
+        JSON.stringify({ npub: identity.npub }),
+      )
+      let sentBody: Record<string, unknown> = {}
+      await selfRegisterAgent({
+        home,
+        // Not a Spark address (e.g. a transient error string). Must be dropped.
+        sparkAddress: "ERROR: spark daemon offline",
+        fetchImpl: (async (_url, init) => {
+          sentBody = JSON.parse(init.body) as Record<string, unknown>
+          return okRegisterResponse()
+        }) as RegisterFetch,
+      })
+      expect("sparkAddress" in sentBody).toBe(false)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it("never logs the raw Spark address (payment material)", async () => {
+    const home = mkdtempSync(join(tmpdir(), "ao-reg-"))
+    try {
+      writeFileSync(
+        join(home, "identity.json"),
+        JSON.stringify({ npub: identity.npub }),
+      )
+      const spark = "sp1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2t"
+      const logs: string[] = []
+      await selfRegisterAgent({
+        home,
+        sparkAddress: spark,
+        log: msg => logs.push(msg),
+        fetchImpl: (async () => okRegisterResponse()) as RegisterFetch,
+      })
+      expect(logs.join("\n")).not.toContain(spark)
+      expect(logs.join("\n")).not.toContain("sp1q")
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("normalizeDisplayName (AO-3)", () => {

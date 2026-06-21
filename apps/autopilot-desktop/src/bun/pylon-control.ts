@@ -526,6 +526,47 @@ async function fetchWalletRow(input: { baseUrl: string; token: string; fetchFn: 
   }
 }
 
+// AF-1 (#5898): read this node's OWN raw Spark receive address from the local
+// control server (`wallet.spark_backup_status` with `showLocalTarget: true`,
+// which returns `localTarget` — see apps/pylon/src/index.ts §#5304/#5305). The
+// node marks this value LOCAL/PRIVATE: it is PAYMENT MATERIAL. The ONLY allowed
+// use is attaching it to the authenticated agent-registration request body so
+// tip readiness lands as `spark_address`; it must NEVER be logged, printed,
+// surfaced to the webview, persisted in plaintext status, or committed. Returns
+// null whenever the wallet is not yet receive-ready, the helper is unavailable,
+// or anything fails — the caller then registers without a Spark address
+// (unchanged behavior), and tip readiness lands later via the payout-target /
+// forum tip-recipient paths.
+export async function fetchNodeSparkAddress(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<string | null> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl}/command`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${input.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "wallet.spark_backup_status",
+        showLocalTarget: true,
+      }),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { ok?: unknown; result?: any }
+    const r = json.ok === true ? json.result : undefined
+    if (!r || typeof r !== "object") return null
+    const localTarget =
+      typeof r.localTarget === "string" ? r.localTarget.trim() : ""
+    return localTarget.length > 0 ? localTarget : null
+  } catch {
+    return null
+  }
+}
+
 // CL-50: open work-lease assignments (assignments.poll). Read-only.
 async function fetchAssignmentRows(input: { baseUrl: string; token: string; fetchFn: typeof fetch }): Promise<AssignmentRow[]> {
   try {

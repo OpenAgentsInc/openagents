@@ -8,7 +8,11 @@ import {
   type SelfRegisterResult,
 } from "./agent-onboarding"
 import { discoverPylonHome } from "./node-home"
-import { probeControlCompatibility, readControlToken } from "./pylon-control"
+import {
+  fetchNodeSparkAddress,
+  probeControlCompatibility,
+  readControlToken,
+} from "./pylon-control"
 import type { NodeLaunchStatus } from "../shared/rpc"
 
 // #5011 (JUNE15_LAUNCH_PLAN §0/§4.F): the install seam. Today the desktop only
@@ -137,6 +141,14 @@ export type EnsureManagedNodeOptions = {
   }) => Promise<SelfRegisterResult>
   // Injectable persisted-token reader (defaults to `loadPersistedCredential`).
   readonly readPersistedToken?: (home: string) => string | null
+  // AF-1 (#5898): injectable reader for the node's OWN Spark receive address
+  // (defaults to a control-server `wallet.spark_backup_status` read). Returns
+  // null until the wallet is receive-ready. Payment material — the result is
+  // only forwarded into the authenticated registration body, never logged.
+  readonly readSparkAddress?: (input: {
+    readonly home: string
+    readonly controlBaseUrl: string
+  }) => Promise<string | null>
   // Fired after a *fresh* registration mints a token so the supervisor can
   // restart the child with the token injected (the env is read once at boot).
   // Not fired when a token was already persisted before spawn (no restart
@@ -445,18 +457,46 @@ export const ensureManagedNode = async (
       chosenExistingHome === null
         ? (options.onboardingDisplayName ?? null)
         : null
+    // AF-1 (#5898): best-effort reader for the node's OWN Spark receive address
+    // so the DEFAULT registration can land tip readiness as `spark_address`. The
+    // wallet may not be receive-ready this early in bring-up; a null result
+    // simply registers without it (unchanged behavior). Payment material — never
+    // logged here. Confined to the default registration closure so an injected
+    // `registerAgent` (tests) performs no network read.
+    const readSparkAddress =
+      options.readSparkAddress ??
+      (async (input: { home: string; controlBaseUrl: string }) => {
+        const controlToken = readToken(input.home)
+        if (controlToken === null || controlToken.length === 0) return null
+        return fetchNodeSparkAddress({
+          baseUrl: input.controlBaseUrl,
+          token: controlToken,
+        })
+      })
     const registerAgent =
       options.registerAgent ??
-      ((input: {
+      (async (input: {
         home: string
         baseUrl: string
         displayName: string | null
-      }) =>
-        selfRegisterAgent({
+      }) => {
+        let sparkAddress: string | null = null
+        try {
+          sparkAddress = await readSparkAddress({
+            home: input.home,
+            controlBaseUrl: options.controlBaseUrl,
+          })
+        } catch {
+          // A failed Spark-address read must never block registration.
+          sparkAddress = null
+        }
+        return selfRegisterAgent({
           home: input.home,
           baseUrl: input.baseUrl,
           displayName: input.displayName,
-        }))
+          sparkAddress,
+        })
+      })
     try {
       const result = await registerAgent({ home: managedHome, baseUrl, displayName })
       if (result.outcome === "registered") {
