@@ -164,6 +164,18 @@ local controller pose
 That bridge should be a small, testable service. It should not be embedded as
 ad hoc reducer calls inside the renderer frame loop.
 
+### 2026-06-21 Progress: Scene Refresh Must Not Reset The Local Avatar
+
+Before the pose publisher can become trustworthy, the local controller must
+survive ordinary desktop projection refreshes. A first follow-up landed in
+`three-effect` (`ebe616f`) so the Foldkit training-run element captures the
+active local controller pose before a visualization remount and restores that
+position into the refreshed scene. OpenAgents now pins that commit.
+
+This does not complete the multiplayer pose publisher, but it removes a blocker
+for #5888: a normal Pylon/training/public-activity refresh should no longer
+snap the avatar back to the default spawn while the Verse is active.
+
 ## What The SpacetimeDB References Teach
 
 ### TypeScript Quickstart
