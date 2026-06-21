@@ -23,6 +23,7 @@ const DEFAULT_REGION_PROXIMITY_RADIUS_METERS: f64 = 12.0;
 const MAX_REGION_PROXIMITY_RADIUS_METERS: f64 = 120.0;
 const MAX_AVATAR_MOVE_METERS_PER_SECOND: f64 = 14.0;
 const AVATAR_POSITION_MIN_INTERVAL_MS: i64 = 100;
+const AVATAR_POSITION_FAR_MIN_INTERVAL_MS: i64 = 1_000;
 const STALE_AVATAR_POSITION_MS: i64 = 20_000;
 const ATTENTION_TTL_MS: i64 = 8_000;
 const CHAT_TTL_MS: i64 = 90_000;
@@ -217,6 +218,16 @@ pub struct AgentAvatar {
     accessor = avatar_position,
     public,
     index(accessor = avatar_position_region, btree(columns = [region_ref]))
+)]
+#[spacetimedb::table(
+    accessor = avatar_position_near,
+    public,
+    index(accessor = avatar_position_near_region, btree(columns = [region_ref]))
+)]
+#[spacetimedb::table(
+    accessor = avatar_position_far,
+    public,
+    index(accessor = avatar_position_far_region, btree(columns = [region_ref]))
 )]
 pub struct AvatarPosition {
     #[primary_key]
@@ -957,6 +968,14 @@ pub fn leave_region(ctx: &ReducerContext, region_ref: String) -> Result<(), Stri
                 .avatar_position()
                 .avatar_ref()
                 .delete(avatar_ref.clone());
+            ctx.db
+                .avatar_position_near()
+                .avatar_ref()
+                .delete(avatar_ref.clone());
+            ctx.db
+                .avatar_position_far()
+                .avatar_ref()
+                .delete(avatar_ref.clone());
         }
     }
     ctx.db
@@ -1244,7 +1263,15 @@ pub fn expire_interaction_rows(ctx: &ReducerContext) -> Result<(), String> {
         .map(|row| row.avatar_ref)
         .collect();
     for avatar_ref in position_refs {
-        ctx.db.avatar_position().avatar_ref().delete(avatar_ref);
+        ctx.db
+            .avatar_position()
+            .avatar_ref()
+            .delete(avatar_ref.clone());
+        ctx.db
+            .avatar_position_near()
+            .avatar_ref()
+            .delete(avatar_ref.clone());
+        ctx.db.avatar_position_far().avatar_ref().delete(avatar_ref);
     }
 
     let attention_refs: Vec<String> = ctx
@@ -1524,6 +1551,21 @@ fn upsert_agent_avatar_row(ctx: &ReducerContext, row: AgentAvatar) {
     }
 }
 
+fn copy_avatar_position(row: &AvatarPosition) -> AvatarPosition {
+    AvatarPosition {
+        avatar_ref: row.avatar_ref.clone(),
+        region_ref: row.region_ref.clone(),
+        position_x: row.position_x,
+        position_y: row.position_y,
+        position_z: row.position_z,
+        yaw: row.yaw,
+        pitch: row.pitch,
+        movement_mode: row.movement_mode.clone(),
+        last_seen_epoch_ms: row.last_seen_epoch_ms,
+        updated_at: row.updated_at,
+    }
+}
+
 fn upsert_avatar_position_row(ctx: &ReducerContext, row: AvatarPosition) {
     if ctx
         .db
@@ -1532,9 +1574,59 @@ fn upsert_avatar_position_row(ctx: &ReducerContext, row: AvatarPosition) {
         .find(row.avatar_ref.clone())
         .is_some()
     {
-        ctx.db.avatar_position().avatar_ref().update(row);
+        ctx.db
+            .avatar_position()
+            .avatar_ref()
+            .update(copy_avatar_position(&row));
     } else {
-        ctx.db.avatar_position().insert(row);
+        ctx.db.avatar_position().insert(copy_avatar_position(&row));
+    }
+
+    if ctx
+        .db
+        .avatar_position_near()
+        .avatar_ref()
+        .find(row.avatar_ref.clone())
+        .is_some()
+    {
+        ctx.db
+            .avatar_position_near()
+            .avatar_ref()
+            .update(copy_avatar_position(&row));
+    } else {
+        ctx.db
+            .avatar_position_near()
+            .insert(copy_avatar_position(&row));
+    }
+
+    let should_update_far = ctx
+        .db
+        .avatar_position_far()
+        .avatar_ref()
+        .find(row.avatar_ref.clone())
+        .map(|existing| {
+            existing.region_ref != row.region_ref
+                || existing.last_seen_epoch_ms + AVATAR_POSITION_FAR_MIN_INTERVAL_MS
+                    <= row.last_seen_epoch_ms
+        })
+        .unwrap_or(true);
+    if should_update_far {
+        if ctx
+            .db
+            .avatar_position_far()
+            .avatar_ref()
+            .find(row.avatar_ref.clone())
+            .is_some()
+        {
+            ctx.db
+                .avatar_position_far()
+                .avatar_ref()
+                .update(copy_avatar_position(&row));
+        } else {
+            ctx.db
+                .avatar_position_far()
+                .insert(copy_avatar_position(&row));
+        }
     }
 }
 

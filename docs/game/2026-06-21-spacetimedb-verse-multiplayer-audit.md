@@ -63,6 +63,8 @@ needed for multiplayer presence:
 - `pylon_station`
 - `agent_avatar`
 - `avatar_position`
+- `avatar_position_near`
+- `avatar_position_far`
 - `pylon_attention`
 - `local_chat_message`
 - `chat_bubble`
@@ -263,6 +265,28 @@ Tab targeting now has a bounded candidate mapper in
 rows, drops off-screen, occluded, stale, local, and too-far avatars/stations,
 returns only pylon/avatar targets, sorts by screen-center distance and then
 world distance, and caps the result set for crowded regions.
+
+### 2026-06-21 Progress: #5892 High/Low Presence Feeds
+
+The world module now maintains a feed-capable avatar presence shape without
+forcing the desktop onto the new tables before the module is deployed. The
+compatibility `avatar_position` table remains available and updates on every
+accepted position write. The new public `avatar_position_near` feed uses the
+same high-resolution cadence, while `avatar_position_far` updates at most once
+per avatar per second.
+
+The desktop subscription builder still defaults to the compatible
+single-region `avatar_position` query. It also exposes a split near/far mode
+that subscribes to `avatar_position_near` inside a local X/Z window and
+`avatar_position_far` outside that window, with matching `agent_avatar` join
+queries for both feeds. The projection can merge mixed-fidelity rows for the
+same avatar and prefers high-resolution rows over low-resolution rows.
+
+The feed decision is now explicit and testable. The MVP stays on the
+single-region feed while the estimate remains below 96 avatars and roughly 960
+rows per second; above that, the policy recommends the split near/far feed.
+Generated SpacetimeDB TypeScript bindings were regenerated for the new tables
+and the #5891 indexes.
 
 ## What The SpacetimeDB References Teach
 
@@ -554,15 +578,22 @@ Acceptance:
 
 ### Phase 5: High/Low Resolution Presence
 
-Only do this once region-level filtering is insufficient.
+The schema and client query path are now ready, but the desktop keeps the
+single-feed default until release gates enable split subscriptions against a
+published module.
 
-Possible schema:
+Implemented feed tables:
 
-- private/internal `avatar_position_internal`
-- public `avatar_position_near`
-- public `avatar_position_far`
+- public compatibility `avatar_position`
+- public high-resolution `avatar_position_near`
+- public lower-frequency `avatar_position_far`
 
-Or keep one table and add chunk/proximity indexes if that is enough.
+Implemented policy:
+
+- single-feed default below 96 avatars / roughly 960 rows per second
+- split near/far query mode available above that threshold or when a release
+  gate explicitly chooses it
+- high-resolution rows win when the same avatar is present in both feeds
 
 Reference:
 
@@ -605,19 +636,21 @@ Completed on 2026-06-21:
 - #5891 region-scoped the subscription query set, added supporting module
   indexes, and introduced bounded visible/nearby pylon/avatar tab-target
   candidates.
+- #5892 added high/low public avatar presence feeds, generated bindings for
+  those feeds, a split-feed subscription mode, and a row-churn policy for when
+  to leave the compatibility single-region feed.
 
 Remaining:
 
 1. The generated TypeScript bindings are imported from the web app path; the
    desktop packaging story should be made explicit or moved into a shared
    generated package.
-2. There is no high/low resolution position feed yet.
-3. Selection labels and HUD details need to consume the bounded target
+2. Selection labels and HUD details need to consume the bounded target
    candidates instead of becoming permanent text in the world.
-4. Multiplayer identity currently maps from SpacetimeDB identity plus local
+3. Multiplayer identity currently maps from SpacetimeDB identity plus local
    display metadata. It must stay public and never leak private host/device
    details.
-5. The failure path needs to remain single-player-first: if SpacetimeDB is
+4. The failure path needs to remain single-player-first: if SpacetimeDB is
    down, the Verse should still load and move.
 
 ## Recommended First Issue

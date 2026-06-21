@@ -249,6 +249,7 @@ const positionFromRow = (raw: unknown): ChatWorldAvatarPositionRow | null => {
     yaw: rowNumber(row, "yaw") ?? 0,
     movementMode: text(row.movementMode) || "idle",
     lastSeenEpochMs,
+    presenceFeed: text(row.presenceFeed) === "low" ? "low" : "high",
   }
 }
 

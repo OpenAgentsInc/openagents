@@ -242,3 +242,4 @@ export const WorldRegion = __t.object("WorldRegion", {
   updatedAt: __t.timestamp(),
 });
 export type WorldRegion = __Infer<typeof WorldRegion>;
+

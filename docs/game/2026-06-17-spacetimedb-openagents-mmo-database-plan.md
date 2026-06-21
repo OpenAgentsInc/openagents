@@ -168,6 +168,14 @@ global tables. Tab targeting should consume bounded visible/nearby pylon and
 avatar candidates, leaving proof, settlement, and training detail rows to the
 selected-entity lifetime.
 
+For avatar presence, `avatar_position` remains the compatible single region
+feed, while `avatar_position_near` and `avatar_position_far` provide the
+high/low-resolution split once a release gate enables it. The near feed updates
+with each accepted position write; the far feed updates no more than once per
+avatar per second. Clients should stay on the single feed below the documented
+row-churn threshold and switch to split subscriptions only when region-level
+filtering is no longer enough.
+
 ## Scheduled Agents
 
 BitCraft uses schedule tables for periodic agents. OpenAgents should use the

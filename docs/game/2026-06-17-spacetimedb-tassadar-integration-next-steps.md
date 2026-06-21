@@ -147,6 +147,8 @@ authority boundary. The new public interaction tables are:
 | `pylon_station` | In-world station for a public pylon ref during a run. |
 | `agent_avatar` | Public avatar identity row for a guest, human, pylon agent, or service agent. |
 | `avatar_position` | Latest bounded position, yaw/pitch, movement mode, and freshness for one avatar. |
+| `avatar_position_near` | High-resolution public presence feed with the same row shape as `avatar_position`. |
+| `avatar_position_far` | Lower-frequency public presence feed with the same row shape as `avatar_position`. |
 | `pylon_attention` | Short-lived signal that an avatar is approaching, nearby, looking, inspecting, or talking to a pylon. |
 | `local_chat_message` | Public-safe plain-text spatial chat row with radius, channel, TTL, and moderation state. |
 | `chat_bubble` | Short-lived display row for a message bubble anchored to an avatar or target entity. |
@@ -196,6 +198,15 @@ Issue #5891 implements that desktop query contract and adds module indexes for
 the active run/region filters and join columns. It also introduces a bounded
 visible/nearby pylon/avatar target candidate mapper for the Verse tab-cycling
 path, so normal targeting does not enumerate off-screen or off-region users.
+
+Issue #5892 adds the dual presence-feed tables without forcing the desktop to
+use them before the module is deployed. The compatibility `avatar_position`
+table and the high-resolution `avatar_position_near` feed update on every
+accepted position write; `avatar_position_far` updates at most once per avatar
+per second. The desktop query builder keeps the single region-filtered feed as
+the default, estimates row churn with a 96-avatar / 960 rows-per-second
+threshold, and exposes split near/far subscription SQL for release-gated use
+once region-level filtering is not enough.
 
 Issue #5262 now derives pylon stations and one pylon-agent avatar per visible
 public leaderboard pylon ref from the existing Tassadar summary bridge. The

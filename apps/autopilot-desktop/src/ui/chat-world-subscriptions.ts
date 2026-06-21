@@ -393,13 +393,27 @@ const defaultSpacetimeConnect = (
 const collectRows = (table: SpacetimeTableRef | undefined): ReadonlyArray<unknown> =>
   table?.iter === undefined ? [] : [...table.iter()]
 
+const collectPositionRows = (
+  table: SpacetimeTableRef | undefined,
+  presenceFeed: "high" | "low",
+): ReadonlyArray<unknown> =>
+  collectRows(table).map((row) =>
+    row !== null && typeof row === "object"
+      ? { ...(row as Record<string, unknown>), presenceFeed }
+      : row,
+  )
+
 const worldRowsFromConnection = (
   connection: SpacetimeWorldConnection,
 ): ChatWorldSpacetimeRows => ({
   regions: collectRows(connection.db?.worldRegion),
   stations: collectRows(connection.db?.pylonStation),
   avatars: collectRows(connection.db?.agentAvatar),
-  positions: collectRows(connection.db?.avatarPosition),
+  positions: [
+    ...collectPositionRows(connection.db?.avatarPosition, "high"),
+    ...collectPositionRows(connection.db?.avatarPositionNear, "high"),
+    ...collectPositionRows(connection.db?.avatarPositionFar, "low"),
+  ],
   messages: collectRows(connection.db?.localChatMessage),
   attention: collectRows(connection.db?.pylonAttention),
 })
@@ -567,6 +581,8 @@ const attachWorldConnection = (input: {
     input.connection.db?.pylonStation,
     input.connection.db?.agentAvatar,
     input.connection.db?.avatarPosition,
+    input.connection.db?.avatarPositionNear,
+    input.connection.db?.avatarPositionFar,
     input.connection.db?.pylonAttention,
     input.connection.db?.localChatMessage,
     input.connection.db?.chatBubble,

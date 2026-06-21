@@ -22,6 +22,8 @@ export type ChatWorldAvatarRow = Readonly<{
   colorHex: string
 }>
 
+export type ChatWorldAvatarPresenceFeed = "high" | "low"
+
 export type ChatWorldAvatarPositionRow = Readonly<{
   avatarRef: string
   regionRef: string
@@ -31,6 +33,7 @@ export type ChatWorldAvatarPositionRow = Readonly<{
   yaw: number
   movementMode: string
   lastSeenEpochMs: number
+  presenceFeed?: ChatWorldAvatarPresenceFeed
 }>
 
 export type ChatWorldLocalChatMessageRow = Readonly<{
@@ -70,6 +73,7 @@ export type ChatWorldMultiplayerAgent = Readonly<{
   yaw: number
   movementMode: string
   lastSeenEpochMs: number
+  presenceFeed: ChatWorldAvatarPresenceFeed
   chatMessages: ReadonlyArray<string>
   attentionRefs: ReadonlyArray<string>
 }>
@@ -93,24 +97,140 @@ export type ChatWorldMultiplayerProjection = Readonly<{
   proximityChatCount: number
 }>
 
+export type ChatWorldPresenceFeedMode = "single-region" | "split-near-far"
+
+export type ChatWorldPresenceFeedScope = Readonly<{
+  centerX?: number
+  centerZ?: number
+  mode?: ChatWorldPresenceFeedMode
+  nearRadiusMeters?: number
+}>
+
+export type ChatWorldPresenceFeedEstimate = Readonly<{
+  avatarCount: number
+  farUpdateIntervalMs: number
+  highUpdateIntervalMs: number
+  recommendedMode: ChatWorldPresenceFeedMode
+  singleFeedRowsPerSecond: number
+  splitFarRowsPerSecond: number
+  splitNearRowsPerSecond: number
+}>
+
+export const CHAT_WORLD_PRESENCE_FEED_CONTRACT = {
+  farUpdateIntervalMs: 1_000,
+  highUpdateIntervalMs: 100,
+  nearRadiusMeters: 64,
+  singleFeedMaxAvatars: 96,
+  singleFeedMaxRowsPerSecond: 960,
+} as const
+
 const sqlString = (value: string): string => `'${value.replace(/'/g, "''")}'`
+
+const sqlNumber = (value: number): string =>
+  Number(value.toFixed(3)).toString()
 
 export const chatWorldRegionRefForRun = (runRef: string): string =>
   `region.${runRef}.main`
 
+export const estimateChatWorldPresenceFeedLoad = (input: {
+  readonly avatarCount: number
+  readonly highUpdateIntervalMs?: number
+  readonly nearAvatarCount?: number
+}): ChatWorldPresenceFeedEstimate => {
+  const avatarCount = Math.max(0, Math.floor(input.avatarCount))
+  const highUpdateIntervalMs = Math.max(
+    1,
+    input.highUpdateIntervalMs ?? CHAT_WORLD_PRESENCE_FEED_CONTRACT.highUpdateIntervalMs,
+  )
+  const farUpdateIntervalMs = CHAT_WORLD_PRESENCE_FEED_CONTRACT.farUpdateIntervalMs
+  const nearAvatarCount = Math.max(
+    0,
+    Math.min(avatarCount, Math.floor(input.nearAvatarCount ?? avatarCount)),
+  )
+  const farAvatarCount = Math.max(0, avatarCount - nearAvatarCount)
+  const singleFeedRowsPerSecond = Number(
+    ((avatarCount * 1_000) / highUpdateIntervalMs).toFixed(3),
+  )
+  const splitNearRowsPerSecond = Number(
+    ((nearAvatarCount * 1_000) / highUpdateIntervalMs).toFixed(3),
+  )
+  const splitFarRowsPerSecond = Number(
+    ((farAvatarCount * 1_000) / farUpdateIntervalMs).toFixed(3),
+  )
+  const recommendedMode =
+    avatarCount > CHAT_WORLD_PRESENCE_FEED_CONTRACT.singleFeedMaxAvatars ||
+    singleFeedRowsPerSecond > CHAT_WORLD_PRESENCE_FEED_CONTRACT.singleFeedMaxRowsPerSecond
+      ? "split-near-far"
+      : "single-region"
+
+  return {
+    avatarCount,
+    farUpdateIntervalMs,
+    highUpdateIntervalMs,
+    recommendedMode,
+    singleFeedRowsPerSecond,
+    splitFarRowsPerSecond,
+    splitNearRowsPerSecond,
+  }
+}
+
+const hasSplitPresenceScope = (
+  scope: ChatWorldPresenceFeedScope | undefined,
+): scope is Required<Pick<ChatWorldPresenceFeedScope, "centerX" | "centerZ">> &
+  ChatWorldPresenceFeedScope => (
+    scope?.mode === "split-near-far" &&
+    Number.isFinite(scope.centerX) &&
+    Number.isFinite(scope.centerZ)
+  )
+
 export const chatWorldMultiplayerSubscriptionQueries = (
   runRef: string,
+  presenceScope?: ChatWorldPresenceFeedScope,
 ): ReadonlyArray<string> => {
   const run = sqlString(runRef)
   const publicActivityRun = sqlString(PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF)
   const region = sqlString(chatWorldRegionRefForRun(runRef))
+  const splitPresence = hasSplitPresenceScope(presenceScope)
+  const nearRadiusMeters = Math.max(
+    1,
+    presenceScope?.nearRadiusMeters ?? CHAT_WORLD_PRESENCE_FEED_CONTRACT.nearRadiusMeters,
+  )
+  const minX = splitPresence ? sqlNumber(presenceScope.centerX - nearRadiusMeters) : "0"
+  const maxX = splitPresence ? sqlNumber(presenceScope.centerX + nearRadiusMeters) : "0"
+  const minZ = splitPresence ? sqlNumber(presenceScope.centerZ - nearRadiusMeters) : "0"
+  const maxZ = splitPresence ? sqlNumber(presenceScope.centerZ + nearRadiusMeters) : "0"
+  const highPositionTable = splitPresence ? "avatar_position_near" : "avatar_position"
+  const highPositionWhere = splitPresence
+    ? `${highPositionTable}.region_ref = ${region} AND ${highPositionTable}.position_x >= ${minX} AND ${highPositionTable}.position_x <= ${maxX} AND ${highPositionTable}.position_z >= ${minZ} AND ${highPositionTable}.position_z <= ${maxZ}`
+    : `${highPositionTable}.region_ref = ${region}`
+  const farPositionWhere =
+    `avatar_position_far.region_ref = ${region} AND avatar_position_far.position_x < ${minX} ` +
+    `OR avatar_position_far.region_ref = ${region} AND avatar_position_far.position_x > ${maxX} ` +
+    `OR avatar_position_far.region_ref = ${region} AND avatar_position_far.position_z < ${minZ} ` +
+    `OR avatar_position_far.region_ref = ${region} AND avatar_position_far.position_z > ${maxZ}`
+  const avatarProfileQueries = splitPresence
+    ? [
+        `SELECT agent_avatar.* FROM avatar_position_near JOIN agent_avatar ON avatar_position_near.avatar_ref = agent_avatar.avatar_ref WHERE ${highPositionWhere}`,
+        `SELECT agent_avatar.* FROM avatar_position_far JOIN agent_avatar ON avatar_position_far.avatar_ref = agent_avatar.avatar_ref WHERE ${farPositionWhere}`,
+      ]
+    : [
+        `SELECT agent_avatar.* FROM avatar_position JOIN agent_avatar ON avatar_position.avatar_ref = agent_avatar.avatar_ref WHERE ${highPositionWhere}`,
+      ]
+  const positionQueries = splitPresence
+    ? [
+        `SELECT * FROM avatar_position_near WHERE ${highPositionWhere}`,
+        `SELECT * FROM avatar_position_far WHERE ${farPositionWhere}`,
+      ]
+    : [
+        `SELECT * FROM avatar_position WHERE ${highPositionWhere}`,
+      ]
   return [
     `SELECT * FROM world_event WHERE run_ref = ${run}`,
     `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
     `SELECT * FROM world_region WHERE region_ref = ${region}`,
     `SELECT * FROM pylon_station WHERE region_ref = ${region}`,
-    `SELECT agent_avatar.* FROM avatar_position JOIN agent_avatar ON avatar_position.avatar_ref = agent_avatar.avatar_ref WHERE avatar_position.region_ref = ${region}`,
-    `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
+    ...avatarProfileQueries,
+    ...positionQueries,
     `SELECT pylon_attention.* FROM pylon_station JOIN pylon_attention ON pylon_station.pylon_ref = pylon_attention.pylon_ref WHERE pylon_station.region_ref = ${region}`,
     `SELECT * FROM local_chat_message WHERE region_ref = ${region}`,
     `SELECT chat_bubble.* FROM local_chat_message JOIN chat_bubble ON local_chat_message.message_ref = chat_bubble.message_ref WHERE local_chat_message.region_ref = ${region}`,
@@ -121,6 +241,30 @@ export const chatWorldMultiplayerSubscriptionQueries = (
 
 const finite = (value: number): boolean =>
   Number.isFinite(value) && !Number.isNaN(value)
+
+const positionPresenceFeed = (
+  position: ChatWorldAvatarPositionRow,
+): ChatWorldAvatarPresenceFeed =>
+  position.presenceFeed === "low" ? "low" : "high"
+
+const positionFeedRank = (feed: ChatWorldAvatarPresenceFeed): number =>
+  feed === "high" ? 1 : 0
+
+const choosePositionRow = (
+  current: ChatWorldAvatarPositionRow | undefined,
+  candidate: ChatWorldAvatarPositionRow,
+): ChatWorldAvatarPositionRow => {
+  if (current === undefined) return candidate
+  const currentFeed = positionPresenceFeed(current)
+  const candidateFeed = positionPresenceFeed(candidate)
+  return positionFeedRank(candidateFeed) > positionFeedRank(currentFeed) ||
+    (
+      candidateFeed === currentFeed &&
+      candidate.lastSeenEpochMs > current.lastSeenEpochMs
+    )
+    ? candidate
+    : current
+}
 
 export const projectChatWorldMultiplayer = (input: {
   readonly flagEnabled: boolean
@@ -154,7 +298,16 @@ export const projectChatWorldMultiplayer = (input: {
   const positionRows = rows.positions
     .filter(position => position.regionRef === regionRef)
     .filter(position => finite(position.x) && finite(position.y) && finite(position.z))
-  const avatarRefsInRegion = new Set(positionRows.map(position => position.avatarRef))
+    .reduce((byAvatar, position) => {
+      byAvatar.set(position.avatarRef, choosePositionRow(
+        byAvatar.get(position.avatarRef),
+        position,
+      ))
+      return byAvatar
+    }, new Map<string, ChatWorldAvatarPositionRow>())
+    .values()
+  const activePositionRows = [...positionRows]
+  const avatarRefsInRegion = new Set(activePositionRows.map(position => position.avatarRef))
   const messagesByAvatar = new Map<string, Array<string>>()
   for (const message of rows.messages) {
     if (
@@ -183,7 +336,7 @@ export const projectChatWorldMultiplayer = (input: {
     attentionByAvatar.set(attention.avatarRef, current)
   }
 
-  const agents = positionRows.flatMap(position => {
+  const agents = activePositionRows.flatMap(position => {
     const avatar = avatarByRef.get(position.avatarRef)
     if (avatar === undefined) {
       return []
@@ -200,6 +353,7 @@ export const projectChatWorldMultiplayer = (input: {
       yaw: finite(position.yaw) ? position.yaw : 0,
       movementMode: position.movementMode,
       lastSeenEpochMs: position.lastSeenEpochMs,
+      presenceFeed: positionPresenceFeed(position),
       chatMessages: messagesByAvatar.get(position.avatarRef) ?? [],
       attentionRefs: attentionByAvatar.get(position.avatarRef) ?? [],
     }]

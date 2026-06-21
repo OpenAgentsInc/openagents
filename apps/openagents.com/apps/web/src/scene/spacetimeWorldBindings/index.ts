@@ -68,6 +68,8 @@ import UpsertWorldRegionReducer from "./upsert_world_region_reducer";
 import AgentAvatarRow from "./agent_avatar_table";
 import AgentIntentRow from "./agent_intent_table";
 import AvatarPositionRow from "./avatar_position_table";
+import AvatarPositionFarRow from "./avatar_position_far_table";
+import AvatarPositionNearRow from "./avatar_position_near_table";
 import BridgeHealthRow from "./bridge_health_table";
 import ChatBubbleRow from "./chat_bubble_table";
 import LocalChatMessageRow from "./local_chat_message_table";
@@ -115,11 +117,42 @@ const tablesSchema = __schema({
       { accessor: 'avatar_ref', name: 'avatar_position_avatar_ref_idx_btree', algorithm: 'btree', columns: [
         'avatarRef',
       ] },
+      { accessor: 'avatar_position_region', name: 'avatar_position_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
+      ] },
     ],
     constraints: [
       { name: 'avatar_position_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
     ],
   }, AvatarPositionRow),
+  avatar_position_far: __table({
+    name: 'avatar_position_far',
+    indexes: [
+      { accessor: 'avatar_ref', name: 'avatar_position_far_avatar_ref_idx_btree', algorithm: 'btree', columns: [
+        'avatarRef',
+      ] },
+      { accessor: 'avatar_position_far_region', name: 'avatar_position_far_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'avatar_position_far_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
+    ],
+  }, AvatarPositionFarRow),
+  avatar_position_near: __table({
+    name: 'avatar_position_near',
+    indexes: [
+      { accessor: 'avatar_ref', name: 'avatar_position_near_avatar_ref_idx_btree', algorithm: 'btree', columns: [
+        'avatarRef',
+      ] },
+      { accessor: 'avatar_position_near_region', name: 'avatar_position_near_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
+      ] },
+    ],
+    constraints: [
+      { name: 'avatar_position_near_avatar_ref_key', constraint: 'unique', columns: ['avatarRef'] },
+    ],
+  }, AvatarPositionNearRow),
   bridge_health: __table({
     name: 'bridge_health',
     indexes: [
@@ -137,6 +170,9 @@ const tablesSchema = __schema({
       { accessor: 'bubble_ref', name: 'chat_bubble_bubble_ref_idx_btree', algorithm: 'btree', columns: [
         'bubbleRef',
       ] },
+      { accessor: 'chat_bubble_message', name: 'chat_bubble_message_ref_idx_btree', algorithm: 'btree', columns: [
+        'messageRef',
+      ] },
     ],
     constraints: [
       { name: 'chat_bubble_bubble_ref_key', constraint: 'unique', columns: ['bubbleRef'] },
@@ -148,6 +184,9 @@ const tablesSchema = __schema({
       { accessor: 'message_ref', name: 'local_chat_message_message_ref_idx_btree', algorithm: 'btree', columns: [
         'messageRef',
       ] },
+      { accessor: 'local_chat_message_region', name: 'local_chat_message_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
+      ] },
     ],
     constraints: [
       { name: 'local_chat_message_message_ref_key', constraint: 'unique', columns: ['messageRef'] },
@@ -158,6 +197,9 @@ const tablesSchema = __schema({
     indexes: [
       { accessor: 'emote_ref', name: 'local_emote_emote_ref_idx_btree', algorithm: 'btree', columns: [
         'emoteRef',
+      ] },
+      { accessor: 'local_emote_region', name: 'local_emote_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
       ] },
     ],
     constraints: [
@@ -192,6 +234,9 @@ const tablesSchema = __schema({
       { accessor: 'attention_ref', name: 'pylon_attention_attention_ref_idx_btree', algorithm: 'btree', columns: [
         'attentionRef',
       ] },
+      { accessor: 'pylon_attention_pylon', name: 'pylon_attention_pylon_ref_idx_btree', algorithm: 'btree', columns: [
+        'pylonRef',
+      ] },
     ],
     constraints: [
       { name: 'pylon_attention_attention_ref_key', constraint: 'unique', columns: ['attentionRef'] },
@@ -202,6 +247,9 @@ const tablesSchema = __schema({
     indexes: [
       { accessor: 'pylon_ref', name: 'pylon_station_pylon_ref_idx_btree', algorithm: 'btree', columns: [
         'pylonRef',
+      ] },
+      { accessor: 'pylon_station_region', name: 'pylon_station_region_ref_idx_btree', algorithm: 'btree', columns: [
+        'regionRef',
       ] },
     ],
     constraints: [
@@ -257,6 +305,9 @@ const tablesSchema = __schema({
     indexes: [
       { accessor: 'event_ref', name: 'world_event_event_ref_idx_btree', algorithm: 'btree', columns: [
         'eventRef',
+      ] },
+      { accessor: 'world_event_run', name: 'world_event_run_ref_idx_btree', algorithm: 'btree', columns: [
+        'runRef',
       ] },
     ],
     constraints: [

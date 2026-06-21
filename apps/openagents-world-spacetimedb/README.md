@@ -27,6 +27,8 @@ Public interaction tables:
 - `pylon_station`
 - `agent_avatar`
 - `avatar_position`
+- `avatar_position_near`
+- `avatar_position_far`
 - `pylon_attention`
 - `local_chat_message`
 - `chat_bubble`
@@ -87,13 +89,24 @@ short-lived chat-bubble rows. `expire_interaction_rows` is a service reducer
 that removes stale avatar positions using the region TTL and removes expired
 attention, message, bubble, emote, and intent rows.
 
+`avatar_position` remains the compatibility high-resolution public presence
+table. #5892 adds two feed-specific public tables with the same row shape:
+`avatar_position_near` updates on every accepted position write, and
+`avatar_position_far` updates at most once per avatar per second. Clients can
+keep using the single region-filtered compatibility table until row churn
+requires split queries, then subscribe to the near table inside the local
+window and the far table outside it.
+
 The proximity subscription shape for clients is deliberately simple:
 
 - read `world_region` by `region_ref` for bounds, Street metadata, proximity
   radius, and TTL;
 - subscribe to `pylon_station` rows with the same `region_ref`;
 - subscribe to `avatar_position` rows with the same `region_ref`, then join to
-  `agent_avatar` by `avatar_ref`;
+  `agent_avatar` by `avatar_ref` for the compatibility single-feed path;
+- when split presence is enabled, subscribe to `avatar_position_near` for the
+  local high-resolution window and `avatar_position_far` outside that window,
+  joining each feed to `agent_avatar` by `avatar_ref`;
 - subscribe to `pylon_attention` by joining active-region `pylon_station`
   rows to attention rows by `pylon_ref`;
 - subscribe to `chat_bubble` by joining active-region `local_chat_message`
@@ -107,10 +120,12 @@ The proximity subscription shape for clients is deliberately simple:
 
 The module carries btree indexes for the active subscription filters and joins:
 `world_event.run_ref`, `pylon_station.region_ref`,
-`avatar_position.region_ref`, `pylon_attention.pylon_ref`,
+`avatar_position.region_ref`, `avatar_position_near.region_ref`,
+`avatar_position_far.region_ref`, `pylon_attention.pylon_ref`,
 `local_chat_message.region_ref`, `chat_bubble.message_ref`, and
 `local_emote.region_ref`. `agent_avatar.avatar_ref`,
-`avatar_position.avatar_ref`, `pylon_station.pylon_ref`,
+`avatar_position.avatar_ref`, `avatar_position_near.avatar_ref`,
+`avatar_position_far.avatar_ref`, `pylon_station.pylon_ref`,
 `local_chat_message.message_ref`, and `agent_intent.avatar_ref` are primary
 keys and therefore already indexed for the join side of the region-scoped
 subscriptions.
