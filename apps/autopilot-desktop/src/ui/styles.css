@@ -177,7 +177,7 @@ body {
 
 .app-shell-verse .chat-composer-verse {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 4.25rem;
+  grid-template-columns: minmax(0, 1fr) 3.25rem;
   align-items: center;
   gap: 0.5rem;
   height: 3.5rem;
@@ -206,13 +206,15 @@ body {
 }
 
 .app-shell-verse .chat-composer-verse .chat-actions {
-  align-self: stretch;
+  align-self: center;
 }
 
 .app-shell-verse .chat-composer-verse .primary-button {
+  width: 3.25rem;
   min-width: 0;
-  height: 100%;
-  padding-inline: 0.75rem;
+  height: 2.35rem;
+  padding-inline: 0;
+  font-size: 0.75rem;
 }
 
 @media (max-width: 760px) {
