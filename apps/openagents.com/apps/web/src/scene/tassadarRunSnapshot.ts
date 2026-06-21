@@ -16,10 +16,12 @@ import {
   SpatialHashGrid,
   type TrainingRunBurstDefinition,
   type TrainingRunEntityDefinition,
+  type TrainingRunNodeStatus,
   type TrainingRunNodeDefinition,
   type TrainingRunVector,
   type TrainingRunVisualizationOptions,
   type TrainingRunVisualizationSnapshot,
+  type TrainingRunWorldItemDefinition,
   relaxMinimumDistanceLayout,
   trainingRunVisualizationOptionsFromSnapshot,
 } from '@openagentsinc/three-effect/core'
@@ -187,8 +189,34 @@ export interface TassadarWorldActivityMotion {
   readonly text: string
 }
 
+export interface TassadarRunBulletin {
+  readonly headline?: string
+  readonly latestActivity?: ReadonlyArray<{
+    readonly label?: string
+    readonly occurredAt?: string
+    readonly sourceRefs?: ReadonlyArray<string>
+    readonly text?: string
+  }>
+  readonly metrics?: {
+    readonly acceptedTraceCount?: number
+    readonly activePylonCount?: number
+    readonly activeWindowCount?: number
+    readonly realSettlementCount?: number
+    readonly settledSats?: number
+    readonly totalPylonCount?: number
+    readonly verifiedWorkCount?: number
+  }
+  readonly onBoardLines?: ReadonlyArray<string>
+  readonly schemaVersion?: string
+  readonly sourceRefs?: ReadonlyArray<string>
+  readonly statusLine?: string
+  readonly summary?: string
+  readonly title?: string
+}
+
 /** Narrow structural view of the worker's `TrainingRunPublicSummary` (public-safe). */
 export interface TassadarRunPublicSummary {
+  readonly bulletin?: TassadarRunBulletin
   readonly corpus?: {
     readonly acceptedTraceCount?: number
     readonly traceRefs?: ReadonlyArray<string>
@@ -278,6 +306,11 @@ const publicRefs = (
   Array.isArray(refs)
     ? refs.map(ref => ref.trim()).filter(ref => ref.length > 0)
     : []
+
+const textOrUnknown = (value: string | undefined): string => {
+  const text = value?.trim()
+  return text === undefined || text.length === 0 ? 'unknown' : text
+}
 
 const uniquePublicRefs = (
   refs: ReadonlyArray<string | undefined>,
@@ -904,6 +937,43 @@ const runNodeFromPublicSummary = (
   role: 'run',
   status: runNodeStatus(summary.runState),
 })
+
+const bulletinStatus = (
+  summary: TassadarRunPublicSummary,
+): TrainingRunNodeStatus =>
+  summary.runState === 'active'
+    ? 'active'
+    : summary.runState === 'sealed' || summary.runState === 'reconciled'
+      ? 'sealed'
+      : summary.runState === 'planned'
+        ? 'planned'
+        : 'queued'
+
+export const tassadarRunBulletinWorldItem = (
+  summary: TassadarRunPublicSummary,
+): TrainingRunWorldItemDefinition | null => {
+  const bulletin = summary.bulletin
+  if (bulletin === undefined) return null
+  const title = textOrUnknown(bulletin.title)
+  const headline = textOrUnknown(bulletin.headline)
+  const body = textOrUnknown(bulletin.summary)
+  return {
+    id: 'bulletin.tassadar.run',
+    kind: 'bulletin_board',
+    label: title === 'unknown' ? 'Tassadar board' : title,
+    title: title === 'unknown' ? 'Tassadar' : title,
+    detail: body === 'unknown' ? headline : body,
+    lines:
+      bulletin.onBoardLines === undefined || bulletin.onBoardLines.length === 0
+        ? [headline]
+        : bulletin.onBoardLines,
+    position: [-2.4, -2.35, 0.02],
+    yaw: -0.12,
+    interactionRadius: 2.8,
+    status: bulletinStatus(summary),
+    sourceRefs: publicRefs(bulletin.sourceRefs),
+  }
+}
 
 export interface TassadarSpacetimeWorldRows {
   readonly agentAvatars?: ReadonlyArray<AgentAvatar>
@@ -1571,6 +1641,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
   | 'nodes'
   | 'sceneChrome'
   | 'stageNodeGlyph'
+  | 'worldItems'
 > => {
   const rows = summary.realGradient?.leaderboardRows
   const pairs = summary.realGradient?.verifiedReplayPairs
@@ -1593,6 +1664,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
     ...corpusEntities(summary),
   ]
   const bursts = activityBurstsFromSummary(summary, entities)
+  const bulletin = tassadarRunBulletinWorldItem(summary)
 
   return {
     beams: [],
@@ -1614,6 +1686,7 @@ export const trainingRunEntityLayerFromPublicSummary = (
       statusChart: 'hidden',
     },
     stageNodeGlyph: 'compact_gate',
+    worldItems: bulletin === null ? [] : [bulletin],
   }
 }
 

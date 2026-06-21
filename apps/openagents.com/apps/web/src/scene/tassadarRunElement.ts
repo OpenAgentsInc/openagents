@@ -15,6 +15,7 @@
 // The data-state attribute is exposed for tests and styling. Dark-only.
 import type {
   TrainingRunNodeSelection,
+  TrainingRunWorldItemSelection,
   TrainingRunVisualizationOptions,
   WasdMouseLookControllerOptions,
   WasdMouseLookDebugSnapshot,
@@ -32,6 +33,7 @@ import {
 } from './tassadarProofReplayElement'
 import {
   type PublicTassadarSettlementRow,
+  type TassadarRunBulletin,
   type TassadarRunPublicSummary,
   tassadarRunVisualizationOptions,
 } from './tassadarRunSnapshot'
@@ -109,6 +111,16 @@ const HOST_STYLE =
   '.selection dd{margin:0;overflow-wrap:anywhere;font-size:0.7rem;line-height:1.4;color:rgba(255,255,255,0.66)}' +
   '.selection a{display:inline-flex;margin-top:0.55rem;font-size:0.72rem;color:rgba(255,255,255,0.86);text-underline-offset:0.18rem}' +
   '.selection a:hover{color:#fff}' +
+  '.bulletin{position:absolute;left:1rem;top:5.8rem;z-index:2;width:min(28rem,calc(100% - 2rem));max-height:min(32rem,calc(100% - 7rem));overflow:auto;' +
+  'border:1px solid rgba(142,246,255,0.22);background:rgba(5,8,8,0.78);padding:0.9rem 1rem;' +
+  'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;backdrop-filter:blur(16px);box-shadow:0 0.9rem 2.4rem rgba(0,0,0,0.34);pointer-events:none}' +
+  '.bulletin strong{display:block;margin-bottom:0.35rem;font-size:0.82rem;font-weight:700;color:rgba(255,255,255,0.92)}' +
+  '.bulletin p{margin:0;font-size:0.72rem;line-height:1.55;color:rgba(255,255,255,0.68)}' +
+  '.bulletin .headline{margin-bottom:0.55rem;color:rgba(142,246,255,0.86)}' +
+  '.bulletin dl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0.55rem;margin:0.75rem 0}.bulletin dt{margin:0 0 0.12rem;font-size:0.56rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.36)}' +
+  '.bulletin dd{margin:0;font-size:0.76rem;color:rgba(255,255,255,0.78)}.bulletin ol{display:grid;gap:0.45rem;margin:0.7rem 0 0;padding:0;list-style:none}' +
+  '.bulletin li{border-left:2px solid rgba(142,246,255,0.35);padding-left:0.5rem}.bulletin li span{display:block;margin-bottom:0.12rem;font-size:0.58rem;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.38)}' +
+  '.bulletin li p{color:rgba(255,255,255,0.62)}' +
   '.chat{position:absolute;left:1rem;bottom:1rem;z-index:2;width:min(24rem,calc(100% - 2rem));' +
   'font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#f1efe8;pointer-events:auto}' +
   '.chat ol{display:grid;gap:0.35rem;max-height:9rem;overflow:hidden;margin:0 0 0.5rem;padding:0;list-style:none}' +
@@ -183,6 +195,11 @@ const textOrUnknown = (value: string | undefined): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? 'unknown' : text
 }
+
+const displayNumber = (value: number | undefined): string =>
+  new Intl.NumberFormat('en-US').format(
+    typeof value === 'number' && Number.isFinite(value) ? value : 0,
+  )
 
 export const sanitizeTassadarChatBody = (value: string): string | null => {
   const body = value.trim().replace(/\s+/g, ' ')
@@ -727,6 +744,30 @@ const isTrainingRunNodeSelection = (
   )
 }
 
+const isTrainingRunWorldItemSelection = (
+  value: unknown,
+): value is TrainingRunWorldItemSelection => {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+  const record = value as Record<string, unknown>
+  return (
+    typeof record.detail === 'string' &&
+    typeof record.id === 'string' &&
+    record.kind === 'bulletin_board' &&
+    typeof record.label === 'string' &&
+    typeof record.status === 'string'
+  )
+}
+
+const isWorldItemProximityDetail = (
+  value: unknown,
+): value is { readonly item: TrainingRunWorldItemSelection | null } => {
+  if (typeof value !== 'object' || value === null) return false
+  const item = (value as { readonly item?: unknown }).item
+  return item === null || isTrainingRunWorldItemSelection(item)
+}
+
 const makeClass = (): CustomElementConstructor =>
   class extends HTMLElement {
     #shadow: ShadowRoot | null = null
@@ -738,6 +779,7 @@ const makeClass = (): CustomElementConstructor =>
       ...TASSADAR_INITIAL_AVATAR_POSITION,
     }
     #selectedPylonRef: string | null = null
+    #nearWorldItemId: string | null = null
     #summary: TassadarRunPublicSummary | null = null
     #mouselookDebugCount = 0
 
@@ -859,6 +901,12 @@ const makeClass = (): CustomElementConstructor =>
         this.#renderSelection(base.mount, detail, proofLink)
         this.#renderChat(base.mount, activeSummary)
       })
+      run.addEventListener('world-item-proximity-changed', event => {
+        const detail = (event as CustomEvent<unknown>).detail
+        if (!isWorldItemProximityDetail(detail)) return
+        this.#nearWorldItemId = detail.item?.id ?? null
+        this.#renderBulletin(base.mount, this.#summary ?? summary, detail.item)
+      })
       base.mount.append(run)
       this.#renderStatus(base.mount, summary)
       this.#renderChat(base.mount, summary)
@@ -900,6 +948,7 @@ const makeClass = (): CustomElementConstructor =>
             walkController: this.#walkControllerOptions(),
           }
           this.#renderStatus(mount, nextSummary)
+          this.#renderBulletinForCurrentProximity(mount, nextSummary)
           this.#renderChat(mount, nextSummary)
         },
       })
@@ -1254,6 +1303,98 @@ const makeClass = (): CustomElementConstructor =>
       replayLink.setAttribute('data-replay-element', TASSADAR_PROOF_REPLAY_TAG)
       panel.append(list, legend, replayLink)
       mount.append(panel)
+    }
+
+    #renderBulletinForCurrentProximity(
+      mount: HTMLDivElement,
+      summary: TassadarRunPublicSummary,
+    ): void {
+      if (this.#nearWorldItemId === null) {
+        this.#renderBulletin(mount, summary, null)
+        return
+      }
+      this.#renderBulletin(mount, summary, {
+        detail: summary.bulletin?.summary ?? '',
+        id: this.#nearWorldItemId,
+        kind: 'bulletin_board',
+        label: summary.bulletin?.title ?? 'Tassadar board',
+        status: 'active',
+        sourceRefs: summary.bulletin?.sourceRefs ?? [],
+      })
+    }
+
+    #renderBulletin(
+      mount: HTMLDivElement,
+      summary: TassadarRunPublicSummary,
+      item: TrainingRunWorldItemSelection | null,
+    ): void {
+      mount.querySelector('.bulletin')?.remove()
+      if (item === null || item.id !== 'bulletin.tassadar.run') return
+      const bulletin = summary.bulletin
+      if (bulletin === undefined) return
+      const panel = document.createElement('aside')
+      panel.className = 'bulletin'
+      panel.setAttribute('aria-label', 'Tassadar run bulletin')
+      panel.setAttribute('data-world-item', item.id)
+
+      const title = document.createElement('strong')
+      title.textContent = textOrUnknown(bulletin.title)
+      const headline = document.createElement('p')
+      headline.className = 'headline'
+      headline.textContent = textOrUnknown(bulletin.headline)
+      const body = document.createElement('p')
+      body.textContent = textOrUnknown(bulletin.summary)
+      panel.append(title, headline, body)
+
+      this.#appendBulletinMetrics(panel, bulletin)
+      this.#appendBulletinActivity(panel, bulletin)
+      mount.append(panel)
+    }
+
+    #appendBulletinMetrics(
+      panel: HTMLElement,
+      bulletin: TassadarRunBulletin,
+    ): void {
+      const metrics = bulletin.metrics
+      if (metrics === undefined) return
+      const rows: ReadonlyArray<readonly [string, string]> = [
+        ['pylons', displayNumber(metrics.totalPylonCount)],
+        ['active', displayNumber(metrics.activePylonCount)],
+        ['sats', displayNumber(metrics.settledSats)],
+        ['windows', displayNumber(metrics.activeWindowCount)],
+        ['traces', displayNumber(metrics.acceptedTraceCount)],
+        ['verified', displayNumber(metrics.verifiedWorkCount)],
+      ]
+      const list = document.createElement('dl')
+      for (const [label, value] of rows) {
+        const item = document.createElement('div')
+        const term = document.createElement('dt')
+        term.textContent = label
+        const detail = document.createElement('dd')
+        detail.textContent = value
+        item.append(term, detail)
+        list.append(item)
+      }
+      panel.append(list)
+    }
+
+    #appendBulletinActivity(
+      panel: HTMLElement,
+      bulletin: TassadarRunBulletin,
+    ): void {
+      const activity = bulletin.latestActivity ?? []
+      if (activity.length === 0) return
+      const list = document.createElement('ol')
+      for (const event of activity.slice(0, 3)) {
+        const item = document.createElement('li')
+        const label = document.createElement('span')
+        label.textContent = textOrUnknown(event.label)
+        const text = document.createElement('p')
+        text.textContent = textOrUnknown(event.text)
+        item.append(label, text)
+        list.append(item)
+      }
+      panel.append(list)
     }
 
     #renderSelection(

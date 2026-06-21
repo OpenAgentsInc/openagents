@@ -1921,9 +1921,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/tassadar-run-summary` — live at read compatibility feed
     for the live Tassadar spatial view over the same Worker-authoritative
     training run/window/lease/challenge rows — compliant (`generatedAt`,
-    top-level contract, public-safe summary metrics, and honest idle envelope
-    only; no admin token, private logs, wallet material, pending-as-paid
-    payout, or write authority).
+    top-level contract, public-safe summary metrics, plain-language
+    `bulletin` copy derived only from those public metrics/refs, and honest
+    idle envelope only; no admin token, private logs, wallet material,
+    pending-as-paid payout, or write authority).
   - `GET /api/public/activity-timeline` — live at read over public-safe Pylon,
     training, verification, settlement receipt, Forum, Artanis, and capacity
     source families — compliant (`generatedAt`, top-level

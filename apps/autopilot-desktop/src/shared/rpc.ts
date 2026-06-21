@@ -229,12 +229,46 @@ export type TrainingRunSummaryRow = {
   readonly windows: readonly TrainingWindowProjectionRow[]
 }
 
+export type TassadarRunBulletin = {
+  readonly headline?: string
+  readonly latestActivity?: readonly {
+    readonly label?: string
+    readonly occurredAt?: string
+    readonly sourceRefs?: readonly string[]
+    readonly text?: string
+  }[]
+  readonly metrics?: {
+    readonly acceptedTraceCount?: number
+    readonly activePylonCount?: number
+    readonly activeWindowCount?: number
+    readonly realSettlementCount?: number
+    readonly settledSats?: number
+    readonly totalPylonCount?: number
+    readonly verifiedWorkCount?: number
+  }
+  readonly onBoardLines?: readonly string[]
+  readonly schemaVersion?: string
+  readonly sourceRefs?: readonly string[]
+  readonly statusLine?: string
+  readonly summary?: string
+  readonly title?: string
+}
+
+export type PublicTassadarRunSummary = {
+  readonly bulletin?: TassadarRunBulletin
+  readonly generatedAt?: string
+  readonly runLabel?: string
+  readonly runRef?: string
+  readonly runState?: string
+}
+
 export type TrainingRunsResponse = {
   readonly ok: boolean
   readonly fetchedAt: string
   readonly sourceUrl: string
   readonly runs: readonly TrainingRunProjectionRow[]
   readonly summaries: readonly TrainingRunSummaryRow[]
+  readonly tassadarSummary?: PublicTassadarRunSummary | null
   readonly error?: string
 }
 

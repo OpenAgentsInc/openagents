@@ -33,6 +33,7 @@ import {
   type TrainingRunPresenceZone,
   type TrainingRunPromiseSignalDefinition,
   type TrainingRunVisualizationOptions,
+  type TrainingRunWorldItemSelection,
 } from "@openagentsinc/three-effect/core"
 import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
@@ -71,6 +72,10 @@ import {
   VERSE_TRAINING_NODE_PREFIX,
   withVerseTrainingLayer,
 } from "../shared/verse-training-visualization.js"
+import {
+  verseTassadarBulletinOverlayProjection,
+  withVerseBulletinBoardLayer,
+} from "../shared/verse-bulletin-board.js"
 import {
   verseRunHudProjection,
   type VerseRunHudProjection,
@@ -162,6 +167,7 @@ import {
   ClickedRemoveManagedAccount,
   ChangedVerseLocalPose,
   ChangedVersePresenceZone,
+  ChangedVerseWorldItemProximity,
   SelectedChatWorldNode,
   SelectedComposerAccount,
   ClickedCancelSession,
@@ -5847,7 +5853,11 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     promiseGates: modelTrainingPromiseGates(model),
     trainingRuns: modelTrainingRuns(model),
   })
-  const withBase = withPylonBaseLayer(withTraining, pylonBase)
+  const withBulletin = withVerseBulletinBoardLayer(
+    withTraining,
+    modelTrainingRuns(model),
+  )
+  const withBase = withPylonBaseLayer(withBulletin, pylonBase)
   const multiplayer = modelChatWorldMultiplayer(model)
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
     localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
@@ -5902,6 +5912,46 @@ const chatSceneInspector = (model: Model): Html =>
         h.span([cls("chat-scene-inspector-ref")], [model.chatWorldInspectedRef]),
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
+
+const verseBulletinBoardOverlay = (model: Model): Html => {
+  const projection = verseTassadarBulletinOverlayProjection(
+    modelTrainingRuns(model),
+    model.nearVerseWorldItemId,
+  )
+  if (projection === null) {
+    return h.div([cls("verse-bulletin verse-bulletin-empty")], [])
+  }
+  return h.aside(
+    [
+      cls("verse-bulletin"),
+      h.AriaLabel("Tassadar run bulletin board"),
+      h.DataAttribute("verse-bulletin", "tassadar"),
+    ],
+    [
+      h.strong([cls("verse-bulletin-title mono")], [projection.title]),
+      h.p([cls("verse-bulletin-headline mono")], [projection.headline]),
+      h.p([cls("verse-bulletin-summary")], [projection.summary]),
+      projection.metrics.length === 0
+        ? h.div([cls("verse-bulletin-metrics verse-bulletin-metrics-empty")], [])
+        : h.dl([cls("verse-bulletin-metrics")], [
+            ...projection.metrics.flatMap(metric => [
+              h.dt([cls("mono")], [metric.label]),
+              h.dd([cls("mono")], [metric.value]),
+            ]),
+          ]),
+      projection.latestActivity.length === 0
+        ? h.div([cls("verse-bulletin-activity verse-bulletin-activity-empty")], [])
+        : h.ol([cls("verse-bulletin-activity")], [
+            ...projection.latestActivity.map(item =>
+              h.li([], [
+                h.span([cls("mono")], [item.label]),
+                h.p([], [item.text]),
+              ]),
+            ),
+          ]),
+    ],
+  )
+}
 
 const verseHudSampleTitle = (sample: VerseRunHudSample): string =>
   sample.sourceRefs.length === 0
@@ -6023,9 +6073,12 @@ const chatSceneBackground = (model: Model): Html =>
           },
         })
       },
+      (item: TrainingRunWorldItemSelection | null) =>
+        ChangedVerseWorldItemProximity({ itemId: item?.id ?? null }),
     ),
     pylonBalanceHud(model),
     chatSceneInspector(model),
+    verseBulletinBoardOverlay(model),
   ])
 
 // The chat thread + composer, shared by both the plain and world-scene layouts.

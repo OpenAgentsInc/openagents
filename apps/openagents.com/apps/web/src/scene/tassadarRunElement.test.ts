@@ -81,6 +81,34 @@ const populated = {
   runRef: 'run.tassadar.executor.20260615',
   runLabel: 'Tassadar executor run',
   runState: 'active',
+  bulletin: {
+    schemaVersion: 'openagents.public_tassadar_run_bulletin.v1',
+    title: 'Tassadar Run Board',
+    headline: 'Tassadar is active: 5 pylons, 2 active.',
+    summary:
+      'Tassadar is active with public training windows, verified work, and settlement receipts.',
+    statusLine: 'active · 5 pylons, 2 active',
+    onBoardLines: ['Status: active', '5 pylons, 2 active', '2,100 sats paid'],
+    metrics: {
+      acceptedTraceCount: 1,
+      activePylonCount: 2,
+      activeWindowCount: 2,
+      realSettlementCount: 1,
+      settledSats: 2100,
+      totalPylonCount: 5,
+      verifiedWorkCount: 9,
+    },
+    latestActivity: [
+      {
+        label: 'latest update',
+        text: 'Latest public run activity was recorded at 2026-06-17T16:39:20.270Z.',
+      },
+    ],
+    sourceRefs: [
+      'run.tassadar.executor.20260615',
+      'route:/api/public/tassadar-run-summary',
+    ],
+  },
   staleness: {
     composition: 'live_at_read',
     contractVersion: 'projection_staleness.v1',
@@ -349,6 +377,56 @@ describe('tassadarRunView page wiring', () => {
     expect(el.shadowRoot?.querySelector('.promise-gate')).toBeNull()
     expect(el.shadowRoot?.textContent ?? '').not.toContain('Promise gates')
     expect(el.shadowRoot?.textContent ?? '').not.toContain('Fleet pylon stats')
+  })
+
+  it('opens and refreshes the Tassadar bulletin overlay from world-item proximity', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(populated))
+
+    const el = await mountAndSettle()
+    const run = el.shadowRoot?.querySelector(STUB_TAG)
+    expect(run).not.toBeNull()
+    const options = recordedVisualizations[0] as {
+      worldItems?: ReadonlyArray<{ id: string; lines?: ReadonlyArray<string> }>
+    }
+    expect(options.worldItems?.[0]).toMatchObject({
+      id: 'bulletin.tassadar.run',
+      lines: ['Status: active', '5 pylons, 2 active', '2,100 sats paid'],
+    })
+
+    run?.dispatchEvent(
+      new CustomEvent('world-item-proximity-changed', {
+        bubbles: true,
+        composed: true,
+        detail: {
+          item: {
+            detail: populated.bulletin.summary,
+            id: 'bulletin.tassadar.run',
+            kind: 'bulletin_board',
+            label: 'Tassadar Run Board',
+            status: 'active',
+            sourceRefs: populated.bulletin.sourceRefs,
+          },
+        },
+      }),
+    )
+
+    const bulletin = el.shadowRoot?.querySelector('.bulletin')
+    expect(bulletin?.getAttribute('data-world-item')).toBe(
+      'bulletin.tassadar.run',
+    )
+    expect(bulletin?.textContent ?? '').toContain('Tassadar Run Board')
+    expect(bulletin?.textContent ?? '').toContain('5 pylons, 2 active')
+    expect(bulletin?.textContent ?? '').toContain('2,100')
+    expect(bulletin?.textContent ?? '').toContain('latest update')
+
+    run?.dispatchEvent(
+      new CustomEvent('world-item-proximity-changed', {
+        bubbles: true,
+        composed: true,
+        detail: { item: null },
+      }),
+    )
+    expect(el.shadowRoot?.querySelector('.bulletin')).toBeNull()
   })
 
   it('(b) idle summary → empty state, still renders the honest (zeroed) scene — never faked', async () => {

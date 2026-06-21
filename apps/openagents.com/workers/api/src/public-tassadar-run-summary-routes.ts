@@ -18,6 +18,7 @@ import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 import { settledSatsFromPaymentAuthorityReceipt } from './training-leaderboards'
 import {
+  type TrainingRunPublicSummary,
   type TrainingAuthorityStore,
   makeD1TrainingAuthorityStore,
   publicTrainingRunSummary,
@@ -41,11 +42,182 @@ const idleEnvelope = (runRef: string, generatedAt: string) =>
     generatedAt,
     staleness: publicTassadarRunSummaryStaleness(),
     emptyState: { idle: true, reason: 'run not found or no data yet' },
+    bulletin: buildPublicTassadarRunBulletin({
+      generatedAt,
+      runRef,
+      runState: 'planned',
+      summary: null,
+      windows: [],
+      leases: [],
+      challenges: [],
+      settlementRows: [],
+    }),
     metrics: {},
     realGradient: null,
   }) as const
 
 const maxSettlementReceiptLookups = 128
+
+type PublicTassadarRunBulletinInput = Readonly<{
+  generatedAt: string
+  runRef: string
+  runState: string
+  summary: TrainingRunPublicSummary | null
+  windows: Awaited<ReturnType<TrainingAuthorityStore['listWindowsForRun']>>
+  leases: Awaited<ReturnType<TrainingAuthorityStore['listWindowLeasesForRun']>>
+  challenges: Awaited<
+    ReturnType<TrainingAuthorityStore['listVerificationChallengesForRun']>
+  >
+  settlementRows: ReadonlyArray<PublicTassadarSettlementRow>
+}>
+
+const numberText = (value: number): string =>
+  new Intl.NumberFormat('en-US').format(value)
+
+const countText = (value: number, singular: string, plural = `${singular}s`) =>
+  `${numberText(value)} ${value === 1 ? singular : plural}`
+
+const metricValue = (
+  metric: TrainingRunPublicSummary['metrics'][keyof TrainingRunPublicSummary['metrics']] | undefined,
+): number =>
+  metric === undefined || !Number.isFinite(metric.value) ? 0 : metric.value
+
+const distinctLeasePylons = (
+  leases: PublicTassadarRunBulletinInput['leases'],
+): ReadonlyArray<string> =>
+  uniqueRefs(leases.map(lease => lease.pylonRef))
+
+const activeLeasePylons = (
+  leases: PublicTassadarRunBulletinInput['leases'],
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    leases
+      .filter(lease => lease.state === 'active')
+      .map(lease => lease.pylonRef),
+  )
+
+const latestTimestamp = (
+  values: ReadonlyArray<string | null | undefined>,
+): string | undefined =>
+  values
+    .map(value => value?.trim() ?? '')
+    .filter(value => value !== '')
+    .sort()
+    .at(-1)
+
+export const buildPublicTassadarRunBulletin = (
+  input: PublicTassadarRunBulletinInput,
+) => {
+  const metrics = input.summary?.metrics
+  const totalPylons = Math.max(
+    distinctLeasePylons(input.leases).length,
+    metricValue(metrics?.assignedContributorCount),
+    metricValue(metrics?.qualifiedContributorCount),
+  )
+  const activePylons = activeLeasePylons(input.leases).length
+  const activeWindows = metricValue(metrics?.activeWindowCount)
+  const acceptedTraces = input.summary?.corpus.acceptedTraceCount ?? 0
+  const verifiedWork = metricValue(metrics?.verifiedWorkCount)
+  const rejectedWork = metricValue(metrics?.rejectedWorkCount)
+  const settledSats = metricValue(metrics?.providerConfirmedSettledPayoutSats)
+  const realSettlementRows = input.settlementRows.filter(
+    row => row.realBitcoinMoved,
+  )
+  const latestRunActivityAt =
+    latestTimestamp([
+      ...input.windows.map(window => window.updatedAt),
+      ...input.leases.map(lease => lease.claimedAt),
+      ...input.challenges.map(challenge => challenge.updatedAt),
+    ]) ?? input.generatedAt
+  const status =
+    input.runState === 'active'
+      ? 'active'
+      : input.runState === 'sealed' || input.runState === 'reconciled'
+        ? 'sealed'
+        : input.runState === 'planned'
+          ? 'planned'
+          : input.runState
+  const pylonLine = `${countText(totalPylons, 'pylon')}, ${numberText(
+    activePylons,
+  )} active`
+  const workLine = `${countText(
+    acceptedTraces,
+    'accepted trace',
+  )}; ${numberText(verifiedWork)} verified, ${numberText(rejectedWork)} rejected`
+  const settlementLine =
+    settledSats > 0
+      ? `${numberText(settledSats)} sats paid across ${countText(
+          realSettlementRows.length,
+          'real settlement',
+        )}`
+      : 'no provider-confirmed real Bitcoin settlement counted yet'
+  const headline = `Tassadar is ${status}: ${pylonLine}.`
+  const body = [
+    headline,
+    activeWindows > 0
+      ? `${countText(
+          activeWindows,
+          'training window',
+        )} active right now.`
+      : 'No active training window is visible in the public projection right now.',
+    workLine,
+    settlementLine,
+  ].join(' ')
+
+  return {
+    schemaVersion: 'openagents.public_tassadar_run_bulletin.v1',
+    title: 'Tassadar Run Board',
+    headline,
+    summary: body,
+    statusLine: `${status} · ${pylonLine}`,
+    onBoardLines: [
+      `Status: ${status}`,
+      pylonLine,
+      settledSats > 0 ? `${numberText(settledSats)} sats paid` : 'settlement pending',
+    ],
+    metrics: {
+      acceptedTraceCount: acceptedTraces,
+      activePylonCount: activePylons,
+      activeWindowCount: activeWindows,
+      realSettlementCount: realSettlementRows.length,
+      settledSats,
+      totalPylonCount: totalPylons,
+      verifiedWorkCount: verifiedWork,
+    },
+    latestActivity: [
+      {
+        label: 'latest update',
+        text:
+          input.summary === null
+            ? 'The run has no public Worker-authoritative records yet.'
+            : `Latest public run activity was recorded at ${latestRunActivityAt}.`,
+        occurredAt: latestRunActivityAt,
+        sourceRefs: uniqueRefs([
+          input.runRef,
+          'route:/api/public/tassadar-run-summary',
+        ]),
+      },
+      ...(realSettlementRows.length === 0
+        ? []
+        : [
+            {
+              label: 'bitcoin settlement',
+              text: settlementLine,
+              occurredAt: input.generatedAt,
+              sourceRefs: uniqueRefs(
+                realSettlementRows.flatMap(row => row.sourceRefs),
+              ),
+            },
+          ]),
+    ],
+    sourceRefs: uniqueRefs([
+      input.runRef,
+      'route:/api/public/tassadar-run-summary',
+      ...(input.summary?.sourceRefs ?? []),
+      ...(input.summary?.receiptRefs ?? []),
+    ]),
+  } as const
+}
 
 export type PublicTassadarSettlementRow = Readonly<{
   amountSats: number
@@ -273,6 +445,16 @@ export const buildPublicTassadarRunSummaryEnvelope = async (
     runRef: run.trainingRunRef,
     runState: run.state,
     generatedAt,
+    bulletin: buildPublicTassadarRunBulletin({
+      generatedAt,
+      runRef: run.trainingRunRef,
+      runState: run.state,
+      summary,
+      windows,
+      leases,
+      challenges,
+      settlementRows: settlement.settlementRows,
+    }),
     ...summary,
     settlementRows: settlement.settlementRows,
     staleness: summary.run.staleness,

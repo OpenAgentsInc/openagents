@@ -365,6 +365,9 @@ export const Model = ts("AutopilotDesktop", {
   // #5730: the receipt/source ref of the last-clicked payment beam endpoint, for
   // the inspector chip. Null when nothing is selected. Click → SelectedChatWorldNode.
   chatWorldInspectedRef: S.NullOr(S.String),
+  // Verse world item currently in walk-up range. The view derives overlay copy
+  // from server-owned public projections instead of SpacetimeDB authority.
+  nearVerseWorldItemId: S.NullOr(S.String),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1015,6 +1018,7 @@ export const initialModel: Model = Model.make({
   chatWorldParticles: [],
   chatWorldMultiplayer: null,
   chatWorldInspectedRef: null,
+  nearVerseWorldItemId: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

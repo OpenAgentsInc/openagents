@@ -16,6 +16,7 @@ import type {
   TrainingPromiseSummary,
   TrainingPublicMetric,
   TrainingPlanResponse,
+  PublicTassadarRunSummary,
   TrainingRunMetricsRow,
   TrainingRunProjectionRow,
   TrainingRunRealGradientRow,
@@ -1611,12 +1612,24 @@ export async function fetchTrainingRuns(
 ): Promise<TrainingRunsResponse> {
   const fetchFn = input.fetchFn ?? fetch
   const fetchedAt = input.nowIso?.() ?? new Date().toISOString()
-  const sourceUrl = `${normalizeBaseUrl(input.baseUrl)}/api/training/runs`
+  const baseUrl = normalizeBaseUrl(input.baseUrl)
+  const sourceUrl = `${baseUrl}/api/training/runs`
+  const tassadarSummaryUrl = `${baseUrl}/api/public/tassadar-run-summary`
 
   try {
-    const response = await fetchFn(sourceUrl, {
-      headers: { accept: "application/json" },
-    })
+    const [response, tassadarSummaryResult] = await Promise.all([
+      fetchFn(sourceUrl, {
+        headers: { accept: "application/json" },
+      }),
+      getPublicJson(fetchFn, tassadarSummaryUrl).catch((error) => ({
+        ok: false as const,
+        error: error instanceof Error ? error.message : String(error),
+      })),
+    ])
+    const tassadarSummary =
+      tassadarSummaryResult.ok && isRecord(tassadarSummaryResult.json)
+        ? (tassadarSummaryResult.json as PublicTassadarRunSummary)
+        : null
     if (!response.ok) {
       return {
         ok: false,
@@ -1625,6 +1638,7 @@ export async function fetchTrainingRuns(
         sourceUrl,
         runs: [],
         summaries: [],
+        tassadarSummary,
       }
     }
 
@@ -1651,6 +1665,7 @@ export async function fetchTrainingRuns(
           .filter(run => !summariesByRun.has(run.trainingRunRef))
           .map(fallbackSummary),
       ],
+      tassadarSummary,
     }
   } catch (error) {
     return {
@@ -1660,6 +1675,7 @@ export async function fetchTrainingRuns(
       sourceUrl,
       runs: [],
       summaries: [],
+      tassadarSummary: null,
     }
   }
 }

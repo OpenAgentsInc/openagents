@@ -178,6 +178,19 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
     expect(
       (body.staleness as { maxStalenessSeconds?: unknown }).maxStalenessSeconds,
     ).toBe(0)
+    const bulletin = body.bulletin as {
+      headline: string
+      metrics: { totalPylonCount: number; activePylonCount: number }
+      onBoardLines: ReadonlyArray<string>
+      summary: string
+    }
+    expect(bulletin.headline).toBe('Tassadar is planned: 0 pylons, 0 active.')
+    expect(bulletin.metrics.totalPylonCount).toBe(0)
+    expect(bulletin.metrics.activePylonCount).toBe(0)
+    expect(bulletin.onBoardLines).toContain('Status: planned')
+    expect(bulletin.summary).toContain(
+      'No active training window is visible in the public projection right now.',
+    )
   })
 
   it('honors the ?run= query param when choosing which run to read', async () => {
@@ -312,6 +325,36 @@ describe('buildPublicTassadarRunSummaryEnvelopeForRequest (public read, #5114)',
         workerRef: 'pylon.public.rejected_worker',
       }),
     ])
+    const bulletin = body.bulletin as {
+      headline: string
+      latestActivity: ReadonlyArray<{ label: string; text: string }>
+      metrics: {
+        acceptedTraceCount: number
+        activePylonCount: number
+        activeWindowCount: number
+        settledSats: number
+        totalPylonCount: number
+      }
+      onBoardLines: ReadonlyArray<string>
+      summary: string
+    }
+    expect(bulletin.headline).toBe('Tassadar is active: 1 pylon, 1 active.')
+    expect(bulletin.metrics).toEqual(
+      expect.objectContaining({
+        acceptedTraceCount: 1,
+        activePylonCount: 1,
+        activeWindowCount: 1,
+        settledSats: 0,
+        totalPylonCount: 1,
+      }),
+    )
+    expect(bulletin.onBoardLines).toEqual([
+      'Status: active',
+      '1 pylon, 1 active',
+      'settlement pending',
+    ])
+    expect(bulletin.summary).toContain('1 training window active right now.')
+    expect(bulletin.latestActivity[0]?.label).toBe('latest update')
   })
 
   // #5403 gap 1 (honesty): the real settled total must be the sum of ONLY the

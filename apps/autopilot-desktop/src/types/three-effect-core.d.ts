@@ -116,6 +116,31 @@ export type TrainingRunRemoteAvatarDefinition = Readonly<{
   yaw?: number
 }>
 
+export type TrainingRunWorldItemKind = "bulletin_board"
+
+export type TrainingRunWorldItemDefinition = Readonly<{
+  detail: string
+  id: string
+  interactionRadius?: number
+  kind: TrainingRunWorldItemKind
+  label: string
+  lines?: readonly string[]
+  position: TrainingRunVector
+  sourceRefs?: readonly string[]
+  status?: TrainingRunNodeStatus
+  title?: string
+  yaw?: number
+}>
+
+export type TrainingRunWorldItemSelection = Readonly<{
+  detail: string
+  id: string
+  kind: TrainingRunWorldItemKind
+  label: string
+  sourceRefs: readonly string[]
+  status: TrainingRunNodeStatus
+}>
+
 export type TrainingRunPresenceZone = "tassadar_area"
 
 export type TrainingRunLocalPoseSnapshot = Readonly<{
@@ -155,6 +180,9 @@ export type TrainingRunVisualizationOptions = Readonly<{
   onLocalPoseChange?: (pose: TrainingRunLocalPoseUpdate) => void
   onNodeClick?: (node: TrainingRunNodeSelection) => void
   onPresenceZoneChange?: (zone: TrainingRunPresenceZone | null) => void
+  onWorldItemProximityChange?: (
+    item: TrainingRunWorldItemSelection | null,
+  ) => void
   operatorSignals?: readonly TrainingRunOperatorSignalDefinition[]
   pixelRatio?: number
   promiseSignals?: readonly TrainingRunPromiseSignalDefinition[]
@@ -170,6 +198,7 @@ export type TrainingRunVisualizationOptions = Readonly<{
   stageNodeGlyph?: "orb" | "compact_gate"
   thirdPersonController?: unknown
   walkController?: unknown
+  worldItems?: readonly TrainingRunWorldItemDefinition[]
   worldLabelDensity?: "full" | "compact" | "pylons"
 }>
 

@@ -7,8 +7,9 @@ import {
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 import type { NodeStateMessage } from "../src/shared/rpc"
+import { VERSE_TASSADAR_BULLETIN_ITEM_ID } from "../src/shared/verse-bulletin-board"
 import { initialRuntimeState } from "../src/ui/initial-state"
-import { GotNodeState } from "../src/ui/message"
+import { GotNodeState, GotTrainingRuns } from "../src/ui/message"
 import { update } from "../src/ui/update"
 import { verseSceneVisualization, view } from "../src/ui/view"
 
@@ -170,5 +171,37 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(refreshedTree).not.toContain("2,100 sats")
     expect(refreshedTree).not.toContain("pylon-balance-hud-label")
     expect(refreshedTree).not.toContain("\"Bitcoin\"")
+  })
+
+  test("the packaged Verse scene carries the Tassadar bulletin world item", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [model] = update(
+      initial,
+      GotTrainingRuns({
+        projection: {
+          fetchedAt: "2026-06-21T17:10:00.000Z",
+          ok: true,
+          runs: [],
+          sourceUrl: "https://openagents.test/api/training/runs",
+          summaries: [],
+          tassadarSummary: {
+            runRef: "run.tassadar.executor.20260615",
+            runState: "active",
+            bulletin: {
+              title: "Tassadar Run Board",
+              headline: "Tassadar is active: 5 pylons, 2 active.",
+              summary: "Public server-owned run summary.",
+              onBoardLines: ["Status: active", "5 pylons, 2 active"],
+              sourceRefs: ["run.tassadar.executor.20260615"],
+            },
+          },
+        },
+      }),
+    )
+
+    expect(verseSceneVisualization(model).worldItems?.map(item => item.id)).toContain(
+      VERSE_TASSADAR_BULLETIN_ITEM_ID,
+    )
   })
 })

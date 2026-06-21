@@ -837,6 +837,11 @@ export const update = (model: Model, message: Message): Result => {
         Model.make({ ...model, versePresenceZone: message.zone }),
         noCommands,
       ]
+    case "ChangedVerseWorldItemProximity":
+      return [
+        Model.make({ ...model, nearVerseWorldItemId: message.itemId }),
+        noCommands,
+      ]
     case "ChangedVerseLocalPose":
       return [model, [PublishVerseLocalPose({ pose: message.pose })]]
     case "SettledVerseLocalPosePublish":

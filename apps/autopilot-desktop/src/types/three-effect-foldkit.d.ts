@@ -4,6 +4,7 @@ import type {
   TrainingRunNodeSelection,
   TrainingRunPresenceZone,
   TrainingRunVisualizationOptions,
+  TrainingRunWorldItemSelection,
 } from "./three-effect-core.js"
 
 export const trainingRunView: <Message>(
@@ -12,4 +13,7 @@ export const trainingRunView: <Message>(
   onNodeSelected?: (node: TrainingRunNodeSelection) => Message,
   onPresenceZoneChanged?: (zone: TrainingRunPresenceZone | null) => Message,
   onLocalPoseChanged?: (pose: TrainingRunLocalPoseUpdate) => Message,
+  onWorldItemProximityChanged?: (
+    item: TrainingRunWorldItemSelection | null,
+  ) => Message,
 ) => Html

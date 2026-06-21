@@ -4,6 +4,7 @@ import {
   type TassadarRunPublicSummary,
   applyWorldEntitySpatialLayout,
   spacetimeWorldSummaryFromRows,
+  tassadarRunBulletinWorldItem,
   tassadarRunVisualizationOptions,
   trainingRunEntityLayerFromPublicSummary,
   trainingRunSnapshotFromPublicSummary,
@@ -55,6 +56,28 @@ const populated: TassadarRunPublicSummary = {
   runRef: 'run.tassadar.executor.20260615',
   runLabel: 'Tassadar executor run',
   runState: 'active',
+  bulletin: {
+    schemaVersion: 'openagents.public_tassadar_run_bulletin.v1',
+    title: 'Tassadar Run Board',
+    headline: 'Tassadar is active: 7 pylons, 2 active.',
+    summary:
+      'Tassadar is active: 7 pylons, 2 active. 2 training windows active right now.',
+    statusLine: 'active · 7 pylons, 2 active',
+    onBoardLines: ['Status: active', '7 pylons, 2 active', '2,100 sats paid'],
+    metrics: {
+      acceptedTraceCount: 2,
+      activePylonCount: 2,
+      activeWindowCount: 2,
+      realSettlementCount: 1,
+      settledSats: 2100,
+      totalPylonCount: 7,
+      verifiedWorkCount: 9,
+    },
+    sourceRefs: [
+      'run.tassadar.executor.20260615',
+      'route:/api/public/tassadar-run-summary',
+    ],
+  },
   emptyState: { idle: false, reason: '' },
   metrics: {
     activeWindowCount: m(2),
@@ -244,6 +267,14 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
         status: 'active',
       },
     ])
+    expect(options.worldItems).toEqual([
+      expect.objectContaining({
+        id: 'bulletin.tassadar.run',
+        kind: 'bulletin_board',
+        label: 'Tassadar Run Board',
+        lines: ['Status: active', '7 pylons, 2 active', '2,100 sats paid'],
+      }),
+    ])
     const spatialLifecycleIds = [
       'registered',
       'qualified',
@@ -262,6 +293,25 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
       statusChart: 'hidden',
     })
     expect(options.stageNodeGlyph).toBe('compact_gate')
+  })
+
+  it('maps the bulletin block to an in-world board item', () => {
+    expect(tassadarRunBulletinWorldItem(populated)).toEqual(
+      expect.objectContaining({
+        id: 'bulletin.tassadar.run',
+        kind: 'bulletin_board',
+        title: 'Tassadar Run Board',
+        detail:
+          'Tassadar is active: 7 pylons, 2 active. 2 training windows active right now.',
+        interactionRadius: 2.8,
+        status: 'active',
+        sourceRefs: [
+          'run.tassadar.executor.20260615',
+          'route:/api/public/tassadar-run-summary',
+        ],
+      }),
+    )
+    expect(tassadarRunBulletinWorldItem({ runRef: 'run.empty' })).toBeNull()
   })
 
   it('adds data-bound pylon/proof entities without duplicate orbit dots or main-view motion', () => {

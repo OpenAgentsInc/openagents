@@ -55,6 +55,12 @@ export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
 export const ChangedVersePresenceZone = m("ChangedVersePresenceZone", {
   zone: S.NullOr(VersePresenceZone),
 })
+export const ChangedVerseWorldItemProximity = m(
+  "ChangedVerseWorldItemProximity",
+  {
+    itemId: S.NullOr(S.String),
+  },
+)
 export const ChangedVerseLocalPose = m("ChangedVerseLocalPose", {
   pose: S.Struct({
     regionRef: S.String,
@@ -664,6 +670,7 @@ export const Message = S.Union([
   GotChatWorldPaymentParticle,
   SelectedChatWorldNode,
   ChangedVersePresenceZone,
+  ChangedVerseWorldItemProximity,
   ChangedVerseLocalPose,
   SettledVerseLocalPosePublish,
   GotNotifications,
