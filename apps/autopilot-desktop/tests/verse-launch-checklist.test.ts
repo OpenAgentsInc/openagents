@@ -10,6 +10,7 @@ import {
   pylonGrowthTier,
   type ChatWorldPylonScene,
 } from "../src/shared/chat-world-scene"
+import { projectOnboardingStatus } from "../src/shared/onboarding-status"
 import type { NodeStateMessage } from "../src/shared/rpc"
 import { VERSE_TASSADAR_BULLETIN_ITEM_ID } from "../src/shared/verse-bulletin-board"
 import { initialRuntimeState } from "../src/ui/initial-state"
@@ -17,7 +18,9 @@ import {
   ChangedVerseLocalPose,
   GotChatWorldScene,
   GotNodeState,
+  GotOnboardingStatus,
   GotTrainingRuns,
+  TickedVerseTrainingProjectionRefresh,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
 import {
@@ -210,6 +213,57 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(refreshedTree).not.toContain("2,100 sats")
     expect(refreshedTree).not.toContain("pylon-balance-hud-label")
     expect(refreshedTree).not.toContain("\"Bitcoin\"")
+  })
+
+  test("the top-left Pylon sats HUD falls back to the live onboarding wallet balance", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [withNodeButNoBalance] = update(
+      initial,
+      GotNodeState({ node: nodeWithBalance(null) }),
+    )
+    const [withOnboardingBalance] = update(
+      withNodeButNoBalance,
+      GotOnboardingStatus({
+        projection: projectOnboardingStatus({
+          fetchedAt: "2026-06-21T17:40:00.000Z",
+          identityChoiceMade: true,
+          identityLabel: "existing pylon.alpha",
+          agentRegistered: true,
+          nodeLaunchStatus: "online",
+          localPylonReady: true,
+          onboardingEnvConfigured: true,
+          walletReceiveReady: true,
+          walletBalanceSats: 4_200,
+          forumTipReady: true,
+          forumIntroPosted: true,
+          forumWorkSearched: true,
+          forumWorkOpenCount: 1,
+          openAssignmentCount: 1,
+        }),
+      }),
+    )
+
+    const tree = serializeView(view(withOnboardingBalance).body)
+
+    expect(tree).toContain("pylon-balance-hud")
+    expect(tree).toContain("\"data-pylon-balance-hud\":\"known\"")
+    expect(tree).toContain("\"data-pylon-balance-value\":\"4,200 sats\"")
+    expect(tree).toContain("4,200 sats")
+    expect(tree).not.toContain("pylon-balance-hud-label")
+    expect(tree).not.toContain("\"Bitcoin\"")
+  })
+
+  test("the Verse training projection tick refreshes only the board data", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [model, commands] = update(
+      initial,
+      TickedVerseTrainingProjectionRefresh(),
+    )
+
+    expect(model).toBe(initial)
+    expect(commands.map(command => command.name)).toEqual(["LoadTrainingRuns"])
   })
 
   test("live projection refreshes do not reset the Verse controller to spawn", () => {

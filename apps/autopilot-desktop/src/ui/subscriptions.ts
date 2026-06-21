@@ -23,6 +23,7 @@ import {
   GotChatWorldScene,
   MovedPaneDragPointer,
   PressedKey,
+  TickedVerseTrainingProjectionRefresh,
   type Message,
 } from "./message.js"
 import type { Model } from "./model.js"
@@ -274,6 +275,21 @@ const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((q
   ).pipe(Effect.flatMap(() => Effect.never)),
 )
 
+export const verseTrainingProjectionRefreshMs = 10_000
+
+const verseTrainingProjectionStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const handle = globalThis.setInterval(
+        () => Queue.offerUnsafe(queue, TickedVerseTrainingProjectionRefresh()),
+        verseTrainingProjectionRefreshMs,
+      )
+      return handle
+    }),
+    (handle) => Effect.sync(() => globalThis.clearInterval(handle)),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
 export const subscriptions = Subscription.make<Model, Message>()(() => ({
   inbound: Subscription.persistent(inboundStream),
   // #5465: route window keydown into the reducer as PressedKey.
@@ -285,4 +301,5 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   chatWorldScene: Subscription.persistent(pylonSceneStream),
   chatWorldPayments: Subscription.persistent(paymentParticleStream),
   chatWorldSpacetime: Subscription.persistent(spacetimeWorldStream),
+  verseTrainingProjection: Subscription.persistent(verseTrainingProjectionStream),
 }))

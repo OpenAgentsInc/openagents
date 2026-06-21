@@ -288,6 +288,9 @@ export const GotPublicActivityTimeline = m("GotPublicActivityTimeline", {
   projection: S.Unknown,
 })
 export const ClickedRefreshTrainingRuns = m("ClickedRefreshTrainingRuns")
+export const TickedVerseTrainingProjectionRefresh = m(
+  "TickedVerseTrainingProjectionRefresh",
+)
 export const SelectedTrainingSceneNode = m("SelectedTrainingSceneNode", {
   nodeId: S.String,
 })
@@ -733,6 +736,7 @@ export const Message = S.Union([
   ClickedRefreshPublicActivity,
   GotPublicActivityTimeline,
   ClickedRefreshTrainingRuns,
+  TickedVerseTrainingProjectionRefresh,
   SelectedTrainingSceneNode,
   GotTrainingRuns,
   GotTrainingDashboard,

@@ -91,6 +91,9 @@ export type OnboardingStatusResponse = {
   readonly currentStepId: string | null
   // True when any step is in a retryable `failed` state (so the UI shows Retry).
   readonly hasRetryableFailure: boolean
+  // Public-safe read-only wallet balance for the local Pylon. This is separate
+  // from the earned-step prose so compact surfaces can render the number.
+  readonly walletBalanceSats: number | null
   readonly steps: readonly OnboardingStep[]
 }
 
@@ -532,6 +535,7 @@ export const projectOnboardingStatus = (
     hasRetryableFailure: steps.some(
       step => step.status === "failed" && step.retryable,
     ),
+    walletBalanceSats: input.walletBalanceSats,
     steps,
   }
 }

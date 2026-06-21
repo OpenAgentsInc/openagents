@@ -68,6 +68,7 @@ const onboarding = (
   complete: false,
   currentStepId: null,
   hasRetryableFailure: false,
+  walletBalanceSats: null,
   steps: Object.entries(statuses).map(([id, status]) => ({
     id,
     label: id,

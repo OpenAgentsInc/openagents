@@ -579,6 +579,7 @@ export const degradedOnboardingProjection = (error: string): OnboardingStatusRes
   complete: false,
   currentStepId: "wallet",
   hasRetryableFailure: true,
+  walletBalanceSats: null,
   steps: [
     {
       id: "identity",

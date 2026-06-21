@@ -158,6 +158,7 @@ const onboardingProjection = (
   complete,
   currentStepId: complete ? null : "identity",
   hasRetryableFailure: false,
+  walletBalanceSats: complete ? 1 : null,
   steps: [
     {
       id: complete ? "earned" : "identity",

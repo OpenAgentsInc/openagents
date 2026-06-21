@@ -27,6 +27,7 @@ const onboarding = (
     complete: overrides.earned === "done",
     currentStepId: null,
     hasRetryableFailure: Object.values(overrides).includes("failed"),
+    walletBalanceSats: overrides.earned === "done" ? 1 : null,
     steps: ids.map(id => ({
       id,
       label: id,

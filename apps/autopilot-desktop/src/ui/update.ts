@@ -1829,6 +1829,8 @@ export const update = (model: Model, message: Message): Result => {
         }),
         loadTrainingProjectionCommands(model),
       ]
+    case "TickedVerseTrainingProjectionRefresh":
+      return [model, [LoadTrainingRuns()]]
     case "SelectedTrainingSceneNode":
       return [
         Model.make({

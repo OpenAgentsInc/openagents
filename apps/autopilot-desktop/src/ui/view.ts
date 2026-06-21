@@ -6075,10 +6075,22 @@ const verseRunHud = (model: Model): Html => {
 }
 
 const pylonBalanceHud = (model: Model): Html => {
-  const balance = hudStatusProjection({
+  const balanceFromNode = hudStatusProjection({
     nodeLaunchStatus: model.nodeLaunchStatus,
     node: modelNode(model),
   }).balanceMeter
+  const onboardingBalance = modelOnboardingStatus(model)?.walletBalanceSats ?? null
+  const balance =
+    balanceFromNode.known ||
+    onboardingBalance === null ||
+    onboardingBalance === undefined ||
+    !Number.isFinite(onboardingBalance)
+      ? balanceFromNode
+      : {
+          ...balanceFromNode,
+          known: true,
+          valueText: `${Math.max(0, Math.floor(onboardingBalance)).toLocaleString()} sats`,
+        }
   const state = balance.known ? "known" : "unknown"
   const title = balance.known
     ? `Pylon Bitcoin balance: ${balance.valueText}`
