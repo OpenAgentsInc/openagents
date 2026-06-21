@@ -2453,6 +2453,30 @@ body {
 
 /* ===== EPIC #5461 / #5469 styles ===== */
 
+.composer-run-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.15rem 0 0.25rem;
+}
+
+.composer-run-context-pill {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-secondary, #151515) 82%, transparent);
+  color: var(--text-secondary, #8a8c93);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+  padding: 0.22rem 0.38rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* #5469 (EPIC #5461): swarm batch launch + failover routing + sub-agent tree.
  * Batch form is a collapsible <details> inside the pane (no new top-level
  * button). Routing line + sub-agent count reuse the canonical tone tokens. */

@@ -137,6 +137,7 @@ import {
 } from "../shared/chat-world-scene.js"
 import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
 import type {
+  AccountRow,
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   ChooseIdentityResponse,
@@ -612,6 +613,51 @@ const isAccountManagingPane = (pane: PaneId): boolean =>
   pane === "accounts" || pane === "composer" || pane === "spawn" || pane === "settings"
 
 const managedAccountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
+
+type ComposerSpawnAdapter = "codex" | "claude_agent"
+
+const composerSelectedAccountRow = (
+  model: Model,
+  adapter: ComposerSpawnAdapter,
+): AccountRow | null => {
+  const selected = model.composerAccountRef
+  if (selected === null) return null
+  return (
+    modelNode(model)?.accounts?.find(
+      (row) => row.provider === adapter && row.accountRef === selected,
+    ) ?? null
+  )
+}
+
+const composerAccountBlocker = (
+  model: Model,
+  adapter: ComposerSpawnAdapter,
+): string | null => {
+  const selected = model.composerAccountRef
+  if (selected === null) return null
+  const accounts = modelNode(model)?.accounts ?? null
+  if (accounts === null) return null
+  const row = composerSelectedAccountRow(model, adapter)
+  const label = adapter === "codex" ? "Codex" : "Claude Agent"
+  if (row === null) {
+    return `selected ${label} account "${selected}" is unavailable; choose another account`
+  }
+  if (!row.ready) {
+    return `selected ${label} account "${selected}" is blocked; choose another account`
+  }
+  return null
+}
+
+const composerAccountRefForAdapter = (
+  model: Model,
+  adapter: ComposerSpawnAdapter,
+): string | null => {
+  const selected = model.composerAccountRef
+  if (selected === null) return null
+  const accounts = modelNode(model)?.accounts ?? null
+  if (accounts === null) return adapter === "codex" ? selected : null
+  return composerSelectedAccountRow(model, adapter)?.ready === true ? selected : null
+}
 
 const onboardingCompletionPane = (
   currentPane: PaneId,
@@ -1211,6 +1257,8 @@ export const update = (model: Model, message: Message): Result => {
           verseMode: message.mode,
           ...(enteringCode
             ? {
+                spawnAdapter: "codex" as const,
+                composerAccountRef: null,
                 managedAccountsPending: true,
                 managedAccountsStatus: {
                   text: "loading Codex accounts...",
@@ -2468,7 +2516,14 @@ export const update = (model: Model, message: Message): Result => {
 
     // ── Spawn ──────────────────────────────────────────────────────────────────
     case "ChangedSpawnAdapter":
-      return [Model.make({ ...model, spawnAdapter: message.adapter }), noCommands]
+      return [
+        Model.make({
+          ...model,
+          spawnAdapter: message.adapter,
+          composerAccountRef: null,
+        }),
+        noCommands,
+      ]
     case "ChangedSpawnObjective":
       return [Model.make({ ...model, spawnObjective: message.value }), noCommands]
     case "ChangedSpawnVerify":
@@ -2641,6 +2696,16 @@ export const update = (model: Model, message: Message): Result => {
       // Apple FM has no per-account/failover semantics and a different verb, so
       // batch launch is codex/claude only (matches SpawnBatchSession's adapter).
       const adapter = model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+      const accountBlocker = composerAccountBlocker(model, adapter)
+      if (accountBlocker !== null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: { text: accountBlocker, tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
       const objectives = parseSwarmBatchObjectives(model.swarmBatchObjectives)
       if (objectives.length === 0) {
         return [model, noCommands]
@@ -2658,7 +2723,7 @@ export const update = (model: Model, message: Message): Result => {
             objective,
             verify,
             lane: model.spawnLane,
-            accountRef: model.composerAccountRef,
+            accountRef: composerAccountRefForAdapter(model, adapter),
           }),
         ),
       ]
@@ -2669,6 +2734,16 @@ export const update = (model: Model, message: Message): Result => {
         message._tag === "SucceededSwarmBatchSpawn" ? "launched" : "failed"
       const { state, next } = advanceSwarmBatch(readSwarmBatchState(model), outcome)
       const adapter = model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+      const accountBlocker = composerAccountBlocker(model, adapter)
+      if (accountBlocker !== null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: { text: accountBlocker, tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
       const verify = parseVerifyLines(model.spawnVerify)
       return [
         writeSwarmBatchState(model, state),
@@ -2680,7 +2755,7 @@ export const update = (model: Model, message: Message): Result => {
                 objective: next,
                 verify,
                 lane: model.spawnLane,
-                accountRef: model.composerAccountRef,
+                accountRef: composerAccountRefForAdapter(model, adapter),
               }),
             ],
       ]
@@ -2757,6 +2832,18 @@ export const update = (model: Model, message: Message): Result => {
           noCommands,
         ]
       }
+      const accountBlocker = composerAccountBlocker(model, model.spawnAdapter)
+      if (accountBlocker !== null) {
+        return [
+          Model.make({
+            ...model,
+            composerPending: false,
+            composerPendingObjective: null,
+            composerStatus: { text: accountBlocker, tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
       const verify = parseVerifyLines(model.spawnVerify)
       return [
         Model.make({
@@ -2781,7 +2868,7 @@ export const update = (model: Model, message: Message): Result => {
               branch: repo.branch as string,
               commitSha: repo.commitSha as string,
             },
-            accountRef: model.composerAccountRef,
+            accountRef: composerAccountRefForAdapter(model, model.spawnAdapter),
           }),
         ],
       ]
@@ -2830,6 +2917,16 @@ export const update = (model: Model, message: Message): Result => {
           noCommands,
         ]
       }
+      const accountBlocker = composerAccountBlocker(model, validation.adapter)
+      if (accountBlocker !== null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: { text: accountBlocker, tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
       const verify = parseVerifyLines(model.spawnVerify)
       const objective = validation.objective
       // #5471: managed-worktree mode resolves a repoRef node-side first, then
@@ -2866,7 +2963,7 @@ export const update = (model: Model, message: Message): Result => {
             lane: model.spawnLane,
             worktreePath,
             repoRef: null,
-            accountRef: model.composerAccountRef,
+            accountRef: composerAccountRefForAdapter(model, validation.adapter),
           }),
         ],
       ]
@@ -2901,6 +2998,16 @@ export const update = (model: Model, message: Message): Result => {
       if (model.spawnAdapter === "apple_fm") {
         return [continuing, [SpawnAppleFmComposerTurn({ objective, worktreePath })]]
       }
+      const accountBlocker = composerAccountBlocker(model, model.spawnAdapter)
+      if (accountBlocker !== null) {
+        return [
+          Model.make({
+            ...model,
+            composerStatus: { text: accountBlocker, tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
       // #5471: a managed-worktree thread keeps materializing its repoRef per
       // turn (each control session is its own bounded checkout). Resolve first,
       // then spawn the continuation.
@@ -2933,7 +3040,7 @@ export const update = (model: Model, message: Message): Result => {
             lane: model.spawnLane,
             worktreePath,
             repoRef: null,
-            accountRef: model.composerAccountRef,
+            accountRef: composerAccountRefForAdapter(model, model.spawnAdapter),
           }),
         ],
       ]
@@ -3071,7 +3178,7 @@ export const update = (model: Model, message: Message): Result => {
             objective,
             verify: [],
             lane: model.spawnLane,
-            accountRef: model.composerAccountRef,
+            accountRef: composerAccountRefForAdapter(model, adapter),
           }),
         ],
       ]
@@ -3225,7 +3332,7 @@ export const update = (model: Model, message: Message): Result => {
               lane: model.spawnLane,
               worktreePath,
               useDefaultWorktree: worktreePath === null,
-              accountRef: model.composerAccountRef,
+              accountRef: composerAccountRefForAdapter(model, shellCodingAdapter(target)),
             }),
           ],
         ]

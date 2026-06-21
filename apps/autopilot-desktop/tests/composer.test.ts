@@ -20,16 +20,32 @@ import { initialModel, Model, modelNode } from "../src/ui/model"
 import {
   ChangedComposerRepoPath,
   ChangedComposerReply,
+  ChangedSpawnAdapter,
   ChangedSpawnObjective,
+  ChangedVerseMode,
   ClickedComposerNewThread,
   ClickedComposerReply,
   ClickedComposerSpawn,
   FailedComposerTurn,
   GotNodeState,
   NavigatedTo,
+  SelectedComposerAccount,
   SucceededComposerTurn,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
+import { view } from "../src/ui/view"
+
+const serializeView = (node: unknown): string => {
+  const seen = new WeakSet<object>()
+  return JSON.stringify(node, (_key, value) => {
+    if (typeof value === "function") return "[fn]"
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "[cycle]"
+      seen.add(value)
+    }
+    return value
+  })
+}
 
 const eventRow = (
   over: Partial<{
@@ -47,6 +63,28 @@ const eventRow = (
   observedAt: over.observedAt ?? "2026-06-18T12:00:00.000Z",
   detail: over.detail ?? "",
   full: over.full ?? "",
+})
+
+const nodeWithCodexAccounts = (
+  rows: ReadonlyArray<{
+    accountRef: string
+    ready: boolean
+    priority?: number | null
+  }>,
+): NodeStateMessage => ({
+  ok: true,
+  schema: "openagents.pylon.control.v0.3",
+  sessions: [],
+  accounts: rows.map((row) => ({
+    provider: "codex" as const,
+    homeState: "present" as const,
+    ready: row.ready,
+    accountRef: row.accountRef,
+    accountRefHash: `account.pylon.codex.${row.accountRef}`,
+    selector: "registry_ref" as const,
+    blockerRefs: row.ready ? [] : ["codex.login_required"],
+    priority: row.priority ?? null,
+  })),
 })
 
 describe("composer helpers (#5355)", () => {
@@ -124,6 +162,117 @@ describe("composer reducer (#5355)", () => {
     const cmd = commands[0] as unknown as { args?: { worktreePath?: string | null; objective?: string } }
     expect(cmd.args?.worktreePath).toBe("/Users/me/code/repo")
     expect(cmd.args?.objective).toBe("add a /health route and a test")
+  })
+
+  test("ChangedVerseMode(code) defaults the composer runtime to Codex", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "chat",
+      spawnAdapter: "claude_agent",
+    })
+    const [model] = update(start, ChangedVerseMode({ mode: "code" }))
+    expect(model.verseMode).toBe("code")
+    expect(model.spawnAdapter).toBe("codex")
+  })
+
+  test("ChangedSpawnAdapter clears stale selected account refs", () => {
+    const start = Model.make({
+      ...initialModel,
+      spawnAdapter: "codex",
+      composerAccountRef: "work",
+    })
+    const [model] = update(start, ChangedSpawnAdapter({ adapter: "claude_agent" }))
+    expect(model.spawnAdapter).toBe("claude_agent")
+    expect(model.composerAccountRef).toBeNull()
+  })
+
+  test("ClickedComposerSpawn sends the selected Codex accountRef for two accounts", () => {
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        spawnAdapter: "codex",
+        spawnObjective: "ship the account picker",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([
+          { accountRef: "work", ready: true, priority: 1 },
+          { accountRef: "personal", ready: true, priority: 2 },
+        ]),
+      }),
+    )
+
+    const [work] = update(withNode, SelectedComposerAccount({ accountRef: "work" }))
+    const [, workCommands] = update(work, ClickedComposerSpawn())
+    const workCmd = workCommands[0] as unknown as { args?: { accountRef?: string | null } }
+    expect(workCmd.args?.accountRef).toBe("work")
+
+    const [personal] = update(withNode, SelectedComposerAccount({ accountRef: "personal" }))
+    const [, personalCommands] = update(personal, ClickedComposerSpawn())
+    const personalCmd = personalCommands[0] as unknown as { args?: { accountRef?: string | null } }
+    expect(personalCmd.args?.accountRef).toBe("personal")
+  })
+
+  test("ClickedComposerSpawn blocks if the selected Codex account is unavailable", () => {
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        spawnAdapter: "codex",
+        spawnObjective: "do the thing",
+        composerAccountRef: "work",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([
+          { accountRef: "personal", ready: true },
+        ]),
+      }),
+    )
+    const [model, commands] = update(withNode, ClickedComposerSpawn())
+    expect(model.composerStatus.tone).toBe("error")
+    expect(model.composerStatus.text).toContain("unavailable")
+    expect(model.composerPending).toBe(false)
+    expect(commands).toHaveLength(0)
+  })
+
+  test("ClickedComposerSpawn blocks if the selected Codex account is blocked", () => {
+    const [withNode] = update(
+      Model.make({
+        ...initialModel,
+        spawnAdapter: "codex",
+        spawnObjective: "do the thing",
+        composerAccountRef: "work",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([
+          { accountRef: "work", ready: false },
+        ]),
+      }),
+    )
+    const [model, commands] = update(withNode, ClickedComposerSpawn())
+    expect(model.composerStatus.tone).toBe("error")
+    expect(model.composerStatus.text).toContain("blocked")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("Composer renders inline runtime, account, target, and verify context", () => {
+    const [model] = update(
+      Model.make({
+        ...initialModel,
+        pane: "composer",
+        spawnAdapter: "codex",
+        composerAccountRef: "work",
+        composerRepoPath: "/Users/me/code/repo",
+        spawnVerify: "bun test\nbun run typecheck",
+      }),
+      GotNodeState({
+        node: nodeWithCodexAccounts([{ accountRef: "work", ready: true }]),
+      }),
+    )
+    const tree = serializeView(view(model).body)
+    expect(tree).toContain("autopilot-composer-run-context")
+    expect(tree).toContain("runtime: codex")
+    expect(tree).toContain("account: Codex work ready")
+    expect(tree).toContain("target: /Users/me/code/repo")
+    expect(tree).toContain("verify: 2 verify commands")
   })
 
   test("SucceededComposerTurn binds the active session and clears the objective box", () => {

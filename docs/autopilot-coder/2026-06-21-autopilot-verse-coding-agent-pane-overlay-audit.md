@@ -763,6 +763,15 @@ Acceptance:
 
 ### VCODE-04 - Wire The Codex Account Picker Into The Verse Composer
 
+Status: implemented in #5921 on 2026-06-21. Entering Verse code mode now
+defaults the Composer runtime to Codex. The Composer spawn form renders an
+inline run context with runtime, selected account, repo/worktree target, and
+verify-command count. `ClickedComposerSpawn` continues to use the existing
+`session.spawn` command contract, but now blocks clearly when a selected Codex
+account is absent or blocked in the live node account projection, and adapter
+changes clear stale selected account refs so Apple FM / non-Codex paths do not
+receive Codex account refs.
+
 Build:
 
 - Make the code-mode composer default to adapter `codex`.

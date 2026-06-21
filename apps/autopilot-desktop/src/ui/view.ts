@@ -278,6 +278,7 @@ import {
   isComposerTranscriptEvent,
   nodeStatusLine,
   orderSwarmSessions,
+  parseVerifyLines,
   sessionCancellable,
   shipStatusLine,
   stateBreakdown,
@@ -5371,6 +5372,52 @@ const composerAccountPicker = (model: Model): Html => {
   )
 }
 
+const composerSelectedAccountText = (model: Model): string => {
+  if (model.spawnAdapter === "apple_fm") return "Apple FM local runtime"
+  const provider = model.spawnAdapter === "codex" ? "Codex" : "Claude"
+  const selected = model.composerAccountRef
+  if (selected === null) return `${provider} default route`
+  const accounts = modelNode(model)?.accounts ?? null
+  if (accounts === null) return `${provider} ${selected}`
+  const row =
+    accounts.find(
+      (account) =>
+        account.provider === model.spawnAdapter &&
+        account.accountRef === selected,
+    ) ?? null
+  if (row === null) return `${provider} ${selected} unavailable`
+  return `${provider} ${selected} ${row.ready ? "ready" : "blocked"}`
+}
+
+const composerTargetText = (model: Model): string => {
+  if (model.spawnAdapter === "apple_fm" || model.composerWorkspaceMode === "worktree") {
+    return worktreePathLabel(model.composerRepoPath)
+  }
+  const parsed = parseManagedWorktreeRequest({
+    repo: model.composerManagedRepo,
+    baseRef: model.composerManagedBaseRef,
+  })
+  return parsed.ok
+    ? managedWorktreeLabel(parsed.request)
+    : "managed worktree pending"
+}
+
+const composerVerifyText = (model: Model): string => {
+  const count = parseVerifyLines(model.spawnVerify).length
+  return count === 0 ? "no verify commands" : `${count} verify command${count === 1 ? "" : "s"}`
+}
+
+const composerRunContext = (model: Model): Html =>
+  h.div(
+    [cls("composer-run-context"), h.DataAttribute("autopilot-composer-run-context", "")],
+    [
+      h.span([cls("composer-run-context-pill")], [`runtime: ${SPAWN_ADAPTER_LABEL[model.spawnAdapter]}`]),
+      h.span([cls("composer-run-context-pill")], [`account: ${composerSelectedAccountText(model)}`]),
+      h.span([cls("composer-run-context-pill")], [`target: ${composerTargetText(model)}`]),
+      h.span([cls("composer-run-context-pill")], [`verify: ${composerVerifyText(model)}`]),
+    ],
+  )
+
 // #5471: compact repo / worktree picker inside the composer spawn form (NOT a
 // new pane — UX constraint in the issue). Two modes, both riding the existing
 // session.spawn: "Worktree" points at an existing local path (worktreePath);
@@ -5504,6 +5551,7 @@ const composerSpawnForm = (model: Model): Html =>
           ],
         ),
     composerWorkspacePicker(model),
+    composerRunContext(model),
     h.label([cls("field-label")], ["What should the agent do?"]),
     h.textarea(
       [
