@@ -61,6 +61,7 @@ type WorkerRouteDependencies = Readonly<{
   routePublicSiteReferralPayoutReceiptRequest: OptionalEffectRoute
   routePublicStripeCheckoutReceiptRequest: OptionalEffectRoute
   routeEcommerceCampaignReceiptRequest: OptionalEffectRoute
+  routeEcommerceCampaignReceiptOperatorRequest: OptionalEffectRoute
   routeEcommerceCampaignSelfServeRequest: OptionalEffectRoute
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
   routeMarketingAgencySelfServeRequest: OptionalEffectRoute
@@ -518,6 +519,13 @@ export const makeWorkerRouteRequest =
 
       if (ecommerceCampaignReceiptResponse !== undefined) {
         return yield* ecommerceCampaignReceiptResponse
+      }
+
+      const ecommerceCampaignReceiptOperatorResponse =
+        dependencies.routeEcommerceCampaignReceiptOperatorRequest(request, env, ctx)
+
+      if (ecommerceCampaignReceiptOperatorResponse !== undefined) {
+        return yield* ecommerceCampaignReceiptOperatorResponse
       }
 
       const ecommerceCampaignSelfServeResponse =
