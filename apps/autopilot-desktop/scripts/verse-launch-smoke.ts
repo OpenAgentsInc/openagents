@@ -165,10 +165,12 @@ type DomProbe = {
     readonly appShellVerse: boolean
     readonly chatPaneWorld: boolean
     readonly chatInput: boolean
-    readonly pylonBaseStatus: boolean
-    readonly characterCreation: boolean
+    readonly noPylonBaseStatus: boolean
+    readonly noCharacterCreationCard: boolean
+    readonly noPersistentChatThread: boolean
     readonly trainingCanvas: boolean
-    readonly advancedButton: boolean
+    readonly noVerseTitle: boolean
+    readonly noAdvancedButton: boolean
     readonly noAdvancedChrome: boolean
     readonly noPanelOverlap: boolean
   }
@@ -448,6 +450,8 @@ const domProbeExpression = `
     "Sessions",
     "Swarm",
     "Deploy",
+    "The Verse",
+    "Advanced",
   ]
   const forbiddenTextHits = forbiddenText.filter(value => text.includes(value))
   const host = document.querySelector(".three-effect-chat-scene")
@@ -469,8 +473,12 @@ const domProbeExpression = `
     appShellVerse: document.querySelector(".app-shell-verse") !== null,
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
     chatInput: document.querySelector(".chat-input") instanceof HTMLTextAreaElement,
-    pylonBaseStatus: document.querySelector(".pylon-base-status") !== null,
-    characterCreation: document.querySelector(".character-creation-overlay") !== null,
+    noPylonBaseStatus: document.querySelector(".pylon-base-status") === null,
+    noCharacterCreationCard:
+      document.querySelector(".character-creation-overlay") === null,
+    noPersistentChatThread:
+      document.querySelector(".chat-thread-shell") === null &&
+      document.querySelector(".chat-message-list") === null,
     trainingCanvas:
       canvas instanceof HTMLCanvasElement &&
       canvas.width >= 480 &&
@@ -478,9 +486,10 @@ const domProbeExpression = `
       canvasRect !== null &&
       canvasRect.width >= 640 &&
       canvasRect.height >= 400,
-    advancedButton:
-      document.querySelector(".verse-advanced") instanceof HTMLButtonElement &&
-      text.includes("Advanced"),
+    noVerseTitle: text.includes("The Verse") === false,
+    noAdvancedButton:
+      document.querySelector(".verse-advanced") === null &&
+      text.includes("Advanced") === false,
     noAdvancedChrome:
       document.querySelector(".sidebar") === null &&
       document.querySelector(".shell-target-tabs") === null &&

@@ -110,9 +110,9 @@ body {
 }
 
 /*
- * VERSE HOME (#5820): first paint is the Pylon/Tassadar world, not the advanced
- * coding chrome. Cmd-K / Advanced opens the command palette; explicit
- * navigation to Code/Supervise/etc. restores the normal sidebar shell.
+ * VERSE HOME (#5820/#5883): first paint is the navigable Pylon/Tassadar world,
+ * not dashboard chrome. Cmd-K opens the command palette; explicit navigation to
+ * Code/Supervise/etc. restores the normal sidebar shell.
  */
 .app-shell-verse {
   position: fixed;
@@ -142,30 +142,52 @@ body {
 
 .app-shell-verse .chat-content-overlay {
   position: absolute;
-  left: clamp(1rem, 3vw, 2rem);
-  bottom: clamp(5.25rem, 9vh, 6.5rem);
+  right: clamp(0.9rem, 2.4vw, 1.4rem);
+  bottom: clamp(0.9rem, 2.2vw, 1.4rem);
+  left: min(33rem, calc(100vw - 42rem));
   z-index: 4;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  width: min(44rem, calc(100vw - 2rem));
-  max-height: min(74vh, 44rem);
+  width: auto;
+  max-height: none;
+  pointer-events: none;
 }
 
-.app-shell-verse .pane-title {
-  font-size: clamp(1.45rem, 2.8vw, 2.35rem);
-  line-height: 1.05;
-}
-
-.app-shell-verse .chat-thread-shell {
-  min-height: 9rem;
-  max-height: min(38vh, 22rem);
+.app-shell-verse .chat-composer-verse {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 6px;
+  background: rgb(4 7 11 / 0.58);
+  box-shadow:
+    0 16px 44px rgb(0 0 0 / 0.36),
+    inset 0 0 0 1px rgb(255 255 255 / 0.04);
   backdrop-filter: blur(12px);
+  pointer-events: auto;
 }
 
-.app-shell-verse .chat-input {
-  min-height: 5.5rem;
-  backdrop-filter: blur(12px);
+.app-shell-verse .chat-composer-verse .chat-input {
+  min-height: 2.75rem;
+  height: 2.75rem;
+  resize: none;
+  border-color: transparent;
+  background: rgb(0 0 0 / 0.2);
+}
+
+.app-shell-verse .chat-composer-verse .spawn-status {
+  display: none;
+}
+
+.app-shell-verse .chat-composer-verse .chat-actions {
+  align-self: stretch;
+}
+
+.app-shell-verse .chat-composer-verse .primary-button {
+  min-width: 5.25rem;
+  height: 100%;
 }
 
 @media (max-width: 760px) {
@@ -173,17 +195,10 @@ body {
     left: 0.8rem;
     right: 0.8rem;
     bottom: 5.7rem;
-    width: auto;
-    max-height: 64vh;
   }
 
-  .app-shell-verse .chat-thread-shell {
-    min-height: 7rem;
-    max-height: 30vh;
-  }
-
-  .app-shell-verse .chat-input {
-    min-height: 4.75rem;
+  .app-shell-verse .chat-composer-verse {
+    grid-template-columns: 1fr;
   }
 }
 .shell-pane {
@@ -512,9 +527,9 @@ body {
 /* #5730 The Verse: the game-world toggle slot. Wider than a square so the short
    "Verse" label fits; lit (glowing) when the view is on, dim when off. */
 .hotbar-slot-verse {
-  width: auto;
-  min-width: 3rem;
-  padding: 0 0.7rem;
+  width: 3rem;
+  min-width: 0;
+  padding: 0;
 }
 .hotbar-slot-label {
   font-family: ui-monospace, monospace;

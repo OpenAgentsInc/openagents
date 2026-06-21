@@ -311,10 +311,15 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(model.pane).toBe("chat")
     expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("chat-pane-world")
-    expect(tree).toContain("The Verse")
     expect(tree).toContain("Tassadar")
     expect(tree).toContain("Pylon")
-    expect(tree).toContain("Advanced")
+    expect(tree).toContain("Message Tassadar")
+    expect(tree).not.toContain("The Verse")
+    expect(tree).not.toContain("Advanced")
+    expect(tree).not.toContain("chat-thread-shell")
+    expect(tree).not.toContain("chat-message-list")
+    expect(tree).not.toContain("pylon-base-status")
+    expect(tree).not.toContain("character-creation-overlay")
     expect(tree).not.toContain("sidebar")
     expect(tree).not.toContain("status-hud-overlay")
     expect(tree).not.toContain("shell-target-tabs")
@@ -415,15 +420,15 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
     expect(tree).toContain("⌘K")
   })
 
-  // #5730 The Verse: the hotbar now carries one active toggle slot ("Verse")
-  // alongside the ⌘K palette control; the group cells stay blank.
-  test("the hotbar face is blank except the palette and the Verse toggle", () => {
+  // #5883: the hotbar keeps the Verse toggle accessible but no longer prints a
+  // visible "Verse" label over the first-paint world.
+  test("the hotbar face is blank except the palette chord and unlabeled Verse toggle", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar-slot-empty")
     expect(tree).toContain("hotbar-slot-palette")
     expect(tree).toContain("Command palette (⌘K)")
     expect(tree).toContain("hotbar-slot-verse")
-    expect(tree).toContain("Verse")
+    expect(tree).toContain("Verse: on (⌘⇧V)")
     expect(tree).toContain("hotbar-slot-tooltip")
     expect(tree).not.toContain("viewBox")
     expect(tree).not.toContain("Code — press")

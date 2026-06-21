@@ -76,14 +76,7 @@ import {
   withPylonBaseLayer,
   type PylonBaseProjection,
 } from "../shared/pylon-base-scene"
-import {
-  agentCharacterCreationFlag,
-  chatWorldBuildFlags,
-} from "../shared/chat-world-flags"
-import {
-  projectCharacterCreationOnboarding,
-  type CharacterCreationBeat,
-} from "../shared/character-creation-onboarding"
+import { chatWorldBuildFlags } from "../shared/chat-world-flags"
 
 import type {
   AccountRow,
@@ -633,7 +626,7 @@ const hotbarSlotView = (model: Model, slot: HotbarSlot): Html => {
         h.OnClick(ToggleVerse()),
       ],
       [
-        h.span([cls("hotbar-slot-label")], [slot.label]),
+        h.span([cls("hotbar-slot-label"), h.AriaHidden("true")], [""]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
     )
@@ -5806,7 +5799,6 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
 const CHAT_WORLD_FLAGS = chatWorldBuildFlags()
 const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
 const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
-const AGENT_CHARACTER_CREATION: boolean = agentCharacterCreationFlag()
 
 // A calm static seed scene: one core + inert ring pylons. It gives first paint a
 // spatial Verse without claiming live online/assigned pylons before the public
@@ -5842,11 +5834,10 @@ const CHAT_SCENE: PylonNetworkScene = {
   asOfLabel: null,
 }
 
-// #5730/#5822: build the Verse background from LIVE Pylon state plus the public
-// Tassadar training projection. The static seed is inert until public data
-// arrives; the training layer pins motion to public refs and keeps dense
-// controls in Training Live.
-const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions => {
+// #5730/#5822/#5883: Verse first paint is a navigable pylon world, not a chat
+// pane. It is built from LIVE Pylon state plus the public Tassadar training
+// projection; the static seed is inert until public data arrives.
+export const verseSceneVisualization = (model: Model): TrainingRunVisualizationOptions => {
   // Live pylons replace the seed once a non-empty snapshot has landed.
   const liveScene = liveChatWorldNetworkScene(modelChatWorldScene(model))
   const base = pylonNetworkVisualizationOptions(liveScene ?? CHAT_SCENE)
@@ -5858,15 +5849,35 @@ const chatSceneVisualization = (model: Model): TrainingRunVisualizationOptions =
   const withBase = withPylonBaseLayer(withTraining, pylonBase)
   const multiplayer = modelChatWorldMultiplayer(model)
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer)
+  const navigable = {
+    ...withWorld,
+    cameraMode: "perspective_walk" as const,
+    controller: "third_person_character" as const,
+    thirdPersonController: {
+      character: {
+        walkSpeed: 3.8,
+        runSpeed: 6.7,
+      },
+      jumpHeight: 4.9,
+      gravity: -13.5,
+    },
+    sceneChrome: {
+      ...(withWorld.sceneChrome ?? {}),
+      lossPanel: "hidden" as const,
+      statusChart: "hidden" as const,
+    },
+  }
   // Payment particles only when their flag is on; each is already evidence-bound.
   return CHAT_WORLD_PAYMENTS
     ? withChatWorldPaymentLayer(
-        withWorld,
+        navigable,
         modelChatWorldParticles(model),
         multiplayer,
       )
-    : withWorld
+    : navigable
 }
+
+export const chatSceneVisualization = verseSceneVisualization
 
 const pylonBaseProjectionFor = (model: Model): PylonBaseProjection =>
   projectPylonBase({
@@ -5889,41 +5900,11 @@ const chatSceneInspector = (model: Model): Html =>
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
 
-const pylonBaseStatus = (model: Model): Html => {
-  const base = pylonBaseProjectionFor(model)
-  const detail =
-    base.nextAction ??
-    (base.readiness.assignmentReady
-      ? "ready for Tassadar"
-      : base.readiness.walletReady
-        ? "wallet ready"
-        : base.readiness.online
-          ? "online"
-          : "waiting")
-  return h.div([cls(`pylon-base-status pylon-base-status-${base.status}`)], [
-    h.div([cls("pylon-base-status-top")], [
-      h.span([cls("pylon-base-status-label")], [base.label]),
-      h.span([cls("pylon-base-status-mana mono")], [
-        `${base.mana.current}/${base.mana.total}`,
-      ]),
-    ]),
-    h.div([cls("pylon-base-status-meter")], [
-      h.span([
-        cls("pylon-base-status-meter-fill"),
-        h.Style({ transform: `scaleX(${base.mana.ratio})` }),
-      ], []),
-    ]),
-    h.div([cls("pylon-base-status-detail")], [
-      `${detail} · ${base.settledSats} sats`,
-    ]),
-  ])
-}
-
 const chatSceneBackground = (model: Model): Html =>
   h.div([cls("chat-scene-background")], [
     trainingRunView<Message>(
       [cls("three-effect-chat-scene")],
-      chatSceneVisualization(model),
+      verseSceneVisualization(model),
       // Click a payment endpoint → surface its receipt ref in the inspector.
       (node) => {
         const hasDetailInspector =
@@ -5935,49 +5916,8 @@ const chatSceneBackground = (model: Model): Html =>
         })
       },
     ),
-    pylonBaseStatus(model),
     chatSceneInspector(model),
   ])
-
-const characterCreationBeat = (beat: CharacterCreationBeat): Html =>
-  h.li([cls(`character-creation-beat character-creation-${beat.status}`)], [
-    h.span([cls("character-creation-dot")], []),
-    h.div([cls("character-creation-beat-copy")], [
-      h.strong([], [beat.label]),
-      h.span([], [beat.message]),
-      beat.blockerRefs.length > 0
-        ? h.span([cls("character-creation-ref mono")], [beat.blockerRefs[0] as string])
-        : h.empty,
-    ]),
-  ])
-
-const characterCreationOverlay = (model: Model): Html => {
-  const projection = projectCharacterCreationOnboarding({
-    flagEnabled: AGENT_CHARACTER_CREATION,
-    onboardingStatus: modelOnboardingStatus(model),
-    chatWorldScene: modelChatWorldScene(model),
-    forumReadiness: modelPromiseSurfacingReadiness(model),
-  })
-  return projection.enabled
-    ? h.div([cls("character-creation-overlay")], [
-        h.div([cls("character-creation-head")], [
-          h.span([cls("character-creation-kicker mono")], ["character creation"]),
-          h.span([cls("character-creation-count mono")], [
-            `${projection.pylonOnlineCount} pylons online`,
-          ]),
-        ]),
-        h.div([cls("character-creation-mana")], [
-          h.span([
-            cls("character-creation-mana-fill"),
-            h.Style({ transform: `scaleX(${projection.mana})` }),
-          ], []),
-        ]),
-        h.ol([cls("character-creation-list")], [
-          ...projection.beats.map(characterCreationBeat),
-        ]),
-      ])
-    : h.empty
-}
 
 // The chat thread + composer, shared by both the plain and world-scene layouts.
 const chatThread = (model: Model): Html =>
@@ -5995,15 +5935,22 @@ const chatThread = (model: Model): Html =>
     ],
   )
 
-const chatComposer = (model: Model): Html =>
+const chatComposer = (
+  model: Model,
+  mode: "pane" | "verse" = "pane",
+): Html =>
   h.div(
-    [cls("chat-composer")],
+    [cls(mode === "verse" ? "chat-composer chat-composer-verse" : "chat-composer")],
     [
       h.textarea(
         [
           cls("text-area chat-input"),
-          h.Rows(4),
-          h.Placeholder("Talk to Tassadar about the Verse, your Pylon, or the training run..."),
+          h.Rows(mode === "verse" ? 1 : 4),
+          h.Placeholder(
+            mode === "verse"
+              ? "Message Tassadar..."
+              : "Talk to Tassadar about the Verse, your Pylon, or the training run...",
+          ),
           h.Value(model.chatInput),
           h.OnInput((value: string) => ChangedChatInput({ value })),
         ],
@@ -6038,17 +5985,17 @@ const chatComposer = (model: Model): Html =>
 const verseVisible = (model: Model): boolean =>
   CHAT_WORLD_SCENE && model.verseEnabled
 
+const versePane = (model: Model): Html =>
+  h.div([cls("chat-pane chat-pane-world verse-pane")], [
+    chatSceneBackground(model),
+    h.div([cls("chat-content-overlay")], [
+      chatComposer(model, "verse"),
+    ]),
+  ])
+
 const chatPane = (model: Model): Html =>
   verseVisible(model)
-    ? h.div([cls("chat-pane chat-pane-world")], [
-        chatSceneBackground(model),
-        characterCreationOverlay(model),
-        h.div([cls("chat-content-overlay")], [
-          paneTitle("The Verse"),
-          chatThread(model),
-          chatComposer(model),
-        ]),
-      ])
+    ? versePane(model)
     : h.div(
         [cls("chat-pane")],
         [paneTitle("Chat"), chatThread(model), chatComposer(model)],
@@ -6730,16 +6677,6 @@ const rootView = (model: Model): Html => {
     return h.div(
       [cls("app-shell app-shell-verse"), themeData],
       [
-        h.button(
-          [
-            cls("shell-return verse-advanced"),
-            h.Type("button"),
-            h.Title("Open advanced commands (Cmd-K)"),
-            h.AriaLabel("Open advanced commands"),
-            h.OnClick(OpenedCommandPalette()),
-          ],
-          ["Advanced"],
-        ),
         chatPane(model),
         managedPaneLayer(model),
         hotbar(model),

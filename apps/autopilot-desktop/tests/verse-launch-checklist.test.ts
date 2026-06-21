@@ -6,7 +6,7 @@ import {
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 import { initialRuntimeState } from "../src/ui/initial-state"
-import { view } from "../src/ui/view"
+import { verseSceneVisualization, view } from "../src/ui/view"
 
 const verseEnvKeys = [
   "VITE_DISABLE_VERSE",
@@ -85,14 +85,21 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("three-effect-chat-scene")
-    expect(tree).toContain("pylon-base-status")
-    expect(tree).toContain("character-creation-overlay")
-    expect(tree).toContain("The Verse")
+    expect(tree).not.toContain("pylon-base-status")
+    expect(tree).not.toContain("character-creation-overlay")
+    expect(tree).not.toContain("The Verse")
     expect(tree).toContain("Tassadar")
     expect(tree).toContain("Pylon")
-    expect(tree).toContain("Talk to Tassadar about the Verse, your Pylon, or the training run")
+    expect(tree).not.toContain("chat-thread-shell")
+    expect(tree).not.toContain("chat-message-list")
+    expect(tree).toContain("Message Tassadar")
     expect(tree).toContain("Send")
-    expect(tree).toContain("Advanced")
+    expect(tree).not.toContain("Advanced")
+
+    expect(verseSceneVisualization(model)).toMatchObject({
+      cameraMode: "perspective_walk",
+      controller: "third_person_character",
+    })
 
     expect(tree).not.toContain("sidebar")
     expect(tree).not.toContain("status-hud-overlay")

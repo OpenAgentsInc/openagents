@@ -436,7 +436,7 @@ describe("CL-53 sanitizeTree", () => {
   // refs, and surfaces "Verified" only because the live evidence says so.
   test("chat pane renders live Blueprint program steps + exact-replay refs (no first-paint fake)", () => {
     // Honest first paint: the intro shows no fabricated verdict.
-    const firstPaint = view({ ...initialModel, pane: "chat" })
+    const firstPaint = view({ ...initialModel, pane: "chat", verseEnabled: false })
     expect(treeContainsClass(firstPaint.body, "chat-pane")).toBe(true)
     expect(treeContainsText(firstPaint.body, "Verified")).toBe(false)
 
@@ -467,6 +467,7 @@ describe("CL-53 sanitizeTree", () => {
     const collapsed = view({
       ...initialModel,
       pane: "chat",
+      verseEnabled: false,
       chatMessages: [completedMessage],
       expandedChatMessages: [],
     })
@@ -481,6 +482,7 @@ describe("CL-53 sanitizeTree", () => {
     const document = view({
       ...initialModel,
       pane: "chat",
+      verseEnabled: false,
       chatMessages: [completedMessage],
       expandedChatMessages: [messageId],
     })
@@ -512,6 +514,7 @@ describe("CL-53 sanitizeTree", () => {
     const document = view({
       ...initialModel,
       pane: "chat",
+      verseEnabled: false,
       // Expanded so the rejected-evidence refs in the per-message "program
       // details" disclosure render (collapsed-by-default after the #5466 fix).
       expandedChatMessages: ["chat.test.rejected"],
