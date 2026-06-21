@@ -23,6 +23,7 @@ import { PublicProductPromisesVersion } from './product-promises'
 import { PublicLaunchDashboardEndpoint } from './public-launch-dashboard'
 import { PylonLargestDecentralizedTrainingClaimEndpoint } from './pylon-largest-decentralized-training-claim-status'
 import { TassadarPerceptaArchitectureReceiptsEndpoint } from './tassadar-percepta-architecture-receipts'
+import { TassadarPerceptaCpuTransformTrainingReceiptsEndpoint } from './tassadar-percepta-cpu-transform-training-receipts'
 import { TrainingAblationDeriskingLedgerEndpoint } from './training-ablation-derisking-ledger'
 import { TrainingFullPipelineProgramEndpoint } from './training-full-pipeline-program'
 import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
@@ -423,7 +424,7 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
     },
     generatedAt: { type: 'string' },
     promiseRef: { type: 'string' },
-    promiseState: { type: 'string', enum: ['red'] },
+    promiseState: { type: 'string', enum: ['planned'] },
     receiptSummary: {
       type: 'object',
       additionalProperties: true,
@@ -460,6 +461,129 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
     unsafeCopy: { type: 'string' },
   },
 }
+
+export const TassadarPerceptaCpuTransformTrainingReceiptsEnvelope: JsonSchema =
+  {
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Public-safe CPU-transform training receipt status projection for models.tassadar_percepta_executor.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, input refs for the architecture receipt and Artanis distillation dataset receipt, expected receipt shape, and explicit gate fields showing cpuTransformTrainingReceiptAvailable=false, pylonAssignmentReceiptAvailable=false, acceptedWorkReceiptAvailable=false, verifierVerdictReceiptAvailable=false, realSettlementReceiptAvailable=false, trainedModelArtifactAvailable=false, and greenGateSatisfied=false. It exposes refs and status only: no raw traces, private runner logs, provider payloads, wallet material, trained-model claim, inference endpoint, model promotion, dispatch, spend, settlement, or CPU-transform training claim.',
+    required: [
+      'authorityBoundary',
+      'endpoint',
+      'expectedReceiptSurface',
+      'gate',
+      'generatedAt',
+      'inputRefs',
+      'promiseRef',
+      'promiseState',
+      'receiptSummary',
+      'registryVersion',
+      'schemaVersion',
+      'sourceRefs',
+      'staleness',
+      'status',
+      'unsafeCopy',
+    ],
+    properties: {
+      authorityBoundary: { type: 'string' },
+      endpoint: {
+        type: 'string',
+        enum: [TassadarPerceptaCpuTransformTrainingReceiptsEndpoint],
+      },
+      expectedReceiptSurface: {
+        type: 'object',
+        additionalProperties: true,
+        required: [
+          'emittedReceiptCount',
+          'expectedReceiptRefPattern',
+          'expectedReceiptSchemaVersion',
+          'requirements',
+          'routePublishesReceipts',
+          'routePublishesStatusOnly',
+        ],
+        properties: {
+          emittedReceiptCount: { type: 'integer', minimum: 0 },
+          expectedReceiptRefPattern: { type: 'string' },
+          expectedReceiptSchemaVersion: { type: 'string' },
+          requirements: { type: 'array', items: { type: 'object' } },
+          routePublishesReceipts: { type: 'boolean', enum: [false] },
+          routePublishesStatusOnly: { type: 'boolean', enum: [true] },
+        },
+      },
+      gate: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'acceptedWorkReceiptAvailable',
+          'architectureReceiptAvailable',
+          'clearsBlockerRefs',
+          'cpuTransformTrainingReceiptAvailable',
+          'distillationDatasetReceiptInputAvailable',
+          'greenGateSatisfied',
+          'pylonAssignmentReceiptAvailable',
+          'publicProjectionAvailable',
+          'realSettlementReceiptAvailable',
+          'remainingBlockerRefs',
+          'trainedModelArtifactAvailable',
+          'verifierVerdictReceiptAvailable',
+        ],
+        properties: {
+          acceptedWorkReceiptAvailable: { type: 'boolean' },
+          architectureReceiptAvailable: { type: 'boolean' },
+          clearsBlockerRefs: { type: 'array', items: { type: 'string' } },
+          cpuTransformTrainingReceiptAvailable: { type: 'boolean' },
+          distillationDatasetReceiptInputAvailable: { type: 'boolean' },
+          greenGateSatisfied: { type: 'boolean' },
+          pylonAssignmentReceiptAvailable: { type: 'boolean' },
+          publicProjectionAvailable: { type: 'boolean' },
+          realSettlementReceiptAvailable: { type: 'boolean' },
+          remainingBlockerRefs: { type: 'array', items: { type: 'string' } },
+          trainedModelArtifactAvailable: { type: 'boolean' },
+          verifierVerdictReceiptAvailable: { type: 'boolean' },
+        },
+      },
+      generatedAt: { type: 'string' },
+      inputRefs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          required: ['available', 'endpoint', 'inputKind', 'receiptRef'],
+          properties: {
+            available: { type: 'boolean' },
+            endpoint: { type: 'string' },
+            inputKind: { type: 'string' },
+            receiptRef: { type: 'string' },
+          },
+        },
+      },
+      promiseRef: { type: 'string' },
+      promiseState: { type: 'string', enum: ['planned'] },
+      receiptSummary: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          architectureReceiptCount: { type: 'integer', minimum: 0 },
+          distillationDatasetReceiptCount: { type: 'integer', minimum: 0 },
+          emittedCpuTransformTrainingReceiptCount: {
+            type: 'integer',
+            minimum: 0,
+          },
+          requiredAcceptedTraceCount: { type: 'integer', minimum: 0 },
+        },
+      },
+      registryVersion: { type: 'string' },
+      schemaVersion: { type: 'string' },
+      sourceRefs: { type: 'array', items: { type: 'string' } },
+      staleness: { type: 'object' },
+      status: {
+        type: 'string',
+        enum: ['cpu_transform_training_receipts_missing'],
+      },
+      unsafeCopy: { type: 'string' },
+    },
+  }
 
 export const TrainingFullPipelineProgramEnvelope: JsonSchema = {
   type: 'object',
@@ -1325,6 +1449,15 @@ const schemaComponents = (): JsonSchema => ({
   PublicInferenceReceiptEnvelope: objectSummary(
     'Public-safe inference ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn pay_ins.public_receipt_ref). It proves that a paid `receipt.inference.charge.*` or `receipt.inference.usd_credit_grant.*` ledger row exists without exposing account ids, amounts, idempotency keys, Stripe session ids, invoices, preimages, wallet material, provider payloads, or raw prompts. Read-only; grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
   ),
+  PublicInferenceBatchJobCloseoutReceiptEnvelope: objectSummary(
+    'Public-safe inference batch-job closeout receipt envelope for `receipt.inference.batch_job.closeout.*`. It carries generatedAt and a live_at_read staleness contract, resolves only completed jobs, exposes the projected closeout receipt and public-safe refs, and excludes account ids, raw datasets, R2 payloads, provider payloads, wallet material, invoices, preimages, and private job bodies. Read-only; grants no job execution, spend, refund, settlement, provider, or registry authority.',
+  ),
+  InferenceBatchJobSubmitRequest: objectSummary(
+    'Programmatic-agent batch inference request. Carries a bounded dataset of model plus prompt/completion token counts for cost estimation and initial job persistence. Do not send raw private datasets or provider payloads.',
+  ),
+  InferenceBatchJobSubmitResponse: objectSummary(
+    'Batch inference job acceptance response with jobId, charge receipt ref, accepted status, and estimated charge. Acceptance does not prove background execution or completed batch output.',
+  ),
   PublicStripeCheckoutReceiptEnvelope: objectSummary(
     'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
@@ -1511,6 +1644,24 @@ const schemaComponents = (): JsonSchema => ({
   ArtanisResponderSupportResponse: objectSummary(
     'Public-safe Artanis Pylon-support responder external-contributor-flow projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, and the external-contributor interactions with their dereferenceable reply-post refs. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus the projection_staleness.v1 staleness contract (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip.',
   ),
+  LaborSelfServePayoutRequest: objectSummary(
+    'Agent-authenticated self-serve labor payout request. The providerRef must match the bearer-authenticated actor; the route currently returns a typed plan plus an inert dispatch decision unless explicitly enabled.',
+  ),
+  LaborSelfServePayoutResponse: objectSummary(
+    'Public-safe self-serve labor payout plan response with generatedAt-equivalent plan timestamps, a live_at_read staleness contract on the current balance read, a typed plan, and flag-gated dispatch result. The default production seam is inert and grants no payout, ledger debit, settlement, wallet, or green-claim authority.',
+  ),
+  EcommerceCampaignWorkspaceResponse: objectSummary(
+    'Public-safe e-commerce campaign workspace seed response for the business vertical pack. Carries generatedAt plus a live_at_read staleness contract, returns a public-safe workspace projection and blocker state, and default-disabled responses are inert and do not prove a paid delivery.',
+  ),
+  EcommerceCampaignReceiptResponse: objectSummary(
+    'Public-safe e-commerce campaign receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
+  ),
+  MarketingAgencyReceiptResponse: objectSummary(
+    'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
+  ),
+  MarketingAgencyDeliverabilityResponse: objectSummary(
+    'Public-safe marketing-agency self-serve deliverability projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. The fixture and claim list expose bounded workspace deliverability refs only and grant no send authority, payout, settlement, or green-claim authority.',
+  ),
   PublicTreasuryResponse: objectSummary(
     'Public-safe treasury projection with one aggregate live balance across available treasury rails (MDK + Spark) plus a small rail breakout and recent public transaction rows (direction, amount, state, public refs). Raw invoices, payment hashes, preimages, mnemonics, payout targets, and provider secrets are excluded. Read-only; grants no payout authority.',
   ),
@@ -1581,6 +1732,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingPublicGradientWindowsEnvelope,
   TrainingAblationDeriskingLedgerEnvelope,
   TassadarPerceptaArchitectureReceiptsEnvelope,
+  TassadarPerceptaCpuTransformTrainingReceiptsEnvelope,
   TrainingPostTrainingInstructSftEnvelope,
   TrainingPostTrainingDpoPreferenceWorkloadEnvelope,
   TrainingPostTrainingVibeTestRubricEnvelope,
@@ -3137,8 +3289,16 @@ const schemaComponents = (): JsonSchema => ({
   },
   LaborEarningsResponse: {
     type: 'object',
-    description: 'Public-safe projection of a provider\'s labor earnings, including total released amount and a feed of recent escrow release receipts.',
-    required: ['schemaVersion', 'providerActorRef', 'publicSafe', 'summary', 'rows', 'authorityBoundary'],
+    description:
+      "Public-safe projection of a provider's labor earnings, including total released amount and a feed of recent escrow release receipts.",
+    required: [
+      'schemaVersion',
+      'providerActorRef',
+      'publicSafe',
+      'summary',
+      'rows',
+      'authorityBoundary',
+    ],
     properties: {
       schemaVersion: { type: 'string', enum: ['openagents.labor_earnings.v1'] },
       providerActorRef: { type: 'string' },
@@ -3155,7 +3315,15 @@ const schemaComponents = (): JsonSchema => ({
         type: 'array',
         items: {
           type: 'object',
-          required: ['amountMsat', 'escrowRef', 'jobEventRef', 'receiptRef', 'requesterActorRef', 'workRequestRef', 'releasedAtIso'],
+          required: [
+            'amountMsat',
+            'escrowRef',
+            'jobEventRef',
+            'receiptRef',
+            'requesterActorRef',
+            'workRequestRef',
+            'releasedAtIso',
+          ],
           properties: {
             amountMsat: { type: 'number' },
             escrowRef: { type: 'string' },
@@ -4257,6 +4425,26 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/v1/inference/batches': {
+    post: operation({
+      operationId: 'createInferenceBatchJob',
+      summary: 'Create an inference batch job',
+      description:
+        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, and persists the pending job. This is only the paid receipt surface for inference.batch_processing_jobs.v1: background execution, R2 result storage, completion closeout, and green product-promise status remain separate gates.',
+      tags: ['Inference', 'Billing'],
+      security: agentBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/InferenceBatchJobSubmitRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Inference batch job accepted.',
+          '#/components/schemas/InferenceBatchJobSubmitResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/public/adjutant/activity': {
     get: operation({
       operationId: 'listPublicAdjutantActivity',
@@ -4564,6 +4752,26 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/inference/batch-job-receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicInferenceBatchJobReceipt',
+      summary: 'Read public inference batch-job closeout receipt',
+      description:
+        'Returns a public-safe closeout receipt projection for completed `receipt.inference.batch_job.closeout.*` jobs. Pending or incomplete jobs return not_found. The route exposes refs and closeout state only; it does not expose raw datasets, result payloads, provider payloads, account ids, wallet material, or private job bodies, and grants no execution, spend, settlement, or green-claim authority.',
+      tags: ['Public Proof', 'Inference'],
+      security: publicRead,
+      parameters: [
+        pathParam('receiptRef', 'Inference batch job closeout receipt ref.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public inference batch job closeout receipt.',
+          '#/components/schemas/PublicInferenceBatchJobCloseoutReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/public/billing/stripe-checkout-receipts/{receiptRef}': {
     get: operation({
       operationId: 'getPublicStripeCheckoutReceipt',
@@ -4666,17 +4874,136 @@ const paths = (): JsonSchema => ({
     get: operation({
       operationId: 'getPublicLaborEarnings',
       summary: 'Get public labor earnings',
-      description: 'Public read-only projection of a provider\'s labor earnings, including escrow release receipts and total earned. This feed is public-safe and grants no spend, settlement, or payout authority.',
+      description:
+        "Public read-only projection of a provider's labor earnings, including escrow release receipts and total earned. This feed is public-safe and grants no spend, settlement, or payout authority.",
       tags: ['Labor'],
       security: publicRead,
       parameters: [
         queryParam('providerRef', 'Provider actor ref to fetch earnings for.'),
-        queryParam('limit', 'Optional limit for recent release receipts (default 50).'),
+        queryParam(
+          'limit',
+          'Optional limit for recent release receipts (default 50).',
+        ),
       ],
       responses: {
         '200': okJson(
           'Public labor earnings projection.',
           '#/components/schemas/LaborEarningsResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/labor-earnings/payout': {
+    post: operation({
+      operationId: 'createSelfServeLaborPayoutPlan',
+      summary: 'Create a self-serve labor payout plan',
+      description:
+        'Returns an agent-authenticated self-serve labor payout plan plus the flag-gated dispatch decision. The providerRef must match the bearer-authenticated actor. The default production seam is inert and does not execute a payout, debit a ledger, settle funds, or create green-claim evidence.',
+      tags: ['Labor', 'Payments'],
+      security: agentBearer,
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: true,
+              description:
+                'Self-serve labor payout request body. Must include providerRef matching the bearer-authenticated actor and payout plan inputs.',
+            },
+          },
+        },
+      },
+      responses: {
+        '200': okJson(
+          'Self-serve labor payout plan.',
+          '#/components/schemas/LaborSelfServePayoutResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/ecommerce-campaign/workspaces': {
+    post: operation({
+      operationId: 'createPublicEcommerceCampaignWorkspace',
+      summary: 'Create a public e-commerce campaign workspace seed',
+      description:
+        'Creates a public-safe e-commerce campaign workspace seed for the business workspace pack when the self-serve route is enabled. Disabled responses are inert and explicitly report the promise/blocker state. The route does not prove a paid delivery, attribution, payout, settlement, or green transition.',
+      tags: ['Business'],
+      security: publicRead,
+      responses: {
+        '201': okJson(
+          'E-commerce campaign workspace projection.',
+          '#/components/schemas/EcommerceCampaignWorkspaceResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/ecommerce-campaign/receipts': {
+    get: operation({
+      operationId: 'listPublicEcommerceCampaignReceiptClaims',
+      summary: 'List e-commerce campaign paid-delivery claims',
+      description:
+        'Returns public-safe e-commerce campaign paid-delivery claim projections when called with view=paid-delivery-claims. Receipt point reads are available under the same route prefix. The surface grants no delivery, payout, settlement, attribution, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-delivery-claims to list projected paid delivery claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'E-commerce campaign receipt projection.',
+          '#/components/schemas/EcommerceCampaignReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/marketing-agency/receipts': {
+    get: operation({
+      operationId: 'listPublicMarketingAgencyReceiptClaims',
+      summary: 'List marketing-agency paid-delivery claims',
+      description:
+        'Returns public-safe marketing-agency paid-delivery claim projections when called with view=paid-delivery-claims. Receipt point reads are available under the same route prefix. The surface grants no delivery, payout, settlement, attribution, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-delivery-claims to list projected paid delivery claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Marketing-agency receipt projection.',
+          '#/components/schemas/MarketingAgencyReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/marketing-agency/self-serve/deliverability': {
+    get: operation({
+      operationId: 'listPublicMarketingAgencySelfServeDeliverabilityClaims',
+      summary: 'List marketing-agency self-serve deliverability claims',
+      description:
+        'Returns public-safe marketing-agency self-serve deliverability claim projections when called with view=self-serve-claims. Workspace point reads are available under the same route prefix. The surface grants no send authority, payout, settlement, attribution, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use self-serve-claims to list projected self-serve deliverability claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Marketing-agency deliverability projection.',
+          '#/components/schemas/MarketingAgencyDeliverabilityResponse',
         ),
         ...errorResponses(),
       },
@@ -6168,6 +6495,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Tassadar Percepta executor architecture receipts.',
           '#/components/schemas/TassadarPerceptaArchitectureReceiptsEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TassadarPerceptaCpuTransformTrainingReceiptsEndpoint]: {
+    get: operation({
+      operationId: 'getTassadarPerceptaCpuTransformTrainingReceipts',
+      summary: 'Read Tassadar Percepta CPU-transform training receipt status',
+      description:
+        'Returns the public-safe CPU-transform training receipt status projection for models.tassadar_percepta_executor.v1. The projection cites the architecture receipt and Artanis distillation dataset receipt as available inputs, then keeps the real CPU-transform gates false: no Pylon assignment receipt, accepted-work receipt, verifier verdict receipt, real settlement receipt, trained artifact digest, or greenGateSatisfied state exists. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, CPU-transform training claim, or green product-promise authority.',
+      tags: ['Training', 'Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Tassadar Percepta CPU-transform training receipt status.',
+          '#/components/schemas/TassadarPerceptaCpuTransformTrainingReceiptsEnvelope',
         ),
         ...errorResponses(),
       },

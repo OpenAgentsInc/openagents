@@ -39,7 +39,7 @@ describe('Tassadar Percepta architecture receipts projection', () => {
     expect(projection.promiseRef).toBe(
       'promise:models.tassadar_percepta_executor.v1',
     )
-    expect(projection.promiseState).toBe('red')
+    expect(projection.promiseState).toBe('planned')
     expect(projection.staleness).toMatchObject({
       composition: 'live_at_read',
       contractVersion: 'projection_staleness.v1',
@@ -129,7 +129,7 @@ describe('Tassadar Percepta architecture receipts projection', () => {
     expect(body.promiseRef).toBe(
       'promise:models.tassadar_percepta_executor.v1',
     )
-    expect(body.promiseState).toBe('red')
+    expect(body.promiseState).toBe('planned')
     expect(body.gate.architectureReceiptsAvailable).toBe(true)
     expect(body.gate.pylonCpuTransformTrainingReceiptsAvailable).toBe(false)
     expect(body.gate.greenGateSatisfied).toBe(false)

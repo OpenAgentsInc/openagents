@@ -15,6 +15,8 @@ export const ARTANIS_TASSADAR_DISTILLATION_DATASET_TARGET = 10
 
 export const ARTANIS_TASSADAR_DISTILLATION_DATASET_BLOCKER =
   'blocker.product_promises.tassadar_distillation_dataset_receipt_missing'
+export const ARTANIS_TASSADAR_DISTILLATION_DATASET_RECEIPT_REF =
+  'receipt.training.tassadar_distillation_dataset.artanis_admin_verified_trace_refs.v1'
 
 export type ArtanisDistillationDatasetRow = Readonly<{
   decision_id: unknown
@@ -62,8 +64,7 @@ const decisionIdPattern = /^[A-Za-z0-9_:-]{1,128}$/
 const digestPrefixPattern = /^[a-f0-9]{1,32}$/
 const isoLikePattern = /^\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/
 
-const datasetReceiptRef =
-  'receipt.training.tassadar_distillation_dataset.artanis_admin_verified_trace_refs.v1'
+const datasetReceiptRef = ARTANIS_TASSADAR_DISTILLATION_DATASET_RECEIPT_REF
 const datasetRef =
   'dataset.tassadar_distillation.artanis_admin_verified_trace_refs.v1'
 

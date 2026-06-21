@@ -120,7 +120,7 @@ export class TassadarPerceptaArchitectureReceiptsProjection extends S.Class<Tass
   }),
   generatedAt: S.String,
   promiseRef: S.Literal('promise:models.tassadar_percepta_executor.v1'),
-  promiseState: S.Literal('red'),
+  promiseState: S.Literal('planned'),
   receiptSummary: S.Struct({
     architectureReceiptCount: S.Int,
     componentCount: S.Int,
@@ -323,7 +323,7 @@ const buildArchitectureReceipt = (): TassadarPerceptaArchitectureReceipt => {
     receiptState: 'available',
     sourceRefs: entryRefs(components.flatMap(component => component.sourceRefs)),
     unsafeCopy:
-      'Do not claim a trained Tassadar model exists, that Pylon CPU-transform training has run, that public contributors trained this model, that an inference endpoint exists, or that this architecture receipt makes the red promise green.',
+      'Do not claim a trained Tassadar model exists, that Pylon CPU-transform training has run, that public contributors trained this model, that an inference endpoint exists, or that this architecture receipt makes the planned promise green.',
   })
 
   assertPublicSafeValue('Tassadar Percepta architecture receipt', receipt)
@@ -356,7 +356,7 @@ export const projectTassadarPerceptaArchitectureReceipts = (
     },
     generatedAt: input.generatedAt ?? currentIsoTimestamp(),
     promiseRef: 'promise:models.tassadar_percepta_executor.v1',
-    promiseState: 'red',
+    promiseState: 'planned',
     receiptSummary: {
       architectureReceiptCount: receipts.length,
       componentCount,

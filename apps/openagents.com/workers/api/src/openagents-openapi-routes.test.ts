@@ -243,6 +243,13 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getTassadarPerceptaArchitectureReceipts')
     expect(
+      operationAt(
+        body,
+        '/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
+        'get',
+      ).operationId,
+    ).toBe('getTassadarPerceptaCpuTransformTrainingReceipts')
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
     const activityTimelineOperation = operationAt(
@@ -1046,6 +1053,7 @@ describe('OpenAgents OpenAPI route', () => {
         'OperatorSiteEnvelope',
         'OperatorAdjutantAssignmentEnvelope',
         'OperatorEmailDeliveries',
+        'TassadarPerceptaCpuTransformTrainingReceiptsEnvelope',
       ]),
     )
     expect(
