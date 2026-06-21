@@ -25,6 +25,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { superviseManagedNode } from "../src/bun/node-launcher"
+import { postForumIntroduction } from "../src/bun/forum-intro"
+import { searchForumWork } from "../src/bun/forum-work-search"
 
 const FAKE_TOKEN = "oa_agent_headless_proof_token"
 
@@ -81,6 +83,53 @@ const server = Bun.serve({
     // Tassadar assignment worker poll (no work available is fine for the proof).
     if (url.pathname.endsWith("/assignments") && req.method === "GET") {
       return Response.json({ assignments: [] }, { status: 200 })
+    }
+
+    // AF-3 (#5900): forum board read for typed intro-lane selection.
+    if (url.pathname === "/api/forum" && req.method === "GET") {
+      return Response.json(
+        {
+          boardId: "board_proof",
+          slug: "openagents",
+          title: "OpenAgents",
+          categories: [],
+          forums: [
+            { slug: "general", title: "General", locked: false },
+            { slug: "introductions", title: "Introductions", locked: false },
+          ],
+          generatedAt: new Date().toISOString(),
+          publicProjection: {},
+        },
+        { status: 200 },
+      )
+    }
+    // AF-3 (#5900): create-topic (the intro post).
+    if (
+      /^\/api\/forum\/forums\/[^/]+\/topics$/.test(url.pathname) &&
+      req.method === "POST"
+    ) {
+      return Response.json(
+        {
+          topic: { id: "topic_proof", slug: "intro-proof" },
+          firstPost: { id: "post_proof" },
+          idempotent: false,
+          receiptRefs: [],
+        },
+        { status: 200 },
+      )
+    }
+    // AF-4 (#5901): read-only work-search over the typed work-requests lane.
+    if (url.pathname === "/api/forum/work-requests" && req.method === "GET") {
+      return Response.json(
+        {
+          workRequests: [
+            { workRequestId: "wr_1", title: "demo", state: "open" },
+            { workRequestId: "wr_2", title: "demo2", state: "running" },
+          ],
+          pagination: { cursor: null, hasMore: false, limit: 50, nextCursor: null },
+        },
+        { status: 200 },
+      )
     }
 
     return Response.json({ ok: true }, { status: 200 })
@@ -151,13 +200,37 @@ while (Date.now() < deadline) {
 }
 
 // Capture the managed home BEFORE stopping (stop() clears current -> home()).
-// The launcher's dev path forces the managed home to <repoRoot>/.pylon-local
-// (a packaged build uses a per-user home, and ignores an injected PYLON_HOME on
-// the dev path). Read from the home the launcher actually used.
-const managedHome = sup.home() ?? join(repoRoot, ".pylon-local")
+// We force PYLON_HOME to our fresh temp `home`, and the launcher honors an
+// explicit env PYLON_HOME (node-launcher: `managedHome = env.PYLON_HOME ?? …`),
+// so the node writes identity/credential there. `sup.home()` returns that same
+// path when a child is current, but can momentarily read null mid token-restart;
+// fall back to the temp `home` we forced (never the repo-root `.pylon-local`,
+// which is a different node's home).
+const managedHome = sup.home() ?? home
 
 sup.stop()
 await sleep(500)
+
+// AF-3/AF-4/AF-6 (#5900/#5901/#5903): with the node converged (identity +
+// credential persisted in the managed home), drive the forum loop directly
+// against the still-running mock — exactly the path index.ts fires on poll.
+// The token is read from the home; it is never printed.
+let introOutcome = "unrun"
+let workOutcome = "unrun"
+try {
+  const intro = await postForumIntroduction({ home: managedHome, baseUrl })
+  introOutcome = intro.outcome
+} catch (error) {
+  introOutcome = `threw:${error instanceof Error ? error.message : String(error)}`
+}
+try {
+  const work = await searchForumWork({ home: managedHome, baseUrl })
+  workOutcome = work.outcome
+} catch (error) {
+  workOutcome = `threw:${error instanceof Error ? error.message : String(error)}`
+}
+
+await sleep(200)
 server.stop(true)
 
 console.log("\n-- captured mock hits --")
@@ -216,6 +289,55 @@ check("payout target registered (POST .../spark-payout-target)", seen(h => h.pat
 // 5. Tassadar assignment worker polling for claimable work.
 check("assignment worker polled for work (GET .../assignments)", seen(h => h.path.endsWith("/assignments") && h.method === "GET"))
 
+// 6. AF-3 (#5900): forum self-introduction posted + receipt persisted.
+check("forum intro posted (outcome=posted)", introOutcome === "posted")
+check(
+  "forum board read for typed lane selection (GET /api/forum)",
+  seen(h => h.path === "/api/forum" && h.method === "GET"),
+)
+check(
+  "intro topic created (POST /api/forum/forums/.../topics)",
+  seen(h => /^\/api\/forum\/forums\/[^/]+\/topics$/.test(h.path) && h.method === "POST"),
+)
+let introReceipt: Record<string, unknown> | null = null
+try {
+  introReceipt = JSON.parse(
+    readFileSync(join(managedHome, "forum-intro.json"), "utf8"),
+  )
+} catch {
+  introReceipt = null
+}
+check(
+  "intro receipt persisted with a dereferenceable topic URL",
+  introReceipt !== null &&
+    typeof introReceipt.topicId === "string" &&
+    typeof introReceipt.url === "string" &&
+    (introReceipt.url as string).includes("/forum/t/"),
+)
+check(
+  "intro topic used the typed introductions lane",
+  introReceipt !== null && introReceipt.forumSlug === "introductions",
+)
+
+// 7. AF-4 (#5901): read-only work-search ran + receipt persisted.
+check("work-search ran (outcome=searched)", workOutcome === "searched")
+check(
+  "work-requests lane read (GET /api/forum/work-requests)",
+  seen(h => h.path === "/api/forum/work-requests" && h.method === "GET"),
+)
+let workReceipt: Record<string, unknown> | null = null
+try {
+  workReceipt = JSON.parse(
+    readFileSync(join(managedHome, "forum-work-search.json"), "utf8"),
+  )
+} catch {
+  workReceipt = null
+}
+check(
+  "work-search receipt persisted with the open-item count (typed state)",
+  workReceipt !== null && workReceipt.openCount === 1,
+)
+
 // Secrets boundary: the token must not appear in this proof's stdout. (We never
 // printed it; assert the contract holds for the captured output surfaces.)
 check("token never printed to status/log surfaces", !statuses.join("\n").includes(FAKE_TOKEN))
@@ -224,7 +346,7 @@ rmSync(home, { recursive: true, force: true })
 
 console.log()
 if (ok) {
-  console.log("RESULT: a fresh node self-registered, joined, and reached earning-ready (presence + payout + assignment poll) — headlessly, no GUI, no env vars.")
+  console.log("RESULT: a fresh node self-registered, joined, reached earning-ready (presence + payout + assignment poll), posted its forum self-introduction, and ran a read-only work-search — headlessly, no GUI, no env vars.")
   process.exit(0)
 } else {
   fail("one or more convergence gates did not pass (see above)")

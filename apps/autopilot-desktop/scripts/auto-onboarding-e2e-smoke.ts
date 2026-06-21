@@ -52,6 +52,8 @@ import {
   saveIdentityChoice,
 } from "../src/bun/identity-choice"
 import { superviseManagedNode } from "../src/bun/node-launcher"
+import { postForumIntroduction } from "../src/bun/forum-intro"
+import { searchForumWork } from "../src/bun/forum-work-search"
 import {
   projectOnboardingStatus,
   type OnboardingStatusInput,
@@ -110,6 +112,53 @@ const server = Bun.serve({
     }
     if (url.pathname.endsWith("/assignments") && req.method === "GET") {
       return Response.json({ assignments: [] }, { status: 200 })
+    }
+    // AF-3 (#5900): forum board read for typed intro-lane selection.
+    if (url.pathname === "/api/forum" && req.method === "GET") {
+      return Response.json(
+        {
+          boardId: "board_smoke",
+          slug: "openagents",
+          title: "OpenAgents",
+          categories: [],
+          forums: [
+            { slug: "general", title: "General", locked: false },
+            { slug: "introductions", title: "Introductions", locked: false },
+          ],
+          generatedAt: new Date().toISOString(),
+          publicProjection: {},
+        },
+        { status: 200 },
+      )
+    }
+    // AF-3 (#5900): create-topic (the intro post).
+    if (
+      /^\/api\/forum\/forums\/[^/]+\/topics$/.test(url.pathname) &&
+      req.method === "POST"
+    ) {
+      return Response.json(
+        {
+          topic: { id: "topic_smoke", slug: "intro-smoke" },
+          firstPost: { id: "post_smoke" },
+          idempotent: false,
+          receiptRefs: [],
+        },
+        { status: 200 },
+      )
+    }
+    // AF-4 (#5901): read-only work-search over the typed work-requests lane.
+    if (url.pathname === "/api/forum/work-requests" && req.method === "GET") {
+      return Response.json(
+        {
+          workRequests: [
+            { workRequestId: "wr_1", title: "demo", state: "open" },
+            { workRequestId: "wr_2", title: "demo2", state: "open" },
+            { workRequestId: "wr_3", title: "demo3", state: "running" },
+          ],
+          pagination: { cursor: null, hasMore: false, limit: 50, nextCursor: null },
+        },
+        { status: 200 },
+      )
     }
     return Response.json({ ok: true }, { status: 200 })
   },
@@ -301,11 +350,30 @@ while (Date.now() < deadline) {
   await sleep(1000)
 }
 
-const managedHome = sup.home() ?? join(repoRoot, ".pylon-local")
+// We force PYLON_HOME to the fresh temp `home` and the launcher honors an
+// explicit env PYLON_HOME, so the node writes there; fall back to `home` (never
+// the repo-root `.pylon-local`, a different node's home) if home() races null.
+const managedHome = sup.home() ?? home
 const nodeLaunchStatus = sup.status()
 
 sup.stop()
 await sleep(500)
+
+// AF-3/AF-4/AF-6 (#5900/#5901/#5903): with the node converged, drive the forum
+// loop directly against the still-running mock — the path index.ts fires on poll.
+let introOutcome = "unrun"
+let workOutcome = "unrun"
+try {
+  introOutcome = (await postForumIntroduction({ home: managedHome, baseUrl })).outcome
+} catch (error) {
+  introOutcome = `threw:${error instanceof Error ? error.message : String(error)}`
+}
+try {
+  workOutcome = (await searchForumWork({ home: managedHome, baseUrl })).outcome
+} catch (error) {
+  workOutcome = `threw:${error instanceof Error ? error.message : String(error)}`
+}
+await sleep(150)
 
 console.log("\n-- captured mock hits --")
 for (const h of hits) {
@@ -387,6 +455,46 @@ check(
   managedHome !== existingHome,
 )
 
+// --- AF-3/AF-4 (#5900/#5901): forum self-introduction + read-only work-search -
+let introReceipt: Record<string, unknown> | null = null
+try {
+  introReceipt = JSON.parse(
+    readFileSync(join(managedHome, "forum-intro.json"), "utf8"),
+  )
+} catch {
+  introReceipt = null
+}
+let workReceipt: Record<string, unknown> | null = null
+try {
+  workReceipt = JSON.parse(
+    readFileSync(join(managedHome, "forum-work-search.json"), "utf8"),
+  )
+} catch {
+  workReceipt = null
+}
+check("Gate 10 (AF-3) — forum self-introduction posted", introOutcome === "posted")
+check(
+  "Gate 10b (AF-3) — typed intro lane selected from the board",
+  seen(h => h.path === "/api/forum" && h.method === "GET") &&
+    introReceipt !== null &&
+    introReceipt.forumSlug === "introductions",
+)
+check(
+  "Gate 10c (AF-3) — intro receipt has a dereferenceable topic URL",
+  introReceipt !== null &&
+    typeof introReceipt.url === "string" &&
+    (introReceipt.url as string).includes("/forum/t/"),
+)
+check("Gate 11 (AF-4) — read-only work-search ran", workOutcome === "searched")
+check(
+  "Gate 11b (AF-4) — work-search counted open items by typed state",
+  seen(h => h.path === "/api/forum/work-requests" && h.method === "GET") &&
+    workReceipt !== null &&
+    workReceipt.openCount === 2,
+)
+const forumIntroPosted = introReceipt !== null
+const forumWorkSearched = workReceipt !== null
+
 // ===========================================================================
 // PART C — AO-4 wizard live-state assertions, driven by the REAL observed
 // signals from Part B (node launch status + persisted credential), with the
@@ -413,6 +521,12 @@ const convergedInput: OnboardingStatusInput = {
   walletReceiveReady: true,
   walletBalanceSats: 0,
   openAssignmentCount: 0,
+  // AF-2/AF-3/AF-4 forum-loop signals from THIS run's real receipts. The mock
+  // wallet does not exercise the tip claim, so tip-ready stays false here.
+  forumTipReady: false,
+  forumIntroPosted,
+  forumWorkSearched,
+  forumWorkOpenCount: workReceipt !== null ? Number(workReceipt.openCount) : 0,
 }
 const converged = projectOnboardingStatus(convergedInput)
 const stepStatus = (id: string) =>
@@ -441,6 +555,14 @@ check(
 check(
   "AO-4 wizard: presence step done once env configured + node online",
   stepStatus("presence") === "done",
+)
+check(
+  "AO-4 wizard: forum-intro step done once the introduction is posted",
+  stepStatus("forum-intro") === "done",
+)
+check(
+  "AO-4 wizard: work-search step done once a search has run",
+  stepStatus("work-search") === "done",
 )
 check(
   "AO-4 wizard: not falsely 'complete' before a settled payout",
@@ -530,7 +652,7 @@ cleanup()
 console.log()
 if (ok) {
   console.log(
-    "RESULT: the AO-1..AO-4 auto-onboarding chain converges end-to-end, headlessly, no GUI / no terminal / no env vars: AO-3 identity choice (both paths, never overwrites a home), the full register → presence → payout → assignment chain (with the chosen name), and the AO-4 wizard projecting each step from REAL state. The mock harness does not claim the from-DMG render, production pylon-stats, or settled Bitcoin receipt; those are live-production proof gates (see runbook).",
+    "RESULT: the AO-1..AO-4 + AF-3/AF-4 auto-onboarding chain converges end-to-end, headlessly, no GUI / no terminal / no env vars: AO-3 identity choice (both paths, never overwrites a home), the full register → presence → payout → assignment chain (with the chosen name), the automated forum self-introduction (typed lane + dereferenceable receipt) and read-only work-search, and the AO-4 wizard projecting each step from REAL state. The mock harness does not claim the from-DMG render, production pylon-stats, or settled Bitcoin receipt; those are live-production proof gates (see runbook).",
   )
   process.exit(0)
 } else {
