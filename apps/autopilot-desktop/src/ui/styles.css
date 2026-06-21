@@ -210,11 +210,13 @@ body {
 }
 
 .app-shell-verse .chat-composer-verse .primary-button {
-  width: 3.25rem;
+  box-sizing: border-box;
+  width: 3rem;
   min-width: 0;
-  height: 2.35rem;
-  padding-inline: 0;
+  height: 2.1rem;
+  padding: 0;
   font-size: 0.75rem;
+  line-height: 1;
 }
 
 @media (max-width: 760px) {
