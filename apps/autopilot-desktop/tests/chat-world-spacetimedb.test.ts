@@ -4,6 +4,7 @@ import {
   chatWorldRegionRefForRun,
 } from "../src/shared/chat-world-multiplayer"
 import {
+  CHAT_WORLD_STARTER_REGION_CONTRACT,
   chatWorldDesktopAvatarIdentity,
   defaultChatWorldRegionForRun,
   planChatWorldAvatarPositionWrite,
@@ -18,14 +19,26 @@ const regionRow: ChatWorldRegionRow = {
   regionRef,
   runRef,
   label: "Tassadar main",
-  minX: -20,
-  minY: -4,
-  minZ: -20,
-  maxX: 20,
-  maxY: 8,
-  maxZ: 20,
-  proximityRadiusMeters: 12,
-  avatarPositionMinIntervalMs: 1_500,
+  minX: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.minX,
+  minY: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.minY,
+  minZ: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.minZ,
+  maxX: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.maxX,
+  maxY: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.maxY,
+  maxZ: CHAT_WORLD_STARTER_REGION_CONTRACT.bounds.maxZ,
+  roadDirectionX: CHAT_WORLD_STARTER_REGION_CONTRACT.roadDirection.x,
+  roadDirectionY: CHAT_WORLD_STARTER_REGION_CONTRACT.roadDirection.y,
+  roadDirectionZ: CHAT_WORLD_STARTER_REGION_CONTRACT.roadDirection.z,
+  localOriginX: CHAT_WORLD_STARTER_REGION_CONTRACT.localOrigin.x,
+  localOriginY: CHAT_WORLD_STARTER_REGION_CONTRACT.localOrigin.y,
+  localOriginZ: CHAT_WORLD_STARTER_REGION_CONTRACT.localOrigin.z,
+  starterPylonSiteOffsetX: CHAT_WORLD_STARTER_REGION_CONTRACT.starterPylonSiteOffset.x,
+  starterPylonSiteOffsetY: CHAT_WORLD_STARTER_REGION_CONTRACT.starterPylonSiteOffset.y,
+  starterPylonSiteOffsetZ: CHAT_WORLD_STARTER_REGION_CONTRACT.starterPylonSiteOffset.z,
+  streetPrevRegionRef: CHAT_WORLD_STARTER_REGION_CONTRACT.streetPrevRegionRef,
+  streetNextRegionRef: CHAT_WORLD_STARTER_REGION_CONTRACT.streetNextRegionRef,
+  proximityRadiusMeters: CHAT_WORLD_STARTER_REGION_CONTRACT.proximityRadiusMeters,
+  avatarPositionMinIntervalMs: CHAT_WORLD_STARTER_REGION_CONTRACT.avatarPositionMinIntervalMs,
+  staleAvatarPositionMs: CHAT_WORLD_STARTER_REGION_CONTRACT.staleAvatarPositionMs,
 }
 
 describe("projectChatWorldSpacetimeRows", () => {
@@ -107,6 +120,43 @@ describe("projectChatWorldSpacetimeRows", () => {
       attentionRefs: ["attention.public.1"],
     })
     expect(projection.world.proximityChatCount).toBe(1)
+  })
+
+  test("keeps the generated Street region metadata in the normalized projection", () => {
+    const projection = projectChatWorldSpacetimeRows({
+      flagEnabled: true,
+      runRef,
+      nowMs: 10_000,
+      rows: {
+        regions: [regionRow],
+        stations: [],
+        avatars: [],
+        positions: [],
+        messages: [],
+        attention: [],
+      },
+    })
+
+    expect(projection.regions[0]).toMatchObject({
+      maxX: 160,
+      maxY: 40,
+      maxZ: 160,
+      minX: -160,
+      minY: 0,
+      minZ: -160,
+      roadDirectionX: 0,
+      roadDirectionY: 0,
+      roadDirectionZ: 1,
+      localOriginX: 0,
+      localOriginY: 0,
+      localOriginZ: 0,
+      starterPylonSiteOffsetX: 24,
+      starterPylonSiteOffsetY: 0,
+      starterPylonSiteOffsetZ: 0,
+      streetNextRegionRef: "region.run.tassadar.executor.20260615.street.next",
+      streetPrevRegionRef: "region.run.tassadar.executor.20260615.street.prev",
+      staleAvatarPositionMs: 20_000,
+    })
   })
 
   test("disconnect fallback is explicit and inert", () => {
@@ -194,7 +244,7 @@ describe("planChatWorldAvatarPositionWrite", () => {
         region: regionRow,
         previous: null,
         nowMs: 3_000,
-        x: 99,
+        x: 999,
         y: 0,
         z: 0,
       }),
@@ -211,7 +261,7 @@ describe("planChatWorldAvatarPositionWrite", () => {
           z: 0,
           yaw: 0,
           movementMode: "idle",
-          lastSeenEpochMs: 2_500,
+          lastSeenEpochMs: 2_950,
         },
         nowMs: 3_000,
         x: 1,
@@ -242,6 +292,30 @@ describe("planChatWorldAvatarPositionWrite", () => {
       ok: false,
       reason: "avatar must join region before moving",
     })
+  })
+
+  test("accepts Street-scale positions and rejects writes beyond the starter chunk", () => {
+    expect(
+      planChatWorldAvatarPositionWrite({
+        region: regionRow,
+        previous: null,
+        nowMs: 3_000,
+        x: 155,
+        y: 2,
+        z: -150,
+      }),
+    ).toMatchObject({ ok: true })
+
+    expect(
+      planChatWorldAvatarPositionWrite({
+        region: regionRow,
+        previous: null,
+        nowMs: 3_000,
+        x: 161,
+        y: 2,
+        z: -150,
+      }),
+    ).toMatchObject({ ok: false, reason: "position outside region bounds" })
   })
 
   test("finds the default region for the active Tassadar run", () => {

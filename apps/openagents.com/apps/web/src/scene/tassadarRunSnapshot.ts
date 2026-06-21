@@ -119,10 +119,15 @@ export interface TassadarWorldRegion {
     minZ: number
   }>
   readonly label: string
+  readonly localOrigin: TassadarWorldVector
   readonly proximityRadiusMeters: number
   readonly regionRef: string
+  readonly roadDirection: TassadarWorldVector
   readonly runRef: string
   readonly staleAvatarPositionMs: number
+  readonly starterPylonSiteOffset: TassadarWorldVector
+  readonly streetNextRegionRef?: string
+  readonly streetPrevRegionRef?: string
 }
 
 export interface TassadarWorldAgentAvatar {
@@ -1079,24 +1084,45 @@ const worldRegionsFromRows = (
   [...rows]
     .filter(row => row.runRef === runRef && rowText(row.regionRef) !== '')
     .sort((left, right) => left.regionRef.localeCompare(right.regionRef))
-    .map(row => ({
-      avatarPositionMinIntervalMs: numberFromInteger(
-        row.avatarPositionMinIntervalMs,
-      ),
-      bounds: {
-        maxX: finiteOrZero(row.maxX),
-        maxY: finiteOrZero(row.maxY),
-        maxZ: finiteOrZero(row.maxZ),
-        minX: finiteOrZero(row.minX),
-        minY: finiteOrZero(row.minY),
-        minZ: finiteOrZero(row.minZ),
-      },
-      label: rowText(row.label) || shortRef(row.regionRef),
-      proximityRadiusMeters: finiteOrZero(row.proximityRadiusMeters),
-      regionRef: row.regionRef,
-      runRef: row.runRef,
-      staleAvatarPositionMs: numberFromInteger(row.staleAvatarPositionMs),
-    }))
+    .map(row => {
+      const streetPrevRegionRef = rowText(row.streetPrevRegionRef)
+      const streetNextRegionRef = rowText(row.streetNextRegionRef)
+      return {
+        avatarPositionMinIntervalMs: numberFromInteger(
+          row.avatarPositionMinIntervalMs,
+        ),
+        bounds: {
+          maxX: finiteOrZero(row.maxX),
+          maxY: finiteOrZero(row.maxY),
+          maxZ: finiteOrZero(row.maxZ),
+          minX: finiteOrZero(row.minX),
+          minY: finiteOrZero(row.minY),
+          minZ: finiteOrZero(row.minZ),
+        },
+        label: rowText(row.label) || shortRef(row.regionRef),
+        localOrigin: {
+          x: finiteOrZero(row.localOriginX),
+          y: finiteOrZero(row.localOriginY),
+          z: finiteOrZero(row.localOriginZ),
+        },
+        proximityRadiusMeters: finiteOrZero(row.proximityRadiusMeters),
+        regionRef: row.regionRef,
+        roadDirection: {
+          x: finiteOrZero(row.roadDirectionX),
+          y: finiteOrZero(row.roadDirectionY),
+          z: finiteOrZero(row.roadDirectionZ),
+        },
+        runRef: row.runRef,
+        staleAvatarPositionMs: numberFromInteger(row.staleAvatarPositionMs),
+        starterPylonSiteOffset: {
+          x: finiteOrZero(row.starterPylonSiteOffsetX),
+          y: finiteOrZero(row.starterPylonSiteOffsetY),
+          z: finiteOrZero(row.starterPylonSiteOffsetZ),
+        },
+        ...(streetNextRegionRef === '' ? {} : { streetNextRegionRef }),
+        ...(streetPrevRegionRef === '' ? {} : { streetPrevRegionRef }),
+      }
+    })
 
 const worldStationsFromRows = (
   rows: ReadonlyArray<PylonStation>,

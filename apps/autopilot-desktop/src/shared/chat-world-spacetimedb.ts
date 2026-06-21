@@ -20,8 +20,20 @@ export type ChatWorldRegionRow = Readonly<{
   maxX: number
   maxY: number
   maxZ: number
+  roadDirectionX: number
+  roadDirectionY: number
+  roadDirectionZ: number
+  localOriginX: number
+  localOriginY: number
+  localOriginZ: number
+  starterPylonSiteOffsetX: number
+  starterPylonSiteOffsetY: number
+  starterPylonSiteOffsetZ: number
+  streetPrevRegionRef: string | null
+  streetNextRegionRef: string | null
   proximityRadiusMeters: number
   avatarPositionMinIntervalMs: number
+  staleAvatarPositionMs: number
 }>
 
 export type ChatWorldSpacetimeRows = Readonly<{
@@ -61,6 +73,25 @@ export type ChatWorldAvatarPositionPlan =
 const DEFAULT_AVATAR_RATE_MS = 100
 const MAX_AVATAR_MOVE_METERS_PER_SECOND = 14
 const POSITION_EPSILON_METERS = 0.75
+
+export const CHAT_WORLD_STARTER_REGION_CONTRACT = {
+  avatarPositionMinIntervalMs: 100,
+  bounds: {
+    maxX: 160,
+    maxY: 40,
+    maxZ: 160,
+    minX: -160,
+    minY: 0,
+    minZ: -160,
+  },
+  localOrigin: { x: 0, y: 0, z: 0 },
+  proximityRadiusMeters: 12,
+  roadDirection: { x: 0, y: 0, z: 1 },
+  staleAvatarPositionMs: 20_000,
+  starterPylonSiteOffset: { x: 24, y: 0, z: 0 },
+  streetNextRegionRef: "region.run.tassadar.executor.20260615.street.next",
+  streetPrevRegionRef: "region.run.tassadar.executor.20260615.street.prev",
+} as const
 
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object"
@@ -103,6 +134,7 @@ const regionFromRow = (raw: unknown): ChatWorldRegionRow | null => {
   const maxZ = rowNumber(row, "maxZ")
   const proximityRadiusMeters = rowNumber(row, "proximityRadiusMeters")
   const avatarPositionMinIntervalMs = rowNumber(row, "avatarPositionMinIntervalMs")
+  const staleAvatarPositionMs = rowNumber(row, "staleAvatarPositionMs")
   if (
     minX === null ||
     minY === null ||
@@ -115,6 +147,7 @@ const regionFromRow = (raw: unknown): ChatWorldRegionRow | null => {
   ) {
     return null
   }
+  const contract = CHAT_WORLD_STARTER_REGION_CONTRACT
   return {
     regionRef,
     runRef,
@@ -125,8 +158,25 @@ const regionFromRow = (raw: unknown): ChatWorldRegionRow | null => {
     maxX,
     maxY,
     maxZ,
+    roadDirectionX: rowNumber(row, "roadDirectionX") ?? contract.roadDirection.x,
+    roadDirectionY: rowNumber(row, "roadDirectionY") ?? contract.roadDirection.y,
+    roadDirectionZ: rowNumber(row, "roadDirectionZ") ?? contract.roadDirection.z,
+    localOriginX: rowNumber(row, "localOriginX") ?? contract.localOrigin.x,
+    localOriginY: rowNumber(row, "localOriginY") ?? contract.localOrigin.y,
+    localOriginZ: rowNumber(row, "localOriginZ") ?? contract.localOrigin.z,
+    starterPylonSiteOffsetX:
+      rowNumber(row, "starterPylonSiteOffsetX") ?? contract.starterPylonSiteOffset.x,
+    starterPylonSiteOffsetY:
+      rowNumber(row, "starterPylonSiteOffsetY") ?? contract.starterPylonSiteOffset.y,
+    starterPylonSiteOffsetZ:
+      rowNumber(row, "starterPylonSiteOffsetZ") ?? contract.starterPylonSiteOffset.z,
+    streetPrevRegionRef:
+      optionalText(row.streetPrevRegionRef) ?? contract.streetPrevRegionRef,
+    streetNextRegionRef:
+      optionalText(row.streetNextRegionRef) ?? contract.streetNextRegionRef,
     proximityRadiusMeters,
     avatarPositionMinIntervalMs,
+    staleAvatarPositionMs: staleAvatarPositionMs ?? contract.staleAvatarPositionMs,
   }
 }
 

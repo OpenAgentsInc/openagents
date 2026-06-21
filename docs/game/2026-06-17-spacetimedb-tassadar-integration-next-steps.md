@@ -143,7 +143,7 @@ authority boundary. The new public interaction tables are:
 
 | Table | Purpose |
 | --- | --- |
-| `world_region` | Public run-space envelope: bounds, proximity radius, avatar update cadence, and stale-position TTL. |
+| `world_region` | Public run-space envelope: bounds, Street metadata, proximity radius, avatar update cadence, stale-position TTL, and adjacent chunk refs. |
 | `pylon_station` | In-world station for a public pylon ref during a run. |
 | `agent_avatar` | Public avatar identity row for a guest, human, pylon agent, or service agent. |
 | `avatar_position` | Latest bounded position, yaw/pitch, movement mode, and freshness for one avatar. |
@@ -171,6 +171,14 @@ and use the region's update interval. Stale avatar expiry uses the
 constant only as a compatibility fallback for older rows. Local chat and emotes
 also require an existing region row, so a browser identity cannot mint
 arbitrary spatial namespaces.
+
+Issue #5890 expands that first region into the actual Verse/Street starter
+chunk instead of the early tiny diagram box. The default Tassadar row now uses
+`x=-160..160`, `y=0..40`, and `z=-160..160`, road direction `(0, 0, 1)`, local
+origin `(0, 0, 0)`, starter pylon site offset `(24, 0, 0)`, and previous/next
+Street chunk refs. The road can stay visually continuous in Three.js, but
+server reducers and browser/desktop movement validation use these bounded
+chunk coordinates until cross-region traversal is implemented.
 
 The intended subscription shape is:
 
@@ -238,6 +246,9 @@ browser adapter now subscribes to `world_region` rows and includes the region
 envelope in the public-summary shape. The first valid region row supplies the
 first-person movement/controller bounds; the static fallback remains only for
 Worker-summary or older projection cases where no region row is available.
+That fallback now matches the starter Street contract from issue #5890, so the
+client does not clamp locally to the obsolete `x=-8..8`, `z=-6..6` diagram
+while the server accepts the larger chunk.
 Station entities still require real `pylon_station` rows, and avatar entities
 now require both `agent_avatar` and matching `avatar_position` rows. Crowded
 station/avatar positions are separated with the shared `three-effect`

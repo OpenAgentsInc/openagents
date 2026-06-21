@@ -87,7 +87,7 @@ The first module should be intentionally small and additive. Suggested tables:
 
 | Table | Purpose | Authority |
 | --- | --- | --- |
-| `world_region` | MMO regions, shards, or rooms. | OpenAgents world module |
+| `world_region` | Bounded MMO regions, shards, or rooms, including local coordinate bounds and region adjacency metadata. | OpenAgents world module |
 | `actor_identity` | Public world identity for a human, agent, pylon, or service. | OpenAgents auth/identity bridge |
 | `presence_session` | Connected viewer/operator sessions. | SpacetimeDB lifecycle reducers |
 | `pylon_node` | Public pylon projection: id, status, capability summary, freshness. | Pylon/public projection bridge |
@@ -103,6 +103,15 @@ The first module should be intentionally small and additive. Suggested tables:
 
 This mirrors BitCraft's split between entity state, location state, global state,
 and scheduled agents, but with OpenAgents domain objects.
+
+For the first Verse/Street deployment, `world_region` is not a decorative
+viewport hint. It is the server contract for reducer validation and client
+movement clamps. The Tassadar starter chunk uses local Cartesian bounds
+`x=-160..160`, `y=0..40`, and `z=-160..160`; road direction `(0, 0, 1)`;
+local origin `(0, 0, 0)`; starter pylon site offset `(24, 0, 0)`; and typed
+previous/next Street region refs reserved for future chunk traversal. The road
+may render as visually continuous or repeated beyond the chunk, but avatar,
+station, chat, and emote writes stay inside registered region rows.
 
 ## Reducer Boundary
 

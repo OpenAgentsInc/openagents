@@ -25,14 +25,22 @@ export const TASSADAR_SPACETIME_DATABASE_ATTRIBUTE = `data-${TASSADAR_SPACETIME_
 export const TASSADAR_AVATAR_POSITION_THROTTLE_MS = 250
 export const TASSADAR_ATTENTION_THROTTLE_MS = 1_000
 export const TASSADAR_STALE_AVATAR_POSITION_MS = 20_000
-export const TASSADAR_REGION_BOUNDS = {
-  maxX: 8,
-  maxY: 4,
-  maxZ: 6,
-  minX: -8,
-  minY: 0,
-  minZ: -6,
+export const TASSADAR_STARTER_REGION_CONTRACT = {
+  bounds: {
+    maxX: 160,
+    maxY: 40,
+    maxZ: 160,
+    minX: -160,
+    minY: 0,
+    minZ: -160,
+  },
+  localOrigin: { x: 0, y: 0, z: 0 },
+  roadDirection: { x: 0, y: 0, z: 1 },
+  starterPylonSiteOffset: { x: 24, y: 0, z: 0 },
+  streetNextRegionRef: 'region.run.tassadar.executor.20260615.street.next',
+  streetPrevRegionRef: 'region.run.tassadar.executor.20260615.street.prev',
 } as const
+export const TASSADAR_REGION_BOUNDS = TASSADAR_STARTER_REGION_CONTRACT.bounds
 
 const SUBSCRIBED_TABLES = [
   'training_run',

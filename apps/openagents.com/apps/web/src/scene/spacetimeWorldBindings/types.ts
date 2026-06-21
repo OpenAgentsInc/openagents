@@ -225,10 +225,20 @@ export const WorldRegion = __t.object("WorldRegion", {
   maxX: __t.f64(),
   maxY: __t.f64(),
   maxZ: __t.f64(),
+  roadDirectionX: __t.f64(),
+  roadDirectionY: __t.f64(),
+  roadDirectionZ: __t.f64(),
+  localOriginX: __t.f64(),
+  localOriginY: __t.f64(),
+  localOriginZ: __t.f64(),
+  starterPylonSiteOffsetX: __t.f64(),
+  starterPylonSiteOffsetY: __t.f64(),
+  starterPylonSiteOffsetZ: __t.f64(),
+  streetPrevRegionRef: __t.option(__t.string()),
+  streetNextRegionRef: __t.option(__t.string()),
   proximityRadiusMeters: __t.f64(),
   avatarPositionMinIntervalMs: __t.i64(),
   staleAvatarPositionMs: __t.i64(),
   updatedAt: __t.timestamp(),
 });
 export type WorldRegion = __Infer<typeof WorldRegion>;
-

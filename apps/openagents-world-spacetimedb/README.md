@@ -69,21 +69,28 @@ Browser/user interaction reducers:
 - `send_emote`
 - `set_agent_intent`
 
-The MVP world bounds are intentionally small and flat:
-`x=-8..8`, `y=0..4`, and `z=-6..6`. Position updates are throttled to at most
-10 Hz per avatar and reject jumps above the MVP movement limit. The bounds,
-proximity radius, position cadence, and stale-avatar TTL are published through
-`world_region`; reducers validate station, avatar, chat, and emote writes
-against an existing region row. Local messages are plain text, capped at 280
-characters, rate-limited to one message per avatar per second, marked
-`moderation_state="visible"`, and paired with short-lived chat-bubble rows.
-`expire_interaction_rows` is a service reducer that removes stale avatar
-positions using the region TTL and removes expired attention, message, bubble,
-emote, and intent rows.
+The starter Street region is a bounded multiplayer chunk even when the visible
+road is rendered as a longer repeated/streamed scene. The current Tassadar
+region contract is `x=-160..160`, `y=0..40`, and `z=-160..160`, with local
+origin `(0, 0, 0)`, road direction `(0, 0, 1)`, and the starter pylon site at
+offset `(24, 0, 0)` from the local origin. `world_region` also records adjacent
+Street chunk refs for future traversal:
+`region.run.tassadar.executor.20260615.street.prev` and
+`region.run.tassadar.executor.20260615.street.next`. Position updates are
+throttled to at most 10 Hz per avatar and reject jumps above the MVP movement
+limit. The bounds, Street metadata, proximity radius, position cadence, and
+stale-avatar TTL are published through `world_region`; reducers validate
+station, avatar, chat, and emote writes against an existing region row. Local
+messages are plain text, capped at 280 characters, rate-limited to one message
+per avatar per second, marked `moderation_state="visible"`, and paired with
+short-lived chat-bubble rows. `expire_interaction_rows` is a service reducer
+that removes stale avatar positions using the region TTL and removes expired
+attention, message, bubble, emote, and intent rows.
 
 The proximity subscription shape for clients is deliberately simple:
 
-- read `world_region` by `region_ref` for bounds, proximity radius, and TTL;
+- read `world_region` by `region_ref` for bounds, Street metadata, proximity
+  radius, and TTL;
 - subscribe to `pylon_station` rows with the same `region_ref`;
 - subscribe to `avatar_position`, then join to `agent_avatar` by `avatar_ref`;
 - subscribe to `pylon_attention`, `local_chat_message`, `chat_bubble`,

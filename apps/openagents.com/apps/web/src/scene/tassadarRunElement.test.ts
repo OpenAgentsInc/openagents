@@ -239,7 +239,7 @@ describe('tassadarRunView page wiring', () => {
     expect(options.cameraMode).toBe('perspective_walk')
     expect(options.controller).toBe('wasd_mouselook')
     expect(options.walkController).toMatchObject({
-      bounds: { minX: -8, maxX: 8, minZ: -6, maxZ: 6 },
+      bounds: { minX: -160, maxX: 160, minZ: -160, maxZ: 160 },
       eyeHeight: 1.65,
       initialPosition: [0, 1.65, 5.6],
       movementSpeed: 4.5,
@@ -534,9 +534,9 @@ describe('MVP avatar movement and pylon attention mapping', () => {
       {
         movementMode: 'idle',
         pitch: 0,
-        positionX: 7.9,
+        positionX: 159.9,
         positionY: 0,
-        positionZ: -5.9,
+        positionZ: -159.9,
         yaw: Math.PI / 2,
       },
       {
@@ -550,8 +550,8 @@ describe('MVP avatar movement and pylon attention mapping', () => {
     )
 
     expect(next.movementMode).toBe('running')
-    expect(next.positionX).toBeLessThanOrEqual(8)
-    expect(next.positionZ).toBeGreaterThanOrEqual(-6)
+    expect(next.positionX).toBeLessThanOrEqual(160)
+    expect(next.positionZ).toBeGreaterThanOrEqual(-160)
   })
 
   it('maps nearby, looking, and selected inspection states to reducer-safe attention rows', () => {

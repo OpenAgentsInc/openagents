@@ -105,16 +105,17 @@ The server side is already doing useful safety work:
 - Movement is capped by maximum meters per second.
 - Stale positions and ephemeral interaction rows have expiry windows.
 
-The main mismatch is scale. The default region extents in the module are still
-small relative to the current Verse world:
+The main mismatch was scale. Before #5890, the default region extents in the
+module were still small relative to the current Verse world:
 
 - X: `-8..8`
 - Y: `0..4`
 - Z: `-6..6`
 
-That was acceptable for the first Tassadar diagram. It is too small for the
-new Street-adjacent scene where the user can walk around, approach pylons, and
-see a large road/city into the distance.
+That was acceptable for the first Tassadar diagram, but too small for the new
+Street-adjacent scene where the user can walk around, approach pylons, and see
+a large road/city into the distance. #5890 replaces it with the Street-scale
+starter chunk documented below.
 
 ### Desktop Client
 
@@ -221,6 +222,23 @@ stale after the bounded presence window, and despawns avatars after the stale
 timeout. Pylon stations remain separate entity markers so training, proof,
 settlement, and payment visuals continue to use their existing authority-bound
 rendering paths.
+
+### 2026-06-21 Progress: #5890 Street Region Contract
+
+The starter `world_region` is now the Verse/Street chunk contract instead of
+the early diagram-scale box. The `openagents-world` module seeds and validates
+`x=-160..160`, `y=0..40`, and `z=-160..160`, road direction `(0, 0, 1)`, local
+origin `(0, 0, 0)`, starter pylon site offset `(24, 0, 0)`, and typed
+previous/next Street chunk refs. Region metadata is validated as finite,
+nonzero where appropriate, and inside the registered bounds before service
+reducers can update the row.
+
+The Tassadar public-summary bridge, generated TypeScript bindings, web
+SpacetimeDB snapshot mapper, web fallback clamp, and desktop
+`planChatWorldAvatarPositionWrite` path now share that Street-scale contract.
+The road can remain visually continuous in Three.js, but reducer writes and
+client-side movement validation are bounded to registered local chunks until
+cross-region traversal exists.
 
 ## What The SpacetimeDB References Teach
 
@@ -356,24 +374,26 @@ avatar can choose the same idle/walk/run clips as the local controller.
 
 ### Region And Coordinate Contract
 
-The current default region bounds are too small. The Verse needs a map contract:
+The starter region now has a concrete Street-scale map contract:
 
 - one starter region around the user's pylon/Tassadar site
 - a visible Street corridor nearby
 - room for the Street to continue in both directions
 - future chunking along the Street
 
-Recommended MVP bounds:
+Implemented MVP bounds:
 
-- X: at least `-160..160`
+- X: `-160..160`
 - Y: `0..40`
-- Z: at least `-120..120`
+- Z: `-160..160`
 
 The region should treat the Tassadar pylon site as just off the road, not
-centered on the road. The Street can be visualized as wrapping around a much
-larger sphere/arc, but the multiplayer coordinate system should remain local
-Cartesian chunks for now. Do not make clients reason about spherical coordinates
-until cross-region traversal exists.
+centered on the road. The stored metadata uses road direction `(0, 0, 1)`,
+local origin `(0, 0, 0)`, starter pylon site offset `(24, 0, 0)`, and
+previous/next Street chunk refs. The Street can be visualized as wrapping
+around a much larger sphere/arc, but the multiplayer coordinate system should
+remain local Cartesian chunks for now. Do not make clients reason about
+spherical coordinates until cross-region traversal exists.
 
 ### Remote Avatar Rendering
 
@@ -469,12 +489,13 @@ Files:
 
 Tasks:
 
-- Increase starter region extents to match the current Verse Street scene.
-- Add explicit region metadata for road direction, origin, and starter pylon
-  site offset.
-- Keep the road visually infinite with repeated/streamed geometry while using
-  bounded multiplayer chunks internally.
-- Add future region IDs for adjacent Street chunks.
+- Done in #5890: increased starter region extents to match the current Verse
+  Street scene.
+- Done in #5890: added explicit region metadata for road direction, origin,
+  and starter pylon site offset.
+- Done in #5890: kept the road visually infinite with repeated/streamed
+  geometry while using bounded multiplayer chunks internally.
+- Done in #5890: added future region IDs for adjacent Street chunks.
 
 Acceptance:
 
@@ -543,25 +564,30 @@ Acceptance:
 
 ## Concrete Gaps To Fix
 
-1. The player controller pose is not yet a first-class publisher to
-   `set_avatar_position`.
-2. The desktop connection/subscription helper does not expose a clean
-   multiplayer client interface to the controller loop.
-3. Remote avatar rendering currently routes through generic world entity
-   projection; it needs the real character/avatar rendering path.
-4. The default region bounds are too small for the new Verse/Street scene.
-5. The generated TypeScript bindings are imported from the web app path; the
+Completed on 2026-06-21:
+
+- #5888 made the player controller pose a first-class, guarded publisher to
+  `set_avatar_position`.
+- #5888 added a desktop `VerseMultiplayerClient` interface for join/leave and
+  local pose publishing.
+- #5889 moved remote users onto the real remote-avatar rendering path.
+- #5890 expanded the default region bounds and added the explicit Street
+  coordinate metadata.
+
+Remaining:
+
+1. The generated TypeScript bindings are imported from the web app path; the
    desktop packaging story should be made explicit or moved into a shared
    generated package.
-6. Subscription queries still include some broad/global rows, especially
+2. Subscription queries still include some broad/global rows, especially
    avatars and attention. This is tolerable for MVP but wrong for scale.
-7. There is no high/low resolution position feed yet.
-8. Tab targeting and labels need to use visibility and selection rules, not raw
+3. There is no high/low resolution position feed yet.
+4. Tab targeting and labels need to use visibility and selection rules, not raw
    object enumeration.
-9. Multiplayer identity currently maps from SpacetimeDB identity plus local
+5. Multiplayer identity currently maps from SpacetimeDB identity plus local
    display metadata. It must stay public and never leak private host/device
    details.
-10. The failure path needs to remain single-player-first: if SpacetimeDB is
+6. The failure path needs to remain single-player-first: if SpacetimeDB is
     down, the Verse should still load and move.
 
 ## Recommended First Issue

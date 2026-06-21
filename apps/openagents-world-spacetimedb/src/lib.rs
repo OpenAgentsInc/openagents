@@ -2,12 +2,23 @@ use spacetimedb::{Identity, ReducerContext, Table, Timestamp};
 
 const DEFAULT_TASSADAR_RUN_REF: &str = "run.tassadar.executor.20260615";
 const DEFAULT_TASSADAR_REGION_REF: &str = "region.run.tassadar.executor.20260615.main";
-const REGION_MIN_X: f64 = -8.0;
-const REGION_MAX_X: f64 = 8.0;
+const DEFAULT_TASSADAR_REGION_PREV_REF: &str = "region.run.tassadar.executor.20260615.street.prev";
+const DEFAULT_TASSADAR_REGION_NEXT_REF: &str = "region.run.tassadar.executor.20260615.street.next";
+const REGION_MIN_X: f64 = -160.0;
+const REGION_MAX_X: f64 = 160.0;
 const REGION_MIN_Y: f64 = 0.0;
-const REGION_MAX_Y: f64 = 4.0;
-const REGION_MIN_Z: f64 = -6.0;
-const REGION_MAX_Z: f64 = 6.0;
+const REGION_MAX_Y: f64 = 40.0;
+const REGION_MIN_Z: f64 = -160.0;
+const REGION_MAX_Z: f64 = 160.0;
+const REGION_ROAD_DIRECTION_X: f64 = 0.0;
+const REGION_ROAD_DIRECTION_Y: f64 = 0.0;
+const REGION_ROAD_DIRECTION_Z: f64 = 1.0;
+const REGION_LOCAL_ORIGIN_X: f64 = 0.0;
+const REGION_LOCAL_ORIGIN_Y: f64 = 0.0;
+const REGION_LOCAL_ORIGIN_Z: f64 = 0.0;
+const REGION_STARTER_PYLON_SITE_OFFSET_X: f64 = 24.0;
+const REGION_STARTER_PYLON_SITE_OFFSET_Y: f64 = 0.0;
+const REGION_STARTER_PYLON_SITE_OFFSET_Z: f64 = 0.0;
 const DEFAULT_REGION_PROXIMITY_RADIUS_METERS: f64 = 12.0;
 const MAX_REGION_PROXIMITY_RADIUS_METERS: f64 = 120.0;
 const MAX_AVATAR_MOVE_METERS_PER_SECOND: f64 = 14.0;
@@ -147,6 +158,17 @@ pub struct WorldRegion {
     max_x: f64,
     max_y: f64,
     max_z: f64,
+    road_direction_x: f64,
+    road_direction_y: f64,
+    road_direction_z: f64,
+    local_origin_x: f64,
+    local_origin_y: f64,
+    local_origin_z: f64,
+    starter_pylon_site_offset_x: f64,
+    starter_pylon_site_offset_y: f64,
+    starter_pylon_site_offset_z: f64,
+    street_prev_region_ref: Option<String>,
+    street_next_region_ref: Option<String>,
     proximity_radius_meters: f64,
     avatar_position_min_interval_ms: i64,
     stale_avatar_position_ms: i64,
@@ -617,18 +639,61 @@ pub fn upsert_world_region(
     max_x: f64,
     max_y: f64,
     max_z: f64,
+    road_direction_x: f64,
+    road_direction_y: f64,
+    road_direction_z: f64,
+    local_origin_x: f64,
+    local_origin_y: f64,
+    local_origin_z: f64,
+    starter_pylon_site_offset_x: f64,
+    starter_pylon_site_offset_y: f64,
+    starter_pylon_site_offset_z: f64,
+    street_prev_region_ref: String,
+    street_next_region_ref: String,
     proximity_radius_meters: f64,
     avatar_position_min_interval_ms: i64,
     stale_avatar_position_ms: i64,
 ) -> Result<(), String> {
     ensure_service(ctx)?;
     validate_region_bounds(min_x, min_y, min_z, max_x, max_y, max_z)?;
+    validate_region_metadata(
+        min_x,
+        min_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
+        road_direction_x,
+        road_direction_y,
+        road_direction_z,
+        local_origin_x,
+        local_origin_y,
+        local_origin_z,
+        starter_pylon_site_offset_x,
+        starter_pylon_site_offset_y,
+        starter_pylon_site_offset_z,
+    )?;
+    let region_ref = clean_ref(region_ref, "region_ref", 160)?;
+    let street_prev_region_ref =
+        clean_optional_ref_string(street_prev_region_ref, "street_prev_region_ref", 160)?;
+    let street_next_region_ref =
+        clean_optional_ref_string(street_next_region_ref, "street_next_region_ref", 160)?;
+    validate_adjacent_region_ref(
+        &region_ref,
+        street_prev_region_ref.as_deref(),
+        "street_prev_region_ref",
+    )?;
+    validate_adjacent_region_ref(
+        &region_ref,
+        street_next_region_ref.as_deref(),
+        "street_next_region_ref",
+    )?;
     let proximity_radius_meters =
         validate_radius(proximity_radius_meters, MAX_REGION_PROXIMITY_RADIUS_METERS)?;
     upsert_world_region_row(
         ctx,
         WorldRegion {
-            region_ref: clean_ref(region_ref, "region_ref", 160)?,
+            region_ref,
             run_ref: clean_ref(run_ref, "run_ref", 160)?,
             label: clean_text(label, "label", 80)?,
             min_x,
@@ -637,6 +702,17 @@ pub fn upsert_world_region(
             max_x,
             max_y,
             max_z,
+            road_direction_x,
+            road_direction_y,
+            road_direction_z,
+            local_origin_x,
+            local_origin_y,
+            local_origin_z,
+            starter_pylon_site_offset_x,
+            starter_pylon_site_offset_y,
+            starter_pylon_site_offset_z,
+            street_prev_region_ref,
+            street_next_region_ref,
             proximity_radius_meters,
             avatar_position_min_interval_ms: validate_ms_window(
                 avatar_position_min_interval_ms,
@@ -1360,6 +1436,17 @@ fn default_tassadar_world_region(updated_at: Timestamp) -> WorldRegion {
         max_x: REGION_MAX_X,
         max_y: REGION_MAX_Y,
         max_z: REGION_MAX_Z,
+        road_direction_x: REGION_ROAD_DIRECTION_X,
+        road_direction_y: REGION_ROAD_DIRECTION_Y,
+        road_direction_z: REGION_ROAD_DIRECTION_Z,
+        local_origin_x: REGION_LOCAL_ORIGIN_X,
+        local_origin_y: REGION_LOCAL_ORIGIN_Y,
+        local_origin_z: REGION_LOCAL_ORIGIN_Z,
+        starter_pylon_site_offset_x: REGION_STARTER_PYLON_SITE_OFFSET_X,
+        starter_pylon_site_offset_y: REGION_STARTER_PYLON_SITE_OFFSET_Y,
+        starter_pylon_site_offset_z: REGION_STARTER_PYLON_SITE_OFFSET_Z,
+        street_prev_region_ref: Some(DEFAULT_TASSADAR_REGION_PREV_REF.to_string()),
+        street_next_region_ref: Some(DEFAULT_TASSADAR_REGION_NEXT_REF.to_string()),
         proximity_radius_meters: DEFAULT_REGION_PROXIMITY_RADIUS_METERS,
         avatar_position_min_interval_ms: AVATAR_POSITION_MIN_INTERVAL_MS,
         stale_avatar_position_ms: STALE_AVATAR_POSITION_MS,
@@ -1637,6 +1724,105 @@ fn validate_region_bounds(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn validate_region_metadata(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    road_direction_x: f64,
+    road_direction_y: f64,
+    road_direction_z: f64,
+    local_origin_x: f64,
+    local_origin_y: f64,
+    local_origin_z: f64,
+    starter_pylon_site_offset_x: f64,
+    starter_pylon_site_offset_y: f64,
+    starter_pylon_site_offset_z: f64,
+) -> Result<(), String> {
+    if !road_direction_x.is_finite()
+        || !road_direction_y.is_finite()
+        || !road_direction_z.is_finite()
+        || !local_origin_x.is_finite()
+        || !local_origin_y.is_finite()
+        || !local_origin_z.is_finite()
+        || !starter_pylon_site_offset_x.is_finite()
+        || !starter_pylon_site_offset_y.is_finite()
+        || !starter_pylon_site_offset_z.is_finite()
+    {
+        return Err("world_region metadata coordinates must be finite".to_string());
+    }
+    let road_length = (road_direction_x * road_direction_x
+        + road_direction_y * road_direction_y
+        + road_direction_z * road_direction_z)
+        .sqrt();
+    if road_length <= 0.000001 {
+        return Err("world_region road direction must be nonzero".to_string());
+    }
+    if !point_inside_bounds(
+        min_x,
+        min_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
+        local_origin_x,
+        local_origin_y,
+        local_origin_z,
+    ) {
+        return Err("world_region local origin must be inside bounds".to_string());
+    }
+    let pylon_site_x = local_origin_x + starter_pylon_site_offset_x;
+    let pylon_site_y = local_origin_y + starter_pylon_site_offset_y;
+    let pylon_site_z = local_origin_z + starter_pylon_site_offset_z;
+    if !pylon_site_x.is_finite() || !pylon_site_y.is_finite() || !pylon_site_z.is_finite() {
+        return Err("world_region starter pylon site must be finite".to_string());
+    }
+    if !point_inside_bounds(
+        min_x,
+        min_y,
+        min_z,
+        max_x,
+        max_y,
+        max_z,
+        pylon_site_x,
+        pylon_site_y,
+        pylon_site_z,
+    ) {
+        return Err("world_region starter pylon site must resolve inside bounds".to_string());
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn point_inside_bounds(
+    min_x: f64,
+    min_y: f64,
+    min_z: f64,
+    max_x: f64,
+    max_y: f64,
+    max_z: f64,
+    x: f64,
+    y: f64,
+    z: f64,
+) -> bool {
+    (min_x..=max_x).contains(&x) && (min_y..=max_y).contains(&y) && (min_z..=max_z).contains(&z)
+}
+
+fn validate_adjacent_region_ref(
+    region_ref: &str,
+    adjacent_region_ref: Option<&str>,
+    field: &str,
+) -> Result<(), String> {
+    if adjacent_region_ref.is_some_and(|adjacent| adjacent == region_ref) {
+        Err(format!("{field} must not point to region_ref"))
+    } else {
+        Ok(())
+    }
+}
+
 fn validate_movement_delta(
     existing: &AvatarPosition,
     position_x: f64,
@@ -1709,6 +1895,17 @@ fn clean_optional_ref(
     max_chars: usize,
 ) -> Result<Option<String>, String> {
     match value {
+        Some(value) => clean_ref(value, field, max_chars).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn clean_optional_ref_string(
+    value: String,
+    field: &str,
+    max_chars: usize,
+) -> Result<Option<String>, String> {
+    match clean_optional_text(value, max_chars) {
         Some(value) => clean_ref(value, field, max_chars).map(Some),
         None => Ok(None),
     }

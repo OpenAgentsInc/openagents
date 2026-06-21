@@ -81,6 +81,34 @@ describe('Tassadar SpacetimeDB projection transform', () => {
     expect(counts.ensure_pylon_agent_avatar).toBe(1)
     expect(counts.record_projection_cursor).toBe(1)
     expect(counts.append_world_event).toBeGreaterThan(0)
+
+    expect(
+      plan.calls.find(call => call.reducer === 'upsert_world_region')?.args,
+    ).toEqual([
+      'region.run.tassadar.executor.20260615.main',
+      'run.tassadar.executor.20260615',
+      'Tassadar main run space',
+      -160,
+      0,
+      -160,
+      160,
+      40,
+      160,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      24,
+      0,
+      0,
+      'region.run.tassadar.executor.20260615.street.prev',
+      'region.run.tassadar.executor.20260615.street.next',
+      12,
+      100,
+      20_000,
+    ])
   })
 
   it('projects deterministic pylon stations and pylon-agent avatars', () => {
