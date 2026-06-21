@@ -23,14 +23,29 @@ import type { NodeStateMessage } from "../src/shared/rpc"
 import {
   ChangedAddAccountHome,
   ChangedAddAccountRef,
+  ChangedVerseMode,
   ClickedAddManagedAccount,
   ClickedBumpManagedAccountPriority,
   ClickedComposerSpawn,
+  GotNodeState,
   GotManagedAccounts,
   SelectedComposerAccount,
   SettledManagedAccountMutation,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
+import { view } from "../src/ui/view"
+
+const serializeView = (node: unknown): string => {
+  const seen = new WeakSet<object>()
+  return JSON.stringify(node, (_key, value) => {
+    if (typeof value === "function") return "[fn]"
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "[cycle]"
+      seen.add(value)
+    }
+    return value
+  })
+}
 
 const withHome = (fn: (home: string) => void) => {
   const home = mkdtempSync(join(tmpdir(), "cs-a1-accounts-"))
@@ -196,6 +211,15 @@ describe("CS-A1 composer account picker reducer", () => {
 })
 
 describe("CS-A1 account-management reducer", () => {
+  test("entering Verse code mode requests the managed Codex account inventory", () => {
+    const start = Model.make({ ...initialModel, pane: "chat" })
+    const [model, commands] = update(start, ChangedVerseMode({ mode: "code" }))
+    expect(model.verseMode).toBe("code")
+    expect(model.managedAccountsPending).toBe(true)
+    expect(model.managedAccountsStatus.text).toContain("Codex accounts")
+    expect(commands.map((command) => command.name)).toEqual(["LoadManagedAccounts"])
+  })
+
   test("GotManagedAccounts stores the projection and clears pending", () => {
     const start = Model.make({ ...initialModel, managedAccountsPending: true })
     const [model] = update(
@@ -269,5 +293,83 @@ describe("CS-A1 node-state account rows feed the picker", () => {
     ])
     expect(node.accounts?.[0]?.accountRef).toBe("work")
     expect(node.accounts?.[0]?.selector).toBe("registry_ref")
+  })
+
+  test("Verse code mode renders concise Codex account inventory without full hashes", () => {
+    const node = nodeWithAccounts([
+      {
+        provider: "codex",
+        homeState: "present",
+        ready: true,
+        accountRef: "work",
+        accountRefHash: "account.pylon.codex.workabcdef",
+        selector: "registry_ref",
+        blockerRefs: [],
+        priority: 2,
+      },
+      {
+        provider: "codex",
+        homeState: "present",
+        ready: false,
+        accountRef: "personal",
+        accountRefHash: "account.pylon.codex.personaldef456",
+        selector: "registry_ref",
+        blockerRefs: ["codex.login_required"],
+        priority: 3,
+      },
+    ])
+    let model = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      composerAccountRef: "personal",
+    })
+    ;[model] = update(
+      model,
+      GotManagedAccounts({
+        projection: {
+          ok: true,
+          accounts: [
+            { ref: "work", provider: "codex", homePresent: true, priority: 2 },
+            { ref: "personal", provider: "codex", homePresent: true, priority: 3 },
+          ],
+        },
+      }),
+    )
+    ;[model] = update(model, GotNodeState({ node }))
+
+    const tree = serializeView(view(model).body)
+    expect(tree).toContain("verse-code-account-inventory")
+    expect(tree).toContain("Codex accounts")
+    expect(tree).toContain("work")
+    expect(tree).toContain("personal")
+    expect(tree).toContain("using personal")
+    expect(tree).toContain("ready")
+    expect(tree).toContain("blocked")
+    expect(tree).toContain("prio 2")
+    expect(tree).toContain("prio 3")
+    expect(tree).toContain("registry")
+    expect(tree).toContain("#abcdef")
+    expect(tree).toContain("#def456")
+    expect(tree).not.toContain("account.pylon.codex.workabcdef")
+    expect(tree).not.toContain("account.pylon.codex.personaldef456")
+    expect(tree).not.toContain("codex.login_required")
+  })
+
+  test("Verse explore mode does not render the Codex account inventory", () => {
+    const model = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "explore",
+      managedAccounts: {
+        ok: true,
+        accounts: [
+          { ref: "work", provider: "codex", homePresent: true, priority: 1 },
+        ],
+      },
+    })
+    const tree = serializeView(view(model).body)
+    expect(tree).not.toContain("verse-code-account-inventory")
+    expect(tree).not.toContain("Codex accounts")
   })
 })

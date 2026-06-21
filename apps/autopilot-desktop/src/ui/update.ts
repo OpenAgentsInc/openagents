@@ -1200,8 +1200,25 @@ export const update = (model: Model, message: Message): Result => {
     case "ToggleVerse":
       if (verseControlsDisabled(model)) return [model, noCommands]
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
-    case "ChangedVerseMode":
-      return [Model.make({ ...model, verseMode: message.mode }), noCommands]
+    case "ChangedVerseMode": {
+      const enteringCode = message.mode === "code" && model.verseMode !== "code"
+      return [
+        Model.make({
+          ...model,
+          verseMode: message.mode,
+          ...(enteringCode
+            ? {
+                managedAccountsPending: true,
+                managedAccountsStatus: {
+                  text: "loading Codex accounts...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
+        }),
+        enteringCode ? [LoadManagedAccounts()] : noCommands,
+      ]
+    }
 
     // Chat: flip a single message's "program details" disclosure (scoped-step /
     // Tassadar scaffolding). Collapsed by default; pure model toggle.

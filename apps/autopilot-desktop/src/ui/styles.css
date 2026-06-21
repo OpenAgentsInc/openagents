@@ -191,6 +191,117 @@ body {
   color: rgb(255 255 255 / 0.52);
 }
 
+.verse-code-account-inventory {
+  position: absolute;
+  top: calc(clamp(0.75rem, 2vw, 1.2rem) + 2.6rem);
+  left: clamp(0.75rem, 2vw, 1.2rem);
+  z-index: 5;
+  display: grid;
+  width: min(17rem, calc(100% - 1.5rem));
+  gap: 0.45rem;
+  padding: 0.58rem;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgb(9 12 16 / 0.78), rgb(2 5 8 / 0.58)),
+    rgb(0 0 0 / 0.24);
+  box-shadow:
+    0 14px 42px rgb(0 0 0 / 0.28),
+    inset 0 0 0 1px rgb(255 255 255 / 0.03);
+  color: rgb(244 247 251 / 0.9);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.verse-code-account-head,
+.verse-code-account-main,
+.verse-code-account-row {
+  display: flex;
+  min-width: 0;
+}
+
+.verse-code-account-head {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.verse-code-account-title {
+  color: rgb(255 255 255 / 0.76);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.verse-code-account-active,
+.verse-code-account-status,
+.verse-code-account-empty {
+  color: rgb(255 255 255 / 0.52);
+  font-size: 0.67rem;
+  line-height: 1.3;
+}
+
+.verse-code-account-list {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.verse-code-account-row {
+  flex-direction: column;
+  gap: 0.18rem;
+  min-height: 2.45rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.045);
+  color: inherit;
+  padding: 0.38rem 0.46rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.verse-code-account-row:hover,
+.verse-code-account-row:focus-visible,
+.verse-code-account-row.selected {
+  border-color: rgb(255 255 255 / 0.28);
+  background: rgb(255 255 255 / 0.075);
+  outline: none;
+}
+
+.verse-code-account-row-blocked {
+  border-color: rgb(255 255 255 / 0.12);
+}
+
+.verse-code-account-main {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.verse-code-account-name,
+.verse-code-account-meta {
+  overflow: hidden;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verse-code-account-name {
+  color: rgb(255 255 255 / 0.88);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.verse-code-account-selected {
+  color: rgb(255 255 255 / 0.58);
+  font-size: 0.62rem;
+}
+
+.verse-code-account-meta {
+  color: rgb(255 255 255 / 0.48);
+  font-size: 0.65rem;
+}
+
 .app-shell-verse .chat-content-overlay {
   display: none;
 }

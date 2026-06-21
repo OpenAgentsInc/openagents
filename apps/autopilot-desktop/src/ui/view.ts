@@ -866,6 +866,148 @@ const accountPickerLabel = (row: AccountRow): string => {
   return row.ready ? base : `${base} (blocked)`
 }
 
+type VerseCodeAccountInventoryRow = Readonly<{
+  key: string
+  label: string
+  state: "ready" | "blocked"
+  stateText: string
+  priorityText: string
+  selectorText: string
+  hashText: string
+  selected: boolean
+  accountRef: string | null
+}>
+
+const shortAccountHash = (value: string | null | undefined): string => {
+  const text = value?.trim() ?? ""
+  if (text === "") return "hash pending"
+  return `#${text.slice(-6)}`
+}
+
+const verseSelectorLabel = (selector: string | null | undefined): string => {
+  switch (selector) {
+    case "registry_ref":
+      return "registry"
+    case "default_home":
+      return "default"
+    case null:
+    case undefined:
+    case "":
+      return "managed"
+    default:
+      return selector.replaceAll("_", " ")
+  }
+}
+
+const verseCodeAccountInventoryRows = (
+  model: Model,
+): ReadonlyArray<VerseCodeAccountInventoryRow> => {
+  const managedRows =
+    modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? []
+  const liveRows =
+    modelNode(model)?.accounts?.filter((row) => row.provider === "codex") ?? []
+  const liveByRef = new Map<string, AccountRow>()
+  for (const row of liveRows) {
+    if (row.accountRef !== null) liveByRef.set(row.accountRef, row)
+  }
+  const seen = new Set<string>()
+  const rows: VerseCodeAccountInventoryRow[] = managedRows.map((row) => {
+    seen.add(`ref:${row.ref}`)
+    const live = liveByRef.get(row.ref) ?? null
+    const ready = live?.ready ?? row.homePresent
+    return {
+      key: `managed:${row.ref}`,
+      label: row.ref,
+      state: ready ? "ready" : "blocked",
+      stateText: ready ? "ready" : "blocked",
+      priorityText: row.priority === null ? "prio auto" : `prio ${row.priority}`,
+      selectorText: verseSelectorLabel(live?.selector),
+      hashText: shortAccountHash(live?.accountRefHash),
+      selected: model.composerAccountRef === row.ref,
+      accountRef: row.ref,
+    }
+  })
+  for (const live of liveRows) {
+    const seenKey = live.accountRef === null ? "default" : `ref:${live.accountRef}`
+    if (seen.has(seenKey)) continue
+    seen.add(seenKey)
+    const label = live.accountRef ?? "default"
+    rows.push({
+      key: `live:${label}`,
+      label,
+      state: live.ready ? "ready" : "blocked",
+      stateText: live.ready ? "ready" : "blocked",
+      priorityText: live.priority === null ? "prio auto" : `prio ${live.priority}`,
+      selectorText: verseSelectorLabel(live.selector),
+      hashText: shortAccountHash(live.accountRefHash),
+      selected: model.composerAccountRef === live.accountRef,
+      accountRef: live.accountRef,
+    })
+  }
+  return rows
+}
+
+const verseCodeAccountInventoryRowView = (
+  row: VerseCodeAccountInventoryRow,
+): Html =>
+  h.button(
+    [
+      cls(
+        `verse-code-account-row verse-code-account-row-${row.state}${
+          row.selected ? " selected" : ""
+        }`,
+      ),
+      h.Type("button"),
+      h.DataAttribute("verse-code-account-ref", row.accountRef ?? "default"),
+      h.DataAttribute("verse-code-account-state", row.state),
+      h.OnClick(SelectedComposerAccount({ accountRef: row.accountRef })),
+    ],
+    [
+      h.span([cls("verse-code-account-main")], [
+        h.span([cls("verse-code-account-name mono")], [row.label]),
+        row.selected
+          ? h.span([cls("verse-code-account-selected mono")], ["selected"])
+          : h.empty,
+      ]),
+      h.span([cls("verse-code-account-meta mono")], [
+        row.stateText,
+        " · ",
+        row.priorityText,
+        " · ",
+        row.selectorText,
+        " · ",
+        row.hashText,
+      ]),
+    ],
+  )
+
+const verseCodeAccountInventory = (model: Model): Html => {
+  if (model.verseMode !== "code") return h.empty
+  const rows = verseCodeAccountInventoryRows(model)
+  const selected = rows.find((row) => row.selected) ?? null
+  return h.aside(
+    [
+      cls("verse-code-account-inventory"),
+      h.AriaLabel("Codex accounts"),
+      h.DataAttribute("verse-code-account-inventory", rows.length > 0 ? "ready" : "empty"),
+    ],
+    [
+      h.header([cls("verse-code-account-head")], [
+        h.span([cls("verse-code-account-title mono")], ["Codex accounts"]),
+        h.span([cls("verse-code-account-active mono")], [
+          selected === null ? "default route" : `using ${selected.label}`,
+        ]),
+      ]),
+      model.managedAccountsPending
+        ? h.p([cls("verse-code-account-status mono")], ["refreshing accounts"])
+        : h.empty,
+      rows.length === 0
+        ? h.p([cls("verse-code-account-empty")], ["No Codex accounts projected yet."])
+        : h.div([cls("verse-code-account-list")], rows.map(verseCodeAccountInventoryRowView)),
+    ],
+  )
+}
+
 const accountsSection = (node: NodeStateMessage): Html => {
   const accounts = node.accounts ?? []
   if (accounts.length === 0) return h.empty
@@ -6926,6 +7068,7 @@ const rootView = (model: Model): Html => {
       ],
       [
         chatPane(model),
+        verseCodeAccountInventory(model),
         verseCodeControlsVisible(model) ? managedPaneLayer(model) : h.empty,
         CHAT_WORLD_HUD ? verseBottomHud(model) : h.empty,
         verseCodeControlsVisible(model) ? commandPalette(model) : h.empty,

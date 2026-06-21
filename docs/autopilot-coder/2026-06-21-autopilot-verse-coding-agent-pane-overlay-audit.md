@@ -713,6 +713,13 @@ Acceptance:
 
 ### VCODE-02 - Surface Codex Account Inventory In Code Mode
 
+Status: implemented in #5919 on 2026-06-21. Verse code mode now refreshes the
+existing managed-account projection and renders a compact Codex account
+inventory overlay. Rows combine managed `dev.accounts` refs with live node
+readiness, selector, priority, selection state, and short `accountRefHash`
+tails; explore mode stays clean and full hashes/blocker details remain out of
+the default UI.
+
 Build:
 
 - Reuse the existing managed-account projection rather than adding a new
