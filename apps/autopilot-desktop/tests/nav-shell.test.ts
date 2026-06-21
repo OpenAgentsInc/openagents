@@ -311,6 +311,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(model.pane).toBe("chat")
     expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("chat-pane-world")
+    expect(tree).toContain("verse-run-hud")
     expect(tree).toContain("Tassadar")
     expect(tree).toContain("Pylon")
     expect(tree).not.toContain("The Verse")

@@ -71,6 +71,11 @@ import {
   withVerseTrainingLayer,
 } from "../shared/verse-training-visualization"
 import {
+  verseRunHudProjection,
+  type VerseRunHudProjection,
+  type VerseRunHudSample,
+} from "../shared/verse-run-hud"
+import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
@@ -5901,6 +5906,66 @@ const chatSceneInspector = (model: Model): Html =>
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
 
+const verseHudSampleTitle = (sample: VerseRunHudSample): string =>
+  sample.sourceRefs.length === 0
+    ? `${sample.label}: ${sample.valueText}`
+    : `${sample.label}: ${sample.valueText} - refs ${sample.sourceRefs.slice(0, 3).join(", ")}`
+
+const verseRunHudSampleView = (sample: VerseRunHudSample): Html =>
+  h.li(
+    [
+      cls("verse-run-hud-sample"),
+      h.Title(verseHudSampleTitle(sample)),
+      h.DataAttribute("verse-run-hud-sample", sample.id),
+    ],
+    [
+      h.span(
+        [
+          cls("verse-run-hud-rail"),
+          h.Style({ "--verse-run-hud-value": `${Math.max(0.08, sample.value)}` }),
+        ],
+        [],
+      ),
+      h.span([cls("verse-run-hud-label mono")], [sample.label]),
+      h.span([cls("verse-run-hud-value mono")], [sample.valueText]),
+    ],
+  )
+
+const verseRunHud = (model: Model): Html => {
+  const projection: VerseRunHudProjection = verseRunHudProjection(
+    modelTrainingRuns(model),
+    modelTrainingPromiseGates(model),
+  )
+  return h.aside(
+    [
+      cls("verse-run-hud"),
+      h.AriaLabel("Tassadar run HUD"),
+      h.DataAttribute("verse-run-hud", projection.state),
+    ],
+    [
+      h.div([cls("verse-run-hud-header")], [
+        h.div([], [
+          h.p([cls("verse-run-hud-kicker mono")], ["Tassadar"]),
+          h.p([cls("verse-run-hud-run mono"), h.Title(projection.runRef)], [
+            projection.runRef,
+          ]),
+        ]),
+        h.div([cls(`verse-run-hud-state verse-run-hud-state-${projection.state}`)], [
+          projection.state,
+        ]),
+      ]),
+      h.ul([cls("verse-run-hud-samples")], [
+        ...projection.samples.map(verseRunHudSampleView),
+      ]),
+      h.div([cls("verse-run-hud-footer mono")], [
+        h.span([], [`green ${projection.promiseGreenCount}/${projection.promiseTotalCount}`]),
+        h.span([], [projection.lossLabel]),
+        h.span([], [`blk ${projection.blockerCount}`]),
+      ]),
+    ],
+  )
+}
+
 const chatSceneBackground = (model: Model): Html =>
   h.div([cls("chat-scene-background")], [
     trainingRunView<Message>(
@@ -5989,6 +6054,7 @@ const verseVisible = (model: Model): boolean =>
 const versePane = (model: Model): Html =>
   h.div([cls("chat-pane chat-pane-world verse-pane")], [
     chatSceneBackground(model),
+    verseRunHud(model),
   ])
 
 const verseBottomHud = (model: Model): Html =>
