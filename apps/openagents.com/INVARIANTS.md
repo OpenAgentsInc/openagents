@@ -1782,6 +1782,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     cloud-metering helper). The settlement seam (`settleLaborProductOrder`) is
     flag-gated INERT and owner-gated and is unreachable from this read-only
     route; the surface debits no balance and makes no live-sale claim.
+  - `POST /api/public/ecommerce-campaign/workspaces` — live at write public-safe
+    self-serve workspace creation (promise `business.ecommerce_workspace_pack.v1`,
+    yellow) — compliant (`generatedAt`, `live_at_read` contract). Returns
+    `inert: true` and only seeds a public-safe prefilled workspace row.
+  - `GET /api/public/ecommerce-campaign/receipts` — static document exempt from
+    staleness (mock fixture for the e-commerce delivery receipt blocker).
   - `GET /api/public/autopilot/self-serve-fanout` — live at read over the INERT
     self-serve fanout plan store (promise
     `autopilot.control_center_fanout_marketplace.v1`, yellow) — compliant

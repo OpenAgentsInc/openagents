@@ -14,7 +14,7 @@ A dereferenceable **claim-upgrade projection and gate endpoint** for the e-comme
 - `apps/openagents.com/workers/api/src/index.ts`
   - Wired `emptyEcommerceCampaignPaidDeliveryClaimStore` into the dependencies of `makeEcommerceCampaignReceiptRoutes`.
 
-## What this run built
+## Previous Run (Receipt Fixture)
 
 A concrete **first-paid delivery-receipt fixture** for the e-commerce workspace, fulfilling the requirement for a real receipt instance that substantiates the claim upgrade.
 
@@ -33,3 +33,28 @@ A concrete **first-paid delivery-receipt fixture** for the e-commerce workspace,
 ## What remains for green
 
 1. Delivering a self-serve vertical pack to clear `blocker.product_promises.ecommerce_pack_self_serve_missing`.
+
+## What this run built (Self-Serve Flow)
+
+A live, deployed **self-serve route for e-commerce prefilled workspace creation**. This completes the code implementation required to advance the self-serve capability of the e-commerce vertical pack.
+
+- `apps/openagents.com/workers/api/src/ecommerce-campaign-self-serve-routes.ts`
+  - Added a `POST /api/public/ecommerce-campaign/workspaces` route that creates the e-commerce design-partner workspace (`forge.template.ecommerce.inventory_campaign.v1`) on demand.
+  - Automatically seeds the workspace with `public_safe` access mode and `draft` status, allowing anonymous/self-serve usage without requiring operator token.
+  - Returns `inert: true` and only seeds a public-safe prefilled workspace row.
+- `apps/openagents.com/workers/api/src/ecommerce-campaign-self-serve-routes.test.ts`
+  - Added tests validating the inert 503 behavior when disabled, and the 201 creation behavior with `public_safe` workspace payload when enabled.
+- `apps/openagents.com/workers/api/src/index.ts`
+  - Wired `makeEcommerceCampaignSelfServeRoutes` into the router with `enabled: true`, injecting `makePrefilledWorkspaceService(openAgentsDatabase(env))` as the store.
+- `apps/openagents.com/INVARIANTS.md` and `apps/openagents.com/scripts/check-zero-debt-architecture.mjs`
+  - Declared `staleness_declared` and updated zero-debt compliance for the new public projection route `/api/public/ecommerce-campaign/workspaces`.
+
+## Which blocker this advances
+
+`blocker.product_promises.ecommerce_pack_self_serve_missing`
+— **cleared in code**. A self-serve route now exists to provision the e-commerce vertical pack workspace with no operator loop.
+
+## What remains for green
+
+1. A true non-fixture e-commerce work-item delivery to replace the mock fixture for `ecommerce_pack_first_paid_delivery_receipt_missing`.
+2. Emitting the matching real delivery receipt into the `proof.claim_upgrade_receipts.v1` registry.

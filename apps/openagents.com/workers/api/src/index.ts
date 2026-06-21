@@ -218,6 +218,7 @@ import {
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
+import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
 import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
 import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
@@ -7081,6 +7082,11 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   requireAdminApiToken,
 })
 
+const ecommerceCampaignSelfServeRoutes = makeEcommerceCampaignSelfServeRoutes<Env>({
+  makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
+  enabled: true, // INERT self-serve enabled
+})
+
 const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
   makeStore: env =>
     makeD1EcommerceCampaignReceiptStore(
@@ -9901,6 +9907,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicStripeCheckoutReceiptRoutes.routePublicStripeCheckoutReceiptRequest,
   routeEcommerceCampaignReceiptRequest:
     ecommerceCampaignReceiptRoutes.routeEcommerceCampaignReceiptRequest,
+  routeEcommerceCampaignSelfServeRequest:
+    ecommerceCampaignSelfServeRoutes.routeEcommerceCampaignSelfServeRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
