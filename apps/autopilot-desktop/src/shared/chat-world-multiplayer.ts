@@ -108,14 +108,14 @@ export const chatWorldMultiplayerSubscriptionQueries = (
     `SELECT * FROM world_event WHERE run_ref = ${run}`,
     `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
     `SELECT * FROM world_region WHERE region_ref = ${region}`,
-    `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
-    "SELECT * FROM agent_avatar",
+    `SELECT * FROM pylon_station WHERE region_ref = ${region}`,
+    `SELECT agent_avatar.* FROM avatar_position JOIN agent_avatar ON avatar_position.avatar_ref = agent_avatar.avatar_ref WHERE avatar_position.region_ref = ${region}`,
     `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
-    "SELECT * FROM pylon_attention",
+    `SELECT pylon_attention.* FROM pylon_station JOIN pylon_attention ON pylon_station.pylon_ref = pylon_attention.pylon_ref WHERE pylon_station.region_ref = ${region}`,
     `SELECT * FROM local_chat_message WHERE region_ref = ${region}`,
-    "SELECT * FROM chat_bubble",
+    `SELECT chat_bubble.* FROM local_chat_message JOIN chat_bubble ON local_chat_message.message_ref = chat_bubble.message_ref WHERE local_chat_message.region_ref = ${region}`,
     `SELECT * FROM local_emote WHERE region_ref = ${region}`,
-    "SELECT * FROM agent_intent",
+    `SELECT agent_intent.* FROM avatar_position JOIN agent_intent ON avatar_position.avatar_ref = agent_intent.avatar_ref WHERE avatar_position.region_ref = ${region}`,
   ]
 }
 
@@ -146,6 +146,15 @@ export const projectChatWorldMultiplayer = (input: {
   }
 
   const avatarByRef = new Map(rows.avatars.map(avatar => [avatar.avatarRef, avatar]))
+  const stationRows = rows.stations
+    .filter(station => station.runRef === input.runRef)
+    .filter(station => station.regionRef === regionRef)
+    .filter(station => finite(station.x) && finite(station.y) && finite(station.z))
+  const stationRefsInRegion = new Set(stationRows.map(station => station.pylonRef))
+  const positionRows = rows.positions
+    .filter(position => position.regionRef === regionRef)
+    .filter(position => finite(position.x) && finite(position.y) && finite(position.z))
+  const avatarRefsInRegion = new Set(positionRows.map(position => position.avatarRef))
   const messagesByAvatar = new Map<string, Array<string>>()
   for (const message of rows.messages) {
     if (
@@ -162,7 +171,11 @@ export const projectChatWorldMultiplayer = (input: {
 
   const attentionByAvatar = new Map<string, Array<string>>()
   for (const attention of rows.attention) {
-    if (attention.expiresAtEpochMs <= input.nowMs) {
+    if (
+      attention.expiresAtEpochMs <= input.nowMs ||
+      !stationRefsInRegion.has(attention.pylonRef) ||
+      !avatarRefsInRegion.has(attention.avatarRef)
+    ) {
       continue
     }
     const current = attentionByAvatar.get(attention.avatarRef) ?? []
@@ -170,41 +183,35 @@ export const projectChatWorldMultiplayer = (input: {
     attentionByAvatar.set(attention.avatarRef, current)
   }
 
-  const agents = rows.positions
-    .filter(position => position.regionRef === regionRef)
-    .filter(position => finite(position.x) && finite(position.y) && finite(position.z))
-    .flatMap(position => {
-      const avatar = avatarByRef.get(position.avatarRef)
-      if (avatar === undefined) {
-        return []
-      }
-      return [{
-        avatarRef: position.avatarRef,
-        label: avatar.displayName,
-        avatarKind: avatar.avatarKind,
-        actorRef: avatar.actorRef,
-        color: avatar.colorHex,
-        x: position.x,
-        y: position.y,
-        z: position.z,
-        yaw: finite(position.yaw) ? position.yaw : 0,
-        movementMode: position.movementMode,
-        lastSeenEpochMs: position.lastSeenEpochMs,
-        chatMessages: messagesByAvatar.get(position.avatarRef) ?? [],
-        attentionRefs: attentionByAvatar.get(position.avatarRef) ?? [],
-      }]
-    })
+  const agents = positionRows.flatMap(position => {
+    const avatar = avatarByRef.get(position.avatarRef)
+    if (avatar === undefined) {
+      return []
+    }
+    return [{
+      avatarRef: position.avatarRef,
+      label: avatar.displayName,
+      avatarKind: avatar.avatarKind,
+      actorRef: avatar.actorRef,
+      color: avatar.colorHex,
+      x: position.x,
+      y: position.y,
+      z: position.z,
+      yaw: finite(position.yaw) ? position.yaw : 0,
+      movementMode: position.movementMode,
+      lastSeenEpochMs: position.lastSeenEpochMs,
+      chatMessages: messagesByAvatar.get(position.avatarRef) ?? [],
+      attentionRefs: attentionByAvatar.get(position.avatarRef) ?? [],
+    }]
+  })
 
-  const stations = rows.stations
-    .filter(station => station.runRef === input.runRef)
-    .filter(station => finite(station.x) && finite(station.y) && finite(station.z))
-    .map(station => ({
-      pylonRef: station.pylonRef,
-      label: station.label,
-      x: station.x,
-      y: station.y,
-      z: station.z,
-    }))
+  const stations = stationRows.map(station => ({
+    pylonRef: station.pylonRef,
+    label: station.label,
+    x: station.x,
+    y: station.y,
+    z: station.z,
+  }))
 
   return {
     connected: true,

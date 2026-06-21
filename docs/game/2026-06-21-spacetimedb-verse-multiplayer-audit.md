@@ -127,8 +127,11 @@ into the desktop world store.
 
 `apps/autopilot-desktop/src/shared/chat-world-multiplayer.ts` defines the
 current subscription shape. It subscribes to the selected run's world events,
-the selected region, station rows, avatar rows, avatar positions, attention,
-local messages, chat bubbles, emotes, and agent intents.
+the selected region, station rows by active `region_ref`, avatar positions by
+active `region_ref`, and dependent avatar/profile, attention, bubble, and
+intent rows through region-scoped join subscriptions. It no longer subscribes
+to global `agent_avatar`, `pylon_attention`, `chat_bubble`, or `agent_intent`
+tables.
 
 `apps/autopilot-desktop/src/shared/chat-world-spacetimedb.ts` has the critical
 client-side write planner:
@@ -239,6 +242,27 @@ SpacetimeDB snapshot mapper, web fallback clamp, and desktop
 The road can remain visually continuous in Three.js, but reducer writes and
 client-side movement validation are bounded to registered local chunks until
 cross-region traversal exists.
+
+### 2026-06-21 Progress: #5891 Subscription Scope And Tab Targets
+
+The desktop SpacetimeDB subscription plan is now region scoped for the active
+Verse/Street chunk. `pylon_station`, `avatar_position`, `local_chat_message`,
+and `local_emote` subscribe directly by `region_ref`; `agent_avatar`,
+`pylon_attention`, `chat_bubble`, and `agent_intent` are subscribed through
+two-table joins rooted in the active region instead of standalone global table
+queries. The world module now carries the supporting btree indexes for run,
+region, pylon, and message join/filter columns.
+
+The multiplayer projection also rechecks the active region locally before
+rendering. Stations must match both the active run and active region, avatar
+positions must be finite and region-local, and attention refs are kept only
+when both the avatar and pylon station are visible in the active region.
+
+Tab targeting now has a bounded candidate mapper in
+`chatWorldVisibleTargetCandidates`. It accepts renderer-provided visibility
+rows, drops off-screen, occluded, stale, local, and too-far avatars/stations,
+returns only pylon/avatar targets, sorts by screen-center distance and then
+world distance, and caps the result set for crowded regions.
 
 ## What The SpacetimeDB References Teach
 
@@ -512,9 +536,14 @@ Files:
 
 Tasks:
 
-- Filter avatar subscriptions by active region and, if available, active chunk.
-- Stop subscribing to global `agent_avatar` rows once the region grows.
-- Keep pylon/training detail rows separate from avatar presence.
+- Done in #5891: filter avatar position subscriptions by active region and
+  join profile rows only for avatars with active-region positions.
+- Done in #5891: stop subscribing to global `agent_avatar`,
+  `pylon_attention`, `chat_bubble`, and `agent_intent` rows.
+- Done in #5891: keep pylon/training detail rows separate from avatar
+  presence; payment/proof/settlement details still resolve by selected refs.
+- Done in #5891: add bounded visible/nearby pylon/avatar target candidates for
+  tab cycling.
 - Consider adding server-maintained visibility rows if region filtering is not
   enough.
 
@@ -573,22 +602,23 @@ Completed on 2026-06-21:
 - #5889 moved remote users onto the real remote-avatar rendering path.
 - #5890 expanded the default region bounds and added the explicit Street
   coordinate metadata.
+- #5891 region-scoped the subscription query set, added supporting module
+  indexes, and introduced bounded visible/nearby pylon/avatar tab-target
+  candidates.
 
 Remaining:
 
 1. The generated TypeScript bindings are imported from the web app path; the
    desktop packaging story should be made explicit or moved into a shared
    generated package.
-2. Subscription queries still include some broad/global rows, especially
-   avatars and attention. This is tolerable for MVP but wrong for scale.
-3. There is no high/low resolution position feed yet.
-4. Tab targeting and labels need to use visibility and selection rules, not raw
-   object enumeration.
-5. Multiplayer identity currently maps from SpacetimeDB identity plus local
+2. There is no high/low resolution position feed yet.
+3. Selection labels and HUD details need to consume the bounded target
+   candidates instead of becoming permanent text in the world.
+4. Multiplayer identity currently maps from SpacetimeDB identity plus local
    display metadata. It must stay public and never leak private host/device
    details.
-6. The failure path needs to remain single-player-first: if SpacetimeDB is
-    down, the Verse should still load and move.
+5. The failure path needs to remain single-player-first: if SpacetimeDB is
+   down, the Verse should still load and move.
 
 ## Recommended First Issue
 

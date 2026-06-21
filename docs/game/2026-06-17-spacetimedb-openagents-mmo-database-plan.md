@@ -160,6 +160,14 @@ For `/tassadar`, the page should subscribe only to the Tassadar run and the
 world entities needed to render that run. The Three.js scene should update from
 row insert/update/delete callbacks, not from scripted fake activity.
 
+The first Verse/Street desktop subscription scope now follows this model:
+station, position, chat, and emote rows are filtered by active `region_ref`;
+avatar profiles, pylon attention, chat bubbles, and agent intents are joined
+through active-region position/station/message rows instead of subscribed as
+global tables. Tab targeting should consume bounded visible/nearby pylon and
+avatar candidates, leaving proof, settlement, and training detail rows to the
+selected-entity lifetime.
+
 ## Scheduled Agents
 
 BitCraft uses schedule tables for periodic agents. OpenAgents should use the

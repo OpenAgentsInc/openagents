@@ -13,16 +13,22 @@ describe("chat world multiplayer projection (#5739)", () => {
   test("builds the desktop SpacetimeDB subscription query set", () => {
     const queries = chatWorldMultiplayerSubscriptionQueries(runRef)
     expect(queries).toContain(`SELECT * FROM world_region WHERE region_ref = '${regionRef}'`)
-    expect(queries).toContain(`SELECT * FROM pylon_station WHERE run_ref = '${runRef}'`)
-    expect(queries).toContain("SELECT * FROM agent_avatar")
+    expect(queries).toContain(`SELECT * FROM pylon_station WHERE region_ref = '${regionRef}'`)
+    expect(queries).toContain(`SELECT agent_avatar.* FROM avatar_position JOIN agent_avatar ON avatar_position.avatar_ref = agent_avatar.avatar_ref WHERE avatar_position.region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM avatar_position WHERE region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM local_chat_message WHERE region_ref = '${regionRef}'`)
-    expect(queries).toContain("SELECT * FROM chat_bubble")
+    expect(queries).toContain(`SELECT pylon_attention.* FROM pylon_station JOIN pylon_attention ON pylon_station.pylon_ref = pylon_attention.pylon_ref WHERE pylon_station.region_ref = '${regionRef}'`)
+    expect(queries).toContain(`SELECT chat_bubble.* FROM local_chat_message JOIN chat_bubble ON local_chat_message.message_ref = chat_bubble.message_ref WHERE local_chat_message.region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM local_emote WHERE region_ref = '${regionRef}'`)
-    expect(queries).toContain("SELECT * FROM agent_intent")
+    expect(queries).toContain(`SELECT agent_intent.* FROM avatar_position JOIN agent_intent ON avatar_position.avatar_ref = agent_intent.avatar_ref WHERE avatar_position.region_ref = '${regionRef}'`)
+    expect(queries).not.toContain("SELECT * FROM agent_avatar")
+    expect(queries).not.toContain("SELECT * FROM pylon_attention")
+    expect(queries).not.toContain("SELECT * FROM chat_bubble")
+    expect(queries).not.toContain("SELECT * FROM agent_intent")
   })
 
   test("projects only row-backed avatars with live positions and chat", () => {
+    const otherRegionRef = "region.other.main"
     const projection = projectChatWorldMultiplayer({
       flagEnabled: true,
       runRef,
@@ -36,6 +42,14 @@ describe("chat world multiplayer projection (#5739)", () => {
           y: 0,
           z: 2,
           label: "Pylon 1",
+        }, {
+          pylonRef: "pylon.other.1",
+          runRef,
+          regionRef: otherRegionRef,
+          x: 9,
+          y: 0,
+          z: 9,
+          label: "Other Pylon",
         }],
         avatars: [{
           avatarRef: "avatar.public.1",
@@ -52,6 +66,16 @@ describe("chat world multiplayer projection (#5739)", () => {
             y: 0,
             z: 4,
             yaw: 0.5,
+            movementMode: "walk",
+            lastSeenEpochMs: 900,
+          },
+          {
+            avatarRef: "avatar.public.1",
+            regionRef: otherRegionRef,
+            x: 7,
+            y: 0,
+            z: 7,
+            yaw: 0,
             movementMode: "walk",
             lastSeenEpochMs: 900,
           },
@@ -80,6 +104,12 @@ describe("chat world multiplayer projection (#5739)", () => {
           pylonRef: "pylon.public.1",
           attentionKind: "nearby",
           expiresAtEpochMs: 2_000,
+        }, {
+          attentionRef: "attention.other.1",
+          avatarRef: "avatar.public.1",
+          pylonRef: "pylon.other.1",
+          attentionKind: "nearby",
+          expiresAtEpochMs: 2_000,
         }],
       },
     })
@@ -87,6 +117,7 @@ describe("chat world multiplayer projection (#5739)", () => {
     expect(projection.connected).toBe(true)
     expect(projection.projectedAtMs).toBe(1_000)
     expect(projection.stations).toHaveLength(1)
+    expect(projection.stations.map(station => station.pylonRef)).toEqual(["pylon.public.1"])
     expect(projection.agents).toHaveLength(1)
     expect(projection.agents[0]?.lastSeenEpochMs).toBe(900)
     expect(projection.agents[0]?.chatMessages).toEqual(["nearby"])

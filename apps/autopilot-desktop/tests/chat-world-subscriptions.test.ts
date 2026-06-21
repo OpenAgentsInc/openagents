@@ -356,6 +356,16 @@ describe("subscribeSpacetimeWorld", () => {
     expect(capturedQueries).toContain(
       `SELECT * FROM world_region WHERE region_ref = '${regionRef}'`,
     )
+    expect(capturedQueries).toContain(
+      `SELECT agent_avatar.* FROM avatar_position JOIN agent_avatar ON avatar_position.avatar_ref = agent_avatar.avatar_ref WHERE avatar_position.region_ref = '${regionRef}'`,
+    )
+    expect(capturedQueries).toContain(
+      `SELECT pylon_attention.* FROM pylon_station JOIN pylon_attention ON pylon_station.pylon_ref = pylon_attention.pylon_ref WHERE pylon_station.region_ref = '${regionRef}'`,
+    )
+    expect(capturedQueries).not.toContain("SELECT * FROM agent_avatar")
+    expect(capturedQueries).not.toContain("SELECT * FROM pylon_attention")
+    expect(capturedQueries).not.toContain("SELECT * FROM chat_bubble")
+    expect(capturedQueries).not.toContain("SELECT * FROM agent_intent")
 
     applied?.()
 

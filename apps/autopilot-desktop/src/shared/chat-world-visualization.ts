@@ -151,6 +151,8 @@ export const CHAT_WORLD_STATION_NODE_PREFIX = "world:station:"
 export const CHAT_WORLD_AVATAR_NODE_PREFIX = "world:avatar:"
 export const CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS = 6_000
 export const CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS = 12_000
+export const CHAT_WORLD_TARGET_DEFAULT_MAX_CANDIDATES = 24
+export const CHAT_WORLD_TARGET_DEFAULT_MAX_DISTANCE_METERS = 96
 
 export type ChatWorldMultiplayerLayer = {
   readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
@@ -164,6 +166,36 @@ export type ChatWorldMultiplayerLayerOptions = Readonly<{
   despawnAfterMs?: number
 }>
 
+export type ChatWorldTabTargetKind = "pylon" | "avatar"
+
+export type ChatWorldTargetVisibility = Readonly<{
+  id: string
+  screenCenterX: number
+  screenCenterY: number
+  visible: boolean
+  occluded?: boolean
+}>
+
+export type ChatWorldTabTargetCandidate = Readonly<{
+  id: string
+  ref: string
+  kind: ChatWorldTabTargetKind
+  label: string
+  position: TrainingRunVector
+  screenCenterDistance: number
+  worldDistanceMeters: number
+}>
+
+export type ChatWorldTabTargetOptions = Readonly<{
+  despawnAfterMs?: number
+  localAvatarRef?: string | null
+  maxCandidates?: number
+  maxDistanceMeters?: number
+  nowMs?: number
+  viewerPosition: TrainingRunVector
+  visibility: ReadonlyArray<ChatWorldTargetVisibility>
+}>
+
 const movementModeToRemoteAvatarAnimation = (
   movementMode: string,
 ): TrainingRunRemoteAvatarDefinition["animation"] => {
@@ -171,6 +203,141 @@ const movementModeToRemoteAvatarAnimation = (
   if (normalized === "running" || normalized === "run") return "run"
   if (normalized === "walking" || normalized === "walk") return "walk"
   return "idle"
+}
+
+const vectorDistanceMeters = (
+  a: TrainingRunVector,
+  b: TrainingRunVector,
+): number => {
+  const dx = a[0] - b[0]
+  const dy = a[1] - b[1]
+  const dz = a[2] - b[2]
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}
+
+const finiteVector = (vector: TrainingRunVector): boolean =>
+  finite(vector[0]) && finite(vector[1]) && finite(vector[2])
+
+const targetKindRank = (kind: ChatWorldTabTargetKind): number =>
+  kind === "pylon" ? 0 : 1
+
+const visibilityMapFromRows = (
+  rows: ReadonlyArray<ChatWorldTargetVisibility>,
+): ReadonlyMap<string, ChatWorldTargetVisibility> => {
+  const out = new Map<string, ChatWorldTargetVisibility>()
+  for (const row of rows) {
+    if (row.id.trim().length === 0) continue
+    out.set(row.id, row)
+  }
+  return out
+}
+
+const firstVisibleTarget = (
+  visibility: ReadonlyMap<string, ChatWorldTargetVisibility>,
+  ids: ReadonlyArray<string>,
+): ChatWorldTargetVisibility | null => {
+  for (const id of ids) {
+    const target = visibility.get(id)
+    if (
+      target !== undefined &&
+      target.visible === true &&
+      target.occluded !== true &&
+      finite(target.screenCenterX) &&
+      finite(target.screenCenterY)
+    ) {
+      return target
+    }
+  }
+  return null
+}
+
+export const chatWorldVisibleTargetCandidates = (
+  world: ChatWorldMultiplayerProjection | null | undefined,
+  options: ChatWorldTabTargetOptions,
+): ReadonlyArray<ChatWorldTabTargetCandidate> => {
+  if (world?.connected !== true || !finiteVector(options.viewerPosition)) return []
+  const maxCandidates = Math.max(
+    0,
+    Math.floor(options.maxCandidates ?? CHAT_WORLD_TARGET_DEFAULT_MAX_CANDIDATES),
+  )
+  if (maxCandidates === 0) return []
+  const maxDistanceMeters = Math.max(
+    0,
+    options.maxDistanceMeters ?? CHAT_WORLD_TARGET_DEFAULT_MAX_DISTANCE_METERS,
+  )
+  const visibility = visibilityMapFromRows(options.visibility)
+  const localAvatarRef = options.localAvatarRef?.trim() ?? ""
+  const nowMs = options.nowMs ?? world.projectedAtMs
+  const despawnAfterMs = options.despawnAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS
+  const candidates: ChatWorldTabTargetCandidate[] = []
+
+  const maybePush = (input: {
+    readonly id: string
+    readonly ref: string
+    readonly label: string
+    readonly kind: ChatWorldTabTargetKind
+    readonly position: TrainingRunVector
+    readonly visibilityIds: ReadonlyArray<string>
+  }): void => {
+    if (!finiteVector(input.position)) return
+    const visible = firstVisibleTarget(visibility, input.visibilityIds)
+    if (visible === null) return
+    const worldDistanceMeters = vectorDistanceMeters(options.viewerPosition, input.position)
+    if (worldDistanceMeters > maxDistanceMeters) return
+    candidates.push({
+      id: input.id,
+      ref: input.ref,
+      kind: input.kind,
+      label: input.label,
+      position: input.position,
+      screenCenterDistance: Number(
+        Math.hypot(visible.screenCenterX, visible.screenCenterY).toFixed(3),
+      ),
+      worldDistanceMeters: Number(worldDistanceMeters.toFixed(3)),
+    })
+  }
+
+  for (const station of world.stations) {
+    const position = vectorFromXYZ(station.x, station.y, station.z)
+    if (position === null) continue
+    const id = `${CHAT_WORLD_STATION_NODE_PREFIX}${station.pylonRef}`
+    maybePush({
+      id,
+      ref: station.pylonRef,
+      kind: "pylon",
+      label: station.label,
+      position,
+      visibilityIds: [id, station.pylonRef],
+    })
+  }
+
+  for (const agent of world.agents) {
+    if (localAvatarRef.length > 0 && agent.avatarRef === localAvatarRef) continue
+    if (Math.max(0, nowMs - agent.lastSeenEpochMs) >= despawnAfterMs) continue
+    const position = vectorFromXYZ(agent.x, agent.y, agent.z)
+    if (position === null) continue
+    maybePush({
+      id: agent.avatarRef,
+      ref: agent.avatarRef,
+      kind: "avatar",
+      label: agent.label,
+      position,
+      visibilityIds: [
+        agent.avatarRef,
+        `${CHAT_WORLD_AVATAR_NODE_PREFIX}${agent.avatarRef}`,
+        agent.actorRef,
+      ],
+    })
+  }
+
+  return candidates
+    .sort((a, b) =>
+      a.screenCenterDistance - b.screenCenterDistance ||
+      a.worldDistanceMeters - b.worldDistanceMeters ||
+      targetKindRank(a.kind) - targetKindRank(b.kind) ||
+      a.label.localeCompare(b.label),
+    )
+    .slice(0, maxCandidates)
 }
 
 export const chatWorldMultiplayerLayer = (

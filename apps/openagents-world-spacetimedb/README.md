@@ -92,12 +92,28 @@ The proximity subscription shape for clients is deliberately simple:
 - read `world_region` by `region_ref` for bounds, Street metadata, proximity
   radius, and TTL;
 - subscribe to `pylon_station` rows with the same `region_ref`;
-- subscribe to `avatar_position`, then join to `agent_avatar` by `avatar_ref`;
-- subscribe to `pylon_attention`, `local_chat_message`, `chat_bubble`,
-  `local_emote`, and `agent_intent` only for the active region or selected
-  entity;
+- subscribe to `avatar_position` rows with the same `region_ref`, then join to
+  `agent_avatar` by `avatar_ref`;
+- subscribe to `pylon_attention` by joining active-region `pylon_station`
+  rows to attention rows by `pylon_ref`;
+- subscribe to `chat_bubble` by joining active-region `local_chat_message`
+  rows to bubble rows by `message_ref`;
+- subscribe to `agent_intent` by joining active-region `avatar_position` rows
+  to intent rows by `avatar_ref`;
+- subscribe to `local_chat_message` and `local_emote` directly by active
+  `region_ref`;
 - read `world_event`, `proof_ref`, and `settlement_ref` by selected public
   entity/run refs, not as anonymous motion.
+
+The module carries btree indexes for the active subscription filters and joins:
+`world_event.run_ref`, `pylon_station.region_ref`,
+`avatar_position.region_ref`, `pylon_attention.pylon_ref`,
+`local_chat_message.region_ref`, `chat_bubble.message_ref`, and
+`local_emote.region_ref`. `agent_avatar.avatar_ref`,
+`avatar_position.avatar_ref`, `pylon_station.pylon_ref`,
+`local_chat_message.message_ref`, and `agent_intent.avatar_ref` are primary
+keys and therefore already indexed for the join side of the region-scoped
+subscriptions.
 
 ## Build
 

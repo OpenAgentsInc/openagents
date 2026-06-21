@@ -185,11 +185,17 @@ The intended subscription shape is:
 - `world_region` for the selected run region envelope;
 - `pylon_station` filtered by `region_ref`;
 - `avatar_position` filtered by `region_ref`, joined to `agent_avatar`;
-- ephemeral rows (`pylon_attention`, `local_chat_message`, `chat_bubble`,
-  `local_emote`, `agent_intent`) scoped to the active region or selected
-  public entity;
+- `pylon_attention` joined through active-region `pylon_station` rows;
+- `chat_bubble` joined through active-region `local_chat_message` rows;
+- `agent_intent` joined through active-region `avatar_position` rows;
+- `local_chat_message` and `local_emote` filtered by `region_ref`;
 - proof/run/settlement details still read by selected public refs, not by
   proximity or animation.
+
+Issue #5891 implements that desktop query contract and adds module indexes for
+the active run/region filters and join columns. It also introduces a bounded
+visible/nearby pylon/avatar target candidate mapper for the Verse tab-cycling
+path, so normal targeting does not enumerate off-screen or off-region users.
 
 Issue #5262 now derives pylon stations and one pylon-agent avatar per visible
 public leaderboard pylon ref from the existing Tassadar summary bridge. The

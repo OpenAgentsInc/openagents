@@ -111,7 +111,11 @@ pub struct SettlementRef {
     updated_at: Timestamp,
 }
 
-#[spacetimedb::table(accessor = world_event, public)]
+#[spacetimedb::table(
+    accessor = world_event,
+    public,
+    index(accessor = world_event_run, btree(columns = [run_ref]))
+)]
 pub struct WorldEvent {
     #[primary_key]
     event_ref: String,
@@ -175,7 +179,11 @@ pub struct WorldRegion {
     updated_at: Timestamp,
 }
 
-#[spacetimedb::table(accessor = pylon_station, public)]
+#[spacetimedb::table(
+    accessor = pylon_station,
+    public,
+    index(accessor = pylon_station_region, btree(columns = [region_ref]))
+)]
 pub struct PylonStation {
     #[primary_key]
     pylon_ref: String,
@@ -205,7 +213,11 @@ pub struct AgentAvatar {
     last_seen_at: Timestamp,
 }
 
-#[spacetimedb::table(accessor = avatar_position, public)]
+#[spacetimedb::table(
+    accessor = avatar_position,
+    public,
+    index(accessor = avatar_position_region, btree(columns = [region_ref]))
+)]
 pub struct AvatarPosition {
     #[primary_key]
     avatar_ref: String,
@@ -220,7 +232,11 @@ pub struct AvatarPosition {
     updated_at: Timestamp,
 }
 
-#[spacetimedb::table(accessor = pylon_attention, public)]
+#[spacetimedb::table(
+    accessor = pylon_attention,
+    public,
+    index(accessor = pylon_attention_pylon, btree(columns = [pylon_ref]))
+)]
 pub struct PylonAttention {
     #[primary_key]
     attention_ref: String,
@@ -234,7 +250,11 @@ pub struct PylonAttention {
     expires_at_epoch_ms: i64,
 }
 
-#[spacetimedb::table(accessor = local_chat_message, public)]
+#[spacetimedb::table(
+    accessor = local_chat_message,
+    public,
+    index(accessor = local_chat_message_region, btree(columns = [region_ref]))
+)]
 pub struct LocalChatMessage {
     #[primary_key]
     message_ref: String,
@@ -250,7 +270,11 @@ pub struct LocalChatMessage {
     moderation_state: String,
 }
 
-#[spacetimedb::table(accessor = chat_bubble, public)]
+#[spacetimedb::table(
+    accessor = chat_bubble,
+    public,
+    index(accessor = chat_bubble_message, btree(columns = [message_ref]))
+)]
 pub struct ChatBubble {
     #[primary_key]
     bubble_ref: String,
@@ -261,7 +285,11 @@ pub struct ChatBubble {
     expires_at_epoch_ms: i64,
 }
 
-#[spacetimedb::table(accessor = local_emote, public)]
+#[spacetimedb::table(
+    accessor = local_emote,
+    public,
+    index(accessor = local_emote_region, btree(columns = [region_ref]))
+)]
 pub struct LocalEmote {
     #[primary_key]
     emote_ref: String,
@@ -1610,16 +1638,10 @@ fn insert_local_message(
     let channel_kind =
         validate_choice(channel_kind, "channel_kind", &["local", "pylon", "system"])?;
     let now_ms = ctx_epoch_ms(ctx);
-    if ctx
-        .db
-        .local_chat_message()
-        .iter()
-        .any(|row| {
-            row.speaker_avatar_ref == speaker_avatar_ref
-                && row.expires_at_epoch_ms
-                    > now_ms + CHAT_TTL_MS - CHAT_MESSAGE_MIN_INTERVAL_MS
-        })
-    {
+    if ctx.db.local_chat_message().iter().any(|row| {
+        row.speaker_avatar_ref == speaker_avatar_ref
+            && row.expires_at_epoch_ms > now_ms + CHAT_TTL_MS - CHAT_MESSAGE_MIN_INTERVAL_MS
+    }) {
         return Err("chat messages are rate limited".to_string());
     }
     let message_ref = next_ref(ctx, "message");

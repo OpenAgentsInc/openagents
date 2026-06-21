@@ -11,9 +11,11 @@ import {
   pylonGrowthTier,
 } from "../src/shared/chat-world-scene"
 import {
+  CHAT_WORLD_STATION_NODE_PREFIX,
   chatWorldMultiplayerLayer,
   chatWorldPaymentEndpointIndex,
   chatWorldPaymentLayer,
+  chatWorldVisibleTargetCandidates,
   liveChatWorldNetworkScene,
   resolveChatWorldPaymentEndpoint,
   withChatWorldMultiplayerLayer,
@@ -318,6 +320,193 @@ describe("chatWorldMultiplayerLayer", () => {
     const layer = chatWorldMultiplayerLayer(worldProjection({ connected: false }))
     expect(layer.entities).toEqual([])
     expect(layer.remoteAvatars).toEqual([])
+  })
+})
+
+describe("chatWorldVisibleTargetCandidates", () => {
+  test("cycles only visible nearby pylon/avatar targets in screen order", () => {
+    const world = worldProjection({
+      projectedAtMs: 10_000,
+      stations: [
+        {
+          pylonRef: "pylon.alpha",
+          label: "Alpha Pylon",
+          x: 5,
+          y: 0,
+          z: 0,
+        },
+        {
+          pylonRef: "pylon.beta",
+          label: "Beta Pylon",
+          x: 2,
+          y: 0,
+          z: 0,
+        },
+        {
+          pylonRef: "pylon.far",
+          label: "Far Pylon",
+          x: 120,
+          y: 0,
+          z: 0,
+        },
+      ],
+      agents: [
+        {
+          avatarRef: "avatar.bravo",
+          actorRef: "agent.bravo",
+          avatarKind: "tassadar",
+          label: "Bravo",
+          color: "#f5b73a",
+          x: -3,
+          y: 0,
+          z: 0,
+          yaw: 0,
+          movementMode: "walk",
+          lastSeenEpochMs: 9_900,
+          chatMessages: [],
+          attentionRefs: [],
+        },
+        {
+          avatarRef: "avatar.desktop.local",
+          actorRef: "agent.local",
+          avatarKind: "tassadar",
+          label: "Local",
+          color: "#ffffff",
+          x: 0,
+          y: 0,
+          z: 0,
+          yaw: 0,
+          movementMode: "idle",
+          lastSeenEpochMs: 10_000,
+          chatMessages: [],
+          attentionRefs: [],
+        },
+        {
+          avatarRef: "avatar.offscreen",
+          actorRef: "agent.offscreen",
+          avatarKind: "tassadar",
+          label: "Offscreen",
+          color: "#9ca3af",
+          x: 4,
+          y: 0,
+          z: 0,
+          yaw: 0,
+          movementMode: "walk",
+          lastSeenEpochMs: 9_900,
+          chatMessages: [],
+          attentionRefs: [],
+        },
+        {
+          avatarRef: "avatar.stale",
+          actorRef: "agent.stale",
+          avatarKind: "tassadar",
+          label: "Stale",
+          color: "#9ca3af",
+          x: 1,
+          y: 0,
+          z: 0,
+          yaw: 0,
+          movementMode: "walk",
+          lastSeenEpochMs: -5_000,
+          chatMessages: [],
+          attentionRefs: [],
+        },
+      ],
+    })
+
+    const candidates = chatWorldVisibleTargetCandidates(world, {
+      localAvatarRef: "avatar.desktop.local",
+      maxDistanceMeters: 10,
+      viewerPosition: [0, 0, 0],
+      visibility: [
+        {
+          id: "avatar.desktop.local",
+          screenCenterX: 0,
+          screenCenterY: 0,
+          visible: true,
+        },
+        {
+          id: "avatar.bravo",
+          screenCenterX: 0.1,
+          screenCenterY: 0.1,
+          visible: true,
+        },
+        {
+          id: `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.alpha`,
+          screenCenterX: 0.2,
+          screenCenterY: 0,
+          visible: true,
+        },
+        {
+          id: `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.beta`,
+          screenCenterX: 0.2,
+          screenCenterY: 0,
+          visible: true,
+        },
+        {
+          id: `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.far`,
+          screenCenterX: 0.01,
+          screenCenterY: 0,
+          visible: true,
+        },
+        {
+          id: "avatar.offscreen",
+          screenCenterX: 0,
+          screenCenterY: 0,
+          visible: false,
+        },
+        {
+          id: "avatar.stale",
+          screenCenterX: 0,
+          screenCenterY: 0,
+          visible: true,
+        },
+      ],
+    })
+
+    expect(candidates.map(candidate => candidate.id)).toEqual([
+      "avatar.bravo",
+      `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.beta`,
+      `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.alpha`,
+    ])
+    expect(candidates.map(candidate => candidate.kind)).toEqual([
+      "avatar",
+      "pylon",
+      "pylon",
+    ])
+    expect(candidates.some(candidate => candidate.id.startsWith("pay:"))).toBe(false)
+  })
+
+  test("caps crowded region targets after sorting", () => {
+    const candidates = chatWorldVisibleTargetCandidates(
+      worldProjection({
+        stations: Array.from({ length: 8 }, (_, index) => ({
+          pylonRef: `pylon.${index}`,
+          label: `Pylon ${index}`,
+          x: index + 1,
+          y: 0,
+          z: 0,
+        })),
+        agents: [],
+      }),
+      {
+        maxCandidates: 3,
+        viewerPosition: [0, 0, 0],
+        visibility: Array.from({ length: 8 }, (_, index) => ({
+          id: `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.${index}`,
+          screenCenterX: index / 100,
+          screenCenterY: 0,
+          visible: true,
+        })),
+      },
+    )
+
+    expect(candidates).toHaveLength(3)
+    expect(candidates.map(candidate => candidate.ref)).toEqual([
+      "pylon.0",
+      "pylon.1",
+      "pylon.2",
+    ])
   })
 })
 
