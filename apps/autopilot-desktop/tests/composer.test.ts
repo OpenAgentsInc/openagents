@@ -165,7 +165,7 @@ describe("composer reducer (#5355)", () => {
     expect(cmd.args?.objective).toBe("add a /health route and a test")
   })
 
-  test("ChangedVerseMode(code) defaults the composer runtime to Codex", () => {
+  test("ChangedVerseMode(code) preserves Claude Agent runtime", () => {
     const start = Model.make({
       ...initialModel,
       pane: "chat",
@@ -173,7 +173,42 @@ describe("composer reducer (#5355)", () => {
     })
     const [model] = update(start, ChangedVerseMode({ mode: "code" }))
     expect(model.verseMode).toBe("code")
-    expect(model.spawnAdapter).toBe("codex")
+    expect(model.spawnAdapter).toBe("claude_agent")
+    expect(model.managedAccountsStatus.text).toContain("Claude Agent")
+  })
+
+  test("Verse code mode starts Claude Agent when Claude was selected", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "chat",
+      spawnAdapter: "claude_agent",
+      spawnObjective: "start a real Claude session from Verse",
+      composerRepoPath: "/Users/me/code/repo",
+    })
+
+    const [codeMode] = update(start, ChangedVerseMode({ mode: "code" }))
+    const [model, commands] = update(codeMode, ClickedComposerSpawn())
+    expect(model.composerPending).toBe(true)
+    expect(commands).toHaveLength(1)
+    const cmd = commands[0] as unknown as {
+      name?: string
+      args?: { adapter?: string; objective?: string; worktreePath?: string | null }
+    }
+    expect(cmd.name).toBe("SpawnComposerTurn")
+    expect(cmd.args?.adapter).toBe("claude_agent")
+    expect(cmd.args?.objective).toBe("start a real Claude session from Verse")
+    expect(cmd.args?.worktreePath).toBe("/Users/me/code/repo")
+  })
+
+  test("ChangedVerseMode(code) maps Apple FM to Claude Agent for session.spawn", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "chat",
+      spawnAdapter: "apple_fm",
+    })
+    const [model] = update(start, ChangedVerseMode({ mode: "code" }))
+    expect(model.verseMode).toBe("code")
+    expect(model.spawnAdapter).toBe("claude_agent")
   })
 
   test("ChangedSpawnAdapter clears stale selected account refs", () => {

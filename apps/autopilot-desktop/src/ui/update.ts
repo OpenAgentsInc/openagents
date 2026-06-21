@@ -1393,6 +1393,8 @@ export const update = (model: Model, message: Message): Result => {
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
     case "ChangedVerseMode": {
       const enteringCode = message.mode === "code" && model.verseMode !== "code"
+      const codeModeAdapter =
+        model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
       return [
         withCodeModeSync(
           Model.make({
@@ -1400,11 +1402,14 @@ export const update = (model: Model, message: Message): Result => {
             verseMode: message.mode,
             ...(enteringCode
               ? {
-                  spawnAdapter: "codex" as const,
+                  spawnAdapter: codeModeAdapter,
                   composerAccountRef: null,
                   managedAccountsPending: true,
                   managedAccountsStatus: {
-                    text: "loading Codex accounts...",
+                    text:
+                      codeModeAdapter === "claude_agent"
+                        ? "loading Claude Agent accounts..."
+                        : "loading Codex accounts...",
                     tone: "info" as const,
                   },
                 }
