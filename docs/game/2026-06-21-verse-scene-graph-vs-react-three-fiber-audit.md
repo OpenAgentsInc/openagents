@@ -545,3 +545,20 @@ continuous controller, avatar, beam, burst, and interpolation animation. The
 important audit alignment is that frame ownership is now a reusable primitive
 instead of another closure-local lifecycle, and the same primitive already has
 the demand/manual semantics needed by future retained-mode scenes and tests.
+
+Issue
+[`#5917`](https://github.com/OpenAgentsInc/openagents/issues/5917) applied the
+pure-helper extraction from recommendation 6. Autopilot Desktop now has
+`src/shared/verse-scene-helpers.ts` for appending descriptor arrays to
+`TrainingRunVisualizationOptions`, deduping/trimming public refs and board
+lines, clamping finite positive metrics, and rounding vectors. The Tassadar
+training layer, Tassadar bulletin layer, pylon-base layer, and chat-world
+multiplayer/payment layers now compose through those helpers instead of each
+repeating local spread/dedupe/rounding code. `test:verse-launch` includes a
+focused helper test so these pure contracts travel with the Verse regression
+suite.
+
+The same pass pinned `three-effect` `3c68f3e`, which changes the physical
+Tassadar bulletin board from the old brown wooden palette to a black, gray, and
+white Verse palette. `three-effect` now has a regression assertion that the
+board mesh colors include the grayscale palette and exclude the old wood hexes.

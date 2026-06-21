@@ -41,6 +41,10 @@ import {
   type PylonNetworkNode,
   type PylonNetworkScene,
 } from "./pylon-network-scene.js"
+import {
+  appendVerseVisualization,
+  roundedVerseVector,
+} from "./verse-scene-helpers.js"
 
 // ── Live pylon scene → PylonNetworkScene (the existing bezier graph model) ────
 
@@ -104,11 +108,11 @@ const endpointRingPosition = (index: number, count: number): TrainingRunVector =
   const radius = PAYMENT_RING_RADIUS + Math.min(1.6, count / 40)
   const angle = count <= 0 ? 0 : (2 * Math.PI * index) / count
   const height = 0.52 + Math.sin(index * 1.61803398875 + count * 0.23) * 0.64
-  return [
-    Number((Math.cos(angle) * radius).toFixed(3)),
-    Number((Math.sin(angle) * radius * 0.62).toFixed(3)),
-    Number(height.toFixed(3)),
-  ]
+  return roundedVerseVector([
+    Math.cos(angle) * radius,
+    Math.sin(angle) * radius * 0.62,
+    height,
+  ])
 }
 
 // An entity status the renderer's status→color map reads. real_bitcoin earns the
@@ -571,9 +575,10 @@ export const withChatWorldMultiplayerLayer = (
   const layer = chatWorldMultiplayerLayer(world, options)
   if (layer.entities.length === 0 && layer.remoteAvatars.length === 0) return base
   return {
-    ...base,
-    entities: [...(base.entities ?? []), ...layer.entities],
-    remoteAvatars: [...(base.remoteAvatars ?? []), ...layer.remoteAvatars],
+    ...appendVerseVisualization(base, {
+      entities: layer.entities,
+      remoteAvatars: layer.remoteAvatars,
+    }),
     remoteAvatarInterpolation: {
       ...(base.remoteAvatarInterpolation ?? {}),
       despawnAfterMs: options.despawnAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS,
@@ -594,10 +599,11 @@ export const withChatWorldPaymentLayer = (
   const layer = chatWorldPaymentLayer(particles, world)
   if (layer.entities.length === 0) return base
   return {
-    ...base,
-    entities: [...(base.entities ?? []), ...layer.entities],
-    beams: [...(base.beams ?? []), ...layer.beams],
-    bursts: [...(base.bursts ?? []), ...layer.bursts],
+    ...appendVerseVisualization(base, {
+      entities: layer.entities,
+      beams: layer.beams,
+      bursts: layer.bursts,
+    }),
     motionPolicy: { ...(base.motionPolicy ?? {}), evidence: "required" },
   }
 }

@@ -9,6 +9,10 @@ import type {
   TassadarRunBulletin,
   TrainingRunsResponse,
 } from "./rpc.js"
+import {
+  appendVerseVisualization,
+  compactVerseLines,
+} from "./verse-scene-helpers.js"
 
 export const VERSE_TASSADAR_BULLETIN_ITEM_ID = "verse:bulletin:tassadar-run"
 
@@ -34,11 +38,6 @@ const compact = (value: string | undefined, fallback: string): string => {
   const text = value?.trim()
   return text === undefined || text.length === 0 ? fallback : text
 }
-
-const lines = (values: ReadonlyArray<string | undefined>): readonly string[] =>
-  values
-    .map(value => value?.trim() ?? "")
-    .filter((value, index, all) => value.length > 0 && all.indexOf(value) === index)
 
 const numberText = (value: number | undefined): string =>
   new Intl.NumberFormat("en-US").format(
@@ -86,7 +85,7 @@ export const verseTassadarBulletinWorldItem = (
     bulletin?.summary,
     "Waiting for the public Tassadar run summary from openagents.com.",
   )
-  const onBoardLines = lines([
+  const onBoardLines = compactVerseLines([
     ...(bulletin?.onBoardLines ?? []),
     bulletin?.statusLine,
     headline,
@@ -105,7 +104,7 @@ export const verseTassadarBulletinWorldItem = (
     yaw: bulletinBoardYaw,
     interactionRadius: bulletinBoardInteractionRadius,
     status: statusFromRunState(summary?.runState),
-    sourceRefs: lines([
+    sourceRefs: compactVerseLines([
       summary?.runRef,
       ...(bulletin?.sourceRefs ?? []),
       "route:/api/public/tassadar-run-summary",
@@ -118,10 +117,7 @@ export const withVerseBulletinBoardLayer = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions => {
   const item = verseTassadarBulletinWorldItem(projection)
-  return {
-    ...base,
-    worldItems: [...(base.worldItems ?? []), item],
-  }
+  return appendVerseVisualization(base, { worldItems: [item] })
 }
 
 const metricRows = (

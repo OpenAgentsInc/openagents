@@ -15,6 +15,10 @@ import type {
   IdentityChoiceStateResponse,
   TrainingOperatorReadinessResponse,
 } from "./rpc.js"
+import {
+  appendVerseVisualization,
+  uniqueVerseStrings,
+} from "./verse-scene-helpers.js"
 import { VERSE_TASSADAR_CORE_NODE_ID } from "./verse-training-visualization.js"
 
 export const PYLON_BASE_NODE_ID = "verse-pylon-base:my-base"
@@ -69,18 +73,6 @@ export type ProjectPylonBaseInput = {
   readonly particles: ReadonlyArray<PaymentParticle>
 }
 
-const uniqueStrings = (
-  values: ReadonlyArray<string | null | undefined>,
-): string[] => {
-  const out: string[] = []
-  for (const value of values) {
-    const trimmed = typeof value === "string" ? value.trim() : ""
-    if (trimmed.length === 0 || out.includes(trimmed)) continue
-    out.push(trimmed)
-  }
-  return out
-}
-
 const normalizeToken = (value: string): string =>
   value.trim().toLowerCase().replace(/^pylon[.:]/, "")
 
@@ -88,14 +80,14 @@ const identityTokens = (
   identityChoice: IdentityChoiceStateResponse | null,
   readiness: TrainingOperatorReadinessResponse | null,
 ): string[] =>
-  uniqueStrings([
+  uniqueVerseStrings([
     readiness?.pylonRef ?? null,
     identityChoice?.detected.pylonRef ?? null,
     identityChoice?.detected.shortLabel ?? null,
     identityChoice?.detected.npub ?? null,
   ]).flatMap((token) => {
     const normalized = normalizeToken(token)
-    return uniqueStrings([token, normalized, `pylon.${normalized}`, `pylon:${normalized}`])
+    return uniqueVerseStrings([token, normalized, `pylon.${normalized}`, `pylon:${normalized}`])
   })
 
 const matchesAnyToken = (
@@ -254,7 +246,7 @@ export const projectPylonBase = (
   }
   const blockerRefs = missing
     ? [PYLON_BASE_IDENTITY_MISSING_BLOCKER]
-    : uniqueStrings(input.trainingOperatorReadiness?.blockerRefs ?? [])
+    : uniqueVerseStrings(input.trainingOperatorReadiness?.blockerRefs ?? [])
   const mana = pylonBaseMana(
     readiness,
     settled.settledSats,
@@ -328,7 +320,5 @@ export const pylonBaseNode = (
 export const withPylonBaseLayer = (
   base: TrainingRunVisualizationOptions,
   projection: PylonBaseProjection,
-): TrainingRunVisualizationOptions => ({
-  ...base,
-  nodes: [...(base.nodes ?? []), pylonBaseNode(projection)],
-})
+): TrainingRunVisualizationOptions =>
+  appendVerseVisualization(base, { nodes: [pylonBaseNode(projection)] })

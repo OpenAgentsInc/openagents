@@ -12,6 +12,11 @@ import type {
   TrainingRunSummaryRow,
   TrainingRunsResponse,
 } from "./rpc.js"
+import {
+  appendVerseVisualization,
+  finitePositiveVerseNumber,
+  uniqueVerseStrings,
+} from "./verse-scene-helpers.js"
 
 export const VERSE_TASSADAR_CORE_NODE_ID = "verse-training:tassadar-run-core"
 export const VERSE_TRAINING_NODE_PREFIX = "verse-training:"
@@ -42,20 +47,11 @@ const stagePositions = {
   blocked: [0, 1.72, 1.74] as TrainingRunVector,
 } as const
 
-const uniqueRefs = (refs: ReadonlyArray<string | null | undefined>): string[] => {
-  const out: string[] = []
-  for (const ref of refs) {
-    if (typeof ref !== "string" || ref.length === 0 || out.includes(ref)) continue
-    out.push(ref)
-  }
-  return out
-}
-
 const refsFromMetric = (metric: TrainingPublicMetric): string[] =>
-  uniqueRefs(metric.sourceRefs)
+  uniqueVerseStrings(metric.sourceRefs)
 
 const metricValue = (metric: TrainingPublicMetric): number =>
-  Number.isFinite(metric.value) && metric.value > 0 ? metric.value : 0
+  finitePositiveVerseNumber(metric.value)
 
 export const selectedVerseTrainingSummary = (
   projection: TrainingRunsResponse | null,
@@ -114,7 +110,7 @@ const rewriteBaseNodes = (
       : publicRefDetail(
           summary.run.state,
           summary.run.trainingRunRef,
-          uniqueRefs([
+          uniqueVerseStrings([
             summary.run.trainingRunRef,
             summary.run.promiseRef,
             ...summary.run.sourceRefs,
@@ -170,7 +166,7 @@ const stageRefs = (summary: TrainingRunSummaryRow) => {
     ...window.sourceRefs,
     ...window.receiptRefs,
   ])
-  const replayRefs = uniqueRefs([
+  const replayRefs = uniqueVerseStrings([
     ...closeout.freivaldsCommitmentRefs,
     ...closeout.gradientCloseoutRefs,
     closeout.evalRef,
@@ -179,7 +175,7 @@ const stageRefs = (summary: TrainingRunSummaryRow) => {
     ...loss.sourceRefs,
     ...summary.realGradient.deviceRequirement.sourceRefs,
   ])
-  const settlementRefs = uniqueRefs([
+  const settlementRefs = uniqueVerseStrings([
     ...refsFromMetric(metrics.providerConfirmedSettledPayoutSats),
     ...summary.receiptRefs,
     ...summary.run.receiptRefs,
@@ -187,18 +183,18 @@ const stageRefs = (summary: TrainingRunSummaryRow) => {
   ])
 
   return {
-    assignment: uniqueRefs([
+    assignment: uniqueVerseStrings([
       ...refsFromMetric(metrics.assignedContributorCount),
       ...summary.run.sourceRefs,
       ...windowRefs,
     ]),
-    trace: uniqueRefs([
+    trace: uniqueVerseStrings([
       ...refsFromMetric(metrics.receiptRefCount),
       ...summary.sourceRefs,
       ...windowRefs,
     ]),
     replay: replayRefs,
-    verdict: uniqueRefs([
+    verdict: uniqueVerseStrings([
       ...refsFromMetric(metrics.verifiedWorkCount),
       ...refsFromMetric(metrics.rejectedWorkCount),
       ...replayRefs,
@@ -207,7 +203,7 @@ const stageRefs = (summary: TrainingRunSummaryRow) => {
     ]),
     settlement: settlementRefs,
     recipient: settlementRefs,
-    blocked: uniqueRefs([...externalAsk.blockerRefs, ...externalAsk.requirementRefs]),
+    blocked: uniqueVerseStrings([...externalAsk.blockerRefs, ...externalAsk.requirementRefs]),
   } as const
 }
 
@@ -216,7 +212,7 @@ const trainingStages = (
   promiseGates: TrainingPromiseGatesResponse | null,
 ): readonly TrainingRunNodeDefinition[] => {
   if (summary === null) {
-    const blockerRefs = uniqueRefs(promiseGates?.blockerRefs ?? [])
+    const blockerRefs = uniqueVerseStrings(promiseGates?.blockerRefs ?? [])
     return [
       stageNode({
         id: "assignment",
@@ -338,7 +334,7 @@ const pushMotion = (
     burst?: boolean
   }>,
 ): void => {
-  const refs = uniqueRefs(input.refs)
+  const refs = uniqueVerseStrings(input.refs)
   if (refs.length === 0) return
   const motion = {
     motionId: `${input.kind}:${input.toId}:${refs[0]}`,
@@ -447,10 +443,11 @@ export const withVerseTrainingLayer = (
   const motion = trainingMotion(summary)
 
   return {
-    ...base,
+    ...appendVerseVisualization(base, {
+      beams: motion.beams,
+      bursts: motion.bursts,
+    }),
     nodes,
-    beams: [...(base.beams ?? []), ...motion.beams],
-    bursts: [...(base.bursts ?? []), ...motion.bursts],
     motionPolicy: {
       ...(base.motionPolicy ?? {}),
       ambient: "static",
