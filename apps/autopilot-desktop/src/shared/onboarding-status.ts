@@ -70,6 +70,12 @@ export type OnboardingStatusInput = {
   // AF-3 (#5900): has the node posted its public forum self-introduction yet?
   // Derived from a persisted intro receipt in the Bun host (public-safe).
   readonly forumIntroPosted: boolean
+  // AF-4 (#5901): has the node run a read-only work-search over the typed
+  // `work-requests` lane at least once? Derived from a persisted receipt.
+  readonly forumWorkSearched: boolean
+  // AF-4 (#5901): count of open work items observed at the last search (0 when
+  // none open or not yet searched). Discovery only — never a commitment.
+  readonly forumWorkOpenCount: number
   // assignments.poll (CL-50): count of open work-lease assignments observed.
   readonly openAssignmentCount: number
 }
@@ -349,6 +355,52 @@ const forumIntroStep = (input: OnboardingStatusInput): OnboardingStep => {
   }
 }
 
+// AF-4 (#5901): automated read-only work-search over the typed work-requests
+// lane. Discovery only — never a bid/quote/accept/spend. Done once a search has
+// completed (honest empty state is acceptable, so the wizard advances); the
+// message surfaces the observed open-item count. Active while the first search
+// runs; pending until registration.
+const workSearchStep = (input: OnboardingStatusInput): OnboardingStep => {
+  if (input.forumWorkSearched) {
+    const n = input.forumWorkOpenCount
+    return {
+      id: "work-search",
+      label: "Work search active",
+      status: "done",
+      message:
+        n > 0
+          ? `Watching the work market — ${n} open item${n === 1 ? "" : "s"} right now.`
+          : "Watching the work market — none open right now.",
+      retryable: false,
+    }
+  }
+  if (!input.agentRegistered) {
+    return {
+      id: "work-search",
+      label: "Work search active",
+      status: "pending",
+      message: "Waiting on agent registration.",
+      retryable: false,
+    }
+  }
+  if (nodeFailed(input.nodeLaunchStatus)) {
+    return {
+      id: "work-search",
+      label: "Work search active",
+      status: "failed",
+      message: "The node is offline, so work search is paused. Retry.",
+      retryable: true,
+    }
+  }
+  return {
+    id: "work-search",
+    label: "Work search active",
+    status: "active",
+    message: "Searching the Forum work market for relevant tasks.",
+    retryable: false,
+  }
+}
+
 const tassadarStep = (input: OnboardingStatusInput): OnboardingStep => {
   if (input.openAssignmentCount > 0) {
     return {
@@ -461,6 +513,7 @@ export const projectOnboardingStatus = (
     tipReadyStep(input),
     presenceStep(input),
     forumIntroStep(input),
+    workSearchStep(input),
     tassadarStep(input),
     claimedStep(input),
     earnedStep(input),

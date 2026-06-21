@@ -22,6 +22,8 @@ const base: OnboardingStatusInput = {
   openAssignmentCount: 0,
   forumTipReady: false,
   forumIntroPosted: false,
+  forumWorkSearched: false,
+  forumWorkOpenCount: 0,
 }
 
 const step = (steps: readonly OnboardingStep[], id: string): OnboardingStep => {
@@ -49,10 +51,41 @@ describe("projectOnboardingStatus (AO-4)", () => {
       "tip-ready",
       "presence",
       "forum-intro",
+      "work-search",
       "tassadar",
       "claimed",
       "earned",
     ])
+  })
+
+  it("AF-4: work-search is active while searching, done with an honest count once searched", () => {
+    const registered = {
+      ...base,
+      identityChoiceMade: true,
+      agentRegistered: true,
+      onboardingEnvConfigured: true,
+      nodeLaunchStatus: "online" as const,
+      localPylonReady: true,
+    }
+    expect(
+      step(projectOnboardingStatus(registered).steps, "work-search").status,
+    ).toBe("active")
+    const none = step(
+      projectOnboardingStatus({ ...registered, forumWorkSearched: true }).steps,
+      "work-search",
+    )
+    expect(none.status).toBe("done")
+    expect(none.message).toContain("none open")
+    const some = step(
+      projectOnboardingStatus({
+        ...registered,
+        forumWorkSearched: true,
+        forumWorkOpenCount: 3,
+      }).steps,
+      "work-search",
+    )
+    expect(some.status).toBe("done")
+    expect(some.message).toContain("3 open items")
   })
 
   it("AF-3: forum-intro is pending until registered, active while converging, done with a receipt", () => {

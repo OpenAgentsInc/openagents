@@ -27,6 +27,10 @@ import {
 } from "./forum-tip-recipient"
 import { hasPostedForumIntro, postForumIntroduction } from "./forum-intro"
 import {
+  loadWorkSearchReceipt,
+  searchForumWork,
+} from "./forum-work-search"
+import {
   detectExistingPylonIdentity,
   detectedIdentityShortLabel,
   loadIdentityChoice,
@@ -645,6 +649,15 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     void maybePostForumIntro(home, forumTipReady)
   }
 
+  // AF-4 (#5901): read-only work-search over the typed work-requests lane on a
+  // slow cadence. Discovery only — never bids/quotes/accepts/spends.
+  const workReceipt = home === null ? null : loadWorkSearchReceipt(home)
+  const forumWorkSearched = workReceipt !== null
+  const forumWorkOpenCount = workReceipt?.openCount ?? 0
+  if (home !== null && agentRegistered && localPylonReady) {
+    void maybeSearchForumWork(home, workReceipt?.lastSearchedAt ?? null)
+  }
+
   return projectOnboardingStatus({
     fetchedAt: new Date().toISOString(),
     identityChoiceMade: choice !== null,
@@ -658,7 +671,35 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     openAssignmentCount,
     forumTipReady,
     forumIntroPosted,
+    forumWorkSearched,
+    forumWorkOpenCount,
   })
+}
+
+// AF-4 (#5901): single-flight, slow-cadence driver for read-only work-search.
+// Re-searches at most once per WORK_SEARCH_MIN_INTERVAL_MS so a 2s status poll
+// does not hammer the lane. Discovery only — never commits or spends.
+const WORK_SEARCH_MIN_INTERVAL_MS = 60_000
+let workSearchInFlight = false
+async function maybeSearchForumWork(
+  home: string,
+  lastSearchedAt: string | null,
+): Promise<void> {
+  if (workSearchInFlight) return
+  if (lastSearchedAt !== null) {
+    const last = Date.parse(lastSearchedAt)
+    if (Number.isFinite(last) && Date.now() - last < WORK_SEARCH_MIN_INTERVAL_MS) {
+      return
+    }
+  }
+  workSearchInFlight = true
+  try {
+    await searchForumWork({ home, baseUrl: onboardingBaseUrl })
+  } catch {
+    // Non-fatal: retried on a later poll.
+  } finally {
+    workSearchInFlight = false
+  }
 }
 
 // AF-3 (#5900): single-flight driver for the forum self-introduction post.
