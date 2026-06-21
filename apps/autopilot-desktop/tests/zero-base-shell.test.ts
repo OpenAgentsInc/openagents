@@ -26,6 +26,7 @@ import {
   FailedShellCodingTurn,
   GotNodeState,
   OpenedPanes,
+  PressedKey,
   RespondedShell,
   SelectedShellTarget,
   SubmittedShell,
@@ -559,17 +560,23 @@ describe("zero-base shell: open / close the hidden full UI", () => {
     expect(closed.commandPaletteOpen).toBe(false)
   })
 
-  test("Escape from any pane returns to the shell — you can never get trapped", () => {
-    // The bug: opening the full UI (Cmd-K / open-panes) left no way back.
+  test("Escape never drops the Verse back to the shell", () => {
     const inPane = Model.make({ ...initialModel, pane: "chat", commandPaletteOpen: false })
     const esc = { key: "Escape", meta: false, ctrl: false, shift: false, inEditable: false }
-    expect(interpretKey(inPane, esc)).toEqual({ kind: "back-to-shell" })
-    // ...and the reducer takes it home (ClosedPanes → shell).
-    const [home] = update(inPane, ClosedPanes())
-    expect(home.pane).toBe("shell")
-    // On the shell itself, Escape is not a back-to-shell (nothing to escape).
+    expect(interpretKey(inPane, esc)).toEqual({ kind: "none" })
+    const [stillVerse] = update(inPane, PressedKey(esc))
+    expect(stillVerse.pane).toBe("chat")
+
+    const fullscreen = Model.make({
+      ...initialModel,
+      pane: "training-fullscreen",
+      commandPaletteOpen: false,
+    })
+    const [stillFullscreen] = update(fullscreen, PressedKey(esc))
+    expect(stillFullscreen.pane).toBe("training-fullscreen")
+
     const onShell = Model.make({ ...initialModel, pane: "shell", commandPaletteOpen: false })
-    expect(interpretKey(onShell, esc)).not.toEqual({ kind: "back-to-shell" })
+    expect(interpretKey(onShell, esc)).toEqual({ kind: "none" })
   })
 
   test("advanced panes render a visible fallback control", () => {

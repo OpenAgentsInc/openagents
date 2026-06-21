@@ -30,9 +30,9 @@ export type KeyIntent =
   // never-no-op navigation action available in any grouped pane). `pane` is the
   // resolved destination the reducer should navigate to.
   | Readonly<{ kind: "navigate-pane"; pane: PaneId }>
-  // Escape from any non-shell pane returns to the zero-base shell — the
-  // explicit "open panes" can always be undone, so you never get trapped in
-  // the full UI (owner directive 2026-06-19).
+  // Explicit controls handle shell navigation. Escape is reserved for local UI
+  // dismissal (palette/input/canvas capture) and must never drop the Verse back
+  // to the zero-base shell.
   | Readonly<{ kind: "back-to-shell" }>
   // #5730 The Verse: ⌘⇧V / Ctrl-⇧V toggles the game-world view on/off.
   | Readonly<{ kind: "toggle-verse" }>
@@ -68,11 +68,10 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
-  // ── Escape returns to the zero-base shell from anywhere in the full UI ────
-  // The shell is the home surface; once you've opened the panes (Cmd-K or the
-  // affordance), Escape always takes you back so you can never get stranded.
-  // Works even while typing (inEditable) — it's a deliberate global escape.
-  if (key === "Escape" && model.pane !== "shell") return { kind: "back-to-shell" }
+  // ── Escape outside the palette is intentionally local/no-op ───────────────
+  // In the Verse app the canvas owns navigation. Pressing Escape a few times
+  // must not reveal the old shell or coding target selector.
+  if (key === "Escape") return { kind: "none" }
 
   // ── Cmd/Ctrl-K opens the palette from anywhere (even while typing) ────────
   if (key.toLowerCase() === "k" && isModified(event)) return { kind: "open-palette" }
