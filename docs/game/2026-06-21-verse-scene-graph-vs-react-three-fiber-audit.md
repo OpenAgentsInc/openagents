@@ -458,3 +458,19 @@ it too easy to keep treating the scene as a disposable render target. The app no
 type-checks against the same retained handle that the runtime provides, so
 future movement, proximity, and multiplayer fixes have to go through explicit
 incremental APIs instead of accidentally depending on full scene replacement.
+
+Issue
+[`#5910`](https://github.com/OpenAgentsInc/openagents/issues/5910) then applied
+the second recommendation to the bulletin-board interaction path. The
+`three-effect` Foldkit host no longer writes proximity or presence state back
+onto the custom element as `data-*` attributes; it records explicit diagnostics
+and dispatches typed events while the WebGL host remains retained. The same
+`three-effect` update also keeps the third-person avatar group stable while the
+controller GLB loads and fades the loaded model in, so the async model handoff is
+not a hard character pop.
+
+The packaged Verse launch smoke now walks into the Tassadar board's interaction
+radius and fails unless it observes the board proximity event, sees no blank
+movement frames, and records no host remount/swap during the walk. That is the
+smallest practical guard for this bug class until the larger
+`SubscriptionRef`/reconciler recommendations in this audit are implemented.

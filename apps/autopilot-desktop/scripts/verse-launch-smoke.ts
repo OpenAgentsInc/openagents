@@ -23,6 +23,7 @@ const chromeCandidates = [
 ].filter((candidate): candidate is string => candidate !== undefined)
 
 const viewport = { width: 1280, height: 800 }
+const tassadarBulletinWorldItemId = "verse:bulletin:tassadar-run"
 
 const resolveChromePath = (): string => {
   const chromePath = chromeCandidates.find(candidate => existsSync(candidate))
@@ -222,6 +223,8 @@ type ContinuousMovementSmoke = {
   readonly nonblankFrames: number
   readonly minBrightPixels: number
   readonly activeHostRemounts: ReadonlyArray<VerseSceneDiagnostic>
+  readonly observedTassadarBoardProximity: boolean
+  readonly worldItemProximityEvents: ReadonlyArray<VerseSceneDiagnostic>
   readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
 }
 
@@ -444,6 +447,18 @@ const keyDownW = async (cdp: CdpClient): Promise<void> => {
   })
 }
 
+const keyDownD = async (cdp: CdpClient): Promise<void> => {
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "d",
+    code: "KeyD",
+    text: "d",
+    unmodifiedText: "d",
+    windowsVirtualKeyCode: 68,
+    nativeVirtualKeyCode: 68,
+  })
+}
+
 const keyUpW = async (cdp: CdpClient): Promise<void> => {
   await cdp.send("Input.dispatchKeyEvent", {
     type: "keyUp",
@@ -453,6 +468,16 @@ const keyUpW = async (cdp: CdpClient): Promise<void> => {
     nativeVirtualKeyCode: 87,
   })
   await wait(160)
+}
+
+const keyUpD = async (cdp: CdpClient): Promise<void> => {
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "d",
+    code: "KeyD",
+    windowsVirtualKeyCode: 68,
+    nativeVirtualKeyCode: 68,
+  })
 }
 
 const readVerseSceneDiagnostics = async (
@@ -784,6 +809,7 @@ const main = async (): Promise<void> => {
 
     const diagnosticsBeforeMovement = await readVerseSceneDiagnostics(cdp)
     await keyDownW(cdp)
+    await keyDownD(cdp)
     await wait(120)
     const movementFrameBytes: Buffer[] = []
     for (let i = 0; i < 5; i += 1) {
@@ -794,6 +820,7 @@ const main = async (): Promise<void> => {
       movementFrameBytes.push(Buffer.from(frame.data, "base64"))
       await wait(140)
     }
+    await keyUpD(cdp)
     await keyUpW(cdp)
     const movementScreenshotBytes =
       movementFrameBytes[movementFrameBytes.length - 1]
@@ -815,16 +842,25 @@ const main = async (): Promise<void> => {
       entry.event === "verse-host.remount.mounted" ||
       entry.event === "verse-host.remount.swapped",
     )
+    const worldItemProximityEvents = movementDiagnostics.filter(entry =>
+      entry.event === "verse-host.world-item-proximity",
+    )
+    const observedTassadarBoardProximity = worldItemProximityEvents.some(entry =>
+      entry.detail["itemId"] === tassadarBulletinWorldItemId,
+    )
     const continuousMovement: ContinuousMovementSmoke = {
       ok:
         movementFramePixels.every(frame => frame.ok) &&
-        activeHostRemounts.length === 0,
+        activeHostRemounts.length === 0 &&
+        observedTassadarBoardProximity,
       sampledFrames: movementFramePixels.length,
       nonblankFrames: movementFramePixels.filter(frame => frame.ok).length,
       minBrightPixels: Math.min(
         ...movementFramePixels.map(frame => frame.brightPixels),
       ),
       activeHostRemounts,
+      observedTassadarBoardProximity,
+      worldItemProximityEvents,
       diagnosticsSample: movementDiagnostics.slice(-20),
     }
 
@@ -838,6 +874,7 @@ const main = async (): Promise<void> => {
       appBundle: relativePath(appBundle),
       sourceRefs: [
         "github:OpenAgentsInc/openagents#5827",
+        "github:OpenAgentsInc/openagents#5910",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
       packagedFiles: {
@@ -870,7 +907,7 @@ const main = async (): Promise<void> => {
           movement.ok ? "" : "verse.launch.wasdMovementPixels",
           continuousMovement.ok
             ? ""
-            : "verse.launch.continuousMovementNoBlackFramesOrRemounts",
+            : "verse.launch.continuousMovementNoBlackFramesRemountsOrBoardProximityMiss",
         ].filter(Boolean).join("; "),
       )
     }
