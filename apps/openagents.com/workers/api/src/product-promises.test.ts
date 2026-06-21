@@ -118,6 +118,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_sandbox_metering_billing_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -758,6 +761,7 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_fine_tuning_live_sellable_service_missing',
             'blocker.product_promises.cloud_sandbox_compute_live_sellable_service_missing',
+            'blocker.product_promises.cloud_primitives_live_unified_balance_debit_receipt_missing',
           ]),
         }),
         expect.objectContaining({

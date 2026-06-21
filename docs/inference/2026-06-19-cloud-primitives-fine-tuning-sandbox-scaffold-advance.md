@@ -95,7 +95,10 @@ record for the owning account, and **404 for a different account** (isolation).
 - `cloud.primitives_suite.v1` — unchanged (planned). The suite still has no
   unified balance and no customer buying multiple primitives end to end. Its
   blockers should name missing live sellable fine-tuning/sandbox services rather
-  than claim the inert scaffolds do not exist.
+  than claim the inert scaffolds do not exist. The composed-run source can model
+  a single shared balance and receipt envelope, but the live blocker remains a
+  real multi-primitive run that debits one balance and produces a dereferenceable
+  unified-balance receipt.
 
 No `promise_transition` is required (no state flips). Any future green flip
 remains receipt-first and owner-signed.
