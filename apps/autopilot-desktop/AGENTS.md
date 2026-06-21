@@ -152,6 +152,11 @@ canvases, particles, text-in-scene), and it has Foldkit bindings
 - `bun test` (in `apps/autopilot-desktop`) remains the gate for Bun-side logic
   and pure view-model helpers; pair it with the bundle/build checks below for UI
   and packaging changes.
+- For Verse Forum/tipping/multiplayer changes, run
+  `bun run smoke:forum-tipping-multiplayer`. It uses the reusable
+  `tests/harnesses/chat-world-integration-harness.ts` fake SpacetimeDB/activity
+  stack to exercise forum-tip settlement, direct Pylon tips, live pylon sats
+  refresh, and two-client world projection together without spending real sats.
 - For Training pane changes, run `bun run verify:training` in
   `apps/autopilot-desktop` (or `bun run verify:autopilot-desktop:training` from
   the repo root). It runs the focused Foldkit tests, CSS/build bundle checks,
