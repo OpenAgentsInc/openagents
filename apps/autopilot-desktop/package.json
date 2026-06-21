@@ -31,7 +31,7 @@
     "@openagentsinc/autopilot-ui": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b1bc0f4",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#c604e20",
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1",
