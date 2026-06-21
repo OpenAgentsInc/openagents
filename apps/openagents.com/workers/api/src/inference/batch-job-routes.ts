@@ -205,3 +205,51 @@ export const handleBatchJobReceiptRead = (
       projectBatchJobCloseoutReceipt(receipt, deps.nowIso())
     )
   })
+
+export const handleBatchJobStatusRead = (
+  request: Request,
+  deps: BatchJobRoutesDeps,
+) =>
+  Effect.gen(function* () {
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_batch_jobs_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+    }
+
+    const url = new URL(request.url)
+    const match = url.pathname.match(/^\/v1\/inference\/batches\/(.+)$/)
+    if (!match) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    const jobId = match[1] ?? ''
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const job = yield* store.getBatchJob(jobId)
+
+    if (!job || job.accountRef !== session.accountRef) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return noStoreJsonResponse({
+      jobId: job.jobId,
+      status: job.status,
+      datasetSize: job.datasetSize,
+      processedItems: job.processedItems,
+      failedItems: job.failedItems,
+      resultsR2Key: job.resultsR2Key,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    })
+  })

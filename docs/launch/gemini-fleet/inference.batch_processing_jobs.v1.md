@@ -10,6 +10,7 @@ The single-request gateway exists and free allowance is synergized, but batch-jo
 2. **Closeout Receipt Schema**: Utilized the existing `BatchJobCloseoutReceiptSchema` which details items processed, charge reference, success/failure counts, and R2 result keys.
 3. **Public Receipt Read Route**: Implemented `handleBatchJobReceiptRead` at `GET /api/public/inference/batch-job-receipts/:receiptRef`. It reads the closed job from `inference_batch_jobs` (denying access to pending jobs), fetches the actual `totalCostMsat` from the `pay_ins` ledger using the job's `chargeReceiptRef`, constructs the `BatchJobCloseoutReceipt`, and emits it under the strict public projection staleness contract.
 4. **Architecture Integration**: The new route has been registered in the `staleness_declared` budget (`check-zero-debt-architecture.mjs`) and is itemized within `INVARIANTS.md`. Tests for `handleBatchJobReceiptRead` and the existing DB logic are implemented in `batch-job-routes.test.ts`.
+5. **Status Route**: Implemented `handleBatchJobStatusRead` at `GET /v1/inference/batches/:jobId` to permit authenticated users to read the status of their pending or processing jobs, fully closing the loop on the user-facing job monitoring surface.
 
 ## Remaining Work
 
