@@ -1228,6 +1228,7 @@ export const update = (model: Model, message: Message): Result => {
           selectedSessionRef: message.sessionRef,
           sessionDetailView: "overview",
           expandedEvents: [],
+          selectedDiffFilePath: null,
         }),
         noCommands,
       ]
@@ -1264,8 +1265,20 @@ export const update = (model: Model, message: Message): Result => {
       const set = new Set(model.expandedDiffFiles)
       if (set.has(message.path)) set.delete(message.path)
       else set.add(message.path)
-      return [Model.make({ ...model, expandedDiffFiles: [...set] }), noCommands]
+      return [
+        Model.make({
+          ...model,
+          expandedDiffFiles: [...set],
+          selectedDiffFilePath: message.path,
+        }),
+        noCommands,
+      ]
     }
+    case "SelectedDiffFile":
+      return [
+        Model.make({ ...model, selectedDiffFilePath: message.path }),
+        noCommands,
+      ]
     case "ToggledDiffViewMode":
       return [
         Model.make({ ...model, diffViewMode: model.diffViewMode === "split" ? "unified" : "split" }),

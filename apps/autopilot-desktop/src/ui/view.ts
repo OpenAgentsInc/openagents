@@ -94,6 +94,10 @@ import {
   type DecisionScopeRow,
 } from "./approval-decision-projection.js"
 import {
+  projectDiffArtifactsPanel,
+  type DiffArtifactsProjection,
+} from "./diff-artifacts-projection.js"
+import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
@@ -224,6 +228,7 @@ import {
   ClickedSubmitIntent,
   ClickedSurfacePromiseGap,
   SelectedAgentMode,
+  SelectedDiffFile,
   SelectedProofReplay,
   SelectedTrainingSceneNode,
   type Message,
@@ -280,7 +285,6 @@ import {
 import { themeAttr } from "./preferences.js"
 import {
   approvalLabel,
-  artifactBrowserSections,
   artifactLineText,
   assignmentMeta,
   diffReviewProvenance,
@@ -306,6 +310,8 @@ import {
   trainingProjectionMeta,
   verifyLineText,
   walletSummary,
+  type ArtifactBrowserSection,
+  type DesktopChangeSet,
 } from "./helpers.js"
 // Concise + markdown-rendered session-stream transcript (owner report,
 // 2026-06-19): replaces the raw label/markdown dump with a clean readable view.
@@ -5378,18 +5384,34 @@ const decisionsPanel = (model: Model): Html => {
   ])
 }
 
-const diffArtifactsPanel = (model: Model, ctx: SessionDetailContext): Html =>
-  h.div([cls("session-detail-section")], [
-    sessionDiffCard(ctx.events, ctx.stats?.editedFileCount, {
-      fileTree: true,
-      viewMode: model.diffViewMode,
-      expandedFiles: model.expandedDiffFiles,
-    }),
-    artifactBrowserCard(ctx.stats, model.artifactBrowserOpen),
-    ctx.events.length === 0 && ctx.stats === undefined
-      ? emptyLine("No diff or artifact refs yet.")
-      : h.empty,
-  ])
+const diffArtifactsPanel = (model: Model, ctx: SessionDetailContext): Html => {
+  const projection = projectDiffArtifactsPanel({
+    sessionRef: ctx.ref,
+    events: ctx.events,
+    stats: ctx.stats,
+    expandedFiles: model.expandedDiffFiles,
+    selectedFilePath: model.selectedDiffFilePath,
+  })
+  return h.div(
+    [
+      cls("session-detail-section diff-artifacts-panel"),
+      h.DataAttribute("autopilot-diff-artifacts-panel", ctx.ref),
+      h.DataAttribute("autopilot-diff-scroll-key", projection.scrollKey),
+      h.DataAttribute("autopilot-scroll-retained", "diff-artifacts"),
+    ],
+    [
+      sessionDiffCard(ctx.events, ctx.stats?.editedFileCount, {
+        fileTree: true,
+        viewMode: model.diffViewMode,
+        expandedFiles: projection.expandedFiles,
+        selectedFilePath: projection.selectedFilePath,
+      }),
+      diffArtifactSummaryCard(projection),
+      artifactBrowserCardFromSections(projection.artifactSections, model.artifactBrowserOpen),
+      projection.hasContent ? h.empty : emptyLine("No diff or artifact refs yet."),
+    ],
+  )
+}
 
 const terminalLogPanel = (model: Model, ctx: SessionDetailContext): Html =>
   card("Terminal / Log Tail", [
@@ -5553,6 +5575,7 @@ type DiffBrowseOptions = Readonly<{
   fileTree: boolean
   viewMode: "unified" | "split"
   expandedFiles: ReadonlyArray<string>
+  selectedFilePath: string | null
 }>
 
 const diffBrowseControls = (viewMode: "unified" | "split"): Html =>
@@ -5568,6 +5591,31 @@ const diffBrowseControls = (viewMode: "unified" | "split"): Html =>
     ),
   ])
 
+const diffFileIndex = (
+  files: DesktopChangeSet["files"],
+  selectedFilePath: string | null,
+): Html =>
+  files.length === 0
+    ? h.empty
+    : h.div(
+        [cls("diff-file-index"), h.DataAttribute("autopilot-diff-file-index", "")],
+        files.map((file) =>
+          h.button(
+            [
+              cls(`diff-file-index-row${file.path === selectedFilePath ? " active" : ""}`),
+              h.Type("button"),
+              h.Title(file.path),
+              h.DataAttribute("autopilot-diff-file-select", file.path),
+              h.OnClick(SelectedDiffFile({ path: file.path })),
+            ],
+            [
+              h.span([cls("diff-file-index-path")], [file.path]),
+              h.span([cls("diff-file-index-stat")], [`+${file.added} -${file.removed}`]),
+            ],
+          ),
+        ),
+      )
+
 const sessionDiffCard = (
   events: ReadonlyArray<SessionEventRow>,
   artifactEditedFileCount: number | null | undefined,
@@ -5577,6 +5625,7 @@ const sessionDiffCard = (
   if (changeSet.files.length === 0) return h.empty
   return card("Diff", [
     ...(browse ? [diffBrowseControls(browse.viewMode)] : []),
+    ...(browse ? [diffFileIndex(changeSet.files, browse.selectedFilePath)] : []),
     DiffReview({
       files: changeSet.files,
       summary: changeSet.summary,
@@ -5615,6 +5664,46 @@ const sessionDiffCard = (
   ])
 }
 
+const diffArtifactRefs = (
+  label: string,
+  refs: readonly string[],
+  key: string,
+): Html =>
+  refs.length === 0
+    ? h.empty
+    : h.div([cls("diff-artifact-ref-group"), h.DataAttribute("autopilot-diff-artifact-ref-group", key)], [
+        h.span([cls("diff-artifact-ref-label")], [`${label}:`]),
+        h.div(
+          [cls("diff-artifact-ref-list")],
+          refs.map((ref) => h.code([cls("artifact-ref-value"), h.Title(ref)], [ref])),
+        ),
+      ])
+
+const diffArtifactSummaryCard = (projection: DiffArtifactsProjection): Html =>
+  card("Patch & artifact summary", [
+    h.div(
+      [cls("diff-artifact-summary"), h.DataAttribute("autopilot-diff-artifact-summary", projection.patchSummary)],
+      [
+        h.span([cls("diff-artifact-summary-chip")], [projection.patchSummary]),
+        projection.selectedFilePath === null
+          ? h.span([cls("diff-artifact-summary-muted")], ["No selected file"])
+          : h.span(
+              [
+                cls("diff-artifact-summary-selected"),
+                h.DataAttribute("autopilot-selected-diff-file", projection.selectedFilePath),
+                h.Title(projection.selectedFilePath),
+              ],
+              [`Selected: ${projection.selectedFilePath}`],
+            ),
+      ],
+    ),
+    h.p([cls("card-body")], [projection.provenance]),
+    diffArtifactRefs("Checks", projection.checkRefs, "checks"),
+    diffArtifactRefs("Receipts", projection.receiptRefs, "receipts"),
+    diffArtifactRefs("Screenshots", projection.screenshotRefs, "screenshots"),
+    diffArtifactRefs("Proof links", projection.proofLinks, "proof"),
+  ])
+
 // ── #5470: artifact & receipt browser ─────────────────────────────────────────
 //
 // An expand-on-demand inspector over `session.artifact` (proof for completed,
@@ -5622,11 +5711,10 @@ const sessionDiffCard = (
 // retained — refs/digests/enums only, never a seed/token/raw path/raw secret.
 // Inspection lives INSIDE session-detail (audit UX constraint): collapsed by
 // default behind a toggle so the pane stays uncluttered.
-const artifactBrowserCard = (
-  stats: SessionArtifactStats | undefined | null,
+const artifactBrowserCardFromSections = (
+  sections: readonly ArtifactBrowserSection[],
   open: boolean,
 ): Html => {
-  const sections = artifactBrowserSections(stats)
   if (sections.length === 0) return h.empty
   return card("Artifacts & receipts", [
     h.button(

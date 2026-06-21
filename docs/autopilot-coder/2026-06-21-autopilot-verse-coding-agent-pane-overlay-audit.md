@@ -936,6 +936,21 @@ Acceptance:
 
 ### VCODE-10 - Add Diff And Artifact Panes
 
+Status: implemented in #5927 on 2026-06-21. Desktop now has a pure
+`projectDiffArtifactsPanel` projection for selected-session Diff/Artifacts
+state. It composes the existing session event change-set parser and retained
+artifact/receipt browser rows, then filters unsafe local paths, parent
+directory escapes, Windows paths, token-like strings, and raw secret-looking
+artifact values before they reach the pane. The Diff/Artifacts pane now renders
+a stable scroll-retained container keyed by session ref, a selectable changed
+file index, a selected-file summary, patch summary, check refs, receipt refs,
+screenshot refs when present, and retained proof-link refs. `SelectedDiffFile`
+is pure UI state and `GotNodeState` preserves it across stream/poll refreshes;
+if the selected file disappears the projection falls back to the first current
+changed file. Tests cover raw-path rejection, sanitized-detail fallback when a
+full event contains a private path, selected-file preservation, stable scroll
+metadata, and the existing artifact/diff browser regressions.
+
 Build:
 
 - Add a Diff/Artifacts pane for changed files, patch summaries, check refs,

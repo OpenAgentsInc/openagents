@@ -135,6 +135,7 @@ export const ToggledEvent = m("ToggledEvent", { eventIndex: S.Number })
 export const ToggledDiffFile = m("ToggledDiffFile", { path: S.String })
 export const ToggledDiffViewMode = m("ToggledDiffViewMode")
 export const ToggledArtifactBrowser = m("ToggledArtifactBrowser")
+export const SelectedDiffFile = m("SelectedDiffFile", { path: S.String })
 
 // #5730 The Verse: flip the runtime toggle for the game-world view that renders
 // behind chat. Pure model toggle — no control verb / RPC.
@@ -709,6 +710,7 @@ export const Message = S.Union([
   ToggledDiffFile,
   ToggledDiffViewMode,
   ToggledArtifactBrowser,
+  SelectedDiffFile,
   ToggleVerse,
   ChangedVerseMode,
   ToggledChatMessageDetails,

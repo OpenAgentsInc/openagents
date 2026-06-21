@@ -696,12 +696,23 @@ function diffStatusFromKeyword(keyword: string): DiffFileStatus | null {
   return null
 }
 
-// A path-ish token: at least one "/" or a dotted filename, no spaces. Public-safe
-// refs the node emits look like real relative paths; a bare prose word does not.
-function looksLikeFileRef(token: string): boolean {
+// A public-safe file ref is a relative file-ish token. Raw absolute local paths,
+// parent-directory escapes, Windows paths, and URL/provider payload fragments are
+// rejected before they can enter the Diff/Artifacts UI.
+export function publicSafeFileRef(token: string): string | null {
   const t = token.replace(/[.,;:)]+$/, "")
-  if (t.length === 0 || /\s/.test(t)) return false
-  return t.includes("/") || /^[\w.@-]+\.[\w.@-]+$/.test(t)
+  if (t.length === 0 || /\s/.test(t)) return null
+  if (
+    t.startsWith("/") ||
+    t.startsWith("~/") ||
+    t.startsWith("../") ||
+    t.includes("\\") ||
+    t.includes("://") ||
+    /^[A-Za-z]:[\\/]/.test(t)
+  ) {
+    return null
+  }
+  return t.includes("/") || /^[\w.@-]+\.[\w.@-]+$/.test(t) ? t : null
 }
 
 const COUNT_PATTERN = /\(\s*\+?\s*(\d+)\s*[−-]\s*(\d+)\s*\)/
@@ -729,8 +740,9 @@ function parseDiffMessage(message: string): Array<{
     let status: DiffFileStatus = "modified"
     for (let i = tokens.length - 1; i >= 0; i--) {
       const cleaned = tokens[i].replace(/[.,;:)]+$/, "")
-      if (path === null && looksLikeFileRef(cleaned)) {
-        path = cleaned
+      const publicRef = publicSafeFileRef(cleaned)
+      if (path === null && publicRef !== null) {
+        path = publicRef
         continue
       }
       if (path !== null) {
@@ -760,8 +772,8 @@ function parseDiffMessage(message: string): Array<{
     const tokens = part.trim().split(/\s+/)
     if (tokens.length < 2) continue
     const kind = diffStatusFromKeyword(tokens[0])
-    const ref = tokens[1].replace(/[.,;:)]+$/, "")
-    if (kind !== null && looksLikeFileRef(ref)) {
+    const ref = publicSafeFileRef(tokens[1])
+    if (kind !== null && ref !== null) {
       entries.push({ path: ref, status: kind, added: 0, removed: 0 })
     }
   }
@@ -777,8 +789,13 @@ export function parseChangeSetFromEvents(
   const byPath = new Map<string, DiffReviewFile>()
   let parsedFromEventCount = 0
   for (const event of events ?? []) {
-    const source = event.full && event.full.trim().length > 0 ? event.full : event.detail
-    const parsed = parseDiffMessage(source)
+    const sources =
+      event.full && event.full.trim().length > 0
+        ? [event.full, event.detail]
+        : [event.detail]
+    const parsed = sources
+      .map((source) => parseDiffMessage(source))
+      .find((entries) => entries.length > 0) ?? []
     if (parsed.length > 0) parsedFromEventCount += 1
     for (const entry of parsed) {
       const prior = byPath.get(entry.path)

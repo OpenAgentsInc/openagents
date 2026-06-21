@@ -497,6 +497,9 @@ export const Model = ts("AutopilotDesktop", {
 
   // #5470 session-detail: side-by-side vs unified diff hunk layout.
   diffViewMode: S.Literals(["unified", "split"]),
+  // VCODE-10: selected public-safe diff file in the Diff/Artifacts pane. Kept
+  // as UI state so polling/stream updates do not reset the operator's focus.
+  selectedDiffFilePath: S.NullOr(S.String),
 
   // #5470 session-detail: whether the artifact & receipt browser detail is
   // expanded (the ref rows under the artifact summary line).
@@ -1112,6 +1115,7 @@ export const initialModel: Model = Model.make({
   expandedEvents: [],
   expandedDiffFiles: [],
   diffViewMode: "unified",
+  selectedDiffFilePath: null,
   artifactBrowserOpen: false,
   // #5730 The Verse: on by default so the game-world view is visible now.
   verseEnabled: true,
