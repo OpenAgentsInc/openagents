@@ -36,6 +36,12 @@ direction.
   SpacetimeDB world module, desktop subscription path, local SpacetimeDB game
   references, and the implementation plan for letting multiple Verse users see
   each other on the map.
+- `2026-06-21-verse-scene-graph-vs-react-three-fiber-audit.md` - deep audit of
+  how the desktop Verse scene graph is built today (`three-effect` + Foldkit,
+  full teardown+rebuild on every change) versus react-three-fiber's
+  catalogue/reconciler/attach/on-demand-frameloop model, with the concepts to
+  port into `three-effect` and how Effect (`Scope`, `Layer`, `SubscriptionRef`,
+  fiber frame clock) is the better substrate for them.
 
 ## Implementation Homes
 
