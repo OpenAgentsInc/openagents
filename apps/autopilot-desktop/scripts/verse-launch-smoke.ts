@@ -236,10 +236,13 @@ type ContinuousMovementSmoke = {
 
 type MouseLookDragSmoke = {
   readonly ok: boolean
+  readonly observedDragControl: boolean
+  readonly observedWheelControl: boolean
   readonly cursorAfterDrag: string
   readonly scenePointerTarget: boolean
   readonly selectedText: string
   readonly topElements: ReadonlyArray<string>
+  readonly cameraControlEvents: ReadonlyArray<VerseSceneDiagnostic>
   readonly frame: PixelSmoke & {
     readonly path: string
   }
@@ -594,6 +597,22 @@ const dragSceneMouse = async (
   await wait(180)
 
   return { endX, endY, startX, startY }
+}
+
+const wheelSceneMouse = async (
+  cdp: CdpClient,
+  point: Pick<MouseDragPoint, "endX" | "endY">,
+): Promise<void> => {
+  await cdp.send("Input.dispatchMouseEvent", {
+    button: "none",
+    deltaX: 0,
+    deltaY: -420,
+    pointerType: "mouse",
+    type: "mouseWheel",
+    x: point.endX,
+    y: point.endY,
+  })
+  await wait(180)
 }
 
 const readVerseSceneDiagnostics = async (
@@ -1137,6 +1156,7 @@ const main = async (): Promise<void> => {
     const mouseLookBeforeBytes = Buffer.from(mouseLookBefore.data, "base64")
     const diagnosticsBeforeMouseLook = await readVerseSceneDiagnostics(cdp)
     const dragPoint = await dragSceneMouse(cdp, dom.canvas.rect)
+    await wheelSceneMouse(cdp, dragPoint)
     const mouseLookAfter = await cdp.send<{ readonly data: string }>(
       "Page.captureScreenshot",
       { format: "png", fromSurface: true },
@@ -1181,18 +1201,32 @@ const main = async (): Promise<void> => {
       entry.event === "verse-host.remount.swapped" ||
       entry.event === "verse-host.remount.scheduled",
     )
+    const cameraControlEvents = mouseLookDiagnostics.filter(
+      entry => entry.event === "verse-host.camera-control",
+    )
+    const observedDragControl = cameraControlEvents.some(
+      entry => entry.detail["type"] === "drag",
+    )
+    const observedWheelControl = cameraControlEvents.some(
+      entry => entry.detail["type"] === "wheel",
+    )
     const mouseLookDrag: MouseLookDragSmoke = {
       ok:
         mouseLookPixels.ok &&
         mouseLookMovement.ok &&
         mouseLookRemounts.length === 0 &&
+        observedDragControl &&
+        observedWheelControl &&
         mouseLookProbe.cursorAfterDrag !== "text" &&
         mouseLookProbe.scenePointerTarget === true &&
         (mouseLookProbe.selectedText ?? "").trim().length === 0,
+      observedDragControl,
+      observedWheelControl,
       cursorAfterDrag: mouseLookProbe.cursorAfterDrag ?? "missing",
       scenePointerTarget: mouseLookProbe.scenePointerTarget === true,
       selectedText: mouseLookProbe.selectedText ?? "",
       topElements: mouseLookProbe.topElements ?? [],
+      cameraControlEvents,
       frame: {
         ...mouseLookPixels,
         path: relativePath(mouseLookScreenshotPath),
@@ -1262,7 +1296,7 @@ const main = async (): Promise<void> => {
             : "verse.launch.continuousMovementNoBlackFramesRemountsOrBoardProximityMiss",
           mouseLookDrag.ok
             ? ""
-            : "verse.launch.mouseLookDragNoTextCursorSelectionBlankFrameOrRemount",
+            : "verse.launch.mouseLookDragWheelCameraControlNoTextCursorSelectionBlankFrameOrRemount",
         ].filter(Boolean).join("; "),
       )
     }
