@@ -71,19 +71,24 @@ export const tassadarSummaryForVerse = (
     ? null
     : projection.tassadarSummary
 
+const bulletinBoardPosition = [-0.95, 1.78, 0.04] as const
+const bulletinBoardYaw = -0.04
+const bulletinBoardInteractionRadius = 3.8
+
 export const verseTassadarBulletinWorldItem = (
   projection: TrainingRunsResponse | null,
-): TrainingRunWorldItemDefinition | null => {
+): TrainingRunWorldItemDefinition => {
   const summary = tassadarSummaryForVerse(projection)
   const bulletin = summary?.bulletin
-  if (summary === null || bulletin === undefined) return null
-
-  const title = compact(bulletin.title, "Tassadar Run Board")
-  const headline = compact(bulletin.headline, "Tassadar status")
-  const detail = compact(bulletin.summary, headline)
+  const title = compact(bulletin?.title, "Tassadar Board")
+  const headline = compact(bulletin?.headline, "Loading Tassadar run")
+  const detail = compact(
+    bulletin?.summary,
+    "Waiting for the public Tassadar run summary from openagents.com.",
+  )
   const onBoardLines = lines([
-    ...(bulletin.onBoardLines ?? []),
-    bulletin.statusLine,
+    ...(bulletin?.onBoardLines ?? []),
+    bulletin?.statusLine,
     headline,
   ]).slice(0, 3)
 
@@ -94,15 +99,15 @@ export const verseTassadarBulletinWorldItem = (
     title,
     detail,
     lines: onBoardLines.length > 0 ? onBoardLines : [headline],
-    // Left edge of the Tassadar lot: visible from spawn, but still something the
-    // player walks up to rather than a HUD-only widget.
-    position: [-3.35, 0.82, 0.05],
-    yaw: 0.42,
-    interactionRadius: 3.2,
-    status: statusFromRunState(summary.runState),
+    // In the first-render camera lane: this must read as a physical board
+    // before any public summary fetch completes.
+    position: bulletinBoardPosition,
+    yaw: bulletinBoardYaw,
+    interactionRadius: bulletinBoardInteractionRadius,
+    status: statusFromRunState(summary?.runState),
     sourceRefs: lines([
-      summary.runRef,
-      ...(bulletin.sourceRefs ?? []),
+      summary?.runRef,
+      ...(bulletin?.sourceRefs ?? []),
       "route:/api/public/tassadar-run-summary",
     ]),
   }
@@ -113,7 +118,6 @@ export const withVerseBulletinBoardLayer = (
   projection: TrainingRunsResponse | null,
 ): TrainingRunVisualizationOptions => {
   const item = verseTassadarBulletinWorldItem(projection)
-  if (item === null) return base
   return {
     ...base,
     worldItems: [...(base.worldItems ?? []), item],

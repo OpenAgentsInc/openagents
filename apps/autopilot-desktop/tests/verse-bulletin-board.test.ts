@@ -55,6 +55,9 @@ describe("Verse Tassadar bulletin board", () => {
       kind: "bulletin_board",
       label: "Tassadar Run Board",
       status: "active",
+      position: [-0.95, 1.78, 0.04],
+      yaw: -0.04,
+      interactionRadius: 3.8,
     })
     expect(item?.lines).toEqual([
       "Status: active",
@@ -64,8 +67,22 @@ describe("Verse Tassadar bulletin board", () => {
     expect(item?.sourceRefs).toContain("route:/api/public/tassadar-run-summary")
   })
 
+  test("renders a physical board before the public summary fetch completes", () => {
+    const item = verseTassadarBulletinWorldItem(null)
+
+    expect(item).toMatchObject({
+      id: VERSE_TASSADAR_BULLETIN_ITEM_ID,
+      kind: "bulletin_board",
+      label: "Tassadar Board",
+      status: "queued",
+      position: [-0.95, 1.78, 0.04],
+    })
+    expect(item.lines).toEqual(["Loading Tassadar run"])
+    expect(item.sourceRefs).toContain("route:/api/public/tassadar-run-summary")
+  })
+
   test("adds the board to existing Verse visualization options", () => {
-    const out = withVerseBulletinBoardLayer({ nodes: [] }, projection())
+    const out = withVerseBulletinBoardLayer({ nodes: [] }, null)
 
     expect(out.worldItems?.map(item => item.id)).toEqual([
       VERSE_TASSADAR_BULLETIN_ITEM_ID,

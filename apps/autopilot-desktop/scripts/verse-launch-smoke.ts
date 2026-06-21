@@ -222,6 +222,10 @@ type VerseLaunchReceipt = {
     readonly main: string
     readonly pylonNode: string
   }
+  readonly packagedSource: {
+    readonly includesFirstRenderBulletinBoard: boolean
+    readonly includesVisibleBulletinPrimitive: boolean
+  }
   readonly viewport: typeof viewport
   readonly dom: DomProbe
   readonly screenshot: PixelSmoke & {
@@ -630,6 +634,25 @@ const main = async (): Promise<void> => {
   mkdirSync(proofDir, { recursive: true })
 
   const html = patchedPackagedHtml(readFileSync(htmlPath, "utf8"))
+  const packagedMain = readFileSync(mainPath, "utf8")
+  const packagedSource = {
+    includesFirstRenderBulletinBoard:
+      packagedMain.includes("Tassadar Board") &&
+      packagedMain.includes("Loading Tassadar run"),
+    includesVisibleBulletinPrimitive:
+      packagedMain.includes("width = 3.1") &&
+      packagedMain.includes("postHeight = 2.18"),
+  }
+  if (!packagedSource.includesFirstRenderBulletinBoard) {
+    throw new Error(
+      "Packaged Verse bundle is missing the first-render Tassadar bulletin board copy; run bun run build after changing the board.",
+    )
+  }
+  if (!packagedSource.includesVisibleBulletinPrimitive) {
+    throw new Error(
+      "Packaged Verse bundle is missing the visible three-effect bulletin board primitive; repin/build @openagentsinc/three-effect.",
+    )
+  }
   let server: ReturnType<typeof Bun.serve> | null = null
   let chrome: Bun.Subprocess | null = null
   let cdp: CdpClient | null = null
@@ -759,6 +782,7 @@ const main = async (): Promise<void> => {
         main: relativePath(mainPath),
         pylonNode: relativePath(pylonNodePath),
       },
+      packagedSource,
       viewport,
       dom,
       screenshot: {
