@@ -96,6 +96,7 @@ import {
   paletteCommands,
   type PaletteCommand,
 } from "./nav"
+import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
@@ -154,6 +155,14 @@ import type {
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 
 const noCommands: ReadonlyArray<Command.Command<Message>> = []
+
+const verseSceneActive = (model: Model): boolean => {
+  const flags = chatWorldBuildFlags()
+  return flags.CHAT_WORLD_SCENE && model.pane === "chat" && model.verseEnabled
+}
+
+const verseHudDisabled = (model: Model): boolean =>
+  verseSceneActive(model) && !chatWorldHudFlag()
 
 // #5730: how many active payment particles the chat-world scene keeps at once.
 // Bounds the live beam/burst count behind chat and the scene-options signature
@@ -972,6 +981,7 @@ export const update = (model: Model, message: Message): Result => {
 
     // ── Command palette (#5464) ─────────────────────────────────────────────
     case "OpenedCommandPalette":
+      if (verseHudDisabled(model)) return [model, noCommands]
       return [
         Model.make({
           ...model,
@@ -1024,6 +1034,7 @@ export const update = (model: Model, message: Message): Result => {
     // PressedKey is interpreted purely (keyboard.ts) then re-dispatched as an
     // existing Message, so every shortcut reuses a real handler (no no-ops).
     case "PressedKey": {
+      if (verseHudDisabled(model)) return [model, noCommands]
       const intent = interpretKey(model, {
         key: message.key,
         meta: message.meta,
@@ -1104,6 +1115,7 @@ export const update = (model: Model, message: Message): Result => {
     // #5730 The Verse: flip the runtime toggle for the game-world view. Pure
     // model toggle — the view gates the scene render on this + the build flag.
     case "ToggleVerse":
+      if (verseHudDisabled(model)) return [model, noCommands]
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
 
     // Chat: flip a single message's "program details" disclosure (scoped-step /

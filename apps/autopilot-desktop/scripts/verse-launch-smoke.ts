@@ -164,7 +164,9 @@ type DomProbe = {
   readonly checks: {
     readonly appShellVerse: boolean
     readonly chatPaneWorld: boolean
-    readonly chatInput: boolean
+    readonly noVerseHotbar: boolean
+    readonly noVerseChatbar: boolean
+    readonly noCommandPaletteAffordance: boolean
     readonly noPylonBaseStatus: boolean
     readonly noCharacterCreationCard: boolean
     readonly noPersistentChatThread: boolean
@@ -544,7 +546,14 @@ const domProbeExpression = `
   const checks = {
     appShellVerse: document.querySelector(".app-shell-verse") !== null,
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
-    chatInput: document.querySelector(".chat-input") instanceof HTMLTextAreaElement,
+    noVerseHotbar: document.querySelector(".app-shell-verse .hotbar") === null,
+    noVerseChatbar:
+      document.querySelector(".app-shell-verse .chat-composer-verse") === null &&
+      document.querySelector(".app-shell-verse .chat-input") === null,
+    noCommandPaletteAffordance:
+      document.querySelector(".app-shell-verse .command-palette") === null &&
+      text.includes("Command palette") === false &&
+      text.includes("⌘K") === false,
     noPylonBaseStatus: document.querySelector(".pylon-base-status") === null,
     noCharacterCreationCard:
       document.querySelector(".character-creation-overlay") === null,

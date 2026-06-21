@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test"
 
-import { initialModel } from "../src/ui/model"
+import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import { interpretKey } from "../src/ui/keyboard"
 import { HOTBAR_SLOTS } from "../src/ui/nav"
@@ -16,6 +16,7 @@ import { PressedKey, ToggleVerse } from "../src/ui/message"
 import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
+  chatWorldHudFlag,
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 
@@ -26,6 +27,7 @@ const VERSE_ENV_KEYS = [
   "VITE_CHAT_WORLD_SCENE",
   "VITE_CHAT_WORLD_PAYMENTS",
   "VITE_CHAT_WORLD_MULTIPLAYER",
+  "VITE_CHAT_WORLD_HUD",
   "VITE_AGENT_CHARACTER_CREATION",
 ] as const
 
@@ -56,6 +58,7 @@ describe("The Verse runtime toggle (#5730)", () => {
       CHAT_WORLD_SCENE: true,
       CHAT_WORLD_PAYMENTS: true,
     })
+    expect(chatWorldHudFlag()).toBe(false)
     expect(agentCharacterCreationFlag()).toBe(true)
     expect(chatWorldMultiplayerFlag()).toBe(true)
   })
@@ -89,16 +92,54 @@ describe("The Verse runtime toggle (#5730)", () => {
     })
     expect(agentCharacterCreationFlag()).toBe(false)
     expect(chatWorldMultiplayerFlag()).toBe(false)
+    expect(chatWorldHudFlag()).toBe(false)
+  })
+
+  test("the Verse HUD/actions flag is an explicit opt-in", () => {
+    clearVerseEnv()
+    expect(chatWorldHudFlag()).toBe(false)
+
+    process.env.VITE_CHAT_WORLD_HUD = "1"
+    expect(chatWorldHudFlag()).toBe(true)
   })
 
   test("ToggleVerse flips the flag and is its own inverse", () => {
+    clearVerseEnv()
+    process.env.VITE_CHAT_WORLD_HUD = "1"
     const [off] = update(initialModel, ToggleVerse())
     expect(off.verseEnabled).toBe(false)
     const [backOn] = update(off, ToggleVerse())
     expect(backOn.verseEnabled).toBe(true)
   })
 
+  test("disabled Verse HUD/actions ignore palette and Verse toggle shortcuts", () => {
+    clearVerseEnv()
+    const verseModel = Model.make({ ...initialModel, pane: "chat" })
+    const [palette] = update(verseModel, PressedKey({
+      key: "k",
+      meta: true,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    }))
+    expect(palette.commandPaletteOpen).toBe(false)
+
+    const [toggle] = update(verseModel, PressedKey({
+      key: "v",
+      meta: true,
+      ctrl: false,
+      shift: true,
+      inEditable: false,
+    }))
+    expect(toggle.verseEnabled).toBe(true)
+
+    const [directToggle] = update(verseModel, ToggleVerse())
+    expect(directToggle.verseEnabled).toBe(true)
+  })
+
   test("⌘⇧V resolves to the toggle-verse intent and flips the flag", () => {
+    clearVerseEnv()
+    process.env.VITE_CHAT_WORLD_HUD = "1"
     const intent = interpretKey(initialModel, {
       key: "v",
       meta: true,

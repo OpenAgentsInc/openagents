@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import {
   agentCharacterCreationFlag,
   chatWorldBuildFlags,
+  chatWorldHudFlag,
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 import { initialRuntimeState } from "../src/ui/initial-state"
@@ -14,6 +15,7 @@ const verseEnvKeys = [
   "VITE_VERSE_ENABLED",
   "VITE_CHAT_WORLD_SCENE",
   "VITE_CHAT_WORLD_PAYMENTS",
+  "VITE_CHAT_WORLD_HUD",
   "VITE_AGENT_CHARACTER_CREATION",
   "VITE_CHAT_WORLD_MULTIPLAYER",
 ] as const
@@ -46,6 +48,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
       CHAT_WORLD_SCENE: true,
       CHAT_WORLD_PAYMENTS: true,
     })
+    expect(chatWorldHudFlag()).toBe(false)
     expect(agentCharacterCreationFlag()).toBe(true)
     expect(chatWorldMultiplayerFlag()).toBe(true)
   })
@@ -64,6 +67,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
     })
     expect(agentCharacterCreationFlag()).toBe(false)
     expect(chatWorldMultiplayerFlag()).toBe(false)
+    expect(chatWorldHudFlag()).toBe(false)
   })
 
   test("fresh first paint is the packaged Verse checklist, not code chrome", () => {
@@ -92,8 +96,12 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).toContain("Pylon")
     expect(tree).not.toContain("chat-thread-shell")
     expect(tree).not.toContain("chat-message-list")
-    expect(tree).toContain("Send message")
-    expect(tree).toContain("Send")
+    expect(tree).not.toContain("verse-bottom-hud")
+    expect(tree).not.toContain("chat-composer-verse")
+    expect(tree).not.toContain("hotbar-slot")
+    expect(tree).not.toContain("Command palette")
+    expect(tree).not.toContain("Send message")
+    expect(tree).not.toContain("Send")
     expect(tree).not.toContain("Advanced")
 
     expect(verseSceneVisualization(model)).toMatchObject({

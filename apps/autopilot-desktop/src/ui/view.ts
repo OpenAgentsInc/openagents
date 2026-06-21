@@ -76,7 +76,7 @@ import {
   withPylonBaseLayer,
   type PylonBaseProjection,
 } from "../shared/pylon-base-scene"
-import { chatWorldBuildFlags } from "../shared/chat-world-flags"
+import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
 
 import type {
   AccountRow,
@@ -5799,6 +5799,7 @@ const chatMessageView = (model: Model, message: ChatMessage): Html =>
 const CHAT_WORLD_FLAGS = chatWorldBuildFlags()
 const CHAT_WORLD_SCENE: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_SCENE
 const CHAT_WORLD_PAYMENTS: boolean = CHAT_WORLD_FLAGS.CHAT_WORLD_PAYMENTS
+const CHAT_WORLD_HUD: boolean = chatWorldHudFlag()
 
 // A calm static seed scene: one core + inert ring pylons. It gives first paint a
 // spatial Verse without claiming live online/assigned pylons before the public
@@ -6685,8 +6686,8 @@ const rootView = (model: Model): Html => {
       [
         chatPane(model),
         managedPaneLayer(model),
-        verseBottomHud(model),
-        commandPalette(model),
+        CHAT_WORLD_HUD ? verseBottomHud(model) : h.empty,
+        CHAT_WORLD_HUD ? commandPalette(model) : h.empty,
       ],
     )
   }

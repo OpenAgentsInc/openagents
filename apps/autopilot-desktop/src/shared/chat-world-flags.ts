@@ -55,13 +55,19 @@ export const agentCharacterCreationFlag = (): boolean =>
 export const chatWorldMultiplayerFlag = (): boolean =>
   verseFeatureFlag("VITE_CHAT_WORLD_MULTIPLAYER")
 
+// One switch for visible Verse HUD/actions. Default OFF for the current launch
+// pass: the world remains navigable, but bottom bars and global shortcuts stay
+// dark unless explicitly enabled.
+export const chatWorldHudFlag = (): boolean =>
+  !verseDisabled() && envFlag("VITE_CHAT_WORLD_HUD", false)
+
 export const chatWorldGameLayerFlags = (): {
   readonly hotbar: boolean
   readonly reputation: boolean
   readonly manaHud: boolean
   readonly handTracking: boolean
 } => ({
-  hotbar: envFlag("VITE_CHAT_WORLD_HOTBAR"),
+  hotbar: chatWorldHudFlag() && envFlag("VITE_CHAT_WORLD_HOTBAR"),
   reputation: envFlag("VITE_CHAT_WORLD_REPUTATION"),
   manaHud: envFlag("VITE_CHAT_WORLD_MANA_HUD"),
   handTracking: envFlag("VITE_CHAT_WORLD_HAND_TRACKING"),
