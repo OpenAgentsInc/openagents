@@ -210,6 +210,21 @@ type MovementSmoke = {
   readonly path: string
 }
 
+type VerseSceneDiagnostic = {
+  readonly at: string
+  readonly event: string
+  readonly detail: Record<string, unknown>
+}
+
+type ContinuousMovementSmoke = {
+  readonly ok: boolean
+  readonly sampledFrames: number
+  readonly nonblankFrames: number
+  readonly minBrightPixels: number
+  readonly activeHostRemounts: ReadonlyArray<VerseSceneDiagnostic>
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
 type VerseLaunchReceipt = {
   readonly ok: boolean
   readonly message: string
@@ -232,6 +247,7 @@ type VerseLaunchReceipt = {
     readonly path: string
   }
   readonly movement: MovementSmoke
+  readonly continuousMovement: ContinuousMovementSmoke
   readonly typecheckProof: string
 }
 
@@ -416,7 +432,7 @@ const movementSmoke = (
   }
 }
 
-const pressMovementKey = async (cdp: CdpClient): Promise<void> => {
+const keyDownW = async (cdp: CdpClient): Promise<void> => {
   await cdp.send("Input.dispatchKeyEvent", {
     type: "keyDown",
     key: "w",
@@ -426,7 +442,9 @@ const pressMovementKey = async (cdp: CdpClient): Promise<void> => {
     windowsVirtualKeyCode: 87,
     nativeVirtualKeyCode: 87,
   })
-  await wait(900)
+}
+
+const keyUpW = async (cdp: CdpClient): Promise<void> => {
   await cdp.send("Input.dispatchKeyEvent", {
     type: "keyUp",
     key: "w",
@@ -435,6 +453,19 @@ const pressMovementKey = async (cdp: CdpClient): Promise<void> => {
     nativeVirtualKeyCode: 87,
   })
   await wait(160)
+}
+
+const readVerseSceneDiagnostics = async (
+  cdp: CdpClient,
+): Promise<ReadonlyArray<VerseSceneDiagnostic>> => {
+  const response = await cdp.send<{
+    readonly result?: { readonly value?: ReadonlyArray<VerseSceneDiagnostic> }
+  }>("Runtime.evaluate", {
+    expression:
+      "globalThis.__OA_DUMP_VERSE_SCENE_LOGS?.() ?? globalThis.__OA_VERSE_SCENE_LOGS ?? []",
+    returnByValue: true,
+  })
+  return response.result?.value ?? []
 }
 
 const contentTypeFor = (path: string): string => {
@@ -751,20 +782,53 @@ const main = async (): Promise<void> => {
     const pixels = pixelSmoke(screenshotBytes)
     writeFileSync(screenshotPath, screenshotBytes)
 
-    await pressMovementKey(cdp)
-    const movementScreenshot = await cdp.send<{ readonly data: string }>(
-      "Page.captureScreenshot",
-      { format: "png", fromSurface: true },
-    )
-    const movementScreenshotBytes = Buffer.from(movementScreenshot.data, "base64")
+    const diagnosticsBeforeMovement = await readVerseSceneDiagnostics(cdp)
+    await keyDownW(cdp)
+    await wait(120)
+    const movementFrameBytes: Buffer[] = []
+    for (let i = 0; i < 5; i += 1) {
+      const frame = await cdp.send<{ readonly data: string }>(
+        "Page.captureScreenshot",
+        { format: "png", fromSurface: true },
+      )
+      movementFrameBytes.push(Buffer.from(frame.data, "base64"))
+      await wait(140)
+    }
+    await keyUpW(cdp)
+    const movementScreenshotBytes =
+      movementFrameBytes[movementFrameBytes.length - 1]
+    if (movementScreenshotBytes === undefined) {
+      throw new Error("Verse movement smoke captured no movement frames")
+    }
     writeFileSync(movementScreenshotPath, movementScreenshotBytes)
     const movement = movementSmoke(
       screenshotBytes,
       movementScreenshotBytes,
       movementScreenshotPath,
     )
+    const diagnosticsAfterMovement = await readVerseSceneDiagnostics(cdp)
+    const movementDiagnostics = diagnosticsAfterMovement.slice(
+      diagnosticsBeforeMovement.length,
+    )
+    const movementFramePixels = movementFrameBytes.map(pixelSmoke)
+    const activeHostRemounts = movementDiagnostics.filter(entry =>
+      entry.event === "verse-host.remount.mounted" ||
+      entry.event === "verse-host.remount.swapped",
+    )
+    const continuousMovement: ContinuousMovementSmoke = {
+      ok:
+        movementFramePixels.every(frame => frame.ok) &&
+        activeHostRemounts.length === 0,
+      sampledFrames: movementFramePixels.length,
+      nonblankFrames: movementFramePixels.filter(frame => frame.ok).length,
+      minBrightPixels: Math.min(
+        ...movementFramePixels.map(frame => frame.brightPixels),
+      ),
+      activeHostRemounts,
+      diagnosticsSample: movementDiagnostics.slice(-20),
+    }
 
-    const ok = dom.ok && pixels.ok && movement.ok
+    const ok = dom.ok && pixels.ok && movement.ok && continuousMovement.ok
     const receipt: VerseLaunchReceipt = {
       ok,
       message: ok
@@ -790,6 +854,7 @@ const main = async (): Promise<void> => {
         path: relativePath(screenshotPath),
       },
       movement,
+      continuousMovement,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
     }
@@ -803,6 +868,9 @@ const main = async (): Promise<void> => {
           ...dom.blockerRefs,
           pixels.ok ? "" : "verse.launch.screenshotPixels",
           movement.ok ? "" : "verse.launch.wasdMovementPixels",
+          continuousMovement.ok
+            ? ""
+            : "verse.launch.continuousMovementNoBlackFramesOrRemounts",
         ].filter(Boolean).join("; "),
       )
     }

@@ -248,6 +248,8 @@ Desktop now records a bounded diagnostic trail for this invariant: `[verse-scene
 `globalThis.__OA_VERSE_SCENE_LOGS`, and `globalThis.__OA_DUMP_VERSE_SCENE_LOGS()`. Use those logs
 to correlate any black-frame/reset report with `chat-world-scene.accepted`,
 `chat-world-scene.noop`, `local-pose.cached`, and `visualization.key_changed`.
+The packaged Verse launch smoke samples multiple frames while WASD movement is active and fails on
+blank frames or a host remount/swap during movement.
 
 ---
 
