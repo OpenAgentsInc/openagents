@@ -117,6 +117,7 @@ import {
   GotOnboardingStatus,
   NavigatedTo,
   SelectedAgentMode,
+  SelectedChatWorldNode,
   SelectedProofReplay,
   SelectedSession,
   SelectedTrainingSceneNode,
@@ -453,6 +454,18 @@ describe("update reducer (CL-53)", () => {
       SelectedTrainingSceneNode({ nodeId: "freivalds" }),
     )
     expect(model.selectedTrainingSceneNodeId).toBe("freivalds")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("SelectedChatWorldNode keeps payment labels short while inspecting full receipt refs", () => {
+    const [model, commands] = update(
+      initialModel,
+      SelectedChatWorldNode({
+        id: "pay:tip.forum.post_1:to",
+        label: "receipt.forum.post_1.bitcoin.21 · 21 sats · Forum Author · avatar",
+      }),
+    )
+    expect(model.chatWorldInspectedRef).toBe("receipt.forum.post_1.bitcoin.21")
     expect(commands).toHaveLength(0)
   })
 

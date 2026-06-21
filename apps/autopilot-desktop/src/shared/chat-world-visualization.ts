@@ -466,10 +466,19 @@ export const resolveChatWorldPaymentEndpoint = (
   }
 }
 
-// A compact, inspector-friendly label that survives into the node-selection
-// detail. It starts with the receipt/source ref so clicking either endpoint
-// opens evidence first, then names the real station/avatar or fallback context.
+// Short scene labels keep the 3D world readable. Full receipt/source detail
+// stays on `detail`, which the inspector opens after selection.
 const endpointLabel = (
+  endpoint: ChatWorldPaymentEndpoint,
+  role: "from" | "to",
+): string => {
+  if (endpoint.source !== "fallback" && endpoint.label.trim().length > 0) {
+    return endpoint.label
+  }
+  return role === "from" ? "Tip sender" : "Payment target"
+}
+
+const endpointDetail = (
   sourceRef: string,
   endpoint: ChatWorldPaymentEndpoint,
   particle: PaymentParticle,
@@ -522,7 +531,8 @@ export const chatWorldPaymentLayer = (
       entityById.set(fromId, {
         id: fromId,
         status: endpointStatus(particle),
-        label: endpointLabel(primaryRef, fromEndpoint, particle, "from"),
+        label: endpointLabel(fromEndpoint, "from"),
+        detail: endpointDetail(primaryRef, fromEndpoint, particle, "from"),
         position: fromEndpoint.position,
       })
     }
@@ -530,7 +540,8 @@ export const chatWorldPaymentLayer = (
       entityById.set(toId, {
         id: toId,
         status: endpointStatus(particle),
-        label: endpointLabel(primaryRef, toEndpoint, particle, "to"),
+        label: endpointLabel(toEndpoint, "to"),
+        detail: endpointDetail(primaryRef, toEndpoint, particle, "to"),
         position: toEndpoint.position,
       })
     }

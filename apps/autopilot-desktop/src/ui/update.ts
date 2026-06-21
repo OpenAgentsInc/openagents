@@ -201,9 +201,10 @@ const appendChatWorldParticle = (
     : pruned
 }
 
-// #5730: recover the receipt sourceRef from a payment-endpoint entity label.
-// Labels are `<ref> · <sats> sats` (target) or a bare `<ref>` (from), so the
-// ref is everything before the first " · " separator, trimmed.
+// #5730: recover the receipt sourceRef from a payment-endpoint detail string.
+// Details are `<ref> · <sats> sats` (target) or `<ref> · from` (from), so the
+// ref is everything before the first " · " separator, trimmed. The visible scene
+// label stays short and human-readable.
 const chatWorldRefFromLabel = (label: string): string => {
   const sep = label.indexOf(" · ")
   return (sep >= 0 ? label.slice(0, sep) : label).trim()

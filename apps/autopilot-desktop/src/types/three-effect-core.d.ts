@@ -65,6 +65,7 @@ export type TrainingRunPromiseSignalDefinition = Readonly<{
 }>
 
 export type TrainingRunEntityDefinition = Readonly<{
+  detail?: string
   id: string
   label?: string
   position?: TrainingRunVector

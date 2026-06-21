@@ -5995,11 +5995,12 @@ const chatSceneBackground = (model: Model): Html =>
       // Click a payment endpoint → surface its receipt ref in the inspector.
       (node) => {
         const hasDetailInspector =
+          node.id.startsWith("pay:") ||
           node.id.startsWith(VERSE_TRAINING_NODE_PREFIX) ||
           node.id.startsWith(PYLON_BASE_NODE_PREFIX)
         return SelectedChatWorldNode({
           id: node.id,
-          label: hasDetailInspector ? node.detail : node.label,
+          label: hasDetailInspector ? (node.detail ?? node.label) : node.label,
         })
       },
       (zone: TrainingRunPresenceZone | null) =>

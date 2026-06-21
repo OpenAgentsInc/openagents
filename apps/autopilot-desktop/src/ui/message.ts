@@ -45,8 +45,9 @@ export const GotChatWorldMultiplayer = m("GotChatWorldMultiplayer", {
   world: S.Unknown,
 })
 // #5730/#5822: a click on a scene node/entity. Payment endpoints encode their
-// particle (`pay:<eventRef>:from|to`) and labels carry receipt refs. Verse
-// training stages use the same label slot for their public-ref detail string.
+// particle (`pay:<eventRef>:from|to`) and pass receipt detail here while the
+// rendered scene label stays short. Verse training stages use the same label
+// slot for their public-ref detail string.
 export const SelectedChatWorldNode = m("SelectedChatWorldNode", {
   id: S.String,
   label: S.String,

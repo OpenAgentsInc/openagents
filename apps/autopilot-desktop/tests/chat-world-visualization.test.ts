@@ -155,12 +155,15 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(beam.motionKind).toBe("real_bitcoin_moved")
     expect(beam.sourceRefs).toEqual(["receipt:nip90:abc"])
     expect(beam.simulated).toBe(false)
-    // the target endpoint label carries the receipt ref (click → inspector)
+    // Scene labels stay short; full receipt refs live in detail + beam evidence
+    // for selection/inspector paths.
     const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
     const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
-    expect(fromEntity.label).toContain("receipt:nip90:abc")
-    expect(toEntity.label).toContain("receipt:nip90:abc")
-    expect(toEntity.label).toContain("21000 sats")
+    expect(fromEntity.label).toBe("Tip sender")
+    expect(toEntity.label).toBe("Payment target")
+    expect(fromEntity.detail).toContain("receipt:nip90:abc")
+    expect(toEntity.detail).toContain("receipt:nip90:abc")
+    expect(toEntity.detail).toContain("21000 sats")
     expect(fromEntity.position?.[2]).not.toBe(0)
     expect(toEntity.position?.[2]).not.toBe(0)
   })
@@ -212,11 +215,11 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
     const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
     expect(fromEntity.position).toEqual([1.25, 0.5, -2])
-    expect(fromEntity.label).toContain("Alpha Pylon")
-    expect(fromEntity.label).toContain("station")
+    expect(fromEntity.label).toBe("Alpha Pylon")
+    expect(fromEntity.detail).toContain("station")
     expect(toEntity.position).toEqual([-3, 1, 2.75])
-    expect(toEntity.label).toContain("Tassadar")
-    expect(toEntity.label).toContain("avatar")
+    expect(toEntity.label).toBe("Tassadar")
+    expect(toEntity.detail).toContain("avatar")
   })
 
   test("labels unresolved endpoints as fallback instead of claiming a world location", () => {
@@ -226,10 +229,12 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
 
     const fromEntity = layer.entities.find((e) => e.id === "pay:evt-1:from")!
     const toEntity = layer.entities.find((e) => e.id === "pay:evt-1:to")!
-    expect(fromEntity.label).toContain("station")
-    expect(toEntity.label).toContain("unresolved pylon:missing")
-    expect(toEntity.label).toContain("fallback")
-    expect(toEntity.label).toContain("receipt:nip90:abc")
+    expect(fromEntity.label).toBe("Alpha Pylon")
+    expect(fromEntity.detail).toContain("station")
+    expect(toEntity.label).toBe("Payment target")
+    expect(toEntity.detail).toContain("unresolved pylon:missing")
+    expect(toEntity.detail).toContain("fallback")
+    expect(toEntity.detail).toContain("receipt:nip90:abc")
   })
 })
 
