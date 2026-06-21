@@ -72,3 +72,25 @@ A **de-stale pass on the product promise registry** to reflect the reality that 
 ## What remains for green
 
 1. A true non-fixture e-commerce work-item delivery to replace the mock fixture for `ecommerce_pack_first_paid_delivery_receipt_missing` (specifically, building an active operator route to record receipts, and a real paid delivery).
+
+## Current Run (Operator Receipt Route)
+
+A real **operator route to record paid delivery receipts** for e-commerce campaigns. This satisfies the requirement for an active operator route to accept and validate receipt payloads, persisting them into the D1 store for public dereferencing.
+
+- `apps/openagents.com/workers/api/src/ecommerce-campaign-receipt-operator-routes.ts`
+  - Created `POST /api/operator/ecommerce-campaign/receipts` requiring an admin API token.
+  - Decodes and validates a `RecordReceiptRequest` payload and builds a deterministic `EcommerceCampaignDeliveryReceipt` using the strict `buildEcommerceCampaignDeliveryReceipt` constructor, wrapping it in its versioned document envelope.
+  - Persists the validated receipt document to the injected `EcommerceCampaignReceiptStore`.
+- `apps/openagents.com/workers/api/src/index.ts`
+  - Wired `makeEcommerceCampaignReceiptOperatorRoutes` into the router with the `requireAdminApiToken` auth guard.
+- `apps/openagents.com/workers/api/src/worker-routes.ts`
+  - Added `routeEcommerceCampaignReceiptOperatorRequest` to the worker routing dependencies.
+
+## Which blocker this advances
+
+`blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing`
+— **advanced**. An active operator route to record receipts now exists.
+
+## What remains for green
+
+1. A real paid delivery receipt, attribution, revenue claim, and the final green transition.
