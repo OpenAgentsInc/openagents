@@ -62,6 +62,10 @@ not authority.
   notice pointing at Autopilot Desktop Verse, the public summary API, and the
   proof replay route. The self-fetching legacy `oa-tassadar-run` custom element
   and its page-wiring test were deleted; `/tassadar/replay/...` remains live.
+- 2026-06-21: fixed the Verse launch reset where a live projection refresh could
+  rebuild the scene and snap the third-person controller back to spawn. Desktop
+  now stores the last local Verse pose and reapplies it when Pylon/world
+  projections refresh; `verse-launch-checklist` covers the regression.
 
 ## Executive read
 

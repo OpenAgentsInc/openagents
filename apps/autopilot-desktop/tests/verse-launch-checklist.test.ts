@@ -6,10 +6,19 @@ import {
   chatWorldHudFlag,
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
+import {
+  pylonGrowthTier,
+  type ChatWorldPylonScene,
+} from "../src/shared/chat-world-scene"
 import type { NodeStateMessage } from "../src/shared/rpc"
 import { VERSE_TASSADAR_BULLETIN_ITEM_ID } from "../src/shared/verse-bulletin-board"
 import { initialRuntimeState } from "../src/ui/initial-state"
-import { GotNodeState, GotTrainingRuns } from "../src/ui/message"
+import {
+  ChangedVerseLocalPose,
+  GotChatWorldScene,
+  GotNodeState,
+  GotTrainingRuns,
+} from "../src/ui/message"
 import { update } from "../src/ui/update"
 import { verseSceneVisualization, view } from "../src/ui/view"
 
@@ -54,6 +63,24 @@ const nodeWithBalance = (balanceSats: number | null): NodeStateMessage => ({
     sendReady: false,
     readiness: "ready",
   },
+})
+
+const livePylonScene = (): ChatWorldPylonScene => ({
+  empty: false,
+  onlineNow: 1,
+  nodes: [
+    {
+      id: "pylon.alpha",
+      label: "Alpha Pylon",
+      state: "assignment_ready",
+      color: 0x4ade80,
+      online: true,
+      pulseSpeed: 0.4,
+      products: ["labor"],
+    },
+  ],
+  growth: pylonGrowthTier(2_100),
+  asOfLabel: "moments ago",
 })
 
 describe("Verse packaged launch checklist (#5827)", () => {
@@ -171,6 +198,38 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(refreshedTree).not.toContain("2,100 sats")
     expect(refreshedTree).not.toContain("pylon-balance-hud-label")
     expect(refreshedTree).not.toContain("\"Bitcoin\"")
+  })
+
+  test("live projection refreshes do not reset the Verse controller to spawn", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const movedPose = {
+      regionRef: "region.run.tassadar.executor.20260615",
+      x: 7.25,
+      y: 0,
+      z: -3.5,
+      yaw: 1.125,
+      animation: "run" as const,
+      capturedAtMs: 12_345,
+    }
+    const [afterMove] = update(
+      initial,
+      ChangedVerseLocalPose({ pose: movedPose }),
+    )
+    const [afterProjectionRefresh] = update(
+      afterMove,
+      GotChatWorldScene({ scene: livePylonScene() }),
+    )
+
+    expect(afterProjectionRefresh.lastVerseLocalPose).toEqual(movedPose)
+    expect(verseSceneVisualization(afterProjectionRefresh).thirdPersonController)
+      .toMatchObject({
+        initialPosition: [7.25, 0, -3.5],
+        character: {
+          walkSpeed: 3.8,
+          runSpeed: 6.7,
+        },
+      })
   })
 
   test("the packaged Verse scene carries the Tassadar bulletin world item", () => {

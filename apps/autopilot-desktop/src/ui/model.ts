@@ -132,6 +132,17 @@ export type SessionFilter = typeof SessionFilter.Type
 export const VersePresenceZone = S.Literals(["tassadar_area"])
 export type VersePresenceZone = typeof VersePresenceZone.Type
 
+export const VerseLocalPose = S.Struct({
+  regionRef: S.String,
+  x: S.Number,
+  y: S.Number,
+  z: S.Number,
+  yaw: S.Number,
+  animation: S.Literals(["idle", "walk", "run"]),
+  capturedAtMs: S.Number,
+})
+export type VerseLocalPose = typeof VerseLocalPose.Type
+
 // Transient status for the Spawn form (validation/submit feedback). Kept in the
 // Model so the view stays a pure function of state (no hidden DOM).
 export const SpawnStatus = S.Struct({
@@ -368,6 +379,10 @@ export const Model = ts("AutopilotDesktop", {
   // Verse world item currently in walk-up range. The view derives overlay copy
   // from server-owned public projections instead of SpacetimeDB authority.
   nearVerseWorldItemId: S.NullOr(S.String),
+  // Last local third-person controller pose emitted by the Verse canvas. Public
+  // projection refreshes can rebuild scene options; this keeps those refreshes
+  // from snapping the user back to spawn.
+  lastVerseLocalPose: S.NullOr(VerseLocalPose),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1019,6 +1034,7 @@ export const initialModel: Model = Model.make({
   chatWorldMultiplayer: null,
   chatWorldInspectedRef: null,
   nearVerseWorldItemId: null,
+  lastVerseLocalPose: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

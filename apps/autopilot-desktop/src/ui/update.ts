@@ -843,7 +843,10 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     case "ChangedVerseLocalPose":
-      return [model, [PublishVerseLocalPose({ pose: message.pose })]]
+      return [
+        Model.make({ ...model, lastVerseLocalPose: message.pose }),
+        [PublishVerseLocalPose({ pose: message.pose })],
+      ]
     case "SettledVerseLocalPosePublish":
       return [model, noCommands]
     case "GotNotifications":

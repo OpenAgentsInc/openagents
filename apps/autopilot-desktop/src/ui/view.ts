@@ -26,6 +26,7 @@ import type { ProofReplayBundle } from "@openagentsinc/proof-replay"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import {
   defaultTrainingRunNodes,
+  trainingRunVisualizationOptionsWithLocalPose,
   trainingRunVisualizationOptionsFromSnapshot,
   type TrainingRunNodeDefinition,
   type TrainingRunOperatorSignalDefinition,
@@ -5862,6 +5863,20 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
     localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
+  const lastPose =
+    model.lastVerseLocalPose === null
+      ? undefined
+      : {
+          controller: "third_person_character" as const,
+          position: [
+            model.lastVerseLocalPose.x,
+            model.lastVerseLocalPose.y,
+            model.lastVerseLocalPose.z,
+          ] as const,
+          yaw: model.lastVerseLocalPose.yaw,
+          action: model.lastVerseLocalPose.animation,
+          capturedAtMs: model.lastVerseLocalPose.capturedAtMs,
+        }
   const navigable = {
     ...withWorld,
     cameraMode: "perspective_walk" as const,
@@ -5880,14 +5895,18 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       statusChart: "hidden" as const,
     },
   }
+  const poseStableNavigable =
+    lastPose === undefined
+      ? navigable
+      : trainingRunVisualizationOptionsWithLocalPose(navigable, lastPose)
   // Payment particles only when their flag is on; each is already evidence-bound.
   return CHAT_WORLD_PAYMENTS
     ? withChatWorldPaymentLayer(
-        navigable,
+        poseStableNavigable,
         modelChatWorldParticles(model),
         multiplayer,
       )
-    : navigable
+    : poseStableNavigable
 }
 
 export const chatSceneVisualization = verseSceneVisualization

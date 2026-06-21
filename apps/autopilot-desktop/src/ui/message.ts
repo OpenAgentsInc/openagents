@@ -14,6 +14,7 @@ import {
   SessionFilter,
   ShellCodingTarget,
   ShellTarget,
+  VerseLocalPose,
   VersePresenceZone,
 } from "./model.js"
 // HUD H3 (#5501): the drag/handle literal schemas for the managed pane-layer
@@ -62,15 +63,7 @@ export const ChangedVerseWorldItemProximity = m(
   },
 )
 export const ChangedVerseLocalPose = m("ChangedVerseLocalPose", {
-  pose: S.Struct({
-    regionRef: S.String,
-    x: S.Number,
-    y: S.Number,
-    z: S.Number,
-    yaw: S.Number,
-    animation: S.Literals(["idle", "walk", "run"]),
-    capturedAtMs: S.Number,
-  }),
+  pose: VerseLocalPose,
 })
 export const SettledVerseLocalPosePublish = m("SettledVerseLocalPosePublish", {
   ok: S.Boolean,
