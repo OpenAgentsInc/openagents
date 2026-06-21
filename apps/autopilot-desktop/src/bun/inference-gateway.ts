@@ -17,8 +17,8 @@ import {
   inferenceGatewayCreditsUrl,
   resolveInferenceGatewaySettings,
   type InferenceGatewaySettings,
-} from "../shared/inference-gateway"
-import type { InferenceGatewayReadinessResponse } from "../shared/rpc"
+} from "../shared/inference-gateway.js"
+import type { InferenceGatewayReadinessResponse } from "../shared/rpc.js"
 
 type BuildInput = Readonly<{
   env: Readonly<Record<string, string | undefined>>

@@ -16,22 +16,39 @@
 //   keeps that projection-safe contract: it shows refs, kinds, categories, and
 //   reason enums, never free text.
 // - The bounds shown here (allow-list, hard-deny categories, caps, window) are
-//   sourced from the real policy module so the displayed bounds can never drift
-//   from what the runtime enforces. `DEFAULT_ALLOW_KINDS` is imported directly;
-//   the cap/window defaults are mirrored from the policy's documented defaults
-//   (private `DEFAULT_MAX_AUTO_APPROVALS` / `DEFAULT_WINDOW_MS`) with a
-//   provenance pointer so a future change updates both.
+//   mirrored from the real policy module. The provenance pointer below is the
+//   contract: when the runtime policy changes, update this display mirror in the
+//   same change. Desktop must not import the node-side policy directly because
+//   that pulls the Pylon runtime graph into the browser typecheck.
 //
 // Why a separate module: it is pure (no Foldkit Message, no RPC, no node deps),
 // mirrors the existing `packages/autopilot-control-protocol/src/approvals-view.ts`
 // pattern, and is independently unit-testable. view.ts renders it; model.ts and
 // the control protocol carry the optional audit field through unchanged-by-default.
 
-// Type-only import from the policy is erased at build (the policy's own
-// `import type … from "./sessions-exec"` is type-only too), so this is
-// browser-build-safe — the bundler never pulls the node-side exec driver.
-import { DEFAULT_ALLOW_KINDS } from "../../../pylon/src/node/auto-approval-policy"
-import type { AutoApprovalCategory } from "../../../pylon/src/node/auto-approval-policy"
+// Mirrored from apps/pylon/src/node/auto-approval-policy.ts.
+export type AutoApprovalCategory = "allow" | "escalate" | "deny"
+
+const DEFAULT_ALLOW_KINDS: ReadonlyArray<string> = [
+  "read",
+  "inspect",
+  "file_read",
+  "file_inspect",
+  "edit",
+  "file_edit",
+  "patch",
+  "apply_patch",
+  "write_file",
+  "verify",
+  "verify_command",
+  "test",
+  "test_command",
+  "dev_check",
+  "git",
+  "git_command",
+  "worktree_edit",
+  "bounded_safe",
+]
 
 // ── Audit trail rows (what the auto policy actually decided) ────────────────
 // The wire/record shape, kept structurally identical to the Pylon exec result

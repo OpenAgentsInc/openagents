@@ -6,8 +6,8 @@
 // Message named by the intent, so the shortcut layer reuses real handlers and
 // never invents a new control verb (audit §5.2).
 
-import { groupForPane } from "./nav"
-import type { Model, PaneId } from "./model"
+import { groupForPane } from "./nav.js"
+import type { Model, PaneId } from "./model.js"
 
 // Raw key event the subscription forwards (mirrors the PressedKey payload).
 export type KeyEvent = Readonly<{

@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { NodeStateMessage, SessionEventRow } from "../shared/rpc"
+import type { NodeStateMessage, SessionEventRow } from "../shared/rpc.js"
 
 // CS-A3 (#5363): durable transcript / session-record persistence (desktop side).
 //

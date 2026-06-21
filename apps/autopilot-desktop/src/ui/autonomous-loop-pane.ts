@@ -30,10 +30,10 @@ import {
   loopStageStates,
   shipGateLine,
   shipStatusLine,
-} from "./helpers"
-import { ClickedCoordinatorToggle, type Message, SelectedSession } from "./message"
-import { type Model, modelNode } from "./model"
-import type { IntentRow } from "../shared/rpc"
+} from "./helpers.js"
+import { ClickedCoordinatorToggle, type Message, SelectedSession } from "./message.js"
+import { type Model, modelNode } from "./model.js"
+import type { IntentRow } from "../shared/rpc.js"
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 
 const h = html<Message>()

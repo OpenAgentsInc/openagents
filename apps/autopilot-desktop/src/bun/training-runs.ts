@@ -27,7 +27,7 @@ import type {
   TrainingWindowLeaseRow,
   TrainingWindowProjectionRow,
   TrainingWindowState,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 type FetchTrainingRunsInput = Readonly<{
   baseUrl: string
@@ -182,6 +182,9 @@ const safeRefStamp = (value: string): string => {
     .slice(0, 80)
   return stamp === "" ? "manual" : stamp
 }
+
+const stableRef = (prefix: string, value: string): string =>
+  `${prefix}.${safeRefStamp(value)}`
 
 const runState = (value: unknown): TrainingRunState => {
   switch (value) {

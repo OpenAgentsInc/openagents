@@ -8,7 +8,7 @@ import {
   type ChatWorldStationRow,
   chatWorldRegionRefForRun,
   projectChatWorldMultiplayer,
-} from "./chat-world-multiplayer"
+} from "./chat-world-multiplayer.js"
 
 export type ChatWorldRegionRow = Readonly<{
   regionRef: string
@@ -324,6 +324,10 @@ export const projectChatWorldSpacetimeRows = (input: {
   readonly worldUrl?: string
   readonly database?: string
 }): ChatWorldSpacetimeProjection => {
+  const multiplayerOptions = {
+    ...(input.worldUrl !== undefined ? { worldUrl: input.worldUrl } : {}),
+    ...(input.database !== undefined ? { database: input.database } : {}),
+  }
   if (input.rows === null) {
     return {
       regions: [],
@@ -332,8 +336,7 @@ export const projectChatWorldSpacetimeRows = (input: {
         runRef: input.runRef,
         rows: null,
         nowMs: input.nowMs,
-        worldUrl: input.worldUrl,
-        database: input.database,
+        ...multiplayerOptions,
       }),
     }
   }
@@ -345,8 +348,7 @@ export const projectChatWorldSpacetimeRows = (input: {
       runRef: input.runRef,
       rows: normalized.rows,
       nowMs: input.nowMs,
-      worldUrl: input.worldUrl,
-      database: input.database,
+      ...multiplayerOptions,
     }),
   }
 }

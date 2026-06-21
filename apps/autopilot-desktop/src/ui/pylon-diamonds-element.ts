@@ -5,7 +5,7 @@ import type { Attribute, Html } from "foldkit/html"
 import {
   mountPylonDiamonds,
   type PylonDiamondsHandle,
-} from "../../../openagents.com/apps/web/src/scene/pylonDiamonds"
+} from "../../../openagents.com/apps/web/src/scene/pylonDiamonds.js"
 
 // #5049: desktop binding for the exact homepage pylon-diamond shader. The
 // renderer source remains in the web app; desktop only provides a Foldkit

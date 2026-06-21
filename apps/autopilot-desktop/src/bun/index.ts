@@ -7,66 +7,66 @@ import {
   PATHS,
   Updater,
 } from "electrobun/bun"
-import { desktopApplicationMenu } from "./application-menu"
-import { createControlTokenResolver, discoverPylonHome } from "./node-home"
+import { desktopApplicationMenu } from "./application-menu.js"
+import { createControlTokenResolver, discoverPylonHome } from "./node-home.js"
 import {
   type NodeLaunchStatus,
   type SupervisedNode,
   superviseManagedNode,
-} from "./node-launcher"
-import { createNodeStatePoller } from "./node-state-poll"
+} from "./node-launcher.js"
+import { createNodeStatePoller } from "./node-state-poll.js"
 import {
   createSessionEventStreamer,
   mergeSessionEventRows,
-} from "./session-event-stream"
-import { persistAndMergeTranscripts } from "./transcript-store"
-import { loadPersistedCredential } from "./agent-onboarding"
+} from "./session-event-stream.js"
+import { persistAndMergeTranscripts } from "./transcript-store.js"
+import { loadPersistedCredential } from "./agent-onboarding.js"
 import {
   claimForumTipRecipientReadiness,
   isForumTipReady,
-} from "./forum-tip-recipient"
-import { hasPostedForumIntro, postForumIntroduction } from "./forum-intro"
+} from "./forum-tip-recipient.js"
+import { hasPostedForumIntro, postForumIntroduction } from "./forum-intro.js"
 import {
   loadWorkSearchReceipt,
   searchForumWork,
-} from "./forum-work-search"
+} from "./forum-work-search.js"
 import {
   detectExistingPylonIdentity,
   detectedIdentityShortLabel,
   loadIdentityChoice,
   projectIdentityChoiceState,
   saveIdentityChoice,
-} from "./identity-choice"
-import { resolveFirstRunLaunchChoice } from "./first-run-launch-choice"
-import { projectOnboardingStatus } from "../shared/onboarding-status"
+} from "./identity-choice.js"
+import { resolveFirstRunLaunchChoice } from "./first-run-launch-choice.js"
+import { projectOnboardingStatus } from "../shared/onboarding-status.js"
 import {
   autoUpdateDisabledReason,
   autoUpdateIntervalMs,
   runAutoUpdateOnce,
-} from "./auto-update"
-import { fetchPublicPylonStats } from "./pylon-network-stats"
-import { fetchPublicActivityTimeline } from "./public-activity-timeline"
+} from "./auto-update.js"
+import { fetchPublicPylonStats } from "./pylon-network-stats.js"
+import { fetchPublicActivityTimeline } from "./public-activity-timeline.js"
 import {
   promiseSurfacingReadiness as buildPromiseSurfacingReadiness,
   resolvePromiseSurfacingSettings,
   surfacePromiseGapReport,
-} from "./promise-surfacing"
-import { createSessionNotifier } from "./notifier"
-import { raiseOsNotification } from "./os-notification"
+} from "./promise-surfacing.js"
+import { createSessionNotifier } from "./notifier.js"
+import { raiseOsNotification } from "./os-notification.js"
 import {
   builtInAgentObjective,
   resolveBuiltInAgentSettings,
-} from "../shared/builtin-agent"
-import { projectInstallReadiness } from "../shared/install-readiness"
-import { buildInferenceGatewayReadiness } from "./inference-gateway"
-import { buildShellTurn, resolveShellAgentToken } from "./shell-turn"
-import { buildVerseTurn } from "./verse-turn"
+} from "../shared/builtin-agent.js"
+import { projectInstallReadiness } from "../shared/install-readiness.js"
+import { buildInferenceGatewayReadiness } from "./inference-gateway.js"
+import { buildShellTurn, resolveShellAgentToken } from "./shell-turn.js"
+import { buildVerseTurn } from "./verse-turn.js"
 import {
   addManagedAccount,
   listManagedAccounts,
   removeManagedAccount,
   setManagedAccountPriority,
-} from "./account-management"
+} from "./account-management.js"
 import {
   cancelSession,
   deployToCloud,
@@ -82,7 +82,7 @@ import {
   startAppleFmSession as startAppleFmControlSession,
   spawnSession,
   submitIntent,
-} from "./pylon-control"
+} from "./pylon-control.js"
 import {
   activateTrainingWindow,
   admitTrainingRealGradientEvidence,
@@ -95,7 +95,7 @@ import {
   readTrainingEvidencePacketSummary,
   reconcileTrainingWindow,
   requestTrainingBootstrapGrant,
-} from "./training-runs"
+} from "./training-runs.js"
 import {
   DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type AppleFmReadinessResponse,
@@ -111,7 +111,7 @@ import {
   type OnboardingStatusResponse,
   type TrainingOperatorReadinessPylonRefSource,
   type TrainingOperatorReadinessResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 const controlBaseUrl = Bun.env.PYLON_CONTROL_BASE_URL ?? "http://127.0.0.1:4716"
 const pollIntervalMs = Number(Bun.env.AUTOPILOT_DESKTOP_NODE_POLL_MS ?? "2000")

@@ -22,7 +22,7 @@
 
 import { Schema as S } from "effect"
 
-import { PaneId } from "./model"
+import { PaneId } from "./model.js"
 
 // A managed pane's content is one of the EXISTING panes (reuse `paneView`). We
 // alias `PaneId` as the kind so adding a windowable surface needs no new union —

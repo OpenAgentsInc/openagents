@@ -23,27 +23,27 @@ import {
   DefaultLane,
   GatewayInferenceFallback,
   ThemePreference,
-} from "./preferences"
+} from "./preferences.js"
 import {
   decideInference,
   type InferenceRoutingDecision,
-} from "../shared/inference-routing"
+} from "../shared/inference-routing.js"
 // HUD H3 (#5501): the managed pane-layer state. Stored on the Model as
 // `S.Unknown` and re-narrowed by `modelPaneLayer` (same opaque-sub-state idiom as
 // `node`/`notifications`). This keeps the import TYPE-ONLY here, so model.ts and
 // pane-manager.ts do NOT form a runtime cycle (pane-manager imports the `PaneId`
 // VALUE from this file; this file imports only the `PaneLayer` TYPE from there).
-import type { PaneLayer } from "./pane-manager"
-import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+import type { PaneLayer } from "./pane-manager.js"
+import type { PylonStatsSnapshot } from "../shared/pylon-network-scene.js"
 import type {
   ChatWorldPylonScene,
   PaymentParticle,
-} from "../shared/chat-world-scene"
-import type { ChatWorldMultiplayerProjection } from "../shared/chat-world-multiplayer"
-import type { DesktopProofReplayProjection } from "../shared/proof-replays"
+} from "../shared/chat-world-scene.js"
+import type { ChatWorldMultiplayerProjection } from "../shared/chat-world-multiplayer.js"
+import type { DesktopProofReplayProjection } from "../shared/proof-replays.js"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG as DefaultDesktopProofReplaySlug,
-} from "../shared/proof-replays"
+} from "../shared/proof-replays.js"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -67,7 +67,7 @@ import type {
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 // Which content pane is showing. The desktop equivalent of mobile's tab set
 // plus the focused session-detail leaf.

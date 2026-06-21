@@ -19,7 +19,7 @@ import type {
   SessionArtifactStats,
   SessionEventRow,
   WalletStatusRow,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 // ── CL-14 bridge transport (desktop) ──────────────────────────────────────
 // Same secure path as mobile, via the shared protocol transport: mint a
@@ -389,6 +389,7 @@ async function fetchArtifactStats(input: {
     if (!result || result.kind === "none") return null
     const artifact = result.artifact && typeof result.artifact === "object" ? result.artifact : undefined
     const ex = artifact && typeof artifact.executor === "object" ? artifact.executor : undefined
+    const detail = extractArtifactDetail(artifact)
     return {
       kind: String(result.kind ?? "none"),
       outcome: ex && typeof ex.outcome === "string" ? ex.outcome : null,
@@ -399,7 +400,7 @@ async function fetchArtifactStats(input: {
       // receipt browser. The node already proved this payload public-projection
       // -safe before writing it; we still defensively keep ONLY refs/digests/
       // enums (string|number) and never copy through any free-text/raw field.
-      detail: extractArtifactDetail(artifact),
+      ...(detail !== undefined ? { detail } : {}),
     }
   } catch {
     return null

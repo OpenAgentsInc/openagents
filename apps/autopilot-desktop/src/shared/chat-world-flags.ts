@@ -11,7 +11,7 @@
 // here and passes them EXPLICITLY into the subscription hooks (deps.flags), so
 // there is no hidden global to keep in sync.
 
-import type { ChatWorldFlags } from "./chat-world-scene"
+import type { ChatWorldFlags } from "./chat-world-scene.js"
 
 const envValue = (name: string): string | undefined => {
   const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env

@@ -4,7 +4,7 @@ import {
   DEFAULT_OPENAGENTS_BASE_URL,
   type ReadFile,
   type WriteFile,
-} from "./agent-onboarding"
+} from "./agent-onboarding.js"
 
 // AF-4 (#5901): automated read-only work-search (discovery only).
 //

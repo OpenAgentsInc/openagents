@@ -21,7 +21,7 @@ import type {
   ManagedAccountMutationResponse,
   ManagedAccountRow,
   ManagedAccountsResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 export type ManagedAccountProvider = "codex" | "claude_agent"
 

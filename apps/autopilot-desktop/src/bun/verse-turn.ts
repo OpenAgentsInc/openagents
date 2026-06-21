@@ -9,15 +9,15 @@
 import {
   inferenceGatewayChatCompletionsUrl,
   resolveInferenceGatewaySettings,
-} from "../shared/inference-gateway"
-import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+} from "../shared/inference-gateway.js"
+import type { PylonStatsSnapshot } from "../shared/pylon-network-scene.js"
 import type {
   VerseTurnContextSummary,
   VerseTurnResponse,
-} from "../shared/rpc"
-import { fetchPublicPylonStats } from "./pylon-network-stats"
-import { fetchPublicActivityTimeline } from "./public-activity-timeline"
-import { fetchTrainingPromiseGates } from "./training-runs"
+} from "../shared/rpc.js"
+import { fetchPublicPylonStats } from "./pylon-network-stats.js"
+import { fetchPublicActivityTimeline } from "./public-activity-timeline.js"
+import { fetchTrainingPromiseGates } from "./training-runs.js"
 
 const DEFAULT_VERSE_MODEL = "gemini-3.5-flash"
 const VERSE_ACTIVITY_LIMIT = 8
@@ -270,20 +270,22 @@ const buildContext = async (
   baseUrl: string,
 ): Promise<VerseTurnContextSummary> => {
   const nowIso = input.nowIso ?? (() => new Date().toISOString())
+  const fetchOptions =
+    input.fetchFn === undefined ? {} : { fetchFn: input.fetchFn }
   const [tassadar, pylon, activity, promises] = await Promise.all([
     fetchPublicTassadarRunSummary({
       baseUrl,
-      fetchFn: input.fetchFn,
       nowIso,
+      ...fetchOptions,
     }),
-    fetchPublicPylonStats({ baseUrl, fetchFn: input.fetchFn, nowIso }),
+    fetchPublicPylonStats({ baseUrl, nowIso, ...fetchOptions }),
     fetchPublicActivityTimeline({
       baseUrl,
-      fetchFn: input.fetchFn,
       limit: VERSE_ACTIVITY_LIMIT,
       nowIso,
+      ...fetchOptions,
     }),
-    fetchTrainingPromiseGates({ baseUrl, fetchFn: input.fetchFn, nowIso }),
+    fetchTrainingPromiseGates({ baseUrl, nowIso, ...fetchOptions }),
   ])
 
   const blockerRefs = unique([

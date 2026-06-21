@@ -13,7 +13,7 @@ import type {
 import type {
   PylonNetworkNode,
   PylonNetworkScene,
-} from "../shared/pylon-network-scene"
+} from "../shared/pylon-network-scene.js"
 
 const BACKGROUND = 0x0c0f13 // matches the homepage pylon scene
 const CENTER_ID = "network"

@@ -14,7 +14,7 @@
 // Keeping both halves in one tiny module means update.ts / subscriptions.ts stay
 // free of electrobun imports and remain unit-testable.
 
-import type { Message } from "./message"
+import type { Message } from "./message.js"
 import type {
   AppleFmReadinessResponse,
   AppleFmSessionStartResponse,
@@ -22,8 +22,12 @@ import type {
   BuiltInAgentStartResponse,
   InferenceGatewayReadinessResponse,
   InstallReadinessResponse,
+  ChooseIdentityParams,
+  ChooseIdentityResponse,
+  IdentityChoiceStateResponse,
   ManagedAccountMutationResponse,
   ManagedAccountsResponse,
+  OnboardingStatusResponse,
   PublicActivityTimelineResponse,
   PromiseSurfacingInput,
   PromiseSurfacingReadinessResponse,
@@ -40,10 +44,12 @@ import type {
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
-} from "../shared/rpc"
+  VerseTurnResponse,
+} from "../shared/rpc.js"
 
 // The webview→Bun request surface (mirrors DesktopRPCSchema["bun"]["requests"]).
 export type DesktopRequests = {
+  openExternal(p: { url: string }): Promise<{ ok: boolean }>
   deployCloud(p: {
     target: "cloudrun" | "workers"
     ref: string
@@ -72,9 +78,18 @@ export type DesktopRequests = {
   // Bun owns the agent token; the webview sends only the prompt and receives the
   // plain Autopilot text (or an honest configure/error message).
   shellTurn(p: { prompt: string }): Promise<ShellTurnResponse>
+  // Verse/Tassadar first-paint chat turn.
+  verseTurn(p: { prompt: string }): Promise<VerseTurnResponse>
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>
+  onboardingStatus(
+    p: Record<string, never>,
+  ): Promise<OnboardingStatusResponse>
+  identityChoiceState(
+    p: Record<string, never>,
+  ): Promise<IdentityChoiceStateResponse>
+  chooseIdentity(p: ChooseIdentityParams): Promise<ChooseIdentityResponse>
   promiseSurfacingReadiness(
     p: Record<string, never>,
   ): Promise<PromiseSurfacingReadinessResponse>

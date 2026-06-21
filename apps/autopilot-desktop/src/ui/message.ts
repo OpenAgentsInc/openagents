@@ -15,19 +15,19 @@ import {
   ShellCodingTarget,
   ShellTarget,
   VersePresenceZone,
-} from "./model"
+} from "./model.js"
 // HUD H3 (#5501): the drag/handle literal schemas for the managed pane-layer
 // messages. Imported as VALUES (the `m()` constructors need the runtime schema);
 // pane-manager imports only the `PaneId` value from model.ts, so there is no
 // cycle back to message.ts.
-import { PaneDragKind, PaneResizeHandle } from "./pane-manager"
+import { PaneDragKind, PaneResizeHandle } from "./pane-manager.js"
 // #5472: the preference literal schemas (single source — see ui/preferences.ts).
 import {
   DefaultAdapter,
   DefaultLane,
   GatewayInferenceFallback,
   ThemePreference,
-} from "./preferences"
+} from "./preferences.js"
 
 // ── Inbound (Electrobun → runtime), pushed by the subscription stream ──────
 export const GotNodeState = m("GotNodeState", { node: S.Unknown })

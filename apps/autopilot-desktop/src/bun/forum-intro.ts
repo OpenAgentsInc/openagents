@@ -8,12 +8,12 @@ import {
   type NodeIdentity,
   type ReadFile,
   type WriteFile,
-} from "./agent-onboarding"
+} from "./agent-onboarding.js"
 import {
   canAttemptForumWrite,
   classifyForumWriteStatus,
   recordForumWriteAttempt,
-} from "./forum-loop-bounds"
+} from "./forum-loop-bounds.js"
 
 // AF-3 (#5900): automated forum self-introduction (the keystone of Part A).
 //

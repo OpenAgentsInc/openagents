@@ -1,7 +1,7 @@
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
-import type { AutopilotUiMessage } from "./view"
-import { statusChip } from "./view"
+import type { AutopilotUiMessage } from "./view.js"
+import { statusChip } from "./view.js"
 
 export type NodeStatus = Readonly<{
   nodeRef: string

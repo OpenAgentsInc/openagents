@@ -2,7 +2,7 @@ import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
   NodeLaunchStatus,
-} from "./rpc"
+} from "./rpc.js"
 
 export type InstallReadinessStatus =
   | "ready"

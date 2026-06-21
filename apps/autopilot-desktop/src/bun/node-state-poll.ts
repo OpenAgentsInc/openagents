@@ -1,5 +1,5 @@
 import { CONTROL_SCHEMA_TAG } from "@openagentsinc/autopilot-control-protocol"
-import type { NodeStateMessage } from "../shared/rpc"
+import type { NodeStateMessage } from "../shared/rpc.js"
 
 export type FetchNodeStateLike = () => Promise<NodeStateMessage>
 
@@ -50,7 +50,8 @@ export function createNodeStatePoller(input: {
 }): NodeStatePoller {
   const timer = input.timer ?? {
     setInterval: globalThis.setInterval.bind(globalThis),
-    clearInterval: globalThis.clearInterval.bind(globalThis),
+    clearInterval: (handle: unknown) =>
+      globalThis.clearInterval(handle as ReturnType<typeof setInterval>),
   }
   let intervalHandle: unknown
   let active = false
@@ -58,7 +59,9 @@ export function createNodeStatePoller(input: {
   async function pollOnce(): Promise<NodeStateMessage> {
     const message = await pollNodeStateOnce({
       fetchNodeState: input.fetchNodeState,
-      fallbackSchema: input.fallbackSchema,
+      ...(input.fallbackSchema !== undefined
+        ? { fallbackSchema: input.fallbackSchema }
+        : {}),
     })
     input.onState(message)
     return message
@@ -83,7 +86,7 @@ export function createNodeStatePoller(input: {
   }
 }
 
-function offlineNodeState(schema = CONTROL_SCHEMA_TAG): NodeStateMessage {
+function offlineNodeState(schema: string = CONTROL_SCHEMA_TAG): NodeStateMessage {
   return {
     ok: false,
     schema,

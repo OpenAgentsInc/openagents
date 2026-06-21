@@ -145,10 +145,13 @@ canvases, particles, text-in-scene), and it has Foldkit bindings
 
 ## Build / test
 
-- `bun test` (in `apps/autopilot-desktop`) is the gate for the Bun-side logic and
-  any pure view-model helpers. The repo's desktop `tsc` config carries
-  pre-existing nodenext type-resolution noise against the protocol package; rely
-  on `bun test` + a `bun build` bundle check, not a clean `tsc`.
+- `bun run typecheck` (in `apps/autopilot-desktop`) is expected to be clean and
+  is part of `bun run verify:deploy`. It uses `tsconfig.typecheck.json` to fence
+  third-party/source-published dependency type surfaces with local shims while
+  leaving `tsconfig.json` runtime-safe for Bun tests/builds.
+- `bun test` (in `apps/autopilot-desktop`) remains the gate for Bun-side logic
+  and pure view-model helpers; pair it with the bundle/build checks below for UI
+  and packaging changes.
 - For Training pane changes, run `bun run verify:training` in
   `apps/autopilot-desktop` (or `bun run verify:autopilot-desktop:training` from
   the repo root). It runs the focused Foldkit tests, CSS/build bundle checks,

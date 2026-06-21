@@ -27,7 +27,7 @@ import {
   type ActivityEvent,
   type ChatWorldPylonScene,
   type PaymentParticle,
-} from "../shared/chat-world-scene"
+} from "../shared/chat-world-scene.js"
 import {
   CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
@@ -35,7 +35,7 @@ import {
   OPENAGENTS_WORLD_URL,
   chatWorldMultiplayerSubscriptionQueries,
   type ChatWorldMultiplayerProjection,
-} from "../shared/chat-world-multiplayer"
+} from "../shared/chat-world-multiplayer.js"
 import {
   chatWorldDesktopAvatarIdentity,
   defaultChatWorldRegionForRun,
@@ -45,9 +45,9 @@ import {
   type ChatWorldAvatarPositionWrite,
   type ChatWorldRegionRow,
   type ChatWorldSpacetimeRows,
-} from "../shared/chat-world-spacetimedb"
-import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
-import { DbConnection as GeneratedWorldConnection } from "../../../openagents.com/apps/web/src/scene/spacetimeWorldBindings"
+} from "../shared/chat-world-spacetimedb.js"
+import type { PylonStatsSnapshot } from "../shared/pylon-network-scene.js"
+import { DbConnection as GeneratedWorldConnection } from "../../../openagents.com/apps/web/src/scene/spacetimeWorldBindings/index.js"
 
 const PUBLIC_BASE_URL = "https://openagents.com"
 const PYLON_STATS_PATH = "/api/public/pylon-stats"
@@ -299,6 +299,18 @@ type SpacetimeWorldConnectInput = Readonly<{
   onUnavailable: () => void
 }>
 
+type SpacetimeWorldConnectionBuilder = {
+  withUri(uri: string): SpacetimeWorldConnectionBuilder
+  withDatabaseName(database: string): SpacetimeWorldConnectionBuilder
+  withToken(token: string): SpacetimeWorldConnectionBuilder
+  onConnect(
+    callback: (ctx: unknown, identity: unknown, token: string) => void,
+  ): SpacetimeWorldConnectionBuilder
+  onConnectError(callback: () => void): SpacetimeWorldConnectionBuilder
+  onDisconnect(callback: () => void): SpacetimeWorldConnectionBuilder
+  build(): SpacetimeWorldConnection
+}
+
 export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
   readonly connect?: (input: SpacetimeWorldConnectInput) => SpacetimeWorldConnection
   readonly database?: string
@@ -374,8 +386,9 @@ const resolveClearTimeout = (
 const defaultSpacetimeConnect = (
   input: SpacetimeWorldConnectInput,
 ): SpacetimeWorldConnection => {
-  let builder = GeneratedWorldConnection
-    .builder()
+  const builderFactory =
+    GeneratedWorldConnection.builder as unknown as () => SpacetimeWorldConnectionBuilder
+  let builder = builderFactory()
     .withUri(input.worldUrl)
     .withDatabaseName(input.database)
     .onConnect((_ctx: unknown, _identity: unknown, token: string) =>
@@ -656,7 +669,7 @@ export const subscribeSpacetimeWorld = (
   dispatch: SpacetimeWorldDispatch,
   deps?: ChatWorldSpacetimeSubscriptionDeps,
 ): Unsubscribe => {
-  const flags = deps?.flags ?? chatWorldFlags()
+  const flags = { ...chatWorldFlags(), ...(deps?.flags ?? {}) }
   if (flags.CHAT_WORLD_MULTIPLAYER !== true) return noop
 
   const database = deps?.database ?? OPENAGENTS_WORLD_DATABASE

@@ -21,13 +21,13 @@
 // Redaction rule: only digests, verdicts, and public refs are surfaced — the raw
 // event `full`/`detail` text is never copied into a step.
 
-import type { SessionEventRow } from "../shared/rpc"
+import type { SessionEventRow } from "../shared/rpc.js"
 import type {
   ChatStep,
   ChatStepStatus,
   ChatStepVerdict,
-} from "./model"
-import type { SignatureSelection } from "./blueprint-chat-routing"
+} from "./model.js"
+import type { SignatureSelection } from "./blueprint-chat-routing.js"
 
 // Public refs the live steps point at. These are stable PUBLIC identifiers (the
 // scoped tool, the public Tassadar module listing, the public replay slug) — NOT

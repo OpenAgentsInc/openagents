@@ -57,23 +57,23 @@ import {
   SurfacePromiseGap,
   SpawnSession,
   SubmitIntent,
-} from "./commands"
+} from "./commands.js"
 import {
   buildComposerContinuationObjective,
   parseVerifyLines,
-} from "./helpers"
+} from "./helpers.js"
 import {
   advanceSwarmBatch,
   clampSwarmBatchConcurrency,
   parseSwarmBatchObjectives,
   startSwarmBatch,
   type SwarmBatchState,
-} from "./swarm-batch"
+} from "./swarm-batch.js"
 import {
   managedWorktreeLabel,
   parseManagedWorktreeRequest,
   type ManagedWorktreeRequest,
-} from "./composer-workspace"
+} from "./composer-workspace.js"
 import {
   ClickedBlueprintChatSubmit,
   ClickedChatSubmit,
@@ -84,25 +84,24 @@ import {
   ClosedCommandPalette,
   MovedCommandPaletteSelection,
   NavigatedTo,
-  NavigatedToGroup,
   OpenedCommandPalette,
   OpenedManagedPane,
   RanPaletteCommand,
   type Message,
-} from "./message"
-import { interpretKey } from "./keyboard"
+} from "./message.js"
+import { interpretKey } from "./keyboard.js"
 import {
   filterPaletteCommands,
   groupById,
   paletteCommands,
   type PaletteCommand,
-} from "./nav"
-import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
+} from "./nav.js"
+import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
 // fallback under test) so cascade/clamp use the live size.
-import { reducePaneLayer, type PaneLayerAction, type Viewport } from "./pane-manager"
+import { reducePaneLayer, type PaneLayerAction, type Viewport } from "./pane-manager.js"
 import {
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
@@ -114,22 +113,22 @@ import {
   type ProofReplayCommandRequest,
   type ShellCodingTarget,
   type ShellTarget,
-} from "./model"
+} from "./model.js"
 // #5466 (EPIC #5461): live Blueprint chat — SEMANTIC signature routing + runtime
 // step derivation from real session events (replaces the seeded path).
-import { selectSignatureForMessage } from "./blueprint-chat-routing"
-import { liveChatScopedSteps } from "./blueprint-chat-runtime"
+import { selectSignatureForMessage } from "./blueprint-chat-routing.js"
+import { liveChatScopedSteps } from "./blueprint-chat-runtime.js"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   type DesktopProofReplayProjection,
-} from "../shared/proof-replays"
-import { validatePromiseSurfacingInput } from "../shared/promise-surfacing"
+} from "../shared/proof-replays.js"
+import { validatePromiseSurfacingInput } from "../shared/promise-surfacing.js"
 import {
   paymentParticleTsMs,
   prunePaymentParticlesByRecency,
   type PaymentParticle,
-} from "../shared/chat-world-scene"
-import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization"
+} from "../shared/chat-world-scene.js"
+import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -151,7 +150,7 @@ import type {
   TrainingRunsResponse,
   TrainingWindowActionResponse,
   TrainingWindowLeaseResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 type Result = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 

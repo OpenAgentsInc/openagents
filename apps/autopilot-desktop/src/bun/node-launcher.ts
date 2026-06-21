@@ -6,14 +6,14 @@ import {
   loadPersistedCredential,
   selfRegisterAgent,
   type SelfRegisterResult,
-} from "./agent-onboarding"
-import { discoverPylonHome } from "./node-home"
+} from "./agent-onboarding.js"
+import { discoverPylonHome } from "./node-home.js"
 import {
   fetchNodeSparkAddress,
   probeControlCompatibility,
   readControlToken,
-} from "./pylon-control"
-import type { NodeLaunchStatus } from "../shared/rpc"
+} from "./pylon-control.js"
+import type { NodeLaunchStatus } from "../shared/rpc.js"
 
 // #5011 (JUNE15_LAUNCH_PLAN §0/§4.F): the install seam. Today the desktop only
 // *discovers* an already-running local node; a fresh install therefore reports
@@ -320,7 +320,10 @@ export const ensureManagedNode = async (
   const discoveryEnvHome = options.env.PYLON_HOME ?? chosenExistingHome ?? undefined
 
   // 1. Adopt an already-running node — never double-spawn.
-  const discovered = discover({ env: discoveryEnvHome, cwd: options.cwd })
+  const discovered = discover({
+    cwd: options.cwd,
+    ...(discoveryEnvHome !== undefined ? { env: discoveryEnvHome } : {}),
+  })
   if (discovered !== null) {
     if (!(await probeCompatible(options.controlBaseUrl))) {
       emit("failed")

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import type { ReadFile, WriteFile } from "./agent-onboarding"
+import type { ReadFile, WriteFile } from "./agent-onboarding.js"
 
 // AF-5 (#5902): forum-loop safety / bounds.
 //

@@ -1,4 +1,4 @@
-import type { NodeLaunchStatus } from "./rpc"
+import type { NodeLaunchStatus } from "./rpc.js"
 
 // AO-4 (EPIC #5441, issue #5445): the live first-run onboarding status surface.
 //

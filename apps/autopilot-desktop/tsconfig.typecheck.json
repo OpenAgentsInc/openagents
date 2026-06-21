@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@openagentsinc/three-effect": ["./src/types/three-effect-core.d.ts"],
+      "@openagentsinc/three-effect/core": ["./src/types/three-effect-core.d.ts"],
+      "@openagentsinc/three-effect/foldkit": ["./src/types/three-effect-foldkit.d.ts"],
+      "electrobun/bun": ["./src/types/electrobun-bun.d.ts"],
+      "electrobun/view": ["./src/types/electrobun-view.d.ts"]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import {
   detectExistingPylonIdentity,
   loadIdentityChoice,
-} from "./identity-choice"
+} from "./identity-choice.js"
 
 export type FirstRunLaunchChoice = {
   readonly choiceMade: boolean

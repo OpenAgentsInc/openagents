@@ -35,12 +35,12 @@ import type {
   TrainingRunVisualizationOptions,
 } from "@openagentsinc/three-effect/core"
 
-import type { ChatWorldPylonScene, PaymentParticle } from "./chat-world-scene"
-import type { ChatWorldMultiplayerProjection } from "./chat-world-multiplayer"
+import type { ChatWorldPylonScene, PaymentParticle } from "./chat-world-scene.js"
+import type { ChatWorldMultiplayerProjection } from "./chat-world-multiplayer.js"
 import {
   type PylonNetworkNode,
   type PylonNetworkScene,
-} from "./pylon-network-scene"
+} from "./pylon-network-scene.js"
 
 // ── Live pylon scene → PylonNetworkScene (the existing bezier graph model) ────
 
@@ -370,12 +370,13 @@ export const chatWorldMultiplayerLayer = (
     if (localAvatarRef.length > 0 && agent.avatarRef === localAvatarRef) continue
     const ageMs = Math.max(0, nowMs - agent.lastSeenEpochMs)
     if (ageMs >= despawnAfterMs) continue
+    const animation = movementModeToRemoteAvatarAnimation(agent.movementMode)
     remoteAvatars.push({
       id: agent.avatarRef,
       label: agent.label,
       position,
       yaw: agent.yaw,
-      animation: movementModeToRemoteAvatarAnimation(agent.movementMode),
+      ...(animation !== undefined ? { animation } : {}),
       updatedAtMs: agent.lastSeenEpochMs,
       stale: ageMs >= staleAfterMs,
       color: agent.color,
@@ -538,7 +539,7 @@ export const chatWorldPaymentLayer = (
       motionId: particle.id,
       motionKind: particle.realBitcoinMoved ? "real_bitcoin_moved" : "settlement_recorded",
       sourceRefs: particle.sourceRefs,
-      generatedAt: particle.ts ?? undefined,
+      ...(typeof particle.ts === "string" ? { generatedAt: particle.ts } : {}),
       simulated: false,
     } as const
 

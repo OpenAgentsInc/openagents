@@ -11,7 +11,7 @@ import type {
   TrainingPublicMetric,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
-} from "./rpc"
+} from "./rpc.js"
 
 export const VERSE_TASSADAR_CORE_NODE_ID = "verse-training:tassadar-run-core"
 export const VERSE_TRAINING_NODE_PREFIX = "verse-training:"
@@ -83,10 +83,10 @@ const stageNode = (spec: StageSpec): TrainingRunNodeDefinition => ({
   id: `${VERSE_TRAINING_NODE_PREFIX}${spec.id}`,
   label: spec.label,
   detail: spec.detail,
-  role: spec.status === "blocked" ? "gate" : "lifecycle",
+  role: "lifecycle",
   status: spec.status,
   position: spec.position,
-  connectedTo: spec.connectedTo,
+  ...(spec.connectedTo !== undefined ? { connectedTo: spec.connectedTo } : {}),
 })
 
 const statusFromRun = (
@@ -134,9 +134,15 @@ const rewriteBaseNodes = (
         }
       : {
           ...node,
-          connectedTo: node.connectedTo?.map((id) =>
-            id === NETWORK_CENTER_NODE_ID ? VERSE_TASSADAR_CORE_NODE_ID : id,
-          ),
+          ...(node.connectedTo !== undefined
+            ? {
+                connectedTo: node.connectedTo.map((id) =>
+                  id === NETWORK_CENTER_NODE_ID
+                    ? VERSE_TASSADAR_CORE_NODE_ID
+                    : id,
+                ),
+              }
+            : {}),
         },
   )
 
@@ -338,7 +344,7 @@ const pushMotion = (
     motionId: `${input.kind}:${input.toId}:${refs[0]}`,
     motionKind: input.kind,
     sourceRefs: refs,
-    generatedAt: input.generatedAt,
+    ...(input.generatedAt !== undefined ? { generatedAt: input.generatedAt } : {}),
     simulated: false,
   } as const
   beams.push({ fromId: input.fromId, toId: input.toId, ...motion })

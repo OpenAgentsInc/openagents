@@ -3,12 +3,12 @@ import type {
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 import type { PublicActivityTimelineEnvelope } from "@openagentsinc/public-activity-timeline"
-import type { InstallReadinessResponse } from "./install-readiness"
-import type { OnboardingStatusResponse } from "./onboarding-status"
+import type { InstallReadinessResponse } from "./install-readiness.js"
+import type { OnboardingStatusResponse } from "./onboarding-status.js"
 import type {
   PromiseSurfacingDraft,
   PromiseSurfacingInput,
-} from "./promise-surfacing"
+} from "./promise-surfacing.js"
 
 // Electrobun's default RPC timeout is 1000ms, which is too short for host-side
 // requests that legitimately touch the network, especially the zero-base shell
@@ -710,16 +710,16 @@ export type VerseTurnResponse = {
   readonly context: VerseTurnContextSummary
 }
 
-export type { InstallReadinessResponse } from "./install-readiness"
+export type { InstallReadinessResponse } from "./install-readiness.js"
 export type {
   OnboardingStatusResponse,
   OnboardingStep,
   OnboardingStepStatus,
-} from "./onboarding-status"
+} from "./onboarding-status.js"
 export type {
   PromiseSurfacingDraft,
   PromiseSurfacingInput,
-} from "./promise-surfacing"
+} from "./promise-surfacing.js"
 
 // AO-3 (#5444): public-safe first-run identity-choice projection for the
 // webview. No seeds, no tokens — only detection booleans + public labels.

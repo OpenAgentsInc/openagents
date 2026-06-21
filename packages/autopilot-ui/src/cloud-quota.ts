@@ -1,7 +1,7 @@
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
-import type { AutopilotUiMessage, ChipTone } from "./view"
-import { statusChip } from "./view"
+import type { AutopilotUiMessage, ChipTone } from "./view.js"
+import { statusChip } from "./view.js"
 
 export type CloudQuotaPanelInput = Readonly<{
   creditBalance: number

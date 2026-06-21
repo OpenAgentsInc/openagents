@@ -1,8 +1,8 @@
 import type {
   OnboardingStatusResponse,
   OnboardingStep,
-} from "./onboarding-status"
-import type { ChatWorldPylonScene } from "./chat-world-scene"
+} from "./onboarding-status.js"
+import type { ChatWorldPylonScene } from "./chat-world-scene.js"
 
 export type CharacterCreationBeatId =
   | "pylon-online"

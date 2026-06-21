@@ -1,7 +1,7 @@
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
-import type { AutopilotUiMessage } from "./view"
-import { statusChip } from "./view"
+import type { AutopilotUiMessage } from "./view.js"
+import { statusChip } from "./view.js"
 
 // CS-A3 (#5363): the shared structured diff viewer. This is the UI port of the
 // Pylon `diff-review.ts` ChangeSet model (apps/pylon/src/tas/diff-review.ts):

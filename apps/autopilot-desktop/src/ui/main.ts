@@ -20,9 +20,9 @@ import { html } from "foldkit/html"
 import {
   DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type DesktopRPCSchema,
-} from "../shared/rpc"
-import { type DesktopRequests, pushInbound, setRequest } from "./bridge"
-import { initialRuntimeState } from "./initial-state"
+} from "../shared/rpc.js"
+import { type DesktopRequests, pushInbound, setRequest } from "./bridge.js"
+import { initialRuntimeState } from "./initial-state.js"
 import {
   ChangedShellInput,
   GotNodeLaunchStatus,
@@ -30,11 +30,11 @@ import {
   GotNotifications,
   GotPylonStats,
   SubmittedShell,
-} from "./message"
-import { Model } from "./model"
-import { subscriptions } from "./subscriptions"
-import { update } from "./update"
-import { view } from "./view"
+} from "./message.js"
+import { Model } from "./model.js"
+import { subscriptions } from "./subscriptions.js"
+import { update } from "./update.js"
+import { view } from "./view.js"
 
 // Dev error boundary: when a render/update crashes, Foldkit's `crash.view`
 // replaces the (otherwise blank) screen with the error + stack so failures are

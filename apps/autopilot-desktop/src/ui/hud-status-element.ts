@@ -6,8 +6,8 @@ import {
   hudStatusProjection,
   type HudStatusInput,
   type HudStatusProjection,
-} from "../shared/hud-status-projection"
-import { mountHudStatusScene, type HudStatusSceneHandle } from "./hud-status-scene"
+} from "../shared/hud-status-projection.js"
+import { mountHudStatusScene, type HudStatusSceneHandle } from "./hud-status-scene.js"
 
 // HUD H7 (#5504): the Foldkit custom-element binding for the live status/meters
 // HUD overlay. Same pattern as `pylon-diamonds-element.ts` — the (heavy, DOM-

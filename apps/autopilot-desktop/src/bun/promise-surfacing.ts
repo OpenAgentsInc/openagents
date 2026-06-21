@@ -3,11 +3,11 @@ import {
   type ProductPromiseForumTopicSummary,
   type ProductPromiseLedgerDocument,
   type PromiseSurfacingInput,
-} from "../shared/promise-surfacing"
+} from "../shared/promise-surfacing.js"
 import type {
   PromiseSurfacingReadinessResponse,
   PromiseSurfacingResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 export type PromiseSurfacingSettings = {
   readonly baseUrl: string

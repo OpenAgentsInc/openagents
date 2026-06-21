@@ -2,8 +2,8 @@ import type {
   TrainingPromiseGatesResponse,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
-} from "./rpc"
-import { selectedVerseTrainingSummary } from "./verse-training-visualization"
+} from "./rpc.js"
+import { selectedVerseTrainingSummary } from "./verse-training-visualization.js"
 
 export type VerseRunHudSample = Readonly<{
   id: string

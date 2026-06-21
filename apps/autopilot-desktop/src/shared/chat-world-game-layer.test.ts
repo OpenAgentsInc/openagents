@@ -7,7 +7,7 @@ import {
   projectManaBudgetHud,
   reputationGlyphForScore,
   type ChatWorldGameLayerFlags,
-} from "./chat-world-game-layer"
+} from "./chat-world-game-layer.js"
 
 const flags: ChatWorldGameLayerFlags = {
   handTracking: true,

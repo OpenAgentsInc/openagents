@@ -3,7 +3,7 @@
 // the UI projects into the scene via projectPylonNetworkScene (pure). Fail-soft:
 // any error returns ok:false with the reason; the scene then renders dormant
 // (never fake counts). Injectable fetchFn/nowIso for tests.
-import type { PylonStatsSnapshot } from "../shared/pylon-network-scene"
+import type { PylonStatsSnapshot } from "../shared/pylon-network-scene.js"
 
 export type FetchPylonStatsInput = {
   readonly baseUrl: string

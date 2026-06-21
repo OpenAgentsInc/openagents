@@ -8,12 +8,12 @@ import {
   sanitizeSparkAddress,
   type ReadFile,
   type WriteFile,
-} from "./agent-onboarding"
+} from "./agent-onboarding.js"
 import {
   canAttemptForumWrite,
   classifyForumWriteStatus,
   recordForumWriteAttempt,
-} from "./forum-loop-bounds"
+} from "./forum-loop-bounds.js"
 
 // AF-2 (#5899): automated forum tip-recipient readiness claim.
 //

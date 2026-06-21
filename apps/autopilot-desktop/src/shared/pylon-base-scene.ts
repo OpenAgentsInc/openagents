@@ -9,13 +9,13 @@ import {
   type PaymentParticle,
   type PylonGrowthTier,
   pylonGrowthTier,
-} from "./chat-world-scene"
-import type { OnboardingStatusResponse, OnboardingStepStatus } from "./onboarding-status"
+} from "./chat-world-scene.js"
+import type { OnboardingStatusResponse, OnboardingStepStatus } from "./onboarding-status.js"
 import type {
   IdentityChoiceStateResponse,
   TrainingOperatorReadinessResponse,
-} from "./rpc"
-import { VERSE_TASSADAR_CORE_NODE_ID } from "./verse-training-visualization"
+} from "./rpc.js"
+import { VERSE_TASSADAR_CORE_NODE_ID } from "./verse-training-visualization.js"
 
 export const PYLON_BASE_NODE_ID = "verse-pylon-base:my-base"
 export const PYLON_BASE_NODE_PREFIX = "verse-pylon-base:"
@@ -318,10 +318,7 @@ export const pylonBaseNode = (
     id: PYLON_BASE_NODE_ID,
     label,
     detail: `${projection.statusLine}${refs}${blocker}`,
-    role:
-      projection.status === "missing" || projection.status === "blocked"
-        ? "gate"
-        : "lifecycle",
+    role: "lifecycle",
     status: baseNodeStatus(projection),
     position: [0, 2.72, 0],
     connectedTo: [VERSE_TASSADAR_CORE_NODE_ID],

@@ -1,6 +1,6 @@
 import type { Command } from "foldkit"
 
-import type { Message } from "./message"
+import type { Message } from "./message.js"
 import {
   LoadIdentityChoiceState,
   LoadOnboardingStatus,
@@ -8,13 +8,13 @@ import {
   LoadTrainingOperatorReadiness,
   LoadTrainingPromiseGates,
   LoadTrainingRuns,
-} from "./commands"
-import { initialModel, Model } from "./model"
+} from "./commands.js"
+import { initialModel, Model } from "./model.js"
 // #5472: load the locally-persisted Settings preferences and apply them to the
 // initial model so theme + spawn defaults take effect from app entry. Loaded
 // here (the real app entry), not in `initialModel`, so the shared neutral base
 // stays deterministic for the view/update tests (which never touch storage).
-import { loadPreferences } from "./preferences"
+import { loadPreferences } from "./preferences.js"
 
 type InitialRuntimeState = readonly [
   Model,

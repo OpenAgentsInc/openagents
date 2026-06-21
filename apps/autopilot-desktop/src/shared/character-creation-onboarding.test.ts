@@ -4,8 +4,8 @@ import {
   projectCharacterCreationOnboarding,
   type CharacterCreationBeat,
   type CharacterCreationForumReadiness,
-} from "./character-creation-onboarding"
-import type { OnboardingStatusResponse } from "./onboarding-status"
+} from "./character-creation-onboarding.js"
+import type { OnboardingStatusResponse } from "./onboarding-status.js"
 
 const onboarding = (
   overrides: Partial<Record<string, "pending" | "active" | "done" | "failed">>,

@@ -1,4 +1,4 @@
-import type { RaiseOsNotification } from "./notifier"
+import type { RaiseOsNotification } from "./notifier.js"
 
 // CL-30 (desktop): raise a native macOS notification via `osascript`. This is
 // the reliable Bun-side fallback for the Electrobun host process (the webview

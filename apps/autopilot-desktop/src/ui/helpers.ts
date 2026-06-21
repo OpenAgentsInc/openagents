@@ -12,7 +12,7 @@ import type {
   SessionEventRow,
   TrainingRunsResponse,
   WalletStatusRow,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 
 // ── Node status line (Nodes pane) ───────────────────────────────────────────
 export function nodeStatusLine(state: {
@@ -547,7 +547,7 @@ export function swarmAccountLabel(
 // The repo / worktree a cell is running in. `workspaceRef` is a public-safe ref
 // (no raw path); show its tail, or a neutral placeholder when absent.
 export function swarmWorkspaceLabel(session: {
-  workspaceRef?: string | null
+  workspaceRef?: string | null | undefined
 }): string {
   const ref = session.workspaceRef ?? null
   if (ref === null || ref.trim() === "") return "—"
@@ -581,7 +581,7 @@ export function orderSwarmSessions<
   T extends {
     sessionRef: string
     state: string
-    parentRef?: string | null
+    parentRef?: string | null | undefined
     updatedAt: string
   },
 >(sessions: ReadonlyArray<T>): ReadonlyArray<T> {

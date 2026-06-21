@@ -5,7 +5,7 @@ import {
   chatWorldMultiplayerSubscriptionQueries,
   chatWorldRegionRefForRun,
   projectChatWorldMultiplayer,
-} from "./chat-world-multiplayer"
+} from "./chat-world-multiplayer.js"
 
 const runRef = "run.tassadar.executor.20260615"
 const regionRef = chatWorldRegionRefForRun(runRef)

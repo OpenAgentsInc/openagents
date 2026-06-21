@@ -228,7 +228,7 @@ type VerseLaunchReceipt = {
     readonly path: string
   }
   readonly movement: MovementSmoke
-  readonly typecheckCaveat: string
+  readonly typecheckProof: string
 }
 
 const readUint32 = (buffer: Buffer, offset: number): number =>
@@ -766,8 +766,8 @@ const main = async (): Promise<void> => {
         path: relativePath(screenshotPath),
       },
       movement,
-      typecheckCaveat:
-        "Desktop full tsc remains caveated by #5556; this smoke is packaged-view/render proof plus deploy verification, not a claim that #5556 is closed.",
+      typecheckProof:
+        "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
     }
     writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`)
     console.log(JSON.stringify(receipt, null, 2))

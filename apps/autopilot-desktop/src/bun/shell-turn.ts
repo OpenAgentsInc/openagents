@@ -23,8 +23,8 @@
 import {
   inferenceGatewayChatCompletionsUrl,
   resolveInferenceGatewaySettings,
-} from "../shared/inference-gateway"
-import type { ShellTurnResponse } from "../shared/rpc"
+} from "../shared/inference-gateway.js"
+import type { ShellTurnResponse } from "../shared/rpc.js"
 
 // The free-tier default model id the gateway routes to the first-party Vertex
 // Gemini lane (mirrors the Worker's DEFAULT_CHAT_MODEL). An explicit

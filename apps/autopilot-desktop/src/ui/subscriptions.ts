@@ -15,7 +15,7 @@
 import { Effect, Queue, Stream } from "effect"
 import { Subscription } from "foldkit"
 
-import { setEmit } from "./bridge"
+import { setEmit } from "./bridge.js"
 import {
   EndedPaneDrag,
   GotChatWorldMultiplayer,
@@ -24,17 +24,17 @@ import {
   MovedPaneDragPointer,
   PressedKey,
   type Message,
-} from "./message"
-import type { Model } from "./model"
+} from "./message.js"
+import type { Model } from "./model.js"
 import {
   subscribePaymentParticles,
   subscribePylonScene,
   subscribeSpacetimeWorld,
-} from "./chat-world-subscriptions"
+} from "./chat-world-subscriptions.js"
 import {
   chatWorldBuildFlags,
   chatWorldMultiplayerFlag,
-} from "../shared/chat-world-flags"
+} from "../shared/chat-world-flags.js"
 
 // The inbound push stream. We stash a queue-backed emitter in the bridge so the
 // Electroview handlers can feed messages in; teardown clears it.
@@ -142,6 +142,7 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
         // open, otherwise return focus to the shell chat input. Runs only on the
         // keys that open/close the palette; querying after a frame so the DOM has
         // updated. (No-op where the targets don't exist, e.g. inside a pane.)
+        const modified = meta || ctrl
         const affectsPalette =
           (key.toLowerCase() === "k" && modified) ||
           key === "Escape" ||

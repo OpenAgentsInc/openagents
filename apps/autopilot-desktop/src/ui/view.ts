@@ -38,56 +38,56 @@ import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 // #5467: the Autonomous loop view's own pane module (Supervise group).
-import { autonomousLoopPane } from "./autonomous-loop-pane"
+import { autonomousLoopPane } from "./autonomous-loop-pane.js"
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
-import { statusHudView } from "./hud-status-element"
-import { hudStatusProjection } from "../shared/hud-status-projection"
+import { statusHudView } from "./hud-status-element.js"
+import { hudStatusProjection } from "../shared/hud-status-projection.js"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
   TASSADAR_REPLAY_ORIGIN_DATA_KEY,
   TASSADAR_REPLAY_SLUG_DATA_KEY,
   tassadarProofReplayView,
-} from "../../../openagents.com/apps/web/src/scene/tassadarProofReplayElement"
+} from "../../../openagents.com/apps/web/src/scene/tassadarProofReplayElement.js"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG,
   desktopProofReplayCatalog,
   type DesktopProofReplayProjection,
-} from "../shared/proof-replays"
-import { isGatewayBalanceLow } from "../shared/inference-routing"
+} from "../shared/proof-replays.js"
+import { isGatewayBalanceLow } from "../shared/inference-routing.js"
 // #5735: adapt the already-written pylon-network scene onto the three-effect
 // bezier graph so the chat can render as glass over a calm 3D world scene.
-import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization"
+import { pylonNetworkVisualizationOptions } from "./pylon-network-visualization.js"
 import type {
   PylonNetworkScene,
-} from "../shared/pylon-network-scene"
+} from "../shared/pylon-network-scene.js"
 // #5730 (P2.5): feed the LIVE pylon scene + Bitcoin payment particles into the
 // chat background scene. Pure projections live in shared/chat-world-*.ts.
 import {
   liveChatWorldNetworkScene,
   withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
-} from "../shared/chat-world-visualization"
+} from "../shared/chat-world-visualization.js"
 import {
   VERSE_TRAINING_NODE_PREFIX,
   withVerseTrainingLayer,
-} from "../shared/verse-training-visualization"
+} from "../shared/verse-training-visualization.js"
 import {
   verseRunHudProjection,
   type VerseRunHudProjection,
   type VerseRunHudSample,
-} from "../shared/verse-run-hud"
+} from "../shared/verse-run-hud.js"
 import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
   type PylonBaseProjection,
-} from "../shared/pylon-base-scene"
-import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags"
+} from "../shared/pylon-base-scene.js"
+import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
 import {
   CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
   chatWorldRegionRefForRun,
-} from "../shared/chat-world-multiplayer"
+} from "../shared/chat-world-multiplayer.js"
 
 import type {
   AccountRow,
@@ -112,7 +112,7 @@ import type {
   TrainingPromiseSummary,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
-} from "../shared/rpc"
+} from "../shared/rpc.js"
 import {
   ChangedPromiseSurfacingClaimText,
   ChangedPromiseSurfacingEnvironment,
@@ -228,20 +228,20 @@ import {
   ClosedManagedPane,
   FocusedManagedPane,
   StartedPaneDrag,
-} from "./message"
+} from "./message.js"
 // HUD H3 (#5501): the layer geometry/types + the 8 resize handles, all pure.
 import {
   PANE_RESIZE_HANDLES,
   type ManagedPane,
   type PaneLayer,
   type PaneResizeHandle,
-} from "./pane-manager"
+} from "./pane-manager.js"
 import {
   DEFAULT_MANAGED_BASE_REF,
   managedWorktreeLabel,
   parseManagedWorktreeRequest,
   worktreePathLabel,
-} from "./composer-workspace"
+} from "./composer-workspace.js"
 import {
   HOTBAR_SLOTS,
   NAV_GROUPS,
@@ -250,9 +250,9 @@ import {
   groupForPane,
   type HotbarSlot,
   type NavGroup,
-} from "./nav"
+} from "./nav.js"
 // #5472: live theme attribute helper for the Settings preferences.
-import { themeAttr } from "./preferences"
+import { themeAttr } from "./preferences.js"
 import {
   approvalLabel,
   artifactBrowserSections,
@@ -280,16 +280,16 @@ import {
   trainingProjectionMeta,
   verifyLineText,
   walletSummary,
-} from "./helpers"
+} from "./helpers.js"
 // Concise + markdown-rendered session-stream transcript (owner report,
 // 2026-06-19): replaces the raw label/markdown dump with a clean readable view.
-import { conciseTranscript } from "./stream-render"
+import { conciseTranscript } from "./stream-render.js"
 // #5468 (EPIC #5461): bounded auto-approve policy + audit-trail projection.
 import {
   boundedAutoApprovalPolicySummary,
   projectAutoApprovalAudit,
   summarizeAutoApprovalAudit,
-} from "./auto-approval-view"
+} from "./auto-approval-view.js"
 import {
   SWARM_BATCH_MAX_CONCURRENCY,
   SWARM_BATCH_MAX_OBJECTIVES,
@@ -299,7 +299,7 @@ import {
   swarmBatchStatusLine,
   swarmFailoverRouting,
   swarmRoutingReasonLabel,
-} from "./swarm-batch"
+} from "./swarm-batch.js"
 import {
   type Model,
   type ChatMessage,
@@ -337,7 +337,7 @@ import {
   modelTrainingPromiseGates,
   modelTrainingReconcile,
   modelTrainingRuns,
-} from "./model"
+} from "./model.js"
 
 const h = html<Message>()
 const cls = (value: string): Attribute<Message> => h.Class(value)
@@ -613,7 +613,7 @@ const hotbarSlotView = (model: Model, slot: HotbarSlot): Html => {
         h.OnClick(OpenedCommandPalette()),
       ],
       [
-        h.span([cls("hotbar-slot-chord"), h.AriaHidden("true")], [slot.chord]),
+        h.span([cls("hotbar-slot-chord"), h.AriaHidden(true)], [slot.chord]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
     )
@@ -639,7 +639,7 @@ const hotbarSlotView = (model: Model, slot: HotbarSlot): Html => {
         h.OnClick(ToggleVerse()),
       ],
       [
-        h.span([cls("hotbar-slot-label"), h.AriaHidden("true")], [""]),
+        h.span([cls("hotbar-slot-label"), h.AriaHidden(true)], [""]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ],
     )

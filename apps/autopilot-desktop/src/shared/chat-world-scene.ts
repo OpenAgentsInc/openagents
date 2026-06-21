@@ -24,7 +24,7 @@ import {
   recentPylonNetworkId,
   recentPylonNetworkLabel,
   type PylonStatsSnapshot,
-} from "./pylon-network-scene"
+} from "./pylon-network-scene.js"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Feature flags (default OFF). The renderer / P0 integration reads these before

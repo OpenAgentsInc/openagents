@@ -10,6 +10,7 @@
     "build": "bun run build:css && bun run build:pylon-node && electrobun build",
     "build:canary": "bun run build:css && bun run build:pylon-node && electrobun build --env=canary",
     "build:stable": "bun run build:css && bun run build:pylon-node && electrobun build --env=stable",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
     "smoke:verse-launch": "bun scripts/verse-launch-smoke.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",
@@ -23,7 +24,7 @@
     "smoke:forum-verse-reflection": "bun scripts/forum-verse-reflection-smoke.ts",
     "test:verse-launch": "bun test tests/verse-launch-checklist.test.ts tests/verse-toggle.test.ts tests/chat-world-visualization.test.ts tests/chat-world-spacetimedb.test.ts tests/chat-world-subscriptions.test.ts tests/verse-training-visualization.test.ts tests/verse-turn.test.ts",
     "verify:training": "bun test tests/cl-53-foldkit.test.ts tests/cl-53-sanitize.test.ts && bun run build:css && bun build src/ui/main.ts --outdir /tmp/autopilot-desktop-ui-build --target browser && bun build src/bun/index.ts --outdir /tmp/autopilot-desktop-bun-build --target bun && bun run smoke:training-scene",
-    "verify:deploy": "bun test tests/electrobun-config.test.ts && bun run verify:training && bun run test:verse-launch && bun run build && bun scripts/verify-packaged-moksha-asset.ts && bun run smoke:verse-launch",
+    "verify:deploy": "bun run typecheck && bun test tests/electrobun-config.test.ts && bun run verify:training && bun run test:verse-launch && bun run build && bun scripts/verify-packaged-moksha-asset.ts && bun run smoke:verse-launch",
     "test": "bash scripts/run-tests.sh",
     "notarize:macos": "bash scripts/notarize-macos.sh"
   },
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.1",
+    "@types/three": "0.184.0",
     "bun-types": "^1.0.0",
     "tailwindcss": "^4.3.1",
     "typescript": "catalog:"

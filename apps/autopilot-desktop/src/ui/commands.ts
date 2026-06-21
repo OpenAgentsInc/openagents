@@ -8,21 +8,21 @@
 import { Effect, Schema as S } from "effect"
 import { Command } from "foldkit"
 
-import { getRequest } from "./bridge"
-import { commandErrorText } from "./helpers"
+import { getRequest } from "./bridge.js"
+import { commandErrorText } from "./helpers.js"
 import {
   blockedDesktopProofReplayProjection,
   type DesktopProofReplayRequest,
   loadDesktopProofReplayProjection,
-} from "../shared/proof-replays"
-import type { OnboardingStatusResponse } from "../shared/rpc"
-import { ProofReplayCommandRequest, ShellCodingTarget } from "./model"
+} from "../shared/proof-replays.js"
+import type { OnboardingStatusResponse } from "../shared/rpc.js"
+import { ProofReplayCommandRequest, ShellCodingTarget } from "./model.js"
 // #5472: local preference persistence (no RPC verb — writes localStorage).
-import { savePreferences } from "./preferences"
+import { savePreferences } from "./preferences.js"
 import {
   publishActiveVerseLocalPose,
   type VerseAvatarPose,
-} from "./chat-world-subscriptions"
+} from "./chat-world-subscriptions.js"
 import {
   SettledPersistPreferences,
   SettledVerseLocalPosePublish,
@@ -77,7 +77,7 @@ import {
   GotPublicActivityTimeline,
   FailedVerseTurn,
   RespondedShell,
-} from "./message"
+} from "./message.js"
 
 const errorText = commandErrorText
 
@@ -201,24 +201,25 @@ const generatedReplayLimitFrom = (value: string): number | undefined => {
 
 const proofReplayRequestFromCommand = (
   request: ProofReplayCommandRequest,
-): DesktopProofReplayRequest =>
-  request.mode === "catalog"
-    ? { mode: "catalog", slug: request.slug }
-    : {
-        mode: "generated",
-        filters: {
-          actorRef: request.actorRef,
-          from: request.from,
-          kind: request.kind,
-          limit: generatedReplayLimitFrom(request.limit),
-          pairRef: request.pairRef,
-          runRef: request.runRef,
-          since: request.since,
-          source: request.source,
-          to: request.to,
-          windowRef: request.windowRef,
-        },
-      }
+): DesktopProofReplayRequest => {
+  if (request.mode === "catalog") return { mode: "catalog", slug: request.slug }
+  const limit = generatedReplayLimitFrom(request.limit)
+  return {
+    mode: "generated",
+    filters: {
+      actorRef: request.actorRef,
+      from: request.from,
+      kind: request.kind,
+      ...(limit !== undefined ? { limit } : {}),
+      pairRef: request.pairRef,
+      runRef: request.runRef,
+      since: request.since,
+      source: request.source,
+      to: request.to,
+      windowRef: request.windowRef,
+    },
+  }
+}
 
 const emptyBuiltInAgentReadinessProjection = (error: string) => ({
   ok: false,
@@ -410,9 +411,8 @@ export const ResolveApproval = Command.define(
 // reason:"deploy_disabled".
 export const DeployCloud = Command.define(
   "DeployCloud",
-  {},
   SucceededDeploy,
-)(() =>
+)(
   Effect.tryPromise(() =>
     getRequest().deployCloud({ target: "cloudrun", ref: "main", env: "production" }),
   ).pipe(
@@ -459,9 +459,8 @@ export const SubmitIntent = Command.define(
 
 export const LoadBuiltInAgentReadiness = Command.define(
   "LoadBuiltInAgentReadiness",
-  {},
   GotBuiltInAgentReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().builtinAgentReadiness({})).pipe(
     Effect.map((projection) => GotBuiltInAgentReadiness({ projection })),
     Effect.catch((error) =>
@@ -479,9 +478,8 @@ export const LoadBuiltInAgentReadiness = Command.define(
 // routing decision + the composer balance hint have data to read.
 export const LoadInferenceGatewayReadiness = Command.define(
   "LoadInferenceGatewayReadiness",
-  {},
   GotInferenceGatewayReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().inferenceGatewayReadiness({})).pipe(
     Effect.map((projection) => GotInferenceGatewayReadiness({ projection })),
     Effect.catch((error) =>
@@ -496,10 +494,9 @@ export const LoadInferenceGatewayReadiness = Command.define(
 
 export const StartBuiltInAgent = Command.define(
   "StartBuiltInAgent",
-  {},
   SucceededBuiltInAgent,
   FailedBuiltInAgent,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().startBuiltInAgent({})).pipe(
     Effect.map((result) =>
       result.ok
@@ -519,9 +516,8 @@ export const StartBuiltInAgent = Command.define(
 
 export const LoadAppleFmReadiness = Command.define(
   "LoadAppleFmReadiness",
-  {},
   GotAppleFmReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().appleFmReadiness({})).pipe(
     Effect.map((projection) => GotAppleFmReadiness({ projection })),
     Effect.catch((error) =>
@@ -536,10 +532,9 @@ export const LoadAppleFmReadiness = Command.define(
 
 export const StartAppleFmSession = Command.define(
   "StartAppleFmSession",
-  {},
   SucceededAppleFmSession,
   FailedAppleFmSession,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().startAppleFmSession({})).pipe(
     Effect.map((result) =>
       result.ok
@@ -560,9 +555,8 @@ export const StartAppleFmSession = Command.define(
 
 export const LoadInstallReadiness = Command.define(
   "LoadInstallReadiness",
-  {},
   GotInstallReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().installReadiness({})).pipe(
     Effect.map((projection) => GotInstallReadiness({ projection })),
     Effect.catch((error) =>
@@ -654,9 +648,8 @@ export const degradedOnboardingProjection = (error: string): OnboardingStatusRes
 
 export const LoadOnboardingStatus = Command.define(
   "LoadOnboardingStatus",
-  {},
   GotOnboardingStatus,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().onboardingStatus({})).pipe(
     Effect.map((projection) => GotOnboardingStatus({ projection })),
     Effect.catch((error) =>
@@ -685,9 +678,8 @@ const emptyIdentityChoiceState = () => ({
 
 export const LoadIdentityChoiceState = Command.define(
   "LoadIdentityChoiceState",
-  {},
   GotIdentityChoiceState,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().identityChoiceState({})).pipe(
     Effect.map((state) => GotIdentityChoiceState({ state })),
     Effect.catch(() =>
@@ -730,9 +722,8 @@ export const ChooseIdentity = Command.define(
 
 export const LoadPromiseSurfacingReadiness = Command.define(
   "LoadPromiseSurfacingReadiness",
-  {},
   GotPromiseSurfacingReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().promiseSurfacingReadiness({})).pipe(
     Effect.map((projection) => GotPromiseSurfacingReadiness({ projection })),
     Effect.catch((error) =>
@@ -789,9 +780,8 @@ export const SurfacePromiseGap = Command.define(
 
 export const LoadTrainingRuns = Command.define(
   "LoadTrainingRuns",
-  {},
   GotTrainingRuns,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listTrainingRuns({})).pipe(
     Effect.map((projection) => GotTrainingRuns({ projection })),
     Effect.catch((error) =>
@@ -813,9 +803,8 @@ export const LoadTrainingRuns = Command.define(
 
 export const LoadTrainingDashboard = Command.define(
   "LoadTrainingDashboard",
-  {},
   GotTrainingDashboard,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listTrainingDashboard({})).pipe(
     Effect.map((projection) => GotTrainingDashboard({ projection })),
     Effect.catch((error) =>
@@ -830,9 +819,8 @@ export const LoadTrainingDashboard = Command.define(
 
 export const LoadTrainingPromiseGates = Command.define(
   "LoadTrainingPromiseGates",
-  {},
   GotTrainingPromiseGates,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listTrainingPromiseGates({})).pipe(
     Effect.map((projection) => GotTrainingPromiseGates({ projection })),
     Effect.catch((error) =>
@@ -847,9 +835,8 @@ export const LoadTrainingPromiseGates = Command.define(
 
 export const LoadTrainingOperatorReadiness = Command.define(
   "LoadTrainingOperatorReadiness",
-  {},
   GotTrainingOperatorReadiness,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listTrainingOperatorReadiness({})).pipe(
     Effect.map((projection) => GotTrainingOperatorReadiness({ projection })),
     Effect.catch((error) =>
@@ -864,9 +851,8 @@ export const LoadTrainingOperatorReadiness = Command.define(
 
 export const LoadTrainingEvidencePacketSummary = Command.define(
   "LoadTrainingEvidencePacketSummary",
-  {},
   GotTrainingEvidencePacketSummary,
-)(() =>
+)(
   Effect.tryPromise(() =>
     getRequest().listTrainingEvidencePacketSummary({}),
   ).pipe(
@@ -885,9 +871,8 @@ export const LoadTrainingEvidencePacketSummary = Command.define(
 
 export const LoadPublicActivityTimeline = Command.define(
   "LoadPublicActivityTimeline",
-  {},
   GotPublicActivityTimeline,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listPublicActivityTimeline({})).pipe(
     Effect.map((projection) => GotPublicActivityTimeline({ projection })),
     Effect.catch((error) =>
@@ -923,9 +908,8 @@ export const LoadProofReplayBundle = Command.define(
 
 export const PlanTrainingRunWindow = Command.define(
   "PlanTrainingRunWindow",
-  {},
   SettledPlanTrainingWindow,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().planTrainingRunWindow({})).pipe(
     Effect.map((projection) => SettledPlanTrainingWindow({ projection })),
     Effect.catch((error) =>
@@ -1008,9 +992,8 @@ export const ReconcileTrainingWindow = Command.define(
 
 export const ClaimTrainingWindowLease = Command.define(
   "ClaimTrainingWindowLease",
-  {},
   SettledClaimTrainingLease,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().claimTrainingWindowLease({})).pipe(
     Effect.map((projection) => SettledClaimTrainingLease({ projection })),
     Effect.catch((error) =>
@@ -1107,9 +1090,8 @@ export const BuildTrainingEvidencePacket = Command.define(
 // authenticated run plan once the node exposes that command.
 export const QueueTrainingLaunch = Command.define(
   "QueueTrainingLaunch",
-  {},
   SettledQueueTrainingLaunch,
-)(() =>
+)(
   Effect.tryPromise(() =>
     getRequest().submitIntent({
       title: "Training run launch check",
@@ -1206,7 +1188,7 @@ export const SpawnSession = Command.define(
     getRequest().spawnSession({
       adapter,
       objective,
-      verify: verify.length > 0 ? [...verify] : undefined,
+      ...(verify.length > 0 ? { verify: [...verify] } : {}),
       lane,
       ...(accountRef !== null && accountRef.trim() !== ""
         ? { accountRef: accountRef.trim() }
@@ -1244,7 +1226,7 @@ export const SpawnBatchSession = Command.define(
     getRequest().spawnSession({
       adapter,
       objective,
-      verify: verify.length > 0 ? [...verify] : undefined,
+      ...(verify.length > 0 ? { verify: [...verify] } : {}),
       lane,
       ...(accountRef !== null && accountRef.trim() !== ""
         ? { accountRef: accountRef.trim() }
@@ -1311,7 +1293,7 @@ export const SpawnComposerTurn = Command.define(
     getRequest().spawnSession({
       adapter,
       objective,
-      verify: verify.length > 0 ? [...verify] : undefined,
+      ...(verify.length > 0 ? { verify: [...verify] } : {}),
       lane,
       // #5471: a managed worktree (repoRef) and an existing path are mutually
       // exclusive; prefer repoRef when present.
@@ -1382,7 +1364,7 @@ export const SpawnChatTurn = Command.define(
     getRequest().spawnSession({
       adapter,
       objective,
-      verify: verify.length > 0 ? [...verify] : undefined,
+      ...(verify.length > 0 ? { verify: [...verify] } : {}),
       lane,
       ...(accountRef !== null && accountRef.trim() !== ""
         ? { accountRef: accountRef.trim() }
@@ -1497,9 +1479,8 @@ export const SpawnAppleFmComposerTurn = Command.define(
 // ── CS-A1: account-management commands (node-local dev.accounts config) ──────
 export const LoadManagedAccounts = Command.define(
   "LoadManagedAccounts",
-  {},
   GotManagedAccounts,
-)(() =>
+)(
   Effect.tryPromise(() => getRequest().listManagedAccounts({})).pipe(
     Effect.map((projection) => GotManagedAccounts({ projection })),
     Effect.catch((error) =>
@@ -1681,7 +1662,7 @@ export const SpawnShellCodingTurn = Command.define(
     getRequest().spawnSession({
       adapter,
       objective,
-      verify: verify.length > 0 ? [...verify] : undefined,
+      ...(verify.length > 0 ? { verify: [...verify] } : {}),
       lane,
       ...(worktreePath !== null && worktreePath.trim() !== ""
         ? { worktreePath: worktreePath.trim() }

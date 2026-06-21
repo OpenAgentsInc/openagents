@@ -34,7 +34,7 @@ import { Effect, Schema as S } from 'effect'
 import { define as defineCustomElement } from 'foldkit/customElement'
 import type { Attribute, Html } from 'foldkit/html'
 
-import { currentUnixMs } from '../time-format'
+import { currentUnixMs } from '../time-format.js'
 
 export const TASSADAR_PROOF_REPLAY_TAG = 'oa-tassadar-proof-replay'
 export const TASSADAR_REPLAY_ORIGIN_DATA_KEY = 'replay-origin'

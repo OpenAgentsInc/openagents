@@ -1,4 +1,4 @@
-import type { NodeLaunchStatus, NodeStateMessage } from "./rpc"
+import type { NodeLaunchStatus, NodeStateMessage } from "./rpc.js"
 
 // HUD H7 (#5504): the PURE projection from live desktop state to the small
 // status/meters HUD overlay's element states. It maps the real model signals —

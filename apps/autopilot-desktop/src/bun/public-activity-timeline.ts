@@ -3,7 +3,7 @@ import {
   type PublicActivityTimelineEnvelope,
 } from "@openagentsinc/public-activity-timeline"
 
-import type { PublicActivityTimelineResponse } from "../shared/rpc"
+import type { PublicActivityTimelineResponse } from "../shared/rpc.js"
 
 export type FetchPublicActivityTimelineInput = Readonly<{
   baseUrl: string

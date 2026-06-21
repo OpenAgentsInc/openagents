@@ -1,5 +1,5 @@
-import type { NodeStateMessage, SessionEventRow } from "../shared/rpc"
-import { externalSessionRefsFromEventRows } from "./pylon-control"
+import type { NodeStateMessage, SessionEventRow } from "../shared/rpc.js"
+import { externalSessionRefsFromEventRows } from "./pylon-control.js"
 
 export function mergeSessionEventRows(
   current: readonly SessionEventRow[],

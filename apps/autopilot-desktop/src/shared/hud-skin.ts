@@ -1,5 +1,5 @@
-import type { HudStatusTone } from "./hud-status-projection"
-import type { ManagedPane, PaneLayer } from "../ui/pane-manager"
+import type { HudStatusTone } from "./hud-status-projection.js"
+import type { ManagedPane, PaneLayer } from "../ui/pane-manager.js"
 
 // HUD H4 (#5502): the PURE skin vocabulary + small mapping logic for the
 // simple white-on-black HUD skin applied to the HTML chrome (shell bar, hotbar,

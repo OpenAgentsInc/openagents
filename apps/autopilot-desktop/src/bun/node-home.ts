@@ -1,6 +1,6 @@
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { readControlToken } from "./pylon-control"
+import { readControlToken } from "./pylon-control.js"
 
 // CL-45: discover the local Pylon node's home directory.
 //

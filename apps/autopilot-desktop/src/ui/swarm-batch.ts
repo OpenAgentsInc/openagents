@@ -241,7 +241,7 @@ export type SwarmTreeNode<T> = Readonly<{
 // computes the FULL depth chain by walking `parentRef` up through the set, so a
 // grandchild renders at depth 2 even though the ordering kept it adjacent.
 export function buildSwarmTree<
-  T extends { sessionRef: string; parentRef?: string | null },
+  T extends { sessionRef: string; parentRef?: string | null | undefined },
 >(ordered: ReadonlyArray<T>): ReadonlyArray<SwarmTreeNode<T>> {
   const bySessionRef = new Map<string, T>()
   for (const s of ordered) bySessionRef.set(s.sessionRef, s)

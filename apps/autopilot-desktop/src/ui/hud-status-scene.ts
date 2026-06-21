@@ -12,8 +12,8 @@ import type {
   HudMeterState,
   HudStatusLightState,
   HudStatusProjection,
-} from "../shared/hud-status-projection"
-import { HUD_SKIN_COLORS } from "../shared/hud-skin"
+} from "../shared/hud-status-projection.js"
+import { HUD_SKIN_COLORS } from "../shared/hud-skin.js"
 
 // HUD H7 (#5504): the small live status/meters HUD overlay scene. It composes
 // the H2 three-effect HUD kit primitives — `createHudStatusLight` (the node

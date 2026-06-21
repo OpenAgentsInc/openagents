@@ -1,6 +1,6 @@
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
-import type { AutopilotUiMessage } from "./view"
+import type { AutopilotUiMessage } from "./view.js"
 
 type SessionView = Readonly<{
   sessionRef: string

@@ -1,7 +1,7 @@
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
-import { statusChip, type AutopilotUiMessage, type ChipTone } from "./view"
+import { statusChip, type AutopilotUiMessage, type ChipTone } from "./view.js"
 
 export type PublicActivityStripEvent = Readonly<{
   eventRef: string
@@ -9,17 +9,17 @@ export type PublicActivityStripEvent = Readonly<{
   ts: string
   kind: string
   sourceKind: string
-  actorRef?: string
-  targetRef?: string
-  runRef?: string
-  windowRef?: string
+  actorRef?: string | undefined
+  targetRef?: string | undefined
+  runRef?: string | undefined
+  windowRef?: string | undefined
   refs: readonly string[]
   sourceRefs: readonly string[]
   blockerRefs: readonly string[]
   caveatRefs: readonly string[]
-  amountSats?: number
-  realBitcoinMoved?: boolean
-  state?: string
+  amountSats?: number | undefined
+  realBitcoinMoved?: boolean | undefined
+  state?: string | undefined
   text: string
 }>
 

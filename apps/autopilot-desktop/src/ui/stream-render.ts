@@ -23,8 +23,8 @@
 
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
-import type { Message } from "./model"
-import type { SessionEventRow } from "../shared/rpc"
+import type { Message } from "./message.js"
+import type { SessionEventRow } from "../shared/rpc.js"
 
 // `html` is a factory parameterized by the Message set (same pattern as view.ts:
 // `const h = html<Message>()`). These views emit no events, so any Message set

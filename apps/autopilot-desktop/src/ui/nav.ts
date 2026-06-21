@@ -29,7 +29,7 @@
 // sidebar button. It joins a group's `destinations` (a secondary entry) or it
 // becomes a palette command. The primary sidebar stays at the group count (~5).
 
-import type { PaneId } from "./model"
+import type { PaneId } from "./model.js"
 
 // A leaf destination inside a group: the pane it opens + how it's labelled.
 // `keywords` widen the palette's fuzzy match without changing the label.
