@@ -461,5 +461,9 @@ export const withVerseTrainingLayer = (
     },
     stageNodeGlyph: "compact_gate",
     worldLabelDensity: "compact",
+    keyboardTargeting: {
+      enabled: true,
+      maxTargets: 18,
+    },
   }
 }

@@ -156,6 +156,10 @@ describe("withVerseTrainingLayer (#5822)", () => {
     expect(out.motionPolicy?.structuralEdges).toBe("static")
     expect(out.motionPolicy?.ambient).toBe("static")
     expect(out.worldLabelDensity).toBe("compact")
+    expect(out.keyboardTargeting).toEqual({
+      enabled: true,
+      maxTargets: 18,
+    })
     expect(
       out.nodes?.filter(node => node.id.startsWith(VERSE_TRAINING_NODE_PREFIX)).every(node => (node.position?.[2] ?? 0) !== 0),
     ).toBe(true)
