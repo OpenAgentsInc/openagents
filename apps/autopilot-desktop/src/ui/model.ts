@@ -92,6 +92,10 @@ export const PaneId = S.Literals([
   "training-fullscreen",
   "sessions",
   "decisions",
+  // VCODE-03 (#5920): dedicated managed account pane for Verse code mode.
+  // It reuses the existing dev.accounts CRUD card without forcing a full
+  // navigation away from the Verse scene.
+  "accounts",
   "spawn",
   // #5355: the interactive coding composer — the foreground "code in the app"
   // loop (objective → live transcript → inline approvals → reply/continue →

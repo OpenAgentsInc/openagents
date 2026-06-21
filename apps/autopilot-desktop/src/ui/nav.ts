@@ -72,6 +72,7 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
       { pane: "composer", label: "Composer", keywords: ["code", "edit", "cli"] },
       { pane: "swarm", label: "Swarm", keywords: ["grid", "concurrent", "batch", "fanout"] },
       { pane: "sessions", label: "Sessions", keywords: ["runs", "history"] },
+      { pane: "accounts", label: "Accounts", keywords: ["codex", "accounts", "provider", "auth", "homes"] },
       { pane: "spawn", label: "Spawn", keywords: ["new", "launch", "start"] },
     ],
   },

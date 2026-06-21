@@ -109,13 +109,19 @@ const readConfig = (configPath: string): ParsedConfig => {
   return { root, entries }
 }
 
+const providerRank = (provider: ManagedAccountProvider): number =>
+  provider === "codex" ? 0 : 1
+
 const sortEntries = (entries: RawAccountEntry[]): RawAccountEntry[] =>
   [...entries].sort((a, b) => {
     // Lower priority dispatches first; entries with no priority sort last,
-    // then alphabetically by ref for a stable order.
+    // Codex is the primary path for this ladder, then alphabetically by ref for
+    // a stable order. Claude Agent remains visible but secondary.
     const pa = a.priority ?? Number.POSITIVE_INFINITY
     const pb = b.priority ?? Number.POSITIVE_INFINITY
     if (pa !== pb) return pa - pb
+    const provider = providerRank(a.provider) - providerRank(b.provider)
+    if (provider !== 0) return provider
     return a.ref.localeCompare(b.ref)
   })
 

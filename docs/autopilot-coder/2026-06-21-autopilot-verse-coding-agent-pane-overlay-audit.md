@@ -738,6 +738,15 @@ Acceptance:
 
 ### VCODE-03 - Add Codex Account Management Pane
 
+Status: implemented in #5920 on 2026-06-21. Autopilot Desktop now has a
+dedicated `accounts` pane that reuses the existing `dev.accounts`
+add/remove/priority surface inside the managed pane layer. Verse code mode adds
+a compact Manage action from the Codex inventory, opens the Accounts pane
+without leaving Verse, refreshes managed accounts and gateway readiness on pane
+open, keeps Codex rows first while leaving Claude Agent visible, and adds UI
+blockers for invalid refs, missing refs/homes, duplicate refs, and missing
+managed homes.
+
 Build:
 
 - Move the existing add/remove/priority UI into a Verse code-mode pane or dock.

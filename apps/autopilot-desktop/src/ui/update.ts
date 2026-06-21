@@ -111,6 +111,7 @@ import {
   BLUEPRINT_CHAT_REPLAY_SIGNATURE_REF,
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   Model,
+  modelManagedAccounts,
   modelNode,
   modelPaneLayer,
   type ChatMessage,
@@ -604,11 +605,13 @@ const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
 // AO-4 (#5445): the onboarding wizard pane refreshes the identity-choice state +
 // the live onboarding chain status whenever it is opened.
 const isOnboardingPane = (pane: PaneId): boolean => pane === "onboarding"
-// CS-A1: the composer pane hosts the per-session account picker, so opening it
-// (and the Spawn pane / Settings, which also surface accounts) refreshes the
-// managed-account registry from the node's local config.
+// CS-A1 / VCODE-03: account-managing panes refresh the node-local managed
+// account registry. `accounts` is the dedicated Verse code-mode dock; Composer,
+// Spawn, and Settings keep their legacy account surfaces.
 const isAccountManagingPane = (pane: PaneId): boolean =>
-  pane === "composer" || pane === "spawn" || pane === "settings"
+  pane === "accounts" || pane === "composer" || pane === "spawn" || pane === "settings"
+
+const managedAccountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 
 const onboardingCompletionPane = (
   currentPane: PaneId,
@@ -3322,7 +3325,16 @@ export const update = (model: Model, message: Message): Result => {
     // shell + single-pane router never regress.
     case "OpenedManagedPane":
       if (verseControlsDisabled(model)) return [model, noCommands]
-      return applyPaneLayerAction(model, { kind: "open", pane: message.pane })
+      {
+        const [opened, commands] = applyPaneLayerAction(model, {
+          kind: "open",
+          pane: message.pane,
+        })
+        const accountCommands = isAccountManagingPane(message.pane)
+          ? [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
+          : noCommands
+        return [opened, [...commands, ...accountCommands]]
+      }
     case "ClosedManagedPane":
       return applyPaneLayerAction(model, { kind: "close", paneId: message.paneId })
     case "FocusedManagedPane":
@@ -3393,6 +3405,34 @@ export const update = (model: Model, message: Message): Result => {
           Model.make({
             ...model,
             managedAccountsStatus: { text: "ref and home are required", tone: "error" },
+          }),
+          noCommands,
+        ]
+      }
+      if (!managedAccountRefPattern.test(ref)) {
+        return [
+          Model.make({
+            ...model,
+            managedAccountsStatus: {
+              text: "account ref is invalid (letters, digits, . _ - ; max 80)",
+              tone: "error",
+            },
+          }),
+          noCommands,
+        ]
+      }
+      const managed = modelManagedAccounts(model)
+      const duplicate = managed?.accounts.some(
+        (row) => row.provider === model.addAccountProvider && row.ref === ref,
+      )
+      if (duplicate) {
+        return [
+          Model.make({
+            ...model,
+            managedAccountsStatus: {
+              text: `account ref already exists for ${model.addAccountProvider}`,
+              tone: "error",
+            },
           }),
           noCommands,
         ]

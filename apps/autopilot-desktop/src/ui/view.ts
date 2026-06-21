@@ -235,6 +235,7 @@ import {
   // HUD H3 (#5501): managed pane-layer verbs.
   ClosedManagedPane,
   FocusedManagedPane,
+  OpenedManagedPane,
   StartedPaneDrag,
 } from "./message.js"
 // HUD H3 (#5501): the layer geometry/types + the 8 resize handles, all pure.
@@ -903,7 +904,9 @@ const verseCodeAccountInventoryRows = (
   model: Model,
 ): ReadonlyArray<VerseCodeAccountInventoryRow> => {
   const managedRows =
-    modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? []
+    sortManagedAccountRows(
+      modelManagedAccounts(model)?.accounts.filter((row) => row.provider === "codex") ?? [],
+    )
   const liveRows =
     modelNode(model)?.accounts?.filter((row) => row.provider === "codex") ?? []
   const liveByRef = new Map<string, AccountRow>()
@@ -998,6 +1001,14 @@ const verseCodeAccountInventory = (model: Model): Html => {
           selected === null ? "default route" : `using ${selected.label}`,
         ]),
       ]),
+      h.button(
+        [
+          cls("verse-code-account-manage"),
+          h.Type("button"),
+          h.OnClick(OpenedManagedPane({ pane: "accounts" })),
+        ],
+        ["Manage"],
+      ),
       model.managedAccountsPending
         ? h.p([cls("verse-code-account-status mono")], ["refreshing accounts"])
         : h.empty,
@@ -5707,6 +5718,21 @@ const managedAccountRowView = (row: ManagedAccountRow): Html =>
     ],
   )
 
+const managedAccountProviderRank = (provider: ManagedAccountRow["provider"]): number =>
+  provider === "codex" ? 0 : 1
+
+const sortManagedAccountRows = (
+  rows: ReadonlyArray<ManagedAccountRow>,
+): ReadonlyArray<ManagedAccountRow> =>
+  [...rows].sort((a, b) => {
+    const pa = a.priority ?? Number.POSITIVE_INFINITY
+    const pb = b.priority ?? Number.POSITIVE_INFINITY
+    if (pa !== pb) return pa - pb
+    const provider = managedAccountProviderRank(a.provider) - managedAccountProviderRank(b.provider)
+    if (provider !== 0) return provider
+    return a.ref.localeCompare(b.ref)
+  })
+
 // CS-A1: account-management surface — add / select / priority / quota over the
 // node's local dev.accounts config. Turns the read-only AccountList into a
 // managed registry (audit gap #2). Readiness/quota stays the live accounts.list
@@ -5714,7 +5740,7 @@ const managedAccountRowView = (row: ManagedAccountRow): Html =>
 // add/remove/priority.
 const accountManagementCard = (model: Model): Html => {
   const managed = modelManagedAccounts(model)
-  const rows = managed?.accounts ?? []
+  const rows = sortManagedAccountRows(managed?.accounts ?? [])
   const node = modelNode(model)
   const liveAccounts = node?.accounts ?? []
   return card("Accounts", [
@@ -5798,6 +5824,15 @@ const accountManagementCard = (model: Model): Html => {
     ),
   ])
 }
+
+const accountsPane = (model: Model): Html =>
+  h.div(
+    [cls("accounts-pane")],
+    [
+      paneTitle("Accounts"),
+      accountManagementCard(model),
+    ],
+  )
 
 const chatRoleLabel = (role: ChatMessage["role"]): string => {
   switch (role) {
@@ -6874,6 +6909,8 @@ const paneContent = (model: Model, kind: PaneId): Html => {
       return swarmPane(model)
     case "decisions":
       return decisionsPane(model)
+    case "accounts":
+      return accountsPane(model)
     case "spawn":
       return spawnPane(model)
     case "composer":
@@ -6935,6 +6972,7 @@ const PANE_KIND_LABELS: ReadonlyMap<PaneId, string> = (() => {
   }
   map.set("session-detail", "Session")
   map.set("shell", "Shell")
+  map.set("accounts", "Accounts")
   return map
 })()
 

@@ -226,6 +226,28 @@ body {
   gap: 0.55rem;
 }
 
+.verse-code-account-manage {
+  justify-self: start;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.72);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0.32rem 0.48rem;
+  cursor: pointer;
+}
+
+.verse-code-account-manage:hover,
+.verse-code-account-manage:focus-visible {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.1);
+  outline: none;
+}
+
 .verse-code-account-title {
   color: rgb(255 255 255 / 0.76);
   font-size: 0.68rem;

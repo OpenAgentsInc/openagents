@@ -18,7 +18,7 @@ import {
   removeManagedAccount,
   setManagedAccountPriority,
 } from "../src/bun/account-management"
-import { initialModel, Model, modelManagedAccounts } from "../src/ui/model"
+import { initialModel, Model, modelManagedAccounts, modelPaneLayer } from "../src/ui/model"
 import type { NodeStateMessage } from "../src/shared/rpc"
 import {
   ChangedAddAccountHome,
@@ -29,6 +29,7 @@ import {
   ClickedComposerSpawn,
   GotNodeState,
   GotManagedAccounts,
+  OpenedManagedPane,
   SelectedComposerAccount,
   SettledManagedAccountMutation,
 } from "../src/ui/message"
@@ -107,6 +108,18 @@ describe("CS-A1 account-management config CRUD", () => {
       const listed = listManagedAccounts(home)
       expect(listed.accounts.map((r) => r.ref)).toEqual(["b", "a"])
       expect(listed.accounts[0]?.priority).toBe(1)
+    })
+  })
+
+  test("Codex accounts sort before Claude Agent rows at equal priority", () => {
+    withHome((home) => {
+      addManagedAccount(home, { ref: "z-claude", provider: "claude_agent", home, priority: 3 })
+      addManagedAccount(home, { ref: "a-codex", provider: "codex", home, priority: 3 })
+      const listed = listManagedAccounts(home)
+      expect(listed.accounts.map((r) => `${r.provider}:${r.ref}`)).toEqual([
+        "codex:a-codex",
+        "claude_agent:z-claude",
+      ])
     })
   })
 
@@ -238,6 +251,33 @@ describe("CS-A1 account-management reducer", () => {
     expect(commands).toHaveLength(0)
   })
 
+  test("ClickedAddManagedAccount rejects invalid refs before dispatch", () => {
+    let [model] = update(initialModel, ChangedAddAccountRef({ value: "has space" }))
+    ;[model] = update(model, ChangedAddAccountHome({ value: "~/.codex-work" }))
+    const [next, commands] = update(model, ClickedAddManagedAccount())
+    expect(next.managedAccountsStatus.tone).toBe("error")
+    expect(next.managedAccountsStatus.text).toContain("invalid")
+    expect(commands).toHaveLength(0)
+  })
+
+  test("ClickedAddManagedAccount rejects duplicate provider refs before dispatch", () => {
+    const start = Model.make({
+      ...initialModel,
+      addAccountRef: "work",
+      addAccountHome: "~/.codex-work",
+      managedAccounts: {
+        ok: true,
+        accounts: [
+          { ref: "work", provider: "codex", homePresent: true, priority: 1 },
+        ],
+      },
+    })
+    const [model, commands] = update(start, ClickedAddManagedAccount())
+    expect(model.managedAccountsStatus.tone).toBe("error")
+    expect(model.managedAccountsStatus.text).toContain("already exists")
+    expect(commands).toHaveLength(0)
+  })
+
   test("ClickedAddManagedAccount dispatches the add command when valid", () => {
     let [model] = update(initialModel, ChangedAddAccountRef({ value: "work" }))
     ;[model] = update(model, ChangedAddAccountHome({ value: "~/.codex-work" }))
@@ -272,6 +312,92 @@ describe("CS-A1 account-management reducer", () => {
     )
     expect(model.managedAccountsPending).toBe(true)
     expect(commands).toHaveLength(1)
+  })
+
+  test("Verse code mode opens a dedicated Accounts pane with live refresh commands", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      managedAccounts: {
+        ok: true,
+        accounts: [
+          { ref: "work", provider: "codex", homePresent: false, priority: 1 },
+          { ref: "claude-lab", provider: "claude_agent", homePresent: true, priority: 1 },
+        ],
+      },
+    })
+    const [model, commands] = update(start, OpenedManagedPane({ pane: "accounts" }))
+    expect(model.pane).toBe("chat")
+    expect(model.verseMode).toBe("code")
+    expect(modelPaneLayer(model).panes.map((pane) => pane.kind)).toEqual(["accounts"])
+    expect(commands.map((command) => command.name)).toEqual([
+      "LoadManagedAccounts",
+      "LoadInferenceGatewayReadiness",
+    ])
+
+    const tree = serializeView(view(model).body)
+    expect(tree).toContain("pane-window")
+    expect(tree).toContain("Accounts")
+    expect(tree).toContain("Add account")
+    expect(tree).toContain("work")
+    expect(tree).toContain("home missing")
+    expect(tree).toContain("claude_agent")
+  })
+
+  test("managed account mutations update Verse code inventory without restarting Verse", () => {
+    const start = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      managedAccounts: {
+        ok: true,
+        accounts: [
+          { ref: "work", provider: "codex", homePresent: true, priority: 3 },
+        ],
+      },
+    })
+    let tree = serializeView(view(start).body)
+    expect(tree).toContain("work")
+    expect(tree).toContain("prio 3")
+    expect(tree).not.toContain("personal")
+
+    const [reprioritized] = update(
+      start,
+      SettledManagedAccountMutation({
+        projection: {
+          ok: true,
+          accounts: [
+            { ref: "work", provider: "codex", homePresent: true, priority: 1 },
+            { ref: "personal", provider: "codex", homePresent: true, priority: 2 },
+          ],
+        },
+      }),
+    )
+    expect(reprioritized.pane).toBe("chat")
+    expect(reprioritized.verseMode).toBe("code")
+    tree = serializeView(view(reprioritized).body)
+    expect(tree).toContain("work")
+    expect(tree).toContain("personal")
+    expect(tree).toContain("prio 1")
+    expect(tree).toContain("prio 2")
+
+    const [removed] = update(
+      reprioritized,
+      SettledManagedAccountMutation({
+        projection: {
+          ok: true,
+          accounts: [
+            { ref: "personal", provider: "codex", homePresent: true, priority: 2 },
+          ],
+        },
+      }),
+    )
+    expect(removed.pane).toBe("chat")
+    expect(removed.verseMode).toBe("code")
+    tree = serializeView(view(removed).body)
+    expect(tree).toContain("personal")
+    expect(tree).not.toContain("work")
   })
 })
 
