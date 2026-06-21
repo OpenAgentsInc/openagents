@@ -50,6 +50,13 @@ not authority.
   flag-gated generated-binding client with reconnect/backoff, token persistence,
   public row projection, region join, safe avatar-position write planning, and
   live station/avatar entities composed into the Verse scene.
+- 2026-06-21: #5909 added the first Verse bulletin board as a real world item,
+  backed by the server-owned public Tassadar summary. `/api/public/tassadar-run-summary`
+  now returns a plain-language `bulletin` envelope with headline, board lines,
+  metrics, latest activity, and public source refs. Autopilot Desktop fetches
+  that summary with training runs, maps it into a `bulletin_board` world item in
+  the actual Verse scene, and opens a concise overlay only when the player walks
+  up to it. The reusable Three/Foldkit primitive landed in `three-effect` #11.
 
 ## Executive read
 
