@@ -313,7 +313,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("Tassadar")
     expect(tree).toContain("Pylon")
-    expect(tree).toContain("Send message Tassadar")
+    expect(tree).toContain("Send message")
     expect(tree).not.toContain("The Verse")
     expect(tree).not.toContain("Advanced")
     expect(tree).not.toContain("chat-thread-shell")

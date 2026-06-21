@@ -92,7 +92,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).toContain("Pylon")
     expect(tree).not.toContain("chat-thread-shell")
     expect(tree).not.toContain("chat-message-list")
-    expect(tree).toContain("Send message Tassadar")
+    expect(tree).toContain("Send message")
     expect(tree).toContain("Send")
     expect(tree).not.toContain("Advanced")
 

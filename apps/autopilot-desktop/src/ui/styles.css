@@ -177,7 +177,7 @@ body {
 
 .app-shell-verse .chat-composer-verse {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.65rem;
+  grid-template-columns: minmax(0, 1fr) 3.75rem;
   align-items: center;
   gap: 0.25rem;
   height: 3.5rem;
@@ -211,15 +211,15 @@ body {
 
 .app-shell-verse .chat-composer-verse .primary-button {
   box-sizing: border-box;
-  width: 2.45rem;
+  width: 3.45rem;
   min-width: 0;
-  height: 1.75rem;
+  height: 2.15rem;
   padding: 0;
   border: 1px solid rgb(255 255 255 / 0.28);
   border-radius: 3px;
   background: rgb(255 255 255 / 0.08);
   color: rgb(255 255 255 / 0.78);
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   line-height: 1;
   box-shadow: none;
 }
