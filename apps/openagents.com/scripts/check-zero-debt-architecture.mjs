@@ -319,7 +319,8 @@ const budgetChecks = [
     // Ratchet back down when these public-projection handlers are extracted behind
     // shared route mappers.
     // +1 (96 -> 97) for the public labor earnings read handler
-    budget: 97,
+    // +1 (97 -> 98) for the coding quick win pipeline
+    budget: 98,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -588,6 +589,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/marketing-agency-self-serve-public-routes.ts',
     route: '/api/public/marketing-agency/self-serve/deliverability',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/coding-quick-win-pipeline-routes.ts',
+    route: '/api/public/business/coding-quick-win-pipeline',
     status: 'staleness_declared',
   },
   {

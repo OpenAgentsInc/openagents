@@ -61,6 +61,10 @@ import {
 import { makeAgentSearchRoutes } from './agent-search-routes'
 import { makeAgentSiteRoutes } from './agent-site-routes'
 import {
+  CodingQuickWinPipelineEndpoint,
+  handleCodingQuickWinPipelineApi,
+} from './coding-quick-win-pipeline-routes'
+import {
   AgenticLaborProductEndpoint,
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
@@ -8481,6 +8485,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.AGENTIC_LABOR_PRODUCTS_ENABLED,
         ),
       }),
+  },
+  {
+    // Coding quick win self-serve pipeline orchestrator (promise business.coding_quick_win.v1).
+    // POST is the self-serve path: accepts step-by-step evidence (scope,
+    // provisioning, invocation, delivery, acceptance, payment) and returns
+    // a valid receipt. INERT: it creates no new state, moves no money, and
+    // serves strictly to orchestrate verifiable structures into a pipeline.
+    path: CodingQuickWinPipelineEndpoint,
+    handler: (request) => handleCodingQuickWinPipelineApi(request),
   },
   {
     // Self-serve control-center fanout scaffold (promise
