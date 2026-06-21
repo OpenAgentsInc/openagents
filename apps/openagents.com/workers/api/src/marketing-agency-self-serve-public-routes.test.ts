@@ -5,11 +5,11 @@ import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-sel
 import { selfServeDeliverabilityFixture } from './marketing-agency-self-serve-fixture'
 
 describe('marketing-agency-self-serve-public-routes', () => {
-  const routes = makeMarketingAgencySelfServePublicRoutes()
+  const routes = makeMarketingAgencySelfServePublicRoutes<any>({ makeClaimStore: () => ({ list: () => [] }) })
 
   test('returns 404 for unknown workspace', async () => {
     const request = new Request('https://api.example.com/api/public/marketing-agency/self-serve/deliverability/unknown-ws')
-    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request)!)
+    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request, {})!)
     
     expect(response.status).toBe(404)
     const body = await response.json()
@@ -18,7 +18,7 @@ describe('marketing-agency-self-serve-public-routes', () => {
 
   test('returns deliverability fixture for known workspace', async () => {
     const request = new Request(`https://api.example.com/api/public/marketing-agency/self-serve/deliverability/${selfServeDeliverabilityFixture.workspaceId}`)
-    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request)!)
+    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request, {})!)
     
     expect(response.status).toBe(200)
     const body = await response.json() as any
@@ -31,7 +31,7 @@ describe('marketing-agency-self-serve-public-routes', () => {
     const request = new Request(`https://api.example.com/api/public/marketing-agency/self-serve/deliverability/${selfServeDeliverabilityFixture.workspaceId}`, {
       method: 'POST'
     })
-    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request)!)
+    const response = await Effect.runPromise(routes.routeMarketingAgencySelfServeRequest(request, {})!)
     
     expect(response.status).toBe(405)
     expect(response.headers.get('Allow')).toBe('GET')
@@ -39,6 +39,6 @@ describe('marketing-agency-self-serve-public-routes', () => {
 
   test('returns undefined for non-matching paths', () => {
     const request = new Request('https://api.example.com/api/public/other')
-    expect(routes.routeMarketingAgencySelfServeRequest(request)).toBeUndefined()
+    expect(routes.routeMarketingAgencySelfServeRequest(request, {})).toBeUndefined()
   })
 })
