@@ -474,3 +474,21 @@ radius and fails unless it observes the board proximity event, sees no blank
 movement frames, and records no host remount/swap during the walk. That is the
 smallest practical guard for this bug class until the larger
 `SubscriptionRef`/reconciler recommendations in this audit are implemented.
+
+Issue
+[`#5913`](https://github.com/OpenAgentsInc/openagents/issues/5913) applied the
+next part of recommendation 2 to live Verse data. The `three-effect` training
+scene now exposes a retained `updateVisualization` path, and the Foldkit custom
+element compares a retained structural signature instead of treating every
+projection change as a full rebuild. The signature deliberately ignores
+transient local restore pose and live world-item copy, which were the two
+observed flicker triggers: walking fed `thirdPersonController.initialPosition`
+back into the visualization, and the public Tassadar summary updated the
+bulletin board after first paint.
+
+The practical result is that the Tassadar board can hydrate from "Loading
+Tassadar run" to server-provided bulletin lines by recreating only the keyed
+board object and hit target. The renderer, camera, controller, and local avatar
+stay retained. The packaged Verse launch smoke now injects that live board
+update in Chrome and fails if it logs any `verse-host.remount.*` event instead
+of `verse-host.visualization.retained`.

@@ -176,11 +176,17 @@ type DomProbe = {
     readonly noAdvancedButton: boolean
     readonly noAdvancedChrome: boolean
     readonly noPanelOverlap: boolean
+    readonly sceneCursorNotText: boolean
+    readonly scenePointerTarget: boolean
   }
   readonly canvas: {
     readonly height: number
     readonly width: number
     readonly rect: Rect | null
+  }
+  readonly pointerHitTest: {
+    readonly canvasCursor: string
+    readonly topElements: ReadonlyArray<string>
   }
   readonly forbiddenTextHits: ReadonlyArray<string>
   readonly overlapPairs: ReadonlyArray<string>
@@ -228,6 +234,14 @@ type ContinuousMovementSmoke = {
   readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
 }
 
+type RetainedLiveUpdateSmoke = {
+  readonly ok: boolean
+  readonly boardHydrated: boolean
+  readonly retainedUpdateCount: number
+  readonly remounts: ReadonlyArray<VerseSceneDiagnostic>
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
 type VerseLaunchReceipt = {
   readonly ok: boolean
   readonly message: string
@@ -251,6 +265,7 @@ type VerseLaunchReceipt = {
   }
   readonly movement: MovementSmoke
   readonly continuousMovement: ContinuousMovementSmoke
+  readonly retainedLiveUpdate: RetainedLiveUpdateSmoke
   readonly typecheckProof: string
 }
 
@@ -603,6 +618,27 @@ const domProbeExpression = `
       }
     })()
     : null
+  const pointerX = canvasRect === null ? Math.floor(window.innerWidth / 2) : Math.floor(canvasRect.left + canvasRect.width / 2)
+  const pointerY = canvasRect === null ? Math.floor(window.innerHeight / 2) : Math.floor(canvasRect.top + canvasRect.height / 2)
+  const topElements = document.elementsFromPoint(pointerX, pointerY)
+    .slice(0, 8)
+    .map(element => {
+      const className = element instanceof HTMLElement ? element.className : ""
+      const normalizedClass = typeof className === "string" ? className : ""
+      return [
+        element.tagName.toLowerCase(),
+        normalizedClass.split(/\\s+/).filter(Boolean).slice(0, 3).join("."),
+      ].filter(Boolean).join(".")
+    })
+  const pointerTop = document.elementFromPoint(pointerX, pointerY)
+  const canvasCursor = canvas instanceof HTMLCanvasElement
+    ? getComputedStyle(canvas).cursor
+    : "missing"
+  const scenePointerTarget =
+    pointerTop === host ||
+    pointerTop === canvas ||
+    (pointerTop instanceof HTMLElement &&
+      pointerTop.closest(".three-effect-chat-scene") === host)
   const checks = {
     appShellVerse: document.querySelector(".app-shell-verse") !== null,
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
@@ -637,6 +673,8 @@ const domProbeExpression = `
       document.querySelector(".status-hud-overlay") === null &&
       forbiddenTextHits.length === 0,
     noPanelOverlap: overlapPairs.length === 0,
+    sceneCursorNotText: canvasCursor !== "text",
+    scenePointerTarget,
   }
   const blockerRefs = Object.entries(checks)
     .flatMap(([key, passed]) => passed ? [] : ["verse.launch." + key])
@@ -651,9 +689,80 @@ const domProbeExpression = `
       height: canvas instanceof HTMLCanvasElement ? canvas.height : 0,
       rect: canvasRect,
     },
+    pointerHitTest: {
+      canvasCursor,
+      topElements,
+    },
     forbiddenTextHits,
     overlapPairs,
     visibleTextSample: text.replace(/\\s+/g, " ").trim().slice(0, 320),
+  }
+})()
+`
+
+const retainedLiveUpdateExpression = `
+(async () => {
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  const afterFrames = () => new Promise(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  )
+  const logs = () => globalThis.__OA_DUMP_VERSE_SCENE_LOGS?.() ?? globalThis.__OA_VERSE_SCENE_LOGS ?? []
+  await customElements.whenDefined("oa-training-run").catch(() => null)
+  const host = document.querySelector(".three-effect-chat-scene")
+  if (host === null) {
+    return {
+      ok: false,
+      boardHydrated: false,
+      retainedUpdateCount: 0,
+      remounts: [],
+      diagnosticsSample: [],
+    }
+  }
+  const beforeCount = logs().length
+  const previous = host.visualization ?? {}
+  const previousWorldItems = Array.isArray(previous.worldItems)
+    ? previous.worldItems
+    : []
+  const hydratedBoard = {
+    detail: "Tassadar is active with public training windows and verified work.",
+    id: "${tassadarBulletinWorldItemId}",
+    interactionRadius: 3.8,
+    kind: "bulletin_board",
+    label: "Tassadar Run Board",
+    lines: ["Status: active", "5 pylons, 2 active", "2,100 sats paid"],
+    position: [-0.95, 1.78, 0.04],
+    sourceRefs: ["route:/api/public/tassadar-run-summary"],
+    status: "active",
+    title: "Tassadar Run Board",
+    yaw: -0.04,
+  }
+  const nextWorldItems = previousWorldItems.some(item => item?.id === hydratedBoard.id)
+    ? previousWorldItems.map(item => item?.id === hydratedBoard.id ? hydratedBoard : item)
+    : [...previousWorldItems, hydratedBoard]
+  host.visualization = {
+    ...previous,
+    worldItems: nextWorldItems,
+  }
+  const boardAfterSetter = (host.visualization?.worldItems ?? [])
+    .find(item => item?.id === hydratedBoard.id)
+  const boardHydratedAfterSetter = Array.isArray(boardAfterSetter?.lines) &&
+    boardAfterSetter.lines.includes("Status: active") &&
+    boardAfterSetter.lines.includes("5 pylons, 2 active")
+  await afterFrames()
+  await wait(180)
+  const newLogs = logs().slice(beforeCount)
+  const retained = newLogs.filter(entry => entry.event === "verse-host.visualization.retained")
+  const remounts = newLogs.filter(entry =>
+    entry.event === "verse-host.remount.mounted" ||
+    entry.event === "verse-host.remount.swapped" ||
+    entry.event === "verse-host.remount.scheduled"
+  )
+  return {
+    ok: boardHydratedAfterSetter && retained.length > 0 && remounts.length === 0,
+    boardHydrated: boardHydratedAfterSetter,
+    retainedUpdateCount: retained.length,
+    remounts,
+    diagnosticsSample: newLogs.slice(-20),
   }
 })()
 `
@@ -807,6 +916,24 @@ const main = async (): Promise<void> => {
     const pixels = pixelSmoke(screenshotBytes)
     writeFileSync(screenshotPath, screenshotBytes)
 
+    const retainedLiveUpdateEvaluation = await cdp.send<{
+      readonly result?: { readonly value?: RetainedLiveUpdateSmoke }
+      readonly exceptionDetails?: unknown
+    }>("Runtime.evaluate", {
+      expression: retainedLiveUpdateExpression,
+      awaitPromise: true,
+      returnByValue: true,
+    })
+    if (retainedLiveUpdateEvaluation.exceptionDetails !== undefined) {
+      throw new Error(
+        `Verse retained live-update smoke threw in Chrome: ${JSON.stringify(retainedLiveUpdateEvaluation.exceptionDetails)}`,
+      )
+    }
+    const retainedLiveUpdate = retainedLiveUpdateEvaluation.result?.value
+    if (retainedLiveUpdate === undefined) {
+      throw new Error("Verse retained live-update smoke returned no probe")
+    }
+
     const diagnosticsBeforeMovement = await readVerseSceneDiagnostics(cdp)
     await keyDownW(cdp)
     await keyDownD(cdp)
@@ -864,7 +991,12 @@ const main = async (): Promise<void> => {
       diagnosticsSample: movementDiagnostics.slice(-20),
     }
 
-    const ok = dom.ok && pixels.ok && movement.ok && continuousMovement.ok
+    const ok =
+      dom.ok &&
+      pixels.ok &&
+      movement.ok &&
+      continuousMovement.ok &&
+      retainedLiveUpdate.ok
     const receipt: VerseLaunchReceipt = {
       ok,
       message: ok
@@ -875,6 +1007,7 @@ const main = async (): Promise<void> => {
       sourceRefs: [
         "github:OpenAgentsInc/openagents#5827",
         "github:OpenAgentsInc/openagents#5910",
+        "github:OpenAgentsInc/openagents#5913",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
       packagedFiles: {
@@ -892,6 +1025,7 @@ const main = async (): Promise<void> => {
       },
       movement,
       continuousMovement,
+      retainedLiveUpdate,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
     }

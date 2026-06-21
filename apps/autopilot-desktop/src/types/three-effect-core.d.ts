@@ -211,6 +211,7 @@ export type TrainingRunVisualizationHandle = Readonly<{
   element: HTMLElement
   resize: Effect.Effect<void>
   selectNextTarget: (direction?: 1 | -1) => TrainingRunNodeSelection | undefined
+  updateVisualization: (options: TrainingRunVisualizationOptions) => boolean
   updateRemoteAvatars: (
     avatars: readonly TrainingRunRemoteAvatarDefinition[],
   ) => void
@@ -226,6 +227,15 @@ export const trainingRunVisualizationOptionsWithLocalPose: (
   options: TrainingRunVisualizationOptions,
   pose: TrainingRunLocalPoseSnapshot,
 ) => TrainingRunVisualizationOptions
+
+export const trainingRunVisualizationRetainedStructuralSignature: (
+  options?: TrainingRunVisualizationOptions,
+) => string
+
+export const canRetainTrainingRunVisualization: (
+  current: TrainingRunVisualizationOptions,
+  next: TrainingRunVisualizationOptions,
+) => boolean
 
 export const mountTrainingRunVisualization: (
   element: HTMLElement,

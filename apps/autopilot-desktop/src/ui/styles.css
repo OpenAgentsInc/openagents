@@ -131,6 +131,9 @@ body {
 .app-shell-verse .chat-scene-background {
   position: absolute;
   inset: 0;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
 }
 
 .app-shell-verse .three-effect-chat-scene {
@@ -138,6 +141,9 @@ body {
   inset: 0;
   width: 100%;
   height: 100%;
+  cursor: default;
+  touch-action: none;
+  user-select: none;
 }
 
 .pylon-balance-hud {
@@ -159,6 +165,7 @@ body {
   color: rgb(244 247 251 / 0.9);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+  user-select: none;
 }
 
 .pylon-balance-hud-value {
@@ -293,6 +300,7 @@ body {
   color: rgb(244 247 251 / 0.86);
   opacity: 0;
   pointer-events: none;
+  user-select: none;
   transform: translateY(-0.3rem);
   transition:
     opacity 150ms ease,
@@ -1619,6 +1627,7 @@ body {
   color: var(--fg, #e6e9ef);
   font-size: 0.72rem;
   pointer-events: none;
+  user-select: none;
 }
 .chat-scene-inspector-empty {
   display: none;
@@ -1654,6 +1663,7 @@ body {
     inset 0 0 0 1px rgb(255 255 255 / 0.04);
   color: rgb(244 247 251 / 0.86);
   pointer-events: none;
+  user-select: none;
 }
 
 .verse-bulletin-empty {
