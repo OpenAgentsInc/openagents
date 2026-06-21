@@ -32,6 +32,10 @@ direction.
 - `2026-06-17-proof-replay-theater-system-plan.md` - audit and implementation
   plan for turning public proof sets into deterministic 3D replays with agent
   avatars, proof gates, camera tracks, and receipt-backed sats zaps.
+- `2026-06-21-spacetimedb-verse-multiplayer-audit.md` - audit of the existing
+  SpacetimeDB world module, desktop subscription path, local SpacetimeDB game
+  references, and the implementation plan for letting multiple Verse users see
+  each other on the map.
 
 ## Implementation Homes
 
