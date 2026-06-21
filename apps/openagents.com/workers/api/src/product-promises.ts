@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.56'
+export const PublicProductPromisesVersion = '2026-06-20.57'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3827,13 +3827,13 @@ export const publicProductPromisesDocument = () => {
           'docs/business/2026-06-20-openagents-business-intake-spec.md',
           'docs/inference/README.md',
           'docs/inference/2026-06-19-inference-gateway-business.md',
+          'docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md',
           'promise:inference.gateway_credits_business.v1',
           'promise:inference.free_tier_taste.v1',
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.inference_batch_job_surface_unbuilt',
-          'blocker.product_promises.inference_batch_job_paid_receipt_missing',
         ],
         verification:
           'Planned: the per-request gateway (POST /v1/chat/completions) and free taste are live, but no batch-job offering exists — there is no dataset-submission surface, no batch metering/result-return loop, and the paid credits path it would bill against is not collectable (see inference.gateway_credits_business.v1). Green requires a built, tested batch-processing product with a dereferenceable first paid batch-job receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
@@ -4030,6 +4030,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.54 is a markets.open_protocol_markets.v1 de-stale pass and flips NO promise state. The public unified open-markets surface already exists at GET /api/public/markets/open-markets, with inert liquidity and risk skeleton projections at GET /api/public/markets/liquidity/skeleton and GET /api/public/markets/risk/skeleton, so blocker.product_promises.open_markets_unified_surface_missing is removed. The promise remains planned: liquidity/risk are skeleton-only, compute/data are not broadly live paid markets, and green still requires real participant transactions plus dereferenceable settlement receipts across all six markets. No market-making, matching, insurance underwriting, liquidity transaction, settlement, payout, or green claim is created.',
         'Registry 2026-06-20.55 is a marketplace.compose_and_list_products.v1 de-stale pass and flips NO promise state. The inert public composed-products surface already exists at GET /api/public/marketplace/composed-products, backed by the typed product-definition model and read-only listing/discovery projection, so the broad blocker.product_promises.marketplace_listing_lifecycle_unbuilt is replaced with the narrower blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt. The promise remains planned: there is still no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, and no billing, attribution, rev-share, sale receipt, or settlement. No marketplace sale, install, fulfillment, payout, settlement, or green claim is created.',
         'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
+        'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }

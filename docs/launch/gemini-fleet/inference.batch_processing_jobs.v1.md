@@ -14,3 +14,5 @@ The single-request gateway exists and free allowance is synergized, but batch-jo
 ## Remaining Work
 
 The promise remains `planned`. While the API can now accept jobs and issue proper receipts, `blocker.product_promises.inference_batch_job_surface_unbuilt` remains: there is still no background job processing pipeline that actually downloads, runs the Sybil-gated Sybil models, processes data through R2, and ultimately transitions the job status to `completed` while publishing the final `resultsR2Key`.
+
+*Update 2026-06-20*: Updated `product-promises.ts` registry pass 2026-06-20.57 to formally clear `blocker.product_promises.inference_batch_job_paid_receipt_missing` since the code implementation is completed.
