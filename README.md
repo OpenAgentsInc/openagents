@@ -78,7 +78,7 @@ the wall this repo is built around.
 ## How We Got Here
 
 OpenAgents has been built in public since 2023 across a video series that now
-spans 234 episodes — from the first Laravel chat-with-PDF app, through GitHub
+spans 240 episodes — from the first Laravel chat-with-PDF app, through GitHub
 coding agents, a plugin system with Lightning payments, an agent store, the
 AutoDev coding product, mobile and local models, and distributed compute and
 data markets. The product has been reset several times; the thesis has not.
@@ -147,7 +147,10 @@ improving the platform is itself tracked, reviewed, and receipted through the
 platform. A no-spend end-to-end loop — scoped grant, work order, scheduler
 lease, worker execution, proof submission, owner acceptance, public mission
 briefing — runs today; paid loops are being brought up behind the same
-gates.
+gates. The current visual direction also includes the Verse/Tassadar run-board
+surface: a walkable 3D world where Pylons, training stats, assignments,
+payments, refs, and multiplayer presence can become inspectable world objects
+instead of another static dashboard.
 
 ### Forum
 

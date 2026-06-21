@@ -3,6 +3,13 @@
 This folder collects OpenAgents game-world, HUD, MMO, and spatial run-page
 direction.
 
+Current transcript anchor: [`docs/transcripts/240.md`](../transcripts/240.md)
+demos the live-facing shape this folder is aiming at — a walkable Autopilot
+Tassadar run board with Pylon bases, assignment markers, training metrics, refs
+ticker, avatar movement, and an initial multiplayer direction. Treat it as
+visual/product intent; authority for real run state remains with the public
+Worker/D1 and SpacetimeDB projections documented below.
+
 ## Reading Order
 
 - `2026-06-16-spatial-hud-agentic-mmo-wow-direction.md` - archive synthesis for
