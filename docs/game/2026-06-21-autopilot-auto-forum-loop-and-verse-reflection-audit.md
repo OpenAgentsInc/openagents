@@ -2,6 +2,62 @@
 
 Date: 2026-06-21
 
+## Implementation status (epic #5897 — COMPLETE, 2026-06-21)
+
+This audit became epic **#5897** and shipped to `main` in full. Branch:
+`codex/5897-auto-forum`.
+
+Part A — automate the forum loop (desktop/onboarding):
+
+- **AF-1 #5898** — `selfRegisterAgent` forwards the node Spark address so tip
+  readiness lands as `spark_address`. `agent-onboarding.ts`, `pylon-control.ts`
+  (`fetchNodeSparkAddress`), `node-launcher.ts`.
+- **AF-2 #5899** — receive-only auto-claim of forum tip-recipient readiness once
+  the wallet is receive-ready, with an observable `tip-ready` wizard step.
+  `forum-tip-recipient.ts`, `onboarding-status.ts`, `index.ts`.
+- **AF-3 #5900 (keystone)** — automated forum self-introduction: typed lane
+  selection (exact-slug, not keyword), honest public-safe body from real node
+  authority, idempotent post + persisted dereferenceable receipt.
+  `forum-intro.ts`, `onboarding-status.ts`, `index.ts`.
+- **AF-4 #5901** — read-only work-search over the typed `work-requests` lane
+  (no bid/quote/accept/spend); observable `work-search` wizard step.
+  `forum-work-search.ts`, `onboarding-status.ts`, `index.ts`.
+- **AF-5 #5902** — forum-loop safety/bounds: Artanis-modeled daily/per-tick
+  write caps + per-UTC-day ledger, a shared 402/409/429 classifier, woven into
+  the write paths (`rate_capped` back-off). `forum-loop-bounds.ts`.
+- **AF-6 #5903** — the auto-onboarding headless proof + e2e smoke now exercise
+  the forum intro + work-search end-to-end (typed lane, dereferenceable
+  receipt, token redacted).
+
+Part B — reflect it in the Verse:
+
+- **BF-1 #5904** — public-safe `GET /api/public/forum-activity` projection
+  (tokenless; topics→`forum_post`, replies→`forum_reply`; staleness contract
+  declared in the zero-debt ledger + INVARIANTS.md).
+  `public-forum-activity-routes.ts`.
+- **BF-2 #5905** — `project-forum-activity.mjs` service-identity bridge →
+  idempotent `append_world_event` (stable event_ref; public-safe asserted).
+  `forum-activity-transform.mjs` + runner.
+- **BF-3 #5906** — desktop Verse projects `forum_*` world_events into pylon
+  message icons (matched `entity_ref`→`actorRef`, dereferenceable URL, graceful
+  degrade). `chat-world-forum-activity.ts` + `chat-world-multiplayer.ts`
+  subscription.
+- **BF-4 #5907** — two-side smoke proving AF-3 → BF-1 → BF-2 → BF-3 yields a
+  visible, dereferenceable, token-free Verse icon within one bridge tick, and a
+  SpacetimeDB outage stays non-fatal. `forum-verse-reflection-smoke.ts`.
+
+Deliberately deferred (noted in the issues, not gaps):
+
+- `record_system_world_message` bubble rows are NOT written per bridge tick
+  (that reducer inserts every call → would duplicate); BF-3 renders the icon
+  from the idempotent `world_event` instead. A deduped bubble pass can follow.
+- The 3D icon **mesh** rides the #5887/#5888 multiplayer avatar render path;
+  `withForumPylonMessages` is the zero-coupling composition seam for it.
+- Owner decisions (intro lane slug confirmation, auto-reply scope, public
+  endpoint vs token-read) remain as listed under "Open Questions" — the typed
+  selector resolves the lane at runtime with an explicit fallback in the
+  meantime.
+
 Related:
 
 - Predecessor audit: `docs/game/2026-06-21-spacetimedb-verse-multiplayer-audit.md`
