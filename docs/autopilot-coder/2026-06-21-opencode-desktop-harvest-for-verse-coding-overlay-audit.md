@@ -470,30 +470,41 @@ For Autopilot Verse coding mode, add equivalent focused tests:
   - no remounts during code stream updates
   - no text cursor over canvas unless a text field is focused
 
-## 8. Suggested Issue Seeds
+## 8. OpenCode-Aligned Sync For The Codex Ladder
 
-1. **Add Verse code dock stack**
-   - Code-mode-only composer dock.
-   - Permission dock with reject/once/scoped-always.
-   - Tests for explore vs code visibility and focus.
-2. **Add scoped code-mode command registry**
-   - Dynamic commands for active session and panes.
-   - Editable-target guard.
-   - Keybind formatter/parser tests.
-3. **Add Agent Stream row projection**
-   - Stable row tags and keys.
-   - Redaction boundary.
-   - Reuse unchanged rows.
-4. **Add Diff/Artifacts and Terminal/Log pane hardening**
-   - Scroll restore.
-   - Focus repair.
-   - Hidden/inert assertions.
-5. **Add host readiness and diagnostics pane**
-   - Pylon/Bun readiness.
-   - stream/poll state.
-   - export public-safe diagnostics.
-6. **Extend Verse coding overlay smoke**
-   - dock + pane + stream + mouselook + focus + no remount/flicker.
+The primary implementation ladder now lives in
+`2026-06-21-autopilot-verse-coding-agent-pane-overlay-audit.md` as
+`VCODE-01` through `VCODE-16`. This companion audit should be read as the
+OpenCode reference map for that ladder, not as a separate backlog.
+
+| Ladder step | OpenCode harvest | Sync point |
+| --- | --- | --- |
+| `VCODE-01` Verse code mode | App-shell/runtime separation | Toggle code mode without remounting the scene or leaking commands into explore mode. |
+| `VCODE-02` Codex account inventory | Desktop server readiness surfaces | Show multiple Codex accounts from existing `dev.accounts`/node-state projection, with concise labels and redacted refs. |
+| `VCODE-03` Codex account management pane | Platform API + desktop settings patterns | Make account CRUD a normal code-mode pane while Bun/Pylon keep account-home authority. |
+| `VCODE-04` Codex composer picker | Composer target selection | Keep account, adapter, repo/worktree, and objective visible before spawn. |
+| `VCODE-05` command registry | `context/command.tsx` scoped commands | Use dynamic scopes, editable-target guards, and suspension while focused panes own input. |
+| `VCODE-06` code dock stack | Composer/permission/question/follow-up docks | Put short-lived interaction prompts in a dock; keep durable inspection in panes. |
+| `VCODE-07` Agent Stream projection | Timeline row algebra | Build stable tagged rows for objective, plan, tool, file, check, approval, error, and done events. |
+| `VCODE-08` sessions/detail panes | Session navigation and side panels | Preserve selection and scroll across stream updates. |
+| `VCODE-09` approvals | Permission dialog | Use reject, once, scoped-always with visible scope before persistence. |
+| `VCODE-10` diff/artifacts | Review/file panels | Keep diffs durable, scroll-restored, and redacted by default. |
+| `VCODE-11` terminal/log | Terminal panel focus behavior | Make terminal focus explicit so it cannot steal mouselook while hidden. |
+| `VCODE-12` sync loop | Local server as authority | Sync accounts, sessions, event rows, transcripts, readiness, and fallback polling in one typed model. |
+| `VCODE-13` multi-Codex routing | Workspace/server target defaults | Make explicit account selection outrank last-used, priority, and default home. |
+| `VCODE-14` diagnostics | Debug bar and desktop diagnostics | Surface Pylon/Bun/Codex readiness plus scene/input/remount counters. |
+| `VCODE-15` integration smoke | Desktop app smoke/debug affordances | Exercise dock, panes, stream, account picker, mouselook, zoom, focus, and no remount/flicker. |
+| `VCODE-16` non-Codex extension | Provider-neutral session concepts | Extend the proven Codex contract to Claude Agent/Fable after Codex is smooth. |
+
+Two OpenCode lessons are especially important for the multi-account Codex
+start:
+
+- Treat account selection as desktop-host state projected into the UI. The UI
+  can add, select, and prioritize refs, but Bun/Pylon remain responsible for
+  resolving homes and spawning processes.
+- Treat the timeline as a stable projection. Multi-account Codex sessions will
+  stream concurrently, so rows must key by session/event refs and carry only
+  short labels plus redacted account identity in normal views.
 
 ## 9. Bottom Line
 

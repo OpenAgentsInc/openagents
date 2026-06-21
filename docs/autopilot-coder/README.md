@@ -65,12 +65,16 @@ Forum reporting.
   Desktop pane manager and Pylon/Codex/Claude Agent runtime, R3F/Drei `Html`
   lessons, the recommended `three-effect` DOM overlay host boundary, input
   ownership, required coding panes, and the regression smokes needed before
-  calling Verse coding mode ready.
+  calling Verse coding mode ready. It now carries the Codex-first sequential
+  `VCODE-01` through `VCODE-16` issue ladder, including multiple Codex
+  accounts, account/session sync, approvals, diffs, logs, diagnostics, and the
+  reusable integration smoke.
 - `2026-06-21-opencode-desktop-harvest-for-verse-coding-overlay-audit.md`:
   companion audit of the local `projects/repos/opencode` desktop app. Extracts
   the reusable host-boundary, sidecar-readiness, scoped-command, dock-stack,
   timeline-projection, permission, diff/review, terminal, and diagnostics
-  patterns that fit the Autopilot Verse coding overlay plan.
+  patterns that fit the Autopilot Verse coding overlay plan, and maps those
+  patterns onto the shared `VCODE` issue ladder.
 - `pylon-multi-session-agent-runbook.md`: operator handoff for a fresh coding
   agent using Pylon as the local multi-account coding orchestrator: inspect
   connected Codex/ChatGPT and Claude accounts, run batch `multi-session`

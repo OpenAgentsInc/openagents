@@ -664,33 +664,296 @@ functions.
 - Should the first overlay smoke use a stub control server, a local Pylon node,
   or both?
 
-## 11. Recommended Issue Seeds
+## 11. Sequential Codex-First Issue Ladder
 
-These are intentionally phrased as implementation tickets rather than promises:
+These are doc-local issue keys, ordered so the UI becomes more usable at every
+step while preserving the Verse scene invariant. They are ready to become live
+GitHub issues when implementation starts.
 
-1. **Add Verse code mode state and tests.**
-   - Introduce explore/code mode.
-   - Keep first-render Verse clean.
-   - Permit palette/panes only in code mode.
-2. **Add a `three-effect` DOM overlay host.**
-   - Foldkit custom element exposes a stable overlay root/slot.
-   - Core projection helpers drive world-anchored DOM overlays.
-   - Overlay updates do not remount Three scenes.
-3. **Mount managed panes in Verse code mode.**
-   - Reuse Desktop pane manager.
-   - Open composer/sessions/decisions/swarm/session-detail as panes.
-   - Add code-mode hotbar/palette commands.
-4. **Build the live agent stream pane.**
-   - Public-safe event projection.
-   - Compact rows for plan/tool/file/check/approval/error/done.
-   - Links to diff/artifacts/session detail.
-5. **Harden input ownership.**
-   - Canvas owns scene controls in explore/unfocused mode.
-   - DOM panes own text/scroll/drag/resize when focused.
-   - No hidden text layers intercept mouselook.
-6. **Add the Verse coding overlay integration smoke.**
-   - Launch, render, toggle code mode, open pane, spawn stub session, stream
-     rows, move/rotate/zoom, focus text, verify no remount/flicker/reset.
+The ladder starts with Codex because the source already has the strongest local
+account and execution substrate:
+
+- `apps/autopilot-desktop/src/bun/account-management.ts` edits the node-local
+  `dev.accounts` config for `codex` and `claude_agent` entries.
+- `apps/autopilot-desktop/tests/account-management.test.ts` proves add/list,
+  duplicate rejection, priority ordering, removal, `SelectedComposerAccount`,
+  and `ClickedComposerSpawn` threading the selected Codex `accountRef`.
+- Bun exposes `listManagedAccounts`, while the node-state account projection
+  carries `accountRef`, `accountRefHash`, provider, selector, readiness, and
+  priority-safe display material.
+- Pylon's Codex composer and control-session path accept `accountRef`, resolve
+  the account registry, and project only `accountRefHash` into public session
+  evidence.
+- `packages/autopilot-control-protocol/src/spawn-request-validate.test.ts`
+  already accepts trimmed `accountRef` for session spawn requests.
+
+### VCODE-01 - Add Verse Code Mode State And First-Render Tests
+
+Build:
+
+- Add an explicit `verseMode: "explore" | "code"` state, or equivalent typed
+  model field.
+- Keep launch/default Verse in explore mode with no command palette, panes,
+  hotbar, or text overlays intercepting scene input.
+- Permit code-mode palette and pane commands only after an intentional toggle.
+
+Acceptance:
+
+- Existing first-render Verse tests stay green.
+- A new reducer/view test proves toggling code mode does not remount the
+  Three custom element and does not reset the local character pose.
+- Pointer, wheel, and keyboard scene controls remain owned by the canvas in
+  explore mode.
+
+### VCODE-02 - Surface Codex Account Inventory In Code Mode
+
+Build:
+
+- Reuse the existing managed-account projection rather than adding a new
+  account protocol.
+- In code mode, show multiple Codex accounts with short labels, readiness,
+  priority, selector type, and redacted `accountRefHash`.
+- Hide local homes, raw provider payloads, emails, tokens, and full hashes from
+  the main UI.
+
+Acceptance:
+
+- With two `dev.accounts` Codex entries, the Verse account UI displays both.
+- The selected account is visible before a spawn.
+- Full account refs and hashes appear only in an explicit detail/diagnostic
+  surface.
+
+### VCODE-03 - Add Codex Account Management Pane
+
+Build:
+
+- Move the existing add/remove/priority UI into a Verse code-mode pane or dock.
+- Support multiple Codex homes first; keep Claude Agent entries visible but
+  secondary until the Codex path is green.
+- Add readiness refresh and mutation status without navigating away from Verse.
+
+Acceptance:
+
+- The current `dev.accounts` CRUD tests gain a Verse-pane wrapper test.
+- Adding, removing, and reprioritizing Codex accounts updates the code-mode
+  account inventory without restarting the app.
+- Invalid refs, missing homes, and duplicate refs produce typed UI blockers.
+
+### VCODE-04 - Wire The Codex Account Picker Into The Verse Composer
+
+Build:
+
+- Make the code-mode composer default to adapter `codex`.
+- Require the current Codex account selection to be shown inline with the
+  objective, repo/worktree target, and verification plan.
+- Thread the selected `accountRef` through `ClickedComposerSpawn` and
+  `session.spawn` using the existing command contract.
+
+Acceptance:
+
+- A two-account test proves spawning under account A and account B sends the
+  correct `accountRef`.
+- If the selected account becomes unavailable, the composer blocks clearly
+  instead of silently falling back to the default home.
+- Apple FM and future non-Codex lanes do not receive Codex `accountRef`.
+
+### VCODE-05 - Add A Scoped Code-Mode Command Registry
+
+Build:
+
+- Split code-mode commands from global navigation commands.
+- Add command scopes for sessions, panes, accounts, approvals, diffs, and
+  diagnostics.
+- Implement editable-target guards and temporary command suspension while a
+  pane, modal, picker, or terminal owns focus.
+
+Acceptance:
+
+- Typing in composer/editor/terminal fields never triggers WASD, mouselook, or
+  command shortcuts.
+- Code-mode commands are unavailable in explore mode.
+- Command labels and keybinds are generated from typed registry data.
+
+### VCODE-06 - Add The Codex-First Code Dock Stack
+
+Build:
+
+- Add a compact code dock over Verse for composer, permission prompt,
+  follow-up prompt, and active-session controls.
+- Keep durable inspection surfaces as panes, not dock-only widgets.
+- Ensure the dock is screen-space DOM hosted by the overlay layer, not a
+  Three scene child.
+
+Acceptance:
+
+- The dock appears only in code mode.
+- Permission/follow-up prompts do not steal scene input unless focused.
+- Closing or hiding the dock preserves active sessions and character pose.
+
+### VCODE-07 - Add The Codex Agent Stream Projection
+
+Build:
+
+- Project existing Pylon/Codex events into stable row types:
+  `objective`, `plan`, `tool`, `file`, `check`, `approval`, `error`, and
+  `done`.
+- Key rows by stable session/event refs so streaming updates reuse unchanged
+  DOM nodes.
+- Carry `sessionRef`, adapter, short account label, and redacted
+  `accountRefHash`.
+
+Acceptance:
+
+- Real or fixture Codex event samples render as compact stream rows.
+- Replaying the same event batch does not churn row identity.
+- Raw prompts, local paths, secrets, and provider payloads are redacted from
+  the projection by default.
+
+### VCODE-08 - Add Session List And Detail Panes Synced To Codex Accounts
+
+Build:
+
+- Make Sessions filterable by account, adapter, workspace, and status.
+- Open selected session details in a pane without leaving Verse.
+- Preserve selected session and scroll state across stream/poll updates.
+
+Acceptance:
+
+- Starting a Codex session under a selected account makes it appear in the
+  filtered session list.
+- Session detail links back to Agent Stream, Decisions, Diff/Artifacts, and
+  Terminal/Log panes.
+- Account filters use short labels by default and detail panels for hashes.
+
+### VCODE-09 - Add Decisions And Approval UI
+
+Build:
+
+- Build a code-mode Decisions pane/dock surface for pending approvals.
+- Use explicit actions: reject, allow once, and scoped always.
+- Display scope before any persistent approval is enabled: session,
+  workspace, command class, account, and expiration where available.
+
+Acceptance:
+
+- Approval actions call the existing decision/approval control surface.
+- A persistent approval cannot be created without visible scope.
+- Public assignment paths and market/provider lanes remain blocked from
+  local supervised danger modes.
+
+### VCODE-10 - Add Diff And Artifact Panes
+
+Build:
+
+- Add a Diff/Artifacts pane for changed files, patch summaries, check refs,
+  receipt refs, screenshots, and retained proof links.
+- Use public-safe projections for paths and output digests.
+- Add scroll restoration and selected-file preservation.
+
+Acceptance:
+
+- A Codex session with changed files opens the correct diff/artifact rows.
+- Raw local absolute paths and full private logs are not shown unless the
+  surface is explicitly local-only.
+- Re-rendering stream updates does not reset scroll position.
+
+### VCODE-11 - Add Terminal And Log Pane Hardening
+
+Build:
+
+- Add a projected Terminal/Log pane for controlled process output and session
+  logs.
+- Keep raw secrets, raw env, wallet material, and provider payloads out of the
+  default log projection.
+- Make focus ownership explicit for terminal text selection, copy, scroll, and
+  key handling.
+
+Acceptance:
+
+- Terminal focus blocks scene controls; blur/close returns control to Verse.
+- Hidden terminal panes are inert and cannot intercept mouselook.
+- Logs show digest refs or redacted excerpts where raw output is unsafe.
+
+### VCODE-12 - Add The Codex Account And Session Sync Loop
+
+Build:
+
+- Sync managed accounts, node state, session list, event stream, transcript
+  store, and quota/readiness projections into one typed code-mode model.
+- Use streaming where available and polling as repair/fallback.
+- De-dupe account/session updates by stable refs.
+
+Acceptance:
+
+- Adding/removing a Codex account updates account picker, sessions filter, and
+  diagnostics without app reload.
+- A running Codex session updates Agent Stream, Sessions, Decisions, and
+  Diff/Artifacts in one model tick.
+- Sync failures appear as repairable diagnostics, not stale "ready" UI.
+
+### VCODE-13 - Add Multi-Codex Account Routing Defaults
+
+Build:
+
+- Define routing precedence: explicit selected account, last-used account for
+  the workspace, priority ordering, then default home only when allowed.
+- Show the chosen route before spawn.
+- Add an override command for "run this same task with another Codex account".
+
+Acceptance:
+
+- No silent fallback occurs when an explicit account is blocked.
+- Last-used and priority routes are deterministic and test-covered.
+- Route decisions store only redacted account refs/hashes in session evidence.
+
+### VCODE-14 - Add Code-Mode Host Readiness And Diagnostics
+
+Build:
+
+- Add a diagnostics pane for Pylon node readiness, Bun bridge readiness, Codex
+  account readiness, stream-vs-poll status, transcript persistence, and scene
+  remount/flicker counters.
+- Make exports public-safe by default.
+
+Acceptance:
+
+- A user can see why Codex is unavailable for a given account.
+- Diagnostics include enough scene/input counters to debug black frames,
+  character remounts, stuck streams, and lost mouselook.
+- Exported diagnostics omit secrets, full account refs, raw local paths, and
+  provider payloads.
+
+### VCODE-15 - Add A Reusable Verse Coding Integration Smoke
+
+Build:
+
+- Launch Verse, verify first render, toggle code mode, pick a Codex account,
+  open composer, spawn a stub or controlled Codex session, stream rows, open
+  approvals/diff/terminal panes, move/rotate/zoom, and capture screenshots.
+- Assert no scene remount, no black frame, no character flicker, and no input
+  theft outside focused DOM panes.
+
+Acceptance:
+
+- The smoke runs against the dev app and packaged Desktop app.
+- It produces logs and screenshots useful for debugging failures.
+- It becomes the gate before claiming Verse coding mode is ready.
+
+### VCODE-16 - Extend To Claude Agent And Fable After Codex Is Green
+
+Build:
+
+- Reuse the same account, session, stream, approval, diff, and diagnostics
+  shapes for Claude Agent/Fable.
+- Keep Codex as the reference implementation until the whole code-mode loop is
+  smooth.
+
+Acceptance:
+
+- Claude Agent can use the shared UI contract without weakening Codex tests.
+- Fable review is visibly a review/planning lane unless configured as an
+  implementation adapter.
+- Non-Codex provider claims stay scoped to implemented, tested behavior.
 
 ## 12. Bottom Line
 

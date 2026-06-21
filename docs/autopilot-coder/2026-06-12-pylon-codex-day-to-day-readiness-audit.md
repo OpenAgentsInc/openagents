@@ -851,3 +851,43 @@ The recommendation is now to retain one real owner-watched Dev Mode proof and
 then decide whether the source checkout is enough for the owner's immediate
 daily use, while package publication and the broader Autopilot proof gates
 continue separately.
+
+## 2026-06-21 Verse UI Issue Ladder Addendum
+
+The Verse coding overlay audit now treats this Pylon/Codex substrate as the
+starting point for UI work, not as future runtime discovery. The sequential
+`VCODE-01` through `VCODE-16` ladder in
+`2026-06-21-autopilot-verse-coding-agent-pane-overlay-audit.md` should be read
+alongside this audit when planning agent-manageability work in Autopilot
+Desktop Verse.
+
+Relevant source state this audit feeds into the ladder:
+
+- The desktop app already edits node-local `dev.accounts` entries for Codex
+  and Claude Agent, with tests for add/list/remove, priority, duplicate
+  rejection, and invalid refs.
+- The composer already carries a selected Codex `accountRef` through
+  `ClickedComposerSpawn` into the existing session-spawn command contract.
+- Pylon already resolves Codex account refs and projects public-safe
+  `accountRefHash` values into session evidence.
+- The multi-session runbook already models multiple Codex accounts as named
+  refs, not raw credential homes.
+
+The main new UI obligation is therefore not "add multi-Codex account support"
+from scratch. It is:
+
+1. expose the existing Codex account inventory in Verse code mode;
+2. let the owner add, remove, prioritize, and select Codex accounts from a
+   focused code-mode pane;
+3. keep the selected account visible before every Codex spawn;
+4. sync account, session, event stream, transcript, readiness, quota, and
+   diagnostic projections into one typed code-mode model;
+5. prevent silent fallback when a selected Codex account is blocked; and
+6. test the whole loop with multiple Codex accounts before extending the same
+   UI contract to Claude Agent or Fable.
+
+That sequencing keeps Codex first, makes multiple Codex accounts a front-line
+manageability issue, and preserves the existing redaction boundary: normal UI
+shows short labels and public-safe hashes, while raw homes, credentials, local
+paths, provider payloads, and full diagnostic detail stay out of public or
+default surfaces.
