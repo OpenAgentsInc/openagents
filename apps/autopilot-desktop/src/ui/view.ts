@@ -88,6 +88,12 @@ import {
   type AgentStreamRow,
 } from "./agent-stream-projection.js"
 import {
+  projectApprovalDecision,
+  type ApprovalDecisionProjection,
+  type DecisionAction,
+  type DecisionScopeRow,
+} from "./approval-decision-projection.js"
+import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
@@ -787,44 +793,77 @@ const askCard = (model: Model): Html => {
   return h.div([], [askForm, asksList])
 }
 
-const approvalRowView = (approval: ApprovalRow): Html =>
+const decisionScopeRowView = (row: DecisionScopeRow): Html =>
   h.div(
-    [cls("approval-row"), h.DataAttribute("autopilot-approval-ref", approval.approvalRef)],
     [
-      h.p([cls("approval-prompt")], [approvalLabel(approval)]),
-      h.div(
-        [cls("approval-buttons")],
-        [
-          h.button(
-            [
-              cls("btn-approve"),
-              h.Type("button"),
-              h.OnClick(
-                ClickedResolveApproval({
-                  approvalRef: approval.approvalRef,
-                  decision: "approve",
-                }),
-              ),
-            ],
-            ["Approve"],
-          ),
-          h.button(
-            [
-              cls("btn-deny"),
-              h.Type("button"),
-              h.OnClick(
-                ClickedResolveApproval({
-                  approvalRef: approval.approvalRef,
-                  decision: "deny",
-                }),
-              ),
-            ],
-            ["Deny"],
-          ),
-        ],
-      ),
+      cls(`decision-scope-row decision-scope-${row.published ? "published" : "missing"}`),
+      h.DataAttribute("autopilot-decision-scope", row.key),
+    ],
+    [
+      h.span([cls("decision-scope-label")], [row.label]),
+      h.span([cls("decision-scope-value")], [row.value]),
     ],
   )
+
+const decisionActionButton = (
+  approvalRef: string,
+  action: DecisionAction,
+  extraClass = "",
+): Html => {
+  const attrs: Attribute<Message>[] = [
+    cls(`decision-action decision-action-${action.kind}${extraClass}`),
+    h.Type("button"),
+    h.Title(action.title),
+    h.DataAttribute("autopilot-decision-action", action.kind),
+  ]
+  if (!action.enabled || action.decision === undefined) {
+    attrs.push(h.Disabled(true))
+  } else {
+    attrs.push(
+      h.OnClick(
+        ClickedResolveApproval({
+          approvalRef,
+          decision: action.decision,
+        }),
+      ),
+    )
+  }
+  return h.button(attrs, [action.label])
+}
+
+const decisionActionBar = (
+  projection: ApprovalDecisionProjection,
+  extraClass = "",
+): Html =>
+  h.div(
+    [cls("decision-actions")],
+    projection.actions.map((action) =>
+      decisionActionButton(projection.approvalRef, action, extraClass),
+    ),
+  )
+
+const approvalRowView = (approval: ApprovalRow): Html => {
+  const projection = projectApprovalDecision(approval)
+  return h.div(
+    [
+      cls("approval-row decision-card"),
+      h.DataAttribute("autopilot-approval-ref", approval.approvalRef),
+    ],
+    [
+      h.div([cls("decision-card-head")], [
+        h.p([cls("approval-prompt decision-title")], [projection.title]),
+        h.span([cls("decision-kind")], [approval.kind]),
+      ]),
+      h.div([cls("decision-scope-grid")], projection.scopeRows.map(decisionScopeRowView)),
+      projection.scopedAlwaysEnabled
+        ? h.empty
+        : h.p([cls("decision-persistent-blocker")], [
+            `Scoped always unavailable: ${projection.scopedAlwaysBlockers.join("; ")}.`,
+          ]),
+      decisionActionBar(projection),
+    ],
+  )
+}
 
 const pendingApprovals = (model: Model): ReadonlyArray<ApprovalRow> => {
   const node = modelNode(model)
@@ -6974,6 +7013,7 @@ const verseCodeDockComposer = (model: Model): Html =>
 const verseCodeDockPermissions = (model: Model): Html => {
   const approvals = pendingApprovals(model)
   const approval = approvals.at(0) ?? null
+  const projection = approval === null ? null : projectApprovalDecision(approval)
   return h.section(
     [cls("verse-code-dock-section"), h.DataAttribute("verse-code-dock-permissions", String(approvals.length))],
     [
@@ -6984,33 +7024,26 @@ const verseCodeDockPermissions = (model: Model): Html => {
       approval === null
         ? h.p([cls("verse-code-dock-note")], ["No prompts waiting."])
         : h.div([cls("verse-code-dock-permission")], [
-            h.p([cls("verse-code-dock-prompt")], [approvalLabel(approval)]),
+            h.p([cls("verse-code-dock-prompt")], [projection?.title ?? approvalLabel(approval)]),
+            projection === null
+              ? h.empty
+              : h.div(
+                  [cls("verse-code-dock-scope")],
+                  projection.scopeRows
+                    .filter((row) => row.key === "command_class" || row.key === "expiration")
+                    .map((row) =>
+                      h.span(
+                        [
+                          cls(`verse-code-dock-scope-row verse-code-dock-scope-${row.published ? "published" : "missing"}`),
+                          h.DataAttribute("verse-code-dock-scope", row.key),
+                        ],
+                        [`${row.label}: ${row.value}`],
+                      ),
+                    ),
+                ),
             h.div([cls("verse-code-dock-actions")], [
-              h.button(
-                [
-                  cls("verse-code-dock-button primary"),
-                  h.Type("button"),
-                  h.OnClick(
-                    ClickedResolveApproval({
-                      approvalRef: approval.approvalRef,
-                      decision: "approve",
-                    }),
-                  ),
-                ],
-                ["Approve"],
-              ),
-              h.button(
-                [
-                  cls("verse-code-dock-button danger"),
-                  h.Type("button"),
-                  h.OnClick(
-                    ClickedResolveApproval({
-                      approvalRef: approval.approvalRef,
-                      decision: "deny",
-                    }),
-                  ),
-                ],
-                ["Deny"],
+              ...(projection?.actions ?? []).map((action) =>
+                decisionActionButton(approval.approvalRef, action, " verse-code-dock-button"),
               ),
             ]),
           ]),

@@ -496,6 +496,17 @@ async function fetchApprovalRows(input: { baseUrl: string; token: string; fetchF
       kind: String(a.kind ?? "approval"),
       prompt: String(a.prompt ?? ""),
       createdAt: String(a.createdAt ?? ""),
+      ...(typeof a.sessionRef === "string" ? { sessionRef: a.sessionRef } : {}),
+      ...(typeof a.workspaceRef === "string" ? { workspaceRef: a.workspaceRef } : {}),
+      ...(typeof a.commandClass === "string" ? { commandClass: a.commandClass } : {}),
+      ...(typeof a.accountRefHash === "string" ? { accountRefHash: a.accountRefHash } : {}),
+      ...(typeof a.expiresAt === "string" ? { expiresAt: a.expiresAt } : {}),
+      ...(typeof a.lane === "string" ? { lane: a.lane } : {}),
+      ...(typeof a.source === "string" ? { source: a.source } : {}),
+      ...(typeof a.assignmentPath === "string" ? { assignmentPath: a.assignmentPath } : {}),
+      ...(typeof a.persistentApprovalSupported === "boolean"
+        ? { persistentApprovalSupported: a.persistentApprovalSupported }
+        : {}),
     }))
   } catch {
     return []

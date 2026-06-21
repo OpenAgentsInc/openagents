@@ -905,6 +905,21 @@ Acceptance:
 
 ### VCODE-09 - Add Decisions And Approval UI
 
+Status: implemented in #5926 on 2026-06-21. Desktop now has a pure
+`projectApprovalDecision` projection for pending approvals. The Decisions pane
+and Verse code dock both use explicit owner actions: `Reject`, `Allow once`,
+and `Scoped always`. `Reject` and `Allow once` continue to call the existing
+exactly-once approval resolve control surface (`deny` / `approve`). `Scoped
+always` is deliberately visible but disabled until a future node and desktop
+contract expose a persistent approval verb plus complete public-safe scope.
+The full Decisions pane displays scope before actions: session, workspace,
+command class, account, expiration, and execution lane. Missing or raw-looking
+scope renders as unpublished/one-decision-only rather than being treated as a
+grant. Public assignment, market, cloud/provider, and other non-local lane
+markers remain explicit blockers for persistent local danger-mode approval.
+Tests cover the projection, the rendered scope/action UI, the existing resolve
+command path, and the Verse dock labels.
+
 Build:
 
 - Build a code-mode Decisions pane/dock surface for pending approvals.

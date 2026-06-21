@@ -482,6 +482,26 @@ body {
   -webkit-line-clamp: 2;
 }
 
+.verse-code-dock-scope {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.verse-code-dock-scope-row {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.48);
+  font-size: 0.64rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.verse-code-dock-scope-missing {
+  color: rgb(255 213 213 / 0.58);
+}
+
 .verse-code-dock-status-error {
   color: #ffd5d5;
 }
@@ -565,6 +585,130 @@ body {
 .verse-code-dock-button.subtle {
   justify-self: start;
   color: rgb(255 255 255 / 0.58);
+}
+
+.decision-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-left: 3px solid rgb(255 255 255 / 0.38);
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.045);
+}
+
+.decision-card-head,
+.decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.decision-title {
+  margin: 0;
+  min-width: min(18rem, 100%);
+  color: var(--text, #f0f1f4);
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.decision-kind {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 999px;
+  color: rgb(255 255 255 / 0.58);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0.22rem 0.42rem;
+  text-transform: uppercase;
+}
+
+.decision-scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.38rem;
+}
+
+.decision-scope-row {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 5px;
+  background: rgb(0 0 0 / 0.18);
+}
+
+.decision-scope-label {
+  color: rgb(255 255 255 / 0.48);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.decision-scope-value {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.78);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decision-scope-missing .decision-scope-value {
+  color: rgb(255 213 213 / 0.72);
+}
+
+.decision-persistent-blocker {
+  margin: 0;
+  color: rgb(255 213 213 / 0.74);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.decision-action {
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(255 255 255 / 0.78);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0.42rem 0.58rem;
+}
+
+.decision-action:hover,
+.decision-action:focus-visible {
+  border-color: rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.11);
+  outline: none;
+}
+
+.decision-action-allow_once {
+  border-color: rgb(244 247 251 / 0.64);
+  background: rgb(244 247 251 / 0.9);
+  color: #101317;
+}
+
+.decision-action-reject {
+  border-color: rgb(255 180 180 / 0.28);
+  color: #ffd5d5;
+}
+
+.decision-action:disabled {
+  cursor: default;
+  opacity: 0.48;
 }
 
 .agent-stream {

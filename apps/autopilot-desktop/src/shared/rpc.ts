@@ -832,6 +832,18 @@ export type ApprovalRow = {
   readonly kind: string
   readonly prompt: string
   readonly createdAt: string
+  // VCODE-09: optional public-safe scope fields for code-mode decisions. Older
+  // nodes omit these; the desktop must treat absent scope as "allow once only"
+  // and never enable persistent approval.
+  readonly sessionRef?: string | null
+  readonly workspaceRef?: string | null
+  readonly commandClass?: string | null
+  readonly accountRefHash?: string | null
+  readonly expiresAt?: string | null
+  readonly lane?: string | null
+  readonly source?: string | null
+  readonly assignmentPath?: string | null
+  readonly persistentApprovalSupported?: boolean
 }
 
 // CL-49: read-only MDK wallet status (no spend authority).
