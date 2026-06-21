@@ -21,6 +21,7 @@ const base: OnboardingStatusInput = {
   walletBalanceSats: null,
   openAssignmentCount: 0,
   forumTipReady: false,
+  forumIntroPosted: false,
 }
 
 const step = (steps: readonly OnboardingStep[], id: string): OnboardingStep => {
@@ -47,10 +48,34 @@ describe("projectOnboardingStatus (AO-4)", () => {
       "payout",
       "tip-ready",
       "presence",
+      "forum-intro",
       "tassadar",
       "claimed",
       "earned",
     ])
+  })
+
+  it("AF-3: forum-intro is pending until registered, active while converging, done with a receipt", () => {
+    expect(step(projectOnboardingStatus(base).steps, "forum-intro").status).toBe(
+      "pending",
+    )
+    const registered = {
+      ...base,
+      identityChoiceMade: true,
+      agentRegistered: true,
+      onboardingEnvConfigured: true,
+      nodeLaunchStatus: "online" as const,
+      localPylonReady: true,
+    }
+    expect(
+      step(projectOnboardingStatus(registered).steps, "forum-intro").status,
+    ).toBe("active")
+    expect(
+      step(
+        projectOnboardingStatus({ ...registered, forumIntroPosted: true }).steps,
+        "forum-intro",
+      ).status,
+    ).toBe("done")
   })
 
   it("AF-2: tip-ready is pending until the wallet is receive-ready, then active, then done", () => {

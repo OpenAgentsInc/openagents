@@ -25,6 +25,7 @@ import {
   claimForumTipRecipientReadiness,
   isForumTipReady,
 } from "./forum-tip-recipient"
+import { hasPostedForumIntro, postForumIntroduction } from "./forum-intro"
 import {
   detectExistingPylonIdentity,
   detectedIdentityShortLabel,
@@ -631,6 +632,19 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     void maybeClaimForumTipReady(home, controlToken)
   }
 
+  // AF-3 (#5900): once the agent is registered and the node is online, post the
+  // public forum self-introduction (once). Single-flight + idempotent (persisted
+  // receipt short-circuits); never blocks the projection.
+  const forumIntroPosted = home !== null && hasPostedForumIntro(home)
+  if (
+    home !== null &&
+    agentRegistered &&
+    localPylonReady &&
+    !forumIntroPosted
+  ) {
+    void maybePostForumIntro(home, forumTipReady)
+  }
+
   return projectOnboardingStatus({
     fetchedAt: new Date().toISOString(),
     identityChoiceMade: choice !== null,
@@ -643,7 +657,31 @@ async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
     walletBalanceSats,
     openAssignmentCount,
     forumTipReady,
+    forumIntroPosted,
   })
+}
+
+// AF-3 (#5900): single-flight driver for the forum self-introduction post.
+// Idempotent (the persisted receipt makes it a no-op once posted); never logs
+// the agent token. Mentions tip-readiness in the copy when tips are claimable.
+let introPostInFlight = false
+async function maybePostForumIntro(
+  home: string,
+  forumTipReady: boolean,
+): Promise<void> {
+  if (introPostInFlight) return
+  introPostInFlight = true
+  try {
+    await postForumIntroduction({
+      home,
+      baseUrl: onboardingBaseUrl,
+      authority: { tipReady: forumTipReady },
+    })
+  } catch {
+    // Non-fatal: a failed post is retried on a later poll. Never logs secrets.
+  } finally {
+    introPostInFlight = false
+  }
 }
 
 // AF-2 (#5899): single-flight driver for the forum tip-recipient readiness

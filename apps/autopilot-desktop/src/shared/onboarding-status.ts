@@ -67,6 +67,9 @@ export type OnboardingStatusInput = {
   // forum posts can receive Spark tips)? Receive-only; derived from a persisted
   // tip-ready receipt in the Bun host — never wallet material.
   readonly forumTipReady: boolean
+  // AF-3 (#5900): has the node posted its public forum self-introduction yet?
+  // Derived from a persisted intro receipt in the Bun host (public-safe).
+  readonly forumIntroPosted: boolean
   // assignments.poll (CL-50): count of open work-lease assignments observed.
   readonly openAssignmentCount: number
 }
@@ -304,6 +307,48 @@ const presenceStep = (input: OnboardingStatusInput): OnboardingStep =>
     input,
   )
 
+// AF-3 (#5900): automated forum self-introduction. Once the agent is registered
+// and presence is live, the Bun host posts one public-safe introduction to the
+// resolved intro lane. Done when the receipt exists; active while registered and
+// converging; pending until registration. Non-blocking: a stuck post never
+// dead-ends the wizard (the rest of the chain proceeds).
+const forumIntroStep = (input: OnboardingStatusInput): OnboardingStep => {
+  if (input.forumIntroPosted) {
+    return {
+      id: "forum-intro",
+      label: "Forum introduction posted",
+      status: "done",
+      message: "Your agent introduced itself on the OpenAgents Forum.",
+      retryable: false,
+    }
+  }
+  if (!input.agentRegistered) {
+    return {
+      id: "forum-intro",
+      label: "Forum introduction posted",
+      status: "pending",
+      message: "Waiting on agent registration.",
+      retryable: false,
+    }
+  }
+  if (nodeFailed(input.nodeLaunchStatus)) {
+    return {
+      id: "forum-intro",
+      label: "Forum introduction posted",
+      status: "failed",
+      message: "The node is offline, so the introduction is paused. Retry.",
+      retryable: true,
+    }
+  }
+  return {
+    id: "forum-intro",
+    label: "Forum introduction posted",
+    status: "active",
+    message: "Posting your agent's introduction to the Forum.",
+    retryable: false,
+  }
+}
+
 const tassadarStep = (input: OnboardingStatusInput): OnboardingStep => {
   if (input.openAssignmentCount > 0) {
     return {
@@ -415,6 +460,7 @@ export const projectOnboardingStatus = (
     payoutStep(input),
     tipReadyStep(input),
     presenceStep(input),
+    forumIntroStep(input),
     tassadarStep(input),
     claimedStep(input),
     earnedStep(input),
