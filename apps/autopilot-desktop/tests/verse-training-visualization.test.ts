@@ -155,6 +155,10 @@ describe("withVerseTrainingLayer (#5822)", () => {
     expect(out.motionPolicy?.evidence).toBe("required")
     expect(out.motionPolicy?.structuralEdges).toBe("static")
     expect(out.motionPolicy?.ambient).toBe("static")
+    expect(out.worldLabelDensity).toBe("compact")
+    expect(
+      out.nodes?.filter(node => node.id.startsWith(VERSE_TRAINING_NODE_PREFIX)).every(node => (node.position?.[2] ?? 0) !== 0),
+    ).toBe(true)
   })
 
   test("projects benchmark lifecycle nodes and evidence-bound motion from public refs", () => {
@@ -181,6 +185,9 @@ describe("withVerseTrainingLayer (#5822)", () => {
     expect(node(`${VERSE_TRAINING_NODE_PREFIX}settlement`)?.status).toBe("sealed")
     expect(node(`${VERSE_TRAINING_NODE_PREFIX}recipient-confirmed`)?.status).toBe("verified")
     expect(node(`${VERSE_TRAINING_NODE_PREFIX}blocked`)?.detail).toContain("requirement.public.1")
+    expect(node(`${VERSE_TRAINING_NODE_PREFIX}replay`)?.position?.[2]).toBeGreaterThan(
+      node(`${VERSE_TRAINING_NODE_PREFIX}assignment`)?.position?.[2] ?? 0,
+    )
 
     const kinds = new Set((out.beams ?? []).map(beam => beam.motionKind))
     expect(kinds).toEqual(

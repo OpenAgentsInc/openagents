@@ -65,6 +65,7 @@ describe("liveChatWorldNetworkScene", () => {
   test("maps live nodes onto the three-tone graph (working/online/offline)", () => {
     const scene = liveChatWorldNetworkScene(liveScene())
     expect(scene).not.toBeNull()
+    const options = pylonNetworkVisualizationOptions(scene!)
     const nodes = scene!.nodes
     expect(nodes.map((n) => n.id)).toEqual(["abc123", "def456"])
     // assignment_ready → working (earning), wallet_ready (online, not earning) → online
@@ -76,6 +77,9 @@ describe("liveChatWorldNetworkScene", () => {
     expect(scene!.sessionsOnlineNow).toBe(1)
     // cumulative settled sats ride through as the growth signal
     expect(scene!.satsSettledTotal).toBe(50_000)
+    expect(options.worldLabelDensity).toBe("compact")
+    expect(options.nodes?.find(node => node.id === "network")?.position?.[2]).toBeGreaterThan(0)
+    expect(options.nodes?.filter(node => node.id !== "network").every(node => (node.position?.[2] ?? 0) !== 0)).toBe(true)
   })
 
   test("activity intensity is bounded [0,1]", () => {
@@ -152,6 +156,8 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(fromEntity.label).toContain("receipt:nip90:abc")
     expect(toEntity.label).toContain("receipt:nip90:abc")
     expect(toEntity.label).toContain("21000 sats")
+    expect(fromEntity.position?.[2]).not.toBe(0)
+    expect(toEntity.position?.[2]).not.toBe(0)
   })
 
   test("credited (non-bitcoin) particles tag settlement_recorded", () => {

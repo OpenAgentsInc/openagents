@@ -33,13 +33,13 @@ type StageSpec = Readonly<{
 }>
 
 const stagePositions = {
-  assignment: [-2.85, -1.45, 0] as TrainingRunVector,
-  trace: [-1.55, -2.18, 0] as TrainingRunVector,
-  replay: [0, -2.42, 0] as TrainingRunVector,
-  verdict: [1.55, -2.18, 0] as TrainingRunVector,
-  settlement: [2.85, -1.45, 0] as TrainingRunVector,
-  recipient: [3.32, -0.2, 0] as TrainingRunVector,
-  blocked: [0, 1.72, 0] as TrainingRunVector,
+  assignment: [-2.85, -1.45, 0.58] as TrainingRunVector,
+  trace: [-1.55, -2.18, 1.12] as TrainingRunVector,
+  replay: [0, -2.42, 1.62] as TrainingRunVector,
+  verdict: [1.55, -2.18, 1.08] as TrainingRunVector,
+  settlement: [2.85, -1.45, 0.78] as TrainingRunVector,
+  recipient: [3.32, -0.2, 1.36] as TrainingRunVector,
+  blocked: [0, 1.72, 1.74] as TrainingRunVector,
 } as const
 
 const uniqueRefs = (refs: ReadonlyArray<string | null | undefined>): string[] => {
@@ -149,7 +149,7 @@ const rewriteBaseNodes = (
           detail: coreDetail,
           role: "run",
           status: statusFromRun(summary, blockerCount),
-          position: [0, 0, 0],
+          position: [0, 0, 0.95],
         },
         ...rewritten,
       ]
@@ -460,5 +460,6 @@ export const withVerseTrainingLayer = (
       statusChart: "hidden",
     },
     stageNodeGlyph: "compact_gate",
+    worldLabelDensity: "compact",
   }
 }

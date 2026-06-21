@@ -102,10 +102,11 @@ const PAYMENT_RING_RADIUS = 2.4
 const endpointRingPosition = (index: number, count: number): TrainingRunVector => {
   const radius = PAYMENT_RING_RADIUS + Math.min(1.6, count / 40)
   const angle = count <= 0 ? 0 : (2 * Math.PI * index) / count
+  const height = 0.52 + Math.sin(index * 1.61803398875 + count * 0.23) * 0.64
   return [
     Number((Math.cos(angle) * radius).toFixed(3)),
     Number((Math.sin(angle) * radius * 0.62).toFixed(3)),
-    0,
+    Number(height.toFixed(3)),
   ]
 }
 

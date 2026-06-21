@@ -34,10 +34,11 @@ const ringPosition = (
 ): TrainingRunNodeDefinition["position"] => {
   const radius = 2.4 + Math.min(1.6, count / 40)
   const angle = count <= 0 ? 0 : (2 * Math.PI * index) / count
+  const height = 0.35 + Math.sin(index * 1.324717957244746 + count * 0.19) * 0.72
   return [
     Number((Math.cos(angle) * radius).toFixed(3)),
     Number((Math.sin(angle) * radius * 0.62).toFixed(3)),
-    0,
+    Number(height.toFixed(3)),
   ]
 }
 
@@ -58,7 +59,7 @@ export function pylonNetworkVisualizationOptions(
       : `${scene.onlineNow} online · ${scene.sessionsOnlineNow} working`,
     role: "run",
     status: centerStatus,
-    position: [0, 0, 0],
+    position: [0, 0, 0.95],
     // edges flow from each pylon into the center (set on the pylon side below)
   }
 
@@ -80,5 +81,6 @@ export function pylonNetworkVisualizationOptions(
     backgroundColor: BACKGROUND,
     pulseSpeed,
     nodes: [centerNode, ...pylonNodes],
+    worldLabelDensity: "compact",
   }
 }
