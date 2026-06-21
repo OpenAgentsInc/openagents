@@ -1679,6 +1679,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   legacy count as an exact ratchet budget that may only shrink as retrofits
   land.
 - Projection inventory (staleness mode → compliance as of epic #4751):
+  - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
   - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read

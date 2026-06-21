@@ -577,6 +577,11 @@ const publicProjectionComplianceToken =
 const publicProjectionSurfaces = [
   // Declared surfaces (payload carries generatedAt + staleness contract).
   {
+    module: 'workers/api/src/public-forum-activity-routes.ts',
+    route: '/api/public/forum-activity',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/labor-earnings-routes.ts',
     route: '/api/public/labor-earnings',
     status: 'staleness_declared',

@@ -479,6 +479,7 @@ import {
   handlePublicActivityTimelineApiForEnv,
   handlePublicActivityTimelineStreamApiForEnv,
 } from './public-activity-timeline-routes'
+import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
@@ -8194,6 +8195,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/activity-timeline/stream',
     handler: (request, env) =>
       handlePublicActivityTimelineStreamApiForEnv(request, env),
+  },
+  {
+    path: '/api/public/forum-activity',
+    handler: (request, env) =>
+      handlePublicForumActivityApiForEnv(request, env),
   },
   {
     path: TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
