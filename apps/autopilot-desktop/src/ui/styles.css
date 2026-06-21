@@ -145,10 +145,8 @@ body {
   top: clamp(0.75rem, 2vw, 1.2rem);
   left: clamp(0.75rem, 2vw, 1.2rem);
   z-index: 4;
-  display: flex;
-  gap: 0.55rem;
-  align-items: baseline;
-  max-width: min(18rem, calc(100% - 1.5rem));
+  display: block;
+  max-width: min(10rem, calc(100% - 1.5rem));
   padding: 0.42rem 0.58rem;
   border: 1px solid rgb(255 255 255 / 0.16);
   border-radius: 6px;
@@ -163,17 +161,8 @@ body {
   pointer-events: none;
 }
 
-.pylon-balance-hud-label {
-  flex: none;
-  color: rgb(255 255 255 / 0.56);
-  font-size: 0.78rem;
-  letter-spacing: 0;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
 .pylon-balance-hud-value {
-  min-width: 0;
+  display: block;
   overflow: hidden;
   color: color-mix(in srgb, var(--hud-primary, #fff) 78%, var(--accent, #f5b73a));
   font-size: 0.96rem;

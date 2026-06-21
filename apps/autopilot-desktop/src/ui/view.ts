@@ -5982,7 +5982,6 @@ const pylonBalanceHud = (model: Model): Html => {
       h.DataAttribute("pylon-balance-value", balance.valueText),
     ],
     [
-      h.span([cls("pylon-balance-hud-label mono")], ["Bitcoin"]),
       h.span([cls("pylon-balance-hud-value mono")], [balance.valueText]),
     ],
   )
