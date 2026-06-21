@@ -96,6 +96,7 @@ export const PaneId = S.Literals([
   "decisions",
   "diff-artifacts",
   "terminal-log",
+  "diagnostics",
   // VCODE-03 (#5920): dedicated managed account pane for Verse code mode.
   // It reuses the existing dev.accounts CRUD card without forcing a full
   // navigation away from the Verse scene.

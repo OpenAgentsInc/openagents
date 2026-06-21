@@ -636,6 +636,7 @@ const isTrainingPane = (pane: PaneId): boolean =>
 const isNetworkPane = (pane: PaneId): boolean => pane === "network"
 const isBuiltInAgentPane = (pane: PaneId): boolean => pane === "builtin-agent"
 const isSettingsPane = (pane: PaneId): boolean => pane === "settings"
+const isDiagnosticsPane = (pane: PaneId): boolean => pane === "diagnostics"
 // AO-4 (#5445): the onboarding wizard pane refreshes the identity-choice state +
 // the live onboarding chain status whenever it is opened.
 const isOnboardingPane = (pane: PaneId): boolean => pane === "onboarding"
@@ -644,6 +645,14 @@ const isOnboardingPane = (pane: PaneId): boolean => pane === "onboarding"
 // Spawn, and Settings keep their legacy account surfaces.
 const isAccountManagingPane = (pane: PaneId): boolean =>
   pane === "accounts" || pane === "composer" || pane === "spawn" || pane === "settings"
+
+const diagnosticsRefreshCommands = (): ReadonlyArray<Command.Command<Message>> => [
+  LoadManagedAccounts(),
+  LoadInferenceGatewayReadiness(),
+  LoadBuiltInAgentReadiness(),
+  LoadAppleFmReadiness(),
+  LoadInstallReadiness(),
+]
 
 const managedAccountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 
@@ -1155,6 +1164,15 @@ export const update = (model: Model, message: Message): Result => {
                 },
               }
             : {}),
+          ...(isDiagnosticsPane(message.pane)
+            ? {
+                managedAccountsPending: true,
+                managedAccountsStatus: {
+                  text: "loading diagnostics...",
+                  tone: "info" as const,
+                },
+              }
+            : {}),
         }),
         [
           ...(isTrainingPane(message.pane)
@@ -1184,6 +1202,7 @@ export const update = (model: Model, message: Message): Result => {
               // the gateway readiness (credits/hint) on enter alongside accounts.
               [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
             : noCommands),
+          ...(isDiagnosticsPane(message.pane) ? diagnosticsRefreshCommands() : noCommands),
         ],
       ]
 
@@ -3614,7 +3633,10 @@ export const update = (model: Model, message: Message): Result => {
         const accountCommands = isAccountManagingPane(message.pane)
           ? [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
           : noCommands
-        return [opened, [...commands, ...accountCommands]]
+        const diagnosticCommands = isDiagnosticsPane(message.pane)
+          ? diagnosticsRefreshCommands()
+          : noCommands
+        return [opened, [...commands, ...accountCommands, ...diagnosticCommands]]
       }
     case "ClosedManagedPane":
       return applyPaneLayerAction(model, { kind: "close", paneId: message.paneId })

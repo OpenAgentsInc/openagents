@@ -1066,6 +1066,22 @@ Acceptance:
 
 ### VCODE-14 - Add Code-Mode Host Readiness And Diagnostics
 
+Implemented on 2026-06-21. `apps/autopilot-desktop/src/ui/host-diagnostics-projection.ts`
+now projects one public-safe diagnostics panel from node-state, the code-mode
+sync snapshot, bridge launch lifecycle, and retained Verse scene diagnostics.
+The new Diagnostics pane is a Code destination and managed pane leaf; opening
+it refreshes managed accounts plus Codex, install, gateway, built-in agent, and
+Apple FM readiness inputs. Rows cover Pylon node state, Bun bridge status,
+Codex account readiness/blockers, stream-vs-poll health, transcript event-tail
+persistence, scene remount/black-frame counters, visualization key churn,
+mouselook camera-control events, and local-pose samples. The export payload is
+safe to paste by default: it shortens account/session refs, removes local paths,
+redacts secret-shaped tokens, and includes only bounded sanitized scene-event
+tails. `tests/host-diagnostics-projection.test.ts` covers the projection,
+public-safe export rendering, and reducer refresh commands, while the nav,
+black-screen, and code-sync regressions keep the new pane reachable without
+reopening the global HUD.
+
 Build:
 
 - Add a diagnostics pane for Pylon node readiness, Bun bridge readiness, Codex

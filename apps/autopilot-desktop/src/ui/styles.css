@@ -3115,6 +3115,126 @@ body {
   background: color-mix(in srgb, var(--accent, #66aaff) 24%, transparent);
 }
 
+.diagnostics-pane {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.host-diagnostic-counters,
+.host-diagnostic-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.host-diagnostic-counters {
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+}
+
+.host-diagnostic-counter {
+  border: 1px solid var(--outline, #525458);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-secondary, #151515) 82%, transparent);
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  padding: 0.42rem 0.55rem;
+}
+
+.host-diagnostic-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.38rem 0.7rem;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-secondary, #151515) 86%, transparent);
+  padding: 0.65rem;
+}
+
+.host-diagnostic-main {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.host-diagnostic-title,
+.host-diagnostic-summary,
+.host-diagnostic-detail,
+.host-diagnostic-refs {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  letter-spacing: 0;
+}
+
+.host-diagnostic-title {
+  color: var(--text-primary, #f4f4f5);
+  font-weight: 760;
+}
+
+.host-diagnostic-summary,
+.host-diagnostic-detail,
+.host-diagnostic-refs {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.host-diagnostic-detail,
+.host-diagnostic-refs {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.host-diagnostic-badge {
+  align-self: start;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  padding: 0.24rem 0.42rem;
+  text-transform: uppercase;
+}
+
+.host-diagnostic-badge-ok {
+  border-color: rgb(74 222 128 / 0.44);
+  color: rgb(134 239 172 / 0.96);
+}
+
+.host-diagnostic-badge-warning {
+  border-color: rgb(250 204 21 / 0.44);
+  color: rgb(253 224 71 / 0.96);
+}
+
+.host-diagnostic-badge-blocked {
+  border-color: rgb(248 113 113 / 0.5);
+  color: rgb(252 165 165 / 0.98);
+}
+
+.host-diagnostic-badge-info {
+  border-color: rgb(147 197 253 / 0.42);
+  color: rgb(191 219 254 / 0.96);
+}
+
+.host-diagnostic-export {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.host-diagnostic-export-body {
+  max-height: min(34rem, 48vh);
+  overflow: auto;
+  border: 1px solid var(--outline, #525458);
+  border-radius: 6px;
+  background: color-mix(in srgb, #050607 92%, transparent);
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+  line-height: 1.42;
+  margin: 0;
+  padding: 0.7rem;
+  white-space: pre-wrap;
+}
+
 /* #5469 (EPIC #5461): swarm batch launch + failover routing + sub-agent tree.
  * Batch form is a collapsible <details> inside the pane (no new top-level
  * button). Routing line + sub-agent count reuse the canonical tone tokens. */

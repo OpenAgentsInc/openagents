@@ -43,7 +43,10 @@ import { html } from "foldkit/html"
 import { autonomousLoopPane } from "./autonomous-loop-pane.js"
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
 import { statusHudView } from "./hud-status-element.js"
-import { recordVerseSceneDiagnostic } from "./verse-scene-diagnostics.js"
+import {
+  recordVerseSceneDiagnostic,
+  verseSceneDiagnostics,
+} from "./verse-scene-diagnostics.js"
 import { hudStatusProjection } from "../shared/hud-status-projection.js"
 import {
   OPENAGENTS_PUBLIC_ORIGIN,
@@ -102,6 +105,10 @@ import {
   type TerminalLogProjection,
   type TerminalLogRow,
 } from "./terminal-log-projection.js"
+import {
+  projectHostDiagnosticsPanel,
+  type HostDiagnosticRow,
+} from "./host-diagnostics-projection.js"
 import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
@@ -6577,6 +6584,79 @@ const accountsPane = (model: Model): Html =>
     ],
   )
 
+const hostDiagnosticStatusLabel = (status: HostDiagnosticRow["status"]): string => {
+  switch (status) {
+    case "ok":
+      return "ok"
+    case "blocked":
+      return "blocked"
+    case "warning":
+      return "warning"
+    case "info":
+      return "info"
+  }
+}
+
+const hostDiagnosticRowView = (row: HostDiagnosticRow): Html =>
+  h.article(
+    [
+      cls(`host-diagnostic-row host-diagnostic-${row.status}`),
+      h.Key(row.key),
+      h.DataAttribute("autopilot-host-diagnostic", row.key),
+      h.DataAttribute("autopilot-host-diagnostic-section", row.section),
+      h.DataAttribute("autopilot-host-diagnostic-status", row.status),
+    ],
+    [
+      h.div([cls("host-diagnostic-main")], [
+        h.span([cls("host-diagnostic-title")], [row.title]),
+        h.span([cls("host-diagnostic-summary")], [row.summary]),
+      ]),
+      h.span([cls(`host-diagnostic-badge host-diagnostic-badge-${row.status}`)], [
+        hostDiagnosticStatusLabel(row.status),
+      ]),
+      h.p([cls("host-diagnostic-detail")], [row.detail]),
+      row.sourceRefs.length === 0
+        ? h.empty
+        : h.p([cls("host-diagnostic-refs mono")], [row.sourceRefs.join(" · ")]),
+    ],
+  )
+
+const diagnosticsPane = (model: Model): Html => {
+  const panel = projectHostDiagnosticsPanel({
+    nodeLaunchStatus: model.nodeLaunchStatus,
+    node: modelNode(model),
+    sync: modelCodeModeSync(model),
+    sceneDiagnostics: verseSceneDiagnostics(),
+  })
+  const exportText = JSON.stringify(panel.exportData, null, 2)
+  return h.div(
+    [cls("diagnostics-pane"), h.DataAttribute("autopilot-host-diagnostics", "")],
+    [
+      paneTitle("Diagnostics"),
+      h.div([cls("host-diagnostic-counters")], [
+        h.span([cls("host-diagnostic-counter mono")], [`sessions ${panel.counters.sessions}`]),
+        h.span([cls("host-diagnostic-counter mono")], [`events ${panel.counters.streamEvents}`]),
+        h.span([cls("host-diagnostic-counter mono")], [`remounts ${panel.counters.sceneRemounts}`]),
+        h.span([cls("host-diagnostic-counter mono")], [`camera ${panel.counters.cameraControlEvents}`]),
+      ]),
+      h.section(
+        [cls("host-diagnostic-grid")],
+        panel.rows.map(hostDiagnosticRowView),
+      ),
+      h.section([cls("host-diagnostic-export")], [
+        h.h2([cls("card-title")], ["Public-safe export"]),
+        h.pre(
+          [
+            cls("host-diagnostic-export-body mono"),
+            h.DataAttribute("autopilot-host-diagnostics-export", ""),
+          ],
+          [exportText],
+        ),
+      ]),
+    ],
+  )
+}
+
 const chatRoleLabel = (role: ChatMessage["role"]): string => {
   switch (role) {
     case "assistant":
@@ -7960,6 +8040,8 @@ const paneContent = (model: Model, kind: PaneId): Html => {
       return diffArtifactsPane(model)
     case "terminal-log":
       return terminalLogPane(model)
+    case "diagnostics":
+      return diagnosticsPane(model)
     case "accounts":
       return accountsPane(model)
     case "spawn":
