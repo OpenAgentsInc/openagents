@@ -1010,6 +1010,7 @@ const main = async (): Promise<void> => {
         "github:OpenAgentsInc/openagents#5913",
         "github:OpenAgentsInc/openagents#5915",
         "github:OpenAgentsInc/openagents#5914",
+        "github:OpenAgentsInc/openagents#5912",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
       packagedFiles: {

@@ -529,3 +529,19 @@ changes, but that replacement is local to the board node. The renderer, camera,
 controller, local avatar, and other keyed scene state remain outside that
 change, which directly addresses the character-flicker and board-hydration
 failure mode that motivated this audit pass.
+
+Issue
+[`#5912`](https://github.com/OpenAgentsInc/openagents/issues/5912) applied the
+frame-loop part of recommendation 5. `three-effect` now exports a
+`createManagedFrameClock` primitive with manual test ticks, demand-mode
+`invalidate()` scheduling, priority-ordered subscribers, idempotent disposal,
+and cancellation of pending RAF callbacks. The Verse training scene no longer
+owns a raw recursive `requestAnimationFrame` / `cancelAnimationFrame` pair; it
+subscribes its render/update function to that managed clock and lets the scene
+resource scope dispose the clock before WebGL resources are released.
+
+The current Verse consumer still uses `mode: "always"` because the world has
+continuous controller, avatar, beam, burst, and interpolation animation. The
+important audit alignment is that frame ownership is now a reusable primitive
+instead of another closure-local lifecycle, and the same primitive already has
+the demand/manual semantics needed by future retained-mode scenes and tests.
