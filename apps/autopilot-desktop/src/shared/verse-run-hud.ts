@@ -1,4 +1,5 @@
 import type {
+  PublicTassadarRunSummary,
   TrainingPromiseGatesResponse,
   TrainingRunSummaryRow,
   TrainingRunsResponse,
@@ -27,6 +28,18 @@ export type VerseRunHudProjection = Readonly<{
 const boundedMetric = (value: number): number =>
   Number.isFinite(value) && value > 0 ? value : 0
 
+const tassadarMetricValue = (
+  summary: PublicTassadarRunSummary | null | undefined,
+  key: string,
+): number => {
+  const raw = summary?.metrics?.[key]
+  if (typeof raw === "number") return boundedMetric(raw)
+  if (raw !== null && typeof raw === "object" && typeof raw.value === "number") {
+    return boundedMetric(raw.value)
+  }
+  return 0
+}
+
 const metricRefs = (
   metric: { readonly sourceRefs: readonly string[] } | undefined,
 ): readonly string[] => metric?.sourceRefs ?? []
@@ -34,7 +47,8 @@ const metricRefs = (
 const shortRef = (value: string): string => {
   const trimmed = value.trim()
   if (trimmed.length <= 18) return trimmed
-  return trimmed.slice(-18)
+  const shortened = trimmed.slice(-18).replace(/^[.:/_-]+/, "")
+  return shortened.length > 0 ? shortened : trimmed.slice(-18)
 }
 
 const sample = (
@@ -65,10 +79,98 @@ const lossLabel = (summary: TrainingRunSummaryRow | null): string => {
   return `${loss.finalValidationLoss.toFixed(2)} / ${loss.maxValidationLoss.toFixed(2)}`
 }
 
+const runState = (state: string | undefined): string => {
+  switch (state) {
+    case "active":
+    case "sealed":
+    case "reconciled":
+    case "planned":
+      return state
+    default:
+      return state && state.trim().length > 0 ? state.trim() : "waiting"
+  }
+}
+
+const tassadarHudProjection = (
+  trainingRuns: TrainingRunsResponse,
+  promiseGates: TrainingPromiseGatesResponse | null,
+): VerseRunHudProjection | null => {
+  const summary = trainingRuns.tassadarSummary
+  if (summary === undefined || summary === null) return null
+
+  const assigned = tassadarMetricValue(summary, "assignedContributorCount")
+  const activeWindows = tassadarMetricValue(summary, "activeWindowCount")
+  const acceptedTraceCount = tassadarMetricValue(summary, "acceptedTraceCount")
+  const verified = tassadarMetricValue(summary, "verifiedWorkCount")
+  const rejected = tassadarMetricValue(summary, "rejectedWorkCount")
+  const settledSats =
+    tassadarMetricValue(summary, "providerConfirmedSettledPayoutSats") ||
+    tassadarMetricValue(summary, "settledSats")
+  const acceptedTotal = verified + rejected
+  const refs = summary.sourceRefs ?? []
+
+  return {
+    blockerCount: 0,
+    fetchedAtLabel:
+      trainingRuns.fetchedAt.length > 0
+        ? new Date(trainingRuns.fetchedAt).toLocaleTimeString()
+        : "waiting",
+    lossLabel: activeWindows > 0 ? `${activeWindows.toLocaleString()} active` : "active n/a",
+    promiseGreenCount: promiseGates?.stateCounts.green ?? 0,
+    promiseTotalCount: promiseGates?.promises.length ?? 0,
+    runRef: summary.runRef ? shortRef(summary.runRef) : "tassadar",
+    state: runState(summary.runState),
+    samples: [
+      sample(
+        "assign",
+        "assign",
+        ratio(assigned, Math.max(assigned, 1)),
+        String(assigned),
+        refs,
+      ),
+      sample(
+        "trace",
+        "trace",
+        ratio(acceptedTraceCount, Math.max(acceptedTraceCount, 1)),
+        String(acceptedTraceCount),
+        refs,
+      ),
+      sample(
+        "accept",
+        "accept",
+        ratio(verified, Math.max(acceptedTotal, 1)),
+        String(verified),
+        refs,
+      ),
+      sample(
+        "reject",
+        "reject",
+        ratio(rejected, Math.max(acceptedTotal, 1)),
+        String(rejected),
+        refs,
+      ),
+      sample("proof", "proof", ratio(verified, Math.max(verified, 1)), String(verified), refs),
+      sample(
+        "settle",
+        "settle",
+        ratio(settledSats, Math.max(settledSats, 100_000)),
+        settledSats === 0 ? "0" : `${Math.round(settledSats).toLocaleString()} sats`,
+        refs,
+      ),
+      sample("payout", "payout", 0, "0", refs),
+    ],
+  }
+}
+
 export const verseRunHudProjection = (
   trainingRuns: TrainingRunsResponse | null,
   promiseGates: TrainingPromiseGatesResponse | null,
 ): VerseRunHudProjection => {
+  if (trainingRuns !== null) {
+    const tassadarProjection = tassadarHudProjection(trainingRuns, promiseGates)
+    if (tassadarProjection !== null) return tassadarProjection
+  }
+
   const summary = selectedVerseTrainingSummary(trainingRuns)
   const metrics = summary?.metrics
   const assigned = boundedMetric(metrics?.assignedContributorCount.value ?? 0)
@@ -82,7 +184,6 @@ export const verseRunHudProjection = (
   const blockers = refs([
     ...(promiseGates?.blockerRefs ?? []),
     ...(summary?.realGradient.externalAsk.blockerRefs ?? []),
-    ...(summary?.realGradient.externalAsk.requirementRefs ?? []),
   ])
   const promiseGreenCount = promiseGates?.stateCounts.green ?? 0
   const promiseTotalCount = promiseGates?.promises.length ?? 0

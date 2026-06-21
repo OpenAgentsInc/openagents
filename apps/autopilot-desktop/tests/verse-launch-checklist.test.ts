@@ -20,6 +20,7 @@ import {
   GotNodeState,
   GotOnboardingStatus,
   GotTrainingRuns,
+  TickedOnboardingStatusRefresh,
   TickedVerseTrainingProjectionRefresh,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
@@ -264,6 +265,15 @@ describe("Verse packaged launch checklist (#5827)", () => {
 
     expect(model).toBe(initial)
     expect(commands.map(command => command.name)).toEqual(["LoadTrainingRuns"])
+  })
+
+  test("the onboarding status tick refreshes wallet balance data without resetting the Verse", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [model, commands] = update(initial, TickedOnboardingStatusRefresh())
+
+    expect(model).toBe(initial)
+    expect(commands.map(command => command.name)).toEqual(["LoadOnboardingStatus"])
   })
 
   test("live projection refreshes do not reset the Verse controller to spawn", () => {

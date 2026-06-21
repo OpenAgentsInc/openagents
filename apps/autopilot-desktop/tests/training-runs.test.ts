@@ -224,6 +224,31 @@ describe("fetchTrainingRuns", () => {
     expect(result.runs).toEqual([])
     expect(result.error).toBe("training runs 503")
   })
+
+  test("keeps the Tassadar summary when the legacy training-runs aggregate stalls", async () => {
+    const result = await fetchTrainingRuns({
+      baseUrl: "https://openagents.test",
+      timeoutMs: 5,
+      fetchFn: async (url) => {
+        const href = String(url)
+        if (href.endsWith("/api/public/tassadar-run-summary")) {
+          return new Response(
+            JSON.stringify({
+              runRef: "run.tassadar.executor.20260615",
+              runState: "active",
+              metrics: { assignedContributorCount: { value: 11 } },
+            }),
+          )
+        }
+        return new Promise<Response>(() => {})
+      },
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe("training runs timeout")
+    expect(result.tassadarSummary?.runRef).toBe("run.tassadar.executor.20260615")
+    expect(result.tassadarSummary?.runState).toBe("active")
+  })
 })
 
 describe("fetchTrainingDashboard", () => {

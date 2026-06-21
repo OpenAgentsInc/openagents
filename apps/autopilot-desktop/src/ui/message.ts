@@ -223,6 +223,7 @@ export const SettledChooseIdentity = m("SettledChooseIdentity", {
 })
 // Retry a failed onboarding step (re-loads status; the supervisor converges).
 export const ClickedRetryOnboarding = m("ClickedRetryOnboarding")
+export const TickedOnboardingStatusRefresh = m("TickedOnboardingStatusRefresh")
 
 // ── Product Promises Forum surfacing (#5065) ──────────────────────────────
 export const ChangedPromiseSurfacingPromiseId = m(
@@ -720,6 +721,7 @@ export const Message = S.Union([
   ClickedCreateNewIdentity,
   SettledChooseIdentity,
   ClickedRetryOnboarding,
+  TickedOnboardingStatusRefresh,
   ChangedPromiseSurfacingPromiseId,
   ChangedPromiseSurfacingSurface,
   ChangedPromiseSurfacingClaimText,

@@ -578,3 +578,20 @@ the packaged app uses. It also keeps the audit's R3F/Effect direction intact:
 the user interaction contract is exercised outside React render timing, and the
 retained scene host must continue handling pointer updates without remounting
 the renderer, camera, controller, local avatar, or board resources.
+
+Issue follow-up on June 21 also aligned the Verse Tassadar data path with the
+same retained-scene principle. The in-world bulletin board and compact Verse HUD
+now prefer the small live `/api/public/tassadar-run-summary` projection for the
+current run state, metrics, and board copy. The older `/api/training/runs`
+aggregate is still used as a fallback/detail source, but it is bounded by a
+short timeout and can no longer keep the board on "Loading Tassadar run" or
+force the HUD into the old `real_gradient.demo` blocker state while the live
+Tassadar summary is already available.
+
+This is relevant to the audit because it removes a data-fetch coupling that
+looked like a rendering lifecycle bug: a slow legacy aggregate could prevent the
+retained scene from receiving its keyed bulletin-board descriptor update. The
+scene graph now receives the live board/HUD descriptor data independently from
+the heavier historical training-run projection, matching the recommendation to
+make reactive app state updates granular enough that unrelated slow work cannot
+remount or starve the 3D scene.

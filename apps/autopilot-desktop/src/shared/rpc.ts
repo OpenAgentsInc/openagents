@@ -257,9 +257,11 @@ export type TassadarRunBulletin = {
 export type PublicTassadarRunSummary = {
   readonly bulletin?: TassadarRunBulletin
   readonly generatedAt?: string
+  readonly metrics?: Readonly<Record<string, number | { readonly value?: number }>>
   readonly runLabel?: string
   readonly runRef?: string
   readonly runState?: string
+  readonly sourceRefs?: readonly string[]
 }
 
 export type TrainingRunsResponse = {

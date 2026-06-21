@@ -158,6 +158,7 @@ let managedNode: SupervisedNode | null = null
 
 type OnboardingSignals = Awaited<ReturnType<typeof fetchOnboardingSignals>>
 type CachedOnboardingSignals = {
+  readonly cachedAtMs: number
   readonly key: string
   readonly signals: OnboardingSignals
 }
@@ -168,6 +169,9 @@ type PendingOnboardingSignals = {
 
 const onboardingSignalWaitMs = Number(
   Bun.env.AUTOPILOT_DESKTOP_ONBOARDING_SIGNAL_WAIT_MS ?? "650",
+)
+const onboardingSignalCacheMs = Number(
+  Bun.env.AUTOPILOT_DESKTOP_ONBOARDING_SIGNAL_CACHE_MS ?? "2500",
 )
 let cachedOnboardingSignals: CachedOnboardingSignals | null = null
 let pendingOnboardingSignals: PendingOnboardingSignals | null = null
@@ -191,11 +195,23 @@ async function readOnboardingSignalsFast(input: {
   readonly token: string
 }): Promise<OnboardingSignals> {
   const key = onboardingSignalKey(input)
+  const nowMs = Date.now()
+  const cacheMs =
+    Number.isFinite(onboardingSignalCacheMs) && onboardingSignalCacheMs > 0
+      ? onboardingSignalCacheMs
+      : 2500
+  if (
+    cachedOnboardingSignals?.key === key &&
+    nowMs - cachedOnboardingSignals.cachedAtMs < cacheMs
+  ) {
+    return cachedOnboardingSignals.signals
+  }
+
   if (pendingOnboardingSignals === null || pendingOnboardingSignals.key !== key) {
     const promise = fetchOnboardingSignals(input)
       .then(signals => {
         if (pendingOnboardingSignals?.key === key) {
-          cachedOnboardingSignals = { key, signals }
+          cachedOnboardingSignals = { cachedAtMs: Date.now(), key, signals }
         }
         return signals
       })
@@ -206,8 +222,6 @@ async function readOnboardingSignalsFast(input: {
       })
     pendingOnboardingSignals = { key, promise }
   }
-
-  if (cachedOnboardingSignals?.key === key) return cachedOnboardingSignals.signals
 
   const waitMs =
     Number.isFinite(onboardingSignalWaitMs) && onboardingSignalWaitMs > 0
@@ -255,6 +269,13 @@ const controlTokenResolver = createControlTokenResolver(() => ({
 async function acceptedControlTokenForCommand(): Promise<string | null> {
   const accepted = await controlTokenResolver.resolve()
   return accepted?.token ?? null
+}
+
+async function acceptedControlHomeForCommand(): Promise<{
+  readonly home: string
+  readonly token: string
+} | null> {
+  return controlTokenResolver.resolve()
 }
 
 function readIdentityPylonRef(home: string): string | null {
@@ -575,9 +596,12 @@ function identityChoiceProjection(): IdentityChoiceStateResponse {
 // (CL-49/CL-50). The agent token never crosses into the projection (only the
 // boolean "registered"). Public-safe display only.
 async function onboardingStatusProjection(): Promise<OnboardingStatusResponse> {
-  const home = onboardingHome()
-  const controlToken = home === null ? null : readControlToken(home)
-  const localPylonReady = home !== null && controlToken !== null
+  const fallbackHome = onboardingHome()
+  const acceptedControl = await acceptedControlHomeForCommand()
+  const home = acceptedControl?.home ?? fallbackHome
+  const controlToken =
+    acceptedControl?.token ?? (home === null ? null : readControlToken(home))
+  const localPylonReady = acceptedControl !== null
   const credential = home === null ? null : loadPersistedCredential(home)
   const agentRegistered = credential !== null
 

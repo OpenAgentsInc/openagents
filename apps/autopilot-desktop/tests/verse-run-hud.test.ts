@@ -160,6 +160,93 @@ describe("verseRunHudProjection", () => {
     )
   })
 
+  test("prefers the live Tassadar summary over stale real-gradient gate status", () => {
+    const staleRuns = runs()
+    const projection = verseRunHudProjection(
+      {
+        ...staleRuns,
+        tassadarSummary: {
+          generatedAt: "2026-06-21T19:56:21.452Z",
+          metrics: {
+            acceptedTraceCount: { value: 893 },
+            activeWindowCount: { value: 21 },
+            assignedContributorCount: { value: 11 },
+            providerConfirmedSettledPayoutSats: { value: 1020 },
+            rejectedWorkCount: { value: 3 },
+            verifiedWorkCount: { value: 12 },
+          },
+          runRef: "run.tassadar.executor.20260615",
+          runState: "active",
+          sourceRefs: ["training.run.run.tassadar.executor.20260615"],
+        },
+      },
+      gates(),
+    )
+
+    expect(projection.state).toBe("active")
+    expect(projection.blockerCount).toBe(0)
+    expect(projection.runRef).toBe("executor.20260615")
+    expect(projection.lossLabel).toBe("21 active")
+    expect(projection.samples.find(sample => sample.id === "assign")?.valueText).toBe("11")
+    expect(projection.samples.find(sample => sample.id === "trace")?.valueText).toBe("893")
+    expect(projection.samples.find(sample => sample.id === "settle")?.valueText).toBe(
+      "1,020 sats",
+    )
+  })
+
+  test("uses the live Tassadar summary even when the legacy aggregate timed out", () => {
+    const projection = verseRunHudProjection(
+      {
+        fetchedAt: "2026-06-21T19:56:21.452Z",
+        ok: false,
+        sourceUrl: "https://openagents.test/api/training/runs",
+        runs: [],
+        summaries: [],
+        error: "training runs timeout",
+        tassadarSummary: {
+          metrics: {
+            activeWindowCount: { value: 21 },
+            assignedContributorCount: { value: 11 },
+          },
+          runRef: "run.tassadar.executor.20260615",
+          runState: "active",
+        },
+      },
+      null,
+    )
+
+    expect(projection.state).toBe("active")
+    expect(projection.runRef).toBe("executor.20260615")
+    expect(projection.samples.find(sample => sample.id === "assign")?.valueText).toBe("11")
+  })
+
+  test("does not treat external requirements as blockers in the fallback HUD", () => {
+    const row = summary()
+    const projection = verseRunHudProjection(
+      {
+        ...runs(),
+        summaries: [
+          {
+            ...row,
+            realGradient: {
+              ...row.realGradient,
+              externalAsk: {
+                blockerRefs: [],
+                psionicLaneRef: "psionic.public",
+                requirementRefs: ["requirement.public"],
+                status: "observed",
+              },
+            },
+          },
+        ],
+      },
+      null,
+    )
+
+    expect(projection.state).toBe("active")
+    expect(projection.blockerCount).toBe(0)
+  })
+
   test("stays honest on cold start", () => {
     const projection = verseRunHudProjection(null, null)
 

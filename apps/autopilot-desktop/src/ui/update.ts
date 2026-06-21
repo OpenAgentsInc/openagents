@@ -1527,6 +1527,8 @@ export const update = (model: Model, message: Message): Result => {
         }),
         [LoadOnboardingStatus()],
       ]
+    case "TickedOnboardingStatusRefresh":
+      return [model, [LoadOnboardingStatus()]]
     case "GotOnboardingStatus": {
       const projection = message.projection as OnboardingStatusResponse
       return [

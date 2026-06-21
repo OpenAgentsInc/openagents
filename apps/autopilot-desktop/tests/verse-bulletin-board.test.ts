@@ -81,6 +81,41 @@ describe("Verse Tassadar bulletin board", () => {
     expect(item.sourceRefs).toContain("route:/api/public/tassadar-run-summary")
   })
 
+  test("synthesizes board copy from the live production summary shape when bulletin is absent", () => {
+    const item = verseTassadarBulletinWorldItem({
+      fetchedAt: "2026-06-21T19:45:00.000Z",
+      ok: true,
+      runs: [],
+      sourceUrl: "https://openagents.com/api/training/runs",
+      summaries: [],
+      tassadarSummary: {
+        generatedAt: "2026-06-21T19:44:00.000Z",
+        runRef: "run.tassadar.executor.20260615",
+        runState: "active",
+        metrics: {
+          activeWindowCount: { value: 21 },
+          assignedContributorCount: { value: 11 },
+          providerConfirmedSettledPayoutSats: { value: 1020 },
+          qualifiedContributorCount: { value: 5 },
+          verifiedWorkCount: { value: 12 },
+        },
+        sourceRefs: ["issue.github.openagents.5006"],
+      },
+    })
+
+    expect(item.label).toBe("Tassadar Run Board")
+    expect(item.status).toBe("active")
+    expect(item.lines).toEqual([
+      "Status: active",
+      "11 pylons, 5 active",
+      "1,020 sats paid",
+    ])
+    expect(item.detail).toContain("21 active windows")
+    expect(item.detail).toContain("12 verified work")
+    expect(item.sourceRefs).toContain("issue.github.openagents.5006")
+    expect(item.sourceRefs).toContain("route:/api/public/tassadar-run-summary")
+  })
+
   test("adds the board to existing Verse visualization options", () => {
     const out = withVerseBulletinBoardLayer({ nodes: [] }, null)
 

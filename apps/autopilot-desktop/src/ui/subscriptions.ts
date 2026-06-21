@@ -23,6 +23,7 @@ import {
   GotChatWorldScene,
   MovedPaneDragPointer,
   PressedKey,
+  TickedOnboardingStatusRefresh,
   TickedVerseTrainingProjectionRefresh,
   type Message,
 } from "./message.js"
@@ -277,6 +278,21 @@ const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((q
 
 export const verseTrainingProjectionRefreshMs = 10_000
 
+export const onboardingStatusRefreshMs = 5_000
+
+const onboardingStatusRefreshStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      const handle = globalThis.setInterval(
+        () => Queue.offerUnsafe(queue, TickedOnboardingStatusRefresh()),
+        onboardingStatusRefreshMs,
+      )
+      return handle
+    }),
+    (handle) => Effect.sync(() => globalThis.clearInterval(handle)),
+  ).pipe(Effect.flatMap(() => Effect.never)),
+)
+
 const verseTrainingProjectionStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
   Effect.acquireRelease(
     Effect.sync(() => {
@@ -301,5 +317,6 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   chatWorldScene: Subscription.persistent(pylonSceneStream),
   chatWorldPayments: Subscription.persistent(paymentParticleStream),
   chatWorldSpacetime: Subscription.persistent(spacetimeWorldStream),
+  onboardingStatusRefresh: Subscription.persistent(onboardingStatusRefreshStream),
   verseTrainingProjection: Subscription.persistent(verseTrainingProjectionStream),
 }))

@@ -34,6 +34,7 @@ type FetchTrainingRunsInput = Readonly<{
   baseUrl: string
   fetchFn?: typeof fetch
   nowIso?: () => string
+  timeoutMs?: number
 }>
 
 type FetchTrainingDashboardInput = Readonly<{
@@ -173,6 +174,17 @@ const evidencePacketWriteSource =
   "env.OPENAGENTS_DESKTOP_TRAINING_EVIDENCE_WRITE_ENABLE"
 
 const normalizeBaseUrl = (baseUrl: string): string => baseUrl.replace(/\/+$/, "")
+
+const trainingRunsTimeoutMs = (value: number | undefined): number =>
+  Number.isFinite(value) && value !== undefined && value > 0 ? value : 5_000
+
+const timeout = <T>(ms: number, value: T, abort?: () => void): Promise<T> =>
+  new Promise(resolve => {
+    globalThis.setTimeout(() => {
+      abort?.()
+      resolve(value)
+    }, ms)
+  })
 
 const safeRefStamp = (value: string): string => {
   const stamp = value
@@ -1615,12 +1627,26 @@ export async function fetchTrainingRuns(
   const baseUrl = normalizeBaseUrl(input.baseUrl)
   const sourceUrl = `${baseUrl}/api/training/runs`
   const tassadarSummaryUrl = `${baseUrl}/api/public/tassadar-run-summary`
+  const waitMs = trainingRunsTimeoutMs(input.timeoutMs)
+  const controller = new AbortController()
 
   try {
-    const [response, tassadarSummaryResult] = await Promise.all([
-      fetchFn(sourceUrl, {
-        headers: { accept: "application/json" },
-      }),
+    const trainingRunsResultPromise = fetchFn(sourceUrl, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then(response => ({ ok: true as const, response }))
+      .catch(error => ({
+        ok: false as const,
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    const [trainingRunsResult, tassadarSummaryResult] = await Promise.all([
+      Promise.race([
+        trainingRunsResultPromise,
+        timeout(waitMs, { ok: false as const, error: "training runs timeout" }, () =>
+          controller.abort(),
+        ),
+      ]),
       getPublicJson(fetchFn, tassadarSummaryUrl).catch((error) => ({
         ok: false as const,
         error: error instanceof Error ? error.message : String(error),
@@ -1630,6 +1656,19 @@ export async function fetchTrainingRuns(
       tassadarSummaryResult.ok && isRecord(tassadarSummaryResult.json)
         ? (tassadarSummaryResult.json as PublicTassadarRunSummary)
         : null
+    if (!trainingRunsResult.ok) {
+      return {
+        ok: false,
+        error: trainingRunsResult.error,
+        fetchedAt,
+        sourceUrl,
+        runs: [],
+        summaries: [],
+        tassadarSummary,
+      }
+    }
+
+    const response = trainingRunsResult.response
     if (!response.ok) {
       return {
         ok: false,
