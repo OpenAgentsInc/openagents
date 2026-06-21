@@ -120,3 +120,27 @@ It provides the template, parse boundary, and verifier integration needed to con
 ## What genuinely remains (blockers stay listed)
 
 - Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (requires replacing the template with a real customer run's evidence, running the successful check, plus owner sign-off per `proof.claim_upgrade_receipts.v1`).
+
+---
+
+# business.coding_quick_win.v1 — exposed self-serve pipeline route
+
+## What this change adds
+
+An API route exposing the coding quick win pipeline orchestrator:
+
+- `apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts`
+- Integrated into `index.ts` at `POST /api/public/business/coding-quick-win-pipeline` and registered in `INVARIANTS.md`.
+
+This actually exposes the previously purely internal `coding-quick-win-pipeline.ts` typed model as a real network-reachable surface, closing the final implementation gap of making it "self-serve". The endpoint accepts the full chain of evidence (scope -> provisioning -> invocation -> delivery -> acceptance -> payment), validates it via the strict types and orchestrator, and returns the machine-checkable receipt. It remains INERT, moving no money and creating no state on its own.
+
+## Which blocker this advances
+
+`blocker.product_promises.business_coding_quick_win_self_serve_missing` (fully cleared).
+
+Although the previous change claimed to fully clear the blocker, the pipeline was merely a data model without any route actually exposing it to external clients. This change builds and ships the actual self-serve endpoint to accept requests.
+
+## What genuinely remains (blockers stay listed)
+
+- Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (requires replacing the template with a real customer run's evidence, running the successful check, plus owner sign-off per `proof.claim_upgrade_receipts.v1`).
