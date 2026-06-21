@@ -9,6 +9,11 @@ import {
   type ReadFile,
   type WriteFile,
 } from "./agent-onboarding"
+import {
+  canAttemptForumWrite,
+  classifyForumWriteStatus,
+  recordForumWriteAttempt,
+} from "./forum-loop-bounds"
 
 // AF-3 (#5900): automated forum self-introduction (the keystone of Part A).
 //
@@ -243,6 +248,9 @@ export type PostForumIntroResult =
   | { readonly outcome: "identity_pending" }
   // The board has no writable public lane to introduce into yet.
   | { readonly outcome: "no_forum" }
+  // AF-5 (#5902): the daily forum-write cap is exhausted; back off until the
+  // next UTC day rather than hammering the Forum.
+  | { readonly outcome: "rate_capped" }
   | { readonly outcome: "deferred"; readonly reason: string }
 
 const endpoint = (baseUrl: string, path: string): string =>
@@ -314,10 +322,18 @@ export const postForumIntroduction = async (
     return { outcome: "no_forum" }
   }
 
-  // 5. Compose honest copy + post idempotently.
+  // 5. AF-5 (#5902): honor the daily forum-write cap before any write.
+  if (!canAttemptForumWrite(options.home, readFile)) {
+    log("[forum-intro] daily forum-write cap reached; backing off")
+    return { outcome: "rate_capped" }
+  }
+
+  // 6. Compose honest copy + post idempotently.
   const { title, bodyText } = composeIntroPost(identity, options.authority)
   const idempotencyKey = `autopilot-forum-intro-${npubSuffix(identity.npub)}`
 
+  // Record the write attempt against today's budget right before sending.
+  recordForumWriteAttempt(options.home, readFile, writeFile)
   let response: { readonly status: number; json(): Promise<unknown> }
   try {
     response = await fetchImpl(
@@ -339,25 +355,26 @@ export const postForumIntroduction = async (
     return { outcome: "deferred", reason }
   }
 
-  if (response.status === 429) {
-    return { outcome: "deferred", reason: "rate_limited" }
-  }
-  if (response.status === 402) {
-    // Posting an intro topic should not be payable; if the server demands
-    // payment, defer rather than spend (spending stays owner-gated).
-    log("[forum-intro] post deferred: payment required (402)")
-    return { outcome: "deferred", reason: "payment_required" }
-  }
-  if (response.status === 409) {
-    // Same idempotency key, different content — should not happen with our
-    // deterministic body. Treat as already-introduced; defer without a receipt
-    // we cannot construct honestly.
-    log("[forum-intro] post conflict (409): treating as already introduced")
-    return { outcome: "deferred", reason: "idempotency_conflict" }
-  }
-  if (response.status !== 200 && response.status !== 201) {
-    log(`[forum-intro] post deferred: unexpected status ${response.status}`)
-    return { outcome: "deferred", reason: `status_${response.status}` }
+  const disposition = classifyForumWriteStatus(response.status)
+  if (disposition !== "ok") {
+    switch (disposition) {
+      case "rate_limited":
+        return { outcome: "deferred", reason: "rate_limited" }
+      case "payment_required":
+        // Posting an intro topic should not be payable; if the server demands
+        // payment, defer rather than spend (spending stays owner-gated).
+        log("[forum-intro] post deferred: payment required (402)")
+        return { outcome: "deferred", reason: "payment_required" }
+      case "conflict":
+        // Same idempotency key, different content — should not happen with our
+        // deterministic body. Treat as already-introduced; defer without a
+        // receipt we cannot construct honestly.
+        log("[forum-intro] post conflict (409): treating as already introduced")
+        return { outcome: "deferred", reason: "idempotency_conflict" }
+      default:
+        log(`[forum-intro] post deferred: unexpected status ${response.status}`)
+        return { outcome: "deferred", reason: `status_${response.status}` }
+    }
   }
 
   let topicId = ""

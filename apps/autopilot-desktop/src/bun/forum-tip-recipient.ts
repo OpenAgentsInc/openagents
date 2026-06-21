@@ -9,6 +9,11 @@ import {
   type ReadFile,
   type WriteFile,
 } from "./agent-onboarding"
+import {
+  canAttemptForumWrite,
+  classifyForumWriteStatus,
+  recordForumWriteAttempt,
+} from "./forum-loop-bounds"
 
 // AF-2 (#5899): automated forum tip-recipient readiness claim.
 //
@@ -172,6 +177,8 @@ export type ClaimForumTipReadyResult =
   | { readonly outcome: "spark_pending" }
   // The node identity is not readable yet; retry later.
   | { readonly outcome: "identity_pending" }
+  // AF-5 (#5902): the daily forum-write cap is exhausted; back off.
+  | { readonly outcome: "rate_capped" }
   // The claim could not complete (offline / server error). Retry converges.
   | { readonly outcome: "deferred"; readonly reason: string }
 
@@ -224,6 +231,12 @@ export const claimForumTipRecipientReadiness = async (
     return { outcome: "spark_pending" }
   }
 
+  // 6. AF-5 (#5902): honor the daily forum-write cap before the claim write.
+  if (!canAttemptForumWrite(options.home, readFile)) {
+    log("[forum-tip] daily forum-write cap reached; backing off")
+    return { outcome: "rate_capped" }
+  }
+
   const walletRef = walletRefFor(identity.npub)
   const body = {
     sparkAddress,
@@ -234,6 +247,8 @@ export const claimForumTipRecipientReadiness = async (
   }
   const idempotencyKey = `autopilot-tip-ready-${npubSuffix(identity.npub)}`
 
+  // Record the write attempt against today's budget right before sending.
+  recordForumWriteAttempt(options.home, readFile, writeFile)
   let response: { readonly status: number; json(): Promise<unknown> }
   try {
     response = await fetchImpl(
@@ -255,10 +270,11 @@ export const claimForumTipRecipientReadiness = async (
     return { outcome: "deferred", reason }
   }
 
+  const disposition = classifyForumWriteStatus(response.status)
   // A 409 means this home already claimed readiness (idempotency replay or a
   // prior claim). That IS ready — persist a receipt and treat as reused, never a
   // duplicate.
-  if (response.status === 409) {
+  if (disposition === "conflict") {
     const receipt: PersistedTipReadyReceipt = {
       walletRef,
       tippingAvailable: true,
@@ -272,19 +288,20 @@ export const claimForumTipRecipientReadiness = async (
     return { outcome: "reused", receipt }
   }
 
-  if (response.status === 429) {
+  if (disposition === "rate_limited") {
     log("[forum-tip] tip-readiness claim deferred: rate limited (429)")
     return { outcome: "deferred", reason: "rate_limited" }
   }
 
-  if (response.status === 402) {
+  if (disposition === "payment_required") {
     // Receive-side claim should not be payable; if the server ever demands
     // payment, defer rather than spend (sending stays owner-gated).
     log("[forum-tip] tip-readiness claim deferred: payment required (402)")
     return { outcome: "deferred", reason: "payment_required" }
   }
 
-  if (response.status !== 201) {
+  // The claim endpoint returns 201 on success; any other non-2xx defers.
+  if (disposition !== "ok" || response.status !== 201) {
     log(
       `[forum-tip] tip-readiness claim deferred: unexpected status ${response.status}`,
     )

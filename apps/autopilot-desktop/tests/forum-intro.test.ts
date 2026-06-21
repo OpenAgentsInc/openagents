@@ -11,6 +11,10 @@ import {
   selectIntroForumSlug,
   type IntroFetch,
 } from "../src/bun/forum-intro"
+import {
+  FORUM_LOOP_MAX_WRITES_PER_DAY,
+  recordForumWriteAttempt,
+} from "../src/bun/forum-loop-bounds"
 
 const NPUB =
   "npub1examplepubkey000000000000000000000000000000000000000000000abc"
@@ -207,6 +211,30 @@ describe("postForumIntroduction (AF-3)", () => {
       expect(hasPostedForumIntro(home)).toBe(false)
     } finally {
       rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it("AF-5: backs off (rate_capped) when the daily forum-write cap is exhausted, never POSTing", async () => {
+    const h = seedHome()
+    try {
+      for (let i = 0; i < FORUM_LOOP_MAX_WRITES_PER_DAY; i++) {
+        recordForumWriteAttempt(h)
+      }
+      let posted = false
+      const res = await postForumIntroduction({
+        home: h,
+        fetchImpl: (async (_url, init) => {
+          if (init.method === "POST") posted = true
+          return init.method === "GET"
+            ? { status: 200, json: async () => ({ forums: [{ slug: "introductions", title: "x", locked: false }] }) }
+            : okTopicResponse()
+        }) as IntroFetch,
+      })
+      expect(res.outcome).toBe("rate_capped")
+      expect(posted).toBe(false)
+      expect(hasPostedForumIntro(h)).toBe(false)
+    } finally {
+      rmSync(h, { recursive: true, force: true })
     }
   })
 

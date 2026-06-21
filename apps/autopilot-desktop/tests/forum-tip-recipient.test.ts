@@ -9,6 +9,10 @@ import {
   loadTipReadyReceipt,
   type ClaimFetch,
 } from "../src/bun/forum-tip-recipient"
+import {
+  FORUM_LOOP_MAX_WRITES_PER_DAY,
+  recordForumWriteAttempt,
+} from "../src/bun/forum-loop-bounds"
 
 // AF-2 (#5899): automated forum tip-recipient readiness claim. Receive-only,
 // idempotent, offline-tolerant, secrets-safe.
@@ -184,6 +188,30 @@ describe("claimForumTipRecipientReadiness (AF-2)", () => {
         }) as ClaimFetch,
       })
       expect(res.outcome).toBe("deferred")
+      expect(isForumTipReady(home)).toBe(false)
+    } finally {
+      rmSync(home, { recursive: true, force: true })
+    }
+  })
+
+  it("AF-5: backs off (rate_capped) when the daily forum-write cap is exhausted", async () => {
+    const home = seedHome()
+    try {
+      for (let i = 0; i < FORUM_LOOP_MAX_WRITES_PER_DAY; i++) {
+        recordForumWriteAttempt(home)
+      }
+      let posted = false
+      const res = await claimForumTipRecipientReadiness({
+        home,
+        walletReceiveReady: true,
+        sparkAddress: SPARK,
+        fetchImpl: (async () => {
+          posted = true
+          return okClaimResponse()
+        }) as ClaimFetch,
+      })
+      expect(res.outcome).toBe("rate_capped")
+      expect(posted).toBe(false)
       expect(isForumTipReady(home)).toBe(false)
     } finally {
       rmSync(home, { recursive: true, force: true })
