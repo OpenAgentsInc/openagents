@@ -89,6 +89,7 @@ import {
   type PylonBaseProjection,
 } from "../shared/pylon-base-scene.js"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
+import { latestVerseLocalPose } from "./verse-local-pose.js"
 import {
   CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
@@ -5863,19 +5864,20 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
     localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
+  const latestPose = latestVerseLocalPose()
   const lastPose =
-    model.lastVerseLocalPose === null
+    latestPose === null
       ? undefined
       : {
           controller: "third_person_character" as const,
           position: [
-            model.lastVerseLocalPose.x,
-            model.lastVerseLocalPose.y,
-            model.lastVerseLocalPose.z,
+            latestPose.x,
+            latestPose.y,
+            latestPose.z,
           ] as const,
-          yaw: model.lastVerseLocalPose.yaw,
-          action: model.lastVerseLocalPose.animation,
-          capturedAtMs: model.lastVerseLocalPose.capturedAtMs,
+          yaw: latestPose.yaw,
+          action: latestPose.animation,
+          capturedAtMs: latestPose.capturedAtMs,
         }
   const navigable = {
     ...withWorld,

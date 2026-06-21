@@ -97,6 +97,7 @@ import {
   type PaletteCommand,
 } from "./nav.js"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
+import { recordLatestVerseLocalPose } from "./verse-local-pose.js"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
@@ -843,8 +844,9 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     case "ChangedVerseLocalPose":
+      recordLatestVerseLocalPose(message.pose)
       return [
-        Model.make({ ...model, lastVerseLocalPose: message.pose }),
+        model,
         [PublishVerseLocalPose({ pose: message.pose })],
       ]
     case "SettledVerseLocalPosePublish":

@@ -20,6 +20,7 @@ import {
   GotTrainingRuns,
 } from "../src/ui/message"
 import { update } from "../src/ui/update"
+import { clearLatestVerseLocalPoseForTest } from "../src/ui/verse-local-pose"
 import { verseSceneVisualization, view } from "../src/ui/view"
 
 const verseEnvKeys = [
@@ -84,7 +85,10 @@ const livePylonScene = (): ChatWorldPylonScene => ({
 })
 
 describe("Verse packaged launch checklist (#5827)", () => {
-  afterEach(clearVerseEnv)
+  afterEach(() => {
+    clearVerseEnv()
+    clearLatestVerseLocalPoseForTest()
+  })
 
   test("launch flags default the Verse, payments, character creation, and world rows on", () => {
     clearVerseEnv()
@@ -221,7 +225,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
       GotChatWorldScene({ scene: livePylonScene() }),
     )
 
-    expect(afterProjectionRefresh.lastVerseLocalPose).toEqual(movedPose)
+    expect(afterMove).toBe(initial)
     expect(verseSceneVisualization(afterProjectionRefresh).thirdPersonController)
       .toMatchObject({
         initialPosition: [7.25, 0, -3.5],

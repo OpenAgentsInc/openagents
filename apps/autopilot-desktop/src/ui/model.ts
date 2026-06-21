@@ -379,10 +379,6 @@ export const Model = ts("AutopilotDesktop", {
   // Verse world item currently in walk-up range. The view derives overlay copy
   // from server-owned public projections instead of SpacetimeDB authority.
   nearVerseWorldItemId: S.NullOr(S.String),
-  // Last local third-person controller pose emitted by the Verse canvas. Public
-  // projection refreshes can rebuild scene options; this keeps those refreshes
-  // from snapping the user back to spawn.
-  lastVerseLocalPose: S.NullOr(VerseLocalPose),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1034,7 +1030,6 @@ export const initialModel: Model = Model.make({
   chatWorldMultiplayer: null,
   chatWorldInspectedRef: null,
   nearVerseWorldItemId: null,
-  lastVerseLocalPose: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,
