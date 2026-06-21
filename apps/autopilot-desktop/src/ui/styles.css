@@ -3228,6 +3228,73 @@ body {
   display: grid;
   gap: 0.2rem;
 }
+.terminal-log-focus-contract {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.72rem;
+}
+.terminal-log-focus-contract span {
+  border: 1px solid var(--outline, #525458);
+  padding: 0.18rem 0.36rem;
+}
+.terminal-log-selection-buffer {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  border: 1px solid var(--outline, #525458);
+  background: rgb(0 0 0 / 0.3);
+  color: var(--text, #d7d8e5);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  padding: 0.5rem;
+}
+.terminal-log-selection-buffer:focus {
+  border-color: var(--primary, #fff);
+  outline: none;
+}
+.terminal-log-list {
+  display: grid;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.terminal-log-row {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  border: 1px solid var(--outline, #525458);
+  background: rgb(255 255 255 / 0.035);
+  padding: 0.45rem 0.5rem;
+}
+.terminal-log-row.terminal-log-redacted {
+  border-color: rgb(255 180 180 / 0.24);
+  background: rgb(255 90 90 / 0.055);
+}
+.terminal-log-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text, #d7d8e5);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+.terminal-log-meta {
+  color: var(--text-secondary, #8a8c93);
+  font-size: 0.68rem;
+}
+.terminal-log-digest {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary, #8a8c93);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .artifact-browser {
   display: flex;
   flex-direction: column;

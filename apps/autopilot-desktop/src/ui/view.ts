@@ -98,6 +98,11 @@ import {
   type DiffArtifactsProjection,
 } from "./diff-artifacts-projection.js"
 import {
+  projectTerminalLogPane,
+  type TerminalLogProjection,
+  type TerminalLogRow,
+} from "./terminal-log-projection.js"
+import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
@@ -5413,13 +5418,76 @@ const diffArtifactsPanel = (model: Model, ctx: SessionDetailContext): Html => {
   )
 }
 
-const terminalLogPanel = (model: Model, ctx: SessionDetailContext): Html =>
-  card("Terminal / Log Tail", [
+const terminalLogRowView = (row: TerminalLogRow): Html =>
+  h.li(
+    [
+      cls(`terminal-log-row terminal-log-${row.redacted ? "redacted" : "safe"}`),
+      h.DataAttribute("autopilot-terminal-log-row", String(row.eventIndex)),
+      h.DataAttribute("autopilot-terminal-log-redacted", row.redacted ? "true" : "false"),
+      h.Key(row.key),
+    ],
+    [
+      h.span([cls("terminal-log-text")], [row.text]),
+      h.span([cls("terminal-log-meta")], [row.meta]),
+      row.digestRef === null
+        ? h.empty
+        : h.code(
+            [
+              cls("terminal-log-digest"),
+              h.DataAttribute("autopilot-terminal-log-digest", row.digestRef),
+              h.Title(row.digestRef),
+            ],
+            [row.digestRef],
+          ),
+    ],
+  )
+
+const terminalLogFocusContract = (projection: TerminalLogProjection): Html =>
+  h.div(
+    [
+      cls("terminal-log-focus-contract"),
+      h.DataAttribute("autopilot-terminal-focus-owner", projection.focusOwner),
+      h.DataAttribute("autopilot-terminal-scene-controls", projection.sceneControlsWhileFocused),
+      h.DataAttribute("autopilot-terminal-hidden-policy", projection.hiddenPanePointerPolicy),
+    ],
+    [
+      h.span([], ["Focus owner: terminal log"]),
+      h.span([], ["Scene controls: blocked while focused"]),
+      h.span([], ["Hidden pane: inert"]),
+    ],
+  )
+
+const terminalLogPanel = (_model: Model, ctx: SessionDetailContext): Html => {
+  const projection = projectTerminalLogPane({
+    sessionRef: ctx.ref,
+    events: ctx.events,
+  })
+  return card("Terminal / Log Tail", [
     h.p([cls("card-body")], [
-      "Public-safe session events only. Raw terminals, local paths, provider payloads, and secrets stay out of this default pane.",
+      "Projected session output only. Unsafe rows show redacted excerpts plus digest refs; raw terminals, env, wallet material, local paths, provider payloads, and secrets stay out of this default pane.",
     ]),
-    eventTimeline(model, ctx.events),
+    terminalLogFocusContract(projection),
+    h.textarea(
+      [
+        cls("terminal-log-selection-buffer"),
+        h.Rows(Math.min(12, Math.max(3, projection.rows.length + 1))),
+        h.Value(projection.copyText),
+        h.DataAttribute("autopilot-terminal-text-selection", "owned"),
+        h.DataAttribute("autopilot-terminal-copy-buffer", "projected"),
+      ],
+      [],
+    ),
+    projection.rows.length === 0
+      ? emptyLine("No terminal/log rows yet.")
+      : h.ul(
+          [
+            cls("terminal-log-list"),
+            h.DataAttribute("autopilot-terminal-log-session", projection.sessionRef),
+          ],
+          projection.rows.map(terminalLogRowView),
+        ),
   ])
+}
 
 const sessionDetailSelectedPanel = (
   model: Model,

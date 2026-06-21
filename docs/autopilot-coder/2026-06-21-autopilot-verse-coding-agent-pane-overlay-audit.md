@@ -967,6 +967,24 @@ Acceptance:
 
 ### VCODE-11 - Add Terminal And Log Pane Hardening
 
+Status: implemented in #5928 on 2026-06-21. Desktop now has a pure
+`projectTerminalLogPane` projection for controlled Terminal/Log rows. The pane
+no longer renders the raw event timeline by default; it renders projected
+session output, redacted excerpts, and stable `digest.terminal_log.*` refs for
+unsafe or oversized rows. The redaction boundary catches raw env values,
+secret/API tokens, wallet and payment material, local paths, provider JSON
+payloads, and large output before the text reaches the default pane. The
+rendered pane declares explicit focus ownership with
+`data-autopilot-terminal-focus-owner="terminal-log"`,
+`data-autopilot-terminal-scene-controls="blocked"`, and a projected copy buffer
+that is an editable/focusable text control so the existing keyboard layer's
+`inEditable` guard gives terminal text selection/copy/scroll ownership to the
+pane. When the terminal pane is hidden it is not rendered, so it cannot
+intercept Verse mouselook. The nav leaf registry now includes the linked
+Agent Stream, Diff/Artifacts, and Terminal/Log panes so every `PaneId` remains
+reachable by design. Tests cover redaction/digest refs, focus ownership,
+hidden-pane inertness, and shortcut return after blur.
+
 Build:
 
 - Add a projected Terminal/Log pane for controlled process output and session

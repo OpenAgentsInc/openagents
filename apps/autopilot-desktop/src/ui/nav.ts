@@ -134,7 +134,13 @@ export const NAV_GROUPS: ReadonlyArray<NavGroup> = [
 // by the explicit fallback path (ClosedPanes) and by Esc — never by a nav button
 // — so it is an intentional leaf, not a nav destination, and it is deliberately
 // kept OUT of the palette/sidebar. The Verse chat pane is home.
-export const NAV_LEAF_PANES: ReadonlyArray<PaneId> = ["shell", "session-detail"]
+export const NAV_LEAF_PANES: ReadonlyArray<PaneId> = [
+  "shell",
+  "session-detail",
+  "agent-stream",
+  "diff-artifacts",
+  "terminal-log",
+]
 
 // Flattened destination list (used by the palette + lookups).
 export const NAV_DESTINATIONS: ReadonlyArray<NavDestination & { groupId: string }> =
