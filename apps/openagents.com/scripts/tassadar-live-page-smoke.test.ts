@@ -23,7 +23,7 @@ describe('Tassadar live page smoke', () => {
 
       if (url.pathname === '/assets/index-abc123.js') {
         return new Response(
-          'customElements.define("oa-tassadar-run", class {})',
+          'export const copy = "Tassadar lives in the Verse"',
         )
       }
 
@@ -132,6 +132,7 @@ describe('Tassadar live page smoke', () => {
       'tassadar_route_200',
       'tassadar_route_has_script_assets',
       'script_asset_reachable',
+      'tassadar_web_scene_retired',
       'summary_endpoint_200',
       'summary_has_run_ref',
       'summary_has_generated_at',
@@ -157,7 +158,7 @@ describe('Tassadar live page smoke', () => {
       }
 
       if (url.pathname === '/assets/index-abc123.js') {
-        return new Response('export {}')
+        return new Response('export const copy = "Tassadar lives in the Verse"')
       }
 
       if (url.pathname === '/api/public/tassadar-run-summary') {

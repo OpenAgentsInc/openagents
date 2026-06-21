@@ -209,17 +209,30 @@ primitives.
   `/assets/index-DQ9FGJ43.js`; live checks for `/`, `/tassadar`, the hashed
   asset, and `smoke:tassadar:live-page` passed after deploy.
 
-## Short answer
+## Current status update
+
+As of 2026-06-21, the old web `/tassadar` live scene is retired so it cannot be
+confused with the Autopilot Desktop Verse world. The plain `/tassadar` route now
+serves a compact retired-scene notice with links to the public summary API and
+the proof replay route. The live in-world Tassadar/Pylon surface belongs in the
+Verse implementation, while `/tassadar/replay/{slug}` remains the web proof
+replay surface.
+
+## Historical short answer
 
 We now have the right live-page base and a stricter first-read composition for
 motion truth.
 
-The accurate path is to keep `/tassadar` on the existing live-run architecture:
+The old web-scene path was:
 
 - `GET /api/public/tassadar-run-summary`
 - `apps/openagents.com/apps/web/src/scene/tassadarRunSnapshot.ts`
-- `apps/openagents.com/apps/web/src/scene/tassadarRunElement.ts`
 - `@openagentsinc/three-effect` `oa-training-run`
+
+That route-level live scene is no longer active. Do not rebuild a second web
+world adapter from this historical note; use the Verse surface for in-world
+Tassadar/Pylon work and keep web replay work on
+`apps/openagents.com/apps/web/src/scene/tassadarProofReplayElement.ts`.
 
 Do not fork a second data adapter. Do not use the new `/components/training`
 grammar items as live state until they are wired to public refs. Today those

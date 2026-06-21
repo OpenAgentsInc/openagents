@@ -23,12 +23,16 @@ folder and reviewing the current web and desktop surfaces.
 - `apps/openagents.com/apps/web/src/scene/pylonDiamonds.ts`
 - `apps/openagents.com/apps/web/src/scene/pylonBezierNetworkElement.ts`
 - `apps/openagents.com/apps/web/src/scene/pylonStatsElement.ts`
-- `apps/openagents.com/apps/web/src/scene/tassadarRunElement.ts`
 - `apps/openagents.com/apps/web/src/scene/tassadarRunSnapshot.ts`
 - `apps/autopilot-desktop/src/ui/model.ts`
 - `apps/autopilot-desktop/src/ui/view.ts`
 - `apps/autopilot-desktop/src/shared/pylon-network-scene.ts`
 - `apps/autopilot-desktop/src/ui/pylon-network-visualization.ts`
+
+2026-06-21 update: the old web `/tassadar` live scene/custom element has been
+retired. The in-world Tassadar/Pylon surface now belongs in Autopilot Desktop
+Verse; the web route is a guardrail notice plus links to the public summary API
+and proof replay.
 
 Live snapshot checked while writing:
 

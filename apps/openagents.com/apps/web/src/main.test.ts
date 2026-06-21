@@ -399,7 +399,7 @@ describe('authenticated startup routing', () => {
     })
   })
 
-  test('renders the Tassadar route through the top-level view', () => {
+  test('renders the retired Tassadar web scene notice through the top-level view', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/tassadar'),
@@ -408,7 +408,11 @@ describe('authenticated startup routing', () => {
     Scene.scene(
       { update, view },
       Scene.with(model),
-      Scene.expect(Scene.selector('oa-tassadar-run')).toExist(),
+      Scene.expect(Scene.selector('oa-tassadar-run')).not.toExist(),
+      Scene.expect(Scene.selector('[data-tassadar-scene="retired"]')).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Tassadar lives in the Verse' })).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Public summary API' })).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Proof replay' })).toExist(),
       Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),

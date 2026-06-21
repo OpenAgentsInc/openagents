@@ -57,6 +57,11 @@ not authority.
   that summary with training runs, maps it into a `bulletin_board` world item in
   the actual Verse scene, and opens a concise overlay only when the player walks
   up to it. The reusable Three/Foldkit primitive landed in `three-effect` #11.
+- 2026-06-21: the old web `/tassadar` live scene was retired so it cannot be
+  mistaken for the Verse again. Plain `/tassadar` now renders a compact retired
+  notice pointing at Autopilot Desktop Verse, the public summary API, and the
+  proof replay route. The self-fetching legacy `oa-tassadar-run` custom element
+  and its page-wiring test were deleted; `/tassadar/replay/...` remains live.
 
 ## Executive read
 

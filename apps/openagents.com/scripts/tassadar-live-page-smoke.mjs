@@ -36,10 +36,9 @@ export const usage = () => `Usage:
 Options:
   --base-url <url>  OpenAgents origin. Defaults to https://openagents.com.
 
-This smoke verifies the public /tassadar route, app assets, live run summary,
-product-promise gates, and at least one public proof route when a settlement row
-exists. It is intentionally dependency-free; pixel-level WebGL inspection still
-needs a browser runner.
+This smoke verifies the public /tassadar route, app assets, retired web-scene
+guardrail, live run summary, product-promise gates, and at least one public
+proof route when a settlement row exists. It is intentionally dependency-free.
 `
 
 const assert = (condition, message) => {
@@ -160,6 +159,7 @@ export const runTassadarLivePageSmoke = async ({
   )
 
   const assets = []
+  const assetBodies = []
   for (const src of assetSrcs) {
     const asset = await requestText(fetchImpl, origin, src, {
       headers: { accept: '*/*' },
@@ -178,7 +178,20 @@ export const runTassadarLivePageSmoke = async ({
       status: asset.response.status,
       url: asset.url,
     })
+    assetBodies.push(asset.body)
   }
+
+  const appAssetText = assetBodies.join('\n')
+  assertCheck(
+    checks,
+    'tassadar_web_scene_retired',
+    appAssetText.includes('Tassadar lives in the Verse') &&
+      !appAssetText.includes('oa-tassadar-run'),
+    {
+      hasRetiredCopy: appAssetText.includes('Tassadar lives in the Verse'),
+      hasLegacyElement: appAssetText.includes('oa-tassadar-run'),
+    },
+  )
 
   const summaryResult = await requestJson(
     fetchImpl,

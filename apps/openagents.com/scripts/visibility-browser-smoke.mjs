@@ -15,13 +15,6 @@ const viewports = [
 const routes = [
   {
     canvas: true,
-    elementSelector: 'oa-tassadar-run',
-    name: 'tassadar_live',
-    path: '/tassadar',
-    readySelector: 'oa-tassadar-run',
-  },
-  {
-    canvas: true,
     elementSelector: 'oa-tassadar-proof-replay',
     manifestPath: replayBundlePath,
     name: 'proof_replay_first_real_settlement',
