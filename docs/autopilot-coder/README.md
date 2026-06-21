@@ -66,6 +66,11 @@ Forum reporting.
   lessons, the recommended `three-effect` DOM overlay host boundary, input
   ownership, required coding panes, and the regression smokes needed before
   calling Verse coding mode ready.
+- `2026-06-21-opencode-desktop-harvest-for-verse-coding-overlay-audit.md`:
+  companion audit of the local `projects/repos/opencode` desktop app. Extracts
+  the reusable host-boundary, sidecar-readiness, scoped-command, dock-stack,
+  timeline-projection, permission, diff/review, terminal, and diagnostics
+  patterns that fit the Autopilot Verse coding overlay plan.
 - `pylon-multi-session-agent-runbook.md`: operator handoff for a fresh coding
   agent using Pylon as the local multi-account coding orchestrator: inspect
   connected Codex/ChatGPT and Claude accounts, run batch `multi-session`

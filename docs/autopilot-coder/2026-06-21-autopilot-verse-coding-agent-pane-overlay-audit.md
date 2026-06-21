@@ -706,3 +706,33 @@ to bind them with a deliberate overlay architecture:
 That path gives the owner the experience they are asking for: walk around in
 Verse, switch into coding mode, watch agents work in panes, and switch back
 without the world blinking, resetting, or losing input.
+
+## 13. OpenCode Desktop Companion Audit Addendum
+
+The companion audit
+`2026-06-21-opencode-desktop-harvest-for-verse-coding-overlay-audit.md`
+refines this plan with a concrete reference from `projects/repos/opencode`.
+
+The main update is that Verse code mode should be a **dock-and-pane**
+workspace:
+
+- A code dock stack should own the active composer, permission prompt,
+  question prompt, follow-up suggestions, and later revert/todo prompts.
+- Floating panes should own durable inspection surfaces: Agent Stream,
+  Sessions, Decisions, Diff/Artifacts, Terminal/Log, and Swarm.
+- The Agent Stream pane should be backed by a stable tagged row projection,
+  similar to OpenCode's timeline row algebra, so streaming updates do not
+  churn the DOM over the Three scene.
+- Code-mode commands should evolve from only static nav commands toward a
+  scoped command registry with editable-target filtering and temporary
+  suspension while a modal, picker, or focused pane owns input.
+- Approval UI should use an explicit reject/once/scoped-always triad, with
+  the scope visible before any auto-approval is enabled.
+- Host readiness and diagnostics should become part of code mode: Pylon/Bun
+  readiness, stream-vs-poll state, transcript persistence state, scene logs,
+  and public-safe diagnostic export.
+
+This does not change the ownership recommendation above. `three-effect` should
+still get only the generic DOM overlay/Html-like host. Autopilot should own
+the dock stack, pane manager, command registry, coding-agent projections, and
+Pylon/Bun authority boundary.
