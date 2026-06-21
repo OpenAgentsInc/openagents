@@ -141,23 +141,46 @@ body {
 }
 
 .app-shell-verse .chat-content-overlay {
-  position: absolute;
-  right: clamp(0.9rem, 2.4vw, 1.4rem);
+  display: none;
+}
+
+.app-shell-verse .verse-bottom-hud {
+  position: fixed;
+  left: clamp(0.75rem, 2vw, 1.25rem);
+  right: clamp(0.75rem, 2vw, 1.25rem);
   bottom: clamp(0.9rem, 2.2vw, 1.4rem);
-  left: min(33rem, calc(100vw - 42rem));
-  z-index: 4;
+  z-index: 40;
   display: flex;
-  flex-direction: column;
-  width: auto;
-  max-height: none;
+  align-items: stretch;
+  gap: 0.5rem;
   pointer-events: none;
+}
+
+.app-shell-verse .verse-bottom-hud .hotbar-inline {
+  pointer-events: auto;
+}
+
+.app-shell-verse .verse-chatbar-slot {
+  flex: 0 1 clamp(18rem, 31vw, 30rem);
+  min-width: 18rem;
+  opacity: 0.25;
+  pointer-events: auto;
+  transition:
+    opacity 140ms ease,
+    filter 140ms ease;
+}
+
+.app-shell-verse .verse-chatbar-slot:hover,
+.app-shell-verse .verse-chatbar-slot:focus-within {
+  opacity: 1;
 }
 
 .app-shell-verse .chat-composer-verse {
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 4.25rem;
   align-items: center;
   gap: 0.5rem;
+  height: 3.5rem;
   padding: 0.25rem;
   border: 1px solid rgb(255 255 255 / 0.22);
   border-radius: 6px;
@@ -170,11 +193,12 @@ body {
 }
 
 .app-shell-verse .chat-composer-verse .chat-input {
-  min-height: 2.75rem;
-  height: 2.75rem;
+  min-height: 3rem;
+  height: 3rem;
   resize: none;
   border-color: transparent;
   background: rgb(0 0 0 / 0.2);
+  overflow: hidden;
 }
 
 .app-shell-verse .chat-composer-verse .spawn-status {
@@ -186,19 +210,28 @@ body {
 }
 
 .app-shell-verse .chat-composer-verse .primary-button {
-  min-width: 5.25rem;
+  min-width: 0;
   height: 100%;
+  padding-inline: 0.75rem;
 }
 
 @media (max-width: 760px) {
-  .app-shell-verse .chat-content-overlay {
+  .app-shell-verse .verse-bottom-hud {
     left: 0.8rem;
     right: 0.8rem;
-    bottom: 5.7rem;
+    bottom: 0.8rem;
+    flex-direction: column;
+  }
+
+  .app-shell-verse .verse-chatbar-slot {
+    flex-basis: auto;
+    min-width: 0;
+    width: 100%;
   }
 
   .app-shell-verse .chat-composer-verse {
     grid-template-columns: 1fr;
+    height: auto;
   }
 }
 .shell-pane {

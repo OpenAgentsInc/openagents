@@ -5988,10 +5988,16 @@ const verseVisible = (model: Model): boolean =>
 const versePane = (model: Model): Html =>
   h.div([cls("chat-pane chat-pane-world verse-pane")], [
     chatSceneBackground(model),
-    h.div([cls("chat-content-overlay")], [
-      chatComposer(model, "verse"),
-    ]),
   ])
+
+const verseBottomHud = (model: Model): Html =>
+  h.div(
+    [cls("verse-bottom-hud")],
+    [
+      hotbar(model, "inline"),
+      h.div([cls("verse-chatbar-slot")], [chatComposer(model, "verse")]),
+    ],
+  )
 
 const chatPane = (model: Model): Html =>
   verseVisible(model)
@@ -6679,7 +6685,7 @@ const rootView = (model: Model): Html => {
       [
         chatPane(model),
         managedPaneLayer(model),
-        hotbar(model),
+        verseBottomHud(model),
         commandPalette(model),
       ],
     )
