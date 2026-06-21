@@ -5948,7 +5948,7 @@ const chatComposer = (
           h.Rows(mode === "verse" ? 1 : 4),
           h.Placeholder(
             mode === "verse"
-              ? "Send message"
+              ? "Send message Tassadar"
               : "Talk to Tassadar about the Verse, your Pylon, or the training run...",
           ),
           h.Value(model.chatInput),
