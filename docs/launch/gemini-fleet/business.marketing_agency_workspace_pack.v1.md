@@ -16,3 +16,5 @@ I've wired both the `marketing-agency-receipt-public-routes.ts` and `marketing-a
 ## What remains for green
 
 The actual self-serve vertical pack proven deliverability (real DKIM/SPF verification and true publish/send routing) rather than an operator-assisted workspace needs to exist in production and be actively consumed to populate the claim stores to substantiate a real green flip.
+
+*Update 2026-06-20*: Updated `product-promises.ts` registry pass 2026-06-20.58 to formally clear `blocker.product_promises.marketing_agency_pack_self_serve_missing` since the code implementation and wiring are completed.

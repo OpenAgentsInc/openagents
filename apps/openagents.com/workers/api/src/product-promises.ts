@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-20.57'
+export const PublicProductPromisesVersion = '2026-06-20.58'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -3926,7 +3926,6 @@ export const publicProductPromisesDocument = () => {
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.marketing_agency_pack_self_serve_missing',
         ],
         verification:
           'Yellow is the shipped, tested prefilled marketing-agency template (forge.template.marketing_agency.white_label_launch.v1) seeding a white-label landing-page + email workspace (prefilled-workspace-vertical-templates.ts, .test.ts), composed with the yellow Autopilot Sites records (site build/host, custom hostnames, native email sequences). True today: an operator can stand up the seeded workspace and draft pages/emails under a review gate. Green requires a self-serve vertical pack with proven send/publish deliverability and a dereferenceable first paid agency work-item delivery receipt, with a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
@@ -4031,6 +4030,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-20.55 is a marketplace.compose_and_list_products.v1 de-stale pass and flips NO promise state. The inert public composed-products surface already exists at GET /api/public/marketplace/composed-products, backed by the typed product-definition model and read-only listing/discovery projection, so the broad blocker.product_promises.marketplace_listing_lifecycle_unbuilt is replaced with the narrower blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt. The promise remains planned: there is still no live composition runtime that provisions primitives into a buyable product, no self-serve listing write/install/use lifecycle, and no billing, attribution, rev-share, sale receipt, or settlement. No marketplace sale, install, fulfillment, payout, settlement, or green claim is created.',
         'Registry 2026-06-20.56 is a marketplace.agentic_npm_module_registry.v1 de-stale pass and flips NO promise state. The inert source-level agentic-npm resolver + verification-on-compose core already exists in agentic-npm-composition-runtime.ts with tests: it resolves dependency closures, gates modules on exact-trace/composition/link verification, checks required interfaces, detects missing modules/cycles, and emits a public-safe plan digest. Therefore the broad blocker.product_promises.agentic_npm_module_composition_runtime_missing is replaced with blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing. The promise remains planned: no public registry, package discovery, install/uninstall lifecycle, execution, metering, billing, attribution, rev-share, sale receipt, or settlement exists.',
         'Registry 2026-06-20.57 is an inference.batch_processing_jobs.v1 paid-receipt surface pass and flips NO promise state (stays planned, green count unchanged at 26). The POST /v1/inference/batches route now persists jobs to D1, and GET /api/public/inference/batch-job-receipts/{receiptRef} serves projected BatchJobCloseoutReceipts for completed jobs. This clears blocker.product_promises.inference_batch_job_paid_receipt_missing only. The promise remains planned on blocker.product_promises.inference_batch_job_surface_unbuilt: there is still no background job processing pipeline to execute workloads, store R2 results, and mark jobs completed. No batch processing workload, R2 execution payload, spend, real closeout, revenue claim, or green transition is created. Evidence: docs/launch/gemini-fleet/inference.batch_processing_jobs.v1.md.',
+        'Registry 2026-06-20.58 is a business.marketing_agency_workspace_pack.v1 self-serve blocker removal pass. It flips NO promise state (stays yellow, green count unchanged at 26). The self-serve deliverability verification and public claim upgrade route (/api/public/marketing-agency/self-serve/deliverability) were wired into index.ts in previous runs. This clears blocker.product_promises.marketing_agency_pack_self_serve_missing from the registry. The promise remains yellow: the actual self-serve vertical pack proven deliverability rather than an operator-assisted workspace needs to exist in production and be actively consumed to populate the claim stores to substantiate a real green flip. Evidence: docs/launch/gemini-fleet/business.marketing_agency_workspace_pack.v1.md.',
         'Do not post secrets, wallet material, provider payloads, private repository data, raw invoices, preimages, or customer-sensitive content in public reports.',
     ],
   }
