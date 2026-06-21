@@ -492,3 +492,21 @@ board object and hit target. The renderer, camera, controller, and local avatar
 stay retained. The packaged Verse launch smoke now injects that live board
 update in Chrome and fails if it logs any `verse-host.remount.*` event instead
 of `verse-host.visualization.retained`.
+
+Issue
+[`#5915`](https://github.com/OpenAgentsInc/openagents/issues/5915) applied
+recommendation 3's resource-ownership direction in `three-effect`. The package
+now exports a small `SceneResourceScope` primitive with LIFO, idempotent
+finalizers, child scopes, unregister support, and scoped DOM event listener
+ownership. `mountTrainingRunVisualization` uses that root scope for canvas
+listeners, keyboard capture, resize observation, controller disposal, and the
+root WebGL/scene/canvas finalizer. Dynamically replaced bulletin boards now own
+their hit target, keyboard target, scene attachment, and object disposal through
+child scopes.
+
+This matters to the current Verse work because retained updates increase the
+number of partial replacements inside one mounted scene. Those replacements now
+have a local owner that can be disposed independently, while full unmount still
+has one root owner. The remaining large visual arrays still need the generic
+catalogue/reconciler from recommendation 4 before every scene resource can be
+owned by keyed descriptors instead of one-off arrays.
