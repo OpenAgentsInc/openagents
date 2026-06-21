@@ -2,6 +2,10 @@ export const OPENAGENTS_WORLD_DATABASE = "openagents-world"
 export const OPENAGENTS_WORLD_URL = "https://spacetime.openagents.com"
 export const DEFAULT_TASSADAR_WORLD_RUN_REF = "run.tassadar.executor.20260615"
 export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timeline"
+// BF-3 (#5906): the forum->Verse bridge (#5905) writes world_events under this
+// run ref; subscribe so forum_* events reach the desktop for pylon message icons.
+// Mirrors FORUM_ACTIVITY_WORLD_RUN_REF in chat-world-forum-activity.ts.
+export const PUBLIC_FORUM_ACTIVITY_WORLD_RUN_REF = "run.public_forum_activity"
 export const CHAT_WORLD_DESKTOP_AVATAR_REF = "avatar.desktop.local"
 
 export type ChatWorldStationRow = Readonly<{
@@ -189,6 +193,7 @@ export const chatWorldMultiplayerSubscriptionQueries = (
 ): ReadonlyArray<string> => {
   const run = sqlString(runRef)
   const publicActivityRun = sqlString(PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF)
+  const publicForumRun = sqlString(PUBLIC_FORUM_ACTIVITY_WORLD_RUN_REF)
   const region = sqlString(chatWorldRegionRefForRun(runRef))
   const splitPresence = hasSplitPresenceScope(presenceScope)
   const nearRadiusMeters = Math.max(
@@ -227,6 +232,7 @@ export const chatWorldMultiplayerSubscriptionQueries = (
   return [
     `SELECT * FROM world_event WHERE run_ref = ${run}`,
     `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
+    `SELECT * FROM world_event WHERE run_ref = ${publicForumRun}`,
     `SELECT * FROM world_region WHERE region_ref = ${region}`,
     `SELECT * FROM pylon_station WHERE region_ref = ${region}`,
     ...avatarProfileQueries,
