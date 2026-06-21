@@ -266,3 +266,14 @@ export const publicBusinessQuickWinReceiptProjection = (
   paidQuickWin: receipt.paidQuickWin,
   publicCaveatRef: receipt.publicCaveatRef,
 })
+
+/**
+ * Parse an untrusted receipt document (e.g. JSON an auditor loaded from a file).
+ * Returns the valid receipt, or throws if structurally invalid or not an exact
+ * match to the schema (rejects extra keys).
+ */
+export const parseBusinessQuickWinReceiptDocument = (
+  candidate: unknown,
+): BusinessQuickWinReceipt => {
+  return S.decodeUnknownSync(BusinessQuickWinReceipt)(candidate, { onExcessProperty: 'error' })
+}

@@ -95,3 +95,28 @@ By strongly typing and orchestrating the entire lifecycle of a coding quick win 
 ## What genuinely remains (blockers stay listed)
 
 - Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (a real first paid coding-quick-win customer receipt per `proof.claim_upgrade_receipts.v1`).
+
+---
+
+# business.coding_quick_win.v1 — paid customer receipt template
+
+## What this change adds
+
+A **public-safe shape template** for the paid customer receipt evidence document:
+
+- `apps/openagents.com/workers/api/src/fixtures/business-coding-quick-win-receipt.template.json`
+- `apps/openagents.com/workers/api/src/fixtures/business-coding-quick-win-receipt.template.README.md`
+- Added `parseBusinessQuickWinReceiptDocument` boundary in `apps/openagents.com/workers/api/src/business-quick-win-receipt.ts`.
+- Tests added to `apps/openagents.com/workers/api/src/business-quick-win-receipt.test.ts`.
+
+It provides a checked-in template for a live run's paid receipt file and a parse boundary that strictly enforces the schema.
+
+## Which blocker this advances
+
+`blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (partial).
+
+It provides the template, parse boundary, and verifier integration needed to consume a real customer receipt.
+
+## What genuinely remains (blockers stay listed)
+
+- Paid receipt: `blocker.product_promises.business_coding_quick_win_paid_receipt_missing` (requires replacing the template with a real customer run's evidence, running the successful check, plus owner sign-off per `proof.claim_upgrade_receipts.v1`).

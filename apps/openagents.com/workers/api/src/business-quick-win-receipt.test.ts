@@ -173,3 +173,40 @@ describe('publicBusinessQuickWinReceiptProjection', () => {
     expect(projection).not.toHaveProperty('signupId')
   })
 })
+
+import { readFileSync } from 'node:fs'
+import { parseBusinessQuickWinReceiptDocument } from './business-quick-win-receipt'
+
+describe('parseBusinessQuickWinReceiptDocument on template', () => {
+  const loadTemplate = (): unknown => {
+    return JSON.parse(
+      readFileSync(
+        './src/fixtures/business-coding-quick-win-receipt.template.json',
+        'utf8',
+      ),
+    )
+  }
+
+  test('the template parses as a valid receipt and asserts a paid quick win', () => {
+    const raw = loadTemplate()
+    const receipt = parseBusinessQuickWinReceiptDocument(raw)
+
+    // Check that it passes the exact paid gate
+    expect(() => assertFirstPaidQuickWinReceipt(receipt)).not.toThrow()
+    expect(receipt.paidQuickWin).toBe(true)
+
+    // Check that it uses placeholder synthetic refs, not real ones
+    expect(receipt.signupId).toContain('.example.')
+    for (const line of receipt.lines) {
+      if (line.evidenceRef) {
+        expect(line.evidenceRef).toContain('.example.')
+      }
+    }
+  })
+
+  test('rejects a document with a leaked extra field', () => {
+    const raw = loadTemplate() as any
+    raw.internalLedgerId = 'leak-123'
+    expect(() => parseBusinessQuickWinReceiptDocument(raw)).toThrow()
+  })
+})
