@@ -510,3 +510,22 @@ have a local owner that can be disposed independently, while full unmount still
 has one root owner. The remaining large visual arrays still need the generic
 catalogue/reconciler from recommendation 4 before every scene resource can be
 owned by keyed descriptors instead of one-off arrays.
+
+Issue
+[`#5914`](https://github.com/OpenAgentsInc/openagents/issues/5914) applied the
+first slice of recommendation 4 in `three-effect`. The package now exports a
+typed `SceneNodeDescriptor` / `SceneNodeCatalogue` /
+`createSceneNodeReconciler` primitive that diffs keyed descriptors, retains
+same-kind objects, lets a factory reject an update when immutable props require
+recreation, preserves descriptor order, and disposes child scopes before parent
+scopes. The unit coverage exercises create/update/remove/reorder behavior and
+parent-owned child descriptor cleanup.
+
+The live consumer is the Verse bulletin-board path. Tassadar board definitions
+now become keyed descriptors handled by that reconciler instead of a bespoke
+world-item map. Hydrating from "Loading Tassadar run" to the server-provided
+summary can still recreate the board's own mesh/text group when the copy
+changes, but that replacement is local to the board node. The renderer, camera,
+controller, local avatar, and other keyed scene state remain outside that
+change, which directly addresses the character-flicker and board-hydration
+failure mode that motivated this audit pass.
