@@ -843,6 +843,18 @@ Acceptance:
 
 ### VCODE-07 - Add The Codex Agent Stream Projection
 
+Status: implemented in #5924 on 2026-06-21. Desktop now has a pure
+`AgentStreamRow` projection over existing Pylon `session.list` and event-tail
+data. The projection classifies rows as objective, plan, tool, file, check,
+approval, error, and done; keys rows by stable session/event refs; carries
+adapter, short account label, and shortened account hash; and sanitizes local
+paths, long machine hashes, secret-shaped tokens, provider JSON payloads, and
+raw prompt-like text from the default compact surface. The active Verse Codex
+dock renders the latest stream rows with Foldkit keys and public-safe data
+attributes, while fuller transcript/diff inspection remains in durable panes.
+Tests cover fixture Codex event classification, replay-stable row keys,
+redaction, and dock rendering.
+
 Build:
 
 - Project existing Pylon/Codex events into stable row types:

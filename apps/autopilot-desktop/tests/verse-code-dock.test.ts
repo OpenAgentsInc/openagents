@@ -47,6 +47,24 @@ const activeNode = (): NodeStateMessage => ({
       createdAt: "2026-06-21T18:01:00.000Z",
     },
   ],
+  events: {
+    "session.pylon.codex.live": [
+      {
+        eventIndex: 0,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T18:00:00.000Z",
+        detail: "thinking: inspect the dock",
+      },
+      {
+        eventIndex: 1,
+        phase: "progress",
+        state: "running",
+        observedAt: "2026-06-21T18:00:10.000Z",
+        detail: "running: bun test exit 0",
+      },
+    ],
+  },
 })
 
 describe("Verse code dock (#5923)", () => {
@@ -83,6 +101,10 @@ describe("Verse code dock (#5923)", () => {
     expect(tree).toContain("Deny")
     expect(tree).toContain("Open Decisions")
     expect(tree).toContain("Diffs")
+    expect(tree).toContain("agent-stream-row")
+    expect(tree).toContain("agent-stream-row-key")
+    expect(tree).toContain("Thinking")
+    expect(tree).toContain("Check")
     expect(tree).not.toContain("approval.codex.exec.1")
   })
 

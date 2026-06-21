@@ -84,6 +84,10 @@ import {
   type VerseRunHudSample,
 } from "../shared/verse-run-hud.js"
 import {
+  projectAgentStreamRows,
+  type AgentStreamRow,
+} from "./agent-stream-projection.js"
+import {
   PYLON_BASE_NODE_PREFIX,
   projectPylonBase,
   withPylonBaseLayer,
@@ -6480,10 +6484,56 @@ const compactWorkspaceLabel = (model: Model): string => {
   return model.composerRepoPath.trim() === "" ? "node worktree" : "local worktree"
 }
 
+const verseCodeDockAgentStreamRow = (row: AgentStreamRow): Html =>
+  h.div(
+    [
+      cls(`agent-stream-row agent-stream-row-${row.kind}`),
+      h.Key(row.key),
+      h.DataAttribute("agent-stream-row-key", row.key),
+      h.DataAttribute("agent-stream-row-kind", row.kind),
+      h.DataAttribute("agent-stream-session-ref", row.sessionRef),
+    ],
+    [
+      h.span([cls("agent-stream-kind")], [row.title]),
+      h.span([cls("agent-stream-body")], [row.body]),
+      h.span([cls("agent-stream-meta")], [
+        row.accountRefHash === null
+          ? `${row.meta} · ${row.accountLabel}`
+          : `${row.meta} · ${row.accountLabel} ${row.accountRefHash}`,
+      ]),
+    ],
+  )
+
+const verseCodeDockAgentStream = (
+  model: Model,
+  session: SessionSummary | null,
+  events: ReadonlyArray<SessionEventRow>,
+): Html => {
+  if (session === null) return h.empty
+  const rows = projectAgentStreamRows({
+    session,
+    events,
+    accounts: modelNode(model)?.accounts ?? [],
+  }).slice(-6)
+  return h.div(
+    [cls("agent-stream"), h.DataAttribute("agent-stream", session.sessionRef)],
+    [
+      h.div([cls("agent-stream-head")], [
+        h.span([cls("verse-code-dock-label")], ["Agent stream"]),
+        h.span([cls("agent-stream-count")], [`${rows.length}`]),
+      ]),
+      rows.length === 0
+        ? h.p([cls("verse-code-dock-note")], ["Waiting for Codex events."])
+        : h.div([cls("agent-stream-list")], rows.map(verseCodeDockAgentStreamRow)),
+    ],
+  )
+}
+
 const verseCodeDockActiveSession = (model: Model): Html => {
   const ref = model.composerSessionRef
   const node = modelNode(model)
   const session = ref ? (node?.sessions.find((row) => row.sessionRef === ref) ?? null) : null
+  const events = ref ? (node?.events?.[ref] ?? []) : []
   const state = session?.state ?? null
   const canReply = composerCanReply(state)
   const activeLabel = ref === null ? "No active Codex session" : compactSessionRef(ref)
@@ -6532,6 +6582,7 @@ const verseCodeDockActiveSession = (model: Model): Html => {
                 )
               : h.empty,
           ]),
+      verseCodeDockAgentStream(model, session, events),
       ref === null
         ? h.empty
         : h.div([cls("verse-code-dock-followup")], [
