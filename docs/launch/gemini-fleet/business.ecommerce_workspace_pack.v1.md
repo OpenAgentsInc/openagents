@@ -54,7 +54,21 @@ A live, deployed **self-serve route for e-commerce prefilled workspace creation*
 `blocker.product_promises.ecommerce_pack_self_serve_missing`
 — **cleared in code**. A self-serve route now exists to provision the e-commerce vertical pack workspace with no operator loop.
 
+## Current Run (De-stale Pass)
+
+A **de-stale pass on the product promise registry** to reflect the reality that the self-serve e-commerce pack route has already been fully built.
+
+- `apps/openagents.com/workers/api/src/product-promises.ts`
+  - Removed `blocker.product_promises.ecommerce_pack_self_serve_missing` from `blockerRefs` because `POST /api/public/ecommerce-campaign/workspaces` now provisions the `forge.template.ecommerce.inventory_campaign.v1` workspace on-demand.
+  - Added entry for "Registry 2026-06-20.58" explaining this de-stale pass.
+- `apps/openagents.com/workers/api/src/product-promises.test.ts`
+  - Updated expected version checks to `2026-06-20.58`.
+
+## Which blocker this advances
+
+`blocker.product_promises.ecommerce_pack_self_serve_missing`
+— **genuinely and fully cleared** from the promise tracker, aligning the product registry with the deployed code.
+
 ## What remains for green
 
-1. A true non-fixture e-commerce work-item delivery to replace the mock fixture for `ecommerce_pack_first_paid_delivery_receipt_missing`.
-2. Emitting the matching real delivery receipt into the `proof.claim_upgrade_receipts.v1` registry.
+1. A true non-fixture e-commerce work-item delivery to replace the mock fixture for `ecommerce_pack_first_paid_delivery_receipt_missing` (specifically, building an active operator route to record receipts, and a real paid delivery).
