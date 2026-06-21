@@ -12,13 +12,16 @@ import {
   PressedKey,
   RanPaletteCommand,
 } from "../src/ui/message"
-import { initialModel, Model, PaneId, type Model as ModelType } from "../src/ui/model"
+import { initialModel, Model, modelPaneLayer, PaneId, type Model as ModelType } from "../src/ui/model"
 import {
+  CODE_MODE_SHORTCUTS,
+  CommandScope,
   HOTBAR_SLOTS,
   NAV_DESTINATIONS,
   NAV_GROUPS,
   NAV_LEAF_PANES,
   SHORTCUTS,
+  codeModePaletteCommands,
   filterPaletteCommands,
   groupByAccel,
   groupForPane,
@@ -140,6 +143,32 @@ describe("#5464 command palette + registry", () => {
     expect(filterPaletteCommands("zzqqxx")).toHaveLength(0)
   })
 
+  test("code-mode command registry is scoped, keybound, and separate from global nav", () => {
+    expect(codeModePaletteCommands.length).toBeGreaterThan(0)
+    const scopeSet = new Set(CommandScope)
+    for (const command of codeModePaletteCommands) {
+      expect(command.group).toBe("code")
+      expect(command.keybinding).toContain("⌘K")
+      expect(command.scopes.length).toBeGreaterThan(0)
+      for (const scope of command.scopes) expect(scopeSet.has(scope)).toBe(true)
+    }
+    expect(codeModePaletteCommands.some((command) => command.scopes.includes("accounts"))).toBe(true)
+    expect(codeModePaletteCommands.some((command) => command.scopes.includes("approvals"))).toBe(true)
+    expect(codeModePaletteCommands.some((command) => command.scopes.includes("diffs"))).toBe(true)
+    expect(codeModePaletteCommands.some((command) => command.scopes.includes("diagnostics"))).toBe(true)
+    expect(codeModePaletteCommands.map((command) => command.id)).not.toContain("go.network")
+  })
+
+  test("code-mode command shortcuts are generated from registry rows", () => {
+    expect(CODE_MODE_SHORTCUTS).toHaveLength(codeModePaletteCommands.length)
+    expect(CODE_MODE_SHORTCUTS.map((shortcut) => shortcut.chord)).toEqual(
+      codeModePaletteCommands.map((command) => command.keybinding),
+    )
+    expect(CODE_MODE_SHORTCUTS.map((shortcut) => shortcut.description)).toEqual(
+      codeModePaletteCommands.map((command) => command.label),
+    )
+  })
+
   test("Open/Close palette toggles model state", () => {
     const [open] = update(initialModel, OpenedCommandPalette())
     expect(open.commandPaletteOpen).toBe(true)
@@ -186,16 +215,46 @@ describe("#5464 command palette + registry", () => {
     const [model] = update(queried, RanPaletteCommand({ commandId: null }))
     expect(model.pane).toBe("swarm")
   })
+
+  test("Verse code mode palette runs the scoped code command set", () => {
+    const open = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      commandPaletteOpen: true,
+    })
+    const tree = serializeView(view(open).body)
+    expect(tree).toContain("Open Accounts pane")
+    expect(tree).toContain("⌘K accounts")
+    expect(tree).not.toContain("Go to Network")
+
+    const [model] = update(open, RanPaletteCommand({ commandId: "code.pane.accounts" }))
+    expect(model.commandPaletteOpen).toBe(false)
+    expect(modelPaneLayer(model).panes.map((pane) => pane.kind)).toEqual(["accounts"])
+  })
+
+  test("Verse code mode ignores global palette command ids", () => {
+    const open = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+      commandPaletteOpen: true,
+    })
+    const [model, commands] = update(open, RanPaletteCommand({ commandId: "go.network" }))
+    expect(model.pane).toBe("chat")
+    expect(model.commandPaletteOpen).toBe(false)
+    expect(commands).toHaveLength(0)
+  })
 })
 
 // ── #5465: keyboard layer (pure interpretation + reducer wiring) ─────────────
 describe("#5465 keyboard layer", () => {
-  test("Cmd-K and Ctrl-K open the palette from anywhere (even while typing)", () => {
+  test("Cmd-K and Ctrl-K open the palette unless an editor owns focus", () => {
     expect(interpretKey(initialModel, key({ key: "k", meta: true })).kind).toBe("open-palette")
     expect(interpretKey(initialModel, key({ key: "k", ctrl: true })).kind).toBe("open-palette")
     expect(
       interpretKey(initialModel, key({ key: "k", meta: true, inEditable: true })).kind,
-    ).toBe("open-palette")
+    ).toBe("none")
   })
 
   test("while the palette is open, arrows move, Enter runs, Esc closes", () => {
@@ -229,7 +288,7 @@ describe("#5465 keyboard layer", () => {
     ).toEqual({ forward: false, preventDefault: false })
     expect(
       keyboardForwardDecision({ key: "k", meta: true, ctrl: false, inEditable: true }),
-    ).toEqual({ forward: true, preventDefault: true })
+    ).toEqual({ forward: false, preventDefault: false })
     expect(
       keyboardForwardDecision({
         key: "Escape",
@@ -243,14 +302,25 @@ describe("#5465 keyboard layer", () => {
   test("Cmd-Enter submits in chat/composer, and is a no-op elsewhere", () => {
     const chat = Model.make({ ...initialModel, pane: "chat" })
     expect(interpretKey(chat, key({ key: "Enter", meta: true })).kind).toBe("submit-turn")
+    expect(interpretKey(chat, key({ key: "Enter", meta: true, inEditable: true })).kind).toBe("none")
     const settings = Model.make({ ...initialModel, pane: "settings" })
     expect(interpretKey(settings, key({ key: "Enter", meta: true })).kind).toBe("none")
   })
 
-  test("bare nav keys (j/k) are ignored while typing in an input", () => {
+  test("composer/editor/terminal editable focus suspends command shortcuts", () => {
     const code = Model.make({ ...initialModel, pane: "composer" })
     expect(interpretKey(code, key({ key: "j", inEditable: true })).kind).toBe("none")
     expect(interpretKey(code, key({ key: "j", inEditable: false })).kind).toBe("navigate-pane")
+    expect(interpretKey(code, key({ key: "k", meta: true, inEditable: true })).kind).toBe("none")
+    expect(interpretKey(code, key({ key: "v", meta: true, shift: true, inEditable: true })).kind).toBe("none")
+    expect(keyboardForwardDecision({ key: "w", meta: false, ctrl: false, inEditable: true })).toEqual({
+      forward: false,
+      preventDefault: false,
+    })
+    expect(keyboardForwardDecision({ key: "k", meta: true, ctrl: false, inEditable: true })).toEqual({
+      forward: false,
+      preventDefault: false,
+    })
   })
 
   test("j/k move between sub-panes within the current group (no wrap at ends)", () => {

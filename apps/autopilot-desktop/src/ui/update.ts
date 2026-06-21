@@ -91,6 +91,7 @@ import {
 } from "./message.js"
 import { interpretKey } from "./keyboard.js"
 import {
+  codeModePaletteCommands,
   filterPaletteCommands,
   groupById,
   paletteCommands,
@@ -806,8 +807,16 @@ const reconcileChatTurn = (model: Model): Model => {
 
 // #5464: the filtered palette list for the current query (also drives which
 // command Enter runs and how the selection index clamps).
+const paletteCommandSetForModel = (model: Model): ReadonlyArray<PaletteCommand> =>
+  model.pane === "chat" && model.verseMode === "code"
+    ? codeModePaletteCommands
+    : paletteCommands
+
 const paletteMatchesForModel = (model: Model): ReadonlyArray<PaletteCommand> =>
-  filterPaletteCommands(model.commandPaletteQuery).map((match) => match.command)
+  filterPaletteCommands(
+    model.commandPaletteQuery,
+    paletteCommandSetForModel(model),
+  ).map((match) => match.command)
 
 const clampPaletteIndex = (index: number, length: number): number => {
   if (length <= 0) return 0
@@ -1154,7 +1163,7 @@ export const update = (model: Model, message: Message): Result => {
       const command =
         message.commandId === null
           ? (paletteMatchesForModel(model)[model.commandPaletteIndex] ?? null)
-          : (paletteCommands.find((c) => c.id === message.commandId) ?? null)
+          : (paletteCommandSetForModel(model).find((c) => c.id === message.commandId) ?? null)
       const closed = Model.make({ ...model, commandPaletteOpen: false })
       if (!command) return [closed, noCommands]
       const next = messageForPaletteCommand(command)

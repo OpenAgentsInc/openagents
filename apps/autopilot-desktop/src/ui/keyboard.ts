@@ -73,7 +73,12 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
   // must not reveal the old shell or coding target selector.
   if (key === "Escape") return { kind: "none" }
 
-  // ── Cmd/Ctrl-K opens the palette from anywhere (even while typing) ────────
+  // Focused editor/composer/terminal fields own their keys. They must never
+  // trigger global commands, submit turns, or j/k pane movement while text entry
+  // is active; the palette-open branch above is the only exception.
+  if (event.inEditable) return { kind: "none" }
+
+  // ── Cmd/Ctrl-K opens the palette when text entry is not focused ───────────
   if (key.toLowerCase() === "k" && isModified(event)) return { kind: "open-palette" }
 
   // ── Cmd/Ctrl-Shift-V toggles the Verse (game-world view) from anywhere ────
@@ -89,8 +94,6 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
-  // ── Bare nav keys are IGNORED while typing in an input/textarea (#5465) ────
-  if (event.inEditable) return { kind: "none" }
   if (isModified(event)) return { kind: "none" }
 
   // ── j / k move between sub-panes of the current group ─────────────────────

@@ -179,12 +179,25 @@ export type PaletteCommand = Readonly<{
   id: string
   label: string
   group: string
+  scopes: ReadonlyArray<CommandScope>
   keywords: ReadonlyArray<string>
+  keybinding?: string
 }> &
   (
     | Readonly<{ kind: "navigate"; pane: PaneId }>
     | Readonly<{ kind: "action"; messageTag: string; args?: Record<string, unknown> }>
   )
+
+export const CommandScope = [
+  "global",
+  "panes",
+  "accounts",
+  "sessions",
+  "approvals",
+  "diffs",
+  "diagnostics",
+] as const
+export type CommandScope = typeof CommandScope[number]
 
 // Navigate-to commands are derived from the registry so a new destination shows
 // up in the palette automatically (one registry entry → one palette row).
@@ -193,6 +206,7 @@ const navigateCommands: ReadonlyArray<PaletteCommand> = NAV_DESTINATIONS.map((de
   id: `go.${dest.pane}`,
   label: `Go to ${dest.label}`,
   group: dest.groupId,
+  scopes: ["global", "panes"],
   pane: dest.pane,
   keywords: ["go", "open", "navigate", dest.label.toLowerCase(), ...(dest.keywords ?? [])],
 }))
@@ -208,6 +222,7 @@ const openPaneCommands: ReadonlyArray<PaletteCommand> = NAV_DESTINATIONS.map((de
   id: `pane.${dest.pane}`,
   label: `Open ${dest.label} as a pane`,
   group: dest.groupId,
+  scopes: ["global", "panes"],
   messageTag: "OpenedManagedPane",
   args: { pane: dest.pane },
   keywords: ["pane", "window", "float", "open", dest.label.toLowerCase(), ...(dest.keywords ?? [])],
@@ -221,6 +236,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.spawn",
     label: "Spawn a session",
     group: "code",
+    scopes: ["global", "sessions"],
     messageTag: "NavigatedTo",
     args: { pane: "spawn" },
     keywords: ["spawn", "new", "session", "launch", "start", "objective"],
@@ -230,6 +246,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.blueprint-chat",
     label: "Run Blueprint exact replay chat",
     group: "code",
+    scopes: ["global", "diagnostics"],
     messageTag: "ClickedBlueprintChatSubmit",
     keywords: ["blueprint", "exact", "replay", "tassadar", "signature", "advanced", "code"],
   },
@@ -238,6 +255,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.submit-intent",
     label: "Submit an intent (Ask Autopilot)",
     group: "supervise",
+    scopes: ["global", "sessions"],
     messageTag: "ClickedSubmitIntent",
     keywords: ["intent", "ask", "objective", "autonomous", "request"],
   },
@@ -246,6 +264,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.resolve-next-approval",
     label: "Resolve the next pending approval",
     group: "supervise",
+    scopes: ["global", "approvals"],
     // Navigates to the approvals roll-up; j/k + Enter (or the buttons) act on
     // the next pending approval there. Mapped to NavigatedTo to avoid inventing
     // a "resolve-next" verb the runtime does not yet expose for MVP.
@@ -258,6 +277,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.coordinator-pause",
     label: "Pause the autonomous coordinator",
     group: "supervise",
+    scopes: ["global", "diagnostics"],
     messageTag: "ClickedCoordinatorToggle",
     args: { paused: true },
     keywords: ["coordinator", "pause", "stop", "loop", "autonomous", "afk"],
@@ -267,6 +287,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.coordinator-resume",
     label: "Resume the autonomous coordinator",
     group: "supervise",
+    scopes: ["global", "diagnostics"],
     messageTag: "ClickedCoordinatorToggle",
     args: { paused: false },
     keywords: ["coordinator", "resume", "start", "loop", "autonomous", "afk"],
@@ -276,6 +297,7 @@ const actionCommands: ReadonlyArray<PaletteCommand> = [
     id: "action.open-replay",
     label: "Open a proof replay",
     group: "explore",
+    scopes: ["global", "diagnostics"],
     messageTag: "NavigatedTo",
     args: { pane: "training" },
     keywords: ["replay", "proof", "receipt", "bundle", "verify", "evidence"],
@@ -287,6 +309,92 @@ export const paletteCommands: ReadonlyArray<PaletteCommand> = [
   ...openPaneCommands,
   ...actionCommands,
 ]
+
+const codeModeCommandSpecs: ReadonlyArray<{
+  readonly id: string
+  readonly label: string
+  readonly pane: PaneId
+  readonly scopes: ReadonlyArray<CommandScope>
+  readonly keybinding: string
+  readonly keywords: ReadonlyArray<string>
+}> = [
+  {
+    id: "code.pane.composer",
+    label: "Open Composer pane",
+    pane: "composer",
+    scopes: ["panes", "sessions"],
+    keybinding: "⌘K composer",
+    keywords: ["compose", "objective", "codex", "agent", "session"],
+  },
+  {
+    id: "code.pane.accounts",
+    label: "Open Accounts pane",
+    pane: "accounts",
+    scopes: ["panes", "accounts"],
+    keybinding: "⌘K accounts",
+    keywords: ["account", "codex", "auth", "provider", "home"],
+  },
+  {
+    id: "code.pane.sessions",
+    label: "Open Sessions pane",
+    pane: "sessions",
+    scopes: ["panes", "sessions"],
+    keybinding: "⌘K sessions",
+    keywords: ["session", "history", "runs", "thread"],
+  },
+  {
+    id: "code.pane.decisions",
+    label: "Open Decisions pane",
+    pane: "decisions",
+    scopes: ["panes", "approvals"],
+    keybinding: "⌘K approvals",
+    keywords: ["approval", "decision", "permission", "allow", "deny"],
+  },
+  {
+    id: "code.pane.session-detail",
+    label: "Open Diff and artifacts pane",
+    pane: "session-detail",
+    scopes: ["panes", "diffs"],
+    keybinding: "⌘K diff",
+    keywords: ["diff", "artifact", "files", "changes", "receipt"],
+  },
+  {
+    id: "code.pane.settings",
+    label: "Open Diagnostics pane",
+    pane: "settings",
+    scopes: ["panes", "diagnostics"],
+    keybinding: "⌘K diagnostics",
+    keywords: ["diagnostics", "health", "readiness", "logs", "settings"],
+  },
+]
+
+export const codeModePaletteCommands: ReadonlyArray<PaletteCommand> =
+  codeModeCommandSpecs.map((spec) => ({
+    kind: "action" as const,
+    id: spec.id,
+    label: spec.label,
+    group: "code",
+    scopes: spec.scopes,
+    keybinding: spec.keybinding,
+    messageTag: "OpenedManagedPane",
+    args: { pane: spec.pane },
+    keywords: ["code", "verse", ...spec.keywords],
+  }))
+
+export const commandShortcutSpecs = (
+  commands: ReadonlyArray<PaletteCommand>,
+): ReadonlyArray<ShortcutSpec> =>
+  commands.flatMap((command) =>
+    command.keybinding === undefined
+      ? []
+      : [
+          {
+            chord: command.keybinding,
+            description: command.label,
+            when: command.scopes.join(" / "),
+          },
+        ],
+  )
 
 // ── Fuzzy matcher for the palette (#5464) ────────────────────────────────────
 // A small, dependency-free subsequence matcher over label + keywords. Pure so
@@ -347,14 +455,17 @@ export type ShortcutSpec = Readonly<{
 }>
 
 export const SHORTCUTS: ReadonlyArray<ShortcutSpec> = [
-  { chord: "⌘K / Ctrl-K", description: "Open the command palette", when: "anywhere" },
+  { chord: "⌘K / Ctrl-K", description: "Open the command palette", when: "not while typing" },
   { chord: "Esc", description: "Close the command palette", when: "palette open" },
   { chord: "↑ / ↓", description: "Move the palette selection", when: "palette open" },
   { chord: "Enter", description: "Run the selected command", when: "palette open" },
-  { chord: "⌘↵ / Ctrl-↵", description: "Submit the chat / composer turn", when: "Chat or Composer" },
+  { chord: "⌘↵ / Ctrl-↵", description: "Submit the chat / composer turn", when: "Chat or Composer, not while typing" },
   { chord: "j / k", description: "Move to the next / previous sub-pane in the group", when: "anywhere (not while typing)" },
-  { chord: "⌘⇧V / Ctrl-⇧V", description: "Toggle the Verse (game-world view)", when: "anywhere" },
+  { chord: "⌘⇧V / Ctrl-⇧V", description: "Toggle the Verse (game-world view)", when: "not while typing" },
 ]
+
+export const CODE_MODE_SHORTCUTS: ReadonlyArray<ShortcutSpec> =
+  commandShortcutSpecs(codeModePaletteCommands)
 
 // ── HUD H1: the hotbar (#5499) ───────────────────────────────────────────────
 // The hotbar still mirrors the primary group count so the visual layout stays

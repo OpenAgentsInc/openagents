@@ -790,6 +790,14 @@ Acceptance:
 
 ### VCODE-05 - Add A Scoped Code-Mode Command Registry
 
+Status: implemented in #5922 on 2026-06-21. The command registry now carries
+typed command scopes, generated keybinding metadata, and a dedicated Verse
+code-mode command set for panes, accounts, sessions, approvals, diffs, and
+diagnostics. Verse code mode uses that scoped set instead of global navigation
+commands, explore mode still has no code commands, and focused editable fields
+now suspend command shortcuts so Composer/editor/terminal typing cannot trigger
+palette, submit, pane movement, or Verse-toggle commands.
+
 Build:
 
 - Split code-mode commands from global navigation commands.

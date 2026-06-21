@@ -80,6 +80,15 @@ export const keyboardForwardDecision = (input: {
 }): { readonly forward: boolean; readonly preventDefault: boolean } => {
   const modified = input.meta || input.ctrl
   const key = input.key
+  if (input.inEditable) {
+    const paletteEditingKey = !modified && (
+      key === "Escape" || key === "ArrowUp" || key === "ArrowDown" || key === "Enter"
+    )
+    return {
+      forward: KEYBOARD_KEYS.has(key) && paletteEditingKey,
+      preventDefault: key === "Escape",
+    }
+  }
   const modifiedShortcut = modified && (
     key.toLowerCase() === "k" || key === "Enter"
   )

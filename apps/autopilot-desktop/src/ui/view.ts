@@ -255,6 +255,7 @@ import {
   HOTBAR_SLOTS,
   NAV_GROUPS,
   SHORTCUTS,
+  codeModePaletteCommands,
   filterPaletteCommands,
   groupForPane,
   type HotbarSlot,
@@ -556,7 +557,11 @@ const sidebar = (model: Model): Html => {
 // is recoverable (Cmd-K reopens), so we accept that over a brittle no-op guard.
 const commandPalette = (model: Model): Html => {
   if (!model.commandPaletteOpen) return h.empty
-  const matches = filterPaletteCommands(model.commandPaletteQuery)
+  const commandSet =
+    model.pane === "chat" && model.verseMode === "code"
+      ? codeModePaletteCommands
+      : undefined
+  const matches = filterPaletteCommands(model.commandPaletteQuery, commandSet)
   const selected =
     matches.length === 0
       ? -1
@@ -587,6 +592,9 @@ const commandPalette = (model: Model): Html => {
                     ],
                     [
                       h.span([cls("palette-row-label")], [match.command.label]),
+                      match.command.keybinding === undefined
+                        ? h.empty
+                        : h.span([cls("palette-row-keybinding")], [match.command.keybinding]),
                       h.span([cls("palette-row-group")], [match.command.group]),
                     ],
                   ),

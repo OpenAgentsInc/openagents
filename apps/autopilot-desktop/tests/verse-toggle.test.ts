@@ -209,9 +209,21 @@ describe("The Verse runtime toggle (#5730)", () => {
     })
     expect(intent.kind).toBe("toggle-verse")
 
-    // Through the reducer's PressedKey path (Ctrl variant, while typing — the
-    // toggle is a deliberate global shortcut).
+    // Through the reducer's PressedKey path (Ctrl variant). Editable fields own
+    // their keys in code mode, so the shortcut only fires outside text entry.
     const [next] = update(
+      Model.make({ ...initialModel, verseMode: "code" }),
+      PressedKey({
+        key: "v",
+        meta: false,
+        ctrl: true,
+        shift: true,
+        inEditable: false,
+      }),
+    )
+    expect(next.verseEnabled).toBe(false)
+
+    const [typing] = update(
       Model.make({ ...initialModel, verseMode: "code" }),
       PressedKey({
         key: "v",
@@ -221,7 +233,7 @@ describe("The Verse runtime toggle (#5730)", () => {
         inEditable: true,
       }),
     )
-    expect(next.verseEnabled).toBe(false)
+    expect(typing.verseEnabled).toBe(true)
   })
 
   test("bare V (no modifier) does not toggle the Verse", () => {

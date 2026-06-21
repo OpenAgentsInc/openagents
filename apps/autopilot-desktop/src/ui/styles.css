@@ -324,6 +324,15 @@ body {
   font-size: 0.65rem;
 }
 
+.palette-row-keybinding {
+  margin-left: auto;
+  color: rgb(255 255 255 / 0.42);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
 .app-shell-verse .chat-content-overlay {
   display: none;
 }
