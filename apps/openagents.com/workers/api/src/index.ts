@@ -9855,6 +9855,10 @@ const routeRequest = makeWorkerRouteRequest({
       publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
         openAgentsDatabase(env),
       ),
+      pylonApiStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+      pylonSparkPayoutTargetStore: makeD1PylonSparkPayoutTargetStore(
+        openAgentsDatabase(env),
+      ),
       resolveModeratorActor: async request => {
         const session = await requireBrowserSession(request, env, ctx)
 

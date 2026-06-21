@@ -502,6 +502,13 @@ describe('public pylon stats', () => {
       'pylon.public.online_wallet_not_ready',
       'pylon.public.seen_not_online',
     ])
+    expect(stats.recentPylons[0]).toMatchObject({
+      ownerAgentRef: 'agent:agent_public',
+      pylonRef: 'pylon.public.online_wallet_ready',
+      tipEndpoint:
+        '/api/pylons/pylon.public.online_wallet_ready/tips/ladder',
+      tippingAvailable: true,
+    })
     expect(JSON.stringify(stats)).not.toMatch(
       /wallet\.secret|lnbc|preimage|\/Users\/|provider_secret|customer@example.com|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/,
     )

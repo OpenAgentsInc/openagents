@@ -27,9 +27,10 @@ import type { BufferPayFn } from './tips-sweep'
 export const TIP_LADDER_DEFAULT_SEND_CREDITS_BELOW_SAT = 10
 export const TIP_LADDER_DEFAULT_RECEIVE_CREDITS_BELOW_SAT = 10
 export const TIP_LADDER_RECEIPT_REF_PREFIX = 'receipt.forum.tip_ladder.'
+export const PYLON_TIP_LADDER_RECEIPT_REF_PREFIX = 'receipt.pylon.tip_ladder.'
 
 const tipLadderReceiptRefPattern =
-  /^receipt\.forum\.tip_ladder\.[A-Za-z0-9_.:-]{8,180}$/
+  /^receipt\.(forum|pylon)\.tip_ladder\.[A-Za-z0-9_.:-]{8,180}$/
 const creditedFallbackSuffix = ':credited_fallback'
 
 export type TipLadderRung = 'credited' | 'direct_bolt12' | 'direct_lightning'
@@ -41,14 +42,24 @@ export const tipLadderCanonicalIdempotencyKey = (
     ? idempotencyKey.slice(0, -creditedFallbackSuffix.length)
     : idempotencyKey
 
-export const tipLadderReceiptRefFromDigest = (digestHex: string): string =>
-  `${TIP_LADDER_RECEIPT_REF_PREFIX}sha256.${digestHex.slice(0, 32)}`
+export const tipLadderReceiptRefFromDigest = (
+  digestHex: string,
+  prefix: string = TIP_LADDER_RECEIPT_REF_PREFIX,
+): string => `${prefix}sha256.${digestHex.slice(0, 32)}`
 
 export const tipLadderReceiptRefFromIdempotencyKey = async (
   idempotencyKey: string,
 ): Promise<string> =>
   tipLadderReceiptRefFromDigest(
     await sha256Hex(tipLadderCanonicalIdempotencyKey(idempotencyKey)),
+  )
+
+export const pylonTipLadderReceiptRefFromIdempotencyKey = async (
+  idempotencyKey: string,
+): Promise<string> =>
+  tipLadderReceiptRefFromDigest(
+    await sha256Hex(tipLadderCanonicalIdempotencyKey(idempotencyKey)),
+    PYLON_TIP_LADDER_RECEIPT_REF_PREFIX,
   )
 
 export const isTipLadderReceiptRef = (receiptRef: string): boolean =>
@@ -124,6 +135,7 @@ export type CreditedTipPlanInput = Readonly<{
   recipientRef: string
   amountSat: number
   postId: string
+  contextRef?: string
   idempotencyKey: string
   publicReceiptRef: string | null
   ladderReason: string
@@ -140,7 +152,7 @@ export const creditedTipStatements = (
   const amountMsat = input.amountSat * 1000
 
   const plan: PayInPlan = {
-    contextRef: `forum.post.${input.postId}`,
+    contextRef: input.contextRef ?? `forum.post.${input.postId}`,
     costMsat: amountMsat,
     genesisId: null,
     idempotencyKey: input.idempotencyKey,
@@ -230,6 +242,8 @@ export const executeTipLadder = (
     publicReceiptRef: string
     makeId: () => string
     nowIso: string
+    contextRef?: string
+    directPayoutExternalRef?: string
   }>,
 ): Effect.Effect<TipLadderResult, TipLadderError> =>
   Effect.gen(function* () {
@@ -297,7 +311,7 @@ export const executeTipLadder = (
           runLedgerStatements(db, [
             ...createPayInStatements(
               {
-                contextRef: `forum.post.${input.postId}`,
+                contextRef: input.contextRef ?? `forum.post.${input.postId}`,
                 costMsat: amountMsat,
                 genesisId: null,
                 idempotencyKey: input.idempotencyKey,
@@ -314,7 +328,9 @@ export const executeTipLadder = (
                   {
                     amountMsat,
                     direction: 'out',
-                    externalRef: 'forum.tip_recipient_claim',
+                    externalRef:
+                      input.directPayoutExternalRef ??
+                      'forum.tip_recipient_claim',
                     kind: 'lightning',
                     legId: directPayoutLegId,
                     partyRef: input.recipientRef,
@@ -449,6 +465,9 @@ export const executeTipLadder = (
         payInId,
         payoutLegId: input.makeId(),
         postId: input.postId,
+        ...(input.contextRef === undefined
+          ? {}
+          : { contextRef: input.contextRef }),
         publicReceiptRef: input.publicReceiptRef,
         recipientRef: input.recipientRef,
         senderRef: input.senderRef,

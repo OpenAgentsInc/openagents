@@ -94,6 +94,8 @@ export type PublicTrainingContributorStatsStore = Pick<
 export class PublicRecentPylon extends S.Class<PublicRecentPylon>(
   'PublicRecentPylon',
 )({
+  pylonRef: S.NullOr(S.String),
+  ownerAgentRef: S.NullOr(S.String),
   nodeLabel: S.NullOr(S.String),
   nostrPubkeyShort: S.String,
   clientVersion: S.NullOr(S.String),
@@ -105,6 +107,8 @@ export class PublicRecentPylon extends S.Class<PublicRecentPylon>(
   onlineNow: S.NullOr(S.Boolean),
   walletReadyNow: S.NullOr(S.Boolean),
   assignmentReadyNow: S.NullOr(S.Boolean),
+  tippingAvailable: S.NullOr(S.Boolean),
+  tipEndpoint: S.NullOr(S.String),
   eligibleProductCount: S.Int,
   relayUrls: S.Array(S.String),
   products: S.Array(S.String),
@@ -279,6 +283,8 @@ const recentPylonFromUnknown = (value: unknown): PublicRecentPylon | null => {
   const lastSeenAtUnixMs = nullableInt(value.last_seen_at_unix_ms)
 
   return new PublicRecentPylon({
+    pylonRef: optionalString(value.pylon_ref) ?? null,
+    ownerAgentRef: optionalString(value.owner_agent_ref) ?? null,
     nodeLabel: optionalString(value.node_label) ?? null,
     nostrPubkeyShort: optionalString(value.nostr_pubkey_short) ?? 'unknown',
     clientVersion: optionalString(value.client_version) ?? null,
@@ -292,6 +298,8 @@ const recentPylonFromUnknown = (value: unknown): PublicRecentPylon | null => {
     onlineNow: null,
     walletReadyNow: null,
     assignmentReadyNow: null,
+    tippingAvailable: null,
+    tipEndpoint: null,
     eligibleProductCount: intValue(value.eligible_product_count),
     relayUrls: stringArrayFromUnknown(value.relay_urls),
     products: stringArrayFromUnknown(value.products),
@@ -996,6 +1004,8 @@ const recentPylonFromRegistration = (
   const onlineNow = isOnlineNow(registration, nowUnixMs)
 
   return new PublicRecentPylon({
+    pylonRef: registration.pylonRef,
+    ownerAgentRef: `agent:${registration.ownerAgentUserId}`,
     nodeLabel: registration.displayName,
     nostrPubkeyShort: registration.pylonRef,
     clientVersion: registration.clientVersion,
@@ -1010,6 +1020,8 @@ const recentPylonFromRegistration = (
     onlineNow,
     walletReadyNow: onlineNow && registration.walletReady,
     assignmentReadyNow: isAssignmentReady(registration, nowUnixMs),
+    tippingAvailable: registration.ownerAgentUserId.trim() !== '',
+    tipEndpoint: `/api/pylons/${encodeURIComponent(registration.pylonRef)}/tips/ladder`,
     eligibleProductCount: 0,
     relayUrls: [],
     products: publicScannerSafeRefs(

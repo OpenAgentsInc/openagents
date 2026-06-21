@@ -2465,12 +2465,30 @@ const schemaComponents = (): JsonSchema => ({
         minLength: 1,
         maxLength: 220,
         description:
-          'Optional caller-supplied public receipt ref matching receipt.forum.tip_ladder.*. When omitted, a deterministic ref is derived from the Idempotency-Key.',
+          'Optional caller-supplied public receipt ref matching receipt.forum.tip_ladder.* for Forum posts. When omitted, a deterministic ref is derived from the Idempotency-Key.',
       },
     },
   },
   ForumTipLadderResponse: objectSummary(
-    'Reliable-tips receive-ladder receipt: amountSat, ladder rung and ladderReason, public receiptRef (receipt.forum.tip_ladder.*), payInId, and the sender ledger balance after the spend. The ladder debits the registered sender ledger and lands on recipient-wallet-direct settlement when the recipient has a registered Spark Lightning Address or legacy BOLT 12 destination and the tips buffer can pay; otherwise it credits the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped; refusals are typed (for example insufficient_sender_balance with HTTP 402). No raw invoices, preimages, wallet material, or payout targets are returned.',
+    'Reliable-tips receive-ladder receipt: amountSat, ladder rung and ladderReason, public receiptRef (receipt.forum.tip_ladder.*), payInId, and the sender ledger balance after the spend. The ladder debits the authenticated sender ledger and lands on recipient-wallet-direct settlement when the recipient has a registered Spark Lightning Address or legacy BOLT 12 destination and the tips buffer can pay; otherwise it credits the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped; refusals are typed (for example insufficient_sender_balance with HTTP 402). No raw invoices, preimages, wallet material, or payout targets are returned.',
+  ),
+  PylonTipLadderRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['amountSat'],
+    properties: {
+      amountSat: { type: 'number', minimum: 1 },
+      publicReceiptRef: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+        description:
+          'Optional caller-supplied public receipt ref matching receipt.pylon.tip_ladder.*. When omitted, a deterministic ref is derived from the Idempotency-Key.',
+      },
+    },
+  },
+  PylonTipLadderResponse: objectSummary(
+    'Reliable pylon-tip receive-ladder receipt: pylonRef, recipientActorRef, amountSat, rung, ladderReason, public receiptRef (receipt.pylon.tip_ladder.*), payInId, and the sender ledger balance after the spend. The route debits the authenticated sender ledger and targets the Pylon owner. If the Pylon has a private registered Spark payout destination and the operator tips buffer can pay, the tip lands direct; otherwise it credits the Pylon owner OpenAgents ledger as a sweepable balance. No raw Spark address, invoices, preimages, wallet material, provider secrets, or payout targets are returned.',
   ),
   CreateForumWorkRequestRequest: {
     type: 'object',
@@ -9114,9 +9132,9 @@ const paths = (): JsonSchema => ({
       operationId: 'payForumPostTipLadder',
       summary: 'Pay Forum tip through the receive ladder',
       description:
-        'Reliable-tips receive ladder (payments.reliable_tips_sweepable_balances.v1): debits the registered sender agent ledger for amountSat and settles on the best available rung. When the recipient has a registered Spark Lightning Address or legacy BOLT 12 destination and the operator tips buffer can pay, the tip lands recipient-wallet direct; otherwise it is credited to the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped: refusals are typed and insufficient sender balance returns HTTP 402. The response cites a public receipt.forum.tip_ladder.* receipt ref readable at /api/forum/receipts/{receiptRef}. No raw invoices, preimages, wallet material, or payout targets are accepted or returned.',
+        'Reliable-tips receive ladder (payments.reliable_tips_sweepable_balances.v1): debits the authenticated sender ledger for amountSat and settles on the best available rung. When the recipient has a registered Spark Lightning Address or legacy BOLT 12 destination and the operator tips buffer can pay, the tip lands recipient-wallet direct; otherwise it is credited to the recipient OpenAgents ledger as a sweepable balance (settlementState credited, settlementAuthority openagents_ledger_credited). A tip is never silently dropped: refusals are typed and insufficient sender balance returns HTTP 402. The response cites a public receipt.forum.tip_ladder.* receipt ref readable at /api/forum/receipts/{receiptRef}. No raw invoices, preimages, wallet material, or payout targets are accepted or returned.',
       tags: ['Forum', 'Payments'],
-      security: agentBearer,
+      security: browserSessionOrAgentBearer,
       parameters: [
         pathParam('postId', 'Forum post UUID.'),
         requiredIdempotencyHeader(
@@ -9128,6 +9146,34 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Tip-ladder settlement receipt.',
           '#/components/schemas/ForumTipLadderResponse',
+        ),
+        '402': okJson(
+          'Tip refused for insufficient sender ledger balance.',
+          '#/components/schemas/ErrorResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/pylons/{pylonRef}/tips/ladder': {
+    post: operation({
+      operationId: 'payPylonTipLadder',
+      summary: 'Pay Pylon tip through the receive ladder',
+      description:
+        'Reliable Pylon-tip receive ladder: debits the authenticated sender ledger for amountSat and targets the owner of the Pylon registration. When the Pylon has a private registered Spark payout destination and the operator tips buffer can pay, the tip lands direct; otherwise it credits the Pylon owner OpenAgents ledger as a sweepable balance. Refusals are typed and insufficient sender balance returns HTTP 402. The response returns a public receipt.pylon.tip_ladder.* ref plus pylonRef and recipientActorRef. No raw Spark address, invoices, preimages, wallet material, provider secrets, or payout targets are accepted or returned.',
+      tags: ['Pylons', 'Payments'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        pathParam('pylonRef', 'Public Pylon registration ref.'),
+        requiredIdempotencyHeader(
+          'Stable idempotency key for this pylon tip-ladder payment. The public receipt ref is derived from it when publicReceiptRef is omitted.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/PylonTipLadderRequest'),
+      responses: {
+        '201': okJson(
+          'Pylon tip-ladder settlement receipt.',
+          '#/components/schemas/PylonTipLadderResponse',
         ),
         '402': okJson(
           'Tip refused for insufficient sender ledger balance.',

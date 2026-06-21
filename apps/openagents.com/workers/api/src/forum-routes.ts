@@ -190,11 +190,18 @@ import {
 } from './runtime-primitives'
 import type { OpenAgentsSiteMdkWebhookConfig } from './site-mdk-webhooks'
 import {
+  PYLON_TIP_LADDER_RECEIPT_REF_PREFIX,
   TipLadderError,
   executeTipLadder,
   isTipLadderReceiptRef,
+  pylonTipLadderReceiptRefFromIdempotencyKey,
   tipLadderReceiptRefFromIdempotencyKey,
 } from './tip-ladder'
+import type {
+  PylonApiStore,
+  PylonSparkPayoutTargetStore,
+} from './pylon-api'
+import { resolveSparkPayoutDestination } from './pylon-api'
 
 type ForumWorkRequestEscrowReserveResult =
   | Readonly<{ ok: true; escrow: LaborEscrowRecord; reserveReceiptRef: string }>
@@ -220,6 +227,8 @@ type ForumRouteDependencies = Readonly<{
       agentUserId: string,
     ) => Promise<VerifiedPublicIdentityClaim | undefined>
   }>
+  pylonApiStore?: PylonApiStore
+  pylonSparkPayoutTargetStore?: PylonSparkPayoutTargetStore
   resolveModeratorActor?: (
     request: Request,
   ) => Promise<
@@ -4344,10 +4353,6 @@ const tipLadderResponse = (
 
     const actor = yield* actorForRequest(request, dependencies)
 
-    if (actor._tag !== 'Agent') {
-      return forbidden('tip ladder requires a registered agent actor')
-    }
-
     const body = yield* decodeJsonBody(
       request,
       S.decodeUnknownSync(ForumTipLadderBody),
@@ -4439,6 +4444,143 @@ const tipLadderResponse = (
         ladderReason: result.ladderReason,
         payInId: result.payInId,
         receiptRef: result.receiptRef,
+        rung: result.rung,
+        senderBalanceMsatAfter: result.senderBalanceMsatAfter,
+      },
+      { status: 201 },
+    )
+  }).pipe(Effect.catch(error => Effect.succeed(writeFailureResponse(error))))
+
+const pylonTipLadderResponse = (
+  request: Request,
+  db: D1Database,
+  pylonRef: string,
+  dependencies: ForumRouteDependencies,
+) =>
+  Effect.gen(function* () {
+    const idempotencyKey = idempotencyKeyFromRequest(request)
+
+    if (idempotencyKey === undefined) {
+      return badRequest('Idempotency-Key header is required')
+    }
+
+    const pylonStore = dependencies.pylonApiStore
+
+    if (pylonStore === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'pylon_tip_ladder_unavailable',
+          reason: 'Pylon tipping is not wired in this deployment.',
+        },
+        { status: 501 },
+      )
+    }
+
+    const actor = yield* actorForRequest(request, dependencies)
+    const body = yield* decodeJsonBody(
+      request,
+      S.decodeUnknownSync(ForumTipLadderBody),
+    )
+    const registration = yield* Effect.tryPromise({
+      catch: error =>
+        new ForumStorageError({
+          operation: 'pylonTipLadder.readRegistration',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () => pylonStore.readRegistration(pylonRef),
+    })
+
+    if (registration === undefined) {
+      return notFound()
+    }
+
+    const makeId = dependencies.makeId ?? randomUuid
+    const nowIso = (dependencies.nowIso ?? currentIsoTimestamp)()
+    const publicReceiptRef =
+      body.publicReceiptRef === undefined
+        ? yield* Effect.promise(() =>
+            pylonTipLadderReceiptRefFromIdempotencyKey(idempotencyKey),
+          )
+        : body.publicReceiptRef
+
+    if (
+      !isTipLadderReceiptRef(publicReceiptRef) ||
+      !publicReceiptRef.startsWith(PYLON_TIP_LADDER_RECEIPT_REF_PREFIX)
+    ) {
+      return badRequest('publicReceiptRef is malformed')
+    }
+
+    const recipientPaymentDestination =
+      dependencies.pylonSparkPayoutTargetStore === undefined
+        ? undefined
+        : yield* Effect.promise(() =>
+            resolveSparkPayoutDestination(
+              dependencies.pylonSparkPayoutTargetStore!,
+              registration.pylonRef,
+              async candidatePylonRef => {
+                if (candidatePylonRef === registration.pylonRef) {
+                  return registration.ownerAgentUserId
+                }
+
+                return (
+                  await pylonStore.readRegistration(candidatePylonRef)
+                )?.ownerAgentUserId
+              },
+            ),
+          )
+    const tipsBufferPay = dependencies.tipsBufferPay ?? null
+    const recipientActorRef = `agent:${registration.ownerAgentUserId}`
+
+    const result = yield* executeTipLadder(db, {
+      amountSat: body.amountSat,
+      contextRef: `pylon.${registration.pylonRef}`,
+      directPayoutExternalRef: 'pylon.tip_recipient_claim',
+      idempotencyKey,
+      makeId,
+      nowIso,
+      payFromBuffer: tipsBufferPay,
+      postId: registration.pylonRef,
+      publicReceiptRef,
+      recipientHasPaymentDestination: recipientPaymentDestination !== undefined,
+      recipientPaymentDestination: recipientPaymentDestination ?? null,
+      recipientRef: recipientActorRef,
+      senderRef: actorRefForForumActor(actor),
+      tipsBufferConfigured: tipsBufferPay !== null,
+    }).pipe(
+      Effect.catch((error: TipLadderError) =>
+        Effect.succeed({
+          kind: 'error' as const,
+          reason: error.reason,
+        }),
+      ),
+    )
+
+    if (result.kind === 'error') {
+      return noStoreJsonResponse(
+        { error: 'pylon_tip_ladder_failed', reason: result.reason },
+        { status: result.reason === 'ledger_batch_failed' ? 409 : 500 },
+      )
+    }
+
+    if (result.kind === 'refused') {
+      return noStoreJsonResponse(
+        {
+          error: 'pylon_tip_ladder_refused',
+          reason: result.reason,
+          senderBalanceMsat: result.senderBalanceMsat,
+        },
+        { status: result.reason === 'insufficient_sender_balance' ? 402 : 400 },
+      )
+    }
+
+    return noStoreJsonResponse(
+      {
+        amountSat: result.amountSat,
+        ladderReason: result.ladderReason,
+        payInId: result.payInId,
+        pylonRef: registration.pylonRef,
+        receiptRef: result.receiptRef,
+        recipientActorRef,
         rung: result.rung,
         senderBalanceMsatAfter: result.senderBalanceMsatAfter,
       },
@@ -5803,6 +5945,21 @@ export const makeForumRoutes = (dependencies: ForumRouteDependencies = {}) => ({
       return request.method === 'GET'
         ? directTipStatusResponse(db, attemptId)
         : Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    const pylonTipLadderMatch =
+      /^\/api\/pylons\/([^/]+)\/tips\/ladder$/.exec(url.pathname)
+
+    if (pylonTipLadderMatch !== null) {
+      const pylonRef = decodePathSegment(pylonTipLadderMatch[1])
+
+      if (pylonRef === undefined) {
+        return Effect.succeed(badRequest('pylon tip ladder path is malformed'))
+      }
+
+      return request.method === 'POST'
+        ? pylonTipLadderResponse(request, db, pylonRef, requestDependencies)
+        : Effect.succeed(methodNotAllowed(['POST']))
     }
 
     const postTipLadderMatch =

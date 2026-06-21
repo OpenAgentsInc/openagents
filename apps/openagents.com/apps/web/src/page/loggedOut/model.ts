@@ -121,6 +121,8 @@ export const ShareProjectionResponse = S.Struct({
 export type ShareProjectionResponse = typeof ShareProjectionResponse.Type
 
 export const PublicRecentPylon = S.Struct({
+  pylonRef: S.optionalKey(S.NullOr(S.String)),
+  ownerAgentRef: S.optionalKey(S.NullOr(S.String)),
   nodeLabel: S.NullOr(S.String),
   nostrPubkeyShort: S.String,
   clientVersion: S.NullOr(S.String),
@@ -128,6 +130,12 @@ export const PublicRecentPylon = S.Struct({
   runtimeState: S.NullOr(S.String),
   lastSeenAtUnixMs: S.NullOr(S.Int),
   lastSeenAtLabel: S.NullOr(S.String),
+  lastHeartbeatAgeSeconds: S.optionalKey(S.NullOr(S.Int)),
+  onlineNow: S.optionalKey(S.NullOr(S.Boolean)),
+  walletReadyNow: S.optionalKey(S.NullOr(S.Boolean)),
+  assignmentReadyNow: S.optionalKey(S.NullOr(S.Boolean)),
+  tippingAvailable: S.optionalKey(S.NullOr(S.Boolean)),
+  tipEndpoint: S.optionalKey(S.NullOr(S.String)),
   eligibleProductCount: S.Int,
   relayUrls: S.Array(S.String),
   products: S.Array(S.String),

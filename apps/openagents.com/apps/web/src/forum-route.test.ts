@@ -471,6 +471,7 @@ describe('Forum routes', () => {
     expect(script).toContain("settlement === 'settled' ? '✓' : '◷'")
     expect(script).toContain('data-forum-tip-amount')
     expect(script).toContain('Send tip')
+    expect(script).toContain('renderTipControls(post)')
     expect(script).toContain('const defaultPostRewardSats = 10')
     expect(script).toContain(
       "const postRewardCaveat = 'Content reward; receipt separates payment from settlement.'",
@@ -497,23 +498,187 @@ describe('Forum routes', () => {
     )
     expect(script).toContain('Log in with GitHub')
     expect(script).toContain('href="\' + escapeHtml(loginHref) + \'"')
-    expect(script).toContain(
-      'Registered agents use Pylon or the Forum API for now.',
-    )
     expect(script).toContain("'/api/forum/launch-status'")
-    expect(script).toContain('checkoutLaunchPath')
+    expect(script).toContain("'/api/public/pylon-stats'")
     expect(script).toContain(
-      "result.receiptRef ? 'success' : 'payment_required'",
+      "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
+    )
+    expect(script).toContain('amountSat: amount')
+    expect(script).toContain(
+      "result.receiptRef ? 'success' : 'failed'",
     )
     expect(script).toContain('Payment recorded · <a')
-    expect(script).toContain('Payment required · ')
-    expect(script).toContain('Agent L402 challenge issued')
     expect(script).toContain("setTipPanel(postId, 'failed'")
     expect(script).not.toContain('raw_invoice')
     expect(script).not.toContain('payment_preimage')
     expect(script).not.toContain('mnemonic')
     expect(script).not.toContain('wallet_secret')
     expect(script).not.toContain('private_key')
+  })
+
+  test('browser topic UI posts forum and Pylon tips to ladder endpoints', async () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const postId = '66666666-6666-4666-8666-666666666666'
+    const calls: Array<Readonly<{ body: unknown; method: string; path: string }>> =
+      []
+    document.body.innerHTML =
+      '<div data-forum-app><main data-forum-main></main></div>'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = String(input)
+      const method = String(init?.method ?? 'GET')
+
+      if (method === 'POST') {
+        calls.push({
+          body:
+            typeof init?.body === 'string'
+              ? JSON.parse(init.body)
+              : init?.body ?? null,
+          method,
+          path,
+        })
+      }
+
+      if (path.includes('/api/forum/topics/')) {
+        return jsonResponse({
+          posts: [
+            {
+              author: {
+                actorRef: 'agent.public.creator',
+                displayName: 'Creator Agent',
+              },
+              bodyText: 'Tip me.',
+              createdAt: '2026-06-12T00:00:00.000Z',
+              postId,
+              postNumber: 1,
+              subject: 'Tip target',
+              tipRecipientReadiness: { tippingAvailable: true },
+              topicId,
+            },
+          ],
+          topic: {
+            forumId: 'product-promises',
+            postCount: 1,
+            title: 'Tip topic',
+            topicId,
+          },
+        })
+      }
+
+      if (path === '/api/forum/launch-status') {
+        return jsonResponse({
+          publicTipping: {
+            postTips: 'ready',
+            remainingBeforeLiveTips: [],
+          },
+        })
+      }
+
+      if (path === '/api/public/pylon-stats') {
+        return jsonResponse({
+          recentPylons: [
+            {
+              nodeLabel: 'Network Pylon',
+              nostrPubkeyShort: 'pylon.public.tip',
+              pylonRef: 'pylon.public.tip',
+              tipEndpoint: '/api/pylons/pylon.public.tip/tips/ladder',
+              tippingAvailable: true,
+              walletReadyNow: true,
+            },
+          ],
+        })
+      }
+
+      if (path.includes('/api/forum/posts/')) {
+        return jsonResponse({
+          amountSat: 10,
+          ladderReason: 'recipient_destination_missing',
+          payInId: 'payin_forum',
+          receiptRef: 'receipt.forum.tip_ladder.sha256.forumroute',
+          rung: 'credited',
+          senderBalanceMsatAfter: 90_000,
+        })
+      }
+
+      if (path.includes('/api/pylons/')) {
+        return jsonResponse({
+          amountSat: 10,
+          ladderReason: 'recipient_destination_missing',
+          payInId: 'payin_pylon',
+          pylonRef: 'pylon.public.tip',
+          receiptRef: 'receipt.pylon.tip_ladder.sha256.pylonroute',
+          rung: 'credited',
+          senderBalanceMsatAfter: 80_000,
+        })
+      }
+
+      return jsonResponse({})
+    })
+
+    new Function(
+      forumScript(
+        ForumTopicRoute({
+          topicId,
+        }),
+        'LoggedIn',
+      ),
+    )()
+    await flushForumScript()
+
+    const forumTipButton = document.querySelector<HTMLButtonElement>(
+      '[data-forum-tip-post-id]',
+    )
+    const pylonTipButton = document.querySelector<HTMLButtonElement>(
+      '[data-pylon-tip-ref]',
+    )
+
+    expect(forumTipButton).not.toBeNull()
+    expect(pylonTipButton).not.toBeNull()
+
+    forumTipButton?.click()
+    pylonTipButton?.click()
+    await flushForumScript()
+
+    expect(calls).toEqual([
+      {
+        body: { amountSat: 10 },
+        method: 'POST',
+        path: `/api/forum/posts/${postId}/tips/ladder`,
+      },
+      {
+        body: { amountSat: 10 },
+        method: 'POST',
+        path: '/api/pylons/pylon.public.tip/tips/ladder',
+      },
+    ])
+    expect(
+      document.querySelector('[data-forum-tip-panel]')?.textContent,
+    ).toContain('Payment recorded')
+    expect(
+      document.querySelector('[data-pylon-tip-panel]')?.textContent,
+    ).toContain('Pylon tip recorded')
+  })
+
+  test('renders Pylon tip controls on topic pages without wallet material', () => {
+    const script = forumScript(
+      ForumTopicRoute({
+        topicId: '55555555-5555-4555-8555-555555555555',
+      }),
+      'LoggedIn',
+    )
+
+    expect(script).toContain('const renderPylonTipPanel = pylonStats =>')
+    expect(script).toContain('data-pylon-tip-ref')
+    expect(script).toContain('data-pylon-tip-amount')
+    expect(script).toContain('Tip pylon')
+    expect(script).toContain(
+      "'/api/pylons/' + encodeURIComponent(pylonRef) + '/tips/ladder'",
+    )
+    expect(script).toContain('Pylon tip recorded')
+    expect(script).not.toContain('rawSparkAddress')
+    expect(script).not.toContain('spark1')
+    expect(script).not.toContain('payment_preimage')
+    expect(script).not.toContain('mnemonic')
   })
 
   test('renders Forum login errors from the callback cookie', async () => {
