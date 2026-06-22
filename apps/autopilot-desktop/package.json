@@ -16,6 +16,7 @@
     "smoke:forum-tipping-multiplayer": "bun test tests/forum-tipping-multiplayer-integration.test.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",
     "smoke:khala-cockpit": "bun scripts/khala-cockpit-smoke.ts",
+    "proof:crackling-arc-pixels": "bun scripts/crackling-arc-pixel-regression.ts",
     "proof:verse-coding-overlay": "bun scripts/verse-launch-smoke.ts",
     "proof:verse-arc": "bun tests/headless/capture-verse-arc-headless.ts",
     "proof:composer": "bun scripts/composer-loop-proof.ts",
