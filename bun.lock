@@ -24,6 +24,8 @@
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#71f89cc",
+        "@openagentsinc/ui": "workspace:*",
+        "@stylexjs/stylex": "0.19.0",
         "effect": "catalog:",
         "electrobun": "1.18.1",
         "foldkit": "^0.102.1",

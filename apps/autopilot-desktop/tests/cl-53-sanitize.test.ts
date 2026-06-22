@@ -397,6 +397,50 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
+  test("desktop shell and managed panes render through StyleX fallback classes", () => {
+    const document = view({
+      ...initialModel,
+      pane: "shell",
+      shellTurns: [
+        { role: "you", target: "current", text: "status" },
+        {
+          role: "autopilot",
+          target: "codex",
+          text: "thinking: checking\nbash: bun test\nresult: ok",
+        },
+      ],
+      paneLayer: {
+        panes: [
+          {
+            id: "pane-stylex-fixture",
+            kind: "sessions",
+            rect: { x: 24, y: 24, w: 360, h: 260 },
+            z: 1,
+          },
+        ],
+        seq: 1,
+        drag: null,
+      },
+    })
+
+    expect(treeContainsClass(document.body, "app-shell-shell")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-root-shell-shell")).toBe(true)
+    expect(treeContainsClass(document.body, "shell-pane")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-shell-pane")).toBe(true)
+    expect(treeContainsClass(document.body, "shell-input")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-shell-input")).toBe(true)
+    expect(treeContainsClass(document.body, "shell-stream-part")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-shell-stream-part")).toBe(true)
+    expect(treeContainsClass(document.body, "pane-layer")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-pane-layer")).toBe(true)
+    expect(treeContainsClass(document.body, "pane-window")).toBe(true)
+    expect(treeContainsClass(document.body, "oa-desktop-pane-window")).toBe(true)
+    expect(treeContainsClass(document.body, "pane-window-resize-bottomright")).toBe(true)
+    expect(
+      treeContainsClass(document.body, "oa-desktop-pane-window-resize-bottomright"),
+    ).toBe(true)
+  })
+
   test("all rendered panes use style objects, not CSS strings", () => {
     const panes: ReadonlyArray<PaneId> = [
       "network",

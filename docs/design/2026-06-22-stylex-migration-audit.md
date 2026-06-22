@@ -106,6 +106,30 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
 - Added shared UI render coverage proving the migrated workroom surfaces emit
   deterministic StyleX fallback classes in Bun tests.
 
+2026-06-22 P5 desktop webview CSS migration, issue #5957:
+
+- Added `apps/autopilot-desktop/src/ui/desktop-stylex.ts` as the first
+  desktop-owned StyleX module.
+- Migrated the desktop network/shell root layout, zero-base shell pane,
+  shell conversation/stream/input controls, shell target tabs, shell return
+  button, managed pane layer, managed pane window chrome, titlebar, close
+  control, body, and resize handles to StyleX.
+- Reduced `apps/autopilot-desktop/src/ui/styles.css` from 3,594 lines to
+  3,180 lines by removing those shell and pane selector blocks. The remaining
+  stylesheet is now focused on global webview defaults, token mirrors, raw
+  canvas/layout shells, Verse overlays, HUD/hotbar controls, diagnostics,
+  public activity, proof replay, and other not-yet-migrated desktop surfaces.
+- Added direct desktop dependencies on `@openagentsinc/ui` and
+  `@stylexjs/stylex` so the webview can consume the shared Foldkit StyleX
+  adapter and compile desktop-owned StyleX modules in the existing CSS build.
+- Confirmed the desktop packaging path still emits generated StyleX CSS through
+  `src/ui/styles.out.css` and copies that file into the Electrobun bundle as
+  `views/autopilot-desktop/styles.css`.
+- Preserved the `@openagentsinc/three-effect` boundary: no Three.js scene
+  lifecycle, canvas resource, renderer, or visual primitive moved into StyleX.
+- Added desktop render coverage proving the migrated shell and pane chrome emit
+  deterministic StyleX fallback classes in Bun tests.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -207,15 +231,19 @@ the existing Rollup `assetFileNames` rule.
 
 ### Autopilot desktop app
 
-`apps/autopilot-desktop/src/ui/styles.css` is 3,503 lines and is currently built
-with Tailwind CLI:
+`apps/autopilot-desktop/src/ui/styles.css` started this implementation sequence
+at 3,594 lines and is now 3,180 lines after the first desktop migration slice.
+It is currently built by a small Bun CSS generation script:
 
 ```sh
-bunx @tailwindcss/cli -i src/ui/styles.css -o src/ui/styles.out.css
+bun scripts/build-css.ts
 ```
 
-The generated `styles.out.css` is copied into the Electrobun view bundle as
-`views/autopilot-desktop/styles.css`.
+That script runs Tailwind CLI, runs the StyleX Bun plugin across the desktop
+view and shared workspace packages, appends generated StyleX CSS under a
+`/* StyleX generated component CSS */` marker, and writes
+`src/ui/styles.out.css`. The generated file is copied into the Electrobun view
+bundle as `views/autopilot-desktop/styles.css`.
 
 Important current responsibilities:
 
@@ -223,19 +251,17 @@ Important current responsibilities:
 - scans `packages/autopilot-ui/src/**/*.ts` so shared Tailwind classes are
   present
 - declares `:root` variables that mirror `cssVars(darkTokens)`
-- owns a large amount of bespoke webview CSS for the shell, panes, HUD, Verse,
-  overlays, terminal surfaces, and interaction states
+- keeps global webview defaults, root/canvas/platform layout, Verse overlays,
+  HUD/hotbar controls, terminal surfaces, diagnostics, public activity, proof
+  replay, and not-yet-migrated interaction states
+- no longer owns the network/shell root positioning, zero-base shell surface,
+  or managed pane window chrome migrated in #5957
 
-StyleX can work here, but desktop needs an explicit build decision. The local
-StyleX repo includes a Bun unplugin entrypoint at
-`@stylexjs/unplugin/bun`, and the source writes dev CSS to `dist/stylex.dev.css`
-by default. The desktop app does not currently run a general-purpose CSS
-bundler for the view stylesheet; it runs Tailwind CLI and copies a generated
-file. A desktop StyleX slice should therefore either:
-
-- introduce a small Bun/esbuild/Vite CSS build step for the webview, or
-- keep Tailwind CLI during coexistence and add a StyleX CSS aggregation step
-  that produces the copied `views/autopilot-desktop/styles.css` equivalent.
+StyleX works in this app through the second option from the original audit:
+keep Tailwind CLI during coexistence and aggregate generated StyleX CSS into
+the same copied stylesheet. The packaging and deploy verification now confirm
+that the generated StyleX rules are present in the packaged desktop asset while
+`stylex.create(...)` is compiled out of the browser entry.
 
 ### Mobile app
 
@@ -662,7 +688,7 @@ Goal: reduce `apps/openagents.com/apps/web/src/styles.css` to global concerns.
 
 Status: started in #5956 by moving the `@openagentsinc/ui` workroom timeline /
 chat-surface CSS out of the web stylesheet and into
-`packages/ui/src/workroom-styles.ts`. The stylesheet is now 327 lines and is
+`packages/ui/src/workroom-styles.ts`. The stylesheet is now 353 lines and is
 mostly global/theme/motion coexistence with one documented workroom
 `v4ChatMessage` user-message coexistence rule. Remaining app-local CSS work should
 target route-specific public or logged-in view classes as they are encountered,
@@ -683,6 +709,16 @@ Recommended order:
 
 The raw Three.js scene system should stay in `three-effect`; only the DOM
 surfaces around it should move.
+
+Status: started in #5957 by moving the network/shell root layout, zero-base
+shell surface, shell stream/input controls, target tabs, return button, managed
+pane layer, managed pane window chrome, and resize handles into
+`apps/autopilot-desktop/src/ui/desktop-stylex.ts`. The desktop stylesheet is now
+3,180 lines and still owns global webview defaults, root token mirrors, raw
+canvas/layout shells, Verse overlays, HUD/hotbar controls, session/detail/filter
+controls, diagnostics, public activity, proof replay, and other high-touch
+desktop states. The next desktop batch should target HUD and session/detail
+controls before attempting Verse overlays.
 
 ### Phase 6: mobile migration track
 

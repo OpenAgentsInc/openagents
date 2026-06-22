@@ -53,8 +53,14 @@ import { capturedKeyboardBindingFromKey } from "./input-profile-preferences.js"
 import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { stylexAttrsWithClass } from "@openagentsinc/ui/stylex-foldkit"
 // #5467: the Autonomous loop view's own pane module (Supervise group).
 import { autonomousLoopPane } from "./autonomous-loop-pane.js"
+import {
+  desktopPaneStyles,
+  desktopRootStyles,
+  desktopShellStyles,
+} from "./desktop-stylex.js"
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
 import { statusHudView } from "./hud-status-element.js"
 import {
@@ -7844,7 +7850,10 @@ const shellTargetLabel = (target: ShellTarget): string =>
 const shellTargetTabs = (active: ShellTarget): Html =>
   h.div(
     [
-      cls("shell-target-tabs"),
+      ...stylexAttrsWithClass<Message>(
+        "shell-target-tabs",
+        desktopShellStyles.targetTabs,
+      ),
       h.Role("tablist"),
       h.AriaLabel("Shell target"),
       h.Title("Shift+Tab cycles shell target"),
@@ -7852,7 +7861,11 @@ const shellTargetTabs = (active: ShellTarget): Html =>
     shellTargetOptions.map((option) =>
       h.button(
         [
-          cls(`shell-target-tab${active === option.target ? " active" : ""}`),
+          ...stylexAttrsWithClass<Message>(
+            `shell-target-tab${active === option.target ? " active" : ""}`,
+            desktopShellStyles.targetTab,
+            active === option.target && desktopShellStyles.targetTabActive,
+          ),
           h.Type("button"),
           h.Role("tab"),
           h.Title(`${option.title} (Shift+Tab)`),
@@ -7981,19 +7994,79 @@ const shellStreamParts = (text: string): ReadonlyArray<ShellStreamPart> | null =
   return sawStreamPart && parts.length > 0 ? parts : null
 }
 
+const shellStreamPartStyle = (kind: ShellStreamPartKind) => {
+  switch (kind) {
+    case "answer":
+      return desktopShellStyles.streamPartAnswer
+    case "tool":
+      return desktopShellStyles.streamPartTool
+    case "result":
+      return desktopShellStyles.streamPartResult
+    case "status":
+      return desktopShellStyles.streamPartStatus
+    case "tokens":
+      return desktopShellStyles.streamPartTokens
+    case "reasoning":
+      return null
+  }
+}
+
+const shellStreamPartBodyStyle = (kind: ShellStreamPartKind) => {
+  switch (kind) {
+    case "reasoning":
+      return desktopShellStyles.streamPartBodyReasoning
+    case "status":
+    case "tokens":
+      return desktopShellStyles.streamPartBodyMuted
+    case "answer":
+    case "result":
+    case "tool":
+      return null
+  }
+}
+
 const shellStreamPartView = (part: ShellStreamPart): Html =>
   h.div(
     [
-      cls(`shell-stream-part shell-stream-part-${part.kind}`),
+      ...stylexAttrsWithClass<Message>(
+        `shell-stream-part shell-stream-part-${part.kind}`,
+        desktopShellStyles.streamPart,
+        shellStreamPartStyle(part.kind),
+      ),
       h.DataAttribute("autopilot-shell-stream-part", part.kind),
     ],
     [
-      h.div([cls("shell-stream-part-label")], [part.label]),
+      h.div(
+        stylexAttrsWithClass<Message>(
+          "shell-stream-part-label",
+          desktopShellStyles.streamPartLabel,
+        ),
+        [part.label],
+      ),
       part.kind === "answer"
-        ? h.div([cls("shell-stream-part-body shell-stream-answer")], [part.body])
+        ? h.div(
+            stylexAttrsWithClass<Message>(
+              "shell-stream-part-body shell-stream-answer",
+              desktopShellStyles.streamPartBody,
+              desktopShellStyles.streamAnswer,
+            ),
+            [part.body],
+          )
         : h.div(
-            [cls("shell-stream-part-body")],
-            [h.pre([cls("shell-stream-pre")], [part.body])],
+            stylexAttrsWithClass<Message>(
+              "shell-stream-part-body",
+              desktopShellStyles.streamPartBody,
+              shellStreamPartBodyStyle(part.kind),
+            ),
+            [
+              h.pre(
+                stylexAttrsWithClass<Message>(
+                  "shell-stream-pre",
+                  desktopShellStyles.streamPre,
+                ),
+                [part.body],
+              ),
+            ],
           ),
     ],
   )
@@ -8003,9 +8076,24 @@ const shellTurnBody = (turn: {
   text: string
 }): Html => {
   const parts = turn.role === "autopilot" ? shellStreamParts(turn.text) : null
-  if (parts === null) return h.div([cls("shell-turn-text")], [turn.text])
+  if (parts === null) {
+    return h.div(
+      stylexAttrsWithClass<Message>(
+        "shell-turn-text",
+        desktopShellStyles.turnText,
+        turn.role === "you" && desktopShellStyles.turnTextYou,
+      ),
+      [turn.text],
+    )
+  }
   return h.div(
-    [cls("shell-stream"), h.DataAttribute("autopilot-shell-stream", "")],
+    [
+      ...stylexAttrsWithClass<Message>(
+        "shell-stream",
+        desktopShellStyles.stream,
+      ),
+      h.DataAttribute("autopilot-shell-stream", ""),
+    ],
     parts.map((part) => shellStreamPartView(part)),
   )
 }
@@ -8016,10 +8104,18 @@ const shellTurnView = (turn: {
   text: string
 }): Html =>
   h.div(
-    [cls(`shell-turn shell-turn-${turn.role}`)],
+    [
+      ...stylexAttrsWithClass<Message>(
+        `shell-turn shell-turn-${turn.role}`,
+        desktopShellStyles.turn,
+      ),
+    ],
     [
       h.div(
-        [cls("shell-turn-role")],
+        stylexAttrsWithClass<Message>(
+          "shell-turn-role",
+          desktopShellStyles.turnRole,
+        ),
         [
           turn.target === "current"
             ? turn.role
@@ -8032,25 +8128,37 @@ const shellTurnView = (turn: {
 
 const shellPane = (model: Model): Html =>
   h.div(
-    [cls("shell-pane")],
+    stylexAttrsWithClass<Message>(
+      "shell-pane",
+      desktopShellStyles.pane,
+    ),
     [
       // The conversation (empty until the first response → truly black on launch).
       model.shellTurns.length === 0
         ? h.empty
         : h.div(
-            [cls("shell-conversation")],
+            stylexAttrsWithClass<Message>(
+              "shell-conversation",
+              desktopShellStyles.conversation,
+            ),
             model.shellTurns.map((turn) => shellTurnView(turn)),
           ),
       // The single bottom text bar.
       h.div(
-        [cls("shell-bar")],
+        stylexAttrsWithClass<Message>(
+          "shell-bar",
+          desktopShellStyles.bar,
+        ),
         [
           // Bottom-left hotbar; blank cells are inert, and the chat input sits
           // immediately to its right.
           hotbar(model, "inline"),
           shellTargetTabs(model.shellTarget),
           h.input([
-            cls("shell-input"),
+            ...stylexAttrsWithClass<Message>(
+              "shell-input",
+              desktopShellStyles.input,
+            ),
             h.Type("text"),
             h.Placeholder(""),
             h.Autofocus(true),
@@ -8366,12 +8474,61 @@ const PANE_KIND_LABELS: ReadonlyMap<PaneId, string> = (() => {
 const paneKindLabel = (kind: PaneId): string =>
   PANE_KIND_LABELS.get(kind) ?? kind
 
+const paneResizeStyle = (handle: PaneResizeHandle) => {
+  switch (handle) {
+    case "top":
+      return [
+        desktopPaneStyles.resizeHorizontal,
+        desktopPaneStyles.resizeTop,
+      ] as const
+    case "bottom":
+      return [
+        desktopPaneStyles.resizeHorizontal,
+        desktopPaneStyles.resizeBottom,
+      ] as const
+    case "left":
+      return [
+        desktopPaneStyles.resizeVertical,
+        desktopPaneStyles.resizeLeft,
+      ] as const
+    case "right":
+      return [
+        desktopPaneStyles.resizeVertical,
+        desktopPaneStyles.resizeRight,
+      ] as const
+    case "topleft":
+      return [
+        desktopPaneStyles.resizeCorner,
+        desktopPaneStyles.resizeTopLeft,
+      ] as const
+    case "topright":
+      return [
+        desktopPaneStyles.resizeCorner,
+        desktopPaneStyles.resizeTopRight,
+      ] as const
+    case "bottomleft":
+      return [
+        desktopPaneStyles.resizeCorner,
+        desktopPaneStyles.resizeBottomLeft,
+      ] as const
+    case "bottomright":
+      return [
+        desktopPaneStyles.resizeCorner,
+        desktopPaneStyles.resizeBottomRight,
+      ] as const
+  }
+}
+
 // One resize handle: a small grab target on an edge/corner. Pointer-down starts a
 // resize gesture for THIS handle (the reducer captures the pane's start rect).
 const paneResizeHandleView = (pane: ManagedPane, handle: PaneResizeHandle): Html =>
   h.div(
     [
-      cls(`pane-window-resize pane-window-resize-${handle}`),
+      ...stylexAttrsWithClass<Message>(
+        `pane-window-resize pane-window-resize-${handle}`,
+        desktopPaneStyles.resize,
+        ...paneResizeStyle(handle),
+      ),
       h.OnPointerDown((_pointerType, button, _sx, _sy, _ts, clientX, clientY) =>
         button === 0
           ? Option.some(
@@ -8392,7 +8549,10 @@ const paneResizeHandleView = (pane: ManagedPane, handle: PaneResizeHandle): Html
 const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
   h.div(
     [
-      cls("pane-window"),
+      ...stylexAttrsWithClass<Message>(
+        "pane-window",
+        desktopPaneStyles.window,
+      ),
       // Absolute geometry straight from the pane data; z stacks focused on top.
       h.Style({
         left: `${pane.rect.x}px`,
@@ -8410,7 +8570,10 @@ const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
       // Title bar — the move handle. Pointer-down starts a move gesture.
       h.div(
         [
-          cls("pane-window-titlebar"),
+          ...stylexAttrsWithClass<Message>(
+            "pane-window-titlebar",
+            desktopPaneStyles.titlebar,
+          ),
           h.OnPointerDown((_pointerType, button, _sx, _sy, _ts, clientX, clientY) =>
             button === 0
               ? Option.some(
@@ -8426,10 +8589,19 @@ const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
           ),
         ],
         [
-          h.span([cls("pane-window-title")], [paneKindLabel(pane.kind)]),
+          h.span(
+            stylexAttrsWithClass<Message>(
+              "pane-window-title",
+              desktopPaneStyles.title,
+            ),
+            [paneKindLabel(pane.kind)],
+          ),
           h.button(
             [
-              cls("pane-window-close"),
+              ...stylexAttrsWithClass<Message>(
+                "pane-window-close",
+                desktopPaneStyles.close,
+              ),
               h.Type("button"),
               h.Title("Close pane"),
               h.OnClick(ClosedManagedPane({ paneId: pane.id })),
@@ -8439,7 +8611,13 @@ const managedPaneWindow = (model: Model, pane: ManagedPane): Html =>
         ],
       ),
       // The pane body: the SAME existing content, rendered inside the window.
-      h.div([cls("pane-window-body")], [paneContent(model, pane.kind)]),
+      h.div(
+        stylexAttrsWithClass<Message>(
+          "pane-window-body",
+          desktopPaneStyles.body,
+        ),
+        [paneContent(model, pane.kind)],
+      ),
       // The 8 resize handles.
       ...PANE_RESIZE_HANDLES.map((handle) => paneResizeHandleView(pane, handle)),
     ],
@@ -8452,7 +8630,13 @@ const managedPaneLayer = (model: Model): Html => {
   const layer: PaneLayer = modelPaneLayer(model)
   if (layer.panes.length === 0) return h.empty
   return h.div(
-    [cls("pane-layer"), h.AriaLabel("Open panes")],
+    [
+      ...stylexAttrsWithClass<Message>(
+        "pane-layer",
+        desktopPaneStyles.layer,
+      ),
+      h.AriaLabel("Open panes"),
+    ],
     layer.panes.map((pane) => managedPaneWindow(model, pane)),
   )
 }
@@ -8469,7 +8653,13 @@ const rootView = (model: Model): Html => {
   // command palette (#5464) still overlays it so Cmd-K opens the hidden full UI.
   if (model.pane === "shell") {
     return h.div(
-      [cls("app-shell app-shell-shell"), themeData],
+      [
+        ...stylexAttrsWithClass<Message>(
+          "app-shell app-shell-shell",
+          desktopRootStyles.shellShell,
+        ),
+        themeData,
+      ],
       [shellPane(model), managedPaneLayer(model), commandPalette(model)],
     )
   }
@@ -8479,7 +8669,13 @@ const rootView = (model: Model): Html => {
   // rides along as the bottom command bar.
   if (model.pane === "network") {
     return h.div(
-      [cls("app-shell app-shell-network"), themeData],
+      [
+        ...stylexAttrsWithClass<Message>(
+          "app-shell app-shell-network",
+          desktopRootStyles.networkShell,
+        ),
+        themeData,
+      ],
       [networkPane(model), managedPaneLayer(model), hotbar(model), commandPalette(model)],
     )
   }
@@ -8513,7 +8709,10 @@ const rootView = (model: Model): Html => {
       // avoids making "shell" the product story.
       h.button(
         [
-          cls("shell-return"),
+          ...stylexAttrsWithClass<Message>(
+            "shell-return",
+            desktopShellStyles.returnButton,
+          ),
           h.Type("button"),
           h.Title("Open fallback shell (Esc)"),
           h.AriaLabel("Open fallback shell"),
