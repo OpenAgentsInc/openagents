@@ -50,6 +50,21 @@ define the WoC-style sight policy: first sight sends full records, continued
 interest permits lite/dynamic updates, and leaving interest prunes local mirrors
 so re-entry sends full records again.
 
+## Browser Command Path
+
+`RegionDurableObject` applies browser/user WebSocket frames as
+`WorldCommandEnvelope` values through Effect command handlers. The P4 hot path
+implements `join_region`, `leave_region`, `set_avatar_position`, `focus_pylon`,
+`clear_pylon_focus`, `send_local_message`, `send_pylon_message`, `send_emote`,
+and `set_agent_intent`.
+
+Each handler returns a schema-encoded `WorldCommandReceipt` inside a
+`WorldDelta`. Rejections are receipts too: browser actors cannot invoke
+service-only projection commands, stale/duplicate pose sequences are rejected,
+pose bounds/velocity/cadence are enforced, and chat/emote/intent text is
+plain-text bounded with cadence checks. Hot presence rows stay in DO memory;
+the DO persists only the transport clock needed for reconnect cursors.
+
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.

@@ -8,6 +8,12 @@ import {
 } from "@openagentsinc/world-contract"
 
 import {
+  applyWorldCommand,
+  commandDeltaFrame,
+  makeEmptyHotState,
+  type WorldHotState,
+} from "./commands"
+import {
   OPENAGENTS_WORLD_WORKER_VERSION,
   bufferHandshakeFrame,
   configFromEnv,
@@ -234,6 +240,7 @@ const handleBridgeIngest = async (
 
 export class RegionDurableObject extends DurableObject<Env> {
   private initialized: Promise<void>
+  private hotState: WorldHotState | null = null
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
@@ -246,7 +253,8 @@ export class RegionDurableObject extends DurableObject<Env> {
   override async fetch(request: Request): Promise<Response> {
     await this.initialized
     const url = new URL(request.url)
-  const regionRef = regionRefFromSocketPath(url.pathname) ?? normalizeRegionRef(url.searchParams.get("region"))
+    const regionRef = regionRefFromSocketPath(url.pathname) ?? normalizeRegionRef(url.searchParams.get("region"))
+    this.ensureHotState(regionRef)
 
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return makeDiagnosticResponse(426, {
@@ -321,19 +329,34 @@ export class RegionDurableObject extends DurableObject<Env> {
       return
     }
 
-    this.upsertSession(attachment, new Date().toISOString())
-    const diagnostic = makeDiagnostic({
-      tag: "command",
-      severity: "info",
-      message: "World command intake scaffold received a frame; command application lands in the next cutover issue.",
-      observedAt: new Date().toISOString(),
-      sourceRefs: [attachment.sessionRef],
-    })
-    webSocket.send(serializeWorldFrame(makeDiagnosticFrame(
-      attachment.regionRef,
-      attachment.cursor,
-      diagnostic,
-    )))
+    const observedAt = new Date().toISOString()
+    this.ensureHotState(attachment.regionRef)
+    const hotState = this.hotState ?? makeEmptyHotState(attachment.regionRef)
+    try {
+      const result = await Effect.runPromise(applyWorldCommand(hotState, JSON.parse(frame) as unknown, observedAt))
+      this.hotState = result.state
+      this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
+      const nextAttachment = {
+        ...attachment,
+        cursor: result.delta.cursor,
+      }
+      webSocket.serializeAttachment(nextAttachment)
+      this.upsertSession(nextAttachment, observedAt)
+      webSocket.send(serializeWorldFrame(commandDeltaFrame(result.delta)))
+    } catch (error) {
+      const diagnostic = makeDiagnostic({
+        tag: "validation",
+        severity: "warn",
+        message: `World command decode failed: ${error instanceof Error ? error.message : String(error)}`,
+        observedAt,
+        sourceRefs: [attachment.sessionRef],
+      })
+      webSocket.send(serializeWorldFrame(makeDiagnosticFrame(
+        attachment.regionRef,
+        attachment.cursor,
+        diagnostic,
+      )))
+    }
   }
 
   override async webSocketClose(webSocket: WebSocket): Promise<void> {
@@ -459,6 +482,41 @@ export class RegionDurableObject extends DurableObject<Env> {
       new Date().toISOString(),
     )
     return { currentSeq: 0, minReplaySeq: 0 }
+  }
+
+  private writeRegionClock(
+    regionRef: string,
+    currentSeq: number,
+    minReplaySeq: number,
+    updatedAt: string,
+  ): void {
+    this.sql.exec(
+      `INSERT INTO region_transport_clock (
+        region_ref,
+        current_seq,
+        min_replay_seq,
+        updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(region_ref) DO UPDATE SET
+        current_seq = excluded.current_seq,
+        min_replay_seq = excluded.min_replay_seq,
+        updated_at = excluded.updated_at`,
+      regionRef,
+      currentSeq,
+      minReplaySeq,
+      updatedAt,
+    )
+  }
+
+  private ensureHotState(regionRef: string): void {
+    if (this.hotState === null || this.hotState.regionRef !== regionRef) {
+      const clock = this.readRegionClock(regionRef)
+      this.hotState = {
+        ...makeEmptyHotState(regionRef),
+        sequence: clock.currentSeq,
+        minReplaySeq: clock.minReplaySeq,
+      }
+    }
   }
 }
 

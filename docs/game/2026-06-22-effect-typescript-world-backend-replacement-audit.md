@@ -774,6 +774,8 @@ open/message paths.
 
 ### P4: Implement User Commands And Hot Presence
 
+Status: implemented in issue #5963.
+
 Add the browser/user command path in the DO. Acceptance:
 
 - `join_region`, `leave_region`, `set_avatar_position`, `focus_pylon`,
@@ -793,6 +795,14 @@ Add the browser/user command path in the DO. Acceptance:
 
 After P4, desktop avatars should be able to join, leave, move, chat, emote, and
 focus pylons against the Cloudflare service locally.
+
+Implementation note: browser WebSocket frames are decoded as
+`WorldCommandEnvelope` values and applied through Effect command handlers over
+DO-owned hot state. The handler set covers join/leave, avatar pose, pylon focus,
+local/pylon chat, emotes, and agent intent. Receipts are always schema-encoded
+and reject service-only writes, stale/duplicate sequences, out-of-bounds or
+too-fast movement, cadence violations, and non-plain text. Hot rows live in DO
+memory while the transport cursor clock remains in DO SQLite for reconnect.
 
 ### P5: Add Alarms, Expiry, And Deterministic Time
 
