@@ -87,6 +87,14 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    (`apps/openagents-world` + `packages/world-{contract,client}` +
    `@openagentsinc/three-effect`), under the evidence-bound motion contract.
 
+10. **[`khala-buildout-roadmap.md`](./khala-buildout-roadmap.md)** — the single
+    sequenced buildout (M0–M8) that converges Khala serving, verification +
+    economics, Pylon/Psionic supply, the Verse visualization, and Autopilot
+    consumption onto a north-star goal: running our **own** version of the
+    Fugu-Ultra-vs-frontier head-to-head ("build a single-file three.js crossy-road
+    game"), but verified, Bitcoin-settled, watchable in the Verse, and with the
+    built game playable inside our three-effect world.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

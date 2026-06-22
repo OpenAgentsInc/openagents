@@ -356,7 +356,10 @@ system.
 
 ## 11. Roadmap
 
-Keyed to the existing gateway EPIC where possible.
+Keyed to the existing gateway EPIC where possible. For the cross-workstream
+buildout sequence (M0–M8) that converges serving, verification, supply,
+visualization, and Autopilot consumption onto the head-to-head north-star demo,
+see [`khala-buildout-roadmap.md`](khala-buildout-roadmap.md).
 
 - **Phase 0 — MVP gateway (mostly landed).** `GET /v1/models` + `POST /v1/chat/completions`, auth + balance gate, adapter registry, stub router/metering (#5476). **Khala work:** name `openagents/khala-mini`; flip the stub router to real cheapest-viable (#5482); turn on a first real adapter. *Success:* a real OpenAI SDK call to `khala-mini` returns a metered completion with a receipt.
 - **Phase 1 — real supply + metering.** Fireworks (#5479, live), Vertex Anthropic (#5480), passthrough (#5481); real per-model decrement (#5477); streaming. **Khala work:** `khala-pro` (escalate + verifier pass), `khala-code` (run tests / verification command → `test_passed`). *Success:* `khala-code` returns receipts with a verification class on real coding tasks.
