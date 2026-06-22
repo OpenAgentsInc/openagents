@@ -149,7 +149,7 @@ const vectorFromXYZ = (
       ]
     : null
 
-// ── Public SpacetimeDB world → visible station/avatar entities ──────────────
+// ── Public Cloudflare world world → visible station/avatar entities ──────────────
 
 export const CHAT_WORLD_STATION_NODE_PREFIX = "world:station:"
 export const CHAT_WORLD_AVATAR_NODE_PREFIX = "world:avatar:"
@@ -426,7 +426,7 @@ const indexEndpoint = (
 // Build an exact-ref endpoint index from the already-projected public world rows.
 // Stations map by pylonRef; avatars map by both actorRef and avatarRef. The
 // fallback ring below remains explicitly labeled, so unknown endpoints never
-// pretend to have a real SpacetimeDB position.
+// pretend to have a real Cloudflare world position.
 export const chatWorldPaymentEndpointIndex = (
   world: ChatWorldMultiplayerProjection | null | undefined,
 ): ChatWorldPaymentEndpointIndex => {

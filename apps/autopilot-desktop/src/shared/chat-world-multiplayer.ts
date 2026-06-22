@@ -7,7 +7,7 @@ export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timel
 // Mirrors FORUM_ACTIVITY_WORLD_RUN_REF in chat-world-forum-activity.ts.
 export const PUBLIC_FORUM_ACTIVITY_WORLD_RUN_REF = "run.public_forum_activity"
 // Legacy placeholder for the local desktop avatar self-filter. Retained only as
-// the fallback when the live SpacetimeDB identity is not yet known (pre-connect)
+// the fallback when the live Cloudflare world identity is not yet known (pre-connect)
 // so the projection still has a non-empty local ref. Once onConnect yields the
 // real identity, the self-filter uses the per-character key built by
 // `chatWorldDesktopAvatarRef` instead. See

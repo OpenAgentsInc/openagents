@@ -8,9 +8,9 @@ import {
   chatWorldDesktopAvatarIdentity,
   defaultChatWorldRegionForRun,
   planChatWorldAvatarPositionWrite,
-  projectChatWorldSpacetimeRows,
+  projectChatWorldCloudflareRows,
   type ChatWorldRegionRow,
-} from "../src/shared/chat-world-spacetimedb"
+} from "../src/shared/chat-world-cloudflare"
 
 const runRef = "run.tassadar.executor.20260615"
 const regionRef = chatWorldRegionRefForRun(runRef)
@@ -41,13 +41,13 @@ const regionRow: ChatWorldRegionRow = {
   staleAvatarPositionMs: CHAT_WORLD_STARTER_REGION_CONTRACT.staleAvatarPositionMs,
 }
 
-describe("projectChatWorldSpacetimeRows", () => {
-  test("maps generated SpacetimeDB rows into the public Verse projection", () => {
-    const projection = projectChatWorldSpacetimeRows({
+describe("projectChatWorldCloudflareRows", () => {
+  test("maps generated Cloudflare world rows into the public Verse projection", () => {
+    const projection = projectChatWorldCloudflareRows({
       flagEnabled: true,
       runRef,
       nowMs: 10_000,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
       database: "openagents-world",
       rows: {
         regions: [regionRow],
@@ -123,7 +123,7 @@ describe("projectChatWorldSpacetimeRows", () => {
   })
 
   test("keeps the generated Street region metadata in the normalized projection", () => {
-    const projection = projectChatWorldSpacetimeRows({
+    const projection = projectChatWorldCloudflareRows({
       flagEnabled: true,
       runRef,
       nowMs: 10_000,
@@ -160,7 +160,7 @@ describe("projectChatWorldSpacetimeRows", () => {
   })
 
   test("disconnect fallback is explicit and inert", () => {
-    const projection = projectChatWorldSpacetimeRows({
+    const projection = projectChatWorldCloudflareRows({
       flagEnabled: true,
       runRef,
       rows: null,

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { tassadarSpacetimeWorldSubscriptionQueries } from './tassadarSpacetimeWorld'
+import { tassadarCloudflareWorldSubscriptionQueries } from './tassadarCloudflareWorld'
 
 describe('tassadar Cloudflare world subscription plan', () => {
   it('subscribes to timeline-backed public activity world events', () => {
-    const queries = tassadarSpacetimeWorldSubscriptionQueries(
+    const queries = tassadarCloudflareWorldSubscriptionQueries(
       'run.tassadar.executor.20260615',
     )
 

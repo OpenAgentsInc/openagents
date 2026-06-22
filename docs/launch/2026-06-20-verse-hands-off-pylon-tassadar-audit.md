@@ -5,7 +5,7 @@
   Tassadar training state, and first-run launch posture.
 - Primary sources: current `main`, open GitHub issues #5523, #5526, #5527,
   #5528, #5556, #5510, #5512, #5520, #5521, `docs/launch/`, `docs/game/`,
-  `apps/autopilot-desktop/`, and `apps/openagents-world-spacetimedb/`.
+  `apps/autopilot-desktop/`, and the deleted legacy world module.
 
 This is a status and launch-path audit. It intentionally treats the open issues
 and current source as the live truth. Older launch/game audit docs are context,
@@ -280,10 +280,10 @@ Missing for hands-off:
 
 Relevant files:
 
-- `apps/openagents-world-spacetimedb/README.md`
-- `apps/openagents-world-spacetimedb/src/lib.rs`
-- `apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs`
-- `apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs`
+- deleted legacy world module README
+- the deleted legacy world module
+- the deleted legacy bridge scripts
+- the deleted legacy bridge scripts
 - `apps/autopilot-desktop/src/shared/chat-world-multiplayer.ts`
 
 Working pieces:
@@ -305,9 +305,9 @@ Working pieces:
 
 Missing for hands-off:
 
-- Desktop currently reuses the generated bindings under
-  `apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings`; a later
-  cleanup should make binding generation/ownership explicit for Desktop.
+- Historical note: this pre-cutover audit described generated web bindings.
+  They have since been deleted; desktop/web now consume the Cloudflare world
+  contract and client packages.
 - Desktop binds a browser-safe display identity for `join_region`, but a richer
   local avatar customization/profile flow is still missing.
 - There is no live position write loop from the Desktop character/spawner into
@@ -564,7 +564,7 @@ Acceptance:
 Implementation shape:
 
 - Generate or vendor Desktop-safe TypeScript bindings for
-  `apps/openagents-world-spacetimedb`.
+  the deleted legacy world module.
 - Keep the Desktop SpacetimeDB client module reconnect/backoff and public-safe
   auth/token path.
 - Feed `projectChatWorldMultiplayer` from live rows, not test rows.

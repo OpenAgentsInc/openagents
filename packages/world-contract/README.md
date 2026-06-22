@@ -6,7 +6,7 @@ This package is transport-neutral. It defines the public-safe world rows,
 commands, receipts, deltas, subscription plans, diagnostics, bridge payloads,
 errors, and read-model projection shapes that both the Worker and clients use.
 It intentionally imports no Worker, Durable Object, D1, WebSocket, Three.js,
-Foldkit, or SpacetimeDB runtime code.
+Foldkit, or backend runtime code.
 
 ## P1 Scope
 

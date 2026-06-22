@@ -20,14 +20,14 @@ import {
 
 import {
   type TassadarRunPublicSummary,
-  type TassadarSpacetimeWorldRows,
-  spacetimeWorldSummaryFromRows,
+  type TassadarCloudflareWorldRows,
+  cloudflareWorldSummaryFromRows,
 } from './tassadarRunSnapshot'
 
-export const TASSADAR_SPACETIME_WORLD_URL_DATA_KEY = 'cloudflare-world-url'
-export const TASSADAR_SPACETIME_DATABASE_DATA_KEY = 'cloudflare-world-database'
-export const TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE = `data-${TASSADAR_SPACETIME_WORLD_URL_DATA_KEY}`
-export const TASSADAR_SPACETIME_DATABASE_ATTRIBUTE = `data-${TASSADAR_SPACETIME_DATABASE_DATA_KEY}`
+export const TASSADAR_CLOUDFLARE_WORLD_URL_DATA_KEY = 'cloudflare-world-url'
+export const TASSADAR_CLOUDFLARE_DATABASE_DATA_KEY = 'cloudflare-world-database'
+export const TASSADAR_CLOUDFLARE_WORLD_URL_ATTRIBUTE = `data-${TASSADAR_CLOUDFLARE_WORLD_URL_DATA_KEY}`
+export const TASSADAR_CLOUDFLARE_DATABASE_ATTRIBUTE = `data-${TASSADAR_CLOUDFLARE_DATABASE_DATA_KEY}`
 export const TASSADAR_AVATAR_POSITION_THROTTLE_MS = 250
 export const TASSADAR_ATTENTION_THROTTLE_MS = 1_000
 export const TASSADAR_STALE_AVATAR_POSITION_MS = 20_000
@@ -50,12 +50,12 @@ export const TASSADAR_REGION_BOUNDS = TASSADAR_STARTER_REGION_CONTRACT.bounds
 
 const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = 'run.public_activity_timeline'
 
-export type TassadarSpacetimeWorldConfig = Readonly<{
+export type TassadarCloudflareWorldConfig = Readonly<{
   database: string
   worldUrl: string
 }>
 
-export type TassadarSpacetimeWorldSubscription = Readonly<{
+export type TassadarCloudflareWorldSubscription = Readonly<{
   clearPylonFocus: (pylonRef: string) => void
   disconnect: () => void
   focusPylon: (input: TassadarPylonAttentionUpdate) => void
@@ -128,11 +128,11 @@ export const clampTassadarLocalAvatarPosition = (
   ),
 })
 
-export const spacetimeConfigFromElement = (
+export const cloudflareWorldConfigFromElement = (
   element: HTMLElement,
-): TassadarSpacetimeWorldConfig | null => {
-  const worldUrl = text(element.getAttribute(TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE))
-  const database = text(element.getAttribute(TASSADAR_SPACETIME_DATABASE_ATTRIBUTE))
+): TassadarCloudflareWorldConfig | null => {
+  const worldUrl = text(element.getAttribute(TASSADAR_CLOUDFLARE_WORLD_URL_ATTRIBUTE))
+  const database = text(element.getAttribute(TASSADAR_CLOUDFLARE_DATABASE_ATTRIBUTE))
   if (worldUrl === '' || database === '') return null
   try {
     return { database, worldUrl: new URL(worldUrl).toString() }
@@ -141,7 +141,7 @@ export const spacetimeConfigFromElement = (
   }
 }
 
-export const tassadarSpacetimeWorldSubscriptionQueries = (
+export const tassadarCloudflareWorldSubscriptionQueries = (
   runRef: string,
 ): ReadonlyArray<string> => [
   `cloudflare-world:scope=run:${runRef}`,
@@ -161,7 +161,7 @@ const movementModeToAnimation = (
 const readModelRows = (
   readModel: ClientWorld,
   runRef: string,
-): TassadarSpacetimeWorldRows => ({
+): TassadarCloudflareWorldRows => ({
   agentAvatars: Object.values(readModel.avatars).map(row => ({
     actorKind: row.avatarKind,
     actorRef: row.accountRef ?? row.avatarRef,
@@ -315,15 +315,15 @@ const makeCommand = (input: {
   seq: input.seq as WorldSequence,
 })
 
-export const startTassadarSpacetimeWorldSubscription = async (
+export const startTassadarCloudflareWorldSubscription = async (
   input: Readonly<{
     baseSummary: TassadarRunPublicSummary
-    config: TassadarSpacetimeWorldConfig
+    config: TassadarCloudflareWorldConfig
     displayName: string
     onError: (error: unknown) => void
     onSummary: (summary: TassadarRunPublicSummary) => void
   }>,
-): Promise<TassadarSpacetimeWorldSubscription> => {
+): Promise<TassadarCloudflareWorldSubscription> => {
   const runRef = runRefForSummary(input.baseSummary)
   const regionRef = tassadarRegionRefForRun(runRef)
   const actorRef = makeWorldClientActorRef('web')
@@ -364,7 +364,7 @@ export const startTassadarSpacetimeWorldSubscription = async (
       .then(readModel => {
         if (!closed) {
           input.onSummary(
-            spacetimeWorldSummaryFromRows(input.baseSummary, readModelRows(readModel, runRef)),
+            cloudflareWorldSummaryFromRows(input.baseSummary, readModelRows(readModel, runRef)),
           )
         }
       })

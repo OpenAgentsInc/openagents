@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest"
 
 import {
-  analyzeSpacetimePlan,
   checkR2ClipAvailability,
   checkRenderQueueHealth,
   checkSourceLag,
@@ -189,19 +188,6 @@ describe("visibility-freshness-smoke (#5435)", () => {
     )
   })
 
-  test("analyzes a SpacetimeDB bridge plan", () => {
-    const checks = analyzeSpacetimePlan({
-      bridgeRef: "bridge.public-activity-timeline",
-      calls: [
-        { reducer: "append_world_event" },
-        { reducer: "record_projection_cursor" },
-      ],
-      sourceHash: "abc123",
-    })
-
-    expect(checks.every(check => check.passed)).toBe(true)
-  })
-
   test("summarizes failures separately from warnings", () => {
     expect(
       summarizeReport([
@@ -250,12 +236,9 @@ describe("visibility-freshness-smoke (#5435)", () => {
       fetchImpl,
       now: new Date("2026-06-19T00:00:30.000Z"),
       r2ManifestUrls: ["https://clips.openagents.test/manifest.json"],
-      spacetimePlan: false,
     })
 
     expect(report.summary.status).toBe("passed")
-    expect(report.checks.map(check => check.name)).toContain(
-      "spacetime_bridge_plan_skipped",
-    )
+    expect(report.checks.map(check => check.name)).toContain("r2_clip_manifest_available")
   })
 })

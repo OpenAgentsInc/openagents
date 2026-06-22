@@ -21,7 +21,7 @@ The immediate destination remains:
   particle, picking, interpolation, and world-render primitives.
 - `openagents/apps/openagents.com`: `/tassadar` and later MMO-world surfaces
   that compose shared primitives against real OpenAgents state.
-- `openagents/apps/openagents-world-spacetimedb`: live world interaction state,
+- deleted legacy world module: live world interaction state,
   proximity, avatar position, local chat, and public-safe world rows.
 - Existing OpenAgents Worker/D1 authority: run truth, proof, receipt,
   settlement, payout, product-promise, pylon, and training authority.

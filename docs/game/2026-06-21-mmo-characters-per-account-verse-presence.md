@@ -11,7 +11,7 @@ whom."
 Two Autopilot Desktop instances cannot see each other's avatars in the Verse.
 
 Root cause: the world module derives the avatar key **only** from the
-SpacetimeDB identity. In `apps/openagents-world-spacetimedb/src/lib.rs`:
+SpacetimeDB identity. In the deleted legacy world module:
 
 ```rust
 fn avatar_ref_for_sender(ctx: &ReducerContext) -> String {
@@ -77,7 +77,7 @@ avatars.
 
 ## Changes
 
-### 1. World module (`apps/openagents-world-spacetimedb/src/lib.rs`)
+### 1. World module (the deleted legacy world module)
 
 - Added a `character_id: String` parameter to every reducer that derives an
   avatar key: `join_region`, `set_avatar_position`, `leave_region`,
@@ -93,18 +93,17 @@ avatars.
 - All other behavior is identical (validation, rate limits, region bounds,
   stale expiry, attention/chat/emote/intent semantics).
 
-### 2. Regenerated TS bindings
+### 2. Historical generated TS bindings
 
-`apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings/` regenerated
-with `spacetime generate` (CLI 2.6.0) after a clean WASM build. The diff is
-purely additive: a `characterId: __t.string()` field on each affected reducer
-schema. `index.ts` is unchanged (the regen's incidental `@ts-nocheck`/trailing-
-newline churn was reverted to keep the diff tight).
+This document predates the Cloudflare/Effect world cutover. The generated web
+binding directory described here was deleted during the hard decommission pass;
+the live contract now flows through `packages/world-contract` and
+`packages/world-client`.
 
 ### 3. Desktop client (`apps/autopilot-desktop`)
 
 - `chatWorldCharacterId()` resolves `OA_CHARACTER` (default `"main"`).
-- `subscribeSpacetimeWorld` resolves the character id and plumbs it into the
+- `subscribeCloudflareWorld` resolves the character id and plumbs it into the
   multiplayer client. The `joinRegion` / `setAvatarPosition` / `leaveRegion`
   reducer calls now carry `characterId`.
 - The connection's `onConnect(ctx, identity, token)` callback now yields the
@@ -144,7 +143,7 @@ re-dispatch, not a scene rebuild.
 
 Deterministic checks (no manual screenshots):
 
-- **World module** (`cargo test` in `apps/openagents-world-spacetimedb`):
+- **World module** (`cargo test` in the deleted legacy world module):
   distinct `character_id`s under one sender → distinct avatar keys (→ distinct
   rows); same id is stable (so `leave_region(character_id)` targets exactly one
   character); same id on different identities never collides; sanitization is
@@ -152,7 +151,7 @@ Deterministic checks (no manual screenshots):
 - **Desktop**
   (`apps/autopilot-desktop/src/shared/chat-world-multiplayer.test.ts`,
   `tests/chat-world-subscriptions.test.ts`,
-  `tests/chat-world-spacetimedb.test.ts`): avatar-key construction +
+  `tests/chat-world-cloudflare.test.ts`): avatar-key construction +
   sanitization; the projection carries `localAvatarRef`; reducer calls carry
   `characterId`; and an integration-style test that, once the identity is known,
   the scene self-filters **only** the local character while rendering the same

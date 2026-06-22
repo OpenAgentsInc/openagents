@@ -1005,26 +1005,25 @@ typed session fields (`actorRef`, `actorClass`, `characterId`, cursor), hydrates
 the Region Durable Object socket, decodes snapshot/delta/diagnostic frames, and
 resolves command receipts back into the client read model.
 
-Autopilot Desktop now defaults `subscribeSpacetimeWorld` to the Cloudflare
-transport and `@openagentsinc/world-contract` command envelopes. The old
-generated-row connection path remains only as an injected test harness seam
-until P11 deletes it; production code no longer imports the generated web
-bindings. The desktop adapter mirrors `WorldReadModel` rows into the existing
-`ChatWorldMultiplayerProjection`, preserving disconnected single-player
-fallbacks, pylon stations, remote avatars, local chat rows, and focus intents.
+Autopilot Desktop now defaults `subscribeCloudflareWorld` to the Cloudflare
+transport and `@openagentsinc/world-contract` command envelopes. Production code
+no longer imports generated web bindings. The desktop adapter mirrors
+`WorldReadModel` rows into the existing `ChatWorldMultiplayerProjection`,
+preserving disconnected single-player fallbacks, pylon stations, remote avatars,
+local chat rows, and focus intents.
 
 The web Tassadar world subscription module also uses the shared Cloudflare
 transport and local structural public-row adapters instead of generated
-SpacetimeDB bindings. Focus, chat, pylon message, avatar pose, join, and leave
-commands are sent through typed browser command envelopes. Remaining generated
-binding files, manifest dependencies, old comments, and adapter names are P11
-decommission work, not a runtime rollback switch.
+bindings. Focus, chat, pylon message, avatar pose, join, and leave commands are
+sent through typed browser command envelopes. P11 removed the remaining
+generated binding files, manifest dependencies, old comments, and adapter names;
+there is no runtime rollback switch.
 
 ### P11: Delete SpacetimeDB Codepaths
 
 Remove the old implementation immediately after P10 smoke passes. Acceptance:
 
-- Delete `apps/openagents-world-spacetimedb`.
+- Delete deleted legacy world module.
 - Delete generated SpacetimeDB TypeScript bindings and cross-app imports.
 - Delete SpacetimeDB launch/publish scripts, nginx/TLS/certbot instructions,
   GCP/IAP VM runbooks, smoke profiles, and old env vars.
@@ -1035,6 +1034,21 @@ Remove the old implementation immediately after P10 smoke passes. Acceptance:
 
 This issue has no compatibility carve-out. If something still needs the old
 backend, it blocks P11 and must be ported, not grandfathered.
+
+Implementation note: P11 deletes the legacy world module directory, generated
+web TypeScript bindings, bridge projection scripts, VM/admin runbooks, old
+world backend dependencies, old generated-binding import paths, and active
+desktop/web symbol names that implied backend compatibility. The active clients
+now use Cloudflare-world filenames and exported names:
+`chat-world-cloudflare.ts`, `subscribeCloudflareWorld`, and
+`tassadarCloudflareWorld.ts`.
+
+Validation includes repository search over active code for `spacetimedb`,
+`spacetime.openagents.com`, generated binding paths, and the deleted module
+path; the only remaining mentions are historical docs/audit references or
+repo-agent guidance that forbids resurrecting the deleted backend. The
+visibility freshness smoke no longer executes a local bridge-plan script from
+the deleted module.
 
 ### P12: Update Invariants, Docs, And Operator Runbooks
 

@@ -20,7 +20,7 @@ stores. Public routes are projections:
 | Activity timeline | Worker/D1 public-safe reducers for Pylon, training, verification, settlement, Forum, Artanis, and capacity | `GET /api/public/activity-timeline` and `GET /api/public/activity-timeline/stream` |
 | Live Tassadar scene | `GET /api/public/tassadar-run-summary` plus optional SpacetimeDB world rows | `/tassadar` browser view |
 | Proof replay bundle | Public Worker replay resolver | `/api/public/proof-replays`, `/api/public/tassadar-replays/first-real-settlement` |
-| SpacetimeDB world | Projection from public timeline/run summary | `apps/openagents-world-spacetimedb/scripts/*project*.mjs` |
+| SpacetimeDB world | Projection from public timeline/run summary | the deleted legacy bridge scripts |
 | Replay clip jobs | Worker/D1 clip-job records | `GET|POST /api/public/replay-clips` after owner integration |
 | Replay clip bytes | Owner-provisioned R2 bucket/public host | `openagents.replay_clip_manifest.v1` artifact URLs |
 
@@ -114,7 +114,7 @@ the authority.
 Build a dry-run reducer plan from the public activity timeline:
 
 ```sh
-bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs \
+bun deleted legacy bridge script \
   --json \
   --limit 50
 ```
@@ -122,7 +122,7 @@ bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs \
 Apply to the owned VM only from an operator-approved environment:
 
 ```sh
-bun apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs \
+bun deleted legacy bridge script \
   --apply-vm \
   --limit 50
 ```

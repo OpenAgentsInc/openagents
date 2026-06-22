@@ -1,9 +1,9 @@
 # OpenAgents World Worker
 
 `apps/openagents-world` is the Cloudflare Worker and Durable Object home for
-the custom Effect/TypeScript Verse world backend. It replaces SpacetimeDB as the
-runtime authority for regional world state, WebSocket fanout, bridge ingest, and
-public read-model projection.
+the custom Effect/TypeScript Verse world backend. It is the runtime authority
+for regional world state, WebSocket fanout, bridge ingest, and public read-model
+projection.
 
 ## Runtime Shape
 

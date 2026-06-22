@@ -6,7 +6,7 @@
 //                                        ChatWorldPylonScene (live nodes + growth)
 //   - subscribePaymentParticles(dispatch) P2: SSE /api/public/activity-timeline/
 //                                        stream (poll fallback) → PaymentParticle
-//   - subscribeSpacetimeWorld(dispatch)   P2: openagents-world SpacetimeDB
+//   - subscribeCloudflareWorld(dispatch)   P2: openagents-world Cloudflare world
 //                                        public rows → multiplayer projection
 //
 // All feeds are FLAG-GATED and return an unsubscribe() the scene calls
@@ -61,13 +61,13 @@ import {
   defaultChatWorldRegionForRun,
   planChatWorldAvatarPositionWrite,
   projectChatWorldClientWorld,
-  projectChatWorldSpacetimeRows,
+  projectChatWorldCloudflareRows,
   type ChatWorldAvatarPositionPlan,
   type ChatWorldAvatarPositionWrite,
   type ChatWorldDesktopAvatarIdentity,
   type ChatWorldRegionRow,
-  type ChatWorldSpacetimeRows,
-} from "../shared/chat-world-spacetimedb.js"
+  type ChatWorldCloudflareRows,
+} from "../shared/chat-world-cloudflare.js"
 import type { PylonStatsSnapshot } from "../shared/pylon-network-scene.js"
 
 const PUBLIC_BASE_URL = "https://openagents.com"
@@ -282,7 +282,7 @@ export const subscribePaymentParticles = (
 // P2 — Cloudflare world rows
 // ─────────────────────────────────────────────────────────────────────────────
 
-type SpacetimeTableRef = Readonly<{
+type CloudflareTableRef = Readonly<{
   iter?: () => Iterable<unknown>
   onInsert?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
   onUpdate?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
@@ -292,8 +292,8 @@ type SpacetimeTableRef = Readonly<{
   removeOnDelete?: (cb: (...args: ReadonlyArray<unknown>) => void) => void
 }>
 
-export type SpacetimeWorldConnection = Readonly<{
-  db?: Record<string, SpacetimeTableRef | undefined>
+export type CloudflareWorldConnection = Readonly<{
+  db?: Record<string, CloudflareTableRef | undefined>
   reducers?: {
     readonly joinRegion?: (args: {
       readonly regionRef: string
@@ -323,11 +323,11 @@ export type SpacetimeWorldConnection = Readonly<{
   disconnect?: () => void
 }>
 
-type SpacetimeWorldConnectInput = Readonly<{
+type CloudflareWorldConnectInput = Readonly<{
   database: string
   token: string | null
   worldUrl: string
-  // `identity` is the live SpacetimeDB account identity (hex). It is the
+  // `identity` is the live Cloudflare world account identity (hex). It is the
   // account axis of the MMO model and is needed to build this instance's own
   // per-character avatar key for the scene self-filter.
   onConnected: (token: string | null, identity: string | null) => void
@@ -335,8 +335,8 @@ type SpacetimeWorldConnectInput = Readonly<{
   onUnavailable: () => void
 }>
 
-export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
-  readonly connect?: (input: SpacetimeWorldConnectInput) => SpacetimeWorldConnection
+export type ChatWorldCloudflareSubscriptionDeps = ChatWorldSubscriptionDeps & {
+  readonly connect?: (input: CloudflareWorldConnectInput) => CloudflareWorldConnection
   readonly database?: string
   readonly worldUrl?: string
   readonly runRef?: string
@@ -363,7 +363,7 @@ export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
   readonly characterId?: string | null | (() => string | null)
 }
 
-export type SpacetimeWorldDispatch = (
+export type CloudflareWorldDispatch = (
   world: ChatWorldMultiplayerProjection,
 ) => void
 
@@ -390,15 +390,15 @@ export type VerseMultiplayerClient = Readonly<{
 let activeVerseMultiplayerClient: VerseMultiplayerClient | null = null
 
 const resolveStorage = (
-  deps?: ChatWorldSpacetimeSubscriptionDeps,
-): ChatWorldSpacetimeSubscriptionDeps["storage"] => {
+  deps?: ChatWorldCloudflareSubscriptionDeps,
+): ChatWorldCloudflareSubscriptionDeps["storage"] => {
   if (deps?.storage !== undefined) return deps.storage
   const storage = (globalThis as { localStorage?: Storage }).localStorage
   return storage ?? null
 }
 
 const resolveTimeout = (
-  deps?: ChatWorldSpacetimeSubscriptionDeps,
+  deps?: ChatWorldCloudflareSubscriptionDeps,
 ): ((handler: () => void, ms: number) => unknown) =>
   deps?.setTimeout ??
   ((handler, ms) =>
@@ -406,33 +406,33 @@ const resolveTimeout = (
       .setTimeout(handler, ms))
 
 const resolveClearTimeout = (
-  deps?: ChatWorldSpacetimeSubscriptionDeps,
+  deps?: ChatWorldCloudflareSubscriptionDeps,
 ): ((handle: unknown) => void) =>
   deps?.clearTimeout ??
   ((handle) =>
     (globalThis as unknown as { clearTimeout: (h: unknown) => void })
       .clearTimeout(handle))
 
-const collectRows = (table: SpacetimeTableRef | undefined): ReadonlyArray<unknown> =>
+const collectRows = (table: CloudflareTableRef | undefined): ReadonlyArray<unknown> =>
   table?.iter === undefined ? [] : [...table.iter()]
 
-// The SpacetimeDB SDK exposes connection.db / connection.reducers accessors by
+// The Cloudflare world SDK exposes connection.db / connection.reducers accessors by
 // the table/reducer SCHEMA NAME, which is snake_case (e.g. `world_region`,
 // `set_avatar_position`). Earlier code read camelCase (`worldRegion`,
 // `setAvatarPosition`), which silently resolved to undefined -> empty world and
 // no published avatars. Resolve snake_case first, fall back to camelCase so this
 // is correct regardless of SDK casing.
 const pickTable = (
-  db: SpacetimeWorldConnection["db"] | undefined,
+  db: CloudflareWorldConnection["db"] | undefined,
   snake: string,
   camel: string,
-): SpacetimeTableRef | undefined => {
-  const bag = db as unknown as Record<string, SpacetimeTableRef | undefined> | undefined
+): CloudflareTableRef | undefined => {
+  const bag = db as unknown as Record<string, CloudflareTableRef | undefined> | undefined
   return bag?.[snake] ?? bag?.[camel]
 }
 
 const pickReducer = (
-  reducers: SpacetimeWorldConnection["reducers"] | undefined,
+  reducers: CloudflareWorldConnection["reducers"] | undefined,
   snake: string,
   camel: string,
 ): ((args: unknown) => unknown) | undefined => {
@@ -444,7 +444,7 @@ const pickReducer = (
 }
 
 const collectPositionRows = (
-  table: SpacetimeTableRef | undefined,
+  table: CloudflareTableRef | undefined,
   presenceFeed: "high" | "low",
 ): ReadonlyArray<unknown> =>
   collectRows(table).map((row) =>
@@ -454,8 +454,8 @@ const collectPositionRows = (
   )
 
 const worldRowsFromConnection = (
-  connection: SpacetimeWorldConnection,
-): ChatWorldSpacetimeRows => ({
+  connection: CloudflareWorldConnection,
+): ChatWorldCloudflareRows => ({
   regions: collectRows(pickTable(connection.db, "world_region", "worldRegion")),
   stations: collectRows(pickTable(connection.db, "pylon_station", "pylonStation")),
   avatars: collectRows(pickTable(connection.db, "agent_avatar", "agentAvatar")),
@@ -478,8 +478,8 @@ const invokeMaybePromise = (value: unknown): void => {
   }
 }
 
-export const publishSpacetimeAvatarPosition = (
-  connection: SpacetimeWorldConnection,
+export const publishCloudflareAvatarPosition = (
+  connection: CloudflareWorldConnection,
   plan: ChatWorldAvatarPositionPlan,
 ): boolean => {
   if (plan.ok !== true) return false
@@ -528,7 +528,7 @@ const poseDistance = (
 }
 
 export const createVerseMultiplayerClient = (input: {
-  readonly connection: SpacetimeWorldConnection
+  readonly connection: CloudflareWorldConnection
   readonly database: string
   readonly displayName: string
   readonly runRef: string
@@ -549,7 +549,7 @@ export const createVerseMultiplayerClient = (input: {
     sanitizeChatWorldCharacterId(resolveChatWorldCharacterId(input.characterId))
 
   const projection = () =>
-    projectChatWorldSpacetimeRows({
+    projectChatWorldCloudflareRows({
       flagEnabled: true,
       runRef: input.runRef,
       rows: worldRowsFromConnection(input.connection),
@@ -611,7 +611,7 @@ export const createVerseMultiplayerClient = (input: {
       characterId: characterId(),
     })
     if (plan.ok !== true) return plan
-    if (!publishSpacetimeAvatarPosition(input.connection, plan)) {
+    if (!publishCloudflareAvatarPosition(input.connection, plan)) {
       return { ok: false, reason: "position reducer unavailable" }
     }
     lastAcceptedByRegion.set(
@@ -633,8 +633,8 @@ export const publishActiveVerseLocalPose = (
   }
 
 const attachWorldConnection = (input: {
-  readonly connection: SpacetimeWorldConnection
-  readonly dispatch: SpacetimeWorldDispatch
+  readonly connection: CloudflareWorldConnection
+  readonly dispatch: CloudflareWorldDispatch
   readonly database: string
   readonly runRef: string
   readonly nowMs: () => number
@@ -681,7 +681,7 @@ const attachWorldConnection = (input: {
   input.onClientReady?.(client)
 
   const dispatchSnapshot = (): void => {
-    const projection = projectChatWorldSpacetimeRows({
+    const projection = projectChatWorldCloudflareRows({
       flagEnabled: true,
       runRef: input.runRef,
       rows: worldRowsFromConnection(input.connection),
@@ -843,8 +843,8 @@ const createCloudflareVerseMultiplayerClient = (input: {
   }
 }
 
-const subscribeCloudflareWorld = (
-  dispatch: SpacetimeWorldDispatch,
+const subscribeCloudflareWorldTransport = (
+  dispatch: CloudflareWorldDispatch,
   input: {
     readonly database: string
     readonly identity: ChatWorldDesktopAvatarIdentity
@@ -935,9 +935,9 @@ const subscribeCloudflareWorld = (
   }
 }
 
-export const subscribeSpacetimeWorld = (
-  dispatch: SpacetimeWorldDispatch,
-  deps?: ChatWorldSpacetimeSubscriptionDeps,
+export const subscribeCloudflareWorld = (
+  dispatch: CloudflareWorldDispatch,
+  deps?: ChatWorldCloudflareSubscriptionDeps,
 ): Unsubscribe => {
   const flags = { ...chatWorldFlags(), ...(deps?.flags ?? {}) }
   if (flags.CHAT_WORLD_MULTIPLAYER !== true) return noop
@@ -965,7 +965,7 @@ export const subscribeSpacetimeWorld = (
       characterId: characterId(),
       connectedAtMs: nowMs(),
     }))
-    return subscribeCloudflareWorld(dispatch, {
+    return subscribeCloudflareWorldTransport(dispatch, {
       database,
       identity,
       runRef,
@@ -990,7 +990,7 @@ export const subscribeSpacetimeWorld = (
   let retryHandle: unknown = null
   let cleanupConnection: Unsubscribe | null = null
   let reconnectAttempt = 0
-  // The live SpacetimeDB account identity, once onConnect yields it. Combined
+  // The live Cloudflare world account identity, once onConnect yields it. Combined
   // with characterId it gives this instance's own avatar key for self-filter.
   let liveIdentityHex: string | null = null
   let redispatchSnapshot: (() => void) | null = null
@@ -1000,7 +1000,7 @@ export const subscribeSpacetimeWorld = (
       : null
 
   const dispatchUnavailable = (): void => {
-    dispatch(projectChatWorldSpacetimeRows({
+    dispatch(projectChatWorldCloudflareRows({
       flagEnabled: false,
       runRef,
       rows: null,

@@ -1100,7 +1100,7 @@ export const tassadarRunBulletinWorldItem = (
   }
 }
 
-export interface TassadarSpacetimeWorldRows {
+export interface TassadarCloudflareWorldRows {
   readonly agentAvatars?: ReadonlyArray<AgentAvatar>
   readonly avatarPositions?: ReadonlyArray<AvatarPosition>
   readonly chatBubbles?: ReadonlyArray<ChatBubble>
@@ -1583,9 +1583,9 @@ const settlementRowsFromWorld = (
     }
   })
 
-export const spacetimeWorldSummaryFromRows = (
+export const cloudflareWorldSummaryFromRows = (
   baseSummary: TassadarRunPublicSummary,
-  rows: TassadarSpacetimeWorldRows,
+  rows: TassadarCloudflareWorldRows,
 ): TassadarRunPublicSummary => {
   const runRef = runRefForSummary(baseSummary)
   const trainingRun = (rows.trainingRuns ?? []).find(

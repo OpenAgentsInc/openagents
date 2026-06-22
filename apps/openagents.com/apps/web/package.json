@@ -33,7 +33,6 @@
     "effect": "4.0.0-beta.70",
     "foldkit": "^0.102.1",
     "slot-text": "0.3.1",
-    "spacetimedb": "2.6.0",
     "tailwindcss": "^4.2.4",
     "three": "0.184.0"
   },

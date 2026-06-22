@@ -401,7 +401,7 @@ export const Model = ts("AutopilotDesktop", {
   //   - chatWorldParticles: the bounded set of active payment-particle
   //     descriptors (opaque PaymentParticle[]; read via modelChatWorldParticles),
   //     each evidence-bound to a real sourceRef.
-  //   - chatWorldMultiplayer: latest public SpacetimeDB world projection
+  //   - chatWorldMultiplayer: latest public Cloudflare world world projection
   //     (stations, avatars, proximity chat) or null while disconnected.
   chatWorldScene: S.NullOr(S.Unknown),
   chatWorldParticles: S.Array(S.Unknown),
@@ -410,7 +410,7 @@ export const Model = ts("AutopilotDesktop", {
   // the inspector chip. Null when nothing is selected. Click → SelectedChatWorldNode.
   chatWorldInspectedRef: S.NullOr(S.String),
   // Verse world item currently in walk-up range. The view derives overlay copy
-  // from server-owned public projections instead of SpacetimeDB authority.
+  // from server-owned public projections instead of Cloudflare world authority.
   nearVerseWorldItemId: S.NullOr(S.String),
   // Pose restored only when a material scene projection refresh is accepted.
   // Plain controller pose events must not write render state or remount Three.

@@ -38,7 +38,7 @@ export type ChatWorldRegionRow = Readonly<{
   staleAvatarPositionMs: number
 }>
 
-export type ChatWorldSpacetimeRows = Readonly<{
+export type ChatWorldCloudflareRows = Readonly<{
   regions: ReadonlyArray<unknown>
   stations: ReadonlyArray<unknown>
   avatars: ReadonlyArray<unknown>
@@ -47,7 +47,7 @@ export type ChatWorldSpacetimeRows = Readonly<{
   attention: ReadonlyArray<unknown>
 }>
 
-export type ChatWorldSpacetimeProjection = Readonly<{
+export type ChatWorldCloudflareProjection = Readonly<{
   world: ChatWorldMultiplayerProjection
   regions: ReadonlyArray<ChatWorldRegionRow>
 }>
@@ -308,8 +308,8 @@ const attentionFromRow = (raw: unknown): ChatWorldPylonAttentionRow | null => {
 const compact = <T>(items: ReadonlyArray<T | null>): ReadonlyArray<T> =>
   items.filter((item): item is T => item !== null)
 
-export const normalizeChatWorldSpacetimeRows = (
-  rows: ChatWorldSpacetimeRows,
+export const normalizeChatWorldCloudflareRows = (
+  rows: ChatWorldCloudflareRows,
 ): { readonly regions: ReadonlyArray<ChatWorldRegionRow>; readonly rows: ChatWorldMultiplayerRows } => ({
   regions: compact(rows.regions.map(regionFromRow)),
   rows: {
@@ -321,15 +321,15 @@ export const normalizeChatWorldSpacetimeRows = (
   },
 })
 
-export const projectChatWorldSpacetimeRows = (input: {
+export const projectChatWorldCloudflareRows = (input: {
   readonly flagEnabled: boolean
   readonly runRef: string
-  readonly rows: ChatWorldSpacetimeRows | null
+  readonly rows: ChatWorldCloudflareRows | null
   readonly nowMs: number
   readonly worldUrl?: string
   readonly database?: string
   readonly localAvatarRef?: string | null
-}): ChatWorldSpacetimeProjection => {
+}): ChatWorldCloudflareProjection => {
   const multiplayerOptions = {
     ...(input.worldUrl !== undefined ? { worldUrl: input.worldUrl } : {}),
     ...(input.database !== undefined ? { database: input.database } : {}),
@@ -349,7 +349,7 @@ export const projectChatWorldSpacetimeRows = (input: {
       }),
     }
   }
-  const normalized = normalizeChatWorldSpacetimeRows(input.rows)
+  const normalized = normalizeChatWorldCloudflareRows(input.rows)
   return {
     regions: normalized.regions,
     world: projectChatWorldMultiplayer({
@@ -384,7 +384,7 @@ export const projectChatWorldClientWorld = (input: {
   readonly worldUrl?: string
   readonly database?: string
   readonly localAvatarRef?: string | null
-}): ChatWorldSpacetimeProjection => {
+}): ChatWorldCloudflareProjection => {
   const multiplayerOptions = {
     ...(input.worldUrl !== undefined ? { worldUrl: input.worldUrl } : {}),
     ...(input.database !== undefined ? { database: input.database } : {}),
@@ -393,7 +393,7 @@ export const projectChatWorldClientWorld = (input: {
       : {}),
   }
   if (input.flagEnabled !== true || input.readModel === null) {
-    return projectChatWorldSpacetimeRows({
+    return projectChatWorldCloudflareRows({
       flagEnabled: false,
       runRef: input.runRef,
       rows: null,

@@ -94,9 +94,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   invariant change explicitly promotes a different authority. The Verse world
   service may enrich or animate the scene only from public refs or timestamped
   projection transitions.
-- `apps/openagents-world-spacetimedb/` is historical source material during the
-  ripout. Do not extend it for new production world behavior; port useful schema
-  or reducer ideas into the Cloudflare/Effect world service.
+- The deleted self-hosted world module is historical source material only. Do
+  not reintroduce it for production world behavior; port useful schema or
+  reducer ideas into the Cloudflare/Effect world service.
 
 ## Public Projection Staleness
 

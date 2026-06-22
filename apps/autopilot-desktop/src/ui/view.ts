@@ -7085,7 +7085,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   const multiplayer = modelChatWorldMultiplayer(model)
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
     // Self-filter on THIS instance's own per-character avatar key (computed from
-    // the live SpacetimeDB identity + OA_CHARACTER once known), so each instance
+    // the live Cloudflare world identity + OA_CHARACTER once known), so each instance
     // hides only its own character and renders every other avatar — including
     // other characters of the same account. Falls back to the legacy constant
     // before the identity lands (pre-connect), when there are no remote rows yet.

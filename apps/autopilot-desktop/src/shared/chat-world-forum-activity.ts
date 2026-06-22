@@ -8,7 +8,7 @@
 //
 // Pure + additive: no edits to the multiplayer projection internals. The icon is
 // a dereferenceable proof handle (its sourceUrl opens the real public forum
-// topic), and rendering degrades gracefully — if SpacetimeDB is down there are
+// topic), and rendering degrades gracefully — if Cloudflare world is down there are
 // simply no forum world_events and no icons; the Verse still loads.
 
 export const FORUM_ACTIVITY_WORLD_RUN_REF = "run.public_forum_activity"
@@ -25,7 +25,7 @@ const isForumEventKind = (kind: string): kind is ForumActivityEventKind =>
 
 const DEFAULT_FORUM_BASE_URL = "https://openagents.com"
 
-// A world_event row as projected by the SpacetimeDB client (camelCase, matching
+// A world_event row as projected by the Cloudflare world client (camelCase, matching
 // the other ChatWorld*Row types). `summary` is the bridge's JSON string.
 export type ChatWorldWorldEventRow = Readonly<{
   eventRef: string

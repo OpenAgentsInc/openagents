@@ -77,9 +77,9 @@ W = web app, D = desktop app, C = CLI.
 
 | Capability | Where it lives | Mode | W | D | C | State |
 | --- | --- | --- | --- | --- | --- | --- |
-| SpacetimeDB live world module (projection + interaction tables: run/entity/edge/proof/settlement/world_event + avatars/chat/emotes) | `apps/openagents-world-spacetimedb/` (Rust/WASM); deployed `spacetime.openagents.com` | Live | ✅ | ❌ | ❌ | **Built** (web only) |
-| Tassadar→world projection bridge | `apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs` (reads `/api/public/tassadar-run-summary`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
-| Public activity timeline→world event bridge | `apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs` (reads `/api/public/activity-timeline`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
+| SpacetimeDB live world module (projection + interaction tables: run/entity/edge/proof/settlement/world_event + avatars/chat/emotes) | the deleted legacy world module (Rust/WASM); deployed `spacetime.openagents.com` | Live | ✅ | ❌ | ❌ | **Built** (web only) |
+| Tassadar→world projection bridge | the deleted legacy bridge scripts (reads `/api/public/tassadar-run-summary`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
+| Public activity timeline→world event bridge | the deleted legacy bridge scripts (reads `/api/public/activity-timeline`) | Live (deterministic, replay-safe) | — | — | — | **Built** |
 | Web `/tassadar` route | `apps/web/src/page/run.ts`; route `/tassadar` | Retired guardrail | ✅ | ❌ | ❌ | **Retired** (plain route now points people to the Verse surface and public summary API) |
 | three-effect scenes (pylon network graph, diamonds) | `apps/web/src/scene/pylonBezierNetworkElement.ts`, `pylonDiamonds.ts` | Live | ✅ | ❌ | ❌ | **Built** (embedded per-page; no unified dashboard) |
 
@@ -768,8 +768,8 @@ SSE and SpacetimeDB are delivery/projection layers only.
      apply plan can be emitted, validates that every world event is sourced,
      and keeps the Worker/D1 timeline as the source projection while
      SpacetimeDB remains observation/projection/retrieval only. Validation:
-     `bun test apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.test.mjs apps/openagents-world-spacetimedb/scripts/activity-timeline-transform.test.mjs`
-     and `cargo test --manifest-path apps/openagents-world-spacetimedb/Cargo.toml`.
+     `bun test deleted legacy bridge transform tests`
+     and `cargo test --manifest-path deleted legacy Cargo manifest`.
 3. **Render evidence-bound live activity motion on `/tassadar`**
    - Body summary: Subscribe to timeline-backed world events and animate only
      events with source refs, generated-at, and stale/expiry metadata. Preserve

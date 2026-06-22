@@ -111,7 +111,7 @@ primitives.
   nodes" rule.
 - 2026-06-17: Issue #5236 published the first self-hosted SpacetimeDB
   `openagents-world` module from the separate
-  `apps/openagents-world-spacetimedb` app. The module currently exposes only the
+  the deleted legacy world module app. The module currently exposes only the
   minimal public projection tables (`training_run`, `run_entity`, `world_edge`,
   `proof_ref`, `settlement_ref`, `world_event`, `projection_cursor`, and
   `bridge_health`) plus private `module_owner` and `service_identity` authority
@@ -121,7 +121,7 @@ primitives.
 - 2026-06-17: Issue #5237 implemented and ran the operator bridge from
   `https://openagents.com/api/public/tassadar-run-summary` into
   `openagents-world`. The bridge lives in the separate
-  `apps/openagents-world-spacetimedb` app, calls service-only reducers over IAP
+  the deleted legacy world module app, calls service-only reducers over IAP
   SSH, and projected canonical run `run.tassadar.executor.20260615` into one
   `training_run`, 16 de-duplicated `run_entity` rows, 16 `world_edge` rows, 58
   de-duplicated `proof_ref` rows, one `settlement_ref`, 17 `world_event` rows,
@@ -150,7 +150,7 @@ primitives.
   loops, and Ops Agent-backed Nginx/syslog ingestion. The project still needs
   an external notification channel attached before alerts should page someone.
 - 2026-06-17: Issue #5261 added the MVP shared-world interaction schema in the
-  separate `apps/openagents-world-spacetimedb` app. The module now exposes
+  separate the deleted legacy world module app. The module now exposes
   public interaction tables for `pylon_station`, `agent_avatar`,
   `avatar_position`, `pylon_attention`, `local_chat_message`, `chat_bubble`,
   `local_emote`, and `agent_intent`, plus generated TypeScript bindings for the

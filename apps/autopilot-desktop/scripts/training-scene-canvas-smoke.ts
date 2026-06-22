@@ -249,7 +249,7 @@ const visualization = withChatWorldPaymentLayer(
   {
     connected: true,
     database: "openagents-world",
-    worldUrl: "https://spacetime.openagents.com",
+    worldUrl: "https://world.openagents.com",
     regionRef: "region.smoke",
     stations: [{
       pylonRef: "pylon.smoke.alpha",
