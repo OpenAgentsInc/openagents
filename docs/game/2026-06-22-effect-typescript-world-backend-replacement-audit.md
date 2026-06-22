@@ -1,44 +1,68 @@
 # Effect/TypeScript World Backend Replacement Audit
 
 Date: 2026-06-22
-Status: architecture audit and replacement-path exploration, not an active
-authority change.
+Status: DECISION — replace the SpacetimeDB world backend outright with an owned
+Effect/TypeScript service on Cloudflare infrastructure. Not a phased mirror, not
+a "keep both" hedge. Build it, cut over, decommission SpacetimeDB.
+
+> **Owner decision (2026-06-22):** No phased/compatibility-mirror approach. Rip
+> out SpacetimeDB. Build our own Verse world backend with TypeScript + Effect
+> and, ideally, Cloudflare's infrastructure (Durable Objects, WebSockets, D1).
+> The sections below are rewritten to that decision; earlier "guarded yes / keep
+> SpacetimeDB until parity" framing is superseded.
 
 ## Executive Read
 
-Replacing the SpacetimeDB world backend with an OpenAgents-owned
-Effect/TypeScript backend is plausible, and it fits the broader repo direction:
-Bun, Effect, Effect Schema, Foldkit, `three-effect`, public Worker/D1
-authority, and typed contracts.
+We are replacing the SpacetimeDB world backend with an OpenAgents-owned
+Effect/TypeScript service running on Cloudflare. This is the correct call and it
+collapses the architecture onto the stack the rest of the product already uses:
+Bun/Workers, Effect, Effect Schema, Foldkit, `three-effect`, and the public
+Worker/D1 authority surface — instead of a separate Rust/WASM database on a
+hand-operated GCP VM behind a generated-binding seam.
 
-It is not a small refactor. The current SpacetimeDB lane is already a live
-product subsystem:
+The live debugging session captured in the addendum below is the proximate
+reason: getting two desktop avatars to see each other required crossing four
+stacks (Rust/WASM module, gcloud/IAP VM publish, generated TS bindings, desktop
+TS) and the failures were all silent, untyped seams — culminating in a
+camelCase-vs-snake_case accessor mismatch that delivered an empty world with no
+error. That class of bug does not exist when one team owns one typed contract in
+one language end to end.
 
-- a self-hosted GCP VM at `https://spacetime.openagents.com`;
-- Rust/WASM module source in `apps/openagents-world-spacetimedb`;
-- service-only reducers for public projection rows;
-- browser/user reducers for bounded interaction rows;
-- generated TypeScript bindings consumed by website and desktop paths;
-- a desktop multiplayer client, pose publisher, remote avatar renderer,
-  region-scoped subscriptions, high/low presence feeds, and a two-client smoke.
+### The target
 
-The right path is therefore not "rip out SpacetimeDB." It is:
+- **`packages/world-contract`** — Effect Schema for every row, command, delta,
+  subscription plan, the avatar-ref/character helpers, region bounds, and
+  public-safety predicates. One source of types for server and clients. No
+  codegen, no second naming convention.
+- **`apps/openagents-world` (Cloudflare Worker + Durable Objects)** — the Effect
+  service. One **Durable Object per region** owns that region's live presence,
+  WebSocket fanout (with hibernation), and ephemeral interaction rows; **D1**
+  holds the durable, replayable projection rows; the existing `openagents.com`
+  Worker patterns provide HTTP/auth/deploy. Region DOs are the natural
+  authoritative actor for multiplayer presence + backpressure.
+- **`packages/world-client`** — one typed client used by desktop and web:
+  `connect`, `subscribe`, `callCommand`, `applyDelta`, `reconnect`,
+  `diagnostics`. Desktop/web speak only this; there is no SpacetimeDB adapter to
+  keep alive.
 
-1. Define a backend-neutral **Verse world contract** in Effect Schema.
-2. Build an Effect/TypeScript world service that can replay the same public
-   projection bridge and expose the same presence/subscription semantics.
-3. Run it as a compatibility mirror behind a feature flag.
-4. Switch desktop/web clients only after the mirror passes the existing
-   SpacetimeDB multiplayer, outage, projection, and proof-safety gates.
-5. Update `INVARIANTS.md` only when the default production backend actually
-   changes.
+### Why Cloudflare specifically
 
-The conclusion is a guarded yes: we should explore and prototype an
-Effect/TypeScript replacement, but keep SpacetimeDB as the production world
-backend until the custom service proves parity on the hard parts:
-authorization, live subscriptions, bounded reducer semantics, replayable
-projection bridges, row expiry, near/far presence, local cache behavior, and
-non-fatal outages.
+- **Durable Objects are the right multiplayer primitive.** A region is a
+  single-writer actor with a small hot state and many subscribers — exactly a
+  DO. WebSocket hibernation keeps idle regions cheap; `state.storage` gives
+  durable checkpoints; alarms drive TTL/expiry on a testable clock.
+- **One deploy surface.** Same Wrangler/Worker/D1 release and auth model as the
+  rest of `openagents.com`. No VM, nginx/TLS/certbot, WASM publish lane, IAP
+  operator runbook, or generated cross-app bindings.
+- **It removes the seams that just cost a day.** Same language, shared types,
+  typed errors, and one client — the failure modes in the addendum become
+  compile errors or first-class diagnostic events.
+
+This is not "rip out and figure it out." The world model, contract, invariants,
+validation rules, subscription lifetimes, and bridge semantics below are all
+preserved exactly — we are changing the *implementation and host*, not the
+*contract*. SpacetimeDB stays running only long enough to stand the replacement
+up and verify it on the same gates, then it is decommissioned.
 
 ## Sources Reviewed
 
@@ -504,155 +528,102 @@ continue to receive:
 The fastest migration win is to put this interface in front of the current
 SpacetimeDB adapter first. Then the Effect backend has a target to satisfy.
 
-## Deployment Options
+## Deployment: Cloudflare (decided)
 
-This audit does not choose the final host, but the options are:
+The host is decided: **Cloudflare**, in the same account/Wrangler surface as
+`openagents.com`. No GCP VM, no owned-VM Bun process, no hybrid.
 
-### Option A: Bun Service On Owned VM
+```text
+apps/openagents-world/                 (new Cloudflare Worker)
+  worker (Effect)                      HTTP: connect handshake, auth, health,
+                                       bridge ingest, admin; routes WS upgrades
+                                       to the right region DO.
+  RegionDurableObject (one per region) the authoritative live actor:
+    - hibernatable WebSocket fanout to that region's subscribers
+    - hot presence: avatar positions, near/far feed state, attention, bubbles
+    - command handlers (join/leave/move/focus/chat/emote/intent) with auth +
+      bounds/velocity/cadence validation
+    - alarms drive TTL/expiry on a testable clock
+    - durable checkpoints in DO storage; durable projection rows in D1
+  D1                                   durable, replayable projection rows
+                                       (training runs, run entities, edges,
+                                       proof/settlement refs, world events,
+                                       projection cursors, bridge health).
+  ProjectionBridge                     service-only ingest of public Worker/D1
+                                       + forum projections into world_event etc.
+```
 
-Closest operationally to the current GCP deployment.
+Why this shape:
 
-Pros:
+- **Region = Durable Object.** A region is a single-writer actor with small hot
+  state and many subscribers — the canonical DO use case. WebSocket hibernation
+  keeps idle regions near-zero cost; `state.storage` gives durable checkpoints;
+  DO alarms run expiry/keepalive deterministically.
+- **D1 for durable rows; DO memory for ephemeral rows.** This is the
+  durable-vs-ephemeral split this audit already requires (see "Storage Model").
+  Interaction rows can vanish on TTL without touching product truth; projection
+  rows are replayable from public Worker/D1 endpoints.
+- **One deploy + auth surface.** Same Wrangler/Worker/D1/secrets model and
+  release gate as `openagents.com`. The world API and the public projection API
+  ship together.
+- **WebSocket fanout is the real work, and DOs are built for it.** Per-region
+  fanout, backpressure, and reconnect live inside one object with a clear
+  lifecycle, instead of being spread across a VM process + nginx + SDK cache.
 
-- fastest prototype;
-- direct Bun + Effect runtime;
-- simple WebSocket ownership;
-- can run beside the SpacetimeDB VM for mirror testing.
+Scaling note: start single-run, single-region (one DO). Near/far feeds and
+multi-region DO routing come on naturally because each region is already its own
+object; the threshold from the multiplayer audit (single-region feed below
+~96 avatars / ~960 rows/sec, split near/far above that) maps directly onto
+per-DO fanout policy.
 
-Cons:
+## Build Order (no phased mirror — build it, cut, delete SpacetimeDB)
 
-- still has VM, disk, TLS, process, monitoring, and deploy runbook burden;
-- does not consolidate onto the existing `openagents.com` Worker surface;
-- must build durable storage and backup discipline.
+This is a build sequence, not a "run both backends as production" hedge. There is
+no `CHAT_WORLD_BACKEND` dual-adapter and no perpetual compatibility mirror. The
+order below exists only because you cannot write all the code in one commit; each
+step is a normal PR, and the desktop/web clients point at the new Cloudflare
+service the moment it can serve them. SpacetimeDB is deleted at the end of the
+same effort, not kept alive behind a flag.
 
-### Option B: OpenAgents Worker Plus Region Actors
+The only thing that runs "in parallel" is a short verification window where the
+old SpacetimeDB read path is used purely to diff row counts during the cut — not
+a production fallback.
 
-Move the world backend closer to the existing Worker/D1 authority surface.
+1. **Contract.** `packages/world-contract`: Effect Schema for rows, commands,
+   the versioned `WorldDelta` stream, subscription plans, the
+   `avatar.identity.<id>.char.<char>` helper, region bounds, and public-safety
+   predicates. Tests for avatar-ref construction, character-id sanitization,
+   region bounds, command authorization classes, row redaction, and source-ref
+   requirements. This is the single source of types for server and clients.
+2. **Cloudflare service skeleton.** `apps/openagents-world` Worker + a
+   `RegionDurableObject` with hibernatable WebSocket fanout, a snapshot+delta
+   transport implementing `WorldDelta`, and D1 schema for durable rows. Connect
+   handshake, health, auth.
+3. **Commands + presence in the region DO.** `join_region`, `leave_region`,
+   `set_avatar_position`, `focus_pylon`, local/pylon message, emote, intent —
+   with the same bounds, velocity, cadence, TTL, and chat rules enforced as
+   Effect Schema decoders + command tests. Expiry on DO alarms; hot presence in
+   DO memory; durable checkpoints in storage/D1.
+4. **Subscriptions + near/far.** Region-scoped + selected-entity subscriptions,
+   snapshot-then-delta, absent-means-unchanged sparse deltas, settle-on-stop,
+   and high/low presence feeds with per-DO fanout policy.
+5. **Projection bridge.** Service-only ingest of `GET /api/public/...` +
+   forum activity into D1 projection rows and `world_event`s, with deterministic
+   `event_ref`s, idempotent replay, and `bridge_health` on failure.
+6. **Point the clients at it + cut.** `packages/world-client` is the only client
+   facade; desktop and web import it and connect to the Cloudflare service. Run
+   the two-client smoke and a one-shot row-count diff against the old
+   SpacetimeDB read path to confirm parity, then **delete**
+   `apps/openagents-world-spacetimedb`, the generated bindings, the GCP VM,
+   nginx/TLS/certbot, the WASM publish lane, and the IAP runbook. Update
+   `INVARIANTS.md`, `CLAUDE.md`/AGENTS, deployment docs, and README from
+   "SpacetimeDB world projection" to "Verse world projection (Cloudflare)."
 
-Pros:
-
-- stronger product topology alignment;
-- service bridges and public API can share deployment/auth patterns;
-- easier to keep public projection and world projection in one release gate;
-- no separate Rust/WASM module publish lane.
-
-Cons:
-
-- WebSocket fanout, region actor lifecycle, storage limits, and backpressure
-  need careful design;
-- continuous multiplayer presence may want a different scaling shape than
-  normal request/response Worker routes;
-- must prove local two-client and packaged desktop smoke against the deployed
-  runtime.
-
-### Option C: Hybrid
-
-Use a Worker-facing public API and an owned Bun/Effect world process for hot
-presence until the Worker/actor design is proven.
-
-Pros:
-
-- reduces migration risk;
-- keeps the backend-neutral client honest;
-- lets us compare ops and latency before final cutover.
-
-Cons:
-
-- temporarily increases moving pieces;
-- needs a clear sunset plan or it becomes a permanent split.
-
-Recommended prototype path: Option C for one milestone, then decide between A
-and B based on smoke results, operational friction, and deployment gate
-complexity.
-
-## Migration Plan
-
-### Phase 0: Contract Extraction
-
-- Add `packages/world-contract`.
-- Encode current rows, commands, deltas, subscription plans, and helper
-  functions with Effect Schema.
-- Add tests for avatar ref construction, character id sanitization, region
-  bounds, command authorization classes, row public-safety assertions, and
-  source-ref requirements.
-- Wrap the existing SpacetimeDB adapter with the backend-neutral
-  `VerseWorldClient` interface.
-
-Acceptance:
-
-- No behavior changes.
-- Existing SpacetimeDB desktop tests still pass.
-- The contract package can decode current generated binding rows into neutral
-  rows.
-
-### Phase 1: Read-Only Effect Mirror
-
-- Build `apps/openagents-world-effect` with durable projection rows and a
-  WebSocket/SSE read stream.
-- Replay `GET /api/public/tassadar-run-summary` into the mirror.
-- Expose run/region/station/avatar snapshots.
-- Do not accept browser/user writes yet.
-
-Acceptance:
-
-- Mirror row counts match SpacetimeDB for canonical Tassadar projection.
-- Replaying the bridge is idempotent.
-- `/tassadar` can render from the mirror in read-only mode behind a flag.
-- SpacetimeDB outage semantics are unchanged.
-
-### Phase 2: Interaction Commands
-
-- Implement `join_region`, `leave_region`, `set_avatar_position`,
-  `focus_pylon`, local message, pylon message, emote, and intent commands.
-- Enforce the same bounds, velocity, cadence, TTL, and chat rules.
-- Add expiry schedules and bridge health rows.
-
-Acceptance:
-
-- Existing desktop pose publisher works through the neutral client.
-- Two-client smoke passes against the Effect backend.
-- Bad writes are suppressed client-side and rejected server-side.
-- Public-safe row tests pass.
-
-### Phase 3: Subscription Parity
-
-- Add region-scoped subscriptions.
-- Add selected-entity subscriptions.
-- Add near/far presence streams.
-- Add absent-means-unchanged sparse deltas and settle-on-stop deltas.
-
-Acceptance:
-
-- Remote avatars interpolate smoothly.
-- Local self is filtered correctly with multiple characters per account.
-- Target candidate mapper sees only visible/nearby station/avatar rows.
-- Row churn policy matches the current SpacetimeDB threshold.
-
-### Phase 4: Bridge Parity
-
-- Port forum activity bridge.
-- Port activity timeline bridge if still needed.
-- Preserve deterministic `event_ref` and source refs.
-- Emit world events and optional system messages under service capability only.
-
-Acceptance:
-
-- Automated forum intro can appear as a Verse icon/bubble through the Effect
-  backend.
-- Icon dereferences to the public forum source.
-- Duplicate bridge runs do not duplicate `world_event`.
-
-### Phase 5: Cutover Gate
-
-- Run both backends in parallel for one release window.
-- Compare row counts, subscription deltas, two-client smoke, outage behavior,
-  and visual diagnostics.
-- Switch default `CHAT_WORLD_BACKEND=effect` only after parity.
-- Update `INVARIANTS.md`, deployment docs, admin runbooks, and README language
-  from "SpacetimeDB world projection" to backend-neutral "Verse world
-  projection."
-- Freeze SpacetimeDB writes, then decommission the VM only after rollback
-  confidence exists.
+Definition of done for the whole effort: two desktop instances (and a web
+client) see each other through the Cloudflare service via the two-client smoke,
+the projection bridge is idempotent, public-safety/redaction tests pass, an
+outage degrades to single-player, and **no SpacetimeDB code, VM, or binding
+remains in the repo.**
 
 ## Tests And Formal Notes
 
@@ -716,34 +687,129 @@ Mitigation: define the cutover and decommission criteria before Phase 1 ships.
 
 ## Recommendation
 
-Build the Effect/TypeScript backend as a compatibility mirror, not as a new
-world design.
+Decided: **replace SpacetimeDB with an owned Effect/TypeScript Verse World
+Service on Cloudflare (Worker + Durable Objects + D1).** Build it, point the
+clients at it, verify on the existing gates, and delete SpacetimeDB in the same
+effort. No compatibility mirror, no dual `CHAT_WORLD_BACKEND` flag, no
+keep-both hedge.
 
-Recommended first issue:
+First issue:
 
 ```text
-Extract Verse world backend contract into Effect Schema and wrap the existing
-SpacetimeDB adapter behind a backend-neutral client.
+Stand up the Cloudflare Verse World Service: packages/world-contract (Effect
+Schema) + apps/openagents-world (Worker + RegionDurableObject + D1) speaking the
+WorldDelta snapshot/delta protocol, with packages/world-client as the only client
+facade.
 ```
 
-Definition of done:
+Then proceed straight through the Build Order above to the cut. Done means: two
+desktop instances and a web client see each other through the Cloudflare service
+(two-client smoke), the projection bridge is idempotent, redaction/public-safety
+tests pass, outages degrade to single-player, and **no SpacetimeDB module, VM,
+generated binding, or runbook remains in the repo.**
 
-- `packages/world-contract` owns row, command, delta, subscription, avatar ref,
-  region bounds, and public-safety schemas.
-- Desktop/web use a `VerseWorldClient` facade while still talking to
-  SpacetimeDB by default.
-- Existing SpacetimeDB tests and two-client smoke still pass.
-- No production behavior changes.
+The contracts, invariants, validation rules, identity/character model,
+subscription lifetimes, and bridge semantics in this document are preserved
+exactly — we are changing the implementation and the host, not the world
+contract. SpacetimeDB was the right first substrate to find the shape; owning the
+contract in one language on one deploy surface is the right second one.
 
-Only after that should we implement the Effect mirror.
+## Addendum (2026-06-22): What a Live Debugging Session Just Proved
 
-The final decision should be evidence-based:
+This addendum is written immediately after a multi-hour, many-restart debugging
+session trying to get two desktop instances to see each other's avatars. It is
+not hypothetical. Every failure below was real, and every one of them is a
+direct argument for the contract-first, Effect/TypeScript direction this audit
+recommends. The session is the case study the rest of this document was missing.
 
-- If the Effect mirror passes the same multiplayer, projection, redaction,
-  outage, and bridge idempotency gates with less operational burden, promote it.
-- If it cannot match SpacetimeDB's subscription/client-cache behavior without
-  rebuilding too much infrastructure, keep SpacetimeDB and still retain the
-  backend-neutral contract as useful insulation.
+### The bug chain we actually hit (in order)
 
-Either outcome is useful. The contract extraction is the no-regret step.
+1. **A runtime value could not cross the Bun→webview boundary.** `OA_CHARACTER`
+   was set on the launcher process, but the renderer resolved it through
+   `import.meta.env` (build-time Vite define) and `process.env` (absent in the
+   webview), so both windows silently fell back to `"main"`. The fix was to
+   inject `globalThis.__OA_CHARACTER` via `executeJavascript` and read it lazily.
+2. **The deployed Rust/WASM module lagged the client.** The client sent
+   `join_region(region, character_id, …)` against a module whose reducer didn't
+   yet take `character_id`; the publish path is a separate gcloud/IAP VM
+   operation, so client and server drifted.
+3. **A table the client depends on was empty in production.** `world_region` is
+   seeded only by the `init` reducer, which runs once on first publish and never
+   on republish, so it was simply gone. `join_region` does `if (region === null)
+   return` — a silent bail with no error anywhere.
+4. **The client read every table under the wrong key.** This was the one that
+   ate the most time. The SpacetimeDB SDK exposes `connection.db` accessors by
+   **snake_case schema name** (`world_region`, `agent_avatar`,
+   `avatar_position`, …), but the desktop's `worldRowsFromConnection` read
+   **camelCase** (`worldRegion`, `agentAvatar`, …). Every read returned
+   `undefined`. The introspection log told the whole story in one line:
+
+   ```text
+   db keys=[agent_avatar, … , world_region]
+   worldRegion(camel)=false  worldRegionIter=n/a
+   world_region(snake)=true  snakeIter=1
+   ```
+
+   The row was delivered the entire time (`snakeIter=1`). The read keys were
+   wrong. No type error. No runtime error. No log. Just an empty world.
+
+### Why every one of these is an Effect-backend argument
+
+The common thread is **silent, untyped seams between stacks** — exactly what an
+owned Effect/TypeScript contract removes:
+
+- **No codegen drift, no casing boundary.** Bug #4 exists only because a
+  generated SDK names tables one way and hand-written client code assumed
+  another, across an unusual cross-app binding import (already flagged in
+  "Generated binding coupling"). A shared `packages/world-contract` with one
+  canonical, typed accessor surface makes `worldRegion` vs `world_region` a
+  compile error, not a runtime void. There is no second naming convention to
+  drift from because there is no second stack generating names.
+- **Typed errors instead of silent bails.** Bugs #1, #3, and #4 all failed by
+  silently producing emptiness. The `WorldDelta` stream in this audit already
+  specifies explicit `snapshot` (with a row count), `heartbeat`, and
+  `diagnostic{level,code,message}` events, and the `VerseWorldClient` facade
+  returns `Effect`s with `WorldConnectionError`/`WorldStreamError`. "Subscribed,
+  0 rows applied for `world_region`" would be a first-class, observable event —
+  not something we discover by hand-adding `console.log`s for an hour. We
+  literally had to instrument the connect path from scratch because it had no
+  diagnostics; the audit's contract bakes them in.
+- **One language, one deploy mental model.** This session crossed Rust/WASM, a
+  gcloud/IAP VM publish, generated TS bindings, desktop TS, and an opaque SDK
+  cache. Bug #2 (module/client drift) and bug #3 (init-only seeding lost on
+  republish) are operational seams of running a separate Rust database service.
+  Option B/C here (Worker/Bun + Effect) collapse this to the same Bun + Effect
+  + Worker/D1 release surface the rest of the product already uses.
+- **Deterministic, replayable seeding.** Bug #3 is precisely the durable-vs-
+  ephemeral split this audit calls for: a region is durable config that should
+  be replayable from contract/source, not a one-shot `init` side effect that
+  vanishes on redeploy. `ProjectionBridge` + idempotent upserts make "the world
+  has no region" structurally impossible after a deploy.
+- **Config as typed session parameters, not injected globals.** Bug #1's
+  `globalThis.__OA_CHARACTER` injection is a workaround for not having a typed
+  connection/session boundary. In the neutral client, the character id is just a
+  field on `connect()`/the subscription plan — carried, validated, and tested,
+  never smuggled through `executeJavascript`.
+- **A test that would have caught it.** The desktop unit tests passed throughout
+  this entire broken session, because they exercised the projection logic
+  against mocked rows — never the real `connection.db` read path. The audit's
+  "two-client smoke against both backends through the same neutral client" is
+  the test that fails loudly on "0 rows delivered." Contract-level row-delivery
+  tests + a fake transport would have turned a multi-hour live debug into a red
+  CI check.
+
+### Honest scope note
+
+None of this means SpacetimeDB was the wrong first substrate — it got the world
+shape to "real multiplayer in weeks," which a from-scratch Effect backend would
+not have. The four bugs above were individually fixable in the current stack and
+bug #4 has since been fixed (the camelCase→snake_case accessor read), so desktop
+multiplayer can work today. But that is not the conclusion. The *cost* of this
+class of bug came from **untyped seams between four stacks and a generated
+binding layer**, and the only structural way to stop paying it is to own the
+whole contract in one language on one deploy surface. That is why the decision
+(see Executive Read and Recommendation) is to **replace** SpacetimeDB with the
+Cloudflare Effect service outright — not to insulate it behind a neutral client
+and keep it underneath. The contract extraction is still step one; it is the
+first step of the replacement, not a hedge to preserve the old backend.
 

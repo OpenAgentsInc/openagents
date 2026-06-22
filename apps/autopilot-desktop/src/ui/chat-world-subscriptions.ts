@@ -463,6 +463,33 @@ const defaultSpacetimeConnect = (
 const collectRows = (table: SpacetimeTableRef | undefined): ReadonlyArray<unknown> =>
   table?.iter === undefined ? [] : [...table.iter()]
 
+// The SpacetimeDB SDK exposes connection.db / connection.reducers accessors by
+// the table/reducer SCHEMA NAME, which is snake_case (e.g. `world_region`,
+// `set_avatar_position`). Earlier code read camelCase (`worldRegion`,
+// `setAvatarPosition`), which silently resolved to undefined -> empty world and
+// no published avatars. Resolve snake_case first, fall back to camelCase so this
+// is correct regardless of SDK casing.
+const pickTable = (
+  db: SpacetimeWorldConnection["db"] | undefined,
+  snake: string,
+  camel: string,
+): SpacetimeTableRef | undefined => {
+  const bag = db as unknown as Record<string, SpacetimeTableRef | undefined> | undefined
+  return bag?.[snake] ?? bag?.[camel]
+}
+
+const pickReducer = (
+  reducers: SpacetimeWorldConnection["reducers"] | undefined,
+  snake: string,
+  camel: string,
+): ((args: unknown) => unknown) | undefined => {
+  const bag = reducers as unknown as
+    | Record<string, ((args: unknown) => unknown) | undefined>
+    | undefined
+  const candidate = bag?.[snake] ?? bag?.[camel]
+  return typeof candidate === "function" ? candidate : undefined
+}
+
 const collectPositionRows = (
   table: SpacetimeTableRef | undefined,
   presenceFeed: "high" | "low",
@@ -476,16 +503,16 @@ const collectPositionRows = (
 const worldRowsFromConnection = (
   connection: SpacetimeWorldConnection,
 ): ChatWorldSpacetimeRows => ({
-  regions: collectRows(connection.db?.worldRegion),
-  stations: collectRows(connection.db?.pylonStation),
-  avatars: collectRows(connection.db?.agentAvatar),
+  regions: collectRows(pickTable(connection.db, "world_region", "worldRegion")),
+  stations: collectRows(pickTable(connection.db, "pylon_station", "pylonStation")),
+  avatars: collectRows(pickTable(connection.db, "agent_avatar", "agentAvatar")),
   positions: [
-    ...collectPositionRows(connection.db?.avatarPosition, "high"),
-    ...collectPositionRows(connection.db?.avatarPositionNear, "high"),
-    ...collectPositionRows(connection.db?.avatarPositionFar, "low"),
+    ...collectPositionRows(pickTable(connection.db, "avatar_position", "avatarPosition"), "high"),
+    ...collectPositionRows(pickTable(connection.db, "avatar_position_near", "avatarPositionNear"), "high"),
+    ...collectPositionRows(pickTable(connection.db, "avatar_position_far", "avatarPositionFar"), "low"),
   ],
-  messages: collectRows(connection.db?.localChatMessage),
-  attention: collectRows(connection.db?.pylonAttention),
+  messages: collectRows(pickTable(connection.db, "local_chat_message", "localChatMessage")),
+  attention: collectRows(pickTable(connection.db, "pylon_attention", "pylonAttention")),
 })
 
 const invokeMaybePromise = (value: unknown): void => {
@@ -503,7 +530,7 @@ export const publishSpacetimeAvatarPosition = (
   plan: ChatWorldAvatarPositionPlan,
 ): boolean => {
   if (plan.ok !== true) return false
-  const reducer = connection.reducers?.setAvatarPosition
+  const reducer = pickReducer(connection.reducers, "set_avatar_position", "setAvatarPosition")
   if (reducer === undefined) return false
   invokeMaybePromise(reducer(plan.write))
   return true
@@ -580,9 +607,13 @@ export const createVerseMultiplayerClient = (input: {
 
   const joinRegion = (): void => {
     const region = defaultChatWorldRegionForRun(projection().regions, input.runRef)
+    // world_region can arrive a tick after onApplied, so this is retried from
+    // onRowsChanged; bail quietly until the region row is present.
     if (region === null) return
+    if (joinedRegionRef === region.regionRef) return
     joinedRegionRef = region.regionRef
-    invokeMaybePromise(input.connection.reducers?.joinRegion?.({
+    const reducer = pickReducer(input.connection.reducers, "join_region", "joinRegion")
+    invokeMaybePromise(reducer?.({
       regionRef: region.regionRef,
       displayName: input.displayName,
       characterId: characterId(),
@@ -591,7 +622,8 @@ export const createVerseMultiplayerClient = (input: {
 
   const leaveRegion = (): void => {
     if (joinedRegionRef === null) return
-    invokeMaybePromise(input.connection.reducers?.leaveRegion?.({
+    const reducer = pickReducer(input.connection.reducers, "leave_region", "leaveRegion")
+    invokeMaybePromise(reducer?.({
       regionRef: joinedRegionRef,
       characterId: characterId(),
     }))
@@ -671,17 +703,17 @@ const attachWorldConnection = (input: {
   readonly onSnapshotReady?: (dispatchSnapshot: () => void) => void
 }): Unsubscribe => {
   const tables = [
-    input.connection.db?.worldRegion,
-    input.connection.db?.pylonStation,
-    input.connection.db?.agentAvatar,
-    input.connection.db?.avatarPosition,
-    input.connection.db?.avatarPositionNear,
-    input.connection.db?.avatarPositionFar,
-    input.connection.db?.pylonAttention,
-    input.connection.db?.localChatMessage,
-    input.connection.db?.chatBubble,
-    input.connection.db?.localEmote,
-    input.connection.db?.agentIntent,
+    pickTable(input.connection.db, "world_region", "worldRegion"),
+    pickTable(input.connection.db, "pylon_station", "pylonStation"),
+    pickTable(input.connection.db, "agent_avatar", "agentAvatar"),
+    pickTable(input.connection.db, "avatar_position", "avatarPosition"),
+    pickTable(input.connection.db, "avatar_position_near", "avatarPositionNear"),
+    pickTable(input.connection.db, "avatar_position_far", "avatarPositionFar"),
+    pickTable(input.connection.db, "pylon_attention", "pylonAttention"),
+    pickTable(input.connection.db, "local_chat_message", "localChatMessage"),
+    pickTable(input.connection.db, "chat_bubble", "chatBubble"),
+    pickTable(input.connection.db, "local_emote", "localEmote"),
+    pickTable(input.connection.db, "agent_intent", "agentIntent"),
   ]
   let subscriptionHandle: { unsubscribe?: () => void } | null = null
   const client = createVerseMultiplayerClient({
@@ -709,7 +741,13 @@ const attachWorldConnection = (input: {
   }
   input.onSnapshotReady?.(dispatchSnapshot)
 
-  const onRowsChanged = (): void => dispatchSnapshot()
+  const onRowsChanged = (): void => {
+    dispatchSnapshot()
+    // Retry the region join: world_region may arrive a tick AFTER onApplied, so
+    // the onApplied join can bail on an empty cache. joinRegion is guarded to a
+    // single join per region, so calling it on every row change is safe.
+    client.joinRegion()
+  }
 
   for (const table of tables) {
     table?.onInsert?.(onRowsChanged)
