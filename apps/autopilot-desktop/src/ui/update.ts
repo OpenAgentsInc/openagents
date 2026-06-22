@@ -160,6 +160,10 @@ import {
   type ChatWorldPylonScene,
   type PaymentParticle,
 } from "../shared/chat-world-scene.js"
+import {
+  CHAT_WORLD_GATEWAY_NODE_PREFIX,
+  CHAT_WORLD_INFERENCE_NODE_PREFIX,
+} from "../shared/chat-world-visualization.js"
 import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
 import type {
   AppleFmReadinessResponse,
@@ -1060,12 +1064,15 @@ export const update = (model: Model, message: Message): Result => {
         noCommands,
       ]
     case "SelectedChatWorldNode":
-      // #5730/#5822: surface either payment receipt refs or a Verse training
-      // stage's public-ref detail. Plain pylon nodes still clear the inspector.
+      // #5730/#5822/#6013: surface payment and Khala Verse source refs, or a
+      // Verse training stage's public-ref detail. Plain pylon nodes still clear
+      // the inspector.
       return [
         Model.make({
           ...model,
-          chatWorldInspectedRef: message.id.startsWith("pay:")
+          chatWorldInspectedRef: message.id.startsWith("pay:") ||
+            message.id.startsWith(CHAT_WORLD_GATEWAY_NODE_PREFIX) ||
+            message.id.startsWith(CHAT_WORLD_INFERENCE_NODE_PREFIX)
             ? chatWorldRefFromLabel(message.label)
             : message.id.startsWith(VERSE_TRAINING_NODE_PREFIX)
               ? message.label

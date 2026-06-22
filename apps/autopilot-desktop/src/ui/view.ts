@@ -89,6 +89,8 @@ import type {
 // #5730 (P2.5): feed the LIVE pylon scene + Bitcoin payment particles into the
 // chat background scene. Pure projections live in shared/chat-world-*.ts.
 import {
+  CHAT_WORLD_GATEWAY_NODE_PREFIX,
+  CHAT_WORLD_INFERENCE_NODE_PREFIX,
   liveChatWorldNetworkScene,
   withChatWorldInferenceLayer,
   withChatWorldMultiplayerLayer,
@@ -7374,10 +7376,12 @@ const chatSceneBackground = (model: Model): Html =>
     trainingRunView<Message>(
       [cls("three-effect-chat-scene")],
       verseSceneVisualization(model),
-      // Click a payment endpoint → surface its receipt ref in the inspector.
+      // Click a source-bound Verse endpoint → surface its public ref in the inspector.
       (node) => {
         const hasDetailInspector =
           node.id.startsWith("pay:") ||
+          node.id.startsWith(CHAT_WORLD_GATEWAY_NODE_PREFIX) ||
+          node.id.startsWith(CHAT_WORLD_INFERENCE_NODE_PREFIX) ||
           node.id.startsWith(VERSE_TRAINING_NODE_PREFIX) ||
           node.id.startsWith(PYLON_BASE_NODE_PREFIX)
         return SelectedChatWorldNode({

@@ -470,6 +470,20 @@ describe("update reducer (CL-53)", () => {
     expect(commands).toHaveLength(0)
   })
 
+  test("SelectedChatWorldNode inspects Khala inference receipt refs", () => {
+    const [model, commands] = update(
+      initialModel,
+      SelectedChatWorldNode({
+        id: "world:inference:event.public.khala_inference_served.receipt.inference.charge.chatcmpl_1:to",
+        label: "https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_1 · openagents/khala-code · public_activity_timeline · gateway",
+      }),
+    )
+    expect(model.chatWorldInspectedRef).toBe(
+      "https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_1",
+    )
+    expect(commands).toHaveLength(0)
+  })
+
   test("ChangedVersePresenceZone stores the local avatar HUD zone", () => {
     const [inside, enterCommands] = update(
       initialModel,
