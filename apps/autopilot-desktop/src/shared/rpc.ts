@@ -701,6 +701,36 @@ export type ShellTurnResponse = {
   readonly text: string
 }
 
+// M1 (#6009, EPIC #6017) — Lane A Cockpit. One Khala cockpit turn: the Bun host
+// submits the prompt to a `openagents/khala-*` model on the OpenAI-compatible
+// `/v1/chat/completions` gateway, and projects back the plain answer text PLUS
+// the NON-BREAKING `openagents` receipt block (requested/served model, worker,
+// lane, verification, receipt ref/url, rubric) so a Khala completion is
+// auditable. `live` is TRUE only when the response carried a real receipt ref —
+// never claim live off a stub/free route. The raw token never crosses here.
+export type KhalaReceiptProjectionResponse = {
+  readonly requestedModel: string
+  readonly servedModel: string
+  readonly worker: string
+  readonly lane: string
+  readonly verification: "none" | "test_passed" | "failed"
+  readonly verified: boolean | null
+  readonly receipt: string | null
+  readonly receiptUrl: string | null
+  readonly rubric: {
+    readonly ref: string
+    readonly passedChecks: readonly string[]
+    readonly failedChecks: readonly string[]
+  } | null
+}
+
+export type KhalaTurnResponse = {
+  readonly ok: boolean
+  readonly text: string
+  readonly receipt: KhalaReceiptProjectionResponse | null
+  readonly live: boolean
+}
+
 // #5821: the Verse chat bar talks to Tassadar/OpenAgents by default. Bun owns
 // the OpenAgents token and public context fetches; the webview receives only the
 // plain response, source refs, and public-safe blocker refs. No raw token, raw
@@ -977,6 +1007,18 @@ export type DesktopRPCSchema = {
       readonly shellTurn: {
         readonly params: { prompt: string }
         readonly response: ShellTurnResponse
+      }
+      // M1 (#6009, EPIC #6017): one Khala cockpit turn. The Bun host submits the
+      // prompt to a `openagents/khala-*` model on the gateway and returns the
+      // plain answer PLUS the public-safe `openagents` receipt projection. `live`
+      // is gated on a real receipt ref. Works against local/stub or staging; the
+      // raw token never crosses this boundary.
+      readonly khalaTurn: {
+        readonly params: {
+          readonly prompt: string
+          readonly model?: "openagents/khala-mini" | "openagents/khala-code"
+        }
+        readonly response: KhalaTurnResponse
       }
       // #5821: one default Verse/Tassadar turn. The Bun host builds a bounded
       // public context pack from /api/public/tassadar-run-summary,

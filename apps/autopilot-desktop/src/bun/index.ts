@@ -60,6 +60,7 @@ import {
 import { projectInstallReadiness } from "../shared/install-readiness.js"
 import { buildInferenceGatewayReadiness } from "./inference-gateway.js"
 import { buildShellTurn, resolveShellAgentToken } from "./shell-turn.js"
+import { buildKhalaTurn } from "./khala-turn.js"
 import { buildVerseTurn } from "./verse-turn.js"
 import {
   addManagedAccount,
@@ -1035,6 +1036,23 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       async verseTurn(params) {
         return buildVerseTurn({
           prompt: params.prompt,
+          env: Bun.env,
+          agentToken: resolveShellAgentToken(Bun.env, () => {
+            const home = onboardingHome()
+            return home === null
+              ? null
+              : (loadPersistedCredential(home)?.token ?? null)
+          }),
+        })
+      },
+      // M1 (#6009, EPIC #6017): one Khala cockpit turn. Submits to a
+      // `openagents/khala-*` model and returns the answer plus the public-safe
+      // `openagents` receipt projection. Reuses the same host-side agent token
+      // resolution as shellTurn; the raw token never crosses to the webview.
+      async khalaTurn(params) {
+        return buildKhalaTurn({
+          prompt: params.prompt,
+          ...(params.model === undefined ? {} : { model: params.model }),
           env: Bun.env,
           agentToken: resolveShellAgentToken(Bun.env, () => {
             const home = onboardingHome()
