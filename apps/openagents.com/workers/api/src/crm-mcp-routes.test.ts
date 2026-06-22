@@ -12,14 +12,30 @@ type TestEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
 const ctx = {} as ExecutionContext
 const env: TestEnv = { OPENAGENTS_DB: {} as unknown as D1Database }
 
+const testPrincipal = {
+  grants: [
+    {
+      authorityClass: 'operator_read' as const,
+      decision: 'granted' as const,
+      grantRef: 'g',
+      grantedAt: '2026-06-22T00:00:00.000Z',
+      scopeRefs: [],
+      sourceRefs: [],
+      subjectRef: 'admin',
+    },
+  ],
+  subjectRef: 'admin',
+  tenantRef: 'tenant.openagents',
+}
+
 const run = (
   admin: boolean,
   catalog: CrmMcpCatalog<TestEnv>,
   request: Request,
 ): Promise<Response> => {
   const routes = makeCrmMcpRoutes<TestEnv>({
+    authenticate: () => Promise.resolve(admin ? testPrincipal : null),
     catalog,
-    requireAdminApiToken: () => Promise.resolve(admin),
   })
   const effect = routes.routeCrmMcpRequest(request, env, ctx)
   if (effect === undefined) throw new Error(`route did not match: ${request.url}`)
@@ -82,7 +98,7 @@ describe('CRM MCP transport — tools', () => {
   test('tools/call dispatches to the catalog', async () => {
     const catalog: CrmMcpCatalog<TestEnv> = {
       ...emptyCrmMcpCatalog<TestEnv>(),
-      callTool: (_e, _r, name) =>
+      callTool: (_e, _r, _principal, name) =>
         Promise.resolve({ content: [{ text: `called ${name}`, type: 'text' as const }] }),
     }
     const res = await run(true, catalog, rpc(req(4, 'tools/call', { arguments: {}, name: 'crm.contacts.list' })))
@@ -132,7 +148,7 @@ describe('CRM MCP transport — errors + auth', () => {
   test('non-/api/mcp path passes through', () => {
     const routes = makeCrmMcpRoutes<TestEnv>({
       catalog: emptyCrmMcpCatalog(),
-      requireAdminApiToken: () => Promise.resolve(true),
+      authenticate: () => Promise.resolve(testPrincipal),
     })
     const effect = routes.routeCrmMcpRequest(
       new Request('https://openagents.com/api/operator/crm/contacts', { method: 'POST' }),

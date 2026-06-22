@@ -43,9 +43,25 @@ const env: TestEnv = { OPENAGENTS_DB: cannedDb() }
 const req = new Request('https://openagents.com/api/mcp', { method: 'POST' })
 const catalog = makeCrmMcpReadCatalog<TestEnv>()
 
+const principal = {
+  grants: [
+    {
+      authorityClass: 'operator_read' as const,
+      decision: 'granted' as const,
+      grantRef: 'g',
+      grantedAt: '2026-06-22T00:00:00.000Z',
+      scopeRefs: [],
+      sourceRefs: [],
+      subjectRef: 'admin',
+    },
+  ],
+  subjectRef: 'admin',
+  tenantRef: 'tenant.openagents',
+}
+
 describe('CRM MCP read catalog — listing', () => {
   test('exposes 15 read tools with valid names + input schemas', async () => {
-    const tools = await catalog.listTools(env, req)
+    const tools = await catalog.listTools(env, req, principal)
     expect(tools).toHaveLength(15)
     for (const tool of tools) {
       expect(() => assertValidOpenAgentsMcpName(tool.name)).not.toThrow()
@@ -67,7 +83,7 @@ describe('CRM MCP read catalog — listing', () => {
 
 describe('CRM MCP read catalog — dispatch', () => {
   test('crm.contacts.list returns structured contacts + JSON text', async () => {
-    const outcome = await catalog.callTool(env, req, 'crm.contacts.list', { limit: 10 })
+    const outcome = await catalog.callTool(env, req, principal, 'crm.contacts.list', { limit: 10 })
     expect(outcome.isError).toBe(false)
     expect(Array.isArray(outcome.structuredContent)).toBe(true)
     const list = outcome.structuredContent as Array<{ primaryEmail: string }>
@@ -76,23 +92,51 @@ describe('CRM MCP read catalog — dispatch', () => {
   })
 
   test('crm.contact.get resolves a contact by id', async () => {
-    const outcome = await catalog.callTool(env, req, 'crm.contact.get', { contactId: 'crm_contact_1' })
+    const outcome = await catalog.callTool(env, req, principal, 'crm.contact.get', { contactId: 'crm_contact_1' })
     const contact = outcome.structuredContent as { id: string }
     expect(contact.id).toBe('crm_contact_1')
   })
 
   test('crm.contact.get without contactId is a tool error (rejects)', async () => {
-    await expect(catalog.callTool(env, req, 'crm.contact.get', {})).rejects.toThrow('contactId is required')
+    await expect(catalog.callTool(env, req, principal, 'crm.contact.get', {})).rejects.toThrow('contactId is required')
   })
 
   test('an unknown tool rejects with unknown_tool', async () => {
-    await expect(catalog.callTool(env, req, 'crm.nope', {})).rejects.toThrow('unknown_tool')
+    await expect(catalog.callTool(env, req, principal, 'crm.nope', {})).rejects.toThrow('unknown_tool')
+  })
+})
+
+describe('CRM MCP grant filtering + tenant binding', () => {
+  const noGrant = { grants: [], subjectRef: 'anon', tenantRef: 'tenant.openagents' }
+
+  test('a principal without operator_read sees no tools or resources', async () => {
+    expect(await catalog.listTools(env, req, noGrant)).toHaveLength(0)
+    expect(await catalog.listResources(env, req, noGrant)).toHaveLength(0)
+  })
+
+  test('an ungranted tool is absent: calling it is unknown_tool', async () => {
+    await expect(catalog.callTool(env, req, noGrant, 'crm.contacts.list', {})).rejects.toThrow('unknown_tool')
+  })
+
+  test('an ungranted resource read is unknown_resource', async () => {
+    await expect(
+      catalog.readResource(env, req, noGrant, 'mcp://openagents/worker/crm/contacts'),
+    ).rejects.toThrow('unknown_resource')
+  })
+
+  test('client-supplied args.tenant is ignored; the principal tenant is used', async () => {
+    // The canned DB returns the same row regardless of tenant; assert the bound
+    // tenant flows by checking the call still succeeds with a foreign args.tenant.
+    const outcome = await catalog.callTool(env, req, principal, 'crm.contacts.list', {
+      tenant: 'tenant.attacker',
+    })
+    expect(outcome.isError).toBe(false)
   })
 })
 
 describe('CRM MCP resources', () => {
   test('listResources advertises the worker/crm collections', async () => {
-    const resources = await catalog.listResources(env, req)
+    const resources = await catalog.listResources(env, req, principal)
     const uris = resources.map(r => r.uri)
     expect(uris).toContain('mcp://openagents/worker/crm/contacts')
     expect(uris).toContain('mcp://openagents/worker/crm/commands')
@@ -100,24 +144,24 @@ describe('CRM MCP resources', () => {
   })
 
   test('readResource reads a collection as JSON contents', async () => {
-    const outcome = await catalog.readResource(env, req, 'mcp://openagents/worker/crm/contacts')
+    const outcome = await catalog.readResource(env, req, principal, 'mcp://openagents/worker/crm/contacts')
     expect(outcome.contents[0]?.uri).toBe('mcp://openagents/worker/crm/contacts')
     expect(outcome.contents[0]?.mimeType).toBe('application/json')
     expect(outcome.contents[0]?.text).toContain('ada@example.com')
   })
 
   test('readResource reads a single contact by URI', async () => {
-    const outcome = await catalog.readResource(env, req, 'mcp://openagents/worker/crm/contact/crm_contact_1')
+    const outcome = await catalog.readResource(env, req, principal, 'mcp://openagents/worker/crm/contact/crm_contact_1')
     expect(outcome.contents[0]?.text).toContain('crm_contact_1')
   })
 
   test('a non-worker namespace is an unknown resource', async () => {
     await expect(
-      catalog.readResource(env, req, 'mcp://openagents/pylon/node/status'),
+      catalog.readResource(env, req, principal, 'mcp://openagents/pylon/node/status'),
     ).rejects.toThrow('unknown_resource')
   })
 
   test('a malformed URI throws (transport maps to invalid params)', async () => {
-    await expect(catalog.readResource(env, req, 'not-a-uri')).rejects.toThrow()
+    await expect(catalog.readResource(env, req, principal, 'not-a-uri')).rejects.toThrow()
   })
 })

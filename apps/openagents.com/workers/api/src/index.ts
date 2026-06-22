@@ -445,6 +445,13 @@ import {
 } from './operator-targets'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
 import { makeCrmMcpReadCatalog } from './crm-mcp'
+import {
+  crmMcpAdminPrincipal,
+  mcpTenantHeader,
+  readMcpBearerToken,
+  resolveCrmMcpGrantPrincipal,
+} from './crm-mcp-grant'
+import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
 import { makeCrmMcpRoutes } from './crm-mcp-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
@@ -7121,10 +7128,26 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
-// CRM MCP server (epic #5991): read-only tool catalog (#5993). Resources
-// (#5994) and grant filtering (#5995) extend this same catalog.
+// CRM MCP server (epic #5991): read-only catalog (#5993) + resources (#5994),
+// authenticated to a bound principal — admin token = full CRM authority on the
+// header/default tenant; a scoped grant (#5995) = its declared authorities +
+// bound tenant. The catalog filters tools/resources by the principal's grants.
 const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
+  authenticate: async (request, env) => {
+    const isAdmin = await requireAdminApiToken(request, env)
+    if (isAdmin) {
+      return crmMcpAdminPrincipal(mcpTenantHeader(request), currentIsoTimestamp())
+    }
+    const token = readMcpBearerToken(request)
+    if (token === undefined) {
+      return null
+    }
+    return resolveCrmMcpGrantPrincipal(openAgentsDatabase(env), token, currentIsoTimestamp())
+  },
   catalog: makeCrmMcpReadCatalog<WorkerBindings>(),
+})
+
+const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
@@ -10023,6 +10046,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
+    crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
