@@ -135,7 +135,10 @@ These map onto the existing Verse epics rather than inventing a parallel program
    emits pylon/avatar/run/assignment markers, and desktop tests compare marker
    world positions against the 3D scene projection from the same fixture.**
 4. `three-effect`: nameplate/label projection primitive (Tier 1) - world-anchored entity
-   labels with status bars.
+   labels with status bars. **Shipped in
+   `@openagentsinc/three-effect@b65d0cf`; projection covers pylon, agent, and
+   run labels, bounded status bars, HUD-overlap degradation, and stable
+   pool/reuse reconciliation.**
 5. desktop HUD: hotbar action model + chat channel model (Tier 1) - folds chat into the
    forum-reflection lane (#5904-#5907).
 6. `packages/world-contract` + `packages/world-client`: WoC-style read model /

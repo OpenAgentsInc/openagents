@@ -37,7 +37,7 @@
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b2bb8fa",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b65d0cf",
     "@openagentsinc/ui": "workspace:*",
     "@openagentsinc/world-client": "workspace:*",
     "@openagentsinc/world-contract": "workspace:*",

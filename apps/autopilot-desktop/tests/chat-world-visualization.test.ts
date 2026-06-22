@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test"
+import * as Three from "three"
+import {
+  createVerseNameplatePool,
+  projectVerseNameplates,
+} from "@openagentsinc/three-effect/core"
 import {
   applyDeltaToReadModel,
   makeEmptyClientWorld,
@@ -233,6 +238,78 @@ describe("WorldReadModel minimap projection", () => {
       .toEqual({ x: scene.world?.agents[0]?.x, y: scene.world?.agents[0]?.y, z: scene.world?.agents[0]?.z })
     expect(minimap.markers.find(marker => marker.ref === "pylon.alpha")?.minimap)
       .toEqual({ x: 120, y: 76 })
+  })
+})
+
+describe("shared Verse nameplate projection", () => {
+  test("projects pylon, agent, and run labels with status bars and pooling", () => {
+    const camera = new Three.PerspectiveCamera(50, 1, 0.1, 100)
+    camera.position.set(0, 0, 5)
+    camera.lookAt(0, 0, 0)
+    camera.updateProjectionMatrix()
+    camera.updateMatrixWorld()
+
+    const projections = projectVerseNameplates({
+      camera,
+      size: { width: 240, height: 240 },
+      hudExclusionRects: [{ x: 100, y: 80, width: 40, height: 80 }],
+      items: [
+        {
+          id: "pylon.alpha",
+          kind: "pylon",
+          label: "Alpha Pylon",
+          position: [0, 0, 0],
+          status: "working",
+          anchorOffset: [0, 2, 0],
+        },
+        {
+          id: "avatar.bravo",
+          kind: "agent",
+          label: "Bravo",
+          position: [0, 0, 0],
+          status: "online",
+        },
+        {
+          id: "run.tassadar.executor.20260615",
+          kind: "run",
+          label: "Tassadar Executor",
+          position: [1.4, 0, 0],
+          status: "tracing",
+        },
+      ],
+    })
+    const pool = createVerseNameplatePool()
+
+    expect(projections.map(projection => projection.kind)).toEqual([
+      "pylon",
+      "agent",
+      "run",
+    ])
+    expect(projections.find(projection => projection.kind === "pylon"))
+      .toMatchObject({
+        visible: true,
+        statusBar: { value: 0.78, tone: "working" },
+      })
+    expect(projections.find(projection => projection.kind === "agent"))
+      .toMatchObject({
+        visible: false,
+        degraded: "hud_overlap",
+        statusBar: { value: 1, tone: "online" },
+      })
+    expect(projections.find(projection => projection.kind === "run"))
+      .toMatchObject({
+        visible: true,
+        statusBar: { value: 0.78, tone: "working" },
+      })
+    expect(pool.reconcile(projections).created).toEqual([
+      "pylon.alpha",
+      "avatar.bravo",
+      "run.tassadar.executor.20260615",
+    ])
+    expect(pool.reconcile(projections.slice(1)).reused).toEqual([
+      "avatar.bravo",
+      "run.tassadar.executor.20260615",
+    ])
   })
 })
 

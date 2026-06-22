@@ -171,6 +171,68 @@ export declare const pointerClickPickFromGesture: (
   input: PointerClickPickGesture,
 ) => boolean
 
+export type VerseNameplateKind = "agent" | "pylon" | "run"
+
+export type VerseNameplateDefinition = Readonly<{
+  id: string
+  kind: VerseNameplateKind
+  label: string
+  position: TrainingRunVector
+  status?: string
+  anchorOffset?: TrainingRunVector
+}>
+
+export type VerseNameplateHudExclusion = Readonly<{
+  x: number
+  y: number
+  width: number
+  height: number
+}>
+
+export type VerseNameplateStatusBar = Readonly<{
+  value: number
+  tone: "blocked" | "offline" | "online" | "pending" | "working"
+}>
+
+export type VerseNameplateProjection = Readonly<{
+  id: string
+  kind: VerseNameplateKind
+  label: string
+  status?: string
+  statusBar: VerseNameplateStatusBar
+  screen: Readonly<{ x: number; y: number }>
+  worldPosition: TrainingRunVector
+  visible: boolean
+  degraded: "behind_camera" | "hud_overlap" | "offscreen" | null
+}>
+
+export type VerseNameplateProjectionInput = Readonly<{
+  camera: Three.Camera
+  items: ReadonlyArray<VerseNameplateDefinition>
+  size: Readonly<{ width: number; height: number }>
+  hudExclusionRects?: ReadonlyArray<VerseNameplateHudExclusion>
+  paddingPx?: number
+}>
+
+export type VerseNameplatePoolReconcileResult = Readonly<{
+  created: ReadonlyArray<string>
+  removed: ReadonlyArray<string>
+  reused: ReadonlyArray<string>
+  activeIds: ReadonlyArray<string>
+}>
+
+export type VerseNameplatePool = Readonly<{
+  reconcile: (
+    projections: ReadonlyArray<Pick<VerseNameplateProjection, "id">>,
+  ) => VerseNameplatePoolReconcileResult
+  activeIds: () => ReadonlyArray<string>
+}>
+
+export declare const projectVerseNameplates: (
+  input: VerseNameplateProjectionInput,
+) => ReadonlyArray<VerseNameplateProjection>
+export declare const createVerseNameplatePool: () => VerseNameplatePool
+
 export type TrainingRunMotionKind =
   | "presence"
   | "assignment"

@@ -23,7 +23,7 @@
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b2bb8fa",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b65d0cf",
         "@openagentsinc/ui": "workspace:*",
         "@openagentsinc/world-client": "workspace:*",
         "@openagentsinc/world-contract": "workspace:*",
@@ -117,7 +117,7 @@
         "@openagentsinc/replay-clips": "workspace:*",
         "@openagentsinc/sync-client": "workspace:*",
         "@openagentsinc/sync-schema": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b2bb8fa",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b65d0cf",
         "@openagentsinc/ui": "workspace:*",
         "@openagentsinc/world-client": "workspace:*",
         "@openagentsinc/world-contract": "workspace:*",
@@ -1124,7 +1124,7 @@
 
     "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
-    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#b2bb8fa", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-b2bb8fa", "sha512-hiNBRg2oKvF86hoYA8vHg3sHWsj8DSM5LbYzgD9ykgE5KI7xBh/4thnoayEV/4PMfP/QdHq5Luqg5fXjRWu0fg=="],
+    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#b65d0cf", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-b65d0cf", "sha512-1ac8CfbbbhxZF7B5O6E9XU+urTLL9ibjhwb9Q8LjarP9I0JrJjnJXeT3wSYPfzp9wVAAPgkGU+h3mN660mNTrA=="],
 
     "@openagentsinc/ui": ["@openagentsinc/ui@workspace:packages/ui"],
 

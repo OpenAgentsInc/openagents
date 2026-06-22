@@ -1182,6 +1182,16 @@ Promote a `three-effect` label/nameplate primitive using WoC's world-to-screen
 anchor discipline. Acceptance: Pylon/agent/run labels include state/status bars,
 are pooled/reused, and degrade without overlapping the core HUD.
 
+Implementation note: W4 shipped shared Verse nameplate projection primitives in
+`@openagentsinc/three-effect` at commit `b65d0cf`. The primitive projects
+Pylon, agent, and run labels from world anchors into screen coordinates, derives
+bounded status-bar tones for online/working/offline/blocked/pending states, and
+degrades labels when they are offscreen, behind the camera, or overlapping a
+core HUD exclusion rect. It also exposes a small nameplate pool reconciler so
+stable ids are reused instead of constantly recreated. Desktop pins the exact
+`three-effect` hash and carries a projection/pooling regression over
+pylon/agent/run fixtures.
+
 ### W5: Desktop HUD Hotbar, Chat Channels, And Context Menu
 
 Re-author WoC's pure hotbar, chat channel/timestamp/profanity models, and
