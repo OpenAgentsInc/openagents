@@ -22,6 +22,9 @@ export type WorldCharacterId = typeof WorldCharacterId.Type
 export const WorldPylonRef = S.String.pipe(S.brand("WorldPylonRef"))
 export type WorldPylonRef = typeof WorldPylonRef.Type
 
+export const WorldGatewayRef = S.String.pipe(S.brand("WorldGatewayRef"))
+export type WorldGatewayRef = typeof WorldGatewayRef.Type
+
 export const WorldRunRef = S.String.pipe(S.brand("WorldRunRef"))
 export type WorldRunRef = typeof WorldRunRef.Type
 
@@ -102,6 +105,7 @@ export const WorldCommandName = S.Literals([
   "record_bridge_health",
   "upsert_world_region",
   "upsert_pylon_station",
+  "upsert_gateway_station",
   "record_system_world_message",
   "expire_interaction_rows",
 ])
@@ -130,6 +134,7 @@ export const serviceWorldCommandNames: ReadonlyArray<WorldCommandName> = [
   "record_bridge_health",
   "upsert_world_region",
   "upsert_pylon_station",
+  "upsert_gateway_station",
   "record_system_world_message",
   "expire_interaction_rows",
 ]
@@ -155,6 +160,7 @@ export type WorldDeltaKind = typeof WorldDeltaKind.Type
 export const WorldRowKind = S.Literals([
   "world_region",
   "pylon_station",
+  "gateway_station",
   "agent_avatar",
   "avatar_position",
   "local_chat_message",
@@ -175,6 +181,7 @@ export type WorldRowKind = typeof WorldRowKind.Type
 export const worldRowKinds: ReadonlyArray<WorldRowKind> = [
   "world_region",
   "pylon_station",
+  "gateway_station",
   "agent_avatar",
   "avatar_position",
   "local_chat_message",
@@ -233,6 +240,27 @@ export class WorldPylonStationRow extends S.Class<WorldPylonStationRow>("WorldPy
   pylonRef: WorldPylonRef,
   regionRef: WorldRegionRef,
   label: S.String,
+  position: WorldVector3,
+  status: S.Literals(["unknown", "online", "working", "offline", "blocked"]),
+  updatedAt: WorldIsoTimestamp,
+  safety: WorldPublicSafety,
+}) {}
+
+export const WorldGatewayLane = S.Literals([
+  "vertex",
+  "fireworks",
+  "openrouter",
+  "passthrough",
+])
+export type WorldGatewayLane = typeof WorldGatewayLane.Type
+
+export class WorldGatewayStationRow extends S.Class<WorldGatewayStationRow>("WorldGatewayStationRow")({
+  kind: S.Literal("gateway_station"),
+  gatewayRef: WorldGatewayRef,
+  regionRef: WorldRegionRef,
+  lane: WorldGatewayLane,
+  label: S.String,
+  providerLabel: S.String,
   position: WorldVector3,
   status: S.Literals(["unknown", "online", "working", "offline", "blocked"]),
   updatedAt: WorldIsoTimestamp,
@@ -360,6 +388,46 @@ export class WorldSettlementRefRow extends S.Class<WorldSettlementRefRow>("World
   safety: WorldPublicSafety,
 }) {}
 
+export const WorldInferenceWorkerKind = S.Literals([
+  "coordinator",
+  "pylon",
+  "gateway",
+  "coding_agent",
+  "verifier",
+])
+export type WorldInferenceWorkerKind = typeof WorldInferenceWorkerKind.Type
+
+export const WorldInferenceVerification = S.Literals([
+  "none",
+  "seeded",
+  "test_passed",
+  "exact_trace_replay",
+  "failed",
+  "unknown",
+])
+export type WorldInferenceVerification = typeof WorldInferenceVerification.Type
+
+export class WorldInferenceWorkerRef extends S.Class<WorldInferenceWorkerRef>("WorldInferenceWorkerRef")({
+  workerRef: WorldRef,
+  workerKind: WorldInferenceWorkerKind,
+  label: S.String,
+  role: S.optionalKey(S.String),
+  sourceRefs: S.Array(WorldSourceRef),
+}) {}
+
+export class WorldInferenceEventPayload extends S.Class<WorldInferenceEventPayload>("WorldInferenceEventPayload")({
+  requestRef: WorldRef,
+  receiptRef: WorldSourceRef,
+  model: S.String,
+  route: S.String,
+  workers: S.Array(WorldInferenceWorkerRef),
+  verification: WorldInferenceVerification,
+  costMsat: S.Number,
+  priceMsat: S.optionalKey(S.Number),
+  settled: S.Boolean,
+  sourceRefs: S.Array(WorldSourceRef),
+}) {}
+
 export class WorldEventRow extends S.Class<WorldEventRow>("WorldEventRow")({
   kind: S.Literal("world_event"),
   eventRef: WorldEventRef,
@@ -369,6 +437,7 @@ export class WorldEventRow extends S.Class<WorldEventRow>("WorldEventRow")({
   text: S.String,
   createdAt: WorldIsoTimestamp,
   sourceRefs: S.Array(WorldSourceRef),
+  inference: S.optionalKey(WorldInferenceEventPayload),
   safety: WorldPublicSafety,
 }) {}
 
@@ -395,6 +464,7 @@ export class WorldBridgeHealthRow extends S.Class<WorldBridgeHealthRow>("WorldBr
 export const WorldRow = S.Union([
   WorldRegionRow,
   WorldPylonStationRow,
+  WorldGatewayStationRow,
   WorldAgentAvatarRow,
   WorldAvatarPositionRow,
   WorldLocalChatMessageRow,
@@ -505,6 +575,7 @@ export class WorldReadModel extends S.Class<WorldReadModel>("WorldReadModel")({
   generatedAt: WorldIsoTimestamp,
   regions: S.Record(S.String, WorldRegionRow),
   pylons: S.Record(S.String, WorldPylonStationRow),
+  gateways: S.Record(S.String, WorldGatewayStationRow),
   avatars: S.Record(S.String, WorldAgentAvatarRow),
   positions: S.Record(S.String, WorldAvatarPositionRow),
   chatMessages: S.Record(S.String, WorldLocalChatMessageRow),
@@ -548,6 +619,8 @@ export const worldRowKey = (row: WorldRow): string => {
       return row.regionRef
     case "pylon_station":
       return row.pylonRef
+    case "gateway_station":
+      return row.gatewayRef
     case "agent_avatar":
     case "avatar_position":
       return row.avatarRef

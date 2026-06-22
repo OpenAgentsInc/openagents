@@ -375,6 +375,7 @@ export const makeEmptyClientWorld = (
     generatedAt,
     regions: {},
     pylons: {},
+    gateways: {},
     avatars: {},
     positions: {},
     chatMessages: {},
@@ -854,6 +855,7 @@ type MutableReadModel = {
   generatedAt: ClientWorld["generatedAt"]
   regions: Record<string, ClientWorld["regions"][string]>
   pylons: Record<string, ClientWorld["pylons"][string]>
+  gateways: Record<string, ClientWorld["gateways"][string]>
   avatars: Record<string, ClientWorld["avatars"][string]>
   positions: Record<string, ClientWorld["positions"][string]>
   chatMessages: Record<string, ClientWorld["chatMessages"][string]>
@@ -879,6 +881,7 @@ const cloneReadModel = (
   generatedAt: delta.generatedAt,
   regions: { ...readModel.regions },
   pylons: { ...readModel.pylons },
+  gateways: { ...readModel.gateways },
   avatars: { ...readModel.avatars },
   positions: { ...readModel.positions },
   chatMessages: { ...readModel.chatMessages },
@@ -902,6 +905,9 @@ const upsertReadModelRow = (readModel: MutableReadModel, row: WorldRow): void =>
       break
     case "pylon_station":
       readModel.pylons[key] = row
+      break
+    case "gateway_station":
+      readModel.gateways[key] = row
       break
     case "agent_avatar":
       readModel.avatars[key] = row
@@ -947,6 +953,7 @@ const upsertReadModelRow = (readModel: MutableReadModel, row: WorldRow): void =>
 
 const pruneReadModelRef = (readModel: MutableReadModel, ref: string): void => {
   delete readModel.avatars[ref]
+  delete readModel.gateways[ref]
   delete readModel.positions[ref]
   delete readModel.chatMessages[ref]
   delete readModel.chatBubbles[ref]

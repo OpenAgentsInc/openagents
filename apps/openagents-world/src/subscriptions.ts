@@ -286,6 +286,7 @@ export const applySubscriptionDeltaToReadModel = (
     generatedAt: delta.generatedAt,
     regions: { ...readModel.regions },
     pylons: { ...readModel.pylons },
+    gateways: { ...readModel.gateways },
     avatars: { ...readModel.avatars },
     positions: { ...readModel.positions },
     chatMessages: { ...readModel.chatMessages },
@@ -306,6 +307,7 @@ export const applySubscriptionDeltaToReadModel = (
     generatedAt: WorldReadModel["generatedAt"]
     regions: Record<string, WorldReadModel["regions"][string]>
     pylons: Record<string, WorldReadModel["pylons"][string]>
+    gateways: Record<string, WorldReadModel["gateways"][string]>
     avatars: Record<string, WorldReadModel["avatars"][string]>
     positions: Record<string, WorldReadModel["positions"][string]>
     chatMessages: Record<string, WorldReadModel["chatMessages"][string]>
@@ -329,6 +331,9 @@ export const applySubscriptionDeltaToReadModel = (
         break
       case "pylon_station":
         next.pylons[key] = row
+        break
+      case "gateway_station":
+        next.gateways[key] = row
         break
       case "agent_avatar":
         next.avatars[key] = row
@@ -374,6 +379,7 @@ export const applySubscriptionDeltaToReadModel = (
 
   for (const ref of delta.deletedRefs ?? []) {
     delete next.avatars[ref]
+    delete next.gateways[ref]
     delete next.positions[ref]
     delete next.chatMessages[ref]
     delete next.chatBubbles[ref]

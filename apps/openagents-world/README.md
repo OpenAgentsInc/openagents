@@ -139,6 +139,12 @@ persists public-safe rows replayed from public source refs such as
 `/api/public/tassadar-run-summary`, future Forum activity refs, and receipt/proof
 refs that are already public.
 
+Khala inference serving receipts are bridge-shaped as public `world_event` rows
+with typed inference payloads. External provider destinations are
+`gateway_station` rows, written only through service identity via
+`upsert_gateway_station`, so clients can render the gateway portal without
+fabricating provider route or receipt authority.
+
 Projection rows use `row.kind + worldRowKey(row)` as their D1 key, so replaying
 the same source payload overwrites the same rows and cannot duplicate
 `world_event` entries. Failed ingest writes a public `bridge_health` row and a

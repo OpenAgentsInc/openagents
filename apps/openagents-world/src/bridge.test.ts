@@ -8,6 +8,7 @@ import {
   projectionCursorRow,
   projectionRowMetadata,
   projectionRowRef,
+  rowsFromKhalaInferenceReceipt,
   rowsFromTassadarRunSummary,
 } from "./bridge"
 
@@ -75,6 +76,60 @@ describe("world bridge projection helpers", () => {
     expect(settlement?.safety.sourceRefs.map(String)).toEqual([sourceRef])
     expect(proof === undefined ? null : projectionRowMetadata(proof).runRef).toBe("run.demo")
     expect(settlement === undefined ? null : projectionRowMetadata(settlement).runRef).toBe("run.demo")
+  })
+
+  test("maps Khala inference receipts to a gateway station and typed world event", () => {
+    const source = "https://openagents.com/api/public/inference/receipts/oa_receipt_1"
+    const rows = rowsFromKhalaInferenceReceipt({
+      id: "chatcmpl_test_1",
+      model: "openagents/khala-mini",
+      regionRef: "region.run.khala.nexus",
+      openagents: {
+        receipt: source,
+        route: "cheap",
+        workers: [
+          { workerRef: "gateway.vertex.primary", workerKind: "gateway", label: "Vertex Gemini", role: "worker" },
+          { workerRef: "worker.validator.primary", workerKind: "verifier", label: "Validator", role: "verify" },
+        ],
+        verification: "none",
+        cost_msat: 123,
+        price_msat: 170,
+        settled: false,
+      },
+      gateways: [
+        {
+          gatewayRef: "gateway.vertex.primary",
+          lane: "vertex",
+          label: "Vertex Gateway",
+          providerLabel: "Vertex Gemini",
+          position: { x: 12, y: 0, z: 18 },
+          status: "working",
+        },
+      ],
+    }, observedAt, source)
+    const gateway = rows.find(row => row.kind === "gateway_station")
+    const event = rows.find(row => row.kind === "world_event")
+
+    expect(gateway?.safety.sourceRefs.map(String)).toEqual([source])
+    expect(gateway === undefined ? null : projectionRowMetadata(gateway).regionRef)
+      .toBe("region.run.khala.nexus")
+    expect(event?.safety.sourceRefs.map(String)).toEqual([source])
+    if (event?.kind !== "world_event") throw new Error("expected world event")
+    expect(event.eventKind).toBe("khala_inference_served")
+    expect(event.inference).toMatchObject({
+      requestRef: "chatcmpl_test_1",
+      receiptRef: source,
+      model: "openagents/khala-mini",
+      route: "cheap",
+      verification: "none",
+      costMsat: 123,
+      priceMsat: 170,
+      settled: false,
+    })
+    expect(event.inference?.workers.map(worker => `${worker.workerKind}:${worker.workerRef}`)).toEqual([
+      "gateway:gateway.vertex.primary",
+      "verifier:worker.validator.primary",
+    ])
   })
 
   test("records bridge health and cursor rows without fabricated projection data", () => {

@@ -207,6 +207,8 @@ const evaluateWorldServiceCommand = (
       return serviceRows(state, envelope, ["world_region"])
     case "upsert_pylon_station":
       return serviceRows(state, envelope, ["pylon_station"])
+    case "upsert_gateway_station":
+      return serviceRows(state, envelope, ["gateway_station"])
     case "record_system_world_message":
       return serviceSystemMessage(state, envelope, observedAt)
     case "expire_interaction_rows":

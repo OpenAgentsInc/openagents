@@ -182,6 +182,7 @@ describe("subscription interest policy", () => {
       generatedAt: now,
       regions: {},
       pylons: {},
+      gateways: {},
       avatars: {},
       positions: {},
       chatMessages: {},

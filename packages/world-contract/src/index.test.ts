@@ -80,6 +80,19 @@ const positionRow = {
   safety,
 }
 
+const gatewayRow = {
+  kind: "gateway_station",
+  gatewayRef: "gateway.vertex.primary",
+  regionRef: "region.run.tassadar.street",
+  lane: "vertex",
+  label: "Vertex Gateway",
+  providerLabel: "Vertex Gemini",
+  position: { x: 12, y: 0, z: 18 },
+  status: "online",
+  updatedAt: now,
+  safety,
+}
+
 describe("@openagentsinc/world-contract", () => {
   test("decodes every actor class, error tag, row kind, and command partition", () => {
     expect(worldActorClasses).toEqual(["browser", "agent", "service", "operator"])
@@ -92,9 +105,11 @@ describe("@openagentsinc/world-contract", () => {
       "cursor",
       "bridge",
     ])
-    expect(worldRowKinds).toHaveLength(16)
+    expect(worldRowKinds).toHaveLength(17)
+    expect(worldRowKinds).toContain("gateway_station")
     expect(browserWorldCommandNames.every(isBrowserWorldCommand)).toBe(true)
     expect(serviceWorldCommandNames.every(isServiceWorldCommand)).toBe(true)
+    expect(serviceWorldCommandNames).toContain("upsert_gateway_station")
     expect(browserWorldCommandNames.some(isServiceWorldCommand)).toBe(false)
   })
 
@@ -108,6 +123,7 @@ describe("@openagentsinc/world-contract", () => {
 
   test("validates region bounds and row keys", () => {
     const decodedRegion = decodeWorldRow(regionRow)
+    const decodedGateway = decodeWorldRow(gatewayRow)
     const decodedAvatar = decodeWorldRow(avatarRow)
     const decodedPosition = decodeWorldRow(positionRow)
     const outOfBoundsPosition = decodeWorldRow({
@@ -121,6 +137,7 @@ describe("@openagentsinc/world-contract", () => {
     expect(worldVectorInsideBounds(outOfBoundsPosition.position, decodedRegion.bounds)).toBe(false)
 
     expect(worldRowKey(decodedRegion)).toBe("region.run.tassadar.street")
+    expect(worldRowKey(decodedGateway)).toBe("gateway.vertex.primary")
     expect(worldRowKey(decodedAvatar)).toBe("avatar.account.main")
     expect(worldRowKey(decodedPosition)).toBe("avatar.account.main")
   })
@@ -160,12 +177,12 @@ describe("@openagentsinc/world-contract", () => {
     const serviceCommand = decodeWorldCommandEnvelope({
       schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
       commandRef: "command.test.bridge.1",
-      command: "append_world_event",
+      command: "upsert_gateway_station",
       actorClass: "service",
       actorRef: "service.world.bridge",
       seq: 5,
       issuedAt: now,
-      payload: { eventRef: "world_event.test" },
+      payload: { row: gatewayRow },
     })
     expect(assertWorldCommandActorAllowed(serviceCommand)).toBe(serviceCommand)
 
@@ -239,10 +256,11 @@ describe("@openagentsinc/world-contract", () => {
       regionRef: "region.run.tassadar.street",
       cursor: "cursor.region.tassadar.1",
       generatedAt: now,
-      rows: [regionRow, avatarRow, positionRow],
+      rows: [regionRow, gatewayRow, avatarRow, positionRow],
     })
     expect(delta.rows?.map((row) => row.kind)).toEqual([
       "world_region",
+      "gateway_station",
       "agent_avatar",
       "avatar_position",
     ])
@@ -257,6 +275,7 @@ describe("@openagentsinc/world-contract", () => {
       generatedAt: now,
       regions: { "region.run.tassadar.street": regionRow },
       pylons: {},
+      gateways: { "gateway.vertex.primary": gatewayRow },
       avatars: { "avatar.account.main": avatarRow },
       positions: { "avatar.account.main": positionRow },
       chatMessages: {},
@@ -271,6 +290,7 @@ describe("@openagentsinc/world-contract", () => {
       events: {},
       diagnostics: [],
     })
+    expect(readModel.gateways["gateway.vertex.primary"]?.providerLabel).toBe("Vertex Gemini")
     expect(readModel.avatars["avatar.account.main"]?.label).toBe("Main")
 
     const schemaText = JSON.stringify([WorldDelta.ast, WorldReadModel.ast])
@@ -283,5 +303,53 @@ describe("@openagentsinc/world-contract", () => {
   test("creates deterministic world event refs from public source coordinates", () => {
     expect(deterministicWorldEventRef("github:OpenAgentsInc/openagents#5960", "proof accepted", 7))
       .toBe("world_event.github-openagentsinc-openagents-5960.proof-accepted.7")
+  })
+
+  test("decodes Khala inference world event payloads without exposing private internals", () => {
+    const event = decodeWorldRow({
+      kind: "world_event",
+      eventRef: "world_event.khala.request.1",
+      regionRef: "region.run.tassadar.street",
+      eventKind: "khala_inference_served",
+      text: "openagents/khala-mini served via cheap",
+      createdAt: now,
+      sourceRefs: ["https://openagents.com/api/public/inference/receipts/oa_receipt_1"],
+      inference: {
+        requestRef: "request.khala.1",
+        receiptRef: "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+        model: "openagents/khala-mini",
+        route: "cheap",
+        workers: [
+          {
+            workerRef: "gateway.vertex.primary",
+            workerKind: "gateway",
+            label: "Vertex Gemini",
+            role: "worker",
+            sourceRefs: ["https://openagents.com/api/public/inference/receipts/oa_receipt_1"],
+          },
+          {
+            workerRef: "worker.validator.primary",
+            workerKind: "verifier",
+            label: "Validator",
+            role: "verify",
+            sourceRefs: ["https://openagents.com/api/public/inference/receipts/oa_receipt_1"],
+          },
+        ],
+        verification: "none",
+        costMsat: 123,
+        priceMsat: 170,
+        settled: false,
+        sourceRefs: ["https://openagents.com/api/public/inference/receipts/oa_receipt_1"],
+      },
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["https://openagents.com/api/public/inference/receipts/oa_receipt_1"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    })
+    expect(event.kind === "world_event" ? event.inference?.workers.map(worker => worker.workerKind) : [])
+      .toEqual(["gateway", "verifier"])
+    expect(assertWorldPublicSafety(event)).toBe(event)
   })
 })

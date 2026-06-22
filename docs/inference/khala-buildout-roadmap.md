@@ -291,6 +291,12 @@ gates land.
 bridge shape"). Create real GitHub child issues only when multiple agents need
 separate queues; until then the #6013 checklist plus these anchors is enough.
 
+**Progress — 2026-06-22:** #6013-A is implemented in the shared contract and
+world service: `gateway_station`, service-only `upsert_gateway_station`, typed
+Khala inference `world_event` payloads, bridge mapping from public Khala receipt
+shapes, and read-model mirroring all have focused tests. #6013-B/C/D remain
+open.
+
 ### Agent Cockpit — Autopilot consumption and artifact handoff
 
 **Owns:** M1 and the user-facing run path into M8.

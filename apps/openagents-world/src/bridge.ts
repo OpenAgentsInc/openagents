@@ -3,6 +3,7 @@ import {
   decodeWorldRow,
   deterministicWorldEventRef,
   worldRowKey,
+  type WorldGatewayLane,
   type WorldRow,
   type WorldSourceRef,
 } from "@openagentsinc/world-contract"
@@ -201,6 +202,88 @@ export const rowsFromTassadarRunSummary = (
   return dedupeBridgeRows(rows.map(row => assertWorldPublicSafety(row)))
 }
 
+export const rowsFromKhalaInferenceReceipt = (
+  input: unknown,
+  observedAt: string,
+  sourceRef: string,
+): ReadonlyArray<WorldRow> => {
+  const root = record(input)
+  const openagents = record(root.openagents)
+  const receipt = Object.keys(openagents).length > 0 ? openagents : root
+  const requestRef = stringField(root, "requestRef")
+    ?? stringField(root, "request_ref")
+    ?? stringField(root, "id")
+    ?? stableWorldRef("request.khala", sourceRef)
+  const receiptRef = stringField(receipt, "receipt")
+    ?? stringField(root, "receiptRef")
+    ?? stringField(root, "receipt_ref")
+    ?? sourceRef
+  const model = plainLabel(
+    stringField(root, "model")
+      ?? stringField(receipt, "model")
+      ?? "openagents/khala-mini",
+  )
+  const route = plainLabel(stringField(receipt, "route") ?? "unknown")
+  const regionRef = normalizeRegionRef(
+    stringField(root, "regionRef")
+      ?? stringField(root, "region_ref")
+      ?? `region.${requestRef}`,
+  )
+  const safety = publicSafety(sourceRef)
+  const sourceRefs = [sourceRef]
+  const gatewayRows = arrayField(root, "gateways").map((item, index) => {
+    const gateway = record(item)
+    const lane = gatewayLane(stringField(gateway, "lane"))
+    const gatewayRef = stringField(gateway, "gatewayRef")
+      ?? stringField(gateway, "gateway_ref")
+      ?? stableWorldRef("gateway.world", `${sourceRef}:${lane}:${index}`)
+    return decodeWorldRow({
+      kind: "gateway_station",
+      gatewayRef,
+      regionRef,
+      lane,
+      label: plainLabel(stringField(gateway, "label") ?? `${lane} gateway`),
+      providerLabel: plainLabel(
+        stringField(gateway, "providerLabel")
+          ?? stringField(gateway, "provider_label")
+          ?? lane,
+      ),
+      position: vectorField(gateway, "position") ?? { x: 0, y: 0, z: 18 + index * 4 },
+      status: stationStatus(stringField(gateway, "status")),
+      updatedAt: observedAt,
+      safety,
+    })
+  })
+
+  const priceMsat = finiteNumber(receipt.price_msat) ?? finiteNumber(receipt.priceMsat)
+  const event = decodeWorldRow({
+    kind: "world_event",
+    eventRef: stringField(root, "eventRef")
+      ?? stringField(root, "event_ref")
+      ?? deterministicWorldEventRef(sourceRef, `khala.${requestRef}`, 0),
+    regionRef,
+    eventKind: "khala_inference_served",
+    text: plainText(`${model} served via ${route}`),
+    createdAt: observedAt,
+    sourceRefs,
+    inference: {
+      requestRef,
+      receiptRef,
+      model,
+      route,
+      workers: inferenceWorkers(receipt, sourceRefs),
+      verification: inferenceVerification(stringField(receipt, "verification")),
+      costMsat: finiteNumber(receipt.cost_msat) ?? finiteNumber(receipt.costMsat) ?? 0,
+      ...(priceMsat === null ? {} : { priceMsat }),
+      settled: booleanField(receipt, "settled") ?? false,
+      sourceRefs,
+    },
+    safety,
+  })
+
+  return dedupeBridgeRows([...gatewayRows, event].map(row => assertWorldPublicSafety(row)))
+}
+
 export const planBridgeRetry = (input: {
   readonly reason: string
   readonly attempt: number
@@ -226,6 +309,7 @@ const regionRefForRow = (row: WorldRow): string | null => {
     case "world_region":
       return row.regionRef
     case "pylon_station":
+    case "gateway_station":
     case "agent_avatar":
     case "avatar_position":
     case "local_chat_message":
@@ -300,6 +384,9 @@ const stringField = (input: Record<string, unknown>, key: string): string | null
 const finiteNumber = (input: unknown): number | null =>
   typeof input === "number" && Number.isFinite(input) ? input : null
 
+const booleanField = (input: Record<string, unknown>, key: string): boolean | null =>
+  typeof input[key] === "boolean" ? input[key] : null
+
 const vectorField = (
   input: Record<string, unknown>,
   key: string,
@@ -327,7 +414,7 @@ const trainingRunState = (input: string | null) => {
   }
 }
 
-const pylonStatus = (input: string | null) => {
+const stationStatus = (input: string | null) => {
   switch (input) {
     case "online":
     case "working":
@@ -338,6 +425,76 @@ const pylonStatus = (input: string | null) => {
       return "unknown"
   }
 }
+
+const pylonStatus = (input: string | null) => stationStatus(input)
+
+const gatewayLane = (input: string | null): WorldGatewayLane => {
+  switch (input) {
+    case "vertex":
+    case "fireworks":
+    case "openrouter":
+    case "passthrough":
+      return input
+    default:
+      return "passthrough"
+  }
+}
+
+const inferenceVerification = (
+  input: string | null,
+): "none" | "seeded" | "test_passed" | "exact_trace_replay" | "failed" | "unknown" => {
+  switch (input) {
+    case "none":
+    case "seeded":
+    case "test_passed":
+    case "exact_trace_replay":
+    case "failed":
+      return input
+    case "seeded_replication":
+      return "seeded"
+    default:
+      return "unknown"
+  }
+}
+
+const inferenceWorkerKind = (
+  input: string | null,
+): "coordinator" | "pylon" | "gateway" | "coding_agent" | "verifier" => {
+  switch (input) {
+    case "coordinator":
+    case "pylon":
+    case "gateway":
+    case "coding_agent":
+    case "verifier":
+      return input
+    default:
+      return "gateway"
+  }
+}
+
+const inferenceWorkers = (
+  receipt: Record<string, unknown>,
+  sourceRefs: ReadonlyArray<string>,
+) =>
+  arrayField(receipt, "workers").map((item, index) => {
+    const worker = record(item)
+    const label = typeof item === "string"
+      ? item
+      : stringField(worker, "label") ?? stringField(worker, "workerRef") ?? stringField(worker, "worker_ref") ?? `worker-${index}`
+    const workerKind = typeof item === "string"
+      ? inferenceWorkerKind(label === "validator" || label === "verifier" ? "verifier" : null)
+      : inferenceWorkerKind(stringField(worker, "workerKind") ?? stringField(worker, "worker_kind"))
+    const role = typeof item === "string" ? null : stringField(worker, "role")
+    return {
+      workerRef: stringField(worker, "workerRef")
+        ?? stringField(worker, "worker_ref")
+        ?? stableWorldRef(`worker.khala.${workerKind}`, label),
+      workerKind,
+      label: plainLabel(label),
+      ...(role === null ? {} : { role: plainLabel(role) }),
+      sourceRefs,
+    }
+  })
 
 const publicUrl = (input: string | null): string =>
   input !== null && /^https:\/\//.test(input) ? input : "https://openagents.com/docs/product-promises"

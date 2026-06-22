@@ -253,6 +253,7 @@ export const makeEmptyReadModel = (
     generatedAt,
     regions: {},
     pylons: {},
+    gateways: {},
     avatars: {},
     positions: {},
     chatMessages: {},
@@ -281,6 +282,7 @@ export const makeReadModelFromRows = (
     generatedAt,
     regions: {} as Record<string, unknown>,
     pylons: {} as Record<string, unknown>,
+    gateways: {} as Record<string, unknown>,
     avatars: {} as Record<string, unknown>,
     positions: {} as Record<string, unknown>,
     chatMessages: {} as Record<string, unknown>,
@@ -303,6 +305,9 @@ export const makeReadModelFromRows = (
         break
       case "pylon_station":
         readModel.pylons[key] = row
+        break
+      case "gateway_station":
+        readModel.gateways[key] = row
         break
       case "agent_avatar":
         readModel.avatars[key] = row

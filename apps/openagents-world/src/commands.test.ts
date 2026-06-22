@@ -159,7 +159,7 @@ describe("world command handlers", () => {
   })
 
   test("service actors can write public projection rows only through service commands", async () => {
-    const row = {
+    const runRow = {
       kind: "training_run",
       runRef: "run.public.1",
       label: "Public Run",
@@ -174,13 +174,40 @@ describe("world command handlers", () => {
     }
     const result = await Effect.runPromise(applyWorldCommand(
       makeEmptyHotState(regionRef),
-      serviceCommand("upsert_training_run", { row }),
+      serviceCommand("upsert_training_run", { row: runRow }),
       "2026-06-22T00:00:00.000Z",
     ))
 
     expect(result.receipt.status).toBe("applied")
     expect(result.delta.rows?.[0]?.kind).toBe("training_run")
     expect(result.receipt.changedRefs.map(String)).toEqual(["run.public.1"])
+
+    const gatewayRow = {
+      kind: "gateway_station",
+      gatewayRef: "gateway.vertex.primary",
+      regionRef,
+      lane: "vertex",
+      label: "Vertex Gateway",
+      providerLabel: "Vertex Gemini",
+      position: { x: 0, y: 0, z: 18 },
+      status: "working",
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["source.public.test"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    }
+    const gateway = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("upsert_gateway_station", { row: gatewayRow }, 2),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(gateway.receipt.status).toBe("applied")
+    expect(gateway.delta.rows?.[0]?.kind).toBe("gateway_station")
+    expect(gateway.receipt.changedRefs.map(String)).toEqual(["gateway.vertex.primary"])
   })
 
   test("service projection commands reject private or unsafe rows without echoing payloads", async () => {

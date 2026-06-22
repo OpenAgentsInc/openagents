@@ -12,9 +12,9 @@ Foldkit, or backend runtime code.
 
 - Shared branded refs, cursors, timestamps, sequence numbers, positions, and
   bounded quantities.
-- Public-safe row schemas for region, avatar, pose, pylon station, chat,
-  emote, intent, run/entity/edge/proof/settlement/event, projection cursor, and
-  bridge health records.
+- Public-safe row schemas for region, avatar, pose, pylon station, gateway
+  station, chat, emote, intent, run/entity/edge/proof/settlement/event,
+  projection cursor, and bridge health records.
 - User and service command envelopes plus typed command receipts.
 - Sparse `WorldDelta` frames and WoC-style `WorldReadModel` / `ClientWorld`
   projection schemas.
@@ -31,3 +31,9 @@ must replay public source refs into `WorldRow` values, run
 `assertWorldPublicSafety`, and key persistence with `worldRowKey`. The contract
 does not encode private source payloads, provider traces, raw prompts, or
 proof/settlement authority.
+
+Khala inference serving events use ordinary `world_event` rows with an optional
+typed `inference` payload. External providers are represented by
+`gateway_station` rows and written only through the service-only
+`upsert_gateway_station` command. Browser, agent, and operator actors cannot
+fabricate route, verification, settlement, or gateway projection rows.
