@@ -9,7 +9,7 @@
 // and asserts:
 //   1. an automated intro produces a VISIBLE Verse message icon within one
 //      bridge tick, anchored to the posting agent, with a dereferenceable URL;
-//   2. a SpacetimeDB outage (no world_events) is non-fatal — the projection is
+//   2. a Cloudflare world outage (no world_events) is non-fatal — the projection is
 //      empty and the Verse stays single-player-playable.
 //
 // Secrets boundary: the only token in play is a fake oa_agent_ minted by the
@@ -21,8 +21,6 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { postForumIntroduction } from "../src/bun/forum-intro"
 import { persistCredential } from "../src/bun/agent-onboarding"
-// BF-2 transform (forum-activity envelope -> world_event plan).
-import { buildForumActivityWorldPlan } from "../../openagents-world-spacetimedb/scripts/forum-activity-transform.mjs"
 // BF-3 desktop projection (world_event rows -> pylon message icons).
 import {
   projectForumPylonMessages,
@@ -34,6 +32,33 @@ const NPUB = "npub1forumversesmoke00000000000000000000000000000000000000000abc"
 // The forum actor ref the Worker assigns the registered agent (the join key
 // between forum activity and the Verse avatar's actorRef).
 const AGENT_ACTOR_REF = "agent:autopilot_forumverse"
+
+const buildForumActivityWorldPlan = (envelope: {
+  activity: ReadonlyArray<{
+    agentRef: string
+    eventKind: string
+    eventRef: string
+    sourceGeneratedAt: string
+    sourceRef: string
+    summary: string
+  }>
+  sourceUrl: string
+}) => ({
+  bridgeRef: "bridge.public-forum-activity",
+  calls: envelope.activity.map((row) => ({
+    reducer: "append_world_event",
+    args: [
+      row.eventRef,
+      "run.public_activity_timeline",
+      row.eventKind,
+      row.agentRef,
+      row.sourceRef,
+      row.sourceGeneratedAt,
+      JSON.stringify({ text: row.summary, topicRef: row.eventRef }),
+    ],
+  })),
+  sourceUrl: envelope.sourceUrl,
+})
 
 let ok = true
 const check = (label: string, cond: boolean) => {
@@ -176,8 +201,8 @@ try {
     !JSON.stringify(plan).includes(FAKE_TOKEN),
   )
 
-  // Convert the append_world_event call args into a SpacetimeDB row, as the
-  // desktop would receive it after the bridge applies the plan.
+  // Convert the append_world_event call args into the world row shape the
+  // desktop receives after the bridge applies the plan.
   const args = worldEventCalls[0].args as string[]
   const worldRow: ChatWorldWorldEventRow = {
     eventRef: args[0],
@@ -206,11 +231,11 @@ try {
     !JSON.stringify(messages).includes(FAKE_TOKEN),
   )
 
-  // --- side 2: SpacetimeDB outage stays non-fatal ------------------------
-  // No world_events (the desktop received nothing from SpacetimeDB).
+  // --- side 2: Cloudflare world outage stays non-fatal -------------------
+  // No world_events (the desktop received nothing from the world service).
   const outage = projectForumPylonMessages([])
   check(
-    "SpacetimeDB outage is non-fatal (empty projection, no throw)",
+    "Cloudflare world outage is non-fatal (empty projection, no throw)",
     outage.length === 0,
   )
 } catch (error) {
@@ -222,7 +247,7 @@ cleanup()
 console.log()
 if (ok) {
   console.log(
-    "RESULT: an automated forum intro flows AF-3 -> BF-1 -> BF-2 -> BF-3 into a visible, dereferenceable Verse pylon message icon within one bridge tick, token-free; a SpacetimeDB outage leaves the Verse playable.",
+    "RESULT: an automated forum intro flows AF-3 -> BF-1 -> BF-2 -> BF-3 into a visible, dereferenceable Verse pylon message icon within one bridge tick, token-free; a Cloudflare world outage leaves the Verse playable.",
   )
   process.exit(0)
 } else {

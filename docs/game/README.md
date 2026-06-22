@@ -8,11 +8,11 @@ demos the live-facing shape this folder is aiming at — a walkable Autopilot
 Tassadar run board with Pylon bases, assignment markers, training metrics, refs
 ticker, avatar movement, and an initial multiplayer direction. Treat it as
 visual/product intent; authority for real run state remains with the public
-Worker/D1. Live Verse presence and local interaction are moving to the
+Worker/D1. Live Verse presence and local interaction now flow through the
 Cloudflare Verse World Service (`apps/openagents-world`) with Region Durable
-Objects, D1, `packages/world-contract`, and `packages/world-client`; older
-SpacetimeDB docs below are historical source material unless a document
-explicitly says otherwise.
+Objects, D1, `packages/world-contract`, and `packages/world-client`. Older
+world-backend docs are historical source material unless a document explicitly
+says otherwise.
 
 ## Reading Order
 
@@ -20,16 +20,6 @@ explicitly says otherwise.
   Commander, HUD, MMO, Tassadar living-run, and receipt-backed visual language.
 - `2026-06-17-episode-189-agentic-mmorpg-run-page-analysis.md` - focused read of
   episode 189 and the pivot from gamified HUD to actual game/world.
-- `2026-06-17-spacetimedb-openagents-mmo-database-plan.md` - initial database
-  architecture note using SpacetimeDB, BitCraft, and the Minecraft integration as
-  reference material for an OpenAgents world-state database.
-- `2026-06-17-spacetimedb-gcp-deployment-receipt.md` - live GCP deployment
-  receipt for the first self-hosted SpacetimeDB world database endpoint.
-- `2026-06-17-spacetimedb-admin-runbook.md` - operator runbook for the
-  self-hosted SpacetimeDB VM, domain, TLS, publishing, logs, and recovery.
-- `2026-06-17-spacetimedb-tassadar-integration-next-steps.md` - concrete
-  next-step plan for connecting the live SpacetimeDB world projection to
-  `/tassadar` without moving authority away from the Worker/D1 projection.
 - `2026-06-17-tassadar-wasd-mouselook-controller-plan.md` - implementation plan
   for adding a reusable `three-effect` WASD + mouselook controller and enabling a
   2.5D first-person `/tassadar` navigation mode.
@@ -43,15 +33,15 @@ explicitly says otherwise.
 - `2026-06-17-proof-replay-theater-system-plan.md` - audit and implementation
   plan for turning public proof sets into deterministic 3D replays with agent
   avatars, proof gates, camera tracks, and receipt-backed sats zaps.
-- `2026-06-21-spacetimedb-verse-multiplayer-audit.md` - audit of the existing
-  SpacetimeDB world module, desktop subscription path, local SpacetimeDB game
-  references, and the implementation plan for letting multiple Verse users see
-  each other on the map.
 - `2026-06-22-effect-typescript-world-backend-replacement-audit.md` - audit of
-  the decided fast path for replacing the SpacetimeDB world backend with an
-  OpenAgents-owned Effect/TypeScript Cloudflare Verse World Service while
-  preserving the Worker/D1 product authority split, subscription contract,
-  multiplayer semantics, WoC-derived world-read seam, and outage behavior.
+  the decided fast path for the OpenAgents-owned Effect/TypeScript Cloudflare
+  Verse World Service while preserving the Worker/D1 product authority split,
+  subscription contract, multiplayer semantics, WoC-derived world-read seam,
+  and outage behavior.
+- `2026-06-22-cloudflare-world-actor-command-authority-model.md` - formal/model
+  note for actor command authority: browser/agent/operator interaction commands
+  versus service-only projection commands, the invariant boundary, and the
+  counterexample tests that lock the cutover.
 - `2026-06-21-verse-scene-graph-vs-react-three-fiber-audit.md` - deep audit of
   how the desktop Verse scene graph is built today (`three-effect` + Foldkit,
   full teardown+rebuild on every change) versus react-three-fiber's
@@ -71,17 +61,15 @@ explicitly says otherwise.
 
 ## Implementation Homes
 
-- `apps/openagents-world/` will own the Cloudflare Worker + Region Durable
+- `apps/openagents-world/` owns the Cloudflare Worker + Region Durable
   Object Verse World Service: live presence, socket fanout, interest scoping,
   local world commands, chat moderation before fanout, expiry, and durable D1
   projection rows.
-- `packages/world-contract/` will own Effect Schema row/command/delta contracts,
+- `packages/world-contract/` owns Effect Schema row/command/delta contracts,
   branded refs, world-read projection schemas, interest plans, public-safety
   helpers, and test fixtures.
-- `packages/world-client/` will own the Cloudflare Verse client and WoC-style
+- `packages/world-client/` owns the Cloudflare Verse client and WoC-style
   read-only `ClientWorld` mirror consumed by desktop/web render and HUD code.
-- `apps/openagents-world-spacetimedb/` is historical SpacetimeDB source material
-  until the cutover deletes it; do not add new production world features there.
 - `/Users/christopherdavid/work/three-effect` owns reusable spatial/visual
   primitives for the game world and proof replay theater. Add missing replay
   stages, avatar, zap, camera, particle, terrain, label, and interaction
@@ -91,4 +79,5 @@ explicitly says otherwise.
 - `apps/openagents.com/` and `apps/autopilot-desktop/` may adapt public replay
   data and render Foldkit HUD/inspector/accessibility chrome, but should consume
   `three-effect` for world visuals rather than adding app-local DOM/canvas
-  replay renderers.
+  replay renderers. Both app clients consume the Cloudflare world client and no
+  longer import generated backend bindings.

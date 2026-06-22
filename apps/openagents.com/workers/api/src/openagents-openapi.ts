@@ -5880,7 +5880,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicTassadarFirstRealSettlementReplay',
       summary: 'Read first real Tassadar settlement replay bundle',
       description:
-        'Builds the public-safe proof_replay_bundle.v1 payload for the historical Tassadar Run 1 first real Bitcoin settlement. The bundle is generated from Worker/D1 public summary and receipt refs, keeps SpacetimeDB as projection-only context, distinguishes the older simulation row from the 1,000-sat real Spark settlement, and emits confirmed payment-zap events only from receipt-first realBitcoinMoved:true evidence.',
+        'Builds the public-safe proof_replay_bundle.v1 payload for the historical Tassadar Run 1 first real Bitcoin settlement. The bundle is generated from Worker/D1 public summary and receipt refs, keeps Cloudflare world as projection-only context, distinguishes the older simulation row from the 1,000-sat real Spark settlement, and emits confirmed payment-zap events only from receipt-first realBitcoinMoved:true evidence.',
       tags: ['Training'],
       security: publicRead,
       parameters: [

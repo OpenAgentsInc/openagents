@@ -36,15 +36,14 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
-| **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` until `apps/openagents-world/README.md` exists | scaffold `packages/world-contract`, `packages/world-client`, and `apps/openagents-world`; run the P1-P13 gates in the audit before any production cutover | — |
+| **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `apps/openagents-world/README.md` + `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` | preflight world contract/client/service tests → `cd apps/openagents-world && bunx wrangler d1 migrations apply openagents-world --remote` → `bun run deploy` | — |
 
 ## Verse World Service Gate
 
-The new Verse world backend is the planned `apps/openagents-world` Cloudflare
-Worker + Region Durable Object service, with shared schemas in
-`packages/world-contract` and the desktop/web mirror in `packages/world-client`.
-Until those packages and the service README exist, the canonical cutover plan is
-`docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md`.
+The Verse world backend is `apps/openagents-world`, a Cloudflare Worker +
+Region Durable Object service with shared schemas in `packages/world-contract`
+and the desktop/web mirror in `packages/world-client`. The canonical migration
+ledger remains `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md`.
 
 Deploy readiness for this surface means the audit's P1-P13 sequence is green:
 Effect Schema contracts, service/client authorization boundaries, Region Durable
@@ -53,11 +52,16 @@ interest-scoped snapshots/deltas, handshake buffering, command sequence
 receipts, moderation, two-client desktop smoke, web smoke, and public-safety
 redaction tests.
 
-`apps/openagents-world-spacetimedb/` and its generated TypeScript bindings are
-historical source material during the ripout. Do not regenerate or extend them
-for new production world behavior. Any useful schema or reducer pattern should
-be ported into the Cloudflare/Effect contracts and then the old binding path
-deleted as part of the mandatory decommission issue.
+The old self-hosted world module and generated TypeScript bindings have been
+deleted. Do not regenerate or reintroduce them for new production world
+behavior. Any useful schema or reducer pattern belongs in the Cloudflare/Effect
+contracts and Worker service.
+
+Operational details live in `apps/openagents-world/README.md`: D1 migrations
+use Wrangler against `openagents-world` or `openagents-world-staging`, DO class
+migrations use unique tags in `wrangler.jsonc`, `WORLD_BRIDGE_QUEUE` carries
+compact bridge retry markers, and DO alarm expiry is validated through the
+Effect-clock expiry tests plus two-client live smoke.
 
 ## Owned Visibility Freshness Smoke
 
@@ -74,9 +78,7 @@ node apps/openagents.com/scripts/visibility-freshness-smoke.mjs \
 
 The smoke checks public route status, activity-timeline `generatedAt` and
 `projection_staleness.v1`, source-lag rows, the SSE stream route, replay-clip
-render queue freshness, and R2 clip manifest/artifact availability. Any
-remaining SpacetimeDB bridge observation in this smoke is legacy cutover evidence
-only and must be removed with the old backend path. It exits nonzero for
+render queue freshness, and R2 clip manifest/artifact availability. It exits nonzero for
 alerting unless `--warn-only` is used to collect an evidence report during a
 known incident. Failures name the stale source or broken route so the operator
 can route the fix without manual page refreshes.

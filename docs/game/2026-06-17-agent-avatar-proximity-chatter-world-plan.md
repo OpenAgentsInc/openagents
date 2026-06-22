@@ -5,7 +5,7 @@ Status: Brainstorm and implementation direction for making `/tassadar` feel like
 a shared agent world, not only a live proof diagram.
 
 Update: issue #5261 implemented the MVP SpacetimeDB interaction schema in the
-separate `apps/openagents-world-spacetimedb` app. The live module now has public
+separate deleted legacy world module app. The live module now has public
 interaction rows for pylon stations, agent avatars, avatar positions, pylon
 attention, local chat messages, chat bubbles, local emotes, and agent intent,
 plus generated TypeScript bindings for the web adapter. The authority split
@@ -349,7 +349,7 @@ That is the minimum "actual game" slice.
 - Done in issue #5261: add `pylon_station`, `agent_avatar`,
   `avatar_position`, `pylon_attention`, `local_chat_message`, `chat_bubble`,
   `local_emote`, and `agent_intent` tables to
-  `apps/openagents-world-spacetimedb`.
+  deleted legacy world module.
 - Done in issue #5261: add reducers for join/leave, position update, attention
   update, and local message send.
 - Done in issue #5261: generate TypeScript bindings.

@@ -2,11 +2,11 @@ import {
   chatWorldRegionRefForRun,
   type ChatWorldMultiplayerProjection,
 } from "../../src/shared/chat-world-multiplayer"
-import type { SpacetimeWorldConnection } from "../../src/ui/chat-world-subscriptions"
+import type { CloudflareWorldConnection } from "../../src/ui/chat-world-subscriptions"
 
 export type TableCallback = (...args: ReadonlyArray<unknown>) => void
 
-export class FakeSpacetimeTable {
+export class FakeCloudflareTable {
   rows: unknown[]
   inserts: TableCallback[] = []
   updates: TableCallback[] = []
@@ -78,17 +78,17 @@ export class FakeSpacetimeTable {
 }
 
 export type FakeChatWorldRows = {
-  worldRegion: FakeSpacetimeTable
-  pylonStation: FakeSpacetimeTable
-  agentAvatar: FakeSpacetimeTable
-  avatarPosition: FakeSpacetimeTable
-  avatarPositionNear: FakeSpacetimeTable
-  avatarPositionFar: FakeSpacetimeTable
-  pylonAttention: FakeSpacetimeTable
-  localChatMessage: FakeSpacetimeTable
-  chatBubble: FakeSpacetimeTable
-  localEmote: FakeSpacetimeTable
-  agentIntent: FakeSpacetimeTable
+  worldRegion: FakeCloudflareTable
+  pylonStation: FakeCloudflareTable
+  agentAvatar: FakeCloudflareTable
+  avatarPosition: FakeCloudflareTable
+  avatarPositionNear: FakeCloudflareTable
+  avatarPositionFar: FakeCloudflareTable
+  pylonAttention: FakeCloudflareTable
+  localChatMessage: FakeCloudflareTable
+  chatBubble: FakeCloudflareTable
+  localEmote: FakeCloudflareTable
+  agentIntent: FakeCloudflareTable
 }
 
 export const createFakeChatWorldRows = (input: {
@@ -103,7 +103,7 @@ export const createFakeChatWorldRows = (input: {
   const nowMs = input.nowMs ?? 1_000
 
   return {
-    worldRegion: new FakeSpacetimeTable([{
+    worldRegion: new FakeCloudflareTable([{
       regionRef,
       runRef: input.runRef,
       label: "Tassadar main",
@@ -118,7 +118,7 @@ export const createFakeChatWorldRows = (input: {
       staleAvatarPositionMs: 20_000,
       ...input.regionOverrides,
     }]),
-    pylonStation: new FakeSpacetimeTable([{
+    pylonStation: new FakeCloudflareTable([{
       pylonRef: "pylon.public.alpha",
       runRef: input.runRef,
       regionRef,
@@ -128,7 +128,7 @@ export const createFakeChatWorldRows = (input: {
       positionZ: -2,
       ...input.stationOverrides,
     }]),
-    agentAvatar: new FakeSpacetimeTable([{
+    agentAvatar: new FakeCloudflareTable([{
       avatarRef: "avatar.forum.author",
       actorRef: "agent:forum_author",
       actorKind: "pylon_agent",
@@ -136,7 +136,7 @@ export const createFakeChatWorldRows = (input: {
       colorHex: "#f5b73a",
       ...input.avatarOverrides,
     }]),
-    avatarPosition: new FakeSpacetimeTable([{
+    avatarPosition: new FakeCloudflareTable([{
       avatarRef: "avatar.forum.author",
       regionRef,
       positionX: -4,
@@ -147,17 +147,17 @@ export const createFakeChatWorldRows = (input: {
       lastSeenEpochMs: nowMs,
       ...input.positionOverrides,
     }]),
-    avatarPositionNear: new FakeSpacetimeTable([]),
-    avatarPositionFar: new FakeSpacetimeTable([]),
-    pylonAttention: new FakeSpacetimeTable([]),
-    localChatMessage: new FakeSpacetimeTable([]),
-    chatBubble: new FakeSpacetimeTable([]),
-    localEmote: new FakeSpacetimeTable([]),
-    agentIntent: new FakeSpacetimeTable([]),
+    avatarPositionNear: new FakeCloudflareTable([]),
+    avatarPositionFar: new FakeCloudflareTable([]),
+    pylonAttention: new FakeCloudflareTable([]),
+    localChatMessage: new FakeCloudflareTable([]),
+    chatBubble: new FakeCloudflareTable([]),
+    localEmote: new FakeCloudflareTable([]),
+    agentIntent: new FakeCloudflareTable([]),
   }
 }
 
-export type FakeChatWorldConnection = SpacetimeWorldConnection & {
+export type FakeChatWorldConnection = CloudflareWorldConnection & {
   readonly capturedQueries: ReadonlyArray<ReadonlyArray<string>>
   readonly joins: ReadonlyArray<unknown>
   readonly leaves: ReadonlyArray<unknown>

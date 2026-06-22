@@ -39,7 +39,7 @@ import type { Model } from "./model.js"
 import {
   subscribePaymentParticles,
   subscribePylonScene,
-  subscribeSpacetimeWorld,
+  subscribeCloudflareWorld,
 } from "./chat-world-subscriptions.js"
 import {
   chatWorldBuildFlags,
@@ -387,15 +387,15 @@ const chatWorldSubscriptionFlags = () => ({
   CHAT_WORLD_MULTIPLAYER: chatWorldMultiplayerFlag(),
 })
 
-const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
+const cloudflareWorldStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
   Effect.acquireRelease(
     Effect.sync(() =>
-      subscribeSpacetimeWorld(
+      subscribeCloudflareWorld(
         (world) => Queue.offerUnsafe(queue, GotChatWorldMultiplayer({ world })),
         // Pass the character resolver LAZILY (a getter), not an eager string.
         // The Bun host injects globalThis.__OA_CHARACTER (chatWorldCharacterId
         // reads it) and the dom-ready injection may land after this subscription
-        // mounts; resolving at join/move time — after the async SpacetimeDB
+        // mounts; resolving at join/move time — after the async Cloudflare world
         // connect — makes the value deterministic regardless of inject timing.
         { flags: chatWorldSubscriptionFlags(), characterId: () => chatWorldCharacterId() },
       ),
@@ -444,7 +444,7 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   // (no I/O) unless their build flag is on, so flag-OFF behavior is unchanged.
   chatWorldScene: Subscription.persistent(pylonSceneStream),
   chatWorldPayments: Subscription.persistent(paymentParticleStream),
-  chatWorldSpacetime: Subscription.persistent(spacetimeWorldStream),
+  chatWorldCloudflare: Subscription.persistent(cloudflareWorldStream),
   onboardingStatusRefresh: Subscription.persistent(onboardingStatusRefreshStream),
   verseTrainingProjection: Subscription.persistent(verseTrainingProjectionStream),
 }))

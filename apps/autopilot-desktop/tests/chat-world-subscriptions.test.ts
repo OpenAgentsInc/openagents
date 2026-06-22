@@ -4,10 +4,10 @@ import {
   createVerseMultiplayerClient,
   parseActivityStreamData,
   publishActiveVerseLocalPose,
-  publishSpacetimeAvatarPosition,
+  publishCloudflareAvatarPosition,
   subscribePaymentParticles,
   subscribePylonScene,
-  subscribeSpacetimeWorld,
+  subscribeCloudflareWorld,
 } from "../src/ui/chat-world-subscriptions"
 import type {
   ChatWorldPylonScene,
@@ -292,10 +292,10 @@ describe("subscribePaymentParticles (flag-gated, evidence-bound)", () => {
   })
 })
 
-describe("subscribeSpacetimeWorld", () => {
+describe("subscribeCloudflareWorld", () => {
   test("noop when CHAT_WORLD_MULTIPLAYER is off", () => {
     let connected = 0
-    const stop = subscribeSpacetimeWorld(() => {}, {
+    const stop = subscribeCloudflareWorld(() => {}, {
       flags: { CHAT_WORLD_MULTIPLAYER: false },
       connect: () => {
         connected += 1
@@ -333,7 +333,7 @@ describe("subscribeSpacetimeWorld", () => {
     let tokenRead: string | null = null
     let tokenWritten: string | null = null
 
-    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+    const stop = subscribeCloudflareWorld((world) => worlds.push(world), {
       flags: { CHAT_WORLD_MULTIPLAYER: true },
       runRef,
       nowMs: () => 1_000,
@@ -382,7 +382,7 @@ describe("subscribeSpacetimeWorld", () => {
       },
     })
 
-    expect(tokenRead).toBe("openagents.world.spacetimedb.token.v1")
+    expect(tokenRead).toBe("openagents.world.cloudflare.session.v1")
     expect(tokenWritten).toBe("fresh-token")
     expect(capturedQueries).toContain(
       `SELECT * FROM world_region WHERE region_ref = '${regionRef}'`,
@@ -444,7 +444,7 @@ describe("subscribeSpacetimeWorld", () => {
     const identityHex = "1122334455667788990011223344556677"
 
     let liveCharacter: string | null = "main"
-    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+    const stop = subscribeCloudflareWorld((world) => worlds.push(world), {
       flags: { CHAT_WORLD_MULTIPLAYER: true },
       runRef,
       nowMs: () => 1_000,
@@ -504,7 +504,7 @@ describe("subscribeSpacetimeWorld", () => {
       const rows = fakeWorldRows()
       let applied: (() => void) | null = null
       const worlds: ChatWorldMultiplayerProjection[] = []
-      const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+      const stop = subscribeCloudflareWorld((world) => worlds.push(world), {
         flags: { CHAT_WORLD_MULTIPLAYER: true },
         runRef,
         nowMs: () => 1_000,
@@ -566,7 +566,7 @@ describe("subscribeSpacetimeWorld", () => {
     const worlds: ChatWorldMultiplayerProjection[] = []
     let applied: (() => void) | null = null
 
-    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+    const stop = subscribeCloudflareWorld((world) => worlds.push(world), {
       flags: { CHAT_WORLD_MULTIPLAYER: true },
       runRef,
       nowMs: () => 1_000,
@@ -616,7 +616,7 @@ describe("subscribeSpacetimeWorld", () => {
     let removed: string | null = null
     let scheduled = false
 
-    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+    const stop = subscribeCloudflareWorld((world) => worlds.push(world), {
       flags: { CHAT_WORLD_MULTIPLAYER: true },
       runRef,
       nowMs: () => 1_000,
@@ -657,7 +657,7 @@ describe("subscribeSpacetimeWorld", () => {
       ok: false,
       reason: "multiplayer client unavailable",
     })
-    expect(removed).toBe("openagents.world.spacetimedb.token.v1")
+    expect(removed).toBe("openagents.world.cloudflare.session.v1")
     expect(scheduled).toBe(false)
   })
 
@@ -763,12 +763,12 @@ describe("subscribeSpacetimeWorld", () => {
       displayName: "Sender",
       runRef,
       nowMs: () => nowMs,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
     })
     sender.joinRegion()
 
     const receiverWorlds: ChatWorldMultiplayerProjection[] = []
-    const stopReceiver = subscribeSpacetimeWorld(
+    const stopReceiver = subscribeCloudflareWorld(
       (world) => receiverWorlds.push(world),
       {
         flags: { CHAT_WORLD_MULTIPLAYER: true },
@@ -844,7 +844,7 @@ describe("subscribeSpacetimeWorld", () => {
     }
 
     expect(
-      publishSpacetimeAvatarPosition(connection, {
+      publishCloudflareAvatarPosition(connection, {
         ok: false,
         reason: "position outside region bounds",
       }),
@@ -852,7 +852,7 @@ describe("subscribeSpacetimeWorld", () => {
     expect(writes).toEqual([])
 
     expect(
-      publishSpacetimeAvatarPosition(connection, {
+      publishCloudflareAvatarPosition(connection, {
         ok: true,
         write: {
           regionRef,
@@ -892,7 +892,7 @@ describe("subscribeSpacetimeWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 2_000,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
     })
 
     client.joinRegion()
@@ -933,7 +933,7 @@ describe("subscribeSpacetimeWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 1_000,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
     })
     client.joinRegion()
 
@@ -1004,7 +1004,7 @@ describe("subscribeSpacetimeWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 1_000,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
     })
     client.joinRegion()
 

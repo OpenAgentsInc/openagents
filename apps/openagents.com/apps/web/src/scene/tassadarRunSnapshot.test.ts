@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type TassadarRunPublicSummary,
   applyWorldEntitySpatialLayout,
-  spacetimeWorldSummaryFromRows,
+  cloudflareWorldSummaryFromRows,
   tassadarRunBulletinWorldItem,
   tassadarRunVisualizationOptions,
   trainingRunEntityLayerFromPublicSummary,
@@ -494,8 +494,8 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
     expect(distance).toBeGreaterThanOrEqual(0.82)
   })
 
-  it('maps SpacetimeDB projection rows through the existing summary visualization shape', () => {
-    const fromWorld = spacetimeWorldSummaryFromRows(populated, {
+  it('maps Cloudflare world projection rows through the existing summary visualization shape', () => {
+    const fromWorld = cloudflareWorldSummaryFromRows(populated, {
       agentAvatars: [
         {
           actorKind: 'pylon_agent',
@@ -999,7 +999,7 @@ describe('trainingRunSnapshotFromPublicSummary', () => {
   })
 
   it('does not animate activity rows without public refs or liveness metadata', () => {
-    const summary = spacetimeWorldSummaryFromRows(
+    const summary = cloudflareWorldSummaryFromRows(
       {
         realGradient: {
           leaderboardRows: [

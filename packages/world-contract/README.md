@@ -6,7 +6,7 @@ This package is transport-neutral. It defines the public-safe world rows,
 commands, receipts, deltas, subscription plans, diagnostics, bridge payloads,
 errors, and read-model projection shapes that both the Worker and clients use.
 It intentionally imports no Worker, Durable Object, D1, WebSocket, Three.js,
-Foldkit, or SpacetimeDB runtime code.
+Foldkit, or backend runtime code.
 
 ## P1 Scope
 
@@ -22,3 +22,12 @@ Foldkit, or SpacetimeDB runtime code.
   selected-target promotion, and cursor resume fields.
 - Tagged errors and helpers for public-safety, avatar refs, character id
   sanitization, region bounds, row keys, and deterministic event refs.
+
+## Projection Bridge Notes
+
+P8 consumes these contracts from `apps/openagents-world/src/bridge.ts`.
+`WorldBridgePayload` is intentionally row-shaped and public-safe: bridge code
+must replay public source refs into `WorldRow` values, run
+`assertWorldPublicSafety`, and key persistence with `worldRowKey`. The contract
+does not encode private source payloads, provider traces, raw prompts, or
+proof/settlement authority.

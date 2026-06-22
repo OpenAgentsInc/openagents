@@ -146,7 +146,7 @@ searches the forum labor market. That is the gap to close.
 
 What is **net-new** in Part B: there is **no forum→Verse reflection at all
 today**. The only writers into the world module are the Tassadar summary bridge
-(`apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs`) and
+(the deleted legacy bridge scripts) and
 the activity-timeline bridge (`project-activity-timeline.mjs`). Nothing maps a
 forum post/reply/tip into a `world_event`, `chat_bubble`, or `pylon_attention`
 row. Part B is a new bridge plus client rendering.
@@ -200,14 +200,14 @@ Verse scene + world reflection hooks (Part B):
   (`LivePylonNode`, `LivePylonState`, `pylonGrowthTier`,
   `projectChatWorldPylonScene`)
 - `apps/autopilot-desktop/src/shared/chat-world-multiplayer.ts`,
-  `apps/autopilot-desktop/src/shared/chat-world-spacetimedb.ts`,
+  `apps/autopilot-desktop/src/shared/chat-world-cloudflare.ts`,
   `apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts`
-- `apps/openagents-world-spacetimedb/src/lib.rs` (tables `world_event`,
+- the deleted legacy world module (tables `world_event`,
   `pylon_station`, `agent_avatar`, `pylon_attention`, `local_chat_message`,
   `chat_bubble`, `local_emote`, `agent_intent`; reducers `append_world_event`,
   `record_system_world_message`, `send_pylon_message`, `focus_pylon`,
   `ensure_pylon_agent_avatar`, `ensure_service`)
-- `apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs`,
+- the deleted legacy bridge scripts,
   `scripts/project-activity-timeline.mjs` (the only existing service-identity
   bridges into the world module)
 
@@ -467,7 +467,7 @@ onboarding token boundary:
 
 ### B0. The core constraint: only a service identity may write events
 
-`apps/openagents-world-spacetimedb/src/lib.rs` gates `append_world_event`,
+the deleted legacy world module gates `append_world_event`,
 `record_system_world_message`, and the projection upserts behind
 `ensure_service(ctx)` (a row in the `service_identity` table). Browser/desktop
 clients can call only the *interaction* reducers (`join_region`,
@@ -477,8 +477,8 @@ Therefore a forum action **cannot** be reflected by the user's desktop client
 writing a `world_event` directly. It must flow through a **service-identity
 bridge**, exactly like the two existing bridges:
 
-- `apps/openagents-world-spacetimedb/scripts/project-tassadar-summary.mjs`
-- `apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs`
+- the deleted legacy bridge scripts
+- the deleted legacy bridge scripts
 
 These run with the authorized service identity and call reducers
 (`append_world_event`, station/avatar upserts). **Part B is a new
@@ -674,7 +674,7 @@ Part B (Worker + world module + desktop Verse; owned by the Verse lane):
   `apps/openagents.com/workers/api/src` (new route). (medium)
 - **BF-2**: `project-forum-activity.mjs` service-identity bridge → idempotent
   `append_world_event` (+ optional `record_system_world_message`). Files:
-  `apps/openagents-world-spacetimedb/scripts`. (medium)
+  deleted legacy bridge scripts. (medium)
 - **BF-3**: Desktop Verse rendering — project `forum_*` `world_event`s into a
   message icon/bubble on the matching `LivePylonNode`; tip → growth-tier nudge;
   dereference `source_ref` on select. Files: `chat-world-multiplayer.ts`,

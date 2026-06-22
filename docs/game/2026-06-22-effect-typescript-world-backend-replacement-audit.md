@@ -851,6 +851,23 @@ Port the WoC subscription policy directly into the owned backend. Acceptance:
 This is the issue that makes the replacement better than the old table stream,
 because interest policy is now explicit domain logic.
 
+Implementation note: P6 adds `apps/openagents-world/src/subscriptions.ts` as the
+Effect-backed server-side interest policy module. `/connect` returns an approved
+`WorldSubscriptionPlan`; Region DO WebSocket attachments persist that plan plus
+per-session sight/tier state for hibernation. Client query params may request a
+scope, center, selected target, and cursor, but the service normalizes them and
+rejects unbounded global avatar/event streams.
+
+The policy planner keeps the feed as `single_region` below the audit threshold
+and chooses `split_near_far` once avatar count or estimated row churn crosses
+the documented limit. It implements separate enter/drop hysteresis, selected
+target high-resolution promotion, explicit near/far update rates, first-sight
+full records, lite continued updates, interest-leave pruning, re-entry full
+records, settle-on-stop patches, and a sparse read-model apply helper that
+preserves absent-means-unchanged semantics. P8/P9/P10 should reuse this module
+when durable projection rows, the official `packages/world-client`, and richer
+socket fanout land; they should not create a second interest-policy path.
+
 ### P7: Add World Chat Moderation And Abuse Controls
 
 Adapt WoC's moderation posture before local chat/forum-reflection bubbles become
@@ -868,6 +885,22 @@ part of the production world stream. Acceptance:
   throttle so distributed abuse does not bypass account-level policy.
 - Tests cover false-positive avoidance (`class`, `despicable`), confusable
   matching, empty hard-list behavior, mute windows, and redaction.
+
+Implementation note: P7 adds `apps/openagents-world/src/moderation.ts` as the
+`WorldModeration` service and threads it through browser local/pylon chat before
+any `local_chat_message` row can be emitted. The open Worker config ships empty
+`OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON` and
+`OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON` arrays; private deployments can
+seed JSON string arrays through config/secrets without committing a slur list.
+
+The service performs whole-token hard-list enforcement after NFKD/confusable
+folding, keeps soft-list masking as a client/user preference, avoids substring
+false positives such as `class` and `despicable`, records strike/mute state in
+the Region DO hot state, and emits only public-safe reason codes. It exposes
+the same moderation gate for future forum-reflection bubbles and redacts
+user-authored diagnostic text before public diagnostics. Chat throttles now
+track per-account and per-session cadence separately from any later IP/edge
+throttle.
 
 ### P8: Add Service Commands And Projection Bridge
 
@@ -889,6 +922,27 @@ Bring durable public projection rows into the Cloudflare service. Acceptance:
 After P8, the world service can rebuild its durable projection rows from public
 authority and does not need SpacetimeDB as a projection source.
 
+Implementation note: P8 adds `apps/openagents-world/src/bridge.ts`, wires
+`POST /bridge/ingest` into D1 persistence, and opens the service-only command
+lane inside `apps/openagents-world/src/commands.ts`.
+
+The bridge now decodes `WorldBridgePayload` with Effect Schema, runs
+`assertWorldPublicSafety` before persistence, dedupes rows by
+`row.kind + worldRowKey(row)`, writes `world_projection_rows`, advances
+`world_projection_cursors` when a cursor is present, and records
+`world_bridge_ingest_log` for replay auditing. Successful ingest appends public
+`bridge_health=current` and optional `projection_cursor` rows; failed ingest
+writes `bridge_health=failed` and returns a public diagnostic without inventing
+run/proof/settlement state. Queue integration stays bounded: valid requests
+enqueue only a compact `bridge_ingest_requested` marker for retriable follow-up
+work instead of chaining long `waitUntil` jobs.
+
+Service commands can now upsert training runs, run entities, world edges,
+proof refs, settlement refs, events, regions, pylons, bridge health, projection
+cursors, system messages, and interaction-expiry deletes. Browser and agent
+actors still fail the shared actor gate before service row payloads decode, and
+unsafe/private service rows are rejected with redacted diagnostics.
+
 ### P9: Build `packages/world-client` As The Only Client
 
 Add the client package that desktop and web will import. Acceptance:
@@ -909,6 +963,22 @@ Add the client package that desktop and web will import. Acceptance:
 
 This issue is where the previous casing bug becomes structurally impossible.
 
+Implementation note: P9 adds `packages/world-client` as
+`@openagentsinc/world-client`, registers it in the root `test` and `typecheck`
+scripts, and keeps the package transport-neutral. It exposes `connect`,
+`subscribe`, `callCommand`, `applyDelta`, `reconnect`, `disconnect`,
+`diagnostics`, `readModel`, and `state` over a typed Effect transport interface
+that speaks only the Cloudflare Verse World protocol.
+
+The package owns the WoC-style `ClientWorld` mirror and `applyDeltaToReadModel`.
+Absent rows mean unchanged, `deletedRefs` prune every read-model table and
+selected-target state, settle patches update motion without dropping position
+rows, diagnostics flow into the read model, and command receipts project
+`acceptedSeq`/`appliedSeq`/`rejectedSeq` for movement/input debugging. Tests use
+fake transports for reconnect, resubscribe, stale cursor diagnostics, command
+acks, interest pruning, selected-target retention, and settle deltas. There is
+no backend-kind union and no generated SpacetimeDB import.
+
 ### P10: Point Desktop And Web At Cloudflare
 
 Cut consumers to the new client as soon as P9 can support the current UI.
@@ -928,11 +998,32 @@ Acceptance:
 This is the product cut. Do not wait for decommission work to begin before the
 new backend is user-visible.
 
+Implementation note: P10 moves the active desktop and web Verse networking
+paths onto the Cloudflare world protocol. `packages/world-client` now includes a
+browser/WebSocket transport that performs the `/connect` handshake, appends the
+typed session fields (`actorRef`, `actorClass`, `characterId`, cursor), hydrates
+the Region Durable Object socket, decodes snapshot/delta/diagnostic frames, and
+resolves command receipts back into the client read model.
+
+Autopilot Desktop now defaults `subscribeCloudflareWorld` to the Cloudflare
+transport and `@openagentsinc/world-contract` command envelopes. Production code
+no longer imports generated web bindings. The desktop adapter mirrors
+`WorldReadModel` rows into the existing `ChatWorldMultiplayerProjection`,
+preserving disconnected single-player fallbacks, pylon stations, remote avatars,
+local chat rows, and focus intents.
+
+The web Tassadar world subscription module also uses the shared Cloudflare
+transport and local structural public-row adapters instead of generated
+bindings. Focus, chat, pylon message, avatar pose, join, and leave commands are
+sent through typed browser command envelopes. P11 removed the remaining
+generated binding files, manifest dependencies, old comments, and adapter names;
+there is no runtime rollback switch.
+
 ### P11: Delete SpacetimeDB Codepaths
 
 Remove the old implementation immediately after P10 smoke passes. Acceptance:
 
-- Delete `apps/openagents-world-spacetimedb`.
+- Delete deleted legacy world module.
 - Delete generated SpacetimeDB TypeScript bindings and cross-app imports.
 - Delete SpacetimeDB launch/publish scripts, nginx/TLS/certbot instructions,
   GCP/IAP VM runbooks, smoke profiles, and old env vars.
@@ -943,6 +1034,21 @@ Remove the old implementation immediately after P10 smoke passes. Acceptance:
 
 This issue has no compatibility carve-out. If something still needs the old
 backend, it blocks P11 and must be ported, not grandfathered.
+
+Implementation note: P11 deletes the legacy world module directory, generated
+web TypeScript bindings, bridge projection scripts, VM/admin runbooks, old
+world backend dependencies, old generated-binding import paths, and active
+desktop/web symbol names that implied backend compatibility. The active clients
+now use Cloudflare-world filenames and exported names:
+`chat-world-cloudflare.ts`, `subscribeCloudflareWorld`, and
+`tassadarCloudflareWorld.ts`.
+
+Validation includes repository search over active code for `spacetimedb`,
+`spacetime.openagents.com`, generated binding paths, and the deleted module
+path; the only remaining mentions are historical docs/audit references or
+repo-agent guidance that forbids resurrecting the deleted backend. The
+visibility freshness smoke no longer executes a local bridge-plan script from
+the deleted module.
 
 ### P12: Update Invariants, Docs, And Operator Runbooks
 
@@ -961,6 +1067,28 @@ Make the policy ledger match reality. Acceptance:
 
 Because this is invariant-bearing work, this issue is part of the cutover, not
 post-launch cleanup.
+
+Implementation note: P12 renames the root invariant from a generic world
+projection to the Cloudflare Verse World Service and records the explicit
+boundary: Worker/D1 product surfaces stay authoritative for public training
+truth, product promises, proof/receipt claims, settlement/payout projection,
+Forum/product state, and all private/customer/provider material; the world
+service owns only public-safe presence, interaction, diagnostics, fanout, and
+projection rows derived from public refs.
+
+The active operator docs now route world deployment through
+`apps/openagents-world/README.md` and `docs/DEPLOYMENT.md`: preflight world
+contract/client/service tests, Wrangler D1 migrations for `openagents-world`
+or `openagents-world-staging`, Wrangler Durable Object class migrations in
+`wrangler.jsonc`, `WORLD_BRIDGE_QUEUE` retry markers, DO alarm expiry tests, and
+two-client live smoke. The visibility operations runbook now describes
+`POST /bridge/ingest` on the Cloudflare service instead of the deleted VM bridge.
+
+The formal/model note is
+`2026-06-22-cloudflare-world-actor-command-authority-model.md`. The associated
+counterexamples are command tests: browser, agent, and operator actors cannot
+write service projection rows; service actors cannot send browser interaction
+commands; unsafe service projection rows are rejected without payload echo.
 
 ### P13: Production Release Gate And VM Decommission
 

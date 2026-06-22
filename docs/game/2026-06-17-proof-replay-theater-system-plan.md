@@ -373,7 +373,7 @@ Worker/D1 public authority:
 - preserve receipt-first settlement fields;
 - enforce redaction and claim-boundary tests.
 
-`apps/openagents-world-spacetimedb`:
+the deleted legacy world module:
 
 - optionally store replay watch-party interaction state: viewers, co-viewer
   avatars, reactions, camera-follow intent, and local public chat;
@@ -580,7 +580,7 @@ The first replay should use existing code paths rather than scrape Forum text:
 - `apps/openagents.com/workers/api/src/public-tassadar-run-summary-routes.ts`
   exposes `settlementRows`, `movementMode`, `realBitcoinMoved`, receipt URLs,
   contributor refs, and source refs for `/api/public/tassadar-run-summary`.
-- `apps/openagents-world-spacetimedb/scripts/tassadar-summary-transform.mjs`
+- the deleted legacy bridge scripts
   maps settlement rows into `settlement_ref` rows, `settlement_receipt`
   entities, `pylon_to_settlement` edges, and `settlement_projected` world
   events. Its `settlementStatus` already returns `real_settled` when

@@ -1,9 +1,12 @@
 # OpenAgents World Worker
 
 `apps/openagents-world` is the Cloudflare Worker and Durable Object home for
-the custom Effect/TypeScript Verse world backend. It replaces SpacetimeDB as the
-runtime authority for regional world state, WebSocket fanout, bridge ingest, and
-public read-model projection.
+the custom Effect/TypeScript Verse world backend. It is the runtime authority
+for regional presence, local interaction state, WebSocket fanout, bridge ingest,
+and public read-model projection rows. The `openagents.com` Worker/D1 public
+product surface remains authoritative for training truth, product promises,
+proof/receipt claims, settlement/payout projection, Forum state, private
+customer data, provider credentials, private prompts, and private repo content.
 
 ## Runtime Shape
 
@@ -27,9 +30,10 @@ public read-model projection.
 - `GET /connect` returns the default region and socket URL.
 - `GET /regions/:regionRef/socket` upgrades to a region WebSocket. A plain HTTP
   request to this route returns a typed world diagnostic.
-- `POST /bridge/ingest` is the service-only bridge intake scaffold. It records
-  an accepted bridge diagnostic and enqueues a retry-friendly marker when the
-  queue binding is present.
+- `POST /bridge/ingest` is the service-only bridge intake. It schema-decodes
+  `WorldBridgePayload`, rejects rows that fail public projection safety, upserts
+  deterministic projection rows into D1, records bridge health/cursor state, and
+  enqueues a retry-friendly marker when the queue binding is present.
 
 ## Transport Contract
 
@@ -81,6 +85,141 @@ and reschedules only when more TTL work remains. The expiry planner depends on a
 `WorldClock` Effect service, so tests can advance a static clock without sleeping
 or relying on wall time.
 
+## Moderation And Abuse Controls
+
+`src/moderation.ts` owns the P7 `WorldModeration` service. The open repository
+ships empty hard/soft token JSON arrays in `wrangler.jsonc`; private operators
+can seed `OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON` and
+`OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON` with JSON string arrays outside
+Git. No private moderation list belongs in this repo.
+
+Local and pylon chat commands pass through moderation before any
+`local_chat_message` row is built. The service also exposes explicit gates for
+future forum-reflection bubbles and user-authored diagnostic text so P8/P9 work
+does not invent a parallel path. Hard-list enforcement is whole-token and
+confusable-folded, avoiding substring false positives such as `class` and
+`despicable`; soft-list masking remains a client/user preference. Strike state
+is kept in the Region DO hot state and escalates from warning to timed mutes,
+with public-safe reason codes only. Chat command throttles track account and
+session lanes separately from any future IP/edge throttle.
+
+## Subscription Interest Policy
+
+`src/subscriptions.ts` owns the P6 WoC-style interest rules for the Cloudflare
+service. `/connect` now returns a server-approved `WorldSubscriptionPlan`, and
+WebSocket session attachments persist that plan plus the per-session sight state
+needed across hibernation. Clients may request a scope, center, selected target,
+and cursor, but the service normalizes the plan and rejects unbounded global
+avatar/event row streams.
+
+The pure policy planner keeps the single-region feed below the audit threshold
+and switches to split near/far tiers when avatar count or estimated row churn
+crosses the documented limit. Interest uses separate enter/drop radii, selected
+targets are always promoted to high-resolution, first sight emits full rows,
+continued sight can use lite dynamic rows, leaving interest prunes mirrors, and
+idle movement emits settle patches. `applySubscriptionDeltaToReadModel` preserves
+the sparse delta invariant: absent fields are unchanged, never treated as empty
+or default values.
+
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.
+
+## Service Projection Bridge
+
+`src/bridge.ts` owns P8 projection bridge helpers. The bridge never becomes the
+source of truth for run, proof, settlement, or product-promise state; it only
+persists public-safe rows replayed from public source refs such as
+`/api/public/tassadar-run-summary`, future Forum activity refs, and receipt/proof
+refs that are already public.
+
+Projection rows use `row.kind + worldRowKey(row)` as their D1 key, so replaying
+the same source payload overwrites the same rows and cannot duplicate
+`world_event` entries. Failed ingest writes a public `bridge_health` row and a
+diagnostic, never fabricated run/proof/settlement data. Valid ingest adds
+`bridge_health` and optional `projection_cursor` rows, then sends only a compact
+Queue marker for retriable follow-up work.
+
+Service-only `WorldCommandEnvelope` commands can write durable projection rows,
+system messages, and interaction expiry deltas. Browser/agent actors still fail
+the shared contract actor gate before service row payloads are decoded.
+
+## Cloudflare Operations
+
+Run from a clean `origin/main` worktree with Cloudflare credentials for the
+target account. Keep the binding names in `wrangler.jsonc` stable:
+`REGION_DURABLE_OBJECT`, `WORLD_DB`, and `WORLD_BRIDGE_QUEUE`. Replace the D1
+placeholder `database_id` values with the provisioned Cloudflare database IDs
+before any remote deploy.
+
+Preflight:
+
+```sh
+bun run typecheck:world-contract
+bun run test:world-contract
+bun run typecheck:world-client
+bun run test:world-client
+bun run typecheck:openagents-world
+bun run test:openagents-world
+```
+
+D1 migrations:
+
+```sh
+cd apps/openagents-world
+bunx wrangler d1 migrations list openagents-world --remote
+bunx wrangler d1 migrations apply openagents-world --remote
+```
+
+For staging, use the staging database name and environment:
+
+```sh
+cd apps/openagents-world
+bunx wrangler d1 migrations list openagents-world-staging --remote --env staging
+bunx wrangler d1 migrations apply openagents-world-staging --remote --env staging
+```
+
+The D1 migration files live in `migrations/`. Wrangler records applied D1
+migrations in the database migration table; do not edit an applied migration.
+Add the next numbered SQL file instead.
+
+Durable Object migrations:
+
+- `wrangler.jsonc` declares `RegionDurableObject` under
+  `durable_objects.bindings` and the DO class migration under
+  `migrations[{ tag: "v1", new_sqlite_classes: ["RegionDurableObject"] }]`.
+- Future DO class renames, deletions, or new classes require a new unique
+  Wrangler migration tag. Class deletion removes stored DO data and needs a
+  separate invariant/audit note before deploy.
+- Per-object SQLite schema migrations stay in the Durable Object constructor
+  under `blockConcurrencyWhile`; tests must cover any new schema version.
+
+Deploy:
+
+```sh
+cd apps/openagents-world
+bun run deploy
+```
+
+Staging deploy:
+
+```sh
+cd apps/openagents-world
+bunx wrangler deploy --env staging
+```
+
+Queue and alarm checks:
+
+- The bridge uses the producer binding `WORLD_BRIDGE_QUEUE` and queue name
+  `openagents-world-bridge` (or `openagents-world-bridge-staging`). Bridge
+  ingest must succeed even if no private retry consumer is deployed yet; the
+  queue marker is compact and public-safe.
+- DO TTL expiry uses Cloudflare alarms. Keep expiry logic deterministic through
+  the `WorldClock` Effect service; validate it with
+  `bun test apps/openagents-world/src/expiry.test.ts` rather than sleeping in
+  tests.
+- Smoke the live Worker with `GET /health`, `GET /version`, `GET /connect`, one
+  `POST /bridge/ingest` public-safe payload, and two WebSocket clients in the
+  same region. The clients must receive snapshots, browser command receipts,
+  interaction deltas, and expiry deletes without moving any private authority
+  into the world service.

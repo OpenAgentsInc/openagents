@@ -28,21 +28,146 @@ import {
 import * as Three from 'three'
 
 import { parseJsonRecord } from '../json-boundary'
-import type {
-  AgentAvatar,
-  AvatarPosition,
-  ChatBubble,
-  LocalChatMessage,
-  ProofRef,
-  PylonAttention,
-  PylonStation,
-  RunEntity,
-  SettlementRef,
-  TrainingRun,
-  WorldEdge,
-  WorldEvent,
-  WorldRegion,
-} from './spacetimeWorldBindings/types'
+
+interface TrainingRun {
+  readonly label?: string
+  readonly maxStalenessSeconds: number
+  readonly runRef: string
+  readonly runState?: string
+  readonly sourceGeneratedAt?: string
+  readonly state?: string
+  readonly stalenessKind: string
+}
+
+interface RunEntity {
+  readonly entityKind: string
+  readonly entityRef: string
+  readonly label: string
+  readonly runRef: string
+  readonly sourceRef?: string
+  readonly status?: string
+}
+
+interface WorldEdge {
+  readonly edgeKind: string
+  readonly fromEntityRef: string
+  readonly runRef: string
+  readonly sourceRef?: string
+  readonly toEntityRef: string
+}
+
+interface ProofRef {
+  readonly entityRef: string
+  readonly proofKind?: string
+  readonly proofRef: string
+  readonly runRef: string
+  readonly title?: string
+  readonly url: string
+}
+
+interface SettlementRef {
+  readonly amountSats?: bigint | number
+  readonly entityRef: string
+  readonly movementMode: string
+  readonly realBitcoinMoved: boolean
+  readonly receiptRef: string
+  readonly runRef: string
+  readonly url: string
+}
+
+interface WorldEvent {
+  readonly entityRef?: string
+  readonly eventKind: string
+  readonly eventRef: string
+  readonly runRef: string
+  readonly sourceGeneratedAt?: string
+  readonly sourceRef?: string
+  readonly summary?: string
+}
+
+interface WorldRegion {
+  readonly avatarPositionMinIntervalMs: bigint | number
+  readonly label?: string
+  readonly localOriginX: number
+  readonly localOriginY: number
+  readonly localOriginZ: number
+  readonly maxX: number
+  readonly maxY: number
+  readonly maxZ: number
+  readonly minX: number
+  readonly minY: number
+  readonly minZ: number
+  readonly proximityRadiusMeters: number
+  readonly regionRef: string
+  readonly roadDirectionX: number
+  readonly roadDirectionY: number
+  readonly roadDirectionZ: number
+  readonly runRef: string
+  readonly staleAvatarPositionMs: bigint | number
+  readonly starterPylonSiteOffsetX: number
+  readonly starterPylonSiteOffsetY: number
+  readonly starterPylonSiteOffsetZ: number
+  readonly streetNextRegionRef?: string
+  readonly streetPrevRegionRef?: string
+}
+
+interface PylonStation {
+  readonly interactionRadiusMeters: number
+  readonly label?: string
+  readonly positionX: number
+  readonly positionY: number
+  readonly positionZ: number
+  readonly pylonRef: string
+  readonly regionRef: string
+  readonly runRef: string
+  readonly sourceUrl: string
+}
+
+interface AgentAvatar {
+  readonly actorKind?: string
+  readonly avatarRef: string
+  readonly displayName?: string
+  readonly homePylonRef?: string
+}
+
+interface AvatarPosition {
+  readonly avatarRef: string
+  readonly movementMode?: string
+  readonly pitch: number
+  readonly positionX: number
+  readonly positionY: number
+  readonly positionZ: number
+  readonly regionRef: string
+  readonly yaw: number
+}
+
+interface PylonAttention {
+  readonly attentionKind?: string
+  readonly attentionRef: string
+  readonly avatarRef: string
+  readonly distanceMeters: number
+  readonly pylonRef: string
+  readonly sourceEntityRef?: string
+}
+
+interface LocalChatMessage {
+  readonly body: string
+  readonly bodyFormat?: string
+  readonly channelKind?: string
+  readonly messageRef: string
+  readonly moderationState?: string
+  readonly radiusMeters: number
+  readonly regionRef: string
+  readonly speakerAvatarRef: string
+  readonly targetRef?: string
+}
+
+interface ChatBubble {
+  readonly anchorEntityRef: string
+  readonly bubbleRef: string
+  readonly messageRef: string
+  readonly speakerAvatarRef: string
+}
 
 /** One public metric value (`{ value, provenanceLabel, sourceRefs }` — we read `value`). */
 export interface PublicMetric {
@@ -975,7 +1100,7 @@ export const tassadarRunBulletinWorldItem = (
   }
 }
 
-export interface TassadarSpacetimeWorldRows {
+export interface TassadarCloudflareWorldRows {
   readonly agentAvatars?: ReadonlyArray<AgentAvatar>
   readonly avatarPositions?: ReadonlyArray<AvatarPosition>
   readonly chatBubbles?: ReadonlyArray<ChatBubble>
@@ -1458,9 +1583,9 @@ const settlementRowsFromWorld = (
     }
   })
 
-export const spacetimeWorldSummaryFromRows = (
+export const cloudflareWorldSummaryFromRows = (
   baseSummary: TassadarRunPublicSummary,
-  rows: TassadarSpacetimeWorldRows,
+  rows: TassadarCloudflareWorldRows,
 ): TassadarRunPublicSummary => {
   const runRef = runRefForSummary(baseSummary)
   const trainingRun = (rows.trainingRuns ?? []).find(

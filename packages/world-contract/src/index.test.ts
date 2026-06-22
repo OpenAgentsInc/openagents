@@ -274,7 +274,7 @@ describe("@openagentsinc/world-contract", () => {
     expect(readModel.avatars["avatar.account.main"]?.label).toBe("Main")
 
     const schemaText = JSON.stringify([WorldDelta.ast, WorldReadModel.ast])
-    expect(schemaText).not.toContain("SpacetimeDB")
+    expect(schemaText).not.toContain("backend runtime")
     expect(schemaText).not.toContain("DbConnection")
     expect(schemaText).not.toContain("WebSocket")
     expect(schemaText).not.toContain("DurableObject")

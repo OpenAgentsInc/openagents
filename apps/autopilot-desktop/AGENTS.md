@@ -161,7 +161,7 @@ canvases, particles, text-in-scene), and it has Foldkit bindings
   exercise forum-tip settlement, direct Pylon tips, live pylon sats refresh, and
   two-client world projection together without spending real sats. During the
   Cloudflare world cutover, keep the harness aligned with `packages/world-client`
-  behavior rather than extending legacy SpacetimeDB assumptions.
+  behavior rather than extending legacy row-table assumptions.
 - For Training pane changes, run `bun run verify:training` in
   `apps/autopilot-desktop` (or `bun run verify:autopilot-desktop:training` from
   the repo root). It runs the focused Foldkit tests, CSS/build bundle checks,

@@ -13,7 +13,7 @@ const runRef = "run.tassadar.executor.20260615"
 const regionRef = chatWorldRegionRefForRun(runRef)
 
 describe("chat world multiplayer projection (#5739)", () => {
-  test("builds the desktop SpacetimeDB subscription query set", () => {
+  test("builds the desktop Cloudflare world subscription query set", () => {
     const queries = chatWorldMultiplayerSubscriptionQueries(runRef)
     expect(queries).toContain(`SELECT * FROM world_region WHERE region_ref = '${regionRef}'`)
     expect(queries).toContain(`SELECT * FROM pylon_station WHERE region_ref = '${regionRef}'`)

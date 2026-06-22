@@ -6,10 +6,8 @@
 // GitHub Actions as the primary monitor. The check reads public projections,
 // reports stale source-lag rows and broken routes with specific refs, and exits
 // nonzero unless --warn-only is used for manual evidence collection.
-import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const scriptPath = fileURLToPath(import.meta.url)
@@ -21,11 +19,6 @@ const defaultSsePath = '/api/public/activity-timeline/stream?limit=1'
 const defaultReplayClipPath = '/api/public/replay-clips'
 const defaultGeneratedFrom = '2026-06-18T00:00:00.000Z'
 const defaultGeneratedTo = '2026-06-19T00:00:00.000Z'
-const defaultSpacetimePlanScript = resolve(
-  repoRoot,
-  'apps/openagents-world-spacetimedb/scripts/project-activity-timeline.mjs',
-)
-
 const publicRouteChecks = [
   {
     accept: 'application/json',
@@ -75,8 +68,6 @@ Options:
   --max-render-queue-age-seconds <n>     Queued/rendering job age bound. Default: 3600
   --timeout-ms <n>                       Per-request timeout. Default: 15000
   --r2-manifest-url <url>                Explicit replay clip manifest to probe.
-  --spacetime-plan-script <path>         Local bridge-plan script to run.
-  --no-spacetime-plan                    Skip local SpacetimeDB bridge-plan check.
   --source-lag-mode <fail|warn|ignore>   Default: fail
   --warn-only                            Print failures but exit 0.
   --help                                 Show this message.
@@ -102,8 +93,6 @@ export const parseArgs = argv => {
     replayClipPath: defaultReplayClipPath,
     r2ManifestUrls: [],
     sourceLagMode: 'fail',
-    spacetimePlan: true,
-    spacetimePlanScript: defaultSpacetimePlanScript,
     ssePath: defaultSsePath,
     timeoutMs: 15_000,
     timelinePath: defaultTimelinePath,
@@ -118,10 +107,6 @@ export const parseArgs = argv => {
     }
     if (value === '--warn-only') {
       options.warnOnly = true
-      continue
-    }
-    if (value === '--no-spacetime-plan') {
-      options.spacetimePlan = false
       continue
     }
     if (!value.startsWith('--')) {
@@ -600,97 +585,6 @@ export const checkR2ClipAvailability = async ({
   return checks
 }
 
-export const analyzeSpacetimePlan = (plan, { sourceUrl = 'timeline' } = {}) => {
-  const calls = array(plan?.calls)
-  const reducerCounts = calls.reduce((counts, call) => {
-    const reducer = String(call?.reducer ?? 'unknown')
-    counts[reducer] = (counts[reducer] ?? 0) + 1
-    return counts
-  }, {})
-  const checks = [
-    plan?.bridgeRef === 'bridge.public-activity-timeline'
-      ? passed('spacetime_bridge_ref', {
-          bridgeRef: plan?.bridgeRef,
-          sourceUrl,
-        })
-      : failed('spacetime_bridge_ref', {
-          bridgeRef: plan?.bridgeRef ?? null,
-          sourceUrl,
-        }),
-    typeof plan?.sourceHash === 'string' && plan.sourceHash.length > 0
-      ? passed('spacetime_bridge_source_hash', {
-          sourceHash: plan.sourceHash,
-          sourceUrl,
-        })
-      : failed('spacetime_bridge_source_hash', { sourceUrl }),
-    reducerCounts.record_projection_cursor === 1
-      ? passed('spacetime_bridge_projection_cursor_call', {
-          reducerCounts,
-          sourceUrl,
-        })
-      : failed('spacetime_bridge_projection_cursor_call', {
-          reducerCounts,
-          sourceUrl,
-        }),
-    (reducerCounts.append_world_event ?? 0) > 0
-      ? passed('spacetime_bridge_world_event_calls', {
-          reducerCounts,
-          sourceUrl,
-        })
-      : warning('spacetime_bridge_world_event_calls', {
-          reducerCounts,
-          reason: 'timeline produced no append_world_event calls',
-          sourceUrl,
-        }),
-  ]
-  return checks
-}
-
-export const checkSpacetimeBridgePlan = ({
-  baseUrl,
-  script = defaultSpacetimePlanScript,
-  timelinePath,
-}) => {
-  const sourceUrl = absoluteUrl(baseUrl, timelinePath)
-  if (!existsSync(script)) {
-    return [
-      failed('spacetime_bridge_plan_script_present', {
-        script,
-        sourceUrl,
-      }),
-    ]
-  }
-  const result = spawnSync(
-    process.execPath,
-    [script, '--json', '--source-url', sourceUrl],
-    { encoding: 'utf8' },
-  )
-  if (result.status !== 0) {
-    return [
-      failed('spacetime_bridge_plan_builds', {
-        exitCode: result.status,
-        sourceUrl,
-        stderr: result.stderr.slice(0, 800),
-        stdout: result.stdout.slice(0, 800),
-      }),
-    ]
-  }
-  try {
-    return [
-      passed('spacetime_bridge_plan_builds', { sourceUrl }),
-      ...analyzeSpacetimePlan(JSON.parse(result.stdout), { sourceUrl }),
-    ]
-  } catch (error) {
-    return [
-      failed('spacetime_bridge_plan_parse', {
-        message: error instanceof Error ? error.message : String(error),
-        sourceUrl,
-        stdout: result.stdout.slice(0, 800),
-      }),
-    ]
-  }
-}
-
 const reportStatus = checks =>
   checks.some(check => !check.passed && check.severity === 'error')
     ? 'failed'
@@ -728,8 +622,6 @@ export const runVisibilityFreshnessSmoke = async ({
   replayClipPath = defaultReplayClipPath,
   r2ManifestUrls = [],
   sourceLagMode = 'fail',
-  spacetimePlan = true,
-  spacetimePlanScript = defaultSpacetimePlanScript,
   ssePath = defaultSsePath,
   timeoutMs = 15_000,
   timelinePath = defaultTimelinePath,
@@ -835,18 +727,6 @@ export const runVisibilityFreshnessSmoke = async ({
       timeoutMs,
     })),
   )
-
-  if (spacetimePlan) {
-    checks.push(
-      ...checkSpacetimeBridgePlan({
-        baseUrl: origin,
-        script: spacetimePlanScript,
-        timelinePath,
-      }),
-    )
-  } else {
-    checks.push(passed('spacetime_bridge_plan_skipped'))
-  }
 
   return {
     authority: 'observation_projection_retrieval_only',

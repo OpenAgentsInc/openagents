@@ -29,7 +29,7 @@ import {
   publishActiveVerseLocalPose,
   subscribePaymentParticles,
   subscribePylonScene,
-  subscribeSpacetimeWorld,
+  subscribeCloudflareWorld,
 } from "../src/ui/chat-world-subscriptions"
 import {
   FakeActivityEventSource,
@@ -144,7 +144,7 @@ describe("forum tipping + direct pylon tips + multiplayer integration harness", 
       displayName: "Publisher",
       runRef,
       nowMs: () => nowMs,
-      worldUrl: "https://spacetime.openagents.com",
+      worldUrl: "https://world.openagents.com",
     })
     publisher.joinRegion()
 
@@ -155,7 +155,7 @@ describe("forum tipping + direct pylon tips + multiplayer integration harness", 
       fallbackDisplayName: "Receiver",
       nowMs: () => nowMs,
     })
-    const stopWorld = subscribeSpacetimeWorld((world) => worlds.push(world), {
+    const stopWorld = subscribeCloudflareWorld((world) => worlds.push(world), {
       flags: { CHAT_WORLD_MULTIPLAYER: true },
       identity: { fallbackActorRef: "avatar.viewer.receiver", nodeLabel: "Receiver" },
       maxReconnectAttempts: 0,

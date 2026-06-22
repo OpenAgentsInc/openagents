@@ -16,16 +16,38 @@ const command = (
   payload: unknown,
   seq = 1,
   issuedAt = "2026-06-22T00:00:00.000Z",
+  actor = actorRef,
 ) => ({
   schemaVersion: "openagents.world_contract.v1",
   commandRef: `command.${name}.${seq}`,
   command: name,
   actorClass: "browser",
-  actorRef,
+  actorRef: actor,
   regionRef,
   seq,
   issuedAt,
   payload,
+})
+
+const commandFromActorClass = (
+  actorClass: "browser" | "agent" | "operator" | "service",
+  name: string,
+  payload: unknown,
+  seq = 1,
+  issuedAt = "2026-06-22T00:00:00.000Z",
+) => ({
+  ...command(name, payload, seq, issuedAt, `${actorClass}.public.test`),
+  actorClass,
+})
+
+const serviceCommand = (
+  name: string,
+  payload: unknown,
+  seq = 1,
+  issuedAt = "2026-06-22T00:00:00.000Z",
+) => ({
+  ...command(name, payload, seq, issuedAt, "service.openagents.world"),
+  actorClass: "service",
 })
 
 const apply = async (
@@ -34,8 +56,17 @@ const apply = async (
   payload: unknown,
   seq = 1,
   observedAt = "2026-06-22T00:00:00.000Z",
+  options: {
+    readonly actorRef?: string
+    readonly sessionRef?: string
+  } = {},
 ) =>
-  Effect.runPromise(applyWorldCommand(state, command(name, payload, seq, observedAt), observedAt))
+  Effect.runPromise(applyWorldCommand(
+    state,
+    command(name, payload, seq, observedAt, options.actorRef ?? actorRef),
+    observedAt,
+    options.sessionRef === undefined ? {} : { sessionRef: options.sessionRef },
+  ))
 
 describe("world command handlers", () => {
   test("implements the P4 browser command set", () => {
@@ -62,6 +93,153 @@ describe("world command handlers", () => {
     expect(result.receipt.status).toBe("rejected")
     expect(result.receipt.error?.tag).toBe("auth")
     expect(result.delta.kind).toBe("diagnostic")
+  })
+
+  test("agent and operator actors cannot cross into service projection authority", async () => {
+    const state = makeEmptyHotState(regionRef)
+    const agent = await Effect.runPromise(applyWorldCommand(
+      state,
+      commandFromActorClass("agent", "append_world_event", {
+        row: {
+          kind: "world_event",
+          eventRef: "world_event.public.agent.1",
+          eventKind: "attempted_projection",
+          label: "Agent attempted projection",
+          occurredAt: "2026-06-22T00:00:00.000Z",
+          sourceRefs: ["source.public.test"],
+          safety: {
+            publicProjectionAllowed: true,
+            sourceRefs: ["source.public.test"],
+            blockerRefs: [],
+            caveatRefs: [],
+          },
+        },
+      }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+    const operator = await Effect.runPromise(applyWorldCommand(
+      state,
+      commandFromActorClass("operator", "record_bridge_health", {
+        row: {
+          kind: "bridge_health",
+          bridgeRef: "bridge.public.operator",
+          status: "ok",
+          checkedAt: "2026-06-22T00:00:00.000Z",
+          sourceRef: "source.public.test",
+          message: "operator attempted bridge write",
+          safety: {
+            publicProjectionAllowed: true,
+            sourceRefs: ["source.public.test"],
+            blockerRefs: [],
+            caveatRefs: [],
+          },
+        },
+      }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(agent.receipt.status).toBe("rejected")
+    expect(agent.receipt.error?.tag).toBe("auth")
+    expect(agent.delta.rows).toBeUndefined()
+    expect(operator.receipt.status).toBe("rejected")
+    expect(operator.receipt.error?.tag).toBe("auth")
+    expect(operator.delta.rows).toBeUndefined()
+  })
+
+  test("service actors cannot send browser interaction commands", async () => {
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("send_local_message", { text: "service pretending to chat" }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("rejected")
+    expect(result.receipt.error?.tag).toBe("auth")
+    expect(result.delta.rows).toBeUndefined()
+  })
+
+  test("service actors can write public projection rows only through service commands", async () => {
+    const row = {
+      kind: "training_run",
+      runRef: "run.public.1",
+      label: "Public Run",
+      state: "pending",
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["source.public.test"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    }
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("upsert_training_run", { row }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("applied")
+    expect(result.delta.rows?.[0]?.kind).toBe("training_run")
+    expect(result.receipt.changedRefs.map(String)).toEqual(["run.public.1"])
+  })
+
+  test("service projection commands reject private or unsafe rows without echoing payloads", async () => {
+    const row = {
+      kind: "training_run",
+      runRef: "run.private.1",
+      label: "raw_prompt: do not leak this",
+      state: "pending",
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["source.public.test"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    }
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("upsert_training_run", { row }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("rejected")
+    expect(result.receipt.error?.tag).toBe("redaction")
+    expect(result.receipt.error?.message).not.toContain("raw_prompt")
+    expect(result.delta.diagnostic?.message).not.toContain("raw_prompt")
+  })
+
+  test("service commands can emit system messages and expire interaction refs", async () => {
+    const message = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("record_system_world_message", { text: "bridge caught up" }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+    expect(message.receipt.status).toBe("applied")
+    expect(message.delta.rows?.[0]?.kind).toBe("local_chat_message")
+    if (message.delta.rows?.[0]?.kind === "local_chat_message") {
+      expect(message.delta.rows[0].channel).toBe("system")
+    }
+
+    const withExpiry = {
+      ...message.state,
+      expiringRefs: {
+        "message.hot.1": {
+          ref: "message.hot.1",
+          kind: "chat" as const,
+          expiresAt: "2026-06-22T00:01:00.000Z",
+        },
+      },
+    }
+    const expired = await Effect.runPromise(applyWorldCommand(
+      withExpiry,
+      serviceCommand("expire_interaction_rows", { refs: ["message.hot.1"] }, 2),
+      "2026-06-22T00:00:01.000Z",
+    ))
+
+    expect(expired.delta.kind).toBe("delete")
+    expect(expired.delta.deletedRefs?.map(String)).toEqual(["message.hot.1"])
+    expect(expired.state.expiringRefs["message.hot.1"]).toBeUndefined()
   })
 
   test("join, move, focus, chat, emote, intent, and leave return typed receipts", async () => {
@@ -160,5 +338,75 @@ describe("world command handlers", () => {
       text: "watch pylon",
     }, 5, "2026-06-22T00:00:03.100Z")
     expect(intentCadence.receipt.status).toBe("rejected")
+  })
+
+  test("chat throttles account and session lanes separately from edge/IP policy", async () => {
+    let result = await apply(makeEmptyHotState(regionRef), "join_region", { characterId: "pilot" }, 1, "2026-06-22T00:00:00.000Z", {
+      sessionRef: "session.one",
+    })
+    result = await apply(result.state, "send_local_message", {
+      text: "first",
+    }, 2, "2026-06-22T00:00:01.000Z", {
+      sessionRef: "session.one",
+    })
+
+    const sameActorDifferentSession = await apply(result.state, "send_local_message", {
+      text: "actor throttle",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      sessionRef: "session.two",
+    })
+    const differentActorSameSession = await apply(result.state, "send_local_message", {
+      text: "session throttle",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      actorRef: "actor.public.bob",
+      sessionRef: "session.one",
+    })
+    const differentActorDifferentSession = await apply(result.state, "send_local_message", {
+      text: "separate lane",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      actorRef: "actor.public.bob",
+      sessionRef: "session.two",
+    })
+
+    expect(sameActorDifferentSession.receipt.status).toBe("rejected")
+    expect(sameActorDifferentSession.receipt.error?.message).toBe("Chat cadence exceeded.")
+    expect(differentActorSameSession.receipt.status).toBe("rejected")
+    expect(differentActorSameSession.receipt.error?.message).toBe("Chat session cadence exceeded.")
+    expect(differentActorDifferentSession.receipt.status).toBe("applied")
+  })
+
+  test("moderation blocks local and pylon chat before rows are emitted", async () => {
+    const moderationConfig = {
+      hardBlockedTokens: ["badword"],
+      softMaskedTokens: [],
+    }
+    let result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      command("join_region", { characterId: "pilot" }, 1),
+      "2026-06-22T00:00:00.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+
+    const local = await Effect.runPromise(applyWorldCommand(
+      result.state,
+      command("send_local_message", { text: "badword private body" }, 2, "2026-06-22T00:00:01.000Z"),
+      "2026-06-22T00:00:01.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+    result = local
+    const pylon = await Effect.runPromise(applyWorldCommand(
+      result.state,
+      command("send_pylon_message", { text: "b@dw0rd private body" }, 3, "2026-06-22T00:00:03.000Z"),
+      "2026-06-22T00:00:03.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+
+    expect(local.receipt.status).toBe("rejected")
+    expect(local.delta.rows).toBeUndefined()
+    expect(local.receipt.error?.tag).toBe("redaction")
+    expect(local.receipt.error?.message).not.toContain("private body")
+    expect(pylon.receipt.status).toBe("rejected")
+    expect(pylon.delta.rows).toBeUndefined()
+    expect(pylon.state.moderation.byActor[actorRef]?.mutedUntil).toBe("2026-06-22T00:10:03.000Z")
   })
 })
