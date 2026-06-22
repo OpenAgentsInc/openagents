@@ -16,9 +16,24 @@
  */
 import { Effect, Schema as S } from 'effect'
 
+import type { OpenAgentsMcpGrant } from '@openagentsinc/mcp-contract'
+
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 
 type HttpResponse = globalThis.Response
+
+/**
+ * The authenticated MCP caller: a bound tenant + a set of authority grants.
+ * Resolved at the transport boundary (admin token = full grant; a scoped MCP
+ * grant row = its declared authorities + bound tenant). The catalog filters
+ * tools/resources by these grants and reads ONLY `tenantRef` — client-supplied
+ * tenant is never trusted. (#5995)
+ */
+export type McpPrincipal = Readonly<{
+  subjectRef: string
+  tenantRef: string
+  grants: ReadonlyArray<OpenAgentsMcpGrant>
+}>
 
 /**
  * Typed adapter error so catalog promise calls use `Effect.tryPromise` with a
@@ -82,17 +97,27 @@ export type McpResourceReadOutcome = Readonly<{
  * `(env, request)` give it the D1 binding + the caller (for grant/tenant).
  */
 export type CrmMcpCatalog<Bindings> = Readonly<{
-  listTools: (env: Bindings, request: Request) => Promise<ReadonlyArray<McpToolListing>>
+  listTools: (
+    env: Bindings,
+    request: Request,
+    principal: McpPrincipal,
+  ) => Promise<ReadonlyArray<McpToolListing>>
   callTool: (
     env: Bindings,
     request: Request,
+    principal: McpPrincipal,
     name: string,
     args: unknown,
   ) => Promise<McpToolCallOutcome>
-  listResources: (env: Bindings, request: Request) => Promise<ReadonlyArray<McpResourceListing>>
+  listResources: (
+    env: Bindings,
+    request: Request,
+    principal: McpPrincipal,
+  ) => Promise<ReadonlyArray<McpResourceListing>>
   readResource: (
     env: Bindings,
     request: Request,
+    principal: McpPrincipal,
     uri: string,
   ) => Promise<McpResourceReadOutcome>
 }>
@@ -139,7 +164,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 type CrmMcpEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
 
 type CrmMcpRouteDependencies<Bindings extends CrmMcpEnv> = Readonly<{
-  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
+  /** Resolve the caller to a principal (admin or scoped grant); null = 401. */
+  authenticate: (request: Request, env: Bindings) => Promise<McpPrincipal | null>
   catalog: CrmMcpCatalog<Bindings>
 }>
 
@@ -160,12 +186,12 @@ export const makeCrmMcpRoutes = <Bindings extends CrmMcpEnv>(
     }
 
     return Effect.gen(function* () {
-      // Transport-level auth (admin token first; scoped grants in #5995).
-      const authorized = yield* Effect.tryPromise({
-        catch: () => false as const,
-        try: () => dependencies.requireAdminApiToken(request, env),
+      // Transport-level auth → a bound principal (admin or scoped grant).
+      const principal = yield* Effect.tryPromise({
+        catch: () => null,
+        try: () => dependencies.authenticate(request, env),
       })
-      if (!authorized) {
+      if (principal === null) {
         // 401 at the transport boundary, matching the contract's needs_auth status.
         return noStoreJsonResponse(
           { error: { code: INVALID_REQUEST, message: 'unauthorized' }, id: null, jsonrpc: JSONRPC },
@@ -204,7 +230,7 @@ export const makeCrmMcpRoutes = <Bindings extends CrmMcpEnv>(
         case 'tools/list':
           return yield* Effect.tryPromise({
             catch: adapterError,
-            try: () => dependencies.catalog.listTools(env, request),
+            try: () => dependencies.catalog.listTools(env, request, principal),
           }).pipe(
             Effect.map(tools => rpcResult(id, { tools })),
             Effect.catch(() => Effect.succeed(rpcError(id, INTERNAL_ERROR, 'tools/list failed'))),
@@ -217,7 +243,7 @@ export const makeCrmMcpRoutes = <Bindings extends CrmMcpEnv>(
           const args = isRecord(params.arguments) ? params.arguments : {}
           return yield* Effect.tryPromise({
             catch: adapterError,
-            try: () => dependencies.catalog.callTool(env, request, name, args),
+            try: () => dependencies.catalog.callTool(env, request, principal, name, args),
           }).pipe(
             Effect.map(outcome => rpcResult(id, outcome)),
             Effect.catch(error =>
@@ -240,7 +266,7 @@ export const makeCrmMcpRoutes = <Bindings extends CrmMcpEnv>(
         case 'resources/list':
           return yield* Effect.tryPromise({
             catch: adapterError,
-            try: () => dependencies.catalog.listResources(env, request),
+            try: () => dependencies.catalog.listResources(env, request, principal),
           }).pipe(
             Effect.map(resources => rpcResult(id, { resources })),
             Effect.catch(() => Effect.succeed(rpcError(id, INTERNAL_ERROR, 'resources/list failed'))),
@@ -252,7 +278,7 @@ export const makeCrmMcpRoutes = <Bindings extends CrmMcpEnv>(
           }
           return yield* Effect.tryPromise({
             catch: adapterError,
-            try: () => dependencies.catalog.readResource(env, request, uri),
+            try: () => dependencies.catalog.readResource(env, request, principal, uri),
           }).pipe(
             Effect.map(outcome => rpcResult(id, outcome)),
             Effect.catch(error =>

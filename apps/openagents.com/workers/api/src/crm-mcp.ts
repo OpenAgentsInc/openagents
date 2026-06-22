@@ -10,6 +10,9 @@
  * filtering + tenant binding in #5995.
  */
 import {
+  filterOpenAgentsMcpDescriptorsByGrantSet,
+  openAgentsMcpDescriptorIsGranted,
+  openAgentsMcpGrantedAuthoritySet,
   type OpenAgentsMcpToolDescriptor,
   parseOpenAgentsMcpResourceUri,
   projectOpenAgentsMcpOutput,
@@ -30,7 +33,6 @@ import type {
   McpToolListing,
 } from './crm-mcp-routes'
 import {
-  DEFAULT_CRM_TENANT_REF,
   getCrmAccountById,
   getCrmContactById,
   getCrmEngagementSnapshot,
@@ -60,9 +62,6 @@ class CrmMcpToolError extends Error {}
 
 const args = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {}
-
-const tenantOf = (a: Record<string, unknown>): string =>
-  typeof a.tenant === 'string' && a.tenant.trim() !== '' ? a.tenant.trim() : DEFAULT_CRM_TENANT_REF
 
 const requiredId = (a: Record<string, unknown>, key: string): string => {
   const value = a[key]
@@ -181,28 +180,33 @@ export const CRM_MCP_READ_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
 
 // --- dispatch (read fns) ----------------------------------------------------
 
-type CrmReadHandler = (db: D1Database, a: Record<string, unknown>) => Promise<unknown>
+// Tenant is the principal's bound tenant — never client-supplied `args.tenant`.
+type CrmReadHandler = (
+  db: D1Database,
+  tenant: string,
+  a: Record<string, unknown>,
+) => Promise<unknown>
 
 const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmReadHandler>> = {
-  'crm.account.get': (db, a) => getCrmAccountById(db, tenantOf(a), requiredId(a, 'accountId')),
-  'crm.accounts.list': (db, a) => listCrmAccounts(db, tenantOf(a), { limit: optLimit(a) }),
-  'crm.commands.list': (db, a) =>
-    listCrmCommands(db, tenantOf(a), {
+  'crm.account.get': (db, tenant, a) => getCrmAccountById(db, tenant, requiredId(a, 'accountId')),
+  'crm.accounts.list': (db, tenant, a) => listCrmAccounts(db, tenant, { limit: optLimit(a) }),
+  'crm.commands.list': (db, tenant, a) =>
+    listCrmCommands(db, tenant, {
       limit: optLimit(a),
       status: typeof a.status === 'string' ? a.status : undefined,
     }),
-  'crm.contact.activities.list': (db, a) =>
-    listCrmActivitiesForContact(db, tenantOf(a), requiredId(a, 'contactId'), { limit: optLimit(a) }),
-  'crm.contact.emails.list': (db, a) =>
-    listCrmEmailMessagesForContact(db, tenantOf(a), requiredId(a, 'contactId'), { limit: optLimit(a) }),
-  'crm.contact.engagement.get': (db, a) =>
-    getCrmEngagementSnapshot(db, tenantOf(a), requiredId(a, 'contactId')),
-  'crm.contact.get': (db, a) => getCrmContactById(db, tenantOf(a), requiredId(a, 'contactId')),
-  'crm.contact.render': async (db, a) => {
+  'crm.contact.activities.list': (db, tenant, a) =>
+    listCrmActivitiesForContact(db, tenant, requiredId(a, 'contactId'), { limit: optLimit(a) }),
+  'crm.contact.emails.list': (db, tenant, a) =>
+    listCrmEmailMessagesForContact(db, tenant, requiredId(a, 'contactId'), { limit: optLimit(a) }),
+  'crm.contact.engagement.get': (db, tenant, a) =>
+    getCrmEngagementSnapshot(db, tenant, requiredId(a, 'contactId')),
+  'crm.contact.get': (db, tenant, a) => getCrmContactById(db, tenant, requiredId(a, 'contactId')),
+  'crm.contact.render': async (db, tenant, a) => {
     const composed = await composeCrmEmailForContact(db, {
       contactId: requiredId(a, 'contactId'),
       templateSlug: requiredId(a, 'template'),
-      tenantRef: tenantOf(a),
+      tenantRef: tenant,
     })
     const eligibility = await readEmailSendEligibility(db, {
       category: 'marketing',
@@ -220,14 +224,14 @@ const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmReadHandler>> = {
       },
     }
   },
-  'crm.contacts.list': (db, a) =>
-    listCrmContacts(db, tenantOf(a), { limit: optLimit(a), search: optSearch(a) }),
-  'crm.gmail.queue.list': (db, a) => listCrmQueuedGmailMessages(db, tenantOf(a), { limit: optLimit(a) }),
-  'crm.imports.list': (db, a) => listCrmSourceImportRuns(db, tenantOf(a), { limit: optLimit(a) }),
-  'crm.lists.list': (db, a) => listCrmContactLists(db, tenantOf(a)),
-  'crm.opportunities.list': (db, a) => listCrmOpportunities(db, tenantOf(a), { limit: optLimit(a) }),
-  'crm.opportunity.get': (db, a) => getCrmOpportunityById(db, tenantOf(a), requiredId(a, 'opportunityId')),
-  'crm.templates.list': (db, a) => listCrmEmailTemplates(db, tenantOf(a)),
+  'crm.contacts.list': (db, tenant, a) =>
+    listCrmContacts(db, tenant, { limit: optLimit(a), search: optSearch(a) }),
+  'crm.gmail.queue.list': (db, tenant, a) => listCrmQueuedGmailMessages(db, tenant, { limit: optLimit(a) }),
+  'crm.imports.list': (db, tenant, a) => listCrmSourceImportRuns(db, tenant, { limit: optLimit(a) }),
+  'crm.lists.list': (db, tenant) => listCrmContactLists(db, tenant),
+  'crm.opportunities.list': (db, tenant, a) => listCrmOpportunities(db, tenant, { limit: optLimit(a) }),
+  'crm.opportunity.get': (db, tenant, a) => getCrmOpportunityById(db, tenant, requiredId(a, 'opportunityId')),
+  'crm.templates.list': (db, tenant) => listCrmEmailTemplates(db, tenant),
 }
 
 // --- catalog ----------------------------------------------------------------
@@ -274,16 +278,16 @@ export const CRM_MCP_RESOURCES: ReadonlyArray<McpResourceListing> = [
   { description: 'Approval-gated send_email commands.', mimeType: 'application/json', name: 'crm.commands', title: 'CRM send commands', uri: `${RESOURCE_PREFIX}crm/commands` },
 ]
 
-/** Resolve a parsed `crm/...` resource path to its read data (default tenant). */
+/** Resolve a parsed `crm/...` resource path to its read data (bound tenant). */
 const readCrmResourceData = async (
   db: D1Database,
+  tenant: string,
   path: string,
 ): Promise<unknown> => {
   const segments = path.split('/').filter(part => part !== '')
   if (segments[0] !== 'crm') {
     throw new CrmMcpToolError('unknown_resource')
   }
-  const tenant = DEFAULT_CRM_TENANT_REF
   const [, head, id, sub] = segments
   switch (head) {
     case 'contacts':
@@ -315,22 +319,37 @@ const readCrmResourceData = async (
 }
 
 export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatalog<Bindings> => ({
-  callTool: async (env, _request, name, callArgs) => {
+  callTool: async (env, _request, principal, name, callArgs) => {
+    // Ungranted tools are ABSENT: an ungranted/unknown name is unknown_tool.
+    const grantedAuthorities = openAgentsMcpGrantedAuthoritySet(principal.grants)
+    const descriptor = CRM_MCP_READ_TOOLS.find(d => d.name === name)
+    if (descriptor === undefined || !openAgentsMcpDescriptorIsGranted(descriptor, grantedAuthorities)) {
+      throw new CrmMcpToolError('unknown_tool')
+    }
     const handler = CRM_MCP_READ_DISPATCH[name]
     if (handler === undefined) {
       throw new CrmMcpToolError('unknown_tool')
     }
-    const data = await handler(openAgentsDatabase(env), args(callArgs))
+    const data = await handler(openAgentsDatabase(env), principal.tenantRef, args(callArgs))
     return projectReadOutcome(name, data)
   },
-  listResources: () => Promise.resolve(CRM_MCP_RESOURCES),
-  listTools: () => Promise.resolve(CRM_MCP_READ_TOOLS.map(toolListing)),
-  readResource: async (env, _request, uri): Promise<McpResourceReadOutcome> => {
+  listResources: (_env, _request, principal) =>
+    Promise.resolve(
+      openAgentsMcpGrantedAuthoritySet(principal.grants).has('operator_read') ? CRM_MCP_RESOURCES : [],
+    ),
+  listTools: (_env, _request, principal) =>
+    Promise.resolve(
+      filterOpenAgentsMcpDescriptorsByGrantSet(CRM_MCP_READ_TOOLS, principal.grants).map(toolListing),
+    ),
+  readResource: async (env, _request, principal, uri): Promise<McpResourceReadOutcome> => {
+    if (!openAgentsMcpGrantedAuthoritySet(principal.grants).has('operator_read')) {
+      throw new CrmMcpToolError('unknown_resource')
+    }
     const parsed = parseOpenAgentsMcpResourceUri(uri)
     if (parsed.namespace !== 'worker') {
       throw new CrmMcpToolError('unknown_resource')
     }
-    const data = await readCrmResourceData(openAgentsDatabase(env), parsed.path)
+    const data = await readCrmResourceData(openAgentsDatabase(env), principal.tenantRef, parsed.path)
     const projection = projectOpenAgentsMcpOutput({
       maxTextBytes: 131072,
       outputRef: uri,
