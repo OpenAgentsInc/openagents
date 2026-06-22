@@ -172,10 +172,6 @@ body {
   white-space: nowrap;
 }
 
-.pylon-balance-hud-pending .pylon-balance-hud-value {
-  color: rgb(255 255 255 / 0.52);
-}
-
 .verse-code-account-inventory {
   position: absolute;
   top: calc(clamp(0.75rem, 2vw, 1.2rem) + 2.6rem);
