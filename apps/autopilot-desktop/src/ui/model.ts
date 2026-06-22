@@ -170,6 +170,12 @@ export const VerseLocalPose = S.Struct({
 })
 export type VerseLocalPose = typeof VerseLocalPose.Type
 
+export const InputBindingCapture = S.Struct({
+  actionId: S.String,
+  slot: S.Number,
+})
+export type InputBindingCapture = typeof InputBindingCapture.Type
+
 // Transient status for the Spawn form (validation/submit feedback). Kept in the
 // Model so the view stays a pure function of state (no hidden DOM).
 export const SpawnStatus = S.Struct({
@@ -412,6 +418,7 @@ export const Model = ts("AutopilotDesktop", {
   // Active input binding profile. Stored opaque so Settings/persistence can land
   // later without making the model schema depend on every binding schema detail.
   inputProfile: S.Unknown,
+  inputBindingCapture: S.NullOr(InputBindingCapture),
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1087,6 +1094,7 @@ export const initialModel: Model = Model.make({
   nearVerseWorldItemId: null,
   verseSceneRestorePose: null,
   inputProfile: openAgentsDefaultInputProfile,
+  inputBindingCapture: null,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

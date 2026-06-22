@@ -1,17 +1,35 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { Effect } from "effect"
+import {
+  OPENAGENTS_INPUT_BINDINGS_SCHEMA_VERSION,
+  openAgentsDefaultInputProfile,
+  parseOpenAgentsInputProfileOrDefault,
+  type OpenAgentsInputProfile,
+} from "@openagentsinc/input-bindings"
 
-import { PersistPreferences } from "../src/ui/commands"
+import { PersistInputProfile, PersistPreferences } from "../src/ui/commands"
 import { initialRuntimeState } from "../src/ui/initial-state"
 import {
+  CapturedInputBinding,
   ChangedDefaultAdapter,
   ChangedDefaultLane,
   ChangedGatewayInferenceFallback,
   ChangedThemePreference,
+  ResetAllInputBindings,
+  ResetInputBinding,
+  ResetInputBindingCategory,
   SettledPersistPreferences,
+  StartedInputBindingCapture,
   ToggledNotificationPanel,
 } from "../src/ui/message"
 import { initialModel, Model } from "../src/ui/model"
+import {
+  INPUT_PROFILE_STORAGE_KEY,
+  capturedKeyboardBindingFromKey,
+  inputProfileWithBinding,
+  loadInputProfile,
+  saveInputProfile,
+} from "../src/ui/input-profile-preferences"
 import {
   PREFERENCES_STORAGE_KEY,
   defaultPreferences,
@@ -47,6 +65,26 @@ const installLocalStorage = (): Store => {
 const removeLocalStorage = (): void => {
   delete (globalThis as { localStorage?: unknown }).localStorage
 }
+
+const serializeView = (node: unknown): string => {
+  const seen = new WeakSet<object>()
+  return JSON.stringify(node, (_key, value) => {
+    if (typeof value === "function") return "[fn]"
+    if (typeof value === "object" && value !== null) {
+      if (seen.has(value)) return "[cycle]"
+      seen.add(value)
+    }
+    return value
+  })
+}
+
+const localProfile = (
+  bindings: OpenAgentsInputProfile["bindings"],
+): OpenAgentsInputProfile => ({
+  schemaVersion: OPENAGENTS_INPUT_BINDINGS_SCHEMA_VERSION,
+  profileId: "test-local",
+  bindings,
+})
 
 describe("#5472 preferences persistence", () => {
   afterEach(() => removeLocalStorage())
@@ -104,6 +142,59 @@ describe("#5472 preferences persistence", () => {
   test("themeAttr maps the preference to its data-theme value", () => {
     expect(themeAttr("dark")).toBe("dark")
     expect(themeAttr("light")).toBe("light")
+  })
+})
+
+describe("#5949 input profile persistence", () => {
+  afterEach(() => removeLocalStorage())
+
+  test("loadInputProfile defaults with no DOM and falls back on corruption", () => {
+    removeLocalStorage()
+    expect(loadInputProfile()).toBe(openAgentsDefaultInputProfile)
+
+    const { store } = installLocalStorage()
+    store.set(INPUT_PROFILE_STORAGE_KEY, "{ not json")
+    expect(loadInputProfile()).toBe(openAgentsDefaultInputProfile)
+    store.set(INPUT_PROFILE_STORAGE_KEY, JSON.stringify({ bad: "shape" }))
+    expect(loadInputProfile()).toBe(openAgentsDefaultInputProfile)
+  })
+
+  test("input profile persistence uses its own versioned key", () => {
+    const { store } = installLocalStorage()
+    const profile = inputProfileWithBinding(
+      openAgentsDefaultInputProfile,
+      "movement.forward",
+      0,
+      { type: "keyboard_code", code: "KeyI" },
+    )
+
+    saveInputProfile(profile)
+
+    expect(store.has(INPUT_PROFILE_STORAGE_KEY)).toBe(true)
+    expect(store.has(PREFERENCES_STORAGE_KEY)).toBe(false)
+    expect(loadInputProfile().bindings["movement.forward"]).toEqual([
+      { type: "keyboard_code", code: "KeyI" },
+      { type: "keyboard_code", code: "ArrowUp" },
+    ])
+  })
+
+  test("capturedKeyboardBindingFromKey creates keyboard-code bindings", () => {
+    expect(capturedKeyboardBindingFromKey("i", {
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+    })).toEqual({ type: "keyboard_code", code: "KeyI" })
+    expect(capturedKeyboardBindingFromKey("Tab", {
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: true,
+    })).toEqual({
+      type: "keyboard_code",
+      code: "Tab",
+      modifiers: { shift: true },
+    })
   })
 })
 
@@ -199,6 +290,95 @@ describe("#5472 preferences reducer", () => {
   })
 })
 
+describe("#5949 input profile reducer", () => {
+  test("capture updates a movement binding and persists the active profile", () => {
+    const [capturing] = update(
+      initialModel,
+      StartedInputBindingCapture({ actionId: "movement.forward", slot: 0 }),
+    )
+    expect(capturing.inputBindingCapture).toEqual({
+      actionId: "movement.forward",
+      slot: 0,
+    })
+
+    const [next, commands] = update(
+      capturing,
+      CapturedInputBinding({
+        actionId: "movement.forward",
+        slot: 0,
+        binding: { type: "keyboard_code", code: "KeyI" },
+      }),
+    )
+
+    expect(next.inputBindingCapture).toBe(null)
+    expect(parseOpenAgentsInputProfileOrDefault(next.inputProfile).bindings[
+      "movement.forward"
+    ]).toEqual([
+      { type: "keyboard_code", code: "KeyI" },
+      { type: "keyboard_code", code: "ArrowUp" },
+    ])
+    expect(commands.map((command) => command.name)).toEqual([
+      "PersistInputProfile",
+    ])
+  })
+
+  test("restore row, category, and all return to defaults", () => {
+    const custom = localProfile({
+      ...openAgentsDefaultInputProfile.bindings,
+      "movement.forward": [{ type: "keyboard_code", code: "KeyI" }],
+      "target.next": [{ type: "keyboard_code", code: "KeyE" }],
+    })
+    const model = Model.make({ ...initialModel, inputProfile: custom })
+
+    const [rowReset] = update(
+      model,
+      ResetInputBinding({ actionId: "movement.forward" }),
+    )
+    expect(parseOpenAgentsInputProfileOrDefault(rowReset.inputProfile).bindings[
+      "movement.forward"
+    ]).toEqual(openAgentsDefaultInputProfile.bindings["movement.forward"])
+
+    const [categoryReset] = update(
+      Model.make({ ...initialModel, inputProfile: custom }),
+      ResetInputBindingCategory({ category: "Movement" }),
+    )
+    const categoryProfile = parseOpenAgentsInputProfileOrDefault(
+      categoryReset.inputProfile,
+    )
+    expect(categoryProfile.bindings["movement.forward"]).toEqual(
+      openAgentsDefaultInputProfile.bindings["movement.forward"],
+    )
+    expect(categoryProfile.bindings["target.next"]).toEqual([
+      { type: "keyboard_code", code: "KeyE" },
+    ])
+
+    const [allReset] = update(
+      Model.make({ ...initialModel, inputProfile: custom }),
+      ResetAllInputBindings(),
+    )
+    expect(parseOpenAgentsInputProfileOrDefault(allReset.inputProfile)).toEqual(
+      openAgentsDefaultInputProfile,
+    )
+  })
+
+  test("running the PersistInputProfile effect writes localStorage", () => {
+    installLocalStorage()
+    const profile = inputProfileWithBinding(
+      openAgentsDefaultInputProfile,
+      "movement.forward",
+      0,
+      { type: "keyboard_code", code: "KeyI" },
+    )
+    const result = Effect.runSync(PersistInputProfile({ profile }).effect)
+
+    expect(result._tag).toBe("SettledPersistInputProfile")
+    expect(loadInputProfile().bindings["movement.forward"]).toEqual([
+      { type: "keyboard_code", code: "KeyI" },
+      { type: "keyboard_code", code: "ArrowUp" },
+    ])
+  })
+})
+
 describe("#5472 preferences apply at init + render", () => {
   afterEach(() => removeLocalStorage())
 
@@ -225,6 +405,27 @@ describe("#5472 preferences apply at init + render", () => {
     expect(model.identityChoiceState).toBe(null)
   })
 
+  test("initialRuntimeState seeds the active input profile from separate storage", () => {
+    installLocalStorage()
+    saveInputProfile(
+      inputProfileWithBinding(
+        openAgentsDefaultInputProfile,
+        "movement.forward",
+        0,
+        { type: "keyboard_code", code: "KeyI" },
+      ),
+    )
+
+    const [model] = initialRuntimeState()
+
+    expect(parseOpenAgentsInputProfileOrDefault(model.inputProfile).bindings[
+      "movement.forward"
+    ]).toEqual([
+      { type: "keyboard_code", code: "KeyI" },
+      { type: "keyboard_code", code: "ArrowUp" },
+    ])
+  })
+
   test("initialRuntimeState falls back to dark/codex/auto when nothing is saved", () => {
     removeLocalStorage()
     const [model] = initialRuntimeState()
@@ -241,5 +442,35 @@ describe("#5472 preferences apply at init + render", () => {
       expect(doc.body).toBeDefined()
       expect(typeof doc.body).toBe("object")
     }
+  })
+
+  test("the Settings pane renders keybinding categories, capture state, and conflicts", () => {
+    const conflictProfile = localProfile({
+      ...openAgentsDefaultInputProfile.bindings,
+      "movement.forward": [{ type: "keyboard_code", code: "KeyI" }],
+      "movement.backward": [{ type: "keyboard_code", code: "KeyI" }],
+    })
+    const model = Model.make({
+      ...initialModel,
+      pane: "settings",
+      inputProfile: conflictProfile,
+      inputBindingCapture: { actionId: "movement.forward", slot: 1 },
+    })
+    const tree = serializeView(view(model).body)
+
+    expect(tree).toContain("Keybindings")
+    expect(tree).toContain("Movement")
+    expect(tree).toContain("Camera")
+    expect(tree).toContain("Targeting")
+    expect(tree).toContain("Interaction")
+    expect(tree).toContain("HUD")
+    expect(tree).toContain("App")
+    expect(tree).toContain("Code")
+    expect(tree).toContain("Action Bar")
+    expect(tree).toContain("Move Forward")
+    expect(tree).toContain("Press a key")
+    expect(tree).toContain("keybinding-row-conflict")
+    expect(tree).toContain("I")
+    expect(tree).toContain("Restore all")
   })
 })

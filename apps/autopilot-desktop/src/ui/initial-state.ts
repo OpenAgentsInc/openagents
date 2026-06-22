@@ -15,6 +15,7 @@ import { initialModel, Model } from "./model.js"
 // here (the real app entry), not in `initialModel`, so the shared neutral base
 // stays deterministic for the view/update tests (which never touch storage).
 import { loadPreferences } from "./preferences.js"
+import { loadInputProfile } from "./input-profile-preferences.js"
 
 type InitialRuntimeState = readonly [
   Model,
@@ -27,6 +28,7 @@ type InitialRuntimeState = readonly [
 // chat bar instead of a coding target selector.
 export const initialRuntimeState = (): InitialRuntimeState => {
   const preferences = loadPreferences()
+  const inputProfile = loadInputProfile()
   const model = Model.make({
     ...initialModel,
     // #5472: apply the saved preferences. `defaultAdapter`/`defaultLane` ALSO
@@ -39,6 +41,7 @@ export const initialRuntimeState = (): InitialRuntimeState => {
     // #5485: apply the saved gateway-fallback intent so the routing decision
     // (own-auth vs gateway) honours it once the user opens a coding surface.
     gatewayInferenceFallback: preferences.gatewayInferenceFallback,
+    inputProfile,
     spawnAdapter: preferences.defaultAdapter,
     spawnLane: preferences.defaultLane,
     // The hands-off default surface: the Verse world plus one chat bar.

@@ -699,6 +699,98 @@ body {
   color: rgb(255 213 213 / 0.72);
 }
 
+.keybinding-toolbar,
+.keybinding-category-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.keybinding-toolbar {
+  margin-block: 0.4rem 0.75rem;
+}
+
+.keybinding-category {
+  display: grid;
+  gap: 0.45rem;
+  margin-block: 0.7rem;
+}
+
+.keybinding-category-head {
+  justify-content: space-between;
+}
+
+.keybinding-grid {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.keybinding-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.35fr) minmax(8rem, 1fr) minmax(5.5rem, 0.7fr) minmax(5.5rem, 0.7fr) minmax(4rem, 0.55fr) auto;
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0.42rem;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.035);
+}
+
+.keybinding-row-conflict {
+  border-color: rgb(245 197 66 / 0.42);
+  background: rgb(245 197 66 / 0.055);
+}
+
+.keybinding-action {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.keybinding-action-id,
+.keybinding-context,
+.keybinding-conflict {
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.48);
+  font-size: 0.66rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keybinding-binding {
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 5px;
+  background: rgb(0 0 0 / 0.22);
+  color: rgb(255 255 255 / 0.82);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 750;
+  line-height: 1.1;
+  overflow: hidden;
+  padding: 0.4rem 0.48rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keybinding-binding:hover,
+.keybinding-binding:focus-visible,
+.keybinding-binding.capturing {
+  border-color: rgb(255 255 255 / 0.42);
+  background: rgb(255 255 255 / 0.11);
+  outline: none;
+}
+
+@media (max-width: 860px) {
+  .keybinding-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .decision-persistent-blocker {
   margin: 0;
   color: rgb(255 213 213 / 0.74);

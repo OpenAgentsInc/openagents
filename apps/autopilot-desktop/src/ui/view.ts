@@ -25,6 +25,15 @@ import {
 import type { ProofReplayBundle } from "@openagentsinc/proof-replay"
 import { trainingRunView } from "@openagentsinc/three-effect/foldkit"
 import {
+  detectOpenAgentsInputConflicts,
+  openAgentsInputActionSpecs,
+  openAgentsInputBindingLabel,
+  parseOpenAgentsInputProfileOrDefault,
+  type OpenAgentsInputActionSpec,
+  type OpenAgentsInputConflict,
+  type OpenAgentsInputProfile,
+} from "@openagentsinc/input-bindings"
+import {
   defaultTrainingRunNodes,
   trainingRunVisualizationOptionsWithLocalPose,
   trainingRunVisualizationOptionsFromSnapshot,
@@ -40,6 +49,7 @@ import {
   verseInputBindingProjection,
   type VerseInputBindingProjection,
 } from "./verse-input-bindings.js"
+import { capturedKeyboardBindingFromKey } from "./input-profile-preferences.js"
 import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
@@ -180,6 +190,8 @@ import {
   ChangedDefaultLane,
   ToggledNotificationPanel,
   ChangedGatewayInferenceFallback,
+  CapturedInputBinding,
+  CancelledInputBindingCapture,
   ChangedChatInput,
   ChangedAddAccountHome,
   ChangedAddAccountPriority,
@@ -203,6 +215,9 @@ import {
   ChangedVerseLocalPose,
   ChangedVersePresenceZone,
   ChangedVerseWorldItemProximity,
+  ResetAllInputBindings,
+  ResetInputBinding,
+  ResetInputBindingCategory,
   SelectedChatWorldNode,
   SelectedComposerAccount,
   ClickedCancelSession,
@@ -268,6 +283,7 @@ import {
   CycledShellTarget,
   SelectedShellTarget,
   SubmittedShell,
+  StartedInputBindingCapture,
   ClosedPanes,
   // HUD H3 (#5501): managed pane-layer verbs.
   ClosedManagedPane,
@@ -5224,6 +5240,176 @@ const inferenceGatewayCard = (model: Model): Html => {
   ])
 }
 
+const KEYBINDING_CATEGORY_ORDER = [
+  "Movement",
+  "Camera",
+  "Targeting",
+  "Interaction",
+  "HUD",
+  "App",
+  "Code",
+  "Action Bar",
+] as const
+
+const keybindingsSettingsCard = (model: Model): Html => {
+  const profile = parseOpenAgentsInputProfileOrDefault(model.inputProfile)
+  const conflicts = detectOpenAgentsInputConflicts(profile)
+  const specsByCategory = keybindingSpecsByCategory()
+  return card("Keybindings", [
+    h.p([cls("card-body")], [
+      "Edit the active Verse/action profile. Keyboard capture is live; mouse and wheel rows are shown as bindings but capture remains keyboard-first.",
+    ]),
+    h.div([cls("keybinding-toolbar")], [
+      h.span([cls("empty-state mono")], [
+        `${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"}`,
+      ]),
+      h.button(
+        [
+          cls("adapter-btn"),
+          h.Type("button"),
+          h.OnClick(ResetAllInputBindings()),
+        ],
+        ["Restore all"],
+      ),
+      model.inputBindingCapture === null
+        ? h.empty
+        : h.button(
+            [
+              cls("adapter-btn"),
+              h.Type("button"),
+              h.OnClick(CancelledInputBindingCapture()),
+            ],
+            ["Cancel capture"],
+          ),
+    ]),
+    ...KEYBINDING_CATEGORY_ORDER.flatMap((category) => {
+      const specs = specsByCategory.get(category) ?? []
+      return [
+        h.div([cls("keybinding-category"), h.Key(`keybinding-${category}`)], [
+          h.div([cls("keybinding-category-head")], [
+            h.h3([cls("field-label")], [category]),
+            h.button(
+              [
+                cls("adapter-btn"),
+                h.Type("button"),
+                h.OnClick(ResetInputBindingCategory({ category })),
+              ],
+              ["Restore category"],
+            ),
+          ]),
+          specs.length === 0
+            ? emptyLine("Reserved for upcoming coding actions.")
+            : h.div(
+                [cls("keybinding-grid")],
+                specs.map((spec) =>
+                  keybindingRow(
+                    profile,
+                    spec,
+                    conflictsForAction(conflicts, spec.id),
+                    model.inputBindingCapture,
+                  ),
+                ),
+              ),
+        ]),
+      ]
+    }),
+  ])
+}
+
+const keybindingSpecsByCategory = (): Map<
+  string,
+  ReadonlyArray<OpenAgentsInputActionSpec>
+> => {
+  const groups = new Map<string, Array<OpenAgentsInputActionSpec>>()
+  for (const spec of openAgentsInputActionSpecs) {
+    const group = groups.get(spec.category) ?? []
+    group.push(spec)
+    groups.set(spec.category, group)
+  }
+  return groups
+}
+
+const conflictsForAction = (
+  conflicts: ReadonlyArray<OpenAgentsInputConflict>,
+  actionId: string,
+): ReadonlyArray<OpenAgentsInputConflict> =>
+  conflicts.filter((conflict) => conflict.actionIds.includes(actionId))
+
+const keybindingRow = (
+  profile: OpenAgentsInputProfile,
+  spec: OpenAgentsInputActionSpec,
+  conflicts: ReadonlyArray<OpenAgentsInputConflict>,
+  capture: Model["inputBindingCapture"],
+): Html => {
+  const bindings = profile.bindings[spec.id] ?? []
+  return h.div(
+    [
+      cls(`keybinding-row${conflicts.length > 0 ? " keybinding-row-conflict" : ""}`),
+      h.DataAttribute("keybinding-action", spec.id),
+    ],
+    [
+      h.div([cls("keybinding-action")], [
+        h.strong([], [spec.title]),
+        h.code([cls("keybinding-action-id")], [spec.id]),
+      ]),
+      h.span([cls("keybinding-context")], [spec.contexts.join(", ")]),
+      keybindingSlotButton(spec, bindings[0], 0, capture),
+      keybindingSlotButton(spec, bindings[1], 1, capture),
+      h.span([cls("keybinding-conflict")], [
+        conflicts.length === 0
+          ? "clear"
+          : conflicts.map(conflict => conflict.bindingLabel).join(", "),
+      ]),
+      h.button(
+        [
+          cls("adapter-btn"),
+          h.Type("button"),
+          h.OnClick(ResetInputBinding({ actionId: spec.id })),
+        ],
+        ["Restore"],
+      ),
+    ],
+  )
+}
+
+const keybindingSlotButton = (
+  spec: OpenAgentsInputActionSpec,
+  binding: OpenAgentsInputProfile["bindings"][string][number] | undefined,
+  slot: number,
+  capture: Model["inputBindingCapture"],
+): Html => {
+  const isCapturing =
+    capture?.actionId === spec.id && capture.slot === slot
+  return h.button(
+    [
+      cls(`keybinding-binding${isCapturing ? " capturing" : ""}`),
+      h.Type("button"),
+      h.Tabindex(0),
+      h.Autofocus(isCapturing),
+      h.OnClick(StartedInputBindingCapture({ actionId: spec.id, slot })),
+      h.OnKeyDownPreventDefault((key, modifiers) => {
+        const captured = capturedKeyboardBindingFromKey(key, modifiers)
+        return captured === null
+          ? Option.none()
+          : Option.some(
+              CapturedInputBinding({
+                actionId: spec.id,
+                slot,
+                binding: captured,
+              }),
+            )
+      }),
+    ],
+    [
+      isCapturing
+        ? "Press a key"
+        : binding === undefined
+          ? slot === 0 ? "Set primary" : "Set alternate"
+          : openAgentsInputBindingLabel(binding),
+    ],
+  )
+}
+
 const settingsPane = (model: Model): Html => {
   const node = modelNode(model)
   const installReadiness = modelInstallReadiness(model)
@@ -5249,6 +5435,7 @@ const settingsPane = (model: Model): Html => {
           ),
         ),
       ]),
+      keybindingsSettingsCard(model),
       card("First-run Health", [
         h.p([cls("card-body")], [
           "Status: ",

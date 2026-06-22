@@ -37,6 +37,7 @@ import {
   PublishVerseLocalPose,
   QueueTrainingCloseout,
   QueueTrainingLaunch,
+  PersistInputProfile,
   PersistPreferences,
   ReconcileTrainingWindow,
   RemoveManagedAccount,
@@ -103,6 +104,14 @@ import {
   recordLatestVerseLocalPose,
 } from "./verse-local-pose.js"
 import { recordVerseSceneDiagnostic } from "./verse-scene-diagnostics.js"
+import {
+  decodeInputBindingOrNull,
+  inputProfileWithBinding,
+  inputProfileWithResetAction,
+  inputProfileWithResetAll,
+  inputProfileWithResetCategory,
+} from "./input-profile-preferences.js"
+import { safeInputProfileValue } from "./verse-input-bindings.js"
 // HUD H3 (#5501): the pure PaneManager reducer + the layer accessor. update.ts
 // maps each managed-pane Message to one `PaneLayerAction` and stores the result
 // back on the Model. The viewport is read here (real window when present, a fixed
@@ -593,6 +602,9 @@ const persistPreferencesFor = (model: Model): Command.Command<Message> =>
     gatewayInferenceFallback: model.gatewayInferenceFallback,
   })
 
+const persistInputProfileFor = (model: Model): Command.Command<Message> =>
+  PersistInputProfile({ profile: safeInputProfileValue(model.inputProfile) })
+
 const proofReplayCommandRequestForModel = (
   model: Model,
 ): ProofReplayCommandRequest =>
@@ -1059,9 +1071,78 @@ export const update = (model: Model, message: Message): Result => {
       return [model, noCommands]
     case "ChangedInputProfile":
       return [
-        Model.make({ ...model, inputProfile: message.profile }),
+        Model.make({
+          ...model,
+          inputProfile: safeInputProfileValue(message.profile),
+          inputBindingCapture: null,
+        }),
         noCommands,
       ]
+    case "StartedInputBindingCapture":
+      return [
+        Model.make({
+          ...model,
+          inputBindingCapture: {
+            actionId: message.actionId,
+            slot: message.slot,
+          },
+        }),
+        noCommands,
+      ]
+    case "CancelledInputBindingCapture":
+      return [
+        Model.make({ ...model, inputBindingCapture: null }),
+        noCommands,
+      ]
+    case "CapturedInputBinding": {
+      const binding = decodeInputBindingOrNull(message.binding)
+      if (binding === null) {
+        return [Model.make({ ...model, inputBindingCapture: null }), noCommands]
+      }
+      const next = Model.make({
+        ...model,
+        inputProfile: inputProfileWithBinding(
+          model.inputProfile,
+          message.actionId,
+          message.slot,
+          binding,
+        ),
+        inputBindingCapture: null,
+      })
+      return [next, [persistInputProfileFor(next)]]
+    }
+    case "ResetInputBinding": {
+      const next = Model.make({
+        ...model,
+        inputProfile: inputProfileWithResetAction(
+          model.inputProfile,
+          message.actionId,
+        ),
+        inputBindingCapture: null,
+      })
+      return [next, [persistInputProfileFor(next)]]
+    }
+    case "ResetInputBindingCategory": {
+      const next = Model.make({
+        ...model,
+        inputProfile: inputProfileWithResetCategory(
+          model.inputProfile,
+          message.category,
+        ),
+        inputBindingCapture: null,
+      })
+      return [next, [persistInputProfileFor(next)]]
+    }
+    case "ResetAllInputBindings": {
+      const next = Model.make({
+        ...model,
+        inputProfile: inputProfileWithResetAll(),
+        inputBindingCapture: null,
+      })
+      return [next, [persistInputProfileFor(next)]]
+    }
+    case "SettledPersistInputProfile":
+      return [model, noCommands]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":

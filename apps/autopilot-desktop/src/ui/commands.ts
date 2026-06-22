@@ -7,6 +7,7 @@
 
 import { Effect, Schema as S } from "effect"
 import { Command } from "foldkit"
+import { OpenAgentsInputProfile } from "@openagentsinc/input-bindings"
 
 import { getRequest } from "./bridge.js"
 import { commandErrorText } from "./helpers.js"
@@ -19,12 +20,14 @@ import type { OnboardingStatusResponse } from "../shared/rpc.js"
 import { ProofReplayCommandRequest, ShellCodingTarget } from "./model.js"
 // #5472: local preference persistence (no RPC verb — writes localStorage).
 import { savePreferences } from "./preferences.js"
+import { saveInputProfile } from "./input-profile-preferences.js"
 import {
   publishActiveVerseLocalPose,
   type VerseAvatarPose,
 } from "./chat-world-subscriptions.js"
 import {
   SettledPersistPreferences,
+  SettledPersistInputProfile,
   SettledVerseLocalPosePublish,
   FailedCoordinatorToggle,
   FailedBuiltInAgent,
@@ -1586,6 +1589,17 @@ export const PersistPreferences = Command.define(
     // args schema (the literals/boolean match `Preferences` field-for-field).
     savePreferences(preferences)
     return SettledPersistPreferences()
+  }),
+)
+
+export const PersistInputProfile = Command.define(
+  "PersistInputProfile",
+  { profile: OpenAgentsInputProfile },
+  SettledPersistInputProfile,
+)(({ profile }) =>
+  Effect.sync(() => {
+    saveInputProfile(profile)
+    return SettledPersistInputProfile()
   }),
 )
 

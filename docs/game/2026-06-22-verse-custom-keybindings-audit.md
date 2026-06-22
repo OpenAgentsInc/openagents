@@ -7,8 +7,8 @@ Scope: current keyboard, mouse, Verse movement, and app shortcut handling in
 MMORPG-style custom keybindings.
 
 Status: implementation in progress. The shared contract, resolver, three-effect
-controller bindings, and retained Verse runtime wiring are implemented. Settings
-UI and packaged custom-binding smoke coverage remain.
+controller bindings, retained Verse runtime wiring, and Settings UI are
+implemented. Packaged custom-binding smoke coverage remains.
 
 ## Implementation Progress
 
@@ -49,6 +49,16 @@ UI and packaged custom-binding smoke coverage remain.
   diagnostics, and keeps pose/camera restoration stable across profile changes.
   The desktop Verse launch suite now proves an IJKL-style profile updates
   controller bindings without forcing a scene rebuild.
+- 2026-06-22: Issue #5949 added the desktop Keybindings Settings editor.
+  Desktop now loads and saves the active profile under the separate versioned
+  `autopilot-desktop.input-bindings.v1` key, never inside the existing
+  preferences blob. Settings renders dense Movement, Camera, Targeting,
+  Interaction, HUD, App, Code, and Action Bar sections, supports keyboard-first
+  primary/alternate capture, deterministic conflict warnings, and row/category
+  /all restore controls. The input contract also now includes initial Code
+  overlay actions so the Settings category is not placeholder-only. Unit
+  coverage exercises render, capture, conflict display, persistence,
+  corruption fallback, and restore behavior.
 
 ## Goal
 

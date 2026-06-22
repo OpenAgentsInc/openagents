@@ -48,7 +48,7 @@ describe("@openagentsinc/input-bindings", () => {
     ])
   })
 
-  test("covers app, palette, targeting, interaction, hud, and action-bar actions", () => {
+  test("covers app, palette, targeting, interaction, hud, code, and action-bar actions", () => {
     const ids = new Set(openAgentsInputActionSpecs.map((spec) => spec.id))
     expect(ids.has("app.command_palette")).toBe(true)
     expect(ids.has("palette.run")).toBe(true)
@@ -56,6 +56,7 @@ describe("@openagentsinc/input-bindings", () => {
     expect(ids.has("interact.primary")).toBe(true)
     expect(ids.has("tip.selected_pylon")).toBe(true)
     expect(ids.has("hud.toggle_code_overlay")).toBe(true)
+    expect(ids.has("code.focus_composer")).toBe(true)
     expect(ids.has("action_bar.slot_10")).toBe(true)
     expect(openAgentsInputActionSpecById.get("movement.forward")?.kind).toBe("hold")
   })

@@ -70,6 +70,23 @@ export const ChangedVerseLocalPose = m("ChangedVerseLocalPose", {
 export const ChangedInputProfile = m("ChangedInputProfile", {
   profile: S.Unknown,
 })
+export const StartedInputBindingCapture = m("StartedInputBindingCapture", {
+  actionId: S.String,
+  slot: S.Number,
+})
+export const CancelledInputBindingCapture = m("CancelledInputBindingCapture")
+export const CapturedInputBinding = m("CapturedInputBinding", {
+  actionId: S.String,
+  slot: S.Number,
+  binding: S.Unknown,
+})
+export const ResetInputBinding = m("ResetInputBinding", {
+  actionId: S.String,
+})
+export const ResetInputBindingCategory = m("ResetInputBindingCategory", {
+  category: S.String,
+})
+export const ResetAllInputBindings = m("ResetAllInputBindings")
 export const SettledVerseLocalPosePublish = m("SettledVerseLocalPosePublish", {
   ok: S.Boolean,
   reason: S.String,
@@ -627,6 +644,7 @@ export const ChangedGatewayInferenceFallback = m(
 // closes the PersistPreferences command so side effects stay in Commands, not
 // the pure reducer. Failures are swallowed in the command (local convenience).
 export const SettledPersistPreferences = m("SettledPersistPreferences")
+export const SettledPersistInputProfile = m("SettledPersistInputProfile")
 
 // ── Zero-base shell (owner directive, 2026-06-19) ───────────────────────────
 // The minimal default surface's messages. `ChangedShellInput` tracks the bottom
@@ -697,6 +715,12 @@ export const Message = S.Union([
   ChangedVerseWorldItemProximity,
   ChangedVerseLocalPose,
   ChangedInputProfile,
+  StartedInputBindingCapture,
+  CancelledInputBindingCapture,
+  CapturedInputBinding,
+  ResetInputBinding,
+  ResetInputBindingCategory,
+  ResetAllInputBindings,
   SettledVerseLocalPosePublish,
   GotNotifications,
   GotNodeLaunchStatus,
@@ -862,6 +886,7 @@ export const Message = S.Union([
   ToggledNotificationPanel,
   ChangedGatewayInferenceFallback,
   SettledPersistPreferences,
+  SettledPersistInputProfile,
   ChangedShellInput,
   CycledShellTarget,
   SelectedShellTarget,
