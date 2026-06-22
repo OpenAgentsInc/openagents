@@ -695,6 +695,8 @@ contract and prevents Cloudflare code from inventing ad hoc shapes.
 
 ### P2: Scaffold `apps/openagents-world`
 
+Status: implemented in issue #5961.
+
 Create the Cloudflare Worker app with the production host shape from day one.
 Acceptance:
 
@@ -722,6 +724,17 @@ Acceptance:
 
 This issue should deploy a boring empty service that can accept a connection and
 say "zero rows" loudly and typed. No game behavior yet.
+
+Implementation note: the first scaffold lives in `apps/openagents-world` with
+Cloudflare Worker routes for `/health`, `/version`, `/connect`,
+`/regions/:regionRef/socket`, and `/bridge/ingest`; `RegionDurableObject`
+routes by region ref, uses hibernatable WebSockets, persists session metadata in
+DO-local SQLite, and sends a typed zero-row `WorldDelta` snapshot on connect.
+The D1 projection migration is committed under `apps/openagents-world/migrations`
+and the Wrangler config declares the DO, D1, Queue, environment vars, and
+`new_sqlite_classes` migration from the first app commit. Placeholder D1 IDs
+must be replaced during Cloudflare resource provisioning, but the binding names
+are now fixed.
 
 ### P3: Implement Region DO Session + Snapshot/Delta Transport
 
