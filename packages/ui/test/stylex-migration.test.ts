@@ -8,6 +8,8 @@ import {
   inputGroup,
   linkButton,
   textareaGroup,
+  workroomChatRoute,
+  workroomTimeline,
 } from '../src/index'
 
 type VNodeLike = {
@@ -136,5 +138,68 @@ describe('StyleX migration coverage', () => {
     expect(rendered).toContain('oa-ai-prompt-input-textarea')
     expect(rendered).toContain('oa-ai-prompt-input-button')
     expect(rendered).toContain('oa-ai-prompt-input-submit')
+  })
+
+  test('renders workroom timeline surfaces through StyleX instead of app CSS', () => {
+    const rendered = renderHtml(
+      workroomChatRoute(
+        workroomTimeline({
+          messages: [
+            {
+              id: 'message-stylex-user',
+              author: 'user',
+              label: 'Operator',
+              time: 'now',
+              status: 'complete',
+              parts: [{ kind: 'text', body: ['Ship the migration.'] }],
+            },
+            {
+              id: 'message-stylex-agent',
+              author: 'assistant',
+              label: 'Autopilot',
+              time: 'now',
+              status: 'streaming',
+              parts: [
+                { kind: 'text', body: ['Working through the gate.'] },
+                {
+                  kind: 'tool',
+                  title: 'Shell',
+                  subtitle: 'shell command',
+                  status: 'running',
+                  detail: ['bun run check:deploy'],
+                },
+                {
+                  kind: 'diff',
+                  files: [
+                    {
+                      path: 'apps/openagents.com/apps/web/src/styles.css',
+                      added: 2,
+                      removed: 200,
+                      status: 'modified',
+                    },
+                  ],
+                },
+                {
+                  kind: 'file',
+                  path: 'packages/ui/src/workroom-styles.ts',
+                  language: 'ts',
+                  excerpt: ['export const workroomStyles = {}'],
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    )
+
+    expect(rendered).toContain('oa-ui-workroom-chat-surface')
+    expect(rendered).toContain('oa-ui-workroom-session-turn')
+    expect(rendered).toContain('oa-ui-workroom-text-part')
+    expect(rendered).toContain('oa-ui-workroom-bash-output')
+    expect(rendered).toContain('oa-ui-workroom-tool-trigger')
+    expect(rendered).toContain('oa-ui-workroom-diffs')
+    expect(rendered).toContain('oa-ui-workroom-write-content')
+    expect(rendered).toContain('data-component="session-turn"')
+    expect(rendered).toContain('data-slot="session-turn-diff-filename"')
   })
 })

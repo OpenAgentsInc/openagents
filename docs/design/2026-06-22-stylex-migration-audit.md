@@ -86,6 +86,26 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
 - Added Autopilot UI render coverage proving the migrated domain families route
   through deterministic StyleX fallback classes in Bun tests.
 
+2026-06-22 P4 web app CSS reduction, issue #5956:
+
+- Reduced `apps/openagents.com/apps/web/src/styles.css` from 787 lines to 353
+  lines by removing the app-hosted workroom/chat/session component selector
+  block plus now-unused local typography and chat-surface utility classes.
+- Added `packages/ui/src/workroom-styles.ts` as the StyleX owner for the
+  migrated workroom timeline, shell-output, tool-trigger, diff, write-excerpt,
+  and chat-surface styles. The Foldkit view functions keep the same exported
+  APIs and data attributes while attaching `stylexAttrs(...)` directly to the
+  rendered nodes.
+- Left `styles.css` responsible for Tailwind import/source scanning, theme
+  variables, font faces, root defaults, Forum/public-landing scoped theme
+  plumbing, and shared motion/keyframe coexistence classes that are still
+  exported by `@openagentsinc/ui` primitives and used by Worker/share surfaces.
+- Kept one documented workroom `v4ChatMessage` user-message coexistence rule in
+  CSS until the v4 chat primitive can merge caller StyleX classes with its base
+  utility class without either side overwriting the other.
+- Added shared UI render coverage proving the migrated workroom surfaces emit
+  deterministic StyleX fallback classes in Bun tests.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -154,8 +174,8 @@ entry points.
 
 ### `apps/openagents.com`
 
-`apps/openagents.com/apps/web/src/styles.css` is the main web stylesheet. It is
-787 lines and uses Tailwind v4 through `@tailwindcss/vite`.
+`apps/openagents.com/apps/web/src/styles.css` is the main web stylesheet. After
+#5956 it is 353 lines and uses Tailwind v4 through `@tailwindcss/vite`.
 
 Important current responsibilities:
 
@@ -166,8 +186,12 @@ Important current responsibilities:
 - Berkeley Mono `@font-face` declarations
 - `:root`, `html`, `body`, and app-root defaults
 - scoped Forum and public landing theme modes through data attributes
-- app utilities such as `no-scrollbar`, text scale utilities, and custom
-  component classes
+- shared motion/keyframe coexistence for primitive classes still used across
+  web routes and Worker/share-rendered surfaces
+
+The old workroom/session data-attribute component selectors are no longer
+owned by this file; their first migrated home is
+`packages/ui/src/workroom-styles.ts`.
 
 The Vite config currently uses:
 
@@ -602,7 +626,8 @@ Recommended order:
    comboboxes.
 2. Finish `feedback.ts`, badges, panels, and empty states.
 3. Continue `ai-elements/*` beyond Prompt Input.
-4. Migrate `workroom.ts` and layout shells.
+4. Continue `workroom.ts` beyond the migrated timeline/chat surface into the
+   remaining layout shells and docks.
 5. Migrate larger public, business, and page-example composites.
 
 Keep old CSS/Tailwind available until each family is fully moved.
@@ -635,9 +660,13 @@ on `@openagentsinc/ui` for base surfaces where possible.
 
 Goal: reduce `apps/openagents.com/apps/web/src/styles.css` to global concerns.
 
-Move component classes and app-local view classes into StyleX modules near the
-Foldkit views that use them. Leave root styles, font faces, base variables, and
-theme selectors in CSS.
+Status: started in #5956 by moving the `@openagentsinc/ui` workroom timeline /
+chat-surface CSS out of the web stylesheet and into
+`packages/ui/src/workroom-styles.ts`. The stylesheet is now 327 lines and is
+mostly global/theme/motion coexistence with one documented workroom
+`v4ChatMessage` user-message coexistence rule. Remaining app-local CSS work should
+target route-specific public or logged-in view classes as they are encountered,
+while preserving Forum and public landing theme selectors in CSS.
 
 ### Phase 5: migrate desktop CSS
 

@@ -20,10 +20,14 @@ type StylexAttrs = Readonly<{
   'data-style-src'?: string
 }>
 
-export const stylexAttrs = <Message>(
-  ...styles: ReadonlyArray<StylexMaybeStyle>
-): ReadonlyArray<Attribute<Message>> => {
-  const h = html<Message>()
+type StylexAttrParts = StylexAttrs &
+  Readonly<{
+    className?: string
+  }>
+
+const stylexAttrParts = (
+  styles: ReadonlyArray<StylexMaybeStyle>,
+): StylexAttrParts => {
   const compiledStyles = styles.filter(Boolean) as ReadonlyArray<StylexStyle>
   const fallbackClasses = compiledStyles.flatMap(style =>
     typeof style === 'object' &&
@@ -44,14 +48,48 @@ export const stylexAttrs = <Message>(
         ),
     ),
   )
+  const className = [fallbackClasses.join(' '), attrs.class]
+    .filter(value => value !== undefined && value !== '')
+    .join(' ')
+
+  return className === '' ? attrs : { ...attrs, className }
+}
+
+export const stylexAttrs = <Message>(
+  ...styles: ReadonlyArray<StylexMaybeStyle>
+): ReadonlyArray<Attribute<Message>> => {
+  const h = html<Message>()
+  const attrs = stylexAttrParts(styles)
   const result: Array<Attribute<Message>> = []
 
-  if (fallbackClasses.length > 0) {
-    result.push(h.Class(fallbackClasses.join(' ')))
+  if (attrs.className !== undefined) {
+    result.push(h.Class(attrs.className))
   }
 
-  if (attrs.class !== undefined) {
-    result.push(h.Class(attrs.class))
+  if (attrs.style !== undefined) {
+    result.push(h.Attribute('style', attrs.style))
+  }
+
+  if (attrs['data-style-src'] !== undefined) {
+    result.push(h.DataAttribute('style-src', attrs['data-style-src']))
+  }
+
+  return result
+}
+
+export const stylexAttrsWithClass = <Message>(
+  className: string,
+  ...styles: ReadonlyArray<StylexMaybeStyle>
+): ReadonlyArray<Attribute<Message>> => {
+  const h = html<Message>()
+  const attrs = stylexAttrParts(styles)
+  const result: Array<Attribute<Message>> = []
+  const classes = [className, attrs.className]
+    .filter(value => value !== undefined && value !== '')
+    .join(' ')
+
+  if (classes !== '') {
+    result.push(h.Class(classes))
   }
 
   if (attrs.style !== undefined) {

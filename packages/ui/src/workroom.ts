@@ -35,7 +35,9 @@ import type {
   WorkroomTimelinePart,
 } from './primitives'
 import { avatar, buttonGroup, linkButton } from './shared'
+import { stylexAttrs, stylexAttrsWithClass } from './stylex-foldkit'
 import { v4ChatMessage } from './v4'
+import { workroomStyles } from './workroom-styles'
 
 export const workroomShell = <Message>(
   children: ReadonlyArray<Html | string>,
@@ -760,11 +762,12 @@ export const workroomChatRoute = <Message>(child: Html): Html => {
 
   return h.div(
     [
-      h.Class(
+      ...stylexAttrsWithClass<Message>(
         clsx(
           motionPaneOpenClass,
-          'oa-chat-surface flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+          'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
         ),
+        workroomStyles.chatSurface,
       ),
     ],
     [child],
@@ -955,6 +958,7 @@ export const workroomTimelinePart = <Message>(
   if (part.kind === 'text') {
     return h.div(
       [
+        ...stylexAttrs<Message>(workroomStyles.textPart),
         h.DataAttribute('component', 'text-part'),
         h.DataAttribute('timeline-part-id', 'autopilot-text'),
       ],
@@ -962,15 +966,17 @@ export const workroomTimelinePart = <Message>(
         h.div(
           [
             h.DataAttribute('slot', 'text-part-body'),
-            h.Class(
+            ...stylexAttrsWithClass<Message>(
               clsx(
-                'text-14-regular whitespace-pre-wrap break-words',
+                'whitespace-pre-wrap break-words',
                 motionTextRevealAnimationClass,
                 {
                   'text-text-strong': part.tone !== 'muted',
                   'text-text-weak': part.tone === 'muted',
                 },
               ),
+              workroomStyles.text14Regular,
+              workroomStyles.textPartBody,
             ),
             h.Key(part.body.join('\n')),
           ],
@@ -988,18 +994,32 @@ export const workroomTimelinePart = <Message>(
         : [
             isShell
               ? h.div(
-                  [h.DataAttribute('component', 'bash-output')],
+                  [
+                    ...stylexAttrs<Message>(workroomStyles.bashOutput),
+                    h.DataAttribute('component', 'bash-output'),
+                  ],
                   [
                     h.div(
                       [
                         h.DataAttribute('slot', 'bash-scroll'),
                         h.DataAttribute('scrollable', ''),
-                        h.Class('border border-[#333] bg-[#050505]'),
+                        ...stylexAttrsWithClass<Message>(
+                          'border border-[#333] bg-[#050505]',
+                          workroomStyles.bashScroll,
+                        ),
                       ],
                       [
                         h.pre(
-                          [h.DataAttribute('slot', 'bash-pre')],
-                          [h.code([], [part.detail.join('\n')])],
+                          [
+                            ...stylexAttrs<Message>(workroomStyles.bashPre),
+                            h.DataAttribute('slot', 'bash-pre'),
+                          ],
+                          [
+                            h.code(
+                              stylexAttrs<Message>(workroomStyles.bashCode),
+                              [part.detail.join('\n')],
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1009,17 +1029,21 @@ export const workroomTimelinePart = <Message>(
                   [
                     h.DataAttribute('component', 'tool-output'),
                     h.DataAttribute('scrollable', ''),
-                    h.Class('border border-[#333] bg-[#050505] p-2.5'),
+                    ...stylexAttrsWithClass<Message>(
+                      'border border-[#333] bg-[#050505] p-2.5',
+                      workroomStyles.toolOutput,
+                    ),
                   ],
                   [
                     h.pre(
-                      [],
+                      stylexAttrs<Message>(workroomStyles.toolOutputPre),
                       part.detail.map(line =>
                         h.code(
                           [
                             h.Key(line),
-                            h.Class(
+                            ...stylexAttrsWithClass<Message>(
                               'block oa-text-reveal motion-reduce:animate-none',
+                              workroomStyles.toolOutputCode,
                             ),
                           ],
                           [line],
@@ -1033,7 +1057,10 @@ export const workroomTimelinePart = <Message>(
     const wrapperAttrs = [
       h.DataAttribute('component', 'tool-part-wrapper'),
       h.DataAttribute('timeline-part-id', `autopilot-tool-${part.title}`),
-      h.Class(motionPaneOpenClass),
+      ...stylexAttrsWithClass<Message>(
+        motionPaneOpenClass,
+        workroomStyles.toolPartWrapper,
+      ),
       h.Key(stableToolKey(part)),
     ]
     const action =
@@ -1058,22 +1085,32 @@ export const workroomTimelinePart = <Message>(
     const content = [
       h.div(
         [
+          ...stylexAttrs<Message>(
+            workroomStyles.collapsible,
+            workroomStyles.toolCollapsible,
+          ),
           h.DataAttribute('component', 'collapsible'),
           h.DataAttribute('variant', 'normal'),
-          h.Class('tool-collapsible'),
         ],
         [
           h.div(
             [
+              ...stylexAttrs<Message>(workroomStyles.collapsibleTrigger),
               h.DataAttribute('slot', 'collapsible-trigger'),
               h.AriaExpanded(details.length > 0),
             ],
             [
               h.div(
-                [h.DataAttribute('component', 'tool-trigger')],
+                [
+                  ...stylexAttrs<Message>(workroomStyles.toolTrigger),
+                  h.DataAttribute('component', 'tool-trigger'),
+                ],
                 [
                   h.div(
                     [
+                      ...stylexAttrs<Message>(
+                        workroomStyles.toolTriggerContent,
+                      ),
                       h.DataAttribute(
                         'slot',
                         'basic-tool-tool-trigger-content',
@@ -1081,7 +1118,12 @@ export const workroomTimelinePart = <Message>(
                     ],
                     [
                       h.div(
-                        [h.DataAttribute('slot', 'basic-tool-tool-indicator')],
+                        [
+                          ...stylexAttrs<Message>(
+                            workroomStyles.toolIndicator,
+                          ),
+                          h.DataAttribute('slot', 'basic-tool-tool-indicator'),
+                        ],
                         [
                           h.span(
                             [
@@ -1094,10 +1136,16 @@ export const workroomTimelinePart = <Message>(
                         ],
                       ),
                       h.div(
-                        [h.DataAttribute('slot', 'basic-tool-tool-info')],
+                        [
+                          ...stylexAttrs<Message>(workroomStyles.toolInfo),
+                          h.DataAttribute('slot', 'basic-tool-tool-info'),
+                        ],
                         [
                           h.div(
                             [
+                              ...stylexAttrs<Message>(
+                                workroomStyles.toolInfoStructured,
+                              ),
                               h.DataAttribute(
                                 'slot',
                                 'basic-tool-tool-info-structured',
@@ -1106,6 +1154,9 @@ export const workroomTimelinePart = <Message>(
                             [
                               h.div(
                                 [
+                                  ...stylexAttrs<Message>(
+                                    workroomStyles.toolInfoMain,
+                                  ),
                                   h.DataAttribute(
                                     'slot',
                                     'basic-tool-tool-info-main',
@@ -1114,6 +1165,9 @@ export const workroomTimelinePart = <Message>(
                                 [
                                   h.span(
                                     [
+                                      ...stylexAttrs<Message>(
+                                        workroomStyles.toolTitle,
+                                      ),
                                       h.DataAttribute(
                                         'slot',
                                         'basic-tool-tool-title',
@@ -1123,6 +1177,9 @@ export const workroomTimelinePart = <Message>(
                                   ),
                                   h.span(
                                     [
+                                      ...stylexAttrs<Message>(
+                                        workroomStyles.toolSubtitle,
+                                      ),
                                       h.DataAttribute(
                                         'slot',
                                         'basic-tool-tool-subtitle',
@@ -1143,7 +1200,13 @@ export const workroomTimelinePart = <Message>(
             ],
           ),
           ...details.map(detail =>
-            h.div([h.DataAttribute('slot', 'collapsible-content')], [detail]),
+            h.div(
+              [
+                ...stylexAttrs<Message>(workroomStyles.collapsibleContent),
+                h.DataAttribute('slot', 'collapsible-content'),
+              ],
+              [detail],
+            ),
           ),
           ...action,
         ],
@@ -1167,43 +1230,71 @@ export const workroomTimelinePart = <Message>(
       [
         h.DataAttribute('slot', 'session-turn-diffs'),
         h.DataAttribute('component', 'session-turn-diffs-group'),
-        h.Class(motionPaneOpenClass),
+        ...stylexAttrsWithClass<Message>(
+          motionPaneOpenClass,
+          workroomStyles.diffs,
+        ),
       ],
       [
         h.div(
-          [h.DataAttribute('slot', 'session-turn-diffs-header')],
+          [
+            ...stylexAttrs<Message>(workroomStyles.diffsHeader),
+            h.DataAttribute('slot', 'session-turn-diffs-header'),
+          ],
           [
             h.span(
-              [h.DataAttribute('slot', 'session-turn-diffs-label')],
+              [
+                ...stylexAttrs<Message>(workroomStyles.diffsLabel),
+                h.DataAttribute('slot', 'session-turn-diffs-label'),
+              ],
               [`${part.files.length} changed file`],
             ),
           ],
         ),
         h.div(
-          [h.DataAttribute('component', 'session-turn-diffs-content')],
+          [
+            ...stylexAttrs<Message>(workroomStyles.diffsContent),
+            h.DataAttribute('component', 'session-turn-diffs-content'),
+          ],
           part.files.map(file =>
             h.div(
-              [h.DataAttribute('slot', 'session-turn-diff-trigger')],
+              [
+                ...stylexAttrs<Message>(workroomStyles.diffTrigger),
+                h.DataAttribute('slot', 'session-turn-diff-trigger'),
+              ],
               [
                 h.span(
-                  [h.DataAttribute('slot', 'session-turn-diff-path')],
+                  [
+                    ...stylexAttrs<Message>(workroomStyles.diffPath),
+                    h.DataAttribute('slot', 'session-turn-diff-path'),
+                  ],
                   [
                     h.span(
-                      [h.DataAttribute('slot', 'session-turn-diff-filename')],
+                      [
+                        ...stylexAttrs<Message>(workroomStyles.diffFilename),
+                        h.DataAttribute(
+                          'slot',
+                          'session-turn-diff-filename',
+                        ),
+                      ],
                       [file.path],
                     ),
                   ],
                 ),
                 h.div(
-                  [h.DataAttribute('slot', 'session-turn-diff-meta')],
+                  [
+                    ...stylexAttrs<Message>(workroomStyles.diffMeta),
+                    h.DataAttribute('slot', 'session-turn-diff-meta'),
+                  ],
                   [
                     h.span(
                       [
-                        h.Class(
-                          clsx('text-12-regular', {
+                        ...stylexAttrsWithClass<Message>(
+                          clsx({
                             'text-text-strong': file.status === 'added',
                             'text-text-weak': file.status !== 'added',
                           }),
+                          workroomStyles.text12Regular,
                         ),
                       ],
                       [
@@ -1225,20 +1316,37 @@ export const workroomTimelinePart = <Message>(
     [h.DataAttribute('component', 'write-tool'), h.Class(motionPaneOpenClass)],
     [
       h.div(
-        [h.DataAttribute('component', 'write-trigger')],
+        [
+          ...stylexAttrs<Message>(workroomStyles.writeTrigger),
+          h.DataAttribute('component', 'write-trigger'),
+        ],
         [
           h.div(
-            [h.DataAttribute('slot', 'message-part-title-area')],
+            [
+              ...stylexAttrs<Message>(workroomStyles.messageTitleArea),
+              h.DataAttribute('slot', 'message-part-title-area'),
+            ],
             [
               h.div(
-                [h.DataAttribute('slot', 'message-part-title')],
+                [
+                  ...stylexAttrs<Message>(workroomStyles.messageTitle),
+                  h.DataAttribute('slot', 'message-part-title'),
+                ],
                 [
                   h.span(
-                    [h.DataAttribute('slot', 'message-part-title-text')],
+                    [
+                      ...stylexAttrs<Message>(workroomStyles.messageTitleText),
+                      h.DataAttribute('slot', 'message-part-title-text'),
+                    ],
                     ['File'],
                   ),
                   h.span(
-                    [h.DataAttribute('slot', 'message-part-title-filename')],
+                    [
+                      ...stylexAttrs<Message>(
+                        workroomStyles.messageTitleFilename,
+                      ),
+                      h.DataAttribute('slot', 'message-part-title-filename'),
+                    ],
                     [part.path],
                   ),
                 ],
@@ -1246,10 +1354,18 @@ export const workroomTimelinePart = <Message>(
             ],
           ),
           h.div(
-            [h.DataAttribute('slot', 'message-part-actions')],
+            [
+              ...stylexAttrs<Message>(workroomStyles.messageActions),
+              h.DataAttribute('slot', 'message-part-actions'),
+            ],
             [
               h.span(
-                [h.Class('text-12-regular text-text-weak')],
+                [
+                  ...stylexAttrsWithClass<Message>(
+                    'text-text-weak',
+                    workroomStyles.text12Regular,
+                  ),
+                ],
                 [part.language],
               ),
             ],
@@ -1257,17 +1373,26 @@ export const workroomTimelinePart = <Message>(
         ],
       ),
       h.div(
-        [h.DataAttribute('component', 'write-content')],
+        [
+          ...stylexAttrs<Message>(workroomStyles.writeContent),
+          h.DataAttribute('component', 'write-content'),
+        ],
         [
           h.div(
             [
+              ...stylexAttrs<Message>(workroomStyles.toolOutput),
               h.DataAttribute('component', 'tool-output'),
               h.DataAttribute('scrollable', ''),
             ],
             [
               h.pre(
-                [],
-                part.excerpt.map(line => h.code([], [line, '\n'])),
+                stylexAttrs<Message>(workroomStyles.toolOutputPre),
+                part.excerpt.map(line =>
+                  h.code(
+                    stylexAttrs<Message>(workroomStyles.toolOutputCode),
+                    [line, '\n'],
+                  ),
+                ),
               ),
             ],
           ),
@@ -1321,7 +1446,10 @@ export const workroomTimelineMessage = <Message>(
         ],
       )
     : h.div(
-        [h.DataAttribute('slot', 'session-turn-assistant-content')],
+        [
+          ...stylexAttrs<Message>(workroomStyles.assistantContent),
+          h.DataAttribute('slot', 'session-turn-assistant-content'),
+        ],
         [
           ...message.parts.map(part => workroomTimelinePart<Message>(part)),
           ...(message.status === 'streaming'
@@ -1360,17 +1488,26 @@ export const workroomTimelineMessage = <Message>(
       h.div(
         [
           h.DataAttribute('component', 'session-turn'),
-          h.Class('min-w-0 w-full relative'),
+          ...stylexAttrsWithClass<Message>(
+            'min-w-0 w-full relative',
+            workroomStyles.sessionTurn,
+          ),
         ],
         [
           h.div(
             [
               h.DataAttribute('slot', 'session-turn-message-container'),
-              h.Class('w-full px-4 md:px-5'),
+              ...stylexAttrsWithClass<Message>(
+                'w-full px-4 md:px-5',
+                workroomStyles.sessionMessageContainer,
+              ),
             ],
             [
               h.div(
                 [
+                  ...stylexAttrs<Message>(
+                    workroomStyles.sessionMessageContent,
+                  ),
                   h.DataAttribute('slot', 'session-turn-message-content'),
                   h.AriaLive('off'),
                 ],
