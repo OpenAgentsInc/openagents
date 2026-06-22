@@ -13,6 +13,8 @@ import {
   filterOpenAgentsMcpDescriptorsByGrantSet,
   openAgentsMcpDescriptorIsGranted,
   openAgentsMcpGrantedAuthoritySet,
+  type OpenAgentsMcpReceipt,
+  type OpenAgentsMcpReceiptKind,
   type OpenAgentsMcpToolDescriptor,
   parseOpenAgentsMcpResourceUri,
   projectOpenAgentsMcpOutput,
@@ -23,8 +25,9 @@ import {
   listCrmEmailMessagesForContact,
   listCrmEmailTemplates,
   listCrmQueuedGmailMessages,
+  upsertCrmEmailTemplate,
 } from './crm-email'
-import { listCrmCommands } from './crm-command'
+import { listCrmCommands, proposeCrmSendCommand } from './crm-command'
 import type {
   CrmMcpCatalog,
   McpResourceListing,
@@ -98,6 +101,30 @@ const idSchema = (idKey: string, idDesc: string): Record<string, unknown> => ({
 })
 
 const CRM_MCP_INPUT_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> = {
+  'crm.send.command.propose': {
+    additionalProperties: false,
+    properties: {
+      channel: { description: "Send channel.", enum: ['gmail_gws', 'resend'], type: 'string' },
+      contactId: { description: 'CRM contact id.', type: 'string' },
+      sendReason: { description: 'Optional reason recorded with the command.', type: 'string' },
+      templateSlug: { description: 'Template slug to send.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['contactId', 'templateSlug'],
+    type: 'object',
+  },
+  'crm.template.upsert': {
+    additionalProperties: false,
+    properties: {
+      bodyMarkdownTemplate: { description: 'Markdown body template ({{ contact.first_name }} etc.).', type: 'string' },
+      name: { description: 'Human template name.', type: 'string' },
+      slug: { description: 'Template slug (stable id within the tenant).', type: 'string' },
+      subjectTemplate: { description: 'Subject template.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['slug', 'name', 'subjectTemplate', 'bodyMarkdownTemplate'],
+    type: 'object',
+  },
   'crm.account.get': idSchema('accountId', 'CRM account id.'),
   'crm.accounts.list': listSchema(),
   'crm.commands.list': {
@@ -178,16 +205,60 @@ export const CRM_MCP_READ_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
   readTool('crm.commands.list', 'List send commands', 'List approval-gated send_email commands (e.g. status=proposed).'),
 ]
 
+// --- Wave 2 write tools (propose-only; no send) -----------------------------
+
+const writeTool = (
+  name: string,
+  title: string,
+  description: string,
+  requiredAuthorities: ReadonlyArray<OpenAgentsMcpToolDescriptor['requiredAuthorities'][number]>,
+): OpenAgentsMcpToolDescriptor => ({
+  description,
+  inputSchemaRef: `${name}.input`,
+  name,
+  outputSchemaRef: `${name}.output`,
+  progressBehavior: 'none',
+  publicSummary: title,
+  receiptBehavior: 'mutation_receipt',
+  requiredAuthorities,
+  riskClass: 'low',
+  sourceRefs: [SOURCE],
+  title,
+})
+
+export const CRM_MCP_WRITE_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
+  writeTool(
+    'crm.send.command.propose',
+    'Propose a send',
+    'Propose an approval-gated send_email command for a contact. Records a pending_approval command — SENDS NOTHING. A human approves it separately.',
+    ['operator_read'],
+  ),
+  writeTool(
+    'crm.template.upsert',
+    'Upsert email template',
+    'Create or update a CRM email template for the tenant.',
+    ['workspace_write'],
+  ),
+]
+
+/** All CRM MCP tools (read + write), filtered per-principal at list time. */
+export const CRM_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
+  ...CRM_MCP_READ_TOOLS,
+  ...CRM_MCP_WRITE_TOOLS,
+]
+
 // --- dispatch (read fns) ----------------------------------------------------
 
 // Tenant is the principal's bound tenant — never client-supplied `args.tenant`.
-type CrmReadHandler = (
+type CrmToolContext = Readonly<{ subjectRef: string }>
+type CrmToolHandler = (
   db: D1Database,
   tenant: string,
   a: Record<string, unknown>,
+  ctx: CrmToolContext,
 ) => Promise<unknown>
 
-const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmReadHandler>> = {
+const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
   'crm.account.get': (db, tenant, a) => getCrmAccountById(db, tenant, requiredId(a, 'accountId')),
   'crm.accounts.list': (db, tenant, a) => listCrmAccounts(db, tenant, { limit: optLimit(a) }),
   'crm.commands.list': (db, tenant, a) =>
@@ -232,6 +303,76 @@ const CRM_MCP_READ_DISPATCH: Readonly<Record<string, CrmReadHandler>> = {
   'crm.opportunities.list': (db, tenant, a) => listCrmOpportunities(db, tenant, { limit: optLimit(a) }),
   'crm.opportunity.get': (db, tenant, a) => getCrmOpportunityById(db, tenant, requiredId(a, 'opportunityId')),
   'crm.templates.list': (db, tenant) => listCrmEmailTemplates(db, tenant),
+}
+
+const CRM_MCP_WRITE_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
+  'crm.send.command.propose': (db, tenant, a, ctx) =>
+    proposeCrmSendCommand(db, {
+      channel: a.channel === 'resend' ? 'resend' : 'gmail_gws',
+      contactId: requiredId(a, 'contactId'),
+      proposedByRef: ctx.subjectRef,
+      sendReason: typeof a.sendReason === 'string' ? a.sendReason : null,
+      templateSlug: requiredId(a, 'templateSlug'),
+      tenantRef: tenant,
+    }),
+  'crm.template.upsert': (db, tenant, a) =>
+    upsertCrmEmailTemplate(db, {
+      bodyMarkdownTemplate: requiredId(a, 'bodyMarkdownTemplate'),
+      name: requiredId(a, 'name'),
+      slug: requiredId(a, 'slug'),
+      subjectTemplate: requiredId(a, 'subjectTemplate'),
+      tenantRef: tenant,
+    }),
+}
+
+const CRM_MCP_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
+  ...CRM_MCP_READ_DISPATCH,
+  ...CRM_MCP_WRITE_DISPATCH,
+}
+
+/** Build a mutation receipt for a write tool result (best-effort refs). */
+const makeWriteReceipt = (
+  descriptor: OpenAgentsMcpToolDescriptor,
+  data: unknown,
+): OpenAgentsMcpReceipt => {
+  const record = (data ?? {}) as Record<string, unknown>
+  const receiptRef = typeof record.id === 'string' ? record.id : `receipt.${descriptor.name}`
+  const generatedAt =
+    typeof record.createdAt === 'string'
+      ? record.createdAt
+      : typeof record.updatedAt === 'string'
+        ? record.updatedAt
+        : ''
+  const kind: OpenAgentsMcpReceiptKind = 'mutation'
+  return {
+    artifactRefs: [receiptRef],
+    authorityClass: descriptor.requiredAuthorities[0] ?? 'operator_read',
+    generatedAt,
+    kind,
+    receiptRef,
+    sourceRefs: [SOURCE],
+    status: 'recorded',
+    summary: `${descriptor.name} recorded`,
+    targetRef: typeof record.contactId === 'string' ? record.contactId : receiptRef,
+  }
+}
+
+const projectWriteOutcome = (
+  descriptor: OpenAgentsMcpToolDescriptor,
+  data: unknown,
+): McpToolCallOutcome => {
+  const payload = { receipt: makeWriteReceipt(descriptor, data), result: data }
+  const projection = projectOpenAgentsMcpOutput({
+    maxTextBytes: 131072,
+    outputRef: `mcp.crm.${descriptor.name}`,
+    safetyClass: 'operator',
+    sourceRefs: [`tool.${descriptor.name}`],
+    text: JSON.stringify(payload, null, 2),
+  })
+  if (projection.text === undefined) {
+    return { content: [{ text: projection.summary, type: 'text' }], isError: true }
+  }
+  return { content: [{ text: projection.text, type: 'text' }], isError: false, structuredContent: payload }
 }
 
 // --- catalog ----------------------------------------------------------------
@@ -322,16 +463,20 @@ export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatal
   callTool: async (env, _request, principal, name, callArgs) => {
     // Ungranted tools are ABSENT: an ungranted/unknown name is unknown_tool.
     const grantedAuthorities = openAgentsMcpGrantedAuthoritySet(principal.grants)
-    const descriptor = CRM_MCP_READ_TOOLS.find(d => d.name === name)
+    const descriptor = CRM_MCP_TOOLS.find(d => d.name === name)
     if (descriptor === undefined || !openAgentsMcpDescriptorIsGranted(descriptor, grantedAuthorities)) {
       throw new CrmMcpToolError('unknown_tool')
     }
-    const handler = CRM_MCP_READ_DISPATCH[name]
+    const handler = CRM_MCP_DISPATCH[name]
     if (handler === undefined) {
       throw new CrmMcpToolError('unknown_tool')
     }
-    const data = await handler(openAgentsDatabase(env), principal.tenantRef, args(callArgs))
-    return projectReadOutcome(name, data)
+    const data = await handler(openAgentsDatabase(env), principal.tenantRef, args(callArgs), {
+      subjectRef: principal.subjectRef,
+    })
+    return descriptor.receiptBehavior === 'none'
+      ? projectReadOutcome(name, data)
+      : projectWriteOutcome(descriptor, data)
   },
   listResources: (_env, _request, principal) =>
     Promise.resolve(
@@ -339,7 +484,7 @@ export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatal
     ),
   listTools: (_env, _request, principal) =>
     Promise.resolve(
-      filterOpenAgentsMcpDescriptorsByGrantSet(CRM_MCP_READ_TOOLS, principal.grants).map(toolListing),
+      filterOpenAgentsMcpDescriptorsByGrantSet(CRM_MCP_TOOLS, principal.grants).map(toolListing),
     ),
   readResource: async (env, _request, principal, uri): Promise<McpResourceReadOutcome> => {
     if (!openAgentsMcpGrantedAuthoritySet(principal.grants).has('operator_read')) {
