@@ -141,14 +141,20 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "toggle-verse" }
   }
 
-  // ── Dev affordance (#6033): spawn an isolated scene station into the live ──
-  // Verse, and toggle its portal. Explore mode only (so coding overlay keys are
-  // untouched), and only while the Verse is on-screen.
-  if (isVerseExploreActionContext(model) && isModified(event) && event.shift) {
-    if (key.toLowerCase() === "e") {
+  // ── Dev affordance (#6033 / #6041): spawn an isolated scene station into the ─
+  // live Verse, and toggle its portal. Explore mode only (so coding overlay keys
+  // are untouched), and only while the Verse is on-screen. Driven by the
+  // registered `verse.spawn_scene` / `verse.toggle_scene_portal` input bindings
+  // (verse_explore context) rather than a hand-written raw-key check, so this
+  // path stays aligned with the same action catalog the subscription forward
+  // gate consults — the mismatch the #6041 bug came from. `actionIdsForKey`
+  // already filters to verse_explore + isVerseExploreActionContext(model).
+  {
+    const actionIds = actionIdsForKey(model, event)
+    if (actionIds.includes("verse.spawn_scene")) {
       return { kind: "spawn-verse-scene", sceneId: DEFAULT_SPAWNABLE_SCENE_ID }
     }
-    if (key.toLowerCase() === "p") {
+    if (actionIds.includes("verse.toggle_scene_portal")) {
       return {
         kind: "toggle-verse-scene-portal",
         sceneId: DEFAULT_SPAWNABLE_SCENE_ID,

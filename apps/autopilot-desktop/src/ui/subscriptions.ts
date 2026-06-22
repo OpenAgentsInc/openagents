@@ -86,6 +86,13 @@ const DESKTOP_SHORTCUT_ACTION_IDS = new Set([
   "app.pane_next",
   "app.pane_previous",
   "hud.toggle_code_overlay",
+  // Dev affordance (#6033 / #6041): ⌘⇧E spawn / ⌘⇧P portal in the live Verse.
+  // These must be in the desktop forward allowlist so the keyboard subscription
+  // forwards them into the reducer (interpretKey already maps them). Without
+  // this they resolved to no action ids → forward=false → the keys were dropped
+  // before interpretKey ran, which is exactly why #6041's keys did nothing.
+  "verse.spawn_scene",
+  "verse.toggle_scene_portal",
   "palette.close",
   "palette.run",
   "palette.move_up",
@@ -129,7 +136,9 @@ export const keyboardForwardDecision = (input: {
   const modifiedShortcut = actionIds.some((actionId) =>
     actionId === "app.command_palette" ||
     actionId === "app.submit" ||
-    actionId === "hud.toggle_code_overlay"
+    actionId === "hud.toggle_code_overlay" ||
+    actionId === "verse.spawn_scene" ||
+    actionId === "verse.toggle_scene_portal"
   )
   const escapeKey = actionIds.includes("palette.close")
   const bareNavKey = actionIds.some((actionId) =>
