@@ -1,4 +1,13 @@
 import { describe, expect, test } from "bun:test"
+import {
+  applyDeltaToReadModel,
+  makeEmptyClientWorld,
+} from "@openagentsinc/world-client"
+import {
+  WORLD_DELTA_SCHEMA_VERSION,
+  decodeWorldDelta,
+  decodeWorldRow,
+} from "@openagentsinc/world-contract"
 
 import {
   chatWorldRegionRefForRun,
@@ -8,12 +17,21 @@ import {
   chatWorldDesktopAvatarIdentity,
   defaultChatWorldRegionForRun,
   planChatWorldAvatarPositionWrite,
+  projectChatWorldClientWorld,
   projectChatWorldCloudflareRows,
   type ChatWorldRegionRow,
 } from "../src/shared/chat-world-cloudflare"
 
 const runRef = "run.tassadar.executor.20260615"
 const regionRef = chatWorldRegionRefForRun(runRef)
+const generatedAt = "2026-06-22T00:00:00.000Z"
+
+const publicSafety = {
+  publicProjectionAllowed: true,
+  sourceRefs: ["test:chat-world-cloudflare"],
+  blockerRefs: [],
+  caveatRefs: [],
+}
 
 const regionRow: ChatWorldRegionRow = {
   regionRef,
@@ -40,6 +58,20 @@ const regionRow: ChatWorldRegionRow = {
   avatarPositionMinIntervalMs: CHAT_WORLD_STARTER_REGION_CONTRACT.avatarPositionMinIntervalMs,
   staleAvatarPositionMs: CHAT_WORLD_STARTER_REGION_CONTRACT.staleAvatarPositionMs,
 }
+
+const readModelFromRows = (rows: ReadonlyArray<unknown>) =>
+  applyDeltaToReadModel(
+    makeEmptyClientWorld(regionRef, generatedAt),
+    decodeWorldDelta({
+      schemaVersion: WORLD_DELTA_SCHEMA_VERSION,
+      deltaRef: "delta.chat-world-cloudflare",
+      kind: "update",
+      regionRef,
+      cursor: "cursor.chat-world-cloudflare",
+      generatedAt,
+      rows: rows.map(row => decodeWorldRow(row)),
+    }),
+  )
 
 describe("projectChatWorldCloudflareRows", () => {
   test("maps generated Cloudflare world rows into the public Verse projection", () => {
@@ -171,7 +203,103 @@ describe("projectChatWorldCloudflareRows", () => {
     expect(projection.world.connected).toBe(false)
     expect(projection.world.projectedAtMs).toBe(10_000)
     expect(projection.world.agents).toEqual([])
+    expect(projection.world.gateways).toEqual([])
+    expect(projection.world.inferenceEvents).toEqual([])
     expect(projection.world.stations).toEqual([])
+  })
+})
+
+describe("projectChatWorldClientWorld", () => {
+  test("projects gateway stations and Khala inference events from world rows", () => {
+    const readModel = readModelFromRows([
+      {
+        kind: "gateway_station",
+        gatewayRef: "gateway.vertex.main",
+        regionRef,
+        lane: "vertex",
+        label: "Vertex Gateway",
+        providerLabel: "Vertex",
+        position: { x: 3.5, y: 0.75, z: -1.25 },
+        status: "working",
+        updatedAt: generatedAt,
+        safety: publicSafety,
+      },
+      {
+        kind: "world_event",
+        eventRef: "event.khala.1",
+        regionRef,
+        runRef,
+        eventKind: "khala_inference_served",
+        text: "Khala served Gemini through Vertex",
+        createdAt: generatedAt,
+        sourceRefs: [
+          "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+        ],
+        inference: {
+          requestRef: "request.khala.1",
+          receiptRef: "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+          model: "gemini-2.5-pro",
+          route: "vertex",
+          workers: [
+            {
+              workerRef: "pylon.public.1",
+              workerKind: "pylon",
+              label: "Public Pylon",
+              sourceRefs: ["world:pylon:pylon.public.1"],
+            },
+            {
+              workerRef: "gateway.vertex.main",
+              workerKind: "gateway",
+              label: "Vertex Gateway",
+              sourceRefs: ["world:gateway:gateway.vertex.main"],
+            },
+          ],
+          verification: "exact_trace_replay",
+          costMsat: 42,
+          settled: true,
+          sourceRefs: [
+            "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+          ],
+        },
+        safety: publicSafety,
+      },
+    ])
+
+    const projection = projectChatWorldClientWorld({
+      flagEnabled: true,
+      runRef,
+      readModel,
+      nowMs: Date.parse("2026-06-22T00:00:01.000Z"),
+    })
+
+    expect(projection.world.gateways).toEqual([{
+      gatewayRef: "gateway.vertex.main",
+      label: "Vertex Gateway",
+      providerLabel: "Vertex",
+      lane: "vertex",
+      status: "working",
+      x: 3.5,
+      y: 0.75,
+      z: -1.25,
+    }])
+    expect(projection.world.inferenceEvents).toEqual([{
+      eventRef: "event.khala.1",
+      requestRef: "request.khala.1",
+      receiptRef: "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+      model: "gemini-2.5-pro",
+      route: "vertex",
+      gatewayRef: "gateway.vertex.main",
+      workerRefs: ["pylon.public.1", "gateway.vertex.main"],
+      verification: "exact_trace_replay",
+      costMsat: 42,
+      settled: true,
+      sourceRefs: [
+        "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+        "world:pylon:pylon.public.1",
+        "world:gateway:gateway.vertex.main",
+      ],
+      generatedAt,
+    }])
   })
 })
 

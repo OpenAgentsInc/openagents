@@ -132,6 +132,32 @@ export type ChatWorldMultiplayerStation = Readonly<{
   z: number
 }>
 
+export type ChatWorldGatewayStation = Readonly<{
+  gatewayRef: string
+  label: string
+  providerLabel: string
+  lane: "vertex" | "fireworks" | "openrouter" | "passthrough"
+  status: "unknown" | "online" | "working" | "offline" | "blocked"
+  x: number
+  y: number
+  z: number
+}>
+
+export type ChatWorldInferenceEvent = Readonly<{
+  eventRef: string
+  requestRef: string
+  receiptRef: string
+  model: string
+  route: string
+  gatewayRef: string | null
+  workerRefs: ReadonlyArray<string>
+  verification: "none" | "seeded" | "test_passed" | "exact_trace_replay" | "failed" | "unknown"
+  costMsat: number
+  settled: boolean
+  sourceRefs: ReadonlyArray<string>
+  generatedAt: string
+}>
+
 export type ChatWorldMultiplayerProjection = Readonly<{
   connected: boolean
   database: string
@@ -139,6 +165,8 @@ export type ChatWorldMultiplayerProjection = Readonly<{
   regionRef: string
   projectedAtMs: number
   agents: ReadonlyArray<ChatWorldMultiplayerAgent>
+  gateways: ReadonlyArray<ChatWorldGatewayStation>
+  inferenceEvents: ReadonlyArray<ChatWorldInferenceEvent>
   stations: ReadonlyArray<ChatWorldMultiplayerStation>
   proximityChatCount: number
   // The local instance's OWN character avatar key, used by the scene to
@@ -338,6 +366,8 @@ export const projectChatWorldMultiplayer = (input: {
       regionRef,
       projectedAtMs: input.nowMs,
       agents: [],
+      gateways: [],
+      inferenceEvents: [],
       stations: [],
       proximityChatCount: 0,
       localAvatarRef,
@@ -429,6 +459,8 @@ export const projectChatWorldMultiplayer = (input: {
     regionRef,
     projectedAtMs: input.nowMs,
     agents,
+    gateways: [],
+    inferenceEvents: [],
     stations,
     proximityChatCount: agents.reduce(
       (count, agent) => count + agent.chatMessages.length,

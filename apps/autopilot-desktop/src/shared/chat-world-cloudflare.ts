@@ -1,6 +1,8 @@
 import {
   type ChatWorldAvatarPositionRow,
   type ChatWorldAvatarRow,
+  type ChatWorldGatewayStation,
+  type ChatWorldInferenceEvent,
   type ChatWorldLocalChatMessageRow,
   type ChatWorldMultiplayerProjection,
   type ChatWorldMultiplayerRows,
@@ -368,6 +370,15 @@ const epochMs = (value: string | undefined, fallback: number): number => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const uniqueTexts = (values: ReadonlyArray<string | undefined>): ReadonlyArray<string> => {
+  const out: string[] = []
+  for (const value of values) {
+    const trimmed = value?.trim() ?? ""
+    if (trimmed.length > 0 && !out.includes(trimmed)) out.push(trimmed)
+  }
+  return out
+}
+
 const regionRunRef = (regionRef: string, fallback: string): string => {
   const prefix = "region."
   const suffix = ".street"
@@ -507,15 +518,58 @@ export const projectChatWorldClientWorld = (input: {
     }),
   }
 
+  const gateways: ReadonlyArray<ChatWorldGatewayStation> = Object.values(input.readModel.gateways)
+    .filter(gateway => gateway.regionRef === input.readModel?.regionRef)
+    .map(gateway => ({
+      gatewayRef: gateway.gatewayRef,
+      label: gateway.label,
+      providerLabel: gateway.providerLabel,
+      lane: gateway.lane,
+      status: gateway.status,
+      x: gateway.position.x,
+      y: gateway.position.y,
+      z: gateway.position.z,
+    }))
+
+  const inferenceEvents: ReadonlyArray<ChatWorldInferenceEvent> = Object.values(input.readModel.events)
+    .flatMap(event => {
+      if (event.inference === undefined) return []
+      if (event.regionRef !== undefined && event.regionRef !== input.readModel?.regionRef) return []
+      const gatewayWorker = event.inference.workers.find(worker => worker.workerKind === "gateway")
+      return [{
+        eventRef: event.eventRef,
+        requestRef: event.inference.requestRef,
+        receiptRef: event.inference.receiptRef,
+        model: event.inference.model,
+        route: event.inference.route,
+        gatewayRef: gatewayWorker?.workerRef ?? null,
+        workerRefs: event.inference.workers.map(worker => worker.workerRef),
+        verification: event.inference.verification,
+        costMsat: event.inference.costMsat,
+        settled: event.inference.settled,
+        sourceRefs: uniqueTexts([
+          event.inference.receiptRef,
+          ...event.sourceRefs,
+          ...event.inference.sourceRefs,
+          ...event.inference.workers.flatMap(worker => worker.sourceRefs),
+        ]),
+        generatedAt: event.createdAt,
+      }]
+    })
+
   return {
     regions,
-    world: projectChatWorldMultiplayer({
-      flagEnabled: true,
-      runRef: input.runRef,
-      rows,
-      nowMs: input.nowMs,
-      ...multiplayerOptions,
-    }),
+    world: {
+      ...projectChatWorldMultiplayer({
+        flagEnabled: true,
+        runRef: input.runRef,
+        rows,
+        nowMs: input.nowMs,
+        ...multiplayerOptions,
+      }),
+      gateways,
+      inferenceEvents,
+    },
   }
 }
 

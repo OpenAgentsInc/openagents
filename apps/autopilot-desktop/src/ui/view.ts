@@ -90,6 +90,7 @@ import type {
 // chat background scene. Pure projections live in shared/chat-world-*.ts.
 import {
   liveChatWorldNetworkScene,
+  withChatWorldInferenceLayer,
   withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization.js"
@@ -7091,6 +7092,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     // before the identity lands (pre-connect), when there are no remote rows yet.
     localAvatarRef: multiplayer?.localAvatarRef ?? CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
+  const withInference = withChatWorldInferenceLayer(withWorld, multiplayer)
   const inputBindings = verseInputBindingProjection(
     model.inputProfile,
     model.verseMode === "code" ? "verse_code_overlay" : "verse_explore",
@@ -7110,11 +7112,11 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
           capturedAtMs: model.verseSceneRestorePose.capturedAtMs,
         }
   const navigable = {
-    ...withWorld,
+    ...withInference,
     cameraMode: "perspective_walk" as const,
     controller: "third_person_character" as const,
     keyboardTargeting: {
-      ...(withWorld.keyboardTargeting ?? {}),
+      ...(withInference.keyboardTargeting ?? {}),
       ...inputBindings.keyboardTargeting,
     },
     thirdPersonController: {
@@ -7127,7 +7129,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       gravity: -13.5,
     },
     sceneChrome: {
-      ...(withWorld.sceneChrome ?? {}),
+      ...(withInference.sceneChrome ?? {}),
       lossPanel: "hidden" as const,
       statusChart: "hidden" as const,
     },

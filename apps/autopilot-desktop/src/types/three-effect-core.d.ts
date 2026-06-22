@@ -3,6 +3,12 @@ import type * as Three from "three"
 
 export type TrainingRunVector = readonly [number, number, number]
 
+export type InferenceGatewayLane =
+  | "vertex"
+  | "fireworks"
+  | "openrouter"
+  | "passthrough"
+
 export type TrainingRunNodeRole =
   | "lifecycle"
   | "run"
@@ -66,10 +72,12 @@ export type TrainingRunPromiseSignalDefinition = Readonly<{
 
 export type TrainingRunEntityDefinition = Readonly<{
   detail?: string
+  gatewayLane?: InferenceGatewayLane
   id: string
   label?: string
   position?: TrainingRunVector
   status: string
+  visualKind?: "default" | "gateway_portal"
 }>
 
 export type VerseIconKind =
@@ -255,7 +263,11 @@ export type TrainingRunMotionEvidence = Readonly<{
 }>
 
 export type TrainingRunBeamDefinition = Readonly<
-  TrainingRunMotionEvidence & { fromId: string; toId: string }
+  TrainingRunMotionEvidence & {
+    fromId: string
+    style?: "crackling_arc" | "flow"
+    toId: string
+  }
 >
 
 export type TrainingRunBurstDefinition = Readonly<

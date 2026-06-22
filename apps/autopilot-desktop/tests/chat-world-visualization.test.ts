@@ -27,13 +27,17 @@ import {
 } from "../src/shared/chat-world-scene"
 import { projectChatWorldClientWorld } from "../src/shared/chat-world-cloudflare"
 import {
+  CHAT_WORLD_GATEWAY_NODE_PREFIX,
+  CHAT_WORLD_INFERENCE_NODE_PREFIX,
   CHAT_WORLD_STATION_NODE_PREFIX,
+  chatWorldInferenceLayer,
   chatWorldMultiplayerLayer,
   chatWorldPaymentEndpointIndex,
   chatWorldPaymentLayer,
   chatWorldVisibleTargetCandidates,
   liveChatWorldNetworkScene,
   resolveChatWorldPaymentEndpoint,
+  withChatWorldInferenceLayer,
   withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
 } from "../src/shared/chat-world-visualization"
@@ -131,6 +135,8 @@ const worldProjection = (
   worldUrl: "https://openagents-world.openagents.workers.dev",
   regionRef: "region.run.public",
   projectedAtMs: 10_000,
+  gateways: [],
+  inferenceEvents: [],
   stations: [{
     pylonRef: "pylon.alpha",
     label: "Alpha Pylon",
@@ -155,6 +161,41 @@ const worldProjection = (
     attentionRefs: [],
   }],
   proximityChatCount: 0,
+  localAvatarRef: null,
+  ...overrides,
+})
+
+const gatewayStation = (
+  overrides: Partial<ChatWorldMultiplayerProjection["gateways"][number]> = {},
+): ChatWorldMultiplayerProjection["gateways"][number] => ({
+  gatewayRef: "gateway.vertex.main",
+  label: "Vertex Gateway",
+  providerLabel: "Vertex",
+  lane: "vertex",
+  status: "working",
+  x: 3.5,
+  y: 0.75,
+  z: -1.25,
+  ...overrides,
+})
+
+const inferenceEvent = (
+  overrides: Partial<ChatWorldMultiplayerProjection["inferenceEvents"][number]> = {},
+): ChatWorldMultiplayerProjection["inferenceEvents"][number] => ({
+  eventRef: "event.khala.1",
+  requestRef: "request.khala.1",
+  receiptRef: "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+  model: "gemini-2.5-pro",
+  route: "vertex",
+  gatewayRef: "gateway.vertex.main",
+  workerRefs: ["pylon.alpha", "gateway.vertex.main"],
+  verification: "exact_trace_replay",
+  costMsat: 42,
+  settled: true,
+  sourceRefs: [
+    "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+  ],
+  generatedAt: "2026-06-22T00:00:00.000Z",
   ...overrides,
 })
 
@@ -353,14 +394,23 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(layer.entities).toHaveLength(0)
   })
 
-  test("indexes public world endpoints by station, actor, and avatar refs", () => {
-    const endpoints = chatWorldPaymentEndpointIndex(worldProjection())
+  test("indexes public world endpoints by station, gateway, actor, and avatar refs", () => {
+    const endpoints = chatWorldPaymentEndpointIndex(
+      worldProjection({ gateways: [gatewayStation()] }),
+    )
     expect(
       resolveChatWorldPaymentEndpoint("pylon:alpha", [9, 9, 9], endpoints),
     ).toMatchObject({
       label: "Alpha Pylon",
       position: [1.25, 0.5, -2],
       source: "station",
+    })
+    expect(
+      resolveChatWorldPaymentEndpoint("gateway.vertex.main", [9, 9, 9], endpoints),
+    ).toMatchObject({
+      label: "Vertex Gateway",
+      position: [3.5, 0.75, -1.25],
+      source: "gateway",
     })
     expect(
       resolveChatWorldPaymentEndpoint("agent.bravo", [9, 9, 9], endpoints),
@@ -408,6 +458,74 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(toEntity.detail).toContain("unresolved pylon:missing")
     expect(toEntity.detail).toContain("fallback")
     expect(toEntity.detail).toContain("receipt:nip90:abc")
+  })
+})
+
+describe("chatWorldInferenceLayer (gateway-backed Khala receipts)", () => {
+  test("renders gateway stations as portal entities", () => {
+    const layer = chatWorldInferenceLayer(
+      worldProjection({ gateways: [gatewayStation()] }),
+    )
+    const gateway = layer.entities.find(
+      entity => entity.id === `${CHAT_WORLD_GATEWAY_NODE_PREFIX}gateway.vertex.main`,
+    )
+
+    expect(gateway).toMatchObject({
+      label: "Vertex Gateway",
+      status: "active",
+      position: [3.5, 0.75, -1.25],
+      visualKind: "gateway_portal",
+      gatewayLane: "vertex",
+    })
+    expect(layer.beams).toEqual([])
+    expect(layer.bursts).toEqual([])
+  })
+
+  test("receipt-backed inference events create crackling arcs and settlement bursts", () => {
+    const world = worldProjection({
+      gateways: [gatewayStation()],
+      inferenceEvents: [inferenceEvent()],
+    })
+    const layer = chatWorldInferenceLayer(world)
+    const beam = layer.beams[0]!
+    const burst = layer.bursts[0]!
+    const target = layer.entities.find(
+      entity => entity.id === `${CHAT_WORLD_INFERENCE_NODE_PREFIX}event.khala.1:to`,
+    )
+
+    expect(beam).toMatchObject({
+      fromId: `${CHAT_WORLD_INFERENCE_NODE_PREFIX}event.khala.1:from`,
+      toId: `${CHAT_WORLD_INFERENCE_NODE_PREFIX}event.khala.1:to`,
+      style: "crackling_arc",
+      motionKind: "khala_gateway_inference",
+      sourceRefs: [
+        "https://openagents.com/api/public/inference/receipts/oa_receipt_1",
+      ],
+      simulated: false,
+    })
+    expect(burst).toMatchObject({
+      atId: `${CHAT_WORLD_INFERENCE_NODE_PREFIX}event.khala.1:to`,
+      motionKind: "khala_gateway_inference",
+    })
+    expect(target).toMatchObject({
+      label: "Vertex Gateway",
+      position: [3.5, 0.75, -1.25],
+      status: "verified",
+      visualKind: "gateway_portal",
+      gatewayLane: "vertex",
+    })
+  })
+
+  test("refuses inference motion without public evidence refs", () => {
+    const layer = chatWorldInferenceLayer(
+      worldProjection({
+        inferenceEvents: [inferenceEvent({ sourceRefs: [" ", ""] })],
+      }),
+    )
+
+    expect(layer.entities).toEqual([])
+    expect(layer.beams).toEqual([])
+    expect(layer.bursts).toEqual([])
   })
 })
 
@@ -735,6 +853,26 @@ describe("withChatWorldPaymentLayer", () => {
     // hard backstop: the renderer must require evidence before animating motion
     expect(out.motionPolicy?.evidence).toBe("required")
     // the base pylon graph nodes survive the overlay
+    expect(out.nodes).toBe(base.nodes)
+  })
+
+  test("inference overlay composes portals/arcs and forces evidence=required", () => {
+    const out = withChatWorldInferenceLayer(
+      base,
+      worldProjection({
+        gateways: [gatewayStation()],
+        inferenceEvents: [inferenceEvent()],
+      }),
+    )
+
+    expect(out.beams).toHaveLength(1)
+    expect(out.bursts).toHaveLength(1)
+    expect(
+      (out.entities ?? []).some(
+        entity => entity.id === `${CHAT_WORLD_GATEWAY_NODE_PREFIX}gateway.vertex.main`,
+      ),
+    ).toBe(true)
+    expect(out.motionPolicy?.evidence).toBe("required")
     expect(out.nodes).toBe(base.nodes)
   })
 
