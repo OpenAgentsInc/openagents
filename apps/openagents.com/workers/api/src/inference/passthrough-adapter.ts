@@ -425,6 +425,7 @@ export const makePassthroughAdapter = (
         const terminalChunk: InferenceStreamChunk = {
           contentDelta: '',
           finishReason: result.finishReason,
+          servedModel: result.servedModel,
           usage: result.usage,
         }
         return [contentChunk, terminalChunk]

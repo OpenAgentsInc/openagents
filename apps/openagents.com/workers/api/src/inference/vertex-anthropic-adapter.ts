@@ -355,6 +355,7 @@ const parseVertexSseChunks = (
   let completionTokens = 0
   let cachedPromptTokens: number | undefined
   let finishReason: string | undefined
+  let servedModel = resolveModelId(requestedModel)
   const contentDeltas: Array<string> = []
 
   const num = (value: unknown): number | undefined =>
@@ -376,6 +377,13 @@ const parseVertexSseChunks = (
     const type = event['type']
     if (type === 'message_start') {
       const message = event['message']
+      if (
+        typeof message === 'object' &&
+        message !== null &&
+        typeof (message as Record<string, unknown>)['model'] === 'string'
+      ) {
+        servedModel = (message as Record<string, unknown>)['model'] as string
+      }
       const usage =
         typeof message === 'object' && message !== null
           ? (message as Record<string, unknown>)['usage']
@@ -427,11 +435,8 @@ const parseVertexSseChunks = (
   chunks.push({
     contentDelta: '',
     finishReason: finishReason ?? 'stop',
+    servedModel,
     usage,
   })
-  // resolveModelId/requestedModel are accepted for parity with the non-stream
-  // path and future per-model stream handling; not needed in the body today.
-  void requestedModel
-  void resolveModelId
   return chunks
 }

@@ -71,6 +71,9 @@ export type InferenceStreamChunk = Readonly<{
   finishReason?: string | undefined
   // Set on the terminal frame only (receipt-first usage).
   usage?: InferenceUsage | undefined
+  // Provider-native model id actually served. Set on the terminal frame when
+  // the adapter can resolve it; the route falls back to the requested id.
+  servedModel?: string | undefined
 }>
 
 // Typed adapter failure. Adapters surface provider/transport problems as this

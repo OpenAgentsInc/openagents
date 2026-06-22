@@ -399,9 +399,11 @@ export const makeFireworksAdapter = (
 
       const contentChunks: Array<InferenceStreamChunk> = []
       let finishReason: string | undefined
+      let servedModel = toFireworksModelId(request.model)
       let usage: InferenceUsage | undefined
 
       for (const frame of frames) {
+        servedModel = servedModelFrom(frame, servedModel)
         const delta = deltaContentOf(frame)
         if (delta !== '') {
           contentChunks.push({ contentDelta: delta })
@@ -432,6 +434,7 @@ export const makeFireworksAdapter = (
       const terminalChunk: InferenceStreamChunk = {
         contentDelta: '',
         finishReason: finishReason ?? 'stop',
+        servedModel,
         usage,
       }
       return [...contentChunks, terminalChunk]

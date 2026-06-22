@@ -428,6 +428,7 @@ const parseGeminiSseChunks = (
   let totalTokens = 0
   let cachedPromptTokens: number | undefined
   let finishReason: string | undefined
+  let servedModel = resolveModelId(requestedModel)
   const contentDeltas: Array<string> = []
 
   const num = (value: unknown): number | undefined =>
@@ -445,6 +446,9 @@ const parseGeminiSseChunks = (
     const event = parseJsonRecord(payload)
     if (event === undefined) {
       continue
+    }
+    if (typeof event['modelVersion'] === 'string') {
+      servedModel = event['modelVersion']
     }
     // Incremental text + finishReason from this fragment's first candidate.
     const candidates = event['candidates']
@@ -492,9 +496,8 @@ const parseGeminiSseChunks = (
   chunks.push({
     contentDelta: '',
     finishReason: finishReason ?? 'stop',
+    servedModel,
     usage,
   })
-  void requestedModel
-  void resolveModelId
   return chunks
 }
