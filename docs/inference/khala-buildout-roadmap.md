@@ -272,7 +272,16 @@ batch.
 **First useful output:** one Khala request served by a Pylon in a trusted/small
 lane with a public-safe serve receipt, even if settlement stays owner-armed.
 
-### Agent Verse — World visualization
+### Agent Verse — World visualization ✅ DONE (M5 / #6013, live-proven 2026-06-22)
+
+> **Complete & live.** A real owner-enabled Khala receipt (`chatcmpl_5577d36f…`)
+> flows gateway → public `khala_inference_served` event → D1 `gateway_station`+
+> `world_event` rows → live region snapshot → desktop Verse render
+> (`gatewayLinkOk:true`) → receipt/source-ref inspector. `openagents-world`
+> deployed `5778bf03`; `createCracklingArc`/`createGatewayPortal` shipped in
+> `@openagentsinc/three-effect`. Remaining is richness (P1 coding-agent avatars +
+> verify glow, P2 fan-out + HUD, real-Pylon worker avatars once M4 lands), not
+> existence. The lane plan below is retained as historical record.
 
 **Owns:** M5 and all Verse rendering of serving events.
 **Primary files:** `apps/openagents-world`, `packages/world-contract`,

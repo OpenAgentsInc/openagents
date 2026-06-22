@@ -27,11 +27,14 @@ This supersedes the "not on yet" framing below: **Khala is live and serving.**
   status `succeeded`, fee 0, from a local Spark wallet under orchestrator control
   (funded by an owner-paid 10,000-sat bolt11; 5,000 sats remain, recoverable via
   the pylon-v02 mnemonic).
-- **Milestones:** M0 ✅ closed · M2 ✅ closed · M4 inert adapter merged ·
-  M3 dormant settlement leg merged · M5 world projection + desktop scene merged
-  (render primitives + live proof ongoing) · **M6 substrate P1–P5 merged**
-  (psionic `d99eb130` + `2ea46985`; CPU smoke drives a head 0.0→1.0) · M8 runner
-  + reducer merged (self-gating; `canClose:false` on fixture).
+- **Milestones:** M0 ✅ closed · M2 ✅ closed · **M5 ✅ closed — LIVE-PROVEN**
+  (a real owner-enabled Khala request flowed gateway → public `khala_inference_served`
+  event → D1 `gateway_station`+`world_event` rows → live region snapshot → desktop
+  Verse render with `gatewayLinkOk:true` → receipt inspector; `openagents-world`
+  deployed `5778bf03`; `createCracklingArc`/`createGatewayPortal` consumed) ·
+  M4 inert adapter merged · M3 dormant settlement leg merged · **M6 substrate
+  P1–P5 merged** (psionic `d99eb130` + `2ea46985`; CPU smoke drives a head
+  0.0→1.0) · M8 runner + reducer merged (self-gating; `canClose:false` on fixture).
 
 **Known issue → strategy (now documented):** the full single-file crossy-road
 *game* generation `524`s at the Fireworks upstream because it was a **non-streaming**
@@ -43,8 +46,8 @@ both have in-repo rails. See
 **Remaining to "fully done":** (1) stream the M8 runner + cockpit (kills the 524);
 (2) wire the batch-job Queue/DO consumer; (3) user-balance funding via the LN→credit
 bridge so paid khala serves on a *funded buyer* balance (today proven via an agent
-with prod credits); (4) M6 training run (needs a per-eval worker budget); (5) M5
-Verse render primitives + live event proof. Tracked under EPIC #6017.
+with prod credits); (4) M6 training run (10k sat/day cap, in flight). Tracked under
+EPIC #6017. (M5 Verse serving view is done — live-proven, see above.)
 
 ## TL;DR
 
@@ -67,7 +70,7 @@ not exist. Everything upstream runs on the heuristic router until M6.
 | #6010 | **M2** verified coding outcomes | **CLOSED — done & verified** | `khala-code` model; crossy-road rubric; Playwright headless verifier (`khala-code-verifier.ts`); route returns `verification`/`verified`/rubric/receipt; 88 tests, check:deploy green | — (tick the EPIC box) |
 | #6011 | **M3** Bitcoin settlement | **OPEN — not started** | metering/referral/payout code exists but unproven E2E | **Bitcoin-only, Spark-primary** payout (**no Stripe**; MDK = checkout-only) → agent-testable now; first proof = pay the guinea-pig Pylon (`.secrets/khala-test-payout.env`) |
 | #6012 | **M4** Pylon workers in pool | **OPEN — not started** | — | Fabric supply adapter (gateway↔Psionic ask-plan→execute→consume-receipt); whole-small-model serving first |
-| #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); `three-effect` **crackling arc + gateway portal** primitives; desktop **projects Khala inference into Verse** (`11a7c3ca98`); public activity timeline emits receipt-backed `khala_inference_served` events from paid Khala inference receipts; world worker scheduled poller + cursor persistence + D1 snapshot hydration | Deploy/run the live bridge path and capture an owner-enabled Khala smoke proving gateway → timeline → world → desktop |
+| #6013 | **M5** Verse serving view | **CLOSED — LIVE-PROVEN** | world-contract gateway projection + bridge + commands; `three-effect` `createCracklingArc`+`createGatewayPortal`; desktop projects Khala inference into Verse; public timeline emits receipt-backed `khala_inference_served`; world poller + cursor + D1 snapshot hydration. **Live proof:** real owner-enabled request `chatcmpl_5577d36f…` → paid charge receipt → public event + cursor → D1 `gateway_station`/`world_event` rows → live region snapshot → desktop render `gatewayLinkOk:true` → inspector. `openagents-world` `5778bf03` | — (richer real-Pylon worker avatars resolve once M4 lands) |
 | #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
 | #6015 | **M7** Conductor lane | **OPEN — not started** | — | GRPO NL planner; depends on M6 + real training compute |
 | #6016 | **M8** head-to-head demo | **OPEN — scaffold (honestly blocked)** | `#6016-A…E` structure: metric **reducer** + **closure audit**, **publication renderer**, fixture manifest, and a **live-promotion audit** that blocks fake-live manifests carrying leftover `fixture.*` refs; runbook (`docs/inference/khala-head-to-head-demo.md`); 6 focused tests + check:deploy green | A real measured run — reducer returns `closureAudit.canClose:false` on fixture evidence by design. Blockers: live Khala + frontier runs, M7 conductor evidence, settlement receipts, Verse/artifact playback refs, measured energy telemetry, final publication refs |
@@ -109,10 +112,10 @@ not exist. Everything upstream runs on the heuristic router until M6.
    in earnest. This is the largest engineering investment and needs real
    ML-training compute. Until it lands, the product runs on the heuristic router
    — which is still a valid (just not learned) head-to-head.
-4. **M5 still needs live bridge proof.** The contract, public timeline source,
-   world bridge poller, render primitives, D1 snapshot hydration, and desktop
-   projection exist, but a deployed owner-enabled Khala receipt still needs to
-   prove gateway → timeline → world → desktop.
+4. **M5 is done — live-proven.** A deployed owner-enabled Khala receipt now flows
+   gateway → public timeline → world (D1 rows + live region snapshot) → desktop
+   render (`gatewayLinkOk:true`) → receipt inspector. `openagents-world` `5778bf03`.
+   (Richer real-Pylon worker avatars resolve once M4's live transport lands.)
 
 ## Critical path to the north-star (head-to-head)
 
@@ -123,7 +126,7 @@ not exist. Everything upstream runs on the heuristic router until M6.
                                           ▼
    M3 Bitcoin/Spark payout (pay guinea-pig Pylon) ───────────┐
    M4 whole-model Pylon serving ─────────────────────────────┤
-   M5 live bridge + scene proof ─────────────────────────────┼─► M8 head-to-head
+   M5 live bridge + scene proof (DONE) ──────────────────────┼─► M8 head-to-head
    M6 Psionic P1–P5 + ES training ──► M7 Conductor (GRPO) ────┘   (heuristic first;
                                                                     learned after M6)
 ```

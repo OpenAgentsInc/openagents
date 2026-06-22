@@ -185,30 +185,30 @@ gateway-portal encodings.
 
 ## Phasing
 
-- **P0 — reuse the payment layer.** Project receipt-backed inference events from
-  `/api/public/activity-timeline` the way payment particles already are; render a
-  crackling arc to the assigned Pylon and a portal stream for external work.
-  The public timeline event kind (`khala_inference_served`), Worker receipt
-  source, world bridge mapper, gateway row, portal primitive, and desktop render
-  path exist. The world worker now also has a scheduled public timeline poller,
-  cursor persistence, manual poll route, and D1 snapshot hydration for new Verse
-  clients. Remaining P0 work is deployed live proof: run the production bridge
-  path, verify cursor/source-ref replay, and capture an owner-enabled Khala smoke
-  proving the same receipt reaches the scene.
+- **P0 — reuse the payment layer. ✅ DONE — live-proven (M5, #6013, 2026-06-22).**
+  Receipt-backed inference events project from `/api/public/activity-timeline`
+  (`khala_inference_served`) through the world bridge poller (cursor persistence,
+  manual poll route, D1 snapshot hydration) to the desktop scene: a crackling arc /
+  gateway portal keyed to the receipt. **Live proof:** a real owner-enabled request
+  (`chatcmpl_5577d36f…`) → paid charge receipt → public event + cursor → D1
+  `gateway_station`+`world_event` rows in `region.request.khala.…` → live region
+  socket snapshot → desktop projection `gatewayLinkOk:true` → receipt/source-ref
+  inspector. `openagents-world` deployed `5778bf03`; `createCracklingArc` /
+  `createGatewayPortal` consumed from `@openagentsinc/three-effect`.
 - **P1 — coding-agent lane.** Spawn agent avatars for code work; add the verify
   glow (gold/red) from the verification class.
 - **P2 — multi-worker fan-out + HUD.** The Conductor/Fugu compose-across-the-map
   animation; the in-world-vs-gateway and AO/kWh meters.
 
-**Honest gaps to close first:** the public timeline can now expose
-receipt-backed Khala inference facts without private prompts or amounts, and the
-world/desktop render path can consume them, including via scheduled bridge poll
-and fresh-socket snapshot hydration. The remaining gap is live proof: deploy and
-run the bridge path against the real timeline source, prove cursor resume and
-source-ref clickthrough, and capture an owner-enabled Khala receipt flowing
-through the real scene. The multiplayer engine, payment beams, Pylon scene,
-agent avatars, HUD meters, and the evidence-bound motion contract already exist
-— this is an extension, not a new world.
+**Status:** the P0 live loop is **proven end-to-end on production** — a real
+owner-enabled Khala receipt flows gateway → public timeline → world (D1 rows +
+live region snapshot) → desktop render → receipt/source-ref inspector. The
+remaining work is **richness, not existence**: P1 coding-agent avatars + verify
+glow, P2 multi-worker fan-out + HUD, and resolving the request side to live Pylon
+worker avatars once M4's live serving transport lands (today it falls back to the
+request endpoint). The multiplayer engine, payment beams, Pylon scene, agent
+avatars, HUD meters, and the evidence-bound motion contract already exist — this
+is an extension, not a new world.
 
 ## Why it matters
 
