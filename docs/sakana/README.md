@@ -10,6 +10,14 @@ Tang), the same 7-model worker pool, and the same four training benchmarks
 question — *how do you learn a coordinator that orchestrates frontier models?* —
 reached from opposite directions.
 
+These two papers are the research foundation of **Sakana Fugu** — the shipped
+product framed as *"a Multi-Agent System, Delivered as One Model"*: one
+OpenAI-compatible API that dynamically assembles and coordinates a diverse model
+pool (TRINITY roles + Conductor learned coordination), pitching **composition
+over scale** with opt-out pool control and an export-control angle
+([sakana.ai/fugu](https://sakana.ai/fugu/)). Fugu is, in effect, the productized
+version of the coordinator we roadmap for Psionic here.
+
 | | TRINITY | Conductor |
 |---|---|---|
 | arXiv | [2512.04695](https://arxiv.org/abs/2512.04695) | [2512.04388](https://arxiv.org/abs/2512.04388) |
@@ -42,6 +50,16 @@ reached from opposite directions.
 - [`tassadar-run-integration.md`](tassadar-run-integration.md) — how a learned
   coordinator combines with the live Tassadar run via its verification-class
   registry (`exact_trace_replay` / `seeded_replication`) as the reward oracle.
+
+**Exploration & ideas:**
+- [`tassadar-fugu-exploration.md`](tassadar-fugu-exploration.md) — imagined
+  "Tassadar × Fugu" episode: apply Fugu's one-model-orchestrating-many approach
+  to Tassadar's verified, Bitcoin-paid pool, and make the orchestration a
+  walkable 3D Verse experience (the one-orb-outside / many-agents-inside duality).
+- [`themes-to-elaborate.md`](themes-to-elaborate.md) — load-bearing themes from
+  Episodes 231–240 worth deeper treatment (agentic-npm module registry, accepted
+  outcomes per kWh, confidence pricing, diverse-corpora collaboration, Artanis
+  authority, Reed's law).
 
 ## Why these matter to us
 
