@@ -1,12 +1,18 @@
 import {
   assertWorldPublicSafety,
+  decodeWorldBridgePayload,
   decodeWorldRow,
   deterministicWorldEventRef,
   worldRowKey,
+  type WorldBridgePayload,
   type WorldGatewayLane,
   type WorldRow,
   type WorldSourceRef,
 } from "@openagentsinc/world-contract"
+import {
+  decodePublicActivityTimelineEnvelope,
+  type PublicActivityTimelineEnvelope,
+} from "@openagentsinc/public-activity-timeline"
 
 import {
   normalizeRegionRef,
@@ -26,6 +32,11 @@ export type ProjectionRowMetadata = Readonly<{
 export type BridgeRetryDecision =
   | Readonly<{ kind: "retry"; reason: string; attempt: number; maxAttempts: number }>
   | Readonly<{ kind: "terminal"; reason: string; attempt: number; maxAttempts: number }>
+
+export const PUBLIC_ACTIVITY_TIMELINE_BRIDGE_SOURCE =
+  "https://openagents.com/api/public/activity-timeline"
+
+export const DEFAULT_PUBLIC_ACTIVITY_TIMELINE_BRIDGE_LIMIT = 100
 
 export const projectionRowRef = (row: WorldRow): string =>
   `${row.kind}:${worldRowKey(row)}`
@@ -362,6 +373,64 @@ export const rowsFromPublicActivityTimelineEvent = (
       },
     ],
   }, createdAt, receiptRef)
+}
+
+export const publicActivityTimelineBridgePollUrl = (input: {
+  readonly sourceRef?: string
+  readonly cursor?: string | null
+  readonly limit?: number
+}): string => {
+  const url = new URL(input.sourceRef ?? PUBLIC_ACTIVITY_TIMELINE_BRIDGE_SOURCE)
+  url.searchParams.set("kind", "khala_inference_served")
+  url.searchParams.set("source", "inference_receipt")
+  url.searchParams.set(
+    "limit",
+    String(
+      Number.isFinite(input.limit)
+        ? Math.max(1, Math.min(200, Math.trunc(input.limit ?? DEFAULT_PUBLIC_ACTIVITY_TIMELINE_BRIDGE_LIMIT)))
+        : DEFAULT_PUBLIC_ACTIVITY_TIMELINE_BRIDGE_LIMIT,
+    ),
+  )
+  if (input.cursor !== undefined && input.cursor !== null && input.cursor.trim().length > 0) {
+    url.searchParams.set("since", input.cursor.trim())
+  }
+  return url.toString()
+}
+
+export const rowsFromPublicActivityTimelineEnvelope = (
+  input: unknown,
+  sourceRef = PUBLIC_ACTIVITY_TIMELINE_BRIDGE_SOURCE,
+): ReadonlyArray<WorldRow> => {
+  const envelope = decodePublicActivityTimelineEnvelope(input)
+  return dedupeBridgeRows(
+    envelope.events.flatMap(event =>
+      rowsFromPublicActivityTimelineEvent(event, envelope.generatedAt, sourceRef)
+    ),
+  )
+}
+
+export const cursorFromPublicActivityTimelineEnvelope = (
+  envelope: PublicActivityTimelineEnvelope,
+): string | undefined =>
+  envelope.nextCursor ?? envelope.events.at(-1)?.cursor
+
+export const bridgePayloadFromPublicActivityTimelineEnvelope = (
+  input: unknown,
+  sourceRef = PUBLIC_ACTIVITY_TIMELINE_BRIDGE_SOURCE,
+): WorldBridgePayload => {
+  const envelope = decodePublicActivityTimelineEnvelope(input)
+  const rows = rowsFromPublicActivityTimelineEnvelope(envelope, sourceRef)
+  const cursor = cursorFromPublicActivityTimelineEnvelope(envelope)
+  return decodeWorldBridgePayload({
+    payloadRef: stableWorldRef(
+      "bridge_payload.public_activity_timeline",
+      `${sourceRef}:${cursor ?? envelope.generatedAt}:${rows.map(row => projectionRowRef(row)).join(",")}`,
+    ),
+    sourceRef,
+    observedAt: envelope.generatedAt,
+    rows,
+    ...(cursor === undefined ? {} : { cursor }),
+  })
 }
 
 export const planBridgeRetry = (input: {

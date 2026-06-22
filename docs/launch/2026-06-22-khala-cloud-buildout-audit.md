@@ -30,7 +30,7 @@ not exist. Everything upstream runs on the heuristic router until M6.
 | #6010 | **M2** verified coding outcomes | **CLOSED — done & verified** | `khala-code` model; crossy-road rubric; Playwright headless verifier (`khala-code-verifier.ts`); route returns `verification`/`verified`/rubric/receipt; 88 tests, check:deploy green | — (tick the EPIC box) |
 | #6011 | **M3** Bitcoin settlement | **OPEN — not started** | metering/referral/payout code exists but unproven E2E | **Bitcoin-only, Spark-primary** payout (**no Stripe**; MDK = checkout-only) → agent-testable now; first proof = pay the guinea-pig Pylon (`.secrets/khala-test-payout.env`) |
 | #6012 | **M4** Pylon workers in pool | **OPEN — not started** | — | Fabric supply adapter (gateway↔Psionic ask-plan→execute→consume-receipt); whole-small-model serving first |
-| #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); `three-effect` **crackling arc + gateway portal** primitives; desktop **projects Khala inference into Verse** (`11a7c3ca98`); public activity timeline emits receipt-backed `khala_inference_served` events from paid Khala inference receipts | Run the production bridge producer/live SSE path and owner-enabled Khala smoke proving gateway → timeline → world → desktop |
+| #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); `three-effect` **crackling arc + gateway portal** primitives; desktop **projects Khala inference into Verse** (`11a7c3ca98`); public activity timeline emits receipt-backed `khala_inference_served` events from paid Khala inference receipts; world worker scheduled poller + cursor persistence + D1 snapshot hydration | Deploy/run the live bridge path and capture an owner-enabled Khala smoke proving gateway → timeline → world → desktop |
 | #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
 | #6015 | **M7** Conductor lane | **OPEN — not started** | — | GRPO NL planner; depends on M6 + real training compute |
 | #6016 | **M8** head-to-head demo | **OPEN — scaffold (honestly blocked)** | `#6016-A…E` structure: metric **reducer** + **closure audit**, **publication renderer**, fixture manifest, and a **live-promotion audit** that blocks fake-live manifests carrying leftover `fixture.*` refs; runbook (`docs/inference/khala-head-to-head-demo.md`); 6 focused tests + check:deploy green | A real measured run — reducer returns `closureAudit.canClose:false` on fixture evidence by design. Blockers: live Khala + frontier runs, M7 conductor evidence, settlement receipts, Verse/artifact playback refs, measured energy telemetry, final publication refs |
@@ -73,9 +73,9 @@ not exist. Everything upstream runs on the heuristic router until M6.
    ML-training compute. Until it lands, the product runs on the heuristic router
    — which is still a valid (just not learned) head-to-head.
 4. **M5 still needs live bridge proof.** The contract, public timeline source,
-   render primitives, and desktop projection exist, but the production bridge
-   producer/live SSE path still needs a real owner-enabled Khala receipt proving
-   gateway → timeline → world → desktop.
+   world bridge poller, render primitives, D1 snapshot hydration, and desktop
+   projection exist, but a deployed owner-enabled Khala receipt still needs to
+   prove gateway → timeline → world → desktop.
 
 ## Critical path to the north-star (head-to-head)
 
@@ -118,11 +118,11 @@ learned-composition version is the upgraded second cut after M6.
 5. **M4 (Agent Pylon):** build the fabric supply adapter (whole-small-model
    serving first), with the exact-parity receipt as the trust gate; defer
    shard-WAN.
-6. **M5 (Agent Verse):** run the production bridge producer/live SSE path and
-   prove the crackling-arc / gateway-portal scene against a **real**
-   receipt-backed Khala inference event from the activity timeline (the contract,
-   primitives, public source, bridge mapper, and desktop projection are already
-   in).
+6. **M5 (Agent Verse):** deploy/run the bridge path and prove the crackling-arc
+   / gateway-portal scene against a **real** receipt-backed Khala inference event
+   from the activity timeline (the contract, primitives, public source, bridge
+   mapper, scheduled poller, snapshot hydration, and desktop projection are
+   already in).
 
 **The long pole (start in parallel, it gates the "learned" story):**
 7. **M6 (Agent Psion):** implement Psionic primitives **P1–P5** (hidden-state

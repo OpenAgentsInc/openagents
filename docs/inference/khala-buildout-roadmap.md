@@ -340,9 +340,13 @@ inspectability. #6013-D is partially implemented: the public activity timeline
 now has a receipt-backed `khala_inference_served` event kind, Worker source
 wiring from paid inference charge receipts, and a world bridge mapper that turns
 those public events into `gateway_station` + `world_event` rows without exposing
-private prompts, providers, or amounts. Remaining #6013 work is the production
-bridge producer/live SSE path and an owner-enabled Khala smoke proving a real
-receipt flows from gateway → timeline → world → desktop.
+private prompts, providers, or amounts. The world worker also has a scheduled
+public activity timeline poller for that source, cursor persistence, manual poll
+route, and fresh-socket D1 snapshot hydration so projected rows can reach new
+Verse clients after the poll. Remaining #6013 work stays under #6013-D: deploy
+and run the live bridge path, prove cursor/source-ref replay against production,
+and capture an owner-enabled Khala smoke showing a real receipt flowing from
+gateway → timeline → world → desktop.
 
 ### Agent Cockpit — Autopilot consumption and artifact handoff
 
@@ -556,15 +560,16 @@ begin the primitives now so they are ready when M0–M5 are green.
 
 ### Lane D — Verse (M5, #6013)
 
-**Goal:** finish the serving visualization — land the two `three-effect`
-primitives (`createCracklingArc`, `createGatewayPortal`) and wire **real**
-inference events from the activity timeline into the world projection + desktop
-scene. **Owns:** `@openagentsinc/three-effect` (separate repo),
-`apps/openagents-world` bridge inference-event path, the desktop Verse scene.
-**Reads:** `docs/inference/khala-in-the-world.md`. **Not blocked by owner:** drive
-from fixture/replayed activity-timeline events under the evidence-bound motion
-contract. **First output:** a Khala request renders a crackling arc to its
-worker + a gateway portal for an external lane, each dereferencing a receipt.
+**Goal:** finish the serving visualization — the `three-effect` primitives,
+world contract row shape, public activity timeline mapper, scheduled bridge
+poller, D1 snapshot hydration, and desktop projection path are now landed. The
+remaining work is the **live proof**: deploy/run the bridge path against the
+real public timeline and capture a dereferenceable owner-enabled Khala receipt in
+the desktop Verse scene. **Owns:** `@openagentsinc/three-effect` (separate
+repo), `apps/openagents-world` bridge inference-event path, the desktop Verse
+scene. **Reads:** `docs/inference/khala-in-the-world.md`. **Issue organization:**
+continue under parent #6013 with #6013-D/live-proof; create child issues only if
+another agent needs a separate queue.
 
 ### Lane E — Ledger (M3, #6011) — **Bitcoin-only**
 

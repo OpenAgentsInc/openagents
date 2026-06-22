@@ -73,6 +73,7 @@
       "name": "@openagentsinc/openagents-world",
       "version": "0.1.0",
       "dependencies": {
+        "@openagentsinc/public-activity-timeline": "workspace:*",
         "@openagentsinc/world-contract": "workspace:*",
         "effect": "catalog:",
       },

@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test"
+import { decodePublicActivityTimelineEnvelope } from "@openagentsinc/public-activity-timeline"
 
 import {
   bridgeHealthRow,
+  bridgePayloadFromPublicActivityTimelineEnvelope,
+  cursorFromPublicActivityTimelineEnvelope,
   decodePublicBridgeRows,
   dedupeBridgeRows,
   planBridgeRetry,
   projectionCursorRow,
   projectionRowMetadata,
   projectionRowRef,
+  publicActivityTimelineBridgePollUrl,
+  rowsFromPublicActivityTimelineEnvelope,
   rowsFromKhalaInferenceReceipt,
   rowsFromPublicActivityTimelineEvent,
   rowsFromTassadarRunSummary,
@@ -171,6 +176,75 @@ describe("world bridge projection helpers", () => {
     expect(event.inference?.workers.map(worker => worker.workerKind)).toEqual([
       "coding_agent",
     ])
+  })
+
+  test("builds bounded public activity timeline poll URLs with cursor replay", () => {
+    const url = publicActivityTimelineBridgePollUrl({
+      cursor: "2026-06-22T01:00:00.000Z:inference_receipt:event.public.khala.1",
+      limit: 500,
+      sourceRef: "https://openagents.com/api/public/activity-timeline?foo=bar",
+    })
+    const parsed = new URL(url)
+
+    expect(parsed.pathname).toBe("/api/public/activity-timeline")
+    expect(parsed.searchParams.get("foo")).toBe("bar")
+    expect(parsed.searchParams.get("kind")).toBe("khala_inference_served")
+    expect(parsed.searchParams.get("source")).toBe("inference_receipt")
+    expect(parsed.searchParams.get("limit")).toBe("200")
+    expect(parsed.searchParams.get("since")).toBe(
+      "2026-06-22T01:00:00.000Z:inference_receipt:event.public.khala.1",
+    )
+  })
+
+  test("builds bridge payloads from public activity timeline envelopes", () => {
+    const receiptRef = "receipt.inference.charge.chatcmpl_public_verse"
+    const timelineSource = "https://openagents.com/api/public/activity-timeline"
+    const envelope = {
+      schemaVersion: "openagents.public_activity_timeline.v1",
+      generatedAt: "2026-06-22T01:00:05.000Z",
+      nextCursor: null,
+      sourceLag: [],
+      staleness: {
+        composition: "live_at_read",
+        contractVersion: "projection_staleness.v1",
+        maxStalenessSeconds: 0,
+        rebuildsOn: ["pay_ins.public_receipt_ref"],
+      },
+      events: [
+        {
+          actorRef: "gateway.fireworks",
+          blockerRefs: [],
+          caveatRefs: [
+            "caveat.public.activity_timeline.inference_receipt_public_projection_only",
+          ],
+          cursor:
+            "2026-06-22T01:00:00.000Z:inference_receipt:event.public.khala_inference_served.chatcmpl_public_verse",
+          eventRef: "event.public.khala_inference_served.chatcmpl_public_verse",
+          kind: "khala_inference_served",
+          refs: [receiptRef],
+          sourceKind: "inference_receipt",
+          sourceRefs: [
+            receiptRef,
+            `https://openagents.com/api/public/inference/receipts/${receiptRef}`,
+          ],
+          state: "openagents/khala-code",
+          targetRef: receiptRef,
+          text: "Khala inference served with a public ledger receipt.",
+          ts: "2026-06-22T01:00:00.000Z",
+        },
+      ],
+    }
+    const rows = rowsFromPublicActivityTimelineEnvelope(envelope, timelineSource)
+    const payload = bridgePayloadFromPublicActivityTimelineEnvelope(envelope, timelineSource)
+    const decoded = decodePublicActivityTimelineEnvelope(envelope)
+
+    expect(rows.map(row => row.kind)).toEqual(["gateway_station", "world_event"])
+    expect(cursorFromPublicActivityTimelineEnvelope(decoded)).toBe(envelope.events[0]?.cursor)
+    expect(String(payload.sourceRef)).toBe(timelineSource)
+    expect(String(payload.observedAt)).toBe("2026-06-22T01:00:05.000Z")
+    expect(String(payload.cursor)).toBe(envelope.events[0]?.cursor)
+    expect(payload.rows.map(row => row.kind)).toEqual(["gateway_station", "world_event"])
+    expect(payload.rows.every(row => row.safety.publicProjectionAllowed)).toBe(true)
   })
 
   test("ignores non-Khala public activity timeline events", () => {

@@ -11,9 +11,11 @@ import {
 } from "@openagentsinc/world-contract"
 
 import {
+  bridgePayloadFromPublicActivityTimelineEnvelope,
   bridgeHealthRow,
   decodePublicBridgeRows,
   dedupeBridgeRows,
+  publicActivityTimelineBridgePollUrl,
   projectionCursorRow,
   projectionRowMetadata,
 } from "./bridge"
@@ -74,6 +76,8 @@ export interface Env {
   readonly OPENAGENTS_WORLD_DEFAULT_REGION?: string
   readonly OPENAGENTS_WORLD_MAX_HANDSHAKE_BUFFER?: string
   readonly OPENAGENTS_WORLD_BRIDGE_SOURCE?: string
+  readonly OPENAGENTS_WORLD_ACTIVITY_TIMELINE_SOURCE?: string
+  readonly OPENAGENTS_WORLD_ACTIVITY_TIMELINE_LIMIT?: string
   readonly OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON?: string
   readonly OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON?: string
 }
@@ -102,6 +106,8 @@ type WorldBindingsShape = Readonly<{
 type WorldWaitUntilShape = Readonly<{
   waitUntil: (effect: Promise<unknown>) => void
 }>
+
+const PROJECTION_SNAPSHOT_ROW_LIMIT = 500
 
 export class WorldBindings extends Context.Service<
   WorldBindings,
@@ -225,6 +231,13 @@ const handleWorkerRequest = (): Effect.Effect<Response, never, WorldBindings | W
       return result
     }
 
+    if (request.method === "POST" && url.pathname === "/bridge/poll-public-activity-timeline") {
+      const result = yield* Effect.promise(() =>
+        handlePublicActivityTimelineBridgePoll(bindings, config, waitUntil)
+      )
+      return json(result, { status: result.ok ? 202 : 502 })
+    }
+
     return makeDiagnosticResponse(404, {
       tag: "validation",
       severity: "warn",
@@ -244,54 +257,16 @@ const readBridgePayload = async (request: Request): Promise<WorldBridgePayload |
   }
 }
 
-const handleBridgeIngest = async (
-  request: Request,
+const persistAcceptedBridgePayload = async (
+  payload: WorldBridgePayload,
   bindings: WorldBindingsShape,
-  config: WorldRuntimeConfig,
+  acceptedAt: string,
   waitUntil: WorldWaitUntilShape,
-): Promise<Response> => {
-  const acceptedAt = new Date().toISOString()
-  const payload = await readBridgePayload(request)
-  const ingestRef = stableWorldRef("bridge_ingest.world", `${config.bridgeSource}:${acceptedAt}`)
-  const sourceRef = payload?.sourceRef ?? config.bridgeSource
-
-  if (payload === null) {
-    const diagnostic = makeDiagnostic({
-      tag: "bridge",
-      severity: "warn",
-      message: "World bridge ingest rejected: payload failed schema or public-safe validation.",
-      observedAt: acceptedAt,
-      sourceRefs: [sourceRef],
-    })
-    await persistProjectionRows(bindings.db, {
-      ingestRef,
-      sourceRef,
-      observedAt: acceptedAt,
-      acceptedAt,
-      rows: [bridgeHealthRow({
-        sourceRef,
-        status: "failed",
-        observedAt: acceptedAt,
-        diagnosticRefs: [diagnostic.diagnosticRef],
-      })],
-      payload: {
-        rejected: true,
-        diagnosticRef: diagnostic.diagnosticRef,
-      },
-    })
-    return json(
-      {
-        ok: false,
-        schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
-        ingestRef,
-        acceptedAt,
-        rowCount: 1,
-        diagnostic,
-      },
-      { status: 400 },
-    )
-  }
-
+) => {
+  const ingestRef = stableWorldRef(
+    "bridge_ingest.world",
+    `${payload.sourceRef}:${payload.cursor ?? payload.observedAt}:${acceptedAt}`,
+  )
   const rows = dedupeBridgeRows([
     ...payload.rows,
     bridgeHealthRow({
@@ -327,23 +302,204 @@ const handleBridgeIngest = async (
     }))
   }
 
+  return {
+    acceptedAt,
+    diagnostic: makeDiagnostic({
+      tag: "bridge",
+      severity: "info",
+      message: "World bridge ingest persisted public projection rows.",
+      observedAt: acceptedAt,
+      sourceRefs: [payload.sourceRef],
+    }),
+    ingestRef,
+    rowCount: rows.length,
+    rows,
+  }
+}
+
+const persistFailedBridgeRead = async (
+  input: {
+    readonly acceptedAt: string
+    readonly bindings: WorldBindingsShape
+    readonly message: string
+    readonly observedAt?: string
+    readonly payload?: unknown
+    readonly sourceRef: string
+  },
+) => {
+  const diagnostic = makeDiagnostic({
+    tag: "bridge",
+    severity: "warn",
+    message: input.message,
+    observedAt: input.acceptedAt,
+    sourceRefs: [input.sourceRef],
+  })
+  const ingestRef = stableWorldRef(
+    "bridge_ingest.world",
+    `${input.sourceRef}:failed:${input.acceptedAt}`,
+  )
+  const rows = [bridgeHealthRow({
+    sourceRef: input.sourceRef,
+    status: "failed",
+    observedAt: input.acceptedAt,
+    diagnosticRefs: [diagnostic.diagnosticRef],
+  })]
+  await persistProjectionRows(input.bindings.db, {
+    ingestRef,
+    sourceRef: input.sourceRef,
+    observedAt: input.observedAt ?? input.acceptedAt,
+    acceptedAt: input.acceptedAt,
+    rows,
+    payload: input.payload ?? {
+      rejected: true,
+      diagnosticRef: diagnostic.diagnosticRef,
+    },
+  })
+  return {
+    acceptedAt: input.acceptedAt,
+    diagnostic,
+    ingestRef,
+    rowCount: rows.length,
+  }
+}
+
+const handleBridgeIngest = async (
+  request: Request,
+  bindings: WorldBindingsShape,
+  config: WorldRuntimeConfig,
+  waitUntil: WorldWaitUntilShape,
+): Promise<Response> => {
+  const acceptedAt = new Date().toISOString()
+  const payload = await readBridgePayload(request)
+  const sourceRef = payload?.sourceRef ?? config.bridgeSource
+
+  if (payload === null) {
+    const failed = await persistFailedBridgeRead({
+      acceptedAt,
+      bindings,
+      message: "World bridge ingest rejected: payload failed schema or public-safe validation.",
+      sourceRef,
+    })
+    return json(
+      {
+        ok: false,
+        schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+        ingestRef: failed.ingestRef,
+        acceptedAt: failed.acceptedAt,
+        rowCount: failed.rowCount,
+        diagnostic: failed.diagnostic,
+      },
+      { status: 400 },
+    )
+  }
+
+  const persisted = await persistAcceptedBridgePayload(payload, bindings, acceptedAt, waitUntil)
+
   return json(
     {
       ok: true,
       schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
-      ingestRef,
-      acceptedAt,
-      rowCount: rows.length,
-      diagnostic: makeDiagnostic({
-        tag: "bridge",
-        severity: "info",
-        message: "World bridge ingest persisted public projection rows.",
-        observedAt: acceptedAt,
-        sourceRefs: [payload.sourceRef],
-      }),
+      ingestRef: persisted.ingestRef,
+      acceptedAt: persisted.acceptedAt,
+      rowCount: persisted.rowCount,
+      diagnostic: persisted.diagnostic,
     },
     { status: 202 },
   )
+}
+
+const readProjectionCursor = async (
+  db: D1Database,
+  sourceRef: string,
+): Promise<string | undefined> => {
+  const result = await db.prepare(
+    "SELECT cursor FROM world_projection_cursors WHERE source_ref = ? LIMIT 1",
+  ).bind(sourceRef).all<{ cursor: string }>()
+  const cursor = result.results?.[0]?.cursor
+  return typeof cursor === "string" && cursor.trim().length > 0
+    ? cursor.trim()
+    : undefined
+}
+
+const publicBridgeFailureReason = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error)
+  return message
+    .replace(/raw_prompt|raw_payload|provider_payload|secret|token|sk-[a-z0-9_-]+/gi, "redacted")
+    .slice(0, 240)
+}
+
+const handlePublicActivityTimelineBridgePoll = async (
+  bindings: WorldBindingsShape,
+  config: WorldRuntimeConfig,
+  waitUntil: WorldWaitUntilShape,
+) => {
+  const acceptedAt = new Date().toISOString()
+  const sourceRef = config.activityTimelineBridgeSource
+  const cursor = await readProjectionCursor(bindings.db, sourceRef)
+  const pollUrl = publicActivityTimelineBridgePollUrl({
+    sourceRef,
+    ...(cursor === undefined ? {} : { cursor }),
+    limit: config.activityTimelineBridgeLimit,
+  })
+
+  try {
+    const response = await fetch(pollUrl, {
+      headers: { accept: "application/json" },
+    })
+    if (!response.ok) {
+      const failed = await persistFailedBridgeRead({
+        acceptedAt,
+        bindings,
+        message: `Public activity timeline bridge poll failed with HTTP ${response.status}.`,
+        payload: {
+          status: response.status,
+          sourceRef,
+        },
+        sourceRef,
+      })
+      return {
+        ok: false,
+        schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+        sourceRef,
+        pollUrl,
+        previousCursor: cursor ?? null,
+        ...failed,
+      }
+    }
+
+    const body = await response.json()
+    const payload = bridgePayloadFromPublicActivityTimelineEnvelope(body, sourceRef)
+    const persisted = await persistAcceptedBridgePayload(payload, bindings, acceptedAt, waitUntil)
+    const { rows: _rows, ...publicPersisted } = persisted
+    return {
+      ok: true,
+      schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+      sourceRef,
+      pollUrl,
+      previousCursor: cursor ?? null,
+      cursor: payload.cursor ?? null,
+      projectedRowCount: payload.rows.length,
+      ...publicPersisted,
+    }
+  } catch (error) {
+    const failed = await persistFailedBridgeRead({
+      acceptedAt,
+      bindings,
+      message: `Public activity timeline bridge poll failed: ${publicBridgeFailureReason(error)}`,
+      payload: {
+        sourceRef,
+      },
+      sourceRef,
+    })
+    return {
+      ok: false,
+      schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+      sourceRef,
+      pollUrl,
+      previousCursor: cursor ?? null,
+      ...failed,
+    }
+  }
 }
 
 const persistProjectionRows = async (
@@ -439,6 +595,35 @@ const persistProjectionRows = async (
   ).run()
 }
 
+const readSnapshotProjectionRows = async (
+  db: D1Database,
+  regionRef: string,
+  limit = PROJECTION_SNAPSHOT_ROW_LIMIT,
+): Promise<ReadonlyArray<WorldRow>> => {
+  try {
+    const result = await db.prepare(
+      `SELECT payload_json
+      FROM world_projection_rows
+      WHERE region_ref IS NULL OR region_ref = ?
+      ORDER BY updated_at DESC, row_ref ASC
+      LIMIT ?`,
+    ).bind(regionRef, limit).all<{ payload_json: string }>()
+    const rows: Array<WorldRow> = []
+    for (const row of result.results ?? []) {
+      if (typeof row.payload_json !== "string") continue
+      try {
+        const decoded = decodePublicBridgeRows([JSON.parse(row.payload_json)])[0]
+        if (decoded !== undefined) rows.push(decoded)
+      } catch {
+        // Bad persisted projection rows should not break a WebSocket upgrade.
+      }
+    }
+    return dedupeBridgeRows(rows)
+  } catch {
+    return []
+  }
+}
+
 const runSubscriptionApproval = (
   request: WorldSubscriptionPlanRequest,
 ):
@@ -508,6 +693,9 @@ export class RegionDurableObject extends DurableObject<Env> {
     const connectedAt = new Date().toISOString()
     const clock = this.readRegionClock(regionRef)
     const reconnectPlan = makeReconnectPlan(regionRef, url.searchParams.get("cursor"), clock, connectedAt)
+    const snapshotRows = reconnectPlan.kind === "fresh_snapshot"
+      ? await readSnapshotProjectionRows(this.env.WORLD_DB, regionRef)
+      : []
     const subscriptionPlan = runSubscriptionApproval(subscriptionRequestFromUrl(url, regionRef))
     if (!subscriptionPlan.ok) {
       return makeDiagnosticResponse(400, {
@@ -536,7 +724,11 @@ export class RegionDurableObject extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server)
     this.upsertSession(attachedSession, connectedAt)
     for (const frame of reconnectPlan.frames) {
-      server.send(serializeWorldFrame(frame))
+      server.send(serializeWorldFrame(
+        frame.frameKind === "snapshot"
+          ? makeSnapshotFrame(regionRef, connectedAt, snapshotRows, reconnectPlan.cursor)
+          : frame,
+      ))
     }
 
     return new Response(null, {
@@ -559,19 +751,21 @@ export class RegionDurableObject extends DurableObject<Env> {
       }
 
       const hydrated = hydrateBufferedSession(buffered.attachment)
+      const generatedAt = new Date().toISOString()
+      const snapshotRows = await readSnapshotProjectionRows(this.env.WORLD_DB, hydrated.regionRef)
       webSocket.serializeAttachment(hydrated)
-      this.upsertSession(hydrated, new Date().toISOString())
+      this.upsertSession(hydrated, generatedAt)
       webSocket.send(serializeWorldFrame(makeSnapshotFrame(
         hydrated.regionRef,
-        new Date().toISOString(),
-        [],
+        generatedAt,
+        snapshotRows,
         hydrated.cursor,
       )))
       webSocket.send(serializeWorldFrame(makeDiagnostic({
         tag: "auth",
         severity: "info",
         message: `World socket session hydrated; replayed ${buffered.attachment.bufferedFrames.length} buffered frame(s).`,
-        observedAt: new Date().toISOString(),
+        observedAt: generatedAt,
         sourceRefs: [hydrated.sessionRef],
       })))
       return
@@ -902,4 +1096,16 @@ export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     return runWorkerEffect(request, env, ctx, handleWorkerRequest())
   },
-}
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    await handlePublicActivityTimelineBridgePoll(
+      {
+        env,
+        regionObjects: env.REGION_DURABLE_OBJECT,
+        db: env.WORLD_DB,
+        ...(env.WORLD_BRIDGE_QUEUE === undefined ? {} : { bridgeQueue: env.WORLD_BRIDGE_QUEUE }),
+      },
+      configFromEnv(env),
+      { waitUntil: promise => ctx.waitUntil(promise) },
+    )
+  },
+} satisfies ExportedHandler<Env>

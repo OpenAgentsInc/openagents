@@ -25,6 +25,8 @@ export type WorldRuntimeConfig = Readonly<{
   defaultRegionRef: string
   maxHandshakeBuffer: number
   bridgeSource: string
+  activityTimelineBridgeSource: string
+  activityTimelineBridgeLimit: number
 }>
 
 export type RegionSocketSessionAttachment = Readonly<{
@@ -153,6 +155,8 @@ export const configFromEnv = (env: {
   readonly OPENAGENTS_WORLD_DEFAULT_REGION?: string
   readonly OPENAGENTS_WORLD_MAX_HANDSHAKE_BUFFER?: string
   readonly OPENAGENTS_WORLD_BRIDGE_SOURCE?: string
+  readonly OPENAGENTS_WORLD_ACTIVITY_TIMELINE_SOURCE?: string
+  readonly OPENAGENTS_WORLD_ACTIVITY_TIMELINE_LIMIT?: string
 }): WorldRuntimeConfig => ({
   envName: env.OPENAGENTS_WORLD_ENV ?? "development",
   schemaVersion: env.OPENAGENTS_WORLD_SCHEMA_VERSION ?? WORLD_CONTRACT_SCHEMA_VERSION,
@@ -161,6 +165,11 @@ export const configFromEnv = (env: {
     ? Math.max(1, Math.min(64, Number(env.OPENAGENTS_WORLD_MAX_HANDSHAKE_BUFFER)))
     : DEFAULT_HANDSHAKE_BUFFER_LIMIT,
   bridgeSource: env.OPENAGENTS_WORLD_BRIDGE_SOURCE ?? "https://openagents.com/api/public/tassadar-run-summary",
+  activityTimelineBridgeSource:
+    env.OPENAGENTS_WORLD_ACTIVITY_TIMELINE_SOURCE ?? "https://openagents.com/api/public/activity-timeline",
+  activityTimelineBridgeLimit: Number.isFinite(Number(env.OPENAGENTS_WORLD_ACTIVITY_TIMELINE_LIMIT))
+    ? Math.max(1, Math.min(200, Math.floor(Number(env.OPENAGENTS_WORLD_ACTIVITY_TIMELINE_LIMIT))))
+    : 100,
 })
 
 export const json = (value: unknown, init: ResponseInit = {}) =>

@@ -34,6 +34,10 @@ customer data, provider credentials, private prompts, and private repo content.
   `WorldBridgePayload`, rejects rows that fail public projection safety, upserts
   deterministic projection rows into D1, records bridge health/cursor state, and
   enqueues a retry-friendly marker when the queue binding is present.
+- `POST /bridge/poll-public-activity-timeline` manually runs the public activity
+  timeline bridge poller for smoke/debug use. It fetches only
+  `kind=khala_inference_served&source=inference_receipt`, persists the resulting
+  public projection rows, and records bridge health/cursor state.
 
 ## Transport Contract
 
@@ -145,6 +149,14 @@ with typed inference payloads. External provider destinations are
 `upsert_gateway_station`, so clients can render the gateway portal without
 fabricating provider route or receipt authority.
 
+The production Worker has a once-per-minute Cron Trigger that polls
+`/api/public/activity-timeline` for receipt-backed Khala inference events. The
+poller resumes from `world_projection_cursors`, writes only public-safe
+`gateway_station` and `world_event` rows, and fresh WebSocket snapshots hydrate
+from the D1 projection cache for the requested region plus global rows. A failed
+poll writes bridge health but does not fabricate inference, route, settlement, or
+receipt data.
+
 Projection rows use `row.kind + worldRowKey(row)` as their D1 key, so replaying
 the same source payload overwrites the same rows and cannot duplicate
 `world_event` entries. Failed ingest writes a public `bridge_health` row and a
@@ -216,6 +228,14 @@ Staging deploy:
 ```sh
 cd apps/openagents-world
 bunx wrangler deploy --env staging
+```
+
+Local scheduled-handler smoke:
+
+```sh
+cd apps/openagents-world
+bunx wrangler dev --test-scheduled
+curl -X POST 'http://localhost:8787/cdn-cgi/handler/scheduled?cron=*+*+*+*+*'
 ```
 
 Queue and alarm checks:
