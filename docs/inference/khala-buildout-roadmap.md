@@ -88,6 +88,12 @@ handoff note naming blockers, public refs, and exact verification commands. A
 lane may use fixtures or inert adapters while its upstream dependency is not
 ready, but it must label those results as scaffold evidence, not product proof.
 
+Multi-agent hygiene: never stash, reset, checkout, restore, or otherwise move
+another agent's uncommitted work out of the way. If the active checkout is dirty
+with concurrent lane work, create a fresh worktree from clean `origin/main` for
+your scoped edit, test, commit, or push, then leave the original dirty checkout
+intact and name any blocker in the handoff.
+
 ### Agent Nexus — Gateway and Khala serving
 
 **Owns:** M0 and the serving side of M7/M8.

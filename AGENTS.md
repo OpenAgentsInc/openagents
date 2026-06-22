@@ -114,6 +114,11 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   silently leave a red, and never describe a partially-green run as clean.
 - Keep new TypeScript implementation work on Bun, Effect, Effect Schema, and
   Foldkit where `apps/openagents.com` already uses it.
+- Never stash, reset, checkout, restore, or otherwise move another agent's
+  uncommitted work out of the way. If a checkout is dirty with concurrent work
+  and you need a clean tree for tests, commits, or pushes, create a fresh
+  worktree from clean `origin/main` and do the scoped work there. Leave the
+  original dirty checkout intact and report the conflict or blocker honestly.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
 - **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** For
