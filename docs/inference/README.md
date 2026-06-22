@@ -71,6 +71,14 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    is mapped to **Bitcoin/Lightning + our exact-execution/replay verification + dereferenceable
    receipts**.
 
+8. **[`khala.md`](./khala.md)** — **Khala** spec & roadmap: the
+   orchestrating-model brand on top of this gateway (one OpenAI-compatible
+   endpoint that behaves like one model, an agent network underneath). API
+   surface, the coordinator ladder (heuristic → TRINITY → Conductor → full),
+   verification classes + receipts, metering/pricing/settlement, distribution,
+   and a phased roadmap keyed to the gateway EPIC. Ties to `docs/sakana/`
+   (coordinator) and `docs/research/tmax/` (verification/stability lessons).
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
