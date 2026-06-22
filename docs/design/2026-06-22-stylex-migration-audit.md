@@ -31,6 +31,25 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
 - Mobile work is intentionally deferred from #5952 and the first issue sequence
   per the follow-up instruction to ignore mobile for now.
 
+2026-06-22 P1 shared token authority, issue #5953:
+
+- Added `@openagentsinc/design-tokens` as the neutral source of truth for the
+  shared Autopilot dark palette. The package intentionally has no Foldkit,
+  StyleX, React, app, or protocol runtime dependency.
+- Kept `@openagentsinc/autopilot-ui/tokens` as a compatibility facade for
+  existing `darkTokens`, `cssVars(tokens)`, and `nativeTheme(tokens)` imports.
+- Rewired `@openagentsinc/autopilot-control-protocol` `CANONICAL_DARK` to use
+  the same design-token authority while preserving flattened protocol parity
+  output and tests.
+- Added `@openagentsinc/ui/tokens` re-exports so shared UI code can consume
+  canonical token helpers without depending on Autopilot UI.
+- Converted `packages/ui/src/tokens.stylex.ts` from duplicated hard-coded
+  palette values to StyleX custom-property aliases for the existing Foldkit CSS
+  variables (`--bg`, `--text`, tone vars, and related dark tokens).
+- Forum, public landing, tenant theme, spacing, typography, and mobile app
+  migration remain intentionally out of scope until later phases define those
+  contracts.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -89,9 +108,9 @@ The package is already large enough to justify stronger styling contracts:
 
 `packages/autopilot-ui` is the Autopilot domain UI package. It emits Foldkit
 HTML and Tailwind classes via local helpers like `h.Class(value)`. Its
-`tokens.ts` exports `darkTokens`, `cssVars(tokens)`, and `nativeTheme(tokens)`.
-Those map the canonical dark palette to CSS variables for DOM and native-shaped
-colors for mobile.
+`tokens.ts` remains the compatibility import path for `darkTokens`,
+`cssVars(tokens)`, and `nativeTheme(tokens)`, but those values now come from
+the neutral `@openagentsinc/design-tokens` package.
 
 The immediate opportunity is to move both packages from string-based utility
 composition to typed StyleX modules while keeping the same Foldkit component
@@ -320,17 +339,15 @@ The underlying integration point is confirmed by source and by #5952:
 `stylex.attrs(...)` emits DOM attributes, and Foldkit components already accept
 typed attributes.
 
-Expected package changes:
+Completed package changes from #5952 and #5953:
 
-- Add `@stylexjs/stylex` to `packages/ui`.
-- Add `@stylexjs/stylex` to `packages/autopilot-ui` once it starts authoring
-  styles directly.
-- Add an exported StyleX adapter helper from `@openagentsinc/ui`, for example
-  `./stylex` or `./stylex-foldkit`.
-- Add `.stylex.ts` token files to the shared package, likely beginning with
-  `tokens.stylex.ts`.
-- Preserve existing component function signatures where possible so app code
-  continues to import Foldkit components, not raw StyleX internals.
+- `@stylexjs/stylex` is installed in `packages/ui` and
+  `packages/autopilot-ui`.
+- `@openagentsinc/ui/stylex-foldkit` exports the Foldkit adapter.
+- `packages/ui/src/tokens.stylex.ts` exports StyleX variable aliases for the
+  existing Foldkit CSS custom properties.
+- Existing component function signatures remain stable; app code continues to
+  import Foldkit components, not raw StyleX internals.
 
 The main build requirement is that every consumer of the source-exported
 packages must run the StyleX transform over those package files. Since
@@ -364,8 +381,8 @@ For component variants, StyleX maps well to existing named local constants:
   stay, but should be reserved for semantics, data attributes, ARIA, events,
   and rare layout overrides.
 
-The token situation should be fixed early. Today there are at least three
-related contracts:
+The token situation was fixed in #5953 for the Autopilot dark palette. The
+previously parallel contracts were:
 
 - `packages/autopilot-ui/src/tokens.ts` with DOM CSS vars and native-shaped
   colors
@@ -373,8 +390,8 @@ related contracts:
   `CANONICAL_DARK`
 - `apps/autopilot-desktop/src/ui/styles.css` root vars mirroring the UI tokens
 
-A StyleX migration should create a single shared token authority in
-`@openagentsinc/ui` or a small neutral token package, then re-export or derive:
+The migration now has `@openagentsinc/design-tokens` as the neutral authority
+for those values, with re-exported or derived:
 
 - StyleX vars and themes for web/desktop
 - CSS custom property aliases for coexistence and raw CSS
@@ -405,9 +422,10 @@ for `@openagentsinc/ui` as a package boundary.
 
 ### Token consolidation
 
-StyleX vars provide a natural place to converge `darkTokens`,
-`CANONICAL_DARK`, desktop `:root` declarations, and mobile native themes. The
-migration is a forcing function to stop carrying parallel token copies.
+P1 established a neutral token authority for `darkTokens`, `CANONICAL_DARK`,
+desktop `:root` parity, and native-shaped theme output. Future StyleX migration
+work should consume that authority instead of reintroducing local palette
+copies.
 
 ### Smaller and more deterministic component CSS
 
@@ -522,17 +540,18 @@ Exit criteria:
 
 Goal: one dark token authority with derived outputs.
 
+Status: completed for the Autopilot dark palette in #5953.
+
 Tasks:
 
-- Move canonical colors to `@openagentsinc/ui` or a neutral shared token
-  package.
-- Derive `tokens.stylex.ts` variables and themes.
-- Derive CSS custom properties for legacy CSS and raw shell styles.
-- Derive native theme values.
-- Update `@openagentsinc/autopilot-ui/tokens` and
-  `@openagentsinc/autopilot-control-protocol/CANONICAL_DARK` to re-export,
-  derive, or parity-test the shared source.
-- Keep `assertThemeParity(...)` or an equivalent test as a guard.
+- `@openagentsinc/design-tokens` owns the canonical Autopilot dark palette.
+- `packages/ui/src/tokens.stylex.ts` derives StyleX aliases for the existing
+  CSS custom properties.
+- `@openagentsinc/autopilot-ui/tokens` keeps the compatibility exports.
+- `@openagentsinc/autopilot-control-protocol/CANONICAL_DARK` derives from the
+  shared source.
+- `assertThemeParity(...)`, package token tests, desktop theme tests, and
+  StyleX web/desktop build checks guard the migration.
 
 ### Phase 2: migrate shared UI primitives
 
@@ -640,7 +659,7 @@ Proceed with StyleX, but do it as an incremental design-system migration:
 - no to claiming web and native can share identical StyleX style files without
   a separate facade design
 
-The strongest first milestone is a vertical slice: one shared UI primitive,
-one Autopilot domain component, one web render, one desktop render, and one
-mobile token bridge. If that slice works, the rest is mainly disciplined
-migration work rather than a feasibility question.
+The strongest first milestone has now landed for DOM: one shared UI primitive,
+one Autopilot domain component, one web render, one desktop render, and the
+shared token authority. The remaining work is mainly disciplined migration,
+with mobile intentionally deferred to its separate native track.

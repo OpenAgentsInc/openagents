@@ -322,6 +322,7 @@
       "name": "@openagentsinc/autopilot-control-protocol",
       "version": "0.1.0",
       "dependencies": {
+        "@openagentsinc/design-tokens": "workspace:*",
         "effect": "catalog:",
       },
       "devDependencies": {
@@ -334,11 +335,20 @@
       "version": "0.1.0",
       "dependencies": {
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
+        "@openagentsinc/design-tokens": "workspace:*",
         "@openagentsinc/ui": "workspace:*",
         "@stylexjs/stylex": "0.19.0",
         "effect": "catalog:",
         "foldkit": "^0.102.1",
       },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/design-tokens": {
+      "name": "@openagentsinc/design-tokens",
+      "version": "0.1.0",
       "devDependencies": {
         "bun-types": "^1.0.0",
         "typescript": "catalog:",
@@ -435,6 +445,7 @@
       "name": "@openagentsinc/ui",
       "version": "0.1.0",
       "dependencies": {
+        "@openagentsinc/design-tokens": "workspace:*",
         "@stylexjs/stylex": "0.19.0",
         "clsx": "^2.1.1",
         "effect": "catalog:",
@@ -1019,6 +1030,8 @@
     "@openagentsinc/autopilot-ui": ["@openagentsinc/autopilot-ui@workspace:packages/autopilot-ui"],
 
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
+
+    "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
 
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
 

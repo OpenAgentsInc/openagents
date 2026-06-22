@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/design-tokens": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

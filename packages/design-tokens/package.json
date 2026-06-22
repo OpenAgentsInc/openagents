@@ -1,12 +1,11 @@
 {
-  "name": "@openagentsinc/autopilot-ui",
+  "name": "@openagentsinc/design-tokens",
   "version": "0.1.0",
   "private": false,
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
-    "./tokens": "./src/tokens.ts"
+    ".": "./src/index.ts"
   },
   "files": [
     "src",
@@ -18,14 +17,6 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@openagentsinc/autopilot-control-protocol": "workspace:*",
-    "@openagentsinc/design-tokens": "workspace:*",
-    "@openagentsinc/ui": "workspace:*",
-    "@stylexjs/stylex": "0.19.0",
-    "effect": "catalog:",
-    "foldkit": "^0.102.1"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",
