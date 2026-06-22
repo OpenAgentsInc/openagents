@@ -33,7 +33,7 @@ heuristic router until M6.
 | #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); desktop **projects Khala inference into Verse** (`11a7c3ca98`) | The two `three-effect` render primitives (`createCracklingArc`, `createGatewayPortal`) live in the separate `three-effect` repo; wire real inference events from the activity timeline |
 | #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
 | #6015 | **M7** Conductor lane | **OPEN — not started** | — | GRPO NL planner; depends on M6 + real training compute |
-| #6016 | **M8** head-to-head demo | **OPEN — scaffold** | demo **reducer** + **publication renderer** + fixtures + runbook (`docs/inference/khala-head-to-head-demo.md`); metrics stay `not_measured` | A real measured run — depends on M0-enabled + M2 (done) + ideally M6/M7 |
+| #6016 | **M8** head-to-head demo | **OPEN — scaffold (honestly blocked)** | `#6016-A…E` structure: metric **reducer** + **closure audit**, **publication renderer**, fixture manifest, and a **live-promotion audit** that blocks fake-live manifests carrying leftover `fixture.*` refs; runbook (`docs/inference/khala-head-to-head-demo.md`); 6 focused tests + check:deploy green | A real measured run — reducer returns `closureAudit.canClose:false` on fixture evidence by design. Blockers: live Khala + frontier runs, M7 conductor evidence, settlement receipts, Verse/artifact playback refs, measured energy telemetry, final publication refs |
 | #6017 | **EPIC** | OPEN | checklist not yet ticking M2 | reconcile checklist |
 
 ## What is actually LIVE vs INERT (honest line)
@@ -127,16 +127,21 @@ learned-composition version is the upgraded second cut after M6.
 **The payoff:**
 9. **M8 (Agent Demo):** run the head-to-head — heuristic-router cut first
    (as soon as M0+M1+M3-staging are green), then the learned-coordinator cut
-   after M6/M7. Keep all metrics `not_measured` until a real run; the reducer +
-   publication renderer are already in.
+   after M6/M7. The harness is already in and **self-gating**: the reducer's
+   `closureAudit.canClose` stays `false` on fixture evidence, and the
+   live-promotion audit rejects any manifest still carrying `fixture.*` refs — so
+   M8 cannot be closed on scaffolding. Feeding it real evidence (the six blockers
+   above) is the only path to a publishable result.
 
 ## Risks & honesty notes
 
-- **Premature-completion risk.** M2 closed correctly (real verifier + green
-  gates). Resist closing M0/M3/M8 until their *live* acceptance (metered
-  completion / real test-charge receipt / measured run) actually exists — the
-  buildout's whole thesis is "verified, not vibes," so its own milestones must
-  clear the same bar.
+- **Premature-completion risk — and a good antidote already in place.** M2
+  closed correctly (real verifier + green gates), and M8 ships its own guard:
+  the reducer's `closureAudit.canClose` and the live-promotion audit mechanically
+  refuse to close on fixture evidence. That self-gating pattern is exactly what
+  M0 and M3 should adopt — don't close them until their *live* acceptance
+  (metered completion / real test-charge receipt) exists. The buildout's whole
+  thesis is "verified, not vibes," so its own milestones must clear the same bar.
 - **Concurrency hygiene.** Multiple agents now share this checkout; the CLAUDE.md
   rule (never move another agent's uncommitted work; use a fresh worktree off
   clean `origin/main`) is in force and was the right fix after a near-miss stash
