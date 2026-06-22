@@ -385,7 +385,9 @@ independent queues; until then the #6016 checklist plus these anchors is enough.
 `scripts/khala-demo/reduce-head-to-head.mjs`. The reducer validates public-safe
 evidence shape, computes the M8 metrics, and emits a closure audit that keeps
 #6016 blocked while evidence is fixture-only. #6016-C has a first inert fixture
-pack; #6016-D/E still need live publication refs and M3/M5/M7 receipts.
+pack. `scripts/khala-demo/render-publication.mjs` adds the #6016-D publication
+draft renderer so fixture and future live packs share one visible scoreboard.
+#6016-D/E still need live publication refs and M3/M5/M7 receipts.
 
 ### Parallel merge order
 

@@ -30,8 +30,11 @@ cite or reproduce them. They are never mixed into OpenAgents measurements.
   `docs/inference/fixtures/khala-head-to-head-dry-run.v1.json`
 - Reducer/validator:
   `scripts/khala-demo/reduce-head-to-head.mjs`
+- Publication renderer:
+  `scripts/khala-demo/render-publication.mjs`
 - Test:
-  `scripts/khala-demo/reduce-head-to-head.test.mjs`
+  `scripts/khala-demo/reduce-head-to-head.test.mjs` and
+  `scripts/khala-demo/render-publication.test.mjs`
 
 Run the dry-run reducer:
 
@@ -43,7 +46,15 @@ bun scripts/khala-demo/reduce-head-to-head.mjs \
 Run the focused tests:
 
 ```sh
-bun test scripts/khala-demo/reduce-head-to-head.test.mjs
+bun test scripts/khala-demo/reduce-head-to-head.test.mjs \
+  scripts/khala-demo/render-publication.test.mjs
+```
+
+Render the publication draft:
+
+```sh
+bun scripts/khala-demo/render-publication.mjs \
+  docs/inference/fixtures/khala-head-to-head-dry-run.v1.json
 ```
 
 ## Manifest Contract
@@ -110,6 +121,9 @@ The final publication pack must include:
    higher cost must stay in the pack.
 10. Product-promise boundary: no world-first, AO/kWh, or broad product claim is
     upgraded without the DE-10 evidence pack and owner sign-off.
+
+The renderer produces this structure from the manifest so live and fixture packs
+share one visible scoreboard and blocker format.
 
 ## Closure Gate For #6016
 
