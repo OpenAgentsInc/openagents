@@ -329,14 +329,15 @@ export const rowsFromPublicActivityTimelineEvent = (
     return []
   }
 
-  const actorRef = stringField(event, "actorRef") ?? stringField(event, "actor_ref")
-  const gatewayRef = actorRef?.startsWith("gateway.")
-    ? actorRef
-    : stableWorldRef("gateway.khala", receiptRef)
   const model = stringField(event, "state") ?? "openagents/khala-mini"
   const createdAt = stringField(event, "ts") ?? observedAt
   const requestRef = inferenceRequestRefFromReceiptRef(receiptRef)
-  const lane = gatewayLaneFromGatewayRef(gatewayRef)
+  const actorRef = stringField(event, "actorRef") ?? stringField(event, "actor_ref")
+  const providerGatewayRef = actorRef?.startsWith("gateway.")
+    ? actorRef
+    : stableWorldRef("gateway.khala", receiptRef)
+  const lane = gatewayLaneFromGatewayRef(providerGatewayRef)
+  const gatewayRef = stableWorldRef(`${providerGatewayRef}.request`, requestRef)
 
   return rowsFromKhalaInferenceReceipt({
     eventRef: stringField(event, "eventRef")

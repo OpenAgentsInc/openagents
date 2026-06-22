@@ -17,6 +17,7 @@ import {
   rowsFromPublicActivityTimelineEvent,
   rowsFromTassadarRunSummary,
 } from "./bridge"
+import { stableWorldRef } from "./protocol"
 
 const observedAt = "2026-06-22T00:00:00.000Z"
 const sourceRef = "https://openagents.com/api/public/tassadar-run-summary"
@@ -159,7 +160,7 @@ describe("world bridge projection helpers", () => {
 
     expect(gateway).toMatchObject({
       kind: "gateway_station",
-      gatewayRef: "gateway.fireworks",
+      gatewayRef: stableWorldRef("gateway.fireworks.request", "request.khala.chatcmpl_public_verse"),
       lane: "fireworks",
       providerLabel: "Fireworks",
     })
