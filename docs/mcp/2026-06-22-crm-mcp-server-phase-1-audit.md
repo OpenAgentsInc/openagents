@@ -18,6 +18,25 @@
 
 ---
 
+## Implementation status (epic #5991, merged to main)
+
+Build log — landed on main (per-issue PRs):
+
+- ✅ **#5992 — JSON-RPC transport.** `crm-mcp-routes.ts`: `POST /api/mcp` (initialize/ping/notifications + tools/resources methods), injected catalog, tagged-error mapping.
+- ✅ **#5993 — read-only tool catalog.** `crm-mcp.ts`: 15 read tools + JSON-Schema catalog + dispatch + `projectOpenAgentsMcpOutput`.
+- ✅ **#5994 — resources.** `resources/list` + `resources/read` over `mcp://openagents/worker/crm/*`.
+- ✅ **#5995 — scoped grant + tenant binding.** Migration `0220 crm_mcp_grants`; `crm-mcp-grant.ts` (mint/resolve/revoke, hashed tokens) + admin grant routes; transport authenticates to an `McpPrincipal`; catalog filters tools/resources by grant (ungranted absent) and reads only the bound tenant.
+- ✅ **#5996 — Wave 2 propose + template.** `crm.send.command.propose` (sends nothing) + `crm.template.upsert`, with mutation receipts.
+- ✅ **#5997 — Wave 3 gated execution.** `crm.send.command.approve`/`.reject` (approval_resolution), `crm.import.run` (workspace_write), `crm.batch.send` (dry-run only over MCP).
+- ✅ **#5998 — discovery + docs.** `GET /.well-known/openagents-mcp.json` (public, refs-only) + `docs/mcp/README.md`.
+- ⏳ **#5999 — client compatibility smoke** — in progress.
+
+The full tool set is **21 tools** (15 read + 6 write), grant-filtered per caller. Every gate is preserved: suppression/unsubscribe, dry-run, the approval-gated command, tenant isolation. No new authority beyond the CRM HTTP routes.
+
+> **Note:** the web MCP server-export / capability-catalog projection lanes are not yet wired to the live CRM MCP ref; the public discovery doc (`/.well-known/openagents-mcp.json`) is the live refs-only surface, and the web lanes can consume it as a thin follow-up.
+
+---
+
 ## 1. Current MCP status (review)
 
 ### 1.1 Phase 0 contract — complete
