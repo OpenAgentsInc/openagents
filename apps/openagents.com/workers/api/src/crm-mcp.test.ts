@@ -1,7 +1,7 @@
 import { assertValidOpenAgentsMcpName } from '@openagentsinc/mcp-contract'
 import { describe, expect, test } from 'vitest'
 
-import { CRM_MCP_READ_TOOLS, makeCrmMcpReadCatalog } from './crm-mcp'
+import { CRM_MCP_READ_TOOLS, makeCrmMcpCatalog } from './crm-mcp'
 
 const contactRow = {
   contact_type: 'investor',
@@ -38,9 +38,22 @@ const templateRow = {
 }
 
 const cannedDb = (): D1Database => {
+  const messageRow = {
+    body_markdown: 'Hi Ada',
+    channel: 'gmail_gws',
+    contact_id: 'crm_contact_1',
+    created_at: '2026-06-22T00:00:00.000Z',
+    id: 'crm_email_q',
+    status: 'queued',
+    subject: 'Hello',
+    tenant_ref: 'tenant.openagents',
+    to_email: 'ada@example.com',
+    updated_at: '2026-06-22T00:00:00.000Z',
+  }
   const firstFor = (q: string): Record<string, unknown> | null => {
     if (q.includes('FROM crm_contact_commands')) return commandRow
     if (q.includes('FROM crm_email_templates')) return templateRow
+    if (q.includes('FROM crm_email_messages')) return messageRow
     if (q.includes('FROM crm_contacts')) return contactRow
     return null
   }
@@ -69,7 +82,9 @@ const cannedDb = (): D1Database => {
 type TestEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
 const env: TestEnv = { OPENAGENTS_DB: cannedDb() }
 const req = new Request('https://openagents.com/api/mcp', { method: 'POST' })
-const catalog = makeCrmMcpReadCatalog<TestEnv>()
+const catalog = makeCrmMcpCatalog<TestEnv>({
+  resolveResendDeps: () => ({ enabled: false, fromEmail: null, sender: null }),
+})
 
 const grant = (authorityClass: 'operator_read' | 'workspace_write' | 'approval_resolution') => ({
   authorityClass,
@@ -98,7 +113,7 @@ const readPrincipal = {
 describe('CRM MCP read catalog — listing', () => {
   test('full-authority principal sees all read + write tools with valid names', async () => {
     const tools = await catalog.listTools(env, req, principal)
-    expect(tools).toHaveLength(17) // 15 read + 2 write
+    expect(tools).toHaveLength(21) // 15 read + 6 write
     for (const tool of tools) {
       expect(() => assertValidOpenAgentsMcpName(tool.name)).not.toThrow()
       expect(tool.inputSchema).toHaveProperty('type', 'object')
@@ -107,6 +122,9 @@ describe('CRM MCP read catalog — listing', () => {
     expect(names).toContain('crm.contacts.list')
     expect(names).toContain('crm.send.command.propose')
     expect(names).toContain('crm.template.upsert')
+    expect(names).toContain('crm.send.command.approve')
+    expect(names).toContain('crm.import.run')
+    expect(names).toContain('crm.batch.send')
   })
 
   test('every descriptor is operator_read + read_only with no receipt', () => {
@@ -182,6 +200,59 @@ describe('CRM MCP Wave 2 — propose + template (no send)', () => {
         slug: 'x',
         subjectTemplate: 'x',
       }),
+    ).rejects.toThrow('unknown_tool')
+  })
+})
+
+describe('CRM MCP Wave 3 — gated execution', () => {
+  test('crm.send.command.approve executes (suppression gate still applies) + approval receipt', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.send.command.approve', {
+      commandId: 'crm_cmd_1',
+    })
+    expect(outcome.isError).toBe(false)
+    const sc = outcome.structuredContent as { receipt: { kind: string }; result: { kind: string } }
+    expect(sc.receipt.kind).toBe('approval')
+  })
+
+  test('crm.send.command.reject is allowed for approval_resolution', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.send.command.reject', {
+      commandId: 'crm_cmd_1',
+      reason: 'not now',
+    })
+    expect(outcome.isError).toBe(false)
+  })
+
+  test('crm.import.run imports CSV (workspace_write) + mutation receipt', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.import.run', {
+      csv: 'email\nada@example.com',
+      sourceLabel: 'mcp:test',
+    })
+    expect(outcome.isError).toBe(false)
+    const sc = outcome.structuredContent as { receipt: { kind: string }; result: { totalRows: number } }
+    expect(sc.receipt.kind).toBe('mutation')
+    expect(sc.result.totalRows).toBe(1)
+  })
+
+  test('crm.batch.send is DRY-RUN only over MCP (plans, sends nothing)', async () => {
+    const outcome = await catalog.callTool(env, req, principal, 'crm.batch.send', {
+      channel: 'gmail_gws',
+      contactIds: ['crm_contact_1'],
+      templateSlug: 'welcome',
+    })
+    expect(outcome.isError).toBe(false)
+    const summary = outcome.structuredContent as { dryRun: boolean; counts: { would_send: number } }
+    expect(summary.dryRun).toBe(true)
+    expect(summary.counts.would_send).toBe(1)
+  })
+
+  test('a read+propose principal cannot approve or import (ungranted = absent)', async () => {
+    const names = (await catalog.listTools(env, req, readPrincipal)).map(t => t.name)
+    expect(names).not.toContain('crm.send.command.approve')
+    expect(names).not.toContain('crm.import.run')
+    // batch.send is operator_read, so it IS visible (dry-run only)
+    expect(names).toContain('crm.batch.send')
+    await expect(
+      catalog.callTool(env, req, readPrincipal, 'crm.send.command.approve', { commandId: 'x' }),
     ).rejects.toThrow('unknown_tool')
   })
 })
