@@ -6,7 +6,7 @@ import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './models-routes'
-import { MODEL_PRICING_TABLE } from './pricing'
+import { KHALA_MINI_MODEL_ID, MODEL_PRICING_TABLE } from './pricing'
 import { buildModelCatalog } from './model-catalog'
 import { resolveSupplyLaneArming } from './model-serving-policy'
 
@@ -52,6 +52,7 @@ describe('handleModelsList', () => {
     expect(body.data.length).toBe(MODEL_PRICING_TABLE.length)
     expect(body.data.every(m => m.object === 'model')).toBe(true)
     expect(body.data.every(m => m.created === 1_700_000_000)).toBe(true)
+    expect(body.data.some(m => m.id === KHALA_MINI_MODEL_ID)).toBe(true)
   })
 })
 
@@ -238,6 +239,7 @@ describe('provider serving policy (laneArming)', () => {
     expect(body.data.length).toBeGreaterThan(0)
     expect(body.data.length).toBeLessThan(MODEL_PRICING_TABLE.length)
     expect(body.data.some(m => m.id === geminiId)).toBe(true)
+    expect(body.data.some(m => m.id === KHALA_MINI_MODEL_ID)).toBe(true)
     expect(body.data.some(m => m.id === fireworksId)).toBe(false)
     expect(body.data.every(m => m.oa_lane.startsWith('vertex-'))).toBe(true)
   })
@@ -263,6 +265,23 @@ describe('provider serving policy (laneArming)', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { id: string }
     expect(body.id).toBe(geminiId)
+  })
+
+  it('retrieves the Khala mini virtual model on its armed backing lane', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${KHALA_MINI_MODEL_ID}`, {
+        method: 'GET',
+      }),
+      KHALA_MINI_MODEL_ID,
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { id: string; oa_lane: string }
+    expect(body.id).toBe(KHALA_MINI_MODEL_ID)
+    expect(body.oa_lane).toBe('vertex-gemini')
   })
 
   it('reports model_not_found for a known model on an UNARMED lane', async () => {

@@ -253,6 +253,12 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
   },
 }
 
+// First Khala virtual model id (M0 / #6008). It is a public OpenAgents model
+// alias backed by the existing Gemini Flash lane until the full Khala
+// coordinator/worker fabric lands; adding it here keeps catalog, quote, and
+// receipt-first metering prices derived from the same source of truth.
+export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
+
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
 // unknown models still clear a sane floor). Not a measured rate.
@@ -320,6 +326,15 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
   // committed-use rate lands.
   entry(
     'gemini-3.5-flash',
+    'vertex-gemini',
+    VERTEX_GEMINI_COST['gemini-3.5-flash']!,
+    true,
+  ),
+  // Khala M0 virtual model alias. Uses the same current cost basis as the
+  // Gemini Flash backing lane; the richer Khala coordinator, worker fabric,
+  // verification, and settlement receipt fields remain separate milestones.
+  entry(
+    KHALA_MINI_MODEL_ID,
     'vertex-gemini',
     VERTEX_GEMINI_COST['gemini-3.5-flash']!,
     true,

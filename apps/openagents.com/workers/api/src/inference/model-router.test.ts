@@ -13,8 +13,10 @@ import {
   selectAdapterPlan,
   selectPrimaryAdapterId,
   VERTEX_ANTHROPIC_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
 } from './model-router'
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
+import { KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -127,6 +129,13 @@ describe('model classification', () => {
       expect(classifyModel(model)).toBe('open')
       expect(selectPrimaryAdapterId(model)).toBe(FIREWORKS_ADAPTER_ID)
     }
+  })
+
+  test('routes the Khala mini virtual model to its priced backing lane', () => {
+    expect(classifyModel(KHALA_MINI_MODEL_ID)).toBe('gemini')
+    expect(selectAdapterPlan(KHALA_MINI_MODEL_ID)).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
   })
 
   test('routes unknown models to passthrough only', () => {
