@@ -199,7 +199,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(tree).not.toContain("verse-bottom-hud")
     expect(tree).not.toContain("chat-composer-verse")
     expect(tree).toContain("hotbar-slot")
-    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("hotbar-slot-filled")
     expect(tree).toContain("data-hotbar-icon")
     expect(tree).toContain("OpenaiLogoRegular")
     expect(tree).toContain("New Coder Session")

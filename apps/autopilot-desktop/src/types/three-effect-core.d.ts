@@ -262,10 +262,21 @@ export type TrainingRunMotionEvidence = Readonly<{
   sourceRefs?: readonly string[]
 }>
 
+export type TrainingRunBeamAppearance = Readonly<{
+  strandCount?: number
+  opacity?: number
+  jitter?: number
+  rate?: number
+  bend?: number
+  color?: number
+  secondaryColor?: number
+}>
+
 export type TrainingRunBeamDefinition = Readonly<
   TrainingRunMotionEvidence & {
     fromId: string
     style?: "crackling_arc" | "flow"
+    appearance?: TrainingRunBeamAppearance
     toId: string
   }
 >

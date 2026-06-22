@@ -23,11 +23,14 @@ import {
   withVerseSpawnedSceneLayer,
   verseSpawnedSceneEvidenceLines,
   verseSpawnableSceneById,
+  verseSpawnedSceneStationForAvatar,
   VERSE_SPAWNABLE_SCENES,
   VERSE_SPAWNED_SCENE_NODE_PREFIX,
   VERSE_SPAWNED_SCENE_SOURCE_REF,
+  VERSE_SPAWNED_SCENE_STATION_POSITION,
   DEFAULT_SPAWNABLE_SCENE_ID,
 } from "../src/shared/verse-spawned-scene"
+import { HOTBAR_SLOTS } from "../src/ui/nav"
 import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import { interpretKey } from "../src/ui/keyboard"
@@ -328,5 +331,131 @@ describe("verseSceneVisualization places the spawned scene in the SAME world + k
     const portal = (after.entities ?? []).find((e) => e.id === portalId)
     expect(portal).toBeDefined()
     expect((portal as { visualKind?: string } | undefined)?.visualKind).toBe("gateway_portal")
+  })
+})
+
+// #6033 fix 2: the arc must be VISIBLE. It carries dialed-up appearance knobs and
+// is dropped right in front of the avatar (not at a far fixed dark station).
+describe("the spawned crackling arc is dialed UP + placed in front of the avatar (#6033 visibility)", () => {
+  test("the crackling_arc beam carries bright/thick appearance knobs", () => {
+    const layer = verseSpawnedSceneLayer({ sceneId: CRACKLING })
+    const beam = layer.beams[0]!
+    const appearance = (beam as { appearance?: Record<string, number> }).appearance
+    expect(appearance).toBeDefined()
+    // Well above the renderer's faint default (4 strands / 0.11 jitter / 0.72).
+    expect(appearance!.strandCount).toBeGreaterThanOrEqual(8)
+    expect(appearance!.opacity).toBeGreaterThanOrEqual(0.9)
+    expect(appearance!.jitter).toBeGreaterThan(0.2)
+  })
+
+  test("the station is dropped in front of the avatar (not the far fixed anchor)", () => {
+    // Avatar at origin, yaw 0. In perspective_walk the ground plane is X/Y and
+    // HEIGHT is +Z, so "forward" is +Y and "up" is +Z. Station should land
+    // forward (+Y) and lifted (+Z), distinct from the fixed fallback anchor.
+    const station = verseSpawnedSceneStationForAvatar({ x: 0, y: 0, z: 0, yaw: 0 })
+    expect(station[1]).toBeGreaterThan(0) // forward along the ground (+Y)
+    expect(station[2]).toBeGreaterThan(0) // lifted to viewing height (+Z)
+    expect(station).not.toEqual(VERSE_SPAWNED_SCENE_STATION_POSITION)
+  })
+
+  test("no avatar pose ⇒ falls back to the fixed station anchor", () => {
+    expect(verseSpawnedSceneStationForAvatar(null)).toEqual(
+      VERSE_SPAWNED_SCENE_STATION_POSITION,
+    )
+  })
+
+  test("spawning with an avatar pose positions the arc endpoints near the avatar", () => {
+    const layer = verseSpawnedSceneLayer({
+      sceneId: CRACKLING,
+      avatar: { x: 5, y: 0, z: 5, yaw: 0 },
+    })
+    const from = layer.entities.find((e) => e.id === fromId)!
+    // The arc hangs near the avatar (x≈5±2, z in front of z=5), not at the
+    // origin-relative far station — the endpoints track the avatar.
+    expect(Math.abs((from.position?.[0] ?? 0) - 5)).toBeLessThan(2.5)
+  })
+})
+
+// #6033 fix 3: hotbar slots 2 (spawn scene) and 3 (toggle portal).
+describe("hotbar slots 2 & 3 are wired to spawn / portal (#6033)", () => {
+  const exploreModel = Model.make({
+    ...initialModel,
+    pane: "chat",
+    verseEnabled: true,
+    verseMode: "explore",
+  })
+
+  test("digit key 2 (action_bar.slot_2) resolves to spawn-verse-scene", () => {
+    const intent = interpretKey(exploreModel, {
+      key: "2",
+      code: "Digit2",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    })
+    expect(intent.kind).toBe("spawn-verse-scene")
+    if (intent.kind === "spawn-verse-scene") expect(intent.sceneId).toBe(CRACKLING)
+  })
+
+  test("digit key 3 (action_bar.slot_3) resolves to toggle-verse-scene-portal", () => {
+    const intent = interpretKey(exploreModel, {
+      key: "3",
+      code: "Digit3",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    })
+    expect(intent.kind).toBe("toggle-verse-scene-portal")
+  })
+
+  test("digit key 1 still opens a coder session (slot 1 unchanged)", () => {
+    const intent = interpretKey(exploreModel, {
+      key: "1",
+      code: "Digit1",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    })
+    expect(intent.kind).toBe("open-coder-session")
+  })
+
+  test("the digit-2 full path spawns the scene into the world viz", () => {
+    expect(
+      keyboardForwardDecision({
+        key: "2",
+        code: "Digit2",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: false,
+      }).forward,
+    ).toBe(true)
+    const [next] = update(
+      exploreModel,
+      PressedKey({
+        key: "2",
+        code: "Digit2",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: false,
+      }),
+    )
+    expect(next.verseSpawnedScenes.map((s) => s.sceneId)).toEqual([CRACKLING])
+  })
+
+  test("the hotbar exposes slots 2 (scene) and 3 (portal) as filled, icon-bearing slots", () => {
+    const slot2 = HOTBAR_SLOTS.find((s) => s.number === 2)!
+    const slot3 = HOTBAR_SLOTS.find((s) => s.number === 3)!
+    expect(slot2.filled).toBe(true)
+    expect(slot2.iconName).toBeDefined()
+    expect(slot3.filled).toBe(true)
+    expect(slot3.iconName).toBeDefined()
+    // Slot 1 (coder) stays filled; slots 4..10 stay empty.
+    expect(HOTBAR_SLOTS.find((s) => s.number === 1)!.filled).toBe(true)
+    expect(HOTBAR_SLOTS.find((s) => s.number === 4)!.filled).toBeUndefined()
   })
 })

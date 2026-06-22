@@ -23,7 +23,7 @@
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/proof-replay": "workspace:*",
         "@openagentsinc/public-activity-timeline": "workspace:*",
-        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#b3bdc2a",
+        "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#0d81497",
         "@openagentsinc/ui": "workspace:*",
         "@openagentsinc/world-client": "workspace:*",
         "@openagentsinc/world-contract": "workspace:*",
@@ -1128,7 +1128,7 @@
 
     "@openagentsinc/tassadar-executor": ["@openagentsinc/tassadar-executor@workspace:packages/tassadar-executor"],
 
-    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#b3bdc2a", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-b3bdc2a", "sha512-sLZCufHArFjKN0rXBOSUJ6zmGmFK+DV/sk8gty3bE1VKhLFjEoaKivGXGftC/RoRqXw9yd9Bq14Nnt8t0R2R6Q=="],
+    "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#0d81497", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-0d81497", "sha512-/uZckjSCMfuLZOcKROJBodtOBNp99LNMWIp47pBLWf/5VyXbsitbGiyej1tTJTByCi+7Q64B+sTMz28o2ltSzg=="],
 
     "@openagentsinc/ui": ["@openagentsinc/ui@workspace:packages/ui"],
 
@@ -2871,6 +2871,8 @@
     "@moneydevkit/core/@moneydevkit/api-contract": ["@moneydevkit/api-contract@0.1.35", "", { "dependencies": { "@orpc/contract": "1.3.0", "zod": "^3.25.76" } }, "sha512-Xq0GnkdQfpmOugbZbmMyTkTTIOX7nLIr9aDfjji8ADqYZA8/Xs0/K4+TsqVYl5tpdlIArV29LDxQOMr3sBc3iw=="],
 
     "@moneydevkit/core/@orpc/client": ["@orpc/client@1.13.6", "", { "dependencies": { "@orpc/shared": "1.13.6", "@orpc/standard-server": "1.13.6", "@orpc/standard-server-fetch": "1.13.6", "@orpc/standard-server-peer": "1.13.6" } }, "sha512-M6lYM6fJUFp9GR+It/qglYTeXwspb6sGj46xXWHqHS6iDVquqju0bdYuLOfHx8CGJcUSzi0aKUcqMXiGJhBG3w=="],
+
+    "@openagentsinc/autopilot-web/@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#b3bdc2a", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-b3bdc2a", "sha512-sLZCufHArFjKN0rXBOSUJ6zmGmFK+DV/sk8gty3bE1VKhLFjEoaKivGXGftC/RoRqXw9yd9Bq14Nnt8t0R2R6Q=="],
 
     "@openagentsinc/nostr-relay/nostr-effect": ["nostr-effect@0.0.12", "", { "dependencies": { "@effect/platform": "0.93.5", "@effect/schema": "0.75.5", "@noble/ciphers": "1.2.1", "@noble/curves": "1.8.1", "@noble/hashes": "1.7.1", "@scure/base": "1.2.4", "@scure/bip32": "1.6.2", "@scure/bip39": "1.5.4", "effect": "3.19.8", "pako": "2.1.0" } }, "sha512-mrBi/thtI+NvDsZJsPKexkzsqlfnzM4L26klgrwTAyzwoDx486emeQkVFMkB3iuc3sSiwNPoFrVNCxUlV30oMw=="],
 

@@ -1293,15 +1293,31 @@ body {
 .hotbar-slot-button:focus-visible .hotbar-slot-tooltip {
   opacity: 1;
 }
-.hotbar-slot-coder {
+/* Filled slots (1 coder / 2 spawn scene / 3 toggle portal) read as active,
+   highlighted, icon-bearing buttons. Slots 2/3 get a cyan "energy" accent so the
+   Verse-effect slots are visually distinct from the coder-session slot. */
+.hotbar-slot-filled {
   color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
   background: color-mix(in srgb, var(--hud-primary) 14%, transparent);
   box-shadow: 0 0 10px color-mix(in srgb, var(--hud-primary) 35%, transparent);
 }
-.hotbar-slot-coder:hover,
-.hotbar-slot-coder:focus-visible {
+.hotbar-slot-filled:hover,
+.hotbar-slot-filled:focus-visible {
   border-color: color-mix(in srgb, var(--hud-primary) 85%, transparent);
+}
+.hotbar-slot-2,
+.hotbar-slot-3 {
+  color: rgb(147 197 253);
+  border-color: rgb(147 197 253 / 0.7);
+  background: rgb(147 197 253 / 0.12);
+  box-shadow: 0 0 10px rgb(147 197 253 / 0.32);
+}
+.hotbar-slot-2:hover,
+.hotbar-slot-2:focus-visible,
+.hotbar-slot-3:hover,
+.hotbar-slot-3:focus-visible {
+  border-color: rgb(147 197 253 / 0.92);
 }
 /* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card
    (the game-HUD status layer) rendered by the three-effect H2 kit. Sits clear of
@@ -2107,22 +2123,17 @@ body {
 /* Dev affordance (#6033): the spawned isolated-scene evidence overlay — mirrors
    the standalone crackling-arc page's evidence block, anchored top-right so it
    does not collide with the bulletin board on the left. */
+/* #6033: the spawned scene no longer pops a big intrusive evidence pane. All
+   that remains is a single tiny, quiet chip naming the active effect, anchored
+   bottom-left out of the way (it does not box the world). */
 .verse-spawned-scene {
   position: absolute;
-  right: clamp(0.8rem, 2vw, 1.25rem);
-  top: clamp(4.8rem, 13vh, 6.25rem);
+  left: clamp(0.8rem, 2vw, 1.25rem);
+  bottom: clamp(0.8rem, 2vh, 1.25rem);
   z-index: 4;
-  display: grid;
-  gap: 0.5rem;
-  width: min(22rem, calc(100% - 1.6rem));
-  padding: 0.75rem 0.85rem;
-  border: 1px solid rgb(147 197 253 / 0.28);
-  border-radius: 4px;
-  background: rgb(3 8 10 / 0.76);
-  box-shadow:
-    0 18px 54px rgb(0 0 0 / 0.32),
-    inset 0 0 0 1px rgb(255 255 255 / 0.04);
-  color: rgb(244 247 251 / 0.86);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   pointer-events: none;
   user-select: none;
 }
@@ -2131,12 +2142,15 @@ body {
   display: none;
 }
 
-.verse-spawned-scene-evidence {
-  margin: 0;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  white-space: pre;
-  color: rgb(147 197 253 / 0.92);
+.verse-spawned-scene-tag {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  border: 1px solid rgb(147 197 253 / 0.22);
+  border-radius: 999px;
+  background: rgb(3 8 10 / 0.5);
+  color: rgb(147 197 253 / 0.82);
 }
 
 .verse-bulletin-title {

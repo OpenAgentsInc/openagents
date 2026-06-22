@@ -172,8 +172,26 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
 
   if (isModified(event)) return { kind: "none" }
 
-  if (actionIdsForKey(model, event).includes("action_bar.slot_1")) {
-    return { kind: "open-coder-session" }
+  // ── Hotbar action slots (verse_explore) ──────────────────────────────────
+  // Slot 1 (key 1) opens a fresh coder session; slot 2 (key 2) spawns the
+  // isolated crackling-energy Verse scene; slot 3 (key 3) toggles that scene's
+  // gateway portal. Slots 2/3 mirror the ⌘⇧E / ⌘⇧P chords so the hotbar is just
+  // a second way to fire the SAME spawn/portal intents — pressing them must NOT
+  // pop the (now removed) evidence pane.
+  {
+    const slotActionIds = actionIdsForKey(model, event)
+    if (slotActionIds.includes("action_bar.slot_1")) {
+      return { kind: "open-coder-session" }
+    }
+    if (slotActionIds.includes("action_bar.slot_2")) {
+      return { kind: "spawn-verse-scene", sceneId: DEFAULT_SPAWNABLE_SCENE_ID }
+    }
+    if (slotActionIds.includes("action_bar.slot_3")) {
+      return {
+        kind: "toggle-verse-scene-portal",
+        sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
+      }
+    }
   }
 
   // ── j / k move between sub-panes of the current group ─────────────────────
