@@ -14,6 +14,7 @@ Current Phase 0 scope:
 - shared contract package metadata;
 - schema decode helpers;
 - authority taxonomy and grant filtering;
+- transport config and lifecycle schemas;
 - package status metadata for docs and compatibility checks.
 
 ## Authority And Grants
@@ -29,6 +30,23 @@ returning list results. Ungranted capabilities must be absent from
 `tools/list`, `resources/list`, and prompt projections rather than visible as
 disabled entries. High-risk classes are absent by default and require explicit
 grants before they can appear.
+
+## Transport And Lifecycle
+
+The contract models planned client/server transport kinds without starting
+them: `stdio`, `loopback_http`, `streamable_http`, `sse`, `websocket`,
+`ide_local`, `in_process`, and `bridge_proxy`.
+
+MCP server config records also carry source metadata for local private config,
+shared project config, user config, managed config, dynamic discovery, plugins,
+IDE-provided config, and Desktop-discovered servers. Lifecycle status is
+explicitly tagged, including `pending_approval`, `needs_auth`, `rejected`,
+`revoked`, and `blocked_by_policy`, so clients can explain state without
+retrying noisy failures.
+
+Credential values are not part of transport config. Private config may carry
+local credential refs, but public/debug projections omit those refs and expose
+only the transport kind plus non-secret metadata.
 
 The package expands across the remaining Phase 0 issues to include authority,
 transport, lifecycle, descriptor, receipt, error, progress, elicitation, naming,

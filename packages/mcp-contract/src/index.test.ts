@@ -3,11 +3,17 @@ import { describe, expect, test } from "bun:test"
 import {
   decodeOpenAgentsMcpContractStatus,
   decodeOpenAgentsMcpGrant,
+  decodeOpenAgentsMcpServerConfig,
+  decodeOpenAgentsMcpTransportConfig,
   filterOpenAgentsMcpDescriptorsByGrantSet,
   isOpenAgentsMcpHighRiskAuthority,
   openAgentsMcpAuthorityClasses,
+  openAgentsMcpConfigSources,
   openAgentsMcpContractStatus,
   openAgentsMcpHighRiskAuthorityClasses,
+  openAgentsMcpLifecycleStatuses,
+  openAgentsMcpTransportKinds,
+  projectOpenAgentsMcpServerConfigPublic,
   type OpenAgentsMcpGrant,
 } from "./index.js"
 
@@ -98,5 +104,138 @@ describe("@openagentsinc/mcp-contract", () => {
 
     expect(filterOpenAgentsMcpDescriptorsByGrantSet(descriptors, grants).map((d) => d.name))
       .toEqual(["pylon.wallet.status"])
+  })
+
+  test("decodes every planned transport kind", () => {
+    const configs = [
+      {
+        kind: "stdio",
+        label: "Local Pylon stdio",
+        commandRef: "command.pylon.local",
+        argumentRefs: ["arg.safe.pylon"],
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "loopback_http",
+        label: "Local loopback",
+        origin: "http://127.0.0.1:3939",
+        streamPath: "/mcp",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "streamable_http",
+        label: "Remote streamable HTTP",
+        origin: "https://openagents.com",
+        endpointPath: "/api/mcp",
+        authRef: "credential.ref",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "sse",
+        label: "Remote SSE",
+        origin: "https://openagents.com",
+        eventsPath: "/api/mcp/events",
+        messagesPath: "/api/mcp/messages",
+        authRef: "credential.ref",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "websocket",
+        label: "Bridge WebSocket",
+        url: "wss://openagents.com/mcp/ws",
+        protocolRef: "openagents.mcp.websocket.v1",
+        authRef: "credential.ref",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "ide_local",
+        label: "IDE local MCP",
+        ideRef: "ide.cursor.local",
+        serverRef: "mcp.server.ide.cursor",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "in_process",
+        label: "Desktop in-process",
+        runtimeRef: "runtime.autopilot.desktop",
+        serviceRef: "service.mcp.desktop",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+      {
+        kind: "bridge_proxy",
+        label: "Pylon bridge proxy",
+        bridgeRef: "bridge.pylon.local",
+        targetRef: "pylon.local.node",
+        authRef: "credential.ref",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+    ]
+
+    expect(configs.map((config) => decodeOpenAgentsMcpTransportConfig(config).kind))
+      .toEqual([...openAgentsMcpTransportKinds])
+  })
+
+  test("tracks every config source and lifecycle status", () => {
+    expect(openAgentsMcpConfigSources).toEqual([
+      "local_private",
+      "shared_project",
+      "user",
+      "managed",
+      "dynamic",
+      "plugin",
+      "ide",
+      "desktop_discovered",
+    ])
+    expect(openAgentsMcpLifecycleStatuses).toEqual([
+      "discovered",
+      "pending_approval",
+      "enabled",
+      "connecting",
+      "connected",
+      "needs_auth",
+      "disabled",
+      "rejected",
+      "failed",
+      "revoked",
+      "blocked_by_policy",
+    ])
+  })
+
+  test("projects transport config without secret refs for public/debug views", () => {
+    const config = decodeOpenAgentsMcpServerConfig({
+      serverRef: "mcp.server.private.codex",
+      displayName: "Private Codex tools",
+      source: "local_private",
+      lifecycleStatus: "needs_auth",
+      requestedAuthorities: ["workspace_read", "coding_session_control"],
+      secretRefs: [
+        "credential.local.oauth_token.codex",
+        "credential.local.bearer_token.codex",
+      ],
+      sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      transport: {
+        kind: "streamable_http",
+        label: "Private Codex stream",
+        origin: "https://example.invalid",
+        endpointPath: "/mcp",
+        authRef: "credential.local.oauth_token.codex",
+        sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+      },
+    })
+
+    const projection = projectOpenAgentsMcpServerConfigPublic(config)
+    expect(projection).toEqual({
+      serverRef: "mcp.server.private.codex",
+      displayName: "Private Codex tools",
+      source: "local_private",
+      lifecycleStatus: "needs_auth",
+      transportKind: "streamable_http",
+      requestedAuthorities: ["workspace_read", "coding_session_control"],
+      sourceRefs: ["github:OpenAgentsInc/openagents#5937"],
+    })
+    expect(JSON.stringify(projection)).not.toContain("oauth_token")
+    expect(JSON.stringify(projection)).not.toContain("bearer_token")
+    expect(JSON.stringify(projection)).not.toContain("secretRefs")
+    expect(JSON.stringify(projection)).not.toContain("authRef")
   })
 })

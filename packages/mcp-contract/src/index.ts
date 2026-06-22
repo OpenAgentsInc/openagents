@@ -125,3 +125,184 @@ export const filterOpenAgentsMcpDescriptorsByGrantSet = <
     openAgentsMcpDescriptorIsGranted(descriptor, grantedAuthorities),
   )
 }
+
+export const OpenAgentsMcpTransportKind = S.Literals([
+  "stdio",
+  "loopback_http",
+  "streamable_http",
+  "sse",
+  "websocket",
+  "ide_local",
+  "in_process",
+  "bridge_proxy",
+])
+export type OpenAgentsMcpTransportKind = typeof OpenAgentsMcpTransportKind.Type
+
+export const openAgentsMcpTransportKinds: ReadonlyArray<OpenAgentsMcpTransportKind> = [
+  "stdio",
+  "loopback_http",
+  "streamable_http",
+  "sse",
+  "websocket",
+  "ide_local",
+  "in_process",
+  "bridge_proxy",
+]
+
+export const OpenAgentsMcpConfigSource = S.Literals([
+  "local_private",
+  "shared_project",
+  "user",
+  "managed",
+  "dynamic",
+  "plugin",
+  "ide",
+  "desktop_discovered",
+])
+export type OpenAgentsMcpConfigSource = typeof OpenAgentsMcpConfigSource.Type
+
+export const openAgentsMcpConfigSources: ReadonlyArray<OpenAgentsMcpConfigSource> = [
+  "local_private",
+  "shared_project",
+  "user",
+  "managed",
+  "dynamic",
+  "plugin",
+  "ide",
+  "desktop_discovered",
+]
+
+export const OpenAgentsMcpLifecycleStatus = S.Literals([
+  "discovered",
+  "pending_approval",
+  "enabled",
+  "connecting",
+  "connected",
+  "needs_auth",
+  "disabled",
+  "rejected",
+  "failed",
+  "revoked",
+  "blocked_by_policy",
+])
+export type OpenAgentsMcpLifecycleStatus = typeof OpenAgentsMcpLifecycleStatus.Type
+
+export const openAgentsMcpLifecycleStatuses: ReadonlyArray<OpenAgentsMcpLifecycleStatus> = [
+  "discovered",
+  "pending_approval",
+  "enabled",
+  "connecting",
+  "connected",
+  "needs_auth",
+  "disabled",
+  "rejected",
+  "failed",
+  "revoked",
+  "blocked_by_policy",
+]
+
+const OpenAgentsMcpBaseTransportConfig = {
+  label: S.String,
+  sourceRefs: S.Array(S.String),
+}
+
+export const OpenAgentsMcpTransportConfig = S.Union([
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("stdio"),
+    commandRef: S.String,
+    argumentRefs: S.Array(S.String),
+    environmentRef: S.optional(S.String),
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("loopback_http"),
+    origin: S.String,
+    streamPath: S.String,
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("streamable_http"),
+    origin: S.String,
+    endpointPath: S.String,
+    authRef: S.optional(S.String),
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("sse"),
+    origin: S.String,
+    eventsPath: S.String,
+    messagesPath: S.optional(S.String),
+    authRef: S.optional(S.String),
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("websocket"),
+    url: S.String,
+    protocolRef: S.optional(S.String),
+    authRef: S.optional(S.String),
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("ide_local"),
+    ideRef: S.String,
+    serverRef: S.String,
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("in_process"),
+    runtimeRef: S.String,
+    serviceRef: S.String,
+  }),
+  S.Struct({
+    ...OpenAgentsMcpBaseTransportConfig,
+    kind: S.Literal("bridge_proxy"),
+    bridgeRef: S.String,
+    targetRef: S.String,
+    authRef: S.optional(S.String),
+  }),
+])
+export type OpenAgentsMcpTransportConfig = typeof OpenAgentsMcpTransportConfig.Type
+
+export const OpenAgentsMcpServerConfig = S.Struct({
+  serverRef: S.String,
+  displayName: S.String,
+  source: OpenAgentsMcpConfigSource,
+  lifecycleStatus: OpenAgentsMcpLifecycleStatus,
+  transport: OpenAgentsMcpTransportConfig,
+  requestedAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  secretRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpServerConfig = typeof OpenAgentsMcpServerConfig.Type
+
+export const OpenAgentsMcpServerConfigPublicProjection = S.Struct({
+  serverRef: S.String,
+  displayName: S.String,
+  source: OpenAgentsMcpConfigSource,
+  lifecycleStatus: OpenAgentsMcpLifecycleStatus,
+  transportKind: OpenAgentsMcpTransportKind,
+  requestedAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpServerConfigPublicProjection =
+  typeof OpenAgentsMcpServerConfigPublicProjection.Type
+
+export const decodeOpenAgentsMcpTransportConfig = S.decodeUnknownSync(
+  OpenAgentsMcpTransportConfig,
+)
+export const decodeOpenAgentsMcpServerConfig = S.decodeUnknownSync(
+  OpenAgentsMcpServerConfig,
+)
+
+export const projectOpenAgentsMcpServerConfigPublic = (
+  config: OpenAgentsMcpServerConfig,
+): OpenAgentsMcpServerConfigPublicProjection => ({
+  serverRef: config.serverRef,
+  displayName: config.displayName,
+  source: config.source,
+  lifecycleStatus: config.lifecycleStatus,
+  transportKind: config.transport.kind,
+  requestedAuthorities: [...config.requestedAuthorities],
+  sourceRefs: [...config.sourceRefs],
+})
