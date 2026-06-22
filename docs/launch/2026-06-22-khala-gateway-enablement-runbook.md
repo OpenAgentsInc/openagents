@@ -1,4 +1,17 @@
-# Khala Gateway Enablement — One-Shot Runbook (NEEDS-OWNER: write creds)
+# Khala Gateway Enablement — One-Shot Runbook
+
+> **STATUS 2026-06-22: STAGING ENABLED + SERVING LIVE.** Owner refreshed wrangler
+> to a Workers-write OAuth token; provider secrets (`FIREWORKS_API_KEY`,
+> `VERTEX_SA_KEY`) set on `openagents-staging`, D1 migrated, Worker deployed
+> (`INFERENCE_GATEWAY_ENABLED="true"`, version `c3ce41bc…`). `GET /v1/models`
+> lists `khala-mini` + `khala-code`; a `gemini-3.5-flash` completion returns
+> **HTTP 200** with real usage — the gateway genuinely serves. **Remaining:** a
+> paid `khala-code`/`khala-mini` completion `402`s on a fresh agent
+> (`insufficient_credits`) — it needs a **funded balance** (Bitcoin/Spark, the M3
+> step + the guinea-pig payout lever), not a gateway change. **Prod** is still on
+> a pre-#6018 build; redeploy with the same recipe (prod already has the provider
+> secrets + a valid agent token). The original NEEDS-OWNER write-creds blocker
+> below is **resolved**.
 
 *2026-06-22. The exact steps to take Khala from "merged but not live" to a real
 metered completion + receipt, and the first Bitcoin/Spark payout to the
