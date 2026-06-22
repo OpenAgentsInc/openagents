@@ -355,6 +355,13 @@ export const rowsFromPublicActivityTimelineEvent = (
       sourceRefs,
       workers: [
         {
+          workerRef: gatewayRef,
+          workerKind: "gateway",
+          label: gatewayProviderLabel(lane),
+          role: "gateway",
+          sourceRefs,
+        },
+        {
           workerRef: `worker.${requestRef}`,
           workerKind: "coding_agent",
           label: "Khala request",

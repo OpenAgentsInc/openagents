@@ -175,8 +175,12 @@ describe("world bridge projection helpers", () => {
     })
     expect(event.inference?.costMsat).toBeUndefined()
     expect(event.inference?.workers.map(worker => worker.workerKind)).toEqual([
+      "gateway",
       "coding_agent",
     ])
+    expect(String(event.inference?.workers[0]?.workerRef)).toBe(
+      gateway?.kind === "gateway_station" ? String(gateway.gatewayRef) : "undefined",
+    )
   })
 
   test("builds bounded public activity timeline poll URLs with cursor replay", () => {
