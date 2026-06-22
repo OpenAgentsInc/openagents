@@ -12,6 +12,7 @@ import {
   InferenceAdapterError,
   type InferenceRequest,
 } from './provider-adapter'
+import { KHALA_CODE_MODEL_ID } from './pricing'
 
 // --- test plumbing -------------------------------------------------------
 
@@ -174,6 +175,16 @@ describe('fireworks adapter request mapping', () => {
 
     const body = JSON.parse(calls[0]?.init.body ?? '{}')
     expect(body.model).toBe('accounts/fireworks/models/glm-5p2')
+  })
+
+  test('maps the Khala code virtual model to its Fireworks backing model', async () => {
+    const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(adapter.complete(request({ model: KHALA_CODE_MODEL_ID })))
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.model).toBe('accounts/fireworks/models/kimi-k2p7-code')
   })
 
   test('respects a custom base URL', async () => {

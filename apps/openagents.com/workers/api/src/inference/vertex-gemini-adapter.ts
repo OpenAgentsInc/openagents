@@ -57,6 +57,7 @@ import {
   type InferenceStreamChunk,
   type InferenceUsage,
 } from './provider-adapter'
+import { KHALA_MINI_MODEL_ID } from './pricing'
 import { type VertexFetch, type VertexTokenProvider } from './vertex-anthropic-adapter'
 
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
@@ -103,10 +104,12 @@ export const KNOWN_VERTEX_GEMINI_MODEL_IDS: ReadonlyArray<string> = [
 ]
 
 const defaultResolveModelId = (requestedModel: string): string => {
+  const requested = requestedModel.trim()
+  if (requested.toLowerCase() === KHALA_MINI_MODEL_ID) {
+    return DEFAULT_GEMINI_MODEL_ID
+  }
   // Strip a leading provider hint (`vertex/`, `google/`, `gemini/`) if present.
-  const stripped = requestedModel
-    .trim()
-    .replace(/^(?:vertex|google|gemini)\//u, '')
+  const stripped = requested.replace(/^(?:vertex|google|gemini)\//u, '')
   // A bare `gemini` alias maps to the default Flash model; an empty id likewise.
   if (stripped === '' || stripped.toLowerCase() === 'gemini') {
     return DEFAULT_GEMINI_MODEL_ID

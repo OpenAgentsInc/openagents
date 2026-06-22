@@ -32,6 +32,7 @@ import {
   type InferenceStreamChunk,
   type InferenceUsage,
 } from './provider-adapter'
+import { KHALA_CODE_MODEL_ID } from './pricing'
 
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 
@@ -43,9 +44,15 @@ export const FIREWORKS_DEFAULT_BASE_URL =
 // Routing (#5482) owns the real alias table; we only normalize the wire id so a
 // bare open-model alias (e.g. "deepseek-v4-pro") reaches the provider.
 const FIREWORKS_MODEL_PREFIX = 'accounts/fireworks/models/'
+const KHALA_CODE_BACKING_MODEL_ID = `${FIREWORKS_MODEL_PREFIX}kimi-k2p7-code`
 
-const toFireworksModelId = (model: string): string =>
-  model.includes('/') ? model : `${FIREWORKS_MODEL_PREFIX}${model}`
+const toFireworksModelId = (model: string): string => {
+  const id = model.trim()
+  if (id.toLowerCase() === KHALA_CODE_MODEL_ID) {
+    return KHALA_CODE_BACKING_MODEL_ID
+  }
+  return id.includes('/') ? id : `${FIREWORKS_MODEL_PREFIX}${id}`
+}
 
 // The platform HTTP response shape. Aliased so the adapter does not add raw
 // Response-returning surface annotations to the Worker domain layer (HTTP
