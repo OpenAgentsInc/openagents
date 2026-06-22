@@ -382,7 +382,7 @@ describe("subscribeSpacetimeWorld", () => {
       },
     })
 
-    expect(tokenRead).toBe("openagents.world.spacetimedb.token.v1")
+    expect(tokenRead).toBe("openagents.world.cloudflare.session.v1")
     expect(tokenWritten).toBe("fresh-token")
     expect(capturedQueries).toContain(
       `SELECT * FROM world_region WHERE region_ref = '${regionRef}'`,
@@ -657,7 +657,7 @@ describe("subscribeSpacetimeWorld", () => {
       ok: false,
       reason: "multiplayer client unavailable",
     })
-    expect(removed).toBe("openagents.world.spacetimedb.token.v1")
+    expect(removed).toBe("openagents.world.cloudflare.session.v1")
     expect(scheduled).toBe(false)
   })
 

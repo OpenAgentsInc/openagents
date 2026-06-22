@@ -1,5 +1,5 @@
 export const OPENAGENTS_WORLD_DATABASE = "openagents-world"
-export const OPENAGENTS_WORLD_URL = "https://spacetime.openagents.com"
+export const OPENAGENTS_WORLD_URL = "https://world.openagents.com"
 export const DEFAULT_TASSADAR_WORLD_RUN_REF = "run.tassadar.executor.20260615"
 export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timeline"
 // BF-3 (#5906): the forum->Verse bridge (#5905) writes world_events under this

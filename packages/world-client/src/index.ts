@@ -2,6 +2,9 @@ import { Data, Effect } from "effect"
 
 import {
   WORLD_READ_MODEL_SCHEMA_VERSION,
+  WORLD_CONTRACT_SCHEMA_VERSION,
+  decodeWorldDelta,
+  decodeWorldSubscriptionPlan,
   decodeWorldCommandReceipt,
   decodeWorldReadModel,
   sparseWorldPatchChangesOnly,
@@ -27,6 +30,7 @@ export class WorldClientError extends Data.TaggedError("WorldClientError")<{
 }> {}
 
 export type WorldClientConnectRequest = Readonly<{
+  characterId?: string
   regionRef?: string
   scope?: WorldSubscriptionPlan["scope"]
   runRef?: string
@@ -71,6 +75,51 @@ export type WorldClientTransport = Readonly<{
   disconnect: () => Effect.Effect<void, WorldClientError>
 }>
 
+export type WorldTransportFrame =
+  | Readonly<{
+      frameKind: "snapshot"
+      delta: WorldDelta
+      readModel: WorldReadModel
+    }>
+  | Readonly<{
+      frameKind: "delta"
+      delta: WorldDelta
+    }>
+  | Readonly<{
+      frameKind: "diagnostic"
+      delta: WorldDelta
+      diagnostic: WorldDiagnostic
+    }>
+
+type BrowserWebSocketLike = Readonly<{
+  readonly readyState: number
+  send: (data: string) => void
+  close: () => void
+  addEventListener: (type: string, listener: (event: unknown) => void, options?: unknown) => void
+  removeEventListener: (type: string, listener: (event: unknown) => void) => void
+}>
+
+type BrowserWebSocketCtor = new (url: string) => BrowserWebSocketLike
+
+export type BrowserWorldTransportInput = Readonly<{
+  worldUrl: string
+  actorRef: string
+  actorClass?: "browser" | "agent" | "operator"
+  fetchFn?: typeof fetch
+  webSocketCtor?: BrowserWebSocketCtor
+  onDelta?: (delta: WorldDelta, frame: WorldTransportFrame) => void
+  onDiagnostic?: (diagnostic: WorldDiagnostic, frame: WorldTransportFrame) => void
+}>
+
+export const runWorldClientEffect = <A, E>(
+  effect: Effect.Effect<A, E>,
+): Promise<A> => Effect.runPromise(effect)
+
+export const worldClientNowIso = (): string => new Date().toISOString()
+
+export const makeWorldClientActorRef = (prefix = "world.client"): string =>
+  `${prefix}.${crypto.randomUUID()}`
+
 export type WorldClient = Readonly<{
   connect: (request?: WorldClientConnectRequest) => Effect.Effect<WorldClientState, WorldClientError>
   subscribe: (request?: WorldClientConnectRequest) => Effect.Effect<WorldSubscriptionPlan, WorldClientError>
@@ -82,6 +131,236 @@ export type WorldClient = Readonly<{
   readModel: () => Effect.Effect<ClientWorld>
   state: () => Effect.Effect<WorldClientState>
 }>
+
+const WEBSOCKET_OPEN = 1
+
+const socketUrlWithSession = (
+  socketUrl: string,
+  session: Readonly<{
+    actorRef: string
+    actorClass: "browser" | "agent" | "operator"
+    characterId?: string
+    cursor?: string
+  }>,
+): string => {
+  const url = new URL(socketUrl)
+  url.searchParams.set("actorRef", session.actorRef)
+  url.searchParams.set("actorClass", session.actorClass)
+  if (session.characterId !== undefined) url.searchParams.set("characterId", session.characterId)
+  if (session.cursor !== undefined) url.searchParams.set("cursor", session.cursor)
+  return url.toString()
+}
+
+export const decodeWorldTransportFrame = (input: unknown): WorldTransportFrame => {
+  if (typeof input !== "object" || input === null) {
+    throw new WorldClientError({
+      phase: "delta",
+      reason: "World transport frame must be an object.",
+      retryable: true,
+      sourceRefs: ["world-client.transport.frame"],
+    })
+  }
+  const frame = input as Record<string, unknown>
+  const delta = decodeWorldDelta(frame.delta)
+  if (frame.frameKind === "snapshot") {
+    return {
+      frameKind: "snapshot",
+      delta,
+      readModel: decodeWorldReadModel(frame.readModel),
+    }
+  }
+  if (frame.frameKind === "delta") {
+    return { frameKind: "delta", delta }
+  }
+  if (frame.frameKind === "diagnostic" && delta.diagnostic !== undefined) {
+    return {
+      frameKind: "diagnostic",
+      delta,
+      diagnostic: delta.diagnostic,
+    }
+  }
+  throw new WorldClientError({
+    phase: "delta",
+    reason: "World transport frame kind is not supported.",
+    retryable: true,
+    sourceRefs: ["world-client.transport.frame"],
+  })
+}
+
+export const createBrowserWorldTransport = (
+  input: BrowserWorldTransportInput,
+): WorldClientTransport => {
+  const baseUrl = input.worldUrl.replace(/\/+$/, "")
+  const fetchFn = input.fetchFn ?? fetch
+  const WebSocketCtor = input.webSocketCtor ??
+    (globalThis as unknown as { WebSocket?: BrowserWebSocketCtor }).WebSocket
+  let socket: BrowserWebSocketLike | null = null
+  const pendingCommands = new Map<
+    string,
+    {
+      resolve: (delta: WorldDelta) => void
+      reject: (error: WorldClientError) => void
+    }
+  >()
+
+  const applyFrame = (frame: WorldTransportFrame): void => {
+    input.onDelta?.(frame.delta, frame)
+    if (frame.frameKind === "diagnostic") input.onDiagnostic?.(frame.diagnostic, frame)
+    const commandRef = frame.delta.receipt?.commandRef
+    if (commandRef !== undefined) {
+      pendingCommands.get(commandRef)?.resolve(frame.delta)
+      pendingCommands.delete(commandRef)
+    }
+  }
+
+  const connectSocket = (
+    socketUrl: string,
+  ): Effect.Effect<void, WorldClientError> =>
+    Effect.tryPromise({
+      try: () =>
+        new Promise<void>((resolve, reject) => {
+          if (WebSocketCtor === undefined) {
+            reject(new Error("WebSocket is not available in this runtime."))
+            return
+          }
+          const next = new WebSocketCtor(socketUrl)
+          socket = next
+          const cleanup = (): void => {
+            next.removeEventListener("open", onOpen)
+            next.removeEventListener("message", onMessage)
+            next.removeEventListener("error", onError)
+          }
+          const onOpen = (): void => {
+            cleanup()
+            next.addEventListener("message", onMessage)
+            next.send(JSON.stringify({ frameKind: "hydrate" }))
+            resolve()
+          }
+          const onError = (): void => {
+            cleanup()
+            reject(new Error("World WebSocket connection failed."))
+          }
+          const onMessage = (event: unknown): void => {
+            const data = (event as { data?: unknown }).data
+            if (typeof data !== "string") return
+            try {
+              applyFrame(decodeWorldTransportFrame(JSON.parse(data)))
+            } catch {
+              // Bad frames are ignored locally; the Worker emits typed diagnostics
+              // for command/schema failures that pass the transport boundary.
+            }
+          }
+          next.addEventListener("open", onOpen, { once: true })
+          next.addEventListener("error", onError, { once: true })
+        }),
+      catch: error => new WorldClientError({
+        phase: "connect",
+        reason: error instanceof Error ? error.message : "World socket connection failed.",
+        retryable: true,
+        sourceRefs: ["world-client.browser.socket"],
+      }),
+    })
+
+  const connect = (
+    request: WorldClientConnectRequest = {},
+  ): Effect.Effect<WorldClientConnectResult, WorldClientError> =>
+    Effect.gen(function* () {
+      const url = new URL(`${baseUrl}/connect`)
+      if (request.characterId !== undefined) url.searchParams.set("characterId", request.characterId)
+      if (request.regionRef !== undefined) url.searchParams.set("region", request.regionRef)
+      if (request.runRef !== undefined) url.searchParams.set("runRef", request.runRef)
+      if (request.scope !== undefined) url.searchParams.set("scope", request.scope)
+      if (request.selectedEntityRef !== undefined) {
+        url.searchParams.set("selectedEntityRef", request.selectedEntityRef)
+      }
+      if (request.resumeCursor !== undefined) url.searchParams.set("cursor", request.resumeCursor)
+      for (const selectedRef of request.selectedRefs ?? []) {
+        url.searchParams.append("selectedRef", selectedRef)
+      }
+
+      const result = yield* Effect.tryPromise({
+        try: async () => {
+          const response = await fetchFn(url, { headers: { accept: "application/json" } })
+          if (!response.ok) {
+            throw new Error(`World connect failed with HTTP ${response.status}.`)
+          }
+          const payload = await response.json() as {
+            ok?: boolean
+            schemaVersion?: string
+            regionRef?: string
+            socketUrl?: string
+            subscriptionPlan?: unknown
+          }
+          if (payload.ok !== true || payload.schemaVersion !== WORLD_CONTRACT_SCHEMA_VERSION) {
+            throw new Error("World connect response did not match the contract schema.")
+          }
+          if (typeof payload.regionRef !== "string" || typeof payload.socketUrl !== "string") {
+            throw new Error("World connect response did not include a region socket.")
+          }
+          return {
+            regionRef: payload.regionRef,
+            socketUrl: socketUrlWithSession(payload.socketUrl, {
+              actorRef: input.actorRef,
+              actorClass: input.actorClass ?? "browser",
+              ...(request.characterId === undefined ? {} : { characterId: request.characterId }),
+              ...(request.resumeCursor === undefined ? {} : { cursor: request.resumeCursor }),
+            }),
+            subscriptionPlan: decodeWorldSubscriptionPlan(payload.subscriptionPlan),
+          }
+        },
+        catch: error => new WorldClientError({
+          phase: "connect",
+          reason: error instanceof Error ? error.message : "World connect request failed.",
+          retryable: true,
+          sourceRefs: ["world-client.browser.connect"],
+        }),
+      })
+      yield* connectSocket(result.socketUrl)
+      return result
+    })
+
+  return {
+    connect,
+    subscribe: connect,
+    command: command =>
+      Effect.tryPromise({
+        try: () =>
+          new Promise<WorldDelta>((resolve, reject) => {
+            if (socket === null || socket.readyState !== WEBSOCKET_OPEN) {
+              reject(new Error("World socket is not connected."))
+              return
+            }
+            pendingCommands.set(command.commandRef, {
+              resolve,
+              reject: error => reject(error),
+            })
+            socket.send(JSON.stringify(command))
+          }),
+        catch: error => error instanceof WorldClientError
+          ? error
+          : new WorldClientError({
+              phase: "command",
+              reason: error instanceof Error ? error.message : "World command send failed.",
+              retryable: true,
+              sourceRefs: ["world-client.browser.command"],
+            }),
+      }),
+    disconnect: () =>
+      Effect.sync(() => {
+        socket?.close()
+        socket = null
+        for (const pending of pendingCommands.values()) {
+          pending.reject(new WorldClientError({
+            phase: "disconnect",
+            reason: "World socket disconnected before command acknowledgement.",
+            retryable: true,
+            sourceRefs: ["world-client.browser.disconnect"],
+          }))
+        }
+        pendingCommands.clear()
+      }),
+  }
+}
 
 export const makeEmptyClientWorld = (
   regionRef: string,

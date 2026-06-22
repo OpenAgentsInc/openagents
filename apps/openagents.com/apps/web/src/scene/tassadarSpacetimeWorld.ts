@@ -1,25 +1,31 @@
-import type {
-  AgentAvatar,
-  AvatarPosition,
-  ChatBubble,
-  LocalChatMessage,
-  ProofRef,
-  PylonAttention,
-  PylonStation,
-  RunEntity,
-  SettlementRef,
-  TrainingRun,
-  WorldEdge,
-  WorldEvent,
-  WorldRegion,
-} from './spacetimeWorldBindings/types'
+import {
+  createBrowserWorldTransport,
+  createWorldClient,
+  makeWorldClientActorRef,
+  runWorldClientEffect,
+  type ClientWorld,
+  type WorldClient,
+  worldClientNowIso,
+} from '@openagentsinc/world-client'
+import {
+  WORLD_CONTRACT_SCHEMA_VERSION,
+  type WorldCommandEnvelope,
+  type WorldCommandName,
+  type WorldIsoTimestamp,
+  type WorldRef,
+  type WorldRegionRef,
+  type WorldSequence,
+  worldAvatarRefForCharacter,
+} from '@openagentsinc/world-contract'
+
 import {
   type TassadarRunPublicSummary,
+  type TassadarSpacetimeWorldRows,
   spacetimeWorldSummaryFromRows,
 } from './tassadarRunSnapshot'
 
-export const TASSADAR_SPACETIME_WORLD_URL_DATA_KEY = 'spacetime-world-url'
-export const TASSADAR_SPACETIME_DATABASE_DATA_KEY = 'spacetime-database'
+export const TASSADAR_SPACETIME_WORLD_URL_DATA_KEY = 'cloudflare-world-url'
+export const TASSADAR_SPACETIME_DATABASE_DATA_KEY = 'cloudflare-world-database'
 export const TASSADAR_SPACETIME_WORLD_URL_ATTRIBUTE = `data-${TASSADAR_SPACETIME_WORLD_URL_DATA_KEY}`
 export const TASSADAR_SPACETIME_DATABASE_ATTRIBUTE = `data-${TASSADAR_SPACETIME_DATABASE_DATA_KEY}`
 export const TASSADAR_AVATAR_POSITION_THROTTLE_MS = 250
@@ -42,42 +48,11 @@ export const TASSADAR_STARTER_REGION_CONTRACT = {
 } as const
 export const TASSADAR_REGION_BOUNDS = TASSADAR_STARTER_REGION_CONTRACT.bounds
 
-const SUBSCRIBED_TABLES = [
-  'training_run',
-  'run_entity',
-  'world_edge',
-  'proof_ref',
-  'settlement_ref',
-  'world_event',
-  'world_region',
-] as const
-
-const REGION_REF_PREFIX = 'region.'
-const REGION_REF_SUFFIX = '.main'
 const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = 'run.public_activity_timeline'
-
-type SpacetimeBindings = typeof import('./spacetimeWorldBindings')
-type DbConnection = InstanceType<SpacetimeBindings['DbConnection']>
 
 export type TassadarSpacetimeWorldConfig = Readonly<{
   database: string
   worldUrl: string
-}>
-
-export type TassadarSpacetimeWorldRows = Readonly<{
-  agentAvatars: ReadonlyArray<AgentAvatar>
-  avatarPositions: ReadonlyArray<AvatarPosition>
-  chatBubbles: ReadonlyArray<ChatBubble>
-  localChatMessages: ReadonlyArray<LocalChatMessage>
-  proofRefs: ReadonlyArray<ProofRef>
-  pylonAttention: ReadonlyArray<PylonAttention>
-  pylonStations: ReadonlyArray<PylonStation>
-  runEntities: ReadonlyArray<RunEntity>
-  settlementRefs: ReadonlyArray<SettlementRef>
-  trainingRuns: ReadonlyArray<TrainingRun>
-  worldEdges: ReadonlyArray<WorldEdge>
-  worldEvents: ReadonlyArray<WorldEvent>
-  worldRegions: ReadonlyArray<WorldRegion>
 }>
 
 export type TassadarSpacetimeWorldSubscription = Readonly<{
@@ -119,10 +94,11 @@ export type TassadarPylonChatInput = Readonly<{
 
 const text = (value: string | null): string => value?.trim() ?? ''
 
-const sqlString = (value: string): string => `'${value.replaceAll("'", "''")}'`
+const runRefForSummary = (summary: TassadarRunPublicSummary): string =>
+  summary.runRef ?? 'run.tassadar.executor.20260615'
 
 export const tassadarRegionRefForRun = (runRef: string): string =>
-  `${REGION_REF_PREFIX}${runRef}${REGION_REF_SUFFIX}`
+  `region.${runRef}.main`
 
 export const clampTassadarWorldCoordinate = (
   value: number,
@@ -167,74 +143,177 @@ export const spacetimeConfigFromElement = (
 
 export const tassadarSpacetimeWorldSubscriptionQueries = (
   runRef: string,
-): ReadonlyArray<string> => {
-  const run = sqlString(runRef)
-  const publicActivityRun = sqlString(PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF)
-  const region = sqlString(tassadarRegionRefForRun(runRef))
-  return [
-    ...SUBSCRIBED_TABLES.map(table => `SELECT * FROM ${table} WHERE run_ref = ${run}`),
-    `SELECT * FROM world_event WHERE run_ref = ${publicActivityRun}`,
-    `SELECT * FROM pylon_station WHERE run_ref = ${run}`,
-    'SELECT * FROM agent_avatar',
-    `SELECT * FROM avatar_position WHERE region_ref = ${region}`,
-    'SELECT * FROM pylon_attention',
-    `SELECT * FROM local_chat_message WHERE region_ref = ${region}`,
-    'SELECT * FROM chat_bubble',
-  ]
-}
+): ReadonlyArray<string> => [
+  `cloudflare-world:scope=run:${runRef}`,
+  `cloudflare-world:scope=run:${PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF}`,
+  `cloudflare-world:region=${tassadarRegionRefForRun(runRef)}`,
+]
 
-const rowsFromConnection = (conn: DbConnection): TassadarSpacetimeWorldRows => ({
-  agentAvatars: [
-    ...conn.db.agent_avatar.iter(),
-  ] as unknown as ReadonlyArray<AgentAvatar>,
-  avatarPositions: [
-    ...conn.db.avatar_position.iter(),
-  ] as unknown as ReadonlyArray<AvatarPosition>,
-  chatBubbles: [
-    ...conn.db.chat_bubble.iter(),
-  ] as unknown as ReadonlyArray<ChatBubble>,
-  localChatMessages: [
-    ...conn.db.local_chat_message.iter(),
-  ] as unknown as ReadonlyArray<LocalChatMessage>,
-  proofRefs: [...conn.db.proof_ref.iter()] as unknown as ReadonlyArray<ProofRef>,
-  pylonAttention: [
-    ...conn.db.pylon_attention.iter(),
-  ] as unknown as ReadonlyArray<PylonAttention>,
-  pylonStations: [
-    ...conn.db.pylon_station.iter(),
-  ] as unknown as ReadonlyArray<PylonStation>,
-  runEntities: [
-    ...conn.db.run_entity.iter(),
-  ] as unknown as ReadonlyArray<RunEntity>,
-  settlementRefs: [
-    ...conn.db.settlement_ref.iter(),
-  ] as unknown as ReadonlyArray<SettlementRef>,
-  trainingRuns: [
-    ...conn.db.training_run.iter(),
-  ] as unknown as ReadonlyArray<TrainingRun>,
-  worldEdges: [
-    ...conn.db.world_edge.iter(),
-  ] as unknown as ReadonlyArray<WorldEdge>,
-  worldEvents: [
-    ...conn.db.world_event.iter(),
-  ] as unknown as ReadonlyArray<WorldEvent>,
-  worldRegions: [
-    ...conn.db.world_region.iter(),
-  ] as unknown as ReadonlyArray<WorldRegion>,
+const movementModeToAnimation = (
+  movementMode: TassadarLocalAvatarPosition['movementMode'],
+): 'idle' | 'run' | 'walk' =>
+  movementMode === 'running'
+    ? 'run'
+    : movementMode === 'walking'
+      ? 'walk'
+      : 'idle'
+
+const readModelRows = (
+  readModel: ClientWorld,
+  runRef: string,
+): TassadarSpacetimeWorldRows => ({
+  agentAvatars: Object.values(readModel.avatars).map(row => ({
+    actorKind: row.avatarKind,
+    actorRef: row.accountRef ?? row.avatarRef,
+    avatarRef: row.avatarRef,
+    displayName: row.label,
+    homePylonRef: undefined,
+    publicProfileUrl: undefined,
+  } as never)),
+  avatarPositions: Object.values(readModel.positions).map(row => ({
+    avatarRef: row.avatarRef,
+    movementMode: row.animation === 'run'
+      ? 'running'
+      : row.animation === 'walk'
+        ? 'walking'
+        : 'idle',
+    pitch: 0,
+    positionX: row.position.x,
+    positionY: row.position.y,
+    positionZ: row.position.z,
+    regionRef: row.regionRef,
+    yaw: row.rotationY,
+  } as never)),
+  localChatMessages: Object.values(readModel.chatMessages).map(row => ({
+    body: row.text,
+    bodyFormat: 'plain_text',
+    channelKind: row.channel,
+    messageRef: row.messageRef,
+    moderationState: row.moderationState,
+    radiusMeters: 12,
+    regionRef: row.regionRef,
+    speakerAvatarRef: row.avatarRef,
+    targetRef: undefined,
+  } as never)),
+  pylonAttention: Object.values(readModel.intents).flatMap(row =>
+    row.intent === 'focus_pylon' && row.targetRef !== undefined
+      ? [{
+          attentionKind: 'looking',
+          attentionRef: row.intentRef,
+          avatarRef: row.avatarRef,
+          distanceMeters: 0,
+          pylonRef: row.targetRef,
+          sourceEntityRef: undefined,
+        } as never]
+      : [],
+  ),
+  pylonStations: Object.values(readModel.pylons).map(row => ({
+    interactionRadiusMeters: 12,
+    label: row.label,
+    positionX: row.position.x,
+    positionY: row.position.y,
+    positionZ: row.position.z,
+    pylonRef: row.pylonRef,
+    regionRef: row.regionRef,
+    runRef,
+    sourceUrl: `https://openagents.com/pylons/${encodeURIComponent(row.pylonRef)}`,
+  } as never)),
+  runEntities: Object.values(readModel.entities).map(row => ({
+    entityKind: row.entityKind,
+    entityRef: row.entityRef,
+    label: row.label,
+    runRef: row.runRef,
+    sourceRef: row.entityRef,
+    status: 'verified',
+  } as never)),
+  proofRefs: Object.values(readModel.proofRefs).map(row => ({
+    entityRef: row.proofRef,
+    proofKind: 'public_ref',
+    proofRef: row.proofRef,
+    runRef: row.runRef,
+    title: row.label,
+    url: row.url,
+  } as never)),
+  settlementRefs: Object.values(readModel.settlementRefs).map(row => ({
+    amountSats: row.amountSats ?? 0,
+    entityRef: row.settlementRef,
+    movementMode: 'simulation',
+    realBitcoinMoved: false,
+    receiptRef: row.settlementRef,
+    runRef: row.runRef,
+    url: '',
+  } as never)),
+  trainingRuns: Object.values(readModel.runs).map(row => ({
+    label: row.label,
+    maxStalenessSeconds: 30,
+    runRef: row.runRef,
+    runState: row.state,
+    sourceGeneratedAt: row.updatedAt,
+    state: row.state,
+    stalenessKind: 'cloudflare_world_projection',
+  } as never)),
+  worldEdges: Object.values(readModel.edges).map(row => ({
+    edgeKind: row.relation,
+    fromEntityRef: row.fromRef,
+    sourceRef: row.edgeRef,
+    toEntityRef: row.toRef,
+    runRef,
+  } as never)),
+  worldEvents: Object.values(readModel.events).map(row => ({
+    entityRef: row.eventRef,
+    eventKind: row.eventKind,
+    eventRef: row.eventRef,
+    runRef: row.runRef ?? runRef,
+    sourceGeneratedAt: row.createdAt,
+    sourceRef: row.sourceRefs[0] ?? row.eventRef,
+    summary: row.text,
+  } as never)),
+  worldRegions: Object.values(readModel.regions).map(row => ({
+    avatarPositionMinIntervalMs: 100,
+    label: row.label,
+    localOriginX: row.origin.x,
+    localOriginY: row.origin.y,
+    localOriginZ: row.origin.z,
+    maxX: row.bounds.max.x,
+    maxY: row.bounds.max.y,
+    maxZ: row.bounds.max.z,
+    minX: row.bounds.min.x,
+    minY: row.bounds.min.y,
+    minZ: row.bounds.min.z,
+    proximityRadiusMeters: row.proximityRadius,
+    regionRef: row.regionRef,
+    roadDirectionX: TASSADAR_STARTER_REGION_CONTRACT.roadDirection.x,
+    roadDirectionY: TASSADAR_STARTER_REGION_CONTRACT.roadDirection.y,
+    roadDirectionZ: TASSADAR_STARTER_REGION_CONTRACT.roadDirection.z,
+    runRef,
+    staleAvatarPositionMs: row.staleAvatarTtlMs,
+    starterPylonSiteOffsetX: TASSADAR_STARTER_REGION_CONTRACT.starterPylonSiteOffset.x,
+    starterPylonSiteOffsetY: TASSADAR_STARTER_REGION_CONTRACT.starterPylonSiteOffset.y,
+    starterPylonSiteOffsetZ: TASSADAR_STARTER_REGION_CONTRACT.starterPylonSiteOffset.z,
+    streetNextRegionRef: TASSADAR_STARTER_REGION_CONTRACT.streetNextRegionRef,
+    streetPrevRegionRef: TASSADAR_STARTER_REGION_CONTRACT.streetPrevRegionRef,
+  } as never)),
 })
 
-const observeTable = <Row>(
-  table: {
-    onDelete: (cb: (ctx: unknown, row: Row) => void) => void
-    onInsert: (cb: (ctx: unknown, row: Row) => void) => void
-    onUpdate: (cb: (ctx: unknown, oldRow: Row, row: Row) => void) => void
-  },
-  callback: () => void,
-): void => {
-  table.onInsert(callback)
-  table.onUpdate(callback)
-  table.onDelete(callback)
-}
+const makeCommand = (input: {
+  actorRef: string
+  command: WorldCommandName
+  commandRef: string
+  issuedAt: string
+  payload: unknown
+  regionRef: string
+  seq: number
+}): WorldCommandEnvelope => ({
+  schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
+  actorClass: 'browser',
+  actorRef: input.actorRef as WorldRef,
+  command: input.command,
+  commandRef: input.commandRef as WorldRef,
+  issuedAt: input.issuedAt as WorldIsoTimestamp,
+  payload: input.payload,
+  regionRef: input.regionRef as WorldRegionRef,
+  seq: input.seq as WorldSequence,
+})
 
 export const startTassadarSpacetimeWorldSubscription = async (
   input: Readonly<{
@@ -245,119 +324,107 @@ export const startTassadarSpacetimeWorldSubscription = async (
     onSummary: (summary: TassadarRunPublicSummary) => void
   }>,
 ): Promise<TassadarSpacetimeWorldSubscription> => {
-  const { DbConnection } = await import('./spacetimeWorldBindings')
-  const runRef = input.baseSummary.runRef ?? 'run.tassadar.executor.20260615'
+  const runRef = runRefForSummary(input.baseSummary)
   const regionRef = tassadarRegionRefForRun(runRef)
+  const actorRef = makeWorldClientActorRef('web')
+  const characterId = 'web'
+  const client = createWorldClient({
+    initialRegionRef: regionRef,
+    transport: createBrowserWorldTransport({
+      worldUrl: input.config.worldUrl,
+      actorRef,
+      actorClass: 'browser',
+      onDelta: () => publish(client),
+      onDiagnostic: () => publish(client),
+    }),
+  })
   let closed = false
-  let connected = false
-  let pending = false
-  let conn: DbConnection | null = null
-
-  const callReducer = (
-    reducerName: string,
-    params: Record<string, unknown>,
-  ): void => {
-    if (closed || !connected || conn === null) return
-    const reducer = (conn.reducers as Record<string, unknown>)[reducerName]
-    if (typeof reducer !== 'function') return
-    void (reducer as (params: Record<string, unknown>) => Promise<void>)(params)
+  let seq = 0
+  const nextSeq = (): number => {
+    seq += 1
+    return seq
+  }
+  const callCommand = (command: WorldCommandName, payload: unknown): void => {
+    if (closed) return
+    const issuedAt = worldClientNowIso()
+    const commandSeq = nextSeq()
+    void runWorldClientEffect(client.callCommand(makeCommand({
+      actorRef,
+      command,
+      commandRef: `command.web.${command}.${commandSeq}.${issuedAt}`,
+      issuedAt,
+      payload,
+      regionRef,
+      seq: commandSeq,
+    }))).catch(input.onError)
+  }
+  const publish = (worldClient: WorldClient): void => {
+    if (closed) return
+    void runWorldClientEffect(worldClient.readModel())
+      .then(readModel => {
+        if (!closed) {
+          input.onSummary(
+            spacetimeWorldSummaryFromRows(input.baseSummary, readModelRows(readModel, runRef)),
+          )
+        }
+      })
       .catch(input.onError)
   }
 
-  const publish = (): void => {
-    if (closed || conn === null || pending) return
-    pending = true
-    queueMicrotask(() => {
-      pending = false
-      if (closed || conn === null) return
-      input.onSummary(
-        spacetimeWorldSummaryFromRows(input.baseSummary, rowsFromConnection(conn)),
-      )
-    })
-  }
-
-  conn = DbConnection.builder()
-    .withUri(input.config.worldUrl)
-    .withDatabaseName(input.config.database)
-    .withCompression('none')
-    .onConnect((connection: DbConnection) => {
-      conn = connection
-      observeTable(connection.db.training_run, publish)
-      observeTable(connection.db.run_entity, publish)
-      observeTable(connection.db.world_edge, publish)
-      observeTable(connection.db.proof_ref, publish)
-      observeTable(connection.db.settlement_ref, publish)
-      observeTable(connection.db.world_event, publish)
-      observeTable(connection.db.world_region, publish)
-      observeTable(connection.db.pylon_station, publish)
-      observeTable(connection.db.agent_avatar, publish)
-      observeTable(connection.db.avatar_position, publish)
-      observeTable(connection.db.pylon_attention, publish)
-      observeTable(connection.db.local_chat_message, publish)
-      observeTable(connection.db.chat_bubble, publish)
-      connected = true
-      callReducer('joinRegion', {
-        displayName: input.displayName,
-        regionRef,
-      })
-      connection
-        .subscriptionBuilder()
-        .onApplied(publish)
-        .onError(input.onError)
-        .subscribe([...tassadarSpacetimeWorldSubscriptionQueries(runRef)])
-    })
-    .onConnectError((_ctx: unknown, error: Error) => {
-      input.onError(error)
-    })
-    .onDisconnect((_ctx: unknown, error: Error | undefined) => {
-      if (error !== undefined) input.onError(error)
-    })
-    .build()
+  await runWorldClientEffect(client.connect({
+    characterId,
+    regionRef,
+    runRef,
+    scope: 'region',
+  }))
+  callCommand('join_region', {
+    characterId,
+    label: input.displayName,
+    avatarRef: worldAvatarRefForCharacter(actorRef, characterId),
+  })
+  publish(client)
 
   return {
     clearPylonFocus: pylonRef => {
-      callReducer('clearPylonFocus', { pylonRef })
+      callCommand('clear_pylon_focus', { pylonRef })
     },
     disconnect: () => {
       closed = true
-      if (connected && conn !== null) {
-        const reducer = (conn.reducers as Record<string, unknown>).leaveRegion
-        if (typeof reducer === 'function') {
-          void (reducer as (params: { regionRef: string }) => Promise<void>)({
-            regionRef,
-          }).catch(input.onError)
-        }
-      }
-      conn?.disconnect()
-      conn = null
+      callCommand('leave_region', { characterId })
+      void runWorldClientEffect(client.disconnect()).catch(input.onError)
     },
-    focusPylon: input => {
-      callReducer('focusPylon', {
-        attentionKind: input.attentionKind,
-        distanceMeters: input.distanceMeters,
-        pylonRef: input.pylonRef,
-        sourceEntityRef: input.sourceEntityRef ?? null,
+    focusPylon: focus => {
+      callCommand('focus_pylon', {
+        attentionKind: focus.attentionKind,
+        distanceMeters: focus.distanceMeters,
+        pylonRef: focus.pylonRef,
+        sourceEntityRef: focus.sourceEntityRef,
       })
     },
     regionRef,
     sendLocalMessage: message => {
-      callReducer('sendLocalMessage', {
-        body: message.body,
+      callCommand('send_local_message', {
+        text: message.body,
         radiusMeters: message.radiusMeters,
-        regionRef,
-        targetRef: message.targetRef ?? null,
+        targetRef: message.targetRef,
       })
     },
     sendPylonMessage: message => {
-      callReducer('sendPylonMessage', {
-        body: message.body,
+      callCommand('send_pylon_message', {
+        text: message.body,
         pylonRef: message.pylonRef,
       })
     },
     updateLocalAvatar: position => {
-      callReducer('setAvatarPosition', {
-        ...clampTassadarLocalAvatarPosition(position),
-        regionRef,
+      const clamped = clampTassadarLocalAvatarPosition(position)
+      callCommand('set_avatar_position', {
+        position: {
+          x: clamped.positionX,
+          y: clamped.positionY,
+          z: clamped.positionZ,
+        },
+        rotationY: clamped.yaw,
+        animation: movementModeToAnimation(clamped.movementMode),
       })
     },
   }

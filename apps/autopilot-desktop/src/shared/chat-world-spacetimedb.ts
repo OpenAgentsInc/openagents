@@ -10,6 +10,7 @@ import {
   chatWorldRegionRefForRun,
   projectChatWorldMultiplayer,
 } from "./chat-world-multiplayer.js"
+import type { ClientWorld } from "@openagentsinc/world-client"
 
 export type ChatWorldRegionRow = Readonly<{
   regionRef: string
@@ -355,6 +356,138 @@ export const projectChatWorldSpacetimeRows = (input: {
       flagEnabled: input.flagEnabled,
       runRef: input.runRef,
       rows: normalized.rows,
+      nowMs: input.nowMs,
+      ...multiplayerOptions,
+    }),
+  }
+}
+
+const epochMs = (value: string | undefined, fallback: number): number => {
+  if (value === undefined) return fallback
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const regionRunRef = (regionRef: string, fallback: string): string => {
+  const prefix = "region."
+  const suffix = ".main"
+  return regionRef.startsWith(prefix) && regionRef.endsWith(suffix)
+    ? regionRef.slice(prefix.length, -suffix.length)
+    : fallback
+}
+
+export const projectChatWorldClientWorld = (input: {
+  readonly flagEnabled: boolean
+  readonly runRef: string
+  readonly readModel: ClientWorld | null
+  readonly nowMs: number
+  readonly worldUrl?: string
+  readonly database?: string
+  readonly localAvatarRef?: string | null
+}): ChatWorldSpacetimeProjection => {
+  const multiplayerOptions = {
+    ...(input.worldUrl !== undefined ? { worldUrl: input.worldUrl } : {}),
+    ...(input.database !== undefined ? { database: input.database } : {}),
+    ...(input.localAvatarRef !== undefined
+      ? { localAvatarRef: input.localAvatarRef }
+      : {}),
+  }
+  if (input.flagEnabled !== true || input.readModel === null) {
+    return projectChatWorldSpacetimeRows({
+      flagEnabled: false,
+      runRef: input.runRef,
+      rows: null,
+      nowMs: input.nowMs,
+      ...multiplayerOptions,
+    })
+  }
+
+  const contract = CHAT_WORLD_STARTER_REGION_CONTRACT
+  const regions: ReadonlyArray<ChatWorldRegionRow> = Object.values(input.readModel.regions)
+    .map(region => ({
+      regionRef: region.regionRef,
+      runRef: regionRunRef(region.regionRef, input.runRef),
+      label: region.label,
+      minX: region.bounds.min.x,
+      minY: region.bounds.min.y,
+      minZ: region.bounds.min.z,
+      maxX: region.bounds.max.x,
+      maxY: region.bounds.max.y,
+      maxZ: region.bounds.max.z,
+      roadDirectionX: contract.roadDirection.x,
+      roadDirectionY: contract.roadDirection.y,
+      roadDirectionZ: contract.roadDirection.z,
+      localOriginX: region.origin.x,
+      localOriginY: region.origin.y,
+      localOriginZ: region.origin.z,
+      starterPylonSiteOffsetX: contract.starterPylonSiteOffset.x,
+      starterPylonSiteOffsetY: contract.starterPylonSiteOffset.y,
+      starterPylonSiteOffsetZ: contract.starterPylonSiteOffset.z,
+      streetPrevRegionRef: contract.streetPrevRegionRef,
+      streetNextRegionRef: contract.streetNextRegionRef,
+      proximityRadiusMeters: region.proximityRadius,
+      avatarPositionMinIntervalMs: contract.avatarPositionMinIntervalMs,
+      staleAvatarPositionMs: region.staleAvatarTtlMs,
+    }))
+
+  const rows: ChatWorldMultiplayerRows = {
+    stations: Object.values(input.readModel.pylons).map(station => ({
+      pylonRef: station.pylonRef,
+      runRef: input.runRef,
+      regionRef: station.regionRef,
+      label: station.label,
+      x: station.position.x,
+      y: station.position.y,
+      z: station.position.z,
+    })),
+    avatars: Object.values(input.readModel.avatars).map(avatar => ({
+      avatarRef: avatar.avatarRef,
+      actorRef: avatar.accountRef ?? avatar.avatarRef,
+      avatarKind: avatar.avatarKind,
+      displayName: avatar.label,
+      colorHex: "#f5b73a",
+    })),
+    positions: Object.values(input.readModel.positions).map(position => ({
+      avatarRef: position.avatarRef,
+      regionRef: position.regionRef,
+      x: position.position.x,
+      y: position.position.y,
+      z: position.position.z,
+      yaw: position.rotationY,
+      movementMode: position.animation === "run"
+        ? "running"
+        : position.animation === "walk"
+          ? "walking"
+          : "idle",
+      lastSeenEpochMs: epochMs(position.observedAt, input.nowMs),
+      presenceFeed: "high",
+    })),
+    messages: Object.values(input.readModel.chatMessages).map(message => ({
+      messageRef: message.messageRef,
+      avatarRef: message.avatarRef,
+      regionRef: message.regionRef,
+      text: message.text,
+      radiusMeters: 12,
+      expiresAtEpochMs: epochMs(message.expiresAt, input.nowMs + 60_000),
+    })),
+    attention: Object.values(input.readModel.intents).flatMap(intent => {
+      if (intent.intent !== "focus_pylon" || intent.targetRef === undefined) return []
+      return [{
+        attentionRef: intent.intentRef,
+        avatarRef: intent.avatarRef,
+        pylonRef: intent.targetRef,
+        attentionKind: "looking",
+        expiresAtEpochMs: epochMs(intent.expiresAt, input.nowMs + 30_000),
+      }]
+    }),
+  }
+
+  return {
+    regions,
+    world: projectChatWorldMultiplayer({
+      flagEnabled: true,
+      runRef: input.runRef,
+      rows,
       nowMs: input.nowMs,
       ...multiplayerOptions,
     }),

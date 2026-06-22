@@ -998,6 +998,28 @@ Acceptance:
 This is the product cut. Do not wait for decommission work to begin before the
 new backend is user-visible.
 
+Implementation note: P10 moves the active desktop and web Verse networking
+paths onto the Cloudflare world protocol. `packages/world-client` now includes a
+browser/WebSocket transport that performs the `/connect` handshake, appends the
+typed session fields (`actorRef`, `actorClass`, `characterId`, cursor), hydrates
+the Region Durable Object socket, decodes snapshot/delta/diagnostic frames, and
+resolves command receipts back into the client read model.
+
+Autopilot Desktop now defaults `subscribeSpacetimeWorld` to the Cloudflare
+transport and `@openagentsinc/world-contract` command envelopes. The old
+generated-row connection path remains only as an injected test harness seam
+until P11 deletes it; production code no longer imports the generated web
+bindings. The desktop adapter mirrors `WorldReadModel` rows into the existing
+`ChatWorldMultiplayerProjection`, preserving disconnected single-player
+fallbacks, pylon stations, remote avatars, local chat rows, and focus intents.
+
+The web Tassadar world subscription module also uses the shared Cloudflare
+transport and local structural public-row adapters instead of generated
+SpacetimeDB bindings. Focus, chat, pylon message, avatar pose, join, and leave
+commands are sent through typed browser command envelopes. Remaining generated
+binding files, manifest dependencies, old comments, and adapter names are P11
+decommission work, not a runtime rollback switch.
+
 ### P11: Delete SpacetimeDB Codepaths
 
 Remove the old implementation immediately after P10 smoke passes. Acceptance:
