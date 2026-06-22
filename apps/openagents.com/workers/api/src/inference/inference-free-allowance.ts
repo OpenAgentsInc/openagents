@@ -55,7 +55,6 @@ import {
   type MeteringOutcome,
 } from './metering-hook'
 import { priceRequest } from './pricing'
-import { classifyModel, type ModelClass } from './model-router'
 import {
   type VerifiedOwnerIdentityResolver,
   resolveOwnerKey,
@@ -101,13 +100,17 @@ export const EARNED_ALLOWANCE_PER_REFERRED_SIGNUP_USD_MICROS = USD_MICROS_PER_US
 // Default $100.00 of earned headroom.
 export const EARNED_ALLOWANCE_CEILING_USD_MICROS = 100 * USD_MICROS_PER_USD // $100.00
 
-// The model classes whose served usage is FREE-ELIGIBLE (we eat the cost under
-// allowance). Only the first-party Vertex Gemini lane (Gemini Flash) today —
-// Claude/open/passthrough are never free. A bounded class set, not intent.
-export const FREE_ELIGIBLE_MODEL_CLASSES: ReadonlyArray<ModelClass> = ['gemini']
+// The exact model ids whose served usage is FREE-ELIGIBLE (we eat the cost
+// under allowance). Only the first-party Gemini Flash taste lane today;
+// OpenAgents-branded paid aliases such as Khala may share a backing lane without
+// inheriting the free pool.
+export const FREE_ELIGIBLE_MODEL_IDS: ReadonlyArray<string> = [
+  'gemini',
+  'gemini-3.5-flash',
+]
 
 export const isFreeEligibleModel = (model: string): boolean =>
-  FREE_ELIGIBLE_MODEL_CLASSES.includes(classifyModel(model))
+  FREE_ELIGIBLE_MODEL_IDS.includes(model.trim().toLowerCase())
 
 // ----------------------------------------------------------------------------
 // Identity kind + effective cap

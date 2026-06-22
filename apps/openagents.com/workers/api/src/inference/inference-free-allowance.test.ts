@@ -27,6 +27,7 @@ import {
   usdToMicrosCeil,
   withFreeAllowance,
 } from './inference-free-allowance'
+import { KHALA_MINI_MODEL_ID } from './pricing'
 
 // --- node:sqlite D1 adapter (same pattern as metering-hook.test.ts) ----------
 type Row = Record<string, unknown>
@@ -209,9 +210,10 @@ describe('free-allowance constants + classification', () => {
     expect(baseFreeCapUsdMicros('unclaimed')).toBe(USD_MICROS_PER_USD / 2)
   })
 
-  test('only the Gemini lane is free-eligible', () => {
+  test('only the Gemini Flash aliases are free-eligible', () => {
     expect(isFreeEligibleModel('gemini-3.5-flash')).toBe(true)
     expect(isFreeEligibleModel('gemini')).toBe(true)
+    expect(isFreeEligibleModel(KHALA_MINI_MODEL_ID)).toBe(false)
     expect(isFreeEligibleModel('claude-sonnet')).toBe(false)
     expect(isFreeEligibleModel('opus')).toBe(false)
     expect(isFreeEligibleModel('gpt-oss-20b')).toBe(false)

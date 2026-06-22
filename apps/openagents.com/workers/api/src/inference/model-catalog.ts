@@ -25,8 +25,7 @@ import {
   MODEL_PRICING_TABLE,
   type SupplyLane,
 } from './pricing'
-import { classifyModel } from './model-router'
-import { FREE_ELIGIBLE_MODEL_CLASSES } from './inference-free-allowance'
+import { isFreeEligibleModel } from './inference-free-allowance'
 
 // Human-legible provider label for each supply lane (the OpenAI `owned_by`
 // field). All lanes are served THROUGH OpenAgents, so the label names the
@@ -91,7 +90,7 @@ const round = (value: number, decimals: number): number => {
 // so the published free-tier flag can never disagree with what actually gets
 // eaten under allowance.
 const isFreeTierEligible = (model: string): boolean =>
-  FREE_ELIGIBLE_MODEL_CLASSES.includes(classifyModel(model))
+  isFreeEligibleModel(model)
 
 // Build the public model catalog from the pricing table at `margin`
 // (defaults to the launch margin). Deterministic + pure: the same table in

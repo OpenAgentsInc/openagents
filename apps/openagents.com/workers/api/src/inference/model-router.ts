@@ -106,6 +106,18 @@ const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
 // classification we do is "which provider family is this model id?".
 export type ModelClass = 'claude' | 'gemini' | 'open' | 'unknown'
 
+const classForPricedLane = (lane: SupplyLane): ModelClass => {
+  switch (lane) {
+    case 'vertex-anthropic':
+      return 'claude'
+    case 'vertex-gemini':
+      return 'gemini'
+    case 'fireworks':
+    case 'openagents-network':
+      return 'open'
+  }
+}
+
 // Gemini-family model ids served from the Vertex Gemini lane. Matched against
 // the LOWERCASED requested id. The bare `gemini` alias and the canonical
 // `gemini-*` ids both route here, as do `google/` / `vertex/` provider-prefixed
@@ -163,6 +175,10 @@ export const classifyModel = (model: string): ModelClass => {
   }
   if (isOpenModel(model)) {
     return 'open'
+  }
+  const priced = lookupModel(model)
+  if (priced !== undefined) {
+    return classForPricedLane(priced.lane)
   }
   return 'unknown'
 }
