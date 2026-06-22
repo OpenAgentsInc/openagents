@@ -7063,7 +7063,12 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   const withBase = withPylonBaseLayer(withBulletin, pylonBase)
   const multiplayer = modelChatWorldMultiplayer(model)
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
-    localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
+    // Self-filter on THIS instance's own per-character avatar key (computed from
+    // the live SpacetimeDB identity + OA_CHARACTER once known), so each instance
+    // hides only its own character and renders every other avatar — including
+    // other characters of the same account. Falls back to the legacy constant
+    // before the identity lands (pre-connect), when there are no remote rows yet.
+    localAvatarRef: multiplayer?.localAvatarRef ?? CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
   const inputBindings = verseInputBindingProjection(
     model.inputProfile,

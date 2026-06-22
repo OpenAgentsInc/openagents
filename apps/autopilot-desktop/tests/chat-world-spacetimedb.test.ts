@@ -223,8 +223,28 @@ describe("planChatWorldAvatarPositionWrite", () => {
         yaw: 0.123,
         pitch: 0.543,
         movementMode: "walking",
+        // Defaults to the stable single-character id when OA_CHARACTER is unset.
+        characterId: "main",
       },
     })
+  })
+
+  test("threads an explicit characterId into the position write", () => {
+    const plan = planChatWorldAvatarPositionWrite({
+      region: regionRow,
+      previous: null,
+      nowMs: 1_000,
+      x: 0,
+      y: 0,
+      z: 0,
+      characterId: "alt",
+    })
+    expect(plan.ok).toBe(true)
+    if (plan.ok) {
+      // One account moving its "alt" character: the world module derives a
+      // distinct avatar_ref from sender + "alt", so this is its own avatar.
+      expect(plan.write.characterId).toBe("alt")
+    }
   })
 
   test("rejects unsafe local avatar movement writes", () => {

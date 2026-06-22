@@ -12,4 +12,5 @@ import {
 
 export default {
   pylonRef: __t.string(),
+  characterId: __t.string(),
 };

@@ -15,4 +15,5 @@ export default {
   targetRef: __t.option(__t.string()),
   radiusMeters: __t.f64(),
   body: __t.string(),
+  characterId: __t.string(),
 };

@@ -14,4 +14,5 @@ export default {
   regionRef: __t.string(),
   emoteKind: __t.string(),
   targetRef: __t.option(__t.string()),
+  characterId: __t.string(),
 };

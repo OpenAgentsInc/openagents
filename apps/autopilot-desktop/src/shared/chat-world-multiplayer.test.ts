@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test"
 
 import {
   estimateChatWorldPresenceFeedLoad,
+  chatWorldDesktopAvatarRef,
   chatWorldMultiplayerSubscriptionQueries,
   chatWorldRegionRefForRun,
   projectChatWorldMultiplayer,
+  sanitizeChatWorldCharacterId,
 } from "./chat-world-multiplayer.js"
 
 const runRef = "run.tassadar.executor.20260615"
@@ -200,5 +202,59 @@ describe("chat world multiplayer projection (#5739)", () => {
     expect(projection.connected).toBe(false)
     expect(projection.projectedAtMs).toBe(1_000)
     expect(projection.agents).toEqual([])
+  })
+
+  test("carries the local per-character avatar key through the projection", () => {
+    const projection = projectChatWorldMultiplayer({
+      flagEnabled: true,
+      runRef,
+      nowMs: 1_000,
+      rows: { stations: [], avatars: [], positions: [], messages: [], attention: [] },
+      localAvatarRef: "avatar.identity.abc.char.alt",
+    })
+    expect(projection.localAvatarRef).toBe("avatar.identity.abc.char.alt")
+  })
+
+  test("defaults the local avatar key to null when no identity is known", () => {
+    const projection = projectChatWorldMultiplayer({
+      flagEnabled: true,
+      runRef,
+      nowMs: 1_000,
+      rows: { stations: [], avatars: [], positions: [], messages: [], attention: [] },
+    })
+    expect(projection.localAvatarRef).toBeNull()
+  })
+})
+
+describe("MMO characters per account avatar keys (#verse/mmo-characters-per-account)", () => {
+  test("builds avatar.identity.<id>.char.<character> keys", () => {
+    expect(chatWorldDesktopAvatarRef("abc123", "main")).toBe(
+      "avatar.identity.abc123.char.main",
+    )
+    expect(chatWorldDesktopAvatarRef("abc123", "alt")).toBe(
+      "avatar.identity.abc123.char.alt",
+    )
+  })
+
+  test("distinct characters under one account produce distinct keys", () => {
+    const main = chatWorldDesktopAvatarRef("abc123", "main")
+    const alt = chatWorldDesktopAvatarRef("abc123", "alt")
+    expect(main).not.toBe(alt)
+  })
+
+  test("same character on different accounts never collides", () => {
+    expect(chatWorldDesktopAvatarRef("aaa", "main")).not.toBe(
+      chatWorldDesktopAvatarRef("bbb", "main"),
+    )
+  })
+
+  test("sanitizes character ids in lockstep with the world module", () => {
+    expect(sanitizeChatWorldCharacterId("")).toBe("main")
+    expect(sanitizeChatWorldCharacterId("   ")).toBe("main")
+    expect(sanitizeChatWorldCharacterId("!!!")).toBe("main")
+    expect(sanitizeChatWorldCharacterId(undefined)).toBe("main")
+    expect(sanitizeChatWorldCharacterId(" alt-2 ")).toBe("alt-2")
+    expect(sanitizeChatWorldCharacterId("a/b c?d")).toBe("abcd")
+    expect(sanitizeChatWorldCharacterId("x".repeat(120)).length).toBe(64)
   })
 })

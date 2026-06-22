@@ -55,6 +55,19 @@ export const agentCharacterCreationFlag = (): boolean =>
 export const chatWorldMultiplayerFlag = (): boolean =>
   verseFeatureFlag("VITE_CHAT_WORLD_MULTIPLAYER")
 
+// MMO character selection (#verse/mmo-characters-per-account). One account can
+// field MANY characters; this app launch picks ONE via OA_CHARACTER. Default
+// "main" so a single instance behaves exactly as before. Two instances on the
+// same account with OA_CHARACTER=main and OA_CHARACTER=alt become two distinct,
+// mutually-visible avatars. Resolved through the same env path as every other
+// Verse setting (Bun host env / Vite define), so there is no new RPC surface.
+// See docs/game/2026-06-21-mmo-characters-per-account-verse-presence.md.
+export const chatWorldCharacterId = (): string => {
+  const raw = envValue("OA_CHARACTER") ?? envValue("VITE_OA_CHARACTER")
+  const trimmed = raw?.trim()
+  return trimmed !== undefined && trimmed.length > 0 ? trimmed : "main"
+}
+
 // One switch for visible Verse HUD/actions. Default OFF for the current launch
 // pass: the world remains navigable, but bottom bars and global shortcuts stay
 // dark unless explicitly enabled.

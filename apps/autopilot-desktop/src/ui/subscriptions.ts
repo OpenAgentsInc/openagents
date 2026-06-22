@@ -43,6 +43,7 @@ import {
 } from "./chat-world-subscriptions.js"
 import {
   chatWorldBuildFlags,
+  chatWorldCharacterId,
   chatWorldMultiplayerFlag,
 } from "../shared/chat-world-flags.js"
 
@@ -359,7 +360,7 @@ const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((q
     Effect.sync(() =>
       subscribeSpacetimeWorld(
         (world) => Queue.offerUnsafe(queue, GotChatWorldMultiplayer({ world })),
-        { flags: chatWorldSubscriptionFlags() },
+        { flags: chatWorldSubscriptionFlags(), characterId: chatWorldCharacterId() },
       ),
     ),
     (unsubscribe) => Effect.sync(() => unsubscribe()),

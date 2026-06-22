@@ -30,10 +30,13 @@ import {
 } from "../shared/chat-world-scene.js"
 import {
   CHAT_WORLD_DESKTOP_AVATAR_REF,
+  DEFAULT_OA_CHARACTER_ID,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
   OPENAGENTS_WORLD_DATABASE,
   OPENAGENTS_WORLD_URL,
+  chatWorldDesktopAvatarRef,
   chatWorldMultiplayerSubscriptionQueries,
+  sanitizeChatWorldCharacterId,
   type ChatWorldMultiplayerProjection,
 } from "../shared/chat-world-multiplayer.js"
 import {
@@ -268,6 +271,7 @@ export type SpacetimeWorldConnection = Readonly<{
     readonly joinRegion?: (args: {
       readonly regionRef: string
       readonly displayName: string
+      readonly characterId: string
     }) => unknown
     readonly setAvatarPosition?: (args: {
       readonly regionRef: string
@@ -277,9 +281,11 @@ export type SpacetimeWorldConnection = Readonly<{
       readonly yaw: number
       readonly pitch: number
       readonly movementMode: string
+      readonly characterId: string
     }) => unknown
     readonly leaveRegion?: (args: {
       readonly regionRef: string
+      readonly characterId: string
     }) => unknown
   }
   subscriptionBuilder?: () => {
@@ -294,7 +300,10 @@ type SpacetimeWorldConnectInput = Readonly<{
   database: string
   token: string | null
   worldUrl: string
-  onConnected: (token: string | null) => void
+  // `identity` is the live SpacetimeDB account identity (hex). It is the
+  // account axis of the MMO model and is needed to build this instance's own
+  // per-character avatar key for the scene self-filter.
+  onConnected: (token: string | null, identity: string | null) => void
   onDisconnected: () => void
   onUnavailable: () => void
 }>
@@ -331,6 +340,9 @@ export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
     readonly nodeLabel?: string | null
     readonly fallbackActorRef?: string | null
   }
+  // The character this app launch fields (from OA_CHARACTER). Defaults to
+  // "main" so a single instance behaves exactly as before.
+  readonly characterId?: string | null
 }
 
 export type SpacetimeWorldDispatch = (
@@ -383,6 +395,35 @@ const resolveClearTimeout = (
     (globalThis as unknown as { clearTimeout: (h: unknown) => void })
       .clearTimeout(handle))
 
+// The SpacetimeDB SDK hands back an Identity object (or, in older shapes, a
+// hex string). Normalize to the same hex string the module uses in
+// `format!("avatar.identity.{}", ctx.sender())` so the client-computed
+// self-filter key matches the avatar_ref the module writes.
+const identityToHex = (identity: unknown): string | null => {
+  if (typeof identity === "string") {
+    const trimmed = identity.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  if (identity !== null && typeof identity === "object") {
+    const candidate = identity as {
+      toHexString?: () => unknown
+      toString?: () => unknown
+    }
+    const hex =
+      typeof candidate.toHexString === "function"
+        ? candidate.toHexString()
+        : typeof candidate.toString === "function"
+          ? candidate.toString()
+          : null
+    if (typeof hex === "string") {
+      const trimmed = hex.trim()
+      // Object.prototype.toString gives "[object Object]"; reject it.
+      if (trimmed.length > 0 && !trimmed.startsWith("[object")) return trimmed
+    }
+  }
+  return null
+}
+
 const defaultSpacetimeConnect = (
   input: SpacetimeWorldConnectInput,
 ): SpacetimeWorldConnection => {
@@ -391,8 +432,11 @@ const defaultSpacetimeConnect = (
   let builder = builderFactory()
     .withUri(input.worldUrl)
     .withDatabaseName(input.database)
-    .onConnect((_ctx: unknown, _identity: unknown, token: string) =>
-      input.onConnected(typeof token === "string" ? token : null),
+    .onConnect((_ctx: unknown, identity: unknown, token: string) =>
+      input.onConnected(
+        typeof token === "string" ? token : null,
+        identityToHex(identity),
+      ),
     )
     .onConnectError(() => input.onUnavailable())
     .onDisconnect(() => input.onDisconnected())
@@ -497,9 +541,14 @@ export const createVerseMultiplayerClient = (input: {
   readonly runRef: string
   readonly nowMs: () => number
   readonly worldUrl: string
+  // The character this instance fields. One account can run many instances,
+  // each with a distinct characterId, and every distinct character is its own
+  // visible avatar in the world. Omitted/blank → "main".
+  readonly characterId?: string | null
 }): VerseMultiplayerClient => {
   const lastAcceptedByRegion = new Map<string, ReturnType<typeof localPreviousFromWrite>>()
   let joinedRegionRef: string | null = null
+  const characterId = sanitizeChatWorldCharacterId(input.characterId)
 
   const projection = () =>
     projectChatWorldSpacetimeRows({
@@ -518,6 +567,7 @@ export const createVerseMultiplayerClient = (input: {
     invokeMaybePromise(input.connection.reducers?.joinRegion?.({
       regionRef: region.regionRef,
       displayName: input.displayName,
+      characterId,
     }))
   }
 
@@ -525,6 +575,7 @@ export const createVerseMultiplayerClient = (input: {
     if (joinedRegionRef === null) return
     invokeMaybePromise(input.connection.reducers?.leaveRegion?.({
       regionRef: joinedRegionRef,
+      characterId,
     }))
     joinedRegionRef = null
   }
@@ -554,6 +605,7 @@ export const createVerseMultiplayerClient = (input: {
       yaw: pose.yaw,
       pitch: 0,
       movementMode: movementModeForVerseAnimation(pose.animation),
+      characterId,
     })
     if (plan.ok !== true) return plan
     if (!publishSpacetimeAvatarPosition(input.connection, plan)) {
@@ -585,9 +637,18 @@ const attachWorldConnection = (input: {
   readonly nowMs: () => number
   readonly worldUrl: string
   readonly displayName: string
+  readonly characterId: string
+  // Latest resolved per-character self-filter key, or null before the live
+  // identity is known. Read lazily so snapshots dispatched after onConnect
+  // carry the real key.
+  readonly getLocalAvatarRef: () => string | null
   readonly onUnavailable: () => void
   readonly onClientReady?: (client: VerseMultiplayerClient) => void
   readonly onClientGone?: (client: VerseMultiplayerClient) => void
+  // Exposes this connection's snapshot dispatcher so the outer subscription can
+  // force a re-paint once the live identity (and thus the self-filter key)
+  // becomes available after onConnect.
+  readonly onSnapshotReady?: (dispatchSnapshot: () => void) => void
 }): Unsubscribe => {
   const tables = [
     input.connection.db?.worldRegion,
@@ -610,6 +671,7 @@ const attachWorldConnection = (input: {
     runRef: input.runRef,
     nowMs: input.nowMs,
     worldUrl: input.worldUrl,
+    characterId: input.characterId,
   })
   input.onClientReady?.(client)
 
@@ -621,9 +683,11 @@ const attachWorldConnection = (input: {
       nowMs: input.nowMs(),
       worldUrl: input.worldUrl,
       database: input.database,
+      localAvatarRef: input.getLocalAvatarRef(),
     })
     input.dispatch(projection.world)
   }
+  input.onSnapshotReady?.(dispatchSnapshot)
 
   const onRowsChanged = (): void => dispatchSnapshot()
 
@@ -683,11 +747,20 @@ export const subscribeSpacetimeWorld = (
   const maxReconnectAttempts = deps?.maxReconnectAttempts ?? Number.POSITIVE_INFINITY
   const reconnectBaseMs = deps?.reconnectBaseMs ?? 2_000
   const identity = chatWorldDesktopAvatarIdentity(deps?.identity ?? {})
+  const characterId = sanitizeChatWorldCharacterId(deps?.characterId ?? DEFAULT_OA_CHARACTER_ID)
 
   let stopped = false
   let retryHandle: unknown = null
   let cleanupConnection: Unsubscribe | null = null
   let reconnectAttempt = 0
+  // The live SpacetimeDB account identity, once onConnect yields it. Combined
+  // with characterId it gives this instance's own avatar key for self-filter.
+  let liveIdentityHex: string | null = null
+  let redispatchSnapshot: (() => void) | null = null
+  const localAvatarRef = (): string | null =>
+    liveIdentityHex !== null && liveIdentityHex.length > 0
+      ? chatWorldDesktopAvatarRef(liveIdentityHex, characterId)
+      : null
 
   const dispatchUnavailable = (): void => {
     dispatch(projectChatWorldSpacetimeRows({
@@ -727,13 +800,24 @@ export const subscribeSpacetimeWorld = (
     cleanupConnection?.()
     cleanupConnection = null
     try {
+      redispatchSnapshot = null
       const connection = connect({
         database,
         token: storage?.getItem(SPACETIME_TOKEN_STORAGE_KEY) ?? null,
         worldUrl,
-        onConnected: (token) => {
+        onConnected: (token, connectedIdentity) => {
           reconnectAttempt = 0
           if (token !== null) storage?.setItem(SPACETIME_TOKEN_STORAGE_KEY, token)
+          if (
+            typeof connectedIdentity === "string" &&
+            connectedIdentity.length > 0 &&
+            connectedIdentity !== liveIdentityHex
+          ) {
+            liveIdentityHex = connectedIdentity
+            // Re-paint so the scene self-filter switches from the pre-connect
+            // fallback to this instance's real per-character avatar key.
+            redispatchSnapshot?.()
+          }
         },
         onDisconnected: unavailable,
         onUnavailable: unavailable,
@@ -743,10 +827,15 @@ export const subscribeSpacetimeWorld = (
         database,
         dispatch,
         displayName: identity.displayName,
+        characterId,
+        getLocalAvatarRef: localAvatarRef,
         nowMs,
         onUnavailable: unavailable,
         runRef,
         worldUrl,
+        onSnapshotReady: (dispatchSnapshot) => {
+          redispatchSnapshot = dispatchSnapshot
+        },
         onClientReady: (client) => {
           activeVerseMultiplayerClient = client
         },
