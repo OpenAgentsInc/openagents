@@ -2104,6 +2104,41 @@ body {
   display: none;
 }
 
+/* Dev affordance (#6033): the spawned isolated-scene evidence overlay — mirrors
+   the standalone crackling-arc page's evidence block, anchored top-right so it
+   does not collide with the bulletin board on the left. */
+.verse-spawned-scene {
+  position: absolute;
+  right: clamp(0.8rem, 2vw, 1.25rem);
+  top: clamp(4.8rem, 13vh, 6.25rem);
+  z-index: 4;
+  display: grid;
+  gap: 0.5rem;
+  width: min(22rem, calc(100% - 1.6rem));
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgb(147 197 253 / 0.28);
+  border-radius: 4px;
+  background: rgb(3 8 10 / 0.76);
+  box-shadow:
+    0 18px 54px rgb(0 0 0 / 0.32),
+    inset 0 0 0 1px rgb(255 255 255 / 0.04);
+  color: rgb(244 247 251 / 0.86);
+  pointer-events: none;
+  user-select: none;
+}
+
+.verse-spawned-scene-empty {
+  display: none;
+}
+
+.verse-spawned-scene-evidence {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  white-space: pre;
+  color: rgb(147 197 253 / 0.92);
+}
+
 .verse-bulletin-title {
   color: rgb(255 255 255 / 0.94);
   font-size: 0.82rem;

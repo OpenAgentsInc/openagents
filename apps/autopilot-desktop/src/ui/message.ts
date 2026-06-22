@@ -168,6 +168,19 @@ export const ChangedVerseMode = m("ChangedVerseMode", {
 })
 export const ClickedHotbarNewCoderSession = m("ClickedHotbarNewCoderSession")
 
+// Dev affordance (#6033 / EPIC #6017): spawn / unspawn an isolated SCENE STATION
+// (e.g. the Khala "crackling energy" effect) into the live Verse world at a fixed
+// in-world location, fed by a SYNTHETIC simulated event (no Region DO / D1 / Worker
+// / live receipt). `SpawnedVerseScene` toggles a registered spawnable-scene id on/
+// off; `ToggledVerseScenePortal` flips that scene's optional gateway-portal variant.
+// Pure model state — no host authority, no RPC.
+export const SpawnedVerseScene = m("SpawnedVerseScene", {
+  sceneId: S.String,
+})
+export const ToggledVerseScenePortal = m("ToggledVerseScenePortal", {
+  sceneId: S.String,
+})
+
 // Chat: expand/collapse a single chat message's "program details" disclosure
 // (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
 // opens to a clean conversation. Pure model toggle — no control verb / RPC.
@@ -777,6 +790,8 @@ export const Message = S.Union([
   SelectedDiffFile,
   ToggleVerse,
   ChangedVerseMode,
+  SpawnedVerseScene,
+  ToggledVerseScenePortal,
   ClickedHotbarNewCoderSession,
   ToggledChatMessageDetails,
   ClickedCoordinatorToggle,

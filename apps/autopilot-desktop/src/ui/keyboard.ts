@@ -15,6 +15,7 @@ import {
 
 import { groupForPane } from "./nav.js"
 import { modelPaneLayer, type Model, type PaneId } from "./model.js"
+import { DEFAULT_SPAWNABLE_SCENE_ID } from "../shared/verse-spawned-scene.js"
 
 // Raw key event the subscription forwards (mirrors the PressedKey payload).
 export type KeyEvent = Readonly<{
@@ -44,6 +45,11 @@ export type KeyIntent =
   | Readonly<{ kind: "back-to-shell" }>
   // #5730 The Verse: ⌘⇧V / Ctrl-⇧V toggles the game-world view on/off.
   | Readonly<{ kind: "toggle-verse" }>
+  // Dev affordance (#6033): ⌘⇧E / Ctrl-⇧E spawns/unspawns the isolated
+  // crackling-energy scene station into the live Verse world; ⌘⇧P / Ctrl-⇧P
+  // toggles that scene's optional gateway-portal variant. Explore mode only.
+  | Readonly<{ kind: "spawn-verse-scene"; sceneId: string }>
+  | Readonly<{ kind: "toggle-verse-scene-portal"; sceneId: string }>
   // HUD H1: action-bar slot 1 opens a fresh coder-session surface.
   | Readonly<{ kind: "open-coder-session" }>
   | Readonly<{ kind: "close-managed-panes" }>
@@ -133,6 +139,21 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
   // ── Cmd/Ctrl-Shift-V toggles the Verse (game-world view) from anywhere ────
   if (key.toLowerCase() === "v" && isModified(event) && event.shift) {
     return { kind: "toggle-verse" }
+  }
+
+  // ── Dev affordance (#6033): spawn an isolated scene station into the live ──
+  // Verse, and toggle its portal. Explore mode only (so coding overlay keys are
+  // untouched), and only while the Verse is on-screen.
+  if (isVerseExploreActionContext(model) && isModified(event) && event.shift) {
+    if (key.toLowerCase() === "e") {
+      return { kind: "spawn-verse-scene", sceneId: DEFAULT_SPAWNABLE_SCENE_ID }
+    }
+    if (key.toLowerCase() === "p") {
+      return {
+        kind: "toggle-verse-scene-portal",
+        sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
+      }
+    }
   }
 
   // ── Cmd/Ctrl-Enter submits the chat/composer turn ─────────────────────────
