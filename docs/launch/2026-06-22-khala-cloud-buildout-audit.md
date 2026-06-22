@@ -9,6 +9,43 @@ Source of record: [`docs/inference/khala-buildout-roadmap.md`](../inference/khal
 > The closed `KHALA-001…027` / `OA-SPACETIME-*` issues are the **deprecated**
 > websocket sync engine and are unrelated.
 
+## Status snapshot — 2026-06-22 (LIVE)
+
+This supersedes the "not on yet" framing below: **Khala is live and serving.**
+
+- **Gateway LIVE on prod** (`openagents.com`, version `1873af3d`) **and staging**
+  (`openagents-staging…workers.dev`). `INFERENCE_GATEWAY_ENABLED="true"`, provider
+  secrets (`FIREWORKS_API_KEY`, `VERTEX_SA_KEY`) set on both. `/v1/models` lists
+  `openagents/khala-mini` + `openagents/khala-code`.
+- **M0 (#6008) CLOSED — live-proven.** `khala-code` served a real **metered
+  completion** on prod via Fireworks (`kimi-k2p7-code`) with a full `openagents`
+  receipt block: charge receipt (+ dereferenceable URL), the **M2 crossy-road
+  verifier verdict** (rubric + `verification_receipt` + `reward_handoff`). A
+  free-tier `gemini-3.5-flash` call returns 200 on staging too.
+- **First real Bitcoin payout to the guinea-pig Pylon: DONE.** 5,000 sats sent
+  Spark→Spark to `KHALA_TEST_PAYOUT_SPARK_ADDRESS` (`.secrets/khala-test-payout.env`),
+  status `succeeded`, fee 0, from a local Spark wallet under orchestrator control
+  (funded by an owner-paid 10,000-sat bolt11; 5,000 sats remain, recoverable via
+  the pylon-v02 mnemonic).
+- **Milestones:** M0 ✅ closed · M2 ✅ closed · M4 inert adapter merged ·
+  M3 dormant settlement leg merged · M5 world projection + desktop scene merged
+  (render primitives + live proof ongoing) · **M6 substrate P1–P5 merged**
+  (psionic `d99eb130` + `2ea46985`; CPU smoke drives a head 0.0→1.0) · M8 runner
+  + reducer merged (self-gating; `canClose:false` on fixture).
+
+**Known issue → strategy (now documented):** the full single-file crossy-road
+*game* generation `524`s at the Fireworks upstream because it was a **non-streaming**
+request held open past the ~100s edge timeout. Fix = **streaming SSE** for
+interactive calls + an **async batch-job (Queue/DO)** path for detached/long runs;
+both have in-repo rails. See
+[`docs/inference/2026-06-22-long-running-inference-response-strategies.md`](../inference/2026-06-22-long-running-inference-response-strategies.md).
+
+**Remaining to "fully done":** (1) stream the M8 runner + cockpit (kills the 524);
+(2) wire the batch-job Queue/DO consumer; (3) user-balance funding via the LN→credit
+bridge so paid khala serves on a *funded buyer* balance (today proven via an agent
+with prod credits); (4) M6 training run (needs a per-eval worker budget); (5) M5
+Verse render primitives + live event proof. Tracked under EPIC #6017.
+
 ## TL;DR
 
 The **scaffolding and contracts are landing fast**; the **live money loop is
