@@ -230,7 +230,130 @@ to re-check without exposing CoT.
   coordinators ship as shadow candidates under the promoted/candidate contract
   before taking live routing authority.
 
-## 10. Roadmap
+## 10. How Khala connects to the rest of the system
+
+Khala is not a standalone product — it is the **inference surface of OpenAgents
+Cloud**, sitting in the product layer over Psionic execution, drawing supply from
+Pylon, grading on Tassadar verification, settling on the revenue-loop spine, and
+operable by Artanis under bounded authority.
+
+```text
+                 Artanis (bounded autonomous operator)
+                        │  proposes (approval-gated)
+                        ▼
+  caller → Khala API ── coordinator ──► worker pool ──► verifier ──► receipt ──► settle
+            (product layer)   │            │              │            │          │
+                              │   Vertex / Fireworks / passthrough     │     revenue-loop
+                              │   + Pylon fabric (Psionic)        Tassadar      spine (#5457)
+                              │                                  verification    RL-1/2/3
+                         trained in Psionic                        classes
+```
+
+### OpenAgents Cloud — Khala is one of eight primitives
+
+Per [`2026-06-19-agent-cloud-revshare-everywhere.md`](2026-06-19-agent-cloud-revshare-everywhere.md),
+OpenAgents Cloud is the one-stop "Agent Cloud" spanning **inference, fine-tuning,
+training, sandboxes, agentic compute, tasks, data** (and future primitives) on
+**one credit balance (USD or Bitcoin), one referral relationship, revshare
+everywhere**. Khala is the *inference* primitive — the first lit by the revenue
+spine; the others plug into the identical `accepted-outcome → receipt → settle`
+machinery as they mature. Every Khala dollar fans three ways: OpenAgents margin +
+the serving node + the referrer.
+
+### The revenue-loop spine (EPIC #5457) — five attachment points
+
+Khala attaches to the spine at exactly five points (the gateway README's
+`MeteringHook`/balance-gate seams are where these land):
+
+1. **Credit-balance read** — `readAgentBalance(...).availableMsat`; `402` on
+   insufficient. Gates the request before any worker call.
+2. **Credit-balance decrement (receipt-first)** — `MeteringHook` (#5477) writes a
+   `billing_ledger_entries` row from the provider `usage`, never an estimate.
+   That metering receipt is the single source of truth for both billing and
+   referral.
+3. **Referral attribution — RL-1** (`site-referral-payout-ledger.ts`,
+   `site_referral_payout_ledger_entries`): the metering receipt becomes the
+   `qualifyingEventRef`; a row accrues at the default 5%
+   (`SITE_REFERRAL_PAYOUT_PERCENT_BPS`) and runs `eligible → approved →
+   dispatched → settled`. **Refer once, earn forever** applies to *all* of a
+   referred account's inference — and, cross-category, to everything else they
+   ever run on the Cloud.
+4. **Serving-node payout — RL-2** (escrow → Bitcoin): when a Pylon served the
+   work, its cut is held in `held_msat`, firms up on a **born-verified**
+   (exact-parity) receipt, and settles over Spark/reliable-tips.
+5. **No-resale authorization — RL-3** (`inference-resale-authorization.ts`):
+   Khala *is* the explicitly-**allowed** `api_inference_gateway_resale` case —
+   but only with the full reference chain present (provider grant, route policy,
+   metering receipt, pricing policy, ToS boundary, dispatch, assignment,
+   settlement). Subscription-capacity resale stays unconditionally **forbidden**.
+   `validateAssetBoundary` (`asset-bitcoin-boundary.ts`) keeps credit-spend →
+   credit-revshare and Bitcoin-service → Bitcoin-revshare from mixing. This is
+   the compliance backbone for selling Khala at all.
+
+### Supply: Pylon as a worker in Khala's pool
+
+Khala's pool has three supply lanes: **Vertex quota + partner passthrough + the
+Pylon fabric** (`docs/inference/2026-06-19-decentralized-serving-shard-wan.md`).
+Pylon is the "open Pylons" of the v3 pool: a contributor node bundling Psionic
+(inference/embeddings/training) and a self-custodial Lightning wallet that can
+earn the moment it comes online. A Pylon becomes a Khala worker by:
+
+- **registering capability** (NIP-89 refs like
+  `capability.public.pylon.nip90.text_inference.v0.3` + heartbeat readiness),
+- **accepting dispatch** (whole small models now; large models sharded across N
+  Pylons via the shard-WAN pipeline later),
+- producing an **exact-parity receipt** (`psionic.serve.*_run_receipt.v1`,
+  naming nodes/layer-ranges/token hashes + the greedy-parity verdict) that makes
+  its output trustable — **no parity, no pay**,
+- and being **paid in Bitcoin** to its admitted Lightning target via RL-2/RL-3.
+
+The new seam is the **fabric supply adapter** (gateway ↔ Psionic:
+ask-plan → execute → consume-receipt), behind the existing
+`InferenceProviderAdapter` interface.
+
+### Substrate: Psionic
+
+The boundary is strict: **Psionic owns execution + evidence and never holds
+money; Khala (product layer) owns pricing, payout, referral, and routing.**
+Psionic is also where the learned coordinator is *trained* (primitives P1–P5,
+`docs/sakana/psionic-coordinator-roadmap.md`) — so the Khala coordinator is
+trained in Psionic and served through Khala. Psionic's non-negotiable payment
+gate is **exact-greedy parity**, which is exactly the trust property RL-2 firms
+up against.
+
+### Verification: Tassadar
+
+Khala's `verification` field draws from the **Tassadar verification-class
+registry**, and the verified worker pool + the run's flywheel (verified work →
+better model → lower cost → more demand) are what make composition beat scale
+over time. The learned coordinator's terminal reward *is* the Tassadar verdict
+(§5; `docs/sakana/tassadar-run-integration.md`).
+
+### Operation: Artanis under bounded authority
+
+Artanis is the autonomous Cloud Mind (`apps/openagents.com/workers/api/src/artanis-*.ts`):
+a once-a-minute cron tick with **read-only authority by default**
+(`ARTANIS_LOOP_READ_ONLY_AUTHORITY` — eight `no*` booleans), risky action kinds
+(`wallet_spend`, `provider_mutation`, `runtime_promotion`, …) behind approval
+gates, and bounded treasury spend via standing grants (per-payout / per-day
+caps). Three connection modes (mostly **new** work):
+
+- **Run on Khala** — point Artanis's own mind (`artanis-mind.ts`, currently
+  Gemini via Cloudflare AI Gateway) at the Khala endpoint.
+- **Operate Khala under bounds** — Artanis proposes routing/quota changes as
+  approval-gated `artanis-work-routing.ts` records (work class `inference`,
+  target the gateway); it never mutates routing directly — `provider_mutation`
+  and `runtime_promotion` are gated kinds.
+- **Fund verified-work settlement** — within its bounded treasury envelope.
+
+The deep alignment: **"a learned coordinator ships as a shadow candidate, gated
+before it takes live routing authority" (§5) is the same governance Artanis
+already enforces.** Promoting a learned Khala router is a `runtime_promotion` —
+an approval-gated action under the autonomous-loop contract and Psionic's
+promoted/candidate contract. The safety story and the operator model are one
+system.
+
+## 11. Roadmap
 
 Keyed to the existing gateway EPIC where possible.
 
@@ -241,7 +364,7 @@ Keyed to the existing gateway EPIC where possible.
 - **Phase 4 — Conductor lane + Tassadar modules.** GRPO-trained NL planner (DPPO + FP32 head) for `khala`/agentic tasks; add Pylon shard-WAN serving and verified Tassadar modules to the pool; apply as an OpenRouter provider. *Success:* `openagents/khala` available in OpenRouter, composing open + frontier + module workers.
 - **Phase 5 — full Khala.** Frontier APIs + open Pylons + verified Tassadar modules + Bitcoin-settled work under one learned coordinator; `openagents/tassadar` exposed where exact replay applies. *Success:* frontier-grade outcomes at composed cost, every contribution verified and paid.
 
-## 11. Build spec (for a coding agent)
+## 12. Build spec (for a coding agent)
 
 ```text
 Evolve the OpenAI-compatible inference gateway at /v1/chat/completions into Khala.
@@ -266,7 +389,7 @@ Requirements:
 10. Do NOT implement learned routing yet; keep the coordinator interface swappable.
 ```
 
-## 12. Open questions
+## 13. Open questions
 
 - Real committed-use Vertex per-token cost (the one true pricing unknown — pull
   from the billing export; see `2026-06-19-pricing-model.md`).
