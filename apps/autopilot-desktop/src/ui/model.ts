@@ -14,6 +14,7 @@ import {
   FIRST_REAL_SETTLEMENT_REPLAY_SLUG,
   LAUNCH_RECOGNITION_REPLAY_SLUG,
 } from "@openagentsinc/proof-replay"
+import { openAgentsDefaultInputProfile } from "@openagentsinc/input-bindings"
 
 import type { NotificationCenterView } from "@openagentsinc/autopilot-control-protocol"
 // #5472: functional Settings preferences — the literal schemas live in the
@@ -408,6 +409,9 @@ export const Model = ts("AutopilotDesktop", {
   // Pose restored only when a material scene projection refresh is accepted.
   // Plain controller pose events must not write render state or remount Three.
   verseSceneRestorePose: S.NullOr(VerseLocalPose),
+  // Active input binding profile. Stored opaque so Settings/persistence can land
+  // later without making the model schema depend on every binding schema detail.
+  inputProfile: S.Unknown,
 
   // #5428: public activity timeline projection for Network/Training. The Bun
   // host fetches and schema-validates the Worker envelope; the webview renders
@@ -1082,6 +1086,7 @@ export const initialModel: Model = Model.make({
   chatWorldInspectedRef: null,
   nearVerseWorldItemId: null,
   verseSceneRestorePose: null,
+  inputProfile: openAgentsDefaultInputProfile,
   publicActivityTimeline: null,
   publicActivityTimelineStatus: { text: "not loaded", tone: "idle" },
   publicActivityTimelinePending: false,

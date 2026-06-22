@@ -1057,6 +1057,11 @@ export const update = (model: Model, message: Message): Result => {
       ]
     case "SettledVerseLocalPosePublish":
       return [model, noCommands]
+    case "ChangedInputProfile":
+      return [
+        Model.make({ ...model, inputProfile: message.profile }),
+        noCommands,
+      ]
     case "GotNotifications":
       return [Model.make({ ...model, notifications: message.view }), noCommands]
     case "GotNodeLaunchStatus":

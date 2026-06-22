@@ -67,6 +67,9 @@ export const ChangedVerseWorldItemProximity = m(
 export const ChangedVerseLocalPose = m("ChangedVerseLocalPose", {
   pose: VerseLocalPose,
 })
+export const ChangedInputProfile = m("ChangedInputProfile", {
+  profile: S.Unknown,
+})
 export const SettledVerseLocalPosePublish = m("SettledVerseLocalPosePublish", {
   ok: S.Boolean,
   reason: S.String,
@@ -693,6 +696,7 @@ export const Message = S.Union([
   ChangedVersePresenceZone,
   ChangedVerseWorldItemProximity,
   ChangedVerseLocalPose,
+  ChangedInputProfile,
   SettledVerseLocalPosePublish,
   GotNotifications,
   GotNodeLaunchStatus,

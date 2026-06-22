@@ -6,9 +6,9 @@ Scope: current keyboard, mouse, Verse movement, and app shortcut handling in
 `openagents` and the linked `three-effect` runtime, with a recommendation for
 MMORPG-style custom keybindings.
 
-Status: implementation in progress. The initial shared contract exists, while
-runtime input behavior remains unchanged until the resolver/controller phases
-land.
+Status: implementation in progress. The shared contract, resolver, three-effect
+controller bindings, and retained Verse runtime wiring are implemented. Settings
+UI and packaged custom-binding smoke coverage remain.
 
 ## Implementation Progress
 
@@ -40,6 +40,15 @@ land.
   through action bindings instead of hard-coded `Tab`. OpenAgents now pins both
   desktop and web `@openagentsinc/three-effect` consumers to that commit and the
   desktop type shim exposes the new binding-aware option shape.
+- 2026-06-22: Issue #5948 wired the desktop input profile into the retained
+  Verse scene. `three-effect` commit `71f89cc` removes movement and target
+  binding maps from the retained structural identity, adds in-place controller
+  binding updates, and clears held movement state only when a binding map
+  actually changes. OpenAgents now projects the active `inputProfile` into
+  third-person movement and target-cycling options, records `input.profile`
+  diagnostics, and keeps pose/camera restoration stable across profile changes.
+  The desktop Verse launch suite now proves an IJKL-style profile updates
+  controller bindings without forcing a scene rebuild.
 
 ## Goal
 

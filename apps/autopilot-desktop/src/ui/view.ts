@@ -36,6 +36,10 @@ import {
   type TrainingRunVisualizationOptions,
   type TrainingRunWorldItemSelection,
 } from "@openagentsinc/three-effect/core"
+import {
+  verseInputBindingProjection,
+  type VerseInputBindingProjection,
+} from "./verse-input-bindings.js"
 import { Option } from "effect"
 import type { Attribute, Document, Html } from "foldkit/html"
 import { html } from "foldkit/html"
@@ -6874,6 +6878,10 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
   const withWorld = withChatWorldMultiplayerLayer(withBase, multiplayer, {
     localAvatarRef: CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
+  const inputBindings = verseInputBindingProjection(
+    model.inputProfile,
+    model.verseMode === "code" ? "verse_code_overlay" : "verse_explore",
+  )
   const lastPose =
     model.verseSceneRestorePose === null
       ? undefined
@@ -6892,7 +6900,12 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     ...withWorld,
     cameraMode: "perspective_walk" as const,
     controller: "third_person_character" as const,
+    keyboardTargeting: {
+      ...(withWorld.keyboardTargeting ?? {}),
+      ...inputBindings.keyboardTargeting,
+    },
     thirdPersonController: {
+      keyboardBindings: inputBindings.movement,
       character: {
         walkSpeed: 3.8,
         runSpeed: 6.7,
@@ -6918,6 +6931,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
         multiplayer,
       )
     : poseStableNavigable
+  recordVerseInputBindingDiagnostic(inputBindings)
   recordVerseVisualizationKey(visualization)
   return visualization
 }
@@ -6925,6 +6939,26 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
 export const chatSceneVisualization = verseSceneVisualization
 
 let lastVerseVisualizationKey: string | null = null
+let lastVerseInputBindingDiagnosticKey: string | null = null
+
+const recordVerseInputBindingDiagnostic = (
+  projection: VerseInputBindingProjection,
+): void => {
+  const key = JSON.stringify({
+    activeContext: projection.activeContext,
+    lastResolvedAction: projection.lastResolvedAction,
+    profileId: projection.profileId,
+    schemaVersion: projection.schemaVersion,
+  })
+  if (key === lastVerseInputBindingDiagnosticKey) return
+  lastVerseInputBindingDiagnosticKey = key
+  recordVerseSceneDiagnostic("input.profile", {
+    activeContext: projection.activeContext,
+    lastResolvedAction: projection.lastResolvedAction,
+    profileId: projection.profileId,
+    schemaVersion: projection.schemaVersion,
+  })
+}
 
 const recordVerseVisualizationKey = (
   visualization: TrainingRunVisualizationOptions,
