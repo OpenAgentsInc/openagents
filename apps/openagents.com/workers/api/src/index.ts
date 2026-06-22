@@ -303,6 +303,11 @@ import { makeD1InferenceReceiptStore } from './inference-receipts'
 import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
 import { handleBatchJobsSubmit, handleBatchJobReceiptRead, handleBatchJobStatusRead } from './inference/batch-job-routes'
 import {
+  BatchJobQueueMessage,
+  executeBatchJob,
+} from './inference/batch-job-consumer'
+import { makeD1BatchJobStore } from './inference/batch-job-store'
+import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
@@ -8218,6 +8223,36 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
   inferenceAdapterEnv = env
 }
 
+// Async batch-job consumer wiring (Khala, EPIC #6017 / #6028). Assembles the
+// consumer deps from the live env using the SAME seams the interactive
+// /v1/chat/completions handler uses: the module-level provider-adapter registry
+// (with partner/fabric adapters + the per-request env captured first), the live
+// ledger metering hook (so each batch item decrements credits exactly as an
+// interactive completion would), and the cheapest-viable lane plan with
+// bounded-backoff overflow. INERT by default — the queue handler only calls
+// `executeBatchJob` with these deps when INFERENCE_BATCH_JOBS_ENABLED is on, so
+// nothing here changes prod behaviour until the path is explicitly armed.
+//
+// Reads only the narrow slices it needs — the D1 binding plus the inference
+// config/secret fields (`OpenAgentsWorkerConfigEnv` already carries the
+// passthrough/Vertex secrets) — rather than a raw Cloudflare `Env`, keeping the
+// worker off the raw-Env ratchet.
+type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
+  Pick<WorkerBindings, 'OPENAGENTS_DB'>
+const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerFabricServeAdapter(inferenceProviderRegistry, env)
+  setInferenceAdapterEnv(env)
+  return {
+    dispatch: {
+      plan: selectAdapterPlan,
+      registry: inferenceProviderRegistry,
+    },
+    meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+    store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
+  }
+}
+
 // #5480 Vertex Anthropic (Claude lane) — registered exactly once. INERT until
 // the VERTEX_SA_KEY Worker secret is present: with no key, `tokenProvider` is
 // undefined and every call returns a typed non-retryable error (mapped by the
@@ -10409,10 +10444,45 @@ const runWorkerFetch = (
 export default {
   fetch: runWorkerFetch,
   queue: async (batch, env, ctx): Promise<void> => {
+    // Whether the async batch-job consumer is armed. Default OFF: batch-job
+    // messages are routed to `executeBatchJob` ONLY when this flag is on, so the
+    // queue handler's behaviour for every existing message type is unchanged in
+    // prod until the path is explicitly armed.
+    const batchJobsEnabled = isInferenceGatewayEnabled(
+      env.INFERENCE_BATCH_JOBS_ENABLED,
+    )
+
     for (const message of batch.messages) {
-      const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(
-        message.body,
-      )
+      // Discriminate by the message's stable schema version so a batch-job
+      // payload (Khala, EPIC #6017 / #6028) is routed to the inference batch
+      // consumer OFF the request path, while every other payload keeps flowing
+      // to the adjutant-enrichment executor exactly as before.
+      const body = message.body
+      const schemaVersion =
+        typeof body === 'object' && body !== null && 'schemaVersion' in body
+          ? (body as { schemaVersion?: unknown }).schemaVersion
+          : undefined
+
+      if (schemaVersion === 'openagents.inference.batch_job.v1') {
+        // Inert unless armed: a batch-job message that arrives while the flag is
+        // off is acked without execution (the submitted job stays pending, no
+        // credit decrement, no behaviour change). When armed, the consumer runs
+        // the job to completion against the gateway and writes the
+        // dereferenceable closeout receipt.
+        if (batchJobsEnabled) {
+          const decoded = S.decodeUnknownSync(BatchJobQueueMessage)(body)
+          const exit = await Effect.runPromiseExit(
+            executeBatchJob(makeBatchJobConsumerDeps(env), decoded),
+          )
+          if (Exit.isFailure(exit)) {
+            throw exit.cause
+          }
+        }
+        message.ack()
+        continue
+      }
+
+      const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(body)
 
       const exit = await Effect.runPromiseExit(
         executeQueuedAdjutantEnrichmentJob(env, decoded),
