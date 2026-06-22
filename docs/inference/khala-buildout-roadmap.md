@@ -79,6 +79,221 @@ This is the demo the entire buildout below is sequenced to reach.
   shows the live Verse view of the serve, and renders/plays the resulting
   artifact.
 
+## Parallel execution plan (delegate this way)
+
+Run the buildout as parallel lanes with one named subagent per lane. Each
+subagent owns its slice end-to-end: read the cited docs first, keep changes
+inside the owning packages, write receipts/tests for its claims, and post a
+handoff note naming blockers, public refs, and exact verification commands. A
+lane may use fixtures or inert adapters while its upstream dependency is not
+ready, but it must label those results as scaffold evidence, not product proof.
+
+### Agent Nexus — Gateway and Khala serving
+
+**Owns:** M0 and the serving side of M7/M8.
+**Primary files:** `apps/openagents.com/workers/api/src/inference/*`,
+`docs/inference/khala.md`, `docs/inference/README.md`.
+**Read first:** `2026-06-19-gateway-gemini-live-verification.md`,
+`2026-06-19-fireworks-provider.md`, `2026-06-19-inference-gateway-business.md`.
+
+**Instructions:**
+- Register `openagents/khala-mini`, `openagents/khala-pro`, and
+  `openagents/khala-code` behind `/v1/models` without breaking existing model
+  ids.
+- Grow `ModelRouter` into a stable `Coordinator` interface. Keep v0 heuristic
+  routing simple and swappable; learned routing must drop in later without API
+  shape changes.
+- Turn real provider adapters on behind flags, and return the non-breaking
+  `openagents` response block from real provider `usage`.
+- Coordinate with Agent Ledger before claiming paid success. Free or owner-grant
+  usage can prove route shape, but the paid-credits business requires a
+  dereferenceable card/credit/inference receipt.
+
+**First useful output:** an SDK smoke that calls `openagents/khala-mini` and
+returns route, worker, usage, `cost_msat`, `price_msat`, and `settled:false`.
+
+### Agent Ledger — Payments, credits, referral, settlement
+
+**Owns:** M3, the paid side of M0, and the #5512/#5520/#5521 gate.
+**Primary files:** billing, metering, referral, settlement, asset-boundary, and
+no-resale code under `apps/openagents.com/workers/api/src/`.
+**Read first:** `2026-06-19-pricing-model.md`,
+`2026-06-19-pricing-vs-factory.md`, `2026-06-19-agent-cloud-revshare-everywhere.md`,
+issues #5508, #5512, #5520, #5521, #5524.
+
+**Instructions:**
+- Keep the staging-before-production rule absolute: no prod live keys or real
+  payout arming until #5520 has a full Stripe TEST receipt chain.
+- Produce public-safe readback for every money claim: checkout receipt, USD→msat
+  bridge/grant receipt, inference charge receipt, referral accrual, and payout
+  settlement receipt.
+- Preserve the asset boundary: USD-funded credits are inference-spendable, never
+  Bitcoin-withdrawable; Bitcoin settlement goes only through the approved
+  payout path.
+- Do not print secrets or raw payment payloads. Owner-held Stripe/Spark/MDK
+  arming remains a `NEEDS-OWNER` handoff, not an agent workaround.
+
+**First useful output:** a staging report proving card/test-credit → funded
+balance → metered Khala spend → dereferenceable receipt, with referral accrual
+still inert/test unless owner-armed.
+
+### Agent Verifier — Accepted-outcome rubric and receipts
+
+**Owns:** M2 and the verifier contract M6/M7 train against.
+**Primary files:** new rubric/harness code near the inference or accepted-outcome
+surfaces; product-promise evidence refs as needed.
+**Read first:** `docs/sakana/tassadar-run-integration.md`,
+`docs/sakana/coordinator-as-verified-work.md`, `docs/research/tmax/synthesis.md`,
+issue #6010.
+
+**Instructions:**
+- Define the crossy-road rubric as a deterministic, machine-checkable acceptance
+  test: single HTML file, loads headless, controls are correct, camera is sane,
+  difficulty ramps, restart places the character correctly.
+- Keep producer and verifier separate. The model/coding agent may produce the
+  artifact; the independent harness decides `test_passed|failed`.
+- Return structured verdict details in the receipt so Agent Psion can consume a
+  scalar reward and Agent Demo can publish an honest benchmark.
+- Add negative fixtures: broken controls, broken camera/restart, missing single
+  file, and a non-running HTML result must all fail.
+
+**First useful output:** `khala-code` fixture verification where one known-good
+  HTML artifact passes and at least one deliberately broken artifact fails.
+
+### Agent Psion — Learned coordinator and Psionic primitives
+
+**Owns:** M6 and the TRINITY/Conductor training substrate.
+**Primary repos/files:** `psionic/` for implementation; this repo only for
+OpenAgents integration docs/receipts.
+**Read first:** `docs/sakana/trinity.md`, `docs/sakana/conductor.md`,
+`docs/sakana/psionic-coordinator-roadmap.md`,
+`docs/sakana/adapting-sakana-coordination.md`, issue #6014.
+
+**Instructions:**
+- Build in the roadmap order: P4 offline scalar reward harness, P3 sep-CMA-ES
+  plus random-search baseline, P1 hidden-state extraction, P2 coordinator head
+  and optional SVF, P5 typed worker-pool binding.
+- Start offline. Do not wait on live Pylon serving or paid settlement to validate
+  optimizer mechanics.
+- The verifier role binds to Agent Verifier/Tassadar verdicts, not prompted
+  self-judgment.
+- Ship learned policies as candidate artifacts in shadow. Promotion requires a
+  clean verified-work-per-sat win and a gated `runtime_promotion`.
+
+**First useful output:** an offline `evaluate_coordinator(params) -> scalar`
+  harness plus sep-CMA-ES/random-search comparison over a deterministic fixture
+  batch.
+
+### Agent Pylon — Fabric supply and worker pool
+
+**Owns:** M4 and the Pylon/Psionic supply adapter.
+**Primary files:** `apps/pylon/`, Psionic serving receipts, gateway adapter seam.
+**Read first:** `2026-06-19-decentralized-serving-shard-wan.md`,
+`2026-06-19-leyten-compute-shard-audit.md`, issue #6012 and DE-4 #5527.
+
+**Instructions:**
+- Start with whole-small-model serving on one admitted Pylon. Leave shard-WAN
+  large-model serving as a later, receipt-gated lane.
+- Build a fabric adapter behind `InferenceProviderAdapter`: ask-plan → execute →
+  consume exact-parity receipt.
+- Require capability, heartbeat/readiness, wallet/payout readiness, and exact
+  parity before payout. No parity, no pay.
+- Expose enough worker and receipt metadata for Agent Verse to render in-world
+  vs gateway split honestly.
+
+**First useful output:** one Khala request served by a Pylon in a trusted/small
+  lane with a public-safe serve receipt, even if settlement stays owner-armed.
+
+### Agent Verse — World visualization
+
+**Owns:** M5 and all Verse rendering of serving events.
+**Primary files:** `apps/openagents-world`, `packages/world-contract`,
+`packages/world-client`, `@openagentsinc/three-effect`, Autopilot desktop world
+visualization files.
+**Read first:** `khala-in-the-world.md`,
+`docs/sakana/tassadar-fugu-exploration.md`,
+`docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md`,
+issue #6013.
+
+**Instructions:**
+- Build the visualization against evidence-bound motion: no animation without a
+  Khala receipt or source ref.
+- Add `gateway_station` and service-only `upsert_gateway_station`; model request
+  activity as a `world_event` payload first, not a broad new authority surface.
+- Implement `createCracklingArc` and `createGatewayPortal`; reuse existing Pylon
+  stations, agent avatars, payment beams, HUD meters, and source-ref inspectors.
+- Use fixtures from Agent Nexus/Pylon while live events are immature, but mark
+  fixture-only demos as inert visual proof.
+
+**First useful output:** a local or fixture-driven scene where one Khala receipt
+  renders as either nexus→Pylon arc or nexus→gateway portal, clickable back to
+  its receipt ref.
+
+### Agent Cockpit — Autopilot consumption and artifact handoff
+
+**Owns:** M1 and the user-facing run path into M8.
+**Primary files:** Autopilot client/cockpit surfaces and artifact preview paths.
+**Read first:** `khala.md`, `khala-buildout-roadmap.md`, issue #6009.
+
+**Instructions:**
+- Add a Khala provider/model selection path that submits to `openagents/khala-*`
+  and displays the `openagents` receipt block without exposing private internals.
+- Preserve BYO-provider behavior; Khala is an available first-party route, not a
+  forced replacement.
+- Save/render the returned single-file HTML artifact and hand its refs to Agent
+  Verifier for acceptance and Agent Verse for world playback.
+- Keep UI claims scoped: show receipt, route, cost, verification, and settlement
+  state; do not claim learned coordination until Agent Psion has promoted a
+  candidate.
+
+**First useful output:** the crossy-road prompt runs through the cockpit against
+  `khala-code`, returns an HTML artifact, displays receipt metadata, and hands
+  the artifact to the verifier.
+
+### Agent Demo — Benchmark, metrics, and publication pack
+
+**Owns:** M8 and the comparison evidence package.
+**Primary files:** benchmark scripts/docs, public evidence pack, product-promise
+refs if a claim is upgraded.
+**Read first:** this roadmap, `khala.md`, `khala-in-the-world.md`, issue #6016,
+and DE-10 #5533.
+
+**Instructions:**
+- Define the head-to-head runbook before the learned coordinator exists so every
+  lane knows the measurement target.
+- Report tokens, dollars, wall-clock, verification result, cost per accepted
+  outcome, accepted outcomes per kWh where measured, in-world vs gateway split,
+  and settlement refs.
+- Treat external Fugu/Opus numbers as reported claims unless independently
+  reproduced; label them separately from OpenAgents measurements.
+- Publish wins and losses honestly. A failed Khala run with good receipts is
+  still useful evidence; do not turn benchmark copy into product proof without
+  receipts and owner sign-off.
+
+**First useful output:** a dry-run evidence template that can ingest one Khala
+  run, one frontier baseline run, verifier output, and settlement/Verse refs.
+
+### Parallel merge order
+
+```
+Nexus M0 ─┬─► Cockpit M1 ─► Verifier M2 ─► Ledger M3 ─┐
+          │                                            ├─► Demo M8
+          └─────────────► Verse M5 (fixtures first) ───┤
+Pylon M4 ───────────────────────────────┬──────────────┤
+Verifier M2 + Pylon M4 ─► Psion M6 ─────┴─► Conductor M7
+```
+
+**Work that can start immediately:** Agent Nexus on M0, Agent Ledger on the
+staging/paid receipt gate, Agent Verifier on the rubric, Agent Verse on
+fixture-driven rendering, Agent Psion on offline P4/P3, Agent Pylon on
+whole-small-model adapter shape, Agent Cockpit on receipt display against a mock
+Khala response, and Agent Demo on the runbook/template.
+
+**Work that must wait for live evidence:** settlement claims wait on Agent
+Ledger; real Pylon-payout claims wait on Agent Pylon + Agent Ledger; learned
+router promotion waits on Agent Psion + Agent Verifier + Agent Pylon; published
+head-to-head claims wait on Agent Demo with receipt-backed measurements.
+
 ## Sequenced milestones
 
 Each milestone converges the workstreams toward the demo; later ones depend on
