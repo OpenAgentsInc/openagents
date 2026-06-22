@@ -31,6 +31,7 @@
 
 import { openAgentsInputActionSpecById } from "@openagentsinc/input-bindings"
 
+import type { IconName } from "../shared/openagents-icon-catalog.js"
 import type { PaneId } from "./model.js"
 
 // A leaf destination inside a group: the pane it opens + how it's labelled.
@@ -485,24 +486,45 @@ export type HotbarSlot = Readonly<{
   number: number
   actionId: string
   label: string
-  iconName?: "OpenaiLogoRegular"
+  iconName?: IconName
+  /** slots with a bound effect (1/2/3) render as active, icon-bearing buttons. */
+  filled?: boolean
 }>
 
 const HOTBAR_ACTION_SLOT_COUNT = 10
+
+// The slots that are wired to a real Verse effect (#6033 owner request): slot 1
+// opens a coder session, slot 2 spawns the crackling-energy scene, slot 3 toggles
+// that scene's gateway portal. Each carries a human label + an icon so the hotbar
+// reads as more than a bare key chip. Keyboard mapping lives in keyboard.ts; this
+// is purely how the slot presents in the bar.
+// Slot 1 keeps its existing input-binding title ("New Coder Session"); only its
+// icon is pinned here. Slots 2/3 carry descriptive labels + icons.
+const HOTBAR_FILLED_SLOTS: Readonly<
+  Record<number, { label?: string; iconName: IconName }>
+> = {
+  1: { iconName: "OpenaiLogoRegular" },
+  2: { label: "Spawn crackling scene", iconName: "Flash" },
+  3: { label: "Toggle scene portal", iconName: "GlobeSpin" },
+}
 
 export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = Array.from(
   { length: HOTBAR_ACTION_SLOT_COUNT },
   (_, index): HotbarSlot => {
     const number = index + 1
     const actionId = `action_bar.slot_${number}`
+    const filled = HOTBAR_FILLED_SLOTS[number]
     return {
       kind: "action",
       number,
       actionId,
       label:
+        filled?.label ??
         openAgentsInputActionSpecById.get(actionId)?.title ??
         `Action Slot ${number}`,
-      ...(number === 1 ? { iconName: "OpenaiLogoRegular" as const } : {}),
+      ...(filled === undefined
+        ? {}
+        : { iconName: filled.iconName, filled: true }),
     }
   },
 )

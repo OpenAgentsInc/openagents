@@ -509,7 +509,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(tree).not.toContain("pylon-base-status")
     expect(tree).not.toContain("character-creation-overlay")
     expect(tree).toContain("hotbar-slot")
-    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("hotbar-slot-filled")
     expect(tree).toContain("data-hotbar-icon")
     expect(tree).toContain("OpenaiLogoRegular")
     expect(tree).toContain("New Coder Session")
@@ -588,7 +588,12 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
     expect(interpretKey(exploreModel, key({ key: "1", code: "Digit1" }))).toEqual({
       kind: "open-coder-session",
     })
-    expect(interpretKey(exploreModel, key({ key: "2", code: "Digit2" }))).toEqual({
+    // #6033: slot 2 now spawns the crackling-energy Verse scene (slot 3 toggles
+    // its portal); the remaining slots 4..10 are still no-ops.
+    expect(interpretKey(exploreModel, key({ key: "2", code: "Digit2" })).kind).toBe(
+      "spawn-verse-scene",
+    )
+    expect(interpretKey(exploreModel, key({ key: "4", code: "Digit4" }))).toEqual({
       kind: "none",
     })
 
@@ -687,7 +692,7 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
     expect(tree).toContain("shell-input")
     expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).toContain("hotbar-slot")
-    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("hotbar-slot-filled")
     expect(tree).toContain("hotbar-slot-icon")
     expect(tree).toContain("hotbar-slot-key")
     expect(tree).toContain("OpenaiLogoRegular")
@@ -698,7 +703,7 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
   test("the hotbar face is concise and does not inline raw SVG markup", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar-slot-empty")
-    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("hotbar-slot-filled")
     expect(tree).toContain("New Coder Session (1)")
     expect(tree).toContain("Action Slot 10 (0)")
     expect(tree).toContain("hotbar-slot-tooltip")

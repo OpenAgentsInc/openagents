@@ -98,7 +98,8 @@ import {
 } from "../shared/chat-world-visualization.js"
 import { withVerseKhalaEffectLayer } from "../shared/verse-khala-effect.js"
 import {
-  verseSpawnedSceneEvidenceLines,
+  DEFAULT_SPAWNABLE_SCENE_ID,
+  verseSpawnableSceneById,
   withVerseSpawnedSceneLayer,
 } from "../shared/verse-spawned-scene.js"
 import { verseKhalaInputOverlay } from "./verse-khala-input.js"
@@ -293,6 +294,8 @@ import {
   ToggledDiffViewMode,
   ChangedVerseMode,
   ClickedHotbarNewCoderSession,
+  SpawnedVerseScene,
+  ToggledVerseScenePortal,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
@@ -721,17 +724,37 @@ const hotbarSlotIcon = (name: IconName): Html =>
     [],
   )
 
+// The click Message a filled slot fires. Slots 1/2/3 are wired to a real effect;
+// slots 2/3 fire the SAME spawn/portal messages the ⌘⇧E / ⌘⇧P chords (and the
+// number keys) fire, so the hotbar is just a clickable mirror — and clicking
+// them never pops the (removed) evidence pane. Returns null for unfilled slots.
+const hotbarSlotClickMessage = (slot: HotbarSlot): Message | null => {
+  if (slot.filled !== true) return null
+  switch (slot.number) {
+    case 1:
+      return ClickedHotbarNewCoderSession()
+    case 2:
+      return SpawnedVerseScene({ sceneId: DEFAULT_SPAWNABLE_SCENE_ID })
+    case 3:
+      return ToggledVerseScenePortal({ sceneId: DEFAULT_SPAWNABLE_SCENE_ID })
+    default:
+      return null
+  }
+}
+
 const hotbarSlotView = (
   profile: OpenAgentsInputProfile,
   slot: HotbarSlot,
 ): Html => {
   const chord = hotbarBindingLabel(profile, slot.actionId)
   const title = `${slot.label} (${chord})`
+  const clickMessage = hotbarSlotClickMessage(slot)
+  const isButton = clickMessage !== null
   const baseAttrs: ReadonlyArray<Attribute<Message>> = [
     cls(
       `hotbar-slot hotbar-slot-action${
-        slot.number === 1
-          ? " hotbar-slot-button hotbar-slot-coder"
+        isButton
+          ? ` hotbar-slot-button hotbar-slot-filled hotbar-slot-${slot.number}`
           : " hotbar-slot-empty"
       }`,
     ),
@@ -743,22 +766,16 @@ const hotbarSlotView = (
   const face = slot.iconName === undefined
     ? h.span([cls("hotbar-slot-label"), h.AriaHidden(true)], [chord])
     : hotbarSlotIcon(slot.iconName)
-  const children = slot.number === 1
+  const children = isButton
     ? [
         face,
         h.span([cls("hotbar-slot-key"), h.AriaHidden(true)], [chord]),
         h.span([cls("hotbar-slot-tooltip")], [title]),
       ]
-    : [
-        face,
-      ]
-  return slot.number === 1
+    : [face]
+  return clickMessage !== null
     ? h.button(
-        [
-          ...baseAttrs,
-          h.Type("button"),
-          h.OnClick(ClickedHotbarNewCoderSession()),
-        ],
+        [...baseAttrs, h.Type("button"), h.OnClick(clickMessage)],
         children,
       )
     : h.div([...baseAttrs, h.AriaHidden(true)], children)
@@ -7127,6 +7144,19 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     withKhalaEffect,
     modelVerseSpawnedScenes(model).map((spawned) => ({
       sceneId: spawned.sceneId,
+      // Drop the scene station right in front of the avatar's last pose so the
+      // crackling arc spawns where the avatar is looking and is immediately
+      // visible (not far off at a fixed dark station). Falls back to the fixed
+      // anchor before any pose lands.
+      avatar:
+        model.verseSceneRestorePose === null
+          ? null
+          : {
+              x: model.verseSceneRestorePose.x,
+              y: model.verseSceneRestorePose.y,
+              z: model.verseSceneRestorePose.z,
+              yaw: model.verseSceneRestorePose.yaw,
+            },
       knobs: { showPortal: spawned.showPortal },
     })),
   )
@@ -7274,6 +7304,16 @@ const chatSceneInspector = (model: Model): Html =>
 // `<pre class="evidence">` block (motionKind / sourceRefs / simulated /
 // evidenceMode / generatedAt / portal). Honest + isolated: it names every
 // spawned scene as a labelled simulation. Absent until something is spawned.
+// #6033 owner report: the spawned scene used to pop a big intrusive top-right
+// evidence pane (the standalone page's `<pre class="evidence">` block) every time
+// the scene spawned. The owner hated it. The scene itself stays evidence-bound
+// INTERNALLY — every beam still carries its sourceRefs + simulated:true (see
+// verseSpawnedSceneLayer) — but we no longer paint a big text pane over the
+// world. At most a single tiny, unobtrusive chip naming the active effect, so
+// there is a quiet on-screen marker without the wall of contract text.
+//
+// `verseSpawnedSceneEvidenceLines` is intentionally retained (and still tested)
+// as the honest contract derivation; it is just no longer rendered as a pane.
 const verseSpawnedSceneOverlay = (model: Model): Html => {
   const spawned = modelVerseSpawnedScenes(model)
   if (spawned.length === 0) {
@@ -7281,24 +7321,21 @@ const verseSpawnedSceneOverlay = (model: Model): Html => {
   }
   return h.aside(
     [
-      cls("verse-spawned-scene mono"),
-      h.AriaLabel("Spawned isolated scene evidence"),
+      cls("verse-spawned-scene verse-spawned-scene-chip mono"),
+      h.AriaLabel("Spawned isolated scene"),
       h.DataAttribute("verse-spawned-scene", "active"),
     ],
-    spawned.map((entry) =>
-      h.pre(
+    spawned.map((entry) => {
+      const scene = verseSpawnableSceneById(entry.sceneId)
+      const label = scene?.label ?? entry.sceneId
+      return h.span(
         [
-          cls("verse-spawned-scene-evidence"),
+          cls("verse-spawned-scene-tag"),
           h.DataAttribute("verse-spawned-scene-id", entry.sceneId),
         ],
-        [
-          verseSpawnedSceneEvidenceLines({
-            sceneId: entry.sceneId,
-            knobs: { showPortal: entry.showPortal },
-          }).join("\n"),
-        ],
-      ),
-    ),
+        [`⚡ ${label}${entry.showPortal ? " · portal" : ""}`],
+      )
+    }),
   )
 }
 

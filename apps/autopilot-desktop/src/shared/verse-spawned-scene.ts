@@ -54,11 +54,20 @@ export const VERSE_SPAWNED_SCENE_NODE_PREFIX = "verse:spawned:"
 export const VERSE_SPAWNED_SCENE_SOURCE_REF =
   "github:OpenAgentsInc/openagents#6033"
 
-// Fixed in-world "scene station" anchor: a short walk from spawn so the avatar
-// can stroll up to it. Tuned HERE (the mapper), not in the renderer. The crackling
-// arc hangs above the station; the optional portal sits just below it.
+// Fallback in-world "scene station" anchor used only when we do not yet know the
+// avatar's pose. The live spawn (verseSceneVisualization) derives the station
+// from the avatar's last pose so the arc spawns RIGHT IN FRONT of the avatar at
+// a clearly visible size — the previous fixed `z:-6` station put the arc far off
+// in the dark Verse where the thin primitive was invisible (#6033 owner report).
+// Tuned HERE (the mapper), not in the renderer.
 export const VERSE_SPAWNED_SCENE_STATION_POSITION: TrainingRunVector =
-  roundedVerseVector([0, 0, -6])
+  roundedVerseVector([0, 0, -2.4])
+
+// How far IN FRONT of the avatar (along its facing/-Z by default) the scene
+// station is dropped, plus how high the arc hangs. Close enough to fill the
+// avatar's view, far enough not to clip the camera.
+export const VERSE_SPAWNED_SCENE_AVATAR_FORWARD = 2.4
+export const VERSE_SPAWNED_SCENE_AVATAR_HEIGHT = 1.2
 
 // ── Eyeball knobs (mirrors the standalone's URL knobs as typed options) ───────
 
@@ -73,6 +82,8 @@ export type VerseSpawnedSceneKnobs = Readonly<{
   strandCount?: number
   rate?: number
   opacity?: number
+  /** per-strand wobble amplitude — higher reads as more violent crackling. */
+  jitter?: number
   color?: number
   secondaryColor?: number
   /** also spawn the gateway-portal variant just below the arc (2nd toggle). */
@@ -90,13 +101,22 @@ export type VerseSpawnableScene = Readonly<{
   defaultKnobs: VerseSpawnedSceneKnobs
 }>
 
-// The crackling-energy scene defaults, matched to the standalone demo.
+// The crackling-energy scene defaults. Dialed UP from the standalone demo so the
+// arc reads as REAL crackling energy in the dark live Verse, not a faint hairline
+// at a far station (the #6033 owner report). The arc spans ~3.2 units wide and
+// hangs at chest/head height in front of the avatar; the strand count, opacity,
+// and jitter are pushed well above the renderer's faint default. Endpoints are
+// RELATIVE to the (avatar-derived) station anchor.
+// Offsets are RELATIVE to the (avatar-derived) station, in WORLD axes: X is
+// screen width, Y is ground-forward (kept ~constant so the arc faces the
+// avatar), Z is HEIGHT (so the arc rises off the ground at chest/head height).
 const CRACKLING_ENERGY_DEFAULTS: VerseSpawnedSceneKnobs = {
-  fromOffset: [-1.6, 1.6, 0],
-  toOffset: [1.6, 2.6, 0],
-  strandCount: 5,
+  fromOffset: [-1.6, 0, 0.2],
+  toOffset: [1.6, 0, 1.2],
+  strandCount: 11,
   rate: 2.6,
-  opacity: 0.78,
+  opacity: 0.95,
+  jitter: 0.34,
   color: 0x93c5fd,
   secondaryColor: 0xf8fafc,
   showPortal: false,
@@ -146,10 +166,55 @@ const addOffset = (
 // One spawned scene's input: which registry scene, where its station sits, and
 // the (optional) knob overrides. `generatedAt` rides the evidence so the renderer
 // can derive motion timing; the synthetic source ref is the evidence.
+// The avatar's last pose, used to drop the scene station RIGHT IN FRONT of the
+// avatar (so the crackling arc is immediately visible) instead of at a fixed far
+// station. Only x/y/z/yaw matter here.
+export type VerseSpawnedSceneAvatarAnchor = Readonly<{
+  x: number
+  y: number
+  z: number
+  yaw?: number
+}>
+
+// Drop the scene station in front of the avatar along its facing direction, at a
+// comfortable viewing height. Falls back to the fixed station anchor when there
+// is no pose yet. Pure; tuned here, not in the renderer.
+//
+// COORDINATE NOTE (perspective_walk): the trainingRun renderer rotates the scene
+// root by -90° about X, so the world GROUND PLANE is the X/Y axes and HEIGHT is
+// the +Z axis (this is why the Khala layer's nexus sits at y≈1.85, z≈0.6, not
+// y=height). So "forward" along the ground is the +Y axis (rotated by yaw in the
+// X/Y plane), and "up" is a small +Z lift. Getting this wrong (forward=-Z,
+// height=+Y) is exactly what dropped the arc off to the side / underfoot.
+export const verseSpawnedSceneStationForAvatar = (
+  anchor: VerseSpawnedSceneAvatarAnchor | null | undefined,
+): TrainingRunVector => {
+  if (
+    anchor === null ||
+    anchor === undefined ||
+    !finite(anchor.x) ||
+    !finite(anchor.y) ||
+    !finite(anchor.z)
+  ) {
+    return VERSE_SPAWNED_SCENE_STATION_POSITION
+  }
+  const yaw = finite(anchor.yaw ?? Number.NaN) ? (anchor.yaw as number) : 0
+  // Forward along the ground plane (X/Y), rotated by yaw; height is +Z.
+  const forwardX = Math.sin(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
+  const forwardY = Math.cos(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
+  return roundedVerseVector([
+    anchor.x + forwardX,
+    anchor.y + forwardY,
+    anchor.z + VERSE_SPAWNED_SCENE_AVATAR_HEIGHT,
+  ])
+}
+
 export type VerseSpawnedSceneInput = Readonly<{
   sceneId: string
   /** where the scene station sits in the live world (defaults to the anchor). */
   station?: TrainingRunVector
+  /** the avatar pose; when set, the station is dropped in front of the avatar. */
+  avatar?: VerseSpawnedSceneAvatarAnchor | null
   knobs?: VerseSpawnedSceneKnobs
   generatedAt?: string
 }>
@@ -166,7 +231,11 @@ export const verseSpawnedSceneLayer = (
   const scene = verseSpawnableSceneById(input.sceneId)
   if (scene === null) return EMPTY_LAYER
 
-  const stationAnchor = input.station ?? VERSE_SPAWNED_SCENE_STATION_POSITION
+  // Prefer an explicit station, else drop the station in front of the avatar,
+  // else the fixed fallback anchor. This is what makes the arc visible: it spawns
+  // right where the avatar is looking instead of far off in the dark.
+  const stationAnchor =
+    input.station ?? verseSpawnedSceneStationForAvatar(input.avatar)
   if (!finite(stationAnchor[0]) || !finite(stationAnchor[1]) || !finite(stationAnchor[2])) {
     return EMPTY_LAYER
   }
@@ -174,16 +243,35 @@ export const verseSpawnedSceneLayer = (
   const knobs: Required<
     Pick<
       VerseSpawnedSceneKnobs,
-      "fromOffset" | "toOffset" | "showPortal" | "portalLane"
+      | "fromOffset"
+      | "toOffset"
+      | "showPortal"
+      | "portalLane"
+      | "strandCount"
+      | "opacity"
+      | "jitter"
+      | "rate"
+      | "color"
+      | "secondaryColor"
     >
   > = {
     fromOffset:
-      input.knobs?.fromOffset ?? scene.defaultKnobs.fromOffset ?? [-1.6, 1.6, 0],
+      input.knobs?.fromOffset ?? scene.defaultKnobs.fromOffset ?? [-1.6, 0, 0.2],
     toOffset:
-      input.knobs?.toOffset ?? scene.defaultKnobs.toOffset ?? [1.6, 2.6, 0],
+      input.knobs?.toOffset ?? scene.defaultKnobs.toOffset ?? [1.6, 0, 1.2],
     showPortal: input.knobs?.showPortal ?? scene.defaultKnobs.showPortal ?? false,
     portalLane:
       input.knobs?.portalLane ?? scene.defaultKnobs.portalLane ?? "openrouter",
+    strandCount:
+      input.knobs?.strandCount ?? scene.defaultKnobs.strandCount ?? 11,
+    opacity: input.knobs?.opacity ?? scene.defaultKnobs.opacity ?? 0.95,
+    jitter: input.knobs?.jitter ?? scene.defaultKnobs.jitter ?? 0.34,
+    rate: input.knobs?.rate ?? scene.defaultKnobs.rate ?? 2.6,
+    color: input.knobs?.color ?? scene.defaultKnobs.color ?? 0x93c5fd,
+    secondaryColor:
+      input.knobs?.secondaryColor ??
+      scene.defaultKnobs.secondaryColor ??
+      0xf8fafc,
   }
 
   const keyBase = `${VERSE_SPAWNED_SCENE_NODE_PREFIX}${scene.id}`
@@ -226,8 +314,24 @@ export const verseSpawnedSceneLayer = (
     simulated: true,
   } as const
 
+  // Carry the dialed-up appearance knobs on the beam so the shared renderer
+  // makes the arc bright/thick/violent enough to read as real crackling energy
+  // in the dark Verse (three-effect TrainingRunBeamAppearance pass-through).
   const beams: TrainingRunBeamDefinition[] = [
-    { fromId, toId, style: "crackling_arc", ...evidence },
+    {
+      fromId,
+      toId,
+      style: "crackling_arc",
+      appearance: {
+        strandCount: knobs.strandCount,
+        opacity: knobs.opacity,
+        jitter: knobs.jitter,
+        rate: knobs.rate,
+        color: knobs.color,
+        secondaryColor: knobs.secondaryColor,
+      },
+      ...evidence,
+    },
   ]
   const bursts: TrainingRunBurstDefinition[] = []
 
@@ -237,7 +341,8 @@ export const verseSpawnedSceneLayer = (
       label: "Gateway portal",
       detail: `${VERSE_SPAWNED_SCENE_SOURCE_REF} · gateway_portal · ${knobs.portalLane} · simulated`,
       status: "active",
-      position: addOffset(stationAnchor, [0, 0.4, 0]),
+      // Just below the arc (lower height: smaller +Z than the arc endpoints).
+      position: addOffset(stationAnchor, [0, 0, -0.2]),
       iconRecipe: verseIconRecipeForId(`gateway:${knobs.portalLane}:${scene.id}`),
       visualKind: "gateway_portal",
       gatewayLane: knobs.portalLane,
