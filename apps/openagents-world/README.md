@@ -31,6 +31,25 @@ public read-model projection.
   an accepted bridge diagnostic and enqueues a retry-friendly marker when the
   queue binding is present.
 
+## Transport Contract
+
+Region sockets send JSON transport envelopes:
+
+- `snapshot` frames contain a schema-encoded `WorldDelta` plus a server-owned
+  `WorldReadModel` so clients render a coherent projection instead of backend
+  table details.
+- `delta` frames currently include typed heartbeat frames and reserve the sparse
+  update/delete lane for command and bridge work.
+- `diagnostic` frames wrap public-safe `WorldDiagnostic` values in a
+  `WorldDelta` so cursor and backpressure failures are part of the same stream.
+
+Reconnect accepts `?cursor=cursor.<region>.<sequence>`. Valid cursors resume
+with a heartbeat at the current cursor; stale/foreign cursors receive a typed
+cursor diagnostic followed by a fresh snapshot. The transport helpers also
+define the WoC-style sight policy: first sight sends full records, continued
+interest permits lite/dynamic updates, and leaving interest prunes local mirrors
+so re-entry sends full records again.
+
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.

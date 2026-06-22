@@ -14,9 +14,11 @@ import {
   hydrateBufferedSession,
   json,
   makeDiagnostic,
+  makeDiagnosticFrame,
   makeDiagnosticResponse,
   makeInitialSessionAttachment,
-  makeZeroSnapshotDelta,
+  makeReconnectPlan,
+  makeSnapshotFrame,
   normalizeRegionRef,
   regionDurableObjectMigrationStatements,
   regionRefFromSocketPath,
@@ -244,7 +246,7 @@ export class RegionDurableObject extends DurableObject<Env> {
   override async fetch(request: Request): Promise<Response> {
     await this.initialized
     const url = new URL(request.url)
-    const regionRef = regionRefFromSocketPath(url.pathname) ?? normalizeRegionRef(url.searchParams.get("region"))
+  const regionRef = regionRefFromSocketPath(url.pathname) ?? normalizeRegionRef(url.searchParams.get("region"))
 
     if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
       return makeDiagnosticResponse(426, {
@@ -259,6 +261,8 @@ export class RegionDurableObject extends DurableObject<Env> {
     const pair = new WebSocketPair()
     const [client, server] = Object.values(pair)
     const connectedAt = new Date().toISOString()
+    const clock = this.readRegionClock(regionRef)
+    const reconnectPlan = makeReconnectPlan(regionRef, url.searchParams.get("cursor"), clock, connectedAt)
     const actorRef = url.searchParams.get("actorRef")
     const actorClass = url.searchParams.get("actorClass")
     const attachment = makeInitialSessionAttachment({
@@ -267,11 +271,17 @@ export class RegionDurableObject extends DurableObject<Env> {
       ...(actorClass === null ? {} : { actorClass: actorClass as RegionSocketSessionAttachment["actorClass"] }),
       connectedAt,
     })
+    const attachedSession = {
+      ...attachment,
+      cursor: reconnectPlan.cursor,
+    }
 
-    server.serializeAttachment(attachment)
+    server.serializeAttachment(attachedSession)
     this.ctx.acceptWebSocket(server)
-    this.upsertSession(attachment, connectedAt)
-    server.send(serializeWorldFrame(makeZeroSnapshotDelta(regionRef, connectedAt)))
+    this.upsertSession(attachedSession, connectedAt)
+    for (const frame of reconnectPlan.frames) {
+      server.send(serializeWorldFrame(frame))
+    }
 
     return new Response(null, {
       status: 101,
@@ -295,6 +305,12 @@ export class RegionDurableObject extends DurableObject<Env> {
       const hydrated = hydrateBufferedSession(buffered.attachment)
       webSocket.serializeAttachment(hydrated)
       this.upsertSession(hydrated, new Date().toISOString())
+      webSocket.send(serializeWorldFrame(makeSnapshotFrame(
+        hydrated.regionRef,
+        new Date().toISOString(),
+        [],
+        hydrated.cursor,
+      )))
       webSocket.send(serializeWorldFrame(makeDiagnostic({
         tag: "auth",
         severity: "info",
@@ -306,13 +322,18 @@ export class RegionDurableObject extends DurableObject<Env> {
     }
 
     this.upsertSession(attachment, new Date().toISOString())
-    webSocket.send(serializeWorldFrame(makeDiagnostic({
+    const diagnostic = makeDiagnostic({
       tag: "command",
       severity: "info",
       message: "World command intake scaffold received a frame; command application lands in the next cutover issue.",
       observedAt: new Date().toISOString(),
       sourceRefs: [attachment.sessionRef],
-    })))
+    })
+    webSocket.send(serializeWorldFrame(makeDiagnosticFrame(
+      attachment.regionRef,
+      attachment.cursor,
+      diagnostic,
+    )))
   }
 
   override async webSocketClose(webSocket: WebSocket): Promise<void> {
@@ -354,6 +375,20 @@ export class RegionDurableObject extends DurableObject<Env> {
         new Date().toISOString(),
       )
     }
+
+    this.sql.exec(
+      `INSERT INTO region_transport_clock (
+        region_ref,
+        current_seq,
+        min_replay_seq,
+        updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(region_ref) DO NOTHING`,
+      "region.run.tassadar.executor.20260615.street",
+      0,
+      0,
+      new Date().toISOString(),
+    )
   }
 
   private restoreHibernatedSessions(): void {
@@ -396,6 +431,34 @@ export class RegionDurableObject extends DurableObject<Env> {
       lastSeenAt,
       JSON.stringify(attachment),
     )
+  }
+
+  private readRegionClock(regionRef: string): { currentSeq: number; minReplaySeq: number } {
+    const clock = this.sql.exec<{ current_seq: number; min_replay_seq: number }>(
+      "SELECT current_seq, min_replay_seq FROM region_transport_clock WHERE region_ref = ?",
+      regionRef,
+    ).one()
+
+    if (clock !== null) {
+      return {
+        currentSeq: Number(clock.current_seq),
+        minReplaySeq: Number(clock.min_replay_seq),
+      }
+    }
+
+    this.sql.exec(
+      `INSERT INTO region_transport_clock (
+        region_ref,
+        current_seq,
+        min_replay_seq,
+        updated_at
+      ) VALUES (?, ?, ?, ?)`,
+      regionRef,
+      0,
+      0,
+      new Date().toISOString(),
+    )
+    return { currentSeq: 0, minReplaySeq: 0 }
   }
 }
 

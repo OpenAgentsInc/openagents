@@ -738,6 +738,8 @@ are now fixed.
 
 ### P3: Implement Region DO Session + Snapshot/Delta Transport
 
+Status: implemented in issue #5962.
+
 Make the region object the authoritative live actor. Acceptance:
 
 - One DO instance per region name/ref, routed by the Worker.
@@ -760,6 +762,15 @@ Make the region object the authoritative live actor. Acceptance:
 
 This is the first smokeable issue: two local clients can connect to the same DO
 and receive typed heartbeat/snapshot frames.
+
+Implementation note: `apps/openagents-world` now emits typed transport
+envelopes around `WorldDelta`, `WorldReadModel`, and `WorldDiagnostic` values.
+Region reconnect accepts cursor query params and either resumes with a heartbeat
+or returns a public-safe stale-cursor diagnostic plus a fresh snapshot. Pure
+transport tests cover schema encode/decode, sparse absent-means-unchanged sight
+planning, prune/re-entry full-record behavior, per-entity wire-cache reuse, and
+bounded backpressure diagnostics; the DO uses the same helpers for live socket
+open/message paths.
 
 ### P4: Implement User Commands And Hot Presence
 
