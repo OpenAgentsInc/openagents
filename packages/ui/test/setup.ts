@@ -10,6 +10,8 @@
 // The web app keeps a full happy-dom environment via Vitest for render tests.
 const globalScope = globalThis as Record<string, unknown>
 
+Bun.env.OA_STYLEX_RUNTIME_FALLBACK = '1'
+
 if (typeof globalScope.window === 'undefined') {
   const raf = (cb: (time: number) => void): number => {
     cb(0)

@@ -7,6 +7,30 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
 - `/Users/christopherdavid/work/projects/repos/stylex`
 - `/Users/christopherdavid/work/projects/repos/react-native-stylex`
 
+## Implementation progress
+
+2026-06-22 P0 web/desktop vertical slice, issue #5952:
+
+- Added `@openagentsinc/ui/stylex-foldkit`, a Foldkit adapter around
+  `stylex.attrs(...)`.
+- Added a seed `packages/ui/src/tokens.stylex.ts` dark token module.
+- Migrated `@openagentsinc/ui` `emptyState` root/body layout to StyleX while
+  preserving the existing Foldkit function API.
+- Migrated the shared `@openagentsinc/autopilot-ui` `SessionList` /
+  `SessionRow` layout to StyleX. That component is consumed by both
+  `apps/openagents.com/apps/web` and `apps/autopilot-desktop`.
+- Added Vite StyleX extraction to `apps/openagents.com/apps/web`. The
+  production build emits generated StyleX classes in the app CSS asset.
+- Added desktop StyleX extraction and webview entry precompilation.
+  The desktop CSS build writes Tailwind first, appends generated StyleX CSS,
+  and emits the browser entry consumed by Electrobun with `stylex.create(...)`
+  compiled out.
+- Added package-test runtime fallback wiring so uncompiled Bun unit tests can
+  keep rendering migrated Foldkit components while production app builds still
+  use the StyleX compiler.
+- Mobile work is intentionally deferred from #5952 and the first issue sequence
+  per the follow-up instruction to ignore mobile for now.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -265,31 +289,36 @@ native ergonomics. It does not, by itself, give us shared web/native
 
 StyleX should work with Foldkit through an adapter in `@openagentsinc/ui`.
 
-The adapter shape should be small:
+The adapter shape is small. The P0 implementation lives at
+`packages/ui/src/stylex-foldkit.ts` and adapts compiled StyleX output into
+Foldkit's typed attribute list:
 
 ```ts
 import * as stylex from "@stylexjs/stylex"
+import type { StyleXStyles } from "@stylexjs/stylex"
 import type { Attribute } from "foldkit/html"
 import { html } from "foldkit/html"
 
 export function stylexAttrs<Message>(
-  ...styles: Parameters<typeof stylex.attrs>
+  ...styles: ReadonlyArray<StyleXStyles>
 ): ReadonlyArray<Attribute<Message>> {
   const h = html<Message>()
   const attrs = stylex.attrs(...styles)
-  return [
-    attrs.class ? h.Class(attrs.class) : undefined,
-    attrs.style ? h.Attribute("style", attrs.style) : undefined,
-    attrs["data-style-src"]
-      ? h.DataAttribute("style-src", attrs["data-style-src"])
-      : undefined,
-  ].filter((attr): attr is Attribute<Message> => attr !== undefined)
+  const result: Array<Attribute<Message>> = []
+
+  if (attrs.class) result.push(h.Class(attrs.class))
+  if (attrs.style) result.push(h.Attribute("style", attrs.style))
+  if (attrs["data-style-src"]) {
+    result.push(h.DataAttribute("style-src", attrs["data-style-src"]))
+  }
+
+  return result
 }
 ```
 
-That exact code may need small type adjustments after installation, but the
-underlying integration point is confirmed by source: `stylex.attrs(...)` emits
-DOM attributes, and Foldkit components already accept typed attributes.
+The underlying integration point is confirmed by source and by #5952:
+`stylex.attrs(...)` emits DOM attributes, and Foldkit components already accept
+typed attributes.
 
 Expected package changes:
 
@@ -462,8 +491,9 @@ boundary.
 
 ### Phase 0: vertical-slice spike
 
-Goal: prove StyleX, Foldkit, Vite, desktop CSS generation, and mobile token
-bridging before broad rewrites.
+Goal: prove StyleX, Foldkit, Vite, and desktop CSS/view generation before broad
+rewrites. Mobile token bridging was part of the original audit recommendation
+but is deferred from the first implementation sequence.
 
 Tasks:
 
@@ -478,16 +508,15 @@ Tasks:
   `stylex.vite(...)` and confirm output still lands in `assets/openagents.css`.
 - Add one desktop view/component using the same migrated package component and
   prove packaged CSS generation.
-- Add a tiny mobile token bridge experiment with `react-native-stylex` in a
-  non-critical screen or local branch, not a production dependency flip.
+- Defer the mobile token bridge to a separate native migration track.
 
 Exit criteria:
 
-- web app builds and displays the migrated component
-- desktop webview displays the migrated component in dev and packaged assets
-- StyleX CSS is included exactly once
-- existing Tailwind components still work
-- mobile spike confirms token parity and no Expo/EAS workflow regression
+- web app builds and includes generated StyleX CSS
+- desktop webview prebuild compiles `stylex.create(...)` out of the browser
+  bundle and includes generated StyleX CSS in the copied stylesheet
+- existing Tailwind components still work during coexistence
+- mobile remains untouched until the separate native track starts
 
 ### Phase 1: token consolidation
 
@@ -591,7 +620,7 @@ For a StyleX vertical slice:
 - desktop CSS/build command updated and run
 - desktop packaged asset check confirms the StyleX CSS is copied into the
   Electrobun view
-- mobile TypeScript check or Expo export command after any mobile package
+- mobile TypeScript check or Expo export command after any later mobile package
   change
 
 For a docs-only audit change, `git diff --check` is sufficient.

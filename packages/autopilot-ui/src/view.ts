@@ -4,6 +4,12 @@ import type {
   SessionState,
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
+import {
+  stylexAttrs,
+  stylexFallback,
+  stylexRuntimeFallbackEnabled,
+} from "@openagentsinc/ui/stylex-foldkit"
+import * as stylex from "@stylexjs/stylex"
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 
@@ -28,6 +34,72 @@ export type DecisionAction = Readonly<{
 const h = html<AutopilotUiMessage>()
 
 const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
+
+const sessionStyles = stylexRuntimeFallbackEnabled()
+  ? {
+      list: stylexFallback("oa-autopilot-session-list"),
+      row: stylexFallback("oa-autopilot-session-row"),
+      sessionRef: stylexFallback("oa-autopilot-session-ref"),
+      adapter: stylexFallback("oa-autopilot-session-adapter"),
+      progressRef: stylexFallback("oa-autopilot-session-progress-ref"),
+      empty: stylexFallback("oa-autopilot-session-empty"),
+    }
+  : stylex.create({
+      list: {
+        display: "grid",
+        gap: 8,
+      },
+      row: {
+        display: "grid",
+        gap: 8,
+        borderWidth: 1,
+        borderStyle: "solid",
+        borderColor: "var(--outline,#525458)",
+        backgroundColor: "var(--bg-secondary,#151515)",
+        padding: 12,
+        color: "var(--text,#d7d8e5)",
+        gridTemplateColumns: {
+          default: null,
+          "@media (min-width: 640px)":
+            "minmax(0,1.7fr) 7rem 7rem minmax(0,1fr)",
+        },
+        alignItems: {
+          default: null,
+          "@media (min-width: 640px)": "center",
+        },
+      },
+      sessionRef: {
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: 14,
+        color: "var(--primary,#fff)",
+      },
+      adapter: {
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: 12,
+        color: "var(--text-secondary,#8a8c93)",
+      },
+      progressRef: {
+        minWidth: 0,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: 12,
+        color: "var(--text-secondary,#8a8c93)",
+      },
+      empty: {
+        margin: 0,
+        fontSize: 14,
+        color: "var(--text-secondary,#8a8c93)",
+      },
+    })
 
 const toneClasses = (tone: ChipTone): string => {
   switch (tone) {
@@ -107,22 +179,15 @@ export const SessionRow = (session: SessionSummary): Html => {
 
   return h.article(
     [
-      className(
-        "session-row grid gap-2 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-3 text-[var(--text,#d7d8e5)] sm:grid-cols-[minmax(0,1.7fr)_7rem_7rem_minmax(0,1fr)] sm:items-center",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(sessionStyles.row),
+      className("session-row"),
       h.DataAttribute("autopilot-session-ref", session.sessionRef),
     ],
     [
-      h.code([className("min-w-0 truncate font-mono text-sm text-[var(--primary,#fff)]")], [
-        session.sessionRef,
-      ]),
-      h.span([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
-        session.adapter,
-      ]),
+      h.code(stylexAttrs<AutopilotUiMessage>(sessionStyles.sessionRef), [session.sessionRef]),
+      h.span(stylexAttrs<AutopilotUiMessage>(sessionStyles.adapter), [session.adapter]),
       sessionStateChip(session.state),
-      h.code([className("min-w-0 truncate font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
-        lastProgressRef,
-      ]),
+      h.code(stylexAttrs<AutopilotUiMessage>(sessionStyles.progressRef), [lastProgressRef]),
     ],
   )
 }
@@ -132,10 +197,13 @@ export const SessionList = (input: {
   emptyLabel?: string
 }): Html =>
   h.section(
-    [className("grid gap-2"), h.DataAttribute("autopilot-session-list", "")],
+    [
+      ...stylexAttrs<AutopilotUiMessage>(sessionStyles.list),
+      h.DataAttribute("autopilot-session-list", ""),
+    ],
     input.sessions.length === 0
       ? [
-          h.p([className("m-0 text-sm text-[var(--text-secondary,#8a8c93)]")], [
+          h.p(stylexAttrs<AutopilotUiMessage>(sessionStyles.empty), [
             input.emptyLabel ?? "No sessions",
           ]),
         ]

@@ -5,9 +5,14 @@
 # committed (Pylon's source home is apps/pylon).
 resources/pylon-node/
 
+# P0 StyleX migration: generated browser webview bundle produced by
+# `bun run build:css`. Electrobun consumes this compiled entry so raw
+# `stylex.create(...)` calls never reach the packaged browser view.
+resources/ui/
+
 # CL-53: generated Tailwind output (built by `bun run build:css`, copied into
-# the view bundle as styles.css). The styles.css SOURCE is committed; this
-# generated artifact is not.
+# the view bundle as styles.css). The build now appends extracted StyleX CSS as
+# well. The styles.css SOURCE is committed; this generated artifact is not.
 src/ui/styles.out.css
 
 # Electrobun build output

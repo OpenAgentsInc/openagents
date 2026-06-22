@@ -101,6 +101,13 @@ bundle checks, and the Chrome-backed `oa-training-run` canvas-pixel smoke. The
 smoke auto-detects common Chrome, Chromium, and Edge install paths; set
 `CHROME_PATH=/path/to/chrome` if the browser binary is somewhere else.
 
+The webview build now supports the P0 StyleX migration slice. `build:css`
+generates Tailwind output, appends extracted StyleX component CSS from the
+desktop view and shared workspace packages, writes `src/ui/styles.out.css`, and
+emits `resources/ui/main.js`. Electrobun consumes that generated browser entry
+so packaged browser code receives compiled StyleX style objects instead of raw
+`stylex.create(...)` calls.
+
 ## Release Builds (macOS + Linux)
 
 `bun run build` runs `electrobun build` with no channel, which produces a **dev**

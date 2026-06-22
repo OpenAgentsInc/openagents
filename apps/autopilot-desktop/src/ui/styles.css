@@ -10,7 +10,10 @@
  * components' `var(--bg, …)` references resolve to the canonical dark palette
  * (the same values the deleted theme.ts produced at runtime).
  *
- * Build:  bunx @tailwindcss/cli -i src/ui/styles.css -o src/ui/styles.out.css
+ * Build:  bun scripts/build-css.ts
+ * The build script writes Tailwind output first, appends extracted StyleX
+ * component CSS from this app plus shared workspace packages, and emits the
+ * compiled browser entrypoint consumed by Electrobun.
  * The generated styles.out.css is git-ignored and copied to the view bundle as
  * views/autopilot-desktop/styles.css by electrobun.config.ts.
  */

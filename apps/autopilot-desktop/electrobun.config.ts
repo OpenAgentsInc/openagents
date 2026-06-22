@@ -44,7 +44,7 @@ export default {
     },
     views: {
       "autopilot-desktop": {
-        entrypoint: "src/ui/main.ts"
+        entrypoint: "resources/ui/main.js"
       }
     },
     copy: {

@@ -1,4 +1,5 @@
 import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -9,6 +10,33 @@ import {
   titleClass,
 } from './primitives'
 import type { Tone } from './primitives'
+import {
+  stylexAttrs,
+  stylexFallback,
+  stylexRuntimeFallbackEnabled,
+} from './stylex-foldkit'
+
+const emptyStateStyles = stylexRuntimeFallbackEnabled()
+  ? {
+      root: stylexFallback('oa-ui-empty-state-root'),
+      body: stylexFallback('oa-ui-empty-state-body'),
+    }
+  : stylex.create({
+      root: {
+        display: 'grid',
+        justifyItems: 'start',
+        gap: 12,
+        borderWidth: 1,
+        borderStyle: 'dashed',
+        borderColor: '#333',
+        backgroundColor: '#010102',
+        padding: 24,
+      },
+      body: {
+        display: 'grid',
+        gap: 4,
+      },
+    })
 
 export const alert = <Message>(input: {
   title: string
@@ -57,14 +85,10 @@ export const emptyState = <Message>(input: {
   const h = html<Message>()
 
   return h.div(
-    [
-      h.Class(
-        'grid justify-items-start gap-3 border border-dashed border-[#333] bg-[#010102] p-6',
-      ),
-    ],
+    stylexAttrs<Message>(emptyStateStyles.root),
     [
       h.div(
-        [h.Class('grid gap-1')],
+        stylexAttrs<Message>(emptyStateStyles.body),
         [
           h.p([h.Class(eyebrowClass)], ['Empty']),
           h.h3([h.Class(titleClass)], [input.title]),
