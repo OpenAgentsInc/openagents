@@ -8,13 +8,16 @@ import {
   decodeWorldDelta,
   decodeWorldErrorEnvelope,
   decodeWorldRow,
+  assertWorldPublicSafety,
   worldAvatarRefForCharacter,
+  worldRowKey,
   type WorldCommandEnvelope,
   type WorldCommandName,
   type WorldCommandReceipt,
   type WorldDelta,
   type WorldRef,
   type WorldRow,
+  type WorldRowKind,
 } from "@openagentsinc/world-contract"
 
 import {
@@ -135,13 +138,7 @@ const evaluateWorldCommand = (
   | { ok: true; state: WorldHotState; rows: ReadonlyArray<WorldRow>; deletedRefs?: ReadonlyArray<string> }
   | { ok: false; state?: WorldHotState; failure: CommandFailure } => {
   if (envelope.actorClass === "service") {
-    return {
-      ok: false,
-      failure: {
-        tag: "auth",
-        reason: "Service actors cannot use browser hot-presence commands.",
-      },
-    }
+    return evaluateWorldServiceCommand(state, envelope, observedAt)
   }
 
   if (state.regionRef !== (envelope.regionRef ?? state.regionRef)) {
@@ -179,6 +176,145 @@ const evaluateWorldCommand = (
           reason: `${envelope.command} is service-only and cannot be written by browser actors.`,
         },
       }
+  }
+}
+
+const evaluateWorldServiceCommand = (
+  state: WorldHotState,
+  envelope: WorldCommandEnvelope,
+  observedAt: string,
+):
+  | { ok: true; state: WorldHotState; rows: ReadonlyArray<WorldRow>; deletedRefs?: ReadonlyArray<string> }
+  | { ok: false; state?: WorldHotState; failure: CommandFailure } => {
+  switch (envelope.command) {
+    case "upsert_training_run":
+      return serviceRows(state, envelope, ["training_run"])
+    case "upsert_run_entity":
+      return serviceRows(state, envelope, ["run_entity"])
+    case "upsert_world_edge":
+      return serviceRows(state, envelope, ["world_edge"])
+    case "upsert_proof_ref":
+      return serviceRows(state, envelope, ["proof_ref"])
+    case "upsert_settlement_ref":
+      return serviceRows(state, envelope, ["settlement_ref"])
+    case "append_world_event":
+      return serviceRows(state, envelope, ["world_event"])
+    case "advance_projection_cursor":
+      return serviceRows(state, envelope, ["projection_cursor"])
+    case "record_bridge_health":
+      return serviceRows(state, envelope, ["bridge_health"])
+    case "upsert_world_region":
+      return serviceRows(state, envelope, ["world_region"])
+    case "upsert_pylon_station":
+      return serviceRows(state, envelope, ["pylon_station"])
+    case "record_system_world_message":
+      return serviceSystemMessage(state, envelope, observedAt)
+    case "expire_interaction_rows":
+      return serviceExpireInteractionRows(state, envelope)
+    default:
+      return {
+        ok: false,
+        failure: {
+          tag: "auth",
+          reason: `${envelope.command} is not a service projection command.`,
+        },
+      }
+  }
+}
+
+const serviceRows = (
+  state: WorldHotState,
+  envelope: WorldCommandEnvelope,
+  allowedKinds: ReadonlyArray<WorldRowKind>,
+) => {
+  const payload = objectPayload(envelope.payload)
+  const candidates = Array.isArray(payload.rows)
+    ? payload.rows
+    : payload.row === undefined
+      ? []
+      : [payload.row]
+
+  if (candidates.length === 0) {
+    return rejectWithTag("validation", "Service projection command requires at least one row.")
+  }
+
+  const rows: Array<WorldRow> = []
+  for (const candidate of candidates) {
+    try {
+      const row = assertWorldPublicSafety(decodeWorldRow(candidate))
+      if (!allowedKinds.includes(row.kind)) {
+        return rejectWithTag("validation", "Service projection command row kind does not match command.")
+      }
+      rows.push(row)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "World row failed public projection safety."
+      return rejectWithTag(
+        message.includes("public") || message.includes("private") || message.includes("raw")
+          ? "redaction"
+          : "validation",
+        "Service projection row failed public-safe validation.",
+      )
+    }
+  }
+
+  return {
+    ok: true as const,
+    state,
+    rows,
+  }
+}
+
+const serviceSystemMessage = (
+  state: WorldHotState,
+  envelope: WorldCommandEnvelope,
+  observedAt: string,
+) => {
+  const payload = objectPayload(envelope.payload)
+  const text = plainText(stringField(payload, "text") ?? "", maxMessageLength)
+  if (text.length === 0) {
+    return rejectWithTag("validation", "System world message must be non-empty plain text.")
+  }
+  const messageRef = stringField(payload, "messageRef")
+    ?? stableWorldRef("message.world.system", `${envelope.commandRef}:${text}`)
+  const regionRef = stringField(payload, "regionRef") ?? envelope.regionRef ?? state.regionRef
+  const row = decodeWorldRow({
+    kind: "local_chat_message",
+    messageRef,
+    regionRef,
+    avatarRef: stringField(payload, "avatarRef") ?? "avatar.system.world",
+    channel: "system",
+    text,
+    moderationState: "visible",
+    createdAt: observedAt,
+    safety: publicSafety(envelope.commandRef),
+  })
+  assertWorldPublicSafety(row)
+  return {
+    ok: true as const,
+    state,
+    rows: [row],
+  }
+}
+
+const serviceExpireInteractionRows = (
+  state: WorldHotState,
+  envelope: WorldCommandEnvelope,
+) => {
+  const refs = stringArrayField(objectPayload(envelope.payload), "refs")
+  if (refs.length === 0) {
+    return rejectWithTag("validation", "Interaction expiry requires at least one public row ref.")
+  }
+  const refSet = new Set(refs)
+  return {
+    ok: true as const,
+    state: {
+      ...state,
+      expiringRefs: Object.fromEntries(
+        Object.entries(state.expiringRefs).filter(([ref]) => !refSet.has(ref)),
+      ),
+    },
+    rows: [],
+    deletedRefs: refs,
   }
 }
 
@@ -584,6 +720,11 @@ const reject = (reason: string) => ({
   failure: { reason },
 })
 
+const rejectWithTag = (tag: NonNullable<CommandFailure["tag"]>, reason: string) => ({
+  ok: false as const,
+  failure: { tag, reason },
+})
+
 const rowRef = (row: WorldRow): WorldRef => {
   switch (row.kind) {
     case "agent_avatar":
@@ -596,7 +737,7 @@ const rowRef = (row: WorldRow): WorldRef => {
     case "agent_intent":
       return row.intentRef as WorldRef
     default:
-      return stableWorldRef("row.world", JSON.stringify(row)) as WorldRef
+      return worldRowKey(row) as WorldRef
   }
 }
 
@@ -609,6 +750,17 @@ const stringField = (payload: Record<string, unknown>, key: string): string | nu
   typeof payload[key] === "string" && payload[key].trim().length > 0
     ? payload[key].trim()
     : null
+
+const stringArrayField = (payload: Record<string, unknown>, key: string): ReadonlyArray<string> => {
+  const value = payload[key]
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return [...new Set(value
+    .filter((item): item is string => typeof item === "string")
+    .map(item => item.trim())
+    .filter(item => item.length > 0 && item.length <= 256))]
+}
 
 const finiteNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null

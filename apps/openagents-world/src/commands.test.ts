@@ -29,6 +29,16 @@ const command = (
   payload,
 })
 
+const serviceCommand = (
+  name: string,
+  payload: unknown,
+  seq = 1,
+  issuedAt = "2026-06-22T00:00:00.000Z",
+) => ({
+  ...command(name, payload, seq, issuedAt, "service.openagents.world"),
+  actorClass: "service",
+})
+
 const apply = async (
   state: WorldHotState,
   name: string,
@@ -72,6 +82,90 @@ describe("world command handlers", () => {
     expect(result.receipt.status).toBe("rejected")
     expect(result.receipt.error?.tag).toBe("auth")
     expect(result.delta.kind).toBe("diagnostic")
+  })
+
+  test("service actors can write public projection rows only through service commands", async () => {
+    const row = {
+      kind: "training_run",
+      runRef: "run.public.1",
+      label: "Public Run",
+      state: "pending",
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["source.public.test"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    }
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("upsert_training_run", { row }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("applied")
+    expect(result.delta.rows?.[0]?.kind).toBe("training_run")
+    expect(result.receipt.changedRefs.map(String)).toEqual(["run.public.1"])
+  })
+
+  test("service projection commands reject private or unsafe rows without echoing payloads", async () => {
+    const row = {
+      kind: "training_run",
+      runRef: "run.private.1",
+      label: "raw_prompt: do not leak this",
+      state: "pending",
+      updatedAt: "2026-06-22T00:00:00.000Z",
+      safety: {
+        publicProjectionAllowed: true,
+        sourceRefs: ["source.public.test"],
+        blockerRefs: [],
+        caveatRefs: [],
+      },
+    }
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("upsert_training_run", { row }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("rejected")
+    expect(result.receipt.error?.tag).toBe("redaction")
+    expect(result.receipt.error?.message).not.toContain("raw_prompt")
+    expect(result.delta.diagnostic?.message).not.toContain("raw_prompt")
+  })
+
+  test("service commands can emit system messages and expire interaction refs", async () => {
+    const message = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("record_system_world_message", { text: "bridge caught up" }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+    expect(message.receipt.status).toBe("applied")
+    expect(message.delta.rows?.[0]?.kind).toBe("local_chat_message")
+    if (message.delta.rows?.[0]?.kind === "local_chat_message") {
+      expect(message.delta.rows[0].channel).toBe("system")
+    }
+
+    const withExpiry = {
+      ...message.state,
+      expiringRefs: {
+        "message.hot.1": {
+          ref: "message.hot.1",
+          kind: "chat" as const,
+          expiresAt: "2026-06-22T00:01:00.000Z",
+        },
+      },
+    }
+    const expired = await Effect.runPromise(applyWorldCommand(
+      withExpiry,
+      serviceCommand("expire_interaction_rows", { refs: ["message.hot.1"] }, 2),
+      "2026-06-22T00:00:01.000Z",
+    ))
+
+    expect(expired.delta.kind).toBe("delete")
+    expect(expired.delta.deletedRefs?.map(String)).toEqual(["message.hot.1"])
+    expect(expired.state.expiringRefs["message.hot.1"]).toBeUndefined()
   })
 
   test("join, move, focus, chat, emote, intent, and leave return typed receipts", async () => {

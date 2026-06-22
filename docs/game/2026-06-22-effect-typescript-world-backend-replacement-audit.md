@@ -922,6 +922,27 @@ Bring durable public projection rows into the Cloudflare service. Acceptance:
 After P8, the world service can rebuild its durable projection rows from public
 authority and does not need SpacetimeDB as a projection source.
 
+Implementation note: P8 adds `apps/openagents-world/src/bridge.ts`, wires
+`POST /bridge/ingest` into D1 persistence, and opens the service-only command
+lane inside `apps/openagents-world/src/commands.ts`.
+
+The bridge now decodes `WorldBridgePayload` with Effect Schema, runs
+`assertWorldPublicSafety` before persistence, dedupes rows by
+`row.kind + worldRowKey(row)`, writes `world_projection_rows`, advances
+`world_projection_cursors` when a cursor is present, and records
+`world_bridge_ingest_log` for replay auditing. Successful ingest appends public
+`bridge_health=current` and optional `projection_cursor` rows; failed ingest
+writes `bridge_health=failed` and returns a public diagnostic without inventing
+run/proof/settlement state. Queue integration stays bounded: valid requests
+enqueue only a compact `bridge_ingest_requested` marker for retriable follow-up
+work instead of chaining long `waitUntil` jobs.
+
+Service commands can now upsert training runs, run entities, world edges,
+proof refs, settlement refs, events, regions, pylons, bridge health, projection
+cursors, system messages, and interaction-expiry deletes. Browser and agent
+actors still fail the shared actor gate before service row payloads decode, and
+unsafe/private service rows are rejected with redacted diagnostics.
+
 ### P9: Build `packages/world-client` As The Only Client
 
 Add the client package that desktop and web will import. Acceptance:

@@ -27,9 +27,10 @@ public read-model projection.
 - `GET /connect` returns the default region and socket URL.
 - `GET /regions/:regionRef/socket` upgrades to a region WebSocket. A plain HTTP
   request to this route returns a typed world diagnostic.
-- `POST /bridge/ingest` is the service-only bridge intake scaffold. It records
-  an accepted bridge diagnostic and enqueues a retry-friendly marker when the
-  queue binding is present.
+- `POST /bridge/ingest` is the service-only bridge intake. It schema-decodes
+  `WorldBridgePayload`, rejects rows that fail public projection safety, upserts
+  deterministic projection rows into D1, records bridge health/cursor state, and
+  enqueues a retry-friendly marker when the queue binding is present.
 
 ## Transport Contract
 
@@ -120,3 +121,22 @@ or default values.
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.
+
+## Service Projection Bridge
+
+`src/bridge.ts` owns P8 projection bridge helpers. The bridge never becomes the
+source of truth for run, proof, settlement, or product-promise state; it only
+persists public-safe rows replayed from public source refs such as
+`/api/public/tassadar-run-summary`, future Forum activity refs, and receipt/proof
+refs that are already public.
+
+Projection rows use `row.kind + worldRowKey(row)` as their D1 key, so replaying
+the same source payload overwrites the same rows and cannot duplicate
+`world_event` entries. Failed ingest writes a public `bridge_health` row and a
+diagnostic, never fabricated run/proof/settlement data. Valid ingest adds
+`bridge_health` and optional `projection_cursor` rows, then sends only a compact
+Queue marker for retriable follow-up work.
+
+Service-only `WorldCommandEnvelope` commands can write durable projection rows,
+system messages, and interaction expiry deltas. Browser/agent actors still fail
+the shared contract actor gate before service row payloads are decoded.
