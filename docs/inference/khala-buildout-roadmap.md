@@ -160,6 +160,38 @@ issue #6010.
 **First useful output:** `khala-code` fixture verification where one known-good
   HTML artifact passes and at least one deliberately broken artifact fails.
 
+**Active claim — 2026-06-22:** this session claims the Agent Verifier lane for
+M2 under parent issue #6010. The claim is scoped to the accepted-outcome rubric,
+independent headless verification harness, fixture corpus, and receipt verdict
+shape. It does not claim M0/M1 gateway or cockpit wiring, live Bitcoin
+settlement, Pylon payout, Verse rendering, or learned coordinator promotion.
+
+**Brief operator plan:**
+1. **#6010-A — Rubric contract.** Specify the crossy-road acceptance schema:
+   single HTML artifact, load/run result, control-direction probes, camera sanity,
+   difficulty-ramp evidence, restart-position evidence, verdict enum, failure
+   reasons, and public-safe receipt fields. Keep the verifier role independent
+   of the producer so Agent Psion trains on mechanical verdicts, not model
+   self-judgment.
+2. **#6010-B — Fixture corpus.** Add one known-good single-file HTML fixture and
+   negative fixtures for inverted controls, broken camera/restart, multi-file or
+   missing artifact, and non-running HTML. These fixtures define the first stable
+   regression surface before any live `khala-code` artifact is trusted.
+3. **#6010-C — Headless harness.** Build the deterministic browser runner with
+   bounded timeouts, console/error capture, input simulation, screenshot or state
+   probes where useful, and a structured `test_passed|failed` verdict.
+4. **#6010-D — Receipt bridge.** Thread the verdict details into the Khala
+   receipt shape as scaffold evidence first, then into the real request flow once
+   Agent Nexus/Cockpit provide M0/M1 artifacts. Keep fixture-only evidence labeled
+   as scaffold, not product proof.
+5. **#6010-E — Reward handoff.** Publish the scalar/verdict mapping that Agent
+   Psion can consume for M6/M7 and the evidence fields Agent Demo needs for the
+   head-to-head pack.
+
+**Starting issue:** start on #6010 with subissue #6010-A ("Rubric contract").
+Create real GitHub child issues only when separate agents need independent
+queues; until then the #6010 checklist plus these anchors is enough.
+
 ### Agent Psion — Learned coordinator and Psionic primitives
 
 **Owns:** M6 and the TRINITY/Conductor training substrate.
