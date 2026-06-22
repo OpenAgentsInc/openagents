@@ -366,10 +366,87 @@ export function stubTransport({ lane, model }) {
   };
 }
 
+function parseSseFrames(text) {
+  const frames = [];
+  for (const rawFrame of text.split(/\r?\n\r?\n/)) {
+    const dataLines = rawFrame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).replace(/^ /, ""));
+    if (dataLines.length === 0) {
+      continue;
+    }
+    const data = dataLines.join("\n");
+    if (data === "[DONE]") {
+      break;
+    }
+    try {
+      frames.push(JSON.parse(data));
+    } catch (error) {
+      throw new Error(`stream frame was not JSON: ${error?.message ?? error}`);
+    }
+  }
+  return frames;
+}
+
+export function completionFromSseText(text, fallbackModel) {
+  const frames = parseSseFrames(text);
+  if (frames.length === 0) {
+    throw new Error("stream ended without chat completion chunks");
+  }
+
+  let id = null;
+  let model = fallbackModel;
+  let finishReason = null;
+  let openagents = undefined;
+  let usage = undefined;
+  const contentParts = [];
+
+  for (const frame of frames) {
+    if (typeof frame.id === "string" && frame.id.length > 0) {
+      id = frame.id;
+    }
+    if (typeof frame.model === "string" && frame.model.length > 0) {
+      model = frame.model;
+    }
+    if (frame.openagents !== undefined) {
+      openagents = frame.openagents;
+    }
+    if (frame.usage !== undefined) {
+      usage = frame.usage;
+    }
+
+    const choice = Array.isArray(frame.choices) ? frame.choices[0] : undefined;
+    const delta = choice && typeof choice === "object" ? choice.delta : undefined;
+    if (delta && typeof delta.content === "string") {
+      contentParts.push(delta.content);
+    }
+    if (choice && typeof choice.finish_reason === "string") {
+      finishReason = choice.finish_reason;
+    }
+  }
+
+  return {
+    choices: [
+      {
+        finish_reason: finishReason ?? "stop",
+        index: 0,
+        message: { content: contentParts.join(""), role: "assistant" },
+      },
+    ],
+    id: id ?? "chatcmpl_stream",
+    model,
+    object: "chat.completion",
+    ...(usage === undefined ? {} : { usage }),
+    ...(openagents === undefined ? {} : { openagents }),
+  };
+}
+
 /**
- * Live transport: POST an OpenAI-compatible chat completion. Kept tiny on
- * purpose; the runner is "flip-ready" by swapping the stub for this once the
- * gateway is enabled and a base URL + token are provided.
+ * Live transport: POST an OpenAI-compatible streaming chat completion. The
+ * gateway emits OpenAI SSE chunks and attaches `openagents` only to the terminal
+ * frame, so the runner reconstructs a normal completion envelope before feeding
+ * the existing manifest builder.
  */
 export async function liveTransport({ baseUrl, token, model, prompt, fetchImpl = fetch }) {
   const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
@@ -384,14 +461,15 @@ export async function liveTransport({ baseUrl, token, model, prompt, fetchImpl =
       model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      stream: false,
+      stream: true,
     }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`lane request failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`);
   }
-  return res.json();
+  const text = await res.text();
+  return completionFromSseText(text, model);
 }
 
 /**

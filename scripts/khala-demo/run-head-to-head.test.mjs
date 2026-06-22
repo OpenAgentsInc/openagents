@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
 import {
   buildRunFromCompletion,
+  completionFromSseText,
   CROSSY_ROAD_PROMPT,
   liveTransport,
   runHeadToHead,
@@ -184,19 +185,47 @@ describe("buildRunFromCompletion honesty", () => {
 });
 
 describe("liveTransport wiring", () => {
-  test("posts an OpenAI-compatible chat completion with bearer auth", async () => {
+  test("parses OpenAI SSE chunks into the completion envelope consumed by the runner", () => {
+    const completion = completionFromSseText(
+      [
+        'data: {"id":"chatcmpl_stream","model":"openagents/khala-code","choices":[{"index":0,"delta":{"content":"<!doctype html>"},"finish_reason":null}]}',
+        "",
+        'data: {"id":"chatcmpl_stream","model":"openagents/khala-code","choices":[{"index":0,"delta":{"content":"<!-- crossy road -->"},"finish_reason":null}]}',
+        "",
+        'data: {"id":"chatcmpl_stream","model":"openagents/khala-code","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"openagents":{"receipt":"receipt.live","verification":"test_passed","cost_msat":42},"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}',
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"),
+      "openagents/khala-code",
+    );
+
+    expect(completion.choices[0].message.content).toBe(
+      "<!doctype html><!-- crossy road -->",
+    );
+    expect(completion.choices[0].finish_reason).toBe("stop");
+    expect(completion.openagents.receipt).toBe("receipt.live");
+    expect(completion.usage.total_tokens).toBe(30);
+  });
+
+  test("posts an OpenAI-compatible streaming chat completion with bearer auth", async () => {
     const calls = [];
     const fakeFetch = async (url, init) => {
       calls.push({ url, init });
-      return {
-        ok: true,
-        async json() {
-          return { id: "x", choices: [], usage: { total_tokens: 1 }, openagents: {} };
-        },
-      };
+      return new Response(
+        [
+          'data: {"id":"x","model":"openagents/khala-code","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}',
+          "",
+          'data: {"id":"x","model":"openagents/khala-code","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"openagents":{"receipt":"receipt.live","verification":"test_passed"}}',
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"),
+        { headers: { "content-type": "text/event-stream" } },
+      );
     };
 
-    await liveTransport({
+    const completion = await liveTransport({
       baseUrl: "https://openagents.com/v1/",
       token: "agent-token",
       model: "openagents/khala-code",
@@ -210,7 +239,9 @@ describe("liveTransport wiring", () => {
     const body = JSON.parse(calls[0].init.body);
     expect(body.model).toBe("openagents/khala-code");
     expect(body.messages[0].content).toBe(CROSSY_ROAD_PROMPT);
-    expect(body.stream).toBe(false);
+    expect(body.stream).toBe(true);
+    expect(completion.choices[0].message.content).toBe("hello");
+    expect(completion.openagents.receipt).toBe("receipt.live");
   });
 
   test("throws with a public-safe error on a non-ok response", async () => {
