@@ -18,6 +18,8 @@ describe("Khala head-to-head publication renderer", () => {
     expect(markdown).toContain("| khala | openagents/khala | fixture_scaffold | 89,600 | $7.32 | 18m 12s | yes | test_passed | $7.32 | not_measured | 60% in-world / 40% gateway |");
     expect(markdown).toContain("These rows are not OpenAgents measurements.");
     expect(markdown).toContain("reported_without_primary_url");
+    expect(markdown).toContain("## Live Promotion Audit");
+    expect(markdown).toContain("| live_manifest | blocked | blocker.khala_demo.fixture_scaffold_not_live | manifest evidenceMode is fixture_scaffold |");
     expect(markdown).toContain("blocker.khala_demo.fixture_scaffold_not_live");
     expect(markdown).toContain("Settlement claims require public worker and validator settlement refs.");
   });

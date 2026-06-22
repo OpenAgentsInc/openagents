@@ -45,7 +45,7 @@ function formatList(values) {
 }
 
 function tableRow(cells) {
-  return `| ${cells.join(" | ")} |`;
+  return `| ${cells.map((cell) => String(cell).replaceAll("|", "\\|")).join(" | ")} |`;
 }
 
 export function renderKhalaHeadToHeadPublication(metrics) {
@@ -81,6 +81,14 @@ export function renderKhalaHeadToHeadPublication(metrics) {
       claim.verdictSummary,
     ]),
   );
+  const promotionRows = metrics.livePromotionAudit.checks.map((check) =>
+    tableRow([
+      check.id,
+      check.passed ? "pass" : "blocked",
+      check.blockerRef ?? "",
+      check.detail,
+    ]),
+  );
 
   return [
     "# Khala Head-to-Head Demo Publication Draft",
@@ -102,6 +110,14 @@ export function renderKhalaHeadToHeadPublication(metrics) {
     "Current blockers:",
     "",
     formatList(metrics.closureAudit.blockerRefs),
+    "",
+    "## Live Promotion Audit",
+    "",
+    `status: \`${metrics.livePromotionAudit.status}\``,
+    "",
+    tableRow(["check", "result", "blocker", "detail"]),
+    tableRow(["---", "---", "---", "---"]),
+    ...promotionRows,
     "",
     "## Scoreboard",
     "",

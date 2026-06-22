@@ -300,47 +300,155 @@ function unique(values) {
   return [...new Set(values.filter((value) => typeof value === "string" && value.length > 0))];
 }
 
-function deriveClosureAudit(manifest, metrics) {
-  const blockers = [];
+function collectFixtureRefPaths(value, path = "$", out = []) {
+  if (typeof value === "string") {
+    if (/\bfixture(?:$|[.:_-])/i.test(value)) {
+      out.push(path);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => collectFixtureRefPaths(entry, `${path}[${index}]`, out));
+    return out;
+  }
+  if (isRecord(value)) {
+    for (const [key, entry] of Object.entries(value)) {
+      collectFixtureRefPaths(entry, `${path}.${key}`, out);
+    }
+  }
+  return out;
+}
+
+function promotionCheck(checks, id, passed, blockerRef, detail) {
+  checks.push({
+    id,
+    passed,
+    blockerRef: passed ? null : blockerRef,
+    detail,
+  });
+}
+
+function deriveLivePromotionAudit(manifest, metrics) {
   const khalaRun = metrics.scoreboard.find((run) => run.lane === "khala");
   const frontierRun = metrics.scoreboard.find((run) => run.lane === "frontier_baseline");
+  const fixtureRefPaths =
+    manifest.evidenceMode === "live" ? collectFixtureRefPaths(manifest) : [];
+  const checks = [];
 
-  if (manifest.evidenceMode !== "live") {
-    blockers.push("blocker.khala_demo.fixture_scaffold_not_live");
-  }
-  if (khalaRun === undefined) {
-    blockers.push("blocker.khala_demo.live_khala_run_missing");
-  } else {
-    if (khalaRun.evidenceMode !== "live") blockers.push("blocker.khala_demo.live_khala_run_missing");
-    if (khalaRun.model !== "openagents/khala") blockers.push("blocker.khala_demo.openagents_khala_model_missing");
-    if (!khalaRun.accepted) blockers.push("blocker.khala_demo.khala_accepted_outcome_missing");
-    if (khalaRun.coordinatorMode !== "live_conductor") blockers.push("blocker.khala_demo.m7_live_conductor_missing");
-    if (!khalaRun.settlement.settled || khalaRun.settlement.receiptRefs.length === 0) {
-      blockers.push("blocker.khala_demo.settlement_receipts_missing");
-    }
-    if (khalaRun.refs.versePlaybackRef === null) blockers.push("blocker.khala_demo.verse_playback_missing");
-    if (khalaRun.refs.playableInWorldRef === null) blockers.push("blocker.khala_demo.artifact_not_playable_in_world");
-    if (khalaRun.acceptedOutcomesPerKwh === "not_measured") {
-      blockers.push("blocker.khala_demo.energy_telemetry_missing");
-    }
-  }
+  promotionCheck(
+    checks,
+    "live_manifest",
+    manifest.evidenceMode === "live",
+    "blocker.khala_demo.fixture_scaffold_not_live",
+    `manifest evidenceMode is ${manifest.evidenceMode}`,
+  );
+  promotionCheck(
+    checks,
+    "no_fixture_refs_in_live_manifest",
+    manifest.evidenceMode !== "live" || fixtureRefPaths.length === 0,
+    "blocker.khala_demo.live_manifest_contains_fixture_refs",
+    fixtureRefPaths.length === 0
+      ? "no fixture refs detected for live mode"
+      : `${fixtureRefPaths.length} fixture ref path(s) remain`,
+  );
+  promotionCheck(
+    checks,
+    "khala_live_run",
+    khalaRun !== undefined && khalaRun.evidenceMode === "live",
+    "blocker.khala_demo.live_khala_run_missing",
+    khalaRun === undefined ? "missing khala lane" : `khala evidenceMode is ${khalaRun.evidenceMode}`,
+  );
+  promotionCheck(
+    checks,
+    "openagents_khala_model",
+    khalaRun !== undefined && khalaRun.model === "openagents/khala",
+    "blocker.khala_demo.openagents_khala_model_missing",
+    khalaRun === undefined ? "missing khala lane" : `khala model is ${khalaRun.model}`,
+  );
+  promotionCheck(
+    checks,
+    "khala_accepted_outcome",
+    khalaRun !== undefined && khalaRun.accepted,
+    "blocker.khala_demo.khala_accepted_outcome_missing",
+    khalaRun === undefined ? "missing khala lane" : `khala accepted is ${String(khalaRun.accepted)}`,
+  );
+  promotionCheck(
+    checks,
+    "m7_live_conductor",
+    khalaRun !== undefined && khalaRun.coordinatorMode === "live_conductor",
+    "blocker.khala_demo.m7_live_conductor_missing",
+    khalaRun === undefined ? "missing khala lane" : `coordinator mode is ${khalaRun.coordinatorMode}`,
+  );
+  promotionCheck(
+    checks,
+    "settlement_receipts",
+    khalaRun !== undefined && khalaRun.settlement.settled && khalaRun.settlement.receiptRefs.length > 0,
+    "blocker.khala_demo.settlement_receipts_missing",
+    khalaRun === undefined
+      ? "missing khala lane"
+      : `${khalaRun.settlement.receiptRefs.length} settlement receipt ref(s)`,
+  );
+  promotionCheck(
+    checks,
+    "verse_playback",
+    khalaRun !== undefined && khalaRun.refs.versePlaybackRef !== null,
+    "blocker.khala_demo.verse_playback_missing",
+    khalaRun === undefined ? "missing khala lane" : String(khalaRun.refs.versePlaybackRef),
+  );
+  promotionCheck(
+    checks,
+    "artifact_playable_in_world",
+    khalaRun !== undefined && khalaRun.refs.playableInWorldRef !== null,
+    "blocker.khala_demo.artifact_not_playable_in_world",
+    khalaRun === undefined ? "missing khala lane" : String(khalaRun.refs.playableInWorldRef),
+  );
+  promotionCheck(
+    checks,
+    "energy_telemetry",
+    khalaRun !== undefined && khalaRun.acceptedOutcomesPerKwh !== "not_measured",
+    "blocker.khala_demo.energy_telemetry_missing",
+    khalaRun === undefined ? "missing khala lane" : `AO/kWh is ${khalaRun.acceptedOutcomesPerKwh}`,
+  );
+  promotionCheck(
+    checks,
+    "frontier_live_run",
+    frontierRun !== undefined && frontierRun.evidenceMode === "live",
+    frontierRun === undefined
+      ? "blocker.khala_demo.frontier_baseline_missing"
+      : "blocker.khala_demo.frontier_baseline_not_live",
+    frontierRun === undefined
+      ? "missing frontier baseline lane"
+      : `frontier evidenceMode is ${frontierRun.evidenceMode}`,
+  );
+  promotionCheck(
+    checks,
+    "publication_published",
+    manifest.publication.status === "published" && manifest.publication.publicationRef !== null,
+    "blocker.khala_demo.publication_missing",
+    `publication status is ${manifest.publication.status}`,
+  );
+  promotionCheck(
+    checks,
+    "public_safety",
+    metrics.publicSafety.blockerRefs.length === 0,
+    "blocker.khala_demo.public_safety_failed",
+    `${metrics.publicSafety.blockerRefs.length} public-safety blocker(s)`,
+  );
 
-  if (frontierRun === undefined) {
-    blockers.push("blocker.khala_demo.frontier_baseline_missing");
-  } else if (frontierRun.evidenceMode !== "live") {
-    blockers.push("blocker.khala_demo.frontier_baseline_not_live");
-  }
-
-  if (manifest.publication.status !== "published" || manifest.publication.publicationRef === null) {
-    blockers.push("blocker.khala_demo.publication_missing");
-  }
-
-  const publicSafetyBlockers = metrics.publicSafety.blockerRefs;
-  blockers.push(...publicSafetyBlockers);
+  const blockerRefs = unique(checks.map((check) => check.blockerRef));
 
   return {
+    status: blockerRefs.length === 0 ? "promotable" : "blocked",
+    fixtureRefPaths,
+    checks,
+    blockerRefs,
+  };
+}
+
+function deriveClosureAudit(manifest, livePromotionAudit) {
+  return {
     issueRef: manifest.scope.issueRef,
-    canClose: unique(blockers).length === 0,
+    canClose: livePromotionAudit.blockerRefs.length === 0,
     requiredEvidence: [
       "live openagents/khala run",
       "live frontier baseline run",
@@ -352,7 +460,7 @@ function deriveClosureAudit(manifest, metrics) {
       "published comparison ref",
       "public-safe manifest",
     ],
-    blockerRefs: unique(blockers),
+    blockerRefs: livePromotionAudit.blockerRefs,
   };
 }
 
@@ -401,9 +509,12 @@ export function reduceKhalaHeadToHeadManifest(rawManifest) {
     },
   };
 
+  const livePromotionAudit = deriveLivePromotionAudit(manifest, metrics);
+
   return {
     ...metrics,
-    closureAudit: deriveClosureAudit(manifest, metrics),
+    livePromotionAudit,
+    closureAudit: deriveClosureAudit(manifest, livePromotionAudit),
   };
 }
 

@@ -125,6 +125,33 @@ The final publication pack must include:
 The renderer produces this structure from the manifest so live and fixture packs
 share one visible scoreboard and blocker format.
 
+## Live Promotion Audit
+
+The reducer emits `livePromotionAudit` alongside `closureAudit`. This is the
+machine-readable #6016-E gate for replacing fixture refs with live evidence.
+Each check has a stable `id`, `passed`, `blockerRef`, and `detail` field.
+
+Current checks:
+
+- `live_manifest`: top-level manifest mode is `live`.
+- `no_fixture_refs_in_live_manifest`: a live manifest contains no `fixture.*`,
+  `fixture:*`, `fixture-*`, or `fixture_*` refs anywhere.
+- `khala_live_run`: the Khala lane is present and live.
+- `openagents_khala_model`: the Khala lane uses `openagents/khala`.
+- `khala_accepted_outcome`: the Khala run has an accepted verifier outcome.
+- `m7_live_conductor`: the Khala coordinator mode is `live_conductor`.
+- `settlement_receipts`: the Khala run has settlement receipts.
+- `verse_playback`: the Khala run has a Verse playback ref.
+- `artifact_playable_in_world`: the artifact has a playable-in-world ref.
+- `energy_telemetry`: AO/kWh is measured, not estimated.
+- `frontier_live_run`: the baseline lane is present and live.
+- `publication_published`: the publication ref exists and status is
+  `published`.
+- `public_safety`: the manifest passed public-safe string validation.
+
+`closureAudit.canClose` is derived from this promotion audit. If any check is
+blocked, #6016 stays open.
+
 ## Closure Gate For #6016
 
 Issue #6016 cannot honestly close until the reducer's `closureAudit.canClose`
