@@ -37,7 +37,7 @@
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
-    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#3e927a8",
+    "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#4a7d9d3",
     "effect": "catalog:",
     "electrobun": "1.18.1",
     "foldkit": "^0.102.1",

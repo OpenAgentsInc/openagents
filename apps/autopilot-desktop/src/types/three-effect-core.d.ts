@@ -159,6 +159,78 @@ export type TrainingRunLocalPoseUpdate = Readonly<{
   yaw: number
 }>
 
+export type WasdAction =
+  | "backward"
+  | "fall"
+  | "forward"
+  | "left"
+  | "right"
+  | "rise"
+  | "sprint"
+
+export type WasdKeyboardBindingMap = Readonly<
+  Partial<Record<WasdAction, readonly string[]>>
+>
+
+export type TrainingRunKeyboardTargetingAction = "next" | "previous"
+
+export type TrainingRunKeyboardTargetingBinding = Readonly<{
+  altKey?: boolean
+  code?: string
+  ctrlKey?: boolean
+  key?: string
+  metaKey?: boolean
+  shiftKey?: boolean
+}>
+
+export type TrainingRunKeyboardTargeting = Readonly<{
+  bindings?: Readonly<
+    Partial<
+      Record<
+        TrainingRunKeyboardTargetingAction,
+        readonly TrainingRunKeyboardTargetingBinding[]
+      >
+    >
+  >
+  enabled?: boolean
+  maxTargets?: number
+}>
+
+export type WasdMouseLookControllerOptions = Readonly<{
+  acceleration?: number
+  bounds?: unknown
+  damping?: number
+  debug?: boolean | ((snapshot: unknown) => void)
+  enabled?: boolean
+  eyeHeight?: number
+  groundHeightAt?: (x: number, z: number) => number
+  initialPosition?: TrainingRunVector
+  inputTarget?: HTMLElement | Window
+  keyboardBindings?: WasdKeyboardBindingMap
+  lockSelector?: string
+  movementSpeed?: number
+  onLockChange?: (locked: boolean) => void
+  pitchMax?: number
+  pitchMin?: number
+  pointerSensitivity?: number
+  sprintMultiplier?: number
+}>
+
+export type ThreePlayerControllerOptions = Readonly<{
+  camera?: Readonly<Record<string, unknown>>
+  character?: Readonly<Record<string, unknown>>
+  dragSensitivity?: number
+  enabled?: boolean
+  gravity?: number
+  groundHeightAt?: (x: number, z: number) => number
+  initialPosition?: TrainingRunVector
+  inputTarget?: HTMLElement | Window
+  jumpHeight?: number
+  keyboardBindings?: WasdKeyboardBindingMap
+  onActionChange?: (action: string) => void
+  onCameraControl?: (event: Readonly<Record<string, unknown>>) => void
+}>
+
 export type TrainingRunVisualizationOptions = Readonly<{
   backgroundColor?: number
   beams?: readonly TrainingRunBeamDefinition[]
@@ -167,7 +239,7 @@ export type TrainingRunVisualizationOptions = Readonly<{
   controller?: "none" | "third_person_character" | "wasd_mouselook"
   contributors?: readonly unknown[]
   entities?: readonly TrainingRunEntityDefinition[]
-  keyboardTargeting?: Readonly<{ enabled?: boolean; maxTargets?: number }>
+  keyboardTargeting?: TrainingRunKeyboardTargeting
   lossCurve?: readonly unknown[]
   maxAllowedStaleSteps?: number
   motionPolicy?: Readonly<{
@@ -196,8 +268,8 @@ export type TrainingRunVisualizationOptions = Readonly<{
     statusChart?: "visible" | "hidden"
   }>
   stageNodeGlyph?: "orb" | "compact_gate"
-  thirdPersonController?: unknown
-  walkController?: unknown
+  thirdPersonController?: ThreePlayerControllerOptions
+  walkController?: WasdMouseLookControllerOptions
   worldItems?: readonly TrainingRunWorldItemDefinition[]
   worldLabelDensity?: "full" | "compact" | "pylons"
 }>

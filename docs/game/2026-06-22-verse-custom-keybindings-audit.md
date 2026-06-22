@@ -32,6 +32,14 @@ land.
   key whitelist. This fixes the real DOM path for Cmd/Ctrl-Shift-V and adds a
   test proving a custom action map can move the command palette shortcut without
   editing subscription code.
+- 2026-06-22: Issue #5947 added configurable key maps to the shared
+  `three-effect` Verse controllers in `three-effect` commit `4a7d9d3`.
+  `createWasdMouseLookController` and `createThreePlayerController` now accept a
+  `WasdKeyboardBindingMap`, preserve the current WASD/arrow/shift/space/C
+  defaults, allow bindings to be removed or replaced, and drive target cycling
+  through action bindings instead of hard-coded `Tab`. OpenAgents now pins both
+  desktop and web `@openagentsinc/three-effect` consumers to that commit and the
+  desktop type shim exposes the new binding-aware option shape.
 
 ## Goal
 
