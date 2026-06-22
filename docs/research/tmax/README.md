@@ -19,6 +19,11 @@ writeup framing it as *the* recipe-work exemplar for terminal-agent RL.
   compute market answers) and to **Sakana / Fugu** (DPPO/FP32 stability lessons
   for training the coordinator; TMAX-trained terminal agents as Fugu's *worker*
   vs Fugu as the *coordinator*).
+- [`tassadar-tmax-exploration.md`](tassadar-tmax-exploration.md) — speculative
+  "Terminal Foundry" episode + 3D Verse design: run TMAX-style environment-solving
+  as verified, Bitcoin-paid, watchable work, with the cinematic centerpiece being
+  TMAX's D.6 reward hack (an agent rewiring its own checker) caught live by
+  Tassadar's independent-replay validator.
 
 ## Why this paper matters (Lambert's framing)
 
