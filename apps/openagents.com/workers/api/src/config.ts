@@ -101,6 +101,17 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // detached/long-running inference execution path. The submit/status/receipt
   // routes stay gated by INFERENCE_GATEWAY_ENABLED independently.
   INFERENCE_BATCH_JOBS_ENABLED?: string | undefined
+  // Async acceptance-verification DISPATCH feature flag (Khala, EPIC #6017).
+  // Default OFF: the gateway does NOT enqueue out-of-Worker verification jobs for
+  // executable khala-code artifacts until a node-side runner host (Pylon /
+  // oa-workroomd sandbox / Cloud Run) is deployed. With this off the honest
+  // `unverified` downgrade stands. Set "true"/"1"/"on" to arm enqueue.
+  KHALA_ACCEPTANCE_DISPATCH_ENABLED?: string | undefined
+  // The runner-callback bearer token. A node-side runner posts its executed
+  // `AcceptanceVerdict` to `/v1/inference/acceptance-verdicts` with this token;
+  // the gateway rejects any verdict that does not present it. Worker secret; never
+  // committed/logged. Absent => the callback is closed (every verdict rejected).
+  ACCEPTANCE_VERDICT_CALLBACK_TOKEN?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
   // live Worker until those builds land. Set "true"/"1"/"on" to enable. The

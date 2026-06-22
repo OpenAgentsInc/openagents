@@ -29,9 +29,17 @@ import { type PremiumAccessDecision } from './inference-premium-allowlist'
 // into the Worker bundle. The runner executes out of the Worker; its verdict shape is
 // the only thing the route consumes (EPIC #6017).
 import { type AcceptanceVerdict } from './acceptance-runner/verdict'
+// PURE dispatch producer only — enqueues an out-of-Worker verification job; never
+// imports the headless runner (playwright) into the Worker bundle (EPIC #6017).
+import {
+  type AcceptanceJobQueue,
+  enqueueAcceptanceJob,
+} from './acceptance-dispatch'
+import { intentToAcceptanceSpec } from './acceptance-spec'
 import {
   KHALA_CODE_VERIFIER_WORKER_ID,
   type KhalaCodeVerificationVerdict,
+  prescreenKhalaCodeArtifact,
   verifyKhalaCodeCompletion,
 } from './khala-code-verifier'
 import {
@@ -214,6 +222,26 @@ export type ChatCompletionsDeps = Readonly<{
   // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
   nowEpochSeconds?: () => number
   newId?: () => string
+  // ACCEPTANCE-DISPATCH SEAM (EPIC #6017). When a khala-code completion produces an
+  // EXECUTABLE artifact (it passes the cheap pre-screen), the gateway enqueues an
+  // out-of-Worker verification job: a node-side runner (Pylon / sandbox / Cloud Run)
+  // runs the real headless acceptance suite and posts the verdict back to the
+  // authenticated callback, which backfills the receipt (`unverified` ->
+  // `test_passed`/`failed`). DEFAULT OFF + UNWIRED: with `acceptanceDispatch.enabled`
+  // false or no `queue`/`artifactStore` wired, NOTHING is enqueued and the receipt
+  // stays the honest `unverified`. The Worker wires this once a runner host is
+  // deployed and the flag (KHALA_ACCEPTANCE_DISPATCH_ENABLED) is on. Chromium NEVER
+  // runs in the Worker; this only enqueues a job (pure producer).
+  acceptanceDispatch?: Readonly<{
+    enabled: boolean
+    queue: AcceptanceJobQueue | undefined
+    // Persist the artifact bytes and return a dereferenceable ref the runner
+    // resolves (an R2 key). Absent => no job is enqueued (the runner would have no
+    // artifact to fetch). Receives the request id + the runnable HTML.
+    storeArtifact?: (
+      input: Readonly<{ requestId: string; html: string }>,
+    ) => Promise<string>
+  }>
 }>
 
 // REQUEST SCHEMA ----------------------------------------------------------
@@ -371,6 +399,80 @@ const khalaReceiptForResult = (
     workers: [input.adapterId, KHALA_CODE_VERIFIER_WORKER_ID],
   }
 }
+
+// Enqueue an out-of-Worker acceptance-verification job for a khala-code completion
+// that produced an EXECUTABLE artifact (EPIC #6017). INERT + FAIL-SOFT: returns
+// immediately (no enqueue) for a non-khala-code model, a flag-off dispatch, a missing
+// queue/artifact store, or an artifact that fails the cheap pre-screen (not even worth
+// running). When it does enqueue, it derives the spec from intent (reusing
+// `intentToAcceptanceSpec`), persists the artifact to get a dereferenceable ref, and
+// sends the typed job. A failure to store/enqueue is swallowed (the completion is
+// already delivered; the receipt simply stays the honest `unverified`).
+const maybeEnqueueAcceptanceJob = (
+  input: Readonly<{
+    dispatch: ChatCompletionsDeps['acceptanceDispatch']
+    requestedModel: string
+    requestMessages: ReadonlyArray<InferenceMessage>
+    responseId: string
+    result: InferenceResult
+    adapterId: string
+    meteringReceiptRef: string | null
+  }>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const dispatch = input.dispatch
+    if (
+      dispatch === undefined ||
+      !dispatch.enabled ||
+      dispatch.queue === undefined ||
+      dispatch.storeArtifact === undefined ||
+      input.requestedModel !== KHALA_CODE_MODEL_ID
+    ) {
+      return
+    }
+
+    // Only enqueue a RUNNABLE artifact (the cheap pre-screen gates execution; it is
+    // NOT the verdict). A non-runnable artifact already verifies as `failed` on the
+    // hot path; nothing to execute.
+    const prescreen = prescreenKhalaCodeArtifact(input.result.content)
+    if (!prescreen.attemptExecution || prescreen.html === undefined) {
+      return
+    }
+
+    const spec = intentToAcceptanceSpec({
+      messages: input.requestMessages.map(message => ({
+        content: message.content,
+        role: message.role,
+      })),
+      model: input.requestedModel,
+    })
+    if (spec === undefined) {
+      return
+    }
+
+    // Persist the artifact -> dereferenceable ref the runner resolves. A store failure
+    // means no runnable handle, so we do not enqueue (receipt stays `unverified`).
+    const artifactRef = yield* Effect.tryPromise(() =>
+      dispatch.storeArtifact!({
+        html: prescreen.html as string,
+        requestId: input.responseId,
+      }),
+    ).pipe(Effect.map(ref => ref as string | undefined), Effect.orElseSucceed(() => undefined))
+    if (artifactRef === undefined) {
+      return
+    }
+
+    yield* enqueueAcceptanceJob({
+      artifactRef,
+      enabled: dispatch.enabled,
+      meteringReceiptRef: input.meteringReceiptRef,
+      queue: dispatch.queue,
+      requestId: input.responseId,
+      servedModel: input.result.servedModel,
+      spec,
+      worker: input.adapterId,
+    }).pipe(Effect.asVoid)
+  })
 
 // OpenAI non-streaming response envelope.
 const openAiResponse = (
@@ -971,6 +1073,21 @@ export const handleChatCompletions = (
       servedModel: result.served.value.servedModel,
       streamed: false,
       usage: result.served.value.usage,
+    })
+
+    // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produced a runnable artifact,
+    // enqueue an out-of-Worker verification job (flagged; inert by default). The
+    // node-side runner executes the suite and the verdict callback backfills the
+    // receipt from `unverified` -> `test_passed`/`failed`. Fire-and-forget: never
+    // blocks or fails the already-priced completion.
+    yield* maybeEnqueueAcceptanceJob({
+      adapterId: result.served.adapterId,
+      dispatch: deps.acceptanceDispatch,
+      meteringReceiptRef: metering.receiptRef,
+      requestMessages: inferenceRequest.messages,
+      requestedModel,
+      responseId,
+      result: result.served.value,
     })
 
     return noStoreJsonResponse(

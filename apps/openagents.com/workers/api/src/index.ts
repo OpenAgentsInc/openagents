@@ -311,6 +311,11 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import {
+  isAcceptanceDispatchEnabled,
+  makeD1KhalaVerificationStore,
+} from './inference/acceptance-dispatch'
+import { handleAcceptanceVerdictCallback } from './inference/acceptance-verdict-callback-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import {
@@ -9827,9 +9832,40 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           db: openAgentsDatabase(env),
           resolveOwnerIdentity,
         }),
+        // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produces an executable
+        // artifact, enqueue an out-of-Worker verification job (a node-side runner —
+        // Pylon / sandbox / Cloud Run — runs the headless suite and posts the verdict
+        // back to the callback below, which backfills the receipt). DEFAULT OFF +
+        // UNWIRED: `queue` is left undefined until a runner host is deployed, so even
+        // with the flag on nothing is enqueued. Chromium never runs in the Worker.
+        // Wiring the queue producer here (and the runner host) is the remaining
+        // step to make verified khala-code true in prod.
+        acceptanceDispatch: {
+          enabled: isAcceptanceDispatchEnabled(
+            env.KHALA_ACCEPTANCE_DISPATCH_ENABLED,
+          ),
+          // NEEDS-OWNER: bind a Cloudflare Queue producer + an R2 artifact store
+          // here once a runner host exists. Until then the seam is inert.
+          queue: undefined,
+        },
         registry: inferenceProviderRegistry,
       })
     },
+  },
+  {
+    // Verdict-callback ingest (EPIC #6017). A node-side runner posts its executed
+    // `AcceptanceVerdict` here; the authenticated route backfills the khala-code
+    // verification verdict (`unverified` -> `test_passed`/`failed`). INERT by
+    // default: gated by INFERENCE_GATEWAY_ENABLED AND closed unless
+    // ACCEPTANCE_VERDICT_CALLBACK_TOKEN is configured (every verdict rejected).
+    path: '/v1/inference/acceptance-verdicts',
+    handler: (request, env) =>
+      handleAcceptanceVerdictCallback(request, {
+        callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+        store: makeD1KhalaVerificationStore(openAgentsDatabase(env)),
+      }),
   },
   {
     // Public model catalog (OpenAI-compatible GET /v1/models) for the inference
