@@ -59,10 +59,21 @@ export const chatWorldMultiplayerFlag = (): boolean =>
 // field MANY characters; this app launch picks ONE via OA_CHARACTER. Default
 // "main" so a single instance behaves exactly as before. Two instances on the
 // same account with OA_CHARACTER=main and OA_CHARACTER=alt become two distinct,
-// mutually-visible avatars. Resolved through the same env path as every other
-// Verse setting (Bun host env / Vite define), so there is no new RPC surface.
-// See docs/game/2026-06-21-mmo-characters-per-account-verse-presence.md.
+// mutually-visible avatars.
+//
+// Plumbing note: OA_CHARACTER is set on the Bun LAUNCHER process at runtime and
+// is NOT VITE_-prefixed, so it is absent from both `import.meta.env` (a
+// build-time Vite define) and the renderer's (non-existent) `process.env`. The
+// Bun host therefore injects the resolved value into the webview as the global
+// `globalThis.__OA_CHARACTER` (see src/bun/index.ts), and we read that FIRST.
+// The env paths remain as fallbacks for Vite builds/tests. See
+// docs/game/2026-06-21-mmo-characters-per-account-verse-presence.md.
 export const chatWorldCharacterId = (): string => {
+  const injected = (globalThis as { __OA_CHARACTER?: unknown }).__OA_CHARACTER
+  if (typeof injected === "string") {
+    const trimmedInjected = injected.trim()
+    if (trimmedInjected.length > 0) return trimmedInjected
+  }
   const raw = envValue("OA_CHARACTER") ?? envValue("VITE_OA_CHARACTER")
   const trimmed = raw?.trim()
   return trimmed !== undefined && trimmed.length > 0 ? trimmed : "main"
