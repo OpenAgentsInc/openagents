@@ -2,8 +2,13 @@ import { describe, expect, test } from "bun:test"
 
 import {
   decodeOpenAgentsMcpContractStatus,
+  decodeOpenAgentsMcpElicitationRequest,
+  decodeOpenAgentsMcpElicitationResponse,
+  decodeOpenAgentsMcpError,
   decodeOpenAgentsMcpGrant,
   decodeOpenAgentsMcpPromptDescriptor,
+  decodeOpenAgentsMcpProgressEvent,
+  decodeOpenAgentsMcpReceipt,
   decodeOpenAgentsMcpResourceDescriptor,
   decodeOpenAgentsMcpServerConfig,
   decodeOpenAgentsMcpToolDescriptor,
@@ -18,6 +23,7 @@ import {
   openAgentsMcpLifecycleStatuses,
   openAgentsMcpResourceNamespaces,
   openAgentsMcpTransportKinds,
+  openAgentsMcpErrorHttpStatus,
   parseOpenAgentsMcpResourceUri,
   projectOpenAgentsMcpServerConfigPublic,
   type OpenAgentsMcpGrant,
@@ -345,5 +351,95 @@ describe("@openagentsinc/mcp-contract", () => {
     expect(() => parseOpenAgentsMcpResourceUri("mcp://openagents/pylon/../secret")).toThrow(
       "Invalid OpenAgents MCP resource URI",
     )
+  })
+
+  test("maps tagged errors without English string classification", () => {
+    const messages = [
+      ["missing_grant", "You cannot see this tool today.", 403],
+      ["needs_auth", "Sign in again.", 401],
+      ["blocked_by_policy", "Owner policy blocked this action.", 423],
+      ["validation_failed", "The input shape is wrong.", 400],
+      ["transport_failed", "The bridge timed out.", 503],
+      ["target_unavailable", "The local node is offline.", 503],
+      ["unsafe_output_omitted", "Unsafe output was omitted.", 206],
+      ["denied", "The operator denied this request.", 403],
+    ] as const
+
+    for (const [tag, message, status] of messages) {
+      const decoded = decodeOpenAgentsMcpError({
+        tag,
+        message,
+        retryable: tag === "transport_failed" || tag === "target_unavailable",
+        blockerRefs: [`blocker.test.${tag}`],
+        sourceRefs: ["github:OpenAgentsInc/openagents#5939"],
+      })
+      expect(openAgentsMcpErrorHttpStatus(decoded.tag)).toBe(status)
+    }
+  })
+
+  test("decodes receipt kinds with refs instead of raw private payloads", () => {
+    const receipts = [
+      ["noop", "public_read"],
+      ["read", "operator_read"],
+      ["mutation", "workspace_write"],
+      ["approval", "approval_resolution"],
+      ["payment_receive", "payment_receive"],
+      ["payment_spend", "payment_spend"],
+      ["deployment", "deployment"],
+      ["admin", "admin"],
+    ] as const
+
+    for (const [kind, authorityClass] of receipts) {
+      const decoded = decodeOpenAgentsMcpReceipt({
+        receiptRef: `receipt.test.${kind}`,
+        kind,
+        status: "recorded",
+        generatedAt: "2026-06-22T00:00:00.000Z",
+        authorityClass,
+        targetRef: `target.test.${kind}`,
+        summary: `Recorded ${kind} receipt.`,
+        artifactRefs: [`artifact.ref.${kind}`],
+        sourceRefs: ["github:OpenAgentsInc/openagents#5939"],
+      })
+      const serialized = JSON.stringify(decoded)
+      expect(serialized).not.toContain("sk-")
+      expect(serialized).not.toContain("mnemonic")
+      expect(serialized).not.toContain("/Users/")
+      expect(decoded.kind).toBe(kind)
+    }
+  })
+
+  test("decodes progress events and elicitation request/response pairs", () => {
+    const progress = decodeOpenAgentsMcpProgressEvent({
+      progressRef: "progress.test.session.1",
+      operationRef: "operation.test.session.spawn",
+      sequence: 1,
+      status: "running",
+      message: "Session spawn started.",
+      percent: 25,
+      sourceRefs: ["github:OpenAgentsInc/openagents#5939"],
+    })
+    expect(progress.status).toBe("running")
+
+    const request = decodeOpenAgentsMcpElicitationRequest({
+      requestRef: "elicitation.test.amount_cap",
+      kind: "amount_cap",
+      title: "Confirm payment cap",
+      message: "Confirm capped payment authority.",
+      requiredAuthorities: ["payment_spend"],
+      inputSchemaRef: "schema.openagents.mcp.elicitation.amount_cap.input.v1",
+      expiresAt: "2026-06-22T00:05:00.000Z",
+      sourceRefs: ["github:OpenAgentsInc/openagents#5939"],
+    })
+    const response = decodeOpenAgentsMcpElicitationResponse({
+      requestRef: request.requestRef,
+      responseRef: "elicitation.response.test.amount_cap",
+      decision: "approved",
+      generatedAt: "2026-06-22T00:01:00.000Z",
+      valueRef: "value.ref.amount_cap.safe",
+      sourceRefs: ["github:OpenAgentsInc/openagents#5939"],
+    })
+    expect(request.requiredAuthorities).toEqual(["payment_spend"])
+    expect(response.decision).toBe("approved")
   })
 })

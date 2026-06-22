@@ -17,6 +17,7 @@ Current Phase 0 scope:
 - transport config and lifecycle schemas;
 - tool, resource, and prompt descriptors;
 - naming and resource URI rules;
+- receipt, tagged error, progress, and elicitation schemas;
 - package status metadata for docs and compatibility checks.
 
 ## Authority And Grants
@@ -62,6 +63,20 @@ OpenAgents MCP tool and prompt names use lowercase dotted identifiers such as
 use the `mcp://openagents/<namespace>/<path>` form. Phase 0 namespaces are
 `pylon`, `autopilot`, `verse`, `worker`, `forum`, `payments`, and
 `coding-session`.
+
+## Receipts, Errors, Progress, And Elicitation
+
+Errors are tagged (`missing_grant`, `needs_auth`, `blocked_by_policy`,
+`unsafe_output_omitted`, and related tags) so callers can branch on stable
+data rather than English message text.
+
+Receipt schemas cover no-op, read, mutation, approval, payment receive/payment
+spend, deployment, and admin outcomes. Receipts carry refs and summaries, not
+raw prompts, tokens, mnemonics, local paths, or provider payloads.
+
+Long-running tool calls can emit transport-neutral progress events. Client-side
+elicitation uses tagged request/response records for approval prompts, auth
+prompts, missing config, amount caps, and human confirmation.
 
 The package expands across the remaining Phase 0 issues to include authority,
 transport, lifecycle, descriptor, receipt, error, progress, elicitation, naming,

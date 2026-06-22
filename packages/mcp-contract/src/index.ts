@@ -473,3 +473,161 @@ export const parseOpenAgentsMcpResourceUri = (
   }
   return { uri, namespace, path }
 }
+
+export const OpenAgentsMcpErrorTag = S.Literals([
+  "denied",
+  "missing_grant",
+  "needs_auth",
+  "blocked_by_policy",
+  "validation_failed",
+  "transport_failed",
+  "target_unavailable",
+  "unsafe_output_omitted",
+])
+export type OpenAgentsMcpErrorTag = typeof OpenAgentsMcpErrorTag.Type
+
+export const OpenAgentsMcpError = S.Struct({
+  tag: OpenAgentsMcpErrorTag,
+  message: S.String,
+  retryable: S.Boolean,
+  authorityClass: S.optional(OpenAgentsMcpAuthorityClass),
+  blockerRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpError = typeof OpenAgentsMcpError.Type
+
+export const decodeOpenAgentsMcpError = S.decodeUnknownSync(OpenAgentsMcpError)
+
+export const openAgentsMcpErrorHttpStatus = (
+  tag: OpenAgentsMcpErrorTag,
+): number => {
+  switch (tag) {
+    case "denied":
+    case "missing_grant":
+      return 403
+    case "needs_auth":
+      return 401
+    case "blocked_by_policy":
+      return 423
+    case "validation_failed":
+      return 400
+    case "transport_failed":
+    case "target_unavailable":
+      return 503
+    case "unsafe_output_omitted":
+      return 206
+  }
+}
+
+export const OpenAgentsMcpReceiptKind = S.Literals([
+  "noop",
+  "read",
+  "mutation",
+  "approval",
+  "payment_receive",
+  "payment_spend",
+  "deployment",
+  "admin",
+])
+export type OpenAgentsMcpReceiptKind = typeof OpenAgentsMcpReceiptKind.Type
+
+export const OpenAgentsMcpReceiptStatus = S.Literals([
+  "recorded",
+  "applied",
+  "duplicate",
+  "rejected",
+  "failed",
+])
+export type OpenAgentsMcpReceiptStatus = typeof OpenAgentsMcpReceiptStatus.Type
+
+export const OpenAgentsMcpReceipt = S.Struct({
+  receiptRef: S.String,
+  kind: OpenAgentsMcpReceiptKind,
+  status: OpenAgentsMcpReceiptStatus,
+  generatedAt: S.String,
+  authorityClass: OpenAgentsMcpAuthorityClass,
+  targetRef: S.String,
+  summary: S.String,
+  amountSats: S.optional(S.Number),
+  artifactRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpReceipt = typeof OpenAgentsMcpReceipt.Type
+
+export const decodeOpenAgentsMcpReceipt = S.decodeUnknownSync(OpenAgentsMcpReceipt)
+
+export const OpenAgentsMcpProgressStatus = S.Literals([
+  "queued",
+  "running",
+  "waiting",
+  "completed",
+  "failed",
+  "cancelled",
+])
+export type OpenAgentsMcpProgressStatus = typeof OpenAgentsMcpProgressStatus.Type
+
+export const OpenAgentsMcpProgressEvent = S.Struct({
+  progressRef: S.String,
+  operationRef: S.String,
+  sequence: S.Number,
+  status: OpenAgentsMcpProgressStatus,
+  message: S.String,
+  percent: S.optional(S.Number),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpProgressEvent = typeof OpenAgentsMcpProgressEvent.Type
+
+export const decodeOpenAgentsMcpProgressEvent = S.decodeUnknownSync(
+  OpenAgentsMcpProgressEvent,
+)
+
+export const OpenAgentsMcpElicitationKind = S.Literals([
+  "approval_prompt",
+  "auth_prompt",
+  "missing_config",
+  "amount_cap",
+  "human_confirmation",
+])
+export type OpenAgentsMcpElicitationKind =
+  typeof OpenAgentsMcpElicitationKind.Type
+
+export const OpenAgentsMcpElicitationRequest = S.Struct({
+  requestRef: S.String,
+  kind: OpenAgentsMcpElicitationKind,
+  title: S.String,
+  message: S.String,
+  requiredAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  inputSchemaRef: S.String,
+  expiresAt: S.optional(S.String),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpElicitationRequest =
+  typeof OpenAgentsMcpElicitationRequest.Type
+
+export const OpenAgentsMcpElicitationDecision = S.Literals([
+  "approved",
+  "denied",
+  "provided",
+  "cancelled",
+  "expired",
+])
+export type OpenAgentsMcpElicitationDecision =
+  typeof OpenAgentsMcpElicitationDecision.Type
+
+export const OpenAgentsMcpElicitationResponse = S.Struct({
+  requestRef: S.String,
+  responseRef: S.String,
+  decision: OpenAgentsMcpElicitationDecision,
+  generatedAt: S.String,
+  valueRef: S.optional(S.String),
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpElicitationResponse =
+  typeof OpenAgentsMcpElicitationResponse.Type
+
+export const decodeOpenAgentsMcpElicitationRequest = S.decodeUnknownSync(
+  OpenAgentsMcpElicitationRequest,
+)
+export const decodeOpenAgentsMcpElicitationResponse = S.decodeUnknownSync(
+  OpenAgentsMcpElicitationResponse,
+)
