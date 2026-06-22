@@ -412,20 +412,31 @@ describe('fireworks adapter streaming', () => {
     }
   })
 
-  test('a stream with no terminal usage fails typed (never an estimate)', async () => {
+  test('a stream with no terminal usage returns an unmetered terminal chunk', async () => {
     const { fetchImpl } = recordingFetch(
       sseResponse([
-        { choices: [{ delta: { content: 'partial' }, index: 0 }] },
+        {
+          choices: [{ delta: { content: 'partial' }, index: 0 }],
+          model: 'accounts/fireworks/models/deepseek-v4-pro',
+        },
+        { choices: [{ delta: {}, finish_reason: 'stop', index: 0 }] },
       ]),
     )
     const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
 
     const result = await runResult(adapter.stream(request({ stream: true })))
 
-    expect(result._tag).toBe('Failure')
-    if (result._tag === 'Failure') {
-      expect(result.failure.kind).toBe('malformed_response')
-      expect(result.failure.reason).toContain('usage')
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      const chunks = result.success
+      expect(chunks.map(chunk => chunk.contentDelta).join('')).toBe('partial')
+      const terminal = chunks[chunks.length - 1]
+      expect(terminal?.contentDelta).toBe('')
+      expect(terminal?.finishReason).toBe('stop')
+      expect(terminal?.servedModel).toBe(
+        'accounts/fireworks/models/deepseek-v4-pro',
+      )
+      expect(terminal?.usage).toBeUndefined()
     }
   })
 })

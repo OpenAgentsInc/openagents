@@ -418,24 +418,14 @@ export const makeFireworksAdapter = (
         }
       }
 
-      // Receipt-first: the terminal frame carries finishReason + usage. When
-      // Fireworks omits a usage frame (some stream modes), surface a typed
-      // malformed-response error so metering never settles on an estimate.
-      if (usage === undefined) {
-        return yield* Effect.fail(
-          adapterError({
-            kind: 'malformed_response',
-            reason: 'fireworks stream missing terminal usage frame',
-            retryable: false,
-          }),
-        )
-      }
-
+      // Receipt-first: some Fireworks stream modes omit terminal usage. Return
+      // the terminal chunk without usage so the route can disclose an unmetered
+      // stream instead of failing or settling on an estimate.
       const terminalChunk: InferenceStreamChunk = {
         contentDelta: '',
         finishReason: finishReason ?? 'stop',
         servedModel,
-        usage,
+        ...(usage === undefined ? {} : { usage }),
       }
       return [...contentChunks, terminalChunk]
     }),
