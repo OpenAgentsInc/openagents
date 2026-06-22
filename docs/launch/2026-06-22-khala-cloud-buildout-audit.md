@@ -1,0 +1,154 @@
+# Khala / OpenAgents Cloud Buildout — State & Next-Steps Audit
+
+*Audit — 2026-06-22. Where the Khala inference-model buildout (EPIC #6017, the
+M0–M8 ladder) actually stands after the first wave of parallel-agent work, and
+what must happen next to fully implement it through to the head-to-head demo.
+Source of record: [`docs/inference/khala-buildout-roadmap.md`](../inference/khala-buildout-roadmap.md).*
+
+> Scope note: "Khala" here = the **inference model/gateway** (`docs/inference/khala.md`).
+> The closed `KHALA-001…027` / `OA-SPACETIME-*` issues are the **deprecated**
+> websocket sync engine and are unrelated.
+
+## TL;DR
+
+The **scaffolding and contracts are landing fast**; the **live money loop is
+not on yet**. Four of nine milestones have real code on `main` (M0 catalog+receipt,
+M2 verifier, M5 world projection + desktop scene, M8 publication scaffold), but
+**the gateway is still INERT in production** (`INFERENCE_GATEWAY_ENABLED=false`,
+no provider secrets), so nothing serves a real metered completion yet. The two
+true long poles are **(1) owner-gated production enablement of the gateway**
+(unblocks M0-live, M1, M3, M8) and **(2) the learned coordinator** (M6/M7), which
+needs Psionic primitives that do not exist. Everything upstream runs on the
+heuristic router until M6.
+
+## Milestone status at a glance
+
+| # | Milestone | State | What landed | Blocking next step |
+|---|---|---|---|---|
+| #6008 | **M0** serve metered + receipt | **OPEN — code landed** | `khala-mini` priced catalog alias (#6018); `openagents` disclosure block on non-stream responses; tests + typecheck green | **Owner**: provider secrets + flip `INFERENCE_GATEWAY_ENABLED` (staging→prod) + live SDK smoke |
+| #6009 | **M1** Autopilot calls Khala | **OPEN — not started** | — | Cockpit POST to `khala-*` + render receipt; needs M0 enabled (staging ok) |
+| #6010 | **M2** verified coding outcomes | **CLOSED — done & verified** | `khala-code` model; crossy-road rubric; Playwright headless verifier (`khala-code-verifier.ts`); route returns `verification`/`verified`/rubric/receipt; 88 tests, check:deploy green | — (tick the EPIC box) |
+| #6011 | **M3** Bitcoin settlement | **OPEN — not started** | metering/referral/payout code exists but unproven E2E | **Owner-gated**: staging Stripe TEST chain (#5520) before any prod keys/payout arming |
+| #6012 | **M4** Pylon workers in pool | **OPEN — not started** | — | Fabric supply adapter (gateway↔Psionic ask-plan→execute→consume-receipt); whole-small-model serving first |
+| #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); desktop **projects Khala inference into Verse** (`11a7c3ca98`) | The two `three-effect` render primitives (`createCracklingArc`, `createGatewayPortal`) live in the separate `three-effect` repo; wire real inference events from the activity timeline |
+| #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
+| #6015 | **M7** Conductor lane | **OPEN — not started** | — | GRPO NL planner; depends on M6 + real training compute |
+| #6016 | **M8** head-to-head demo | **OPEN — scaffold** | demo **reducer** + **publication renderer** + fixtures + runbook (`docs/inference/khala-head-to-head-demo.md`); metrics stay `not_measured` | A real measured run — depends on M0-enabled + M2 (done) + ideally M6/M7 |
+| #6017 | **EPIC** | OPEN | checklist not yet ticking M2 | reconcile checklist |
+
+## What is actually LIVE vs INERT (honest line)
+
+- **Live / merged code:** the gateway request surface, auth + balance gate,
+  cheapest-viable router, real provider adapters (Fireworks verified; Vertex
+  Anthropic/Gemini; passthrough), receipt-first metering, `khala-mini` +
+  `khala-code` virtual models, the `openagents` disclosure block, the M2 rubric
+  verifier, the world-contract Khala gateway projection, the desktop Verse
+  projection, and the M8 publication scaffold.
+- **INERT / not proven:** `INFERENCE_GATEWAY_ENABLED` is **off** in prod and no
+  provider secrets are wired, so **no real metered completion, no credit
+  decrement, no Bitcoin settlement, and no live head-to-head has happened.** All
+  current proof is unit/fixture/scaffold evidence, not product proof. This is
+  correct and honestly labeled — it is the gate, not a regression.
+
+## Cross-cutting blockers, ranked
+
+1. **Production gateway enablement (owner-gated) — the #1 unlock.** Until an
+   owner wires a provider secret and flips `INFERENCE_GATEWAY_ENABLED` (staging
+   first), M0-live, M1, M3, and M8-live are all blocked. This single step turns
+   on the entire upstream money loop. *Recommend: enable on a staging/preview
+   Worker first, run the M0 live smoke, then prod.*
+2. **Payments staging-first rule (owner-gated).** Per the roadmap's Agent Ledger
+   lane, no prod Stripe/Spark/MDK arming until #5520 has a full Stripe **TEST**
+   receipt chain. M3 cannot honestly close before that chain exists.
+3. **Learned coordinator substrate missing (pure-eng long pole).** Psionic has
+   no hidden-state extraction, sep-CMA-ES, or SVF (the P1–P5 primitives), so M6
+   (and therefore M7 and the "learned composition" framing of M8) cannot start
+   in earnest. This is the largest engineering investment and needs real
+   ML-training compute. Until it lands, the product runs on the heuristic router
+   — which is still a valid (just not learned) head-to-head.
+4. **`three-effect` render primitives live in a separate repo.** M5's data/
+   contract + desktop projection landed in this monorepo; the crackling-arc and
+   gateway-portal visuals are a `three-effect` change, coordinated separately.
+
+## Critical path to the north-star (head-to-head)
+
+```
+[OWNER] enable gateway (staging) ──► M0 live smoke ──► M1 cockpit
+                                          │
+   M2 verifier (DONE) ──────────────────► │
+                                          ▼
+[OWNER] Stripe TEST chain (#5520) ──► M3 settlement (staging) ─┐
+   M4 whole-model Pylon serving ─────────────────────────────┤
+   M5 render primitives + live events ───────────────────────┼─► M8 head-to-head
+   M6 Psionic P1–P5 + ES training ──► M7 Conductor (GRPO) ────┘   (heuristic first;
+                                                                    learned after M6)
+```
+
+The demo can run **heuristic-router-first** as soon as M0 is enabled + M1 cockpit
+exists + M3 settles in staging — it does **not** have to wait for M6/M7. The
+learned-composition version is the upgraded second cut after M6.
+
+## What should be done next (prioritized)
+
+**Now (this week), unblocks the most:**
+1. **Owner: enable the gateway on staging** — wire one provider secret (Fireworks
+   is verified-live and cheapest to prove), set `INFERENCE_GATEWAY_ENABLED=on`
+   in a preview Worker, and run the **M0 live SDK smoke** against
+   `openagents/khala-mini`. Capture the metered completion + receipt → closes
+   #6008's real acceptance.
+2. **M1 (Agent Cockpit):** wire Autopilot to POST a prompt to `khala-*` and
+   render the `openagents` block (route/worker/cost/verification). This is small
+   once staging serves; it also gives the demo its front door.
+3. **EPIC hygiene:** tick M2 in #6017; have each active lane post a one-line
+   status comment on its issue (M5/#6013 and M8/#6016 have landed code but no
+   issue comment).
+
+**Next (unblocks money + supply):**
+4. **M3 (Agent Ledger):** stand up the Stripe **TEST** chain (#5520) →
+   funded-balance → metered Khala spend → dereferenceable receipt, all in
+   staging; keep prod keys/payout owner-gated. Prove the credit decrement against
+   a real (test) charge.
+5. **M4 (Agent Pylon):** build the fabric supply adapter (whole-small-model
+   serving first), with the exact-parity receipt as the trust gate; defer
+   shard-WAN.
+6. **M5 (Agent Verse):** land the two `three-effect` primitives and wire the
+   crackling-arc / gateway-portal to **real** inference events from the activity
+   timeline (the world-contract + desktop projection are already in).
+
+**The long pole (start in parallel, it gates the "learned" story):**
+7. **M6 (Agent Psion):** implement Psionic primitives **P1–P5** (hidden-state
+   extraction → coordinator head + SVF → sep-CMA-ES optimizer → scalar
+   terminal-reward adapter → typed worker-pool binding), then a first shadow
+   training run rewarded by the M2 verifier verdict. This is weeks of work + real
+   compute; begin now so it is ready when M0–M5 are green.
+8. **M7 (Conductor):** after M6, GRPO NL planner (DPPO + FP32 head per the TMAX
+   recipe) for multi-worker composition.
+
+**The payoff:**
+9. **M8 (Agent Demo):** run the head-to-head — heuristic-router cut first
+   (as soon as M0+M1+M3-staging are green), then the learned-coordinator cut
+   after M6/M7. Keep all metrics `not_measured` until a real run; the reducer +
+   publication renderer are already in.
+
+## Risks & honesty notes
+
+- **Premature-completion risk.** M2 closed correctly (real verifier + green
+  gates). Resist closing M0/M3/M8 until their *live* acceptance (metered
+  completion / real test-charge receipt / measured run) actually exists — the
+  buildout's whole thesis is "verified, not vibes," so its own milestones must
+  clear the same bar.
+- **Concurrency hygiene.** Multiple agents now share this checkout; the CLAUDE.md
+  rule (never move another agent's uncommitted work; use a fresh worktree off
+  clean `origin/main`) is in force and was the right fix after a near-miss stash
+  incident. This audit was written on such a worktree.
+- **Owner is on the critical path twice** (gateway enablement, payments TEST
+  chain). Neither is an agent workaround; both should be scheduled explicitly as
+  `NEEDS-OWNER`.
+
+## One-line bottom line
+
+The contracts, catalog, verifier, world projection, and demo harness are real and
+landing; the buildout is now gated on **one owner action (enable the gateway in
+staging)** to light the upstream loop, and **one big engineering investment
+(Psionic P1–P5 + training)** to make Khala a *learned* coordinator rather than a
+heuristic router. Do the owner enablement first; start M6 in parallel.
