@@ -94,6 +94,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
   INFERENCE_GATEWAY_ENABLED?: string | undefined
+  // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
+  // OFF: the queue handler does NOT route batch-job messages to the consumer
+  // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the
+  // submit→queue→consume path is proven. Set "true"/"1"/"on" to arm the
+  // detached/long-running inference execution path. The submit/status/receipt
+  // routes stay gated by INFERENCE_GATEWAY_ENABLED independently.
+  INFERENCE_BATCH_JOBS_ENABLED?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
   // live Worker until those builds land. Set "true"/"1"/"on" to enable. The
