@@ -61,6 +61,47 @@ export type InferenceResult = Readonly<{
   servedModel: string
 }>
 
+// One normalized SSE frame as it is parsed off the upstream byte stream, plus
+// the running terminal state (finishReason / usage / servedModel). This is what
+// a TRUE pass-through stream yields incrementally: every content delta as it
+// arrives (so the edge idle-timer resets and a multi-minute generation never
+// 524s), and the terminal usage frame when the upstream emits it. The route
+// re-frames these into OpenAI-compatible `data:` SSE and settles metering from
+// the terminal usage frame once the upstream stream closes (receipt-first).
+export type InferenceStreamEvent = Readonly<{
+  // Incremental content for this frame (may be empty on the terminal frame).
+  contentDelta: string
+  // Set when the upstream reports a finish reason (terminal frame).
+  finishReason?: string | undefined
+  // Set when the upstream emits a usage frame (terminal, receipt-first).
+  usage?: InferenceUsage | undefined
+  // Provider-native model id when the upstream reports one.
+  servedModel?: string | undefined
+}>
+
+// A true incremental stream of normalized SSE events. Unlike `stream` (which
+// returns a fully-materialized array — convenient for tests/metering but it
+// buffers the WHOLE upstream completion before the first byte reaches the
+// client, which is exactly what trips the Cloudflare edge ~100s idle timeout on
+// a long generation), `streamSse` hands back a lazily-consumed source that emits
+// each frame as the upstream produces it. The route pumps these straight to the
+// client so bytes flow continuously and a 3-minute generation never 524s.
+//
+// `terminal()` resolves AFTER the source is fully drained, with the captured
+// terminal state (finishReason / usage / servedModel) so the route can settle
+// metering receipt-first and attach the `openagents` disclosure block — without
+// re-buffering the content.
+export type InferenceStreamSource = Readonly<{
+  // Async-iterable of normalized frames, consumed once.
+  frames: AsyncIterable<InferenceStreamEvent>
+  // Resolves once `frames` is exhausted, with the terminal metering state.
+  terminal: () => Readonly<{
+    finishReason: string | undefined
+    usage: InferenceUsage | undefined
+    servedModel: string | undefined
+  }>
+}>
+
 // A single streamed delta. The route serializes these into OpenAI-compatible
 // `data:` SSE frames. The final chunk of a stream carries `usage` so the
 // metering hook can settle from real counts.
@@ -128,10 +169,23 @@ export type InferenceProviderAdapter = Readonly<{
     request: InferenceRequest,
   ) => Effect.Effect<InferenceResult, InferenceAdapterError>
   // Streaming completion. Implementations yield deltas; the terminal chunk
-  // carries `finishReason` + `usage`.
+  // carries `finishReason` + `usage`. NOTE: this returns a fully-materialized
+  // array, so it BUFFERS the whole upstream completion before any byte reaches
+  // the client. It stays for tests, metering reconstruction, and the overflow
+  // dispatcher; the route prefers `streamSse` (below) for the live hot path so a
+  // long generation streams through and never trips the edge idle timeout.
   stream: (
     request: InferenceRequest,
   ) => Effect.Effect<ReadonlyArray<InferenceStreamChunk>, InferenceAdapterError>
+  // OPTIONAL true incremental pass-through stream. When an adapter implements
+  // this, the route pumps the upstream SSE to the client frame-by-frame (no
+  // server-side buffering of the whole stream), so the edge idle-timer resets on
+  // every chunk and long generations never 524. Adapters that cannot stream
+  // incrementally (stub/echo, simple test adapters) omit it and the route falls
+  // back to the buffered `stream` path.
+  streamSse?: (
+    request: InferenceRequest,
+  ) => Effect.Effect<InferenceStreamSource, InferenceAdapterError>
 }>
 
 // Registry: maps adapter id -> adapter. The registry is the single seam the

@@ -28,6 +28,9 @@ import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   InferenceProviderRegistry,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
+  type InferenceUsage,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID, stubEchoAdapter } from './stub-echo-adapter'
 
@@ -1059,5 +1062,212 @@ describe('default model + premium gate (free-tier enablement §2)', () => {
     )
     expect(response.status).toBe(200)
     expect(checked).toBe(true)
+  })
+})
+
+// TRUE PASS-THROUGH STREAM (the khala-code 524 fix) -----------------------
+// When the served adapter exposes `streamSse`, the route pumps the upstream SSE
+// to the client frame-by-frame instead of buffering the whole completion before
+// emitting a byte. These exercise the route wiring: live pass-through + metering
+// from the terminal usage frame, the missing-terminal-frame case (no estimate),
+// and connect-time failure → 502.
+describe('POST /v1/chat/completions — streamSse pass-through', () => {
+  const passThroughAuth: InferenceAuth = async () => ({
+    accountRef: 'agent:test-user',
+  })
+  const funded: InferenceBalanceReader = async () => 100_000
+
+  // A streamSse-capable adapter built from a script of normalized frames. The
+  // frames are emitted one at a time (one per ReadableStream pull), so the test
+  // proves the route does not wait for the whole upstream before emitting.
+  const streamSseAdapter = (
+    id: string,
+    script: ReadonlyArray<InferenceStreamEvent>,
+    terminal: Readonly<{
+      finishReason: string | undefined
+      usage: InferenceUsage | undefined
+      servedModel: string | undefined
+    }>,
+  ): InferenceProviderAdapter => ({
+    ...stubEchoAdapter,
+    id,
+    streamSse: () =>
+      Effect.sync<InferenceStreamSource>(() => ({
+        frames: (async function* () {
+          for (const event of script) {
+            yield event
+          }
+        })(),
+        terminal: () => terminal,
+      })),
+  })
+
+  const ptDeps = (
+    overrides: Partial<ChatCompletionsDeps> = {},
+  ): ChatCompletionsDeps => ({
+    authenticate: passThroughAuth,
+    enabled: true,
+    readAvailableMsat: funded,
+    registry: new InferenceProviderRegistry(),
+    ...overrides,
+  })
+
+  const ptRequest = (body: unknown): Request =>
+    new Request('https://openagents.com/v1/chat/completions', {
+      body: JSON.stringify(body),
+      method: 'POST',
+    })
+
+  test('pumps content deltas through and meters from the terminal usage frame', async () => {
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'rcpt-pt-1' }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter(
+        'pt-lane',
+        [{ contentDelta: 'Hel' }, { contentDelta: 'lo' }],
+        {
+          finishReason: 'stop',
+          servedModel: 'served/model',
+          usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+        },
+      ),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        ptRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        ptDeps({ lanePlan: () => ['pt-lane'], meteringHook, registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const text = await response.text()
+    // Content streamed through, terminated with [DONE].
+    expect(text).toContain('"content":"Hel"')
+    expect(text).toContain('"content":"lo"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    // Metering settled receipt-first from the terminal usage frame.
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.streamed).toBe(true)
+    expect(captured[0]?.adapterId).toBe('pt-lane')
+    expect(captured[0]?.servedModel).toBe('served/model')
+    expect(captured[0]?.usage.completionTokens).toBe(2)
+  })
+
+  test('a missing terminal usage frame closes the stream cleanly WITHOUT metering (no estimate)', async () => {
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: false, receiptRef: null }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter('pt-lane', [{ contentDelta: 'partial' }], {
+        finishReason: undefined,
+        servedModel: undefined,
+        usage: undefined,
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        ptRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        ptDeps({ lanePlan: () => ['pt-lane'], meteringHook, registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).toContain('"content":"partial"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    // Receipt-first: no terminal usage => the hook never runs (never an estimate).
+    expect(captured).toHaveLength(0)
+  })
+
+  test('a connect-time streamSse failure surfaces as 502 (no buffered re-dispatch)', async () => {
+    const registry = new InferenceProviderRegistry()
+    let bufferedStreamCalls = 0
+    registry.register({
+      ...stubEchoAdapter,
+      id: 'pt-lane',
+      stream: request => {
+        bufferedStreamCalls += 1
+        return stubEchoAdapter.stream(request)
+      },
+      streamSse: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'pt-lane',
+            kind: 'upstream_error',
+            reason: 'fireworks responded 524',
+            retryable: false,
+          }),
+        ),
+    })
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        ptRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        ptDeps({ lanePlan: () => ['pt-lane'], registry }),
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('provider_error')
+    expect(body.reason).toBe('fireworks responded 524')
+    // The provider error must NOT silently fall back to the buffered path.
+    expect(bufferedStreamCalls).toBe(0)
+  })
+
+  test('an adapter WITHOUT streamSse falls back to the buffered path', async () => {
+    // stubEchoAdapter has no streamSse; the route must use the buffered `stream`.
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: false, receiptRef: null }
+      })
+    const registry = new InferenceProviderRegistry()
+    registry.register({ ...stubEchoAdapter, id: 'buffered-lane' })
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        ptRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        ptDeps({ lanePlan: () => ['buffered-lane'], meteringHook, registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).toContain('"content":"hello world"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.streamed).toBe(true)
   })
 })

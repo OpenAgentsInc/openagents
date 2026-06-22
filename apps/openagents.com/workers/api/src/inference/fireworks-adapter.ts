@@ -30,6 +30,8 @@ import {
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
 import { KHALA_CODE_MODEL_ID } from './pricing'
@@ -128,6 +130,19 @@ const toRequestBody = (request: InferenceRequest): Record<string, unknown> => {
     })),
     model: toFireworksModelId(request.model),
     stream: request.stream,
+    // RECEIPT-FIRST STREAMING (the "missing terminal usage frame" 524 fix):
+    // OpenAI-compatible providers OMIT the `usage` object from streamed
+    // responses BY DEFAULT — you must opt in with `stream_options.include_usage`
+    // to get a terminal frame carrying real prompt/completion counts. Without it
+    // the adapter's receipt-first guard correctly refuses to settle on an
+    // estimate and fails with `fireworks stream missing terminal usage frame`
+    // (observed on a short streamed prompt at ~1.4s). Asking for it makes a
+    // normal streamed completion carry its real usage, so streaming meters
+    // exactly like non-streaming. A stray client copy in passthroughParams is
+    // overridden here (load-bearing field wins). Only set on streaming requests.
+    ...(request.stream
+      ? { stream_options: { include_usage: true } }
+      : {}),
   }
 }
 
@@ -230,6 +245,112 @@ const finishReasonOf = (frame: Record<string, unknown>): string | undefined => {
   const choice = firstChoice(frame)
   const reason = choice?.['finish_reason']
   return typeof reason === 'string' && reason.length > 0 ? reason : undefined
+}
+
+// Normalize a parsed SSE frame into the route-facing event shape. Shared by the
+// buffered `stream` array path and the incremental `streamSse` pass-through so
+// both produce byte-identical normalization.
+const eventForFrame = (
+  frame: Record<string, unknown>,
+): InferenceStreamEvent => {
+  const event: {
+    contentDelta: string
+    finishReason?: string
+    usage?: InferenceUsage
+    servedModel?: string
+  } = { contentDelta: deltaContentOf(frame) }
+  const reason = finishReasonOf(frame)
+  if (reason !== undefined) {
+    event.finishReason = reason
+  }
+  const usage = extractUsage(frame)
+  if (usage !== undefined) {
+    event.usage = usage
+  }
+  const model = frame['model']
+  if (typeof model === 'string' && model.length > 0) {
+    event.servedModel = model
+  }
+  return event
+}
+
+// Build a true incremental SSE source over the upstream `ReadableStream`. Frames
+// are decoded + parsed AS BYTES ARRIVE (partial lines are buffered across reads)
+// and yielded one at a time, so the route can pump each to the client and reset
+// the edge idle-timer. The running terminal state (finishReason / usage /
+// servedModel) is captured during iteration and exposed via `terminal()` once
+// the stream is drained — receipt-first, no re-buffering of content. The
+// `[DONE]` sentinel and blank/comment lines are skipped by `parseSseData`.
+const makeSseSource = (
+  body: ReadableStream<Uint8Array>,
+  fallbackModel: string,
+): InferenceStreamSource => {
+  let finishReason: string | undefined
+  let usage: InferenceUsage | undefined
+  let servedModel: string | undefined = fallbackModel
+
+  const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (value !== undefined) {
+          buffer += decoder.decode(value, { stream: true })
+        }
+        // Emit every complete line currently buffered. SSE frames are newline
+        // delimited; a `data:` payload is single-line for OpenAI-compatible
+        // chunk framing, so line-at-a-time parsing is sufficient and we never
+        // hold a whole frame back waiting for the blank separator line.
+        let newlineIndex = buffer.indexOf('\n')
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex)
+          buffer = buffer.slice(newlineIndex + 1)
+          const frame = parseSseData(line)
+          if (frame !== undefined) {
+            const event = eventForFrame(frame)
+            if (event.finishReason !== undefined) {
+              finishReason = event.finishReason
+            }
+            if (event.usage !== undefined) {
+              usage = event.usage
+            }
+            if (event.servedModel !== undefined) {
+              servedModel = event.servedModel
+            }
+            yield event
+          }
+          newlineIndex = buffer.indexOf('\n')
+        }
+        if (done) {
+          // Flush any trailing partial line (some sources omit the final \n).
+          const tail = parseSseData(buffer)
+          if (tail !== undefined) {
+            const event = eventForFrame(tail)
+            if (event.finishReason !== undefined) {
+              finishReason = event.finishReason
+            }
+            if (event.usage !== undefined) {
+              usage = event.usage
+            }
+            if (event.servedModel !== undefined) {
+              servedModel = event.servedModel
+            }
+            yield event
+          }
+          break
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  })()
+
+  return {
+    frames,
+    terminal: () => ({ finishReason, servedModel, usage }),
+  }
 }
 
 // Resolve the key + transport, failing with a typed (non-retryable) config
@@ -438,6 +559,35 @@ export const makeFireworksAdapter = (
         usage,
       }
       return [...contentChunks, terminalChunk]
+    }),
+  // TRUE PASS-THROUGH STREAM (the long-generation 524 fix). Returns a lazily
+  // consumed SSE source over the upstream `response.body` so the route can pump
+  // each frame to the client as Fireworks produces it — every chunk resets the
+  // Cloudflare edge idle-timer, so a multi-minute generation never 524s. The
+  // buffered `stream` above stays for tests/metering reconstruction/overflow.
+  // `stream_options.include_usage` (set in toRequestBody) makes the upstream
+  // emit a terminal usage frame so metering settles receipt-first.
+  streamSse: (request: InferenceRequest) =>
+    Effect.gen(function* () {
+      const transport = yield* resolveTransport(config)
+      const response = yield* postChatCompletions(transport, {
+        ...request,
+        stream: true,
+      })
+      if (!response.ok) {
+        return yield* failForStatus(response)
+      }
+      const body = response.body
+      if (body === null) {
+        return yield* Effect.fail(
+          adapterError({
+            kind: 'malformed_response',
+            reason: 'fireworks stream had no response body',
+            retryable: false,
+          }),
+        )
+      }
+      return makeSseSource(body, toFireworksModelId(request.model))
     }),
 })
 

@@ -46,10 +46,12 @@ import {
 } from './model-serving-policy'
 import { type FundingKind, KHALA_CODE_MODEL_ID, isKhalaModel } from './pricing'
 import {
+  InferenceAdapterError,
   type InferenceMessage,
   type InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
+  type InferenceStreamSource,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 
@@ -383,6 +385,131 @@ const openAiResponse = (
 const sseFrame = (payload: unknown): string =>
   `data: ${JSON.stringify(payload)}\n\n`
 
+// Build a TRUE incremental SSE Response body that pumps the upstream stream
+// source to the client frame-by-frame (the khala-code 524 fix). Each content
+// delta is emitted AS IT ARRIVES — bytes flow continuously so the Cloudflare
+// edge idle-timer resets and a multi-minute generation never 524s. The terminal
+// `openagents` disclosure block (built by the SAME `khalaReceiptForResult` the
+// non-streaming + buffered paths use) and metering settlement happen AFTER the
+// upstream closes, attached to the final `chat.completion.chunk` before
+// `data: [DONE]`. Metering settles receipt-first from the terminal usage frame.
+//
+// This runs OUTSIDE the route's Effect: the metering hook is an Effect, so it is
+// executed with `Effect.runPromise` in the flush step (the same hook used on the
+// buffered/non-streaming paths). The metering hook never fails (it returns a
+// typed outcome), so a metering error never breaks the already-delivered stream.
+const makePassThroughResponseStream = (
+  input: Readonly<{
+    accountRef: string
+    adapterId: string
+    created: number
+    fundingKind: FundingKind
+    meteringHook: MeteringHook
+    requestedModel: string
+    responseId: string
+    source: InferenceStreamSource
+  }>,
+): ReadableStream<Uint8Array> => {
+  const encoder = new TextEncoder()
+  const contentParts: Array<string> = []
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const chunkFrame = (
+        delta: string,
+        finishReason: string | null,
+        openagents?: OpenAgentsReceipt | undefined,
+      ): string =>
+        sseFrame({
+          choices: [
+            {
+              delta: delta === '' ? {} : { content: delta },
+              finish_reason: finishReason,
+              index: 0,
+            },
+          ],
+          created: input.created,
+          id: input.responseId,
+          model: input.requestedModel,
+          object: 'chat.completion.chunk',
+          ...(openagents === undefined ? {} : { openagents }),
+        })
+
+      try {
+        // Pump every upstream content delta to the client immediately.
+        for await (const event of input.source.frames) {
+          if (event.contentDelta !== '') {
+            contentParts.push(event.contentDelta)
+            controller.enqueue(
+              encoder.encode(chunkFrame(event.contentDelta, null)),
+            )
+          }
+        }
+      } catch {
+        // The upstream stream faulted mid-flight. The client already has partial
+        // content; close the SSE cleanly (DONE) so it is not left hanging. There
+        // is no terminal usage frame, so metering does NOT settle (receipt-first
+        // — never an estimate), exactly as the buffered path would on a stream
+        // with no terminal usage.
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
+
+      // Stream drained: settle metering + build the disclosure from the terminal
+      // state, receipt-first. No re-buffering of content beyond the join needed
+      // for the verifier's full-output rubric.
+      const terminal = input.source.terminal()
+      const servedModel = terminal.servedModel ?? input.requestedModel
+      let streamMetering: MeteringOutcome | undefined
+      if (terminal.usage !== undefined) {
+        streamMetering = await Effect.runPromise(
+          input.meteringHook({
+            accountRef: input.accountRef,
+            adapterId: input.adapterId,
+            fundingKind: input.fundingKind,
+            requestId: input.responseId,
+            requestedModel: input.requestedModel,
+            servedModel,
+            streamed: true,
+            usage: terminal.usage,
+          }),
+        )
+      }
+
+      const streamResult: InferenceResult = {
+        content: contentParts.join(''),
+        finishReason: terminal.finishReason ?? 'stop',
+        servedModel,
+        usage: terminal.usage ?? {
+          completionTokens: 0,
+          promptTokens: 0,
+          totalTokens: 0,
+        },
+      }
+      const openagents = khalaReceiptForResult({
+        adapterId: input.adapterId,
+        metering: streamMetering ?? { metered: false, receiptRef: null },
+        requestedModel: input.requestedModel,
+        responseId: input.responseId,
+        result: streamResult,
+      })
+
+      // Terminal frame: empty delta + finish reason + disclosure block.
+      controller.enqueue(
+        encoder.encode(
+          chunkFrame(
+            '',
+            terminal.finishReason ?? 'stop',
+            openagents,
+          ),
+        ),
+      )
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      controller.close()
+    },
+  })
+}
+
 export const handleChatCompletions = (
   request: Request,
   deps: ChatCompletionsDeps,
@@ -613,6 +740,81 @@ export const handleChatCompletions = (
     }
 
     if (inferenceRequest.stream) {
+      // TRUE PASS-THROUGH STREAM (the khala-code 524 fix). When the served
+      // adapter exposes `streamSse`, pump the upstream SSE to the client
+      // frame-by-frame so every chunk resets the Cloudflare edge idle-timer and
+      // a multi-minute generation never 524s (the old buffered array path read
+      // the WHOLE upstream completion before emitting a single byte — exactly
+      // what tripped the edge ~100s timeout on a long generation). Connect-time
+      // dispatch still overflows across the lane plan on a retryable failure;
+      // once bytes are flowing there is no overflow (the client already has
+      // partial output). Metering settles receipt-first from the terminal usage
+      // frame after the upstream stream closes. Adapters without `streamSse`
+      // (stub/echo, simple test adapters) fall through to the buffered path.
+      const sseDispatch = yield* dispatchWithOverflow(
+        inferenceRequest,
+        (adapter, request) => {
+          if (adapter.streamSse === undefined) {
+            // Signal "this lane cannot stream incrementally" as a NON-retryable
+            // typed failure so the overflow loop surfaces it without retrying;
+            // the route catches it and falls back to the buffered path.
+            return Effect.fail(
+              new InferenceAdapterError({
+                adapterId: adapter.id,
+                kind: 'stream_not_supported',
+                reason: 'adapter does not support incremental streaming',
+                retryable: false,
+              }),
+            )
+          }
+          return adapter
+            .streamSse(request)
+            .pipe(Effect.map(source => ({ adapterId: adapter.id, source })))
+        },
+        dispatchDeps,
+      ).pipe(
+        Effect.map(served => ({ ok: true as const, served })),
+        Effect.catch(error =>
+          Effect.succeed({
+            kind: error.kind,
+            ok: false as const,
+            reason: error.reason,
+          }),
+        ),
+      )
+
+      if (sseDispatch.ok) {
+        const { adapterId, source } = sseDispatch.served
+        const responseStream = makePassThroughResponseStream({
+          accountRef: session.accountRef,
+          adapterId,
+          created,
+          fundingKind,
+          meteringHook,
+          requestedModel,
+          responseId,
+          source,
+        })
+        return new Response(responseStream, {
+          headers: {
+            'cache-control': 'no-store',
+            'content-type': 'text/event-stream; charset=utf-8',
+          },
+          status: 200,
+        })
+      }
+
+      // Only fall back to the buffered path when the served lane genuinely could
+      // not stream incrementally. A real upstream/connect failure (provider
+      // error) must surface as the 502 it is, not be retried via the buffered
+      // path (which would double-dispatch and could 524 again).
+      if (sseDispatch.kind !== 'stream_not_supported') {
+        return noStoreJsonResponse(
+          { error: 'provider_error', reason: sseDispatch.reason },
+          { status: 502 },
+        )
+      }
+
       // Run the stream op across the lane plan; the served adapter id rides
       // alongside the chunks so metering reports the lane that actually served.
       const chunks = yield* dispatchWithOverflow(
