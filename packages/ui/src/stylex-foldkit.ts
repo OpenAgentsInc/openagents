@@ -4,6 +4,15 @@ import type { Attribute } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 export type StylexStyle = StyleXStyles
+type StylexFallbackStyle = StylexStyle & {
+  readonly __openagentsStylexFallbackClassName: string
+}
+export type StylexMaybeStyle =
+  | StylexStyle
+  | StylexFallbackStyle
+  | false
+  | null
+  | undefined
 
 type StylexAttrs = Readonly<{
   class?: string
@@ -12,13 +21,34 @@ type StylexAttrs = Readonly<{
 }>
 
 export const stylexAttrs = <Message>(
-  ...styles: ReadonlyArray<StylexStyle>
+  ...styles: ReadonlyArray<StylexMaybeStyle>
 ): ReadonlyArray<Attribute<Message>> => {
   const h = html<Message>()
+  const compiledStyles = styles.filter(Boolean) as ReadonlyArray<StylexStyle>
+  const fallbackClasses = compiledStyles.flatMap(style =>
+    typeof style === 'object' &&
+    style !== null &&
+    '__openagentsStylexFallbackClassName' in style
+      ? [(style as StylexFallbackStyle).__openagentsStylexFallbackClassName]
+      : [],
+  )
   const attrs = (
     stylex.attrs as (...compiledStyles: ReadonlyArray<StylexStyle>) => StylexAttrs
-  )(...styles)
+  )(
+    ...compiledStyles.filter(
+      style =>
+        !(
+          typeof style === 'object' &&
+          style !== null &&
+          '__openagentsStylexFallbackClassName' in style
+        ),
+    ),
+  )
   const result: Array<Attribute<Message>> = []
+
+  if (fallbackClasses.length > 0) {
+    result.push(h.Class(fallbackClasses.join(' ')))
+  }
 
   if (attrs.class !== undefined) {
     result.push(h.Class(attrs.class))
@@ -45,4 +75,5 @@ export const stylexFallback = (className: string): StylexStyle =>
   ({
     $$css: true,
     [className]: className,
-  }) as unknown as StylexStyle
+    __openagentsStylexFallbackClassName: className,
+  }) as unknown as StylexFallbackStyle

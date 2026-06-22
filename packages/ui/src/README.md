@@ -16,7 +16,10 @@ Notes for future consolidation work:
   `stylex.attrs(...)` into Foldkit attributes. P1 moved shared Autopilot dark
   values to `@openagentsinc/design-tokens`; `tokens.ts` re-exports that neutral
   package for UI consumers, while `tokens.stylex.ts` defines StyleX variable
-  aliases for the existing Foldkit CSS custom properties.
+  aliases for the existing Foldkit CSS custom properties. P2 moved the first
+  shared render helpers, form controls, and Prompt Input AI Element through the
+  StyleX adapter while keeping legacy class exports for not-yet-migrated
+  families.
 - `tenant-theme.ts` and `credits-panel.ts` remain app-local in
   `apps/openagents.com/apps/web/src/ui/` and import shared bits from
   `@openagentsinc/ui`.

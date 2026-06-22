@@ -1,9 +1,13 @@
-import { clsx } from 'clsx'
+import * as stylex from '@stylexjs/stylex'
 import { Schema } from 'effect'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { eyebrowClass } from '../primitives'
+import {
+  stylexAttrs,
+  stylexFallback,
+  stylexRuntimeFallbackEnabled,
+} from '../stylex-foldkit'
 import { aiElementBase } from './base'
 
 const MODULE_ID = 'prompt-input'
@@ -23,6 +27,115 @@ export const promptInputButtonClass =
   'inline-flex min-h-8 cursor-pointer items-center gap-1.5 border border-[#333] bg-transparent px-2.5 text-[0.75rem] text-white/60 hover:border-[#ffb400] hover:text-[#f1efe8] disabled:cursor-not-allowed disabled:opacity-45'
 export const promptInputSubmitClass =
   'inline-flex min-h-8 cursor-pointer items-center gap-2 border border-[#f1efe8] bg-[#f1efe8] px-3 text-[0.8125rem] font-medium text-[#000] hover:border-[#ffb400] disabled:cursor-not-allowed disabled:opacity-45'
+
+const promptInputStyles = stylexRuntimeFallbackEnabled()
+  ? {
+      root: stylexFallback('oa-ai-prompt-input'),
+      body: stylexFallback('oa-ai-prompt-input-body'),
+      textarea: stylexFallback('oa-ai-prompt-input-textarea'),
+      footer: stylexFallback('oa-ai-prompt-input-footer'),
+      tools: stylexFallback('oa-ai-prompt-input-tools'),
+      button: stylexFallback('oa-ai-prompt-input-button'),
+      submit: stylexFallback('oa-ai-prompt-input-submit'),
+    }
+  : stylex.create({
+      root: {
+        display: 'grid',
+        width: '100%',
+        gap: 8,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: '#222',
+        backgroundColor: '#010102',
+        padding: 8,
+      },
+      body: {
+        display: 'grid',
+        gap: 8,
+      },
+      textarea: {
+        maxHeight: 192,
+        minHeight: 64,
+        width: '100%',
+        resize: 'none',
+        borderWidth: 0,
+        backgroundColor: 'transparent',
+        paddingInline: 8,
+        paddingBlock: 6,
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+        fontSize: '0.8125rem',
+        lineHeight: 1.35,
+        color: '#f1efe8',
+        outlineStyle: 'none',
+        '::placeholder': {
+          color: 'rgba(255,255,255,0.3)',
+        },
+      },
+      footer: {
+        display: 'flex',
+        minWidth: 0,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+      },
+      tools: {
+        display: 'flex',
+        minWidth: 0,
+        alignItems: 'center',
+        gap: 4,
+        fontSize: '0.6875rem',
+        fontWeight: 600,
+        lineHeight: 1.2,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: 'rgba(255,255,255,0.35)',
+      },
+      button: {
+        display: 'inline-flex',
+        minHeight: 32,
+        cursor: 'pointer',
+        alignItems: 'center',
+        gap: 6,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: '#333',
+        backgroundColor: 'transparent',
+        paddingInline: 10,
+        fontSize: '0.75rem',
+        color: 'rgba(255,255,255,0.6)',
+        ':hover': {
+          borderColor: '#ffb400',
+          color: '#f1efe8',
+        },
+        ':disabled': {
+          cursor: 'not-allowed',
+          opacity: 0.45,
+        },
+      },
+      submit: {
+        display: 'inline-flex',
+        minHeight: 32,
+        cursor: 'pointer',
+        alignItems: 'center',
+        gap: 8,
+        borderWidth: 1,
+        borderStyle: 'solid',
+        borderColor: '#f1efe8',
+        backgroundColor: '#f1efe8',
+        paddingInline: 12,
+        fontSize: '0.8125rem',
+        fontWeight: 500,
+        color: '#000',
+        ':hover': {
+          borderColor: '#ffb400',
+        },
+        ':disabled': {
+          cursor: 'not-allowed',
+          opacity: 0.45,
+        },
+      },
+    })
 
 export const PromptInputStatus = Schema.Literals([
   'ready',
@@ -67,7 +180,7 @@ export const promptInputButton = <Message>(input: {
       aiElementBase<Message>(MODULE_ID, 'PromptInputButton'),
       h.Type('button'),
       ...(input.disabled === true ? [h.Disabled(true)] : []),
-      h.Class(promptInputButtonClass),
+      ...stylexAttrs<Message>(promptInputStyles.button),
     ],
     [input.label],
   )
@@ -88,7 +201,7 @@ export const promptInputSubmit = <Message>(input: {
       aiElementBase<Message>(MODULE_ID, 'PromptInputSubmit'),
       h.Type('submit'),
       ...(input.disabled === true ? [h.Disabled(true)] : []),
-      h.Class(promptInputSubmitClass),
+      ...stylexAttrs<Message>(promptInputStyles.submit),
     ],
     [label],
   )
@@ -111,13 +224,13 @@ export const promptInput = <Message>(input: {
     [
       ...(input.formAttrs ?? []),
       aiElementBase<Message>(MODULE_ID, 'PromptInput'),
-      h.Class(promptInputClass),
+      ...stylexAttrs<Message>(promptInputStyles.root),
     ],
     [
       h.div(
         [
           aiElementBase<Message>(MODULE_ID, 'PromptInputBody'),
-          h.Class(promptInputBodyClass),
+          ...stylexAttrs<Message>(promptInputStyles.body),
         ],
         [
           h.textarea(
@@ -129,7 +242,7 @@ export const promptInput = <Message>(input: {
                 ? []
                 : [h.Placeholder(props.placeholder)]),
               ...(props.rows === undefined ? [] : [h.Rows(props.rows)]),
-              h.Class(promptInputTextareaClass),
+              ...stylexAttrs<Message>(promptInputStyles.textarea),
             ],
             [props.value ?? ''],
           ),
@@ -138,13 +251,13 @@ export const promptInput = <Message>(input: {
       h.div(
         [
           aiElementBase<Message>(MODULE_ID, 'PromptInputFooter'),
-          h.Class(promptInputFooterClass),
+          ...stylexAttrs<Message>(promptInputStyles.footer),
         ],
         [
           h.div(
             [
               aiElementBase<Message>(MODULE_ID, 'PromptInputTools'),
-              h.Class(clsx(promptInputToolsClass, eyebrowClass)),
+              ...stylexAttrs<Message>(promptInputStyles.tools),
             ],
             input.tools ?? [],
           ),

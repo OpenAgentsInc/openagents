@@ -50,6 +50,24 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
   migration remain intentionally out of scope until later phases define those
   contracts.
 
+2026-06-22 P2 shared UI primitive migration, issue #5954:
+
+- Migrated the first `@openagentsinc/ui` low-level render helpers in
+  `shared.ts` to StyleX: heading blocks, buttons, link buttons, text links,
+  avatars, avatar groups, button groups, and dropdown menus.
+- Migrated the first form controls in `forms.ts` to StyleX: compact buttons,
+  input groups, validation chrome, textarea groups, and select menus. Legacy
+  exported class strings remain available for not-yet-migrated form families.
+- Migrated the Prompt Input AI Elements module to StyleX while preserving its
+  exported class constants and `data-ui-base` contracts for compatibility and
+  auditability.
+- Improved the Foldkit StyleX adapter so test/runtime fallback styles accept
+  conditional style entries and emit deterministic fallback classes in Bun unit
+  tests.
+- Added package-level render coverage proving the migrated shared, form, and AI
+  Elements surfaces route through the StyleX adapter without changing Foldkit
+  component APIs.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -557,13 +575,17 @@ Tasks:
 
 Goal: make `@openagentsinc/ui` the StyleX-first component library.
 
+Status: started in #5954 with the first shared, form, and AI Elements families.
+Tailwind compatibility exports remain for not-yet-migrated families.
+
 Recommended order:
 
-1. `shared.ts`, `primitives.ts`, and small form/button primitives
-2. `feedback.ts`, badges, panels, and empty states
-3. `ai-elements/*`
-4. `workroom.ts` and layout shells
-5. larger public, business, and page-example composites
+1. Continue small form primitives, checkboxes, radio groups, toggles, and
+   comboboxes.
+2. Finish `feedback.ts`, badges, panels, and empty states.
+3. Continue `ai-elements/*` beyond Prompt Input.
+4. Migrate `workroom.ts` and layout shells.
+5. Migrate larger public, business, and page-example composites.
 
 Keep old CSS/Tailwind available until each family is fully moved.
 
