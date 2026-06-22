@@ -5,9 +5,9 @@ Date: 2026-06-21
 Scope: the current `openagents` monorepo, with focus on preparing a real MCP
 server surface for all Autopilot and Pylon functionality.
 
-Status: audit only. This document does not change runtime authority, expose a
-new network listener, weaken an invariant, or grant an MCP caller any new
-capability.
+Status: audit plus 2026-06-22 Phase 0 implementation addendum. This document
+does not change runtime authority, expose a new network listener, weaken an
+invariant, or grant an MCP caller any new capability.
 
 ## Executive Summary
 
@@ -494,8 +494,8 @@ Hard rules:
 
 ### 1. Shared MCP Contract Package
 
-Create a package such as `packages/openagents-mcp-contract` or
-`packages/autopilot-mcp-contract`.
+Implemented package: `packages/mcp-contract`
+(`@openagentsinc/mcp-contract`).
 
 Responsibilities:
 
@@ -516,6 +516,29 @@ Consumers:
 - `apps/openagents.com/workers/api`;
 - `apps/openagents.com/apps/web`;
 - future external clients and docs.
+
+2026-06-22 Phase 0 status:
+
+- Complete under epic
+  [#5934](https://github.com/OpenAgentsInc/openagents/issues/5934).
+- Child issues completed:
+  [#5935](https://github.com/OpenAgentsInc/openagents/issues/5935),
+  [#5936](https://github.com/OpenAgentsInc/openagents/issues/5936),
+  [#5937](https://github.com/OpenAgentsInc/openagents/issues/5937),
+  [#5938](https://github.com/OpenAgentsInc/openagents/issues/5938),
+  [#5939](https://github.com/OpenAgentsInc/openagents/issues/5939),
+  [#5940](https://github.com/OpenAgentsInc/openagents/issues/5940),
+  [#5941](https://github.com/OpenAgentsInc/openagents/issues/5941), and
+  [#5942](https://github.com/OpenAgentsInc/openagents/issues/5942).
+- Surface import markers:
+  `apps/pylon/src/mcp-contract-import.ts`,
+  `apps/autopilot-desktop/src/mcp-contract-import.ts`,
+  `apps/openagents.com/workers/api/src/mcp-contract-import.ts`, and
+  `apps/openagents.com/apps/web/src/mcp-contract-import.ts`.
+- No invariant change was needed. The package narrows and documents future MCP
+  authority surfaces, but it does not expose a transport, grant a caller, start
+  a listener, spend funds, mutate workspaces, or weaken existing runtime
+  policy.
 
 ### 2. Local Pylon MCP Server
 
@@ -762,13 +785,16 @@ Readiness:
 2. Pylon MCP core lacks full tool schemas, descriptions, resources, prompts,
    notifications, and server lifecycle.
 3. No adapter maps MCP calls to Pylon control or bridge commands.
-4. No shared MCP contract package spans Pylon, Desktop, Worker, and web UI.
-5. No canonical MCP authority taxonomy exists in code.
+4. The shared MCP contract package now spans Pylon, Desktop, Worker, and web
+   imports, but runtime MCP surfaces do not yet consume it for live
+   descriptors.
+5. The canonical MCP authority taxonomy now exists in code, but live
+   server-side grant filtering is not implemented yet.
 6. No Worker MCP facade maps OpenAPI/capability manifest actions to tools.
 7. No Desktop UI exists for MCP server launch, pairing, grants, revocation, or
    call inspection.
-8. No MCP response classifier enforces public/private output rules at the
-   gateway.
+8. MCP output safety/redaction rules now exist in the contract, but no live
+   gateway classifier enforces them for runtime MCP responses yet.
 9. No wallet/deploy/admin MCP policy exists beyond the underlying control
    command safety model.
 10. No end-to-end MCP smoke proves that Codex, Claude Code, or another MCP
@@ -776,14 +802,24 @@ Readiness:
 
 ## Implementation Sequence
 
-### Phase 1: Contract and Read-Only Local Server
+### Phase 0: Contract Groundwork
 
-1. Add `packages/openagents-mcp-contract`.
+Complete as of 2026-06-22.
+
+1. Add `packages/mcp-contract`.
 2. Define authority classes, shared error envelopes, result envelopes, schema
    refs, and tool/resource descriptors.
-3. Extend the Pylon TAS MCP core to export schema-rich MCP tools.
-4. Implement stdio MCP server transport for Pylon.
-5. Expose read-only local tools:
+3. Define transport config, lifecycle, receipt, progress, elicitation, naming,
+   and public-safe output contracts.
+4. Wire contract imports into Pylon, Autopilot Desktop, Worker/API, and web
+   without exposing a runtime MCP transport.
+
+### Phase 1: Read-Only Local Pylon Server
+
+1. Extend the Pylon TAS MCP core to export schema-rich MCP tools using
+   `@openagentsinc/mcp-contract`.
+2. Implement stdio MCP server transport for Pylon.
+3. Expose read-only local tools:
    - `pylon.health`
    - `pylon.capabilities.list`
    - `pylon.coordinator.status`
@@ -791,9 +827,9 @@ Readiness:
    - `pylon.sessions.list`
    - `pylon.sessions.snapshot`
    - `pylon.wallet.status`
-6. Add unit tests for tool lists, schemas, unknown tools, read-only enforcement,
+4. Add unit tests for tool lists, schemas, unknown tools, read-only enforcement,
    bridge capability filtering, and redaction.
-7. Add a local smoke that starts the server and calls it through a real MCP
+5. Add a local smoke that starts the server and calls it through a real MCP
    client library or protocol fixture.
 
 ### Phase 2: Session Control and Receipts
@@ -916,7 +952,8 @@ When implementation begins, update:
 These are the issues that should be opened and completed sequentially when the
 implementation work starts:
 
-1. Add shared OpenAgents MCP contract package.
+1. Add shared OpenAgents MCP contract package. Complete in Phase 0 epic
+   [#5934](https://github.com/OpenAgentsInc/openagents/issues/5934).
 2. Expand Pylon TAS MCP registry to schema-rich MCP descriptors.
 3. Implement Pylon stdio MCP server with read-only node status/session tools.
 4. Add bridge capability filtering and MCP pairing/revocation.

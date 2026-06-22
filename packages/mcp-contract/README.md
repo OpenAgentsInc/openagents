@@ -22,6 +22,19 @@ Current Phase 0 scope:
 - import markers for Pylon, Autopilot Desktop, Worker/API, and web surfaces;
 - package status metadata for docs and compatibility checks.
 
+## Phase 0 Non-Goals
+
+This package does not start or supervise MCP runtime behavior. Phase 0 does not
+add a Pylon stdio server, loopback HTTP listener, Worker MCP route, Desktop MCP
+server, Verse MCP resource endpoint, remote bridge, external MCP client
+connector, OAuth flow, spend authority, deployment authority, admin authority,
+or workspace-write authority.
+
+Runtime server/client work starts in the next epic with a read-only local Pylon
+MCP server. Those tools should import this package rather than defining new
+authority, descriptor, receipt, error, progress, elicitation, naming, or output
+safety shapes.
+
 ## Authority And Grants
 
 The contract models MCP authority as explicit classes such as `public_read`,

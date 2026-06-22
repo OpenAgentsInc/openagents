@@ -5,8 +5,9 @@ Date: 2026-06-21
 Scope: an overarching roadmap for making OpenAgents, Autopilot, and Pylon
 first-class MCP servers and first-class MCP clients.
 
-Status: roadmap only. This document does not expose any transport, grant any
-new authority, or change runtime behavior.
+Status: roadmap plus 2026-06-22 Phase 0 implementation addendum. This document
+does not expose any transport, grant any new authority, or change runtime
+behavior.
 
 ## Goal
 
@@ -77,7 +78,8 @@ Both directions must use the same policy language and telemetry model.
 
 ## Shared MCP Contract Package
 
-Create a shared package, tentatively `packages/openagents-mcp-contract`.
+The shared contract package is `packages/mcp-contract`, published in the
+workspace as `@openagentsinc/mcp-contract`.
 
 It should own:
 
@@ -665,20 +667,63 @@ Minimum steering workflows:
 
 Deliverables:
 
-- shared MCP contract package;
+- shared MCP contract package: `packages/mcp-contract`;
 - authority taxonomy;
 - transport config schema;
 - lifecycle status schema;
 - tool/resource/prompt descriptor schema;
 - receipt/error/progress/elicitation schemas;
 - naming rules;
-- public-safe output rules.
+- public-safe output rules;
+- package import markers for Pylon, Autopilot Desktop, Worker/API, and web.
 
 Exit criteria:
 
 - Pylon, Desktop, Worker, and web projections can import shared MCP types.
 - Existing Pylon TAS MCP tests still pass.
 - No runtime transport is exposed yet.
+
+2026-06-22 implementation status:
+
+- Complete under epic
+  [#5934](https://github.com/OpenAgentsInc/openagents/issues/5934).
+- Child issues:
+  [#5935](https://github.com/OpenAgentsInc/openagents/issues/5935),
+  [#5936](https://github.com/OpenAgentsInc/openagents/issues/5936),
+  [#5937](https://github.com/OpenAgentsInc/openagents/issues/5937),
+  [#5938](https://github.com/OpenAgentsInc/openagents/issues/5938),
+  [#5939](https://github.com/OpenAgentsInc/openagents/issues/5939),
+  [#5940](https://github.com/OpenAgentsInc/openagents/issues/5940),
+  [#5941](https://github.com/OpenAgentsInc/openagents/issues/5941), and
+  [#5942](https://github.com/OpenAgentsInc/openagents/issues/5942).
+- Implemented contract package:
+  `packages/mcp-contract` / `@openagentsinc/mcp-contract`.
+- Surface import proofs:
+  `apps/pylon/src/mcp-contract-import.ts`,
+  `apps/autopilot-desktop/src/mcp-contract-import.ts`,
+  `apps/openagents.com/workers/api/src/mcp-contract-import.ts`, and
+  `apps/openagents.com/apps/web/src/mcp-contract-import.ts`.
+- Runtime transport remains deliberately absent: no MCP stdio server, loopback
+  listener, remote bridge, or external MCP client connector starts in Phase 0.
+
+Phase 1 handoff:
+
+1. Add a Pylon stdio entrypoint that wraps existing Pylon control/bridge
+   commands instead of creating a second control plane.
+2. Advertise only read-only descriptors first:
+   `pylon.health`, `pylon.capabilities.list`, `pylon.node.status`,
+   `pylon.accounts.list`, `pylon.coordinator.status`,
+   `pylon.sessions.list`, `pylon.sessions.snapshot`, and
+   `pylon.wallet.status`.
+3. Filter `tools/list` and `resources/list` by granted authority before
+   returning descriptors. Ungranted tools must be absent, not disabled.
+4. Return tagged MCP errors from `@openagentsinc/mcp-contract`, never English
+   string classifiers.
+5. Project outputs through the contract output-safety helpers before emitting
+   JSON-RPC results, diagnostics, progress, or issue/debug summaries.
+6. Add a real MCP protocol smoke that initializes the server, lists granted
+   read-only tools, calls `pylon.health`, reads wallet status, and proves no
+   mutating tools are present.
 
 ### Phase 1: Read-Only Local Pylon MCP Server
 
@@ -902,7 +947,8 @@ Required docs:
 
 ## Suggested Issue Ladder
 
-1. Add shared OpenAgents MCP contract package.
+1. Add shared OpenAgents MCP contract package. Complete in Phase 0 epic
+   [#5934](https://github.com/OpenAgentsInc/openagents/issues/5934).
 2. Implement Pylon stdio MCP server with read-only tools.
 3. Add loopback HTTP MCP transport behind local operator flag.
 4. Add Pylon bridge grant filtering to MCP tool/resource lists.
