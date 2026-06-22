@@ -84,8 +84,8 @@ mirror their tests.
 | System | Source | Notes |
 |---|---|---|
 | Procedural terrain/sky/water/foliage/weather/animation | `src/render/*` | Adapt architecture into `three-effect`, not code 1:1. Keep: shared canonical sun, shared seed for placement, chunked LOD + skirts, splat-from-slope, instanced deterministic foliage, pooled camera-relative weather, velocity-driven animation state machine. |
-| Click-to-move | `src/game/click_move.ts` | Optional accessibility/traversal; keep turning-cone + latency stop-distance tricks. |
-| Mobile/touch controls | `src/game/mobile_controls.ts` | Only if the Verse ships a touch client; reuse joystick/pinch pure helpers, long-press-vs-tap, double-tap recenter. |
+| Click-to-move | `src/game/click_move.ts` | Optional accessibility/traversal. **W7 #5979 planning complete:** future issue must specify target picking, path authority, turning cone, latency-aware stop distance, stuck reroute, cancellation, and opt-in behavior before implementation. |
+| Mobile/touch controls | `src/game/mobile_controls.ts` | Only if the Verse ships a touch client. **W7 #5979 planning complete:** split joystick, pinch, tap-vs-long-press, and double-tap recenter into target-surface issues with pure gesture tests, mobile/touch smoke, and desktop keyboard/mouselook regression smoke. |
 | Player card (shareable) | `src/ui/player_card.ts` | Shareable Pylon/agent/run OG cards if wanted. |
 
 ### Drop (game-specific or superseded)

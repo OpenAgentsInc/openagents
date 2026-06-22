@@ -1229,6 +1229,27 @@ Keep click-to-move, joystick, pinch, long-press-vs-tap, and double-tap-recenter
 as later accessibility/touch issues. Acceptance is future-surface dependent; do
 not pull these into the backend cutover.
 
+Implementation note: W7 is intentionally a planning closure, not a backend
+cutover task. Before any optional accessibility/touch control ships, create
+separate implementation issues with target-surface-specific specs:
+
+- click-to-move: target selection, path authority, turning cone, latency-aware
+  stop distance, stuck reroute, and cancellation rules;
+- touch joystick: deadzone, clamped origin, eight-way/vector output, camera
+  stick rates, settings, and haptic affordances;
+- pinch: two-finger zoom delta, min/max camera distance, and conflict handling
+  with scroll/wheel/mouselook;
+- tap vs long press: duration thresholds, movement tolerance, chat peek,
+  composer focus, and context-menu interaction priority;
+- double-tap recenter: timing window, ignored targets, camera settle behavior,
+  and keyboard/mouselook regression expectations.
+
+Each future issue must keep the default desktop WASD/mouselook behavior
+unchanged unless the user explicitly opts into accessibility/touch mode. It
+also needs unit tests for gesture disambiguation, mobile/touch smoke when a
+touch Verse surface exists, and a desktop regression smoke proving keyboard,
+wheel, and mouselook still behave as they do today.
+
 ## Tests And Formal Notes
 
 This is an invariant-bearing replacement if executed. Before cutover:

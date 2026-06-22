@@ -103,6 +103,12 @@ navigation. If we later add accessibility movement or point-and-click traversal 
 Verse, the pure module ports cleanly; the turning-cone trick and latency stop-distance are
 the non-obvious bits to keep.
 
+Before implementation, write the OpenAgents-specific click-to-move issue as a
+spec, not just a code port. It must define target picking, path authority,
+turning cone, latency-aware stop distance, stuck reroute, cancellation, and how
+the behavior is explicitly enabled. Desktop WASD and mouselook stay the default
+unless the user opts into the accessibility traversal mode.
+
 ## Mobile / touch controls
 
 `src/game/mobile_controls.ts` (~676 lines): floating left move-stick (8-way via
@@ -118,6 +124,21 @@ long-press-vs-tap (chat peek vs composer). Settings expose deadzone, look speed,
 the pure helpers (`mapJoystickVector`, `clampJoystickOrigin`, `pinchZoomDelta`) and the
 long-press-vs-tap and double-tap-recenter patterns are the reusable parts. Until then,
 note it and move on.
+
+Future touch issues should be split by surface capability:
+
+- joystick movement: deadzone, clamped origin, vector quantization, camera-stick
+  yaw/pitch rates, settings, and haptics;
+- pinch zoom: zoom delta, camera min/max distance, and conflict handling with
+  wheel/mouselook;
+- tap vs long press: duration threshold, movement tolerance, chat peek,
+  composer focus, and context action priority;
+- double-tap recenter: timing window, ignored UI targets, camera settle, and
+  regression coverage for keyboard/mouselook.
+
+Validation for any future implementation needs pure gesture tests, a mobile or
+touch smoke for the target surface, and a desktop smoke proving keyboard,
+wheel, and mouselook behavior is unchanged outside the opt-in mode.
 
 ## Net for the adaptation plan
 
