@@ -89,3 +89,35 @@ describe('CRM MCP read catalog — dispatch', () => {
     await expect(catalog.callTool(env, req, 'crm.nope', {})).rejects.toThrow('unknown_tool')
   })
 })
+
+describe('CRM MCP resources', () => {
+  test('listResources advertises the worker/crm collections', async () => {
+    const resources = await catalog.listResources(env, req)
+    const uris = resources.map(r => r.uri)
+    expect(uris).toContain('mcp://openagents/worker/crm/contacts')
+    expect(uris).toContain('mcp://openagents/worker/crm/commands')
+    expect(resources.every(r => r.uri.startsWith('mcp://openagents/worker/crm/'))).toBe(true)
+  })
+
+  test('readResource reads a collection as JSON contents', async () => {
+    const outcome = await catalog.readResource(env, req, 'mcp://openagents/worker/crm/contacts')
+    expect(outcome.contents[0]?.uri).toBe('mcp://openagents/worker/crm/contacts')
+    expect(outcome.contents[0]?.mimeType).toBe('application/json')
+    expect(outcome.contents[0]?.text).toContain('ada@example.com')
+  })
+
+  test('readResource reads a single contact by URI', async () => {
+    const outcome = await catalog.readResource(env, req, 'mcp://openagents/worker/crm/contact/crm_contact_1')
+    expect(outcome.contents[0]?.text).toContain('crm_contact_1')
+  })
+
+  test('a non-worker namespace is an unknown resource', async () => {
+    await expect(
+      catalog.readResource(env, req, 'mcp://openagents/pylon/node/status'),
+    ).rejects.toThrow('unknown_resource')
+  })
+
+  test('a malformed URI throws (transport maps to invalid params)', async () => {
+    await expect(catalog.readResource(env, req, 'not-a-uri')).rejects.toThrow()
+  })
+})
