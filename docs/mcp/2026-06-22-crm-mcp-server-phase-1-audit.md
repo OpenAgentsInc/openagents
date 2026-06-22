@@ -29,7 +29,9 @@ Build log — landed on main (per-issue PRs):
 - ✅ **#5996 — Wave 2 propose + template.** `crm.send.command.propose` (sends nothing) + `crm.template.upsert`, with mutation receipts.
 - ✅ **#5997 — Wave 3 gated execution.** `crm.send.command.approve`/`.reject` (approval_resolution), `crm.import.run` (workspace_write), `crm.batch.send` (dry-run only over MCP).
 - ✅ **#5998 — discovery + docs.** `GET /.well-known/openagents-mcp.json` (public, refs-only) + `docs/mcp/README.md`.
-- ⏳ **#5999 — client compatibility smoke** — in progress.
+- ✅ **#5999 — client compatibility smoke.** In-process end-to-end smoke through the real transport+catalog+grants (`crm-mcp-smoke.test.ts`) + the external-client connect runbook (`crm-mcp-client-runbook.md`, with MCP Inspector / Claude Code / Codex config).
+
+**Epic #5991 complete — all 8 sub-issues merged to main.**
 
 The full tool set is **21 tools** (15 read + 6 write), grant-filtered per caller. Every gate is preserved: suppression/unsubscribe, dry-run, the approval-gated command, tenant isolation. No new authority beyond the CRM HTTP routes.
 

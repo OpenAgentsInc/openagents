@@ -61,9 +61,10 @@ epic, reusing the transport + grant patterns proven here. See
 
 ## Documents
 
-- `2026-06-22-crm-mcp-server-phase-1-audit.md` - **next-phase audit**: expose
-  the CRM as the first OpenAgents MCP server (Worker Streamable-HTTP facade),
-  with the CRM tool/resource map, architecture, gaps, and issue ladder.
+- `2026-06-22-crm-mcp-server-phase-1-audit.md` - the CRM MCP server audit
+  (built, epic #5991): CRM tool/resource map, architecture, build log.
+- `crm-mcp-client-runbook.md` - connect an MCP client (Inspector / Claude Code /
+  Codex) to the CRM MCP server + the manual compatibility smoke.
 - `2026-06-21-openagents-monorepo-mcp-infrastructure-audit.md` - current
   monorepo audit and implementation sequence for Autopilot/Pylon MCP exposure.
 - `2026-06-21-openagents-overarching-mcp-roadmap.md` - end-to-end MCP server
