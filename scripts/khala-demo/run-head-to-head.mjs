@@ -34,11 +34,19 @@
  *   --frontier-token <token>    FRONTIER_TOKEN      bearer token for the baseline lane
  *   --frontier-model <id>       FRONTIER_MODEL      default frontier-baseline
  *   --stub                      KHALA_RUNNER_STUB=1 force the built-in deterministic stub transport
+ *   --no-stream                 KHALA_RUNNER_NO_STREAM=1 use the legacy blocking (stream:false) transport
  *   --out <path>                write the manifest JSON to a file instead of stdout
  *
  * If no live base URL is supplied (or --stub is passed), the runner uses a
  * deterministic, public-safe stub transport so the harness is exercised end to
  * end without the owner-gated live gateway.
+ *
+ * STREAMING DEFAULT: a live run streams SSE (`stream:true`) by default and
+ * reconstructs the full completion + the terminal `openagents` receipt block on
+ * stream close. This is the 524 fix — a long generation buffered synchronously
+ * trips the Cloudflare edge timeout; consuming the stream resets the idle timer
+ * on every chunk. See
+ * docs/inference/2026-06-22-long-running-inference-response-strategies.md.
  */
 
 import { writeFileSync } from "node:fs";
@@ -367,9 +375,14 @@ export function stubTransport({ lane, model }) {
 }
 
 /**
- * Live transport: POST an OpenAI-compatible chat completion. Kept tiny on
- * purpose; the runner is "flip-ready" by swapping the stub for this once the
- * gateway is enabled and a base URL + token are provided.
+ * Live transport: POST a NON-streaming OpenAI-compatible chat completion.
+ *
+ * Retained for callers that explicitly want the blocking shape, but it is NO
+ * LONGER the default for interactive runs: a long generation (the crossy-road
+ * north-star prompt) buffered synchronously trips the Cloudflare ~100s edge
+ * timeout and returns 524 (see
+ * docs/inference/2026-06-22-long-running-inference-response-strategies.md).
+ * `liveStreamTransport` is the interactive default.
  */
 export async function liveTransport({ baseUrl, token, model, prompt, fetchImpl = fetch }) {
   const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
@@ -392,6 +405,158 @@ export async function liveTransport({ baseUrl, token, model, prompt, fetchImpl =
     throw new Error(`lane request failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`);
   }
   return res.json();
+}
+
+/**
+ * Reconstruct a non-streaming-shaped chat completion from the SSE chunk stream
+ * the gateway emits for `stream:true`. Each frame is a
+ * `data: {choices:[{delta:{content},finish_reason,index}],...,object:"chat.completion.chunk"}`
+ * line; the terminal `openagents` receipt block rides on the FINAL chunk (the
+ * gateway emits it only after verification runs on the full output), followed by
+ * `data: [DONE]`. We concatenate the content deltas, keep the last seen
+ * finish_reason / usage / openagents block, and return a body shaped EXACTLY
+ * like the non-streaming response so `buildRunFromCompletion` is unchanged.
+ *
+ * Crucially, this consumes the stream INCREMENTALLY (`reader.read()` loop), so
+ * every chunk resets the edge idle timer and a multi-minute generation never
+ * trips the 524. `onToken` is an optional live-render hook (the manifest runner
+ * ignores tokens; the cockpit renders them).
+ */
+export function reconstructCompletionFromSse(rawText, { onToken } = {}) {
+  let content = "";
+  let finishReason = "stop";
+  let usage;
+  let openagents;
+  let id;
+  let model;
+  const frames = rawText.split("\n\n");
+  for (const frame of frames) {
+    for (const line of frame.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(line.indexOf(":") + 1).trim();
+      if (payload === "" || payload === "[DONE]") continue;
+      let parsed;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+      if (typeof parsed.id === "string") id = parsed.id;
+      if (typeof parsed.model === "string") model = parsed.model;
+      const choice = Array.isArray(parsed.choices) ? parsed.choices[0] : undefined;
+      const delta = choice?.delta?.content;
+      if (typeof delta === "string" && delta.length > 0) {
+        content += delta;
+        if (typeof onToken === "function") onToken(delta);
+      }
+      if (typeof choice?.finish_reason === "string") {
+        finishReason = choice.finish_reason;
+      }
+      if (parsed.usage && typeof parsed.usage === "object") usage = parsed.usage;
+      // The terminal openagents receipt/verification block rides on the final
+      // chunk; capture it so the reconstructed completion is verifiable.
+      if (parsed.openagents && typeof parsed.openagents === "object") {
+        openagents = parsed.openagents;
+      }
+    }
+  }
+  return {
+    id,
+    model,
+    choices: [
+      {
+        index: 0,
+        finish_reason: finishReason,
+        message: { role: "assistant", content },
+      },
+    ],
+    ...(usage === undefined ? {} : { usage }),
+    ...(openagents === undefined ? {} : { openagents }),
+  };
+}
+
+/**
+ * Streaming live transport (the INTERACTIVE DEFAULT). POSTs `stream:true`,
+ * consumes the SSE stream incrementally so the edge idle timer is reset by every
+ * chunk (this is the 524 fix), reconstructs the full completion, and attaches the
+ * terminal `openagents` receipt/verification block emitted on stream close.
+ *
+ * Returns the SAME body shape as `liveTransport`, so `buildRunFromCompletion`
+ * needs no changes and unmeasured fields stay honest.
+ */
+export async function liveStreamTransport({
+  baseUrl,
+  token,
+  model,
+  prompt,
+  fetchImpl = fetch,
+  onToken,
+}) {
+  const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+  const headers = { "content-type": "application/json", accept: "text/event-stream" };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      stream: true,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`lane request failed: ${res.status} ${res.statusText} ${detail.slice(0, 200)}`);
+  }
+
+  // Consume the body incrementally. Prefer the byte stream so each chunk resets
+  // the edge idle timer; fall back to res.text() for fetch impls without a
+  // readable body (e.g. test fakes).
+  let rawText = "";
+  const body = res.body;
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    // Parse incrementally so onToken fires live; we re-parse the full text at the
+    // end for the authoritative reconstruction (terminal openagents block).
+    let pending = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const piece = decoder.decode(value, { stream: true });
+      rawText += piece;
+      if (typeof onToken === "function") {
+        pending += piece;
+        const frames = pending.split("\n\n");
+        pending = frames.pop() ?? "";
+        for (const frame of frames) {
+          for (const line of frame.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(line.indexOf(":") + 1).trim();
+            if (payload === "" || payload === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(payload);
+              const delta = Array.isArray(parsed.choices)
+                ? parsed.choices[0]?.delta?.content
+                : undefined;
+              if (typeof delta === "string" && delta.length > 0) onToken(delta);
+            } catch {
+              // ignore partial / non-JSON frames
+            }
+          }
+        }
+      }
+    }
+  } else {
+    rawText = await res.text();
+  }
+
+  // Authoritative reconstruction from the full stream text (no double onToken:
+  // we already streamed above when a reader was used).
+  return reconstructCompletionFromSse(rawText, {});
 }
 
 /**
@@ -550,9 +715,17 @@ async function main() {
   // Live only when the stub is not forced AND both lanes have a real base URL.
   const live = !forceStub && Boolean(khalaBaseUrl) && Boolean(frontierBaseUrl);
 
+  // STREAMING IS THE INTERACTIVE DEFAULT (the 524 fix). The long crossy-road
+  // generation buffered synchronously (`stream:false`) trips the Cloudflare edge
+  // timeout and returns 524; consuming the SSE stream resets the idle timer on
+  // every chunk so a multi-minute generation completes. `--no-stream` forces the
+  // legacy blocking transport for explicit comparison/debug only.
+  const useStream = !(args["no-stream"] === true || env.KHALA_RUNNER_NO_STREAM === "1");
+  const liveLaneTransport = useStream ? liveStreamTransport : liveTransport;
+
   const khalaTransport = live
     ? () =>
-        liveTransport({
+        liveLaneTransport({
           baseUrl: khalaBaseUrl,
           token: khalaToken,
           model: khalaModel,
@@ -561,7 +734,7 @@ async function main() {
     : stubTransport;
   const frontierTransport = live
     ? () =>
-        liveTransport({
+        liveLaneTransport({
           baseUrl: frontierBaseUrl,
           token: frontierToken,
           model: frontierModel,

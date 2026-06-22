@@ -1050,6 +1050,14 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // `openagents` receipt projection. Reuses the same host-side agent token
       // resolution as shellTurn; the raw token never crosses to the webview.
       async khalaTurn(params) {
+        // M8 streaming (#6027): the turn STREAMS by default. The Bun host
+        // consumes the SSE stream server-side (each chunk resets the edge idle
+        // timer — the 524 fix); when the webview supplied a turnId, push each
+        // content delta back so the cockpit renders tokens live. The final
+        // reconstructed answer + the terminal `openagents` receipt block ride on
+        // this RPC response (attached on stream close). Token text only crosses
+        // the push; the raw agent token never does.
+        const turnId = params.turnId
         return buildKhalaTurn({
           prompt: params.prompt,
           ...(params.model === undefined ? {} : { model: params.model }),
@@ -1060,6 +1068,13 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
               ? null
               : (loadPersistedCredential(home)?.token ?? null)
           }),
+          ...(turnId === undefined
+            ? {}
+            : {
+                onToken: (delta: string) => {
+                  rpc.send.khalaToken({ turnId, delta })
+                },
+              }),
         })
       },
       async installReadiness() {

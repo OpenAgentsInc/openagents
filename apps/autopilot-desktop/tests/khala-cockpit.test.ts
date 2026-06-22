@@ -2,14 +2,58 @@ import { describe, expect, test } from "bun:test"
 
 import { buildKhalaTurn } from "../src/bun/khala-turn"
 import {
+  isEventStreamResponse,
   isKhalaCockpitModelId,
   isLiveReceipt,
   parseKhalaReceipt,
+  reconstructKhalaCompletionFromSse,
   summarizeKhalaReceipt,
   KHALA_CODE_MODEL_ID,
   KHALA_COCKPIT_MODEL_IDS,
   KHALA_MINI_MODEL_ID,
 } from "../src/shared/khala-cockpit"
+
+// Build the SSE wire bytes the gateway emits for a streamed completion: a series
+// of `chat.completion.chunk` frames, the terminal `openagents` block on the
+// FINAL chunk, then `data: [DONE]`.
+function buildKhalaSseWire(
+  deltas: string[],
+  opts: { openagents?: unknown; usage?: unknown; finishReason?: string } = {},
+): string {
+  const { openagents, usage, finishReason = "stop" } = opts
+  const frames = deltas.map((delta, index) => {
+    const last = index === deltas.length - 1
+    return `data: ${JSON.stringify({
+      id: "chatcmpl_stream_x",
+      model: "openagents/khala-code",
+      object: "chat.completion.chunk",
+      choices: [
+        {
+          index: 0,
+          delta: delta === "" ? {} : { content: delta },
+          finish_reason: last ? finishReason : null,
+        },
+      ],
+      ...(last && usage !== undefined ? { usage } : {}),
+      ...(last && openagents !== undefined ? { openagents } : {}),
+    })}\n\n`
+  })
+  return `${frames.join("")}data: [DONE]\n\n`
+}
+
+// A Response-like object backed by a real ReadableStream so the incremental
+// reader path in consumeSseBody runs.
+function sseResponse(wire: string): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(wire))
+      controller.close()
+    },
+  })
+  return new Response(stream, {
+    headers: { "content-type": "text/event-stream; charset=utf-8" },
+  })
+}
 
 // M1 (#6009, EPIC #6017) — Lane A Cockpit. The crossy-road smoke prompt the
 // roadmap names as the north-star task.
@@ -255,5 +299,120 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
     expect(r.ok).toBe(false)
     expect(r.live).toBe(false)
     expect(r.text).toContain("credit")
+  })
+
+  test("STREAMS by default: sends stream:true and reconstructs from SSE", async () => {
+    let sentBody: { stream?: boolean; model?: string } = {}
+    const wire = buildKhalaSseWire(["<!doctype ", "html>", "<!-- crossy -->"], {
+      usage: { prompt_tokens: 10, completion_tokens: 200, total_tokens: 210 },
+      openagents: {
+        requested_model: "openagents/khala-code",
+        served_model: "fireworks-coder",
+        worker: "fireworks",
+        lane: "coding",
+        verification: "test_passed",
+        verified: true,
+        receipt: "oa_receipt_stream_live",
+        receipt_url: "/api/public/inference/receipts/oa_receipt_stream_live",
+      },
+    })
+    const fetchFn = ((_url: string, init?: RequestInit) => {
+      sentBody = init?.body ? JSON.parse(init.body as string) : {}
+      return Promise.resolve(sseResponse(wire))
+    }) as unknown as typeof fetch
+
+    const tokens: string[] = []
+    const r = await buildKhalaTurn({
+      prompt: CROSSY_ROAD_PROMPT,
+      model: KHALA_CODE_MODEL_ID,
+      env,
+      agentToken: "agent-token",
+      fetchFn,
+      onToken: (t) => tokens.push(t),
+    })
+
+    // Default is streaming.
+    expect(sentBody.stream).toBe(true)
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe("<!doctype html><!-- crossy -->")
+    // Tokens streamed live during consumption.
+    expect(tokens.join("")).toBe("<!doctype html><!-- crossy -->")
+    // Terminal openagents receipt attached on stream close => LIVE.
+    expect(r.receipt?.servedModel).toBe("fireworks-coder")
+    expect(r.receipt?.verification).toBe("test_passed")
+    expect(r.receipt?.receipt).toBe("oa_receipt_stream_live")
+    expect(r.live).toBe(true)
+  })
+
+  test("streamed completion with NO receipt: real answer but NOT live", async () => {
+    const wire = buildKhalaSseWire(["plain ", "answer"])
+    const fetchFn = (() =>
+      Promise.resolve(sseResponse(wire))) as unknown as typeof fetch
+    const r = await buildKhalaTurn({
+      prompt: "hello",
+      env,
+      agentToken: "agent-token",
+      fetchFn,
+    })
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe("plain answer")
+    expect(r.receipt).toBeNull()
+    expect(r.live).toBe(false)
+  })
+
+  test("stream:false opt-out still parses the blocking JSON body", async () => {
+    let sentStream: boolean | undefined
+    const fetchFn = ((_url: string, init?: RequestInit) => {
+      sentStream = init?.body
+        ? (JSON.parse(init.body as string) as { stream?: boolean }).stream
+        : undefined
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "blocking" } }] }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      )
+    }) as unknown as typeof fetch
+    const r = await buildKhalaTurn({
+      prompt: "hi",
+      env,
+      agentToken: "t",
+      fetchFn,
+      stream: false,
+    })
+    expect(sentStream).toBe(false)
+    expect(r.ok).toBe(true)
+    expect(r.text).toBe("blocking")
+  })
+})
+
+describe("reconstructKhalaCompletionFromSse + isEventStreamResponse", () => {
+  test("concatenates deltas, keeps terminal openagents + usage", () => {
+    const wire = buildKhalaSseWire(["a", "b", "c"], {
+      usage: { total_tokens: 3 },
+      openagents: { requested_model: "openagents/khala-code", receipt: "r1" },
+    })
+    const body = reconstructKhalaCompletionFromSse(wire)
+    expect(body.choices[0].message.content).toBe("abc")
+    expect(body.choices[0].finish_reason).toBe("stop")
+    expect((body.usage as { total_tokens: number }).total_tokens).toBe(3)
+    expect((body.openagents as { receipt: string }).receipt).toBe("r1")
+
+    // The reconstructed body parses through the same receipt parser.
+    const receipt = parseKhalaReceipt(body)
+    expect(receipt?.receipt).toBe("r1")
+  })
+
+  test("fires onToken per delta", () => {
+    const wire = buildKhalaSseWire(["x", "y"])
+    const tokens: string[] = []
+    reconstructKhalaCompletionFromSse(wire, (t) => tokens.push(t))
+    expect(tokens).toEqual(["x", "y"])
+  })
+
+  test("isEventStreamResponse detects the SSE content-type", () => {
+    expect(isEventStreamResponse("text/event-stream; charset=utf-8")).toBe(true)
+    expect(isEventStreamResponse("application/json")).toBe(false)
+    expect(isEventStreamResponse(null)).toBe(false)
   })
 })

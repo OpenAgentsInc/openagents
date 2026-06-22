@@ -151,6 +151,93 @@ export const isLiveReceipt = (
   receipt: KhalaReceiptProjection | null,
 ): boolean => receipt !== null && receipt.receipt !== null
 
+// The non-streaming body shape both the streaming and non-streaming paths
+// produce, so `parseAssistantText` / `parseKhalaReceipt` consume one shape.
+export type ReconstructedCompletion = Readonly<{
+  choices: ReadonlyArray<{
+    readonly index: number
+    readonly finish_reason: string
+    readonly message: { readonly role: "assistant"; readonly content: string }
+  }>
+  usage?: unknown
+  // The terminal `openagents` receipt/verification block (the gateway emits it
+  // on the FINAL stream chunk, after verification runs on the full output).
+  openagents?: unknown
+}>
+
+// Pull the content delta off one parsed `chat.completion.chunk` frame.
+const sseChunkDelta = (parsed: unknown): string | null => {
+  if (typeof parsed !== "object" || parsed === null) return null
+  const choices = (parsed as { choices?: unknown }).choices
+  if (!Array.isArray(choices) || choices.length === 0) return null
+  const delta = (choices[0] as { delta?: { content?: unknown } } | undefined)
+    ?.delta?.content
+  return typeof delta === "string" && delta.length > 0 ? delta : null
+}
+
+// Reconstruct a non-streaming completion body from the gateway's SSE chunk
+// stream. Each frame is a `data: {...,object:"chat.completion.chunk"}` line; the
+// terminal `openagents` block rides on the FINAL chunk before `data: [DONE]`.
+// This is the cockpit-side mirror of the gateway's SSE framing — CONSUME-ONLY.
+// `onToken` is an optional live-render hook (fired per content delta).
+export const reconstructKhalaCompletionFromSse = (
+  rawText: string,
+  onToken?: (delta: string) => void,
+): ReconstructedCompletion => {
+  let content = ""
+  let finishReason = "stop"
+  let usage: unknown
+  let openagents: unknown
+  for (const frame of rawText.split("\n\n")) {
+    for (const line of frame.split("\n")) {
+      if (!line.startsWith("data:")) continue
+      const payload = line.slice(line.indexOf(":") + 1).trim()
+      if (payload === "" || payload === "[DONE]") continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(payload)
+      } catch {
+        continue
+      }
+      const delta = sseChunkDelta(parsed)
+      if (delta !== null) {
+        content += delta
+        onToken?.(delta)
+      }
+      const record = parsed as {
+        choices?: Array<{ finish_reason?: unknown }>
+        usage?: unknown
+        openagents?: unknown
+      }
+      const fr = record.choices?.[0]?.finish_reason
+      if (typeof fr === "string") finishReason = fr
+      if (record.usage !== undefined && record.usage !== null) {
+        usage = record.usage
+      }
+      if (record.openagents !== undefined && record.openagents !== null) {
+        openagents = record.openagents
+      }
+    }
+  }
+  return {
+    choices: [
+      {
+        index: 0,
+        finish_reason: finishReason,
+        message: { role: "assistant", content },
+      },
+    ],
+    ...(usage === undefined ? {} : { usage }),
+    ...(openagents === undefined ? {} : { openagents }),
+  }
+}
+
+// Heuristic: does this response carry an SSE event-stream body? The gateway sets
+// `content-type: text/event-stream` for `stream:true`. Tolerant of charset
+// suffixes; falls back to false (treat as JSON) when the header is absent.
+export const isEventStreamResponse = (contentType: string | null): boolean =>
+  contentType !== null && contentType.toLowerCase().includes("text/event-stream")
+
 // A short, public-safe one-line summary of the receipt for the cockpit HUD.
 // Jargon-free where possible; carries only disclosed fields.
 export const summarizeKhalaReceipt = (
