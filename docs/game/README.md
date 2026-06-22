@@ -43,6 +43,11 @@ Worker/D1 and SpacetimeDB projections documented below.
   SpacetimeDB world module, desktop subscription path, local SpacetimeDB game
   references, and the implementation plan for letting multiple Verse users see
   each other on the map.
+- `2026-06-22-effect-typescript-world-backend-replacement-audit.md` - audit of
+  the compatibility-first path for replacing the SpacetimeDB world backend with
+  an OpenAgents-owned Effect/TypeScript Verse world service while preserving the
+  current authority split, subscription contract, multiplayer semantics, and
+  outage behavior.
 - `2026-06-21-verse-scene-graph-vs-react-three-fiber-audit.md` - deep audit of
   how the desktop Verse scene graph is built today (`three-effect` + Foldkit,
   full teardown+rebuild on every change) versus react-three-fiber's
