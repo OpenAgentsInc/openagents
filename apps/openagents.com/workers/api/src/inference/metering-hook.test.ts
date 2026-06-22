@@ -239,12 +239,13 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     // The pay-in is a debit-only adjustment with the public receipt ref.
     const payIn = (await db
       .prepare(
-        `SELECT pay_in_type, cost_msat, public_receipt_ref, idempotency_key, context_ref
+        `SELECT pay_in_type, cost_msat, state, public_receipt_ref, idempotency_key, context_ref
            FROM pay_ins WHERE idempotency_key = ?`,
       )
       .bind(inferenceChargeIdempotencyKey('req-1'))
       .first()) as Row | null
     expect(payIn?.pay_in_type).toBe('adjustment')
+    expect(payIn?.state).toBe('paid')
     expect(payIn?.cost_msat).toBe(expectedMsat)
     expect(payIn?.public_receipt_ref).toBe(inferenceChargeReceiptRef('req-1'))
     expect(

@@ -33,6 +33,7 @@ import { workerLogEntry } from '../observability'
 import {
   type PayInPlan,
   createPayInStatements,
+  markPayInPaidStatements,
   runLedgerStatements,
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
@@ -415,10 +416,19 @@ export const makeLedgerMeteringHook = (
       //     pre-gate should have caught it, but we never silently go negative.
       // Both surface as a caught batch failure; we classify by re-reading whether
       // the charge row already exists.
+      const settledAt = nowIso()
       const settle = yield* Effect.tryPromise({
         catch: inferenceMeteringPersistenceError,
         try: () =>
-          runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
+          runLedgerStatements(deps.db, [
+            ...createPayInStatements(plan, settledAt),
+            // Inference charges have no external forwarding leg; a successful
+            // balance debit is the settlement event the public receipt proves.
+            ...markPayInPaidStatements(
+              { balancePayoutLegs: [], payInId: plan.payInId },
+              settledAt,
+            ),
+          ]),
       }).pipe(
         Effect.map(() => ({ ok: true as const })),
         Effect.catch(() => Effect.succeed({ ok: false as const })),
