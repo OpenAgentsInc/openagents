@@ -92,6 +92,20 @@ set. The load-bearing prior docs are:
 - `woc/05-chat-minimap-world.md`
 - `woc/06-adaptation-plan.md`
 
+Additional implementation references checked for this revision:
+
+- Cloudflare Durable Objects concepts and rules: DOs are the low-latency
+  coordination primitive for stateful Workers; they support WebSockets, the
+  WebSocket Hibernation API, alarms, RPC, and SQLite-backed per-object storage.
+- Cloudflare Wrangler configuration: Durable Object bindings, D1 bindings, and
+  DO migrations belong in the Worker config from the first scaffold commit.
+- Cloudflare Workers `waitUntil`: use it only for bounded post-response work;
+  send longer or retriable background work through Queues instead.
+- `projects/repos/effect-solutions` Effect guidance: schema-first data models,
+  branded primitives, `Context.Service` + `Layer` dependency graphs,
+  `Schema.TaggedErrorClass` errors, config layers, `@effect/vitest`, test
+  clocks, and trace/log spans are the implementation baseline.
+
 ## Why Even Consider Replacing SpacetimeDB?
 
 SpacetimeDB was the right first substrate. It gave the Verse an immediate,
@@ -152,7 +166,7 @@ Worker/D1 public projections remain the source of truth for:
 - Forum/business authority;
 - wallet state and payment authorization.
 
-The world backend, whether SpacetimeDB or custom Effect/TypeScript, owns only:
+The Cloudflare Verse world backend owns only:
 
 - multiplayer presence;
 - region occupancy;
@@ -221,8 +235,9 @@ SpacetimeDB internals.
 
 ## Target Custom Backend Shape
 
-Name this conceptually as the **Verse World Service**. The concrete app/package
-names can be decided later, but the shape should be:
+Name this the **Verse World Service**. The concrete app/package names are part
+of the decision now, because naming the cutover surfaces early prevents another
+half-alive backend from growing beside SpacetimeDB:
 
 ```text
 packages/world-contract/
@@ -230,19 +245,18 @@ packages/world-contract/
   invariant helpers, test fixtures.
 
 packages/world-client/
-  Backend-neutral client facade used by desktop and web:
+  Cloudflare Verse World client facade used by desktop and web:
   connect, subscribe, callCommand, applyDelta, reconnect, diagnostics.
 
-apps/openagents-world-effect/
-  Effect/TypeScript service implementing the contract.
-  Owns live presence, subscriptions, projection mirror, and expiry.
+apps/openagents-world/
+  Cloudflare Worker + RegionDurableObject implementation of the contract.
+  Owns live presence, subscriptions, projection bridge, and expiry.
 ```
 
-If the final deployment target is the existing OpenAgents Worker surface, this
-service can compile into Worker-compatible modules later. If the first
-prototype needs fewer moving parts, it can run as a Bun service beside the
-current SpacetimeDB deployment. The first decision should be contract parity,
-not hosting.
+There is no Bun sidecar prototype and no "later Cloudflare" step. The first
+implementation target is Worker-compatible Effect code, one region Durable
+Object at a time, with D1 and DO migrations present in the first service
+scaffold.
 
 ### Core Services
 
@@ -271,10 +285,57 @@ Effect gives these services natural structure:
 - `Ref`/`SubscriptionRef` for hot region state;
 - `Effect Schema` for every external boundary.
 
-## Contract Compatibility
+### Effect Implementation Discipline
 
-The first custom backend should intentionally speak the current world model,
-not a redesigned dream schema.
+Every issue below should follow the same Effect rules. These are not polish;
+they are the reason to replace the old stack.
+
+- External inputs are decoded through `Effect Schema` at ingress and encoded at
+  egress. No route, WebSocket message, D1 row, DO checkpoint, or bridge payload
+  crosses a boundary as unchecked `unknown`.
+- Domain primitives are branded: region refs, avatar refs, character ids,
+  session refs, cursors, timestamps, row versions, distances, update intervals,
+  and source refs. Raw strings are a boundary smell.
+- Services are `Context.Service` classes with unique tags, implemented by
+  `Layer`s. Service methods return `Effect` values whose dependencies have been
+  supplied by the layer, not hidden globals.
+- Expected failures are `Schema.TaggedErrorClass` values: validation,
+  unauthorized actor, forbidden command, stale cursor, bridge failure,
+  oversized message, rate limit, and storage conflict. Defects are reserved for
+  invariant violations and runtime bugs.
+- Cloudflare bindings are wrapped once: `WorkerEnv`, `WorkerRequestContext`,
+  `WorldConfig`, `WorldD1`, `RegionDurableObjectNamespace`,
+  `WorldWaitUntil`, and any Queue producers. Business logic depends on those
+  typed services, not raw `env` and `ctx` plumbing.
+- WebSocket/session lifecycle is scoped. The DO hibernation callbacks rehydrate
+  session metadata from WebSocket attachments/checkpoints, then run typed
+  handlers; no correctness-critical state lives only in module globals.
+- Deltas use `Stream`/`Queue`/`PubSub` with bounded buffers and explicit
+  backpressure policy. Fire-and-forget is allowed only through a typed
+  `waitUntil` service for bounded work; anything retriable or longer-running
+  goes through a Queue-backed service.
+- Time is a dependency. TTL, cadence, impossible-jump windows, expiry alarms,
+  and bridge retry schedules use `Clock`/`Schedule`, with fake-clock tests.
+- Storage is behind services. Prefer `@effect/sql-d1` for D1 projection rows and
+  an Effect wrapper around DO SQLite storage for per-region checkpoints and
+  migrations. SQL errors become tagged storage errors with redacted causes.
+- Config is a layer. Secrets, origin allowlists, update intervals, TTLs, bridge
+  endpoints, and feature gates are read through a typed config service with
+  redacted secret values and test layers.
+- Tests use `@effect/vitest`/Effect-aware tests where possible, with test
+  layers for auth, storage, bridge sources, clocks, and WebSocket transports.
+  Unit tests do not need real Cloudflare; smoke tests prove the deployed Worker.
+- Observability is part of the contract: spans/logs name the service method or
+  command, include public-safe refs, redact private values, and surface typed
+  diagnostics to clients instead of silent empty worlds.
+
+## Contract To Preserve, Not Backend Compatibility
+
+The replacement intentionally speaks the current world model, not a redesigned
+dream schema. That does **not** mean the new client preserves a SpacetimeDB
+adapter or dual-backend mode. It means the public row, command, subscription,
+and projection contracts below remain recognizable so desktop/web behavior can
+move quickly.
 
 ### Rows To Preserve
 
@@ -341,7 +402,8 @@ Browser/user commands:
 - `set_agent_intent`
 
 If the custom service renames these internally, the client SDK should still
-expose compatibility functions while the migration is in flight.
+expose the contract names above. The compatibility target is the world contract,
+not the old backend implementation.
 
 ### Subscription Lifetimes
 
@@ -497,15 +559,13 @@ The current `project-tassadar-summary.mjs` and `project-forum-activity.mjs`
 patterns should become contract tests for the custom backend before they become
 new code.
 
-## Client Compatibility
+## Client Cutover Contract
 
-Desktop and web should consume a backend-neutral client:
+Desktop and web should consume a single Cloudflare Verse client:
 
 ```ts
-type WorldBackendKind = "spacetimedb" | "effect"
-
 type VerseWorldClient = {
-  readonly backendKind: WorldBackendKind
+  readonly backendKind: "cloudflare-world"
   connect: () => Effect.Effect<WorldSession, WorldConnectionError>
   subscribe: (plan: WorldSubscriptionPlan) => Stream.Stream<WorldDelta, WorldStreamError>
   callCommand: (command: WorldCommand) => Effect.Effect<WorldCommandReceipt, WorldCommandError>
@@ -513,8 +573,8 @@ type VerseWorldClient = {
 }
 ```
 
-Existing desktop surfaces should not know which backend is live. They should
-continue to receive:
+Existing desktop surfaces should not know about transport or Cloudflare binding
+details. They should continue to receive:
 
 - a connection status;
 - a region/run snapshot;
@@ -525,8 +585,12 @@ continue to receive:
 - diagnostics;
 - non-fatal outage state.
 
-The fastest migration win is to put this interface in front of the current
-SpacetimeDB adapter first. Then the Effect backend has a target to satisfy.
+The fastest migration win is to make this package compile against the new
+`packages/world-contract` and point it directly at `apps/openagents-world`.
+There is no `WorldBackendKind = "spacetimedb"` path, no `CHAT_WORLD_BACKEND`
+flag, and no desktop setting that resurrects the old adapter. If a short cutover
+diff needs to read SpacetimeDB row counts, that is a one-off smoke helper, not
+production client code.
 
 ## Deployment: Cloudflare (decided)
 
@@ -576,54 +640,244 @@ object; the threshold from the multiplayer audit (single-region feed below
 ~96 avatars / ~960 rows/sec, split near/far above that) maps directly onto
 per-DO fanout policy.
 
-## Build Order (no phased mirror — build it, cut, delete SpacetimeDB)
+## Issue List: Fast Cloudflare Cutover (no backward compat)
 
-This is a build sequence, not a "run both backends as production" hedge. There is
-no `CHAT_WORLD_BACKEND` dual-adapter and no perpetual compatibility mirror. The
-order below exists only because you cannot write all the code in one commit; each
-step is a normal PR, and the desktop/web clients point at the new Cloudflare
-service the moment it can serve them. SpacetimeDB is deleted at the end of the
-same effort, not kept alive behind a flag.
+This is an issue sequence, not a "run both backends as production" hedge. There
+is no `CHAT_WORLD_BACKEND` dual adapter, no `WorldBackendKind = "spacetimedb"`,
+and no perpetual compatibility mirror. Each issue either creates the Cloudflare
+replacement or deletes old surface area. The only use of the old backend during
+the cut is a one-shot read-only smoke helper that compares row counts and then
+dies with the old code.
 
-The only thing that runs "in parallel" is a short verification window where the
-old SpacetimeDB read path is used purely to diff row counts during the cut — not
-a production fallback.
+### P0: Open The Ripout Tracker
 
-1. **Contract.** `packages/world-contract`: Effect Schema for rows, commands,
-   the versioned `WorldDelta` stream, subscription plans, the
-   `avatar.identity.<id>.char.<char>` helper, region bounds, and public-safety
-   predicates. Tests for avatar-ref construction, character-id sanitization,
-   region bounds, command authorization classes, row redaction, and source-ref
-   requirements. This is the single source of types for server and clients.
-2. **Cloudflare service skeleton.** `apps/openagents-world` Worker + a
-   `RegionDurableObject` with hibernatable WebSocket fanout, a snapshot+delta
-   transport implementing `WorldDelta`, and D1 schema for durable rows. Connect
-   handshake, health, auth.
-3. **Commands + presence in the region DO.** `join_region`, `leave_region`,
-   `set_avatar_position`, `focus_pylon`, local/pylon message, emote, intent —
-   with the same bounds, velocity, cadence, TTL, and chat rules enforced as
-   Effect Schema decoders + command tests. Expiry on DO alarms; hot presence in
-   DO memory; durable checkpoints in storage/D1.
-4. **Subscriptions + near/far.** Region-scoped + selected-entity subscriptions,
-   snapshot-then-delta, absent-means-unchanged sparse deltas, settle-on-stop,
-   and high/low presence feeds with per-DO fanout policy.
-5. **Projection bridge.** Service-only ingest of `GET /api/public/...` +
-   forum activity into D1 projection rows and `world_event`s, with deterministic
-   `event_ref`s, idempotent replay, and `bridge_health` on failure.
-6. **Point the clients at it + cut.** `packages/world-client` is the only client
-   facade; desktop and web import it and connect to the Cloudflare service. Run
-   the two-client smoke and a one-shot row-count diff against the old
-   SpacetimeDB read path to confirm parity, then **delete**
-   `apps/openagents-world-spacetimedb`, the generated bindings, the GCP VM,
-   nginx/TLS/certbot, the WASM publish lane, and the IAP runbook. Update
-   `INVARIANTS.md`, `CLAUDE.md`/AGENTS, deployment docs, and README from
-   "SpacetimeDB world projection" to "Verse world projection (Cloudflare)."
+Create the tracking issue that names the decision: Cloudflare Worker + Durable
+Objects + D1 replaces SpacetimeDB, with no backward compatibility. Acceptance:
+the issue links this audit, lists the child issues below, names the decommission
+gate, and states that SpacetimeDB work after this point is bug-fix-only until
+deleted.
 
-Definition of done for the whole effort: two desktop instances (and a web
-client) see each other through the Cloudflare service via the two-client smoke,
-the projection bridge is idempotent, public-safety/redaction tests pass, an
-outage degrades to single-player, and **no SpacetimeDB code, VM, or binding
-remains in the repo.**
+### P1: Extract `packages/world-contract`
+
+Add the shared Effect contract package first. Acceptance:
+
+- Effect Schema classes for every row, command, receipt, delta, subscription
+  plan, diagnostic, bridge payload, and error envelope.
+- Branded primitives for all refs/cursors/timestamps/bounded quantities.
+- Pure helpers for avatar refs, character-id sanitization, region bounds,
+  public-safety predicates, row keys, and deterministic `world_event` refs.
+- Tagged errors for validation, auth, redaction, command, storage, cursor, and
+  bridge failures.
+- Unit tests for avatar refs, character sanitization, row redaction,
+  source-ref requirements, region bounds, command actor classes, sparse delta
+  semantics, and JSON encode/decode.
+
+Do this before writing the Worker. It gives every later issue a compile-time
+contract and prevents Cloudflare code from inventing ad hoc shapes.
+
+### P2: Scaffold `apps/openagents-world`
+
+Create the Cloudflare Worker app with the production host shape from day one.
+Acceptance:
+
+- `wrangler.jsonc`/package scripts define the Worker, a
+  `RegionDurableObject`, DO SQLite migration entries, D1 binding, Queue binding
+  if bridge retry work is needed, and environment-specific config.
+- The Worker exposes health, version, connect handshake, WebSocket upgrade, and
+  service-only bridge ingest routes.
+- The DO uses the hibernatable WebSocket API, attaches typed session metadata,
+  and returns a typed diagnostic when a non-WebSocket request hits the socket
+  route.
+- D1 migrations create the durable projection tables and indexes.
+- DO constructor initialization uses Cloudflare-safe migration discipline
+  (`blockConcurrencyWhile`/tracked schema table or equivalent), not lazy
+  request-time schema guesses.
+- Effect runtime/layers wrap `env`, `ctx`, D1, DO namespace, queues, config,
+  waitUntil, logging, and request context.
+
+This issue should deploy a boring empty service that can accept a connection and
+say "zero rows" loudly and typed. No game behavior yet.
+
+### P3: Implement Region DO Session + Snapshot/Delta Transport
+
+Make the region object the authoritative live actor. Acceptance:
+
+- One DO instance per region name/ref, routed by the Worker.
+- `WorldDelta` snapshot/update/delete/heartbeat/diagnostic frames encoded from
+  `packages/world-contract`.
+- Reconnect accepts a cursor and either resumes or returns a fresh snapshot with
+  a typed stale-cursor diagnostic.
+- Deltas are idempotent, cursored, ordered per subscription, and sparse fields
+  mean unchanged.
+- Session close/error paths emit public-safe diagnostics and release scoped
+  resources.
+- Backpressure policy is explicit: bounded queues, disconnect-or-downgrade
+  behavior, and row-churn metrics.
+
+This is the first smokeable issue: two local clients can connect to the same DO
+and receive typed heartbeat/snapshot frames.
+
+### P4: Implement User Commands And Hot Presence
+
+Add the browser/user command path in the DO. Acceptance:
+
+- `join_region`, `leave_region`, `set_avatar_position`, `focus_pylon`,
+  `clear_pylon_focus`, `send_local_message`, `send_pylon_message`,
+  `send_emote`, and `set_agent_intent` are implemented as Effect command
+  handlers.
+- Bounds, velocity, cadence, chat length/plain-text/rate-limit, pylon
+  visibility, focus, and TTL rules are enforced through schema decode plus
+  command tests.
+- Hot rows live in DO memory with durable checkpoints only where reconnect
+  needs them.
+- No browser/user command can write projection authority rows.
+- Typed receipts tell the client what changed, what was rejected, and why.
+
+After P4, desktop avatars should be able to join, leave, move, chat, emote, and
+focus pylons against the Cloudflare service locally.
+
+### P5: Add Alarms, Expiry, And Deterministic Time
+
+Move interaction expiry out of wishful thinking and into the DO runtime.
+Acceptance:
+
+- DO alarms drive stale presence, chat bubble, emote, attention, and intent
+  expiry.
+- Expiry uses `Clock`/`Schedule` behind services so fake-clock tests can advance
+  time deterministically.
+- Expiry deltas are emitted exactly once per cursor window and are safe after
+  hibernation/restart.
+- Storage checkpoints are pruned without touching durable projection truth.
+
+This issue prevents stale avatars and bubbles from becoming fake product state.
+
+### P6: Implement Subscription Scopes And Near/Far Feeds
+
+Port the WoC subscription policy directly into the owned backend. Acceptance:
+
+- Global, run, region, and selected-entity subscription plans are typed and
+  server-controlled.
+- The service rejects unbounded/global avatar/event queries.
+- Region feed starts as one stream below the current audit threshold, then
+  splits into near/far feeds with hysteresis, forced high-resolution selected
+  targets, distance-tiered update rates, and settle-on-stop deltas.
+- Desktop/web stores apply deltas idempotently and never interpret missing
+  sparse fields as empty/default values.
+- Tests cover near/far enter/exit, selected-target promotion, stale cursor
+  fallback, and absent-means-unchanged behavior.
+
+This is the issue that makes the replacement better than the old table stream,
+because interest policy is now explicit domain logic.
+
+### P7: Add Service Commands And Projection Bridge
+
+Bring durable public projection rows into the Cloudflare service. Acceptance:
+
+- Service-only commands are implemented for training runs, run entities, world
+  edges, proof refs, settlement refs, world events, projection cursors, bridge
+  health, regions, pylon stations, system messages, and interaction expiry.
+- The bridge ingests `GET /api/public/tassadar-run-summary`, forum activity
+  when available, and future proof/receipt/product-promise refs only as public
+  source refs.
+- Replay is idempotent: same source rows produce same keys and no duplicate
+  `world_event`.
+- Bridge failure records `bridge_health` and client diagnostics; it never
+  fabricates data.
+- Retriable bridge work uses Queue-backed services rather than long
+  `waitUntil` chains.
+
+After P7, the world service can rebuild its durable projection rows from public
+authority and does not need SpacetimeDB as a projection source.
+
+### P8: Build `packages/world-client` As The Only Client
+
+Add the client package that desktop and web will import. Acceptance:
+
+- The client speaks only the Cloudflare Verse World protocol.
+- APIs are `connect`, `subscribe`, `callCommand`, `applyDelta`, `reconnect`,
+  `disconnect`, and `diagnostics`.
+- Errors are Effect typed errors, not `console.warn` plus empty state.
+- Reconnect/resubscribe is tested with fake transports and stale cursors.
+- The package has no import from generated SpacetimeDB bindings and no backend
+  kind union.
+
+This issue is where the previous casing bug becomes structurally impossible.
+
+### P9: Point Desktop And Web At Cloudflare
+
+Cut consumers to the new client as soon as P8 can support the current UI.
+Acceptance:
+
+- Desktop/web imports only `packages/world-client` and
+  `packages/world-contract` for Verse world networking.
+- Connection status, region snapshots, remote avatars, pylon stations, local
+  chat/bubbles, forum/world events, diagnostics, and outage-to-single-player
+  behavior are preserved.
+- Character id is passed as a typed connect/session field; no renderer global
+  injection workaround is required for world identity.
+- Two desktop instances and one web client see each other through the
+  Cloudflare service in smoke.
+- No production flag or setting can switch the app back to SpacetimeDB.
+
+This is the product cut. Do not wait for decommission work to begin before the
+new backend is user-visible.
+
+### P10: Delete SpacetimeDB Codepaths
+
+Remove the old implementation immediately after P9 smoke passes. Acceptance:
+
+- Delete `apps/openagents-world-spacetimedb`.
+- Delete generated SpacetimeDB TypeScript bindings and cross-app imports.
+- Delete SpacetimeDB launch/publish scripts, nginx/TLS/certbot instructions,
+  GCP/IAP VM runbooks, smoke profiles, and old env vars.
+- Remove SpacetimeDB dependencies from package manifests and CI/deploy scripts.
+- Remove camel/snake casing shims and any old adapter tests.
+- Repository search for `spacetimedb`, `SpacetimeDB`, and old world VM hostnames
+  returns only historical docs/audit references or explicit changelog notes.
+
+This issue has no compatibility carve-out. If something still needs the old
+backend, it blocks P10 and must be ported, not grandfathered.
+
+### P11: Update Invariants, Docs, And Operator Runbooks
+
+Make the policy ledger match reality. Acceptance:
+
+- Update `INVARIANTS.md`, `AGENTS.md`/`CLAUDE.md` where relevant, deployment
+  docs, README pointers, and game docs from "SpacetimeDB world projection" to
+  "Cloudflare Verse World Service".
+- Record the invariant boundary: Worker/D1 public product authority stays
+  authoritative; the world service owns only public-safe presence, interaction,
+  and projection rows.
+- Add the formal/model note for actor command authority and convert meaningful
+  counterexamples into tests.
+- Document the Cloudflare deploy, D1 migration, DO migration, Queue, alarm, and
+  smoke procedure.
+
+Because this is invariant-bearing work, this issue is part of the cutover, not
+post-launch cleanup.
+
+### P12: Production Release Gate And VM Decommission
+
+Finish by proving the new path and shutting the old one off. Acceptance:
+
+- `check:deploy` passes.
+- Unit/property tests pass for contract, command auth, redaction, sparse deltas,
+  fake-clock expiry, idempotent bridge replay, and multi-character same-account
+  refs.
+- Two-client desktop smoke and web smoke pass against deployed Cloudflare.
+- A one-shot read-only diff against the old SpacetimeDB path confirms expected
+  row-count parity for the cutover sample, then the helper is deleted.
+- Cloudflare logs/diagnostics show connection, command, bridge, and expiry
+  behavior with public-safe refs.
+- GCP VM, disk, DNS, nginx/TLS/certbot, alerting, and IAP operator surface are
+  decommissioned or explicitly archived as historical infrastructure.
+
+Definition of done for the whole effort: two desktop instances and a web client
+see each other through the Cloudflare service, the projection bridge is
+idempotent, public-safety/redaction tests pass, outages degrade to
+single-player, formal/model notes are updated where policy changed, and **no
+SpacetimeDB code, VM, generated binding, deploy lane, or operational runbook
+remains active in the repo.**
 
 ## Tests And Formal Notes
 
@@ -639,7 +893,9 @@ This is an invariant-bearing replacement if executed. Before cutover:
 - Add multi-character same-account tests.
 - Add redaction tests for world rows, chat rows, deltas, diagnostics, and
   bridge failures.
-- Add two-client smoke against both backends through the same neutral client.
+- Add two-client desktop smoke and web smoke against the deployed Cloudflare
+  service, plus a one-shot read-only SpacetimeDB row-count diff helper that is
+  deleted before decommission.
 
 The formal/model boundary should be explicit: model checks do not authorize
 production behavior; runtime code and tests enforce the policy.
@@ -679,11 +935,15 @@ Mitigation: keep projection rows replayable from public Worker/D1 APIs and
 forbid the world service from being the first writer of proof/settlement/truth
 state.
 
-### Permanent Dual Backend
+### Dragging SpacetimeDB Past The Cut
 
-A mirror can become a second production backend if no cutover gate exists.
+The fastest way to lose the benefit of this work is to leave a hidden
+SpacetimeDB fallback, generated binding, VM runbook, or old env flag "just in
+case."
 
-Mitigation: define the cutover and decommission criteria before Phase 1 ships.
+Mitigation: P10 is mandatory, repository search is part of acceptance, and any
+remaining old-backend dependency blocks decommission until it is ported or
+deleted.
 
 ## Recommendation
 
@@ -696,13 +956,13 @@ keep-both hedge.
 First issue:
 
 ```text
-Stand up the Cloudflare Verse World Service: packages/world-contract (Effect
-Schema) + apps/openagents-world (Worker + RegionDurableObject + D1) speaking the
-WorldDelta snapshot/delta protocol, with packages/world-client as the only client
-facade.
+Open the ripout tracker and extract packages/world-contract: Effect Schema,
+branded refs, tagged errors, row/command/delta/subscription contracts,
+public-safety predicates, and tests. Then scaffold apps/openagents-world as a
+Cloudflare Worker + RegionDurableObject + D1 service, not a Bun sidecar.
 ```
 
-Then proceed straight through the Build Order above to the cut. Done means: two
+Then proceed straight through the issue list above to the cut. Done means: two
 desktop instances and a web client see each other through the Cloudflare service
 (two-client smoke), the projection bridge is idempotent, redaction/public-safety
 tests pass, outages degrade to single-player, and **no SpacetimeDB module, VM,
@@ -778,8 +1038,8 @@ owned Effect/TypeScript contract removes:
   gcloud/IAP VM publish, generated TS bindings, desktop TS, and an opaque SDK
   cache. Bug #2 (module/client drift) and bug #3 (init-only seeding lost on
   republish) are operational seams of running a separate Rust database service.
-  Option B/C here (Worker/Bun + Effect) collapse this to the same Bun + Effect
-  + Worker/D1 release surface the rest of the product already uses.
+  The Cloudflare Worker + Effect path collapses this to the same Bun + Effect +
+  Worker/D1 release surface the rest of the product already uses.
 - **Deterministic, replayable seeding.** Bug #3 is precisely the durable-vs-
   ephemeral split this audit calls for: a region is durable config that should
   be replayable from contract/source, not a one-shot `init` side effect that
@@ -787,16 +1047,15 @@ owned Effect/TypeScript contract removes:
   has no region" structurally impossible after a deploy.
 - **Config as typed session parameters, not injected globals.** Bug #1's
   `globalThis.__OA_CHARACTER` injection is a workaround for not having a typed
-  connection/session boundary. In the neutral client, the character id is just a
-  field on `connect()`/the subscription plan — carried, validated, and tested,
-  never smuggled through `executeJavascript`.
+  connection/session boundary. In the Cloudflare Verse client, the character id
+  is just a field on `connect()`/the subscription plan — carried, validated, and
+  tested, never smuggled through `executeJavascript`.
 - **A test that would have caught it.** The desktop unit tests passed throughout
   this entire broken session, because they exercised the projection logic
   against mocked rows — never the real `connection.db` read path. The audit's
-  "two-client smoke against both backends through the same neutral client" is
-  the test that fails loudly on "0 rows delivered." Contract-level row-delivery
-  tests + a fake transport would have turned a multi-hour live debug into a red
-  CI check.
+  Cloudflare two-client smoke is the test that fails loudly on "0 rows
+  delivered." Contract-level row-delivery tests + a fake transport would have
+  turned a multi-hour live debug into a red CI check.
 
 ### Honest scope note
 
@@ -809,7 +1068,6 @@ class of bug came from **untyped seams between four stacks and a generated
 binding layer**, and the only structural way to stop paying it is to own the
 whole contract in one language on one deploy surface. That is why the decision
 (see Executive Read and Recommendation) is to **replace** SpacetimeDB with the
-Cloudflare Effect service outright — not to insulate it behind a neutral client
-and keep it underneath. The contract extraction is still step one; it is the
-first step of the replacement, not a hedge to preserve the old backend.
-
+Cloudflare Effect service outright — not to hide it behind a client facade and
+keep it underneath. The contract extraction is still step one; it is the first
+step of the replacement, not a hedge to preserve the old backend.
