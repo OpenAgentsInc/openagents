@@ -132,6 +132,7 @@ const approvedExactRoutePaths = [
   '/v1/inference/batches',
   '/v1/inference/batches/:jobId',
   '/v1/chat/completions',
+  '/v1/inference/acceptance-verdicts',
   '/v1/models',
   '/v1/quote',
   '/v1/gateway/readiness',
