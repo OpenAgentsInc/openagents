@@ -91,22 +91,23 @@ Most directories carry their own `CLAUDE.md` with local conventions.
 
 | WoC | Verse equivalent |
 |---|---|
-| Deterministic `Sim` (offline + RL + server) | Public Worker/D1 + SpacetimeDB module as authority for run/business truth |
-| `IWorld` seam (render/ui read-only) | `three-effect` + Foldkit HUD read from a projection; SpacetimeDB rows + Worker feeds are the sources |
-| Authoritative server, client renders | Same posture: SpacetimeDB owns presence/local interaction; Worker/D1 owns run/proof/business truth; desktop renders |
-| `ClientWorld` mirrors server snapshots | Desktop `chat-world-spacetimedb.ts` subscription/projection layer mirrors SpacetimeDB rows |
-| 20 Hz tick, intent streaming | Controller pose published at bounded rate to SpacetimeDB position reducers (#5888) |
+| Deterministic `Sim` (offline + RL + server) | Public Worker/D1 remains product authority; `apps/openagents-world` Region Durable Objects own live world presence/interaction |
+| `IWorld` seam (render/ui read-only) | `packages/world-contract` + `packages/world-client` expose a read-only world projection consumed by `three-effect` + Foldkit HUD |
+| Authoritative server, client renders | Same posture: Region DOs own world commands/presence; Worker/D1 owns run/proof/business truth; desktop/web render |
+| `ClientWorld` mirrors server snapshots | `packages/world-client` mirrors Cloudflare `WorldDelta` snapshots/deltas into the Verse read model |
+| 20 Hz tick, intent streaming | Controller pose/intent commands publish at bounded rates to Region DO command handlers with seq/ack diagnostics |
 
-The key divergence: WoC's authority is one process running one `Sim`. Ours is split
-across SpacetimeDB (presence/interaction) and the Worker/D1 (run/proof/business truth),
-deliberately, because the Verse must never let presence/multiplayer fabricate run or
-settlement state. WoC does not have that constraint, so it can keep everything in one
-authority. When we borrow its netcode patterns (interest scoping, delta snapshots), we
-apply them inside the SpacetimeDB presence layer and keep the evidence-bound projection
-("no anonymous motion without public refs") on the Worker side.
+The key divergence: WoC's authority is one process running one `Sim`. Ours is split across
+the Cloudflare Verse World Service (presence/local interaction) and the public Worker/D1
+(run/proof/business truth), deliberately, because the Verse must never let presence or
+multiplayer fabricate run or settlement state. WoC does not have that constraint, so it can
+keep everything in one authority. When we borrow its netcode patterns (interest scoping,
+delta snapshots, seq/ack receipts), we apply them inside the Region Durable Object
+presence layer and keep the evidence-bound projection ("no anonymous motion without public
+refs") on the Worker/D1 side.
 
 The most important non-obvious carry-over: WoC proves that the discipline of **one seam +
 pure-logic extraction + server authority** is what makes a world maintainable across
 offline, online, and headless hosts at once. Our `three-effect`-first rule and the
-SpacetimeDB-vs-Worker authority split are the same instinct; this audit is largely about
-borrowing the concrete modules that fall out of that discipline.
+Cloudflare-world-vs-Worker/D1 authority split are the same instinct; this audit is largely
+about borrowing the concrete modules that fall out of that discipline.

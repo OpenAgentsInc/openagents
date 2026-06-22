@@ -13,27 +13,35 @@ The biggest thing to take from World of ClaudeCraft is not any one system; it is
 3. The server owns every outcome; the client renders.
 4. Almost nothing is a shipped asset; the world is generated from a shared seed.
 
-Our Verse already reaches for all four (SpacetimeDB + Worker authority split, `three-effect`
-primitives, evidence-bound projection, owned procedural assets). This plan borrows the
-concrete modules that fall out of that discipline, mapped to our repos and epics. Where
-WoC keeps one authority, we keep the Verse's deliberate split: **SpacetimeDB owns presence
-and local interaction; the Worker/D1 owns run/proof/business truth; the desktop renders.**
-No borrowed pattern may let presence fabricate run or settlement state.
+Our Verse already reaches for all four (Cloudflare Region Durable Objects + Worker/D1
+authority split, `three-effect` primitives, evidence-bound projection, owned procedural
+assets). This plan borrows the concrete modules that fall out of that discipline, mapped
+to our repos and epics. Where WoC keeps one authority, we keep the Verse's deliberate
+split: **`apps/openagents-world` Region Durable Objects own presence and local
+interaction; Worker/D1 owns run/proof/business truth; desktop/web render.** No borrowed
+pattern may let presence fabricate run or settlement state.
 
 ## Where adapted code lands
 
+- **`packages/world-contract`**: WoC-style read-only world seam (`WorldReadModel` /
+  projection schemas), branded refs, command/delta schemas, interest-scope plans, and pure
+  helpers that every client/server consumes.
+- **`packages/world-client`**: `ClientWorld` equivalent that mirrors Cloudflare snapshots
+  and deltas into the read model consumed by `three-effect`, Foldkit HUD, minimap, and
+  nameplates.
+- **`apps/openagents-world`**: Region Durable Objects for live presence, socket fanout,
+  bounded handshake buffering, seq/ack command receipts, interest scoping,
+  distance-tiered feeds, settle deltas, chat moderation before fanout, TTL/expiry, and D1
+  projection writes.
 - **`three-effect`** (`/Users/christopherdavid/work/three-effect`): camera follow/collision,
   pointer-pick, the procedural icon system, nameplate/label projection, minimap rendering
   primitives, and the procedural-world patterns (terrain/sky/water/foliage/weather/animation).
   This honors the workspace rule to build Verse visuals in `three-effect` first.
 - **`apps/autopilot-desktop`**: the Foldkit HUD that consumes the above (hotbar, chat,
   minimap, unit/run frames, perf overlay), plus the keybindings work (#5943).
-- **The SpacetimeDB module + desktop projection** (`apps/openagents-world-spacetimedb`,
-  `apps/autopilot-desktop/src/shared/chat-world-*.ts`): interest scoping, distance-tiering,
-  delta-as-unchanged on presence rows (#5888/#5889/#5892).
-- **The public Worker** (`apps/openagents.com`): chat moderation (two-tier + escalation),
-  per-account login throttle, and the evidence-bound run/proof projection that feeds the
-  Verse.
+- **The public Worker** (`apps/openagents.com`): per-account login throttle and the
+  evidence-bound run/proof/business projection that feeds the Verse. Product authority
+  remains here even when local world chat/presence lives in `apps/openagents-world`.
 
 Most adapted code is **pure logic we re-author to our taxonomy**, not vendored files
 (consistent with the workspace "do not vendor large chunks of external code" rule). WoC is
@@ -54,13 +62,15 @@ mirror their tests.
 | Chat channels/timestamp/profanity | `src/ui/chat_channels.ts`, `chat_timestamp.ts`, `profanity.ts` | desktop HUD | Pure models; pair client mask with server filter (Tier 2). |
 | Compass/minimap-zoom/coords/subzone | `src/ui/compass.ts`, `minimap_zoom.ts`, `coords.ts`, `subzone.ts` | `three-effect` + HUD | Minimap reads the same world the 3D scene reads; blips = Pylons, run core, assignments, avatars. |
 | Nameplate projection/threat/combo | `src/render/nameplate_projection.ts` (+ threat/combo) | `three-effect` label primitive | World->screen anchor for entity labels + status bars. |
-| Interest-scoped + distance-tiered + delta presence | `server/game.ts` snapshot logic | SpacetimeDB projection (#5888/89/92) | Subscribe-by-radius with hysteresis; tier publish rate; treat absent field as unchanged; settle-row on stop. |
+| WoC-style read-only world seam | `src/world_api.ts`, `src/net/online.ts` | `packages/world-contract` + `packages/world-client` | `WorldReadModel`/`ClientWorld` equivalent so render/HUD never know the transport. |
+| Interest-scoped + distance-tiered + delta presence | `server/game.ts` snapshot logic | `apps/openagents-world` Region DOs | Subscribe-by-radius with hysteresis; tier publish/fanout rate; treat absent field as unchanged; settle delta on stop. |
+| Handshake buffering + seq/ack receipts | `ws_buffer.ts`, movement input protocol | `apps/openagents-world` transport | Buffer bounded frames during auth/session hydration; echo command seq in typed receipts for latency/drop diagnostics. |
 
 ### Tier 2 (medium, adapt the pattern)
 
 | System | Source | Lands in | Notes |
 |---|---|---|---|
-| Two-tier chat moderation + escalation | `server/chat_filter.ts` | Worker | Empty hard list seeded privately; whole-token + confusable-fold matching; warn->timed-mute ladder. Gate Verse chat/forum bubbles (#5906) before delivery. |
+| Two-tier chat moderation + escalation | `server/chat_filter.ts` | `apps/openagents-world` + Worker policy | Empty hard list seeded privately; whole-token + confusable-fold matching; warn->timed-mute ladder. Gate Verse chat/forum bubbles before `WorldDelta` delivery. |
 | Per-account login throttle | `server/ratelimit.ts` | Worker auth | Orthogonal to per-IP; defeats distributed credential stuffing. |
 | Unit frame / cast-progress / resource meters | `src/ui/unit_portrait*.ts`, `cast_bar.ts`, `absorb_bar.ts`, `xp_bar.ts` | desktop HUD | Portrait HiDPI+overscan for agent face chips; cast/progress bar maps onto Tassadar run-step lifecycle (#5822). |
 | Perf overlay model | `src/ui/perf_overlay_model.ts` | `three-effect`/HUD | Frame-time sparkline + draw-call counter for the WebGL Verse; model/consumer split ports without DOM. |
@@ -92,14 +102,19 @@ mirror their tests.
   module with a Vitest, exactly as WoC ships it. This is the cheapest quality win.
 - **One world, one source.** The minimap, nameplates, and 3D scene must all read the same
   projected world so they cannot drift. WoC enforces this via `IWorld`; our analog is the
-  SpacetimeDB-rows + Worker-projection the desktop already mirrors.
-- **Absent means unchanged.** Adopt the delta invariant in the presence projection so a
-  stalled subscription never blanks an avatar.
+  `packages/world-client` read model backed by Region DO deltas + Worker/D1 projection
+  rows.
+- **Absent means unchanged.** Adopt the delta invariant in `WorldDelta` so a stalled or
+  sparse subscription never blanks an avatar, pylon, run marker, or minimap blip.
+- **Buffer before live session attach.** Do not drop input frames during auth/session
+  hydration; use bounded buffers and typed diagnostics.
+- **Command receipts carry sequence.** Pose/intent writes should echo client sequence
+  numbers so latency, duplicate, and dropped-command states are visible.
 - **Empty hard-list, seeded privately.** Never commit a slur list; operators curate. This
   is the correct open-repo posture for our moderation too.
 - **Evidence-bound first.** Unlike WoC, the Verse may not animate motion without public
   refs or a measured live transition (#5822). Borrowed netcode/visual patterns live inside
-  the presence/render layer; run/proof authority stays on the Worker.
+  the presence/render layer; run/proof authority stays on the Worker/D1.
 
 ## Suggested issue lanes
 
@@ -110,17 +125,22 @@ These map onto the existing Verse epics rather than inventing a parallel program
 2. `three-effect`: camera follow + collision + pointer-pick primitives (Tier 1) - improves
    the existing controller feel.
 3. `three-effect` + HUD: minimap primitive + compass/coords/subzone pure cores (Tier 1) -
-   blips from SpacetimeDB avatars + Worker run projection.
+   blips from Region DO avatars + Worker/D1 run projection.
 4. `three-effect`: nameplate/label projection primitive (Tier 1) - world-anchored entity
    labels with status bars.
 5. desktop HUD: hotbar action model + chat channel model (Tier 1) - folds chat into the
    forum-reflection lane (#5904-#5907).
-6. SpacetimeDB projection: interest scoping + distance tiering + delta-as-unchanged
-   (Tier 1) - serves #5888/#5889/#5892.
-7. #5943: adopt the keybind registry + input-context gate (Tier 1).
-8. Worker: two-tier chat moderation + per-account login throttle (Tier 2) - gate Verse and
-   forum-reflection chat (#5906).
-9. desktop HUD: run-step cast/progress + agent portrait chip + perf overlay (Tier 2) -
+6. `packages/world-contract` + `packages/world-client`: WoC-style read model /
+   `ClientWorld` seam (Tier 1) - render/HUD consume snapshots/deltas without transport
+   awareness.
+7. `apps/openagents-world`: interest scoping + distance tiering +
+   delta-as-unchanged + settle deltas (Tier 1) - lives in Region DO fanout.
+8. `apps/openagents-world`: bounded handshake buffering + seq/ack command receipts
+   (Tier 1) - avoids silent input loss during auth and gives latency diagnostics.
+9. #5943: adopt the keybind registry + input-context gate (Tier 1).
+10. `apps/openagents-world` + Worker policy: two-tier chat moderation + per-account login
+   throttle (Tier 2) - gate Verse and forum-reflection chat.
+11. desktop HUD: run-step cast/progress + agent portrait chip + perf overlay (Tier 2) -
    ties to #5822 Tassadar-in-scene.
 
 Each lane is a pure-module-first port with its own test, consistent with both repos'

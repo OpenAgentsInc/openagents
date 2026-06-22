@@ -5,7 +5,7 @@ Date: 2026-06-22
 This folder audits the open-source MMO **World of ClaudeCraft** (`levy-street/world-of-claudecraft`,
 local reference clone at `projects/repos/world-of-claudecraft/`) as a system-by-system
 reference for our own 3D world, **the Verse** (Autopilot Desktop + `three-effect` +
-the `openagents-world` SpacetimeDB module).
+the Cloudflare Verse World Service in `apps/openagents-world`).
 
 WoC is a complete classic-era browser MMO built on one deterministic TypeScript sim
 core, a Three.js renderer with zero hand-imperative UI framework, and an authoritative
@@ -20,16 +20,17 @@ evidence) that we adapt patterns and pure logic, not gameplay.
 Transcript [`240.md`](../../transcripts/240.md) is the product intent: a walkable
 Tassadar run board with Pylon bases, assignment markers, training metrics, a refs
 ticker, avatar movement, jump/sprint, tab-target, and early multiplayer. The Verse epics
-(#5887 SpacetimeDB multiplayer, #5819/#5822/#5883 default world, #5897 forum reflection,
-#5943 keybindings, VCODE-* code mode) are all building the same surface WoC already
-ships. WoC shows us what "done" looks like for the MMO-shaped parts, and where the
-landmines are (per-frame DOM cost, interest scoping, chat moderation, save cadence).
+(#5819/#5822/#5883 default world, #5897 forum reflection, #5943 keybindings,
+VCODE-* code mode, and the Cloudflare/Effect world-backend cutover) are all building the
+same surface WoC already ships. WoC shows us what "done" looks like for the MMO-shaped
+parts, and where the landmines are (per-frame DOM cost, interest scoping, chat
+moderation, save cadence, and socket handshakes).
 
 ## Read order
 
 1. [`01-overview.md`](01-overview.md) - what WoC is, the "one sim, three hosts"
    architecture, the `IWorld` seam, the repo map, and how its three load-bearing ideas
-   map onto our Worker + SpacetimeDB + `three-effect` split.
+   map onto our Worker/D1 + Cloudflare Region Durable Objects + `three-effect` split.
 2. [`02-hud-and-hotbar.md`](02-hud-and-hotbar.md) - HUD composition, the hotbar/action-bar
    model, the procedural canvas icon system, unit frames, cast bars, resource meters,
    tooltips, performance overlay.
@@ -38,7 +39,8 @@ landmines are (per-frame DOM cost, interest scoping, chat moderation, save caden
    picking, click-to-move, F-interactions, mobile/touch controls.
 4. [`04-multiplayer-netcode.md`](04-multiplayer-netcode.md) - the 20 Hz authority loop,
    interest-scoped delta snapshots, persistence, social systems (party/trade/duel),
-   auth, and moderation, and how each maps to SpacetimeDB + Worker.
+   auth, and moderation, and how each maps to the Cloudflare Verse World Service +
+   Worker/D1 authority.
 5. [`05-chat-minimap-world.md`](05-chat-minimap-world.md) - chat channels, minimap +
    compass + coords + subzone, nameplate projection, player context menu / card, and the
    procedural world (terrain, sky, water, foliage, weather, rigged characters).
@@ -61,8 +63,9 @@ already isolated from DOM and Three.js. They port almost verbatim into `three-ef
 | Chat channels + timestamp + profanity | Adopt the pure model | High |
 | Compass / minimap-zoom / coords / subzone | Adopt pure cores | High |
 | Nameplate projection + threat + combo | Adopt pure math | High |
-| Interest-scoped delta snapshots | Adapt pattern onto SpacetimeDB | High |
-| Chat moderation (two-tier, escalation) | Adapt pattern into Worker | Medium |
+| Interest-scoped delta snapshots | Adapt into Region Durable Objects | High |
+| Socket handshake buffering + seq/ack receipts | Adapt into world transport | High |
+| Chat moderation (two-tier, escalation) | Adapt into Cloudflare command path | Medium |
 | Unit frames / cast bar / resource meters | Adapt | Medium |
 | Tooltips + item compare | Adapt if we have inspectable entities | Medium |
 | Click-to-move, mobile joysticks | Adopt if/when we ship those surfaces | Low |
@@ -73,5 +76,5 @@ already isolated from DOM and Three.js. They port almost verbatim into `three-ef
 The cross-cutting lesson is WoC's discipline, not its content: a **single deterministic
 core behind one seam (`IWorld`)**, **pure logic split from rendering so it is unit
 testable**, **the server owns every outcome**, and **almost nothing is a shipped asset**.
-Those four are exactly the invariants our Verse + SpacetimeDB + Worker design is already
-reaching for, and they are the real thing to copy.
+Those four are exactly the invariants our Verse + Cloudflare Worker/D1 + Region Durable
+Object design is now reaching for, and they are the real thing to copy.

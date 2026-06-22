@@ -82,13 +82,16 @@ not show the shell target tabs, `Claude Code`, or `Codex`.
   payment beams must use those coordinates. Missing endpoints stay explicitly
   labeled as fallback/unresolved; never invent a fake location or animate a
   payment without source refs.
-- **SpacetimeDB is a public world projection, not authority.** The Desktop
-  webview may subscribe to `openagents-world` public rows for regions, Pylon
-  stations, avatars, positions, proximity chat, bubbles, emotes, and intents.
-  Browser/user reducers are limited to explicit interaction state such as
-  `join_region` and guarded `set_avatar_position` writes. Never call service-only
-  projection reducers from Desktop, and never treat SpacetimeDB rows as
-  training, settlement, proof, product-promise, wallet, or private-data truth.
+- **The Verse world client is a public projection, not authority.** Desktop
+  multiplayer must flow through the shared `packages/world-client` /
+  `packages/world-contract` seam and the Cloudflare Verse world service in
+  `apps/openagents-world`. The webview may mirror public-safe region, Pylon,
+  avatar, pose, proximity chat, bubble, emote, and intent deltas into its
+  read-only world model. Browser/user commands are limited to explicit
+  interaction state such as joining/leaving a region and bounded avatar pose.
+  Never call service-only projection commands from Desktop, and never treat
+  world deltas as training, settlement, proof, product-promise, wallet, or
+  private-data truth.
 - **Programmatic shell control + parity stay intact.** Drive the fallback shell
   over the existing RPC path: Bun→webview `shellControl` (`shared/rpc.ts`,
   routed in `main.ts`) pushes the same inbound messages the UI dispatches
@@ -154,9 +157,11 @@ canvases, particles, text-in-scene), and it has Foldkit bindings
   and packaging changes.
 - For Verse Forum/tipping/multiplayer changes, run
   `bun run smoke:forum-tipping-multiplayer`. It uses the reusable
-  `tests/harnesses/chat-world-integration-harness.ts` fake SpacetimeDB/activity
-  stack to exercise forum-tip settlement, direct Pylon tips, live pylon sats
-  refresh, and two-client world projection together without spending real sats.
+  `tests/harnesses/chat-world-integration-harness.ts` world/activity stack to
+  exercise forum-tip settlement, direct Pylon tips, live pylon sats refresh, and
+  two-client world projection together without spending real sats. During the
+  Cloudflare world cutover, keep the harness aligned with `packages/world-client`
+  behavior rather than extending legacy SpacetimeDB assumptions.
 - For Training pane changes, run `bun run verify:training` in
   `apps/autopilot-desktop` (or `bun run verify:autopilot-desktop:training` from
   the repo root). It runs the focused Foldkit tests, CSS/build bundle checks,

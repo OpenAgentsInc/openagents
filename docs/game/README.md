@@ -8,7 +8,11 @@ demos the live-facing shape this folder is aiming at — a walkable Autopilot
 Tassadar run board with Pylon bases, assignment markers, training metrics, refs
 ticker, avatar movement, and an initial multiplayer direction. Treat it as
 visual/product intent; authority for real run state remains with the public
-Worker/D1 and SpacetimeDB projections documented below.
+Worker/D1. Live Verse presence and local interaction are moving to the
+Cloudflare Verse World Service (`apps/openagents-world`) with Region Durable
+Objects, D1, `packages/world-contract`, and `packages/world-client`; older
+SpacetimeDB docs below are historical source material unless a document
+explicitly says otherwise.
 
 ## Reading Order
 
@@ -44,10 +48,10 @@ Worker/D1 and SpacetimeDB projections documented below.
   references, and the implementation plan for letting multiple Verse users see
   each other on the map.
 - `2026-06-22-effect-typescript-world-backend-replacement-audit.md` - audit of
-  the compatibility-first path for replacing the SpacetimeDB world backend with
-  an OpenAgents-owned Effect/TypeScript Verse world service while preserving the
-  current authority split, subscription contract, multiplayer semantics, and
-  outage behavior.
+  the decided fast path for replacing the SpacetimeDB world backend with an
+  OpenAgents-owned Effect/TypeScript Cloudflare Verse World Service while
+  preserving the Worker/D1 product authority split, subscription contract,
+  multiplayer semantics, WoC-derived world-read seam, and outage behavior.
 - `2026-06-21-verse-scene-graph-vs-react-three-fiber-audit.md` - deep audit of
   how the desktop Verse scene graph is built today (`three-effect` + Foldkit,
   full teardown+rebuild on every change) versus react-three-fiber's
@@ -61,13 +65,23 @@ Worker/D1 and SpacetimeDB projections documented below.
   ClaudeCraft (`projects/repos/world-of-claudecraft/`) as a reference for the
   Verse: overview/architecture, HUD + hotbar + procedural icons, input/camera/
   targeting, multiplayer netcode + moderation, chat/minimap/nameplates/world,
-  and a consolidated, prioritized adaptation plan mapped to our repos and epics.
-  Start at `woc/README.md`.
+  and a consolidated, prioritized adaptation plan mapped to the Cloudflare/Effect
+  backend cutover, `three-effect`, desktop HUD, and follow-on issue lanes. Start
+  at `woc/README.md`.
 
 ## Implementation Homes
 
-- `apps/openagents-world-spacetimedb/` owns the Rust/WASM SpacetimeDB module
-  source for the live `openagents-world` database.
+- `apps/openagents-world/` will own the Cloudflare Worker + Region Durable
+  Object Verse World Service: live presence, socket fanout, interest scoping,
+  local world commands, chat moderation before fanout, expiry, and durable D1
+  projection rows.
+- `packages/world-contract/` will own Effect Schema row/command/delta contracts,
+  branded refs, world-read projection schemas, interest plans, public-safety
+  helpers, and test fixtures.
+- `packages/world-client/` will own the Cloudflare Verse client and WoC-style
+  read-only `ClientWorld` mirror consumed by desktop/web render and HUD code.
+- `apps/openagents-world-spacetimedb/` is historical SpacetimeDB source material
+  until the cutover deletes it; do not add new production world features there.
 - `/Users/christopherdavid/work/three-effect` owns reusable spatial/visual
   primitives for the game world and proof replay theater. Add missing replay
   stages, avatar, zap, camera, particle, terrain, label, and interaction

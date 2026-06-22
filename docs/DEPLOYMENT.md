@@ -36,29 +36,28 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
+| **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` until `apps/openagents-world/README.md` exists | scaffold `packages/world-contract`, `packages/world-client`, and `apps/openagents-world`; run the P1-P13 gates in the audit before any production cutover | — |
 
-## SpacetimeDB Verse Bindings And Desktop Gate
+## Verse World Service Gate
 
-The `openagents-world` SpacetimeDB module lives at
-`apps/openagents-world-spacetimedb/`. Public table or reducer schema changes
-must regenerate and commit the TypeScript bindings that both the web app and
-Autopilot Desktop import:
+The new Verse world backend is the planned `apps/openagents-world` Cloudflare
+Worker + Region Durable Object service, with shared schemas in
+`packages/world-contract` and the desktop/web mirror in `packages/world-client`.
+Until those packages and the service README exist, the canonical cutover plan is
+`docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md`.
 
-```sh
-~/.local/bin/spacetime generate \
-  --lang typescript \
-  --out-dir apps/openagents.com/apps/web/src/scene/spacetimeWorldBindings \
-  --module-path apps/openagents-world-spacetimedb
-```
+Deploy readiness for this surface means the audit's P1-P13 sequence is green:
+Effect Schema contracts, service/client authorization boundaries, Region Durable
+Object hibernatable WebSockets, D1 projection tables, Queue/alarm expiry,
+interest-scoped snapshots/deltas, handshake buffering, command sequence
+receipts, moderation, two-client desktop smoke, web smoke, and public-safety
+redaction tests.
 
-Autopilot Desktop imports `DbConnection` from that generated binding directory
-in `apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts`; the Electrobun
-build bundles it from the workspace source tree. After schema or binding
-changes, run the desktop Verse tests plus the packaged smoke through
-`bun run check:deploy` before pushing to `main`. The multiplayer connection is
-a diagnostic/degraded feed only: if `https://spacetime.openagents.com` is
-unavailable, the Verse must still load and move locally while the subscription
-dispatches a disconnected projection.
+`apps/openagents-world-spacetimedb/` and its generated TypeScript bindings are
+historical source material during the ripout. Do not regenerate or extend them
+for new production world behavior. Any useful schema or reducer pattern should
+be ported into the Cloudflare/Effect contracts and then the old binding path
+deleted as part of the mandatory decommission issue.
 
 ## Owned Visibility Freshness Smoke
 
@@ -74,12 +73,13 @@ node apps/openagents.com/scripts/visibility-freshness-smoke.mjs \
 ```
 
 The smoke checks public route status, activity-timeline `generatedAt` and
-`projection_staleness.v1`, source-lag rows, the SSE stream route, the local
-SpacetimeDB bridge projection plan, replay-clip render queue freshness, and R2
-clip manifest/artifact availability. It exits nonzero for alerting unless
-`--warn-only` is used to collect an evidence report during a known incident.
-Failures name the stale source or broken route so the operator can route the
-fix without manual page refreshes.
+`projection_staleness.v1`, source-lag rows, the SSE stream route, replay-clip
+render queue freshness, and R2 clip manifest/artifact availability. Any
+remaining SpacetimeDB bridge observation in this smoke is legacy cutover evidence
+only and must be removed with the old backend path. It exits nonzero for
+alerting unless `--warn-only` is used to collect an evidence report during a
+known incident. Failures name the stale source or broken route so the operator
+can route the fix without manual page refreshes.
 
 ### Pylon npm vs signed OTA feed
 

@@ -1,29 +1,35 @@
 # WoC Multiplayer, Netcode, Persistence, and Moderation
 
 Date: 2026-06-22
-Scope: `src/net/`, `server/`, `headless/protocol.ts`, mapped against our SpacetimeDB + Worker split.
+Updated: 2026-06-22 for the Cloudflare/Effect world-backend replacement.
+Scope: `src/net/`, `server/`, `headless/protocol.ts`, mapped against our Cloudflare
+Verse World Service + Worker/D1 authority split.
 
-This is the system the Verse multiplayer epics (#5887 SpacetimeDB multiplayer, #5888 pose
-publish, #5889 remote avatars, #5892 hi/lo-res feeds, #5893 two-client smoke) are building.
-WoC has shipped a live, authoritative version of it. The value here is the concrete
-scaling and safety patterns, even though our authority is split differently.
+This is the system the Verse multiplayer epics and the Cloudflare/Effect backend cutover
+are building: pose publish, remote avatars, hi/lo-res feeds, two-client smoke, local chat,
+and typed diagnostics. WoC has shipped a live, authoritative version of it. The value here
+is the concrete scaling and safety patterns, even though our authority is split
+differently.
 
 ## Authority split: WoC vs us
 
 WoC runs **one process, one `Sim`** as the single authority. The Verse deliberately splits
 authority:
 
-- **SpacetimeDB `openagents-world` module** owns multiplayer **presence and local
-  interaction** (avatars, positions, pylon focus, local chat/bubbles/emotes, intent).
-- **The public Worker + D1** owns **run / proof / business / settlement truth**, and the
-  desktop projects that with the evidence-bound rule "no anonymous motion without public
-  refs" (#5822).
+- **`apps/openagents-world` Region Durable Objects** own multiplayer **presence and local
+  interaction** (avatars, positions, pylon focus, local chat/bubbles/emotes, intent,
+  interest scopes, socket fanout, TTL/expiry).
+- **The public Worker + D1** owns **run / proof / business / settlement truth**, and
+  desktop/web project that with the evidence-bound rule "no anonymous motion without
+  public refs" (#5822).
+- **`packages/world-contract` and `packages/world-client`** are our WoC-style seam:
+  clients consume snapshots/deltas through a typed read model instead of concrete backend
+  objects.
 
-So when we borrow WoC's netcode, it applies inside the **presence layer** (SpacetimeDB),
-and we keep run/proof authority on the Worker. WoC's `ClientWorld` (a presentation-only
-mirror of server snapshots) is the closest analog to our desktop
-`chat-world-spacetimedb.ts` subscription/projection layer: both mirror authoritative state
-into a read-only world the renderer consumes.
+So when we borrow WoC's netcode, it applies inside the **Region DO presence layer**, and
+we keep run/proof authority on Worker/D1. WoC's `ClientWorld` (a presentation-only mirror
+of server snapshots) is the closest analog to our new `packages/world-client`: both mirror
+authoritative state into a read-only world the renderer consumes.
 
 ## The 20 Hz authority loop
 
@@ -33,6 +39,12 @@ events, run anti-bot tick; then broadcast distance-tiered snapshots and a cheap 
 social-position push; autosave every 30 s. Clients stream movement intent at 20 Hz
 (`{ t:'input', forward, back, turn..., strafe..., jump, facing, seq }`); the server echoes
 the input `seq` as an `ack` for latency telemetry.
+
+For the Verse, this does not mean a global 20 Hz Worker loop. It means Region DO command
+handlers accept bounded pose/intent commands, include client `seq` values in typed command
+receipts, and run interest/delta emission on a per-region schedule. The useful invariant is
+"server acknowledges the intent sequence and owns the resulting world row," not WoC's exact
+tick architecture.
 
 ## Interest-scoped delta snapshots (the part to copy)
 
@@ -58,19 +70,24 @@ This is the most valuable netcode pattern in WoC for us:
 
 ### Relevance to us
 
-SpacetimeDB gives subscriptions and row sync, but it does **not** give interest scoping or
-field-level delta compression for free. The WoC patterns translate into concrete Verse work:
+Cloudflare Durable Objects give us the right coordination atom (one region = one DO), but
+they do **not** give interest scoping, field-level delta compression, or motion semantics
+for free. The WoC patterns translate into concrete Verse work:
 
-1. **Interest-scope SpacetimeDB subscriptions** (subscribe only to avatars/items within a
-   radius of the local player) with the same entry/exit hysteresis to avoid churn. This is
-   the engine behind #5892's hi/lo-res presence feeds.
-2. **Distance-tier the pose publish/consume rate** (#5888): full rate for nearby avatars,
-   coarse for distant ones, always-full for whatever the user is focused on. Bounds the
-   write rate the multiplayer epic already calls for.
-3. **Treat absent fields as unchanged** in the projection layer, matching WoC's delta
-   invariant, so a stalled subscription does not blank out an avatar.
-4. **Send a settle row when an avatar stops** so remote avatars do not slide past their
-   stop point under interpolation (#5889 remote-avatar rendering).
+1. **Interest-scope Region DO subscriptions** (include only avatars/items within the
+   viewer's active region window) with the same entry/exit hysteresis to avoid churn. This
+   is the engine behind hi/lo-res presence feeds.
+2. **Distance-tier the pose publish/consume rate**: full rate for nearby avatars, coarse
+   for distant ones, always-full for selected/focused avatars and active interactors. This
+   bounds DO fanout and D1 checkpoint churn.
+3. **Treat absent fields as unchanged** in `WorldDelta`, matching WoC's delta invariant, so
+   a stalled subscription never blanks an avatar or pylon.
+4. **Send a settle delta when an avatar stops** so remote avatars do not slide past their
+   stop point under interpolation.
+5. **Buffer frames during async auth/session hydration** in the Worker/DO handshake with a
+   small bounded queue, then replay or reject them with typed diagnostics.
+6. **Echo command sequence numbers in receipts** so clients can measure latency, identify
+   dropped movement, and render honest connection diagnostics.
 
 ## Persistence
 
@@ -83,11 +100,12 @@ per-character to avoid concurrent writes to one row.
 
 ### Relevance to us
 
-Our persistence authority is D1/Worker for run/business truth and SpacetimeDB tables for
-presence, so we do not adopt the Postgres-JSONB model directly. The carry-overs are
-operational: a **bounded autosave cadence + on-disconnect save with retries + shutdown
-flush**, and **per-entity write serialization** to avoid races. These matter most for any
-desktop-side or sidecar state we persist for the Verse.
+Our persistence authority is D1/Worker for run/business truth and Region DO/D1 storage for
+world projection and reconnect checkpoints, so we do not adopt the Postgres-JSONB model
+directly. The carry-overs are operational: **bounded checkpoint cadence, on-disconnect
+flush with retries where useful, alarm-driven expiry, and per-entity write
+serialization** to avoid races. These matter most for DO hot-state checkpoints, durable
+projection rows, and any desktop-side state we persist for the Verse.
 
 ## Social systems
 
@@ -107,10 +125,10 @@ All server-authoritative, mostly ephemeral in the `Sim`:
 
 ### Relevance to us
 
-The directly relevant ones for the Verse are **presence broadcast** (already our model via
-SpacetimeDB avatar/position rows) and, if/when we add peer interactions, the **atomic
-staged-confirm pattern for trades**. That pattern is the right template for any owner-gated,
-two-party Verse action (for example a tip/zap that both sides confirm, or a co-sign).
+The directly relevant ones for the Verse are **presence broadcast** (Region DO
+avatar/position rows and deltas) and, if/when we add peer interactions, the **atomic
+staged-confirm pattern for trades**. That pattern is the right template for any
+owner-gated, two-party Verse action (for example a confirmed tip/zap or co-sign).
 Parties/duels/tap-rights are game mechanics we would only adapt if the Verse grows
 group/competitive surfaces; note them, do not build them now.
 
@@ -133,12 +151,12 @@ group/competitive surfaces; note them, do not build them now.
 ### Relevance to us
 
 The Verse will need moderation the moment avatars carry user/agent chat, and WoC's design
-is a strong, ship-ready template to **adapt into the Worker**:
+is a strong, ship-ready template to **adapt into the Cloudflare world command path**:
 
 - **Two-tier filter with an empty hard list seeded privately** is exactly right for an
   open repo: we never commit a slur list, operators curate it, and the
   whole-token + confusable-fold matching avoids the classic false positives. This should
-  gate Verse local-chat and forum-reflection bubbles (#5906) before any event delivery.
+  gate Verse local-chat and forum-reflection bubbles before any `WorldDelta` delivery.
 - **Per-account failed-login throttle** (orthogonal to per-IP) is worth mirroring in our
   auth surface.
 - **Escalation ladder** (warn -> timed mutes) is a clean default for chat strikes.
@@ -148,10 +166,11 @@ at the Worker/edge rather than port the Node modules.
 
 ## Net for the adaptation plan
 
-High priority: **interest-scoped + distance-tiered + delta-encoded presence** onto
-SpacetimeDB (directly serves #5888/#5889/#5892), and the **"absent means unchanged"**
-projection invariant. Medium: **two-tier chat moderation with private hard-list seeding**
-and **per-account login throttle** into the Worker; **atomic staged-confirm** as the
-template for owner-gated two-party Verse actions. Adapt, do not port: persistence (we use
-D1/SpacetimeDB), parties/duels/tap-rights (game mechanics), bot-detector/IP-block
-(reimplement at the edge).
+High priority: **interest-scoped + distance-tiered + delta-encoded presence** inside
+Region Durable Objects, **"absent means unchanged"** as a `WorldDelta` invariant,
+**bounded handshake buffering**, and **seq/ack command receipts**. Medium: **two-tier chat
+moderation with private hard-list seeding** and **per-account login throttle** in the
+Cloudflare command/auth path; **atomic staged-confirm** as the template for owner-gated
+two-party Verse actions. Adapt, do not port: persistence (we use D1 + DO storage),
+parties/duels/tap-rights (game mechanics), bot-detector/IP-block (reimplement at the
+edge).

@@ -67,25 +67,36 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
-## SpacetimeDB World Projection
+## Verse World Projection
 
-- `apps/openagents-world-spacetimedb/` is a projection and interaction module
-  for the self-hosted `openagents-world` database. It does not own settlement,
-  payout, training truth, product promises, receipt validation, accepted-work
-  authority, wallet state, provider credentials, private prompts, private repo
-  content, or customer-private data.
-- SpacetimeDB public tables may expose only public-safe refs, labels,
-  timestamps, staleness metadata, movement caveats, and dereferenceable proof
-  URLs that are already safe for public OpenAgents surfaces.
-- Reducers that create or mutate run, entity, edge, proof, settlement, event,
-  cursor, or bridge-health projection rows must require a private allowlisted
-  service identity. Browser/user reducers may update only explicitly modeled
-  interaction state and must not create proof, settlement, receipt, pylon, or
-  training truth.
-- `/tassadar` authority remains the Worker/D1 public summary path until a
-  later invariant change explicitly promotes a different authority. A
-  SpacetimeDB subscription may enrich or animate the scene only from rows that
-  preserve public refs or timestamped projection transitions.
+- Live Verse world work is moving to `apps/openagents-world/`, a Cloudflare
+  Worker + Region Durable Object service written in TypeScript, Effect, and
+  Effect Schema. Durable Objects are the coordination atoms for live presence,
+  local interaction, interest-scoped fanout, hibernatable WebSockets, handshake
+  buffering, sequence acknowledgements, TTL expiry, and per-region world state.
+- `packages/world-contract/` owns public-safe world schemas and command/delta
+  contracts. `packages/world-client/` owns the desktop/web client projection
+  that mirrors snapshots and deltas into a read-only `WorldReadModel`.
+- The world service and client projection do not own settlement, payout,
+  training truth, product promises, receipt validation, accepted-work authority,
+  wallet state, provider credentials, private prompts, private repo content, or
+  customer-private data.
+- Public world rows and deltas may expose only public-safe refs, labels,
+  positions, timestamps, staleness metadata, movement caveats, moderation state,
+  and dereferenceable proof URLs that are already safe for public OpenAgents
+  surfaces.
+- Browser/user commands may update only explicitly modeled interaction state,
+  such as joining/leaving a region, bounded avatar pose, focus, local chat,
+  emotes, and ephemeral intent. Service-only commands that create or mutate run,
+  entity, edge, proof, settlement, event, cursor, bridge-health, or projection
+  rows must require an allowlisted service identity.
+- `/tassadar` authority remains the Worker/D1 public summary path until a later
+  invariant change explicitly promotes a different authority. The Verse world
+  service may enrich or animate the scene only from public refs or timestamped
+  projection transitions.
+- `apps/openagents-world-spacetimedb/` is historical source material during the
+  ripout. Do not extend it for new production world behavior; port useful schema
+  or reducer ideas into the Cloudflare/Effect world service.
 
 ## Public Projection Staleness
 

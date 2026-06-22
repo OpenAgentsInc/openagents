@@ -1,5 +1,11 @@
 # openagents-world SpacetimeDB Module
 
+Status: historical source material during the Cloudflare/Effect Verse world
+backend cutover. Do not add new production world behavior here. The replacement
+home is the planned `apps/openagents-world` Cloudflare Worker + Region Durable
+Object service, with shared schemas in `packages/world-contract` and the
+desktop/web read-model mirror in `packages/world-client`.
+
 This is the minimal SpacetimeDB module for the OpenAgents world projection.
 It is deployed to the self-hosted database named `openagents-world` at
 `https://spacetime.openagents.com`.

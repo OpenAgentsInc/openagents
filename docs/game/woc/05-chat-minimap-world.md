@@ -54,9 +54,9 @@ Each is a tiny pure core plus canvas rendering in `hud.ts`:
 are trivial, tested, and dependency-free. A Verse minimap is high-value: it would render
 Pylon bases, the central Tassadar run core, assignment markers, and remote avatars as
 blips, with the same hysteresis on subzone/region labels. The blip-iteration approach maps
-straight onto our SpacetimeDB avatar rows + Worker run projection. Note the discipline:
-**the minimap reads the same world the 3D scene reads**, so it cannot drift. Build the
-canvas/Foldkit rendering ourselves; reuse the math.
+straight onto our `packages/world-client` read model: Region DO avatar deltas plus Worker/D1
+run projection rows. Note the discipline: **the minimap reads the same world the 3D scene
+reads**, so it cannot drift. Build the canvas/Foldkit rendering ourselves; reuse the math.
 
 ## Nameplates (world-space labels)
 

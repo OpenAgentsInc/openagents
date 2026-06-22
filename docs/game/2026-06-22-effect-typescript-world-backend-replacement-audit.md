@@ -105,6 +105,11 @@ Additional implementation references checked for this revision:
   branded primitives, `Context.Service` + `Layer` dependency graphs,
   `Schema.TaggedErrorClass` errors, config layers, `@effect/vitest`, test
   clocks, and trace/log spans are the implementation baseline.
+- `docs/game/woc/` after re-read: WoC's `IWorld`/`ClientWorld` seam,
+  interest-scoped delta snapshots, handshake buffering, seq/ack movement
+  receipts, chat moderation, hotbar/icon/keybind/minimap/nameplate systems, and
+  pure-logic/test-first discipline should shape the backend cutover and the
+  follow-on Verse issues.
 
 ## Why Even Consider Replacing SpacetimeDB?
 
@@ -310,6 +315,9 @@ they are the reason to replace the old stack.
 - WebSocket/session lifecycle is scoped. The DO hibernation callbacks rehydrate
   session metadata from WebSocket attachments/checkpoints, then run typed
   handlers; no correctness-critical state lives only in module globals.
+- Region is the Durable Object coordination atom. Do not build a global world
+  singleton; per-region DOs own their sockets, hot presence, checkpoints,
+  interest indexes, alarms, and local command sequencing.
 - Deltas use `Stream`/`Queue`/`PubSub` with bounded buffers and explicit
   backpressure policy. Fire-and-forget is allowed only through a typed
   `waitUntil` service for bounded work; anything retriable or longer-running
@@ -666,11 +674,19 @@ Add the shared Effect contract package first. Acceptance:
 - Branded primitives for all refs/cursors/timestamps/bounded quantities.
 - Pure helpers for avatar refs, character-id sanitization, region bounds,
   public-safety predicates, row keys, and deterministic `world_event` refs.
+- WoC-style read-only `WorldReadModel` / `ClientWorld` projection schemas that
+  render/HUD/minimap/nameplate code consume without knowing the transport.
+- `WorldSubscriptionPlan` includes interest radius/drop-radius hysteresis,
+  selected-target promotion, near/far tier policy, and cursor resume fields.
+- `WorldCommandEnvelope` carries an optional client `seq`; command receipts echo
+  the accepted/applied/rejected sequence for latency and dropped-command
+  diagnostics.
 - Tagged errors for validation, auth, redaction, command, storage, cursor, and
   bridge failures.
 - Unit tests for avatar refs, character sanitization, row redaction,
   source-ref requirements, region bounds, command actor classes, sparse delta
-  semantics, and JSON encode/decode.
+  semantics, interest-plan validation, command sequence receipts, and JSON
+  encode/decode.
 
 Do this before writing the Worker. It gives every later issue a compile-time
 contract and prevents Cloudflare code from inventing ad hoc shapes.
@@ -688,7 +704,14 @@ Acceptance:
 - The DO uses the hibernatable WebSocket API, attaches typed session metadata,
   and returns a typed diagnostic when a non-WebSocket request hits the socket
   route.
+- The Worker routes each region to its own Durable Object. No global singleton
+  sits in front of every region.
+- A bounded handshake buffer stores frames that arrive while auth/session
+  hydration is still attaching the live handler, then replays or rejects them
+  with typed diagnostics.
 - D1 migrations create the durable projection tables and indexes.
+- DO SQLite storage/migration scaffolding exists for per-region checkpoints,
+  cursors, and hibernation-safe session metadata.
 - DO constructor initialization uses Cloudflare-safe migration discipline
   (`blockConcurrencyWhile`/tracked schema table or equivalent), not lazy
   request-time schema guesses.
@@ -705,10 +728,16 @@ Make the region object the authoritative live actor. Acceptance:
 - One DO instance per region name/ref, routed by the Worker.
 - `WorldDelta` snapshot/update/delete/heartbeat/diagnostic frames encoded from
   `packages/world-contract`.
+- WoC-style `ClientWorld` snapshots are server-owned read models: render/HUD
+  code sees a coherent projection, not backend row tables.
 - Reconnect accepts a cursor and either resumes or returns a fresh snapshot with
   a typed stale-cursor diagnostic.
 - Deltas are idempotent, cursored, ordered per subscription, and sparse fields
   mean unchanged.
+- Initial sight sends a full record; subsequent deltas can send lite/dynamic
+  fields; leaving interest prunes the local mirror so re-entry sends full again.
+- Per-entity serialization/wire-cache avoids re-encoding the same entity for
+  every viewer in the same tick/window.
 - Session close/error paths emit public-safe diagnostics and release scoped
   resources.
 - Backpressure policy is explicit: bounded queues, disconnect-or-downgrade
@@ -725,6 +754,9 @@ Add the browser/user command path in the DO. Acceptance:
   `clear_pylon_focus`, `send_local_message`, `send_pylon_message`,
   `send_emote`, and `set_agent_intent` are implemented as Effect command
   handlers.
+- Pose/intent commands include client `seq` where available, and typed receipts
+  echo accepted/applied/rejected sequences so clients can show latency and drop
+  diagnostics.
 - Bounds, velocity, cadence, chat length/plain-text/rate-limit, pylon
   visibility, focus, and TTL rules are enforced through schema decode plus
   command tests.
@@ -760,7 +792,10 @@ Port the WoC subscription policy directly into the owned backend. Acceptance:
 - The service rejects unbounded/global avatar/event queries.
 - Region feed starts as one stream below the current audit threshold, then
   splits into near/far feeds with hysteresis, forced high-resolution selected
-  targets, distance-tiered update rates, and settle-on-stop deltas.
+  targets, distance-tiered update rates, first-sight full records, lite dynamic
+  deltas, interest-leave pruning, and settle-on-stop deltas.
+- Interest scopes use separate enter/drop radii so boundary movement does not
+  churn create/delete frames.
 - Desktop/web stores apply deltas idempotently and never interpret missing
   sparse fields as empty/default values.
 - Tests cover near/far enter/exit, selected-target promotion, stale cursor
@@ -769,7 +804,25 @@ Port the WoC subscription policy directly into the owned backend. Acceptance:
 This is the issue that makes the replacement better than the old table stream,
 because interest policy is now explicit domain logic.
 
-### P7: Add Service Commands And Projection Bridge
+### P7: Add World Chat Moderation And Abuse Controls
+
+Adapt WoC's moderation posture before local chat/forum-reflection bubbles become
+part of the production world stream. Acceptance:
+
+- `WorldModeration` service runs before local chat, pylon chat, forum-reflection
+  bubbles, and any user-authored diagnostic text are emitted as `WorldDelta`s.
+- Soft-list masking is a client/user preference; server hard-list enforcement is
+  whole-token and confusable-folded.
+- The hard list ships empty in the open repo and is seeded privately through
+  typed config/secrets/admin tooling. No slur list enters Git.
+- Strikes escalate warning -> timed mutes, with public-safe reason codes and
+  no raw private message bodies in diagnostics.
+- Per-account and per-session command throttles are separate from any IP/edge
+  throttle so distributed abuse does not bypass account-level policy.
+- Tests cover false-positive avoidance (`class`, `despicable`), confusable
+  matching, empty hard-list behavior, mute windows, and redaction.
+
+### P8: Add Service Commands And Projection Bridge
 
 Bring durable public projection rows into the Cloudflare service. Acceptance:
 
@@ -786,16 +839,22 @@ Bring durable public projection rows into the Cloudflare service. Acceptance:
 - Retriable bridge work uses Queue-backed services rather than long
   `waitUntil` chains.
 
-After P7, the world service can rebuild its durable projection rows from public
+After P8, the world service can rebuild its durable projection rows from public
 authority and does not need SpacetimeDB as a projection source.
 
-### P8: Build `packages/world-client` As The Only Client
+### P9: Build `packages/world-client` As The Only Client
 
 Add the client package that desktop and web will import. Acceptance:
 
 - The client speaks only the Cloudflare Verse World protocol.
 - APIs are `connect`, `subscribe`, `callCommand`, `applyDelta`, `reconnect`,
   `disconnect`, and `diagnostics`.
+- It exposes the WoC-style read-only `WorldReadModel` / `ClientWorld` seam used
+  by render, HUD, minimap, and nameplate code.
+- `applyDelta` preserves absent-means-unchanged semantics, prunes interest
+  exits, applies settle deltas, and retains selected-target promotion state.
+- Command receipts expose client sequence ack state for movement/input
+  diagnostics.
 - Errors are Effect typed errors, not `console.warn` plus empty state.
 - Reconnect/resubscribe is tested with fake transports and stale cursors.
 - The package has no import from generated SpacetimeDB bindings and no backend
@@ -803,9 +862,9 @@ Add the client package that desktop and web will import. Acceptance:
 
 This issue is where the previous casing bug becomes structurally impossible.
 
-### P9: Point Desktop And Web At Cloudflare
+### P10: Point Desktop And Web At Cloudflare
 
-Cut consumers to the new client as soon as P8 can support the current UI.
+Cut consumers to the new client as soon as P9 can support the current UI.
 Acceptance:
 
 - Desktop/web imports only `packages/world-client` and
@@ -822,9 +881,9 @@ Acceptance:
 This is the product cut. Do not wait for decommission work to begin before the
 new backend is user-visible.
 
-### P10: Delete SpacetimeDB Codepaths
+### P11: Delete SpacetimeDB Codepaths
 
-Remove the old implementation immediately after P9 smoke passes. Acceptance:
+Remove the old implementation immediately after P10 smoke passes. Acceptance:
 
 - Delete `apps/openagents-world-spacetimedb`.
 - Delete generated SpacetimeDB TypeScript bindings and cross-app imports.
@@ -836,9 +895,9 @@ Remove the old implementation immediately after P9 smoke passes. Acceptance:
   returns only historical docs/audit references or explicit changelog notes.
 
 This issue has no compatibility carve-out. If something still needs the old
-backend, it blocks P10 and must be ported, not grandfathered.
+backend, it blocks P11 and must be ported, not grandfathered.
 
-### P11: Update Invariants, Docs, And Operator Runbooks
+### P12: Update Invariants, Docs, And Operator Runbooks
 
 Make the policy ledger match reality. Acceptance:
 
@@ -856,7 +915,7 @@ Make the policy ledger match reality. Acceptance:
 Because this is invariant-bearing work, this issue is part of the cutover, not
 post-launch cleanup.
 
-### P12: Production Release Gate And VM Decommission
+### P13: Production Release Gate And VM Decommission
 
 Finish by proving the new path and shutting the old one off. Acceptance:
 
@@ -879,6 +938,57 @@ single-player, formal/model notes are updated where policy changed, and **no
 SpacetimeDB code, VM, generated binding, deploy lane, or operational runbook
 remains active in the repo.**
 
+## Post-Cutover WoC Adaptation Lanes
+
+These are not blockers for deleting SpacetimeDB, but they are the next issues to
+open once the Cloudflare world service is the only backend.
+
+### W1: `three-effect` Procedural Icons
+
+Re-author WoC's procedural canvas icon recipe system for OpenAgents taxonomy:
+Pylon, agent, run, proof, receipt, settlement, training, chat, zap, inspect, and
+focus. Acceptance: keyword fallback for unknown ids, deterministic output,
+cache tests, and a HUD/3D texture consumer.
+
+### W2: `three-effect` Camera Follow, Collision, And Pointer Pick
+
+Port the pure math patterns for auto-settle-behind, camera occlusion easing, and
+click-vs-drag disambiguation. Acceptance: unit tests for follow/collision/pick
+math plus desktop smoke proving mouselook and click-select do not fight.
+
+### W3: Minimap, Compass, Coords, And Subzone
+
+Build a minimap/readout layer from the same `WorldReadModel` the 3D scene uses.
+Acceptance: Pylons, run core, assignment markers, and remote avatars share the
+same source as the scene; subzone/region labels use hysteresis; minimap deltas
+never drift from nameplates or 3D entities.
+
+### W4: Nameplate And Label Projection Primitive
+
+Promote a `three-effect` label/nameplate primitive using WoC's world-to-screen
+anchor discipline. Acceptance: Pylon/agent/run labels include state/status bars,
+are pooled/reused, and degrade without overlapping the core HUD.
+
+### W5: Desktop HUD Hotbar, Chat Channels, And Context Menu
+
+Re-author WoC's pure hotbar, chat channel/timestamp/profanity models, and
+context-menu action model for Verse actions. Acceptance: slots dedupe/sync,
+channel prefixes map to local/run/global/forum contexts, right-click Pylon/avatar
+actions are pure/tested, and Foldkit is only the renderer.
+
+### W6: Run-Step Progress, Agent Portrait Chips, And Perf Overlay
+
+Adapt WoC's pure progress/portrait/perf-overlay models. Acceptance: run-step
+progress bars map assignment -> trace -> replay -> verdict -> settle; portrait
+chips use HiDPI/overscan math; WebGL frame-time/draw-call diagnostics are
+available in development and smoke artifacts.
+
+### W7: Optional Accessibility Movement And Touch Controls
+
+Keep click-to-move, joystick, pinch, long-press-vs-tap, and double-tap-recenter
+as later accessibility/touch issues. Acceptance is future-surface dependent; do
+not pull these into the backend cutover.
+
 ## Tests And Formal Notes
 
 This is an invariant-bearing replacement if executed. Before cutover:
@@ -889,13 +999,31 @@ This is an invariant-bearing replacement if executed. Before cutover:
 - Convert any meaningful counterexample into command tests.
 - Add property-style tests for idempotent bridge replay.
 - Add sparse-delta tests proving missing means unchanged.
+- Add read-model seam tests proving render/HUD/minimap/nameplate consumers can
+  read `WorldReadModel` without transport/backend imports.
+- Add interest-scope tests for enter/drop hysteresis, first-sight full records,
+  lite follow-up deltas, interest-leave pruning, selected-target promotion, and
+  settle-on-stop.
+- Add bounded handshake-buffer tests proving frames received during auth/session
+  hydration are replayed or rejected with diagnostics, never silently dropped.
+- Add command receipt tests proving client `seq` values are echoed for accepted,
+  applied, duplicate, stale, and rejected pose/intent writes.
 - Add expiry tests with a fake clock.
 - Add multi-character same-account tests.
 - Add redaction tests for world rows, chat rows, deltas, diagnostics, and
   bridge failures.
+- Add moderation tests for empty hard-list behavior, whole-token matching,
+  confusable folding, false-positive avoidance, strike escalation, mute windows,
+  and no raw private bodies in diagnostics.
 - Add two-client desktop smoke and web smoke against the deployed Cloudflare
   service, plus a one-shot read-only SpacetimeDB row-count diff helper that is
   deleted before decommission.
+
+This section is also the model-boundary note paired with the root
+`INVARIANTS.md` update from "SpacetimeDB World Projection" to "Verse World
+Projection": the new invariant is not satisfied by documentation alone, only by
+the P1-P13 contract, authorization, interest, handshake, receipt, moderation,
+expiry, redaction, and smoke gates above.
 
 The formal/model boundary should be explicit: model checks do not authorize
 production behavior; runtime code and tests enforce the policy.
@@ -941,7 +1069,7 @@ The fastest way to lose the benefit of this work is to leave a hidden
 SpacetimeDB fallback, generated binding, VM runbook, or old env flag "just in
 case."
 
-Mitigation: P10 is mandatory, repository search is part of acceptance, and any
+Mitigation: P11 is mandatory, repository search is part of acceptance, and any
 remaining old-backend dependency blocks decommission until it is ported or
 deleted.
 
@@ -958,15 +1086,19 @@ First issue:
 ```text
 Open the ripout tracker and extract packages/world-contract: Effect Schema,
 branded refs, tagged errors, row/command/delta/subscription contracts,
-public-safety predicates, and tests. Then scaffold apps/openagents-world as a
-Cloudflare Worker + RegionDurableObject + D1 service, not a Bun sidecar.
+WoC-style read-model projection schemas, interest plans, command sequence
+receipts, public-safety predicates, and tests. Then scaffold apps/openagents-world
+as a Cloudflare Worker + RegionDurableObject + D1 service with hibernatable
+WebSockets, bounded handshake buffering, per-region DO storage, and D1
+projection tables; not a Bun sidecar.
 ```
 
 Then proceed straight through the issue list above to the cut. Done means: two
 desktop instances and a web client see each other through the Cloudflare service
 (two-client smoke), the projection bridge is idempotent, redaction/public-safety
-tests pass, outages degrade to single-player, and **no SpacetimeDB module, VM,
-generated binding, or runbook remains in the repo.**
+tests pass, interest scopes/deltas/seq receipts/moderation are covered, outages
+degrade to single-player, and **no SpacetimeDB module, VM, generated binding, or
+runbook remains in the repo.**
 
 The contracts, invariants, validation rules, identity/character model,
 subscription lifetimes, and bridge semantics in this document are preserved
