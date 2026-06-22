@@ -79,6 +79,14 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
    and a phased roadmap keyed to the gateway EPIC. Ties to `docs/sakana/`
    (coordinator) and `docs/research/tmax/` (verification/stability lessons).
 
+9. **[`khala-in-the-world.md`](./khala-in-the-world.md)** — Verse visualization
+   of inference serving: every request to the Khala endpoint rendered as
+   crackling energy fanned to assigned Pylons (in-world, verified, paid), a
+   gateway portal for external/OpenRouter work (offworld, margin-only), and
+   coding-agent avatars — on the new Effect-centric multiplayer engine
+   (`apps/openagents-world` + `packages/world-{contract,client}` +
+   `@openagentsinc/three-effect`), under the evidence-bound motion contract.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

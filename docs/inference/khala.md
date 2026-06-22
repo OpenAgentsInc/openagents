@@ -43,8 +43,9 @@ Related context: the credits business and supply pillars
 ([`README`](README.md), [`2026-06-19-inference-gateway-business.md`](2026-06-19-inference-gateway-business.md)),
 pricing ([`2026-06-19-pricing-model.md`](2026-06-19-pricing-model.md)),
 decentralized serving ([`2026-06-19-decentralized-serving-shard-wan.md`](2026-06-19-decentralized-serving-shard-wan.md)),
-the coordinator design (`docs/sakana/`), and the verification recipe lessons
-(`docs/research/tmax/`).
+the coordinator design (`docs/sakana/`), the verification recipe lessons
+(`docs/research/tmax/`), and the Verse visualization of inference serving
+([`khala-in-the-world.md`](khala-in-the-world.md)).
 
 ## 2. Design principles
 
