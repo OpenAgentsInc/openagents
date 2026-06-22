@@ -49,6 +49,9 @@ Worker/D1 and SpacetimeDB projections documented below.
   catalogue/reconciler/attach/on-demand-frameloop model, with the concepts to
   port into `three-effect` and how Effect (`Scope`, `Layer`, `SubscriptionRef`,
   fiber frame clock) is the better substrate for them.
+- `2026-06-22-verse-custom-keybindings-audit.md` - audit of current Desktop
+  shortcuts, Verse movement/controller bindings, `three-effect` input
+  primitives, and the recommended MMO-style custom keybinding architecture.
 
 ## Implementation Homes
 
