@@ -28,13 +28,31 @@ cite or reproduce them. They are never mixed into OpenAgents measurements.
 
 - Fixture manifest:
   `docs/inference/fixtures/khala-head-to-head-dry-run.v1.json`
+- Runner (drives both lanes, emits the manifest):
+  `scripts/khala-demo/run-head-to-head.mjs`
 - Reducer/validator:
   `scripts/khala-demo/reduce-head-to-head.mjs`
 - Publication renderer:
   `scripts/khala-demo/render-publication.mjs`
 - Test:
-  `scripts/khala-demo/reduce-head-to-head.test.mjs` and
+  `scripts/khala-demo/run-head-to-head.test.mjs`,
+  `scripts/khala-demo/reduce-head-to-head.test.mjs`, and
   `scripts/khala-demo/render-publication.test.mjs`
+
+Run the runner against the built-in stub transport (no live gateway needed)
+and pipe it through the reducer:
+
+```sh
+bun scripts/khala-demo/run-head-to-head.mjs --stub \
+  | bun scripts/khala-demo/reduce-head-to-head.mjs /dev/stdin
+```
+
+Or write the stub manifest to a file first:
+
+```sh
+bun scripts/khala-demo/run-head-to-head.mjs --out /tmp/khala-h2h.json
+bun scripts/khala-demo/reduce-head-to-head.mjs /tmp/khala-h2h.json
+```
 
 Run the dry-run reducer:
 
@@ -56,6 +74,56 @@ Render the publication draft:
 bun scripts/khala-demo/render-publication.mjs \
   docs/inference/fixtures/khala-head-to-head-dry-run.v1.json
 ```
+
+## Runner
+
+`scripts/khala-demo/run-head-to-head.mjs` drives the head-to-head and feeds the
+harness above. It sends the crossy-road prompt to two OpenAI-compatible lanes,
+collects what the responses actually report, and emits a manifest in the exact
+`openagents.khala_head_to_head_evidence.v1` shape the reducer consumes.
+
+- **Khala lane:** `POST {KHALA_BASE_URL}/chat/completions` with model
+  `openagents/khala-code` (override with `--khala-model`). It reads the
+  non-breaking `openagents` response block (`receipt`, `route`, `workers`,
+  `verification`, `cost_msat`, `price_msat`, `settled`, and any optional
+  settlement/Verse/in-world/energy fields).
+- **Frontier baseline lane:** the same OpenAI-compatible call against a
+  separate base URL/token/model.
+
+Configuration (CLI flag or env var):
+
+| Flag | Env | Default |
+|---|---|---|
+| `--khala-base-url` | `KHALA_BASE_URL` | — (stub if unset) |
+| `--khala-token` | `KHALA_AGENT_TOKEN` | — |
+| `--khala-model` | `KHALA_MODEL` | `openagents/khala-code` |
+| `--frontier-base-url` | `FRONTIER_BASE_URL` | — (stub if unset) |
+| `--frontier-token` | `FRONTIER_TOKEN` | — |
+| `--frontier-model` | `FRONTIER_MODEL` | `frontier-baseline` |
+| `--msat-per-usd` | `KHALA_MSAT_PER_USD` | — (USD stays unmeasured) |
+| `--stub` | `KHALA_RUNNER_STUB=1` | force the built-in stub |
+| `--out <path>` | — | write manifest to file (else stdout) |
+
+**Stub vs live.** With no live base URLs (or `--stub`) the runner uses a
+deterministic, public-safe stub transport and emits an `evidenceMode:
+fixture_scaffold` manifest. Only when **both** lanes have a real base URL and
+the stub is not forced does it emit `evidenceMode: live`. The live gateway is
+owner-gated, so the runner is "flip-ready": set the env vars and drop `--stub`.
+
+**Honesty contract (enforced by the runner, not just the reducer).** The runner
+never fabricates metrics:
+
+- Tokens/cost/wall-clock come only from the response and the measured clock.
+- `costUsd` is `0` (with a `cost_usd_not_measured` blocker) unless the response
+  carries `cost_usd`, or `cost_msat` plus a `--msat-per-usd` conversion rate.
+- A missing verifier verdict is `verificationClass: none`, not accepted.
+- Settlement is `settled: false` unless the response explicitly says settled and
+  supplies worker/validator receipt refs.
+- Verse playback, in-world artifact, and energy kWh stay `null` unless the
+  response provides them; energy is never estimated.
+- Because the owner-gated live gateway does not yet return settlement, Verse,
+  in-world, or energy evidence, a current live run still keeps
+  `closureAudit.canClose: false` — exactly like the stub and fixture.
 
 ## Manifest Contract
 
