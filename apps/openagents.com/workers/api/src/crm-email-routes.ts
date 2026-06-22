@@ -24,9 +24,11 @@ import {
   composeCrmEmailForContact,
   CrmEmailError,
   type CrmSendChannel,
+  getCrmEmailMessageById,
   listCrmEmailMessagesForContact,
   listCrmEmailTemplates,
   recordCrmEmailMessage,
+  updateCrmEmailMessageDelivery,
   upsertCrmEmailTemplate,
 } from './crm-email'
 import { DEFAULT_CRM_TENANT_REF, recordCrmActivity } from './crm-store'
@@ -223,23 +225,49 @@ export const makeCrmEmailRoutes = <Bindings extends CrmEmailEnv>(
             }
           }
 
-          const message = await recordCrmEmailMessage(db, {
-            bodyHtml: typeof body.bodyHtml === 'string' ? body.bodyHtml : null,
-            bodyMarkdown: body.bodyMarkdown,
-            channel: 'gmail_gws',
-            contactId: writebackContactId,
-            fromEmail: typeof body.fromEmail === 'string' ? body.fromEmail : null,
-            providerDraftId:
-              typeof body.providerDraftId === 'string' ? body.providerDraftId : null,
-            providerMessageId:
-              typeof body.providerMessageId === 'string' ? body.providerMessageId : null,
-            sendReason: typeof body.sendReason === 'string' ? body.sendReason : 'crm_gmail_outreach',
-            status,
-            subject: body.subject,
-            templateId: typeof body.templateId === 'string' ? body.templateId : null,
-            tenantRef: tenant,
-            toEmail: body.toEmail,
-          })
+          // If messageId is given, the executor is closing out a queued row
+          // (unified dispatch, #5985) — update it in place rather than inserting
+          // a duplicate. Otherwise insert a fresh ledger row.
+          const existingId = typeof body.messageId === 'string' ? body.messageId.trim() : ''
+          let message
+          if (existingId !== '') {
+            await updateCrmEmailMessageDelivery(db, {
+              id: existingId,
+              providerDraftId:
+                typeof body.providerDraftId === 'string' ? body.providerDraftId : null,
+              providerMessageId:
+                typeof body.providerMessageId === 'string' ? body.providerMessageId : null,
+              status,
+              tenantRef: tenant,
+            })
+            const updated = await getCrmEmailMessageById(db, tenant, existingId)
+            if (updated === null) {
+              return noStoreJsonResponse(
+                { error: 'not_found', resource: 'crm_email_message' },
+                { status: 404 },
+              )
+            }
+            message = updated
+          } else {
+            message = await recordCrmEmailMessage(db, {
+              bodyHtml: typeof body.bodyHtml === 'string' ? body.bodyHtml : null,
+              bodyMarkdown: body.bodyMarkdown,
+              channel: 'gmail_gws',
+              contactId: writebackContactId,
+              fromEmail: typeof body.fromEmail === 'string' ? body.fromEmail : null,
+              providerDraftId:
+                typeof body.providerDraftId === 'string' ? body.providerDraftId : null,
+              providerMessageId:
+                typeof body.providerMessageId === 'string' ? body.providerMessageId : null,
+              sendReason:
+                typeof body.sendReason === 'string' ? body.sendReason : 'crm_gmail_outreach',
+              status,
+              subject: body.subject,
+              templateId: typeof body.templateId === 'string' ? body.templateId : null,
+              tenantRef: tenant,
+              toEmail: body.toEmail,
+            })
+          }
 
           await recordCrmActivity(db, {
             activityType: status === 'sent' ? 'email_sent' : 'email_drafted',

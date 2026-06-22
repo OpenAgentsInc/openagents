@@ -446,6 +446,35 @@ export const getCrmEmailMessageById = async (
   }
 }
 
+/**
+ * Queued Gmail/gws messages awaiting the LOCAL executor (#5987). The unified
+ * dispatch (#5985) records a `gmail_gws` row as `queued`; the desktop/local
+ * executor lists them, sends via `gws`, and writes the outcome back.
+ */
+export const listCrmQueuedGmailMessages = async (
+  db: D1Database,
+  tenantRef: string,
+  query: Readonly<{ limit?: number | undefined }> = {},
+): Promise<ReadonlyArray<CrmEmailMessage>> => {
+  const limit =
+    query.limit === undefined || !Number.isFinite(query.limit) || query.limit <= 0
+      ? 100
+      : Math.min(Math.floor(query.limit), 500)
+  try {
+    const result = await db
+      .prepare(
+        `SELECT * FROM crm_email_messages
+           WHERE tenant_ref = ? AND channel = 'gmail_gws' AND status = 'queued'
+           ORDER BY created_at ASC LIMIT ?`,
+      )
+      .bind(tenantRef, limit)
+      .all<Record<string, unknown>>()
+    return (result.results ?? []).map(decodeMessage)
+  } catch (error) {
+    throw new CrmEmailError({ reason: `crm.listQueuedGmail: ${String(error)}` })
+  }
+}
+
 export const listCrmEmailMessagesForContact = async (
   db: D1Database,
   tenantRef: string,

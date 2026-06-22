@@ -447,6 +447,7 @@ import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
 import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
+import { makeCrmSendRoutes } from './crm-send-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
@@ -7078,25 +7079,32 @@ const crmEmailRoutes = makeCrmEmailRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+const resolveCrmResendDeps = (env: WorkerBindings) => {
+  const enabled = isCrmResendSendEnabled(
+    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined }).CRM_RESEND_SEND_ENABLED,
+  )
+  const resend = getResendEmailConfig(env)
+  if (resend === undefined) {
+    return { enabled, fromEmail: null, sender: null }
+  }
+  return {
+    enabled,
+    fromEmail: resend.fromEmail,
+    sender: makeCrmResendSender({
+      apiKey: resend.apiKey,
+      replyTo: resend.replyToEmail,
+    }),
+  }
+}
+
 const crmResendRoutes = makeCrmResendRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-  resolveResendDeps: env => {
-    const enabled = isCrmResendSendEnabled(
-      (env as { CRM_RESEND_SEND_ENABLED?: string | undefined }).CRM_RESEND_SEND_ENABLED,
-    )
-    const resend = getResendEmailConfig(env)
-    if (resend === undefined) {
-      return { enabled, fromEmail: null, sender: null }
-    }
-    return {
-      enabled,
-      fromEmail: resend.fromEmail,
-      sender: makeCrmResendSender({
-        apiKey: resend.apiKey,
-        replyTo: resend.replyToEmail,
-      }),
-    }
-  },
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
+const crmSendRoutes = makeCrmSendRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
 })
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
@@ -9991,6 +9999,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
     crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
     crmResendRoutes.routeCrmResendRequest(request, env, ctx) ??
+    crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:

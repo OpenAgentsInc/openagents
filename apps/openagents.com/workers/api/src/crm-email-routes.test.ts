@@ -204,6 +204,28 @@ describe('CRM Gmail write-back', () => {
     expect(json.message.id).toBe('crm_email_1')
   })
 
+  test('updates an existing queued row in place when messageId is given', async () => {
+    const res = await run(
+      true,
+      cannedEmailDb(),
+      new Request(`${base}/api/operator/crm/contacts/crm_contact_1/gmail-writeback`, {
+        body: JSON.stringify({
+          bodyMarkdown: 'Hi Ada',
+          messageId: 'crm_email_1',
+          providerMessageId: 'gmail_sent_1',
+          status: 'sent',
+          subject: 'Hello Ada',
+          toEmail: 'ada@example.com',
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const json = (await res.json()) as { message: { id: string } }
+    expect(json.message.id).toBe('crm_email_1')
+  })
+
   test('refuses a sent write-back when suppressed (409)', async () => {
     const res = await run(
       true,

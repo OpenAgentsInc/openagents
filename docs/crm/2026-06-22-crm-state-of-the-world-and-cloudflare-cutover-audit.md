@@ -26,6 +26,21 @@
 
 ---
 
+## Implementation status (epic #5980, branch `crm/epic-5980`)
+
+Build log — landed on the branch (merges to main at epic end):
+
+- ✅ **#5981 — D1 contact CRM model + read APIs.** Migration `0218` (tenant-scoped contacts/accounts/lists/activities/engagement/opportunities/commands/import-runs); `crm-store.ts`; admin reads under `/api/operator/crm/*`.
+- ✅ **#5982 — CSV import.** `crm-import.ts` (parser + header mapping + de-dupe + audited import-run) + `POST /api/operator/crm/import`. Runbook: `csv-import-runbook.md`.
+- ✅ **#5983 — Gmail/`gws` channel.** `crm-email.ts` (templates + render + ledger), `crm-email-routes.ts`, `scripts/crm-gmail-send.mjs` (local sender with write-back). Runbook: `gmail-gws-channel-runbook.md`.
+- ✅ **#5984 — Resend channel.** `crm-resend.ts` (INERT by default) + `POST .../resend-send` + `scripts/crm-resend-smoke.mjs`. Deliverability green is **owner-gated** (verified domain + key). Runbook: `resend-channel-runbook.md`.
+- ✅ **#5985 — Unified two-channel send.** `crm-send.ts` `dispatchCrmSend({channel})` — suppression/unsubscribe gate enforced once, ledger written for both; `POST .../send` + `GET /gmail-queue` for the local executor.
+- ⏳ **#5986** chat→Blueprint `send_email{channel}`, **#5987** desktop CRM pane + local executor, **#5988** the ~150 send orchestration — in progress.
+
+Shared suppression gate is `readEmailSendEligibility` (reused). Everything tenant-scoped; no Laravel/Convex runtime; Gmail OAuth stays local.
+
+---
+
 ## 1. The ~150 tomorrow — dual-channel, on our infra
 
 We send through **our own CRM**, not Laravel. Two channels, owner picks per-recipient/segment:
