@@ -229,6 +229,36 @@ issue #6013.
   renders as either nexus→Pylon arc or nexus→gateway portal, clickable back to
   its receipt ref.
 
+**Active claim — 2026-06-22:** this session claims the Agent Verse lane for M5
+under parent issue #6013. The claim is deliberately scoped to evidence-bound
+world projection and rendering. It does not claim live Khala serving, live Pylon
+payout, Bitcoin settlement, or learned coordination; those stay with Agent
+Nexus, Agent Pylon, Agent Ledger, and Agent Psion until their receipt-backed
+gates land.
+
+**Brief operator plan:**
+1. **#6013-A — Contract and bridge shape.** Add the minimal `gateway_station`
+   row, service-only `upsert_gateway_station`, and Khala inference
+   `world_event` payload shape in `packages/world-contract` and
+   `apps/openagents-world`, with source-ref/public-safety tests. This is the
+   first implementation slice because it prevents the renderer from inventing
+   routes, workers, providers, or receipt refs.
+2. **#6013-B — Render primitives.** Implement `createCracklingArc` and
+   `createGatewayPortal` in the shared three-effect surface, driven only by
+   fixture rows or receipt-backed source refs.
+3. **#6013-C — Desktop projection.** Map fixture Khala receipt events through
+   `packages/world-client` into the Autopilot Desktop Verse visualization,
+   reusing Pylon stations, agent avatars, payment beams, HUD meters, and
+   source-ref inspectors.
+4. **#6013-D — Live receipt integration.** Replace inert fixture events with
+   M1/M4 Khala receipt streams when available, keeping fixture-only demos labeled
+   as scaffold evidence and keeping live product claims gated on dereferenceable
+   receipts.
+
+**Starting issue:** start on parent #6013 with subissue #6013-A ("Contract and
+bridge shape"). Create real GitHub child issues only when multiple agents need
+separate queues; until then the #6013 checklist plus these anchors is enough.
+
 ### Agent Cockpit — Autopilot consumption and artifact handoff
 
 **Owns:** M1 and the user-facing run path into M8.
