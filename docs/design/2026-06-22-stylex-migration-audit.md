@@ -68,6 +68,24 @@ Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/a
   Elements surfaces route through the StyleX adapter without changing Foldkit
   component APIs.
 
+2026-06-22 P3 Autopilot domain UI migration, issue #5955:
+
+- Added `packages/autopilot-ui/src/domain-styles.ts` as the shared StyleX
+  vocabulary for Autopilot domain panels, rows, metadata, action buttons,
+  progress bars, and status chips.
+- Migrated the shared `statusChip` implementation in `view.ts` to StyleX, so
+  all Autopilot domain chips now consume the shared `@openagentsinc/ui` /
+  design-token CSS variable contract instead of local Tailwind tone strings.
+- Migrated the first domain view batch to StyleX while preserving Foldkit
+  public APIs and data attributes: node status, provider health, cloud quota,
+  earnings, decisions, session details/actions, assignments, artifacts,
+  receipts, verify status, and event timeline rows.
+- Kept public activity CSS classes and larger app-composite surfaces out of
+  this batch; those should move after the web app-local CSS phase has a
+  clearer ownership split.
+- Added Autopilot UI render coverage proving the migrated domain families route
+  through deterministic StyleX fallback classes in Bun tests.
+
 ## Executive verdict
 
 A full migration toward StyleX is technically viable for the OpenAgents DOM
@@ -593,6 +611,11 @@ Keep old CSS/Tailwind available until each family is fully moved.
 
 Goal: convert `@openagentsinc/autopilot-ui` to consume shared tokens and
 StyleX helpers.
+
+Status: started in #5955 with the first domain view batch and the shared
+status chip moved to StyleX. Remaining work is mostly public activity,
+account/steering controls, diff review, and any app-composite surfaces that
+should wait for the app-local CSS split.
 
 Targets:
 

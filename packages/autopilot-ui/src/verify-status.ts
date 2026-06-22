@@ -1,5 +1,7 @@
-import type { Attribute, Html } from "foldkit/html"
+import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 import type { AutopilotUiMessage, ChipTone } from "./view.js"
 import { statusChip } from "./view.js"
 
@@ -15,8 +17,6 @@ export type VerifyState = Readonly<{
 }>
 
 const h = html<AutopilotUiMessage>()
-
-const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
 
 const verifyStatusTone = (status: VerifyState["status"]): ChipTone => {
   switch (status) {
@@ -37,14 +37,12 @@ const shellQuote = (part: string): string =>
 export const VerifyStatus = (input: VerifyState): Html =>
   h.section(
     [
-      className(
-        "grid gap-3 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-4 text-[var(--text,#d7d8e5)]",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-verify-status", input.status),
     ],
     [
-      h.div([className("flex flex-wrap items-center justify-between gap-2")], [
-        h.h3([className("m-0 font-mono text-sm font-bold text-[var(--primary,#fff)]")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.h3(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
           "verify",
         ]),
         statusChip({
@@ -55,25 +53,24 @@ export const VerifyStatus = (input: VerifyState): Html =>
       ]),
       h.code(
         [
-          className(
-            "block min-w-0 overflow-x-auto whitespace-pre rounded-[4px] border border-[var(--outline,#525458)] bg-[var(--bg,#0b0b0c)] px-3 py-2 font-mono text-xs text-[var(--primary,#fff)]",
-          ),
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.commandBlock),
           h.DataAttribute("autopilot-verify-command", ""),
         ],
         [input.command.map(shellQuote).join(" ")],
       ),
       h.ul(
-        [className("grid gap-2"), h.DataAttribute("autopilot-required-artifacts", "")],
+        [
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+          h.DataAttribute("autopilot-required-artifacts", ""),
+        ],
         input.requiredArtifacts.map((artifact) =>
           h.li(
             [
-              className(
-                "grid gap-2 border border-[var(--outline,#525458)] bg-transparent p-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-center",
-              ),
+              ...stylexAttrs<AutopilotUiMessage>(domainStyles.twoColumnRow),
               h.DataAttribute("autopilot-artifact-ref", artifact.ref),
             ],
             [
-              h.code([className("min-w-0 truncate font-mono text-xs text-[var(--primary,#fff)]")], [
+              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 artifact.ref,
               ]),
               statusChip({

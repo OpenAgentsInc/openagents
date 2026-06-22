@@ -12,6 +12,7 @@ import {
 import * as stylex from "@stylexjs/stylex"
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 
 export type AutopilotUiMessage = never
 
@@ -101,20 +102,13 @@ const sessionStyles = stylexRuntimeFallbackEnabled()
       },
     })
 
-const toneClasses = (tone: ChipTone): string => {
-  switch (tone) {
-    case "success":
-      return "border-[#00c853]/60 bg-[#00c853]/10 text-[#86efac]"
-    case "warning":
-      return "border-[#ffb400]/60 bg-[#ffb400]/10 text-[#facc15]"
-    case "danger":
-      return "border-[#d32f2f]/70 bg-[#d32f2f]/10 text-[#fca5a5]"
-    case "info":
-      return "border-sky-400/60 bg-sky-400/10 text-sky-200"
-    case "neutral":
-      return "border-[var(--outline,#525458)] bg-transparent text-[var(--text-secondary,#8a8c93)]"
-  }
-}
+const chipToneStyles = {
+  neutral: domainStyles.chipNeutral,
+  success: domainStyles.chipSuccess,
+  warning: domainStyles.chipWarning,
+  danger: domainStyles.chipDanger,
+  info: domainStyles.chipInfo,
+} as const satisfies Record<ChipTone, (typeof domainStyles)[keyof typeof domainStyles]>
 
 export const sessionStateTone = (state: SessionState): ChipTone => {
   switch (state) {
@@ -138,11 +132,9 @@ export const statusChip = (input: {
   h.span(
     [
       ...(input.attrs ?? []),
-      className(
-        [
-          "inline-flex h-6 items-center rounded-[4px] border px-2 font-mono text-xs font-bold leading-none whitespace-nowrap",
-          toneClasses(input.tone ?? "neutral"),
-        ].join(" "),
+      ...stylexAttrs<AutopilotUiMessage>(
+        domainStyles.chip,
+        chipToneStyles[input.tone ?? "neutral"],
       ),
     ],
     [input.label],
@@ -238,18 +230,16 @@ export const DecisionCard = (input: {
 
   return h.article(
     [
-      className(
-        "grid gap-3 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-4 text-[var(--text,#d7d8e5)]",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-decision-id", input.decision.requestId),
     ],
     [
-      h.div([className("flex flex-wrap items-start justify-between gap-2")], [
-        h.div([className("grid min-w-0 gap-1")], [
-          h.h3([className("m-0 font-mono text-sm font-bold text-[var(--primary,#fff)]")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stack), [
+          h.h3(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
             input.decision.actionRef,
           ]),
-          h.code([className("min-w-0 truncate font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
             input.decision.requestId,
           ]),
         ]),
@@ -259,25 +249,23 @@ export const DecisionCard = (input: {
           attrs: [h.DataAttribute("autopilot-decision-state", input.decision.state)],
         }),
       ]),
-      h.dl([className("grid gap-2 text-xs sm:grid-cols-2")], [
-        h.div([className("grid gap-1")], [
-          h.dt([className("font-mono uppercase text-[var(--text-secondary,#8a8c93)]")], ["Resolved"]),
-          h.dd([className("m-0 font-mono text-[var(--primary,#fff)]")], [resolved]),
+      h.dl(stylexAttrs<AutopilotUiMessage>(domainStyles.metadataGrid), [
+        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.dt(stylexAttrs<AutopilotUiMessage>(domainStyles.label), ["Resolved"]),
+          h.dd(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [resolved]),
         ]),
-        h.div([className("grid gap-1")], [
-          h.dt([className("font-mono uppercase text-[var(--text-secondary,#8a8c93)]")], ["Expires"]),
-          h.dd([className("m-0 font-mono text-[var(--primary,#fff)]")], [
+        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.dt(stylexAttrs<AutopilotUiMessage>(domainStyles.label), ["Expires"]),
+          h.dd(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             String(input.decision.expiresAtMs),
           ]),
         ]),
       ]),
-      h.div([className("flex flex-wrap gap-2")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.wrap), [
         ...actions.map((action) =>
           h.button(
             [
-              className(
-                "inline-flex h-8 items-center rounded-[4px] border border-[var(--outline,#525458)] px-3 font-mono text-xs font-bold text-[var(--primary,#fff)] disabled:opacity-45",
-              ),
+              ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
               h.Type("button"),
               h.Disabled(disabled || action.disabled === true),
               h.DataAttribute("autopilot-decision-action", action.verb),
@@ -312,30 +300,31 @@ export const EventTimeline = (input: {
   emptyLabel?: string
 }): Html =>
   h.ol(
-    [className("grid gap-2"), h.DataAttribute("autopilot-event-timeline", "")],
+    [
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      h.DataAttribute("autopilot-event-timeline", ""),
+    ],
     input.events.length === 0
       ? [
-          h.li([className("text-sm text-[var(--text-secondary,#8a8c93)]")], [
+          h.li(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
             input.emptyLabel ?? "No events",
           ]),
         ]
       : input.events.map((event) =>
           h.li(
             [
-              className(
-                "grid gap-2 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-3 sm:grid-cols-[4rem_10rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center",
-              ),
+              ...stylexAttrs<AutopilotUiMessage>(domainStyles.eventRow),
               h.DataAttribute("autopilot-event-id", event.eventId),
             ],
             [
-              h.code([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 `#${event.sequence}`,
               ]),
               statusChip({ label: event.phase, tone: eventTone(event) }),
-              h.time([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+              h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
                 event.observedAt,
               ]),
-              h.code([className("min-w-0 truncate font-mono text-xs text-[var(--primary,#fff)]")], [
+              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 event.detailRef ?? event.sessionRef,
               ]),
             ],

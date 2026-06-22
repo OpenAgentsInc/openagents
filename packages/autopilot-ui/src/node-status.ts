@@ -1,5 +1,7 @@
-import type { Attribute, Html } from "foldkit/html"
+import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 import type { AutopilotUiMessage } from "./view.js"
 import { statusChip } from "./view.js"
 
@@ -17,22 +19,16 @@ export type ProviderHealth = Readonly<{
 
 const h = html<AutopilotUiMessage>()
 
-const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
-
 const onlineLabel = (online: boolean): "online" | "offline" => (online ? "online" : "offline")
 
 export const NodeStatusBadge = (node: NodeStatus): Html =>
   h.div(
     [
-      className(
-        "inline-flex min-w-0 items-center gap-2 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] px-3 py-2 text-[var(--text,#d7d8e5)]",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.inlinePanel),
       h.DataAttribute("autopilot-node-ref", node.nodeRef),
     ],
     [
-      h.code([className("min-w-0 truncate font-mono text-xs text-[var(--primary,#fff)]")], [
-        node.nodeRef,
-      ]),
+      h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [node.nodeRef]),
       statusChip({
         label: onlineLabel(node.online),
         tone: node.online ? "success" : "danger",
@@ -41,7 +37,7 @@ export const NodeStatusBadge = (node: NodeStatus): Html =>
       ...(node.lastHeartbeatAt === undefined
         ? []
         : [
-            h.time([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+            h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
               node.lastHeartbeatAt,
             ]),
           ]),
@@ -50,17 +46,18 @@ export const NodeStatusBadge = (node: NodeStatus): Html =>
 
 export const ProviderStatusList = (input: { providers: ReadonlyArray<ProviderHealth> }): Html =>
   h.ul(
-    [className("grid gap-2"), h.DataAttribute("autopilot-provider-status-list", "")],
+    [
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      h.DataAttribute("autopilot-provider-status-list", ""),
+    ],
     input.providers.map((provider) =>
       h.li(
         [
-          className(
-            "grid gap-2 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-3 text-[var(--text,#d7d8e5)] sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,1fr)] sm:items-center",
-          ),
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.providerRow),
           h.DataAttribute("autopilot-provider", provider.provider),
         ],
         [
-          h.code([className("min-w-0 truncate font-mono text-sm text-[var(--primary,#fff)]")], [
+          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             provider.provider,
           ]),
           statusChip({
@@ -68,7 +65,7 @@ export const ProviderStatusList = (input: { providers: ReadonlyArray<ProviderHea
             tone: provider.online ? "success" : "danger",
             attrs: [h.DataAttribute("autopilot-provider-status", onlineLabel(provider.online))],
           }),
-          h.code([className("min-w-0 truncate font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
             provider.detailRef ?? "none",
           ]),
         ],

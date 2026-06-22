@@ -1,5 +1,7 @@
-import type { Attribute, Html } from "foldkit/html"
+import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 import type { AutopilotUiMessage } from "./view.js"
 import { statusChip } from "./view.js"
 
@@ -14,25 +16,21 @@ export type EarningsSummary = Readonly<{
 
 const h = html<AutopilotUiMessage>()
 
-const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
-
 const satsLabel = (amountSats: number): string => `${amountSats} sats`
 
 export const EarningsPanel = (input: EarningsSummary): Html =>
   h.section(
     [
-      className(
-        "grid gap-4 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-4 text-[var(--text,#d7d8e5)]",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-earnings-panel", ""),
     ],
     [
-      h.div([className("flex flex-wrap items-start justify-between gap-3")], [
-        h.div([className("grid gap-1")], [
-          h.h2([className("m-0 font-mono text-sm font-bold text-[var(--primary,#fff)]")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.h2(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
             "Earnings",
           ]),
-          h.p([className("m-0 font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+          h.p(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
             "Read-only balance",
           ]),
         ]),
@@ -43,29 +41,30 @@ export const EarningsPanel = (input: EarningsSummary): Html =>
         }),
       ]),
       h.ol(
-        [className("grid gap-2"), h.DataAttribute("autopilot-earnings-entries", "")],
+        [
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+          h.DataAttribute("autopilot-earnings-entries", ""),
+        ],
         input.entries.length === 0
           ? [
-              h.li([className("text-sm text-[var(--text-secondary,#8a8c93)]")], [
+              h.li(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
                 "No earnings yet",
               ]),
             ]
           : input.entries.map((entry) =>
               h.li(
                 [
-                  className(
-                    "grid gap-2 border border-[var(--outline,#525458)] bg-[var(--bg,#0d0d0d)] p-3 sm:grid-cols-[minmax(0,1fr)_8rem_12rem] sm:items-center",
-                  ),
+                  ...stylexAttrs<AutopilotUiMessage>(domainStyles.earningsRow),
                   h.DataAttribute("autopilot-earnings-ref", entry.ref),
                 ],
                 [
-                  h.code([className("min-w-0 truncate font-mono text-xs text-[var(--primary,#fff)]")], [
+                  h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
                     entry.ref,
                   ]),
-                  h.span([className("font-mono text-xs font-bold text-[#86efac]")], [
+                  h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.successValue), [
                     satsLabel(entry.amountSats),
                   ]),
-                  h.time([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+                  h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
                     entry.at,
                   ]),
                 ],

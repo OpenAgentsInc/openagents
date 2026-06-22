@@ -1,5 +1,7 @@
-import type { Attribute, Html } from "foldkit/html"
+import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 import type { AutopilotUiMessage, ChipTone } from "./view.js"
 import { statusChip } from "./view.js"
 
@@ -12,8 +14,6 @@ export type ActionSessionSummary = Readonly<{
 }>
 
 const h = html<AutopilotUiMessage>()
-
-const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
 
 const sessionStateTone = (state: SessionActionState): ChipTone => {
   switch (state) {
@@ -40,18 +40,16 @@ export const SessionDetail = (
 ): Html =>
   h.article(
     [
-      className(
-        "grid gap-3 border border-[var(--outline,#525458)] bg-[var(--bg-secondary,#151515)] p-4 text-[var(--text,#d7d8e5)]",
-      ),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-session-ref", session.sessionRef),
     ],
     [
-      h.div([className("flex flex-wrap items-start justify-between gap-2")], [
-        h.div([className("grid min-w-0 gap-1")], [
-          h.code([className("min-w-0 truncate font-mono text-sm text-[var(--primary,#fff)]")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stack), [
+          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             session.sessionRef,
           ]),
-          h.span([className("font-mono text-xs text-[var(--text-secondary,#8a8c93)]")], [
+          h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
             session.adapter,
           ]),
         ]),
@@ -78,18 +76,16 @@ export const SessionActions = (input: {
   readOnly: boolean
 }): Html => {
   const terminal = isTerminalSessionState(input.session.state)
-  const actionClass =
-    "inline-flex h-8 items-center rounded-[4px] border border-[var(--outline,#525458)] px-3 font-mono text-xs font-bold text-[var(--primary,#fff)] disabled:opacity-45"
 
   return h.div(
     [
-      className("flex flex-wrap gap-2"),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.wrap),
       h.DataAttribute("autopilot-session-actions", input.session.sessionRef),
     ],
     [
       h.button(
         [
-          className(actionClass),
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
           h.Type("button"),
           h.Disabled(input.readOnly || terminal),
           h.DataAttribute("autopilot-action", "spawn"),
@@ -98,7 +94,7 @@ export const SessionActions = (input: {
       ),
       h.button(
         [
-          className(actionClass),
+          ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
           h.Type("button"),
           h.Disabled(input.readOnly || terminal),
           h.DataAttribute("autopilot-action", "cancel"),

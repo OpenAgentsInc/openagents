@@ -1,5 +1,7 @@
-import type { Attribute, Html } from "foldkit/html"
+import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
+import { domainStyles } from "./domain-styles.js"
 import type { AutopilotUiMessage } from "./view.js"
 import { statusChip } from "./view.js"
 
@@ -21,8 +23,6 @@ export type DecisionActionModel = Readonly<
 >
 
 const h = html<AutopilotUiMessage>()
-
-const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
 
 const decisionVerbs = ["approve", "deny", "answer"] as const satisfies ReadonlyArray<DecisionVerb>
 
@@ -47,20 +47,18 @@ export const decisionActionState = (
 
 export const DecisionActions = (input: { decision: DecisionView; readOnly: boolean }): Html => {
   const actions = decisionActionState(input.decision, { readOnly: input.readOnly })
-  const actionClass =
-    "inline-flex h-8 items-center rounded-[4px] border border-[var(--outline,#525458)] px-3 font-mono text-xs font-bold text-[var(--primary,#fff)] disabled:opacity-45"
 
   return h.div(
     [
-      className("grid gap-2 text-[var(--text,#d7d8e5)]"),
+      ...stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall),
       h.DataAttribute("autopilot-decision-actions", input.decision.requestId),
     ],
     [
-      h.div([className("flex flex-wrap items-center gap-2")], [
+      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.wrap), [
         ...decisionVerbs.map((verb) =>
           h.button(
             [
-              className(actionClass),
+              ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
               h.Type("button"),
               h.Disabled(!actions[verb].enabled),
               h.DataAttribute("autopilot-decision-action", verb),
