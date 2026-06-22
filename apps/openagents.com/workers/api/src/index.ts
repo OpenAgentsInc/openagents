@@ -444,7 +444,8 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
-import { emptyCrmMcpCatalog, makeCrmMcpRoutes } from './crm-mcp-routes'
+import { makeCrmMcpReadCatalog } from './crm-mcp'
+import { makeCrmMcpRoutes } from './crm-mcp-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
@@ -7120,10 +7121,10 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
-// CRM MCP server (epic #5991). The transport ships with an empty catalog;
-// CRM read tools (#5993) + resources (#5994) provide the real catalog.
+// CRM MCP server (epic #5991): read-only tool catalog (#5993). Resources
+// (#5994) and grant filtering (#5995) extend this same catalog.
 const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
-  catalog: emptyCrmMcpCatalog<WorkerBindings>(),
+  catalog: makeCrmMcpReadCatalog<WorkerBindings>(),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
