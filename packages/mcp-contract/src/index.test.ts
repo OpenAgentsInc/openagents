@@ -6,6 +6,7 @@ import {
   decodeOpenAgentsMcpElicitationResponse,
   decodeOpenAgentsMcpError,
   decodeOpenAgentsMcpGrant,
+  decodeOpenAgentsMcpOutputProjection,
   decodeOpenAgentsMcpPromptDescriptor,
   decodeOpenAgentsMcpProgressEvent,
   decodeOpenAgentsMcpReceipt,
@@ -25,6 +26,9 @@ import {
   openAgentsMcpTransportKinds,
   openAgentsMcpErrorHttpStatus,
   parseOpenAgentsMcpResourceUri,
+  projectOpenAgentsMcpOutput,
+  redactOpenAgentsMcpUnsafeText,
+  detectOpenAgentsMcpUnsafeMaterial,
   projectOpenAgentsMcpServerConfigPublic,
   type OpenAgentsMcpGrant,
 } from "./index.js"
@@ -441,5 +445,75 @@ describe("@openagentsinc/mcp-contract", () => {
     })
     expect(request.requiredAuthorities).toEqual(["payment_spend"])
     expect(response.decision).toBe("approved")
+  })
+
+  test("detects and redacts common unsafe output material", () => {
+    const unsafe = [
+      "mnemonic: abandon ability able about above absent absorb abstract absurd abuse access accident",
+      "access_token=mdk_live_secret",
+      "Authorization: Bearer live-token-value",
+      "raw_prompt: inspect private repo internals",
+      "/Users/example/private/project/file.ts",
+      "MDK_MNEMONIC=abandon ability able about above absent absorb abstract absurd abuse access accident",
+      "sk-test-secretmaterial",
+    ].join("\n")
+
+    expect([...detectOpenAgentsMcpUnsafeMaterial(unsafe)].sort()).toEqual([
+      "access_token",
+      "bearer_token",
+      "credential_material",
+      "local_path",
+      "mnemonic",
+      "private_prompt",
+      "wallet_secret",
+    ])
+    const redacted = redactOpenAgentsMcpUnsafeText(unsafe)
+    expect(redacted).not.toContain("sk-test")
+    expect(redacted).not.toContain("/Users/example")
+    expect(redacted).not.toContain("abandon ability")
+    expect(redacted).not.toContain("live-token-value")
+  })
+
+  test("projects public output with truncation metadata", () => {
+    const projected = decodeOpenAgentsMcpOutputProjection(projectOpenAgentsMcpOutput({
+      outputRef: "output.test.public",
+      safetyClass: "public",
+      text: "abcdef",
+      maxTextBytes: 3,
+      sourceRefs: ["github:OpenAgentsInc/openagents#5940"],
+    }))
+
+    expect(projected).toMatchObject({
+      outputRef: "output.test.public",
+      safetyClass: "public",
+      summary: "Output projected.",
+      text: "abc",
+      unsafeMaterialTags: [],
+      truncation: {
+        truncated: true,
+        originalBytes: 6,
+        retainedBytes: 3,
+        omittedBytes: 3,
+        reason: "max_text_bytes",
+      },
+      persistence: "persist_public_summary",
+    })
+  })
+
+  test("omits secret-bearing or unsafe payloads from serialized projections", () => {
+    const projected = projectOpenAgentsMcpOutput({
+      outputRef: "output.test.secret",
+      safetyClass: "secret_bearing",
+      text: "Bearer live-token-value from /Users/example/private",
+      sourceRefs: ["github:OpenAgentsInc/openagents#5940"],
+    })
+
+    const serialized = JSON.stringify(projected)
+    expect(projected.safetyClass).toBe("omitted")
+    expect(projected.text).toBeUndefined()
+    expect(projected.truncation.reason).toBe("unsafe_or_secret_output")
+    expect(serialized).not.toContain("live-token-value")
+    expect(serialized).not.toContain("/Users/example")
+    expect(serialized).not.toContain("Bearer")
   })
 })

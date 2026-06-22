@@ -631,3 +631,172 @@ export const decodeOpenAgentsMcpElicitationRequest = S.decodeUnknownSync(
 export const decodeOpenAgentsMcpElicitationResponse = S.decodeUnknownSync(
   OpenAgentsMcpElicitationResponse,
 )
+
+export const OpenAgentsMcpOutputSafetyClass = S.Literals([
+  "public",
+  "operator",
+  "private_account",
+  "local_only",
+  "workspace_private",
+  "secret_bearing",
+  "omitted",
+])
+export type OpenAgentsMcpOutputSafetyClass =
+  typeof OpenAgentsMcpOutputSafetyClass.Type
+
+export const OpenAgentsMcpPersistencePolicy = S.Literals([
+  "do_not_persist",
+  "persist_public_summary",
+  "persist_operator_summary",
+  "persist_private_ref_only",
+])
+export type OpenAgentsMcpPersistencePolicy =
+  typeof OpenAgentsMcpPersistencePolicy.Type
+
+export const OpenAgentsMcpTruncationMetadata = S.Struct({
+  truncated: S.Boolean,
+  originalBytes: S.optional(S.Number),
+  retainedBytes: S.optional(S.Number),
+  omittedBytes: S.optional(S.Number),
+  reason: S.optional(S.String),
+})
+export type OpenAgentsMcpTruncationMetadata =
+  typeof OpenAgentsMcpTruncationMetadata.Type
+
+export const OpenAgentsMcpOutputProjection = S.Struct({
+  outputRef: S.String,
+  safetyClass: OpenAgentsMcpOutputSafetyClass,
+  summary: S.String,
+  text: S.optional(S.String),
+  unsafeMaterialTags: S.Array(S.String),
+  truncation: OpenAgentsMcpTruncationMetadata,
+  persistence: OpenAgentsMcpPersistencePolicy,
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpOutputProjection =
+  typeof OpenAgentsMcpOutputProjection.Type
+
+export const decodeOpenAgentsMcpOutputProjection = S.decodeUnknownSync(
+  OpenAgentsMcpOutputProjection,
+)
+
+export const OpenAgentsMcpUnsafeMaterialTag = S.Literals([
+  "mnemonic",
+  "access_token",
+  "bearer_token",
+  "private_prompt",
+  "local_path",
+  "wallet_secret",
+  "credential_material",
+])
+export type OpenAgentsMcpUnsafeMaterialTag =
+  typeof OpenAgentsMcpUnsafeMaterialTag.Type
+
+const openAgentsMcpUnsafePatterns: ReadonlyArray<Readonly<{
+  tag: OpenAgentsMcpUnsafeMaterialTag
+  pattern: RegExp
+  replacement: string
+}>> = [
+  {
+    tag: "mnemonic",
+    pattern: /\b(?:mnemonic|seed phrase)\s*[:=]\s*[a-z]+(?:\s+[a-z]+){5,}\b/gi,
+    replacement: "mnemonic:[REDACTED]",
+  },
+  {
+    tag: "access_token",
+    pattern: /\b(?:access[_-]?token|MDK_ACCESS_TOKEN)\s*[:=]\s*[\w.-]+/gi,
+    replacement: "access_token:[REDACTED]",
+  },
+  {
+    tag: "bearer_token",
+    pattern: /\bBearer\s+[\w.-]+/gi,
+    replacement: "Bearer [REDACTED]",
+  },
+  {
+    tag: "private_prompt",
+    pattern: /\b(?:raw_prompt|private prompt|system prompt)\s*[:=]\s*[^\\n]+/gi,
+    replacement: "private_prompt:[REDACTED]",
+  },
+  {
+    tag: "local_path",
+    pattern: /(?:\/Users\/|\/home\/|\/var\/folders\/)[^\s"'`]+/g,
+    replacement: "[LOCAL_PATH_REDACTED]",
+  },
+  {
+    tag: "wallet_secret",
+    pattern: /\b(?:MDK_MNEMONIC|wallet secret|wallet_seed)\s*[:=]\s*[\w\s.-]+/gi,
+    replacement: "wallet_secret:[REDACTED]",
+  },
+  {
+    tag: "credential_material",
+    pattern: /\b(?:sk-[A-Za-z0-9_-]{8,}|ghp_[A-Za-z0-9_]{8,}|api[_-]?key\s*[:=]\s*[\w.-]+)/g,
+    replacement: "credential:[REDACTED]",
+  },
+]
+
+export const detectOpenAgentsMcpUnsafeMaterial = (
+  value: unknown,
+): ReadonlyArray<OpenAgentsMcpUnsafeMaterialTag> => {
+  const serialized = typeof value === "string" ? value : JSON.stringify(value)
+  if (serialized === undefined) return []
+  const tags = new Set<OpenAgentsMcpUnsafeMaterialTag>()
+  for (const { tag, pattern } of openAgentsMcpUnsafePatterns) {
+    pattern.lastIndex = 0
+    if (pattern.test(serialized)) tags.add(tag)
+  }
+  return [...tags]
+}
+
+export const redactOpenAgentsMcpUnsafeText = (text: string): string =>
+  openAgentsMcpUnsafePatterns.reduce(
+    (current, { pattern, replacement }) => current.replace(pattern, replacement),
+    text,
+  )
+
+export type ProjectOpenAgentsMcpOutputInput = Readonly<{
+  outputRef: string
+  safetyClass: OpenAgentsMcpOutputSafetyClass
+  text: string
+  sourceRefs: ReadonlyArray<string>
+  maxTextBytes?: number
+}>
+
+export const projectOpenAgentsMcpOutput = (
+  input: ProjectOpenAgentsMcpOutputInput,
+): OpenAgentsMcpOutputProjection => {
+  const unsafeMaterialTags = detectOpenAgentsMcpUnsafeMaterial(input.text)
+  const mayExposeText =
+    input.safetyClass !== "secret_bearing" &&
+    input.safetyClass !== "omitted" &&
+    unsafeMaterialTags.length === 0
+  const maxTextBytes = input.maxTextBytes ?? 4096
+  const encodedLength = new TextEncoder().encode(input.text).length
+  const truncated = mayExposeText && encodedLength > maxTextBytes
+  const text = mayExposeText
+    ? input.text.slice(0, maxTextBytes)
+    : undefined
+  const omittedBytes = mayExposeText
+    ? truncated ? Math.max(encodedLength - maxTextBytes, 0) : 0
+    : encodedLength
+  const base = {
+    outputRef: input.outputRef,
+    safetyClass: unsafeMaterialTags.length > 0 ? "omitted" as const : input.safetyClass,
+    summary: mayExposeText ? "Output projected." : "Output omitted by MCP safety policy.",
+    unsafeMaterialTags: [...unsafeMaterialTags],
+    truncation: {
+      truncated,
+      originalBytes: encodedLength,
+      retainedBytes: text === undefined ? 0 : new TextEncoder().encode(text).length,
+      omittedBytes,
+      ...(truncated ? { reason: "max_text_bytes" } : {}),
+      ...(!mayExposeText ? { reason: "unsafe_or_secret_output" } : {}),
+    },
+    persistence: input.safetyClass === "public"
+      ? "persist_public_summary" as const
+      : input.safetyClass === "operator"
+        ? "persist_operator_summary" as const
+        : "persist_private_ref_only" as const,
+    sourceRefs: [...input.sourceRefs],
+  }
+  return text === undefined ? base : { ...base, text }
+}

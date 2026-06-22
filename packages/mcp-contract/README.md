@@ -18,6 +18,7 @@ Current Phase 0 scope:
 - tool, resource, and prompt descriptors;
 - naming and resource URI rules;
 - receipt, tagged error, progress, and elicitation schemas;
+- public-safe output and redaction rules;
 - package status metadata for docs and compatibility checks.
 
 ## Authority And Grants
@@ -77,6 +78,20 @@ raw prompts, tokens, mnemonics, local paths, or provider payloads.
 Long-running tool calls can emit transport-neutral progress events. Client-side
 elicitation uses tagged request/response records for approval prompts, auth
 prompts, missing config, amount caps, and human confirmation.
+
+## Output Safety
+
+Output projections carry a safety class: `public`, `operator`,
+`private_account`, `local_only`, `workspace_private`, `secret_bearing`, or
+`omitted`. The contract includes truncation metadata and persistence policy
+fields so callers can distinguish public summaries from operator-only summaries
+and private refs.
+
+The redaction helpers detect common unsafe material before projection:
+mnemonics, access tokens, bearer tokens, private prompts, local absolute paths,
+wallet secrets, and credential material. Secret-bearing or unsafe output is
+omitted from serialized projections instead of being embedded into receipts,
+progress events, diagnostics, issue comments, or public resources.
 
 The package expands across the remaining Phase 0 issues to include authority,
 transport, lifecycle, descriptor, receipt, error, progress, elicitation, naming,
