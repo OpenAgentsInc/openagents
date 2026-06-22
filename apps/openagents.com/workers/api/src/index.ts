@@ -444,7 +444,7 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
-import { makeCrmMcpReadCatalog } from './crm-mcp'
+import { makeCrmMcpCatalog } from './crm-mcp'
 import {
   crmMcpAdminPrincipal,
   mcpTenantHeader,
@@ -7144,7 +7144,7 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
     }
     return resolveCrmMcpGrantPrincipal(openAgentsDatabase(env), token, currentIsoTimestamp())
   },
-  catalog: makeCrmMcpReadCatalog<WorkerBindings>(),
+  catalog: makeCrmMcpCatalog<WorkerBindings>({ resolveResendDeps: resolveCrmResendDeps }),
 })
 
 const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({

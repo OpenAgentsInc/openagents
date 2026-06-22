@@ -27,7 +27,15 @@ import {
   listCrmQueuedGmailMessages,
   upsertCrmEmailTemplate,
 } from './crm-email'
-import { listCrmCommands, proposeCrmSendCommand } from './crm-command'
+import {
+  approveAndExecuteCrmSendCommand,
+  listCrmCommands,
+  proposeCrmSendCommand,
+  rejectCrmCommand,
+} from './crm-command'
+import { runCrmBatch } from './crm-batch'
+import { crmImportDepsFromDb, importCrmContactsFromCsv } from './crm-import'
+import type { CrmDispatchDeps } from './crm-send'
 import type {
   CrmMcpCatalog,
   McpResourceListing,
@@ -48,6 +56,7 @@ import {
   listCrmSourceImportRuns,
 } from './crm-store'
 import { readEmailSendEligibility } from './email-preferences'
+import { stringArrayFromUnknown } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 
 type CrmMcpEnv = Readonly<{ OPENAGENTS_DB: D1Database }>
@@ -111,6 +120,46 @@ const CRM_MCP_INPUT_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> =
       tenant: TENANT_PROP,
     },
     required: ['contactId', 'templateSlug'],
+    type: 'object',
+  },
+  'crm.send.command.approve': {
+    additionalProperties: false,
+    properties: { commandId: { description: 'Command id to approve + execute.', type: 'string' }, tenant: TENANT_PROP },
+    required: ['commandId'],
+    type: 'object',
+  },
+  'crm.send.command.reject': {
+    additionalProperties: false,
+    properties: {
+      commandId: { description: 'Command id to reject.', type: 'string' },
+      reason: { description: 'Optional rejection reason.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['commandId'],
+    type: 'object',
+  },
+  'crm.import.run': {
+    additionalProperties: false,
+    properties: {
+      csv: { description: 'CSV text (header row + contacts).', type: 'string' },
+      listName: { description: 'Optional list display name.', type: 'string' },
+      listSlug: { description: 'Optional list slug to add imported contacts to.', type: 'string' },
+      sourceLabel: { description: 'Audit label for the import run.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['csv'],
+    type: 'object',
+  },
+  'crm.batch.send': {
+    additionalProperties: false,
+    properties: {
+      channel: { description: 'Send channel.', enum: ['gmail_gws', 'resend'], type: 'string' },
+      contactIds: { description: 'Contact ids to plan a send for.', items: { type: 'string' }, type: 'array' },
+      sendReason: { description: 'Optional reason.', type: 'string' },
+      templateSlug: { description: 'Template slug.', type: 'string' },
+      tenant: TENANT_PROP,
+    },
+    required: ['contactIds', 'templateSlug'],
     type: 'object',
   },
   'crm.template.upsert': {
@@ -226,6 +275,43 @@ const writeTool = (
   title,
 })
 
+const approvalTool = (
+  name: string,
+  title: string,
+  description: string,
+): OpenAgentsMcpToolDescriptor => ({
+  description,
+  inputSchemaRef: `${name}.input`,
+  name,
+  outputSchemaRef: `${name}.output`,
+  progressBehavior: 'none',
+  publicSummary: title,
+  receiptBehavior: 'approval_receipt',
+  requiredAuthorities: ['approval_resolution'],
+  riskClass: 'medium',
+  sourceRefs: [SOURCE],
+  title,
+})
+
+// Dry-run-only batch: operator_read, no receipt (mutates nothing over MCP).
+const readishTool = (
+  name: string,
+  title: string,
+  description: string,
+): OpenAgentsMcpToolDescriptor => ({
+  description,
+  inputSchemaRef: `${name}.input`,
+  name,
+  outputSchemaRef: `${name}.output`,
+  progressBehavior: 'none',
+  publicSummary: title,
+  receiptBehavior: 'none',
+  requiredAuthorities: ['operator_read'],
+  riskClass: 'low',
+  sourceRefs: [SOURCE],
+  title,
+})
+
 export const CRM_MCP_WRITE_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
   writeTool(
     'crm.send.command.propose',
@@ -239,6 +325,28 @@ export const CRM_MCP_WRITE_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
     'Create or update a CRM email template for the tenant.',
     ['workspace_write'],
   ),
+  // --- Wave 3: gated execution ---
+  approvalTool(
+    'crm.send.command.approve',
+    'Approve + execute a send command',
+    'Approve a pending send_email command and execute it (the suppression/unsubscribe gate still applies).',
+  ),
+  approvalTool(
+    'crm.send.command.reject',
+    'Reject a send command',
+    'Reject a pending send_email command (nothing is sent).',
+  ),
+  writeTool(
+    'crm.import.run',
+    'Import contacts from CSV',
+    'Import contacts from CSV text into the tenant CRM, recording an audited import run.',
+    ['workspace_write'],
+  ),
+  readishTool(
+    'crm.batch.send',
+    'Plan a batch send (dry-run)',
+    'Plan a batch send across contacts. Over MCP this is DRY-RUN ONLY: it reports would_send/suppressed/failed counts and sends nothing.',
+  ),
 ]
 
 /** All CRM MCP tools (read + write), filtered per-principal at list time. */
@@ -250,7 +358,7 @@ export const CRM_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
 // --- dispatch (read fns) ----------------------------------------------------
 
 // Tenant is the principal's bound tenant — never client-supplied `args.tenant`.
-type CrmToolContext = Readonly<{ subjectRef: string }>
+type CrmToolContext = Readonly<{ subjectRef: string; dispatchDeps: CrmDispatchDeps }>
 type CrmToolHandler = (
   db: D1Database,
   tenant: string,
@@ -323,6 +431,37 @@ const CRM_MCP_WRITE_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
       subjectTemplate: requiredId(a, 'subjectTemplate'),
       tenantRef: tenant,
     }),
+  // --- Wave 3: gated execution ---
+  'crm.batch.send': (db, tenant, a, ctx) =>
+    runCrmBatch(db, ctx.dispatchDeps, {
+      channel: a.channel === 'resend' ? 'resend' : 'gmail_gws',
+      contactIds: stringArrayFromUnknown(a.contactIds),
+      dryRun: true, // MCP batch is DRY-RUN ONLY
+      sendReason: typeof a.sendReason === 'string' ? a.sendReason : null,
+      templateSlug: requiredId(a, 'templateSlug'),
+      tenantRef: tenant,
+    }),
+  'crm.import.run': (db, tenant, a) =>
+    importCrmContactsFromCsv(crmImportDepsFromDb(db), {
+      csv: requiredId(a, 'csv'),
+      listName: typeof a.listName === 'string' ? a.listName : null,
+      listSlug: typeof a.listSlug === 'string' ? a.listSlug : null,
+      sourceLabel:
+        typeof a.sourceLabel === 'string' && a.sourceLabel.trim() !== '' ? a.sourceLabel : 'mcp:import',
+      tenantRef: tenant,
+    }),
+  'crm.send.command.approve': (db, tenant, a, ctx) =>
+    approveAndExecuteCrmSendCommand(db, ctx.dispatchDeps, {
+      approvedByRef: ctx.subjectRef,
+      commandId: requiredId(a, 'commandId'),
+      tenantRef: tenant,
+    }),
+  'crm.send.command.reject': (db, tenant, a) =>
+    rejectCrmCommand(db, {
+      commandId: requiredId(a, 'commandId'),
+      reason: typeof a.reason === 'string' ? a.reason : null,
+      tenantRef: tenant,
+    }),
 }
 
 const CRM_MCP_DISPATCH: Readonly<Record<string, CrmToolHandler>> = {
@@ -343,7 +482,8 @@ const makeWriteReceipt = (
       : typeof record.updatedAt === 'string'
         ? record.updatedAt
         : ''
-  const kind: OpenAgentsMcpReceiptKind = 'mutation'
+  const kind: OpenAgentsMcpReceiptKind =
+    descriptor.receiptBehavior === 'approval_receipt' ? 'approval' : 'mutation'
   return {
     artifactRefs: [receiptRef],
     authorityClass: descriptor.requiredAuthorities[0] ?? 'operator_read',
@@ -459,7 +599,13 @@ const readCrmResourceData = async (
   }
 }
 
-export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatalog<Bindings> => ({
+export type CrmMcpCatalogDeps<Bindings extends CrmMcpEnv> = Readonly<{
+  resolveResendDeps: (env: Bindings) => CrmDispatchDeps['resend']
+}>
+
+export const makeCrmMcpCatalog = <Bindings extends CrmMcpEnv>(
+  deps: CrmMcpCatalogDeps<Bindings>,
+): CrmMcpCatalog<Bindings> => ({
   callTool: async (env, _request, principal, name, callArgs) => {
     // Ungranted tools are ABSENT: an ungranted/unknown name is unknown_tool.
     const grantedAuthorities = openAgentsMcpGrantedAuthoritySet(principal.grants)
@@ -472,6 +618,7 @@ export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatal
       throw new CrmMcpToolError('unknown_tool')
     }
     const data = await handler(openAgentsDatabase(env), principal.tenantRef, args(callArgs), {
+      dispatchDeps: { resend: deps.resolveResendDeps(env) },
       subjectRef: principal.subjectRef,
     })
     return descriptor.receiptBehavior === 'none'
