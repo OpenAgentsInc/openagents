@@ -82,6 +82,8 @@ import {
   ClickedComposerSpawn,
   ClickedCoordinatorToggle,
   ClickedSubmitIntent,
+  ChangedVerseMode,
+  ClosedAllManagedPanes,
   ClosedCommandPalette,
   MovedCommandPaletteSelection,
   NavigatedTo,
@@ -1414,7 +1416,12 @@ export const update = (model: Model, message: Message): Result => {
             inEditable: message.inEditable,
           }
       const intent = interpretKey(model, keyEvent)
-      if (verseControlsDisabled(model) && intent.kind !== "open-coder-session") {
+      if (
+        verseControlsDisabled(model) &&
+        intent.kind !== "open-coder-session" &&
+        intent.kind !== "close-managed-panes" &&
+        intent.kind !== "hide-code-dock"
+      ) {
         return [model, noCommands]
       }
       switch (intent.kind) {
@@ -1454,6 +1461,10 @@ export const update = (model: Model, message: Message): Result => {
           ]
         case "open-coder-session":
           return openNewCoderSession(model)
+        case "close-managed-panes":
+          return update(model, ClosedAllManagedPanes())
+        case "hide-code-dock":
+          return update(model, ChangedVerseMode({ mode: "explore" }))
       }
     }
 

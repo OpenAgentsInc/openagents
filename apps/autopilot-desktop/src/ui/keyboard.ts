@@ -14,7 +14,7 @@ import {
 } from "@openagentsinc/input-bindings"
 
 import { groupForPane } from "./nav.js"
-import type { Model, PaneId } from "./model.js"
+import { modelPaneLayer, type Model, type PaneId } from "./model.js"
 
 // Raw key event the subscription forwards (mirrors the PressedKey payload).
 export type KeyEvent = Readonly<{
@@ -46,6 +46,8 @@ export type KeyIntent =
   | Readonly<{ kind: "toggle-verse" }>
   // HUD H1: action-bar slot 1 opens a fresh coder-session surface.
   | Readonly<{ kind: "open-coder-session" }>
+  | Readonly<{ kind: "close-managed-panes" }>
+  | Readonly<{ kind: "hide-code-dock" }>
 
 const isModified = (event: KeyEvent): boolean => event.meta || event.ctrl
 
@@ -110,10 +112,15 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
-  // ── Escape outside the palette is intentionally local/no-op ───────────────
-  // In the Verse app the canvas owns navigation. Pressing Escape a few times
-  // must not reveal the old shell or coding target selector.
-  if (key === "Escape") return { kind: "none" }
+  // ── Escape outside the palette dismisses local overlays only ──────────────
+  // In the Verse app the canvas owns navigation. Pressing Escape must not
+  // reveal the old shell or coding target selector; it closes active managed
+  // panes first, then the code dock, then becomes a stable no-op.
+  if (key === "Escape") {
+    if (modelPaneLayer(model).panes.length > 0) return { kind: "close-managed-panes" }
+    if (model.pane === "chat" && model.verseMode === "code") return { kind: "hide-code-dock" }
+    return { kind: "none" }
+  }
 
   // Focused editor/composer/terminal fields own their keys. They must never
   // trigger global commands, submit turns, or j/k pane movement while text entry

@@ -10,6 +10,7 @@ import {
   NavigatedTo,
   NavigatedToGroup,
   OpenedCommandPalette,
+  OpenedManagedPane,
   PressedKey,
   RanPaletteCommand,
 } from "../src/ui/message"
@@ -608,6 +609,63 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
     expect(model.composerSessionRef).toBeNull()
     expect(model.spawnObjective).toBe("")
     expect(commands.map((command) => command.name)).toContain("LoadManagedAccounts")
+  })
+
+  test("Escape hides the hotbar-opened code dock without falling back to shell", () => {
+    const [codeMode] = update(
+      exploreModel,
+      PressedKey({
+        key: "1",
+        code: "Digit1",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: false,
+      }),
+    )
+    expect(codeMode.verseMode).toBe("code")
+
+    expect(interpretKey(codeMode, key({ key: "Escape" }))).toEqual({
+      kind: "hide-code-dock",
+    })
+    const [closed] = update(codeMode, PressedKey({
+      key: "Escape",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    }))
+    expect(closed.pane).toBe("chat")
+    expect(closed.verseMode).toBe("explore")
+  })
+
+  test("Escape closes active managed panes before hiding the code dock", () => {
+    let model = Model.make({ ...exploreModel, verseMode: "code" })
+    ;[model] = update(model, OpenedManagedPane({ pane: "sessions" }))
+    expect(modelPaneLayer(model).panes).toHaveLength(1)
+
+    expect(interpretKey(model, key({ key: "Escape" }))).toEqual({
+      kind: "close-managed-panes",
+    })
+    ;[model] = update(model, PressedKey({
+      key: "Escape",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    }))
+    expect(model.pane).toBe("chat")
+    expect(model.verseMode).toBe("code")
+    expect(modelPaneLayer(model).panes).toHaveLength(0)
+
+    ;[model] = update(model, PressedKey({
+      key: "Escape",
+      meta: false,
+      ctrl: false,
+      shift: false,
+      inEditable: false,
+    }))
+    expect(model.verseMode).toBe("explore")
   })
 
   test("bare number keys remain ignored while typing", () => {
