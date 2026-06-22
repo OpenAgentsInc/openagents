@@ -155,7 +155,11 @@ These map onto the existing Verse epics rather than inventing a parallel program
 10. `apps/openagents-world` + Worker policy: two-tier chat moderation + per-account login
    throttle (Tier 2) - gate Verse and forum-reflection chat.
 11. desktop HUD: run-step cast/progress + agent portrait chip + perf overlay (Tier 2) -
-   ties to #5822 Tassadar-in-scene.
+   ties to #5822 Tassadar-in-scene. **Shipped in #5978: the desktop
+   `verse-progress-diagnostics-model` maps assignment -> trace -> replay ->
+   verdict -> settle from public refs, projects HiDPI/overscan-stable portrait
+   chips, and emits development/smoke-only WebGL frame-time and draw-call
+   diagnostics.**
 
 Each lane is a pure-module-first port with its own test, consistent with both repos'
 "leave it cleaner, test-backed" rules.

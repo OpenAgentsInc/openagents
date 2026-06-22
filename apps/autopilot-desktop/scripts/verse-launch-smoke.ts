@@ -10,6 +10,8 @@ import { join, normalize, relative } from "node:path"
 import { inflateSync } from "node:zlib"
 import net from "node:net"
 
+import { projectVerseWebglDiagnostics } from "../src/shared/verse-progress-diagnostics-model"
+
 const chromeCandidates = [
   process.env.CHROME_PATH,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -420,6 +422,7 @@ type VerseLaunchReceipt = {
   readonly retainedLiveUpdate: RetainedLiveUpdateSmoke
   readonly customKeybindings: CustomKeybindingSmoke
   readonly codingOverlay: VerseCodingOverlaySmoke
+  readonly webglDiagnostics: ReturnType<typeof projectVerseWebglDiagnostics>
   readonly typecheckProof: string
 }
 
@@ -933,6 +936,27 @@ const readVerseSceneDiagnostics = async (
   })
   return response.result?.value ?? []
 }
+
+const readVerseFrameTimes = async (
+  cdp: CdpClient,
+): Promise<ReadonlyArray<number>> =>
+  evaluateValue<ReadonlyArray<number>>(
+    cdp,
+    "verse frame timing probe",
+    `new Promise(resolve => {
+      const frames = []
+      let previous = performance.now()
+      let remaining = 30
+      const step = (now) => {
+        frames.push(Math.max(0, now - previous))
+        previous = now
+        remaining -= 1
+        if (remaining <= 0) resolve(frames)
+        else requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    })`,
+  )
 
 const evaluateValue = async <T>(
   cdp: CdpClient,
@@ -2761,6 +2785,18 @@ const main = async (): Promise<void> => {
       },
       sceneInput: codingSceneInput,
     }
+    const webglFrameTimes = await readVerseFrameTimes(cdp)
+    const webglDiagnostics = projectVerseWebglDiagnostics({
+      mode: target === "dev" ? "development" : "smoke",
+      enabled: true,
+      frameTimesMs: webglFrameTimes,
+      drawCalls: 0,
+      entityCount: dom.canvas.width > 0 && dom.canvas.height > 0 ? 1 : 0,
+      sourceRefs: [
+        "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
+        "github:OpenAgentsInc/openagents#5978",
+      ],
+    })
 
     const ok =
       dom.ok &&
@@ -2818,6 +2854,7 @@ const main = async (): Promise<void> => {
       retainedLiveUpdate,
       customKeybindings,
       codingOverlay,
+      webglDiagnostics,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
     }

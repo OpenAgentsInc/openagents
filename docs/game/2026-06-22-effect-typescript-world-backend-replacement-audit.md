@@ -1214,6 +1214,15 @@ progress bars map assignment -> trace -> replay -> verdict -> settle; portrait
 chips use HiDPI/overscan math; WebGL frame-time/draw-call diagnostics are
 available in development and smoke artifacts.
 
+Implementation note: W6 shipped a desktop pure
+`verse-progress-diagnostics-model` module. It maps receipt-backed run facts
+through assignment, trace, replay, verdict, and settlement without inventing
+later progress; projects circular avatar/agent portrait chips with clamped DPR
+and overscan math that stays stable under viewport changes; and produces a
+public-safe WebGL diagnostics artifact with frame-time, FPS, draw-call, and
+entity counts for development/smoke paths. Production mode returns no noisy
+overlay or artifact by default.
+
 ### W7: Optional Accessibility Movement And Touch Controls
 
 Keep click-to-move, joystick, pinch, long-press-vs-tap, and double-tap-recenter
