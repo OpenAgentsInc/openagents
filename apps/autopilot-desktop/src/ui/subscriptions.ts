@@ -71,8 +71,16 @@ const inboundStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =
 // That keeps the real DOM path aligned with the tested action catalog; for
 // example, Cmd/Ctrl-Shift-V now resolves because `hud.toggle_code_overlay` is in
 // the profile instead of hoping `"v"` was remembered in a static Set.
+const ACTION_BAR_SLOT_ACTION_IDS = Array.from(
+  { length: 10 },
+  (_, index) => `action_bar.slot_${index + 1}`,
+)
+
+const isActionBarSlotActionId = (actionId: string): boolean =>
+  actionId.startsWith("action_bar.slot_")
+
 const DESKTOP_SHORTCUT_ACTION_IDS = new Set([
-  "action_bar.slot_1",
+  ...ACTION_BAR_SLOT_ACTION_IDS,
   "app.command_palette",
   "app.submit",
   "app.pane_next",
@@ -127,10 +135,11 @@ export const keyboardForwardDecision = (input: {
   const bareNavKey = actionIds.some((actionId) =>
     actionId === "app.pane_next" || actionId === "app.pane_previous"
   )
+  const actionBarSlot = actionIds.some(isActionBarSlotActionId)
   const forward = actionIds.length > 0
   return {
     forward,
-    preventDefault: forward && (modifiedShortcut || escapeKey || bareNavKey),
+    preventDefault: forward && (modifiedShortcut || escapeKey || bareNavKey || actionBarSlot),
   }
 }
 
@@ -213,6 +222,8 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
           shiftKey?: boolean
           target?: EventTarget | null
           preventDefault?: () => void
+          stopPropagation?: () => void
+          stopImmediatePropagation?: () => void
         }
         const key = event.key ?? ""
         const code = event.code
@@ -241,6 +252,8 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
         if (!decision.forward) return
         if (decision.preventDefault) {
           event.preventDefault?.()
+          event.stopPropagation?.()
+          event.stopImmediatePropagation?.()
         }
         Queue.offerUnsafe(
           queue,

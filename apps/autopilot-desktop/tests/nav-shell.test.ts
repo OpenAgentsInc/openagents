@@ -330,6 +330,36 @@ describe("#5465 keyboard layer", () => {
     ).toEqual({ forward: false, preventDefault: false })
   })
 
+  test("Verse action-bar number keys are consumed so the host never dings", () => {
+    for (const [keyValue, code] of [
+      ["1", "Digit1"],
+      ["2", "Digit2"],
+      ["0", "Digit0"],
+    ] as const) {
+      expect(
+        keyboardForwardDecision({
+          key: keyValue,
+          code,
+          meta: false,
+          ctrl: false,
+          shift: false,
+          inEditable: false,
+        }),
+      ).toEqual({ forward: true, preventDefault: true })
+    }
+
+    expect(
+      keyboardForwardDecision({
+        key: "1",
+        code: "Digit1",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: true,
+      }),
+    ).toEqual({ forward: false, preventDefault: false })
+  })
+
   test("desktop shortcut matching is exact about unbound extra modifiers", () => {
     expect(
       keyboardForwardDecision({

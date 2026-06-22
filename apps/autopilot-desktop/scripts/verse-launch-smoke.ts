@@ -1215,6 +1215,14 @@ const domProbeExpression = `
     pointerTop === canvas ||
     (pointerTop instanceof HTMLElement &&
       pointerTop.closest(".three-effect-chat-scene") === host)
+  const hotbarDigit2Event = new KeyboardEvent("keydown", {
+    key: "2",
+    code: "Digit2",
+    bubbles: true,
+    cancelable: true,
+  })
+  window.dispatchEvent(hotbarDigit2Event)
+  const hotbarNumberKeysConsumed = hotbarDigit2Event.defaultPrevented === true
   const checks = {
     appShellVerse: document.querySelector(".app-shell-verse") !== null,
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
@@ -1253,6 +1261,7 @@ const domProbeExpression = `
     noPanelOverlap: overlapPairs.length === 0,
     sceneCursorNotText: canvasCursor !== "text",
     scenePointerTarget,
+    hotbarNumberKeysConsumed,
   }
   const blockerRefs = Object.entries(checks)
     .flatMap(([key, passed]) => passed ? [] : ["verse.launch." + key])
