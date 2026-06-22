@@ -243,6 +243,13 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getTassadarPerceptaArchitectureReceipts')
     expect(
+      operationAt(
+        body,
+        '/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
+        'get',
+      ).operationId,
+    ).toBe('getTassadarPerceptaCpuTransformTrainingReceipts')
+    expect(
       operationAt(body, '/api/public/tassadar-run-summary', 'get').operationId,
     ).toBe('getPublicTassadarRunSummary')
     const activityTimelineOperation = operationAt(
@@ -1046,6 +1053,7 @@ describe('OpenAgents OpenAPI route', () => {
         'OperatorSiteEnvelope',
         'OperatorAdjutantAssignmentEnvelope',
         'OperatorEmailDeliveries',
+        'TassadarPerceptaCpuTransformTrainingReceiptsEnvelope',
       ]),
     )
     expect(
@@ -1167,6 +1175,31 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/admin/overview',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
+  '/api/operator/crm/accounts',
+  '/api/operator/crm/accounts/{param}',
+  '/api/operator/crm/commands',
+  '/api/operator/crm/commands/{param}/approve',
+  '/api/operator/crm/commands/{param}/reject',
+  '/api/operator/crm/contacts',
+  '/api/operator/crm/contacts/{param}',
+  '/api/operator/crm/contacts/{param}/activities',
+  '/api/operator/crm/contacts/{param}/commands/send-email',
+  '/api/operator/crm/contacts/{param}/emails',
+  '/api/operator/crm/contacts/{param}/engagement',
+  '/api/operator/crm/contacts/{param}/gmail-writeback',
+  '/api/operator/crm/contacts/{param}/render',
+  '/api/operator/crm/contacts/{param}/resend-send',
+  '/api/operator/crm/contacts/{param}/send',
+  '/api/operator/crm/gmail-queue',
+  '/api/operator/crm/import',
+  '/api/operator/crm/import-runs',
+  '/api/operator/crm/lists',
+  '/api/operator/crm/mcp-grants',
+  '/api/operator/crm/mcp-grants/{param}',
+  '/api/operator/crm/opportunities',
+  '/api/operator/crm/opportunities/{param}',
+  '/api/operator/crm/send-batch',
+  '/api/operator/crm/templates',
   '/api/operator/adjutant/assignments/{param}/current-run/clear',
   '/api/operator/adjutant/assignments/{param}/enrichment',
   '/api/operator/adjutant/assignments/{param}/enrichment/briefs/{param}/review',
@@ -1198,6 +1231,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/buy-mode/dispatch',
   '/api/operator/buy-mode/results/settle',
   '/api/operator/buy-mode/start',
+  '/api/operator/ecommerce-campaign/receipts',
   '/api/operator/private-project-workspaces',
   '/api/operator/team-workspace-invites',
   '/api/operator/tips-buffer/payout',

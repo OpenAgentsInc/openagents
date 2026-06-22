@@ -41,8 +41,9 @@ status:
 - device capability: A2 dataset, second observed device class, and thermal
   classifier, with verified thermal rows and cross-machine replication missing.
 - verification classes: green receipt-backed policy.
-- Tassadar Percepta executor: model/spec and architecture receipts, with
-  Pylon CPU-transform training receipts missing.
+- Tassadar Percepta executor: model/spec, architecture receipts, and
+  CPU-transform receipt status, with Pylon assignment, accepted work, verifier
+  verdict, real settlement, and trained artifact receipts missing.
 - Artanis evolution loop: acceptance legs receipted and blockerRefs empty,
   pending owner-signed green transition.
 

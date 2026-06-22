@@ -145,6 +145,9 @@ describe('public product promises document', () => {
     expect(decoded.sourceRefs).toContain(
       'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
     )
+    expect(decoded.sourceRefs).toContain(
+      'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
+    )
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
@@ -344,6 +347,9 @@ describe('public product promises document', () => {
     // blocker.product_promises.demand_provenance_broad_projection_coverage_missing.
     // externalDemandClaimAllowed STAYS false (no external dollar, no demand
     // claim); this is a transparency/coverage flip only. Green is now exactly 27.
+    // The 2026-06-21.4 Tassadar CPU-transform receipt-status pass adds a
+    // public missing-gate projection without clearing the remaining
+    // CPU-transform blocker, so green remains exactly 27.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
     ).toBe(27)
@@ -854,17 +860,21 @@ describe('public product promises document', () => {
             'docs/2026-06-12-episode-236-training-launch-gap-audit.md',
             'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
             'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
+            'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
             'route:/api/public/models/tassadar-percepta-executor/architecture-receipts',
+            'route:/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
+            'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
+            'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
           ]),
           blockerRefs: [
             'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
           ],
           safeCopy: expect.stringContaining(
-            'architecture receipt projection is now live',
+            'CPU-transform receipt status gate',
           ),
           verification: expect.stringContaining(
-            'percepta_executor_architecture_receipts_missing',
+            'cpuTransformTrainingReceiptAvailable=false',
           ),
         }),
         expect.objectContaining({

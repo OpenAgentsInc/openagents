@@ -52,6 +52,9 @@ Pylon integration, when receipted, must remain assignment-based:
 
 The existing Artanis/Tassadar loop and distillation dataset receipt can supply
 verified trace refs, but they do not train or serve this model by themselves.
+The architecture receipt route and CPU-transform receipt status route are now
+separate public projections; the CPU-transform status route reports the real
+training receipt gates as missing.
 
 ## Training And Evaluation Plan
 
@@ -101,7 +104,6 @@ This spec clears:
 
 Still blocked:
 
-- `blocker.product_promises.percepta_executor_architecture_receipts_missing`
 - `blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing`
 
 Green still requires receipt-first owner sign-off under

@@ -138,8 +138,26 @@ describe('training full pipeline program status projection', () => {
     ).toMatchObject({
       blockerRefs: [],
       promiseId: 'artanis.tassadar_evolution_loop.v1',
-      promiseState: 'yellow',
+      promiseState: 'green',
       receiptState: 'green_ready_owner_gated',
+    })
+    expect(
+      projection.stages.find(
+        stage => stage.stageId === 'tassadar_percepta_executor',
+      ),
+    ).toMatchObject({
+      endpointRefs: [
+        '/api/public/models/tassadar-percepta-executor/architecture-receipts',
+        '/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts',
+      ],
+      evidenceRefs: expect.arrayContaining([
+        'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
+        'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
+      ]),
+      promiseId: 'models.tassadar_percepta_executor.v1',
+      promiseState: 'planned',
+      receiptState: 'partial_receipt_surface_live',
+      statusLabel: expect.stringContaining('CPU-transform receipt status'),
     })
   })
 

@@ -7,6 +7,9 @@ Promise: `models.tassadar_percepta_executor.v1`
 Public route:
 `/api/public/models/tassadar-percepta-executor/architecture-receipts`
 
+Related CPU-transform receipt status route:
+`/api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts`
+
 Receipt ref:
 `receipt.models.tassadar_percepta_executor.architecture.bundle.v1`
 
@@ -16,7 +19,8 @@ This clears only:
 
 - `blocker.product_promises.percepta_executor_architecture_receipts_missing`
 
-The promise stays red because the remaining blocker is still real:
+The current registry keeps the promise planned because the remaining blocker is
+still real:
 
 - `blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing`
 
@@ -42,6 +46,11 @@ verifier refs.
 This is not a trained-model receipt. It is not a Pylon CPU-transform training
 receipt. It does not create an inference endpoint, model promotion, settlement,
 paid contributor claim, or green product-promise transition.
+
+The CPU-transform status route is also non-claiming: it cites this architecture
+receipt and the Artanis distillation dataset receipt as inputs, but reports no
+Pylon assignment, accepted work, verifier verdict, real settlement, trained
+artifact digest, or green gate.
 
 Green still requires Pylon CPU-transform training receipts with assignment
 refs, accepted work refs, verifier verdict refs, and settlement refs where real

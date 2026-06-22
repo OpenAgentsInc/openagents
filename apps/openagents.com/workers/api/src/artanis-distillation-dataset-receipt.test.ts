@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   ARTANIS_TASSADAR_DISTILLATION_DATASET_BLOCKER,
+  ARTANIS_TASSADAR_DISTILLATION_DATASET_RECEIPT_REF,
   ARTANIS_TASSADAR_DISTILLATION_DATASET_TARGET,
   boundedDistillationDatasetLimit,
   projectArtanisDistillationDatasetReceipt,
@@ -39,7 +40,7 @@ describe('Artanis Tassadar distillation dataset receipt', () => {
     expect(receipt.staleness.maxStalenessSeconds).toBe(0)
     expect(receipt.receiptState).toBe('available')
     expect(receipt.receiptRef).toBe(
-      'receipt.training.tassadar_distillation_dataset.artanis_admin_verified_trace_refs.v1',
+      ARTANIS_TASSADAR_DISTILLATION_DATASET_RECEIPT_REF,
     )
     expect(receipt.datasetRef).toBe(
       'dataset.tassadar_distillation.artanis_admin_verified_trace_refs.v1',

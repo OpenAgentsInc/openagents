@@ -9,6 +9,7 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 import { currentIsoTimestamp } from './runtime-primitives'
+import { TassadarPerceptaCpuTransformTrainingReceiptsEndpoint } from './tassadar-percepta-cpu-transform-training-receipts'
 import { TrainingMarathonOperationsEndpoint } from './training-marathon-operations'
 import { TrainingModelLadderRungsEndpoint } from './training-model-ladder-rungs'
 import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
@@ -244,17 +245,21 @@ const stageDefinitions: ReadonlyArray<StageDefinition> = [
   {
     endpointRefs: [
       '/api/public/models/tassadar-percepta-executor/architecture-receipts',
+      TassadarPerceptaCpuTransformTrainingReceiptsEndpoint,
     ],
     evidenceRefs: [
       'docs/tassadar/2026-06-20-tassadar-percepta-executor-model-spec.md',
       'docs/tassadar/2026-06-20-tassadar-percepta-architecture-receipt.md',
+      'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
+      'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
+      'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
     ],
     promiseId: 'models.tassadar_percepta_executor.v1',
     receiptState: 'partial_receipt_surface_live',
-    role: 'Tassadar Percepta executor model/spec and architecture receipts.',
+    role: 'Tassadar Percepta executor model/spec, architecture receipts, and CPU-transform receipt status.',
     stageId: 'tassadar_percepta_executor',
     statusLabel:
-      'Model/spec and architecture receipts exist; Pylon CPU-transform training receipts remain missing.',
+      'Model/spec, architecture receipts, and CPU-transform receipt status exist; Pylon CPU-transform assignment, accepted work, verifier verdict, settlement, and trained artifact receipts remain missing.',
   },
   {
     endpointRefs: [
