@@ -306,3 +306,170 @@ export const projectOpenAgentsMcpServerConfigPublic = (
   requestedAuthorities: [...config.requestedAuthorities],
   sourceRefs: [...config.sourceRefs],
 })
+
+export const OpenAgentsMcpCapabilityRiskClass = S.Literals([
+  "read_only",
+  "low",
+  "medium",
+  "high",
+  "critical",
+])
+export type OpenAgentsMcpCapabilityRiskClass =
+  typeof OpenAgentsMcpCapabilityRiskClass.Type
+
+export const OpenAgentsMcpReceiptBehavior = S.Literals([
+  "none",
+  "read_receipt",
+  "mutation_receipt",
+  "approval_receipt",
+  "payment_receipt",
+  "deployment_receipt",
+  "admin_receipt",
+])
+export type OpenAgentsMcpReceiptBehavior = typeof OpenAgentsMcpReceiptBehavior.Type
+
+export const OpenAgentsMcpProgressBehavior = S.Literals([
+  "none",
+  "bounded",
+  "streaming",
+  "long_running",
+])
+export type OpenAgentsMcpProgressBehavior = typeof OpenAgentsMcpProgressBehavior.Type
+
+export const OpenAgentsMcpOutputHandlingPolicy = S.Literals([
+  "public_safe",
+  "operator_only",
+  "private_account",
+  "local_only",
+  "unsafe_omitted",
+])
+export type OpenAgentsMcpOutputHandlingPolicy =
+  typeof OpenAgentsMcpOutputHandlingPolicy.Type
+
+export const OpenAgentsMcpPromptAudience = S.Literals([
+  "public",
+  "operator",
+  "contributor",
+  "coding_agent",
+  "admin",
+])
+export type OpenAgentsMcpPromptAudience = typeof OpenAgentsMcpPromptAudience.Type
+
+export const OpenAgentsMcpResourceNamespace = S.Literals([
+  "pylon",
+  "autopilot",
+  "verse",
+  "worker",
+  "forum",
+  "payments",
+  "coding-session",
+])
+export type OpenAgentsMcpResourceNamespace =
+  typeof OpenAgentsMcpResourceNamespace.Type
+
+export const openAgentsMcpResourceNamespaces: ReadonlyArray<OpenAgentsMcpResourceNamespace> = [
+  "pylon",
+  "autopilot",
+  "verse",
+  "worker",
+  "forum",
+  "payments",
+  "coding-session",
+]
+
+export const OpenAgentsMcpStalenessContract = S.Struct({
+  generatedAt: S.optional(S.String),
+  maxStalenessSeconds: S.Number,
+  transitionRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpStalenessContract =
+  typeof OpenAgentsMcpStalenessContract.Type
+
+export const OpenAgentsMcpToolDescriptor = S.Struct({
+  name: S.String,
+  title: S.String,
+  description: S.String,
+  requiredAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  riskClass: OpenAgentsMcpCapabilityRiskClass,
+  inputSchemaRef: S.String,
+  outputSchemaRef: S.String,
+  receiptBehavior: OpenAgentsMcpReceiptBehavior,
+  progressBehavior: OpenAgentsMcpProgressBehavior,
+  publicSummary: S.String,
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpToolDescriptor = typeof OpenAgentsMcpToolDescriptor.Type
+
+export const OpenAgentsMcpResourceDescriptor = S.Struct({
+  uri: S.String,
+  name: S.String,
+  title: S.String,
+  description: S.String,
+  namespace: OpenAgentsMcpResourceNamespace,
+  requiredAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  staleness: OpenAgentsMcpStalenessContract,
+  publicProjectionSafe: S.Boolean,
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpResourceDescriptor =
+  typeof OpenAgentsMcpResourceDescriptor.Type
+
+export const OpenAgentsMcpPromptDescriptor = S.Struct({
+  name: S.String,
+  title: S.String,
+  description: S.String,
+  audience: OpenAgentsMcpPromptAudience,
+  requiredAuthorities: S.Array(OpenAgentsMcpAuthorityClass),
+  inputSchemaRef: S.String,
+  outputHandling: OpenAgentsMcpOutputHandlingPolicy,
+  sourceRefs: S.Array(S.String),
+})
+export type OpenAgentsMcpPromptDescriptor = typeof OpenAgentsMcpPromptDescriptor.Type
+
+export const decodeOpenAgentsMcpToolDescriptor = S.decodeUnknownSync(
+  OpenAgentsMcpToolDescriptor,
+)
+export const decodeOpenAgentsMcpResourceDescriptor = S.decodeUnknownSync(
+  OpenAgentsMcpResourceDescriptor,
+)
+export const decodeOpenAgentsMcpPromptDescriptor = S.decodeUnknownSync(
+  OpenAgentsMcpPromptDescriptor,
+)
+
+const openAgentsMcpNamePattern = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$/
+
+export const isValidOpenAgentsMcpName = (name: string): boolean =>
+  openAgentsMcpNamePattern.test(name)
+
+export const assertValidOpenAgentsMcpName = (name: string): string => {
+  if (!isValidOpenAgentsMcpName(name)) {
+    throw new Error(`Invalid OpenAgents MCP name: ${name}`)
+  }
+  return name
+}
+
+export type OpenAgentsMcpParsedResourceUri = Readonly<{
+  uri: string
+  namespace: OpenAgentsMcpResourceNamespace
+  path: string
+}>
+
+export const parseOpenAgentsMcpResourceUri = (
+  uri: string,
+): OpenAgentsMcpParsedResourceUri => {
+  const match = /^mcp:\/\/openagents\/([a-z][a-z-]*)\/(.+)$/.exec(uri)
+  if (match === null) {
+    throw new Error(`Invalid OpenAgents MCP resource URI: ${uri}`)
+  }
+  const namespace = match[1] as OpenAgentsMcpResourceNamespace
+  const path = match[2]
+  if (
+    !openAgentsMcpResourceNamespaces.includes(namespace) ||
+    path === undefined ||
+    path.length === 0 ||
+    path.includes("..")
+  ) {
+    throw new Error(`Invalid OpenAgents MCP resource URI: ${uri}`)
+  }
+  return { uri, namespace, path }
+}

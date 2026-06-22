@@ -3,16 +3,22 @@ import { describe, expect, test } from "bun:test"
 import {
   decodeOpenAgentsMcpContractStatus,
   decodeOpenAgentsMcpGrant,
+  decodeOpenAgentsMcpPromptDescriptor,
+  decodeOpenAgentsMcpResourceDescriptor,
   decodeOpenAgentsMcpServerConfig,
+  decodeOpenAgentsMcpToolDescriptor,
   decodeOpenAgentsMcpTransportConfig,
   filterOpenAgentsMcpDescriptorsByGrantSet,
+  isValidOpenAgentsMcpName,
   isOpenAgentsMcpHighRiskAuthority,
   openAgentsMcpAuthorityClasses,
   openAgentsMcpConfigSources,
   openAgentsMcpContractStatus,
   openAgentsMcpHighRiskAuthorityClasses,
   openAgentsMcpLifecycleStatuses,
+  openAgentsMcpResourceNamespaces,
   openAgentsMcpTransportKinds,
+  parseOpenAgentsMcpResourceUri,
   projectOpenAgentsMcpServerConfigPublic,
   type OpenAgentsMcpGrant,
 } from "./index.js"
@@ -237,5 +243,107 @@ describe("@openagentsinc/mcp-contract", () => {
     expect(JSON.stringify(projection)).not.toContain("bearer_token")
     expect(JSON.stringify(projection)).not.toContain("secretRefs")
     expect(JSON.stringify(projection)).not.toContain("authRef")
+  })
+
+  test("decodes tool, resource, and prompt descriptors with grant metadata", () => {
+    const tool = decodeOpenAgentsMcpToolDescriptor({
+      name: "pylon.health",
+      title: "Pylon health",
+      description: "Read local Pylon health without mutation.",
+      requiredAuthorities: ["public_read"],
+      riskClass: "read_only",
+      inputSchemaRef: "schema.openagents.mcp.pylon.health.input.v1",
+      outputSchemaRef: "schema.openagents.mcp.pylon.health.output.v1",
+      receiptBehavior: "read_receipt",
+      progressBehavior: "none",
+      publicSummary: "Read-only health check.",
+      sourceRefs: ["github:OpenAgentsInc/openagents#5938"],
+    })
+    const resource = decodeOpenAgentsMcpResourceDescriptor({
+      uri: "mcp://openagents/verse/scene-state",
+      name: "verse.scene.state",
+      title: "Verse scene state",
+      description: "Read the current Verse scene projection.",
+      namespace: "verse",
+      requiredAuthorities: ["operator_read"],
+      staleness: {
+        maxStalenessSeconds: 1,
+        transitionRefs: ["verse.scene_projection_updated"],
+      },
+      publicProjectionSafe: false,
+      sourceRefs: ["github:OpenAgentsInc/openagents#5938"],
+    })
+    const prompt = decodeOpenAgentsMcpPromptDescriptor({
+      name: "coding.session.summarize",
+      title: "Summarize coding session",
+      description: "Ask an agent to summarize a coding session.",
+      audience: "coding_agent",
+      requiredAuthorities: ["coding_session_control"],
+      inputSchemaRef: "schema.openagents.mcp.coding.session.summarize.input.v1",
+      outputHandling: "operator_only",
+      sourceRefs: ["github:OpenAgentsInc/openagents#5938"],
+    })
+
+    expect(tool.requiredAuthorities).toEqual(["public_read"])
+    expect(resource.namespace).toBe("verse")
+    expect(prompt.outputHandling).toBe("operator_only")
+  })
+
+  test("enforces stable lowercase dotted names", () => {
+    const validNames = [
+      "pylon.health",
+      "autopilot.desktop.status",
+      "verse.scene.state",
+      "worker.public.stats",
+      "forum.post.tip",
+      "payments.pylon.receive",
+      "coding.session.spawn",
+    ]
+    for (const name of validNames) {
+      expect(isValidOpenAgentsMcpName(name)).toBe(true)
+    }
+
+    const invalidNames = [
+      "pylon",
+      "Pylon.health",
+      "pylon.health/now",
+      "pylon health",
+      "pylon.health.0780e08837abcdef",
+      "pylon.health#fragment",
+      "pylon.health_v2",
+    ]
+    for (const name of invalidNames) {
+      expect(isValidOpenAgentsMcpName(name)).toBe(false)
+    }
+  })
+
+  test("parses all planned resource namespaces", () => {
+    expect(openAgentsMcpResourceNamespaces).toEqual([
+      "pylon",
+      "autopilot",
+      "verse",
+      "worker",
+      "forum",
+      "payments",
+      "coding-session",
+    ])
+    const uris = [
+      "mcp://openagents/pylon/node-status",
+      "mcp://openagents/autopilot/desktop/status",
+      "mcp://openagents/verse/scene-state",
+      "mcp://openagents/worker/public-stats",
+      "mcp://openagents/forum/post/public-activity",
+      "mcp://openagents/payments/receipt/recent",
+      "mcp://openagents/coding-session/session/current",
+    ]
+
+    expect(uris.map((uri) => parseOpenAgentsMcpResourceUri(uri).namespace))
+      .toEqual([...openAgentsMcpResourceNamespaces])
+    expect(() => parseOpenAgentsMcpResourceUri("https://openagents.com/pylon")).toThrow(
+      "Invalid OpenAgents MCP resource URI",
+    )
+    expect(() => parseOpenAgentsMcpResourceUri("mcp://openagents/pylon/../secret")).toThrow(
+      "Invalid OpenAgents MCP resource URI",
+    )
   })
 })

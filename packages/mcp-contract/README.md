@@ -15,6 +15,8 @@ Current Phase 0 scope:
 - schema decode helpers;
 - authority taxonomy and grant filtering;
 - transport config and lifecycle schemas;
+- tool, resource, and prompt descriptors;
+- naming and resource URI rules;
 - package status metadata for docs and compatibility checks.
 
 ## Authority And Grants
@@ -47,6 +49,19 @@ retrying noisy failures.
 Credential values are not part of transport config. Private config may carry
 local credential refs, but public/debug projections omit those refs and expose
 only the transport kind plus non-secret metadata.
+
+## Descriptors And Names
+
+Tool, resource, and prompt descriptors carry authority requirements, risk class,
+schema refs, receipt/progress behavior, staleness metadata, and output handling
+policy. Descriptor metadata is sufficient for grant filtering without importing
+runtime app code.
+
+OpenAgents MCP tool and prompt names use lowercase dotted identifiers such as
+`pylon.health`, `verse.scene.state`, and `coding.session.spawn`. Resource URIs
+use the `mcp://openagents/<namespace>/<path>` form. Phase 0 namespaces are
+`pylon`, `autopilot`, `verse`, `worker`, `forum`, `payments`, and
+`coding-session`.
 
 The package expands across the remaining Phase 0 issues to include authority,
 transport, lifecycle, descriptor, receipt, error, progress, elicitation, naming,
