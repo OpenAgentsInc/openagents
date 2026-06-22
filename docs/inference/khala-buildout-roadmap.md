@@ -341,6 +341,38 @@ and DE-10 #5533.
 **First useful output:** a dry-run evidence template that can ingest one Khala
   run, one frontier baseline run, verifier output, and settlement/Verse refs.
 
+**Active claim — 2026-06-22:** this session claims the Agent Demo lane for M8
+under parent issue #6016. The claim is scoped to the benchmark runbook, evidence
+manifest, metric reducers, and publication-pack skeleton for the head-to-head.
+It does not claim M0/M1 gateway or cockpit wiring, the already-claimed Agent
+Verifier or Agent Verse lanes, live Bitcoin settlement, Pylon payout, or learned
+coordinator promotion; those remain upstream receipt sources that Agent Demo
+ingests only after they become dereferenceable.
+
+**Brief operator plan:**
+1. **#6016-A — Evidence schema and runbook.** Define the dry-run manifest for
+   one Khala run, one frontier baseline, verifier verdicts, settlement refs,
+   Verse refs, artifact refs, and external reported-claim citations. Separate
+   observed OpenAgents measurements from reported Fugu/Opus numbers.
+2. **#6016-B — Metric reducers.** Add calculators for tokens, dollars,
+   wall-clock, cost per accepted outcome, verified rate, in-world vs gateway
+   split, and AO/kWh when measured telemetry exists. Missing energy telemetry
+   must stay `not_measured`, not estimated into a claim.
+3. **#6016-C — Fixture evidence pack.** Build a fixture-only example that
+   exercises the template with inert Khala, verifier, settlement, and Verse refs
+   so every downstream lane can see the expected evidence shape before live
+   receipts land.
+4. **#6016-D — Publication skeleton.** Prepare the comparison doc structure:
+   setup, methodology, raw inputs, accepted-outcome verdict, payment/settlement
+   refs, Verse playback refs, artifact playback refs, and honest losses.
+5. **#6016-E — Live promotion gate.** Replace fixture refs only when M3/M5/M7
+   provide dereferenceable evidence. Any world-first, AO/kWh, or public product
+   claim upgrade remains blocked on DE-10 acceptance and owner sign-off.
+
+**Starting issue:** start on #6016 with subissue anchor #6016-A ("Evidence schema
+and runbook"). Create real GitHub child issues only when separate agents need
+independent queues; until then the #6016 checklist plus these anchors is enough.
+
 ### Parallel merge order
 
 ```
