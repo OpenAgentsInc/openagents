@@ -11,6 +11,7 @@
  */
 import {
   type OpenAgentsMcpToolDescriptor,
+  parseOpenAgentsMcpResourceUri,
   projectOpenAgentsMcpOutput,
 } from '@openagentsinc/mcp-contract'
 
@@ -21,7 +22,13 @@ import {
   listCrmQueuedGmailMessages,
 } from './crm-email'
 import { listCrmCommands } from './crm-command'
-import type { CrmMcpCatalog, McpToolCallOutcome, McpToolListing } from './crm-mcp-routes'
+import type {
+  CrmMcpCatalog,
+  McpResourceListing,
+  McpResourceReadOutcome,
+  McpToolCallOutcome,
+  McpToolListing,
+} from './crm-mcp-routes'
 import {
   DEFAULT_CRM_TENANT_REF,
   getCrmAccountById,
@@ -253,6 +260,60 @@ const projectReadOutcome = (name: string, data: unknown): McpToolCallOutcome => 
   }
 }
 
+// --- resources (mcp://openagents/worker/crm/*) ------------------------------
+
+const RESOURCE_PREFIX = 'mcp://openagents/worker/'
+
+/** Collection resources advertised by resources/list (single items read by URI). */
+export const CRM_MCP_RESOURCES: ReadonlyArray<McpResourceListing> = [
+  { description: 'CRM contacts for the tenant.', mimeType: 'application/json', name: 'crm.contacts', title: 'CRM contacts', uri: `${RESOURCE_PREFIX}crm/contacts` },
+  { description: 'CRM accounts for the tenant.', mimeType: 'application/json', name: 'crm.accounts', title: 'CRM accounts', uri: `${RESOURCE_PREFIX}crm/accounts` },
+  { description: 'CRM contact lists (segments).', mimeType: 'application/json', name: 'crm.lists', title: 'CRM lists', uri: `${RESOURCE_PREFIX}crm/lists` },
+  { description: 'CRM opportunities for the tenant.', mimeType: 'application/json', name: 'crm.opportunities', title: 'CRM opportunities', uri: `${RESOURCE_PREFIX}crm/opportunities` },
+  { description: 'CRM CSV import-run audit rows.', mimeType: 'application/json', name: 'crm.imports', title: 'CRM import runs', uri: `${RESOURCE_PREFIX}crm/imports` },
+  { description: 'Approval-gated send_email commands.', mimeType: 'application/json', name: 'crm.commands', title: 'CRM send commands', uri: `${RESOURCE_PREFIX}crm/commands` },
+]
+
+/** Resolve a parsed `crm/...` resource path to its read data (default tenant). */
+const readCrmResourceData = async (
+  db: D1Database,
+  path: string,
+): Promise<unknown> => {
+  const segments = path.split('/').filter(part => part !== '')
+  if (segments[0] !== 'crm') {
+    throw new CrmMcpToolError('unknown_resource')
+  }
+  const tenant = DEFAULT_CRM_TENANT_REF
+  const [, head, id, sub] = segments
+  switch (head) {
+    case 'contacts':
+      return listCrmContacts(db, tenant, {})
+    case 'accounts':
+      return listCrmAccounts(db, tenant, {})
+    case 'lists':
+      return listCrmContactLists(db, tenant)
+    case 'opportunities':
+      return listCrmOpportunities(db, tenant, {})
+    case 'imports':
+      return listCrmSourceImportRuns(db, tenant, {})
+    case 'commands':
+      return listCrmCommands(db, tenant, {})
+    case 'contact':
+      if (id === undefined) throw new CrmMcpToolError('unknown_resource')
+      if (sub === 'activities') return listCrmActivitiesForContact(db, tenant, id, {})
+      if (sub === undefined) return getCrmContactById(db, tenant, id)
+      throw new CrmMcpToolError('unknown_resource')
+    case 'account':
+      if (id === undefined) throw new CrmMcpToolError('unknown_resource')
+      return getCrmAccountById(db, tenant, id)
+    case 'opportunity':
+      if (id === undefined) throw new CrmMcpToolError('unknown_resource')
+      return getCrmOpportunityById(db, tenant, id)
+    default:
+      throw new CrmMcpToolError('unknown_resource')
+  }
+}
+
 export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatalog<Bindings> => ({
   callTool: async (env, _request, name, callArgs) => {
     const handler = CRM_MCP_READ_DISPATCH[name]
@@ -262,7 +323,29 @@ export const makeCrmMcpReadCatalog = <Bindings extends CrmMcpEnv>(): CrmMcpCatal
     const data = await handler(openAgentsDatabase(env), args(callArgs))
     return projectReadOutcome(name, data)
   },
-  listResources: () => Promise.resolve([]),
+  listResources: () => Promise.resolve(CRM_MCP_RESOURCES),
   listTools: () => Promise.resolve(CRM_MCP_READ_TOOLS.map(toolListing)),
-  readResource: () => Promise.reject(new CrmMcpToolError('unknown_resource')),
+  readResource: async (env, _request, uri): Promise<McpResourceReadOutcome> => {
+    const parsed = parseOpenAgentsMcpResourceUri(uri)
+    if (parsed.namespace !== 'worker') {
+      throw new CrmMcpToolError('unknown_resource')
+    }
+    const data = await readCrmResourceData(openAgentsDatabase(env), parsed.path)
+    const projection = projectOpenAgentsMcpOutput({
+      maxTextBytes: 131072,
+      outputRef: uri,
+      safetyClass: 'operator',
+      sourceRefs: [uri],
+      text: JSON.stringify(data, null, 2),
+    })
+    return {
+      contents: [
+        {
+          mimeType: 'application/json',
+          text: projection.text ?? projection.summary,
+          uri,
+        },
+      ],
+    }
+  },
 })
