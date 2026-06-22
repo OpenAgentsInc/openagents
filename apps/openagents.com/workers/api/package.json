@@ -56,5 +56,8 @@
     "stripe": "^22.2.0",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/tassadar-executor": "workspace:*"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0"
   }
 }

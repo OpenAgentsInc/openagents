@@ -10,7 +10,7 @@ import {
 } from './chat-completions-routes'
 import { decideFairShare, decideSpendCap } from './inference-abuse-controls'
 import {
-  BROKEN_CONTROLS_CROSSY_ROAD_HTML,
+  BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML,
   GOOD_CROSSY_ROAD_HTML,
 } from './khala-code-verifier.fixtures'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
@@ -606,7 +606,10 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
-  test('a khala-code accepted artifact returns test_passed with receipt metadata', async () => {
+  // EPIC #6017 honest downgrade: the hot Worker route cannot launch a browser, so it
+  // does NOT execute the artifact. A prescreen-passing artifact comes back `unverified`
+  // (we did not run it) with scalar_reward 0 — NEVER test_passed / 1 from regex.
+  test('a khala-code prescreen-passing artifact returns UNVERIFIED (not certified) with receipt metadata', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
     const meteringHook: MeteringHook = () =>
@@ -648,6 +651,7 @@ describe('POST /v1/chat/completions', () => {
         verification: string
         verification_receipt: string
         verified: boolean
+        executed: boolean
         worker: string
         workers: ReadonlyArray<string>
       }
@@ -655,23 +659,20 @@ describe('POST /v1/chat/completions', () => {
 
     expect(body.model).toBe(KHALA_CODE_MODEL_ID)
     expect(body.openagents).toMatchObject({
+      executed: false,
       lane: 'open',
       receipt: 'receipt.inference.charge.chatcmpl-khala-code-pass',
       receipt_url:
         '/api/public/inference/receipts/receipt.inference.charge.chatcmpl-khala-code-pass',
       requested_model: KHALA_CODE_MODEL_ID,
       route: 'coding',
-      scalar_reward: 1,
+      scalar_reward: 0,
       served_model: KHALA_CODE_MODEL_ID,
-      verification: 'test_passed',
-      verified: true,
+      verification: 'unverified',
+      verified: false,
       worker: FIREWORKS_ADAPTER_ID,
       workers: [FIREWORKS_ADAPTER_ID, 'khala-code-crossy-road-verifier'],
     })
-    expect(body.openagents?.rubric.failed_checks).toEqual([])
-    expect(body.openagents?.rubric.passed_checks).toContain(
-      'restart_resets_character',
-    )
     expect(body.openagents?.verification_receipt).toMatch(
       /^receipt\.inference\.khala_code\.verification\.chatcmpl-khala-code-pass\./u,
     )
@@ -680,7 +681,7 @@ describe('POST /v1/chat/completions', () => {
     )
   })
 
-  test('a khala-code deliberately broken artifact reports verified false', async () => {
+  test('a khala-code artifact that fails the cheap prescreen reports failed (not even worth running)', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
 
@@ -688,7 +689,7 @@ describe('POST /v1/chat/completions', () => {
       handleChatCompletions(
         chatRequest({
           messages: [
-            { content: BROKEN_CONTROLS_CROSSY_ROAD_HTML, role: 'user' },
+            { content: BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML, role: 'user' },
           ],
           model: KHALA_CODE_MODEL_ID,
         }),
@@ -706,15 +707,15 @@ describe('POST /v1/chat/completions', () => {
         scalar_reward: number
         verification: string
         verified: boolean
+        executed: boolean
       }
     }
 
     expect(body.openagents?.verification).toBe('failed')
     expect(body.openagents?.verified).toBe(false)
-    expect(body.openagents?.rubric.failed_checks).toContain(
-      'direction_controls',
-    )
-    expect(body.openagents?.scalar_reward).toBeLessThan(1)
+    expect(body.openagents?.executed).toBe(false)
+    expect(body.openagents?.rubric.failed_checks).toContain('single_html_file')
+    expect(body.openagents?.scalar_reward).toBe(0)
   })
 
   test('a non-Khala request omits the openagents block', async () => {
