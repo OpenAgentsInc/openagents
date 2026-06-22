@@ -313,6 +313,84 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.usage.completionTokens).toBe(2)
   })
 
+  // STREAMING OPENAGENTS DISCLOSURE (M0 / #6008 follow-up) ------------------
+  // The SSE path carries the SAME non-breaking `openagents` block the
+  // non-streaming path emits, built by the SAME builder, attached to exactly the
+  // FINAL `chat.completion.chunk` frame. Non-Khala streams omit it entirely.
+
+  // Parse the `chat.completion.chunk` frames from an SSE body (ignores [DONE]).
+  const parseSseChunks = (
+    text: string,
+  ): ReadonlyArray<{ openagents?: unknown }> =>
+    text
+      .split('\n\n')
+      .map(block => block.replace(/^data: /u, '').trim())
+      .filter(payload => payload !== '' && payload !== '[DONE]')
+      .map(payload => JSON.parse(payload) as { openagents?: unknown })
+
+  test('a streamed Khala request carries the openagents block on exactly the final chunk', async () => {
+    // khala-mini classifies to the Gemini lane; register an echo adapter under
+    // that lane id so the default plan resolves it (mirrors the non-streaming
+    // Khala disclosure test).
+    const streamRegistry = new InferenceProviderRegistry()
+    streamRegistry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+    const nonStreamRegistry = new InferenceProviderRegistry()
+    nonStreamRegistry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+
+    const khalaBody = {
+      messages: [{ content: 'hello world', role: 'user' }],
+      model: KHALA_MINI_MODEL_ID,
+    }
+
+    const streamed = await run(
+      handleChatCompletions(
+        chatRequest({ ...khalaBody, stream: true }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry: streamRegistry }),
+      ),
+    )
+    expect(streamed.status).toBe(200)
+    expect(streamed.headers.get('content-type')).toContain('text/event-stream')
+
+    const text = await streamed.text()
+    const frames = parseSseChunks(text)
+    expect(frames.length).toBeGreaterThan(1)
+    // Exactly the final frame carries the disclosure; all earlier frames omit it.
+    frames
+      .slice(0, -1)
+      .forEach(frame => expect(frame.openagents).toBeUndefined())
+    const finalOpenagents = frames[frames.length - 1]?.openagents
+
+    // The streamed block equals the non-streaming block for the same request.
+    const nonStreamed = await run(
+      handleChatCompletions(
+        chatRequest(khalaBody),
+        baseDeps({ lanePlan: selectAdapterPlan, registry: nonStreamRegistry }),
+      ),
+    )
+    const nonStreamedBody = (await nonStreamed.json()) as { openagents?: unknown }
+    expect(finalOpenagents).toEqual(nonStreamedBody.openagents)
+    expect(finalOpenagents).toEqual({
+      lane: 'gemini',
+      requested_model: KHALA_MINI_MODEL_ID,
+      served_model: KHALA_MINI_MODEL_ID,
+      verification: 'none',
+      worker: VERTEX_GEMINI_ADAPTER_ID,
+    })
+  })
+
+  test('a streamed non-Khala request omits the openagents block', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, stream: true }),
+        baseDeps(),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    // The disclosure field never appears anywhere in the non-Khala SSE body.
+    expect(text).not.toContain('openagents')
+  })
+
   test('maps a provider adapter failure to a 502 provider_error', async () => {
     const failingAdapter: InferenceProviderAdapter = {
       complete: () =>
