@@ -1,11 +1,17 @@
 # StyleX Migration Audit
 
 Date: 2026-06-22
-Status: Design-system audit and migration recommendation
+Status: Audit complete; first StyleX migration sequence P0-P5 implemented,
+pushed to `main`, and closed.
 Scope: `openagents` web, desktop, mobile, `@openagentsinc/ui`, `@openagentsinc/autopilot-ui`, Foldkit integration, and local reference repos:
 
 - `/Users/christopherdavid/work/projects/repos/stylex`
 - `/Users/christopherdavid/work/projects/repos/react-native-stylex`
+
+Final sequence status: issues #5952, #5953, #5954, #5955, #5956, and #5957
+are complete. The pushed commits are `2783a48d29`, `ee277e04b3`,
+`27a83805d5`, `83a7ec4a0b`, `5142eb9166`, and `0a06e89828`. Mobile remains
+intentionally out of scope for this sequence.
 
 ## Implementation progress
 
