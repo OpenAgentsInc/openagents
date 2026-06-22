@@ -1259,6 +1259,38 @@ const window = new BrowserWindow({
   rpc,
 })
 
+// #verse/mmo-characters-per-account: the per-instance Verse character.
+//
+// OA_CHARACTER is set on THIS Bun launcher process, but the renderer cannot see
+// it: it is not VITE_-prefixed (so it is absent from the build-time
+// `import.meta.env` define) and there is no `process.env` in the webview. So we
+// resolve it here once and inject it as a global the renderer reads first
+// (chatWorldCharacterId in src/shared/chat-world-flags.ts). Default "main" keeps
+// a single instance identical to before. Two instances launched with
+// OA_CHARACTER=main and OA_CHARACTER=alt become two distinct, mutually-visible
+// avatars.
+const verseCharacter = ((): string => {
+  const trimmed = Bun.env.OA_CHARACTER?.trim()
+  return trimmed !== undefined && trimmed.length > 0 ? trimmed : "main"
+})()
+console.log(`[autopilot-desktop] verse character: ${verseCharacter}`)
+const injectVerseCharacter = (): void => {
+  try {
+    window.webview.executeJavascript(
+      `globalThis.__OA_CHARACTER = ${JSON.stringify(verseCharacter)}`,
+    )
+  } catch {
+    // Fail-soft: a missing webview/executeJavascript just leaves the renderer on
+    // its env-fallback ("main"); we re-inject on dom-ready below regardless.
+  }
+}
+// Belt-and-suspenders: inject as early as we can AND once the DOM is ready, so
+// the value is present whether the renderer reads it before or after first
+// paint. The renderer also resolves the character LAZILY (at joinRegion /
+// setAvatarPosition time, well after this fires), so dom-ready timing cannot
+// lose the value.
+injectVerseCharacter()
+
 // CL-30: each poll, fold the session list into the notifier so a session that
 // newly enters a notify-worthy state (needs_decision / failed / completed)
 // updates the in-app notification center.
@@ -1412,6 +1444,7 @@ const autoUpdate = () =>
   })
 
 window.webview.on("dom-ready", () => {
+  injectVerseCharacter()
   poller.start()
   void autoUpdate()
   autoUpdateTimer = setInterval(() => void autoUpdate(), autoUpdateIntervalMs(Bun.env))

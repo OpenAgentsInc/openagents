@@ -428,6 +428,117 @@ describe("subscribeSpacetimeWorld", () => {
     expect(disconnected).toBe(true)
   })
 
+  test("resolves the characterId LAZILY at join time, so a late OA_CHARACTER injection wins", () => {
+    // Regression for the webview-plumbing bug: the Bun host injects
+    // globalThis.__OA_CHARACTER (read by chatWorldCharacterId), and that
+    // injection may land AFTER the subscription mounts. The subscription must
+    // therefore read the character via a getter at join/move time, not capture
+    // it once at construction. Here we pass a getter, then set the value AFTER
+    // constructing the subscription but BEFORE applied()/join fires, and assert
+    // the join (and the self-filter key) use the late value, not a stale capture.
+    const joins: unknown[] = []
+    const leaves: unknown[] = []
+    const rows = fakeWorldRows()
+    let applied: (() => void) | null = null
+    const worlds: ChatWorldMultiplayerProjection[] = []
+    const identityHex = "1122334455667788990011223344556677"
+
+    let liveCharacter: string | null = "main"
+    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+      flags: { CHAT_WORLD_MULTIPLAYER: true },
+      runRef,
+      nowMs: () => 1_000,
+      // Lazy getter, exactly like the real wiring (() => chatWorldCharacterId()).
+      characterId: () => liveCharacter,
+      storage: { getItem: () => null, setItem: () => {} },
+      connect: (input) => {
+        input.onConnected("tok", identityHex)
+        const builder = {
+          onApplied: (cb: () => void) => {
+            applied = cb
+            return builder
+          },
+          onError: () => builder,
+          subscribe: () => ({ unsubscribe: () => {} }),
+        }
+        return {
+          db: rows,
+          reducers: {
+            joinRegion: (args: unknown) => joins.push(args),
+            leaveRegion: (args: unknown) => leaves.push(args),
+          },
+          subscriptionBuilder: () => builder,
+          disconnect: () => {},
+        }
+      },
+    })
+
+    // The injection lands AFTER mount, BEFORE join. A stale eager capture would
+    // still say "main"; the lazy getter must observe "alt".
+    liveCharacter = "alt"
+    applied?.()
+
+    expect(joins).toEqual([{
+      regionRef,
+      displayName: "Autopilot Desktop",
+      characterId: "alt",
+    }])
+    // The self-filter key for this instance must use the SAME late value.
+    expect(worlds.at(-1)!.localAvatarRef).toBe(
+      chatWorldDesktopAvatarRef(identityHex, "alt"),
+    )
+
+    stop()
+    expect(leaves).toEqual([{ regionRef, characterId: "alt" }])
+  })
+
+  test("two distinct resolved character ids produce two distinct avatar / self-filter keys", () => {
+    // Two instances on the SAME account but different OA_CHARACTER values must
+    // become two distinct, mutually-visible avatars (distinct self-filter keys).
+    const identityHex = "00ff112233445566778899aabbccddee"
+    const mainRef = chatWorldDesktopAvatarRef(identityHex, "main")
+    const altRef = chatWorldDesktopAvatarRef(identityHex, "alt")
+    expect(mainRef).not.toBe(altRef)
+
+    const keyFor = (character: string): string | null => {
+      const rows = fakeWorldRows()
+      let applied: (() => void) | null = null
+      const worlds: ChatWorldMultiplayerProjection[] = []
+      const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+        flags: { CHAT_WORLD_MULTIPLAYER: true },
+        runRef,
+        nowMs: () => 1_000,
+        characterId: character,
+        storage: { getItem: () => null, setItem: () => {} },
+        connect: (input) => {
+          input.onConnected("tok", identityHex)
+          const builder = {
+            onApplied: (cb: () => void) => {
+              applied = cb
+              return builder
+            },
+            onError: () => builder,
+            subscribe: () => ({ unsubscribe: () => {} }),
+          }
+          return {
+            db: rows,
+            reducers: { joinRegion: () => {}, leaveRegion: () => {} },
+            subscriptionBuilder: () => builder,
+            disconnect: () => {},
+          }
+        },
+      })
+      applied?.()
+      const key = worlds.at(-1)!.localAvatarRef
+      stop()
+      return key
+    }
+
+    expect(keyFor("main")).toBe(mainRef)
+    expect(keyFor("alt")).toBe(altRef)
+    expect(keyFor("main")).not.toBe(keyFor("alt"))
+  })
+
   test("self-filters only the local character once the identity is known, rendering other characters of the same account", () => {
     // MMO model: one account (identity) fields many characters. This instance
     // is OA_CHARACTER=main; the SAME account also runs OA_CHARACTER=alt in a

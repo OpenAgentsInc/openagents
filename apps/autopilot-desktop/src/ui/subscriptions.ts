@@ -392,7 +392,12 @@ const spacetimeWorldStream: Stream.Stream<Message> = Stream.callback<Message>((q
     Effect.sync(() =>
       subscribeSpacetimeWorld(
         (world) => Queue.offerUnsafe(queue, GotChatWorldMultiplayer({ world })),
-        { flags: chatWorldSubscriptionFlags(), characterId: chatWorldCharacterId() },
+        // Pass the character resolver LAZILY (a getter), not an eager string.
+        // The Bun host injects globalThis.__OA_CHARACTER (chatWorldCharacterId
+        // reads it) and the dom-ready injection may land after this subscription
+        // mounts; resolving at join/move time — after the async SpacetimeDB
+        // connect — makes the value deterministic regardless of inject timing.
+        { flags: chatWorldSubscriptionFlags(), characterId: () => chatWorldCharacterId() },
       ),
     ),
     (unsubscribe) => Effect.sync(() => unsubscribe()),

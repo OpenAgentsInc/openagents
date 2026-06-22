@@ -64,6 +64,16 @@ export type Unsubscribe = () => void
 
 const noop: Unsubscribe = () => {}
 
+// The character id dep may be an eager value or a lazy getter. Resolving lazily
+// lets a late globalThis.__OA_CHARACTER injection (Bun host → dom-ready) reach
+// join/move-time reducer calls even if the subscription mounted first.
+type ChatWorldCharacterIdInput = string | null | (() => string | null)
+
+const resolveChatWorldCharacterId = (
+  input: ChatWorldCharacterIdInput | undefined,
+): string | null | undefined =>
+  typeof input === "function" ? input() : input
+
 // Injectable seams so the subscriptions are testable headlessly.
 export type ChatWorldSubscriptionDeps = {
   readonly baseUrl?: string
@@ -341,8 +351,11 @@ export type ChatWorldSpacetimeSubscriptionDeps = ChatWorldSubscriptionDeps & {
     readonly fallbackActorRef?: string | null
   }
   // The character this app launch fields (from OA_CHARACTER). Defaults to
-  // "main" so a single instance behaves exactly as before.
-  readonly characterId?: string | null
+  // "main" so a single instance behaves exactly as before. Accepts a getter so
+  // the value can be resolved LAZILY at join/move time — the Bun host injects
+  // globalThis.__OA_CHARACTER (read by chatWorldCharacterId) and that injection
+  // may land after this subscription mounts, so an eager capture could miss it.
+  readonly characterId?: string | null | (() => string | null)
 }
 
 export type SpacetimeWorldDispatch = (
@@ -543,12 +556,17 @@ export const createVerseMultiplayerClient = (input: {
   readonly worldUrl: string
   // The character this instance fields. One account can run many instances,
   // each with a distinct characterId, and every distinct character is its own
-  // visible avatar in the world. Omitted/blank → "main".
-  readonly characterId?: string | null
+  // visible avatar in the world. Omitted/blank → "main". Accepts a getter so the
+  // value is resolved LAZILY at join/move time, after the Bun host has injected
+  // globalThis.__OA_CHARACTER into the webview.
+  readonly characterId?: string | null | (() => string | null)
 }): VerseMultiplayerClient => {
   const lastAcceptedByRegion = new Map<string, ReturnType<typeof localPreviousFromWrite>>()
   let joinedRegionRef: string | null = null
-  const characterId = sanitizeChatWorldCharacterId(input.characterId)
+  // Resolve lazily on every reducer call so a late globalThis.__OA_CHARACTER
+  // injection (dom-ready) is reflected by the time join/move actually fire.
+  const characterId = (): string =>
+    sanitizeChatWorldCharacterId(resolveChatWorldCharacterId(input.characterId))
 
   const projection = () =>
     projectChatWorldSpacetimeRows({
@@ -567,7 +585,7 @@ export const createVerseMultiplayerClient = (input: {
     invokeMaybePromise(input.connection.reducers?.joinRegion?.({
       regionRef: region.regionRef,
       displayName: input.displayName,
-      characterId,
+      characterId: characterId(),
     }))
   }
 
@@ -575,7 +593,7 @@ export const createVerseMultiplayerClient = (input: {
     if (joinedRegionRef === null) return
     invokeMaybePromise(input.connection.reducers?.leaveRegion?.({
       regionRef: joinedRegionRef,
-      characterId,
+      characterId: characterId(),
     }))
     joinedRegionRef = null
   }
@@ -605,7 +623,7 @@ export const createVerseMultiplayerClient = (input: {
       yaw: pose.yaw,
       pitch: 0,
       movementMode: movementModeForVerseAnimation(pose.animation),
-      characterId,
+      characterId: characterId(),
     })
     if (plan.ok !== true) return plan
     if (!publishSpacetimeAvatarPosition(input.connection, plan)) {
@@ -637,7 +655,9 @@ const attachWorldConnection = (input: {
   readonly nowMs: () => number
   readonly worldUrl: string
   readonly displayName: string
-  readonly characterId: string
+  // Lazy character resolver (see resolveChatWorldCharacterId): read at join/move
+  // time so a late globalThis.__OA_CHARACTER injection is honored.
+  readonly characterId: ChatWorldCharacterIdInput
   // Latest resolved per-character self-filter key, or null before the live
   // identity is known. Read lazily so snapshots dispatched after onConnect
   // carry the real key.
@@ -747,7 +767,12 @@ export const subscribeSpacetimeWorld = (
   const maxReconnectAttempts = deps?.maxReconnectAttempts ?? Number.POSITIVE_INFINITY
   const reconnectBaseMs = deps?.reconnectBaseMs ?? 2_000
   const identity = chatWorldDesktopAvatarIdentity(deps?.identity ?? {})
-  const characterId = sanitizeChatWorldCharacterId(deps?.characterId ?? DEFAULT_OA_CHARACTER_ID)
+  // Resolve lazily: the value is read at join/move and self-filter time, after
+  // the Bun host has injected globalThis.__OA_CHARACTER into the webview.
+  const characterId = (): string =>
+    sanitizeChatWorldCharacterId(
+      resolveChatWorldCharacterId(deps?.characterId) ?? DEFAULT_OA_CHARACTER_ID,
+    )
 
   let stopped = false
   let retryHandle: unknown = null
@@ -759,7 +784,7 @@ export const subscribeSpacetimeWorld = (
   let redispatchSnapshot: (() => void) | null = null
   const localAvatarRef = (): string | null =>
     liveIdentityHex !== null && liveIdentityHex.length > 0
-      ? chatWorldDesktopAvatarRef(liveIdentityHex, characterId)
+      ? chatWorldDesktopAvatarRef(liveIdentityHex, characterId())
       : null
 
   const dispatchUnavailable = (): void => {
