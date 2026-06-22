@@ -1,0 +1,478 @@
+// Khala loop integration test — verified-serve (M4) -> dry-run Spark payout (M3).
+// (EPIC #6017; M3 #6011 / M4 #6012.) Proves the WHOLE chain end-to-end as one
+// flow, against the guinea-pig Pylon, INERT by default:
+//
+//   serve(parity-verified, fake transport) -> ServingReceipt -> payout DECISION
+//   -> flagged M3 settlement sink (dry-run, tiny-capped, placeholder destination)
+//   -> dereferenceable settled-shaped receipt
+//
+// No real sats move: the settlement dispatch is a DRY-RUN that records the
+// receipt but performs no Spark send. The guinea-pig Pylon's real Spark address
+// is read at runtime from the gitignored `.secrets/khala-test-payout.env` when
+// present (placeholder fallback in CI) and only ever handed to the test
+// destination resolver — never asserted on, never committed.
+
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+import { Effect } from 'effect'
+import { describe, expect, it } from 'vitest'
+
+import {
+  hostedMdkDirectPayoutDisabledGate,
+  projectMdkPayoutModeGate,
+} from '../mdk-payout-mode-gate'
+import type {
+  NexusPaymentAuthorityReceiptRecord,
+  NexusTreasuryPayoutAttemptRecord,
+  NexusTreasuryPayoutIntentRecord,
+  NexusTreasuryPayoutLedgerStore,
+  NexusTreasuryPayoutReconciliationEventRecord,
+} from '../nexus-treasury-payout-ledger'
+import {
+  disabledTassadarRealSettlementGate,
+  type TassadarRealSettlementGate,
+} from '../tassadar-run-settlement-gate'
+import { type KhalaSettlementDeps } from './khala-verified-work-settlement'
+import {
+  KhalaLoopArmingEnvKey,
+  disabledKhalaLoopArming,
+  makeDryRunSettlementDispatch,
+  readKhalaLoopArming,
+  runKhalaLoopOnce,
+  type DryRunSettlementLedger,
+  type KhalaLoopConfig,
+  type PylonServeTransport,
+} from './khala-loop-integration'
+import { type InferenceRequest } from './provider-adapter'
+import { type PsionicServeResponse } from './psionic-fabric-serve'
+
+const nowIso = '2026-06-22T18:00:00.000Z'
+const SETTLEMENT_RUN_REF = 'run.khala.loop.guineapig'
+const GUINEA_PIG_NODE_REF = 'pylon.khala.guinea_pig'
+const SERVING_RUN_REF = 'serve.run.khala.loop.1'
+
+// Read the guinea-pig Pylon's real Spark address from the gitignored secret when
+// present; fall back to a non-secret placeholder so CI runs without the file and
+// the address is NEVER committed or asserted on. Handed only to the resolver.
+const readGuineaPigSparkAddress = (): string => {
+  try {
+    const raw = readFileSync(
+      join(homedir(), 'work', '.secrets', 'khala-test-payout.env'),
+      'utf8',
+    )
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed.startsWith('KHALA_TEST_PAYOUT_SPARK_ADDRESS=')) {
+        const value = trimmed
+          .slice('KHALA_TEST_PAYOUT_SPARK_ADDRESS='.length)
+          .trim()
+        if (value !== '') return value
+      }
+    }
+  } catch {
+    // File absent (CI): fall through to the placeholder.
+  }
+  return 'spark1guineapigplaceholderxxxxxxxxxxxxxxxxxxxxxxx'
+}
+
+// A parity-verified whole-model serve from the guinea-pig Pylon (one stage).
+const guineaPigServe: PsionicServeResponse = {
+  content: 'hello from the guinea-pig Pylon',
+  finishReason: 'stop',
+  parityMode: 'exact_greedy_parity',
+  parityVerified: true,
+  servedModel: 'openagents/khala-mini',
+  servingRunRef: SERVING_RUN_REF,
+  stages: [
+    { layerEnd: 28, layerStart: 0, nodeRef: GUINEA_PIG_NODE_REF, role: 'stage' },
+  ],
+  usage: { completionTokens: 8, promptTokens: 4, totalTokens: 12 },
+}
+
+// A fake Pylon transport returning a fixed serve. A real Pylon transport (HTTP to
+// a live online Pylon) drops in here with no contract change.
+const fakePylonTransport = (
+  serve: PsionicServeResponse = guineaPigServe,
+): PylonServeTransport => () => Effect.succeed(serve)
+
+const request: InferenceRequest = {
+  messages: [{ content: 'ping', role: 'user' }],
+  model: 'openagents/khala-mini',
+  passthroughParams: {},
+  stream: false,
+}
+
+// Armed MDK payout-mode gate (makes the payout DECISION armable). Does NOT itself
+// move money; the M3 real-settlement gate is the second, independent owner gate.
+const armedMdkGate = () =>
+  projectMdkPayoutModeGate({
+    hostedFundedKeyVerified: true,
+    hostedProgrammaticPayoutsEnabled: true,
+    requestedMode: 'hosted_mdk_direct_payout',
+  })
+
+const fullResaleRefs = {
+  assignmentReceiptRef: 'ref.assignment',
+  dispatchRef: 'ref.dispatch',
+  meteringReceiptRef: 'ref.metering',
+  pricingPolicyRef: 'ref.pricing',
+  providerGrantRef: 'ref.grant',
+  routePolicyRef: 'ref.route',
+  settlementReceiptRef: 'ref.settlement',
+  tosBoundaryRef: 'ref.tos',
+}
+
+// Tiny + treasury-bounded: per-payout 100 sats, daily 100 sats. Real money.
+const armedRealSettlementGate = (
+  overrides: Partial<TassadarRealSettlementGate> = {},
+): TassadarRealSettlementGate => ({
+  allowedAdapterKind: 'spark_treasury',
+  allowedContributorRefs: [],
+  allowedRunRefs: [SETTLEMENT_RUN_REF],
+  enabled: true,
+  maxDailyPayoutSats: 100,
+  maxPayoutSats: 100,
+  runScopedStreaming: true,
+  ...overrides,
+})
+
+// Minimal in-memory ledger store satisfying both the M3 deps store contract and
+// the dry-run dispatch ledger contract.
+class MemoryLedgerStore implements NexusTreasuryPayoutLedgerStore {
+  attempts = new Map<string, NexusTreasuryPayoutAttemptRecord>()
+  attemptsByIdempotency = new Map<string, NexusTreasuryPayoutAttemptRecord>()
+  events = new Map<string, NexusTreasuryPayoutReconciliationEventRecord>()
+  intents = new Map<string, NexusTreasuryPayoutIntentRecord>()
+  intentsByIdempotency = new Map<string, NexusTreasuryPayoutIntentRecord>()
+  receipts = new Map<string, NexusPaymentAuthorityReceiptRecord>()
+
+  createPayoutAttempt = async (record: NexusTreasuryPayoutAttemptRecord) => {
+    this.attempts.set(record.payoutAttemptRef, record)
+    this.attemptsByIdempotency.set(record.idempotencyKeyHash, record)
+  }
+
+  createPayoutIntent = async (record: NexusTreasuryPayoutIntentRecord) => {
+    this.intents.set(record.payoutIntentRef, record)
+    this.intentsByIdempotency.set(record.idempotencyKeyHash, record)
+  }
+
+  createPayoutTargetApproval = async () => {}
+
+  createPaymentAuthorityReceipt = async (
+    record: NexusPaymentAuthorityReceiptRecord,
+  ) => {
+    this.receipts.set(record.receiptRef, record)
+  }
+
+  createReconciliationEvent = async (
+    record: NexusTreasuryPayoutReconciliationEventRecord,
+  ) => {
+    this.events.set(record.eventRef, record)
+  }
+
+  createReleaseGate = async () => {}
+
+  listPaymentAuthorityReceipts = async (limit: number) =>
+    [...this.receipts.values()].slice(0, limit)
+
+  readPayoutAttemptByRef = async (ref: string) => this.attempts.get(ref)
+
+  readPayoutAttemptByIdempotencyKeyHash = async (hash: string) =>
+    this.attemptsByIdempotency.get(hash)
+
+  readPayoutIntentByIdempotencyKeyHash = async (hash: string) =>
+    this.intentsByIdempotency.get(hash)
+
+  readPayoutIntentByBuyerPaymentRef = async (buyerPaymentRef: string) =>
+    [...this.intents.values()].find(i => i.buyerPaymentRef === buyerPaymentRef)
+
+  readPayoutIntentByRef = async (ref: string) => this.intents.get(ref)
+
+  readPaymentAuthorityReceiptByRef = async (ref: string) =>
+    this.receipts.get(ref)
+
+  readReconciliationEventByRef = async (ref: string) => this.events.get(ref)
+}
+
+// The dry-run ledger view over the same store (read/record settled receipts).
+const dryRunLedgerView = (store: MemoryLedgerStore): DryRunSettlementLedger => ({
+  readReceiptByRef: ref => store.readPaymentAuthorityReceiptByRef(ref),
+  recordReceipt: record => store.createPaymentAuthorityReceipt(record),
+})
+
+// Build the M3 settlement deps for the loop, with the DRY-RUN dispatch and a
+// dispatch counter so we can prove "no real send, but a receipt recorded".
+const makeSettlementDeps = (
+  options: Readonly<{
+    gate: TassadarRealSettlementGate
+    store: MemoryLedgerStore
+    targets: ReadonlyMap<string, string>
+    dispatchCount: { value: number }
+  }>,
+): KhalaSettlementDeps => {
+  const dryRun = makeDryRunSettlementDispatch(dryRunLedgerView(options.store))
+  return {
+    dispatchRealSettlement: input =>
+      Effect.gen(function* () {
+        const existing = yield* Effect.promise(() =>
+          options.store.readPaymentAuthorityReceiptByRef(
+            input.settlement.settlementReceiptRef,
+          ),
+        )
+        // Count only the first (recording) dispatch; a replay is an idempotent
+        // no-op. This proves idempotency at the dispatch boundary.
+        if (existing === undefined) options.dispatchCount.value += 1
+        yield* dryRun(input)
+      }),
+    ledger: options.store,
+    nowIso,
+    readGate: () => options.gate,
+    resolvePayoutDestination: async ref => options.targets.get(ref),
+    settlementRunRef: SETTLEMENT_RUN_REF,
+  }
+}
+
+const baseConfig = (
+  options: Readonly<{
+    arming: KhalaLoopConfig['arming']
+    settlementDeps: KhalaSettlementDeps
+    payoutGate?: KhalaLoopConfig['payoutGate']
+    resaleRefs?: KhalaLoopConfig['resaleRefs']
+    transport?: PylonServeTransport
+  }>,
+): KhalaLoopConfig => ({
+  arming: options.arming,
+  // 5_000 msat = 5 sats: clears the 1-sat dust floor, stays tiny + bounded.
+  contributorCutMsat: 5_000,
+  payoutGate: options.payoutGate ?? armedMdkGate(),
+  resaleRefs: options.resaleRefs ?? fullResaleRefs,
+  revenueAsset: 'bitcoin',
+  settlementDeps: options.settlementDeps,
+  transport: options.transport ?? fakePylonTransport(),
+})
+
+describe('readKhalaLoopArming (flag, default OFF)', () => {
+  it('is OFF when the env key is absent', () => {
+    expect(readKhalaLoopArming({})).toEqual(disabledKhalaLoopArming)
+  })
+
+  it('is OFF for any value other than the exact on-token (fails closed)', () => {
+    for (const raw of ['true', '1', '', 'on', 'ARMED', ' armed ']) {
+      // " armed " trims to "armed" -> ON; assert the rest are OFF.
+      const expected = raw.trim() === 'armed'
+      expect(readKhalaLoopArming({ [KhalaLoopArmingEnvKey]: raw }).loopArmed).toBe(
+        expected,
+      )
+    }
+  })
+
+  it('is ON only for the exact on-token', () => {
+    expect(
+      readKhalaLoopArming({ [KhalaLoopArmingEnvKey]: 'armed' }).loopArmed,
+    ).toBe(true)
+  })
+})
+
+describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)', () => {
+  it('INERT by default: loop flag OFF => serve happens, but nothing forwards to settlement', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: disabledKhalaLoopArming, settlementDeps }),
+        request,
+      ),
+    )
+
+    // The serve + parity receipt still happen (M4 works); nothing settled.
+    expect(outcome.receipt.parityVerified).toBe(true)
+    expect(outcome.served.result.content).toContain('guinea-pig')
+    expect(outcome.forwardedToSettlement).toBe(false)
+    expect(outcome.settlement).toBeNull()
+    expect(dispatchCount.value).toBe(0)
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('END-TO-END (loop ARMED + M3 gate ARMED): serve -> receipt -> dry-run settle -> dereferenceable settled receipt', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: { loopArmed: true }, settlementDeps }),
+        request,
+      ),
+    )
+
+    expect(outcome.forwardedToSettlement).toBe(true)
+    expect(outcome.decision.armed).toBe(true)
+    expect(outcome.settlement).not.toBeNull()
+    const legs = outcome.settlement!.legs
+    expect(legs).toHaveLength(1)
+    const leg = legs[0]!
+    expect(leg.contributorRef).toBe(GUINEA_PIG_NODE_REF)
+    expect(leg.settled).toBe(true)
+    expect(leg.realBitcoinMoved).toBe(true)
+    expect(leg.mode).toBe('real_bitcoin')
+    expect(leg.amountSats).toBe(5)
+    expect(leg.settlementReceiptRef).not.toBeNull()
+
+    // The settled receipt is DEREFERENCEABLE in the ledger and realBitcoinMoved-shaped.
+    const receipt = await store.readPaymentAuthorityReceiptByRef(
+      leg.settlementReceiptRef!,
+    )
+    expect(receipt).toBeDefined()
+    const projection = JSON.parse(receipt!.publicProjectionJson)
+    expect(projection.state).toBe('settled')
+    expect(projection.moneyMovement).toBe('real_bitcoin')
+    expect(projection.contributorRef).toBe(GUINEA_PIG_NODE_REF)
+    expect(projection.amountSats).toBe(5)
+    // No raw Spark address / invoice / preimage anywhere in the receipt.
+    expect(receipt!.publicProjectionJson).not.toMatch(/spark1/i)
+
+    // DRY-RUN: a single recording dispatch, no real Spark send.
+    expect(dispatchCount.value).toBe(1)
+  })
+
+  it('IDEMPOTENT: replaying the same verified serve never double-records (no double-pay)', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+    const config = baseConfig({ arming: { loopArmed: true }, settlementDeps })
+
+    await Effect.runPromise(runKhalaLoopOnce(config, request))
+    await Effect.runPromise(runKhalaLoopOnce(config, request))
+
+    // The receipt ref is derived from run+node, so a replay records AT MOST once.
+    expect(dispatchCount.value).toBe(1)
+    expect(store.receipts.size).toBe(1)
+  })
+
+  it('loop ARMED but M3 owner gate OFF: still inert (the second independent gate blocks)', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: disabledTassadarRealSettlementGate,
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: { loopArmed: true }, settlementDeps }),
+        request,
+      ),
+    )
+
+    // Decision arms (MDK gate + resale refs), the loop forwards, but the M3 leg
+    // blocks on its own disabled owner gate => nothing settles, nothing recorded.
+    expect(outcome.forwardedToSettlement).toBe(true)
+    expect(outcome.settlement!.legs[0]!.settled).toBe(false)
+    expect(outcome.settlement!.legs[0]!.skipped).toBe('gate_not_authorized')
+    expect(dispatchCount.value).toBe(0)
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('unarmed MDK gate: decision not armed => loop never forwards even with the loop flag ON', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({
+          arming: { loopArmed: true },
+          payoutGate: hostedMdkDirectPayoutDisabledGate(),
+          settlementDeps,
+        }),
+        request,
+      ),
+    )
+
+    expect(outcome.decision.armed).toBe(false)
+    expect(outcome.forwardedToSettlement).toBe(false)
+    expect(outcome.settlement).toBeNull()
+    expect(dispatchCount.value).toBe(0)
+  })
+
+  it('FAILS CLOSED on a parity-unverified serve (M4 gate): the loop never settles', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const unverifiedServe: PsionicServeResponse = {
+      ...guineaPigServe,
+      parityMode: 'none',
+      parityVerified: false,
+    }
+
+    const result = await Effect.runPromiseExit(
+      runKhalaLoopOnce(
+        baseConfig({
+          arming: { loopArmed: true },
+          settlementDeps,
+          transport: fakePylonTransport(unverifiedServe),
+        }),
+        request,
+      ),
+    )
+
+    // The M4 dispatch typed-refuses an unverified serve before any settlement.
+    expect(result._tag).toBe('Failure')
+    expect(dispatchCount.value).toBe(0)
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('SKIPS cleanly when the guinea-pig Pylon has no registered Spark target', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map(), // no destination registered
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: { loopArmed: true }, settlementDeps }),
+        request,
+      ),
+    )
+
+    expect(outcome.settlement!.legs[0]!.skipped).toBe('no_payout_destination')
+    expect(outcome.settlement!.legs[0]!.settled).toBe(false)
+    expect(dispatchCount.value).toBe(0)
+  })
+})
