@@ -1,11 +1,27 @@
-// Deterministic verifier substrate for the Khala coding lane (#6010).
+// Khala coding-lane verifier substrate (#6010, EPIC #6017).
 //
-// The hot Worker route cannot launch a browser, so this module keeps the
-// request-time gate pure and receipt-shaped while exposing a stable headless
-// command contract for the runner that executes generated HTML artifacts outside
-// the Worker. The current crossy-road rubric is deliberately narrow and fixture
-// backed: one single-file HTML artifact, bounded controls/camera/difficulty/
-// restart checks, and an explicit scalar reward for the later Psion handoff.
+// HONEST DOWNGRADE (docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md):
+// This module USED to return `verification: 'test_passed'` / `verified: true` /
+// `scalarReward: 1` from REGEX over the HTML source — it never ran the artifact. That
+// certified a crossy-road game that crashed on load, had a dead PLAY button, a 100x
+// camera, and stopped generating world. `verified:true` must mean "we ran it and it
+// did what the user asked." So:
+//
+//   - The regex checks remain ONLY as a cheap PRE-SCREEN: a gate to decide whether the
+//     artifact is even worth attempting to execute (is it one self-contained HTML file
+//     with a script + game surface?). They are NOT the verification verdict.
+//   - With no executed-acceptance result, the verdict is `unverified`, `verified:false`,
+//     `scalarReward:0`. Better to say "we didn't run it" than to falsely certify.
+//   - When the out-of-Worker headless acceptance runner (`acceptance-runner/`) HAS run
+//     the artifact, the route passes its `AcceptanceVerdict` in and the verdict is
+//     derived from EXECUTION: `verified` = all acceptance tests passed; `scalarReward` =
+//     fraction passing.
+//
+// The hot Worker route cannot launch a browser, so the actual execution happens out of
+// the Worker (a sandbox / Pylon) via the runner; this module stays pure + receipt-shaped
+// and accepts the runner's verdict.
+
+import type { AcceptanceVerdict } from './acceptance-runner/verdict'
 
 export const KHALA_CODE_CROSSY_ROAD_RUBRIC_REF =
   'rubric.khala_code.crossy_road.single_html.v1'
@@ -15,22 +31,31 @@ export const KHALA_CODE_HEADLESS_COMMAND_REF =
 
 export const KHALA_CODE_VERIFIER_WORKER_ID = 'khala-code-crossy-road-verifier'
 
-export type KhalaCodeVerification = 'test_passed' | 'failed'
+// The verification verdict states. `unverified` is the HONEST default for an
+// executable artifact we have NOT actually run yet (the prescreen passed but no runner
+// executed it). `test_passed` is reserved for an EXECUTED acceptance suite that fully
+// passed. `failed` is an executed suite that did not fully pass, or an artifact that
+// failed the prescreen (not even worth attempting to run).
+export type KhalaCodeVerification = 'test_passed' | 'unverified' | 'failed'
 
-export type KhalaCodeRubricCheckId =
+// The prescreen check ids — a cheap source gate, NOT the verification verdict.
+export type KhalaCodePrescreenCheckId =
   | 'single_html_file'
-  | 'loads_and_runs_headless'
-  | 'direction_controls'
-  | 'sane_follow_camera'
-  | 'difficulty_ramps_with_progress'
-  | 'restart_resets_character'
+  | 'has_runnable_surface'
 
-export type KhalaCodeRubricCheck = Readonly<{
-  id: KhalaCodeRubricCheckId
+export type KhalaCodePrescreenCheck = Readonly<{
+  id: KhalaCodePrescreenCheckId
   label: string
   passed: boolean
-  evidenceRefs: ReadonlyArray<string>
   failureReason?: string | undefined
+}>
+
+export type KhalaCodePrescreen = Readonly<{
+  // Whether the artifact is worth ATTEMPTING to execute (one self-contained HTML file
+  // with a script + a game surface). This gates execution; it never verifies behavior.
+  attemptExecution: boolean
+  checks: ReadonlyArray<KhalaCodePrescreenCheck>
+  html: string | undefined
 }>
 
 export type KhalaCodeVerificationCommand = Readonly<{
@@ -46,16 +71,20 @@ export type KhalaCodeVerificationVerdict = Readonly<{
     fingerprint: string
     kind: 'single_html'
   }>
-  checks: ReadonlyArray<KhalaCodeRubricCheck>
+  // The cheap source pre-screen (gate-to-attempt only).
+  prescreen: KhalaCodePrescreen
   command: KhalaCodeVerificationCommand
-  failedChecks: ReadonlyArray<KhalaCodeRubricCheckId>
-  passedChecks: ReadonlyArray<KhalaCodeRubricCheckId>
+  // Per-acceptance-check ids when an executed suite ran; otherwise empty.
+  failedChecks: ReadonlyArray<string>
+  passedChecks: ReadonlyArray<string>
+  // Whether a real headless acceptance run produced this verdict.
+  executed: boolean
   receiptRef: string
   reward: Readonly<{
     handoffRef: string
     scalar: number
   }>
-  rubricRef: typeof KHALA_CODE_CROSSY_ROAD_RUBRIC_REF
+  rubricRef: string
   scalarReward: number
   sourceRefs: ReadonlyArray<string>
   summary: string
@@ -69,40 +98,11 @@ export type KhalaCodeVerifierInput = Readonly<{
   requestId: string
   servedModel: string
   worker: string
+  // The executed-acceptance verdict from the out-of-Worker headless runner, when
+  // available. PRESENT => the verdict is derived from EXECUTION. ABSENT => honest
+  // downgrade to `unverified` (we did not run it).
+  acceptance?: AcceptanceVerdict | undefined
 }>
-
-const CHECK_LABELS: Readonly<Record<KhalaCodeRubricCheckId, string>> = {
-  direction_controls:
-    'Arrow/WASD direction controls are wired to character movement.',
-  difficulty_ramps_with_progress:
-    'Difficulty or traffic speed ramps as score/progress increases.',
-  loads_and_runs_headless:
-    'The artifact has a runnable game surface and animation/update loop.',
-  restart_resets_character:
-    'Restart/reset places the character back at the starting position.',
-  sane_follow_camera:
-    'The camera or viewport follows the character with explicit framing.',
-  single_html_file: 'The delivered artifact is one self-contained HTML file.',
-}
-
-const check = (
-  id: KhalaCodeRubricCheckId,
-  passed: boolean,
-  evidenceRefs: ReadonlyArray<string>,
-  failureReason: string,
-): KhalaCodeRubricCheck => ({
-  id,
-  label: CHECK_LABELS[id],
-  passed,
-  evidenceRefs,
-  ...(passed ? {} : { failureReason }),
-})
-
-const includesAll = (value: string, needles: ReadonlyArray<string>): boolean =>
-  needles.every(needle => value.includes(needle.toLowerCase()))
-
-const hasAny = (value: string, patterns: ReadonlyArray<RegExp>): boolean =>
-  patterns.some(pattern => pattern.test(value))
 
 const externalAssetPattern =
   /<(?:script|link|img|audio|video)\b[^>]*(?:src|href)\s*=\s*["'](?:https?:)?\/\//iu
@@ -165,26 +165,15 @@ export const discoverKhalaCodeVerificationCommand =
     target: 'crossy-road-single-html',
   })
 
-export const verifyKhalaCodeCompletion = (
-  input: KhalaCodeVerifierInput,
-): KhalaCodeVerificationVerdict => {
-  const html = extractSingleHtmlArtifact(input.content)
-  const artifactText = html ?? input.content.trim()
+// CHEAP PRE-SCREEN ONLY. Decides whether an artifact is worth ATTEMPTING to execute:
+// is it one self-contained HTML file with a script + a plausible game surface and no
+// obvious fatal marker? This NEVER verifies behavior — it only gates execution.
+export const prescreenKhalaCodeArtifact = (
+  content: string,
+): KhalaCodePrescreen => {
+  const html = extractSingleHtmlArtifact(content)
+  const artifactText = html ?? content.trim()
   const lower = artifactText.toLowerCase()
-  const difficultyBlock =
-    /function\s+(?:rampDifficulty|updateDifficulty|increaseDifficulty)\s*\([^)]*\)\s*\{([\s\S]*?)\}/iu
-      .exec(artifactText)?.[1]
-      ?.toLowerCase() ?? lower
-  const restartBlock =
-    /function\s+(?:restartGame|restart|resetGame|startOver)\s*\([^)]*\)\s*\{([\s\S]*?)\}/iu
-      .exec(artifactText)?.[1]
-      ?.toLowerCase() ?? lower
-  const fingerprint = stableFingerprint(artifactText)
-  const evidencePrefix = `artifact:${fingerprint}`
-  const receiptRef = khalaCodeVerificationReceiptRef({
-    artifactFingerprint: fingerprint,
-    requestId: input.requestId,
-  })
 
   const hasSingleHtml =
     html !== undefined &&
@@ -194,115 +183,109 @@ export const verifyKhalaCodeCompletion = (
     !scriptSrcPattern.test(html) &&
     !linkedStylesheetPattern.test(html)
 
-  const loadsAndRuns =
+  const hasRunnableSurface =
     hasSingleHtml &&
     /<script\b/iu.test(artifactText) &&
-    hasAny(lower, [/<canvas\b/iu, /\bid=["']game["']/iu, /\bgame\b/iu]) &&
-    hasAny(lower, [
-      /requestanimationframe/iu,
-      /\bsetinterval\s*\(/iu,
-      /\bfunction\s+(?:loop|tick|update|animate)\b/iu,
-    ]) &&
-    !hasAny(lower, [/throw\s+new\s+error/iu, /todo:\s*not\s+implemented/iu])
+    (/<canvas\b/iu.test(lower) ||
+      /\bid=["']game["']/iu.test(lower) ||
+      /\bgame\b/iu.test(lower)) &&
+    !/throw\s+new\s+error/iu.test(lower) &&
+    !/todo:\s*not\s+implemented/iu.test(lower)
 
-  const hasDirectionControls =
-    includesAll(lower, ['arrowup', 'arrowdown', 'arrowleft', 'arrowright']) &&
-    includesAll(lower, ["'w'", "'a'", "'s'", "'d'"]) &&
-    hasAny(lower, [
-      /addEventListener\s*\(\s*["']keydown/iu,
-      /onkeydown/iu,
-      /keyboard/iu,
-    ]) &&
-    hasAny(lower, [/\bmove\s*\(/iu, /\bdirection\b/iu, /\bturn\b/iu])
-
-  const hasSaneCamera =
-    hasAny(lower, [
-      /\bcamera\b/iu,
-      /\bviewport\b/iu,
-      /\bfollow\b/iu,
-      /\bisometric\b/iu,
-      /\bthird[_ -]?person\b/iu,
-    ]) &&
-    hasAny(lower, [/\blookat\b/iu, /\boffset\b/iu, /\btrack/iu, /\bplayer\b/iu])
-
-  const hasDifficultyRamp =
-    hasAny(lower, [
-      /\bdifficulty\b/iu,
-      /\bspeed\b/iu,
-      /\bspawnrate\b/iu,
-      /\btraffic\b/iu,
-      /\blevel\b/iu,
-    ]) &&
-    hasAny(lower, [/\bprogress\b/iu, /\bscore\b/iu, /\bdistance\b/iu]) &&
-    hasAny(difficultyBlock, [
-      /\bprogress\b/iu,
-      /\bscore\b/iu,
-      /\bdistance\b/iu,
-    ]) &&
-    hasAny(difficultyBlock, [
-      /\+=/iu,
-      /math\.min/iu,
-      /math\.max/iu,
-      /\bdifficulty\s*=/iu,
-      /\bspeed\s*=/iu,
-    ])
-
-  const hasRestartReset =
-    hasAny(lower, [/\brestart/iu, /\bresetgame\b/iu, /\bstartover\b/iu]) &&
-    hasAny(restartBlock, [
-      /\bstart(?:x|y|z|position)\b/iu,
-      /\bspawn(?:x|y|z|position)\b/iu,
-      /\binitial(?:x|y|z|position)\b/iu,
-      /\bplayer\.(?:x|y|z)\s*=\s*0\b/iu,
-    ]) &&
-    hasAny(restartBlock, [/\bprogress\s*=\s*0\b/iu, /\bscore\s*=\s*0\b/iu])
-
-  const checks: ReadonlyArray<KhalaCodeRubricCheck> = [
-    check(
-      'single_html_file',
-      hasSingleHtml,
-      [`${evidencePrefix}:single_html_file`],
-      'Expected one self-contained HTML file with no external script/style/media dependencies.',
-    ),
-    check(
-      'loads_and_runs_headless',
-      loadsAndRuns,
-      [`${evidencePrefix}:headless_load_probe`],
-      'Expected a runnable game surface with an animation/update loop and no obvious fatal marker.',
-    ),
-    check(
-      'direction_controls',
-      hasDirectionControls,
-      [`${evidencePrefix}:keyboard_probe`],
-      'Expected Arrow and WASD direction controls wired through a key handler.',
-    ),
-    check(
-      'sane_follow_camera',
-      hasSaneCamera,
-      [`${evidencePrefix}:camera_probe`],
-      'Expected explicit camera/viewport follow framing for the character.',
-    ),
-    check(
-      'difficulty_ramps_with_progress',
-      hasDifficultyRamp,
-      [`${evidencePrefix}:difficulty_probe`],
-      'Expected difficulty/speed/traffic to update from score, distance, or progress.',
-    ),
-    check(
-      'restart_resets_character',
-      hasRestartReset,
-      [`${evidencePrefix}:restart_probe`],
-      'Expected restart/reset to restore character position and progress or score.',
-    ),
+  const checks: ReadonlyArray<KhalaCodePrescreenCheck> = [
+    {
+      id: 'single_html_file',
+      label: 'The delivered artifact is one self-contained HTML file.',
+      passed: hasSingleHtml,
+      ...(hasSingleHtml
+        ? {}
+        : {
+            failureReason:
+              'Expected one self-contained HTML file with no external script/style/media dependencies.',
+          }),
+    },
+    {
+      id: 'has_runnable_surface',
+      label:
+        'The artifact has a script and a plausible game surface to execute.',
+      passed: hasRunnableSurface,
+      ...(hasRunnableSurface
+        ? {}
+        : {
+            failureReason:
+              'Expected a <script> plus a canvas/game surface and no obvious fatal marker.',
+          }),
+    },
   ]
 
-  const passedChecks = checks.filter(item => item.passed).map(item => item.id)
-  const failedChecks = checks.filter(item => !item.passed).map(item => item.id)
-  const scalarReward = passedChecks.length / checks.length
-  const verified = failedChecks.length === 0
-  const verification: KhalaCodeVerification = verified
-    ? 'test_passed'
-    : 'failed'
+  return {
+    attemptExecution: hasSingleHtml && hasRunnableSurface,
+    checks,
+    html,
+  }
+}
+
+export const verifyKhalaCodeCompletion = (
+  input: KhalaCodeVerifierInput,
+): KhalaCodeVerificationVerdict => {
+  const prescreen = prescreenKhalaCodeArtifact(input.content)
+  const artifactText = prescreen.html ?? input.content.trim()
+  const fingerprint = stableFingerprint(artifactText)
+  const receiptRef = khalaCodeVerificationReceiptRef({
+    artifactFingerprint: fingerprint,
+    requestId: input.requestId,
+  })
+
+  const acceptance = input.acceptance
+
+  // VERDICT DERIVATION.
+  //   - Prescreen failed => `failed` (not even worth running). scalarReward 0.
+  //   - Executed acceptance present => derive from EXECUTION.
+  //   - Otherwise => HONEST DOWNGRADE to `unverified` (we did not run it).
+  let verification: KhalaCodeVerification
+  let verified: boolean
+  let scalarReward: number
+  let executed: boolean
+  let passedChecks: ReadonlyArray<string>
+  let failedChecks: ReadonlyArray<string>
+  let rubricRef: string
+  let summary: string
+
+  if (!prescreen.attemptExecution) {
+    verification = 'failed'
+    verified = false
+    scalarReward = 0
+    executed = false
+    passedChecks = []
+    failedChecks = prescreen.checks
+      .filter(check => !check.passed)
+      .map(check => check.id)
+    rubricRef = KHALA_CODE_CROSSY_ROAD_RUBRIC_REF
+    summary =
+      'Artifact failed the cheap pre-screen (not a runnable single-file HTML game); not executed.'
+  } else if (acceptance !== undefined && acceptance.executed) {
+    verified = acceptance.verified
+    scalarReward = acceptance.scalarReward
+    verification = verified ? 'test_passed' : 'failed'
+    executed = true
+    passedChecks = acceptance.passedChecks
+    failedChecks = acceptance.failedChecks
+    rubricRef = acceptance.rubricRef
+    summary = verified
+      ? 'Crossy-road artifact PASSED every executed acceptance check (ran in a real headless browser).'
+      : `Crossy-road artifact FAILED ${acceptance.failedChecks.length} executed acceptance check(s).`
+  } else {
+    // HONEST DOWNGRADE: prescreen passed, but no execution happened.
+    verification = 'unverified'
+    verified = false
+    scalarReward = 0
+    executed = false
+    passedChecks = []
+    failedChecks = []
+    rubricRef = KHALA_CODE_CROSSY_ROAD_RUBRIC_REF
+    summary =
+      'Artifact passed the pre-screen but was NOT executed; verification is pending the headless acceptance runner. Not certified.'
+  }
 
   return {
     artifact: {
@@ -310,16 +293,17 @@ export const verifyKhalaCodeCompletion = (
       fingerprint,
       kind: 'single_html',
     },
-    checks,
     command: discoverKhalaCodeVerificationCommand(),
+    executed,
     failedChecks,
     passedChecks,
+    prescreen,
     receiptRef,
     reward: {
       handoffRef: khalaCodeAcceptedOutcomeHandoffRef(receiptRef),
       scalar: scalarReward,
     },
-    rubricRef: KHALA_CODE_CROSSY_ROAD_RUBRIC_REF,
+    rubricRef,
     scalarReward,
     sourceRefs: [
       KHALA_CODE_CROSSY_ROAD_RUBRIC_REF,
@@ -332,9 +316,7 @@ export const verifyKhalaCodeCompletion = (
       `model:${input.servedModel}`,
       `worker:${input.worker}`,
     ],
-    summary: verified
-      ? 'Crossy-road single-file HTML artifact passed every deterministic rubric check.'
-      : `Crossy-road artifact failed ${failedChecks.length} deterministic rubric check(s).`,
+    summary,
     verification,
     verified,
   }

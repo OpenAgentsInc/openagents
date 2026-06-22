@@ -252,6 +252,9 @@
         "nostr-effect": "github:OpenAgentsInc/nostr-effect#4c52847",
         "stripe": "^22.2.0",
       },
+      "devDependencies": {
+        "playwright": "^1.61.0",
+      },
     },
     "apps/pylon": {
       "name": "@openagentsinc/pylon",

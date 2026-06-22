@@ -25,6 +25,10 @@ import {
   type SpendCapDecision,
 } from './inference-abuse-controls'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
+// PURE verdict type only — the route NEVER imports the headless runner (playwright)
+// into the Worker bundle. The runner executes out of the Worker; its verdict shape is
+// the only thing the route consumes (EPIC #6017).
+import { type AcceptanceVerdict } from './acceptance-runner/verdict'
 import {
   KHALA_CODE_VERIFIER_WORKER_ID,
   type KhalaCodeVerificationVerdict,
@@ -276,7 +280,14 @@ type OpenAgentsReceipt = Readonly<{
   served_model: string
   worker: string
   lane: string
-  verification: 'none' | 'test_passed' | 'failed'
+  // `unverified` is the HONEST default for an executable artifact we have not actually
+  // run yet (EPIC #6017): the regex pre-screen passed but the out-of-Worker headless
+  // acceptance runner has not executed it, so we do NOT certify it. `test_passed` is
+  // reserved for an EXECUTED acceptance suite that fully passed.
+  verification: 'none' | 'test_passed' | 'unverified' | 'failed'
+  // Whether a real headless acceptance run produced this verdict. False => the
+  // verdict is the honest pre-screen-only downgrade, not an execution result.
+  executed?: boolean | undefined
   verified?: boolean | undefined
   receipt?: string | undefined
   receipt_url?: string | undefined
@@ -305,6 +316,12 @@ const khalaReceiptForResult = (
     requestedModel: string
     responseId: string
     result: InferenceResult
+    // The executed-acceptance verdict from the out-of-Worker headless runner, when an
+    // execution actually ran (EPIC #6017). PRESENT => `verified`/`scalarReward` derive
+    // from EXECUTION. ABSENT (the hot Worker path today, which cannot launch a browser)
+    // => HONEST DOWNGRADE to `unverified`. Full prod wiring (async sandbox dispatch of
+    // the runner + receipt backfill) threads a real verdict in here.
+    acceptance?: AcceptanceVerdict | undefined
   }>,
 ): OpenAgentsReceipt | undefined => {
   if (!isKhalaModel(input.requestedModel)) {
@@ -328,11 +345,13 @@ const khalaReceiptForResult = (
     requestId: input.responseId,
     servedModel: input.result.servedModel,
     worker: input.adapterId,
+    ...(input.acceptance === undefined ? {} : { acceptance: input.acceptance }),
   })
   const receipt = input.metering.receiptRef ?? verdict.receiptRef
 
   return {
     ...base,
+    executed: verdict.executed,
     receipt,
     ...(input.metering.receiptRef === null
       ? {}

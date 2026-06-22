@@ -1,30 +1,49 @@
 import { describe, expect, test } from 'vitest'
 
+import type { AcceptanceVerdict } from './acceptance-runner/verdict'
+import { crossyRoadAcceptanceSpec } from './acceptance-spec'
+import { assembleAcceptanceVerdict } from './acceptance-runner/verdict'
 import {
   KHALA_CODE_CROSSY_ROAD_RUBRIC_REF,
   KHALA_CODE_HEADLESS_COMMAND_REF,
   discoverKhalaCodeVerificationCommand,
   extractSingleHtmlArtifact,
+  prescreenKhalaCodeArtifact,
   verifyKhalaCodeCompletion,
 } from './khala-code-verifier'
 import {
-  BROKEN_CONTROLS_CROSSY_ROAD_HTML,
-  BROKEN_DIFFICULTY_CROSSY_ROAD_HTML,
   BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML,
-  BROKEN_RESTART_CROSSY_ROAD_HTML,
   GOOD_CROSSY_ROAD_HTML,
 } from './khala-code-verifier.fixtures'
 
-const verify = (content: string) =>
+const verify = (
+  content: string,
+  acceptance?: AcceptanceVerdict | undefined,
+) =>
   verifyKhalaCodeCompletion({
     content,
     meteringReceiptRef: 'receipt.inference.charge.chatcmpl-fixture',
     requestId: 'chatcmpl-fixture',
     servedModel: 'openagents/khala-code',
     worker: 'fireworks',
+    ...(acceptance === undefined ? {} : { acceptance }),
   })
 
-describe('Khala code crossy-road verifier', () => {
+const executedVerdict = (allPass: boolean): AcceptanceVerdict => {
+  const spec = crossyRoadAcceptanceSpec()
+  return assembleAcceptanceVerdict({
+    checks: spec.checks.map((id, index) => ({
+      detail: 'x',
+      id,
+      passed: allPass ? true : index === 0,
+    })),
+    consoleErrors: [],
+    pageErrors: [],
+    spec,
+  })
+}
+
+describe('Khala code verifier — honest downgrade (EPIC #6017)', () => {
   test('extracts a single HTML artifact from raw or fenced assistant content', () => {
     expect(extractSingleHtmlArtifact(GOOD_CROSSY_ROAD_HTML)).toBe(
       GOOD_CROSSY_ROAD_HTML,
@@ -45,16 +64,47 @@ describe('Khala code crossy-road verifier', () => {
     })
   })
 
-  test('accepts the known-good crossy-road single-file fixture', () => {
+  test('prescreen is a gate-to-attempt, not a verdict', () => {
+    const pass = prescreenKhalaCodeArtifact(GOOD_CROSSY_ROAD_HTML)
+    expect(pass.attemptExecution).toBe(true)
+    const fail = prescreenKhalaCodeArtifact(
+      BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML,
+    )
+    expect(fail.attemptExecution).toBe(false)
+    expect(fail.checks.find(c => c.id === 'single_html_file')?.passed).toBe(
+      false,
+    )
+  })
+
+  test('a prescreen-passing artifact that was NOT executed is unverified — NOT test_passed', () => {
     const verdict = verify(GOOD_CROSSY_ROAD_HTML)
 
-    expect(verdict.verified).toBe(true)
+    // This is the core of the honest downgrade: looks fine on paper, but we did not
+    // run it, so we do NOT certify it.
+    expect(verdict.verification).toBe('unverified')
+    expect(verdict.verified).toBe(false)
+    expect(verdict.executed).toBe(false)
+    expect(verdict.scalarReward).toBe(0)
+    expect(verdict.reward.scalar).toBe(0)
+    expect(verdict.prescreen.attemptExecution).toBe(true)
+  })
+
+  test('an artifact that fails the prescreen is failed and not executed', () => {
+    const verdict = verify(BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML)
+    expect(verdict.verification).toBe('failed')
+    expect(verdict.verified).toBe(false)
+    expect(verdict.executed).toBe(false)
+    expect(verdict.scalarReward).toBe(0)
+    expect(verdict.failedChecks).toContain('single_html_file')
+  })
+
+  test('verdict is test_passed only when an EXECUTED acceptance suite fully passed', () => {
+    const verdict = verify(GOOD_CROSSY_ROAD_HTML, executedVerdict(true))
+    expect(verdict.executed).toBe(true)
     expect(verdict.verification).toBe('test_passed')
+    expect(verdict.verified).toBe(true)
     expect(verdict.scalarReward).toBe(1)
     expect(verdict.failedChecks).toEqual([])
-    expect(verdict.receiptRef).toMatch(
-      /^receipt\.inference\.khala_code\.verification\.chatcmpl-fixture\./u,
-    )
     expect(verdict.sourceRefs).toContain(
       'receipt.inference.charge.chatcmpl-fixture',
     )
@@ -63,34 +113,13 @@ describe('Khala code crossy-road verifier', () => {
     )
   })
 
-  test('rejects a deliberately broken control mapping', () => {
-    const verdict = verify(BROKEN_CONTROLS_CROSSY_ROAD_HTML)
-
-    expect(verdict.verified).toBe(false)
+  test('an executed acceptance suite that did not fully pass is failed with a dense reward', () => {
+    const verdict = verify(GOOD_CROSSY_ROAD_HTML, executedVerdict(false))
+    expect(verdict.executed).toBe(true)
     expect(verdict.verification).toBe('failed')
-    expect(verdict.failedChecks).toContain('direction_controls')
+    expect(verdict.verified).toBe(false)
+    expect(verdict.scalarReward).toBeGreaterThan(0)
     expect(verdict.scalarReward).toBeLessThan(1)
-  })
-
-  test('rejects a deliberately broken restart reset', () => {
-    const verdict = verify(BROKEN_RESTART_CROSSY_ROAD_HTML)
-
-    expect(verdict.verified).toBe(false)
-    expect(verdict.failedChecks).toContain('restart_resets_character')
-  })
-
-  test('rejects an artifact that depends on an external script', () => {
-    const verdict = verify(BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML)
-
-    expect(verdict.verified).toBe(false)
-    expect(verdict.failedChecks).toContain('single_html_file')
-    expect(verdict.failedChecks).toContain('direction_controls')
-  })
-
-  test('rejects an artifact without progress-driven difficulty ramping', () => {
-    const verdict = verify(BROKEN_DIFFICULTY_CROSSY_ROAD_HTML)
-
-    expect(verdict.verified).toBe(false)
-    expect(verdict.failedChecks).toContain('difficulty_ramps_with_progress')
+    expect(verdict.failedChecks.length).toBeGreaterThan(0)
   })
 })
