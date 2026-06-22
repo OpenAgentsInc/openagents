@@ -216,6 +216,17 @@ export const VerseKhalaReceipt = S.Struct({
 })
 export type VerseKhalaReceipt = typeof VerseKhalaReceipt.Type
 
+// Dev affordance (#6033): one isolated scene spawned into the live Verse. `sceneId`
+// is a registered spawnable-scene id (shared/verse-spawned-scene.ts); `showPortal`
+// toggles the optional gateway-portal variant for this spawn. The fixed in-world
+// station + synthetic simulated evidence are derived by the scene mapper, so the
+// model only carries the developer's spawn choice.
+export const VerseSpawnedSceneState = S.Struct({
+  sceneId: S.String,
+  showPortal: S.Boolean,
+})
+export type VerseSpawnedSceneState = typeof VerseSpawnedSceneState.Type
+
 export const ChatStepStatus = S.Literals([
   "pending",
   "running",
@@ -648,6 +659,15 @@ export const Model = ts("AutopilotDesktop", {
   verseKhalaStatus: ChatStatus,
   verseKhalaReceipt: S.NullOr(VerseKhalaReceipt),
 
+  // Dev affordance (#6033 / EPIC #6017): isolated SCENE STATIONS spawned into the
+  // live Verse world. Each entry is a registered spawnable-scene id (e.g.
+  // "crackling-energy") that the scene mapper drops at a fixed in-world station,
+  // fed by a SYNTHETIC simulated inference event (no Region DO / D1 / Worker / live
+  // receipt). Empty by default → the Verse is byte-identical until a scene is
+  // spawned with the dev key. `showPortal` toggles the optional gateway-portal
+  // variant for that spawn. Read via `modelVerseSpawnedScenes`.
+  verseSpawnedScenes: S.Array(VerseSpawnedSceneState),
+
   // CS-A1: account-management surface state (add/select/priority over the
   // node's local dev.accounts config). `managedAccounts` holds the last
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
@@ -849,6 +869,14 @@ export const modelVerseKhalaReceipt = (
     rubric: null,
   }
 }
+
+// Dev affordance (#6033): the isolated scenes currently spawned into the live
+// Verse. A plain read of the model array — the scene mapper turns each id into the
+// in-world station + synthetic crackling-arc layer.
+export const modelVerseSpawnedScenes = (
+  model: Model,
+): ReadonlyArray<VerseSpawnedSceneState> =>
+  model.verseSpawnedScenes as ReadonlyArray<VerseSpawnedSceneState>
 
 // #5730: typed read boundary for the opaque chat-world state.
 export const modelChatWorldScene = (
@@ -1243,6 +1271,7 @@ export const initialModel: Model = Model.make({
   verseKhalaInFlight: false,
   verseKhalaStatus: { text: "", tone: "idle" },
   verseKhalaReceipt: null,
+  verseSpawnedScenes: [],
   managedAccounts: null,
   codeModeSync: null,
   managedAccountsPending: false,

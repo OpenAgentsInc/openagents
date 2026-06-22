@@ -169,6 +169,7 @@ import {
   CHAT_WORLD_INFERENCE_NODE_PREFIX,
 } from "../shared/chat-world-visualization.js"
 import { VERSE_TRAINING_NODE_PREFIX } from "../shared/verse-training-visualization.js"
+import { verseSpawnableSceneById } from "../shared/verse-spawned-scene.js"
 import type {
   AppleFmReadinessResponse,
   BuiltInAgentReadinessResponse,
@@ -225,6 +226,29 @@ const verseCodeControlsEnabled = (model: Model): boolean =>
 
 const verseControlsDisabled = (model: Model): boolean =>
   verseSceneActive(model) && !verseCodeControlsEnabled(model)
+
+// Dev affordance (#6033): toggle an isolated scene station in/out of the live
+// Verse spawn list. An unknown scene id is a no-op (never fabricate a scene). A
+// freshly spawned scene starts with its portal off. Pure model state.
+const toggleVerseSpawnedScene = (model: Model, sceneId: string): Model => {
+  if (verseSpawnableSceneById(sceneId) === null) return model
+  const present = model.verseSpawnedScenes.some((s) => s.sceneId === sceneId)
+  const verseSpawnedScenes = present
+    ? model.verseSpawnedScenes.filter((s) => s.sceneId !== sceneId)
+    : [...model.verseSpawnedScenes, { sceneId, showPortal: false }]
+  return Model.make({ ...model, verseSpawnedScenes })
+}
+
+// Flip the optional gateway-portal variant for an already-spawned scene. A scene
+// that is not currently spawned (or an unknown id) is a no-op.
+const toggleVerseSpawnedScenePortal = (model: Model, sceneId: string): Model => {
+  if (verseSpawnableSceneById(sceneId) === null) return model
+  if (!model.verseSpawnedScenes.some((s) => s.sceneId === sceneId)) return model
+  const verseSpawnedScenes = model.verseSpawnedScenes.map((s) =>
+    s.sceneId === sceneId ? { ...s, showPortal: !s.showPortal } : s,
+  )
+  return Model.make({ ...model, verseSpawnedScenes })
+}
 
 const openNewCoderSession = (model: Model): Result => {
   const codeModeAdapter =
@@ -1451,7 +1475,12 @@ export const update = (model: Model, message: Message): Result => {
         verseControlsDisabled(model) &&
         intent.kind !== "open-coder-session" &&
         intent.kind !== "close-managed-panes" &&
-        intent.kind !== "hide-code-dock"
+        intent.kind !== "hide-code-dock" &&
+        // Dev affordance (#6033): the spawn keys are explicit explore-mode shortcuts
+        // (interpretKey only emits them in the Verse explore context), so they are
+        // allowed through even though general explore-mode controls are disabled.
+        intent.kind !== "spawn-verse-scene" &&
+        intent.kind !== "toggle-verse-scene-portal"
       ) {
         return [model, noCommands]
       }
@@ -1488,6 +1517,16 @@ export const update = (model: Model, message: Message): Result => {
           if (verseControlsDisabled(model)) return [model, noCommands]
           return [
             Model.make({ ...model, verseEnabled: !model.verseEnabled }),
+            noCommands,
+          ]
+        case "spawn-verse-scene":
+          // Dev affordance (#6033): inline the spawn toggle (message constructors
+          // are type-only imports here). Byte-identical to the SpawnedVerseScene
+          // reducer below.
+          return [toggleVerseSpawnedScene(model, intent.sceneId), noCommands]
+        case "toggle-verse-scene-portal":
+          return [
+            toggleVerseSpawnedScenePortal(model, intent.sceneId),
             noCommands,
           ]
         case "open-coder-session":
@@ -1574,6 +1613,12 @@ export const update = (model: Model, message: Message): Result => {
     case "ToggleVerse":
       if (verseControlsDisabled(model)) return [model, noCommands]
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
+    // Dev affordance (#6033): spawn / unspawn an isolated scene station into the
+    // live Verse, and toggle its optional gateway portal. Pure model state.
+    case "SpawnedVerseScene":
+      return [toggleVerseSpawnedScene(model, message.sceneId), noCommands]
+    case "ToggledVerseScenePortal":
+      return [toggleVerseSpawnedScenePortal(model, message.sceneId), noCommands]
     case "ClickedHotbarNewCoderSession":
       return openNewCoderSession(model)
     case "ChangedVerseMode": {

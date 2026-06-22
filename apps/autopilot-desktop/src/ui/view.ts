@@ -97,6 +97,10 @@ import {
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization.js"
 import { withVerseKhalaEffectLayer } from "../shared/verse-khala-effect.js"
+import {
+  verseSpawnedSceneEvidenceLines,
+  withVerseSpawnedSceneLayer,
+} from "../shared/verse-spawned-scene.js"
 import { verseKhalaInputOverlay } from "./verse-khala-input.js"
 import {
   VERSE_TRAINING_NODE_PREFIX,
@@ -405,6 +409,7 @@ import {
   modelChatWorldMultiplayer,
   modelChatWorldScene,
   modelVerseKhalaReceipt,
+  modelVerseSpawnedScenes,
   modelCodeModeSync,
   modelManagedAccounts,
   modelPaneLayer,
@@ -7114,6 +7119,17 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
             z: model.verseSceneRestorePose.z,
           },
   })
+  // Dev affordance (#6033 / EPIC #6017): drop any spawned ISOLATED scene stations
+  // (crackling energy + optional portal) into the SAME live world, at a fixed
+  // in-world location, fed by a synthetic simulated event (no backend). Empty
+  // spawn list ⇒ this is a no-op and the Verse is byte-identical.
+  const withSpawned = withVerseSpawnedSceneLayer(
+    withKhalaEffect,
+    modelVerseSpawnedScenes(model).map((spawned) => ({
+      sceneId: spawned.sceneId,
+      knobs: { showPortal: spawned.showPortal },
+    })),
+  )
   const inputBindings = verseInputBindingProjection(
     model.inputProfile,
     model.verseMode === "code" ? "verse_code_overlay" : "verse_explore",
@@ -7133,11 +7149,11 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
           capturedAtMs: model.verseSceneRestorePose.capturedAtMs,
         }
   const navigable = {
-    ...withKhalaEffect,
+    ...withSpawned,
     cameraMode: "perspective_walk" as const,
     controller: "third_person_character" as const,
     keyboardTargeting: {
-      ...(withKhalaEffect.keyboardTargeting ?? {}),
+      ...(withSpawned.keyboardTargeting ?? {}),
       ...inputBindings.keyboardTargeting,
     },
     thirdPersonController: {
@@ -7150,7 +7166,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       gravity: -13.5,
     },
     sceneChrome: {
-      ...(withKhalaEffect.sceneChrome ?? {}),
+      ...(withSpawned.sceneChrome ?? {}),
       lossPanel: "hidden" as const,
       statusChart: "hidden" as const,
     },
@@ -7252,6 +7268,39 @@ const chatSceneInspector = (model: Model): Html =>
         h.span([cls("chat-scene-inspector-ref")], [model.chatWorldInspectedRef]),
       ])
     : h.div([cls("chat-scene-inspector chat-scene-inspector-empty")], [])
+
+// Dev affordance (#6033 / EPIC #6017): the evidence overlay for any spawned
+// isolated scene, mirroring the standalone crackling-arc page's on-screen
+// `<pre class="evidence">` block (motionKind / sourceRefs / simulated /
+// evidenceMode / generatedAt / portal). Honest + isolated: it names every
+// spawned scene as a labelled simulation. Absent until something is spawned.
+const verseSpawnedSceneOverlay = (model: Model): Html => {
+  const spawned = modelVerseSpawnedScenes(model)
+  if (spawned.length === 0) {
+    return h.div([cls("verse-spawned-scene verse-spawned-scene-empty")], [])
+  }
+  return h.aside(
+    [
+      cls("verse-spawned-scene mono"),
+      h.AriaLabel("Spawned isolated scene evidence"),
+      h.DataAttribute("verse-spawned-scene", "active"),
+    ],
+    spawned.map((entry) =>
+      h.pre(
+        [
+          cls("verse-spawned-scene-evidence"),
+          h.DataAttribute("verse-spawned-scene-id", entry.sceneId),
+        ],
+        [
+          verseSpawnedSceneEvidenceLines({
+            sceneId: entry.sceneId,
+            knobs: { showPortal: entry.showPortal },
+          }).join("\n"),
+        ],
+      ),
+    ),
+  )
+}
 
 const verseBulletinBoardOverlay = (model: Model): Html => {
   const projection = verseTassadarBulletinOverlayProjection(
@@ -7430,6 +7479,7 @@ const chatSceneBackground = (model: Model): Html =>
     ),
     pylonBalanceHud(model),
     chatSceneInspector(model),
+    verseSpawnedSceneOverlay(model),
     verseBulletinBoardOverlay(model),
   ])
 
