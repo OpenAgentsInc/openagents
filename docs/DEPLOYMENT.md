@@ -36,7 +36,7 @@ change, update its linked runbook **and** fix the pointer here.
 | **Pylon Cloud node** | managed/cloud Pylon node | `apps/pylon/docs/cloud-node-deployment.md` | see runbook | — |
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
-| **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `apps/openagents-world/README.md` + `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` | `bun run typecheck:world-contract && bun run test:world-contract && bun run typecheck:world-client && bun run test:world-client && bun run --cwd apps/openagents-world typecheck && bun run --cwd apps/openagents-world test` before deploy | — |
+| **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `apps/openagents-world/README.md` + `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` | preflight world contract/client/service tests → `cd apps/openagents-world && bunx wrangler d1 migrations apply openagents-world --remote` → `bun run deploy` | — |
 
 ## Verse World Service Gate
 
@@ -56,6 +56,12 @@ The old self-hosted world module and generated TypeScript bindings have been
 deleted. Do not regenerate or reintroduce them for new production world
 behavior. Any useful schema or reducer pattern belongs in the Cloudflare/Effect
 contracts and Worker service.
+
+Operational details live in `apps/openagents-world/README.md`: D1 migrations
+use Wrangler against `openagents-world` or `openagents-world-staging`, DO class
+migrations use unique tags in `wrangler.jsonc`, `WORLD_BRIDGE_QUEUE` carries
+compact bridge retry markers, and DO alarm expiry is validated through the
+Effect-clock expiry tests plus two-client live smoke.
 
 ## Owned Visibility Freshness Smoke
 

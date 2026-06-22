@@ -29,6 +29,17 @@ const command = (
   payload,
 })
 
+const commandFromActorClass = (
+  actorClass: "browser" | "agent" | "operator" | "service",
+  name: string,
+  payload: unknown,
+  seq = 1,
+  issuedAt = "2026-06-22T00:00:00.000Z",
+) => ({
+  ...command(name, payload, seq, issuedAt, `${actorClass}.public.test`),
+  actorClass,
+})
+
 const serviceCommand = (
   name: string,
   payload: unknown,
@@ -82,6 +93,69 @@ describe("world command handlers", () => {
     expect(result.receipt.status).toBe("rejected")
     expect(result.receipt.error?.tag).toBe("auth")
     expect(result.delta.kind).toBe("diagnostic")
+  })
+
+  test("agent and operator actors cannot cross into service projection authority", async () => {
+    const state = makeEmptyHotState(regionRef)
+    const agent = await Effect.runPromise(applyWorldCommand(
+      state,
+      commandFromActorClass("agent", "append_world_event", {
+        row: {
+          kind: "world_event",
+          eventRef: "world_event.public.agent.1",
+          eventKind: "attempted_projection",
+          label: "Agent attempted projection",
+          occurredAt: "2026-06-22T00:00:00.000Z",
+          sourceRefs: ["source.public.test"],
+          safety: {
+            publicProjectionAllowed: true,
+            sourceRefs: ["source.public.test"],
+            blockerRefs: [],
+            caveatRefs: [],
+          },
+        },
+      }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+    const operator = await Effect.runPromise(applyWorldCommand(
+      state,
+      commandFromActorClass("operator", "record_bridge_health", {
+        row: {
+          kind: "bridge_health",
+          bridgeRef: "bridge.public.operator",
+          status: "ok",
+          checkedAt: "2026-06-22T00:00:00.000Z",
+          sourceRef: "source.public.test",
+          message: "operator attempted bridge write",
+          safety: {
+            publicProjectionAllowed: true,
+            sourceRefs: ["source.public.test"],
+            blockerRefs: [],
+            caveatRefs: [],
+          },
+        },
+      }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(agent.receipt.status).toBe("rejected")
+    expect(agent.receipt.error?.tag).toBe("auth")
+    expect(agent.delta.rows).toBeUndefined()
+    expect(operator.receipt.status).toBe("rejected")
+    expect(operator.receipt.error?.tag).toBe("auth")
+    expect(operator.delta.rows).toBeUndefined()
+  })
+
+  test("service actors cannot send browser interaction commands", async () => {
+    const result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      serviceCommand("send_local_message", { text: "service pretending to chat" }),
+      "2026-06-22T00:00:00.000Z",
+    ))
+
+    expect(result.receipt.status).toBe("rejected")
+    expect(result.receipt.error?.tag).toBe("auth")
+    expect(result.delta.rows).toBeUndefined()
   })
 
   test("service actors can write public projection rows only through service commands", async () => {

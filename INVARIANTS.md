@@ -67,9 +67,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.
 
-## Verse World Projection
+## Cloudflare Verse World Service
 
-- Live Verse world work is moving to `apps/openagents-world/`, a Cloudflare
+- Live Verse world work belongs to `apps/openagents-world/`, a Cloudflare
   Worker + Region Durable Object service written in TypeScript, Effect, and
   Effect Schema. Durable Objects are the coordination atoms for live presence,
   local interaction, interest-scoped fanout, hibernatable WebSockets, handshake
@@ -77,10 +77,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 - `packages/world-contract/` owns public-safe world schemas and command/delta
   contracts. `packages/world-client/` owns the desktop/web client projection
   that mirrors snapshots and deltas into a read-only `WorldReadModel`.
+- Worker/D1 public product surfaces remain authoritative for public training
+  truth, product promises, receipt-backed proof claims, settlement/payout
+  projection, and Forum/product state. The Verse world service owns only
+  public-safe presence, local interaction, interest-scoped fanout, diagnostic
+  rows, and replayable projection rows derived from public source refs.
 - The world service and client projection do not own settlement, payout,
   training truth, product promises, receipt validation, accepted-work authority,
-  wallet state, provider credentials, private prompts, private repo content, or
-  customer-private data.
+  wallet state, provider credentials, private prompts, private repo content,
+  private customer data, or unpublished provider payloads.
 - Public world rows and deltas may expose only public-safe refs, labels,
   positions, timestamps, staleness metadata, movement caveats, moderation state,
   and dereferenceable proof URLs that are already safe for public OpenAgents
@@ -90,6 +95,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   emotes, and ephemeral intent. Service-only commands that create or mutate run,
   entity, edge, proof, settlement, event, cursor, bridge-health, or projection
   rows must require an allowlisted service identity.
+- Actor command authority is modeled in
+  `docs/game/2026-06-22-cloudflare-world-actor-command-authority-model.md` and
+  enforced by `packages/world-contract` plus `apps/openagents-world` command
+  tests. Counterexamples must become tests before broadening command authority.
 - `/tassadar` authority remains the Worker/D1 public summary path until a later
   invariant change explicitly promotes a different authority. The Verse world
   service may enrich or animate the scene only from public refs or timestamped

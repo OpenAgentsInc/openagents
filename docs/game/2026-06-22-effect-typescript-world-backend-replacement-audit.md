@@ -1068,6 +1068,28 @@ Make the policy ledger match reality. Acceptance:
 Because this is invariant-bearing work, this issue is part of the cutover, not
 post-launch cleanup.
 
+Implementation note: P12 renames the root invariant from a generic world
+projection to the Cloudflare Verse World Service and records the explicit
+boundary: Worker/D1 product surfaces stay authoritative for public training
+truth, product promises, proof/receipt claims, settlement/payout projection,
+Forum/product state, and all private/customer/provider material; the world
+service owns only public-safe presence, interaction, diagnostics, fanout, and
+projection rows derived from public refs.
+
+The active operator docs now route world deployment through
+`apps/openagents-world/README.md` and `docs/DEPLOYMENT.md`: preflight world
+contract/client/service tests, Wrangler D1 migrations for `openagents-world`
+or `openagents-world-staging`, Wrangler Durable Object class migrations in
+`wrangler.jsonc`, `WORLD_BRIDGE_QUEUE` retry markers, DO alarm expiry tests, and
+two-client live smoke. The visibility operations runbook now describes
+`POST /bridge/ingest` on the Cloudflare service instead of the deleted VM bridge.
+
+The formal/model note is
+`2026-06-22-cloudflare-world-actor-command-authority-model.md`. The associated
+counterexamples are command tests: browser, agent, and operator actors cannot
+write service projection rows; service actors cannot send browser interaction
+commands; unsafe service projection rows are rejected without payload echo.
+
 ### P13: Production Release Gate And VM Decommission
 
 Finish by proving the new path and shutting the old one off. Acceptance:

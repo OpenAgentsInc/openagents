@@ -31,20 +31,21 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `apps/openagents.com/` owns the `openagents.com` product surface, including
   the current Autopilot, Forum, Sites, and public proof implementation
   material.
-- `apps/openagents-world/` is the planned Cloudflare Worker + Region Durable
-  Object home for live Verse world projection, presence, local interaction,
-  interest-scoped fanout, and world WebSocket transport. New world-backend work
-  belongs there, using Effect, Effect Schema, D1, hibernatable WebSockets, and
-  the shared world packages below.
-- `packages/world-contract/` is the planned shared Effect Schema contract home
-  for public-safe world rows, commands, deltas, cursors, moderation decisions,
-  and WoC-style read-model projection types.
-- `packages/world-client/` is the planned shared desktop/web Verse world client
-  that mirrors snapshots and deltas into a read-only `WorldReadModel`.
-- `apps/openagents-world-spacetimedb/` is historical source material for the
-  old self-hosted SpacetimeDB `openagents-world` module. Do not add new
-  production world features there; port any still-useful schema or reducer ideas
-  into the Cloudflare/Effect world service instead.
+- `apps/openagents-world/` is the Cloudflare Worker + Region Durable Object
+  home for live Verse world projection, presence, local interaction,
+  interest-scoped fanout, world WebSocket transport, D1 projection rows, queue
+  markers, and DO alarm expiry. New world-backend work belongs there, using
+  Effect, Effect Schema, D1, hibernatable WebSockets, and the shared world
+  packages below.
+- `packages/world-contract/` is the shared Effect Schema contract home for
+  public-safe world rows, commands, deltas, cursors, moderation decisions, and
+  WoC-style read-model projection types.
+- `packages/world-client/` is the shared desktop/web Verse world client that
+  mirrors snapshots and deltas into a read-only `WorldReadModel`.
+- The old self-hosted SpacetimeDB `openagents-world` module was deleted during
+  the Cloudflare Verse World cutover. Do not re-clone, regenerate bindings for,
+  or add production world features to that path; port useful historical schema
+  or reducer ideas into the Cloudflare/Effect world service instead.
 - `apps/forum/` owns the forum extraction target for
   `openagents.com/forum`. The live Forum routes stay inside the
   `openagents.com` Worker for now because they share auth, D1, payment

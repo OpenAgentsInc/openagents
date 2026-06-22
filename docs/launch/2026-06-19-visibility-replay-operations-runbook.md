@@ -3,8 +3,8 @@
 Date: 2026-06-19
 
 This runbook covers operating the public visibility/replay stack: activity
-timeline, SSE stream, SpacetimeDB projection bridge, browser replay surfaces,
-render-box clips, and R2 clip outputs.
+timeline, SSE stream, Cloudflare Verse world projection bridge, browser replay
+surfaces, render-box clips, and R2 clip outputs.
 
 All surfaces here are observation/projection/retrieval only. They grant no
 settlement, payout, accepted-work, deployment, provider, wallet, or public-claim
@@ -18,9 +18,9 @@ stores. Public routes are projections:
 | Surface | Source of truth | Projection |
 | --- | --- | --- |
 | Activity timeline | Worker/D1 public-safe reducers for Pylon, training, verification, settlement, Forum, Artanis, and capacity | `GET /api/public/activity-timeline` and `GET /api/public/activity-timeline/stream` |
-| Live Tassadar scene | `GET /api/public/tassadar-run-summary` plus optional SpacetimeDB world rows | `/tassadar` browser view |
+| Live Tassadar scene | `GET /api/public/tassadar-run-summary` plus optional Cloudflare world rows | `/tassadar` browser view |
 | Proof replay bundle | Public Worker replay resolver | `/api/public/proof-replays`, `/api/public/tassadar-replays/first-real-settlement` |
-| SpacetimeDB world | Projection from public timeline/run summary | the deleted legacy bridge scripts |
+| Verse world service | Public-safe presence, local interaction, and replayable projection rows derived from public timeline/run summary refs | `apps/openagents-world` Worker + Region Durable Objects + D1 |
 | Replay clip jobs | Worker/D1 clip-job records | `GET|POST /api/public/replay-clips` after owner integration |
 | Replay clip bytes | Owner-provisioned R2 bucket/public host | `openagents.replay_clip_manifest.v1` artifact URLs |
 
@@ -109,32 +109,43 @@ If SSE fails, use the `x-openagents-polling-fallback` response header or poll
 `/api/public/activity-timeline?since=...`. SSE is a convenience projection, not
 the authority.
 
-## SpacetimeDB Bridge
+## Cloudflare Verse World Bridge
 
-Build a dry-run reducer plan from the public activity timeline:
+The world service bridge is `POST /bridge/ingest` on the
+`apps/openagents-world` Cloudflare Worker. It accepts only schema-decoded
+`WorldBridgePayload` values, writes public-safe projection rows to D1, records
+bridge health/cursor rows, and may enqueue a compact retry marker through
+`WORLD_BRIDGE_QUEUE`. It is not a settlement, training, receipt, product
+promise, or claim authority.
+
+Preflight the bridge code before any deploy:
 
 ```sh
-bun deleted legacy bridge script \
-  --json \
-  --limit 50
+bun run typecheck:world-contract
+bun run test:world-contract
+bun run typecheck:openagents-world
+bun run test:openagents-world
 ```
 
-Apply to the owned VM only from an operator-approved environment:
+Apply D1 migrations before deploying a Worker build that needs new durable
+projection tables:
 
 ```sh
-bun deleted legacy bridge script \
-  --apply-vm \
-  --limit 50
+cd apps/openagents-world
+bunx wrangler d1 migrations list openagents-world --remote
+bunx wrangler d1 migrations apply openagents-world --remote
+bun run deploy
 ```
 
-The bridge projects public events into world rows. It is not a settlement,
-training, receipt, or claim authority. If a bad projection is suspected:
+If a bad projection is suspected:
 
-1. Stop the scheduler or stop running `--apply-vm`.
-2. Save the current timeline envelope and generated plan for evidence.
-3. Re-run `--json` against a known-good saved envelope with `--source-file`.
-4. Apply the corrected public projection only after the source refs and reducer
-   plan are understood.
+1. Stop the bridge source scheduler that posts `/bridge/ingest`.
+2. Save the source public timeline/run-summary envelope and bridge response for
+   evidence.
+3. Inspect D1 rows by public `kind`/`row_key`; never patch private truth through
+   the world database.
+4. Ship a typed bridge/service fix and replay only the corrected public source
+   refs after redaction and idempotence tests pass.
 
 ## Render Worker And R2 Outputs
 
@@ -187,7 +198,7 @@ replay rendering, and clip manifests with public-safe source/caveat refs.
 | Web/Worker deploy | Re-deploy the last known-good `origin/main` using `docs/DEPLOYMENT.md`; include `wrangler deploy --assets ../../apps/web/dist` so UI and Worker match. |
 | Timeline projection bug | Disable affected projection read path or ship a revert; keep honest `projection_gap` output rather than fabricating events. |
 | SSE regression | Fall back to polling; fix stream route separately. |
-| SpacetimeDB bridge bug | Stop `--apply-vm`; replay a known-good saved envelope or wait for corrected timeline source. |
+| Verse world bridge bug | Stop the bridge source scheduler; replay corrected public source refs through `/bridge/ingest` only after redaction and idempotence tests pass. |
 | Render-box failure | Stop the render worker; queued clip jobs remain evidence-only records. |
 | R2 artifact issue | Remove or stop advertising the broken public manifest URL; re-upload from the render manifest after credentials and public host are verified. |
 

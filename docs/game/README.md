@@ -8,7 +8,7 @@ demos the live-facing shape this folder is aiming at — a walkable Autopilot
 Tassadar run board with Pylon bases, assignment markers, training metrics, refs
 ticker, avatar movement, and an initial multiplayer direction. Treat it as
 visual/product intent; authority for real run state remains with the public
-Worker/D1. Live Verse presence and local interaction are moving to the
+Worker/D1. Live Verse presence and local interaction now flow through the
 Cloudflare Verse World Service (`apps/openagents-world`) with Region Durable
 Objects, D1, `packages/world-contract`, and `packages/world-client`. Older
 world-backend docs are historical source material unless a document explicitly
@@ -35,9 +35,13 @@ says otherwise.
   avatars, proof gates, camera tracks, and receipt-backed sats zaps.
 - `2026-06-22-effect-typescript-world-backend-replacement-audit.md` - audit of
   the decided fast path for the OpenAgents-owned Effect/TypeScript Cloudflare
-  Verse World Service while
-  preserving the Worker/D1 product authority split, subscription contract,
-  multiplayer semantics, WoC-derived world-read seam, and outage behavior.
+  Verse World Service while preserving the Worker/D1 product authority split,
+  subscription contract, multiplayer semantics, WoC-derived world-read seam,
+  and outage behavior.
+- `2026-06-22-cloudflare-world-actor-command-authority-model.md` - formal/model
+  note for actor command authority: browser/agent/operator interaction commands
+  versus service-only projection commands, the invariant boundary, and the
+  counterexample tests that lock the cutover.
 - `2026-06-21-verse-scene-graph-vs-react-three-fiber-audit.md` - deep audit of
   how the desktop Verse scene graph is built today (`three-effect` + Foldkit,
   full teardown+rebuild on every change) versus react-three-fiber's
@@ -61,10 +65,10 @@ says otherwise.
   Object Verse World Service: live presence, socket fanout, interest scoping,
   local world commands, chat moderation before fanout, expiry, and durable D1
   projection rows.
-- `packages/world-contract/` will own Effect Schema row/command/delta contracts,
+- `packages/world-contract/` owns Effect Schema row/command/delta contracts,
   branded refs, world-read projection schemas, interest plans, public-safety
   helpers, and test fixtures.
-- `packages/world-client/` will own the Cloudflare Verse client and WoC-style
+- `packages/world-client/` owns the Cloudflare Verse client and WoC-style
   read-only `ClientWorld` mirror consumed by desktop/web render and HUD code.
 - `/Users/christopherdavid/work/three-effect` owns reusable spatial/visual
   primitives for the game world and proof replay theater. Add missing replay
@@ -75,4 +79,5 @@ says otherwise.
 - `apps/openagents.com/` and `apps/autopilot-desktop/` may adapt public replay
   data and render Foldkit HUD/inspector/accessibility chrome, but should consume
   `three-effect` for world visuals rather than adding app-local DOM/canvas
-  replay renderers.
+  replay renderers. Both app clients consume the Cloudflare world client and no
+  longer import generated backend bindings.
