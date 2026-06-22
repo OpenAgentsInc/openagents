@@ -52,6 +52,12 @@ Worker/D1 and SpacetimeDB projections documented below.
 - `2026-06-22-verse-custom-keybindings-audit.md` - audit of current Desktop
   shortcuts, Verse movement/controller bindings, `three-effect` input
   primitives, and the recommended MMO-style custom keybinding architecture.
+- `woc/` - thorough system-by-system audit of the open-source MMO World of
+  ClaudeCraft (`projects/repos/world-of-claudecraft/`) as a reference for the
+  Verse: overview/architecture, HUD + hotbar + procedural icons, input/camera/
+  targeting, multiplayer netcode + moderation, chat/minimap/nameplates/world,
+  and a consolidated, prioritized adaptation plan mapped to our repos and epics.
+  Start at `woc/README.md`.
 
 ## Implementation Homes
 
