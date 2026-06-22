@@ -28,13 +28,17 @@ import {
   type InferenceResult,
 } from './provider-adapter'
 import { type MeteringHook, stubMeteringHook } from './metering-hook'
-import { type FundingKind } from './pricing'
+import { type FundingKind, isKhalaModel } from './pricing'
 import {
   type SupplyLaneArming,
   resolveNamedModelServability,
 } from './model-serving-policy'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
-import { type DispatchDeps, dispatchWithOverflow } from './model-router'
+import {
+  classifyModel,
+  type DispatchDeps,
+  dispatchWithOverflow,
+} from './model-router'
 import {
   type FairShareDecision,
   type SpendCapDecision,
@@ -258,6 +262,21 @@ const toInferenceRequest = (
 
 const defaultId = () => compactRandomId('chatcmpl')
 
+// The OpenAgents disclosure block attached to a Khala response (M0 / #6008). A
+// Khala model id is one endpoint over a pool; this NON-BREAKING `openagents`
+// field discloses which concrete model/worker actually served the request so a
+// Khala completion is auditable rather than opaque. `verification` is `none` in
+// M0 (no verifier pass yet — that is a later milestone); the field exists so the
+// receipt shape is stable as verification classes land. No prompts, credentials,
+// or chain-of-thought are exposed.
+type OpenAgentsReceipt = Readonly<{
+  requested_model: string
+  served_model: string
+  worker: string
+  lane: string
+  verification: 'none'
+}>
+
 // OpenAI non-streaming response envelope.
 const openAiResponse = (
   input: Readonly<{
@@ -265,6 +284,7 @@ const openAiResponse = (
     created: number
     model: string
     result: InferenceResult
+    openagents?: OpenAgentsReceipt | undefined
   }>,
 ) => ({
   choices: [
@@ -278,6 +298,9 @@ const openAiResponse = (
   id: input.id,
   model: input.model,
   object: 'chat.completion',
+  ...(input.openagents === undefined
+    ? {}
+    : { openagents: input.openagents }),
   usage: {
     completion_tokens: input.result.usage.completionTokens,
     prompt_tokens: input.result.usage.promptTokens,
@@ -627,6 +650,18 @@ export const handleChatCompletions = (
         created,
         id: responseId,
         model: requestedModel,
+        // Khala requests carry the disclosure block (which concrete model/worker
+        // served this one endpoint). Non-Khala responses are byte-identical to
+        // before. Streaming carries the same disclosure in a later slice.
+        openagents: isKhalaModel(requestedModel)
+          ? {
+              lane: classifyModel(requestedModel),
+              requested_model: requestedModel,
+              served_model: result.served.value.servedModel,
+              verification: 'none',
+              worker: result.served.adapterId,
+            }
+          : undefined,
         result: result.served.value,
       }),
     )

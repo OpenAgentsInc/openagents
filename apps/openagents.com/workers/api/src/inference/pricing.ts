@@ -259,6 +259,15 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 // receipt-first metering prices derived from the same source of truth.
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 
+// True when the requested id is an OpenAgents Khala virtual model. M0 ships a
+// single tier (khala-mini); the `openagents/khala-` prefix keeps future tiers
+// (pro / code) recognized as Khala without another edit. Used by the gateway to
+// attach the disclosure (`openagents`) block to the response so a Khala request
+// is auditable (which concrete model/worker actually served it). Bounded id
+// check, not an intent parser.
+export const isKhalaModel = (model: string): boolean =>
+  model.trim().toLowerCase().startsWith('openagents/khala-')
+
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
 // unknown models still clear a sane floor). Not a measured rate.

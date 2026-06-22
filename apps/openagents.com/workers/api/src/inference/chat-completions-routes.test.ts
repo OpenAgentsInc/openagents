@@ -18,6 +18,8 @@ import {
   InferenceProviderRegistry,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID, stubEchoAdapter } from './stub-echo-adapter'
+import { KHALA_MINI_MODEL_ID } from './pricing'
+import { selectAdapterPlan, VERTEX_GEMINI_ADAPTER_ID } from './model-router'
 import {
   decideFairShare,
   decideSpendCap,
@@ -409,6 +411,58 @@ describe('POST /v1/chat/completions', () => {
     )
     expect(response.status).toBe(502)
     expect(overflowCalls).toBe(0)
+  })
+
+  // KHALA DISCLOSURE BLOCK (M0 / #6008) ------------------------------------
+  // A Khala model id is one endpoint over a pool; the response carries a
+  // non-breaking `openagents` block disclosing which concrete model/worker
+  // actually served it. Non-Khala responses are unchanged.
+
+  test('a Khala request returns the openagents disclosure block', async () => {
+    // khala-mini classifies to the Gemini lane; register an echo adapter under
+    // that lane id so the default plan resolves it.
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        // Use the real planner (as the Worker wires it) so khala-mini routes to
+        // its Gemini backing lane.
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      model: string
+      openagents?: {
+        requested_model: string
+        served_model: string
+        worker: string
+        lane: string
+        verification: string
+      }
+    }
+    expect(body.model).toBe(KHALA_MINI_MODEL_ID)
+    expect(body.openagents).toEqual({
+      lane: 'gemini',
+      requested_model: KHALA_MINI_MODEL_ID,
+      served_model: KHALA_MINI_MODEL_ID,
+      verification: 'none',
+      worker: VERTEX_GEMINI_ADAPTER_ID,
+    })
+  })
+
+  test('a non-Khala request omits the openagents block', async () => {
+    const response = await run(
+      handleChatCompletions(chatRequest(helloBody), baseDeps()),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { openagents?: unknown }
+    expect(body.openagents).toBeUndefined()
   })
 
   test('returns model_unavailable when no planned lane is registered', async () => {
