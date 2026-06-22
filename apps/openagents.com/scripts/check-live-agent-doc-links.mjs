@@ -34,6 +34,8 @@ const criticalUrls = [
 ]
 
 const scannedFileExtensions = ['.json', '.js', '.mjs', '.md', '.ts', '.tsx']
+const liveUrlUserAgent = 'openagents-agent-doc-link-check/1.0'
+const liveFetchTimeoutMs = 45_000
 
 const readRepoFile = async path => readFile(resolve(repoRoot, path), 'utf8')
 
@@ -92,13 +94,31 @@ const assertSourceLinks = async () => {
   }
 }
 
-const fetchText = async url => {
+const assertReadableBody = async (url, response) => {
+  if (response.body === null) {
+    throw new Error(`${url} did not expose a readable response body`)
+  }
+
+  const reader = response.body.getReader()
+
+  try {
+    const firstChunk = await reader.read()
+
+    if (firstChunk.done || firstChunk.value.byteLength === 0) {
+      throw new Error(`${url} returned an empty response body`)
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+}
+
+const fetchLiveUrl = async (url, { requireBody = false } = {}) => {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15_000)
+  const timeout = setTimeout(() => controller.abort(), liveFetchTimeoutMs)
 
   try {
     const response = await fetch(url, {
-      headers: { 'user-agent': 'openagents-agent-doc-link-check/1.0' },
+      headers: { 'user-agent': liveUrlUserAgent },
       redirect: 'follow',
       signal: controller.signal,
     })
@@ -107,17 +127,22 @@ const fetchText = async url => {
       throw new Error(`${url} returned ${response.status}`)
     }
 
-    return response.text()
+    if (requireBody) {
+      return response.text()
+    }
+
+    await assertReadableBody(url, response)
+    return ''
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (requireBody && error instanceof Error && error.name === 'AbortError') {
       const { stdout } = await execFileAsync(
         'curl',
         [
           '-fsSL',
           '--max-time',
-          '15',
+          String(Math.ceil(liveFetchTimeoutMs / 1000)),
           '-A',
-          'openagents-agent-doc-link-check/1.0',
+          liveUrlUserAgent,
           url,
         ],
         { cwd: repoRoot, maxBuffer: 1024 * 1024 },
@@ -133,27 +158,28 @@ const fetchText = async url => {
 }
 
 const assertCriticalUrls = async () => {
-  const results = await Promise.all(
-    criticalUrls.map(async url => {
-      try {
-        const text = await fetchText(url)
+  const results = []
 
-        if (url === founderTranscriptUrl) {
-          const hasExpectedTranscript =
-            text.includes('Calling All Agents') &&
-            text.includes('Pay the People')
+  for (const url of criticalUrls) {
+    try {
+      const requiresFullText = url === founderTranscriptUrl
+      const text = await fetchLiveUrl(url, { requireBody: requiresFullText })
 
-          if (!hasExpectedTranscript) {
-            return `${url} did not return the Episode 230 transcript body`
-          }
+      if (requiresFullText) {
+        const hasExpectedTranscript =
+          text.includes('Calling All Agents') &&
+          text.includes('Pay the People')
+
+        if (!hasExpectedTranscript) {
+          results.push(`${url} did not return the Episode 230 transcript body`)
         }
-
-        return null
-      } catch (error) {
-        return error instanceof Error ? error.message : String(error)
       }
-    }),
-  )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      results.push(`${url} failed live check: ${message}`)
+    }
+  }
+
   const failures = results.filter(result => result !== null)
 
   if (failures.length > 0) {
