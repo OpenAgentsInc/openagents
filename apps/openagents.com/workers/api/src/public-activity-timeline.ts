@@ -15,6 +15,13 @@ import {
 
 import { parseJsonRecord } from './json-boundary'
 import {
+  publicInferenceReceiptFromRecord,
+  type InferenceReceiptRecord,
+  type InferenceReceiptStore,
+} from './inference-receipts'
+import { parseInferenceChargeContextRef } from './inference/metering-hook'
+import { isKhalaModel } from './inference/pricing'
+import {
   type NexusPaymentAuthorityReceiptRecord,
   type NexusTreasuryPayoutLedgerStore,
 } from './nexus-treasury-payout-ledger'
@@ -50,6 +57,7 @@ const timelineRebuildRefs = [
   'training_window_lease_claimed',
   'training_trace_contribution_recorded',
   'training_verification_challenge_state_transition_recorded',
+  'pay_ins.public_receipt_ref',
   'payment_authority_receipt_recorded',
   'forum_topic_created',
   'forum_post_created',
@@ -82,6 +90,11 @@ export type PublicActivityTimelineTrainingStore = Pick<
 export type PublicActivityTimelineReceiptStore = Pick<
   NexusTreasuryPayoutLedgerStore,
   'listPaymentAuthorityReceipts' | 'readReconciliationEventByRef'
+>
+
+export type PublicActivityTimelineInferenceReceiptStore = Pick<
+  InferenceReceiptStore,
+  'listRecentInferenceReceipts'
 >
 
 export type PublicActivityTimelineForumRecord = Readonly<{
@@ -136,6 +149,7 @@ export type PublicActivityTimelineSourceInput = Readonly<{
   nowIso?: () => string
   pylonStore?: PublicActivityTimelinePylonStore
   query?: Partial<PublicActivityTimelineQuery>
+  inferenceReceiptStore?: PublicActivityTimelineInferenceReceiptStore
   receiptStore?: PublicActivityTimelineReceiptStore
   trainingStore?: PublicActivityTimelineTrainingStore
 }>
@@ -670,6 +684,76 @@ const receiptEvents = async (
   ).flat()
 }
 
+const inferenceRequestRefFromReceiptRef = (receiptRef: string): string => {
+  const prefix = 'receipt.inference.charge.'
+  return receiptRef.startsWith(prefix) && receiptRef.length > prefix.length
+    ? `request.khala.${slugPart(receiptRef.slice(prefix.length))}`
+    : `request.khala.${slugPart(receiptRef)}`
+}
+
+const gatewayRefFromAdapterId = (adapterId: string): string =>
+  adapterId.trim().length === 0
+    ? 'gateway.khala.public'
+    : `gateway.${slugPart(adapterId)}`
+
+const inferenceReceiptEvents = (
+  records: ReadonlyArray<InferenceReceiptRecord>,
+): ReadonlyArray<PublicActivityTimelineEvent> =>
+  records.flatMap(record => {
+    const context = parseInferenceChargeContextRef(record.contextRef ?? '')
+    if (context === undefined) {
+      return []
+    }
+
+    const requestedModel = context.requestedModel
+    if (requestedModel === undefined || !isKhalaModel(requestedModel)) {
+      return []
+    }
+
+    const receipt = publicInferenceReceiptFromRecord(
+      record,
+      record.stateChangedAt,
+    )
+    if (receipt === null || receipt.kind !== 'charge') {
+      return []
+    }
+
+    const receiptRoute = `${OPENAGENTS_PUBLIC_APP_URL}/api/public/inference/receipts/${encodeURIComponent(
+      record.receiptRef,
+    )}`
+    const gatewayRef = gatewayRefFromAdapterId(context.adapterId)
+
+    return [
+      eventWithCursor({
+        actorRef: gatewayRef,
+        blockerRefs: [],
+        caveatRefs: [
+          'caveat.public.activity_timeline.inference_receipt_public_projection_only',
+        ],
+        eventRef: `event.public.khala_inference_served.${slugPart(
+          record.receiptRef,
+        )}`,
+        kind: 'khala_inference_served',
+        refs: uniqueRefs([
+          record.receiptRef,
+          inferenceRequestRefFromReceiptRef(record.receiptRef),
+          requestedModel,
+          gatewayRef,
+        ]),
+        sourceKind: 'inference_receipt',
+        sourceRefs: uniqueRefs([
+          record.receiptRef,
+          receiptRoute,
+          ...receipt.sourceRefs,
+        ]),
+        state: requestedModel,
+        targetRef: record.receiptRef,
+        text: 'Khala inference served with a public ledger receipt.',
+        ts: record.stateChangedAt,
+      }),
+    ]
+  })
+
 const forumEvents = (
   records: ReadonlyArray<PublicActivityTimelineForumRecord>,
 ): ReadonlyArray<PublicActivityTimelineEvent> =>
@@ -1001,6 +1085,62 @@ export const buildPublicActivityTimelineEnvelope = async (
           maxStalenessSeconds: 0,
           observedAt,
           sourceKind: 'settlement_receipt',
+          sourceRefs: [],
+          status: 'unavailable',
+        }),
+      )
+    }
+  }
+
+  if (input.inferenceReceiptStore === undefined) {
+    const gap = projectionGapEvent({
+      blockerRef: 'blocker.public.activity_timeline.inference_receipt_store_missing',
+      observedAt,
+      sourceKind: 'inference_receipt',
+      text: 'Inference receipt source store is not configured for this activity timeline read.',
+    })
+    allEvents.push(gap)
+    sourceLagItems.push(
+      sourceLag({
+        blockerRefs: gap.blockerRefs,
+        events: [],
+        maxStalenessSeconds: 0,
+        observedAt,
+        sourceKind: 'inference_receipt',
+        sourceRefs: [],
+        status: 'unavailable',
+      }),
+    )
+  } else {
+    const loaded = await loadOrGap({
+      load: () =>
+        input.inferenceReceiptStore!.listRecentInferenceReceipts(
+          SOURCE_LOOKUP_LIMIT,
+        ),
+      observedAt,
+      sourceKind: 'inference_receipt',
+    })
+    if (loaded.ok) {
+      const events = inferenceReceiptEvents(loaded.records)
+      allEvents.push(...events)
+      sourceLagItems.push(
+        sourceLag({
+          events,
+          maxStalenessSeconds: 0,
+          observedAt,
+          sourceKind: 'inference_receipt',
+          sourceRefs: ['route:/api/public/inference/receipts/{receiptRef}'],
+        }),
+      )
+    } else {
+      allEvents.push(loaded.gap)
+      sourceLagItems.push(
+        sourceLag({
+          blockerRefs: loaded.gap.blockerRefs,
+          events: [],
+          maxStalenessSeconds: 0,
+          observedAt,
+          sourceKind: 'inference_receipt',
           sourceRefs: [],
           status: 'unavailable',
         }),

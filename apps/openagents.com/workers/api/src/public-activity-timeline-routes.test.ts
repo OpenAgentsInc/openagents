@@ -9,6 +9,9 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type {
+  InferenceReceiptRecord,
+} from './inference-receipts'
+import type {
   NexusPaymentAuthorityReceiptRecord,
   NexusTreasuryPayoutReconciliationEventRecord,
 } from './nexus-treasury-payout-ledger'
@@ -16,6 +19,7 @@ import type {
   PublicActivityTimelineArtanisStore,
   PublicActivityTimelineCapacityStore,
   PublicActivityTimelineForumStore,
+  PublicActivityTimelineInferenceReceiptStore,
   PublicActivityTimelinePylonStore,
   PublicActivityTimelineReceiptStore,
   PublicActivityTimelineTrainingStore,
@@ -40,6 +44,7 @@ const validatorRef = 'pylon.public.timeline.validator'
 const realReceiptRef = 'receipt.nexus.public_activity_timeline.real.1'
 const simulationReceiptRef =
   'receipt.nexus.public_activity_timeline.simulation.1'
+const khalaReceiptRef = 'receipt.inference.charge.chatcmpl_public_timeline_1'
 
 const request = (path = '/api/public/activity-timeline') =>
   new Request(`https://openagents.com${path}`)
@@ -378,6 +383,29 @@ const receiptStore = (): PublicActivityTimelineReceiptStore => {
   }
 }
 
+const inferenceReceiptStore = (): PublicActivityTimelineInferenceReceiptStore => ({
+  listRecentInferenceReceipts: async () => [
+    {
+      contextRef:
+        'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fqwen3:tokens:42:requested:openagents%2Fkhala-code',
+      createdAt: '2026-06-18T18:00:08.500Z',
+      payInType: 'adjustment',
+      receiptRef: khalaReceiptRef,
+      state: 'paid',
+      stateChangedAt: '2026-06-18T18:00:08.750Z',
+    } satisfies InferenceReceiptRecord,
+    {
+      contextRef:
+        'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fqwen3:tokens:42:requested:accounts%2Ffireworks%2Fmodels%2Fqwen3',
+      createdAt: '2026-06-18T18:00:08.000Z',
+      payInType: 'adjustment',
+      receiptRef: 'receipt.inference.charge.non_khala',
+      state: 'paid',
+      stateChangedAt: '2026-06-18T18:00:08.250Z',
+    } satisfies InferenceReceiptRecord,
+  ],
+})
+
 const forumStore = (): PublicActivityTimelineForumStore => ({
   listRecentActivity: async () => [
     {
@@ -442,6 +470,7 @@ const fullInput = () => ({
   artanisStore: artanisStore(),
   capacityStore: capacityStore(),
   forumStore: forumStore(),
+  inferenceReceiptStore: inferenceReceiptStore(),
   nowIso: () => nowIso,
   pylonStore: pylonStore(),
   receiptStore: receiptStore(),
@@ -468,6 +497,17 @@ describe('public activity timeline route', () => {
     )
     expect(body.events.every(event => event.cursor.includes(event.eventRef))).toBe(
       true,
+    )
+    const khala = body.events.find(event => event.kind === 'khala_inference_served')
+    expect(khala).toMatchObject({
+      actorRef: 'gateway.fireworks',
+      sourceKind: 'inference_receipt',
+      state: 'openagents/khala-code',
+      targetRef: khalaReceiptRef,
+    })
+    expect(khala?.sourceRefs).toContain(khalaReceiptRef)
+    expect(body.events.some(event => event.refs.includes('receipt.inference.charge.non_khala'))).toBe(
+      false,
     )
     expect(
       body.events.every(
@@ -635,18 +675,24 @@ describe('public activity timeline route', () => {
     )
     const bounded = await decode(
       await route(
-        '/api/public/activity-timeline?from=2026-06-18T18:00:14.000Z&to=2026-06-18T18:00:18.000Z&kind=real_bitcoin_moved,forum_posted,artanis_tick&source=settlement_receipt,forum,artanis&limit=20',
+        '/api/public/activity-timeline?from=2026-06-18T18:00:08.700Z&to=2026-06-18T18:00:18.000Z&kind=khala_inference_served,real_bitcoin_moved,forum_posted,artanis_tick&source=inference_receipt,settlement_receipt,forum,artanis&limit=20',
       ),
     )
 
     expect(second.events[0]?.cursor).not.toBe(first.events[0]?.cursor)
     expect(bounded.range).toMatchObject({
-      filterKinds: ['real_bitcoin_moved', 'forum_posted', 'artanis_tick'],
-      from: '2026-06-18T18:00:14.000Z',
+      filterKinds: [
+        'khala_inference_served',
+        'real_bitcoin_moved',
+        'forum_posted',
+        'artanis_tick',
+      ],
+      from: '2026-06-18T18:00:08.700Z',
       limit: 20,
       to: '2026-06-18T18:00:18.000Z',
     })
     expect(bounded.events.map(event => event.kind)).toEqual([
+      'khala_inference_served',
       'real_bitcoin_moved',
       'forum_posted',
       'artanis_tick',

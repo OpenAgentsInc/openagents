@@ -701,6 +701,9 @@ export const chatWorldInferenceLayer = (
       fallbackTo,
       endpoints,
     )
+    const costDetail = event.costMsat === null
+      ? "cost not public"
+      : `${event.costMsat} msat`
 
     entityById.set(fromId, {
       id: fromId,
@@ -717,7 +720,7 @@ export const chatWorldInferenceLayer = (
     entityById.set(toId, {
       id: toId,
       label: endpointLabel(toEndpoint, "to"),
-      detail: `${event.receiptRef} · ${event.costMsat} msat · ${toEndpoint.label} · ${toEndpoint.source}`,
+      detail: `${event.receiptRef} · ${costDetail} · ${toEndpoint.label} · ${toEndpoint.source}`,
       status,
       position: toEndpoint.position,
       iconRecipe: verseIconRecipeForId(

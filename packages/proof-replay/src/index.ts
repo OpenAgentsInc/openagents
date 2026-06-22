@@ -459,6 +459,9 @@ const actorRefForTimelineEvent = (event: PublicActivityTimelineEvent): string =>
   if (event.kind === 'forum_topic_created' || event.kind === 'forum_posted') {
     return 'actor.openagents.forum'
   }
+  if (event.kind === 'khala_inference_served') {
+    return 'actor.openagents.khala_gateway'
+  }
   if (event.kind === 'artanis_tick') return 'actor.openagents.artanis'
   return 'actor.openagents.network'
 }
@@ -467,6 +470,7 @@ const actorDisplayName = (actorRef: string): string => {
   if (actorRef === 'actor.openagents.settlement') return 'Settlement'
   if (actorRef === 'actor.openagents.verifier') return 'Verifier'
   if (actorRef === 'actor.openagents.forum') return 'Forum'
+  if (actorRef === 'actor.openagents.khala_gateway') return 'Khala Gateway'
   if (actorRef === 'actor.openagents.artanis') return 'Artanis'
   if (actorRef === 'actor.openagents.network') return 'OpenAgents Network'
   return actorRef.replace(/^actor\.timeline\./, '').replace(/[._-]+/g, ' ')
@@ -507,6 +511,14 @@ const stageForTimelineEvent = (
       sourceRefs,
       stageKind: 'forum_surface',
       stageRef: 'stage.timeline.forum',
+    }
+  }
+  if (event.kind === 'khala_inference_served') {
+    return {
+      label: 'Khala inference',
+      sourceRefs,
+      stageKind: 'inference_gateway',
+      stageRef: 'stage.timeline.khala_inference',
     }
   }
   if (event.kind === 'projection_gap') {
@@ -561,6 +573,8 @@ const replayKindForTimelineEvent = (
       return 'settlement_recorded'
     case 'real_bitcoin_moved':
       return 'payment_zap_confirmed'
+    case 'khala_inference_served':
+      return 'receipt_recorded'
     case 'forum_topic_created':
     case 'forum_posted':
       return 'forum_announcement_posted'

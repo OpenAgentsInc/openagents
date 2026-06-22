@@ -6,6 +6,7 @@ import type {
 
 import { readArtanisTickMonitor } from './artanis-tick-monitor'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { makeD1InferenceReceiptStore } from './inference-receipts'
 import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-ledger'
 import {
@@ -15,6 +16,7 @@ import {
   type PublicActivityTimelineCapacityStore,
   type PublicActivityTimelineForumRecord,
   type PublicActivityTimelineForumStore,
+  type PublicActivityTimelineInferenceReceiptStore,
   type PublicActivityTimelineSourceInput,
 } from './public-activity-timeline'
 import { makeD1PylonApiStore } from './pylon-api'
@@ -196,6 +198,9 @@ const buildPublicActivityTimelineEnvelopeForRequest = async (
   const forumStore =
     input.forumStore ??
     (db === undefined ? undefined : makeD1PublicActivityTimelineForumStore(db))
+  const inferenceReceiptStore: PublicActivityTimelineInferenceReceiptStore | undefined =
+    input.inferenceReceiptStore ??
+    (db === undefined ? undefined : makeD1InferenceReceiptStore(db))
   const pylonStore =
     input.pylonStore ?? (db === undefined ? undefined : makeD1PylonApiStore(db))
   const receiptStore =
@@ -208,6 +213,7 @@ const buildPublicActivityTimelineEnvelopeForRequest = async (
     ...(artanisStore === undefined ? {} : { artanisStore }),
     ...(capacityStore === undefined ? {} : { capacityStore }),
     ...(forumStore === undefined ? {} : { forumStore }),
+    ...(inferenceReceiptStore === undefined ? {} : { inferenceReceiptStore }),
     nowIso: () => nowIso,
     ...(pylonStore === undefined ? {} : { pylonStore }),
     query,

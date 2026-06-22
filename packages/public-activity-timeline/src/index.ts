@@ -18,6 +18,7 @@ export const PublicActivityTimelineEventKind = S.Literals([
   "verification_queued",
   "verification_verified",
   "verification_rejected",
+  "khala_inference_served",
   "settlement_recorded",
   "real_bitcoin_moved",
   "forum_topic_created",
@@ -41,6 +42,7 @@ export const publicActivityTimelineEventKinds: ReadonlyArray<PublicActivityTimel
   "verification_queued",
   "verification_verified",
   "verification_rejected",
+  "khala_inference_served",
   "settlement_recorded",
   "real_bitcoin_moved",
   "forum_topic_created",
@@ -56,6 +58,7 @@ export const PublicActivityTimelineSourceKind = S.Literals([
   "training_window",
   "training_trace",
   "training_verification",
+  "inference_receipt",
   "settlement_receipt",
   "forum",
   "artanis",
@@ -71,6 +74,7 @@ export const publicActivityTimelineSourceKinds: ReadonlyArray<PublicActivityTime
   "training_window",
   "training_trace",
   "training_verification",
+  "inference_receipt",
   "settlement_receipt",
   "forum",
   "artanis",
@@ -237,6 +241,16 @@ export const assertPublicActivityTimelineEventSafe = (
   if (event.kind === "projection_gap" && event.blockerRefs.length === 0) {
     throw new Error(
       "Public activity timeline projection_gap events must carry blockerRefs",
+    )
+  }
+
+  if (
+    event.kind === "khala_inference_served" &&
+    (event.sourceKind !== "inference_receipt" ||
+      !publicActivityTimelineEventHasReceiptSource(event))
+  ) {
+    throw new Error(
+      "Public activity timeline khala_inference_served events require an inference receipt source ref",
     )
   }
 

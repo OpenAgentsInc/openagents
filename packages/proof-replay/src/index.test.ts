@@ -38,6 +38,7 @@ type TimelineEventInput = {
     | 'work_claimed'
     | 'trace_submitted'
     | 'verification_verified'
+    | 'khala_inference_served'
     | 'settlement_recorded'
     | 'real_bitcoin_moved'
     | 'forum_topic_created'
@@ -51,6 +52,7 @@ type TimelineEventInput = {
     | 'pylon_presence'
     | 'training_trace'
     | 'training_verification'
+    | 'inference_receipt'
     | 'settlement_receipt'
     | 'forum'
     | 'capacity_funnel'
@@ -149,6 +151,23 @@ const generatedTimelineEnvelope = {
       sourceRefs: ['training.verification.challenge.demo.1'],
       text: 'Verifier accepted the replayed trace.',
       ts: '2026-06-18T12:02:00.000Z',
+    }),
+    timelineEvent({
+      actorRef: 'gateway.fireworks',
+      caveatRefs: [
+        'caveat.public.activity_timeline.inference_receipt_public_projection_only',
+      ],
+      eventRef: 'activity.khala.inference.1',
+      kind: 'khala_inference_served',
+      refs: ['receipt.inference.charge.demo.1', 'openagents/khala-code'],
+      sourceKind: 'inference_receipt',
+      sourceRefs: [
+        'receipt.inference.charge.demo.1',
+        'https://openagents.com/api/public/inference/receipts/receipt.inference.charge.demo.1',
+      ],
+      state: 'openagents/khala-code',
+      text: 'Khala inference served with a public ledger receipt.',
+      ts: '2026-06-18T12:02:30.000Z',
     }),
     timelineEvent({
       amountSats: 1000,
@@ -452,6 +471,7 @@ describe('@openagentsinc/proof-replay', () => {
       'actor_focused_pylon',
       'trace_linked',
       'proof_verified',
+      'receipt_recorded',
       'settlement_recorded',
       'payment_zap_confirmed',
       'forum_announcement_posted',
@@ -474,6 +494,20 @@ describe('@openagentsinc/proof-replay', () => {
           sourceRefs: ['receipt.training.demo.1'],
         }),
       )
+    const khalaReceiptEvent = generated.events.find(
+      item => item.kind === 'receipt_recorded',
+    )
+    expect(khalaReceiptEvent).toEqual(
+      expect.objectContaining({
+        caveat:
+          'caveat.public.activity_timeline.inference_receipt_public_projection_only',
+        displayText: 'Khala inference served with a public ledger receipt.',
+        stateAfter: 'openagents/khala-code',
+      }),
+    )
+    expect(khalaReceiptEvent?.sourceRefs).toEqual(
+      expect.arrayContaining(['receipt.inference.charge.demo.1']),
+    )
     expect(generated.sourceRefs).toContainEqual(
       expect.objectContaining({
         kind: 'receipt',

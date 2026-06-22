@@ -199,27 +199,46 @@ export const inferenceChargeReceiptRef = (requestId: string): string =>
 export const inferenceChargeContextRef = (
   input: Readonly<{
     adapterId: string
+    requestedModel?: string
     servedModel: string
     totalTokens: number
   }>,
-): string =>
-  `inference:${encodeURIComponent(input.adapterId)}:served:${encodeURIComponent(input.servedModel)}:tokens:${Math.max(0, Math.trunc(input.totalTokens))}`
+): string => {
+  const base = `inference:${encodeURIComponent(input.adapterId)}:served:${encodeURIComponent(input.servedModel)}:tokens:${Math.max(0, Math.trunc(input.totalTokens))}`
+  const requestedModel = input.requestedModel?.trim() ?? ''
+  return requestedModel.length === 0
+    ? base
+    : `${base}:requested:${encodeURIComponent(requestedModel)}`
+}
 
 export const parseInferenceChargeContextRef = (
   value: string,
-): Readonly<{ servedModel: string; totalTokens: number }> | undefined => {
-  const match = /^inference:[^:]+:served:([^:]+):tokens:(\d+)$/.exec(value)
+): Readonly<{
+  adapterId: string
+  requestedModel?: string
+  servedModel: string
+  totalTokens: number
+}> | undefined => {
+  const match =
+    /^inference:([^:]+):served:([^:]+):tokens:(\d+)(?::requested:([^:]+))?$/.exec(
+      value,
+    )
   if (match === null) {
     return undefined
   }
 
-  const totalTokens = Number(match[2])
+  const totalTokens = Number(match[3])
   if (!Number.isSafeInteger(totalTokens)) {
     return undefined
   }
 
+  const requestedModel = match[4]
   return {
-    servedModel: decodeURIComponent(match[1] ?? ''),
+    adapterId: decodeURIComponent(match[1] ?? ''),
+    ...(requestedModel === undefined
+      ? {}
+      : { requestedModel: decodeURIComponent(requestedModel) }),
+    servedModel: decodeURIComponent(match[2] ?? ''),
     totalTokens,
   }
 }
@@ -373,6 +392,7 @@ export const makeLedgerMeteringHook = (
         accountRef: context.accountRef,
         contextRef: inferenceChargeContextRef({
           adapterId: context.adapterId,
+          requestedModel: context.requestedModel,
           servedModel: priced.model,
           totalTokens: context.usage.totalTokens,
         }),

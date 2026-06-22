@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import type {
   InferenceReceiptRecord,
-  InferenceReceiptStore,
+  InferenceReceiptReadStore,
 } from './inference-receipts'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 
@@ -14,6 +14,7 @@ const receiptRecord = (
   const { receiptRef, ...overrides } = input
 
   return {
+    contextRef: null,
     createdAt: '2026-06-20T00:00:00.000Z',
     payInType: receiptRef.startsWith('receipt.inference.usd_credit_grant.')
       ? 'usd_credit_grant'
@@ -27,21 +28,21 @@ const receiptRecord = (
 
 const storeFor = (
   records: ReadonlyArray<InferenceReceiptRecord>,
-): InferenceReceiptStore => ({
+): InferenceReceiptReadStore => ({
   readInferenceReceiptByRef: receiptRef =>
     Promise.resolve(
       records.find(record => record.receiptRef === receiptRef) ?? null,
     ),
 })
 
-const routesFor = (store: InferenceReceiptStore) =>
-  makePublicInferenceReceiptRoutes<{ store: InferenceReceiptStore }>({
+const routesFor = (store: InferenceReceiptReadStore) =>
+  makePublicInferenceReceiptRoutes<{ store: InferenceReceiptReadStore }>({
     makeStore: env => env.store,
     nowIso: () => '2026-06-20T00:01:00.000Z',
   })
 
 const route = async (
-  store: InferenceReceiptStore,
+  store: InferenceReceiptReadStore,
   receiptRef: string,
   init?: RequestInit,
 ) => {

@@ -98,6 +98,20 @@ export const activeTimelineFixture: PublicActivityTimelineEnvelope = emptyEnvelo
       blockerRefs: [],
       caveatRefs: [],
     },
+    {
+      sourceKind: "inference_receipt",
+      status: "current",
+      latestSourceEventAt: "2026-06-18T18:00:08.500Z",
+      observedAt: generatedAt,
+      lagSeconds: 0,
+      maxStalenessSeconds: 0,
+      sourceRefs: [
+        "receipt.inference.charge.chatcmpl_public_1",
+        "https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_public_1",
+      ],
+      blockerRefs: [],
+      caveatRefs: [],
+    },
   ],
   events: [
     event({
@@ -192,6 +206,25 @@ export const activeTimelineFixture: PublicActivityTimelineEnvelope = emptyEnvelo
       sourceRefs: ["training.verification.challenge.public.1"],
       state: "queued",
       text: "Trace verification queued.",
+    }),
+    event({
+      eventRef: "event.public.khala.inference.served.1",
+      ts: "2026-06-18T18:00:08.500Z",
+      kind: "khala_inference_served",
+      sourceKind: "inference_receipt",
+      actorRef: "gateway.fireworks.primary",
+      targetRef: "receipt.inference.charge.chatcmpl_public_1",
+      refs: [
+        "receipt.inference.charge.chatcmpl_public_1",
+        "openagents/khala-mini",
+        "gateway.fireworks.primary",
+      ],
+      sourceRefs: [
+        "receipt.inference.charge.chatcmpl_public_1",
+        "https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_public_1",
+      ],
+      state: "openagents/khala-mini",
+      text: "Khala inference served with a public ledger receipt.",
     }),
     event({
       eventRef: "event.public.forum.topic.1",

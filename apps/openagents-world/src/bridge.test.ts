@@ -9,6 +9,7 @@ import {
   projectionRowMetadata,
   projectionRowRef,
   rowsFromKhalaInferenceReceipt,
+  rowsFromPublicActivityTimelineEvent,
   rowsFromTassadarRunSummary,
 } from "./bridge"
 
@@ -130,6 +131,57 @@ describe("world bridge projection helpers", () => {
       "gateway:gateway.vertex.primary",
       "verifier:worker.validator.primary",
     ])
+  })
+
+  test("maps public activity timeline Khala receipt events into world rows", () => {
+    const receiptRef = "receipt.inference.charge.chatcmpl_public_verse"
+    const source = "https://openagents.com/api/public/activity-timeline"
+    const rows = rowsFromPublicActivityTimelineEvent({
+      actorRef: "gateway.fireworks",
+      eventRef: "event.public.khala_inference_served.chatcmpl_public_verse",
+      kind: "khala_inference_served",
+      sourceKind: "inference_receipt",
+      sourceRefs: [
+        receiptRef,
+        `https://openagents.com/api/public/inference/receipts/${receiptRef}`,
+      ],
+      state: "openagents/khala-code",
+      targetRef: receiptRef,
+      ts: "2026-06-22T01:00:00.000Z",
+    }, observedAt, source)
+    const gateway = rows.find(row => row.kind === "gateway_station")
+    const event = rows.find(row => row.kind === "world_event")
+
+    expect(gateway).toMatchObject({
+      kind: "gateway_station",
+      gatewayRef: "gateway.fireworks",
+      lane: "fireworks",
+      providerLabel: "Fireworks",
+    })
+    expect(event?.safety.sourceRefs.map(String)).toContain(receiptRef)
+    if (event?.kind !== "world_event") throw new Error("expected world event")
+    expect(String(event.createdAt)).toBe("2026-06-22T01:00:00.000Z")
+    expect(event.inference).toMatchObject({
+      model: "openagents/khala-code",
+      receiptRef,
+      route: "public_activity_timeline",
+      verification: "unknown",
+    })
+    expect(event.inference?.costMsat).toBeUndefined()
+    expect(event.inference?.workers.map(worker => worker.workerKind)).toEqual([
+      "coding_agent",
+    ])
+  })
+
+  test("ignores non-Khala public activity timeline events", () => {
+    expect(
+      rowsFromPublicActivityTimelineEvent({
+        eventRef: "event.public.real_bitcoin_moved.1",
+        kind: "real_bitcoin_moved",
+        sourceKind: "settlement_receipt",
+        sourceRefs: ["receipt.public.real.1"],
+      }, observedAt, "https://openagents.com/api/public/activity-timeline"),
+    ).toEqual([])
   })
 
   test("records bridge health and cursor rows without fabricated projection data", () => {

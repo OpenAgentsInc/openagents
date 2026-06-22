@@ -130,13 +130,16 @@ Prefer modeling on existing rows; add exactly one genuinely new object.
 - **New row — `gateway_station`** (interaction or projection, mirrors
   `pylon_station`): the external-provider portal. Fields: `gatewayRef`, `lane`
   (`vertex|fireworks|openrouter|passthrough`), provider label, position. This is
-  the "actual gateway model" the user asked for.
+  the "actual gateway model" the user asked for. Implemented in
+  `packages/world-contract` and mirrored by `apps/openagents-world`.
 - **Inference events:** model as a specialized **`world_event`** payload
   (`requestRef`, `model` (`openagents/khala-*`), `route`, `workers[]`,
-  `verification`, `cost_msat`, `settled`, `sourceRefs`) rather than a brand-new
-  row kind — keeps the schema lean and reuses `append_world_event`. (Call out the
-  tradeoff: a dedicated `inference_event` row is cleaner if volume/typing
-  warrants it later.)
+  `verification`, optional `cost_msat`, `settled`, `sourceRefs`) rather than a
+  brand-new row kind — keeps the schema lean and reuses `append_world_event`.
+  `cost_msat` is optional because the public paid receipt proves the event while
+  intentionally omitting private amount/provider detail. (Call out the tradeoff:
+  a dedicated `inference_event` row is cleaner if volume/typing warrants it
+  later.)
 - **Coding agents:** reuse `agent_avatar` + `run_entity` (+ `avatar_position`).
 - **Commands:** add service-only `upsert_gateway_station`; otherwise reuse
   `append_world_event`, `upsert_run_entity`, `upsert_settlement_ref`. **No new
@@ -148,11 +151,13 @@ Prefer modeling on existing rows; add exactly one genuinely new object.
 
 Mostly reuse; two new primitives:
 
-- **NEW `createCracklingArc`** — a branching electric bolt between two world
-  points, intensity-parameterized, with a short crackle lifetime (sibling of
-  `eventBurstPrimitives`). The signature animation.
-- **NEW `createGatewayPortal`** — the offworld portal/relay: energy-in, dimmer
-  return, an "out of world" stream for external-provider work.
+- **`createCracklingArc`** — a branching electric bolt between two world points,
+  intensity-parameterized, with a short crackle lifetime (sibling of
+  `eventBurstPrimitives`). The signature animation. Implemented in
+  `@openagentsinc/three-effect`.
+- **`createGatewayPortal`** — the offworld portal/relay: energy-in, dimmer
+  return, an "out of world" stream for external-provider work. Implemented in
+  `@openagentsinc/three-effect`.
 - **Reuse:** `createAgentAvatar` + `createAgentWarpInEffect` +
   `createCharacterSpawner` (coding agents); `projectChatWorldPylonScene` /
   `pylon_station` (workers); `subscribePaymentParticles` (settlement beams);
@@ -180,22 +185,26 @@ gateway-portal encodings.
 
 ## Phasing
 
-- **P0 — reuse the payment layer.** Project inference events from
+- **P0 — reuse the payment layer.** Project receipt-backed inference events from
   `/api/public/activity-timeline` the way payment particles already are; render a
   crackling arc to the assigned Pylon and a portal stream for external work.
-  Minimal: the bridge, beams, and pylon scene already exist.
+  The public timeline event kind (`khala_inference_served`), Worker receipt
+  source, world bridge mapper, gateway row, portal primitive, and desktop render
+  path exist. Remaining P0 work is the production bridge producer/live SSE path
+  plus an owner-enabled Khala smoke proving the same receipt reaches the scene.
 - **P1 — coding-agent lane.** Spawn agent avatars for code work; add the verify
   glow (gold/red) from the verification class.
 - **P2 — multi-worker fan-out + HUD.** The Conductor/Fugu compose-across-the-map
   animation; the in-world-vs-gateway and AO/kWh meters.
 
-**Honest gaps to close first:** an inference-event projection on
-`/api/public/*` (today the activity timeline carries settlement, not full route
-facts), the `gateway_station` row + `upsert_gateway_station` command, and the two
-new three-effect primitives (`createCracklingArc`, `createGatewayPortal`). The
-multiplayer engine, payment beams, Pylon scene, agent avatars, HUD meters, and
-the evidence-bound motion contract already exist — this is an extension, not a
-new world.
+**Honest gaps to close first:** the public timeline can now expose
+receipt-backed Khala inference facts without private prompts or amounts, and the
+world/desktop render path can consume them. The remaining gap is live wiring:
+run the production bridge producer against the timeline/SSE source, prove cursor
+resume and source-ref clickthrough, and capture an owner-enabled Khala receipt
+flowing through the real scene. The multiplayer engine, payment beams, Pylon
+scene, agent avatars, HUD meters, and the evidence-bound motion contract already
+exist — this is an extension, not a new world.
 
 ## Why it matters
 

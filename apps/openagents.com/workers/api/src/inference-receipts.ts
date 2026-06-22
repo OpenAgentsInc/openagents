@@ -9,6 +9,7 @@ export type InferenceReceiptKind =
   | 'batch_job_charge'
 
 export type InferenceReceiptRecord = Readonly<{
+  contextRef: string | null
   createdAt: string
   payInType: string
   receiptRef: string
@@ -29,10 +30,16 @@ export type PublicInferenceReceiptProjection = Readonly<{
   stateChangedAt: string
 }>
 
-export type InferenceReceiptStore = Readonly<{
+export type InferenceReceiptReadStore = Readonly<{
   readInferenceReceiptByRef: (
     receiptRef: string,
   ) => Promise<InferenceReceiptRecord | null>
+}>
+
+export type InferenceReceiptStore = InferenceReceiptReadStore & Readonly<{
+  listRecentInferenceReceipts: (
+    limit: number,
+  ) => Promise<ReadonlyArray<InferenceReceiptRecord>>
 }>
 
 const unsafePublicReceiptPattern =
@@ -104,6 +111,7 @@ export const publicInferenceReceiptFromRecord = (
 }
 
 type InferenceReceiptRow = Readonly<{
+  context_ref: string | null
   created_at: string
   pay_in_type: string
   public_receipt_ref: string | null
@@ -117,6 +125,7 @@ const rowToInferenceReceiptRecord = (
   row.public_receipt_ref === null
     ? null
     : {
+        contextRef: row.context_ref,
         createdAt: row.created_at,
         payInType: row.pay_in_type,
         receiptRef: row.public_receipt_ref,
@@ -127,10 +136,29 @@ const rowToInferenceReceiptRecord = (
 export const makeD1InferenceReceiptStore = (
   db: D1Database,
 ): InferenceReceiptStore => ({
+  listRecentInferenceReceipts: async limit => {
+    const rowLimit = Math.max(1, Math.min(200, Math.trunc(limit)))
+    const rows = await db
+      .prepare(
+        `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
+           FROM pay_ins
+          WHERE public_receipt_ref LIKE 'receipt.inference.charge.%'
+            AND pay_in_type = 'adjustment'
+            AND state = 'paid'
+          ORDER BY created_at DESC
+          LIMIT ?`,
+      )
+      .bind(rowLimit)
+      .all<InferenceReceiptRow>()
+
+    return (rows.results ?? [])
+      .map(rowToInferenceReceiptRecord)
+      .filter((record): record is InferenceReceiptRecord => record !== null)
+  },
   readInferenceReceiptByRef: async receiptRef => {
     const row = await db
       .prepare(
-        `SELECT pay_in_type, state, public_receipt_ref, created_at, state_changed_at
+        `SELECT pay_in_type, state, public_receipt_ref, context_ref, created_at, state_changed_at
            FROM pay_ins
           WHERE public_receipt_ref = ?
             AND pay_in_type IN ('adjustment', 'usd_credit_grant')

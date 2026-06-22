@@ -152,7 +152,7 @@ export type ChatWorldInferenceEvent = Readonly<{
   gatewayRef: string | null
   workerRefs: ReadonlyArray<string>
   verification: "none" | "seeded" | "test_passed" | "exact_trace_replay" | "failed" | "unknown"
-  costMsat: number
+  costMsat: number | null
   settled: boolean
   sourceRefs: ReadonlyArray<string>
   generatedAt: string

@@ -46,6 +46,7 @@ describe("@openagentsinc/public-activity-timeline", () => {
       "verification_queued",
       "verification_verified",
       "verification_rejected",
+      "khala_inference_served",
       "settlement_recorded",
       "real_bitcoin_moved",
       "forum_topic_created",
@@ -60,6 +61,7 @@ describe("@openagentsinc/public-activity-timeline", () => {
       "training_window",
       "training_trace",
       "training_verification",
+      "inference_receipt",
       "settlement_receipt",
       "forum",
       "artanis",
@@ -166,6 +168,23 @@ describe("@openagentsinc/public-activity-timeline", () => {
         sourceRefs: ["training.verification.challenge.public.no_receipt"],
       }),
     ).toThrow("requires a public receipt source ref")
+  })
+
+  test("requires Khala inference events to be receipt-backed", () => {
+    const event = activeTimelineFixture.events.find(
+      candidate => candidate.kind === "khala_inference_served",
+    )
+    if (event === undefined) {
+      throw new Error("missing Khala fixture event")
+    }
+
+    expect(assertPublicActivityTimelineEventSafe(event)).toEqual(event)
+    expect(() =>
+      assertPublicActivityTimelineEventSafe({
+        ...event,
+        sourceRefs: ["source.public.no_receipt"],
+      }),
+    ).toThrow("require an inference receipt source ref")
   })
 
   test("requires projection-gap events and stale source lag to expose blockers", () => {

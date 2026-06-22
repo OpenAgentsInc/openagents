@@ -545,7 +545,7 @@ export const projectChatWorldClientWorld = (input: {
         gatewayRef: gatewayWorker?.workerRef ?? null,
         workerRefs: event.inference.workers.map(worker => worker.workerRef),
         verification: event.inference.verification,
-        costMsat: event.inference.costMsat,
+        costMsat: numberValue(event.inference.costMsat),
         settled: event.inference.settled,
         sourceRefs: uniqueTexts([
           event.inference.receiptRef,

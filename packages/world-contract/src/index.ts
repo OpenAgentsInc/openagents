@@ -422,7 +422,7 @@ export class WorldInferenceEventPayload extends S.Class<WorldInferenceEventPaylo
   route: S.String,
   workers: S.Array(WorldInferenceWorkerRef),
   verification: WorldInferenceVerification,
-  costMsat: S.Number,
+  costMsat: S.optionalKey(S.Number),
   priceMsat: S.optionalKey(S.Number),
   settled: S.Boolean,
   sourceRefs: S.Array(WorldSourceRef),

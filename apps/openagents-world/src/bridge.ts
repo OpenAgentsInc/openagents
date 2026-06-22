@@ -229,8 +229,14 @@ export const rowsFromKhalaInferenceReceipt = (
       ?? stringField(root, "region_ref")
       ?? `region.${requestRef}`,
   )
-  const safety = publicSafety(sourceRef)
-  const sourceRefs = [sourceRef]
+  const sourceRefs = uniqueStringRefs([
+    sourceRef,
+    ...arrayStringField(root, "sourceRefs"),
+    ...arrayStringField(root, "source_refs"),
+    ...arrayStringField(receipt, "sourceRefs"),
+    ...arrayStringField(receipt, "source_refs"),
+  ])
+  const safety = publicSafety(sourceRefs)
   const gatewayRows = arrayField(root, "gateways").map((item, index) => {
     const gateway = record(item)
     const lane = gatewayLane(stringField(gateway, "lane"))
@@ -256,6 +262,7 @@ export const rowsFromKhalaInferenceReceipt = (
   })
 
   const priceMsat = finiteNumber(receipt.price_msat) ?? finiteNumber(receipt.priceMsat)
+  const costMsat = finiteNumber(receipt.cost_msat) ?? finiteNumber(receipt.costMsat)
   const event = decodeWorldRow({
     kind: "world_event",
     eventRef: stringField(root, "eventRef")
@@ -273,7 +280,7 @@ export const rowsFromKhalaInferenceReceipt = (
       route,
       workers: inferenceWorkers(receipt, sourceRefs),
       verification: inferenceVerification(stringField(receipt, "verification")),
-      costMsat: finiteNumber(receipt.cost_msat) ?? finiteNumber(receipt.costMsat) ?? 0,
+      ...(costMsat === null ? {} : { costMsat }),
       ...(priceMsat === null ? {} : { priceMsat }),
       settled: booleanField(receipt, "settled") ?? false,
       sourceRefs,
@@ -282,6 +289,79 @@ export const rowsFromKhalaInferenceReceipt = (
   })
 
   return dedupeBridgeRows([...gatewayRows, event].map(row => assertWorldPublicSafety(row)))
+}
+
+export const rowsFromPublicActivityTimelineEvent = (
+  input: unknown,
+  observedAt: string,
+  sourceRef: string,
+): ReadonlyArray<WorldRow> => {
+  const event = record(input)
+  if (
+    stringField(event, "kind") !== "khala_inference_served" ||
+    stringField(event, "sourceKind") !== "inference_receipt"
+  ) {
+    return []
+  }
+
+  const sourceRefs = uniqueStringRefs([
+    sourceRef,
+    ...arrayStringField(event, "sourceRefs"),
+    ...arrayStringField(event, "source_refs"),
+  ])
+  const receiptRef =
+    sourceRefs.find(ref => receiptSourceRef(ref)) ??
+    stringField(event, "targetRef") ??
+    stringField(event, "target_ref") ??
+    sourceRef
+  if (!receiptSourceRef(receiptRef)) {
+    return []
+  }
+
+  const actorRef = stringField(event, "actorRef") ?? stringField(event, "actor_ref")
+  const gatewayRef = actorRef?.startsWith("gateway.")
+    ? actorRef
+    : stableWorldRef("gateway.khala", receiptRef)
+  const model = stringField(event, "state") ?? "openagents/khala-mini"
+  const createdAt = stringField(event, "ts") ?? observedAt
+  const requestRef = inferenceRequestRefFromReceiptRef(receiptRef)
+  const lane = gatewayLaneFromGatewayRef(gatewayRef)
+
+  return rowsFromKhalaInferenceReceipt({
+    eventRef: stringField(event, "eventRef")
+      ?? stringField(event, "event_ref")
+      ?? deterministicWorldEventRef(sourceRef, `khala.${receiptRef}`, 0),
+    requestRef,
+    model,
+    regionRef: `region.${requestRef}`,
+    sourceRefs,
+    openagents: {
+      receipt: receiptRef,
+      route: "public_activity_timeline",
+      verification: "unknown",
+      settled: false,
+      sourceRefs,
+      workers: [
+        {
+          workerRef: `worker.${requestRef}`,
+          workerKind: "coding_agent",
+          label: "Khala request",
+          role: "request",
+          sourceRefs,
+        },
+      ],
+    },
+    gateways: [
+      {
+        gatewayRef,
+        lane,
+        label: "Khala gateway",
+        providerLabel: gatewayProviderLabel(lane),
+        position: { x: 0, y: 0, z: 18 },
+        status: "working",
+      },
+    ],
+  }, createdAt, receiptRef)
 }
 
 export const planBridgeRetry = (input: {
@@ -361,9 +441,11 @@ const timestampForRow = (row: WorldRow): string => {
   }
 }
 
-const publicSafety = (sourceRef: string) => ({
+const publicSafety = (sourceRef: string | ReadonlyArray<string>) => ({
   publicProjectionAllowed: true,
-  sourceRefs: [sourceRef as WorldSourceRef],
+  sourceRefs: (Array.isArray(sourceRef)
+    ? uniqueStringRefs(sourceRef)
+    : [sourceRef]) as Array<WorldSourceRef>,
   blockerRefs: [],
   caveatRefs: [],
 })
@@ -375,6 +457,19 @@ const record = (input: unknown): Record<string, unknown> =>
 
 const arrayField = (input: Record<string, unknown>, key: string): ReadonlyArray<unknown> =>
   Array.isArray(input[key]) ? input[key] : []
+
+const arrayStringField = (
+  input: Record<string, unknown>,
+  key: string,
+): ReadonlyArray<string> =>
+  arrayField(input, key).filter((value): value is string =>
+    typeof value === "string" && value.trim().length > 0
+  )
+
+const uniqueStringRefs = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
+  values
+    .map(value => value.trim())
+    .filter((value, index, refs) => value.length > 0 && refs.indexOf(value) === index)
 
 const stringField = (input: Record<string, unknown>, key: string): string | null =>
   typeof input[key] === "string" && input[key].trim().length > 0
@@ -438,6 +533,37 @@ const gatewayLane = (input: string | null): WorldGatewayLane => {
     default:
       return "passthrough"
   }
+}
+
+const gatewayLaneFromGatewayRef = (gatewayRef: string): WorldGatewayLane => {
+  const normalized = gatewayRef.toLowerCase()
+  if (normalized.includes("fireworks")) return "fireworks"
+  if (normalized.includes("openrouter")) return "openrouter"
+  if (normalized.includes("vertex")) return "vertex"
+  return "passthrough"
+}
+
+const gatewayProviderLabel = (lane: WorldGatewayLane): string => {
+  switch (lane) {
+    case "fireworks":
+      return "Fireworks"
+    case "openrouter":
+      return "OpenRouter"
+    case "vertex":
+      return "Vertex"
+    case "passthrough":
+      return "OpenAgents"
+  }
+}
+
+const receiptSourceRef = (ref: string): boolean =>
+  /^receipt\./i.test(ref) || /\/receipts\//i.test(ref)
+
+const inferenceRequestRefFromReceiptRef = (receiptRef: string): string => {
+  const prefix = "receipt.inference.charge."
+  return receiptRef.startsWith(prefix) && receiptRef.length > prefix.length
+    ? `request.khala.${plainLabel(receiptRef.slice(prefix.length))}`
+    : stableWorldRef("request.khala", receiptRef)
 }
 
 const inferenceVerification = (

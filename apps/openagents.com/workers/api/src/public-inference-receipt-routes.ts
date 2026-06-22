@@ -7,14 +7,14 @@ import {
   serverError,
 } from './http/responses'
 import {
-  type InferenceReceiptStore,
+  type InferenceReceiptReadStore,
   publicInferenceReceiptFromRecord,
 } from './inference-receipts'
 
 type HttpResponse = globalThis.Response
 
 export type PublicInferenceReceiptRouteDependencies<Bindings> = Readonly<{
-  makeStore: (env: Bindings) => InferenceReceiptStore
+  makeStore: (env: Bindings) => InferenceReceiptReadStore
   nowIso: () => string
 }>
 

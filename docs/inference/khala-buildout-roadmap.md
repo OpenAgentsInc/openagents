@@ -332,8 +332,17 @@ separate queues; until then the #6013 checklist plus these anchors is enough.
 **Progress — 2026-06-22:** #6013-A is implemented in the shared contract and
 world service: `gateway_station`, service-only `upsert_gateway_station`, typed
 Khala inference `world_event` payloads, bridge mapping from public Khala receipt
-shapes, and read-model mirroring all have focused tests. #6013-B/C/D remain
-open.
+shapes, and read-model mirroring all have focused tests. #6013-B and #6013-C
+are also implemented: `@openagentsinc/three-effect` now exposes the
+receipt-driven crackling-arc and gateway-portal primitives, and Autopilot
+Desktop projects Khala inference rows into the Verse scene with receipt-source
+inspectability. #6013-D is partially implemented: the public activity timeline
+now has a receipt-backed `khala_inference_served` event kind, Worker source
+wiring from paid inference charge receipts, and a world bridge mapper that turns
+those public events into `gateway_station` + `world_event` rows without exposing
+private prompts, providers, or amounts. Remaining #6013 work is the production
+bridge producer/live SSE path and an owner-enabled Khala smoke proving a real
+receipt flows from gateway → timeline → world → desktop.
 
 ### Agent Cockpit — Autopilot consumption and artifact handoff
 

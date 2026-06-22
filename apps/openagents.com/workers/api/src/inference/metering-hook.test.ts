@@ -7,9 +7,11 @@ import { projectMdkPayoutModeGate } from '../mdk-payout-mode-gate'
 import { readAgentBalance } from '../payments-ledger'
 import {
   DEFAULT_BTC_USD,
+  inferenceChargeContextRef,
   inferenceChargeIdempotencyKey,
   inferenceChargeReceiptRef,
   makeLedgerMeteringHook,
+  parseInferenceChargeContextRef,
   type MeteringContext,
   usdToMsatCeil,
 } from './metering-hook'
@@ -182,6 +184,35 @@ describe('usdToMsatCeil', () => {
   })
 })
 
+describe('inference charge context refs', () => {
+  test('parse legacy and requested-model contexts', () => {
+    expect(
+      parseInferenceChargeContextRef(
+        inferenceChargeContextRef({
+          adapterId: 'fireworks',
+          requestedModel: 'openagents/khala-code',
+          servedModel: 'accounts/fireworks/models/qwen3',
+          totalTokens: 42,
+        }),
+      ),
+    ).toEqual({
+      adapterId: 'fireworks',
+      requestedModel: 'openagents/khala-code',
+      servedModel: 'accounts/fireworks/models/qwen3',
+      totalTokens: 42,
+    })
+    expect(
+      parseInferenceChargeContextRef(
+        'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fqwen3:tokens:42',
+      ),
+    ).toEqual({
+      adapterId: 'fireworks',
+      servedModel: 'accounts/fireworks/models/qwen3',
+      totalTokens: 42,
+    })
+  })
+})
+
 describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
   test('computes the charge from usage via priceRequest and decrements the balance', async () => {
     const db = makeDb()
@@ -208,7 +239,7 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     // The pay-in is a debit-only adjustment with the public receipt ref.
     const payIn = (await db
       .prepare(
-        `SELECT pay_in_type, cost_msat, public_receipt_ref, idempotency_key
+        `SELECT pay_in_type, cost_msat, public_receipt_ref, idempotency_key, context_ref
            FROM pay_ins WHERE idempotency_key = ?`,
       )
       .bind(inferenceChargeIdempotencyKey('req-1'))
@@ -216,6 +247,13 @@ describe('makeLedgerMeteringHook (#5477, real SQL)', () => {
     expect(payIn?.pay_in_type).toBe('adjustment')
     expect(payIn?.cost_msat).toBe(expectedMsat)
     expect(payIn?.public_receipt_ref).toBe(inferenceChargeReceiptRef('req-1'))
+    expect(
+      parseInferenceChargeContextRef(String(payIn?.context_ref)),
+    ).toMatchObject({
+      requestedModel: 'sonnet',
+      servedModel: 'sonnet',
+      totalTokens: sonnetUsage.totalTokens,
+    })
   })
 
   test('is idempotent per request: a replayed settle never double-charges', async () => {
