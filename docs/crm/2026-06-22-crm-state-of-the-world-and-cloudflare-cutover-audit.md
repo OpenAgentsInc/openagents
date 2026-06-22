@@ -1,230 +1,185 @@
-# CRM State-of-the-World + Cloudflare Cutover Audit
+# CRM State-of-the-World + Native Cloudflare Build Audit
 
 **Date:** 2026-06-22
 **Author:** Raynor (agent)
-**Trigger:** Owner wants to (a) connect "our CRM" to Autopilot Desktop / chat for *automated* CRM, probably through the Blueprint action system, and (b) contact ~150 people tomorrow with automated email. This audit inventories every place CRM/outreach code and data live across the workspace, states honestly what works today, and lays out a two-track plan: the tactical "150 tomorrow" send and the real chat/Blueprint-driven CRM on Cloudflare.
+**Trigger:** Owner wants to (a) connect "our CRM" to Autopilot Desktop / chat for *automated* CRM, through the Blueprint action system, and (b) contact ~150 people tomorrow with automated email.
 
-> **Scope note / repo routing.** The product surface owner is `apps/openagents.com/` in this repo. The full historical CRM lives in the **deprecated Laravel** clone at `~/work/deprecated/openagents.com/` and in **`autopilot3`** (Convex). Per the workspace contract, new product CRM work belongs on the Cloudflare/Effect stack in `apps/openagents.com/`, **not** in Convex (`autopilot3`) and **not** by reviving the Laravel app.
-
----
-
-## 0. TL;DR — the one decision that matters
-
-We are sitting on **three different CRMs** and they do not agree:
-
-| Surface | Has the full CRM data model? | Has the real contact DATA? | Can send live email? | On the chosen stack? |
-|---|---|---|---|---|
-| **Deprecated Laravel** (`deprecated/openagents.com`) | ✅ Yes (11 tables, full investor CRM) | ✅ **Yes — this is where the real people are** (live prod DB) | ✅ Yes (Laravel Mail; also via Gmail tool) | ❌ No (deprecated) |
-| **autopilot3** (Convex) | ✅ Yes (near-exact port of the Laravel model) | ⚠️ Schema only, no checked-in data | ⚠️ Record-only (no live provider wired) | ❌ No (Convex — wrong stack) |
-| **Current Cloudflare** (`apps/openagents.com`) | ❌ **No contact/account/opportunity model** — only campaigns, subscribers, prospects, signups | ❌ No | ⚠️ **Resend bindings exist but the send path is INERT (default-OFF flag, not chained to the dispatcher) and deliverability is UNPROVEN** | ✅ **Yes** |
-
-**The gap in one sentence:** the stack we want to build on (Cloudflare) has the *email plumbing* but **not the contact model and not the data**; the place that has the *contacts and the model* (Laravel) is deprecated; and the most complete *port* of the model (autopilot3) is on the wrong runtime (Convex).
-
-**Therefore the honest answer to "automated CRM in chat via Blueprint, on Cloudflare" is: it is a real build, not a flip-a-flag.** It requires porting the contact/account/activity model into D1, arming + proving the Resend send path, and wiring the chat→Blueprint `send_email` action. None of those three exist green today.
-
-**And the honest answer to "150 people tomorrow" is: yes, but via the tactical Laravel+Gmail path (Track 1 below), not via the not-yet-built Cloudflare chat CRM.**
+> **Owner mandate (2026-06-22):** **No Laravel CRM. Do not suggest it as a runtime, an API we keep calling, or a tactical sender.** We are moving **all relevant CRM/outreach code into `apps/openagents.com` (and related Cloudflare surfaces)** and building it **multi-tenant, so our customers use the exact same CRM/outreach infrastructure we built for ourselves.** Convex (`autopilot3`) is likewise not the runtime. The old Laravel app and the autopilot3 Convex CRM are **schema/design references only** — we copy the *model shapes*, never the runtime.
 
 ---
 
-## 1. Can we actually email 150 people tomorrow?
+## 0. TL;DR — the decision
 
-**Yes — through the existing local Gmail draft/send tool against the live Laravel CRM.** This is the only path where *both* the model and the real contacts already exist and a sender is proven.
+**Build one CRM, natively, in `apps/openagents.com` on Cloudflare/Effect + D1, multi-tenant from day one.** Same contact/outreach engine powers our own outreach *and* every customer's. Nothing runs on Laravel or Convex.
 
-- Tool: `~/work/scripts/crm-gmail.sh` (present, executable, dated 2026-04-30).
-- Sender: `gws` (Google Workspace CLI) at `/Users/christopherdavid/code/googleworkspace-cli` (present).
-- Data source: production Laravel CRM at `OPENAGENTS_COM_CRM_BASE_URL` (= `https://openagents.com`, still the Laravel backend for `/api/admin/crm/*`).
-- Auth: `~/work/.secrets/openagents-com-crm-production.env` (present; defines `OPENAGENTS_COM_CRM_BASE_URL`, `OPENAGENTS_COM_CRM_OPERATOR_EMAIL`, `OPENAGENTS_COM_CRM_TOKEN` — values not printed).
-- Runbook: `~/work/docs/2026-04-30-gws-gmail-crm-runbook.md`.
+What that means concretely, because the Cloudflare side is **not** turnkey today:
 
-**Hard constraints that decide tomorrow's plan:**
+| Layer | Status on Cloudflare today | Work to do |
+|---|---|---|
+| **Email plumbing** (Resend provider, message/delivery ledger, campaigns, suppression, preferences, webhooks) | ✅ **Exists** in `apps/openagents.com` | Arm + **prove** it (it's currently inert behind a default-OFF flag and deliverability is unproven) |
+| **Contact CRM model** (contacts, accounts, lists, activities, engagement, opportunities) | ❌ **Does not exist** — only campaign/subscriber/prospect tables | **Build it in D1**, tenant-scoped, using the autopilot3/Laravel shapes as reference |
+| **The actual contacts (the ~150)** | ❌ Not on Cloudflare | **One-time import** into D1 from whatever export the owner provides (see §3) |
+| **Chat → Blueprint `send_email`** | ⚠️ Blueprint recognizes the `send_email` effect kind, but chat doesn't propose it and the executor isn't armed | **Wire it** (chat proposes → approval → executor → send → write-back) |
 
-1. **Draft-first by default.** The tool creates Gmail drafts unless `--send` is passed. Good safety default; review before blast.
-2. **Single contact per invocation.** No bulk endpoint; 150 people = a wrapper loop of 150 calls (each: resolve contact → render template via CRM preview → create draft/send).
-3. **Gmail quota is the real ceiling.** A standard Google Workspace user is ~**500 external recipients/day** (consumer Gmail ~100/day). 150 in one day is fine for a Workspace account *with sending history*; a cold account risks throttling/spam-foldering. **Verify which account `gws` is authed as before blasting.**
-4. **No write-back of the Gmail send into the CRM** today. Sending via the Gmail tool does **not** record a `crm_activity`/`crm_email_message` row automatically — so "who did we contact" is not captured unless we add it. (Sending via the Laravel CRM's own `POST /api/admin/crm/contacts/{id}/emails` endpoint *does* record it, but that uses the Laravel Mail driver, whose provider config must be verified — see §2.A.)
-5. **Deliverability/compliance.** 150 cold-ish outbound emails needs: a real unsubscribe affordance, suppression honored, SPF/DKIM/DMARC aligned for the sending domain, and respect for the no-resale/identity rules. Drafts-first + manual review covers tomorrow; automation needs suppression wired (see §5).
+**Honest bottom line:** "automated CRM in chat, on our infra" is a real build with four pieces, none green today. The good news: three of them (email ledger, campaign/suppression infra, Blueprint `send_email` frame) are already scaffolded in `apps/openagents.com` — we're finishing and arming, not starting from zero. The ~150 send tomorrow becomes the forcing function that proves the send path (and honestly greens `autopilot_sites.native_email_sequences.v1`).
 
-→ **Track 1 in §6** is the concrete tomorrow plan. **Owner decisions needed** are flagged there and mirrored to `NEEDS_OWNER.md`.
+---
+
+## 1. The ~150 tomorrow — on our own infra
+
+We do **not** fall back to Laravel+Gmail. We send through **our Worker (`apps/openagents.com`) via Resend**, which also dogfoods the exact path customers will use. That requires a focused sprint of three things:
+
+1. **Get the contacts into D1.** One-time import (see §3). Owner hands off the list in whatever form is cleanest — a CSV export is ideal and keeps us off any legacy API.
+2. **Arm + prove the Resend transactional send.** The send service exists but is INERT (default-OFF flag, not chained to the dispatcher) and deliverability is unproven (§2.B). Arming it + running a live send→deliver smoke with bounce/complaint handling is exactly the `email_deliverability_unproven` blocker — clearing it honestly greens the promise.
+3. **Send 150 through the Worker** with suppression honored + a real unsubscribe affordance + the send recorded in the D1 ledger (so we capture who we contacted / who replied — the whole point of a CRM).
+
+**Deliverability reality (decides whether tomorrow is realistic):** a 150-recipient send needs a **verified sending domain in Resend** with aligned SPF/DKIM/DMARC, and a warmed reputation. `RESEND_FROM_EMAIL` is currently `OpenAgents <chris+sites@openagents.com>`. **Must verify** the prod Worker has `RESEND_API_KEY`/`RESEND_WEBHOOK_SECRET` set and the from-domain is verified before any blast. If the domain isn't warmed, send in waves and expect some spam-foldering. This is the one place tomorrow's timeline could slip — flagged for the owner in §6.
 
 ---
 
 ## 2. Inventory by surface
 
-### 2.A — Deprecated Laravel CRM (`~/work/deprecated/openagents.com`) — *the source of truth for data*
+### 2.A — Deprecated Laravel CRM — *schema reference + one-time data source ONLY*
 
-A complete, production-grade, investor-oriented CRM. **This is where the real people and the real model are.** It is the backend the Gmail tool already talks to.
+The old Laravel app has a complete, production investor CRM (11 tables: `crm_contacts`, `crm_accounts`, `crm_contact_lists(+memberships)`, `crm_email_templates`, `crm_email_messages(+deliveries)`, `crm_activities`, `crm_engagement_snapshots`, `crm_opportunities(+roles)`, `crm_writeback_requests`; legacy `investor_accesses`). It also has the granular Sanctum ability model (`crm:read|write|email:send|export|writeback`), an approval-gated Blueprint writeback, and a classification-aware source-export.
 
-**Data model (11 core tables, all migrated 2026-04-29):**
-- `crm_contacts` — primary_email (unique), names, job_title, `contact_type` (default `investor`), `relationship_stage`, `workos_user_id`, `portal_access_status`, engagement timestamps, `engagement_score`, `account_id`, owner.
-- `crm_accounts` — orgs/funds (name, domain, account_type, website).
-- `crm_contact_lists` + `crm_contact_list_memberships` — segmentation. **Seeded system lists:** `investor_portal_approved`, `investor_roster`.
-- `crm_email_templates` — markdown+HTML templates with `available_variables`. **Seeded template:** `investor-portal-follow-up`.
-- `crm_email_messages` + `crm_email_deliveries` — send ledger + provider delivery records (status, opened_at, clicked_at, replied_at, provider ids).
-- `crm_activities` — audit log (email_sent, portal_view/click/login, manual_touch), dedup by `(source_record_type, source_record_id)`.
-- `crm_engagement_snapshots` — cached 30/90-day rollups + engagement score.
-- `crm_opportunities` + `crm_opportunity_contact_roles` — deal pipeline.
-- `crm_writeback_requests` — Blueprint writeback audit (idempotency, approval, rollback posture).
-- Legacy `investor_accesses` — older flat table; **synced-on-read** into `crm_*` via `CrmInvestorSyncService`.
+**Per the owner mandate, this is reference material only:**
+- ✅ **Use:** copy the *column shapes* and the *ability/approval concepts* into the D1 model.
+- ✅ **Use (once):** if the owner chooses to pull the existing contacts out of the old prod DB, the source-export is one mechanism — but a plain CSV handoff is preferred so we take **zero** ongoing Laravel dependency.
+- ❌ **Do not:** run it, call its API as a live CRM, route new work to it, or use it as the tactical sender. It is being decommissioned (its own `docs/investor-crm-admin-decommission-plan.md` always intended this — now the target is Cloudflare, not the old "Autopilot CRM" URL).
 
-**API (`routes/api.php`, `/api/admin/crm/*`):** full read set (`crm:read`), write set (`crm:write`), email send (`crm:email:send`), Blueprint source-export (`crm:export`, server-to-server, with data-classification + field redaction + cursor pagination, schema `2026-05-08.crm-source-export.v1`), and Blueprint writeback (`crm:writeback`). Auth is **Sanctum tokens with granular abilities**; admin web UI at `/admin/crm/*` (`auth` + `approved:admins`).
+The real contacts currently live in the **old prod DB**, not as a checked-in file. Extracting them is a **one-time migration**, after which the old CRM is dead to us.
 
-**Email send path:** `CrmTransactionalEmailService` → Laravel `Mail` facade → `MAIL_MAILER` driver (supports smtp/ses/postmark/resend/log). **⚠️ Verify the live prod `MAIL_MAILER`** — local default is `log` (no real send). Records a `crm_email_message` + `crm_email_delivery` + `email_sent` activity on each send.
+### 2.B — `apps/openagents.com` (Cloudflare) — *the foundation we build on*
 
-**Operator tooling:** `php artisan crm:issue-operator-token` mints scoped Sanctum tokens.
+Verified against `workers/api/migrations/` and `config.ts`:
 
-**Decommission intent already on record:** `docs/investor-crm-admin-decommission-plan.md` plus an `OPENAGENTS_CRM_ADMIN_MODE` (`transitional`→`read_only`→`redirect`) switch — i.e., this CRM was *always meant to move off Laravel*. That target is now Cloudflare (this audit), superseding the old "Autopilot CRM" redirect URL.
+**Email/outreach already present:**
+`0026_email_ledger.sql` (email_messages, email_deliveries, email_drafts, email_provider_events), `0063_email_campaign_records.sql` (campaigns, steps, enrollments, sends, **suppression_entries**, **preferences**), `0064` (dispatch attempts), `0072` (targeted_site campaigns + **prospects**), `0081`/`0088` (outreach dispatches + metrics), `0181_native_lists_subscribers.sql` (`subscriber_lists`, `list_subscribers` — already **owner/team-scoped**, good multi-tenant precedent), `0191`/`0216` (`business_signup_requests` + referral attribution), `0193_cloudflare_email_provider.sql` (a Cloudflare-Email provider alongside Resend).
 
-**Current DB state in the local checkout:** schema-complete, system lists + 1 template seeded, **0 contact rows locally** — meaning the real contacts live in the **production** Laravel DB, reachable via the CRM API (`GET /api/admin/crm/contacts`) or source-export, **not** as a checked-in file anywhere.
+**Provider:** **Resend**. Bindings in `config.ts:185-188` (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL`, `RESEND_WEBHOOK_SECRET`) + `wrangler.jsonc:44-45`. Webhook receiver `resend-webhooks.ts` verifies Svix signatures and auto-writes suppression on bounce/complaint.
 
-### 2.B — Current Cloudflare `apps/openagents.com` — *the email plumbing, no contact model*
+**⚠️ The send path is deliberately INERT (this is the real work):**
+- `email-sequence-send-service.ts` plans a **dry-run** and **never calls the sender** unless armed by the default-OFF **`EMAIL_SEQUENCE_SEND_ENABLED`** flag, and is **not chained into the live dispatcher**.
+- `autopilot_sites.native_email_sequences.v1` is **YELLOW**; its one remaining blocker is **`email_deliverability_unproven`** — i.e., **no proven live send→deliver evidence on Cloudflare yet** (`product-promises.ts:211`, `:2598`).
+- Prod secret presence + sending-domain verification in Resend: **unverified** (§1).
 
-This is the stack we will build on. What exists today (verified against `workers/api/migrations/` and `config.ts`):
+**Missing entirely:** the **contact / account / list / activity / engagement / opportunity** relationship model. Today's D1 tables are *campaign/subscriber/prospect* shaped, not relationship-CRM shaped. So "the CRM" is net-new schema + services here — built tenant-scoped so customers get it too.
 
-**Email/outreach migrations present:**
-`0026_email_ledger.sql` (email_messages, email_deliveries, email_drafts, email_provider_events), `0063_email_campaign_records.sql` (campaigns, steps, enrollments, sends, **suppression_entries**, **preferences**), `0064_email_campaign_dispatch_attempts.sql`, `0072_targeted_site_outreach.sql` (targeted_site campaigns + **prospects**), `0081`/`0088` (outreach dispatches + metrics), `0181_native_lists_subscribers.sql` (`subscriber_lists`, `list_subscribers`), `0191`/`0216` (`business_signup_requests` + referral attribution), `0193_cloudflare_email_provider.sql` (a Cloudflare Email Routing provider alongside Resend).
+**Blueprint:** `blueprint-routes.ts` already recognizes a **`send_email`** effect kind (alongside deploy, spend_money, post_public_claim, …): program proposes effect → `blueprint_action_submissions` (pending_approval) → operator approval → execute. **Not wired** from chat, and the executor→sender hookup isn't armed. The frame exists; the connection doesn't.
 
-**Email provider:** **Resend** is the configured provider. Bindings exist in `config.ts:185-188` (`RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `RESEND_REPLY_TO_EMAIL`, `RESEND_WEBHOOK_SECRET`) and `wrangler.jsonc:44-45` (`RESEND_FROM_EMAIL = "OpenAgents <chris+sites@openagents.com>"`, reply-to `chris+sites@openagents.com`). Webhook receiver `resend-webhooks.ts` verifies Svix signatures and auto-writes suppression on bounce/complaint. A Cloudflare-Email provider also exists (migration 0193).
+**Promise homes** any green CRM claim must route through: `autopilot_sites.native_email_sequences.v1` (YELLOW), `workrooms.source_authorized_business_objects.v1` (RED, INERT), `workrooms.omni_client_delivery_workrooms.v1`, `omni-crm-follow-up-workrooms.ts` (RED).
 
-**⚠️ The critical honesty correction to the "it's all wired" read:** the send path is **deliberately INERT**.
-- `email-sequence-send-service.ts` plans a **dry-run** and **never calls the sender** unless armed by the default-OFF **`EMAIL_SEQUENCE_SEND_ENABLED`** flag, and is **NOT chained into the live dispatcher** (it sends no live email).
-- The public lead-capture route is mounted but behind default-OFF **`SITE_FORM_CAPTURE_ENABLED`**.
-- The promise `autopilot_sites.native_email_sequences.v1` is **YELLOW**, and its **one remaining blocker is `email_deliverability_unproven`** — i.e., **there is no proven live send→deliver evidence on Cloudflare yet** (`product-promises.ts:211`, `:2598`).
-- Whether `RESEND_API_KEY` / `RESEND_WEBHOOK_SECRET` are actually set as prod Worker secrets, and whether the sending domain is verified in Resend, is **unverified** and must be checked before any Cloudflare send.
+### 2.C — autopilot3 (Convex) — *best model reference, not the runtime*
 
-**What's missing entirely on Cloudflare:** a **contact / account / contact-list / activity / engagement / opportunity** model. The D1 tables are *campaign- and subscriber-* shaped (audience lists, enrollments, sends, prospects, signups), **not** the relationship-CRM shape that Laravel/autopilot3 have. So "port the CRM to Cloudflare" = real schema + service work, not a data copy onto an existing model.
+`autopilot3/convex/schema.ts` is a near-exact port of the Laravel CRM **plus** three ideas worth copying into D1: `crmContactCommands` (approval-gated mutations — maps cleanly onto Blueprint), `crmSourceImportRuns` (bulk-import audit), `crmWritebackRequests`. Functions: `crmAdmin.ts` (`sendEmail`, `recordEmailEvent`), `crmSourceImport.ts`. **Reference only** — we are not on Convex.
 
-**Blueprint action system:** `blueprint-routes.ts` already recognizes a **`send_email`** effect kind (alongside deploy, create_pull_request, spend_money, post_public_claim, etc.). Flow = program proposes effect → stored in `blueprint_action_submissions` (pending_approval) → operator approval → execute. **But there is no wiring from the chat message handler to propose a `send_email` action**, and the executor→sender hookup is not armed. So "automated CRM in chat via Blueprint" has the *frame* but not the *connection*.
+### 2.D — autopilot-omega / vortex / others
 
-**Relevant promises:** `autopilot_sites.native_email_sequences.v1` (YELLOW), `workrooms.source_authorized_business_objects.v1` (RED — typed model + approval-gated write engine exist but `effectsApplied` is always false / INERT), `workrooms.omni_client_delivery_workrooms.v1`, and the `omni-crm-follow-up-workrooms.ts` reference (RED). These are the registry homes any future green CRM claim must go through.
-
-### 2.C — autopilot3 (Convex) — *the most complete model port, wrong runtime*
-
-`autopilot3/convex/schema.ts` defines a near-exact port of the Laravel CRM (crmAccounts, crmContacts, crmContactLists/Memberships, crmActivities, crmEmailTemplates, crmEmailMessages/Deliveries, crmEngagementSnapshots, crmOpportunities/Roles) **plus** extras worth stealing: `crmContactCommands` (approval-gated mutations), `crmSourceImportRuns` (bulk-import audit), `crmWritebackRequests`. Functions in `convex/crmAdmin.ts` (`sendEmail`, `recordEmailEvent`, `listEmailMessages`), `crm.ts`, `crmContactCommands.ts`, `crmSourceImport.ts`. API routes mirror the Sanctum scopes (`crm:read|write|email:send|export|writeback`). Email is **record-only** (generic `providerName`, no live provider).
-
-**Use:** the **best design reference** for the D1 port — especially the *command/approval* and *source-import* tables, which map cleanly onto the Blueprint action model. Do **not** adopt Convex as the runtime (contract says Cloudflare/Effect).
-
-### 2.D — autopilot-omega / vortex / autopilot2 / autopilot-deprecated
-
-- **autopilot-omega:** essentially the *same* Resend campaign/suppression/preference infra that now lives in `apps/openagents.com` (shared migration lineage `0026`/`0063`, `resend-webhooks.ts`, `email-campaign-dispatcher.ts`, `packages/email-templates`). Predecessor/sibling, not additive. Has `docs/2026-06-04-previous-resend-gmail-email-systems-audit.md` worth a read.
-- **vortex:** scaffolding only — a `lastResendEmailId` on prelaunch access and a planned "crm" subsystem literal; **no CRM tables**.
-- **autopilot2 / autopilot-deprecated:** no real CRM (voice/UI experiments only).
+`autopilot-omega` = the same Resend campaign/suppression infra that now lives in `apps/openagents.com` (shared `0026`/`0063` lineage) — not additive. `vortex` = scaffolding only (no CRM tables). `autopilot2`/`autopilot-deprecated` = no real CRM. Nothing to adopt; `apps/openagents.com` is already the consolidated home.
 
 ### 2.E — Local Gmail tooling (`scripts/crm-gmail.sh` + `gws`)
 
-Already covered in §1. Net: a **working, draft-first, single-contact** sender against the **live Laravel CRM**, no CRM write-back, Gmail-quota bound. This is Track 1's engine.
+Tied to the Laravel CRM and Gmail. **Not part of the go-forward plan** per the mandate. Leaving it as-is, unused for this work.
 
 ---
 
-## 3. Where the contact data actually lives
+## 3. The contacts — one-time import, then never look back
 
-- **Authoritative store:** the **production Laravel DB** behind `https://openagents.com` (`crm_contacts`, `crm_accounts`, `crm_contact_lists`, legacy `investor_accesses`). Reachable via the CRM API with the production Sanctum token.
-- **Not** checked in anywhere as CSV/JSON/SQL — no contact export files exist in the workspace (all four sweeps confirm). Local Laravel checkout has 0 contact rows.
-- **Likely "the 150":** the `investor_roster` / `investor_portal_approved` lists, or a `contact_type=investor` filter. **Exact count is unknown from docs** — must query `GET /api/admin/crm/contacts?...` (or source-export) to get the real list and number.
-
-**Action:** the first concrete step tomorrow is to **pull the contact list to a local working file** (via the export endpoint) so we know exactly who/how-many and can review before any send.
+- The ~150 (and the rest) currently live in the **old prod DB**, not as a file.
+- **Preferred handoff:** owner provides a **CSV** (or points me at one). We import once into D1. Zero ongoing legacy dependency.
+- **Alternate (one-time only):** a single read of the old source-export to seed D1, then decommission.
+- We'll **de-dupe, normalize, and report the exact count + a sample** before any send.
+- Import is audited (`crm_source_import_runs` idea from autopilot3) so the migration is traceable.
 
 ---
 
-## 4. How the pieces *should* connect (target architecture)
-
-The owner's ask — "automated CRM, in chat, via Blueprint, on Cloudflare, reflected in Autopilot Desktop" — maps onto components that mostly already have homes:
+## 4. Target architecture (all in `apps/openagents.com`, multi-tenant)
 
 ```
-Autopilot Desktop / chat UI
-        │  (natural-language intent: "follow up with the 12 investors who opened but didn't reply")
+Autopilot Desktop / chat UI  (NL intent: "follow up with investors who opened but didn't reply")
         ▼
-Blueprint program  ──proposes──►  send_email action  (blueprint_action_submissions, pending_approval)
+Blueprint program ──proposes──► send_email action ──► blueprint_action_submissions (pending_approval)
         │                                   │
         │                          operator approval (chat-surfaced)
         ▼                                   ▼
-CRM read model (D1: contacts/      Resend send  ──►  email_messages / email_deliveries (D1)
-accounts/lists/activities)                  │
+CRM read model (D1, tenant-scoped:   Resend send ──► email_messages / email_deliveries (D1)
+contacts/accounts/lists/activities)         │
         ▲                                   ▼
-        └────────── webhook (resend-webhooks.ts) ──► provider_events + suppression + activity write-back
+        └────── webhook (resend-webhooks.ts) ──► provider_events + suppression + activity write-back
 ```
 
-**Build order (no Laravel revival, no Convex):**
-1. **Port the contact CRM model into D1** in `apps/openagents.com` — `crm_contacts`, `crm_accounts`, `crm_contact_lists(+memberships)`, `crm_activities`, `crm_engagement_snapshots`, `crm_opportunities(+roles)`. Reuse the autopilot3/Laravel column shapes; add the `crm_contact_commands` + `crm_source_import_runs` ideas. Effect Schema contracts for each row type.
-2. **One-time data import** from the Laravel source-export (`/api/admin/crm/source-export/contacts|accounts|...`) into D1. The Laravel export endpoint already exists and is classification-aware — this is the clean migration path.
-3. **Arm + prove the Resend send path** for `crm_transactional`: verify prod secrets + domain, flip `EMAIL_SEQUENCE_SEND_ENABLED` semantics into a real transactional sender, run a **live send→deliver smoke** with bounce/complaint handling (this is exactly the `email_deliverability_unproven` blocker — clearing it greens the promise honestly, receipt-first).
-4. **Wire chat→Blueprint `send_email`** — chat message handler proposes a `send_email` action with `{recipient contact ref, template, context}`; operator approves in-UI; executor calls the transactional sender; webhook writes the `crm_activity` + delivery back. This is the "automated CRM" the owner wants, with the approval gate built in.
-5. **Reflect in Autopilot Desktop** — contact/activity read model surfaced in the desktop CRM pane (and, per the Verse direction, optionally as world reflections later — out of scope here).
+**Multi-tenant from the start:** every CRM table carries owner/team scope (follow the existing `subscriber_lists` precedent), so the same engine serves OpenAgents' own outreach and each customer's, with isolation. This is the product, not just an internal tool.
 
-This is also the *correct* execution of the long-standing Laravel→off-Laravel decommission plan (§2.A), just pointed at Cloudflare instead of the old "Autopilot CRM" URL.
+**Build order (native; no Laravel, no Convex):**
+1. **D1 contact-CRM schema + Effect Schema contracts**, tenant-scoped: contacts, accounts, lists(+memberships), activities, engagement_snapshots, opportunities(+roles), contact_commands, source_import_runs. Read APIs. No behavior change.
+2. **One-time contact import** into D1 (§3); verify counts.
+3. **Arm + prove the Resend transactional send** for `crm_transactional`: verify prod secrets + domain, make the sender live behind a real (not dry-run) path, run the live send→deliver smoke with bounce/complaint handling. Greens `native_email_sequences.v1` receipt-first.
+4. **Wire chat → Blueprint `send_email`**: chat proposes the action with `{tenant, contact ref, template, context}`; operator approves in-UI; executor calls the sender; webhook writes activity + delivery back.
+5. **Surface in Autopilot Desktop**: contact/activity read model in the desktop CRM pane.
 
----
-
-## 5. Gap analysis — what's missing for *automated* CRM
-
-| # | Gap | Where | Severity |
-|---|---|---|---|
-| 1 | No contact/account/activity CRM model on Cloudflare | `apps/openagents.com` D1 | **High** (blocks everything) |
-| 2 | Contacts not migrated off Laravel prod | Laravel → D1 | **High** |
-| 3 | Live Resend send unproven + INERT (flag off, not chained, domain/secrets unverified) | `apps/openagents.com` | **High** |
-| 4 | Chat→Blueprint `send_email` not wired | chat handler ↔ blueprint-routes | **High** for "automated in chat" |
-| 5 | Gmail tool doesn't write back sends to CRM | `scripts/crm-gmail.sh` | Medium (lose contact history tomorrow) |
-| 6 | No bulk/batch send endpoint | both stacks | Medium (loop works tomorrow) |
-| 7 | Unsubscribe/suppression not enforced on the tactical path | Track 1 | Medium (compliance) |
-| 8 | Reply tracking not wired (no inbound→activity) | both | Low (later) |
-| 9 | Sending-domain reputation / SPF-DKIM-DMARC for a 150 blast | infra | Medium (deliverability) |
+Each step lands with full tests + `check:deploy` green; promises move only with dereferenceable receipts + owner sign-off; no faked greens.
 
 ---
 
-## 6. The plan — two tracks
+## 5. Gap analysis
 
-### Track 1 — Tomorrow: send ~150 (tactical, Laravel + Gmail)
-
-1. **Pull the list.** `GET /api/admin/crm/contacts` (or source-export) with the prod token → save locally → **confirm exactly who and how many** (the "150"). Filter to the intended segment (likely `investor_roster`).
-2. **Confirm/author the template.** Reuse `investor-portal-follow-up` or author a new one via the CRM template API; render a preview for 2–3 real contacts and eyeball it.
-3. **Confirm the Gmail identity + quota.** Verify which account `gws` is authed as (`gws auth ...`) and that it can take ~150 external/day. If it's a cold/consumer account, **split across days or use a warmed Workspace account.**
-4. **Generate drafts first.** Loop `crm-gmail.sh --contact-id <id> --template ... --draft` over the list (small sleep between calls). Review the drafts in Gmail.
-5. **Send in waves** with delays; monitor bounces.
-6. **Capture who we contacted.** Because the Gmail path doesn't write back, either (a) send via the Laravel CRM `POST .../emails` endpoint instead (records activity, *if* prod `MAIL_MAILER` is a real driver — verify), or (b) keep the local list as the record and backfill activities later. **Recommend (a) if the prod mailer is real**, else (b).
-
-**Owner-gated for Track 1 (mirrored to `NEEDS_OWNER.md`):**
-- Which segment = "the 150"? (investor_roster? a new list? a CSV you'll hand me?)
-- Which Gmail/Workspace identity sends, and is it warmed for ~150/day?
-- Final email copy/template + subject (no copy changes without your sign-off).
-- Draft-first review by you before any live send? (recommended: yes.)
-
-### Track 2 — The real thing: chat/Blueprint-driven CRM on Cloudflare
-
-Build order = §4 steps 1→5. Sequencing recommendation:
-- **First PR:** D1 contact CRM schema + Effect Schema contracts + read APIs (step 1). No behavior change, no flips.
-- **Second PR:** Laravel→D1 source import (step 2), run once, verify counts.
-- **Third PR:** arm + **prove** the Resend transactional send (step 3) — this is the honest path to greening `native_email_sequences.v1` (receipt-first, owner-signed).
-- **Fourth PR:** chat→Blueprint `send_email` wiring + approval surface (step 4).
-- **Fifth:** desktop CRM pane (step 5).
-
-Each lands with full tests + `check:deploy` green; no faked greens; promises move state only with dereferenceable receipts + owner sign-off.
+| # | Gap | Severity |
+|---|---|---|
+| 1 | No contact/account/activity CRM model in D1 | **High** (blocks all) |
+| 2 | Contacts not yet imported into D1 | **High** |
+| 3 | Resend transactional send inert + unproven (flag off, not chained, domain/secrets unverified) | **High** |
+| 4 | Chat → Blueprint `send_email` not wired | **High** for "automated in chat" |
+| 5 | Multi-tenant scoping must be designed in (not bolted on) | Medium |
+| 6 | Unsubscribe/suppression must be enforced on the live send | Medium (compliance) |
+| 7 | Sending-domain reputation / SPF-DKIM-DMARC for a 150 blast | Medium (deliverability) |
+| 8 | Reply tracking (inbound→activity) | Low (later) |
 
 ---
 
-## 7. Risks / things to not screw up
+## 6. Plan
 
-- **Deliverability of a 150 blast.** Cold domain/account → spam folder + reputation damage. Warm identity, real unsubscribe, suppression honored, SPF/DKIM/DMARC aligned for whatever From-domain we use.
-- **No-resale / identity rules.** Outreach copy and any agent automation must respect the standing no-resale (subscription-scoped) and public-identity rules. Don't auto-send anything that makes a claim we can't back.
-- **Don't revive Laravel as the go-forward.** It is the *data source* for a one-time import only; the contract says build on Cloudflare/Effect.
-- **Don't trust "it's wired" without the smoke.** Resend bindings ≠ proven delivery. The YELLOW promise's remaining blocker is exactly this — treat it as unproven until a live send→deliver receipt exists.
-- **Capture the send record.** If tomorrow's send leaves no CRM activity trail, we lose "who did we contact / who replied," which is the whole point of a CRM.
+**Sprint A — ~150 tomorrow, on our infra (also proves the send path):**
+1. (Owner) Hand off the contact list (CSV preferred) + confirm the segment.
+2. (Me) Import → D1, de-dupe, report exact count + sample.
+3. (Me) Verify prod Resend secrets + sending-domain verification; arm the transactional sender.
+4. (Me) Live send→deliver smoke (a few seed addresses) with bounce/complaint handling.
+5. (You) Review rendered copy on real contacts.
+6. (Me) Send 150 in waves through the Worker; suppression honored; sends recorded in D1; greens `native_email_sequences.v1` if the receipts hold.
+
+**Sprint B — the automated CRM (build order §4 steps 1→5):** D1 schema → import → proven send → chat/Blueprint wiring → desktop pane. Tenant-scoped throughout so customers get the same infra.
+
+**Owner-gated (mirrored to `NEEDS_OWNER.md`):**
+- The contact list/segment + handoff form (CSV?).
+- Confirm/verify the **sending domain** in Resend (the deliverability gate that could slip tomorrow).
+- Final copy/subject (no copy changes without your OK).
+- Draft/preview review before the live blast.
+
+---
+
+## 7. Risks
+
+- **Deliverability is the timeline risk for tomorrow.** Unverified/cold domain → spam folder + reputation hit. Verify the domain, warm-send in waves, real unsubscribe, suppression honored.
+- **Multi-tenant isolation.** Because customers will use this, contact data must be strictly tenant-scoped from the first migration — no cross-tenant leakage, ever.
+- **No-resale / identity rules.** Outreach copy + any agent automation must respect the standing no-resale (subscription-scoped) and public-identity rules.
+- **Don't trust "it's wired" without the smoke.** Resend bindings ≠ proven delivery; treat the send path as unproven until a live receipt exists.
+- **Capture the send record.** Every send writes to the D1 ledger so "who we contacted / who replied" is real.
 
 ---
 
 ## 8. Immediate next actions
 
-1. **(Owner)** Answer the four Track-1 gating questions in `NEEDS_OWNER.md`.
-2. **(Me, on owner's go)** Pull + de-dupe the contact list from prod, report exact count + a sample, render template previews.
-3. **(Me)** Stand up Track-1 draft generation; you review drafts; we send in waves.
-4. **(Me, Track 2)** Open the first PR: D1 contact-CRM schema + contracts + read APIs in `apps/openagents.com`, using the autopilot3/Laravel model as reference. Then the Laravel→D1 import, then the proven Resend send, then the chat→Blueprint wiring.
+1. **(Owner)** Answer the gating items in `NEEDS_OWNER.md` (list/segment + handoff, sending domain, copy, review).
+2. **(Me, on go)** Open PR #1: tenant-scoped D1 contact-CRM schema + Effect Schema contracts + read APIs in `apps/openagents.com` (no behavior change).
+3. **(Me)** One-time contact import → D1; report counts.
+4. **(Me)** Arm + prove the Resend transactional send (the deliverability smoke); then Sprint A send.
+5. **(Me)** Wire chat → Blueprint `send_email` + approval surface; then the desktop CRM pane.
 
 ---
 
 ### Appendix — key file references
 
-- Laravel CRM: `deprecated/openagents.com/database/migrations/2026_04_29_*`, `app/Http/Controllers/Api/AdminCrm*Controller.php`, `app/Services/CrmTransactionalEmailService.php`, `app/Console/Commands/CrmIssueOperatorTokenCommand.php`, `docs/investor-crm-*.md`.
-- Cloudflare email infra: `apps/openagents.com/workers/api/migrations/{0026,0063,0064,0072,0081,0088,0181,0191,0193,0216}_*.sql`, `workers/api/src/{email,email-campaign-dispatcher,email-sequence-send-service,resend-webhooks,email-preferences}.ts`, `workers/api/src/config.ts:185-188`, `workers/api/wrangler.jsonc:44-45`, `workers/api/src/blueprint-routes.ts` (send_email), `workers/api/src/product-promises.ts` (`:211`, `:2598`, `:1464`, `:2563`).
-- autopilot3 Convex reference: `autopilot3/convex/{schema,crm,crmAdmin,crmContactCommands,crmSourceImport}.ts`.
-- Local tooling: `scripts/crm-gmail.sh`, `/Users/christopherdavid/code/googleworkspace-cli`, `docs/2026-04-30-gws-gmail-crm-runbook.md`, `docs/2026-04-29-*crm*.md`.
-- Secrets (names only): `.secrets/openagents-com-crm-production.env`, `.secrets/openagents-com-crm-local.env`.
+- **Build here:** `apps/openagents.com/workers/api/migrations/{0026,0063,0064,0072,0081,0088,0181,0191,0193,0216}_*.sql`, `workers/api/src/{email,email-campaign-dispatcher,email-sequence-send-service,resend-webhooks,email-preferences}.ts`, `config.ts:185-188`, `wrangler.jsonc:44-45`, `blueprint-routes.ts` (send_email), `product-promises.ts` (`:211`, `:2598`, `:1464`, `:2563`).
+- **Schema reference only (not a runtime):** `autopilot3/convex/{schema,crmAdmin,crmContactCommands,crmSourceImport}.ts`; deprecated Laravel `crm_*` migrations + ability model.
+- **Decommissioned / not used:** `scripts/crm-gmail.sh`, the Laravel CRM API, Convex.
 </content>
-</invoke>
