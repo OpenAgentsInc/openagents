@@ -33,6 +33,7 @@
   "dependencies": {
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/autopilot-ui": "workspace:*",
+    "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/proof-replay": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/three-effect": "github:OpenAgentsInc/three-effect#3e927a8",

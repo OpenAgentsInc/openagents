@@ -19,6 +19,7 @@ Current Phase 0 scope:
 - naming and resource URI rules;
 - receipt, tagged error, progress, and elicitation schemas;
 - public-safe output and redaction rules;
+- import markers for Pylon, Autopilot Desktop, Worker/API, and web surfaces;
 - package status metadata for docs and compatibility checks.
 
 ## Authority And Grants
@@ -93,6 +94,17 @@ wallet secrets, and credential material. Secret-bearing or unsafe output is
 omitted from serialized projections instead of being embedded into receipts,
 progress events, diagnostics, issue comments, or public resources.
 
-The package expands across the remaining Phase 0 issues to include authority,
-transport, lifecycle, descriptor, receipt, error, progress, elicitation, naming,
-and public-safe output rules.
+## Surface Imports
+
+The Phase 0 package is imported by:
+
+- `apps/pylon/src/mcp-contract-import.ts`;
+- `apps/autopilot-desktop/src/mcp-contract-import.ts`;
+- `apps/openagents.com/workers/api/src/mcp-contract-import.ts`;
+- `apps/openagents.com/apps/web/src/mcp-contract-import.ts`.
+
+Each marker records the shared schema version, surface authority, output safety
+class, and reserved future transport kind while keeping
+`runtimeTransportExposed: false`. These markers prove package resolution across
+the current runtime surfaces without starting an MCP server, client connector,
+loopback listener, or bridge.

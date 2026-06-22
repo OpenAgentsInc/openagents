@@ -73,6 +73,7 @@
     "@noble/hashes": "1.7.1",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
+    "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/tassadar-executor": "workspace:*",
     "@scure/base": "1.2.4",
