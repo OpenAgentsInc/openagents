@@ -439,4 +439,190 @@ describe('fireworks adapter streaming', () => {
       expect(terminal?.usage).toBeUndefined()
     }
   })
+
+  // RECEIPT-FIRST STREAMING (the "missing terminal usage frame" 524 fix):
+  // OpenAI-compatible providers omit the usage object from streamed responses
+  // unless asked. The adapter MUST opt in via stream_options.include_usage so a
+  // normal streamed completion carries its real terminal usage frame, instead of
+  // failing receipt-first with "missing terminal usage frame".
+  test('streaming requests opt in to a terminal usage frame via stream_options.include_usage', async () => {
+    const { calls, fetchImpl } = recordingFetch(
+      sseResponse([
+        { choices: [{ delta: { content: 'ok' }, index: 0 }] },
+        {
+          choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+          usage: { completion_tokens: 1, prompt_tokens: 3, total_tokens: 4 },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(adapter.stream(request({ stream: true })))
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.stream).toBe(true)
+    expect(body.stream_options).toEqual({ include_usage: true })
+  })
+
+  test('non-streaming requests do NOT send stream_options', async () => {
+    const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(adapter.complete(request()))
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.stream_options).toBeUndefined()
+  })
+
+  test('a load-bearing stream_options override beats a stray passthrough copy', async () => {
+    const { calls, fetchImpl } = recordingFetch(
+      sseResponse([
+        {
+          choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+          usage: { completion_tokens: 1, prompt_tokens: 3, total_tokens: 4 },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(
+      adapter.stream(
+        request({
+          passthroughParams: { stream_options: { include_usage: false } },
+          stream: true,
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.stream_options).toEqual({ include_usage: true })
+  })
+})
+
+// --- incremental pass-through stream (streamSse) -------------------------
+
+// Build an SSE Response over a ReadableStream that emits each frame in its own
+// chunk, so the test exercises the adapter's incremental parsing (partial lines
+// across reads) rather than a single buffered blob.
+const chunkedSseResponse = (
+  frames: ReadonlyArray<unknown>,
+): Response => {
+  const encoder = new TextEncoder()
+  const lines = [
+    ...frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`),
+    'data: [DONE]\n\n',
+  ]
+  let index = 0
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= lines.length) {
+        controller.close()
+        return
+      }
+      // Emit each line split across two chunks to prove partial-line buffering.
+      const line = lines[index]!
+      const mid = Math.floor(line.length / 2)
+      controller.enqueue(encoder.encode(line.slice(0, mid)))
+      controller.enqueue(encoder.encode(line.slice(mid)))
+      index += 1
+    },
+  })
+  return new Response(stream, {
+    headers: { 'content-type': 'text/event-stream' },
+    status: 200,
+  })
+}
+
+const drainSource = async (
+  adapter: ReturnType<typeof makeFireworksAdapter>,
+  req: InferenceRequest,
+) => {
+  const sourceResult = await runResult(adapter.streamSse!(req))
+  if (sourceResult._tag !== 'Success') {
+    return { failure: sourceResult, ok: false as const }
+  }
+  const source = sourceResult.success
+  const deltas: Array<string> = []
+  for await (const event of source.frames) {
+    if (event.contentDelta !== '') {
+      deltas.push(event.contentDelta)
+    }
+  }
+  return { ok: true as const, source, deltas }
+}
+
+describe('fireworks adapter incremental pass-through stream', () => {
+  test('exposes streamSse', () => {
+    const { fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+    expect(typeof adapter.streamSse).toBe('function')
+  })
+
+  test('yields content deltas incrementally and captures the terminal usage frame', async () => {
+    const { calls, fetchImpl } = recordingFetch(
+      chunkedSseResponse([
+        { choices: [{ delta: { content: 'Hel' }, index: 0 }] },
+        { choices: [{ delta: { content: 'lo' }, index: 0 }] },
+        {
+          choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+          model: 'accounts/fireworks/models/kimi-k2p7-code',
+          usage: { completion_tokens: 2, prompt_tokens: 7, total_tokens: 9 },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const drained = await drainSource(adapter, request({ stream: true }))
+    expect(drained.ok).toBe(true)
+    if (!drained.ok) {
+      return
+    }
+    expect(drained.deltas).toEqual(['Hel', 'lo'])
+    expect(calls[0]?.init.headers['accept']).toBe('text/event-stream')
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.stream_options).toEqual({ include_usage: true })
+
+    const terminal = drained.source.terminal()
+    expect(terminal.finishReason).toBe('stop')
+    expect(terminal.usage).toEqual({
+      completionTokens: 2,
+      promptTokens: 7,
+      totalTokens: 9,
+    })
+    expect(terminal.servedModel).toBe('accounts/fireworks/models/kimi-k2p7-code')
+  })
+
+  // The missing-terminal-frame case for the pass-through path: the source still
+  // drains (the client got partial content), and terminal usage is undefined so
+  // the ROUTE settles no metering (receipt-first — never an estimate). The
+  // adapter does not throw; metering policy lives at the route.
+  test('a stream with no terminal usage drains with undefined terminal usage', async () => {
+    const { fetchImpl } = recordingFetch(
+      chunkedSseResponse([
+        { choices: [{ delta: { content: 'partial' }, index: 0 }] },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const drained = await drainSource(adapter, request({ stream: true }))
+    expect(drained.ok).toBe(true)
+    if (!drained.ok) {
+      return
+    }
+    expect(drained.deltas).toEqual(['partial'])
+    expect(drained.source.terminal().usage).toBeUndefined()
+  })
+
+  test('streamSse connect-time 429 maps to a retryable rate_limited error', async () => {
+    const { fetchImpl } = recordingFetch(errorResponse(429))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const result = await runResult(adapter.streamSse!(request({ stream: true })))
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure.kind).toBe('rate_limited')
+      expect(result.failure.retryable).toBe(true)
+    }
+  })
 })

@@ -429,6 +429,16 @@ const runPromiseAllowlist = new Map([
   // moves to an Effect program. INERT by default (VOICE_PROGRAM_INGEST_ENABLED
   // off → the core is never run); promise stays red.
   ['workers/api/src/voice-program-ingest-routes.ts', 1],
+  // Added 2026-06-22 (#6035 / refs #6027): the inference gateway TRUE
+  // pass-through SSE stream (the khala-code 524 fix) bridges the Effect-returning
+  // metering hook into the Web Streams `ReadableStream.start` controller callback
+  // ONCE, after the upstream stream drains, to settle metering receipt-first from
+  // the terminal usage frame. The Web Streams controller API is not Effect-native
+  // and streaming must flow incrementally (no server-side buffering, so the edge
+  // idle-timer resets and long generations never 524), so the metering Effect is
+  // run at that boundary. Named bridge; ratchet down if the streaming response is
+  // expressed as an Effect Stream program end-to-end.
+  ['workers/api/src/inference/chat-completions-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

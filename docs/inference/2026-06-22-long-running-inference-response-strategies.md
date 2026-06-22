@@ -31,11 +31,29 @@ Stream tokens as they are generated. First byte in ~1s; every chunk resets the
 idle timer, so a 3-minute generation never trips the edge timeout. This is how
 every major inference API serves long generations.
 
-**We already have it.** `src/inference/chat-completions-routes.ts` supports
-`stream: true` (the `if (inferenceRequest.stream)` branch, OpenAI SSE
-`data: …\n\n` framing), and the Fireworks / Vertex adapters pass streaming
-through. The fix for the game generation is literally `"stream": true` and a
-client that consumes SSE (`curl --no-buffer`, or the SDK's stream mode).
+**We have it, and as of #6035 it truly passes through.** `src/inference/
+chat-completions-routes.ts` supports `stream: true` (the
+`if (inferenceRequest.stream)` branch, OpenAI SSE `data: …\n\n` framing). The
+fix for the game generation is `"stream": true` and a client that consumes SSE
+(`curl --no-buffer`, or the SDK's stream mode).
+
+**Caveat that bit us (#6035 / refs #6027):** the original streaming
+implementation was NOT a true pass-through. The Fireworks adapter `stream`
+returned a fully-materialized `ReadonlyArray<InferenceStreamChunk>` (it read the
+WHOLE upstream SSE body before returning a single chunk), and the route then
+serialized all chunks into one string `Response`. So even with `stream:true`,
+the edge saw no bytes until the entire multi-minute generation completed — still
+a 524. On top of that, OpenAI-compatible providers omit the `usage` object from
+streamed responses unless you send `stream_options.include_usage`, so a short
+streamed prompt failed receipt-first with `fireworks stream missing terminal
+usage frame`. #6035 fixes both: the adapter now opts in to the terminal usage
+frame and exposes an incremental `streamSse` source over the upstream
+`response.body`; the route pumps each frame to the client as it arrives (no
+server-side buffering), so every chunk resets the edge idle-timer and a 3-minute
+generation never 524s. Metering still settles receipt-first from the terminal
+usage frame after the upstream closes. (A non-streaming `stream:false`
+crossy-road call still 524s — that is fundamental synchronous buffering on the
+edge; the fix is to stream, or use Strategy 2 for detached runs.)
 
 Caveat: the `openagents` receipt block + verification verdict are emitted at the
 **end** of the stream (a terminal SSE event), since verification runs on the full
