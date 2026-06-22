@@ -21,15 +21,29 @@
 // NOT OWNER-DEPENDENT: works against a local/stub or staging gateway via the
 // base-url env override. The prod gateway is inert/owner-gated; this path does
 // not depend on it — the live badge is gated on a real receipt, not on prod.
+//
+// STREAMING IS THE DEFAULT (the 524 fix). The cockpit submits `stream:true` and
+// consumes the SSE stream INCREMENTALLY: each chunk resets the Cloudflare edge
+// idle timer, so a multi-minute generation (the crossy-road north-star prompt)
+// never trips the ~100s edge timeout and returns 524. A blocking `stream:false`
+// request buffered the whole completion server-side and was the root cause of
+// the 524 (see
+// docs/inference/2026-06-22-long-running-inference-response-strategies.md).
+// `onToken` lets the cockpit render tokens live; the terminal `openagents`
+// receipt block rides on the FINAL chunk and is attached on stream close. The
+// path still consumes a non-streaming JSON body for a server/route that does not
+// stream, so it degrades gracefully.
 
 import {
   inferenceGatewayChatCompletionsUrl,
   resolveInferenceGatewaySettings,
 } from "../shared/inference-gateway.js"
 import {
+  isEventStreamResponse,
   isKhalaCockpitModelId,
   isLiveReceipt,
   parseKhalaReceipt,
+  reconstructKhalaCompletionFromSse,
   type KhalaCockpitModelId,
   type KhalaTurnResult,
   KHALA_MINI_MODEL_ID,
@@ -56,6 +70,13 @@ export type BuildKhalaTurnInput = Readonly<{
   // The OpenAgents agent token (kept in the Bun host); never crosses to webview.
   agentToken: string | null
   fetchFn?: typeof fetch
+  // INTERACTIVE STREAMING DEFAULT (the 524 fix). When true (default), submit
+  // `stream:true` and consume the SSE stream incrementally. Set false only for
+  // explicit blocking comparison/debug.
+  stream?: boolean
+  // Optional live-render hook, fired per content delta as the stream arrives.
+  // Public-safe (token text only); never carries credentials or the receipt.
+  onToken?: (delta: string) => void
 }>
 
 // Pull the assistant text out of an OpenAI-compatible chat-completions body.
@@ -90,6 +111,57 @@ const errorResult = (text: string): KhalaTurnResult => ({
   live: false,
 })
 
+// Read an SSE response body incrementally and reconstruct the completion. The
+// incremental `reader.read()` loop is what resets the edge idle timer per chunk
+// (the 524 fix); `onToken` fires live as deltas arrive. Falls back to
+// `res.text()` for fetch impls without a readable body (e.g. test fakes).
+const consumeSseBody = async (
+  res: Response,
+  onToken?: (delta: string) => void,
+): Promise<unknown> => {
+  const body = res.body
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let rawText = ""
+    let pending = ""
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      const piece = decoder.decode(value, { stream: true })
+      rawText += piece
+      if (onToken !== undefined) {
+        // Emit deltas as soon as a complete frame arrives.
+        pending += piece
+        const frames = pending.split("\n\n")
+        pending = frames.pop() ?? ""
+        for (const frame of frames) {
+          for (const line of frame.split("\n")) {
+            if (!line.startsWith("data:")) continue
+            const payload = line.slice(line.indexOf(":") + 1).trim()
+            if (payload === "" || payload === "[DONE]") continue
+            try {
+              const parsed = JSON.parse(payload) as {
+                choices?: Array<{ delta?: { content?: unknown } }>
+              }
+              const delta = parsed.choices?.[0]?.delta?.content
+              if (typeof delta === "string" && delta.length > 0) onToken(delta)
+            } catch {
+              // ignore partial / non-JSON frames
+            }
+          }
+        }
+      }
+    }
+    // Authoritative reconstruction from the full text (no double onToken — we
+    // already streamed above when a reader was available).
+    return reconstructKhalaCompletionFromSse(rawText)
+  }
+  // No reader: read the whole text and reconstruct (onToken fires once here).
+  const rawText = await res.text()
+  return reconstructKhalaCompletionFromSse(rawText, onToken)
+}
+
 export const buildKhalaTurn = async (
   input: BuildKhalaTurnInput,
 ): Promise<KhalaTurnResult> => {
@@ -114,17 +186,20 @@ export const buildKhalaTurn = async (
     return errorResult(NO_TOKEN_MESSAGE)
   }
 
+  // Streaming is the interactive default; `stream:false` only on explicit opt-out.
+  const useStream = input.stream !== false
+
   try {
     const res = await fetchFn(url, {
       method: "POST",
       headers: {
-        accept: "application/json",
+        accept: useStream ? "text/event-stream" : "application/json",
         authorization: `Bearer ${token}`,
         "content-type": "application/json",
       },
       body: JSON.stringify({
         model,
-        stream: false,
+        stream: useStream,
         messages: [
           { role: "system", content: KHALA_COCKPIT_SYSTEM_PROMPT },
           { role: "user", content: prompt },
@@ -132,11 +207,25 @@ export const buildKhalaTurn = async (
       }),
     })
 
+    // Consume the response body. When the gateway streams SSE, read it
+    // INCREMENTALLY so every chunk resets the edge idle timer (the 524 fix),
+    // firing onToken live, then reconstruct the full completion + the terminal
+    // `openagents` receipt block. Otherwise parse the non-streaming JSON body.
+    // Error responses (non-2xx) are JSON, so parse those as JSON regardless.
     let body: unknown = null
-    try {
-      body = await res.json()
-    } catch {
-      body = null
+    const contentType =
+      typeof res.headers?.get === "function"
+        ? res.headers.get("content-type")
+        : null
+    const streamed = res.ok && useStream && isEventStreamResponse(contentType)
+    if (streamed) {
+      body = await consumeSseBody(res, input.onToken)
+    } else {
+      try {
+        body = await res.json()
+      } catch {
+        body = null
+      }
     }
 
     if (!res.ok) {

@@ -1017,6 +1017,10 @@ export type DesktopRPCSchema = {
         readonly params: {
           readonly prompt: string
           readonly model?: "openagents/khala-mini" | "openagents/khala-code"
+          // M8 streaming (#6027): correlates this turn to its live token push
+          // (`webview.messages.khalaToken`). Omitted by callers that do not want
+          // live tokens; the Bun host then streams server-side without pushing.
+          readonly turnId?: string
         }
         readonly response: KhalaTurnResponse
       }
@@ -1265,6 +1269,18 @@ export type DesktopRPCSchema = {
       readonly shellControl: {
         readonly action: "set-input" | "submit"
         readonly value?: string
+      }
+      // M8 streaming (#6027, EPIC #6017): Bun→webview live token push for a Khala
+      // cockpit turn. The `khalaTurn` RPC submits `stream:true` and consumes the
+      // SSE stream server-side (each chunk resets the Cloudflare edge idle timer —
+      // the 524 fix), pushing each content delta here so the cockpit renders
+      // tokens live. The terminal `openagents` receipt block is NOT pushed here;
+      // it rides on the `khalaTurn` RPC response, attached on stream close.
+      // `turnId` correlates a delta stream to its turn so concurrent/!stale turns
+      // don't cross-render. Public-safe: token text only, no token/credentials.
+      readonly khalaToken: {
+        readonly turnId: string
+        readonly delta: string
       }
     }
   }

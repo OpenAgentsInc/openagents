@@ -4,7 +4,9 @@ import { reduceKhalaHeadToHeadManifest } from "./reduce-head-to-head.mjs";
 import {
   buildRunFromCompletion,
   CROSSY_ROAD_PROMPT,
+  liveStreamTransport,
   liveTransport,
+  reconstructCompletionFromSse,
   runHeadToHead,
   stubTransport,
 } from "./run-head-to-head.mjs";
@@ -231,5 +233,161 @@ describe("liveTransport wiring", () => {
         fetchImpl: fakeFetch,
       }),
     ).rejects.toThrow("402");
+  });
+});
+
+// Build the SSE wire bytes the gateway emits for a streamed completion: a series
+// of `chat.completion.chunk` frames, the terminal `openagents` block on the FINAL
+// chunk, then `data: [DONE]`.
+function buildKhalaSseWire(deltas, { openagents, usage, finishReason = "stop" } = {}) {
+  const frames = [];
+  deltas.forEach((delta, index) => {
+    const last = index === deltas.length - 1;
+    frames.push(
+      `data: ${JSON.stringify({
+        id: "chatcmpl_stream_x",
+        model: "openagents/khala-code",
+        object: "chat.completion.chunk",
+        choices: [
+          {
+            index: 0,
+            delta: delta === "" ? {} : { content: delta },
+            finish_reason: last ? finishReason : null,
+          },
+        ],
+        ...(last && usage !== undefined ? { usage } : {}),
+        ...(last && openagents !== undefined ? { openagents } : {}),
+      })}\n\n`,
+    );
+  });
+  return `${frames.join("")}data: [DONE]\n\n`;
+}
+
+describe("reconstructCompletionFromSse", () => {
+  test("concatenates content deltas and attaches the terminal openagents block", () => {
+    const wire = buildKhalaSseWire(["<!doctype ", "html>", "<!-- crossy -->"], {
+      usage: { prompt_tokens: 10, completion_tokens: 200, total_tokens: 210 },
+      openagents: {
+        requested_model: "openagents/khala-code",
+        served_model: "fireworks-coder",
+        worker: "fireworks",
+        lane: "coding",
+        verification: "test_passed",
+        verified: true,
+        receipt: "oa_receipt_stream_1",
+      },
+    });
+    const body = reconstructCompletionFromSse(wire);
+    expect(body.choices[0].message.content).toBe(
+      "<!doctype html><!-- crossy -->",
+    );
+    expect(body.choices[0].finish_reason).toBe("stop");
+    expect(body.usage.total_tokens).toBe(210);
+    expect(body.openagents.receipt).toBe("oa_receipt_stream_1");
+    expect(body.openagents.verification).toBe("test_passed");
+
+    // It feeds buildRunFromCompletion exactly like the non-streaming shape.
+    const run = buildRunFromCompletion({
+      lane: "khala",
+      label: "stream",
+      model: "openagents/khala-code",
+      provider: "openagents",
+      response: body,
+      startedAt: "2026-06-22T16:00:00.000Z",
+      completedAt: "2026-06-22T16:03:00.000Z",
+      wallClockMs: 180000,
+      live: true,
+    });
+    expect(run.usage.totalTokens).toBe(210);
+    expect(run.acceptedOutcome.verificationClass).toBe("test_passed");
+    expect(run.acceptedOutcome.receiptRef).toBe("oa_receipt_stream_1");
+  });
+
+  test("fires onToken per content delta", () => {
+    const wire = buildKhalaSseWire(["a", "b", "c"]);
+    const tokens = [];
+    reconstructCompletionFromSse(wire, { onToken: (t) => tokens.push(t) });
+    expect(tokens).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("liveStreamTransport (the interactive default — 524 fix)", () => {
+  test("posts stream:true and reconstructs the completion from a byte-stream body", async () => {
+    const wire = buildKhalaSseWire(["full ", "answer"], {
+      openagents: {
+        requested_model: "openagents/khala-code",
+        served_model: "fireworks-coder",
+        worker: "fireworks",
+        lane: "coding",
+        verification: "test_passed",
+        receipt: "oa_receipt_live_stream",
+      },
+    });
+    let sentBody = null;
+    const fakeFetch = async (_url, init) => {
+      sentBody = JSON.parse(init.body);
+      // A real ReadableStream body so the incremental reader path runs.
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(wire));
+          controller.close();
+        },
+      });
+      return { ok: true, body: stream, async text() { return wire; } };
+    };
+
+    const tokens = [];
+    const body = await liveStreamTransport({
+      baseUrl: "https://openagents.com/v1",
+      token: "agent-token",
+      model: "openagents/khala-code",
+      prompt: CROSSY_ROAD_PROMPT,
+      fetchImpl: fakeFetch,
+      onToken: (t) => tokens.push(t),
+    });
+
+    expect(sentBody.stream).toBe(true);
+    expect(body.choices[0].message.content).toBe("full answer");
+    expect(body.openagents.receipt).toBe("oa_receipt_live_stream");
+    // Tokens streamed live during consumption.
+    expect(tokens.join("")).toBe("full answer");
+  });
+
+  test("falls back to res.text() when the body has no reader", async () => {
+    const wire = buildKhalaSseWire(["x", "y"]);
+    const fakeFetch = async () => ({
+      ok: true,
+      async text() {
+        return wire;
+      },
+    });
+    const body = await liveStreamTransport({
+      baseUrl: "https://openagents.com/v1",
+      token: null,
+      model: "openagents/khala-code",
+      prompt: CROSSY_ROAD_PROMPT,
+      fetchImpl: fakeFetch,
+    });
+    expect(body.choices[0].message.content).toBe("xy");
+  });
+
+  test("throws a public-safe error on a non-ok response", async () => {
+    const fakeFetch = async () => ({
+      ok: false,
+      status: 524,
+      statusText: "A Timeout Occurred",
+      async text() {
+        return "cloudflare 524";
+      },
+    });
+    await expect(
+      liveStreamTransport({
+        baseUrl: "https://openagents.com/v1",
+        token: null,
+        model: "openagents/khala-code",
+        prompt: CROSSY_ROAD_PROMPT,
+        fetchImpl: fakeFetch,
+      }),
+    ).rejects.toThrow("524");
   });
 });
