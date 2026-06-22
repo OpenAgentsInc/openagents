@@ -667,6 +667,8 @@ deleted.
 
 ### P1: Extract `packages/world-contract`
 
+Status: implemented in issue #5960.
+
 Add the shared Effect contract package first. Acceptance:
 
 - Effect Schema classes for every row, command, receipt, delta, subscription
