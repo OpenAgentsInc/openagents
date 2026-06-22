@@ -39,6 +39,9 @@ reached from opposite directions.
 - [`psionic-coordinator-roadmap.md`](psionic-coordinator-roadmap.md) —
   Psionic-specific primitives audit (verified against source): the 5 missing
   learning-side primitives, where each attaches, and the phased build order.
+- [`tassadar-run-integration.md`](tassadar-run-integration.md) — how a learned
+  coordinator combines with the live Tassadar run via its verification-class
+  registry (`exact_trace_replay` / `seeded_replication`) as the reward oracle.
 
 ## Why these matter to us
 
