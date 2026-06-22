@@ -443,6 +443,7 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
+import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
@@ -7071,6 +7072,10 @@ const crmImportRoutes = makeCrmImportRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+const crmEmailRoutes = makeCrmEmailRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -9961,6 +9966,7 @@ const routeRequest = makeWorkerRouteRequest({
     ) ??
     partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
     crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
+    crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
