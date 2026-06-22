@@ -7349,6 +7349,7 @@ const pylonBalanceHud = (model: Model): Html => {
           valueText: `${Math.max(0, Math.floor(onboardingBalance)).toLocaleString()} sats`,
         }
   const state = balance.known ? "known" : "unknown"
+  const displayValue = balance.known ? balance.valueText : "wallet pending"
   const title = balance.known
     ? `Pylon Bitcoin balance: ${balance.valueText}`
     : "Pylon Bitcoin balance waiting for wallet state"
@@ -7358,10 +7359,10 @@ const pylonBalanceHud = (model: Model): Html => {
       h.AriaLabel("Pylon Bitcoin sats"),
       h.Title(title),
       h.DataAttribute("pylon-balance-hud", state),
-      h.DataAttribute("pylon-balance-value", balance.valueText),
+      h.DataAttribute("pylon-balance-value", displayValue),
     ],
     [
-      h.span([cls("pylon-balance-hud-value mono")], [balance.valueText]),
+      h.span([cls("pylon-balance-hud-value mono")], [displayValue]),
     ],
   )
 }
