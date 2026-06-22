@@ -443,6 +443,14 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
+import { makeCrmBatchRoutes } from './crm-batch-routes'
+import { makeCrmCommandRoutes } from './crm-command-routes'
+import { makeCrmEmailRoutes } from './crm-email-routes'
+import { makeCrmImportRoutes } from './crm-import-routes'
+import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
+import { makeCrmResendRoutes } from './crm-resend-routes'
+import { makeCrmSendRoutes } from './crm-send-routes'
+import { makeCrmRoutes } from './crm-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
@@ -7061,6 +7069,56 @@ const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+const crmRoutes = makeCrmRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
+const crmImportRoutes = makeCrmImportRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
+const crmEmailRoutes = makeCrmEmailRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
+const resolveCrmResendDeps = (env: WorkerBindings) => {
+  const enabled = isCrmResendSendEnabled(
+    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined }).CRM_RESEND_SEND_ENABLED,
+  )
+  const resend = getResendEmailConfig(env)
+  if (resend === undefined) {
+    return { enabled, fromEmail: null, sender: null }
+  }
+  return {
+    enabled,
+    fromEmail: resend.fromEmail,
+    sender: makeCrmResendSender({
+      apiKey: resend.apiKey,
+      replyTo: resend.replyToEmail,
+    }),
+  }
+}
+
+const crmResendRoutes = makeCrmResendRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
+const crmSendRoutes = makeCrmSendRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
+const crmCommandRoutes = makeCrmCommandRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
+const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -9949,7 +10007,14 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx),
+    partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
+    crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
+    crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
+    crmResendRoutes.routeCrmResendRequest(request, env, ctx) ??
+    crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
+    crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
+    crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
+    crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
