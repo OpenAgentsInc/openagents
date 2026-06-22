@@ -963,6 +963,22 @@ Add the client package that desktop and web will import. Acceptance:
 
 This issue is where the previous casing bug becomes structurally impossible.
 
+Implementation note: P9 adds `packages/world-client` as
+`@openagentsinc/world-client`, registers it in the root `test` and `typecheck`
+scripts, and keeps the package transport-neutral. It exposes `connect`,
+`subscribe`, `callCommand`, `applyDelta`, `reconnect`, `disconnect`,
+`diagnostics`, `readModel`, and `state` over a typed Effect transport interface
+that speaks only the Cloudflare Verse World protocol.
+
+The package owns the WoC-style `ClientWorld` mirror and `applyDeltaToReadModel`.
+Absent rows mean unchanged, `deletedRefs` prune every read-model table and
+selected-target state, settle patches update motion without dropping position
+rows, diagnostics flow into the read model, and command receipts project
+`acceptedSeq`/`appliedSeq`/`rejectedSeq` for movement/input debugging. Tests use
+fake transports for reconnect, resubscribe, stale cursor diagnostics, command
+acks, interest pruning, selected-target retention, and settle deltas. There is
+no backend-kind union and no generated SpacetimeDB import.
+
 ### P10: Point Desktop And Web At Cloudflare
 
 Cut consumers to the new client as soon as P9 can support the current UI.

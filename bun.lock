@@ -472,6 +472,18 @@
         "typescript": "catalog:",
       },
     },
+    "packages/world-client": {
+      "name": "@openagentsinc/world-client",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/world-contract": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/world-contract": {
       "name": "@openagentsinc/world-contract",
       "version": "0.1.0",
@@ -1113,6 +1125,8 @@
     "@openagentsinc/three-effect": ["@openagentsinc/three-effect@github:OpenAgentsInc/three-effect#71f89cc", { "dependencies": { "@types/three": "0.184.0", "effect": "4.0.0-beta.70", "foldkit": "0.102.1", "three": "0.184.0" } }, "OpenAgentsInc-three-effect-71f89cc", "sha512-KbvWk3TC8Vl2qd5f8AREF1nCTixy1/GBl20bLzXAIkf4W4TkpkI+cd5HGlsP7jZFETR3YlgYVaXx+gRe8IbJrw=="],
 
     "@openagentsinc/ui": ["@openagentsinc/ui@workspace:packages/ui"],
+
+    "@openagentsinc/world-client": ["@openagentsinc/world-client@workspace:packages/world-client"],
 
     "@openagentsinc/world-contract": ["@openagentsinc/world-contract@workspace:packages/world-contract"],
 
