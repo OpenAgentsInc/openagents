@@ -166,3 +166,31 @@ landing; the buildout is now gated on **one owner action (enable the gateway in
 staging)** to light the upstream loop, and **one big engineering investment
 (Psionic P1–P5 + training)** to make Khala a *learned* coordinator rather than a
 heuristic router. Do the owner enablement first; start M6 in parallel.
+
+## Update — 2026-06-22 (enablement attempt + 2nd delegation wave)
+
+**Next-wave PRs merged** (reviewed, scope-checked, no secret leaks): M1 cockpit
+(#6021), M4 fabric supply adapter (#6022, inert), M3 Bitcoin/Spark settlement leg
+(#6023, dormant), Psion M6 P1+P2 (psionic #1133). Milestones stay **open** —
+slices, not live completions.
+
+**Enablement attempted, blocked on one thing — write-scoped Cloudflare creds.**
+The gateway is already deployed/live in prod but on a **pre-#6018 build** (no
+`khala-*` in the live catalog), so enabling = redeploy `main` + provider secrets
+(`INFERENCE_GATEWAY_ENABLED` is already `"true"`). Provider keys, the Vertex SA
+key, an agent token, and the guinea-pig payout target are all in hand — but **no
+Cloudflare credential can deploy or set Worker secrets**: the OAuth login is
+`account (read)` only, and `.secrets/cloudflare-openagents.env` errors `auth
+10000` on Workers secrets. Exact one-shot steps + NEEDS-OWNER options:
+**`2026-06-22-khala-gateway-enablement-runbook.md`**. `gcloud` **is** authed
+(`openagentsgemini`), so the compute lane is unblocked.
+
+**2nd delegation wave launched** (background, own worktrees, PR-for-review):
+**Loop-Integration** (verified-serve → dry-run Spark payout to the guinea-pig
+Pylon, wiring merged M3↔M4), **M8 Runner** (head-to-head runner feeding the
+existing reducer; stub-now/live-flip-ready), **Psion-Train (M6)** (P3 sep-CMA-ES +
+P4 reward + P5 pool binding on merged P1/P2, with a GCloud job spec + Pylon-eval
+note; CPU smoke now, GPU run flagged on cost).
+
+**Payments:** Bitcoin-only this wave, **Spark-primary** (Lightning rail), **no
+Stripe** (MDK = checkout-only). First payout target = the guinea-pig Pylon.
