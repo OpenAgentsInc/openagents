@@ -42,6 +42,7 @@ import type {
   PaymentParticle,
 } from "../shared/chat-world-scene.js"
 import type { ChatWorldMultiplayerProjection } from "../shared/chat-world-multiplayer.js"
+import type { KhalaReceiptProjection } from "../shared/khala-cockpit.js"
 import type { DesktopProofReplayProjection } from "../shared/proof-replays.js"
 import {
   DEFAULT_DESKTOP_PROOF_REPLAY_SLUG as DefaultDesktopProofReplaySlug,
@@ -196,6 +197,24 @@ export const ChatStatus = S.Struct({
   tone: S.Literals(["error", "info", "success", "idle"]),
 })
 export type ChatStatus = typeof ChatStatus.Type
+
+// EPIC #6017: the public-safe Khala receipt projection kept in the model so the
+// in-world textbox can drive the LOCAL crackling-arc effect (evidence-bound) the
+// instant the turn returns, and the receipt inspector line can render. Mirrors
+// `KhalaReceiptProjection` (shared/khala-cockpit.ts) as an Effect Schema struct so
+// it can live in the serializable Foldkit model. The `receipt` ref is the LIVE/
+// effect gate — null ref ⇒ no effect.
+export const VerseKhalaReceipt = S.Struct({
+  requestedModel: S.String,
+  servedModel: S.String,
+  worker: S.String,
+  lane: S.String,
+  verification: S.Literals(["none", "test_passed", "failed"]),
+  verified: S.NullOr(S.Boolean),
+  receipt: S.NullOr(S.String),
+  receiptUrl: S.NullOr(S.String),
+})
+export type VerseKhalaReceipt = typeof VerseKhalaReceipt.Type
 
 export const ChatStepStatus = S.Literals([
   "pending",
@@ -613,6 +632,22 @@ export const Model = ts("AutopilotDesktop", {
   chatPending: S.Boolean,
   chatSessionRef: S.NullOr(S.String),
 
+  // EPIC #6017: talk to Khala from an in-world Verse textbox. `verseKhalaInput`
+  // is the in-world input bar; `verseKhalaResponse` is the live response bubble
+  // text (appended token-by-token as `khalaToken` deltas arrive); `verseKhalaTurnId`
+  // correlates the active streaming turn to its token push; `verseKhalaInFlight`
+  // gates the input while a turn is live; `verseKhalaStatus` carries the honest
+  // state (info/error, e.g. 402 add-credit); `verseKhalaReceipt` is the public-safe
+  // receipt that drives the LOCAL crackling-arc effect (null = no effect, evidence-
+  // bound). These are desktop-only Verse fields; the cockpit RPC + token resolution
+  // are reused unchanged.
+  verseKhalaInput: S.String,
+  verseKhalaResponse: S.String,
+  verseKhalaTurnId: S.NullOr(S.String),
+  verseKhalaInFlight: S.Boolean,
+  verseKhalaStatus: ChatStatus,
+  verseKhalaReceipt: S.NullOr(VerseKhalaReceipt),
+
   // CS-A1: account-management surface state (add/select/priority over the
   // node's local dev.accounts config). `managedAccounts` holds the last
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
@@ -792,6 +827,28 @@ export const modelCodeModeSync = (
 
 export const modelPylonStats = (model: Model): PylonStatsSnapshot | null =>
   model.pylonStats as PylonStatsSnapshot | null
+
+// EPIC #6017: project the model's serializable Khala receipt into the
+// `KhalaReceiptProjection` shape the local effect mapper / cockpit summarizer
+// consume. The model struct omits `rubric` (only the routing/verification fields
+// the effect needs are persisted); we add `rubric: null` so the shape matches.
+export const modelVerseKhalaReceipt = (
+  model: Model,
+): KhalaReceiptProjection | null => {
+  const receipt = model.verseKhalaReceipt
+  if (receipt === null) return null
+  return {
+    requestedModel: receipt.requestedModel,
+    servedModel: receipt.servedModel,
+    worker: receipt.worker,
+    lane: receipt.lane,
+    verification: receipt.verification,
+    verified: receipt.verified,
+    receipt: receipt.receipt,
+    receiptUrl: receipt.receiptUrl,
+    rubric: null,
+  }
+}
 
 // #5730: typed read boundary for the opaque chat-world state.
 export const modelChatWorldScene = (
@@ -1180,6 +1237,12 @@ export const initialModel: Model = Model.make({
   chatStatus: { text: "", tone: "idle" },
   chatPending: false,
   chatSessionRef: null,
+  verseKhalaInput: "",
+  verseKhalaResponse: "",
+  verseKhalaTurnId: null,
+  verseKhalaInFlight: false,
+  verseKhalaStatus: { text: "", tone: "idle" },
+  verseKhalaReceipt: null,
   managedAccounts: null,
   codeModeSync: null,
   managedAccountsPending: false,

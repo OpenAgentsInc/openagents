@@ -3174,3 +3174,137 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* EPIC #6017: the in-world Khala textbox overlay (HUD over the Verse scene). */
+.verse-khala-overlay {
+  position: absolute;
+  bottom: clamp(0.9rem, 3vh, 1.8rem);
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  width: min(34rem, calc(100% - 2rem));
+  transform: translateX(-50%);
+  /* The panel itself is click-through except the interactive children below,
+     so it never blocks walking/clicking in the scene around the input. */
+  pointer-events: none;
+}
+
+.verse-khala-bubble {
+  align-self: stretch;
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgb(120 180 255 / 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgb(10 16 26 / 0.74), rgb(4 8 14 / 0.66));
+  box-shadow:
+    0 14px 42px rgb(0 0 0 / 0.34),
+    inset 0 0 0 1px rgb(120 180 255 / 0.06);
+  color: rgb(244 247 251 / 0.95);
+  pointer-events: auto;
+}
+
+.verse-khala-bubble[data-verse-khala-bubble="streaming"] {
+  border-color: rgb(120 180 255 / 0.5);
+}
+
+.verse-khala-bubble-speaker {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: color-mix(in srgb, #8fd0ff 70%, #fff);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.verse-khala-bubble-body {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.verse-khala-receipt {
+  margin: 0;
+  padding: 0 0.2rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  pointer-events: auto;
+}
+
+.verse-khala-receipt-live {
+  color: color-mix(in srgb, var(--accent, #f5b73a) 78%, #fff);
+}
+
+.verse-khala-receipt-none {
+  color: rgb(255 255 255 / 0.5);
+}
+
+.verse-khala-status {
+  margin: 0;
+  padding: 0 0.2rem;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  pointer-events: auto;
+}
+
+.verse-khala-status-info {
+  color: rgb(150 200 255 / 0.85);
+}
+
+.verse-khala-status-success {
+  color: color-mix(in srgb, var(--accent, #f5b73a) 80%, #fff);
+}
+
+.verse-khala-status-error {
+  color: rgb(255 150 150 / 0.92);
+}
+
+.verse-khala-bar {
+  display: flex;
+  gap: 0.45rem;
+  align-items: stretch;
+  pointer-events: auto;
+}
+
+.verse-khala-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.72rem;
+  border: 1px solid rgb(120 180 255 / 0.34);
+  border-radius: 8px;
+  background: rgb(6 10 16 / 0.78);
+  color: rgb(244 247 251 / 0.96);
+  font-size: 0.92rem;
+}
+
+.verse-khala-input:focus {
+  border-color: rgb(120 180 255 / 0.62);
+  outline: none;
+}
+
+.verse-khala-send {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgb(120 180 255 / 0.34);
+  border-radius: 8px;
+  background: rgb(18 40 66 / 0.92);
+  color: rgb(244 247 251 / 0.96);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.verse-khala-send:hover:not(:disabled) {
+  border-color: rgb(120 180 255 / 0.62);
+}
+
+.verse-khala-send:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

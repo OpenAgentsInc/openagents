@@ -25,6 +25,7 @@ import type {
   ChooseIdentityParams,
   ChooseIdentityResponse,
   IdentityChoiceStateResponse,
+  KhalaTurnResponse,
   ManagedAccountMutationResponse,
   ManagedAccountsResponse,
   OnboardingStatusResponse,
@@ -80,6 +81,15 @@ export type DesktopRequests = {
   shellTurn(p: { prompt: string }): Promise<ShellTurnResponse>
   // Verse/Tassadar first-paint chat turn.
   verseTurn(p: { prompt: string }): Promise<VerseTurnResponse>
+  // EPIC #6017: one streamed Khala cockpit turn from the in-world Verse textbox.
+  // Bun owns the agent token; the webview sends the prompt + model + turnId and
+  // receives the terminal answer + public-safe receipt. Live token deltas arrive
+  // separately on the `khalaToken` Bun→webview push (correlated by turnId).
+  khalaTurn(p: {
+    prompt: string
+    model?: "openagents/khala-mini" | "openagents/khala-code"
+    turnId?: string
+  }): Promise<KhalaTurnResponse>
   installReadiness(
     p: Record<string, never>,
   ): Promise<InstallReadinessResponse>

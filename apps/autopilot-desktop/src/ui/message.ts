@@ -677,6 +677,36 @@ export const FailedShellCodingTurn = m("FailedShellCodingTurn", {
 export const OpenedPanes = m("OpenedPanes")
 export const ClosedPanes = m("ClosedPanes")
 
+// ── EPIC #6017: talk to Khala from an in-world Verse textbox ────────────────
+// `ChangedVerseKhalaInput` tracks the in-world input bar; `SubmittedVerseKhala`
+// fires the streamed `khalaTurn` (turnId-correlated); `GotVerseKhalaToken` lands
+// each live `khalaToken` delta (pushed Bun→webview, routed through the inbound
+// stream like shellControl); `RespondedVerseKhala` lands the terminal turn result
+// (the final answer + the public-safe receipt that drives the LOCAL crackling
+// effect). `FailedVerseKhala` lands an honest bridge-error message. The receipt
+// is the evidence gate: a real receipt ref drives the arc, no ref = no effect.
+export const ChangedVerseKhalaInput = m("ChangedVerseKhalaInput", {
+  value: S.String,
+})
+export const SubmittedVerseKhala = m("SubmittedVerseKhala")
+export const GotVerseKhalaToken = m("GotVerseKhalaToken", {
+  turnId: S.String,
+  delta: S.String,
+})
+export const RespondedVerseKhala = m("RespondedVerseKhala", {
+  turnId: S.String,
+  ok: S.Boolean,
+  text: S.String,
+  // The public-safe receipt projection (opaque struct; read via the typed model
+  // accessor). Null when the turn carried no `openagents` block — then no effect.
+  receipt: S.NullOr(S.Unknown),
+  live: S.Boolean,
+})
+export const FailedVerseKhala = m("FailedVerseKhala", {
+  turnId: S.String,
+  error: S.String,
+})
+
 // ── HUD H3: the managed pane layer (#5501) ──────────────────────────────────
 // Open/close/focus a managed pane (pane-as-data) + the drag/resize gesture
 // verbs. Each maps to one `PaneLayerAction` in update.ts (the pure PaneManager
@@ -897,6 +927,11 @@ export const Message = S.Union([
   RespondedShell,
   SucceededShellCodingTurn,
   FailedShellCodingTurn,
+  ChangedVerseKhalaInput,
+  SubmittedVerseKhala,
+  GotVerseKhalaToken,
+  RespondedVerseKhala,
+  FailedVerseKhala,
   OpenedPanes,
   ClosedPanes,
   OpenedManagedPane,

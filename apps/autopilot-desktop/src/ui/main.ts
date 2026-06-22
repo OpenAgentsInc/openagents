@@ -32,6 +32,7 @@ import {
   GotNodeState,
   GotNotifications,
   GotPylonStats,
+  GotVerseKhalaToken,
   NavigatedTo,
   OpenedManagedPane,
   SelectedComposerAccount,
@@ -153,6 +154,14 @@ const rpc = Electroview.defineRPC<DesktopRPCSchema>({
         } else {
           pushInbound(SubmittedShell())
         }
+      },
+      // EPIC #6017: live Khala token deltas for the in-world Verse textbox. The
+      // Bun host consumes the SSE stream and pushes each content delta here
+      // (turnId-correlated); the reducer appends it to the active response bubble.
+      khalaToken(message) {
+        pushInbound(
+          GotVerseKhalaToken({ turnId: message.turnId, delta: message.delta }),
+        )
       },
     },
   },
