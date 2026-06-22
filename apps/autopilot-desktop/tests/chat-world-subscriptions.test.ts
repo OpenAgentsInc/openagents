@@ -14,6 +14,7 @@ import type {
   PaymentParticle,
 } from "../src/shared/chat-world-scene"
 import {
+  chatWorldDesktopAvatarRef,
   chatWorldRegionRefForRun,
   type ChatWorldMultiplayerProjection,
 } from "../src/shared/chat-world-multiplayer"
@@ -406,6 +407,7 @@ describe("subscribeSpacetimeWorld", () => {
     expect(joins).toEqual([{
       regionRef,
       displayName: "Local Pylon",
+      characterId: "main",
     }])
 
     rows.avatarPosition.insert({
@@ -421,9 +423,81 @@ describe("subscribeSpacetimeWorld", () => {
     expect(worlds.length).toBeGreaterThanOrEqual(2)
 
     stop()
-    expect(leaves).toEqual([{ regionRef }])
+    expect(leaves).toEqual([{ regionRef, characterId: "main" }])
     expect(unsubscribed).toBe(true)
     expect(disconnected).toBe(true)
+  })
+
+  test("self-filters only the local character once the identity is known, rendering other characters of the same account", () => {
+    // MMO model: one account (identity) fields many characters. This instance
+    // is OA_CHARACTER=main; the SAME account also runs OA_CHARACTER=alt in a
+    // second instance. Both characters' avatars exist in the world. The scene
+    // must hide ONLY this instance's own character (main) and render every other
+    // avatar — including the same account's "alt" character and unrelated
+    // remote avatars.
+    const identityHex = "00ff112233445566778899aabbccddee"
+    const localRef = chatWorldDesktopAvatarRef(identityHex, "main")
+    const sameAccountAltRef = chatWorldDesktopAvatarRef(identityHex, "alt")
+    const remoteRef = chatWorldDesktopAvatarRef("99887766554433221100", "main")
+
+    const rows = fakeWorldRows()
+    rows.agentAvatar = new FakeTable([
+      { avatarRef: localRef, actorRef: "a", actorKind: "guest", displayName: "Me (main)" },
+      { avatarRef: sameAccountAltRef, actorRef: "b", actorKind: "guest", displayName: "Me (alt)" },
+      { avatarRef: remoteRef, actorRef: "c", actorKind: "guest", displayName: "Someone else" },
+    ])
+    rows.avatarPosition = new FakeTable([
+      { avatarRef: localRef, regionRef, positionX: 0, positionY: 0, positionZ: 0, yaw: 0, movementMode: "idle", lastSeenEpochMs: 1_000 },
+      { avatarRef: sameAccountAltRef, regionRef, positionX: 2, positionY: 0, positionZ: 2, yaw: 0, movementMode: "idle", lastSeenEpochMs: 1_000 },
+      { avatarRef: remoteRef, regionRef, positionX: 4, positionY: 0, positionZ: 4, yaw: 0, movementMode: "idle", lastSeenEpochMs: 1_000 },
+    ])
+
+    const worlds: ChatWorldMultiplayerProjection[] = []
+    let applied: (() => void) | null = null
+
+    const stop = subscribeSpacetimeWorld((world) => worlds.push(world), {
+      flags: { CHAT_WORLD_MULTIPLAYER: true },
+      runRef,
+      nowMs: () => 1_000,
+      characterId: "main",
+      storage: { getItem: () => null, setItem: () => {} },
+      connect: (input) => {
+        // onConnect yields BOTH the token and the live account identity.
+        input.onConnected("tok", identityHex)
+        const builder = {
+          onApplied: (cb: () => void) => {
+            applied = cb
+            return builder
+          },
+          onError: () => builder,
+          subscribe: () => ({ unsubscribe: () => {} }),
+        }
+        return {
+          db: rows,
+          reducers: { joinRegion: () => {}, leaveRegion: () => {} },
+          subscriptionBuilder: () => builder,
+          disconnect: () => {},
+        }
+      },
+    })
+
+    applied?.()
+    const latest = worlds.at(-1)!
+    // Projection carries this instance's own per-character key.
+    expect(latest.localAvatarRef).toBe(localRef)
+
+    // The scene self-filters on that key: local character hidden, the same
+    // account's other character and the unrelated remote both rendered.
+    const layer = chatWorldMultiplayerLayer(latest, {
+      localAvatarRef: latest.localAvatarRef,
+      nowMs: 1_000,
+    })
+    const rendered = layer.remoteAvatars.map((avatar) => avatar.id)
+    expect(rendered).not.toContain(localRef)
+    expect(rendered).toContain(sameAccountAltRef)
+    expect(rendered).toContain(remoteRef)
+
+    stop()
   })
 
   test("dispatches disconnected fallback and removes stale token when connect fails", () => {
@@ -721,7 +795,7 @@ describe("subscribeSpacetimeWorld", () => {
       capturedAtMs: 2_000,
     })
 
-    expect(joins).toEqual([{ regionRef, displayName: "Local Pylon" }])
+    expect(joins).toEqual([{ regionRef, displayName: "Local Pylon", characterId: "main" }])
     expect(plan).toMatchObject({ ok: true })
     expect(writes).toEqual([{
       regionRef,
@@ -731,6 +805,7 @@ describe("subscribeSpacetimeWorld", () => {
       yaw: 0.123,
       pitch: 0,
       movementMode: "walking",
+      characterId: "main",
     }])
   })
 

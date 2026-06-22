@@ -13,4 +13,5 @@ import {
 export default {
   regionRef: __t.string(),
   displayName: __t.string(),
+  characterId: __t.string(),
 };

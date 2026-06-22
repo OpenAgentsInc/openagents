@@ -15,4 +15,5 @@ export default {
   attentionKind: __t.string(),
   distanceMeters: __t.f64(),
   sourceEntityRef: __t.option(__t.string()),
+  characterId: __t.string(),
 };

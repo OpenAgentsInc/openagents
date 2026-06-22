@@ -6,6 +6,7 @@ import {
   type ChatWorldMultiplayerRows,
   type ChatWorldPylonAttentionRow,
   type ChatWorldStationRow,
+  DEFAULT_OA_CHARACTER_ID,
   chatWorldRegionRefForRun,
   projectChatWorldMultiplayer,
 } from "./chat-world-multiplayer.js"
@@ -64,6 +65,9 @@ export type ChatWorldAvatarPositionWrite = Readonly<{
   yaw: number
   pitch: number
   movementMode: "idle" | "walking" | "running" | "ghost" | "inspecting"
+  // The character this account is moving. Threaded to the world module so one
+  // account can move many distinct characters; defaults to "main".
+  characterId: string
 }>
 
 export type ChatWorldAvatarPositionPlan =
@@ -323,10 +327,14 @@ export const projectChatWorldSpacetimeRows = (input: {
   readonly nowMs: number
   readonly worldUrl?: string
   readonly database?: string
+  readonly localAvatarRef?: string | null
 }): ChatWorldSpacetimeProjection => {
   const multiplayerOptions = {
     ...(input.worldUrl !== undefined ? { worldUrl: input.worldUrl } : {}),
     ...(input.database !== undefined ? { database: input.database } : {}),
+    ...(input.localAvatarRef !== undefined
+      ? { localAvatarRef: input.localAvatarRef }
+      : {}),
   }
   if (input.rows === null) {
     return {
@@ -399,6 +407,7 @@ export const planChatWorldAvatarPositionWrite = (input: {
   readonly yaw?: number
   readonly pitch?: number
   readonly movementMode?: string
+  readonly characterId?: string
 }): ChatWorldAvatarPositionPlan => {
   const region = input.region
   if (region === null) return { ok: false, reason: "region unavailable" }
@@ -455,6 +464,7 @@ export const planChatWorldAvatarPositionWrite = (input: {
       yaw: Number(yaw.toFixed(3)),
       pitch: Number(pitch.toFixed(3)),
       movementMode: movementMode as ChatWorldAvatarPositionWrite["movementMode"],
+      characterId: input.characterId ?? DEFAULT_OA_CHARACTER_ID,
     },
   }
 }

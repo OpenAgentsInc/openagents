@@ -905,10 +905,11 @@ pub fn join_region(
     ctx: &ReducerContext,
     region_ref: String,
     display_name: String,
+    character_id: String,
 ) -> Result<(), String> {
     let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     validate_position_in_region(ctx, &region_ref, 0.0, 0.0, 0.0)?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     let display_name = clean_optional_text(display_name, 64)
         .unwrap_or_else(|| format!("agent {}", ctx.sender().to_abbreviated_hex()));
     let existing = ctx.db.agent_avatar().avatar_ref().find(avatar_ref.clone());
@@ -954,8 +955,12 @@ pub fn join_region(
 }
 
 #[spacetimedb::reducer]
-pub fn leave_region(ctx: &ReducerContext, region_ref: String) -> Result<(), String> {
-    let avatar_ref = avatar_ref_for_sender(ctx);
+pub fn leave_region(
+    ctx: &ReducerContext,
+    region_ref: String,
+    character_id: String,
+) -> Result<(), String> {
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     if let Some(position) = ctx
         .db
@@ -1008,6 +1013,7 @@ pub fn set_avatar_position(
     yaw: f64,
     pitch: f64,
     movement_mode: String,
+    character_id: String,
 ) -> Result<(), String> {
     let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     let region = validate_position_in_region(ctx, &region_ref, position_x, position_y, position_z)?;
@@ -1019,7 +1025,7 @@ pub fn set_avatar_position(
         "movement_mode",
         &["idle", "walking", "running", "ghost", "inspecting"],
     )?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     let now_ms = ctx_epoch_ms(ctx);
     if let Some(existing) = ctx
@@ -1064,6 +1070,7 @@ pub fn focus_pylon(
     attention_kind: String,
     distance_meters: f64,
     source_entity_ref: Option<String>,
+    character_id: String,
 ) -> Result<(), String> {
     let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
     if ctx
@@ -1080,7 +1087,7 @@ pub fn focus_pylon(
         "attention_kind",
         &["approaching", "nearby", "looking", "inspecting", "talking"],
     )?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     let attention_ref = format!("attention.{pylon_ref}.{avatar_ref}");
     let existing = ctx
@@ -1109,9 +1116,13 @@ pub fn focus_pylon(
 }
 
 #[spacetimedb::reducer]
-pub fn clear_pylon_focus(ctx: &ReducerContext, pylon_ref: String) -> Result<(), String> {
+pub fn clear_pylon_focus(
+    ctx: &ReducerContext,
+    pylon_ref: String,
+    character_id: String,
+) -> Result<(), String> {
     let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ctx.db
         .pylon_attention()
         .attention_ref()
@@ -1126,10 +1137,11 @@ pub fn send_local_message(
     target_ref: Option<String>,
     radius_meters: f64,
     body: String,
+    character_id: String,
 ) -> Result<(), String> {
     let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     ensure_world_region(ctx, &region_ref)?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     insert_local_message(
         ctx,
@@ -1148,6 +1160,7 @@ pub fn send_pylon_message(
     ctx: &ReducerContext,
     pylon_ref: String,
     body: String,
+    character_id: String,
 ) -> Result<(), String> {
     let pylon_ref = clean_ref(pylon_ref, "pylon_ref", 160)?;
     let station = ctx
@@ -1156,7 +1169,7 @@ pub fn send_pylon_message(
         .pylon_ref()
         .find(pylon_ref.clone())
         .ok_or_else(|| "pylon message requires an existing pylon_station".to_string())?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     insert_local_message(
         ctx,
@@ -1176,10 +1189,11 @@ pub fn send_emote(
     region_ref: String,
     emote_kind: String,
     target_ref: Option<String>,
+    character_id: String,
 ) -> Result<(), String> {
     let region_ref = clean_ref(region_ref, "region_ref", 160)?;
     ensure_world_region(ctx, &region_ref)?;
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     let emote_kind = validate_choice(
         emote_kind,
@@ -1204,8 +1218,9 @@ pub fn set_agent_intent(
     ctx: &ReducerContext,
     intent_kind: String,
     target_ref: Option<String>,
+    character_id: String,
 ) -> Result<(), String> {
-    let avatar_ref = avatar_ref_for_sender(ctx);
+    let avatar_ref = avatar_ref_for_sender(ctx, &character_id);
     ensure_avatar_for_sender(ctx, avatar_ref.clone(), None)?;
     let intent_kind = validate_choice(
         intent_kind,
@@ -1766,8 +1781,55 @@ fn insert_local_message(
     Ok(())
 }
 
-fn avatar_ref_for_sender(ctx: &ReducerContext) -> String {
-    format!("avatar.identity.{}", ctx.sender())
+const DEFAULT_CHARACTER_ID: &str = "main";
+const MAX_CHARACTER_ID_CHARS: usize = 64;
+
+/// Derive the avatar key for the sending account + chosen character.
+///
+/// The avatar key embeds the SpacetimeDB identity (the account) AND the
+/// client-supplied `character_id`, so a single account can field many
+/// simultaneously-visible characters while ownership stays automatic: a client
+/// can only ever write under its own `ctx.sender()`.
+fn avatar_ref_for_sender(ctx: &ReducerContext, character_id: &str) -> String {
+    avatar_ref_for_identity(&ctx.sender().to_string(), character_id)
+}
+
+/// Pure avatar-key construction shared by the reducer path and tests.
+///
+/// The key is `avatar.identity.<identity>.char.<sanitized character id>`. The
+/// `<identity>` segment is the account; the `<character id>` segment is the
+/// distinct visible character within that account. Two different sanitized
+/// character ids under the same identity therefore produce two distinct keys
+/// (and thus two distinct `agent_avatar` / `avatar_position` rows, since
+/// `avatar_ref` is the primary key), while ownership stays automatic because a
+/// client can only write under its own identity.
+fn avatar_ref_for_identity(identity: &str, character_id: &str) -> String {
+    format!(
+        "avatar.identity.{}.char.{}",
+        identity,
+        sanitize_character_id(character_id)
+    )
+}
+
+/// Normalize a client-supplied character id into a safe, bounded token.
+///
+/// Trims, lowercases nothing (ids are case-sensitive), keeps only
+/// alphanumeric / dot / dash / underscore, bounds length, and falls back to
+/// `"main"` when the result would otherwise be empty. This never errors so the
+/// presence layer keeps working even if a client sends a junk id; the worst
+/// case is two junk ids collapsing onto the `main` character for that account.
+fn sanitize_character_id(character_id: &str) -> String {
+    let cleaned: String = character_id
+        .trim()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '.' || *ch == '-' || *ch == '_')
+        .take(MAX_CHARACTER_ID_CHARS)
+        .collect();
+    if cleaned.is_empty() {
+        DEFAULT_CHARACTER_ID.to_string()
+    } else {
+        cleaned
+    }
 }
 
 fn ctx_epoch_ms(ctx: &ReducerContext) -> i64 {
@@ -2040,5 +2102,79 @@ fn clean_optional_text(value: String, max_chars: usize) -> Option<String> {
         None
     } else {
         Some(cleaned)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SENDER_A: &str = "00ff112233445566778899aabbccddeeff00112233445566778899aabbccddee";
+    const SENDER_B: &str = "11ee223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+
+    #[test]
+    fn distinct_character_ids_under_one_account_produce_distinct_avatar_keys() {
+        // MMO model: one account (identity) can field MANY characters
+        // simultaneously. Each character is a distinct primary-key avatar_ref,
+        // so it becomes its own agent_avatar / avatar_position row with an
+        // independent position. Two desktop instances on the SAME account with
+        // OA_CHARACTER=main and OA_CHARACTER=alt therefore each get their own
+        // visible avatar instead of colliding onto one row.
+        let main = avatar_ref_for_identity(SENDER_A, "main");
+        let alt = avatar_ref_for_identity(SENDER_A, "alt");
+        assert_eq!(main, format!("avatar.identity.{SENDER_A}.char.main"));
+        assert_eq!(alt, format!("avatar.identity.{SENDER_A}.char.alt"));
+        assert_ne!(
+            main, alt,
+            "distinct character ids must key to distinct avatar rows"
+        );
+    }
+
+    #[test]
+    fn same_character_id_under_one_account_is_stable() {
+        // A single character on one account is one stable row across calls
+        // (join/move/leave all derive the same key), so leave_region(character_id)
+        // can target exactly that character's row.
+        let first = avatar_ref_for_identity(SENDER_A, "scout");
+        let second = avatar_ref_for_identity(SENDER_A, "scout");
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn ownership_is_partitioned_by_identity() {
+        // Same character id on DIFFERENT accounts must never collide: the
+        // identity segment guarantees a client only ever writes under its own
+        // account, so account A's "main" and account B's "main" are two avatars.
+        let a_main = avatar_ref_for_identity(SENDER_A, "main");
+        let b_main = avatar_ref_for_identity(SENDER_B, "main");
+        assert_ne!(a_main, b_main);
+        assert!(a_main.starts_with(&format!("avatar.identity.{SENDER_A}.char.")));
+        assert!(b_main.starts_with(&format!("avatar.identity.{SENDER_B}.char.")));
+    }
+
+    #[test]
+    fn character_id_is_sanitized_and_bounded() {
+        // Empty / whitespace / junk falls back to "main".
+        assert_eq!(sanitize_character_id(""), DEFAULT_CHARACTER_ID);
+        assert_eq!(sanitize_character_id("   "), DEFAULT_CHARACTER_ID);
+        assert_eq!(sanitize_character_id("!!!"), DEFAULT_CHARACTER_ID);
+        // Surrounding whitespace is trimmed; safe charset is preserved.
+        assert_eq!(sanitize_character_id("  alt-2 "), "alt-2");
+        assert_eq!(sanitize_character_id("Hero_01.beta"), "Hero_01.beta");
+        // Unsafe characters are dropped, not allowed through.
+        assert_eq!(sanitize_character_id("a/b c?d"), "abcd");
+        // Length is bounded.
+        let long = "x".repeat(MAX_CHARACTER_ID_CHARS + 50);
+        assert_eq!(sanitize_character_id(&long).chars().count(), MAX_CHARACTER_ID_CHARS);
+    }
+
+    #[test]
+    fn distinct_raw_ids_that_sanitize_equal_share_a_character() {
+        // " main " and "main" are the same character (sanitization is the
+        // identity of a character within an account).
+        assert_eq!(
+            avatar_ref_for_identity(SENDER_A, " main "),
+            avatar_ref_for_identity(SENDER_A, "main")
+        );
     }
 }

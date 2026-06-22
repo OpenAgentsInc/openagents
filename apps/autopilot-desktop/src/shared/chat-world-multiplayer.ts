@@ -6,7 +6,49 @@ export const PUBLIC_ACTIVITY_TIMELINE_WORLD_RUN_REF = "run.public_activity_timel
 // run ref; subscribe so forum_* events reach the desktop for pylon message icons.
 // Mirrors FORUM_ACTIVITY_WORLD_RUN_REF in chat-world-forum-activity.ts.
 export const PUBLIC_FORUM_ACTIVITY_WORLD_RUN_REF = "run.public_forum_activity"
+// Legacy placeholder for the local desktop avatar self-filter. Retained only as
+// the fallback when the live SpacetimeDB identity is not yet known (pre-connect)
+// so the projection still has a non-empty local ref. Once onConnect yields the
+// real identity, the self-filter uses the per-character key built by
+// `chatWorldDesktopAvatarRef` instead. See
+// docs/game/2026-06-21-mmo-characters-per-account-verse-presence.md.
 export const CHAT_WORLD_DESKTOP_AVATAR_REF = "avatar.desktop.local"
+
+/** Default character id when OA_CHARACTER is unset (one stable character per install). */
+export const DEFAULT_OA_CHARACTER_ID = "main"
+
+const MAX_CHARACTER_ID_CHARS = 64
+
+/**
+ * Normalize a character id the same way the world module's `sanitize_character_id`
+ * does, so the client-computed self-filter key matches the avatar_ref the module
+ * actually writes. Keep this in lockstep with the Rust helper.
+ */
+export const sanitizeChatWorldCharacterId = (
+  characterId: string | null | undefined,
+): string => {
+  const cleaned = (characterId ?? "")
+    .trim()
+    .split("")
+    .filter((ch) => /[A-Za-z0-9._-]/.test(ch))
+    .join("")
+    .slice(0, MAX_CHARACTER_ID_CHARS)
+  return cleaned.length > 0 ? cleaned : DEFAULT_OA_CHARACTER_ID
+}
+
+/**
+ * Build the MMO avatar key for an account identity + chosen character. Mirrors
+ * the world module's `avatar_ref_for_sender`:
+ *   avatar.identity.<identity>.char.<sanitized character id>
+ * Embedding the identity makes ownership automatic (a client only writes under
+ * its own identity) while letting ONE account field MANY simultaneous visible
+ * characters.
+ */
+export const chatWorldDesktopAvatarRef = (
+  identity: string,
+  characterId: string,
+): string =>
+  `avatar.identity.${identity.trim()}.char.${sanitizeChatWorldCharacterId(characterId)}`
 
 export type ChatWorldStationRow = Readonly<{
   pylonRef: string
@@ -99,6 +141,10 @@ export type ChatWorldMultiplayerProjection = Readonly<{
   agents: ReadonlyArray<ChatWorldMultiplayerAgent>
   stations: ReadonlyArray<ChatWorldMultiplayerStation>
   proximityChatCount: number
+  // The local instance's OWN character avatar key, used by the scene to
+  // self-filter (hide only this character, render all others — including other
+  // characters of the same account). Null until the live identity is known.
+  localAvatarRef: string | null
 }>
 
 export type ChatWorldPresenceFeedMode = "single-region" | "split-near-far"
@@ -279,8 +325,10 @@ export const projectChatWorldMultiplayer = (input: {
   readonly nowMs: number
   readonly worldUrl?: string
   readonly database?: string
+  readonly localAvatarRef?: string | null
 }): ChatWorldMultiplayerProjection => {
   const regionRef = chatWorldRegionRefForRun(input.runRef)
+  const localAvatarRef = input.localAvatarRef ?? null
   const rows = input.rows
   if (input.flagEnabled !== true || rows === null) {
     return {
@@ -292,6 +340,7 @@ export const projectChatWorldMultiplayer = (input: {
       agents: [],
       stations: [],
       proximityChatCount: 0,
+      localAvatarRef,
     }
   }
 
@@ -385,5 +434,6 @@ export const projectChatWorldMultiplayer = (input: {
       (count, agent) => count + agent.chatMessages.length,
       0,
     ),
+    localAvatarRef,
   }
 }

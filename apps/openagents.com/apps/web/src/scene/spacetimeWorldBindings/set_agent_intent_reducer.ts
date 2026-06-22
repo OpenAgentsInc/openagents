@@ -13,4 +13,5 @@ import {
 export default {
   intentKind: __t.string(),
   targetRef: __t.option(__t.string()),
+  characterId: __t.string(),
 };

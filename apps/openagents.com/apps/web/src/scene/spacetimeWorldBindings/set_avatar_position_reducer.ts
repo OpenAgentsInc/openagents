@@ -18,4 +18,5 @@ export default {
   yaw: __t.f64(),
   pitch: __t.f64(),
   movementMode: __t.string(),
+  characterId: __t.string(),
 };
