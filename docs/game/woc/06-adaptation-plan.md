@@ -121,7 +121,9 @@ mirror their tests.
 These map onto the existing Verse epics rather than inventing a parallel program:
 
 1. `three-effect`: procedural icon primitive (Tier 1) - re-skinned recipe system + keyword
-   fallback, with a Vitest mirror of `icons` behavior.
+   fallback, with a Vitest mirror of `icons` behavior. **Shipped in
+   `@openagentsinc/three-effect@525d665`; desktop Verse station/payment scene
+   entities now carry shared icon recipes for HUD/3D texture consumers.**
 2. `three-effect`: camera follow + collision + pointer-pick primitives (Tier 1) - improves
    the existing controller feel.
 3. `three-effect` + HUD: minimap primitive + compass/coords/subzone pure cores (Tier 1) -

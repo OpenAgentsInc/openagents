@@ -26,6 +26,7 @@
 // (particle.size / particle.realBitcoinMoved) so they survive into the inspector
 // even where the shared bezier renderer draws a single beam style.
 
+import { verseIconRecipeForId } from "@openagentsinc/three-effect/core"
 import type {
   TrainingRunEntityDefinition,
   TrainingRunBeamDefinition,
@@ -33,6 +34,7 @@ import type {
   TrainingRunRemoteAvatarDefinition,
   TrainingRunVector,
   TrainingRunVisualizationOptions,
+  VerseIconRecipe,
 } from "@openagentsinc/three-effect/core"
 
 import type { ChatWorldPylonScene, PaymentParticle } from "./chat-world-scene.js"
@@ -167,9 +169,14 @@ export const CHAT_WORLD_TARGET_DEFAULT_MAX_CANDIDATES = 24
 export const CHAT_WORLD_TARGET_DEFAULT_MAX_DISTANCE_METERS = 96
 
 export type ChatWorldMultiplayerLayer = {
-  readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
+  readonly entities: ReadonlyArray<ChatWorldVisualEntityDefinition>
   readonly remoteAvatars: ReadonlyArray<TrainingRunRemoteAvatarDefinition>
 }
+
+export type ChatWorldVisualEntityDefinition = TrainingRunEntityDefinition &
+  Readonly<{
+    iconRecipe?: VerseIconRecipe
+  }>
 
 export type ChatWorldMultiplayerLayerOptions = Readonly<{
   localAvatarRef?: string | null
@@ -358,7 +365,7 @@ export const chatWorldMultiplayerLayer = (
 ): ChatWorldMultiplayerLayer => {
   if (world?.connected !== true) return { entities: [], remoteAvatars: [] }
 
-  const entities: TrainingRunEntityDefinition[] = []
+  const entities: ChatWorldVisualEntityDefinition[] = []
   const remoteAvatars: TrainingRunRemoteAvatarDefinition[] = []
   const nowMs = options.nowMs ?? world.projectedAtMs
   const staleAfterMs = options.staleAfterMs ?? CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS
@@ -373,6 +380,7 @@ export const chatWorldMultiplayerLayer = (
       label: station.label,
       status: "verified",
       position,
+      iconRecipe: verseIconRecipeForId(station.pylonRef || "pylon"),
     })
   }
 
@@ -503,7 +511,7 @@ const endpointDetail = (
 }
 
 export type ChatWorldPaymentLayer = {
-  readonly entities: ReadonlyArray<TrainingRunEntityDefinition>
+  readonly entities: ReadonlyArray<ChatWorldVisualEntityDefinition>
   readonly beams: ReadonlyArray<TrainingRunBeamDefinition>
   readonly bursts: ReadonlyArray<TrainingRunBurstDefinition>
 }
@@ -520,7 +528,7 @@ export const chatWorldPaymentLayer = (
   const renderable = particles.filter((p) => p.sourceRefs.length > 0)
   const endpoints = chatWorldPaymentEndpointIndex(world)
 
-  const entityById = new Map<string, TrainingRunEntityDefinition>()
+  const entityById = new Map<string, ChatWorldVisualEntityDefinition>()
   const beams: TrainingRunBeamDefinition[] = []
   const bursts: TrainingRunBurstDefinition[] = []
 
@@ -546,6 +554,7 @@ export const chatWorldPaymentLayer = (
         label: endpointLabel(fromEndpoint, "from"),
         detail: endpointDetail(primaryRef, fromEndpoint, particle, "from"),
         position: fromEndpoint.position,
+        iconRecipe: verseIconRecipeForId(fromEndpoint.ref),
       })
     }
     if (!entityById.has(toId)) {
@@ -555,6 +564,9 @@ export const chatWorldPaymentLayer = (
         label: endpointLabel(toEndpoint, "to"),
         detail: endpointDetail(primaryRef, toEndpoint, particle, "to"),
         position: toEndpoint.position,
+        iconRecipe: verseIconRecipeForId(
+          particle.realBitcoinMoved ? "zap" : "settlement",
+        ),
       })
     }
 

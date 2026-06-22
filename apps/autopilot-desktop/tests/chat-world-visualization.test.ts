@@ -217,9 +217,11 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(fromEntity.position).toEqual([1.25, 0.5, -2])
     expect(fromEntity.label).toBe("Alpha Pylon")
     expect(fromEntity.detail).toContain("station")
+    expect(fromEntity.iconRecipe?.kind).toBe("pylon")
     expect(toEntity.position).toEqual([-3, 1, 2.75])
     expect(toEntity.label).toBe("Tassadar")
     expect(toEntity.detail).toContain("avatar")
+    expect(toEntity.iconRecipe?.kind).toBe("zap")
   })
 
   test("labels unresolved endpoints as fallback instead of claiming a world location", () => {
@@ -235,6 +237,25 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(toEntity.detail).toContain("unresolved pylon:missing")
     expect(toEntity.detail).toContain("fallback")
     expect(toEntity.detail).toContain("receipt:nip90:abc")
+  })
+})
+
+describe("shared Verse procedural icons", () => {
+  test("pylon world entities carry shared three-effect icon recipes", () => {
+    const layer = chatWorldMultiplayerLayer(worldProjection())
+    const station = layer.entities.find(
+      entity => entity.id === `${CHAT_WORLD_STATION_NODE_PREFIX}pylon.alpha`,
+    )!
+    expect(station.iconRecipe?.kind).toBe("pylon")
+    expect(station.iconRecipe?.fallback).toBe(false)
+  })
+
+  test("credited payment endpoints use settlement taxonomy", () => {
+    const layer = chatWorldPaymentLayer([
+      particle({ realBitcoinMoved: false, color: PAYMENT_PARTICLE_DIM }),
+    ])
+    const target = layer.entities.find(entity => entity.id === "pay:evt-1:to")!
+    expect(target.iconRecipe?.kind).toBe("settlement")
   })
 })
 

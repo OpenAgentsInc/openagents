@@ -1136,6 +1136,15 @@ Pylon, agent, run, proof, receipt, settlement, training, chat, zap, inspect, and
 focus. Acceptance: keyword fallback for unknown ids, deterministic output,
 cache tests, and a HUD/3D texture consumer.
 
+Implementation note: W1 shipped the shared procedural taxonomy primitive in
+`@openagentsinc/three-effect` at commit `525d665`. The primitive exposes
+deterministic recipe selection, keyword fallback for unknown ids, a draw-plan
+cache, a canvas renderer for HUD/texture consumers, and tests that cover the
+OpenAgents taxonomy without external image assets. The desktop Verse world
+projection now consumes the shared primitive by attaching icon recipes to pylon
+station and payment endpoint scene entities; the app pins the exact
+`three-effect` hash so web and desktop consume the same shared visual contract.
+
 ### W2: `three-effect` Camera Follow, Collision, And Pointer Pick
 
 Port the pure math patterns for auto-settle-behind, camera occlusion easing, and

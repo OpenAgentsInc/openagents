@@ -72,6 +72,58 @@ export type TrainingRunEntityDefinition = Readonly<{
   status: string
 }>
 
+export type VerseIconKind =
+  | "agent"
+  | "chat"
+  | "focus"
+  | "inspect"
+  | "proof"
+  | "pylon"
+  | "receipt"
+  | "run"
+  | "settlement"
+  | "training"
+  | "zap"
+
+export type VerseIconPrimitive =
+  | "bolt"
+  | "brackets"
+  | "bubble"
+  | "chevron"
+  | "core"
+  | "diamond"
+  | "eye"
+  | "hex"
+  | "node"
+  | "orbit"
+  | "ring"
+  | "spark"
+  | "stack"
+  | "trace"
+  | "triangle"
+
+export type VerseIconRecipe = Readonly<{
+  background: "grid" | "halo" | "radial" | "scanline" | "void"
+  fallback: boolean
+  id: string
+  kind: VerseIconKind | "unknown"
+  palette:
+    | "agent"
+    | "chat"
+    | "focus"
+    | "gold"
+    | "pylon"
+    | "proof"
+    | "run"
+    | "settlement"
+    | "training"
+    | "zap"
+  primitives: ReadonlyArray<VerseIconPrimitive>
+  seed: number
+}>
+
+export declare const verseIconRecipeForId: (id: string) => VerseIconRecipe
+
 export type TrainingRunMotionKind =
   | "presence"
   | "assignment"
