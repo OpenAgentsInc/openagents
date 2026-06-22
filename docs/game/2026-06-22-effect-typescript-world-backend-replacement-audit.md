@@ -1199,6 +1199,14 @@ context-menu action model for Verse actions. Acceptance: slots dedupe/sync,
 channel prefixes map to local/run/global/forum contexts, right-click Pylon/avatar
 actions are pure/tested, and Foldkit is only the renderer.
 
+Implementation note: W5 shipped a desktop pure `verse-hud-action-model` module.
+It dedupes and slots model-owned hotbar actions, routes `/local`, `/run`,
+`/global`, and `/forum` chat prefixes, formats timestamps without renderer
+state, composes display state from backend `WorldModeration` output without
+app-local word lists, and builds pure context actions for Pylon and avatar
+targets. The implementation is renderer-agnostic; Foldkit remains the view
+consumer rather than the owner of HUD behavior.
+
 ### W6: Run-Step Progress, Agent Portrait Chips, And Perf Overlay
 
 Adapt WoC's pure progress/portrait/perf-overlay models. Acceptance: run-step

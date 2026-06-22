@@ -140,7 +140,10 @@ These map onto the existing Verse epics rather than inventing a parallel program
    run labels, bounded status bars, HUD-overlap degradation, and stable
    pool/reuse reconciliation.**
 5. desktop HUD: hotbar action model + chat channel model (Tier 1) - folds chat into the
-   forum-reflection lane (#5904-#5907).
+   forum-reflection lane (#5904-#5907). **Shipped as
+   `verse-hud-action-model`; hotbar slot sync/dedupe, channel prefixes,
+   timestamp labels, backend moderation display, and Pylon/avatar context
+   actions are pure/tested with Foldkit left as renderer.**
 6. `packages/world-contract` + `packages/world-client`: WoC-style read model /
    `ClientWorld` seam (Tier 1) - render/HUD consume snapshots/deltas without transport
    awareness.
