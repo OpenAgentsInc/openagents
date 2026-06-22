@@ -22,6 +22,15 @@ import {
   makeDiagnostic,
   stableWorldRef,
 } from "./protocol"
+import {
+  emptyWorldModerationState,
+  emptyWorldModerationConfig,
+  moderateTextWithPolicy,
+  redactDiagnosticTextWithDefaultPolicy,
+  type WorldModerationConfig,
+  type WorldModerationState,
+  type WorldModerationSurface,
+} from "./moderation"
 
 export type WorldHotAvatar = Readonly<{
   avatarRef: string
@@ -42,7 +51,9 @@ export type WorldHotState = Readonly<{
   avatars: Readonly<Record<string, WorldHotAvatar>>
   focusByActor: Readonly<Record<string, string>>
   expiringRefs: Readonly<Record<string, WorldExpiringRef>>
+  moderation: WorldModerationState
   lastChatAtByActor: Readonly<Record<string, string>>
+  lastChatAtBySession: Readonly<Record<string, string>>
   lastEmoteAtByActor: Readonly<Record<string, string>>
   lastIntentAtByActor: Readonly<Record<string, string>>
 }>
@@ -59,9 +70,14 @@ export type WorldCommandApplyResult = Readonly<{
   delta: WorldDelta
 }>
 
+export type WorldCommandContext = Readonly<{
+  sessionRef?: string
+  moderationConfig?: WorldModerationConfig
+}>
+
 type CommandFailure = Readonly<{
   reason: string
-  tag?: "validation" | "auth" | "command"
+  tag?: "validation" | "auth" | "command" | "redaction"
   retryable?: boolean
 }>
 
@@ -80,7 +96,9 @@ export const makeEmptyHotState = (regionRef: string): WorldHotState => ({
   avatars: {},
   focusByActor: {},
   expiringRefs: {},
+  moderation: emptyWorldModerationState,
   lastChatAtByActor: {},
+  lastChatAtBySession: {},
   lastEmoteAtByActor: {},
   lastIntentAtByActor: {},
 })
@@ -89,6 +107,7 @@ export const applyWorldCommand = (
   state: WorldHotState,
   input: unknown,
   observedAt: string,
+  context: WorldCommandContext = {},
 ): Effect.Effect<WorldCommandApplyResult> =>
   Effect.sync(() => {
     const envelope = decodeWorldCommandEnvelope(input)
@@ -103,7 +122,7 @@ export const applyWorldCommand = (
         },
       }, observedAt)
     }
-    const outcome = evaluateWorldCommand(state, envelope, observedAt)
+    const outcome = evaluateWorldCommand(state, envelope, observedAt, context)
     return commandOutcomeToResult(state, envelope, outcome, observedAt)
   })
 
@@ -111,9 +130,10 @@ const evaluateWorldCommand = (
   state: WorldHotState,
   envelope: WorldCommandEnvelope,
   observedAt: string,
+  context: WorldCommandContext,
 ):
   | { ok: true; state: WorldHotState; rows: ReadonlyArray<WorldRow>; deletedRefs?: ReadonlyArray<string> }
-  | { ok: false; failure: CommandFailure } => {
+  | { ok: false; state?: WorldHotState; failure: CommandFailure } => {
   if (envelope.actorClass === "service") {
     return {
       ok: false,
@@ -146,7 +166,7 @@ const evaluateWorldCommand = (
       return clearPylonFocus(state, envelope)
     case "send_local_message":
     case "send_pylon_message":
-      return sendMessage(state, envelope, observedAt)
+      return sendMessage(state, envelope, observedAt, context)
     case "send_emote":
       return sendEmote(state, envelope, observedAt)
     case "set_agent_intent":
@@ -167,7 +187,7 @@ const commandOutcomeToResult = (
   envelope: WorldCommandEnvelope,
   outcome:
     | { ok: true; state: WorldHotState; rows: ReadonlyArray<WorldRow>; deletedRefs?: ReadonlyArray<string> }
-    | { ok: false; failure: CommandFailure },
+    | { ok: false; state?: WorldHotState; failure: CommandFailure },
   observedAt: string,
 ): WorldCommandApplyResult => {
   const acceptedSeq = envelope.seq
@@ -202,7 +222,7 @@ const commandOutcomeToResult = (
         sequence,
         minReplaySeq: Math.max(0, sequence - 256),
       }
-    : previousState
+    : outcome.state ?? previousState
 
   const delta = decodeWorldDelta({
     schemaVersion: WORLD_DELTA_SCHEMA_VERSION,
@@ -416,14 +436,43 @@ const sendMessage = (
   state: WorldHotState,
   envelope: WorldCommandEnvelope,
   observedAt: string,
+  context: WorldCommandContext,
 ) => {
   const cadenceFailure = validateCadence(state.lastChatAtByActor[envelope.actorRef], observedAt, chatCadenceMs, "Chat")
   if (cadenceFailure !== null) {
     return reject(cadenceFailure)
   }
+  const sessionRef = context.sessionRef ?? envelope.commandRef
+  const sessionCadenceFailure = validateCadence(state.lastChatAtBySession[sessionRef], observedAt, chatCadenceMs, "Chat session")
+  if (sessionCadenceFailure !== null) {
+    return reject(sessionCadenceFailure)
+  }
   const text = plainText(stringField(objectPayload(envelope.payload), "text") ?? "", maxMessageLength)
   if (text.length === 0) {
     return reject("Chat message must be non-empty plain text.")
+  }
+  const moderation = moderateTextWithPolicy({
+    text,
+    observedAt,
+    state: state.moderation,
+    subject: {
+      actorRef: envelope.actorRef,
+      sessionRef,
+      surface: moderationSurfaceForCommand(envelope.command),
+    },
+  }, context.moderationConfig ?? emptyWorldModerationConfig)
+  if (moderation.kind === "blocked") {
+    return {
+      ok: false as const,
+      state: {
+        ...state,
+        moderation: moderation.state,
+      },
+      failure: {
+        tag: "redaction" as const,
+        reason: moderation.publicMessage,
+      },
+    }
   }
   const messageRef = stableWorldRef("message.world.local", `${envelope.commandRef}:${text}`)
   const row = decodeWorldRow({
@@ -432,7 +481,7 @@ const sendMessage = (
     regionRef: state.regionRef,
     avatarRef: avatarRefForActor(state, envelope.actorRef) ?? envelope.actorRef,
     channel: envelope.command === "send_pylon_message" ? "pylon" : "local",
-    text,
+    text: moderation.text,
     moderationState: "visible",
     createdAt: observedAt,
     expiresAt: new Date(Date.parse(observedAt) + 60000).toISOString(),
@@ -443,6 +492,8 @@ const sendMessage = (
     state: {
       ...state,
       lastChatAtByActor: { ...state.lastChatAtByActor, [envelope.actorRef]: observedAt },
+      lastChatAtBySession: { ...state.lastChatAtBySession, [sessionRef]: observedAt },
+      moderation: moderation.state,
       expiringRefs: {
         ...state.expiringRefs,
         [messageRef]: expires(messageRef, "chat", observedAt, 60000),
@@ -584,7 +635,7 @@ const animation = (value: unknown) =>
     : "unknown"
 
 const plainText = (value: string, maxLength: number) =>
-  value
+  redactDiagnosticTextWithDefaultPolicy(value)
     .replace(/[\u0000-\u001f\u007f<>]/g, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -623,6 +674,9 @@ const validateCadence = (
   previousAt !== undefined && Date.parse(observedAt) - Date.parse(previousAt) < minMs
     ? `${label} cadence exceeded.`
     : null
+
+const moderationSurfaceForCommand = (command: WorldCommandName): WorldModerationSurface =>
+  command === "send_pylon_message" ? "pylon_chat" : "local_chat"
 
 const distance = (
   a: Readonly<{ x: number; y: number; z: number }>,

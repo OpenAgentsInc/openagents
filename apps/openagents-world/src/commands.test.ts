@@ -16,12 +16,13 @@ const command = (
   payload: unknown,
   seq = 1,
   issuedAt = "2026-06-22T00:00:00.000Z",
+  actor = actorRef,
 ) => ({
   schemaVersion: "openagents.world_contract.v1",
   commandRef: `command.${name}.${seq}`,
   command: name,
   actorClass: "browser",
-  actorRef,
+  actorRef: actor,
   regionRef,
   seq,
   issuedAt,
@@ -34,8 +35,17 @@ const apply = async (
   payload: unknown,
   seq = 1,
   observedAt = "2026-06-22T00:00:00.000Z",
+  options: {
+    readonly actorRef?: string
+    readonly sessionRef?: string
+  } = {},
 ) =>
-  Effect.runPromise(applyWorldCommand(state, command(name, payload, seq, observedAt), observedAt))
+  Effect.runPromise(applyWorldCommand(
+    state,
+    command(name, payload, seq, observedAt, options.actorRef ?? actorRef),
+    observedAt,
+    options.sessionRef === undefined ? {} : { sessionRef: options.sessionRef },
+  ))
 
 describe("world command handlers", () => {
   test("implements the P4 browser command set", () => {
@@ -160,5 +170,75 @@ describe("world command handlers", () => {
       text: "watch pylon",
     }, 5, "2026-06-22T00:00:03.100Z")
     expect(intentCadence.receipt.status).toBe("rejected")
+  })
+
+  test("chat throttles account and session lanes separately from edge/IP policy", async () => {
+    let result = await apply(makeEmptyHotState(regionRef), "join_region", { characterId: "pilot" }, 1, "2026-06-22T00:00:00.000Z", {
+      sessionRef: "session.one",
+    })
+    result = await apply(result.state, "send_local_message", {
+      text: "first",
+    }, 2, "2026-06-22T00:00:01.000Z", {
+      sessionRef: "session.one",
+    })
+
+    const sameActorDifferentSession = await apply(result.state, "send_local_message", {
+      text: "actor throttle",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      sessionRef: "session.two",
+    })
+    const differentActorSameSession = await apply(result.state, "send_local_message", {
+      text: "session throttle",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      actorRef: "actor.public.bob",
+      sessionRef: "session.one",
+    })
+    const differentActorDifferentSession = await apply(result.state, "send_local_message", {
+      text: "separate lane",
+    }, 3, "2026-06-22T00:00:01.100Z", {
+      actorRef: "actor.public.bob",
+      sessionRef: "session.two",
+    })
+
+    expect(sameActorDifferentSession.receipt.status).toBe("rejected")
+    expect(sameActorDifferentSession.receipt.error?.message).toBe("Chat cadence exceeded.")
+    expect(differentActorSameSession.receipt.status).toBe("rejected")
+    expect(differentActorSameSession.receipt.error?.message).toBe("Chat session cadence exceeded.")
+    expect(differentActorDifferentSession.receipt.status).toBe("applied")
+  })
+
+  test("moderation blocks local and pylon chat before rows are emitted", async () => {
+    const moderationConfig = {
+      hardBlockedTokens: ["badword"],
+      softMaskedTokens: [],
+    }
+    let result = await Effect.runPromise(applyWorldCommand(
+      makeEmptyHotState(regionRef),
+      command("join_region", { characterId: "pilot" }, 1),
+      "2026-06-22T00:00:00.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+
+    const local = await Effect.runPromise(applyWorldCommand(
+      result.state,
+      command("send_local_message", { text: "badword private body" }, 2, "2026-06-22T00:00:01.000Z"),
+      "2026-06-22T00:00:01.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+    result = local
+    const pylon = await Effect.runPromise(applyWorldCommand(
+      result.state,
+      command("send_pylon_message", { text: "b@dw0rd private body" }, 3, "2026-06-22T00:00:03.000Z"),
+      "2026-06-22T00:00:03.000Z",
+      { sessionRef: "session.one", moderationConfig },
+    ))
+
+    expect(local.receipt.status).toBe("rejected")
+    expect(local.delta.rows).toBeUndefined()
+    expect(local.receipt.error?.tag).toBe("redaction")
+    expect(local.receipt.error?.message).not.toContain("private body")
+    expect(pylon.receipt.status).toBe("rejected")
+    expect(pylon.delta.rows).toBeUndefined()
+    expect(pylon.state.moderation.byActor[actorRef]?.mutedUntil).toBe("2026-06-22T00:10:03.000Z")
   })
 })

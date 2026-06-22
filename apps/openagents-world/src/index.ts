@@ -23,6 +23,9 @@ import {
   nextExpiryAlarmAt,
 } from "./expiry"
 import {
+  moderationConfigFromEnv,
+} from "./moderation"
+import {
   OPENAGENTS_WORLD_WORKER_VERSION,
   bufferHandshakeFrame,
   configFromEnv,
@@ -63,6 +66,8 @@ export interface Env {
   readonly OPENAGENTS_WORLD_DEFAULT_REGION?: string
   readonly OPENAGENTS_WORLD_MAX_HANDSHAKE_BUFFER?: string
   readonly OPENAGENTS_WORLD_BRIDGE_SOURCE?: string
+  readonly OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON?: string
+  readonly OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON?: string
 }
 
 type RegionSqlRow = Readonly<Record<string, unknown>>
@@ -409,7 +414,15 @@ export class RegionDurableObject extends DurableObject<Env> {
     this.ensureHotState(attachment.regionRef)
     const hotState = this.hotState ?? makeEmptyHotState(attachment.regionRef)
     try {
-      const result = await Effect.runPromise(applyWorldCommand(hotState, JSON.parse(frame) as unknown, observedAt))
+      const result = await Effect.runPromise(applyWorldCommand(
+        hotState,
+        JSON.parse(frame) as unknown,
+        observedAt,
+        {
+          sessionRef: attachment.sessionRef,
+          moderationConfig: moderationConfigFromEnv(this.env),
+        },
+      ))
       this.hotState = result.state
       this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
       this.persistExpiryRefs(result.state)

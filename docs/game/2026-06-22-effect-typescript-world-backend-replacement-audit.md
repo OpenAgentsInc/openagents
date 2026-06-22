@@ -886,6 +886,22 @@ part of the production world stream. Acceptance:
 - Tests cover false-positive avoidance (`class`, `despicable`), confusable
   matching, empty hard-list behavior, mute windows, and redaction.
 
+Implementation note: P7 adds `apps/openagents-world/src/moderation.ts` as the
+`WorldModeration` service and threads it through browser local/pylon chat before
+any `local_chat_message` row can be emitted. The open Worker config ships empty
+`OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON` and
+`OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON` arrays; private deployments can
+seed JSON string arrays through config/secrets without committing a slur list.
+
+The service performs whole-token hard-list enforcement after NFKD/confusable
+folding, keeps soft-list masking as a client/user preference, avoids substring
+false positives such as `class` and `despicable`, records strike/mute state in
+the Region DO hot state, and emits only public-safe reason codes. It exposes
+the same moderation gate for future forum-reflection bubbles and redacts
+user-authored diagnostic text before public diagnostics. Chat throttles now
+track per-account and per-session cadence separately from any later IP/edge
+throttle.
+
 ### P8: Add Service Commands And Projection Bridge
 
 Bring durable public projection rows into the Cloudflare service. Acceptance:

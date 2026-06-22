@@ -81,6 +81,24 @@ and reschedules only when more TTL work remains. The expiry planner depends on a
 `WorldClock` Effect service, so tests can advance a static clock without sleeping
 or relying on wall time.
 
+## Moderation And Abuse Controls
+
+`src/moderation.ts` owns the P7 `WorldModeration` service. The open repository
+ships empty hard/soft token JSON arrays in `wrangler.jsonc`; private operators
+can seed `OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON` and
+`OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON` with JSON string arrays outside
+Git. No private moderation list belongs in this repo.
+
+Local and pylon chat commands pass through moderation before any
+`local_chat_message` row is built. The service also exposes explicit gates for
+future forum-reflection bubbles and user-authored diagnostic text so P8/P9 work
+does not invent a parallel path. Hard-list enforcement is whole-token and
+confusable-folded, avoiding substring false positives such as `class` and
+`despicable`; soft-list masking remains a client/user preference. Strike state
+is kept in the Region DO hot state and escalates from warning to timed mutes,
+with public-safe reason codes only. Chat command throttles track account and
+session lanes separately from any future IP/edge throttle.
+
 ## Subscription Interest Policy
 
 `src/subscriptions.ts` owns the P6 WoC-style interest rules for the Cloudflare
