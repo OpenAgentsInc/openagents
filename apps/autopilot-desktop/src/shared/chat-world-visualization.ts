@@ -153,7 +153,15 @@ const vectorFromXYZ = (
 
 export const CHAT_WORLD_STATION_NODE_PREFIX = "world:station:"
 export const CHAT_WORLD_AVATAR_NODE_PREFIX = "world:avatar:"
-export const CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS = 6_000
+// The stale FADE is disabled. It used to drop an idle-but-present remote's body
+// to 0.35 opacity after 6s (via three-effect's liveness), leaving only the bright
+// accent ring — so a player standing still looked like they vanished into a ring.
+// An idle avatar sends no position keepalive, so `Date.now() - updatedAtMs`
+// crossed 6s while the player was still very much present. A huge stale threshold
+// keeps present avatars solid. Despawn (full removal) is kept at 12s as a
+// client-side backstop; the server (leave_region / position TTL) is the real
+// removal signal that drops avatars from world.agents.
+export const CHAT_WORLD_REMOTE_AVATAR_STALE_AFTER_MS = 86_400_000
 export const CHAT_WORLD_REMOTE_AVATAR_DESPAWN_AFTER_MS = 12_000
 export const CHAT_WORLD_TARGET_DEFAULT_MAX_CANDIDATES = 24
 export const CHAT_WORLD_TARGET_DEFAULT_MAX_DISTANCE_METERS = 96

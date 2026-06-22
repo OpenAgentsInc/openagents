@@ -260,7 +260,7 @@ describe("chatWorldMultiplayerLayer", () => {
     })
   })
 
-  test("filters the local desktop avatar and stale-despawns old remotes", () => {
+  test("filters the local desktop avatar, keeps idle remotes solid (no fade), despawns very old ones", () => {
     const layer = chatWorldMultiplayerLayer(
       worldProjection({
         projectedAtMs: 20_000,
@@ -318,10 +318,12 @@ describe("chatWorldMultiplayerLayer", () => {
       { localAvatarRef: "avatar.desktop.local" },
     )
 
+    // The stale FADE is disabled (present avatars render solid, stale: false), but
+    // the 12s despawn backstop still drops avatar.gone (age 13s) from the layer.
     expect(layer.remoteAvatars.map(avatar => avatar.id)).toEqual(["avatar.stale"])
     expect(layer.remoteAvatars[0]).toMatchObject({
       animation: "run",
-      stale: true,
+      stale: false,
     })
   })
 
