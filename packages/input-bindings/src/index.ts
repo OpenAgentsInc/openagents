@@ -709,9 +709,17 @@ export const detectOpenAgentsInputConflicts = (
   return conflicts
 }
 
+type NormalizedOpenAgentsInputModifiers = Readonly<{
+  primary: boolean
+  shift: boolean
+  alt: boolean
+  ctrl: boolean
+  meta: boolean
+}>
+
 const normalizeModifiers = (
   modifiers: OpenAgentsInputModifiers | undefined,
-): Required<OpenAgentsInputModifiers> => ({
+): NormalizedOpenAgentsInputModifiers => ({
   primary: modifiers?.primary === true,
   shift: modifiers?.shift === true,
   alt: modifiers?.alt === true,
@@ -1041,12 +1049,15 @@ const keyboardModifiersMatch = (
     return true
   }
 
+  const ctrlAllowed = expected.ctrl || expected.primary
+  const metaAllowed = expected.meta || expected.primary
+
   return (
-    expected.primary === actual.primary &&
     expected.shift === actual.shift &&
     expected.alt === actual.alt &&
-    expected.ctrl === actual.ctrl &&
-    expected.meta === actual.meta
+    (!actual.ctrl || ctrlAllowed) &&
+    (!actual.meta || metaAllowed) &&
+    (expected.primary || expected.ctrl || expected.meta || !actual.primary)
   )
 }
 

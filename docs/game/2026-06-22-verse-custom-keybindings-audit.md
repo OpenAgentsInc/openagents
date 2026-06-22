@@ -25,6 +25,13 @@ land.
   state on reset or binding swaps. The primitive is independent of React,
   Zustand, and scene identity so later Verse wiring can consume it without
   forcing Three scene remounts.
+- 2026-06-22: Issue #5946 replaced the desktop shortcut forwarding decision
+  with profile-driven action resolution. The subscription still emits the
+  existing `PressedKey` compatibility message, but forwarding now resolves
+  desktop actions from `@openagentsinc/input-bindings` instead of a static raw
+  key whitelist. This fixes the real DOM path for Cmd/Ctrl-Shift-V and adds a
+  test proving a custom action map can move the command palette shortcut without
+  editing subscription code.
 
 ## Goal
 

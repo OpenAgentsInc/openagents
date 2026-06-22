@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { openAgentsDefaultInputProfile, type OpenAgentsInputProfile } from "@openagentsinc/input-bindings"
 
 import { interpretKey, type KeyEvent } from "../src/ui/keyboard"
 import { initialRuntimeState } from "../src/ui/initial-state"
@@ -296,6 +297,87 @@ describe("#5465 keyboard layer", () => {
         ctrl: false,
         inEditable: true,
       }),
+    ).toEqual({ forward: true, preventDefault: true })
+  })
+
+  test("Cmd/Ctrl-Shift-V is forwarded through the real subscription decision path", () => {
+    expect(
+      keyboardForwardDecision({
+        key: "v",
+        meta: true,
+        ctrl: false,
+        shift: true,
+        inEditable: false,
+      }),
+    ).toEqual({ forward: true, preventDefault: true })
+    expect(
+      keyboardForwardDecision({
+        key: "v",
+        meta: false,
+        ctrl: true,
+        shift: true,
+        inEditable: false,
+      }),
+    ).toEqual({ forward: true, preventDefault: true })
+    expect(
+      keyboardForwardDecision({
+        key: "v",
+        meta: true,
+        ctrl: false,
+        shift: true,
+        inEditable: true,
+      }),
+    ).toEqual({ forward: false, preventDefault: false })
+  })
+
+  test("desktop shortcut matching is exact about unbound extra modifiers", () => {
+    expect(
+      keyboardForwardDecision({
+        key: "k",
+        meta: true,
+        ctrl: false,
+        shift: false,
+        inEditable: false,
+      }),
+    ).toEqual({ forward: true, preventDefault: true })
+    expect(
+      keyboardForwardDecision({
+        key: "k",
+        meta: true,
+        ctrl: false,
+        shift: true,
+        inEditable: false,
+      }),
+    ).toEqual({ forward: false, preventDefault: false })
+  })
+
+  test("desktop forwarding follows a custom action map instead of a raw key whitelist", () => {
+    const profile: OpenAgentsInputProfile = {
+      ...openAgentsDefaultInputProfile,
+      profileId: "test-custom-palette",
+      bindings: {
+        ...openAgentsDefaultInputProfile.bindings,
+        "app.command_palette": [
+          { type: "keyboard_key", key: "p", modifiers: { primary: true } },
+        ],
+      },
+    }
+
+    expect(
+      keyboardForwardDecision({
+        key: "k",
+        meta: true,
+        ctrl: false,
+        inEditable: false,
+      }, profile.bindings),
+    ).toEqual({ forward: false, preventDefault: false })
+    expect(
+      keyboardForwardDecision({
+        key: "p",
+        meta: true,
+        ctrl: false,
+        inEditable: false,
+      }, profile.bindings),
     ).toEqual({ forward: true, preventDefault: true })
   })
 

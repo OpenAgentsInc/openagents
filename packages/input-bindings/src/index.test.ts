@@ -193,6 +193,12 @@ describe("@openagentsinc/input-bindings", () => {
     expect(openAgentsKeyboardEventMatchesBinding(
       { type: "keyboard_key", key: "v", modifiers: { primary: true } },
       { code: "KeyV", key: "v", ctrlKey: true },
+      { allowExtraModifiers: false },
+    )).toBe(true)
+    expect(openAgentsKeyboardEventMatchesBinding(
+      { type: "keyboard_key", key: "v", modifiers: { primary: true } },
+      { code: "KeyV", key: "v", metaKey: true },
+      { allowExtraModifiers: false },
     )).toBe(true)
     expect(openAgentsKeyboardEventMatchesBinding(
       { type: "keyboard_key", key: "v", modifiers: { primary: true } },
