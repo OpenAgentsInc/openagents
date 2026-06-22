@@ -34,16 +34,29 @@ defines typed contracts, validation helpers, import markers, and docs only; it
 does not start a stdio server, loopback listener, remote bridge, or external
 MCP client connector.
 
-**Next implementation epic (re-sequenced 2026-06-22): expose the CRM as the
-first OpenAgents MCP server** — a stateless Streamable-HTTP JSON-RPC facade
-(`POST /api/mcp`) in the existing Worker, scoped to the CRM, using
-`@openagentsinc/mcp-contract` for descriptors, authority filtering, output
-safety, tagged errors, and receipts. The CRM (epic #5980) is the cleanest,
-already-shipped, bounded surface to prove the full MCP authority model
-end-to-end (read tools → propose → approval-gated execute), and it doubles as
-the template for customers exposing their own tenant CRM over MCP. The
-read-only **local Pylon stdio server** becomes the next MCP server after the
-CRM epic, reusing the transport + grant patterns proven there. See
+**The CRM MCP server (epic #5991) is built** — the first OpenAgents function
+served over MCP.
+
+- **Endpoint:** `POST /api/mcp` (stateless Streamable-HTTP JSON-RPC:
+  `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`,
+  `ping`).
+- **Discovery:** `GET /.well-known/openagents-mcp.json` (public, refs-only:
+  server + transport + the public-safe tool/resource catalog).
+- **Auth:** admin Bearer token (full CRM authority on the `X-OpenAgents-Tenant`
+  / default tenant) OR a scoped MCP grant token (declared authority classes +
+  bound tenant). Mint/list/revoke at `POST/GET/DELETE /api/operator/crm/mcp-grants`.
+- **Tools (grant-filtered, ungranted = absent):** read tools (`operator_read`)
+  over contacts/accounts/lists/activities/engagement/opportunities/imports/
+  templates/commands/queue + `crm.contact.render`; `crm.send.command.propose`
+  (proposes only — sends nothing); `crm.template.upsert` (workspace_write);
+  `crm.send.command.approve`/`.reject` (approval_resolution); `crm.import.run`
+  (workspace_write); `crm.batch.send` (dry-run only over MCP).
+- **Safety:** results output-safety-projected (operator class); tenant bound to
+  the credential (client `args.tenant` ignored); agent sends are
+  propose → human-approve. Built on `@openagentsinc/mcp-contract`.
+
+The read-only **local Pylon stdio server** is the next MCP server after this
+epic, reusing the transport + grant patterns proven here. See
 `2026-06-22-crm-mcp-server-phase-1-audit.md`.
 
 ## Documents

@@ -445,6 +445,7 @@ import {
 } from './operator-targets'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
 import { makeCrmMcpCatalog } from './crm-mcp'
+import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
 import {
   crmMcpAdminPrincipal,
   mcpTenantHeader,
@@ -7151,6 +7152,8 @@ const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+const crmMcpDiscoveryRoutes = makeCrmMcpDiscoveryRoutes()
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -10046,6 +10049,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
+    crmMcpDiscoveryRoutes.routeCrmMcpDiscoveryRequest(request, env, ctx) ??
     crmMcpGrantRoutes.routeCrmMcpGrantRequest(request, env, ctx) ??
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
