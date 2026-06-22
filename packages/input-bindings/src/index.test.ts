@@ -2,15 +2,23 @@ import { describe, expect, test } from "bun:test"
 
 import {
   OPENAGENTS_INPUT_BINDINGS_SCHEMA_VERSION,
+  createOpenAgentsKeyboardControls,
   decodeOpenAgentsInputProfile,
   detectOpenAgentsInputConflicts,
   openAgentsDefaultInputProfile,
+  openAgentsInputActionMapFromProfile,
   openAgentsInputActionSpecById,
   openAgentsInputActionSpecs,
   openAgentsInputBindingKey,
   openAgentsInputBindingLabel,
+  openAgentsKeyboardEventMatchesBinding,
   openAgentsNativeReservedBindings,
   parseOpenAgentsInputProfileOrDefault,
+  resolveOpenAgentsKeyboardEventActionBindings,
+  type OpenAgentsKeyboardControlsChange,
+  type OpenAgentsKeyboardEventLike,
+  type OpenAgentsKeyboardEventListener,
+  type OpenAgentsKeyboardEventType,
   type OpenAgentsInputProfile,
 } from "./index.js"
 
@@ -158,4 +166,215 @@ describe("@openagentsinc/input-bindings", () => {
       reason: "Reserved for native text paste",
     })
   })
+
+  test("builds an action map from a normalized profile", () => {
+    const actionMap = openAgentsInputActionMapFromProfile({
+      schemaVersion: OPENAGENTS_INPUT_BINDINGS_SCHEMA_VERSION,
+      profileId: "local",
+      bindings: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyI" }],
+      },
+    })
+
+    expect(actionMap["movement.forward"]).toEqual([
+      { type: "keyboard_code", code: "KeyI" },
+    ])
+    expect(actionMap["movement.backward"]).toEqual([
+      { type: "keyboard_code", code: "KeyS" },
+      { type: "keyboard_code", code: "ArrowDown" },
+    ])
+  })
+
+  test("matches keyboard code and key bindings", () => {
+    expect(openAgentsKeyboardEventMatchesBinding(
+      { type: "keyboard_code", code: "KeyW" },
+      { code: "KeyW", key: "w", shiftKey: true },
+    )).toBe(true)
+    expect(openAgentsKeyboardEventMatchesBinding(
+      { type: "keyboard_key", key: "v", modifiers: { primary: true } },
+      { code: "KeyV", key: "v", ctrlKey: true },
+    )).toBe(true)
+    expect(openAgentsKeyboardEventMatchesBinding(
+      { type: "keyboard_key", key: "v", modifiers: { primary: true } },
+      { code: "KeyV", key: "v" },
+    )).toBe(false)
+    expect(openAgentsKeyboardEventMatchesBinding(
+      { type: "keyboard_code", code: "KeyW" },
+      { code: "KeyW", key: "w", shiftKey: true },
+      { allowExtraModifiers: false },
+    )).toBe(false)
+  })
+
+  test("resolves named actions from a scoped keyboard event", () => {
+    const matches = resolveOpenAgentsKeyboardEventActionBindings(
+      {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+        "app.command_palette": [
+          { type: "keyboard_key", key: "k", modifiers: { primary: true } },
+        ],
+      },
+      { code: "KeyK", key: "k", metaKey: true },
+    )
+
+    expect(matches).toEqual([
+      {
+        actionId: "app.command_palette",
+        binding: {
+          type: "keyboard_key",
+          key: "k",
+          modifiers: { primary: true },
+        },
+      },
+    ])
+  })
+
+  test("tracks pressed state and subscriptions by named action", () => {
+    const source = new FakeKeyboardEventSource()
+    const changes: Array<OpenAgentsKeyboardControlsChange> = []
+    const controls = createOpenAgentsKeyboardControls({
+      eventSource: source,
+      actionMap: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+      },
+      onChange: (change) => changes.push(change),
+    })
+
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+    expect(controls.isPressed("movement.forward")).toBe(true)
+    expect(controls.getState()).toEqual({ "movement.forward": true })
+
+    source.dispatch("keyup", { code: "KeyW", key: "w" })
+    expect(controls.isPressed("movement.forward")).toBe(false)
+    expect(changes.map((change) => [change.actionId, change.pressed])).toEqual([
+      ["movement.forward", true],
+      ["movement.forward", false],
+    ])
+  })
+
+  test("ignores unmapped keys and dedupes repeated keydown", () => {
+    const source = new FakeKeyboardEventSource()
+    const changes: Array<OpenAgentsKeyboardControlsChange> = []
+    const controls = createOpenAgentsKeyboardControls({
+      eventSource: source,
+      actionMap: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+      },
+      onChange: (change) => changes.push(change),
+    })
+
+    source.dispatch("keydown", { code: "KeyQ", key: "q" })
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+    source.dispatch("keydown", { code: "KeyW", key: "w", repeat: true })
+
+    expect(controls.isPressed("movement.forward")).toBe(true)
+    expect(changes).toHaveLength(1)
+    expect(changes[0]?.repeat).toBe(false)
+  })
+
+  test("prevents default for matching actions when configured", () => {
+    const source = new FakeKeyboardEventSource()
+    let prevented = 0
+    const controls = createOpenAgentsKeyboardControls({
+      eventSource: source,
+      actionMap: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+      },
+      preventDefault: (change) => change.actionId === "movement.forward",
+    })
+
+    source.dispatch("keydown", {
+      code: "KeyW",
+      key: "w",
+      preventDefault: () => {
+        prevented += 1
+      },
+    })
+
+    controls.dispose()
+    expect(prevented).toBe(1)
+  })
+
+  test("supports subscribe unsubscribe and cleanup", () => {
+    const source = new FakeKeyboardEventSource()
+    const changes: Array<OpenAgentsKeyboardControlsChange> = []
+    const controls = createOpenAgentsKeyboardControls({
+      eventSource: source,
+      actionMap: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+      },
+    })
+    const unsubscribe = controls.subscribe((change) => changes.push(change))
+
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+    unsubscribe()
+    source.dispatch("keyup", { code: "KeyW", key: "w" })
+    controls.dispose()
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+
+    expect(changes.map((change) => change.pressed)).toEqual([true])
+    expect(source.listenerCount()).toBe(0)
+  })
+
+  test("updates binding maps and clears stale held state", () => {
+    const source = new FakeKeyboardEventSource()
+    const changes: Array<OpenAgentsKeyboardControlsChange> = []
+    const controls = createOpenAgentsKeyboardControls({
+      eventSource: source,
+      actionMap: {
+        "movement.forward": [{ type: "keyboard_code", code: "KeyW" }],
+      },
+      onChange: (change) => changes.push(change),
+    })
+
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+    controls.updateBindings({
+      "movement.forward": [{ type: "keyboard_code", code: "KeyI" }],
+    })
+    source.dispatch("keydown", { code: "KeyW", key: "w" })
+    expect(controls.isPressed("movement.forward")).toBe(false)
+    source.dispatch("keydown", { code: "KeyI", key: "i" })
+    expect(controls.isPressed("movement.forward")).toBe(true)
+
+    expect(changes.map((change) => [change.source, change.pressed])).toEqual([
+      ["keydown", true],
+      ["bindings_updated", false],
+      ["keydown", true],
+    ])
+  })
 })
+
+class FakeKeyboardEventSource {
+  private readonly listeners: Record<
+    OpenAgentsKeyboardEventType,
+    Set<OpenAgentsKeyboardEventListener>
+  > = {
+    keydown: new Set(),
+    keyup: new Set(),
+  }
+
+  addEventListener = (
+    type: OpenAgentsKeyboardEventType,
+    listener: OpenAgentsKeyboardEventListener,
+  ): void => {
+    this.listeners[type].add(listener)
+  }
+
+  removeEventListener = (
+    type: OpenAgentsKeyboardEventType,
+    listener: OpenAgentsKeyboardEventListener,
+  ): void => {
+    this.listeners[type].delete(listener)
+  }
+
+  dispatch = (
+    type: OpenAgentsKeyboardEventType,
+    event: OpenAgentsKeyboardEventLike,
+  ): void => {
+    for (const listener of this.listeners[type]) {
+      listener(event)
+    }
+  }
+
+  listenerCount = (): number =>
+    this.listeners.keydown.size + this.listeners.keyup.size
+}

@@ -18,6 +18,13 @@ land.
   native-reserved binding checks. This is intentionally a pure contract package;
   desktop subscriptions, three-effect controllers, Settings UI, and packaged
   smoke coverage still need to consume it in the later issues.
+- 2026-06-22: Issue #5945 added the Drei-inspired
+  `createOpenAgentsKeyboardControls` primitive to `@openagentsinc/input-bindings`.
+  It maps scoped keyboard events to named actions, tracks held state, supports
+  subscriptions, handles repeat dedupe, can update binding maps, and clears held
+  state on reset or binding swaps. The primitive is independent of React,
+  Zustand, and scene identity so later Verse wiring can consume it without
+  forcing Three scene remounts.
 
 ## Goal
 

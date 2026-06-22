@@ -474,6 +474,14 @@ export const openAgentsDefaultInputProfile: OpenAgentsInputProfile = {
   bindings: openAgentsDefaultInputBindings,
 }
 
+export type OpenAgentsInputActionMap = Readonly<
+  Record<string, ReadonlyArray<OpenAgentsInputBinding>>
+>
+
+export const openAgentsInputActionMapFromProfile = (
+  profile: OpenAgentsInputProfile,
+): OpenAgentsInputActionMap => normalizeOpenAgentsInputProfile(profile).bindings
+
 export const normalizeOpenAgentsInputProfile = (
   profile: OpenAgentsInputProfile,
 ): OpenAgentsInputProfile => ({
@@ -757,3 +765,292 @@ const intersectContexts = (
   right: ReadonlyArray<OpenAgentsInputContext>,
 ): ReadonlyArray<OpenAgentsInputContext> =>
   left.filter((context) => right.includes(context))
+
+export type OpenAgentsKeyboardEventType = "keydown" | "keyup"
+
+export type OpenAgentsKeyboardEventLike = Readonly<{
+  code?: string
+  key?: string
+  repeat?: boolean
+  shiftKey?: boolean
+  altKey?: boolean
+  ctrlKey?: boolean
+  metaKey?: boolean
+  preventDefault?: () => void
+}>
+
+export type OpenAgentsKeyboardEventListener = (
+  event: OpenAgentsKeyboardEventLike,
+) => void
+
+export type OpenAgentsKeyboardEventSource = Readonly<{
+  addEventListener: (
+    type: OpenAgentsKeyboardEventType,
+    listener: OpenAgentsKeyboardEventListener,
+  ) => void
+  removeEventListener: (
+    type: OpenAgentsKeyboardEventType,
+    listener: OpenAgentsKeyboardEventListener,
+  ) => void
+}>
+
+export type OpenAgentsKeyboardControlsChange = Readonly<{
+  actionId: string
+  pressed: boolean
+  source: OpenAgentsKeyboardEventType | "reset" | "bindings_updated"
+  bindingKey: string | null
+  bindingLabel: string | null
+  repeat: boolean
+}>
+
+export type OpenAgentsKeyboardControlsSubscriber = (
+  change: OpenAgentsKeyboardControlsChange,
+  state: Readonly<Record<string, boolean>>,
+) => void
+
+export type OpenAgentsKeyboardControlsOptions = Readonly<{
+  actionMap: OpenAgentsInputActionMap
+  eventSource: OpenAgentsKeyboardEventSource
+  allowExtraModifiers?: boolean
+  preventDefault?: boolean | ((change: OpenAgentsKeyboardControlsChange) => boolean)
+  onChange?: OpenAgentsKeyboardControlsSubscriber
+}>
+
+export type OpenAgentsKeyboardControls = Readonly<{
+  getState: () => Readonly<Record<string, boolean>>
+  isPressed: (actionId: string) => boolean
+  subscribe: (subscriber: OpenAgentsKeyboardControlsSubscriber) => () => void
+  updateBindings: (actionMap: OpenAgentsInputActionMap) => void
+  reset: () => void
+  dispose: () => void
+}>
+
+export const createOpenAgentsKeyboardControls = (
+  options: OpenAgentsKeyboardControlsOptions,
+): OpenAgentsKeyboardControls => {
+  let actionMap = options.actionMap
+  let disposed = false
+  const allowExtraModifiers = options.allowExtraModifiers !== false
+  const subscribers = new Set<OpenAgentsKeyboardControlsSubscriber>()
+  const state: Record<string, boolean> = defaultKeyboardControlsState(actionMap)
+
+  if (options.onChange !== undefined) {
+    subscribers.add(options.onChange)
+  }
+
+  const emit = (change: OpenAgentsKeyboardControlsChange): void => {
+    for (const subscriber of subscribers) {
+      subscriber(change, { ...state })
+    }
+  }
+
+  const setPressed = (
+    actionId: string,
+    pressed: boolean,
+    source: OpenAgentsKeyboardControlsChange["source"],
+    binding: OpenAgentsInputBinding | null,
+    repeat: boolean,
+  ): void => {
+    if (state[actionId] === pressed) {
+      return
+    }
+    state[actionId] = pressed
+    emit({
+      actionId,
+      pressed,
+      source,
+      bindingKey: binding === null ? null : openAgentsInputBindingKey(binding),
+      bindingLabel: binding === null ? null : openAgentsInputBindingLabel(binding),
+      repeat,
+    })
+  }
+
+  const handleKeyboardEvent = (
+    type: OpenAgentsKeyboardEventType,
+    event: OpenAgentsKeyboardEventLike,
+  ): void => {
+    if (disposed) {
+      return
+    }
+    const matches = resolveOpenAgentsKeyboardEventActionBindings(
+      actionMap,
+      event,
+      { allowExtraModifiers, release: type === "keyup" },
+    )
+    let shouldPreventDefault = false
+    for (const match of matches) {
+      const wasPressed = state[match.actionId] === true
+      const isRepeat = event.repeat === true && wasPressed
+      if (type === "keydown") {
+        if (!isRepeat) {
+          setPressed(match.actionId, true, type, match.binding, event.repeat === true)
+        }
+      } else {
+        setPressed(match.actionId, false, type, match.binding, false)
+      }
+      const change: OpenAgentsKeyboardControlsChange = {
+        actionId: match.actionId,
+        pressed: type === "keydown",
+        source: type,
+        bindingKey: openAgentsInputBindingKey(match.binding),
+        bindingLabel: openAgentsInputBindingLabel(match.binding),
+        repeat: isRepeat,
+      }
+      shouldPreventDefault = shouldPreventDefault ||
+        options.preventDefault === true ||
+        (typeof options.preventDefault === "function" &&
+          options.preventDefault(change))
+    }
+    if (shouldPreventDefault) {
+      event.preventDefault?.()
+    }
+  }
+
+  const keydownListener: OpenAgentsKeyboardEventListener = (event) => {
+    handleKeyboardEvent("keydown", event)
+  }
+  const keyupListener: OpenAgentsKeyboardEventListener = (event) => {
+    handleKeyboardEvent("keyup", event)
+  }
+
+  options.eventSource.addEventListener("keydown", keydownListener)
+  options.eventSource.addEventListener("keyup", keyupListener)
+
+  const resetState = (
+    source: "reset" | "bindings_updated",
+  ): void => {
+    for (const actionId of Object.keys(state)) {
+      setPressed(actionId, false, source, null, false)
+    }
+  }
+
+  return {
+    getState: () => ({ ...state }),
+    isPressed: (actionId: string) => state[actionId] === true,
+    subscribe: (subscriber: OpenAgentsKeyboardControlsSubscriber) => {
+      subscribers.add(subscriber)
+      return () => {
+        subscribers.delete(subscriber)
+      }
+    },
+    updateBindings: (nextActionMap: OpenAgentsInputActionMap) => {
+      resetState("bindings_updated")
+      actionMap = nextActionMap
+      for (const key of Object.keys(state)) {
+        delete state[key]
+      }
+      Object.assign(state, defaultKeyboardControlsState(nextActionMap))
+    },
+    reset: () => {
+      resetState("reset")
+    },
+    dispose: () => {
+      if (disposed) {
+        return
+      }
+      resetState("reset")
+      disposed = true
+      subscribers.clear()
+      options.eventSource.removeEventListener("keydown", keydownListener)
+      options.eventSource.removeEventListener("keyup", keyupListener)
+    },
+  }
+}
+
+export const resolveOpenAgentsKeyboardEventActionBindings = (
+  actionMap: OpenAgentsInputActionMap,
+  event: OpenAgentsKeyboardEventLike,
+  options?: Readonly<{ allowExtraModifiers?: boolean; release?: boolean }>,
+): ReadonlyArray<Readonly<{ actionId: string; binding: OpenAgentsInputBinding }>> => {
+  const matches: Array<Readonly<{ actionId: string; binding: OpenAgentsInputBinding }>> = []
+  for (const [actionId, bindings] of Object.entries(actionMap)) {
+    for (const candidateBinding of bindings) {
+      if (
+        openAgentsKeyboardEventMatchesBinding(candidateBinding, event, {
+          allowExtraModifiers: options?.allowExtraModifiers !== false,
+          release: options?.release === true,
+        })
+      ) {
+        matches.push({ actionId, binding: candidateBinding })
+      }
+    }
+  }
+  return matches
+}
+
+export const openAgentsKeyboardEventMatchesBinding = (
+  inputBinding: OpenAgentsInputBinding,
+  event: OpenAgentsKeyboardEventLike,
+  options?: Readonly<{ allowExtraModifiers?: boolean; release?: boolean }>,
+): boolean => {
+  if (inputBinding.type !== "keyboard_code" && inputBinding.type !== "keyboard_key") {
+    return false
+  }
+
+  const baseMatches =
+    inputBinding.type === "keyboard_code"
+      ? event.code === inputBinding.code
+      : event.key?.toLocaleLowerCase() === inputBinding.key.toLocaleLowerCase()
+
+  if (!baseMatches) {
+    return false
+  }
+
+  if (options?.release === true) {
+    return true
+  }
+
+  return keyboardModifiersMatch(
+    inputBinding.modifiers,
+    event,
+    options?.allowExtraModifiers !== false,
+  )
+}
+
+const keyboardModifiersMatch = (
+  modifiers: OpenAgentsInputModifiers | undefined,
+  event: OpenAgentsKeyboardEventLike,
+  allowExtraModifiers: boolean,
+): boolean => {
+  const expected = normalizeModifiers(modifiers)
+  const actual = {
+    primary: event.metaKey === true || event.ctrlKey === true,
+    shift: event.shiftKey === true,
+    alt: event.altKey === true,
+    ctrl: event.ctrlKey === true,
+    meta: event.metaKey === true,
+  }
+
+  if (expected.primary && !actual.primary) {
+    return false
+  }
+  if (expected.shift && !actual.shift) {
+    return false
+  }
+  if (expected.alt && !actual.alt) {
+    return false
+  }
+  if (expected.ctrl && !actual.ctrl) {
+    return false
+  }
+  if (expected.meta && !actual.meta) {
+    return false
+  }
+
+  if (allowExtraModifiers) {
+    return true
+  }
+
+  return (
+    expected.primary === actual.primary &&
+    expected.shift === actual.shift &&
+    expected.alt === actual.alt &&
+    expected.ctrl === actual.ctrl &&
+    expected.meta === actual.meta
+  )
+}
+
+const defaultKeyboardControlsState = (
+  actionMap: OpenAgentsInputActionMap,
+): Record<string, boolean> =>
+  Object.fromEntries(Object.keys(actionMap).map((actionId) => [actionId, false]))
