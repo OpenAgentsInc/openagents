@@ -47,7 +47,7 @@ describe("projectChatWorldCloudflareRows", () => {
       flagEnabled: true,
       runRef,
       nowMs: 10_000,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
       database: "openagents-world",
       rows: {
         regions: [regionRow],

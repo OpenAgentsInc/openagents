@@ -41,9 +41,9 @@ describe("openagents-world protocol helpers", () => {
   })
 
   test("detects socket routes and produces websocket URLs", () => {
-    const request = new Request("https://world.openagents.com/connect?region=ignored")
+    const request = new Request("https://openagents-world.openagents.workers.dev/connect?region=ignored")
     expect(regionRefFromSocketPath("/regions/region.run.1/socket")).toBe("region.run.1")
-    expect(socketUrlForRegion(request, "region.run.1")).toBe("wss://world.openagents.com/regions/region.run.1/socket")
+    expect(socketUrlForRegion(request, "region.run.1")).toBe("wss://openagents-world.openagents.workers.dev/regions/region.run.1/socket")
   })
 
   test("produces a typed zero-row snapshot delta", () => {

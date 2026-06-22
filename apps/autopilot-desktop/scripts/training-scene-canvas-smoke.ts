@@ -249,7 +249,7 @@ const visualization = withChatWorldPaymentLayer(
   {
     connected: true,
     database: "openagents-world",
-    worldUrl: "https://world.openagents.com",
+    worldUrl: "https://openagents-world.openagents.workers.dev",
     regionRef: "region.smoke",
     stations: [{
       pylonRef: "pylon.smoke.alpha",

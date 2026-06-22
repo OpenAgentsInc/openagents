@@ -144,7 +144,7 @@ describe("forum tipping + direct pylon tips + multiplayer integration harness", 
       displayName: "Publisher",
       runRef,
       nowMs: () => nowMs,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
     })
     publisher.joinRegion()
 

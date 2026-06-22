@@ -98,7 +98,7 @@ const runRefForSummary = (summary: TassadarRunPublicSummary): string =>
   summary.runRef ?? 'run.tassadar.executor.20260615'
 
 export const tassadarRegionRefForRun = (runRef: string): string =>
-  `region.${runRef}.main`
+  `region.${runRef}.street`
 
 export const clampTassadarWorldCoordinate = (
   value: number,
@@ -161,8 +161,36 @@ const movementModeToAnimation = (
 const readModelRows = (
   readModel: ClientWorld,
   runRef: string,
-): TassadarCloudflareWorldRows => ({
-  agentAvatars: Object.values(readModel.avatars).map(row => ({
+): TassadarCloudflareWorldRows => {
+  const regionRows = Object.values(readModel.regions)
+  const worldRegions = regionRows.length > 0
+    ? regionRows
+    : [{
+        bounds: {
+          max: {
+            x: TASSADAR_STARTER_REGION_CONTRACT.bounds.maxX,
+            y: TASSADAR_STARTER_REGION_CONTRACT.bounds.maxY,
+            z: TASSADAR_STARTER_REGION_CONTRACT.bounds.maxZ,
+          },
+          min: {
+            x: TASSADAR_STARTER_REGION_CONTRACT.bounds.minX,
+            y: TASSADAR_STARTER_REGION_CONTRACT.bounds.minY,
+            z: TASSADAR_STARTER_REGION_CONTRACT.bounds.minZ,
+          },
+        },
+        label: 'Tassadar Street',
+        origin: {
+          x: TASSADAR_STARTER_REGION_CONTRACT.localOrigin.x,
+          y: TASSADAR_STARTER_REGION_CONTRACT.localOrigin.y,
+          z: TASSADAR_STARTER_REGION_CONTRACT.localOrigin.z,
+        },
+        proximityRadius: 12,
+        regionRef: readModel.regionRef,
+        staleAvatarTtlMs: TASSADAR_STALE_AVATAR_POSITION_MS,
+      }]
+
+  return {
+    agentAvatars: Object.values(readModel.avatars).map(row => ({
     actorKind: row.avatarKind,
     actorRef: row.accountRef ?? row.avatarRef,
     avatarRef: row.avatarRef,
@@ -268,7 +296,7 @@ const readModelRows = (
     sourceRef: row.sourceRefs[0] ?? row.eventRef,
     summary: row.text,
   } as never)),
-  worldRegions: Object.values(readModel.regions).map(row => ({
+    worldRegions: worldRegions.map(row => ({
     avatarPositionMinIntervalMs: 100,
     label: row.label,
     localOriginX: row.origin.x,
@@ -292,8 +320,9 @@ const readModelRows = (
     starterPylonSiteOffsetZ: TASSADAR_STARTER_REGION_CONTRACT.starterPylonSiteOffset.z,
     streetNextRegionRef: TASSADAR_STARTER_REGION_CONTRACT.streetNextRegionRef,
     streetPrevRegionRef: TASSADAR_STARTER_REGION_CONTRACT.streetPrevRegionRef,
-  } as never)),
-})
+    } as never)),
+  }
+}
 
 const makeCommand = (input: {
   actorRef: string
@@ -334,7 +363,11 @@ export const startTassadarCloudflareWorldSubscription = async (
       worldUrl: input.config.worldUrl,
       actorRef,
       actorClass: 'browser',
-      onDelta: () => publish(client),
+      onDelta: delta => {
+        void runWorldClientEffect(client.applyDelta(delta))
+          .then(() => publish(client))
+          .catch(input.onError)
+      },
       onDiagnostic: () => publish(client),
     }),
   })

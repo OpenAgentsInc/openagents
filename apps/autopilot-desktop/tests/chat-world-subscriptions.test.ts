@@ -763,7 +763,7 @@ describe("subscribeCloudflareWorld", () => {
       displayName: "Sender",
       runRef,
       nowMs: () => nowMs,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
     })
     sender.joinRegion()
 
@@ -892,7 +892,7 @@ describe("subscribeCloudflareWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 2_000,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
     })
 
     client.joinRegion()
@@ -933,7 +933,7 @@ describe("subscribeCloudflareWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 1_000,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
     })
     client.joinRegion()
 
@@ -1004,7 +1004,7 @@ describe("subscribeCloudflareWorld", () => {
       displayName: "Local Pylon",
       runRef,
       nowMs: () => 1_000,
-      worldUrl: "https://world.openagents.com",
+      worldUrl: "https://openagents-world.openagents.workers.dev",
     })
     client.joinRegion()
 

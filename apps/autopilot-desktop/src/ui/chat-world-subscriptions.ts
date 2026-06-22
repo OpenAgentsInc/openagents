@@ -899,7 +899,11 @@ const subscribeCloudflareWorldTransport = (
       actorRef: input.identity.actorRef,
       actorClass: "browser",
       ...(input.fetchFn === undefined ? {} : { fetchFn: input.fetchFn }),
-      onDelta: () => dispatchProjection(client),
+      onDelta: delta => {
+        void Effect.runPromise(client.applyDelta(delta))
+          .then(() => dispatchProjection(client))
+          .catch(() => dispatchUnavailable())
+      },
       onDiagnostic: () => dispatchProjection(client),
     }),
   })

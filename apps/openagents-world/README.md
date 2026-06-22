@@ -121,9 +121,15 @@ idle movement emits settle patches. `applySubscriptionDeltaToReadModel` preserve
 the sparse delta invariant: absent fields are unchanged, never treated as empty
 or default values.
 
-The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
-Cloudflare resources are provisioned; keep the binding names stable because the
-Worker code depends on them.
+The D1 database IDs in `wrangler.jsonc` point at the provisioned Cloudflare
+`openagents-world` and `openagents-world-staging` databases; keep the binding
+names stable because the Worker code depends on them.
+
+Production currently deploys to
+`https://openagents-world.openagents.workers.dev`. The P13 release receipt lives
+at `docs/game/2026-06-22-cloudflare-world-production-release-receipt.md` and
+records the production version, live web/desktop smokes, bridge ingest sample,
+and historical archive state for the retired GCE SpacetimeDB VM.
 
 ## Service Projection Bridge
 
@@ -148,9 +154,7 @@ the shared contract actor gate before service row payloads are decoded.
 
 Run from a clean `origin/main` worktree with Cloudflare credentials for the
 target account. Keep the binding names in `wrangler.jsonc` stable:
-`REGION_DURABLE_OBJECT`, `WORLD_DB`, and `WORLD_BRIDGE_QUEUE`. Replace the D1
-placeholder `database_id` values with the provisioned Cloudflare database IDs
-before any remote deploy.
+`REGION_DURABLE_OBJECT`, `WORLD_DB`, and `WORLD_BRIDGE_QUEUE`.
 
 Preflight:
 

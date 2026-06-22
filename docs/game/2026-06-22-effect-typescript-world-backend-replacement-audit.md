@@ -1113,6 +1113,17 @@ single-player, formal/model notes are updated where policy changed, and **no
 SpacetimeDB code, VM, generated binding, deploy lane, or operational runbook
 remains active in the repo.**
 
+Implementation note: P13 shipped the production Cloudflare Worker at
+`https://openagents-world.openagents.workers.dev` with version
+`76bd5d07-765c-4ea3-881e-8e9e2b7a5495`, provisioned production/staging D1
+databases and bridge queues, and archived the old GCE SpacetimeDB VM as
+historical infrastructure. The release smoke found two real cutover defects and
+fixed them before close: clients were still deriving the old `.main` starter
+region instead of `.street`, and Region DO command deltas were only sent to the
+sender instead of being fanned out to all connected sessions. The durable
+release receipt is
+`docs/game/2026-06-22-cloudflare-world-production-release-receipt.md`.
+
 ## Post-Cutover WoC Adaptation Lanes
 
 These are not blockers for deleting SpacetimeDB, but they are the next issues to

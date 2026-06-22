@@ -14,5 +14,8 @@ describe('tassadar Cloudflare world subscription plan', () => {
     expect(queries).toContain(
       'cloudflare-world:scope=run:run.public_activity_timeline',
     )
+    expect(queries).toContain(
+      'cloudflare-world:region=region.run.tassadar.executor.20260615.street',
+    )
   })
 })

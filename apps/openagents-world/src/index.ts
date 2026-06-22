@@ -5,6 +5,7 @@ import {
   WORLD_CONTRACT_SCHEMA_VERSION,
   decodeWorldBridgePayload,
   type WorldBridgePayload,
+  type WorldDelta,
   type WorldRow,
   type WorldSubscriptionPlan,
 } from "@openagentsinc/world-contract"
@@ -593,15 +594,7 @@ export class RegionDurableObject extends DurableObject<Env> {
       this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
       this.persistExpiryRefs(result.state)
       await this.scheduleNextExpiryAlarm(result.state)
-      const nextAttachment = this.applySubscriptionStateToAttachment({
-        attachment,
-        rows: result.delta.rows ?? [],
-        deletedRefs: result.delta.deletedRefs ?? [],
-        cursor: result.delta.cursor,
-      })
-      webSocket.serializeAttachment(nextAttachment)
-      this.upsertSession(nextAttachment, observedAt)
-      webSocket.send(serializeWorldFrame(commandDeltaFrame(result.delta)))
+      this.broadcastCommandDelta(result.delta, observedAt)
     } catch (error) {
       const diagnostic = makeDiagnostic({
         tag: "validation",
@@ -662,6 +655,22 @@ export class RegionDurableObject extends DurableObject<Env> {
       interestTierByRef: Object.fromEntries(
         Object.entries(interest.nextState.tierByRef).filter(([ref]) => !deletedRefs.has(ref)),
       ),
+    }
+  }
+
+  private broadcastCommandDelta(delta: WorldDelta, observedAt: string): void {
+    const frame = serializeWorldFrame(commandDeltaFrame(delta))
+    for (const socket of this.ctx.getWebSockets()) {
+      const attachment = this.readAttachment(socket)
+      const nextAttachment = this.applySubscriptionStateToAttachment({
+        attachment,
+        rows: delta.rows ?? [],
+        deletedRefs: delta.deletedRefs ?? [],
+        cursor: delta.cursor,
+      })
+      socket.serializeAttachment(nextAttachment)
+      this.upsertSession(nextAttachment, observedAt)
+      socket.send(frame)
     }
   }
 

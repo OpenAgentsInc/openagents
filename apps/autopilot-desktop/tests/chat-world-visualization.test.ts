@@ -112,7 +112,7 @@ const worldProjection = (
 ): ChatWorldMultiplayerProjection => ({
   connected: true,
   database: "openagents-world",
-  worldUrl: "https://world.openagents.com",
+  worldUrl: "https://openagents-world.openagents.workers.dev",
   regionRef: "region.run.public",
   projectedAtMs: 10_000,
   stations: [{

@@ -370,7 +370,7 @@ const epochMs = (value: string | undefined, fallback: number): number => {
 
 const regionRunRef = (regionRef: string, fallback: string): string => {
   const prefix = "region."
-  const suffix = ".main"
+  const suffix = ".street"
   return regionRef.startsWith(prefix) && regionRef.endsWith(suffix)
     ? regionRef.slice(prefix.length, -suffix.length)
     : fallback
@@ -403,7 +403,32 @@ export const projectChatWorldClientWorld = (input: {
   }
 
   const contract = CHAT_WORLD_STARTER_REGION_CONTRACT
-  const regions: ReadonlyArray<ChatWorldRegionRow> = Object.values(input.readModel.regions)
+  const readModelRegions = Object.values(input.readModel.regions)
+  const regions: ReadonlyArray<ChatWorldRegionRow> = (readModelRegions.length > 0
+    ? readModelRegions
+    : [{
+        bounds: {
+          max: {
+            x: contract.bounds.maxX,
+            y: contract.bounds.maxY,
+            z: contract.bounds.maxZ,
+          },
+          min: {
+            x: contract.bounds.minX,
+            y: contract.bounds.minY,
+            z: contract.bounds.minZ,
+          },
+        },
+        label: "Tassadar Street",
+        origin: {
+          x: contract.localOrigin.x,
+          y: contract.localOrigin.y,
+          z: contract.localOrigin.z,
+        },
+        proximityRadius: contract.proximityRadiusMeters,
+        regionRef: input.readModel.regionRef,
+        staleAvatarTtlMs: contract.staleAvatarPositionMs,
+      }])
     .map(region => ({
       regionRef: region.regionRef,
       runRef: regionRunRef(region.regionRef, input.runRef),
