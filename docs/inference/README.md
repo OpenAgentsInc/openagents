@@ -95,6 +95,11 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     game"), but verified, Bitcoin-settled, watchable in the Verse, and with the
     built game playable inside our three-effect world.
 
+11. **[`khala-head-to-head-demo.md`](./khala-head-to-head-demo.md)** — the Agent
+    Demo M8 evidence-pack runbook for issue #6016: the public-safe manifest
+    contract, metric reducer, fixture evidence pack, publication skeleton, and
+    closure audit for the head-to-head demo.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

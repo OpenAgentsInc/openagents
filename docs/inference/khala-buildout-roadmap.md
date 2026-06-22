@@ -379,6 +379,14 @@ ingests only after they become dereferenceable.
 and runbook"). Create real GitHub child issues only when separate agents need
 independent queues; until then the #6016 checklist plus these anchors is enough.
 
+**Progress — 2026-06-22:** #6016-A and #6016-B have a repo-owned scaffold in
+`docs/inference/khala-head-to-head-demo.md`,
+`docs/inference/fixtures/khala-head-to-head-dry-run.v1.json`, and
+`scripts/khala-demo/reduce-head-to-head.mjs`. The reducer validates public-safe
+evidence shape, computes the M8 metrics, and emits a closure audit that keeps
+#6016 blocked while evidence is fixture-only. #6016-C has a first inert fixture
+pack; #6016-D/E still need live publication refs and M3/M5/M7 receipts.
+
 ### Parallel merge order
 
 ```

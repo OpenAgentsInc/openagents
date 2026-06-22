@@ -1,0 +1,207 @@
+{
+  "schema": "openagents.khala_head_to_head_evidence.v1",
+  "manifestRef": "fixture.khala.head_to_head.demo.dry_run.v1",
+  "evidenceMode": "fixture_scaffold",
+  "generatedAt": "2026-06-22T16:30:00.000Z",
+  "scope": {
+    "issueRef": "github:OpenAgentsInc/openagents#6016",
+    "parentIssueRef": "github:OpenAgentsInc/openagents#6017",
+    "roadmapRef": "docs/inference/khala-buildout-roadmap.md#agent-demo--benchmark-metrics-and-publication-pack",
+    "runbookRef": "docs/inference/khala-head-to-head-demo.md",
+    "prompt": "build a really high quality single html file crossy road game with three.js",
+    "benchmarkRef": "benchmark.khala.crossy_road_threejs.single_html.v1"
+  },
+  "runs": [
+    {
+      "runId": "fixture.khala.crossy_road.kh_proposed.v1",
+      "lane": "khala",
+      "label": "Khala fixture run",
+      "model": "openagents/khala",
+      "provider": "openagents-fixture",
+      "coordinator": {
+        "mode": "fixture_conductor_shape",
+        "policyRef": "candidate.fixture.khala.conductor_shape.v1",
+        "promoted": false
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-22T16:00:00.000Z",
+      "completedAt": "2026-06-22T16:18:12.000Z",
+      "wallClockMs": 1092000,
+      "usage": {
+        "promptTokens": 18420,
+        "completionTokens": 71180,
+        "totalTokens": 89600
+      },
+      "costUsd": 7.32,
+      "costMsat": 1150000,
+      "priceMsat": 1540000,
+      "acceptedOutcome": {
+        "accepted": true,
+        "verificationClass": "test_passed",
+        "verdictRef": "fixture.verdict.khala.crossy_road.test_passed.v1",
+        "verifierRef": "verifier.fixture.crossy_road_headless.v1",
+        "receiptRef": "fixture.receipt.khala.crossy_road.accepted.v1",
+        "evidenceRefs": [
+          "fixture.artifact.khala.crossy_road.single_html.v1",
+          "fixture.verifier.crossy_road.controls_camera_restart.v1"
+        ],
+        "blockerRefs": [
+          "blocker.khala_demo.fixture_verifier_not_live"
+        ]
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "fixture.artifact.khala.crossy_road.single_html.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.worker_settlement_missing",
+          "blocker.khala_demo.validator_settlement_missing"
+        ]
+      },
+      "verse": {
+        "playbackRef": "fixture.verse.khala.crossy_road.route_preview.v1",
+        "sourceRefs": [
+          "fixture.receipt.khala.crossy_road.accepted.v1"
+        ],
+        "inWorldWorkUnits": 3,
+        "gatewayWorkUnits": 2,
+        "blockerRefs": [
+          "blocker.khala_demo.verse_playback_fixture_only"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md",
+        "docs/inference/khala.md",
+        "docs/inference/khala-in-the-world.md"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.fixture_scaffold_not_live",
+        "blocker.khala_demo.m7_live_conductor_missing"
+      ]
+    },
+    {
+      "runId": "fixture.frontier.crossy_road.baseline.v1",
+      "lane": "frontier_baseline",
+      "label": "Frontier baseline fixture run",
+      "model": "frontier-baseline-fixture",
+      "provider": "external-fixture",
+      "coordinator": {
+        "mode": "single_model",
+        "policyRef": "external.frontier.baseline.fixture.v1",
+        "promoted": true
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-22T16:00:00.000Z",
+      "completedAt": "2026-06-22T17:19:00.000Z",
+      "wallClockMs": 4740000,
+      "usage": {
+        "promptTokens": 21000,
+        "completionTokens": 919000,
+        "totalTokens": 940000
+      },
+      "costUsd": 37.85,
+      "costMsat": 5947000,
+      "priceMsat": 5947000,
+      "acceptedOutcome": {
+        "accepted": true,
+        "verificationClass": "test_passed",
+        "verdictRef": "fixture.verdict.frontier.crossy_road.test_passed.v1",
+        "verifierRef": "verifier.fixture.crossy_road_headless.v1",
+        "receiptRef": "fixture.receipt.frontier.crossy_road.accepted.v1",
+        "evidenceRefs": [
+          "fixture.artifact.frontier.crossy_road.single_html.v1"
+        ],
+        "blockerRefs": [
+          "blocker.khala_demo.frontier_baseline_not_live"
+        ]
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "fixture.artifact.frontier.crossy_road.single_html.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.frontier_artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.frontier_no_settlement_expected"
+        ]
+      },
+      "verse": {
+        "playbackRef": null,
+        "sourceRefs": [],
+        "inWorldWorkUnits": 0,
+        "gatewayWorkUnits": 1,
+        "blockerRefs": [
+          "blocker.khala_demo.frontier_verse_playback_missing"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.fixture_scaffold_not_live"
+      ]
+    }
+  ],
+  "externalReportedClaims": [
+    {
+      "claimRef": "reported.sakana_fugu_ultra.crossy_road.external_unverified.v1",
+      "label": "Sakana Fugu Ultra reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 89000,
+      "costUsd": 7.32,
+      "wallClockMs": 1320000,
+      "verdictSummary": "Reported faster and cheaper; issues included inverted turn direction, wonky camera, no SFX, and not identical to Crossy Road.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    },
+    {
+      "claimRef": "reported.claude_opus_4_8_ultracode.crossy_road.external_unverified.v1",
+      "label": "Claude Opus 4.8 Ultracode reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 940000,
+      "costUsd": 37.85,
+      "wallClockMs": 4740000,
+      "verdictSummary": "Reported higher quality; issues included retry loops and wrong restart character position.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    }
+  ],
+  "publication": {
+    "status": "draft_scaffold",
+    "publicationRef": null,
+    "claimUpgradeRefs": [],
+    "blockerRefs": [
+      "blocker.khala_demo.live_runs_missing",
+      "blocker.khala_demo.publication_missing",
+      "blocker.khala_demo.owner_signed_claim_upgrade_missing"
+    ]
+  }
+}
