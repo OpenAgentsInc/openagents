@@ -11,8 +11,15 @@ import {
   applyWorldCommand,
   commandDeltaFrame,
   makeEmptyHotState,
+  type WorldExpiringRef,
   type WorldHotState,
 } from "./commands"
+import {
+  encodeAlarmTimestamp,
+  expireWorldHotStateAt,
+  expiryDeltaFrame,
+  nextExpiryAlarmAt,
+} from "./expiry"
 import {
   OPENAGENTS_WORLD_WORKER_VERSION,
   bufferHandshakeFrame,
@@ -336,6 +343,8 @@ export class RegionDurableObject extends DurableObject<Env> {
       const result = await Effect.runPromise(applyWorldCommand(hotState, JSON.parse(frame) as unknown, observedAt))
       this.hotState = result.state
       this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
+      this.persistExpiryRefs(result.state)
+      await this.scheduleNextExpiryAlarm(result.state)
       const nextAttachment = {
         ...attachment,
         cursor: result.delta.cursor,
@@ -374,6 +383,25 @@ export class RegionDurableObject extends DurableObject<Env> {
     await this.initialized
     const attachment = this.readAttachment(webSocket)
     this.upsertSession(attachment, new Date().toISOString())
+  }
+
+  override async alarm(): Promise<void> {
+    await this.initialized
+    const regionRef = this.hotState?.regionRef ?? "region.run.tassadar.executor.20260615.street"
+    this.ensureHotState(regionRef)
+    const hotState = this.hotState ?? makeEmptyHotState(regionRef)
+    const now = new Date().toISOString()
+    const plan = expireWorldHotStateAt(hotState, now)
+    this.hotState = plan.state
+    this.writeRegionClock(plan.state.regionRef, plan.state.sequence, plan.state.minReplaySeq, now)
+    this.persistExpiryRefs(plan.state)
+    if (plan.delta !== null) {
+      const frame = serializeWorldFrame(expiryDeltaFrame(plan.delta))
+      for (const webSocket of this.ctx.getWebSockets()) {
+        webSocket.send(frame)
+      }
+    }
+    await this.scheduleNextExpiryAlarm(plan.state)
   }
 
   private get sql(): RegionSqlStorage {
@@ -515,8 +543,46 @@ export class RegionDurableObject extends DurableObject<Env> {
         ...makeEmptyHotState(regionRef),
         sequence: clock.currentSeq,
         minReplaySeq: clock.minReplaySeq,
+        expiringRefs: this.readExpiryRefs(regionRef),
       }
     }
+  }
+
+  private readExpiryRefs(regionRef: string): Readonly<Record<string, WorldExpiringRef>> {
+    const rows = this.sql.exec<{ ref: string; metadata_json: string }>(
+      "SELECT ref, metadata_json FROM region_hot_expiry_refs WHERE region_ref = ?",
+      regionRef,
+    ).toArray()
+    return Object.fromEntries(rows.map(row => [row.ref, JSON.parse(row.metadata_json) as WorldExpiringRef]))
+  }
+
+  private persistExpiryRefs(state: WorldHotState): void {
+    this.sql.exec("DELETE FROM region_hot_expiry_refs WHERE region_ref = ?", state.regionRef)
+    for (const expiry of Object.values(state.expiringRefs)) {
+      this.sql.exec(
+        `INSERT INTO region_hot_expiry_refs (
+          ref,
+          region_ref,
+          kind,
+          expires_at,
+          metadata_json
+        ) VALUES (?, ?, ?, ?, ?)`,
+        expiry.ref,
+        state.regionRef,
+        expiry.kind,
+        expiry.expiresAt,
+        JSON.stringify(expiry),
+      )
+    }
+  }
+
+  private async scheduleNextExpiryAlarm(state: WorldHotState): Promise<void> {
+    const alarmAt = nextExpiryAlarmAt(state)
+    if (alarmAt === null) {
+      await this.ctx.storage.deleteAlarm()
+      return
+    }
+    await this.ctx.storage.setAlarm(encodeAlarmTimestamp(alarmAt))
   }
 }
 

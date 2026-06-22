@@ -41,9 +41,16 @@ export type WorldHotState = Readonly<{
   minReplaySeq: number
   avatars: Readonly<Record<string, WorldHotAvatar>>
   focusByActor: Readonly<Record<string, string>>
+  expiringRefs: Readonly<Record<string, WorldExpiringRef>>
   lastChatAtByActor: Readonly<Record<string, string>>
   lastEmoteAtByActor: Readonly<Record<string, string>>
   lastIntentAtByActor: Readonly<Record<string, string>>
+}>
+
+export type WorldExpiringRef = Readonly<{
+  ref: string
+  kind: "avatar" | "chat" | "emote" | "focus" | "intent"
+  expiresAt: string
 }>
 
 export type WorldCommandApplyResult = Readonly<{
@@ -72,6 +79,7 @@ export const makeEmptyHotState = (regionRef: string): WorldHotState => ({
   minReplaySeq: 0,
   avatars: {},
   focusByActor: {},
+  expiringRefs: {},
   lastChatAtByActor: {},
   lastEmoteAtByActor: {},
   lastIntentAtByActor: {},
@@ -262,6 +270,10 @@ const joinRegion = (
     state: {
       ...state,
       avatars: { ...state.avatars, [avatarRef]: avatar },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [avatarRef]: expires(avatarRef, "avatar", observedAt, 30000),
+      },
     },
     rows: [row],
   }
@@ -279,6 +291,7 @@ const leaveRegion = (state: WorldHotState, envelope: WorldCommandEnvelope) => {
     state: {
       ...state,
       avatars,
+      expiringRefs: omitKey(state.expiringRefs, avatarRef),
       focusByActor: omitKey(state.focusByActor, envelope.actorRef),
     },
     rows: [],
@@ -344,6 +357,10 @@ const setAvatarPosition = (
           position,
         },
       },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [avatarRef]: expires(avatarRef, "avatar", observedAt, 30000),
+      },
     },
     rows: [row],
   }
@@ -358,9 +375,10 @@ const focusPylon = (
   if (pylonRef === null || !pylonRef.startsWith("pylon.")) {
     return reject("Pylon focus requires a visible pylon ref.")
   }
+  const intentRef = stableWorldRef("intent.world.focus", `${envelope.actorRef}:${pylonRef}`)
   const row = decodeWorldRow({
     kind: "agent_intent",
-    intentRef: stableWorldRef("intent.world.focus", `${envelope.actorRef}:${pylonRef}`),
+    intentRef,
     avatarRef: avatarRefForActor(state, envelope.actorRef) ?? envelope.actorRef,
     regionRef: state.regionRef,
     intent: "focus_pylon",
@@ -374,6 +392,10 @@ const focusPylon = (
     state: {
       ...state,
       focusByActor: { ...state.focusByActor, [envelope.actorRef]: pylonRef },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [intentRef]: expires(intentRef, "focus", observedAt, 30000),
+      },
     },
     rows: [row],
   }
@@ -384,6 +406,7 @@ const clearPylonFocus = (state: WorldHotState, envelope: WorldCommandEnvelope) =
   state: {
     ...state,
     focusByActor: omitKey(state.focusByActor, envelope.actorRef),
+    expiringRefs: omitKey(state.expiringRefs, stableWorldRef("intent.world.focus", envelope.actorRef)),
   },
   rows: [],
   deletedRefs: [stableWorldRef("intent.world.focus", envelope.actorRef)],
@@ -420,6 +443,10 @@ const sendMessage = (
     state: {
       ...state,
       lastChatAtByActor: { ...state.lastChatAtByActor, [envelope.actorRef]: observedAt },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [messageRef]: expires(messageRef, "chat", observedAt, 60000),
+      },
     },
     rows: [row],
   }
@@ -438,9 +465,10 @@ const sendEmote = (
   if (emote.length === 0) {
     return reject("Emote must be non-empty plain text.")
   }
+  const emoteRef = stableWorldRef("emote.world.local", `${envelope.commandRef}:${emote}`)
   const row = decodeWorldRow({
     kind: "local_emote",
-    emoteRef: stableWorldRef("emote.world.local", `${envelope.commandRef}:${emote}`),
+    emoteRef,
     regionRef: state.regionRef,
     avatarRef: avatarRefForActor(state, envelope.actorRef) ?? envelope.actorRef,
     emote,
@@ -453,6 +481,10 @@ const sendEmote = (
     state: {
       ...state,
       lastEmoteAtByActor: { ...state.lastEmoteAtByActor, [envelope.actorRef]: observedAt },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [emoteRef]: expires(emoteRef, "emote", observedAt, 10000),
+      },
     },
     rows: [row],
   }
@@ -471,9 +503,10 @@ const setAgentIntent = (
   if (text.length === 0) {
     return reject("Intent must be non-empty plain text.")
   }
+  const intentRef = stableWorldRef("intent.world.agent", `${envelope.actorRef}:${text}`)
   const row = decodeWorldRow({
     kind: "agent_intent",
-    intentRef: stableWorldRef("intent.world.agent", `${envelope.actorRef}:${text}`),
+    intentRef,
     avatarRef: avatarRefForActor(state, envelope.actorRef) ?? envelope.actorRef,
     regionRef: state.regionRef,
     intent: text,
@@ -486,6 +519,10 @@ const setAgentIntent = (
     state: {
       ...state,
       lastIntentAtByActor: { ...state.lastIntentAtByActor, [envelope.actorRef]: observedAt },
+      expiringRefs: {
+        ...state.expiringRefs,
+        [intentRef]: expires(intentRef, "intent", observedAt, 15000),
+      },
     },
     rows: [row],
   }
@@ -592,6 +629,17 @@ const distance = (
   b: Readonly<{ x: number; y: number; z: number }>,
 ) =>
   Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+
+const expires = (
+  ref: string,
+  kind: WorldExpiringRef["kind"],
+  observedAt: string,
+  ttlMs: number,
+): WorldExpiringRef => ({
+  ref,
+  kind,
+  expiresAt: new Date(Date.parse(observedAt) + ttlMs).toISOString(),
+})
 
 export const commandNamesImplementedInRegionDo: ReadonlyArray<WorldCommandName> = [
   "join_region",

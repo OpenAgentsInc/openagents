@@ -131,6 +131,15 @@ export const regionDurableObjectMigrationStatements = [
     min_replay_seq INTEGER NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS region_hot_expiry_refs (
+    ref TEXT PRIMARY KEY,
+    region_ref TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    metadata_json TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_region_hot_expiry_refs_region_expires
+    ON region_hot_expiry_refs(region_ref, expires_at)`,
 ] as const
 
 export const nowIso = (): string => new Date().toISOString()

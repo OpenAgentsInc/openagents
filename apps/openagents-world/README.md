@@ -65,6 +65,22 @@ pose bounds/velocity/cadence are enforced, and chat/emote/intent text is
 plain-text bounded with cadence checks. Hot presence rows stay in DO memory;
 the DO persists only the transport clock needed for reconnect cursors.
 
+## Expiry And Alarms
+
+Hot rows register TTL metadata in DO SQLite:
+
+- avatar presence: 30 seconds from join or latest pose
+- chat messages: 60 seconds
+- emotes: 10 seconds
+- pylon focus: 30 seconds
+- agent intent: 15 seconds
+
+The DO schedules a one-shot Cloudflare alarm for the next expiry deadline, emits
+one delete `WorldDelta` per cursor window, persists the updated transport clock,
+and reschedules only when more TTL work remains. The expiry planner depends on a
+`WorldClock` Effect service, so tests can advance a static clock without sleeping
+or relying on wall time.
+
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.

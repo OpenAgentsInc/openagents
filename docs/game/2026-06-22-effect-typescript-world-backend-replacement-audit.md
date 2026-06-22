@@ -806,6 +806,8 @@ memory while the transport cursor clock remains in DO SQLite for reconnect.
 
 ### P5: Add Alarms, Expiry, And Deterministic Time
 
+Status: implemented in issue #5964.
+
 Move interaction expiry out of wishful thinking and into the DO runtime.
 Acceptance:
 
@@ -818,6 +820,15 @@ Acceptance:
 - Storage checkpoints are pruned without touching durable projection truth.
 
 This issue prevents stale avatars and bubbles from becoming fake product state.
+
+Implementation note: P5 adds a `WorldClock` Effect service plus pure expiry
+planning for fake-clock tests, DO-local `region_hot_expiry_refs` SQLite
+metadata, Cloudflare DO alarm scheduling, exactly-once delete deltas per expiry
+cursor window, and storage-prune helpers that remove hot checkpoints without
+touching service-authoritative projection rows. The DO persists TTL metadata for
+presence, chat, emote, focus, and intent rows, schedules a one-shot alarm for
+the next deadline, broadcasts expiry deltas, then reschedules only if more work
+remains.
 
 ### P6: Implement Subscription Scopes And Near/Far Feeds
 
