@@ -3,7 +3,10 @@ import {
   openAgentsDefaultInputProfile,
   type OpenAgentsInputProfile,
 } from "@openagentsinc/input-bindings"
-import { canRetainTrainingRunVisualization } from "@openagentsinc/three-effect/core"
+import {
+  canRetainTrainingRunVisualization,
+  pointerClickPickFromGesture,
+} from "@openagentsinc/three-effect/core"
 
 import {
   agentCharacterCreationFlag,
@@ -236,6 +239,37 @@ describe("Verse packaged launch checklist (#5827)", () => {
       },
     ])
     expect(projection.lastResolvedAction).toBeNull()
+  })
+
+  test("shared pointer picking keeps mouselook drags out of click selection", () => {
+    expect(
+      pointerClickPickFromGesture({
+        buttonDown: 0,
+        buttonUp: 0,
+        downAtMs: 100,
+        upAtMs: 170,
+        downX: 320,
+        downY: 240,
+        upX: 327,
+        upY: 244,
+        pointerLocked: false,
+        releasedOnCanvas: true,
+      }),
+    ).toBe(true)
+    expect(
+      pointerClickPickFromGesture({
+        buttonDown: 0,
+        buttonUp: 0,
+        downAtMs: 100,
+        upAtMs: 170,
+        downX: 320,
+        downY: 240,
+        upX: 381,
+        upY: 246,
+        pointerLocked: false,
+        releasedOnCanvas: true,
+      }),
+    ).toBe(false)
   })
 
   test("input profile changes update Verse bindings without rebuilding the scene", () => {

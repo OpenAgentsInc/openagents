@@ -124,6 +124,53 @@ export type VerseIconRecipe = Readonly<{
 
 export declare const verseIconRecipeForId: (id: string) => VerseIconRecipe
 
+export type ThirdPersonAutoSettleBehindInput = Readonly<{
+  currentYaw: number
+  deltaSeconds: number
+  manualCamera: boolean
+  moving: boolean
+  targetYaw: number
+  maxYawSpeed?: number
+}>
+
+export type CameraOcclusionEasingInput = Readonly<{
+  currentDistance: number
+  desiredDistance: number
+  deltaSeconds: number
+  hitDistance?: number
+  breathingRoom?: number
+  easeInSpeed?: number
+  easeOutSpeed?: number
+  fovCompensation?: number
+  minDistance?: number
+}>
+
+export type PointerClickPickGesture = Readonly<{
+  buttonDown: number
+  buttonUp: number
+  downAtMs: number
+  downX: number
+  downY: number
+  pointerLocked: boolean
+  releasedOnCanvas: boolean
+  upAtMs: number
+  upX: number
+  upY: number
+  maxDragPx?: number
+  maxDurationMs?: number
+}>
+
+export declare const shortestAngleDelta: (from: number, to: number) => number
+export declare const thirdPersonAutoSettleBehindYaw: (
+  input: ThirdPersonAutoSettleBehindInput,
+) => number
+export declare const cameraOcclusionEasedDistance: (
+  input: CameraOcclusionEasingInput,
+) => number
+export declare const pointerClickPickFromGesture: (
+  input: PointerClickPickGesture,
+) => boolean
+
 export type TrainingRunMotionKind =
   | "presence"
   | "assignment"

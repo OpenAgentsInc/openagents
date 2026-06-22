@@ -1151,6 +1151,14 @@ Port the pure math patterns for auto-settle-behind, camera occlusion easing, and
 click-vs-drag disambiguation. Acceptance: unit tests for follow/collision/pick
 math plus desktop smoke proving mouselook and click-select do not fight.
 
+Implementation note: W2 shipped the shared camera/input primitives in
+`@openagentsinc/three-effect` at commit `b2bb8fa`. The primitive layer now
+exports capped auto-settle-behind yaw math, occlusion distance easing with fast
+pull-in and slower release, and a click-vs-drag gesture classifier. The mounted
+training-run visualization uses the classifier before selecting/locking on
+click, while desktop pins the same `three-effect` hash and carries a launch
+checklist regression proving a mouselook drag is not treated as click-select.
+
 ### W3: Minimap, Compass, Coords, And Subzone
 
 Build a minimap/readout layer from the same `WorldReadModel` the 3D scene uses.

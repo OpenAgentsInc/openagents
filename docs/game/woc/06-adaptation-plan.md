@@ -125,7 +125,10 @@ These map onto the existing Verse epics rather than inventing a parallel program
    `@openagentsinc/three-effect@525d665`; desktop Verse station/payment scene
    entities now carry shared icon recipes for HUD/3D texture consumers.**
 2. `three-effect`: camera follow + collision + pointer-pick primitives (Tier 1) - improves
-   the existing controller feel.
+   the existing controller feel. **Shipped in
+   `@openagentsinc/three-effect@b2bb8fa`; training-run visualization gates
+   selection through shared click-vs-drag math, and desktop launch tests assert
+   mouselook drags do not become click-select gestures.**
 3. `three-effect` + HUD: minimap primitive + compass/coords/subzone pure cores (Tier 1) -
    blips from Region DO avatars + Worker/D1 run projection.
 4. `three-effect`: nameplate/label projection primitive (Tier 1) - world-anchored entity
