@@ -331,6 +331,7 @@ import {
   InferenceAdapterError,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
+import { makePsionicFabricAdapter } from './inference/psionic-fabric-serve'
 import { handleQuote } from './inference/quote-routes'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
@@ -8172,6 +8173,38 @@ const registerPassthroughAdapters = (
   }
 }
 
+// OpenAgents serving-fabric lane (#5483 / Khala M4 #6012) — the `openagents-
+// network` adapter wired to a Psionic serve transport. The lane is routed AHEAD
+// of passthrough for the OPEN class (model-router.ts), but stays INERT until a
+// LIVE Psionic serve transport is wired: with no transport bound the lane is
+// simply NOT registered, and `dispatchWithOverflow` (which filters the plan to
+// registered adapters) skips it and overflows to passthrough — never a faked
+// serve. The live fabric is owner-gated / Psionic-planned (decentralized-serving
+// -shard-wan.md §7), so no transport is bound here today; the concrete dispatch
+// (ask-plan -> execute -> consume EXACT-PARITY receipt; no parity -> no success)
+// is proven against a local/fake serve in psionic-fabric-serve.test.ts and
+// registers behind this seam with no routing change once a transport lands.
+//
+// The Worker env carries no live fabric serve binding yet, so this narrow env
+// slice has no transport field to read; the function is the activation point a
+// future wiring fills in (mirroring registerPassthroughAdapters). It is a no-op
+// today and keeps the lane honestly skipped.
+type FabricServeEnv = Readonly<Record<string, unknown>>
+
+const registerFabricServeAdapter = (
+  registry: InferenceProviderRegistry,
+  _env: FabricServeEnv,
+): void => {
+  // No live Psionic serve transport is bound in this repo (owner-gated). When a
+  // real transport client lands, build it from the env here and register:
+  //   registry.register(makePsionicFabricAdapter({ transport }))
+  // Until then the lane stays unregistered and routing skips it. The unused
+  // factory import is intentionally referenced so the seam stays type-checked
+  // and the registration path cannot silently rot.
+  void makePsionicFabricAdapter
+  void registry
+}
+
 // Per-request env holder for env-dependent inference adapters. A Cloudflare
 // Worker has no env at module scope, so the module-level adapter registry reads
 // the live env (set by the /v1/chat/completions handler before dispatch) when
@@ -9640,6 +9673,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/chat/completions',
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
+      // Serving-fabric lane (#5483 / Khala M4 #6012). No-op today (no live
+      // Psionic serve transport bound); keeps the lane honestly skipped until a
+      // transport lands, with no routing change required to activate it.
+      registerFabricServeAdapter(inferenceProviderRegistry, env)
       // Capture the live env so env-dependent adapters (Vertex #5480) can mint
       // credentials from Worker secrets at call time. INERT regardless: the
       // gateway is gated by INFERENCE_GATEWAY_ENABLED below.
