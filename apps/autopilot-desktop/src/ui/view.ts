@@ -8687,7 +8687,9 @@ const rootView = (model: Model): Html => {
       [
         cls("app-shell app-shell-verse"),
         themeData,
+        h.Tabindex(-1),
         h.DataAttribute("verse-mode", model.verseMode),
+        h.DataAttribute("verse-focus-root", "true"),
       ],
       [
         chatPane(model),

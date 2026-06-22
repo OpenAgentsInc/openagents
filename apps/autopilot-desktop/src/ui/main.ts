@@ -228,6 +228,82 @@ document.addEventListener(
   true,
 )
 
+const isEditableElement = (element: Element | null): boolean => {
+  if (!(element instanceof HTMLElement)) return false
+  if (element.isContentEditable) return true
+  const tag = element.tagName.toLowerCase()
+  return tag === "input" || tag === "textarea" || tag === "select"
+}
+
+const shouldPreserveCurrentFocus = (): boolean => {
+  const active = document.activeElement
+  return (
+    active !== null &&
+    active !== document.body &&
+    active !== document.documentElement &&
+    active.getAttribute("data-verse-focus-root") !== "true"
+  )
+}
+
+const focusElementPreventScroll = (element: HTMLElement): void => {
+  try {
+    element.focus({ preventScroll: true })
+  } catch {
+    element.focus()
+  }
+}
+
+type VerseLaunchFocusResult = "canvas" | "fallback" | "missing" | "preserved"
+
+const focusVerseSceneTarget = (): VerseLaunchFocusResult => {
+  if (isEditableElement(document.activeElement)) return "preserved"
+  if (shouldPreserveCurrentFocus()) return "preserved"
+  const root = document.querySelector("[data-verse-focus-root='true']")
+  if (!(root instanceof HTMLElement)) return "missing"
+  try {
+    window.focus()
+  } catch {
+    // Some test/browser shells expose a no-op or throwing focus implementation.
+  }
+  const host = root.querySelector(".three-effect-chat-scene")
+  const canvas = host?.shadowRoot?.querySelector("canvas")
+  if (canvas instanceof HTMLCanvasElement) {
+    canvas.tabIndex = -1
+    focusElementPreventScroll(canvas)
+    return "canvas"
+  }
+  focusElementPreventScroll(root)
+  return "fallback"
+}
+
+let verseLaunchFocusInstalled = false
+
+const scheduleVerseLaunchFocus = (): void => {
+  let attempts = 0
+  const tick = (): void => {
+    attempts += 1
+    const result = focusVerseSceneTarget()
+    if (result === "canvas" || result === "preserved") return
+    if (attempts < 30) {
+      window.setTimeout(tick, 50)
+    }
+  }
+  window.setTimeout(tick, 0)
+}
+
+const installVerseLaunchFocus = (): void => {
+  if (verseLaunchFocusInstalled) return
+  verseLaunchFocusInstalled = true
+  scheduleVerseLaunchFocus()
+  window.addEventListener("focus", scheduleVerseLaunchFocus)
+  window.addEventListener("pageshow", scheduleVerseLaunchFocus)
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      scheduleVerseLaunchFocus()
+    }
+  })
+}
+
 function start(): void {
   Runtime.run(
     Runtime.makeProgram({
@@ -243,6 +319,7 @@ function start(): void {
       },
     }),
   )
+  installVerseLaunchFocus()
 }
 
 if (document.readyState === "loading") {

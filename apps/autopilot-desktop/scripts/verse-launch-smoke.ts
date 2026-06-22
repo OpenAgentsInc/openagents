@@ -178,6 +178,8 @@ type DomProbe = {
     readonly noPanelOverlap: boolean
     readonly sceneCursorNotText: boolean
     readonly scenePointerTarget: boolean
+    readonly verseInitialFocus: boolean
+    readonly hotbarNumberKeysConsumed: boolean
   }
   readonly canvas: {
     readonly height: number
@@ -187,6 +189,10 @@ type DomProbe = {
   readonly pointerHitTest: {
     readonly canvasCursor: string
     readonly topElements: ReadonlyArray<string>
+  }
+  readonly focus: {
+    readonly activeElement: string | null
+    readonly shadowActiveElement: string | null
   }
   readonly forbiddenTextHits: ReadonlyArray<string>
   readonly overlapPairs: ReadonlyArray<string>
@@ -1181,6 +1187,7 @@ const domProbeExpression = `
   const forbiddenTextHits = forbiddenText.filter(value => text.includes(value))
   const host = document.querySelector(".three-effect-chat-scene")
   const canvas = host?.shadowRoot?.querySelector("canvas")
+  const verseFocusRoot = document.querySelector("[data-verse-focus-root='true']")
   const canvasRect = canvas instanceof HTMLCanvasElement
     ? (() => {
       const r = canvas.getBoundingClientRect()
@@ -1215,6 +1222,12 @@ const domProbeExpression = `
     pointerTop === canvas ||
     (pointerTop instanceof HTMLElement &&
       pointerTop.closest(".three-effect-chat-scene") === host)
+  const activeElement = document.activeElement
+  const shadowActiveElement = host?.shadowRoot?.activeElement ?? null
+  const verseInitialFocus =
+    activeElement === verseFocusRoot ||
+    activeElement === host ||
+    shadowActiveElement === canvas
   const hotbarDigit2Event = new KeyboardEvent("keydown", {
     key: "2",
     code: "Digit2",
@@ -1261,6 +1274,7 @@ const domProbeExpression = `
     noPanelOverlap: overlapPairs.length === 0,
     sceneCursorNotText: canvasCursor !== "text",
     scenePointerTarget,
+    verseInitialFocus,
     hotbarNumberKeysConsumed,
   }
   const blockerRefs = Object.entries(checks)
@@ -1279,6 +1293,21 @@ const domProbeExpression = `
     pointerHitTest: {
       canvasCursor,
       topElements,
+    },
+    focus: {
+      activeElement:
+        activeElement instanceof HTMLElement
+          ? [
+            activeElement.tagName.toLowerCase(),
+            typeof activeElement.className === "string"
+              ? activeElement.className.split(/\\s+/).filter(Boolean).slice(0, 3).join(".")
+              : "",
+          ].filter(Boolean).join(".")
+          : null,
+      shadowActiveElement:
+        shadowActiveElement instanceof HTMLElement
+          ? shadowActiveElement.tagName.toLowerCase()
+          : null,
     },
     forbiddenTextHits,
     overlapPairs,

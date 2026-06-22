@@ -168,6 +168,7 @@ describe("Verse packaged launch checklist (#5827)", () => {
 
     expect(tree).toContain("app-shell-verse")
     expect(tree).toContain("data-verse-mode")
+    expect(tree).toContain("data-verse-focus-root")
     expect(tree).toContain("explore")
     expect(tree).toContain("chat-pane-world")
     expect(tree).toContain("three-effect-chat-scene")
