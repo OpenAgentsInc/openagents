@@ -639,8 +639,12 @@ export const handleChatCompletions = (
       const terminal = [...servedChunks]
         .reverse()
         .find(chunk => chunk.usage !== undefined)
+      // Capture the metering outcome so the disclosure block (below) carries the
+      // same receipt the non-streaming path attaches. `undefined` when no
+      // terminal usage frame was served (no metering ran).
+      let streamMetering: MeteringOutcome | undefined
       if (terminal?.usage !== undefined) {
-        yield* meteringHook({
+        streamMetering = yield* meteringHook({
           accountRef: session.accountRef,
           adapterId: chunks.served.adapterId,
           fundingKind,
@@ -652,8 +656,37 @@ export const handleChatCompletions = (
         })
       }
 
+      // OPENAGENTS DISCLOSURE (M0 / #6008 follow-up). Streaming carries the SAME
+      // non-breaking `openagents` block the non-streaming path emits, built by the
+      // SAME `khalaReceiptForResult(...)` (non-Khala => undefined). Reconstruct an
+      // `InferenceResult` from the served chunks — content concatenated, the
+      // terminal finishReason/usage, `servedModel: requestedModel` matching what
+      // the streaming metering call above reports — then attach the block to the
+      // FINAL (terminal `chat.completion.chunk`) frame only, before `data: [DONE]`.
+      const streamResult: InferenceResult = {
+        content: servedChunks.map(chunk => chunk.contentDelta).join(''),
+        finishReason: terminal?.finishReason ?? 'stop',
+        servedModel: requestedModel,
+        usage: terminal?.usage ?? {
+          completionTokens: 0,
+          promptTokens: 0,
+          totalTokens: 0,
+        },
+      }
+      const streamOpenagents = khalaReceiptForResult({
+        adapterId: chunks.served.adapterId,
+        // `khalaReceiptForResult` requires a MeteringOutcome; when no terminal
+        // usage frame was served (so no metering ran) fall back to the stub
+        // outcome shape so a Khala stream without usage still discloses.
+        metering: streamMetering ?? { metered: false, receiptRef: null },
+        requestedModel,
+        responseId,
+        result: streamResult,
+      })
+
+      const lastIndex = servedChunks.length - 1
       const body_sse = servedChunks
-        .map(chunk =>
+        .map((chunk, index) =>
           sseFrame({
             choices: [
               {
@@ -669,6 +702,10 @@ export const handleChatCompletions = (
             id: responseId,
             model: requestedModel,
             object: 'chat.completion.chunk',
+            // Disclosure rides on the terminal frame only (non-breaking field).
+            ...(index === lastIndex && streamOpenagents !== undefined
+              ? { openagents: streamOpenagents }
+              : {}),
           }),
         )
         .join('')
