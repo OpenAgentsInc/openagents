@@ -443,6 +443,7 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
+import { makeCrmRoutes } from './crm-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
@@ -7061,6 +7062,10 @@ const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
+const crmRoutes = makeCrmRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -9949,7 +9954,8 @@ const routeRequest = makeWorkerRouteRequest({
       env,
       ctx,
     ) ??
-    partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx),
+    partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
+    crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
     nexusPylonVisibilityRoutes.routeNexusPylonVisibilityRequest,
