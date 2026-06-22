@@ -171,8 +171,15 @@ export type LedgerMeteringDeps = Readonly<{
   // decision's PayIn-shaped legs through the revenue-loop spine — but only when
   // the decision is `armed` (owner-armed gate). The serving fabric is inert today,
   // so no receipt flows and this never fires; the seam is shaped to receive it.
+  //
+  // The sink also receives the serving RECEIPT that produced the decision, so a
+  // Bitcoin/Spark settlement sink (`khala-verified-work-settlement.ts`, M3 #6011)
+  // can read the served model + parity result it needs to settle real sats to the
+  // serving node(s) over Spark. The receipt is the same one on `context` — passed
+  // explicitly so the sink contract is self-contained.
   recordServingPayout?: (
     decision: ServingNodePayoutDecision,
+    receipt: ServingReceipt,
   ) => Effect.Effect<void>
   // The owner-armed payout-mode gate (mdk-payout-mode-gate.ts) the serving-payout
   // decision consults. Defaults to a DISABLED gate (no live payout) so the seam
@@ -349,7 +356,7 @@ export const makeLedgerMeteringHook = (
       // actual ledger write/dispatch through the revenue-loop spine; the default
       // (undefined) path dispatches nothing — no live payout.
       if (decision.armed && deps.recordServingPayout !== undefined) {
-        yield* deps.recordServingPayout(decision)
+        yield* deps.recordServingPayout(decision, receipt)
       }
     })
 
