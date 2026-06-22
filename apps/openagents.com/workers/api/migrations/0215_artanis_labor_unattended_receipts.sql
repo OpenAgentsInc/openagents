@@ -27,4 +27,4 @@ CREATE TABLE IF NOT EXISTS artanis_labor_unattended_receipts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_artanis_labor_unattended_receipts_created
-  ON artanis_labor_unattended_receipts (created_at, rowid);
+  ON artanis_labor_unattended_receipts (created_at, receipt_ref);
