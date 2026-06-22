@@ -444,6 +444,7 @@ import {
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
 import { makeCrmBatchRoutes } from './crm-batch-routes'
+import { emptyCrmMcpCatalog, makeCrmMcpRoutes } from './crm-mcp-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
@@ -7119,6 +7120,13 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
+// CRM MCP server (epic #5991). The transport ships with an empty catalog;
+// CRM read tools (#5993) + resources (#5994) provide the real catalog.
+const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
+  catalog: emptyCrmMcpCatalog<WorkerBindings>(),
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -10014,6 +10022,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
     crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
+    crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:
