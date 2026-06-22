@@ -5256,6 +5256,7 @@ const keybindingsSettingsCard = (model: Model): Html => {
   const conflicts = detectOpenAgentsInputConflicts(profile)
   const specsByCategory = keybindingSpecsByCategory()
   return card("Keybindings", [
+    h.div([h.DataAttribute("keybindings-settings", "ready")], []),
     h.p([cls("card-body")], [
       "Edit the active Verse/action profile. Keyboard capture is live; mouse and wheel rows are shown as bindings but capture remains keyboard-first.",
     ]),
@@ -5267,6 +5268,7 @@ const keybindingsSettingsCard = (model: Model): Html => {
         [
           cls("adapter-btn"),
           h.Type("button"),
+          h.DataAttribute("keybinding-reset-all", "true"),
           h.OnClick(ResetAllInputBindings()),
         ],
         ["Restore all"],
@@ -5288,13 +5290,14 @@ const keybindingsSettingsCard = (model: Model): Html => {
         h.div([cls("keybinding-category"), h.Key(`keybinding-${category}`)], [
           h.div([cls("keybinding-category-head")], [
             h.h3([cls("field-label")], [category]),
-            h.button(
-              [
-                cls("adapter-btn"),
-                h.Type("button"),
-                h.OnClick(ResetInputBindingCategory({ category })),
-              ],
-              ["Restore category"],
+      h.button(
+        [
+          cls("adapter-btn"),
+          h.Type("button"),
+          h.DataAttribute("keybinding-reset-category", category),
+          h.OnClick(ResetInputBindingCategory({ category })),
+        ],
+        ["Restore category"],
             ),
           ]),
           specs.length === 0
@@ -5364,6 +5367,7 @@ const keybindingRow = (
         [
           cls("adapter-btn"),
           h.Type("button"),
+          h.DataAttribute("keybinding-reset-action", spec.id),
           h.OnClick(ResetInputBinding({ actionId: spec.id })),
         ],
         ["Restore"],
@@ -5386,6 +5390,7 @@ const keybindingSlotButton = (
       h.Type("button"),
       h.Tabindex(0),
       h.Autofocus(isCapturing),
+      h.DataAttribute("keybinding-slot", String(slot)),
       h.OnClick(StartedInputBindingCapture({ actionId: spec.id, slot })),
       h.OnKeyDownPreventDefault((key, modifiers) => {
         const captured = capturedKeyboardBindingFromKey(key, modifiers)

@@ -32,6 +32,7 @@ import {
   GotNodeState,
   GotNotifications,
   GotPylonStats,
+  NavigatedTo,
   OpenedManagedPane,
   SelectedComposerAccount,
   SucceededComposerTurn,
@@ -49,6 +50,7 @@ declare global {
     __OA_DESKTOP_SMOKE__?: Readonly<{
       enterCodeMode: () => void
       exitCodeMode: () => void
+      navigateTo: (pane: PaneId) => void
       openPane: (pane: PaneId) => boolean
       setComposerSession: (sessionRef: string) => void
       selectComposerAccount: (accountRef: string | null) => void
@@ -182,6 +184,7 @@ if (smokeHookEnabled()) {
   window.__OA_DESKTOP_SMOKE__ = Object.freeze({
     enterCodeMode: () => pushInbound(ChangedVerseMode({ mode: "code" })),
     exitCodeMode: () => pushInbound(ChangedVerseMode({ mode: "explore" })),
+    navigateTo: (pane) => pushInbound(NavigatedTo({ pane })),
     openPane: (pane) => {
       if (!smokePaneIds.has(pane)) return false
       pushInbound(OpenedManagedPane({ pane }))

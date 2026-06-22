@@ -6,9 +6,9 @@ Scope: current keyboard, mouse, Verse movement, and app shortcut handling in
 `openagents` and the linked `three-effect` runtime, with a recommendation for
 MMORPG-style custom keybindings.
 
-Status: implementation in progress. The shared contract, resolver, three-effect
-controller bindings, retained Verse runtime wiring, and Settings UI are
-implemented. Packaged custom-binding smoke coverage remains.
+Status: complete for the initial keybindings sequence. The shared contract,
+resolver, three-effect controller bindings, retained Verse runtime wiring,
+Settings UI, and packaged custom-binding smoke coverage are implemented.
 
 ## Implementation Progress
 
@@ -59,6 +59,14 @@ implemented. Packaged custom-binding smoke coverage remains.
   overlay actions so the Settings category is not placeholder-only. Unit
   coverage exercises render, capture, conflict display, persistence,
   corruption fallback, and restore behavior.
+- 2026-06-22: Issue #5950 extended the packaged desktop Verse smoke harness to
+  exercise custom bindings through the real Settings UI. The smoke opens
+  Settings, captures `movement.forward` from `W` to `I`, verifies `W` no longer
+  moves, verifies `I` moves before and after reload, checks mouselook drag and
+  wheel zoom after the rebind, confirms focused composer/terminal text surfaces
+  do not move the avatar, resets defaults, and verifies `W` moves again. The
+  receipt now includes stage diagnostics, screenshot artifact paths, pose deltas,
+  storage/UI probes, black-frame checks, and active-remount checks.
 
 ## Goal
 
@@ -114,10 +122,13 @@ Current persistence:
 - `preferences.ts` stores theme, default adapter/lane, notification-panel
   visibility, and gateway fallback under
   `autopilot-desktop.preferences.v2`.
-- There is no keybinding profile, no action catalog, no conflict model, and no
-  user-editable shortcut storage.
+- `apps/autopilot-desktop/src/ui/input-profile-preferences.ts` stores the active
+  keybinding profile separately under `autopilot-desktop.input-bindings.v1`.
+- `@openagentsinc/input-bindings` owns the action catalog, default profile,
+  conflict model, native-reserved checks, formatting helpers, profile fallback,
+  and named keyboard-control primitive.
 
-Important gap:
+Resolved subscription gap:
 
 - `interpretKey` knows about `Cmd/Ctrl-Shift-V`, and tests call `PressedKey`
   directly, but `subscriptions.ts` currently forwards only a fixed
@@ -125,6 +136,8 @@ Important gap:
   test can pass while the real DOM subscription path does not forward the key.
   Custom keybindings will make this class of bug more likely unless we replace
   the static "known keys" gate with profile-driven resolution.
+- Issue #5946 replaced that static gate with profile-driven resolution and a
+  real subscription test proving a changed key reaches the reducer path.
 
 ### Verse And Three.js Input Layer
 
@@ -159,7 +172,7 @@ The library has reusable primitives:
 - `createThreePlayerController`.
 - `keyboardTargeting` for Tab-based target cycling.
 
-Current hard-coded movement bindings:
+Default movement bindings:
 
 - `KeyW` / `ArrowUp`: forward.
 - `KeyS` / `ArrowDown`: backward.
@@ -173,10 +186,9 @@ Current hard-coded movement bindings:
 - Pointer lock plus mouse deltas: first-person mouselook mode.
 - `Tab` / `Shift-Tab`: keyboard target cycling inside `trainingRun.ts`.
 
-The current library API exposes controller choice and controller options, but
-not a keymap. The desktop type shim exposes `keyboardTargeting?: { enabled?,
-maxTargets? }`, `thirdPersonController?: ThreePlayerControllerOptions`, and
-`walkController?: WasdMouseLookControllerOptions`, but no binding profile.
+The shared `three-effect` API now accepts movement and target binding maps,
+updates those bindings in place, and keeps the retained scene identity stable
+when only the active input profile changes.
 
 ## Useful Reference: Drei KeyboardControls
 
@@ -207,27 +219,31 @@ Desktop coverage:
 - `apps/autopilot-desktop/tests/terminal-log-pane.test.ts` checks that editable
   terminal focus blocks app shortcuts.
 - `apps/autopilot-desktop/scripts/verse-launch-smoke.ts` exercises packaged
-  movement, mouselook drag, wheel zoom, nonblank frames, and code overlay input.
+  movement, mouselook drag, wheel zoom, nonblank frames, code overlay input, and
+  custom keybinding capture/reload/reset through Settings.
+- `apps/autopilot-desktop/tests/preferences.test.ts` covers keybinding Settings
+  render, capture, conflict display, persistence, restore, and corruption
+  fallback.
+- `apps/autopilot-desktop/tests/verse-launch-checklist.test.ts` covers input
+  profile projection and binding changes without retained scene rebuilds.
+- `packages/input-bindings/src/index.test.ts` covers profile schema/defaults,
+  partial/corrupt fallback, labels, conflict detection, native-reserved checks,
+  action resolution, and the named keyboard-control primitive.
 
 Three-effect coverage:
 
-- `packages/core/src/index.test.ts` covers the hard-coded WASD code mapping,
+- `packages/core/src/index.test.ts` covers default and custom WASD binding maps,
   desired movement vector math, third-person movement, sprinting backward with
   `S`, target cycling, and controller option resolution.
-- `trainingRun.ts` has retained update behavior for scene data, but binding
-  changes are not modeled.
+- `trainingRun.ts` has retained update behavior for scene data and in-place
+  binding changes, so profile updates do not remount the scene.
 
-Coverage gaps:
+Remaining coverage opportunities:
 
-- no test for custom bindings;
-- no schema for a persisted input profile;
-- no conflict detection tests;
-- no real subscription test proving a changed key reaches the reducer;
-- no custom movement test such as "IJKL moves while WASD no longer does";
-- no test that binding changes update the live controller without remounting
-  the scene;
-- no settings UI test for capture/rebind/restore defaults;
-- no packaged smoke for rebind persistence across reload.
+- Mouse and wheel capture remain future work; mouse/wheel bindings can be shown
+  and modeled, but Settings capture is keyboard-first today.
+- Import/export JSON, multi-profile management, and action-bar macro capture are
+  still product extensions beyond this first keybindings sequence.
 
 ## Product Requirements
 
@@ -546,6 +562,10 @@ No runtime behavior should change in this phase.
 8. Verify typing in chat/composer/terminal does not move the avatar.
 9. Reload and verify the profile persists.
 10. Reset defaults and verify WASD works again.
+
+Completion note: Issues #5944 through #5950 implemented the six phases above.
+The remaining items are follow-on product extensions, not blockers for the
+initial MMO-style keyboard customization path.
 
 ## Recommended First Issues
 

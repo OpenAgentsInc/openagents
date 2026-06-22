@@ -324,6 +324,67 @@ type VerseCodingOverlaySmoke = {
   }
 }
 
+type KeybindingUiProbe = {
+  readonly ok: boolean
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly activeLabel: string
+  readonly storedCodes: ReadonlyArray<string>
+  readonly visibleTextSample: string
+}
+
+type LocalPoseSample = {
+  readonly animation: string | null
+  readonly capturedAtMs: number | null
+  readonly x: number
+  readonly y: number
+  readonly z: number
+}
+
+type KeybindingMovementProbe = {
+  readonly ok: boolean
+  readonly expected: "movement" | "stationary"
+  readonly keyCode: string
+  readonly poseBefore: LocalPoseSample | null
+  readonly poseAfter: LocalPoseSample | null
+  readonly poseDelta: number | null
+  readonly frame: PixelSmoke & {
+    readonly path: string
+  }
+  readonly visualDiff: MovementSmoke
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
+type KeybindingFocusedTypingProbe = {
+  readonly ok: boolean
+  readonly target: "composer" | "terminal"
+  readonly activeTag: string
+  readonly valueTail: string
+  readonly poseBefore: LocalPoseSample | null
+  readonly poseAfter: LocalPoseSample | null
+  readonly poseDelta: number | null
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
+type CustomKeybindingSmoke = {
+  readonly ok: boolean
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly captureProbe: KeybindingUiProbe
+  readonly persistedAfterCapture: KeybindingUiProbe
+  readonly wSuppressed: KeybindingMovementProbe
+  readonly iMovement: KeybindingMovementProbe
+  readonly mouseLookAfterRebind: MouseLookDragSmoke
+  readonly codeOverlayProbe: VerseCodingOverlayProbe
+  readonly composerFocusedTyping: KeybindingFocusedTypingProbe
+  readonly terminalFocusedTyping: KeybindingFocusedTypingProbe
+  readonly persistenceAfterReload: KeybindingUiProbe
+  readonly iMovementAfterReload: KeybindingMovementProbe
+  readonly resetProbe: KeybindingUiProbe
+  readonly wMovementAfterReset: KeybindingMovementProbe
+  readonly activeHostRemounts: ReadonlyArray<VerseSceneDiagnostic>
+  readonly blackFrameEvents: ReadonlyArray<VerseSceneDiagnostic>
+  readonly diagnosticsSample: ReadonlyArray<VerseSceneDiagnostic>
+}
+
 type VerseLaunchReceipt = {
   readonly ok: boolean
   readonly message: string
@@ -351,6 +412,7 @@ type VerseLaunchReceipt = {
   readonly continuousMovement: ContinuousMovementSmoke
   readonly mouseLookDrag: MouseLookDragSmoke
   readonly retainedLiveUpdate: RetainedLiveUpdateSmoke
+  readonly customKeybindings: CustomKeybindingSmoke
   readonly codingOverlay: VerseCodingOverlaySmoke
   readonly typecheckProof: string
 }
@@ -536,49 +598,169 @@ const movementSmoke = (
   }
 }
 
-const keyDownW = async (cdp: CdpClient): Promise<void> => {
+type KeyboardSpec = {
+  readonly code: string
+  readonly key: string
+  readonly nativeVirtualKeyCode: number
+  readonly text: string
+  readonly windowsVirtualKeyCode: number
+}
+
+const keySpecW: KeyboardSpec = {
+  code: "KeyW",
+  key: "w",
+  nativeVirtualKeyCode: 87,
+  text: "w",
+  windowsVirtualKeyCode: 87,
+}
+
+const keySpecD: KeyboardSpec = {
+  code: "KeyD",
+  key: "d",
+  nativeVirtualKeyCode: 68,
+  text: "d",
+  windowsVirtualKeyCode: 68,
+}
+
+const keySpecI: KeyboardSpec = {
+  code: "KeyI",
+  key: "i",
+  nativeVirtualKeyCode: 73,
+  text: "i",
+  windowsVirtualKeyCode: 73,
+}
+
+const keyDown = async (
+  cdp: CdpClient,
+  spec: KeyboardSpec,
+): Promise<void> => {
   await cdp.send("Input.dispatchKeyEvent", {
     type: "keyDown",
-    key: "w",
-    code: "KeyW",
-    text: "w",
-    unmodifiedText: "w",
-    windowsVirtualKeyCode: 87,
-    nativeVirtualKeyCode: 87,
+    key: spec.key,
+    code: spec.code,
+    text: spec.text,
+    unmodifiedText: spec.text,
+    windowsVirtualKeyCode: spec.windowsVirtualKeyCode,
+    nativeVirtualKeyCode: spec.nativeVirtualKeyCode,
   })
+}
+
+const keyUp = async (
+  cdp: CdpClient,
+  spec: KeyboardSpec,
+): Promise<void> => {
+  await cdp.send("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: spec.key,
+    code: spec.code,
+    windowsVirtualKeyCode: spec.windowsVirtualKeyCode,
+    nativeVirtualKeyCode: spec.nativeVirtualKeyCode,
+  })
+}
+
+const holdKey = async (
+  cdp: CdpClient,
+  spec: KeyboardSpec,
+  ms: number,
+): Promise<void> => {
+  await keyDown(cdp, spec)
+  await wait(ms)
+  await keyUp(cdp, spec)
+  await wait(220)
+}
+
+const tapKey = async (
+  cdp: CdpClient,
+  spec: KeyboardSpec,
+): Promise<void> => {
+  await keyDown(cdp, spec)
+  await wait(40)
+  await keyUp(cdp, spec)
+  await wait(180)
+}
+
+const latestLocalPose = (
+  diagnostics: ReadonlyArray<VerseSceneDiagnostic>,
+): LocalPoseSample | null => {
+  for (let i = diagnostics.length - 1; i >= 0; i -= 1) {
+    const entry = diagnostics[i]
+    if (entry?.event !== "local-pose.cached") continue
+    const x = entry.detail["x"]
+    const y = entry.detail["y"]
+    const z = entry.detail["z"]
+    if (
+      typeof x === "number" &&
+      typeof y === "number" &&
+      typeof z === "number" &&
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      Number.isFinite(z)
+    ) {
+      const capturedAtMs = entry.detail["capturedAtMs"]
+      const animation = entry.detail["animation"]
+      return {
+        x,
+        y,
+        z,
+        capturedAtMs:
+          typeof capturedAtMs === "number" && Number.isFinite(capturedAtMs)
+            ? capturedAtMs
+            : null,
+        animation: typeof animation === "string" ? animation : null,
+      }
+    }
+  }
+  return null
+}
+
+const poseDelta = (
+  before: LocalPoseSample | null,
+  after: LocalPoseSample | null,
+): number | null => {
+  if (before === null || after === null) return null
+  return Math.hypot(after.x - before.x, after.z - before.z)
+}
+
+const remountDiagnostics = (
+  diagnostics: ReadonlyArray<VerseSceneDiagnostic>,
+): ReadonlyArray<VerseSceneDiagnostic> =>
+  diagnostics.filter(entry =>
+    entry.event === "verse-host.remount.mounted" ||
+    entry.event === "verse-host.remount.swapped" ||
+    entry.event === "verse-host.remount.scheduled",
+  )
+
+const activeRemountDiagnostics = (
+  diagnostics: ReadonlyArray<VerseSceneDiagnostic>,
+): ReadonlyArray<VerseSceneDiagnostic> =>
+  remountDiagnostics(diagnostics).filter(entry => {
+    if (entry.event !== "verse-host.remount.mounted") return true
+    return !(
+      entry.detail["hadPrevious"] === false &&
+      entry.detail["reason"] === "direct"
+    )
+  })
+
+const blackFrameDiagnostics = (
+  diagnostics: ReadonlyArray<VerseSceneDiagnostic>,
+): ReadonlyArray<VerseSceneDiagnostic> =>
+  diagnostics.filter(entry => entry.event.includes("black-frame"))
+
+const keyDownW = async (cdp: CdpClient): Promise<void> => {
+  await keyDown(cdp, keySpecW)
 }
 
 const keyDownD = async (cdp: CdpClient): Promise<void> => {
-  await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyDown",
-    key: "d",
-    code: "KeyD",
-    text: "d",
-    unmodifiedText: "d",
-    windowsVirtualKeyCode: 68,
-    nativeVirtualKeyCode: 68,
-  })
+  await keyDown(cdp, keySpecD)
 }
 
 const keyUpW = async (cdp: CdpClient): Promise<void> => {
-  await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key: "w",
-    code: "KeyW",
-    windowsVirtualKeyCode: 87,
-    nativeVirtualKeyCode: 87,
-  })
+  await keyUp(cdp, keySpecW)
   await wait(160)
 }
 
 const keyUpD = async (cdp: CdpClient): Promise<void> => {
-  await cdp.send("Input.dispatchKeyEvent", {
-    type: "keyUp",
-    key: "d",
-    code: "KeyD",
-    windowsVirtualKeyCode: 68,
-    nativeVirtualKeyCode: 68,
-  })
+  await keyUp(cdp, keySpecD)
 }
 
 type MouseDragPoint = {
@@ -744,6 +926,53 @@ const readVerseSceneDiagnostics = async (
     returnByValue: true,
   })
   return response.result?.value ?? []
+}
+
+const evaluateValue = async <T>(
+  cdp: CdpClient,
+  label: string,
+  expression: string,
+): Promise<T> => {
+  const response = await cdp.send<{
+    readonly result?: { readonly value?: T }
+    readonly exceptionDetails?: unknown
+  }>("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true,
+  })
+  if (response.exceptionDetails !== undefined) {
+    throw new Error(
+      `${label} threw in Chrome: ${JSON.stringify(response.exceptionDetails)}`,
+    )
+  }
+  const value = response.result?.value
+  if (value === undefined) throw new Error(`${label} returned no probe`)
+  return value
+}
+
+const runStage = async <T>(
+  label: string,
+  task: () => Promise<T>,
+  timeoutMs = 45_000,
+): Promise<T> => {
+  console.error(`[verse-smoke] ${label}...`)
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  try {
+    const result = await Promise.race([
+      task(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+          timeoutMs,
+        )
+      }),
+    ])
+    console.error(`[verse-smoke] ${label}: ok`)
+    return result
+  } finally {
+    if (timeout !== null) clearTimeout(timeout)
+  }
 }
 
 const contentTypeFor = (path: string): string => {
@@ -1329,6 +1558,416 @@ const focusedTypingProbeExpression = `
 })()
 `
 
+const customKeybindingStorageKey = "autopilot-desktop.input-bindings.v1"
+
+const keybindingUiProbeHelpers = `
+  const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+  const afterFrames = () => new Promise(resolve =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  )
+  const waitFor = async (predicate, timeout = 10000) => {
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      if (predicate()) return true
+      await wait(100)
+    }
+    return false
+  }
+  const storedForwardCodes = () => {
+    try {
+      const raw = localStorage.getItem("${customKeybindingStorageKey}")
+      const profile = raw === null ? null : JSON.parse(raw)
+      const bindings = profile?.bindings?.["movement.forward"]
+      return Array.isArray(bindings)
+        ? bindings.flatMap(binding => typeof binding?.code === "string" ? [binding.code] : [])
+        : []
+    } catch {
+      return []
+    }
+  }
+  const keybindingVisibleText = () =>
+    String(document.body.innerText ?? "").replace(/\\s+/g, " ").trim().slice(0, 420)
+  const movementForwardPrimaryButton = () =>
+    document.querySelector("[data-keybinding-action='movement.forward'] [data-keybinding-slot='0']")
+  const uiProbe = (extraBlockers = []) => {
+    const button = movementForwardPrimaryButton()
+    const storedCodes = storedForwardCodes()
+    const activeLabel = button instanceof HTMLElement
+      ? String(button.textContent ?? "").trim()
+      : ""
+    const blockerRefs = [
+      ...(document.querySelector("[data-keybindings-settings='ready']") === null
+        ? ["verse.keybindings.settingsMissing"]
+        : []),
+      ...(button instanceof HTMLElement ? [] : ["verse.keybindings.forwardPrimaryMissing"]),
+      ...extraBlockers,
+    ]
+    return {
+      ok: blockerRefs.length === 0,
+      blockerRefs,
+      activeLabel,
+      storedCodes,
+      visibleTextSample: keybindingVisibleText(),
+    }
+  }
+`
+
+const openKeybindingsAndCaptureForwardExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  const smokeReady = await waitFor(() => globalThis.__OA_DESKTOP_SMOKE__ !== undefined)
+  const smoke = globalThis.__OA_DESKTOP_SMOKE__
+  if (!smokeReady || smoke === undefined || typeof smoke.navigateTo !== "function") {
+    return uiProbe(["verse.keybindings.smokeHook"])
+  }
+  smoke.exitCodeMode()
+  smoke.navigateTo("settings")
+  await waitFor(() => document.querySelector("[data-keybindings-settings='ready']") !== null)
+  await afterFrames()
+  await wait(300)
+  const button = movementForwardPrimaryButton()
+  if (!(button instanceof HTMLElement)) return uiProbe(["verse.keybindings.forwardPrimaryMissing"])
+  button.scrollIntoView({ block: "center", inline: "center" })
+  button.click()
+  button.focus()
+  await afterFrames()
+  await wait(160)
+  const active = document.activeElement
+  return uiProbe(active === button ? [] : ["verse.keybindings.captureFocus"])
+})()
+`
+
+const persistedForwardKeyIProbeExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  await waitFor(() => storedForwardCodes().includes("KeyI"))
+  await afterFrames()
+  await wait(180)
+  const storedCodes = storedForwardCodes()
+  const blockers = [
+    ...(storedCodes[0] === "KeyI" ? [] : ["verse.keybindings.persistedPrimaryNotI"]),
+    ...(storedCodes.includes("KeyW") ? ["verse.keybindings.persistedStillHasW"] : []),
+  ]
+  return uiProbe(blockers)
+})()
+`
+
+const openVerseExploreExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  const smokeReady = await waitFor(() => globalThis.__OA_DESKTOP_SMOKE__ !== undefined)
+  const smoke = globalThis.__OA_DESKTOP_SMOKE__
+  if (smokeReady && smoke !== undefined) {
+    smoke.exitCodeMode()
+    smoke.navigateTo?.("chat")
+  }
+  await waitFor(() => document.querySelector(".app-shell-verse") !== null)
+  await customElements.whenDefined("oa-training-run").catch(() => null)
+  await waitFor(() => {
+    const host = document.querySelector(".three-effect-chat-scene")
+    return host?.shadowRoot?.querySelector("canvas") instanceof HTMLCanvasElement
+  })
+  const active = document.activeElement
+  if (active instanceof HTMLElement) active.blur()
+  await afterFrames()
+  await wait(300)
+  const host = document.querySelector(".three-effect-chat-scene")
+  const canvas = host?.shadowRoot?.querySelector("canvas")
+  const canvasRect = canvas instanceof HTMLCanvasElement
+    ? (() => {
+      const r = canvas.getBoundingClientRect()
+      return { top: r.top, right: r.right, bottom: r.bottom, left: r.left, width: r.width, height: r.height }
+    })()
+    : null
+  return {
+    ok: canvasRect !== null,
+    canvasRect,
+    visibleTextSample: keybindingVisibleText(),
+  }
+})()
+`
+
+const customTerminalFocusExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  await waitFor(() => document.querySelector("[data-autopilot-terminal-text-selection]") !== null)
+  await afterFrames()
+  await wait(250)
+  const textarea = document.querySelector("[data-autopilot-terminal-text-selection]")
+  if (textarea instanceof HTMLTextAreaElement) {
+    textarea.focus()
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+  }
+  const active = document.activeElement
+  return {
+    ok: active instanceof HTMLTextAreaElement,
+    activeTag: active instanceof HTMLElement ? active.tagName.toLowerCase() : "none",
+    valueTail: active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+      ? active.value.slice(-80)
+      : "",
+    blockerRefs: active instanceof HTMLTextAreaElement ? [] : ["verse.keybindings.terminalFocus"],
+  }
+})()
+`
+
+const currentFocusedTextareaExpression = `
+(() => {
+  const active = document.activeElement
+  return {
+    ok: active instanceof HTMLTextAreaElement,
+    activeTag: active instanceof HTMLElement ? active.tagName.toLowerCase() : "none",
+    valueTail: active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+      ? active.value.slice(-80)
+      : "",
+    blockerRefs: active instanceof HTMLTextAreaElement ? [] : ["verse.keybindings.textareaFocus"],
+  }
+})()
+`
+
+const focusedTypingValueProbeExpression = (expectedTail: string): string => `
+(() => {
+  const active = document.activeElement
+  const activeTag = active instanceof HTMLElement ? active.tagName.toLowerCase() : "none"
+  const value = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement
+    ? active.value
+    : ""
+  return {
+    ok: active instanceof HTMLTextAreaElement && value.endsWith(${JSON.stringify(expectedTail)}),
+    activeTag,
+    valueTail: value.slice(-80),
+  }
+})()
+`
+
+const persistenceAfterReloadProbeExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  const smokeReady = await waitFor(() => globalThis.__OA_DESKTOP_SMOKE__ !== undefined)
+  const smoke = globalThis.__OA_DESKTOP_SMOKE__
+  await waitFor(() => document.querySelector(".app-shell-verse") !== null)
+  await customElements.whenDefined("oa-training-run").catch(() => null)
+  await waitFor(() => {
+    const host = document.querySelector(".three-effect-chat-scene")
+    return host?.shadowRoot?.querySelector("canvas") instanceof HTMLCanvasElement
+  })
+  if (smokeReady && smoke !== undefined) {
+    smoke.exitCodeMode()
+    smoke.navigateTo?.("settings")
+  }
+  await waitFor(() => document.querySelector("[data-keybindings-settings='ready']") !== null)
+  await afterFrames()
+  await wait(500)
+  const storedCodes = storedForwardCodes()
+  const blockers = [
+    ...(storedCodes[0] === "KeyI" ? [] : ["verse.keybindings.reloadPrimaryNotI"]),
+    ...(storedCodes.includes("KeyW") ? ["verse.keybindings.reloadStillHasW"] : []),
+  ]
+  return uiProbe(blockers)
+})()
+`
+
+const resetDefaultsProbeExpression = `
+(async () => {
+${keybindingUiProbeHelpers}
+  const smokeReady = await waitFor(() => globalThis.__OA_DESKTOP_SMOKE__ !== undefined)
+  const smoke = globalThis.__OA_DESKTOP_SMOKE__
+  if (!smokeReady || smoke === undefined) {
+    return uiProbe(["verse.keybindings.smokeHook"])
+  }
+  smoke.exitCodeMode()
+  smoke.navigateTo?.("settings")
+  await waitFor(() => document.querySelector("[data-keybindings-settings='ready']") !== null)
+  await afterFrames()
+  await wait(240)
+  const reset = document.querySelector("[data-keybinding-reset-all='true']")
+  if (!(reset instanceof HTMLElement)) return uiProbe(["verse.keybindings.resetAllMissing"])
+  reset.click()
+  await waitFor(() => storedForwardCodes().includes("KeyW"))
+  await afterFrames()
+  await wait(240)
+  const storedCodes = storedForwardCodes()
+  const blockers = [
+    ...(storedCodes[0] === "KeyW" ? [] : ["verse.keybindings.resetPrimaryNotW"]),
+    ...(storedCodes.includes("KeyI") ? ["verse.keybindings.resetStillHasI"] : []),
+  ]
+  return uiProbe(blockers)
+})()
+`
+
+const runKeybindingMovementProbe = async (
+  cdp: CdpClient,
+  spec: KeyboardSpec,
+  expected: "movement" | "stationary",
+  screenshotPath: string,
+  holdMs = 1_350,
+): Promise<KeybindingMovementProbe> => {
+  const beforeScreenshot = await cdp.send<{ readonly data: string }>(
+    "Page.captureScreenshot",
+    { format: "png", fromSurface: true },
+  )
+  const beforeBytes = Buffer.from(beforeScreenshot.data, "base64")
+  const diagnosticsBefore = await readVerseSceneDiagnostics(cdp)
+  const poseBefore = latestLocalPose(diagnosticsBefore)
+  await holdKey(cdp, spec, holdMs)
+  const afterScreenshot = await cdp.send<{ readonly data: string }>(
+    "Page.captureScreenshot",
+    { format: "png", fromSurface: true },
+  )
+  const afterBytes = Buffer.from(afterScreenshot.data, "base64")
+  writeFileSync(screenshotPath, afterBytes)
+  const frame = pixelSmoke(afterBytes)
+  const visualDiff = movementSmoke(beforeBytes, afterBytes, screenshotPath)
+  const diagnosticsAfter = await readVerseSceneDiagnostics(cdp)
+  const diagnostics = diagnosticsAfter.slice(diagnosticsBefore.length)
+  const poseAfter = latestLocalPose(diagnosticsAfter)
+  const delta = poseDelta(poseBefore, poseAfter)
+  const remounts = remountDiagnostics(diagnostics)
+  const blackFrames = blackFrameDiagnostics(diagnostics)
+  const movementOk =
+    delta !== null && delta > 0.35 && visualDiff.ok
+  const stationaryOk =
+    (delta === null || delta < 0.08) && visualDiff.changedPixelRatio < 0.05
+
+  return {
+    ok:
+      frame.ok &&
+      remounts.length === 0 &&
+      blackFrames.length === 0 &&
+      (expected === "movement" ? movementOk : stationaryOk),
+    expected,
+    keyCode: spec.code,
+    poseBefore,
+    poseAfter,
+    poseDelta: delta,
+    frame: {
+      ...frame,
+      path: relativePath(screenshotPath),
+    },
+    visualDiff,
+    diagnosticsSample: diagnostics.slice(-20),
+  }
+}
+
+const runFocusedTypingProbe = async (
+  cdp: CdpClient,
+  target: "composer" | "terminal",
+  focusExpression: string,
+  expectTextInsertion: boolean,
+): Promise<KeybindingFocusedTypingProbe> => {
+  const focusProbe = await evaluateValue<{
+    readonly activeTag: string
+    readonly blockerRefs?: ReadonlyArray<string>
+    readonly ok: boolean
+    readonly valueTail: string
+  }>(cdp, `Verse keybinding ${target} focus`, focusExpression)
+  const diagnosticsBefore = await readVerseSceneDiagnostics(cdp)
+  const poseBefore = latestLocalPose(diagnosticsBefore)
+  await tapKey(cdp, keySpecI)
+  const valueProbe = await evaluateValue<{
+    readonly activeTag: string
+    readonly ok: boolean
+    readonly valueTail: string
+  }>(cdp, `Verse keybinding ${target} typing`, focusedTypingValueProbeExpression("i"))
+  const diagnosticsAfter = await readVerseSceneDiagnostics(cdp)
+  const diagnostics = diagnosticsAfter.slice(diagnosticsBefore.length)
+  const poseAfter = latestLocalPose(diagnosticsAfter)
+  const delta = poseDelta(poseBefore, poseAfter)
+  const remounts = remountDiagnostics(diagnostics)
+  const blackFrames = blackFrameDiagnostics(diagnostics)
+  return {
+    ok:
+      focusProbe.ok &&
+      (expectTextInsertion ? valueProbe.ok : valueProbe.activeTag === "textarea") &&
+      (delta === null || delta < 0.08) &&
+      remounts.length === 0 &&
+      blackFrames.length === 0,
+    target,
+    activeTag: valueProbe.activeTag || focusProbe.activeTag,
+    valueTail: valueProbe.valueTail || focusProbe.valueTail,
+    poseBefore,
+    poseAfter,
+    poseDelta: delta,
+    diagnosticsSample: diagnostics.slice(-20),
+  }
+}
+
+const runMouseLookDragSmoke = async (
+  cdp: CdpClient,
+  rect: Rect,
+  screenshotPath: string,
+): Promise<MouseLookDragSmoke> => {
+  const mouseLookBefore = await cdp.send<{ readonly data: string }>(
+    "Page.captureScreenshot",
+    { format: "png", fromSurface: true },
+  )
+  const mouseLookBeforeBytes = Buffer.from(mouseLookBefore.data, "base64")
+  const diagnosticsBeforeMouseLook = await readVerseSceneDiagnostics(cdp)
+  const dragPoint = await dragSceneMouse(cdp, rect)
+  await wheelSceneMouse(cdp, dragPoint)
+  const mouseLookAfter = await cdp.send<{ readonly data: string }>(
+    "Page.captureScreenshot",
+    { format: "png", fromSurface: true },
+  )
+  const mouseLookAfterBytes = Buffer.from(mouseLookAfter.data, "base64")
+  writeFileSync(screenshotPath, mouseLookAfterBytes)
+  const mouseLookPixels = pixelSmoke(mouseLookAfterBytes)
+  const mouseLookMovement = movementSmoke(
+    mouseLookBeforeBytes,
+    mouseLookAfterBytes,
+    screenshotPath,
+  )
+  const diagnosticsAfterMouseLook = await readVerseSceneDiagnostics(cdp)
+  const mouseLookDiagnostics = diagnosticsAfterMouseLook.slice(
+    diagnosticsBeforeMouseLook.length,
+  )
+  const mouseLookProbe = await evaluateValue<{
+    readonly cursorAfterDrag?: string
+    readonly scenePointerTarget?: boolean
+    readonly selectedText?: string
+    readonly topElements?: ReadonlyArray<string>
+  }>(
+    cdp,
+    "Verse keybinding mouselook drag probe",
+    mouseLookDragProbeExpression(dragPoint.endX, dragPoint.endY),
+  )
+  const mouseLookRemounts = remountDiagnostics(mouseLookDiagnostics)
+  const cameraControlEvents = mouseLookDiagnostics.filter(
+    entry => entry.event === "verse-host.camera-control",
+  )
+  const observedDragControl = cameraControlEvents.some(
+    entry => entry.detail["type"] === "drag",
+  )
+  const observedWheelControl = cameraControlEvents.some(
+    entry => entry.detail["type"] === "wheel",
+  )
+  return {
+    ok:
+      mouseLookPixels.ok &&
+      mouseLookMovement.ok &&
+      mouseLookRemounts.length === 0 &&
+      blackFrameDiagnostics(mouseLookDiagnostics).length === 0 &&
+      observedDragControl &&
+      observedWheelControl &&
+      mouseLookProbe.cursorAfterDrag !== "text" &&
+      mouseLookProbe.scenePointerTarget === true &&
+      (mouseLookProbe.selectedText ?? "").trim().length === 0,
+    observedDragControl,
+    observedWheelControl,
+    cursorAfterDrag: mouseLookProbe.cursorAfterDrag ?? "missing",
+    scenePointerTarget: mouseLookProbe.scenePointerTarget === true,
+    selectedText: mouseLookProbe.selectedText ?? "",
+    topElements: mouseLookProbe.topElements ?? [],
+    cameraControlEvents,
+    frame: {
+      ...mouseLookPixels,
+      path: relativePath(screenshotPath),
+    },
+    movement: mouseLookMovement,
+    activeHostRemounts: mouseLookRemounts,
+    diagnosticsSample: mouseLookDiagnostics.slice(-20),
+  }
+}
+
 const main = async (): Promise<void> => {
   const devSmokeUrl = process.env.AUTOPILOT_DESKTOP_SMOKE_URL?.trim()
   const target: "packaged" | "dev" =
@@ -1350,6 +1989,26 @@ const main = async (): Promise<void> => {
   const mouseLookScreenshotPath = join(
     proofDir,
     "verse-launch-smoke-after-mouselook.png",
+  )
+  const customKeybindingWPath = join(
+    proofDir,
+    "verse-keybinding-after-w-suppressed.png",
+  )
+  const customKeybindingIPath = join(
+    proofDir,
+    "verse-keybinding-after-i-movement.png",
+  )
+  const customKeybindingMouseLookPath = join(
+    proofDir,
+    "verse-keybinding-after-mouselook.png",
+  )
+  const customKeybindingReloadIPath = join(
+    proofDir,
+    "verse-keybinding-after-reload-i-movement.png",
+  )
+  const customKeybindingResetWPath = join(
+    proofDir,
+    "verse-keybinding-after-reset-w-movement.png",
   )
   const codingOverlayScreenshotPath = join(
     proofDir,
@@ -1682,6 +2341,235 @@ const main = async (): Promise<void> => {
       diagnosticsSample: mouseLookDiagnostics.slice(-20),
     }
 
+    const diagnosticsBeforeCustomKeybindings = await readVerseSceneDiagnostics(cdp)
+    const captureProbe = await runStage(
+      "custom keybindings: open Settings and start forward capture",
+      () =>
+        evaluateValue<KeybindingUiProbe>(
+          cdp,
+          "Verse keybinding capture setup",
+          openKeybindingsAndCaptureForwardExpression,
+        ),
+    )
+    await runStage("custom keybindings: press I for capture", () =>
+      tapKey(cdp, keySpecI),
+    )
+    const persistedAfterCapture = await runStage(
+      "custom keybindings: verify captured profile",
+      () =>
+        evaluateValue<KeybindingUiProbe>(
+          cdp,
+          "Verse keybinding capture persistence",
+          persistedForwardKeyIProbeExpression,
+        ),
+    )
+    const verseAfterCapture = await runStage(
+      "custom keybindings: return to Verse after capture",
+      () =>
+        evaluateValue<{
+          readonly canvasRect: Rect | null
+          readonly ok: boolean
+          readonly visibleTextSample: string
+        }>(cdp, "Verse keybinding return to explore", openVerseExploreExpression),
+    )
+    if (verseAfterCapture.canvasRect === null) {
+      throw new Error(
+        `Verse keybinding smoke could not return to a canvas: ${verseAfterCapture.visibleTextSample}`,
+      )
+    }
+    const wSuppressed = await runStage(
+      "custom keybindings: verify W no longer moves",
+      () =>
+        runKeybindingMovementProbe(
+          cdp,
+          keySpecW,
+          "stationary",
+          customKeybindingWPath,
+        ),
+    )
+    const iMovement = await runStage(
+      "custom keybindings: verify I moves",
+      () =>
+        runKeybindingMovementProbe(
+          cdp,
+          keySpecI,
+          "movement",
+          customKeybindingIPath,
+        ),
+    )
+    const mouseLookAfterRebind = await runStage(
+      "custom keybindings: verify mouselook after rebind",
+      () =>
+        runMouseLookDragSmoke(
+          cdp,
+          verseAfterCapture.canvasRect,
+          customKeybindingMouseLookPath,
+        ),
+    )
+    const diagnosticsBeforeReload = await readVerseSceneDiagnostics(cdp)
+    const customPreReloadDiagnostics = diagnosticsBeforeReload.slice(
+      diagnosticsBeforeCustomKeybindings.length,
+    )
+
+    await cdp.send("Page.reload", { ignoreCache: true })
+    await wait(700)
+    const persistenceAfterReload = await runStage(
+      "custom keybindings: verify profile after reload",
+      () =>
+        evaluateValue<KeybindingUiProbe>(
+          cdp,
+          "Verse keybinding reload persistence",
+          persistenceAfterReloadProbeExpression,
+        ),
+    )
+    const verseAfterReload = await runStage(
+      "custom keybindings: return to Verse after reload",
+      () =>
+        evaluateValue<{
+          readonly canvasRect: Rect | null
+          readonly ok: boolean
+          readonly visibleTextSample: string
+        }>(cdp, "Verse keybinding return after reload", openVerseExploreExpression),
+    )
+    if (verseAfterReload.canvasRect === null) {
+      throw new Error(
+        `Verse keybinding smoke could not return to a canvas after reload: ${verseAfterReload.visibleTextSample}`,
+      )
+    }
+    const diagnosticsAfterReloadBaseline = await readVerseSceneDiagnostics(cdp)
+    const iMovementAfterReload = await runStage(
+      "custom keybindings: verify I moves after reload",
+      () =>
+        runKeybindingMovementProbe(
+          cdp,
+          keySpecI,
+          "movement",
+          customKeybindingReloadIPath,
+        ),
+    )
+    const customCodeOverlayProbe = await runStage(
+      "custom keybindings: open coding overlay for focused typing",
+      () =>
+        evaluateValue<VerseCodingOverlayProbe>(
+          cdp,
+          "Verse keybinding coding overlay focus setup",
+          codingOverlayProbeExpression,
+        ),
+      60_000,
+    )
+    const composerFocusedTyping = await runStage(
+      "custom keybindings: composer focus captures I",
+      () =>
+        runFocusedTypingProbe(
+          cdp,
+          "composer",
+          currentFocusedTextareaExpression,
+          true,
+        ),
+    )
+    const terminalFocusedTyping = await runStage(
+      "custom keybindings: terminal focus suppresses movement",
+      () =>
+        runFocusedTypingProbe(
+          cdp,
+          "terminal",
+          customTerminalFocusExpression,
+          false,
+        ),
+    )
+    const resetProbe = await runStage(
+      "custom keybindings: reset defaults",
+      () =>
+        evaluateValue<KeybindingUiProbe>(
+          cdp,
+          "Verse keybinding reset defaults",
+          resetDefaultsProbeExpression,
+        ),
+    )
+    const verseAfterReset = await runStage(
+      "custom keybindings: return to Verse after reset",
+      () =>
+        evaluateValue<{
+          readonly canvasRect: Rect | null
+          readonly ok: boolean
+          readonly visibleTextSample: string
+        }>(cdp, "Verse keybinding return after reset", openVerseExploreExpression),
+    )
+    if (verseAfterReset.canvasRect === null) {
+      throw new Error(
+        `Verse keybinding smoke could not return to a canvas after reset: ${verseAfterReset.visibleTextSample}`,
+      )
+    }
+    const wMovementAfterReset = await runStage(
+      "custom keybindings: verify W moves after reset",
+      () =>
+        runKeybindingMovementProbe(
+          cdp,
+          keySpecW,
+          "movement",
+          customKeybindingResetWPath,
+        ),
+    )
+    const diagnosticsAfterCustomKeybindings = await readVerseSceneDiagnostics(cdp)
+    const customPostReloadDiagnostics = diagnosticsAfterCustomKeybindings.slice(
+      diagnosticsAfterReloadBaseline.length,
+    )
+    const customActiveHostRemounts = [
+      ...activeRemountDiagnostics(customPreReloadDiagnostics),
+      ...activeRemountDiagnostics(customPostReloadDiagnostics),
+    ]
+    const customBlackFrames = [
+      ...blackFrameDiagnostics(customPreReloadDiagnostics),
+      ...blackFrameDiagnostics(customPostReloadDiagnostics),
+    ]
+    const customKeybindingBlockerRefs = [
+      ...captureProbe.blockerRefs,
+      ...persistedAfterCapture.blockerRefs,
+      ...(verseAfterCapture.ok ? [] : ["verse.keybindings.returnToVerse"]),
+      ...(wSuppressed.ok ? [] : ["verse.keybindings.wStillMoves"]),
+      ...(iMovement.ok ? [] : ["verse.keybindings.iDoesNotMove"]),
+      ...(mouseLookAfterRebind.ok ? [] : ["verse.keybindings.mouseLookAfterRebind"]),
+      ...(customCodeOverlayProbe.ok
+        ? []
+        : customCodeOverlayProbe.blockerRefs.map(ref => `verse.keybindings.${ref}`)),
+      ...(composerFocusedTyping.ok ? [] : ["verse.keybindings.composerFocusMovesAvatar"]),
+      ...(terminalFocusedTyping.ok ? [] : ["verse.keybindings.terminalFocusMovesAvatar"]),
+      ...persistenceAfterReload.blockerRefs,
+      ...(verseAfterReload.ok ? [] : ["verse.keybindings.returnAfterReload"]),
+      ...(iMovementAfterReload.ok ? [] : ["verse.keybindings.reloadIDoesNotMove"]),
+      ...resetProbe.blockerRefs,
+      ...(verseAfterReset.ok ? [] : ["verse.keybindings.returnAfterReset"]),
+      ...(wMovementAfterReset.ok ? [] : ["verse.keybindings.resetWDoesNotMove"]),
+      ...(customActiveHostRemounts.length === 0
+        ? []
+        : ["verse.keybindings.activeHostRemount"]),
+      ...(customBlackFrames.length === 0
+        ? []
+        : ["verse.keybindings.blackFrame"]),
+    ]
+    const customKeybindings: CustomKeybindingSmoke = {
+      ok: customKeybindingBlockerRefs.length === 0,
+      blockerRefs: customKeybindingBlockerRefs,
+      captureProbe,
+      persistedAfterCapture,
+      wSuppressed,
+      iMovement,
+      mouseLookAfterRebind,
+      codeOverlayProbe: customCodeOverlayProbe,
+      composerFocusedTyping,
+      terminalFocusedTyping,
+      persistenceAfterReload,
+      iMovementAfterReload,
+      resetProbe,
+      wMovementAfterReset,
+      activeHostRemounts: customActiveHostRemounts,
+      blackFrameEvents: customBlackFrames,
+      diagnosticsSample: [
+        ...customPreReloadDiagnostics.slice(-12),
+        ...customPostReloadDiagnostics.slice(-12),
+      ],
+    }
+
     const codingOverlayProbeEvaluation = await cdp.send<{
       readonly result?: { readonly value?: VerseCodingOverlayProbe }
       readonly exceptionDetails?: unknown
@@ -1842,6 +2730,7 @@ const main = async (): Promise<void> => {
       continuousMovement.ok &&
       mouseLookDrag.ok &&
       retainedLiveUpdate.ok &&
+      customKeybindings.ok &&
       codingOverlay.ok
     const receipt: VerseLaunchReceipt = {
       ok,
@@ -1862,6 +2751,7 @@ const main = async (): Promise<void> => {
         "github:OpenAgentsInc/openagents#5917",
         "github:OpenAgentsInc/openagents#5916",
         "github:OpenAgentsInc/openagents#5932",
+        "github:OpenAgentsInc/openagents#5950",
         "script:apps/autopilot-desktop/scripts/verse-launch-smoke.ts",
       ],
       packagedFiles:
@@ -1887,6 +2777,7 @@ const main = async (): Promise<void> => {
       continuousMovement,
       mouseLookDrag,
       retainedLiveUpdate,
+      customKeybindings,
       codingOverlay,
       typecheckProof:
         "Desktop typecheck is enforced by apps/autopilot-desktop `bun run typecheck` and runs first in `bun run verify:deploy`.",
@@ -1907,6 +2798,9 @@ const main = async (): Promise<void> => {
           mouseLookDrag.ok
             ? ""
             : "verse.launch.mouseLookDragWheelCameraControlNoTextCursorSelectionBlankFrameOrRemount",
+          customKeybindings.ok
+            ? ""
+            : `verse.launch.customKeybindings(${customKeybindings.blockerRefs.join(",")})`,
           codingOverlay.ok
             ? ""
             : `verse.launch.codingOverlay(${codingOverlay.blockerRefs.join(",")})`,
