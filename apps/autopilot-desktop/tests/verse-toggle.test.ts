@@ -247,9 +247,12 @@ describe("The Verse runtime toggle (#5730)", () => {
     expect(intent.kind).not.toBe("toggle-verse")
   })
 
-  test("the hotbar carries a labeled Verse toggle slot", () => {
-    const verse = HOTBAR_SLOTS.find((slot) => slot.kind === "verse")
-    expect(verse).toBeDefined()
-    expect(verse?.kind === "verse" ? verse.label : "").toBe("Verse")
+  test("the hotbar carries a default coder action slot", () => {
+    expect(HOTBAR_SLOTS[0]).toMatchObject({
+      actionId: "action_bar.slot_1",
+      iconName: "OpenaiLogoRegular",
+      label: "New Coder Session",
+      number: 1,
+    })
   })
 })

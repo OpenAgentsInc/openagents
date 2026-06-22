@@ -29,6 +29,8 @@
 // sidebar button. It joins a group's `destinations` (a secondary entry) or it
 // becomes a palette command. The primary sidebar stays at the group count (~5).
 
+import { openAgentsInputActionSpecById } from "@openagentsinc/input-bindings"
+
 import type { PaneId } from "./model.js"
 
 // A leaf destination inside a group: the pane it opens + how it's labelled.
@@ -475,48 +477,32 @@ export const CODE_MODE_SHORTCUTS: ReadonlyArray<ShortcutSpec> =
   commandShortcutSpecs(codeModePaletteCommands)
 
 // ── HUD H1: the hotbar (#5499) ───────────────────────────────────────────────
-// The hotbar still mirrors the primary group count so the visual layout stays
-// stable, but group cells are intentionally blank/inert placeholders. The only
-// active hotbar slot is the terminal ⌘K command-palette button.
-export type HotbarSlot =
-  | Readonly<{
-      kind: "group"
-      // 1-based slot number retained only to preserve the old slot count/order.
-      number: number
-      label: string
-      group: string
-      groupLabel: string
-    }>
-  | Readonly<{
-      kind: "palette"
-      // The command-palette slot has no number; it is the dedicated ⌘K slot the
-      // prior HUDs (Commander, WGPUI) shipped alongside the numbered slots.
-      label: string
-      chord: string
-    }>
-  // #5730 The Verse: a toggle slot that shows/hides the game-world view behind
-  // chat. Lit when on (default ON). Carries a keyboard chord like the ⌘K slot.
-  | Readonly<{
-      kind: "verse"
-      label: string
-      chord: string
-    }>
+// The hotbar is now the Verse action bar: ten MMO-style action slots bound to
+// `action_bar.slot_1` ... `action_bar.slot_10` in the shared input profile.
+// Slot 1 opens a fresh coding-session surface and uses the synced OpenAI icon.
+export type HotbarSlot = Readonly<{
+  kind: "action"
+  number: number
+  actionId: string
+  label: string
+  iconName?: "OpenaiLogoRegular"
+}>
 
-// The blank slots are exactly the primary nav groups, keyed by their accel so
-// count/order follow the registry without reintroducing click behavior.
-const groupHotbarSlots: ReadonlyArray<HotbarSlot> = [...NAV_GROUPS]
-  .sort((a, b) => a.accel - b.accel)
-  .map((group) => ({
-    kind: "group" as const,
-    number: group.accel,
-    label: group.label,
-    group: group.id,
-    groupLabel: group.label,
-  }))
+const HOTBAR_ACTION_SLOT_COUNT = 10
 
-export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = [
-  ...groupHotbarSlots,
-  // #5730 The Verse: a toggle for the game-world view behind chat (default ON).
-  { kind: "verse" as const, label: "Verse", chord: "⌘⇧V" },
-  { kind: "palette" as const, label: "Command palette", chord: "⌘K" },
-]
+export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = Array.from(
+  { length: HOTBAR_ACTION_SLOT_COUNT },
+  (_, index): HotbarSlot => {
+    const number = index + 1
+    const actionId = `action_bar.slot_${number}`
+    return {
+      kind: "action",
+      number,
+      actionId,
+      label:
+        openAgentsInputActionSpecById.get(actionId)?.title ??
+        `Action Slot ${number}`,
+      ...(number === 1 ? { iconName: "OpenaiLogoRegular" as const } : {}),
+    }
+  },
+)

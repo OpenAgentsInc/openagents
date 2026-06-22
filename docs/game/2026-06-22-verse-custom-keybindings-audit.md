@@ -245,6 +245,17 @@ Remaining coverage opportunities:
 - Import/export JSON, multi-profile management, and action-bar macro capture are
   still product extensions beyond this first keybindings sequence.
 
+### 2026-06-22 Hotbar Follow-up
+
+The Verse hotbar is re-enabled as the first visible consumer of
+`action_bar.slot_1` through `action_bar.slot_10`. It reads labels from the
+shared input profile, shows the default number-key bindings in the world HUD,
+and routes slot 1 (`Digit1` by default) to a fresh coder-session overlay using
+the synced OpenAI icon catalog. The important architectural point is that this
+is not a parallel shortcut table: the hotbar, Settings keybinding UI, DOM
+keyboard subscription, and reducer path all resolve through
+`@openagentsinc/input-bindings`.
+
 ## Product Requirements
 
 The keybinding system should feel closer to an MMO than a small app shortcut

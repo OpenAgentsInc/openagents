@@ -72,6 +72,7 @@ const inboundStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =
 // example, Cmd/Ctrl-Shift-V now resolves because `hud.toggle_code_overlay` is in
 // the profile instead of hoping `"v"` was remembered in a static Set.
 const DESKTOP_SHORTCUT_ACTION_IDS = new Set([
+  "action_bar.slot_1",
   "app.command_palette",
   "app.submit",
   "app.pane_next",
@@ -180,7 +181,13 @@ const desktopKeyboardContexts = (
 ): ReadonlyArray<OpenAgentsInputContext> =>
   inEditable
     ? ["command_palette"]
-    : ["global", "managed_pane", "command_palette", "verse_code_overlay"]
+    : [
+        "global",
+        "managed_pane",
+        "command_palette",
+        "verse_explore",
+        "verse_code_overlay",
+      ]
 
 const isEditableTarget = (target: EventTarget | null): boolean => {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null
@@ -200,6 +207,7 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
       const handler = (raw: unknown): void => {
         const event = raw as {
           key?: string
+          code?: string
           metaKey?: boolean
           ctrlKey?: boolean
           shiftKey?: boolean
@@ -207,25 +215,36 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
           preventDefault?: () => void
         }
         const key = event.key ?? ""
+        const code = event.code
         const meta = event.metaKey ?? false
         const ctrl = event.ctrlKey ?? false
         const inEditable = isEditableTarget(event.target ?? null)
+        const shortcutInput = code === undefined
+          ? {
+              key,
+              meta,
+              ctrl,
+              shift: event.shiftKey ?? false,
+              inEditable,
+            }
+          : {
+              key,
+              code,
+              meta,
+              ctrl,
+              shift: event.shiftKey ?? false,
+              inEditable,
+            }
         // Only forward actions the reducer might act on. Native edit/movement
         // commands (Cmd-C/V/X/A/Z, Cmd-arrow, etc.) keep reaching WebKit/AppKit.
-        const decision = keyboardForwardDecision({
-          key,
-          meta,
-          ctrl,
-          shift: event.shiftKey ?? false,
-          inEditable,
-        })
+        const decision = keyboardForwardDecision(shortcutInput)
         if (!decision.forward) return
         if (decision.preventDefault) {
           event.preventDefault?.()
         }
         Queue.offerUnsafe(
           queue,
-          PressedKey({ key, meta, ctrl, shift: event.shiftKey ?? false, inEditable }),
+          PressedKey(shortcutInput),
         )
         // Palette focus management. The reducer toggles the command palette on
         // Cmd/Ctrl-K (and closes it on Escape / after running a command via

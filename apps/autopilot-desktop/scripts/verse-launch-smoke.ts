@@ -165,7 +165,7 @@ type DomProbe = {
   readonly checks: {
     readonly appShellVerse: boolean
     readonly chatPaneWorld: boolean
-    readonly noVerseHotbar: boolean
+    readonly verseHotbar: boolean
     readonly noVerseChatbar: boolean
     readonly noCommandPaletteAffordance: boolean
     readonly noPylonBaseStatus: boolean
@@ -1164,7 +1164,6 @@ const domProbeExpression = `
   const overlapPairs = [
     [".chat-content-overlay", ".character-creation-overlay", "chat/character-creation"],
     [".chat-content-overlay", ".pylon-base-status", "chat/pylon-base"],
-    [".chat-content-overlay", ".hotbar", "chat/hotbar"],
     [".pylon-base-status", ".hotbar", "pylon-base/hotbar"],
   ].flatMap(([a, b, label]) => overlapArea(rect(a), rect(b)) > 1 ? [label] : [])
 
@@ -1219,7 +1218,9 @@ const domProbeExpression = `
   const checks = {
     appShellVerse: document.querySelector(".app-shell-verse") !== null,
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
-    noVerseHotbar: document.querySelector(".app-shell-verse .hotbar") === null,
+    verseHotbar:
+      document.querySelector(".app-shell-verse .hotbar") !== null &&
+      document.querySelector(".app-shell-verse .hotbar-slot-coder") !== null,
     noVerseChatbar:
       document.querySelector(".app-shell-verse .chat-composer-verse") === null &&
       document.querySelector(".app-shell-verse .chat-input") === null,

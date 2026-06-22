@@ -470,13 +470,17 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
     expect(tree).not.toContain("Advanced")
     expect(tree).not.toContain("Send message")
     expect(tree).not.toContain("chat-composer-verse")
-    expect(tree).not.toContain("hotbar-slot")
     expect(tree).not.toContain("Command palette")
     expect(tree).not.toContain("⌘K")
     expect(tree).not.toContain("chat-thread-shell")
     expect(tree).not.toContain("chat-message-list")
     expect(tree).not.toContain("pylon-base-status")
     expect(tree).not.toContain("character-creation-overlay")
+    expect(tree).toContain("hotbar-slot")
+    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("data-hotbar-icon")
+    expect(tree).toContain("OpenaiLogoRegular")
+    expect(tree).toContain("New Coder Session")
     expect(tree).not.toContain("sidebar")
     expect(tree).not.toContain("status-hud-overlay")
     expect(tree).not.toContain("shell-target-tabs")
@@ -503,7 +507,7 @@ describe("nav shell keeps the view mountable (black-screen guard holds)", () => 
   })
 })
 
-// ── HUD H1: the blank hotbar (#5499) ─────────────────────────────────────────
+// ── HUD H1: the Verse action hotbar (#5499) ──────────────────────────────────
 // Cycle-safe serialize so we can assert what the hotbar renders without a DOM
 // (plain foldkit Html objects — same approach as zero-base-shell.test.ts).
 const serializeView = (node: unknown): string => {
@@ -518,45 +522,69 @@ const serializeView = (node: unknown): string => {
   })
 }
 
-describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
-  test("the blank group cells still mirror the nav group count/order", () => {
-    const groupSlots = HOTBAR_SLOTS.filter((s) => s.kind === "group")
-    expect(groupSlots.length).toBe(NAV_GROUPS.length)
-    for (const slot of groupSlots) {
-      if (slot.kind !== "group") continue
-      const group = groupByAccel(slot.number)
-      expect(group, `slot ${slot.number} has no registry group`).not.toBeNull()
-      expect(slot.group).toBe(group?.id)
-      expect(slot.number).toBe(group?.accel)
-      expect(slot.label).toBe(group?.label)
-    }
+describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
+  const exploreModel = Model.make({
+    ...initialModel,
+    pane: "chat",
+    verseEnabled: true,
+    verseMode: "explore",
   })
 
-  test("a dedicated ⌘K command-palette slot sits alongside the blank cells", () => {
-    const palette = HOTBAR_SLOTS.filter((s) => s.kind === "palette")
-    expect(palette.length).toBe(1)
-    if (palette[0]?.kind === "palette") expect(palette[0].chord).toBe("⌘K")
-    expect(HOTBAR_SLOTS[HOTBAR_SLOTS.length - 1]?.kind).toBe("palette")
+  test("the hotbar exposes ten action-bar slots in keyboard order", () => {
+    expect(HOTBAR_SLOTS).toHaveLength(10)
+    expect(HOTBAR_SLOTS.map((slot) => slot.actionId)).toEqual([
+      "action_bar.slot_1",
+      "action_bar.slot_2",
+      "action_bar.slot_3",
+      "action_bar.slot_4",
+      "action_bar.slot_5",
+      "action_bar.slot_6",
+      "action_bar.slot_7",
+      "action_bar.slot_8",
+      "action_bar.slot_9",
+      "action_bar.slot_10",
+    ])
+    expect(HOTBAR_SLOTS[0]).toMatchObject({
+      actionId: "action_bar.slot_1",
+      iconName: "OpenaiLogoRegular",
+      label: "New Coder Session",
+      number: 1,
+    })
   })
 
-  test("bare and modified number keys do nothing; blank hotbar cells are not shortcuts", () => {
-    const intent = interpretKey(initialModel, key({ key: "2" }))
-    expect(intent).toEqual({ kind: "none" })
-    const [model] = update(initialModel, PressedKey({
-      key: "2", meta: false, ctrl: false, shift: false, inEditable: false,
-    }))
-    expect(model.pane).toBe(initialModel.pane)
-    expect(
-      interpretKey(initialModel, key({ key: "3", meta: true, inEditable: true })),
-    ).toEqual({ kind: "none" })
+  test("slot 1 opens a fresh coder-session surface", () => {
+    expect(interpretKey(exploreModel, key({ key: "1", code: "Digit1" }))).toEqual({
+      kind: "open-coder-session",
+    })
+    expect(interpretKey(exploreModel, key({ key: "2", code: "Digit2" }))).toEqual({
+      kind: "none",
+    })
+
+    const [model, commands] = update(
+      exploreModel,
+      PressedKey({
+        key: "1",
+        code: "Digit1",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: false,
+      }),
+    )
+    expect(model.pane).toBe("chat")
+    expect(model.verseEnabled).toBe(true)
+    expect(model.verseMode).toBe("code")
+    expect(model.composerSessionRef).toBeNull()
+    expect(model.spawnObjective).toBe("")
+    expect(commands.map((command) => command.name)).toContain("LoadManagedAccounts")
   })
 
-  test("a bare number key is IGNORED while typing in an input (no slot jump)", () => {
-    expect(interpretKey(initialModel, key({ key: "3", inEditable: true })).kind).toBe("none")
-  })
-
-  test("an unmapped bare number (no group) is a no-op", () => {
-    expect(interpretKey(initialModel, key({ key: "8" })).kind).toBe("none")
+  test("bare number keys remain ignored while typing", () => {
+    expect(interpretKey(exploreModel, key({
+      key: "1",
+      code: "Digit1",
+      inEditable: true,
+    })).kind).toBe("none")
   })
 
   test("the shell renders the bottom-left hotbar with the text input to its right", () => {
@@ -570,45 +598,28 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
     expect(tree).toContain("shell-input")
     expect(tree.indexOf("hotbar-inline")).toBeLessThan(tree.indexOf("shell-input"))
     expect(tree).toContain("hotbar-slot")
-    expect(tree).toContain("hotbar-slot-empty")
-    expect(tree).toContain("hotbar-slot-chord")
-    expect(tree).not.toContain("hotbar-slot-icon")
-    expect(tree).not.toContain("hotbar-slot-key")
-    expect(tree).toContain("⌘K")
+    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("hotbar-slot-icon")
+    expect(tree).toContain("hotbar-slot-key")
+    expect(tree).toContain("OpenaiLogoRegular")
+    expect(tree).toContain("New Coder Session (1)")
+    expect(tree).not.toContain("⌘K")
   })
 
-  // #5883: the hotbar keeps the Verse toggle accessible but no longer prints a
-  // visible "Verse" label over the first-paint world.
-  test("the hotbar face is blank except the palette chord and unlabeled Verse toggle", () => {
+  test("the hotbar face is concise and does not inline raw SVG markup", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar-slot-empty")
-    expect(tree).toContain("hotbar-slot-palette")
-    expect(tree).toContain("Command palette (⌘K)")
-    expect(tree).toContain("hotbar-slot-verse")
-    expect(tree).toContain("Verse: on (⌘⇧V)")
+    expect(tree).toContain("hotbar-slot-coder")
+    expect(tree).toContain("New Coder Session (1)")
+    expect(tree).toContain("Action Slot 10 (0)")
     expect(tree).toContain("hotbar-slot-tooltip")
-    expect(tree).not.toContain("viewBox")
-    expect(tree).not.toContain("Code — press")
+    expect(tree).not.toContain("hotbar-slot-palette")
+    expect(tree).not.toContain("hotbar-slot-verse")
+    expect(tree).not.toContain("<svg")
+    expect(tree).not.toContain("Command palette")
   })
 
-  // #5730 The Verse: defaults ON, so the toggle slot renders lit.
-  test("the Verse toggle slot is lit by default (verseEnabled defaults ON)", () => {
-    const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
-    expect(tree).toContain("hotbar-slot-verse-on")
-    expect(tree).toContain("Verse: on (⌘⇧V)")
-  })
-
-  // #5730 The Verse: toggling off drops the lit class but keeps the slot.
-  test("the Verse toggle slot is dim when verseEnabled is off", () => {
-    const tree = serializeView(
-      view(Model.make({ ...initialModel, pane: "composer", verseEnabled: false })).body,
-    )
-    expect(tree).toContain("hotbar-slot-verse")
-    expect(tree).not.toContain("hotbar-slot-verse-on")
-    expect(tree).toContain("Verse: off (⌘⇧V)")
-  })
-
-  test("the hotbar renders on the full UI as a bottom-left floating strip without active group highlighting", () => {
+  test("the hotbar renders on the full UI as a bottom-left floating action strip", () => {
     const tree = serializeView(view(Model.make({ ...initialModel, pane: "composer" })).body)
     expect(tree).toContain("hotbar")
     expect(tree).toContain("hotbar-floating")
@@ -620,10 +631,6 @@ describe("#5499 HUD H1 hotbar — blank group cells plus ⌘K", () => {
       view(Model.make({ ...initialModel, pane: "training-fullscreen" })).body,
     )
     expect(tree).not.toContain("hotbar-slot")
-  })
-
-  test("the slot count = nav groups + the Verse toggle + the palette slot (#5730)", () => {
-    expect(HOTBAR_SLOTS.length).toBe(NAV_GROUPS.length + 2)
   })
 })
 

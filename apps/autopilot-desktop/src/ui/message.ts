@@ -125,6 +125,7 @@ export const RanPaletteCommand = m("RanPaletteCommand", {
 // nav keys never fire mid-typing (#5465 scoping rule).
 export const PressedKey = m("PressedKey", {
   key: S.String,
+  code: S.optional(S.String),
   meta: S.Boolean,
   ctrl: S.Boolean,
   shift: S.Boolean,
@@ -165,6 +166,7 @@ export const ToggleVerse = m("ToggleVerse")
 export const ChangedVerseMode = m("ChangedVerseMode", {
   mode: S.Literals(["explore", "code"]),
 })
+export const ClickedHotbarNewCoderSession = m("ClickedHotbarNewCoderSession")
 
 // Chat: expand/collapse a single chat message's "program details" disclosure
 // (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
@@ -745,6 +747,7 @@ export const Message = S.Union([
   SelectedDiffFile,
   ToggleVerse,
   ChangedVerseMode,
+  ClickedHotbarNewCoderSession,
   ToggledChatMessageDetails,
   ClickedCoordinatorToggle,
   SettledCoordinatorToggle,

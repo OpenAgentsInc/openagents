@@ -1396,8 +1396,8 @@ body {
 }
 
 /* ── HUD H1: the hotbar (#5499) ──────────────────────────────────────────────
-   A compact bottom-left command strip. Per owner directive, numbered group
-   cells are blank/inert placeholders; only the ⌘K command-palette slot is live. */
+   A compact bottom-left Verse action strip. Slot 1 is a live coder-session
+   action; the remaining numbered cells are visible default-key placeholders. */
 .hotbar {
   position: fixed;
   left: clamp(0.75rem, 2vw, 1.25rem);
@@ -1442,6 +1442,9 @@ body {
   font: inherit;
   overflow: visible;
 }
+.hotbar-slot-action {
+  isolation: isolate;
+}
 .hotbar-slot-button {
   cursor: pointer;
 }
@@ -1456,7 +1459,7 @@ body {
   cursor: default;
   pointer-events: none;
 }
-.hotbar-slot-chord {
+.hotbar-slot-label {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1464,6 +1467,24 @@ body {
   font-family: ui-monospace, monospace;
   font-size: 0.78rem;
   font-weight: 700;
+  line-height: 1;
+}
+.hotbar-slot-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: currentColor;
+  background: currentColor;
+  -webkit-mask: var(--hotbar-slot-icon-mask) center / contain no-repeat;
+  mask: var(--hotbar-slot-icon-mask) center / contain no-repeat;
+}
+.hotbar-slot-key {
+  position: absolute;
+  right: 0.25rem;
+  bottom: 0.18rem;
+  color: rgb(255 255 255 / 0.5);
+  font-family: ui-monospace, monospace;
+  font-size: 0.58rem;
+  font-weight: 800;
   line-height: 1;
 }
 .hotbar-slot-tooltip {
@@ -1501,39 +1522,14 @@ body {
 .hotbar-slot-button:focus-visible .hotbar-slot-tooltip {
   opacity: 1;
 }
-/* The ⌘K palette slot is the always-white accent slot (the StarCraft command
-   slot), distinguishing the launcher from the numbered group slots. */
-.hotbar-slot-palette {
-  border-color: color-mix(in srgb, var(--hud-primary) 40%, transparent);
-  color: var(--hud-secondary, #f2f4f8);
-}
-.hotbar-slot-palette:hover {
-  color: var(--hud-primary, #fff);
-  border-color: color-mix(in srgb, var(--hud-primary) 65%, transparent);
-}
-/* #5730 The Verse: the game-world toggle slot. Wider than a square so the short
-   "Verse" label fits; lit (glowing) when the view is on, dim when off. */
-.hotbar-slot-verse {
-  width: 3rem;
-  min-width: 0;
-  padding: 0;
-}
-.hotbar-slot-label {
-  font-family: ui-monospace, monospace;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-.hotbar-slot-verse-on {
+.hotbar-slot-coder {
   color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);
   background: color-mix(in srgb, var(--hud-primary) 14%, transparent);
   box-shadow: 0 0 10px color-mix(in srgb, var(--hud-primary) 35%, transparent);
 }
-.hotbar-slot-verse-on:hover,
-.hotbar-slot-verse-on:focus-visible {
+.hotbar-slot-coder:hover,
+.hotbar-slot-coder:focus-visible {
   border-color: color-mix(in srgb, var(--hud-primary) 85%, transparent);
 }
 /* HUD H7 (#5504): the live status/meters overlay. A small top-right corner card

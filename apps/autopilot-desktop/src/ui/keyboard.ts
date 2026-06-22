@@ -6,12 +6,20 @@
 // Message named by the intent, so the shortcut layer reuses real handlers and
 // never invents a new control verb (audit §5.2).
 
+import {
+  openAgentsInputActionMapFromProfile,
+  openAgentsInputActionSpecById,
+  parseOpenAgentsInputProfileOrDefault,
+  resolveOpenAgentsKeyboardEventActionBindings,
+} from "@openagentsinc/input-bindings"
+
 import { groupForPane } from "./nav.js"
 import type { Model, PaneId } from "./model.js"
 
 // Raw key event the subscription forwards (mirrors the PressedKey payload).
 export type KeyEvent = Readonly<{
   key: string
+  code?: string
   meta: boolean
   ctrl: boolean
   shift: boolean
@@ -36,8 +44,42 @@ export type KeyIntent =
   | Readonly<{ kind: "back-to-shell" }>
   // #5730 The Verse: ⌘⇧V / Ctrl-⇧V toggles the game-world view on/off.
   | Readonly<{ kind: "toggle-verse" }>
+  // HUD H1: action-bar slot 1 opens a fresh coder-session surface.
+  | Readonly<{ kind: "open-coder-session" }>
 
 const isModified = (event: KeyEvent): boolean => event.meta || event.ctrl
+
+const isVerseExploreActionContext = (model: Model): boolean =>
+  model.pane === "chat" &&
+  model.verseEnabled &&
+  model.verseMode === "explore"
+
+const actionIdsForKey = (
+  model: Model,
+  event: KeyEvent,
+): ReadonlyArray<string> => {
+  const profile = parseOpenAgentsInputProfileOrDefault(model.inputProfile)
+  const actionMap = openAgentsInputActionMapFromProfile(profile)
+  return resolveOpenAgentsKeyboardEventActionBindings(
+    actionMap,
+    {
+      key: event.key,
+      ...(event.code === undefined ? {} : { code: event.code }),
+      metaKey: event.meta,
+      ctrlKey: event.ctrl,
+      shiftKey: event.shift,
+    },
+    { allowExtraModifiers: false },
+  )
+    .map((match) => match.actionId)
+    .filter((actionId) => {
+      const spec = openAgentsInputActionSpecById.get(actionId)
+      return (
+        spec?.contexts.includes("verse_explore") === true &&
+        isVerseExploreActionContext(model)
+      )
+    })
+}
 
 // Resolve the destination `delta` steps from `pane` within its group, clamped
 // to the group bounds (no wrap, so the ends are stable). Returns null when the
@@ -95,6 +137,10 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
   }
 
   if (isModified(event)) return { kind: "none" }
+
+  if (actionIdsForKey(model, event).includes("action_bar.slot_1")) {
+    return { kind: "open-coder-session" }
+  }
 
   // ── j / k move between sub-panes of the current group ─────────────────────
   if (key === "j") {

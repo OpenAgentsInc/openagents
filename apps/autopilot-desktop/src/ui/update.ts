@@ -218,6 +218,40 @@ const verseCodeControlsEnabled = (model: Model): boolean =>
 const verseControlsDisabled = (model: Model): boolean =>
   verseSceneActive(model) && !verseCodeControlsEnabled(model)
 
+const openNewCoderSession = (model: Model): Result => {
+  const codeModeAdapter =
+    model.spawnAdapter === "apple_fm" ? "claude_agent" : model.spawnAdapter
+  return [
+    withCodeModeSync(
+      Model.make({
+        ...model,
+        pane: "chat",
+        verseEnabled: true,
+        verseMode: "code",
+        spawnAdapter: codeModeAdapter,
+        composerAccountRef: null,
+        composerSessionRef: null,
+        composerReply: "",
+        composerTurns: [],
+        composerStatus: { text: "", tone: "idle" },
+        composerPending: false,
+        composerPendingObjective: null,
+        spawnObjective: "",
+        managedAccountsPending: true,
+        managedAccountsStatus: {
+          text:
+            codeModeAdapter === "claude_agent"
+              ? "loading Claude Agent accounts..."
+              : "loading Codex accounts...",
+          tone: "info" as const,
+        },
+      }),
+      "model_tick",
+    ),
+    [LoadManagedAccounts()],
+  ]
+}
+
 // #5730: how many active payment particles the chat-world scene keeps at once.
 // Bounds the live beam/burst count behind chat and the scene-options signature
 // the renderer diffs on, so a busy stream cannot grow the set without limit.
@@ -1356,14 +1390,26 @@ export const update = (model: Model, message: Message): Result => {
     // PressedKey is interpreted purely (keyboard.ts) then re-dispatched as an
     // existing Message, so every shortcut reuses a real handler (no no-ops).
     case "PressedKey": {
-      if (verseControlsDisabled(model)) return [model, noCommands]
-      const intent = interpretKey(model, {
-        key: message.key,
-        meta: message.meta,
-        ctrl: message.ctrl,
-        shift: message.shift,
-        inEditable: message.inEditable,
-      })
+      const keyEvent = message.code === undefined
+        ? {
+            key: message.key,
+            meta: message.meta,
+            ctrl: message.ctrl,
+            shift: message.shift,
+            inEditable: message.inEditable,
+          }
+        : {
+            key: message.key,
+            code: message.code,
+            meta: message.meta,
+            ctrl: message.ctrl,
+            shift: message.shift,
+            inEditable: message.inEditable,
+          }
+      const intent = interpretKey(model, keyEvent)
+      if (verseControlsDisabled(model) && intent.kind !== "open-coder-session") {
+        return [model, noCommands]
+      }
       switch (intent.kind) {
         case "none":
           return [model, noCommands]
@@ -1399,6 +1445,8 @@ export const update = (model: Model, message: Message): Result => {
             Model.make({ ...model, verseEnabled: !model.verseEnabled }),
             noCommands,
           ]
+        case "open-coder-session":
+          return openNewCoderSession(model)
       }
     }
 
@@ -1477,6 +1525,8 @@ export const update = (model: Model, message: Message): Result => {
     case "ToggleVerse":
       if (verseControlsDisabled(model)) return [model, noCommands]
       return [Model.make({ ...model, verseEnabled: !model.verseEnabled }), noCommands]
+    case "ClickedHotbarNewCoderSession":
+      return openNewCoderSession(model)
     case "ChangedVerseMode": {
       const enteringCode = message.mode === "code" && model.verseMode !== "code"
       const codeModeAdapter =

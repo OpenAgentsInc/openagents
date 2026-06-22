@@ -130,6 +130,7 @@ import {
   type PylonBaseProjection,
 } from "../shared/pylon-base-scene.js"
 import { chatWorldBuildFlags, chatWorldHudFlag } from "../shared/chat-world-flags.js"
+import { iconSvg, type IconName } from "../shared/openagents-icon-catalog.js"
 import {
   CHAT_WORLD_DESKTOP_AVATAR_REF,
   DEFAULT_TASSADAR_WORLD_RUN_REF,
@@ -275,8 +276,8 @@ import {
   ToggledEvent,
   ToggledDiffFile,
   ToggledDiffViewMode,
-  ToggleVerse,
   ChangedVerseMode,
+  ClickedHotbarNewCoderSession,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
@@ -677,80 +678,89 @@ const commandPalette = (model: Model): Html => {
   )
 }
 
-// ── HUD H1: the numbered hotbar (#5499) ──────────────────────────────────────
-// A StarCraft-style bottom-center command bar (the recurring OpenAgents HUD
-// pattern — Commander's `Hotbar.tsx`, the WGPUI K-slot bar; see
-// docs/launch/2026-06-19-previous-hud-systems-audit.md §3/§7). It is the FOURTH
-// consumer of the one nav registry: slots come straight from `HOTBAR_SLOTS`
-// (derived from `NAV_GROUPS` in nav.ts), NOT a parallel list. Each slot
-// dispatches an EXISTING message only for the ⌘K command-palette slot. The
-// numbered group cells are intentionally blank/inert placeholders per the
-// owner directive (2026-06-19): no click action, no icon, no label, no pane open.
-//
-// Rendered inside the zero-base shell input row on the bottom-left, and as a
-// floating bottom-left compact strip on the full UI. Group slots are decorative
-// blanks; ⌘K remains clickable.
-const hotbarSlotView = (model: Model, slot: HotbarSlot): Html => {
-  if (slot.kind === "palette") {
-    const title = `${slot.label} (${slot.chord})`
-    return h.button(
-      [
-        cls("hotbar-slot hotbar-slot-button hotbar-slot-palette"),
-        h.Type("button"),
-        h.Title(title),
-        h.AriaLabel(title),
-        h.OnClick(OpenedCommandPalette()),
-      ],
-      [
-        h.span([cls("hotbar-slot-chord"), h.AriaHidden(true)], [slot.chord]),
-        h.span([cls("hotbar-slot-tooltip")], [title]),
-      ],
-    )
-  }
-  // #5730 The Verse: an active toggle slot. Lit (on) when the runtime toggle is
-  // enabled; clicking (or ⌘⇧V) flips it. The world view itself only renders when
-  // the CHAT_WORLD_SCENE build flag is also on, but the toggle is always shown so
-  // the user-facing control is discoverable.
-  if (slot.kind === "verse") {
-    const on = model.verseEnabled
-    const title = `${slot.label}: ${on ? "on" : "off"} (${slot.chord})`
-    return h.button(
-      [
-        cls(
-          `hotbar-slot hotbar-slot-button hotbar-slot-verse${
-            on ? " hotbar-slot-verse-on" : ""
-          }`,
-        ),
-        h.Type("button"),
-        h.Title(title),
-        h.AriaLabel(title),
-        h.AriaPressed(on ? "true" : "false"),
-        h.OnClick(ToggleVerse()),
-      ],
-      [
-        h.span([cls("hotbar-slot-label"), h.AriaHidden(true)], [""]),
-        h.span([cls("hotbar-slot-tooltip")], [title]),
-      ],
-    )
-  }
-  return h.div(
-    [cls("hotbar-slot hotbar-slot-empty"), h.AriaHidden(true)],
+// ── HUD H1: the numbered Verse hotbar (#5499/#5946 follow-up) ────────────────
+// The hotbar is now the visible consumer of the shared MMO-style action-bar
+// keybindings. Slots are sourced from HOTBAR_SLOTS / the input profile, so the
+// labels and physical keys stay in sync with custom keybinding settings.
+const iconMaskValue = (name: IconName): string =>
+  `url("data:image/svg+xml,${encodeURIComponent(iconSvg(name))}")`
+
+const hotbarBindingLabel = (
+  profile: OpenAgentsInputProfile,
+  actionId: string,
+): string => {
+  const binding = profile.bindings[actionId]?.[0] ?? null
+  return binding === null ? "?" : openAgentsInputBindingLabel(binding)
+}
+
+const hotbarSlotIcon = (name: IconName): Html =>
+  h.span(
+    [
+      cls("hotbar-slot-icon"),
+      h.AriaHidden(true),
+      h.DataAttribute("hotbar-icon", name),
+      h.Style({ "--hotbar-slot-icon-mask": iconMaskValue(name) }),
+    ],
     [],
   )
+
+const hotbarSlotView = (
+  profile: OpenAgentsInputProfile,
+  slot: HotbarSlot,
+): Html => {
+  const chord = hotbarBindingLabel(profile, slot.actionId)
+  const title = `${slot.label} (${chord})`
+  const baseAttrs: ReadonlyArray<Attribute<Message>> = [
+    cls(
+      `hotbar-slot hotbar-slot-action${
+        slot.number === 1
+          ? " hotbar-slot-button hotbar-slot-coder"
+          : " hotbar-slot-empty"
+      }`,
+    ),
+    h.DataAttribute("hotbar-action", slot.actionId),
+    h.DataAttribute("hotbar-key", chord),
+    h.Title(title),
+    h.AriaLabel(title),
+  ]
+  const face = slot.iconName === undefined
+    ? h.span([cls("hotbar-slot-label"), h.AriaHidden(true)], [chord])
+    : hotbarSlotIcon(slot.iconName)
+  const children = slot.number === 1
+    ? [
+        face,
+        h.span([cls("hotbar-slot-key"), h.AriaHidden(true)], [chord]),
+        h.span([cls("hotbar-slot-tooltip")], [title]),
+      ]
+    : [
+        face,
+      ]
+  return slot.number === 1
+    ? h.button(
+        [
+          ...baseAttrs,
+          h.Type("button"),
+          h.OnClick(ClickedHotbarNewCoderSession()),
+        ],
+        children,
+      )
+    : h.div([...baseAttrs, h.AriaHidden(true)], children)
 }
 
 const hotbar = (
   model: Model,
   placement: "floating" | "inline" = "floating",
-): Html =>
-  h.div(
+): Html => {
+  const profile = parseOpenAgentsInputProfileOrDefault(model.inputProfile)
+  return h.div(
     [
       cls(`hotbar hotbar-${placement}`),
       h.Role("toolbar"),
       h.AriaLabel("Hotbar"),
     ],
-    HOTBAR_SLOTS.map((slot) => hotbarSlotView(model, slot)),
+    HOTBAR_SLOTS.map((slot) => hotbarSlotView(profile, slot)),
   )
+}
 
 // ── Nodes pane ────────────────────────────────────────────────────────────────
 
@@ -8488,6 +8498,7 @@ const rootView = (model: Model): Html => {
         verseCodeAccountInventory(model),
         verseCodeDock(model),
         verseCodeControlsVisible(model) ? managedPaneLayer(model) : h.empty,
+        hotbar(model),
         CHAT_WORLD_HUD ? verseBottomHud(model) : h.empty,
         verseCodeControlsVisible(model) ? commandPalette(model) : h.empty,
       ],

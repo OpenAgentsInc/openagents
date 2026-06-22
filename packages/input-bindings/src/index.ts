@@ -476,7 +476,7 @@ export const openAgentsInputActionSpecs: ReadonlyArray<OpenAgentsInputActionSpec
   ...Array.from({ length: 10 }, (_, index) =>
     action({
       id: `action_bar.slot_${index + 1}`,
-      title: `Action Slot ${index + 1}`,
+      title: index === 0 ? "New Coder Session" : `Action Slot ${index + 1}`,
       category: "Action Bar",
       kind: "press",
       contexts: ["verse_explore", "verse_pointer_locked"],
