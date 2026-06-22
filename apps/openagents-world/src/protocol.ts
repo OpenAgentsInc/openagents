@@ -11,6 +11,7 @@ import {
   type WorldRow,
   type WorldRef,
   type WorldSourceRef,
+  type WorldSubscriptionPlan,
   worldRowKey,
 } from "@openagentsinc/world-contract"
 
@@ -37,6 +38,8 @@ export type RegionSocketSessionAttachment = Readonly<{
   cursor: string
   queuedFrames: ReadonlyArray<string>
   seenRefs: ReadonlyArray<string>
+  interestTierByRef: Readonly<Record<string, "near" | "far">>
+  subscriptionPlan?: WorldSubscriptionPlan
 }>
 
 export type WorldTransportFrame =
@@ -517,6 +520,7 @@ export const makeInitialSessionAttachment = (input: {
   readonly actorRef?: string
   readonly actorClass?: RegionSocketSessionAttachment["actorClass"]
   readonly connectedAt: string
+  readonly subscriptionPlan?: WorldSubscriptionPlan
 }): RegionSocketSessionAttachment => ({
   sessionRef: stableWorldRef("world_session", `${input.regionRef}:${input.actorRef ?? "anonymous"}:${input.connectedAt}`),
   regionRef: normalizeRegionRef(input.regionRef),
@@ -528,6 +532,8 @@ export const makeInitialSessionAttachment = (input: {
   cursor: cursorForSequence(input.regionRef, 0),
   queuedFrames: [],
   seenRefs: [],
+  interestTierByRef: {},
+  ...(input.subscriptionPlan === undefined ? {} : { subscriptionPlan: input.subscriptionPlan }),
 })
 
 export const bufferHandshakeFrame = (

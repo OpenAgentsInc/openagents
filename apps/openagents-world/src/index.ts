@@ -5,6 +5,8 @@ import {
   WORLD_CONTRACT_SCHEMA_VERSION,
   decodeWorldBridgePayload,
   type WorldBridgePayload,
+  type WorldRow,
+  type WorldSubscriptionPlan,
 } from "@openagentsinc/world-contract"
 
 import {
@@ -42,6 +44,15 @@ import {
   type WorldBridgeQueueMessage,
   type WorldRuntimeConfig,
 } from "./protocol"
+import {
+  approveSubscriptionPlan,
+  entitiesFromRows,
+  planSubscriptionInterestDelta,
+  subscriptionInterestStateFromAttachment,
+  subscriptionRequestFromUrl,
+  type WorldSubscriptionPolicyError,
+  type WorldSubscriptionPlanRequest,
+} from "./subscriptions"
 
 export interface Env {
   readonly REGION_DURABLE_OBJECT: DurableObjectNamespace<RegionDurableObject>
@@ -171,11 +182,22 @@ const handleWorkerRequest = (): Effect.Effect<Response, never, WorldBindings | W
 
     if (request.method === "GET" && url.pathname === "/connect") {
       const regionRef = normalizeRegionRef(url.searchParams.get("region") ?? config.defaultRegionRef)
+      const subscriptionPlan = runSubscriptionApproval(subscriptionRequestFromUrl(url, regionRef))
+      if (!subscriptionPlan.ok) {
+        return makeDiagnosticResponse(400, {
+          tag: "validation",
+          severity: "warn",
+          message: subscriptionPlan.error.reason,
+          observedAt: new Date().toISOString(),
+          sourceRefs: [subscriptionPlan.error.sourceRef],
+        })
+      }
       return json({
         ok: true,
         schemaVersion: WORLD_CONTRACT_SCHEMA_VERSION,
         regionRef,
         socketUrl: socketUrlForRegion(request, regionRef),
+        subscriptionPlan: subscriptionPlan.plan,
       })
     }
 
@@ -245,6 +267,42 @@ const handleBridgeIngest = async (
   )
 }
 
+const runSubscriptionApproval = (
+  request: WorldSubscriptionPlanRequest,
+):
+  | { readonly ok: true; readonly plan: WorldSubscriptionPlan }
+  | { readonly ok: false; readonly error: WorldSubscriptionPolicyError } => {
+  try {
+    return {
+      ok: true,
+      plan: Effect.runSync(approveSubscriptionPlan(request)),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: normalizeSubscriptionPolicyError(error),
+    }
+  }
+}
+
+const normalizeSubscriptionPolicyError = (error: unknown): WorldSubscriptionPolicyError => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "_tag" in error &&
+    error._tag === "WorldSubscriptionPolicyError" &&
+    "reason" in error &&
+    "sourceRef" in error
+  ) {
+    return error as WorldSubscriptionPolicyError
+  }
+  return {
+    _tag: "WorldSubscriptionPolicyError",
+    reason: error instanceof Error ? error.message : "Subscription plan rejected.",
+    sourceRef: "subscription.world.policy",
+  } as WorldSubscriptionPolicyError
+}
+
 export class RegionDurableObject extends DurableObject<Env> {
   private initialized: Promise<void>
   private hotState: WorldHotState | null = null
@@ -278,6 +336,16 @@ export class RegionDurableObject extends DurableObject<Env> {
     const connectedAt = new Date().toISOString()
     const clock = this.readRegionClock(regionRef)
     const reconnectPlan = makeReconnectPlan(regionRef, url.searchParams.get("cursor"), clock, connectedAt)
+    const subscriptionPlan = runSubscriptionApproval(subscriptionRequestFromUrl(url, regionRef))
+    if (!subscriptionPlan.ok) {
+      return makeDiagnosticResponse(400, {
+        tag: "validation",
+        severity: "warn",
+        message: subscriptionPlan.error.reason,
+        observedAt: connectedAt,
+        sourceRefs: [subscriptionPlan.error.sourceRef],
+      })
+    }
     const actorRef = url.searchParams.get("actorRef")
     const actorClass = url.searchParams.get("actorClass")
     const attachment = makeInitialSessionAttachment({
@@ -285,6 +353,7 @@ export class RegionDurableObject extends DurableObject<Env> {
       ...(actorRef === null ? {} : { actorRef }),
       ...(actorClass === null ? {} : { actorClass: actorClass as RegionSocketSessionAttachment["actorClass"] }),
       connectedAt,
+      subscriptionPlan: subscriptionPlan.plan,
     })
     const attachedSession = {
       ...attachment,
@@ -345,10 +414,12 @@ export class RegionDurableObject extends DurableObject<Env> {
       this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
       this.persistExpiryRefs(result.state)
       await this.scheduleNextExpiryAlarm(result.state)
-      const nextAttachment = {
-        ...attachment,
+      const nextAttachment = this.applySubscriptionStateToAttachment({
+        attachment,
+        rows: result.delta.rows ?? [],
+        deletedRefs: result.delta.deletedRefs ?? [],
         cursor: result.delta.cursor,
-      }
+      })
       webSocket.serializeAttachment(nextAttachment)
       this.upsertSession(nextAttachment, observedAt)
       webSocket.send(serializeWorldFrame(commandDeltaFrame(result.delta)))
@@ -365,6 +436,53 @@ export class RegionDurableObject extends DurableObject<Env> {
         attachment.cursor,
         diagnostic,
       )))
+    }
+  }
+
+  private applySubscriptionStateToAttachment(input: {
+    readonly attachment: RegionSocketSessionAttachment
+    readonly rows: ReadonlyArray<WorldRow>
+    readonly deletedRefs: ReadonlyArray<string>
+    readonly cursor: string
+  }): RegionSocketSessionAttachment {
+    const plan = input.attachment.subscriptionPlan
+    if (plan === undefined) {
+      return {
+        ...input.attachment,
+        cursor: input.cursor,
+        seenRefs: input.attachment.seenRefs.filter(ref => !input.deletedRefs.includes(ref)),
+        interestTierByRef: Object.fromEntries(
+          Object.entries(input.attachment.interestTierByRef).filter(([ref]) => !input.deletedRefs.includes(ref)),
+        ),
+      }
+    }
+    const entities = entitiesFromRows(input.rows)
+    if (entities.length === 0) {
+      return {
+        ...input.attachment,
+        cursor: input.cursor,
+        seenRefs: input.attachment.seenRefs.filter(ref => !input.deletedRefs.includes(ref)),
+        interestTierByRef: Object.fromEntries(
+          Object.entries(input.attachment.interestTierByRef).filter(([ref]) => !input.deletedRefs.includes(ref)),
+        ),
+      }
+    }
+    const interest = planSubscriptionInterestDelta({
+      plan,
+      previous: subscriptionInterestStateFromAttachment({
+        seenRefs: input.attachment.seenRefs,
+        tierByRef: input.attachment.interestTierByRef,
+      }),
+      entities,
+    })
+    const deletedRefs = new Set(input.deletedRefs)
+    return {
+      ...input.attachment,
+      cursor: input.cursor,
+      seenRefs: interest.nextState.seenRefs.filter(ref => !deletedRefs.has(ref)),
+      interestTierByRef: Object.fromEntries(
+        Object.entries(interest.nextState.tierByRef).filter(([ref]) => !deletedRefs.has(ref)),
+      ),
     }
   }
 
@@ -451,10 +569,16 @@ export class RegionDurableObject extends DurableObject<Env> {
 
   private readAttachment(webSocket: WebSocket): RegionSocketSessionAttachment {
     const attachment = webSocket.deserializeAttachment() as RegionSocketSessionAttachment | undefined
-    return attachment ?? makeInitialSessionAttachment({
+    const fallback = makeInitialSessionAttachment({
       regionRef: "region.unknown",
       connectedAt: new Date().toISOString(),
     })
+    return {
+      ...fallback,
+      ...(attachment ?? {}),
+      seenRefs: [...(attachment?.seenRefs ?? fallback.seenRefs)],
+      interestTierByRef: { ...(attachment?.interestTierByRef ?? fallback.interestTierByRef) },
+    }
   }
 
   private upsertSession(

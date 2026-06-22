@@ -851,6 +851,23 @@ Port the WoC subscription policy directly into the owned backend. Acceptance:
 This is the issue that makes the replacement better than the old table stream,
 because interest policy is now explicit domain logic.
 
+Implementation note: P6 adds `apps/openagents-world/src/subscriptions.ts` as the
+Effect-backed server-side interest policy module. `/connect` returns an approved
+`WorldSubscriptionPlan`; Region DO WebSocket attachments persist that plan plus
+per-session sight/tier state for hibernation. Client query params may request a
+scope, center, selected target, and cursor, but the service normalizes them and
+rejects unbounded global avatar/event streams.
+
+The policy planner keeps the feed as `single_region` below the audit threshold
+and chooses `split_near_far` once avatar count or estimated row churn crosses
+the documented limit. It implements separate enter/drop hysteresis, selected
+target high-resolution promotion, explicit near/far update rates, first-sight
+full records, lite continued updates, interest-leave pruning, re-entry full
+records, settle-on-stop patches, and a sparse read-model apply helper that
+preserves absent-means-unchanged semantics. P8/P9/P10 should reuse this module
+when durable projection rows, the official `packages/world-client`, and richer
+socket fanout land; they should not create a second interest-policy path.
+
 ### P7: Add World Chat Moderation And Abuse Controls
 
 Adapt WoC's moderation posture before local chat/forum-reflection bubbles become

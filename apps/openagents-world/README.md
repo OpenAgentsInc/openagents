@@ -81,6 +81,24 @@ and reschedules only when more TTL work remains. The expiry planner depends on a
 `WorldClock` Effect service, so tests can advance a static clock without sleeping
 or relying on wall time.
 
+## Subscription Interest Policy
+
+`src/subscriptions.ts` owns the P6 WoC-style interest rules for the Cloudflare
+service. `/connect` now returns a server-approved `WorldSubscriptionPlan`, and
+WebSocket session attachments persist that plan plus the per-session sight state
+needed across hibernation. Clients may request a scope, center, selected target,
+and cursor, but the service normalizes the plan and rejects unbounded global
+avatar/event row streams.
+
+The pure policy planner keeps the single-region feed below the audit threshold
+and switches to split near/far tiers when avatar count or estimated row churn
+crosses the documented limit. Interest uses separate enter/drop radii, selected
+targets are always promoted to high-resolution, first sight emits full rows,
+continued sight can use lite dynamic rows, leaving interest prunes mirrors, and
+idle movement emits settle patches. `applySubscriptionDeltaToReadModel` preserves
+the sparse delta invariant: absent fields are unchanged, never treated as empty
+or default values.
+
 The D1 database IDs in `wrangler.jsonc` are placeholders until the actual
 Cloudflare resources are provisioned; keep the binding names stable because the
 Worker code depends on them.
