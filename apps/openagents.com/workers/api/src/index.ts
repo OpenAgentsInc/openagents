@@ -443,6 +443,7 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
+import { makeCrmBatchRoutes } from './crm-batch-routes'
 import { makeCrmCommandRoutes } from './crm-command-routes'
 import { makeCrmEmailRoutes } from './crm-email-routes'
 import { makeCrmImportRoutes } from './crm-import-routes'
@@ -7113,6 +7114,11 @@ const crmCommandRoutes = makeCrmCommandRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
+const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  resolveResendDeps: resolveCrmResendDeps,
+})
+
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
@@ -10007,6 +10013,7 @@ const routeRequest = makeWorkerRouteRequest({
     crmResendRoutes.routeCrmResendRequest(request, env, ctx) ??
     crmSendRoutes.routeCrmSendRequest(request, env, ctx) ??
     crmCommandRoutes.routeCrmCommandRequest(request, env, ctx) ??
+    crmBatchRoutes.routeCrmBatchRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routeNexusPylonVisibilityRequest:

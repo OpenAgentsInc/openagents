@@ -35,9 +35,11 @@ Build log — landed on the branch (merges to main at epic end):
 - ✅ **#5983 — Gmail/`gws` channel.** `crm-email.ts` (templates + render + ledger), `crm-email-routes.ts`, `scripts/crm-gmail-send.mjs` (local sender with write-back). Runbook: `gmail-gws-channel-runbook.md`.
 - ✅ **#5984 — Resend channel.** `crm-resend.ts` (INERT by default) + `POST .../resend-send` + `scripts/crm-resend-smoke.mjs`. Deliverability green is **owner-gated** (verified domain + key). Runbook: `resend-channel-runbook.md`.
 - ✅ **#5985 — Unified two-channel send.** `crm-send.ts` `dispatchCrmSend({channel})` — suppression/unsubscribe gate enforced once, ledger written for both; `POST .../send` + `GET /gmail-queue` for the local executor.
-- ⏳ **#5986** chat→Blueprint `send_email{channel}`, **#5987** desktop CRM pane + local executor, **#5988** the ~150 send orchestration — in progress.
+- ✅ **#5986 — chat→Blueprint `send_email{channel}`.** `crm-command.ts` (propose→approve→execute on `crm_contact_commands`) + command routes. Runbook: `chat-blueprint-send-command-runbook.md`.
+- ✅ **#5987 — Desktop CRM pane + local Gmail executor.** `apps/web/src/ui/crm-contacts-panel.ts` (presentational, tested) + `scripts/crm-gmail-executor.mjs` (drains the queue, sends via `gws`, writes back). Runbook: `desktop-crm-pane-and-executor-runbook.md`.
+- ✅ **#5988 — Sprint A ~150 send.** `crm-batch.ts`/`crm-batch-routes.ts` (`POST /api/operator/crm/send-batch`, **dry-run by default**) + `scripts/crm-send-batch.mjs` + `sprint-a-150-send-runbook.md`.
 
-Shared suppression gate is `readEmailSendEligibility` (reused). Everything tenant-scoped; no Laravel/Convex runtime; Gmail OAuth stays local.
+**All 8 sub-issues implemented on `crm/epic-5980`.** Shared suppression gate is `readEmailSendEligibility` (reused). Everything tenant-scoped; no Laravel/Convex runtime; Gmail OAuth stays local; sends are dry-run/draft-first at every layer. The one remaining **owner-gated** item is the Resend deliverability receipt (verified domain + key) that greens `autopilot_sites.native_email_sequences.v1` — not claimed here.
 
 ---
 
