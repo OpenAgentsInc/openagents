@@ -112,9 +112,12 @@ and returns that reward* (the paper's "atomic evaluation / Bernoulli call").
 **Primitives to add.**
 - **NEW** reward adapter: derive a scalar from existing receipts — module-eval
   pass (`CompiledAgentModuleEvalReport`) for the offline lane, and the Tassadar
-  verdict / verification-command result for the live lane (see the verified-work
-  doc). For cost-aware training, return `verified ? 1.0 : 0.0` and separately
-  log spend so fitness can be `reward − λ·cost`.
+  verification-class verdict for the live lane (the `training.verification_classes.v1`
+  registry: `exact_trace_replay` at sample rate 1.0 for deterministic/kernel
+  work, `seeded_replication`/`statistical_cross_check` for stochastic LLM work;
+  see [`tassadar-run-integration.md`](tassadar-run-integration.md) and the
+  verified-work doc). For cost-aware training, return `verified ? 1.0 : 0.0` and
+  separately log spend so fitness can be `reward − λ·cost`.
 - **NEW** atomic-evaluation function: `fn evaluate_coordinator(params) -> f32`
   that (1) loads the head with `params`, (2) runs the multi-turn select→role→
   dispatch→verify loop over a sampled batch, (3) returns mean reward. This is the

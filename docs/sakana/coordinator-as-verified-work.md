@@ -31,7 +31,13 @@ In Sakana, the reward signal and the product are separate — the benchmark grad
 never leaves the training loop. In our system the verdict that trains the
 coordinator is *the same verdict that releases Bitcoin to the worker*
 (`2026-06-19-autostream-settlement-visibility-capture.md`: verdict → auto-stream
-→ Spark settlement → public receipt). So:
+→ Spark settlement → public receipt). The split that matters: **train on the
+verdict, monetize on settlement.** The `Verified` verdict is proven,
+per-contribution, and live (five paid contributors on `exact_trace_replay`,
+sample rate 1.0, per
+`docs/promises/2026-06-20-verification-class-sampling-policy.md`), so the
+coordinator trains against it directly; settlement is the downstream economic
+layer (see [`tassadar-run-integration.md`](tassadar-run-integration.md)). So:
 
 - The coordinator is trained on **production traffic**, not a synthetic eval
   set. Every real job that settles is one labeled trajectory.

@@ -42,16 +42,24 @@ reward (Sakana only adjusted token budgets; we have per-call sats/credits).
 
 **2. The terminal reward is stronger than Sakana's.**
 Sakana's reward is benchmark correctness (`{0,1}` from MATH/LCB graders).
-Ours is **exact-trace-replay**: a worker submits a trace-commitment digest, an
-*independent device* replays and compares byte-for-byte, verdict is
-`Verified`/`Rejected` (`docs/tassadar/work-that-proves-itself.md`,
-`2026-06-15-executor-trace-contributor-completion-design.md`). For executor
-work this is a non-gameable binary reward — ideal for both sep-CMA-ES (which
-*wants* clean Bernoulli rewards) and GRPO. For open-ended coding work we already
-have the softer analog: a job's **verification command** must pass
+Ours is a **typed verification-class registry** (`training.verification_classes.v1`,
+per-contribution sampling owner-approved 2026-06-20 —
+`docs/promises/2026-06-20-verification-class-sampling-policy.md`): the reward
+class is chosen by work type. The strongest is **`exact_trace_replay`** (sample
+rate 1.0) — a worker submits a trace-commitment digest, an *independent device*
+replays and compares byte-for-byte, verdict is `Verified`/`Rejected`
+(`docs/tassadar/work-that-proves-itself.md`,
+`2026-06-15-executor-trace-contributor-completion-design.md`). For executor /
+kernel-parity work this is a non-gameable, dense binary reward — ideal for both
+sep-CMA-ES (which *wants* clean Bernoulli rewards) and GRPO. For stochastic LLM
+work the registry already defines `seeded_replication` (rollouts) and
+`statistical_cross_check` (benchmarks); for open-ended coding work the analog is
+a job's **verification command** that must pass
 (`2026-06-11-autopilot-agentic-labor-market.md`, NIP-LBR kind-5934). The
-coordinator's reward = "did the assembled workflow produce a Verified verdict /
-passing verification command?"
+coordinator's reward = "did the assembled trajectory produce a `Verified`
+verdict under its verification class?" See
+[`tassadar-run-integration.md`](tassadar-run-integration.md) for the
+class-by-work-type mapping and the dense-vs-sparse / nondeterminism caveats.
 
 **3. Dispatch + settlement rails exist.**
 Artanis emits assignments and records decisions
