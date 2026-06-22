@@ -34,13 +34,23 @@ defines typed contracts, validation helpers, import markers, and docs only; it
 does not start a stdio server, loopback listener, remote bridge, or external
 MCP client connector.
 
-The next implementation epic should start with a read-only local Pylon MCP
-server over stdio, using `@openagentsinc/mcp-contract` for descriptors,
-authority filtering, output safety, tagged errors, receipts, and progress
-metadata.
+**Next implementation epic (re-sequenced 2026-06-22): expose the CRM as the
+first OpenAgents MCP server** — a stateless Streamable-HTTP JSON-RPC facade
+(`POST /api/mcp`) in the existing Worker, scoped to the CRM, using
+`@openagentsinc/mcp-contract` for descriptors, authority filtering, output
+safety, tagged errors, and receipts. The CRM (epic #5980) is the cleanest,
+already-shipped, bounded surface to prove the full MCP authority model
+end-to-end (read tools → propose → approval-gated execute), and it doubles as
+the template for customers exposing their own tenant CRM over MCP. The
+read-only **local Pylon stdio server** becomes the next MCP server after the
+CRM epic, reusing the transport + grant patterns proven there. See
+`2026-06-22-crm-mcp-server-phase-1-audit.md`.
 
 ## Documents
 
+- `2026-06-22-crm-mcp-server-phase-1-audit.md` - **next-phase audit**: expose
+  the CRM as the first OpenAgents MCP server (Worker Streamable-HTTP facade),
+  with the CRM tool/resource map, architecture, gaps, and issue ladder.
 - `2026-06-21-openagents-monorepo-mcp-infrastructure-audit.md` - current
   monorepo audit and implementation sequence for Autopilot/Pylon MCP exposure.
 - `2026-06-21-openagents-overarching-mcp-roadmap.md` - end-to-end MCP server
