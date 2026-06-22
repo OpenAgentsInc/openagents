@@ -44,6 +44,7 @@ import {
   RequestTrainingBootstrapGrant,
   RespondToVerseInput,
   RespondToShellInput,
+  RunVerseKhalaTurn,
   ResolveApproval,
   ResolveManagedWorktree,
   SetCoordinatorPaused,
@@ -135,6 +136,7 @@ import {
   type ProofReplayCommandRequest,
   type ShellCodingTarget,
   type ShellTarget,
+  type VerseKhalaReceipt,
 } from "./model.js"
 // #5466 (EPIC #5461): live Blueprint chat — SEMANTIC signature routing + runtime
 // step derivation from real session events (replaces the seeded path).
@@ -831,6 +833,35 @@ const chatMessageId = (prefix: string): string =>
   `${prefix}.${Date.now().toString(36)}`
 
 const chatTimestamp = (): string => new Date().toISOString()
+
+// EPIC #6017: coerce the opaque `RespondedVerseKhala.receipt` (a public-safe
+// KhalaReceiptProjection over the RPC) into the serializable VerseKhalaReceipt
+// the model holds. Tolerant: a missing/malformed block (or a turn that carried no
+// `openagents` block) yields null so no effect fires. We persist only the
+// routing/verification fields the effect + inspector need (rubric is dropped).
+const verseKhalaReceiptFromUnknown = (
+  value: unknown,
+): VerseKhalaReceipt | null => {
+  if (typeof value !== "object" || value === null) return null
+  const record = value as Record<string, unknown>
+  const asStr = (v: unknown): string => (typeof v === "string" ? v : "")
+  const asNullableStr = (v: unknown): string | null =>
+    typeof v === "string" && v.trim().length > 0 ? v : null
+  const verification =
+    record.verification === "test_passed" || record.verification === "failed"
+      ? record.verification
+      : "none"
+  return {
+    requestedModel: asStr(record.requestedModel),
+    servedModel: asStr(record.servedModel),
+    worker: asStr(record.worker),
+    lane: asStr(record.lane).length > 0 ? asStr(record.lane) : "default",
+    verification,
+    verified: typeof record.verified === "boolean" ? record.verified : null,
+    receipt: asNullableStr(record.receipt),
+    receiptUrl: asNullableStr(record.receiptUrl),
+  }
+}
 
 // #5466: the objective embeds the SEMANTICALLY-selected signature ref (not a
 // hardcoded one) so the bounded session runs the program the router chose. The
@@ -3765,6 +3796,90 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+    // ── EPIC #6017: talk to Khala from an in-world Verse textbox ────────────
+    case "ChangedVerseKhalaInput":
+      return [
+        Model.make({ ...model, verseKhalaInput: message.value }),
+        noCommands,
+      ]
+    case "SubmittedVerseKhala": {
+      const prompt = model.verseKhalaInput.trim()
+      // Empty submit / a turn already in flight is a no-op (no error chrome).
+      if (prompt === "" || model.verseKhalaInFlight) return [model, noCommands]
+      const turnId = chatMessageId("verse.khala")
+      return [
+        Model.make({
+          ...model,
+          verseKhalaInput: "",
+          verseKhalaInFlight: true,
+          verseKhalaTurnId: turnId,
+          // Reset the live response bubble + the prior effect; a new turn's
+          // effect only fires on its OWN real receipt (evidence-bound).
+          verseKhalaResponse: "",
+          verseKhalaReceipt: null,
+          verseKhalaStatus: { text: "asking Khala…", tone: "info" },
+        }),
+        [RunVerseKhalaTurn({ prompt, turnId })],
+      ]
+    }
+    case "GotVerseKhalaToken": {
+      // Append the live delta ONLY for the active turn — a stale/concurrent
+      // turn's deltas never cross-render into the current bubble.
+      if (message.turnId !== model.verseKhalaTurnId) return [model, noCommands]
+      return [
+        Model.make({
+          ...model,
+          verseKhalaResponse: model.verseKhalaResponse + message.delta,
+        }),
+        noCommands,
+      ]
+    }
+    case "RespondedVerseKhala": {
+      // Ignore a terminal result for a turn that is no longer the active one.
+      if (message.turnId !== model.verseKhalaTurnId) return [model, noCommands]
+      const receipt = verseKhalaReceiptFromUnknown(message.receipt)
+      return [
+        Model.make({
+          ...model,
+          verseKhalaInFlight: false,
+          // The streamed bubble already holds the live text; fall back to the
+          // terminal text when no deltas streamed (non-streaming route / error).
+          verseKhalaResponse:
+            model.verseKhalaResponse.trim().length > 0
+              ? model.verseKhalaResponse
+              : message.text,
+          // EVIDENCE GATE: keep the receipt only when it carries a real ref so
+          // the LOCAL crackling effect fires for genuine turns only.
+          verseKhalaReceipt:
+            receipt !== null && receipt.receipt !== null ? receipt : null,
+          verseKhalaStatus: {
+            text: message.live
+              ? "Khala answered — verified receipt"
+              : message.ok
+                ? "Khala answered (no receipt — unverified)"
+                : message.text,
+            tone: message.live ? "success" : message.ok ? "info" : "error",
+          },
+        }),
+        noCommands,
+      ]
+    }
+    case "FailedVerseKhala": {
+      if (message.turnId !== model.verseKhalaTurnId) return [model, noCommands]
+      return [
+        Model.make({
+          ...model,
+          verseKhalaInFlight: false,
+          verseKhalaReceipt: null,
+          verseKhalaResponse:
+            model.verseKhalaResponse.trim().length > 0
+              ? model.verseKhalaResponse
+              : message.error,
+          verseKhalaStatus: { text: message.error, tone: "error" },
+        }),
+        noCommands,
+      ]
+    }
     // The explicit open: reveal the KEPT full multi-pane UI behind the advanced
     // Code group. The Verse chat pane is now immersive by default (#5820), so
     // this lands on Composer to make the sidebar/code tools explicit.

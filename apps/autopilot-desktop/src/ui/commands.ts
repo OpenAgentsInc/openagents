@@ -80,6 +80,8 @@ import {
   GotPublicActivityTimeline,
   FailedVerseTurn,
   RespondedShell,
+  RespondedVerseKhala,
+  FailedVerseKhala,
 } from "./message.js"
 
 const errorText = commandErrorText
@@ -1435,6 +1437,51 @@ export const RespondToVerseInput = Command.define(
       Effect.succeed(
         FailedVerseTurn({
           error: errorText(error) || VERSE_BRIDGE_ERROR_TEXT,
+        }),
+      ),
+    ),
+  ),
+)
+
+// EPIC #6017: one streamed Khala cockpit turn from the IN-WORLD Verse textbox.
+// Reuses the existing `khalaTurn` RPC + host-side token resolution UNCHANGED
+// (the gateway/verifier are owned by another lane). The `turnId` correlates the
+// live `khalaToken` deltas (pushed Bun→webview, landed as GotVerseKhalaToken) to
+// this turn so concurrent/stale turns never cross-render. The terminal answer +
+// the public-safe receipt ride on this command's result; the receipt's ref is the
+// evidence gate that drives the LOCAL crackling-arc effect. The Bun host returns
+// honest user-facing `text` for ok:false too (402 add-credit / no token / error),
+// so we render it verbatim; FailedVerseKhala only fires if the RPC bridge throws.
+const VERSE_KHALA_BRIDGE_ERROR_TEXT =
+  "I couldn't reach the local app service to talk to Khala. Please try again in a moment."
+
+export const RunVerseKhalaTurn = Command.define(
+  "RunVerseKhalaTurn",
+  { prompt: S.String, turnId: S.String },
+  RespondedVerseKhala,
+  FailedVerseKhala,
+)(({ prompt, turnId }) =>
+  Effect.tryPromise(() =>
+    getRequest().khalaTurn({
+      prompt,
+      model: "openagents/khala-mini",
+      turnId,
+    }),
+  ).pipe(
+    Effect.map((result) =>
+      RespondedVerseKhala({
+        turnId,
+        ok: result.ok,
+        text: result.text,
+        receipt: result.receipt,
+        live: result.live,
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.succeed(
+        FailedVerseKhala({
+          turnId,
+          error: errorText(error) || VERSE_KHALA_BRIDGE_ERROR_TEXT,
         }),
       ),
     ),

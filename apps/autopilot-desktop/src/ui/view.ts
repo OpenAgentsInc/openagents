@@ -96,6 +96,8 @@ import {
   withChatWorldMultiplayerLayer,
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization.js"
+import { withVerseKhalaEffectLayer } from "../shared/verse-khala-effect.js"
+import { verseKhalaInputOverlay } from "./verse-khala-input.js"
 import {
   VERSE_TRAINING_NODE_PREFIX,
   withVerseTrainingLayer,
@@ -402,6 +404,7 @@ import {
   modelChatWorldParticles,
   modelChatWorldMultiplayer,
   modelChatWorldScene,
+  modelVerseKhalaReceipt,
   modelCodeModeSync,
   modelManagedAccounts,
   modelPaneLayer,
@@ -7095,6 +7098,22 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     localAvatarRef: multiplayer?.localAvatarRef ?? CHAT_WORLD_DESKTOP_AVATAR_REF,
   })
   const withInference = withChatWorldInferenceLayer(withWorld, multiplayer)
+  // EPIC #6017: the LOCAL Khala crackling-arc effect, driven directly from the
+  // in-world textbox turn's receipt (evidence-bound; no receipt = no arc), so it
+  // fires immediately rather than waiting on the ~5–10s public-timeline poll. The
+  // arc terminates at the local avatar's last pose; the world projection still
+  // fires the same arc for other viewers via withChatWorldInferenceLayer above.
+  const withKhalaEffect = withVerseKhalaEffectLayer(withInference, {
+    receipt: modelVerseKhalaReceipt(model),
+    avatar:
+      model.verseSceneRestorePose === null
+        ? null
+        : {
+            x: model.verseSceneRestorePose.x,
+            y: model.verseSceneRestorePose.y,
+            z: model.verseSceneRestorePose.z,
+          },
+  })
   const inputBindings = verseInputBindingProjection(
     model.inputProfile,
     model.verseMode === "code" ? "verse_code_overlay" : "verse_explore",
@@ -7114,11 +7133,11 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
           capturedAtMs: model.verseSceneRestorePose.capturedAtMs,
         }
   const navigable = {
-    ...withInference,
+    ...withKhalaEffect,
     cameraMode: "perspective_walk" as const,
     controller: "third_person_character" as const,
     keyboardTargeting: {
-      ...(withInference.keyboardTargeting ?? {}),
+      ...(withKhalaEffect.keyboardTargeting ?? {}),
       ...inputBindings.keyboardTargeting,
     },
     thirdPersonController: {
@@ -7131,7 +7150,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       gravity: -13.5,
     },
     sceneChrome: {
-      ...(withInference.sceneChrome ?? {}),
+      ...(withKhalaEffect.sceneChrome ?? {}),
       lossPanel: "hidden" as const,
       statusChart: "hidden" as const,
     },
@@ -7490,6 +7509,10 @@ const versePane = (model: Model): Html =>
   h.div([cls("chat-pane chat-pane-world verse-pane")], [
     chatSceneBackground(model),
     verseRunHud(model),
+    // EPIC #6017: the in-world Khala textbox (HUD over the scene). Submitting it
+    // streams a Khala answer into a response bubble and fires the local crackling
+    // effect from verseSceneVisualization once a real receipt lands.
+    verseKhalaInputOverlay(model),
   ])
 
 const compactSessionRef = (ref: string): string => {
