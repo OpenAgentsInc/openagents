@@ -64,6 +64,7 @@ export const stubEchoAdapter: InferenceProviderAdapter = {
       const terminalChunk: InferenceStreamChunk = {
         contentDelta: '',
         finishReason: 'stop',
+        servedModel: request.model,
         usage,
       }
       return [contentChunk, terminalChunk]

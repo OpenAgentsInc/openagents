@@ -644,13 +644,14 @@ export const handleChatCompletions = (
       // terminal usage frame was served (no metering ran).
       let streamMetering: MeteringOutcome | undefined
       if (terminal?.usage !== undefined) {
+        const streamServedModel = terminal.servedModel ?? requestedModel
         streamMetering = yield* meteringHook({
           accountRef: session.accountRef,
           adapterId: chunks.served.adapterId,
           fundingKind,
           requestId: responseId,
           requestedModel: requestedModel,
-          servedModel: requestedModel,
+          servedModel: streamServedModel,
           streamed: true,
           usage: terminal.usage,
         })
@@ -660,13 +661,13 @@ export const handleChatCompletions = (
       // non-breaking `openagents` block the non-streaming path emits, built by the
       // SAME `khalaReceiptForResult(...)` (non-Khala => undefined). Reconstruct an
       // `InferenceResult` from the served chunks — content concatenated, the
-      // terminal finishReason/usage, `servedModel: requestedModel` matching what
-      // the streaming metering call above reports — then attach the block to the
-      // FINAL (terminal `chat.completion.chunk`) frame only, before `data: [DONE]`.
+      // terminal finishReason/usage, and the terminal served model when the
+      // adapter reports one — then attach the block to the FINAL
+      // `chat.completion.chunk` frame only, before `data: [DONE]`.
       const streamResult: InferenceResult = {
         content: servedChunks.map(chunk => chunk.contentDelta).join(''),
         finishReason: terminal?.finishReason ?? 'stop',
-        servedModel: requestedModel,
+        servedModel: terminal?.servedModel ?? requestedModel,
         usage: terminal?.usage ?? {
           completionTokens: 0,
           promptTokens: 0,

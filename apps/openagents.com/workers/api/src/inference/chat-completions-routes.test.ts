@@ -378,6 +378,58 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('a streamed Khala request uses the terminal served model for disclosure and metering', async () => {
+    const servedModel = 'gemini-3.5-flash'
+    const usage = {
+      completionTokens: 2,
+      promptTokens: 2,
+      totalTokens: 4,
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'hello world',
+          finishReason: 'stop',
+          servedModel,
+          usage,
+        })),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () =>
+        Effect.sync(() => [
+          { contentDelta: 'hello world' },
+          { contentDelta: '', finishReason: 'stop', servedModel, usage },
+        ]),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: false, receiptRef: null }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+          stream: true,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, meteringHook, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+
+    const frames = parseSseChunks(await response.text()) as ReadonlyArray<{
+      openagents?: { served_model?: string }
+    }>
+    expect(frames[frames.length - 1]?.openagents?.served_model).toBe(
+      servedModel,
+    )
+    expect(captured[0]?.requestedModel).toBe(KHALA_MINI_MODEL_ID)
+    expect(captured[0]?.servedModel).toBe(servedModel)
+  })
+
   test('a streamed non-Khala request omits the openagents block', async () => {
     const response = await run(
       handleChatCompletions(

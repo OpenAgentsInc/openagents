@@ -150,9 +150,10 @@ const toStreamChunks = (
   usage: InferenceUsage,
   content: string,
   finishReason: string,
+  servedModel: string,
 ): ReadonlyArray<InferenceStreamChunk> => [
   { contentDelta: content },
-  { contentDelta: '', finishReason, usage },
+  { contentDelta: '', finishReason, servedModel, usage },
 ]
 
 // Build the serving-fabric adapter. Pure data + Effects; it touches the fabric
@@ -179,6 +180,7 @@ export const makeOpenAgentsNetworkAdapter = (
               served.result.usage,
               served.result.content,
               served.result.finishReason,
+              served.result.servedModel,
             ),
           ),
         ),
