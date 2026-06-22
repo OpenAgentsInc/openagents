@@ -19,6 +19,7 @@ import {
   commandAckFromReceipt,
   createWorldClient,
   makeEmptyClientWorld,
+  projectWorldMinimapReadout,
   type WorldClientTransport,
 } from "./index.js"
 
@@ -72,6 +73,48 @@ const avatarRow = decodeWorldRow({
   safety,
 })
 
+const regionRow = decodeWorldRow({
+  kind: "world_region",
+  regionRef,
+  label: "Tassadar Street",
+  bounds: { min: { x: -50, y: -4, z: -50 }, max: { x: 50, y: 20, z: 50 } },
+  origin: { x: 0, y: 0, z: 0 },
+  proximityRadius: 12,
+  staleAvatarTtlMs: 30_000,
+  updatedAt: observedAt,
+  safety,
+})
+
+const pylonRow = decodeWorldRow({
+  kind: "pylon_station",
+  pylonRef: "pylon.alpha",
+  regionRef,
+  label: "Alpha Pylon",
+  position: { x: 25, y: 0, z: -25 },
+  status: "working",
+  updatedAt: observedAt,
+  safety,
+})
+
+const runRow = decodeWorldRow({
+  kind: "training_run",
+  runRef: "run.tassadar.executor.20260615",
+  label: "Tassadar Executor",
+  state: "tracing",
+  updatedAt: observedAt,
+  safety,
+})
+
+const assignmentRow = decodeWorldRow({
+  kind: "run_entity",
+  entityRef: "assignment.trace.1",
+  runRef: "run.tassadar.executor.20260615",
+  label: "Trace Batch 1",
+  entityKind: "assignment",
+  updatedAt: observedAt,
+  safety,
+})
+
 const positionRow = (animation: "idle" | "walk" = "walk") => decodeWorldRow({
   kind: "avatar_position",
   avatarRef: "avatar.alice",
@@ -97,6 +140,67 @@ describe("world-client", () => {
     expect(next.avatars["avatar.alice"]?.label).toBe("Alice")
     expect(next.positions["avatar.alice"]?.animation).toBe("walk")
     expect(String(next.cursor)).toBe("cursor.region.run.1.2")
+  })
+
+  test("projects minimap markers from the shared WorldReadModel", () => {
+    const readModel = applyDeltaToReadModel(
+      makeEmptyClientWorld(regionRef, observedAt),
+      rowDelta(
+        [regionRow, pylonRow, avatarRow, positionRow(), runRow, assignmentRow],
+        "cursor.region.run.1.minimap",
+      ),
+    )
+    const readout = projectWorldMinimapReadout({
+      readModel,
+      localPosition: { x: 25, y: 0, z: -25 },
+      sizePx: 200,
+    })
+
+    expect(readout.regionLabel).toBe("Tassadar Street")
+    expect(readout.coordinate).toEqual({ x: 25, y: 0, z: -25 })
+    expect(readout.subzone.subzoneRef).toBe(`${regionRef}:east`)
+    expect(readout.markers.map(marker => `${marker.kind}:${marker.ref}`)).toEqual([
+      "assignment:assignment.trace.1",
+      "avatar:avatar.alice",
+      "pylon:pylon.alpha",
+      "run_core:run.tassadar.executor.20260615",
+    ])
+    expect(readout.markers.find(marker => marker.ref === "pylon.alpha")).toMatchObject({
+      minimap: { x: 150, y: 50 },
+      state: "working",
+      worldPosition: { x: 25, y: 0, z: -25 },
+    })
+    expect(readout.markers.find(marker => marker.ref === "avatar.alice")).toMatchObject({
+      minimap: { x: 102, y: 104 },
+      state: "walk",
+      worldPosition: { x: 1, y: 0, z: 2 },
+    })
+    expect(readout.markers.find(marker => marker.kind === "run_core")).toMatchObject({
+      minimap: { x: 100, y: 100 },
+      state: "tracing",
+    })
+  })
+
+  test("keeps subzone labels stable inside the hysteresis band", () => {
+    const readModel = applyDeltaToReadModel(
+      makeEmptyClientWorld(regionRef, observedAt),
+      rowDelta([regionRow], "cursor.region.run.1.subzone"),
+    )
+    const stable = projectWorldMinimapReadout({
+      readModel,
+      localPosition: { x: -1, z: 1 },
+      previousSubzoneRef: `${regionRef}:east`,
+      subzoneHysteresisMeters: 4,
+    })
+    const crossed = projectWorldMinimapReadout({
+      readModel,
+      localPosition: { x: -6, z: 1 },
+      previousSubzoneRef: stable.subzone.subzoneRef,
+      subzoneHysteresisMeters: 4,
+    })
+
+    expect(stable.subzone.subzoneRef).toBe(`${regionRef}:east`)
+    expect(crossed.subzone.subzoneRef).toBe(`${regionRef}:west`)
   })
 
   test("prunes interest exits from read model and selected-target state", () => {

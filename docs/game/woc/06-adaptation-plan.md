@@ -129,8 +129,11 @@ These map onto the existing Verse epics rather than inventing a parallel program
    `@openagentsinc/three-effect@b2bb8fa`; training-run visualization gates
    selection through shared click-vs-drag math, and desktop launch tests assert
    mouselook drags do not become click-select gestures.**
-3. `three-effect` + HUD: minimap primitive + compass/coords/subzone pure cores (Tier 1) -
-   blips from Region DO avatars + Worker/D1 run projection.
+3. `world-client` + HUD: minimap primitive + compass/coords/subzone pure cores (Tier 1) -
+   blips from Region DO avatars + Worker/D1 run projection. **Shipped via
+   `projectWorldMinimapReadout`; the pure projection reads `WorldReadModel`,
+   emits pylon/avatar/run/assignment markers, and desktop tests compare marker
+   world positions against the 3D scene projection from the same fixture.**
 4. `three-effect`: nameplate/label projection primitive (Tier 1) - world-anchored entity
    labels with status bars.
 5. desktop HUD: hotbar action model + chat channel model (Tier 1) - folds chat into the

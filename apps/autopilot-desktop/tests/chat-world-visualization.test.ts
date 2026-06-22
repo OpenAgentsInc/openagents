@@ -1,4 +1,14 @@
 import { describe, expect, test } from "bun:test"
+import {
+  applyDeltaToReadModel,
+  makeEmptyClientWorld,
+  projectWorldMinimapReadout,
+} from "@openagentsinc/world-client"
+import {
+  WORLD_DELTA_SCHEMA_VERSION,
+  decodeWorldDelta,
+  decodeWorldRow,
+} from "@openagentsinc/world-contract"
 
 import type {
   ChatWorldPylonScene,
@@ -10,6 +20,7 @@ import {
   PAYMENT_PARTICLE_GOLD,
   pylonGrowthTier,
 } from "../src/shared/chat-world-scene"
+import { projectChatWorldClientWorld } from "../src/shared/chat-world-cloudflare"
 import {
   CHAT_WORLD_STATION_NODE_PREFIX,
   chatWorldMultiplayerLayer,
@@ -140,6 +151,89 @@ const worldProjection = (
   }],
   proximityChatCount: 0,
   ...overrides,
+})
+
+const publicSafety = {
+  publicProjectionAllowed: true,
+  sourceRefs: ["source.public.fixture"],
+  blockerRefs: [],
+  caveatRefs: [],
+}
+
+const readModelFromRows = (rows: ReadonlyArray<unknown>) =>
+  applyDeltaToReadModel(
+    makeEmptyClientWorld("region.run.public.street", "2026-06-22T00:00:00.000Z"),
+    decodeWorldDelta({
+      schemaVersion: WORLD_DELTA_SCHEMA_VERSION,
+      deltaRef: "delta.chat-world-visualization.minimap",
+      kind: "update",
+      regionRef: "region.run.public.street",
+      cursor: "cursor.chat-world-visualization.minimap",
+      generatedAt: "2026-06-22T00:00:00.000Z",
+      rows: rows.map(row => decodeWorldRow(row)),
+    }),
+  )
+
+describe("WorldReadModel minimap projection", () => {
+  test("minimap and 3D scene share pylon/avatar source positions", () => {
+    const readModel = readModelFromRows([
+      {
+        kind: "world_region",
+        regionRef: "region.run.public.street",
+        label: "Public Street",
+        bounds: { min: { x: -50, y: -4, z: -50 }, max: { x: 50, y: 20, z: 50 } },
+        origin: { x: 0, y: 0, z: 0 },
+        proximityRadius: 12,
+        staleAvatarTtlMs: 30_000,
+        updatedAt: "2026-06-22T00:00:00.000Z",
+        safety: publicSafety,
+      },
+      {
+        kind: "pylon_station",
+        pylonRef: "pylon.alpha",
+        regionRef: "region.run.public.street",
+        label: "Alpha Pylon",
+        position: { x: 10, y: 0, z: -12 },
+        status: "online",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+        safety: publicSafety,
+      },
+      {
+        kind: "agent_avatar",
+        avatarRef: "avatar.bravo",
+        characterId: "bravo",
+        regionRef: "region.run.public.street",
+        label: "Bravo",
+        avatarKind: "guest",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+        safety: publicSafety,
+      },
+      {
+        kind: "avatar_position",
+        avatarRef: "avatar.bravo",
+        regionRef: "region.run.public.street",
+        position: { x: -6, y: 0, z: 14 },
+        rotationY: 0,
+        animation: "walk",
+        observedAt: "2026-06-22T00:00:00.000Z",
+        safety: publicSafety,
+      },
+    ])
+    const minimap = projectWorldMinimapReadout({ readModel, sizePx: 200 })
+    const scene = projectChatWorldClientWorld({
+      flagEnabled: true,
+      runRef: "run.public",
+      readModel,
+      nowMs: Date.parse("2026-06-22T00:00:01.000Z"),
+    })
+
+    expect(minimap.markers.find(marker => marker.ref === "pylon.alpha")?.worldPosition)
+      .toEqual({ x: scene.world?.stations[0]?.x, y: scene.world?.stations[0]?.y, z: scene.world?.stations[0]?.z })
+    expect(minimap.markers.find(marker => marker.ref === "avatar.bravo")?.worldPosition)
+      .toEqual({ x: scene.world?.agents[0]?.x, y: scene.world?.agents[0]?.y, z: scene.world?.agents[0]?.z })
+    expect(minimap.markers.find(marker => marker.ref === "pylon.alpha")?.minimap)
+      .toEqual({ x: 120, y: 76 })
+  })
 })
 
 describe("chatWorldPaymentLayer (evidence-bound motion)", () => {

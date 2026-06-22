@@ -20,6 +20,11 @@ legacy generated binding import.
 - `disconnect()` closes the transport and marks the session disconnected.
 - `diagnostics()` and `readModel()` expose public diagnostics and the
   WoC-style `WorldReadModel` consumed by render, HUD, minimap, and nameplates.
+- `projectWorldMinimapReadout(input)` projects a `WorldReadModel` into
+  minimap markers, compass coordinates, and a region/subzone readout. Pylons,
+  run cores, assignment markers, and remote avatars all come from the same
+  read model that the 3D scene consumes; subzone labels keep a small hysteresis
+  band to avoid boundary flicker.
 
 `applyDeltaToReadModel` preserves absent-means-unchanged semantics, prunes
 interest exits from every row map, applies settle patches without deleting

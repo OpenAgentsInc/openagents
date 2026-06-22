@@ -4,6 +4,7 @@ import {
   WORLD_READ_MODEL_SCHEMA_VERSION,
   WORLD_CONTRACT_SCHEMA_VERSION,
   decodeWorldDelta,
+  decodeWorldRow,
   decodeWorldSubscriptionPlan,
   decodeWorldCommandReceipt,
   decodeWorldReadModel,
@@ -388,6 +389,250 @@ export const makeEmptyClientWorld = (
     events: {},
     diagnostics: [],
   })
+
+export type WorldMinimapMarkerKind =
+  | "assignment"
+  | "avatar"
+  | "pylon"
+  | "run_core"
+
+export type WorldMinimapCoordinate = Readonly<{
+  x: number
+  y: number
+}>
+
+export type WorldMinimapMarker = Readonly<{
+  kind: WorldMinimapMarkerKind
+  ref: string
+  label: string
+  regionRef: string
+  worldPosition: Readonly<{ x: number; y: number; z: number }>
+  minimap: WorldMinimapCoordinate
+  sourceRefs: ReadonlyArray<string>
+  state?: string
+}>
+
+export type WorldSubzoneReadout = Readonly<{
+  subzoneRef: string
+  label: string
+  regionRef: string
+  regionLabel: string
+}>
+
+export type WorldMinimapReadout = Readonly<{
+  coordinate: Readonly<{ x: number; y: number; z: number }>
+  markers: ReadonlyArray<WorldMinimapMarker>
+  regionRef: string
+  regionLabel: string
+  sizePx: number
+  subzone: WorldSubzoneReadout
+}>
+
+export type WorldMinimapProjectionInput = Readonly<{
+  readModel: ClientWorld
+  localPosition?: Readonly<{ x: number; y?: number; z: number }>
+  previousSubzoneRef?: string
+  sizePx?: number
+  subzoneHysteresisMeters?: number
+}>
+
+const roundCoordinate = (value: number): number =>
+  Number(value.toFixed(4))
+
+const clamp01 = (value: number): number =>
+  Math.max(0, Math.min(1, value))
+
+const regionForReadout = (readModel: ClientWorld): ClientWorld["regions"][string] => {
+  const direct = readModel.regions[String(readModel.regionRef)]
+  if (direct !== undefined) return direct
+  const first = Object.values(readModel.regions)[0]
+  if (first !== undefined) return first
+  const fallback = decodeWorldRow({
+    kind: "world_region",
+    regionRef: readModel.regionRef,
+    label: String(readModel.regionRef),
+    bounds: {
+      min: { x: -64, y: -8, z: -64 },
+      max: { x: 64, y: 24, z: 64 },
+    },
+    origin: { x: 0, y: 0, z: 0 },
+    proximityRadius: 12,
+    staleAvatarTtlMs: 30_000,
+    updatedAt: readModel.generatedAt,
+    safety: {
+      publicProjectionAllowed: true,
+      sourceRefs: ["world-client.minimap.fallback-region"],
+      blockerRefs: [],
+      caveatRefs: [],
+    },
+  })
+  if (fallback.kind !== "world_region") {
+    throw new Error("fallback world region decode failed")
+  }
+  return fallback
+}
+
+const worldToMinimap = (
+  region: ClientWorld["regions"][string],
+  position: Readonly<{ x: number; z: number }>,
+  sizePx: number,
+): WorldMinimapCoordinate => {
+  const width = Math.max(1, region.bounds.max.x - region.bounds.min.x)
+  const depth = Math.max(1, region.bounds.max.z - region.bounds.min.z)
+  return {
+    x: roundCoordinate(clamp01((position.x - region.bounds.min.x) / width) * sizePx),
+    y: roundCoordinate(clamp01((position.z - region.bounds.min.z) / depth) * sizePx),
+  }
+}
+
+const runEntityPosition = (
+  region: ClientWorld["regions"][string],
+  index: number,
+): Readonly<{ x: number; y: number; z: number }> => {
+  const radius = Math.max(
+    8,
+    Math.min(
+      28,
+      Math.min(region.bounds.max.x - region.bounds.min.x, region.bounds.max.z - region.bounds.min.z) * 0.18,
+    ),
+  )
+  const angle = -Math.PI / 2 + index * 0.76
+  return {
+    x: roundCoordinate(region.origin.x + Math.cos(angle) * radius),
+    y: region.origin.y,
+    z: roundCoordinate(region.origin.z + Math.sin(angle) * radius),
+  }
+}
+
+const sourceRefsFromSafety = (
+  safety: Readonly<{ sourceRefs: ReadonlyArray<string> }>,
+  fallbackRef: string,
+): ReadonlyArray<string> =>
+  safety.sourceRefs.length > 0 ? safety.sourceRefs.map(String) : [fallbackRef]
+
+const subzoneForPosition = (
+  region: ClientWorld["regions"][string],
+  position: Readonly<{ x: number; z: number }>,
+  previousSubzoneRef: string | undefined,
+  hysteresisMeters: number,
+): WorldSubzoneReadout => {
+  const centerX = (region.bounds.min.x + region.bounds.max.x) / 2
+  const centerZ = (region.bounds.min.z + region.bounds.max.z) / 2
+  const dx = position.x - centerX
+  const dz = position.z - centerZ
+  const choose = (): "center" | "east" | "north" | "south" | "west" => {
+    if (Math.abs(dx) <= hysteresisMeters && Math.abs(dz) <= hysteresisMeters) return "center"
+    if (Math.abs(dx) >= Math.abs(dz)) return dx >= 0 ? "east" : "west"
+    return dz >= 0 ? "south" : "north"
+  }
+  const previous = previousSubzoneRef?.startsWith(`${region.regionRef}:`)
+    ? previousSubzoneRef.slice(`${region.regionRef}:`.length)
+    : undefined
+  const next = choose()
+  const stable =
+    previous === "east" && dx > -hysteresisMeters ? "east"
+      : previous === "west" && dx < hysteresisMeters ? "west"
+        : previous === "south" && dz > -hysteresisMeters ? "south"
+          : previous === "north" && dz < hysteresisMeters ? "north"
+            : next
+  const label = stable === "center"
+    ? "Center"
+    : `${stable.slice(0, 1).toUpperCase()}${stable.slice(1)}`
+  return {
+    regionRef: region.regionRef,
+    regionLabel: region.label,
+    subzoneRef: `${region.regionRef}:${stable}`,
+    label,
+  }
+}
+
+export const projectWorldMinimapReadout = ({
+  localPosition,
+  previousSubzoneRef,
+  readModel,
+  sizePx = 160,
+  subzoneHysteresisMeters = 4,
+}: WorldMinimapProjectionInput): WorldMinimapReadout => {
+  const region = regionForReadout(readModel)
+  const position = localPosition ?? region.origin
+  const markers: Array<WorldMinimapMarker> = []
+
+  for (const station of Object.values(readModel.pylons)) {
+    if (station.regionRef !== region.regionRef) continue
+    markers.push({
+      kind: "pylon",
+      ref: station.pylonRef,
+      label: station.label,
+      regionRef: station.regionRef,
+      worldPosition: station.position,
+      minimap: worldToMinimap(region, station.position, sizePx),
+      state: station.status,
+      sourceRefs: sourceRefsFromSafety(station.safety, station.pylonRef),
+    })
+  }
+
+  for (const avatar of Object.values(readModel.avatars)) {
+    const avatarPosition = readModel.positions[String(avatar.avatarRef)]
+    if (avatar.regionRef !== region.regionRef || avatarPosition?.regionRef !== region.regionRef) continue
+    markers.push({
+      kind: "avatar",
+      ref: avatar.avatarRef,
+      label: avatar.label,
+      regionRef: avatar.regionRef,
+      worldPosition: avatarPosition.position,
+      minimap: worldToMinimap(region, avatarPosition.position, sizePx),
+      state: avatarPosition.animation,
+      sourceRefs: sourceRefsFromSafety(avatar.safety, avatar.avatarRef),
+    })
+  }
+
+  for (const run of Object.values(readModel.runs)) {
+    markers.push({
+      kind: "run_core",
+      ref: run.runRef,
+      label: run.label,
+      regionRef: region.regionRef,
+      worldPosition: region.origin,
+      minimap: worldToMinimap(region, region.origin, sizePx),
+      state: run.state,
+      sourceRefs: sourceRefsFromSafety(run.safety, run.runRef),
+    })
+  }
+
+  Object.values(readModel.entities).forEach((entity, index) => {
+    const position = runEntityPosition(region, index)
+    markers.push({
+      kind: "assignment",
+      ref: entity.entityRef,
+      label: entity.label,
+      regionRef: region.regionRef,
+      worldPosition: position,
+      minimap: worldToMinimap(region, position, sizePx),
+      state: entity.entityKind,
+      sourceRefs: sourceRefsFromSafety(entity.safety, entity.entityRef),
+    })
+  })
+
+  return {
+    coordinate: {
+      x: roundCoordinate(position.x - region.origin.x),
+      y: roundCoordinate((localPosition?.y ?? region.origin.y) - region.origin.y),
+      z: roundCoordinate(position.z - region.origin.z),
+    },
+    markers: markers.sort((left, right) =>
+      `${left.kind}:${left.ref}`.localeCompare(`${right.kind}:${right.ref}`),
+    ),
+    regionRef: region.regionRef,
+    regionLabel: region.label,
+    sizePx,
+    subzone: subzoneForPosition(
+      region,
+      position,
+      previousSubzoneRef,
+      Math.max(0, subzoneHysteresisMeters),
+    ),
+  }
+}
 
 export const createWorldClient = (input: {
   readonly transport: WorldClientTransport

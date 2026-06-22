@@ -1166,6 +1166,16 @@ Acceptance: Pylons, run core, assignment markers, and remote avatars share the
 same source as the scene; subzone/region labels use hysteresis; minimap deltas
 never drift from nameplates or 3D entities.
 
+Implementation note: W3 shipped `projectWorldMinimapReadout` in
+`@openagentsinc/world-client`. The pure projection consumes only
+`WorldReadModel` and emits pylon, avatar, run-core, and assignment minimap
+markers with world positions, minimap coordinates, compass coordinates, and a
+region/subzone label. Subzone selection keeps a configurable hysteresis band so
+labels do not flicker at centerline boundaries. Desktop tests compare minimap
+pylon/avatar positions against the existing 3D scene projection built from the
+same read model fixture, proving the layer does not subscribe to backend
+transport or drift from scene data.
+
 ### W4: Nameplate And Label Projection Primitive
 
 Promote a `three-effect` label/nameplate primitive using WoC's world-to-screen
