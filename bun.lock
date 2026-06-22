@@ -336,6 +336,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/input-bindings": {
+      "name": "@openagentsinc/input-bindings",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/mcp-contract": {
       "name": "@openagentsinc/mcp-contract",
       "version": "0.1.0",
@@ -999,6 +1010,8 @@
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
 
     "@openagentsinc/forum": ["@openagentsinc/forum@workspace:apps/forum"],
+
+    "@openagentsinc/input-bindings": ["@openagentsinc/input-bindings@workspace:packages/input-bindings"],
 
     "@openagentsinc/mcp-contract": ["@openagentsinc/mcp-contract@workspace:packages/mcp-contract"],
 

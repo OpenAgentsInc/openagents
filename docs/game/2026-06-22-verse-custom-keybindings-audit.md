@@ -6,8 +6,18 @@ Scope: current keyboard, mouse, Verse movement, and app shortcut handling in
 `openagents` and the linked `three-effect` runtime, with a recommendation for
 MMORPG-style custom keybindings.
 
-Status: audit and implementation plan only. This document does not change
-runtime input behavior.
+Status: implementation in progress. The initial shared contract exists, while
+runtime input behavior remains unchanged until the resolver/controller phases
+land.
+
+## Implementation Progress
+
+- 2026-06-22: Issue #5944 added `@openagentsinc/input-bindings` with the
+  shared action catalog, default `openagents.input-bindings.v1` profile,
+  profile decoding/fallback, display-label helpers, conflict detection, and
+  native-reserved binding checks. This is intentionally a pure contract package;
+  desktop subscriptions, three-effect controllers, Settings UI, and packaged
+  smoke coverage still need to consume it in the later issues.
 
 ## Goal
 
