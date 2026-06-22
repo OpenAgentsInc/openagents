@@ -32,6 +32,7 @@ import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import { interpretKey } from "../src/ui/keyboard"
 import { verseSceneVisualization } from "../src/ui/view"
+import { keyboardForwardDecision } from "../src/ui/subscriptions"
 import { SpawnedVerseScene, ToggledVerseScenePortal, PressedKey } from "../src/ui/message"
 
 const CRACKLING = DEFAULT_SPAWNABLE_SCENE_ID
@@ -173,6 +174,96 @@ describe("spawn keyboard intents (#6033)", () => {
     expect(
       interpretKey(codeModel, { key: "e", meta: true, ctrl: false, shift: true, inEditable: false }).kind,
     ).not.toBe("spawn-verse-scene")
+  })
+})
+
+// #6041 REGRESSION: the FULL key path, from the keyboard subscription's forward
+// decision all the way to the spawned scene appearing in the world. The original
+// #6041 bug shipped because only interpretKey + the reducer were tested: the
+// spawn keys were never registered as input bindings, so the subscription forward
+// gate (keyboardForwardDecision) resolved them to NO action ids → forward=false →
+// the keydown was DROPPED before interpretKey ever ran. These tests construct the
+// EXACT model state that exists WHEN THE VERSE IS ON SCREEN — pane:"chat",
+// verseEnabled:true, verseMode:"explore" (see view.ts: the explore world renders
+// only at `model.pane === "chat" && verseVisible(model)`) — and drive a ⌘⇧E /
+// ⌘⇧P event through ALL THREE layers. They FAIL on pre-fix main (forward===false)
+// and pass after the input bindings are registered.
+describe("#6041 full key path: forward gate → interpretKey → reducer (the layer the original bug lived in)", () => {
+  // The real on-screen Verse explore state (view.ts gate, line ~8762).
+  const verseOnScreen = Model.make({
+    ...initialModel,
+    pane: "chat",
+    verseEnabled: true,
+    verseMode: "explore",
+    commandPaletteOpen: false,
+  })
+  // Sanity: this really is the state where the Verse world is shown — the
+  // explore visualization renders the walkable third-person world.
+  test("the constructed model is the actual on-screen Verse explore state", () => {
+    const viz = verseSceneVisualization(verseOnScreen)
+    expect(viz.controller).toBe("third_person_character")
+    expect(verseOnScreen.pane).toBe("chat")
+    expect(verseOnScreen.verseEnabled).toBe(true)
+    expect(verseOnScreen.verseMode).toBe("explore")
+  })
+
+  const spawnEvent = {
+    key: "e",
+    meta: true,
+    ctrl: false,
+    shift: true,
+    inEditable: false,
+  } as const
+  const portalEvent = {
+    key: "p",
+    meta: true,
+    ctrl: false,
+    shift: true,
+    inEditable: false,
+  } as const
+
+  test("⌘⇧E: subscription FORWARDS it (forward===true) — fails before the binding fix", () => {
+    const decision = keyboardForwardDecision(spawnEvent)
+    // This is the assertion the original bug fails: actionIds was empty so
+    // forward was false and the keydown never reached interpretKey/the reducer.
+    expect(decision.forward).toBe(true)
+    expect(decision.preventDefault).toBe(true)
+  })
+
+  test("⌘⇧E: interpretKey maps it to spawn-verse-scene in the on-screen Verse", () => {
+    const intent = interpretKey(verseOnScreen, spawnEvent)
+    expect(intent.kind).toBe("spawn-verse-scene")
+    if (intent.kind === "spawn-verse-scene") expect(intent.sceneId).toBe(CRACKLING)
+  })
+
+  test("⌘⇧E: full path — forwarded PressedKey spawns the scene into the world viz", () => {
+    // Gate the message exactly like the subscription does, then run the reducer.
+    expect(keyboardForwardDecision(spawnEvent).forward).toBe(true)
+    const [next] = update(verseOnScreen, PressedKey(spawnEvent))
+    expect(next.verseSpawnedScenes.map((s) => s.sceneId)).toEqual([CRACKLING])
+    // And the spawned arc is actually present in the SAME world visualization.
+    const viz = verseSceneVisualization(next)
+    const entityIds = (viz.entities ?? []).map((e) => e.id)
+    expect(entityIds).toContain(fromId)
+    expect(entityIds).toContain(toId)
+    expect((viz.beams ?? []).some((b) => b.fromId === fromId && b.style === "crackling_arc")).toBe(true)
+  })
+
+  test("⌘⇧P: subscription FORWARDS it (forward===true) — fails before the binding fix", () => {
+    const decision = keyboardForwardDecision(portalEvent)
+    expect(decision.forward).toBe(true)
+    expect(decision.preventDefault).toBe(true)
+  })
+
+  test("⌘⇧P: full path — toggles the gateway portal on an already-spawned scene", () => {
+    const [spawned] = update(verseOnScreen, PressedKey(spawnEvent))
+    expect(keyboardForwardDecision(portalEvent).forward).toBe(true)
+    const [next] = update(spawned, PressedKey(portalEvent))
+    expect(next.verseSpawnedScenes[0]!.showPortal).toBe(true)
+    const viz = verseSceneVisualization(next)
+    const portal = (viz.entities ?? []).find((e) => e.id === portalId)
+    expect(portal).toBeDefined()
+    expect((portal as { visualKind?: string } | undefined)?.visualKind).toBe("gateway_portal")
   })
 })
 

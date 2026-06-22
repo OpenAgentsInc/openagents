@@ -361,6 +361,32 @@ export const openAgentsInputActionSpecs: ReadonlyArray<OpenAgentsInputActionSpec
     contexts: ["verse_explore", "verse_code_overlay"],
     defaultBindings: [],
   }),
+  // Dev affordance (#6033 / #6041): spawn an isolated crackling-energy scene
+  // station into the live Verse world (toggle in/out), and toggle that scene's
+  // optional gateway-portal variant. Explore-mode only, so the coding overlay
+  // keys are untouched. Registered as real input bindings (the #6041 author
+  // wired interpretKey + the reducer but never registered these, so the
+  // subscription forward gate dropped the keys before interpretKey ran). The
+  // ⌘⇧V toggle-code-overlay binding above is the working precedent for a
+  // primary+shift letter chord in verse_explore; ⌘⇧E / ⌘⇧P mirror it. The bare
+  // `interact.primary` (KeyE, no modifiers) is a keyboard_code binding and does
+  // not collide with this primary+shift keyboard_key chord.
+  action({
+    id: "verse.spawn_scene",
+    title: "Spawn Verse Scene",
+    category: "Verse",
+    kind: "toggle",
+    contexts: ["verse_explore"],
+    defaultBindings: [binding.key("e", { primary: true, shift: true })],
+  }),
+  action({
+    id: "verse.toggle_scene_portal",
+    title: "Toggle Verse Scene Portal",
+    category: "Verse",
+    kind: "toggle",
+    contexts: ["verse_explore"],
+    defaultBindings: [binding.key("p", { primary: true, shift: true })],
+  }),
   action({
     id: "app.command_palette",
     title: "Command Palette",
