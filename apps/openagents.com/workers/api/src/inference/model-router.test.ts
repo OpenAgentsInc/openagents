@@ -2,21 +2,21 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
-  classifyModel,
   DEFAULT_OVERFLOW_BACKOFF,
-  dispatchWithOverflow,
   FIREWORKS_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
-  openModelsByCost,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
   PASSTHROUGH_OPENAI_ADAPTER_ID,
-  selectAdapterPlan,
-  selectPrimaryAdapterId,
   VERTEX_ANTHROPIC_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  classifyModel,
+  dispatchWithOverflow,
+  openModelsByCost,
+  selectAdapterPlan,
+  selectPrimaryAdapterId,
 } from './model-router'
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
-import { KHALA_MINI_MODEL_ID } from './pricing'
+import { KHALA_CODE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -89,10 +89,8 @@ const err = (
 // No-wait sleep so overflow backoff never delays a test.
 const noSleep = () => Effect.void
 
-const completeOp = (
-  adapter: InferenceProviderAdapter,
-  req: InferenceRequest,
-) => adapter.complete(req).pipe(Effect.map(value => ({ id: adapter.id, value })))
+const completeOp = (adapter: InferenceProviderAdapter, req: InferenceRequest) =>
+  adapter.complete(req).pipe(Effect.map(value => ({ id: adapter.id, value })))
 
 // ==========================================================================
 // 1. Model -> lane classification + selection
@@ -135,6 +133,16 @@ describe('model classification', () => {
     expect(classifyModel(KHALA_MINI_MODEL_ID)).toBe('gemini')
     expect(selectAdapterPlan(KHALA_MINI_MODEL_ID)).toEqual([
       VERTEX_GEMINI_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the Khala code virtual model to the open coding lane', () => {
+    expect(classifyModel(KHALA_CODE_MODEL_ID)).toBe('open')
+    expect(selectAdapterPlan(KHALA_CODE_MODEL_ID)).toEqual([
+      FIREWORKS_ADAPTER_ID,
+      OPENAGENTS_NETWORK_ADAPTER_ID,
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
     ])
   })
 
@@ -201,7 +209,9 @@ describe('lane plan ordering (cheapest viable first, then overflow)', () => {
   test('a REGISTERED inert network adapter typed-fails non-retryably (#5483 honest-scope)', async () => {
     // When the inert adapter IS registered (e.g. a future probe), it honestly
     // typed-fails `network_dispatch_unavailable` rather than faking a serve.
-    const outcome = await runResult(openAgentsNetworkAdapter.complete(request('kimi-k2p6')))
+    const outcome = await runResult(
+      openAgentsNetworkAdapter.complete(request('kimi-k2p6')),
+    )
     expect(outcome._tag).toBe('Failure')
     if (outcome._tag === 'Failure') {
       expect(outcome.failure.kind).toBe('network_dispatch_unavailable')
@@ -225,7 +235,9 @@ describe('lane plan ordering (cheapest viable first, then overflow)', () => {
 describe('dispatchWithOverflow', () => {
   test('serves from the primary (cheapest) lane when it succeeds', async () => {
     const vertex = mockAdapter(VERTEX_ANTHROPIC_ADAPTER_ID, [undefined])
-    const passthrough = mockAdapter(PASSTHROUGH_ANTHROPIC_ADAPTER_ID, [undefined])
+    const passthrough = mockAdapter(PASSTHROUGH_ANTHROPIC_ADAPTER_ID, [
+      undefined,
+    ])
     const registry = new InferenceProviderRegistry()
     registry.register(vertex.adapter)
     registry.register(passthrough.adapter)

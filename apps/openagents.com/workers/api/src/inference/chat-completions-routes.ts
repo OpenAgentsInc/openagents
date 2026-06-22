@@ -16,34 +16,42 @@
 // only base URL + key. Anthropic Messages compatibility is a parallel surface;
 // a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
 // #5476.
-
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { compactRandomId, currentEpochSeconds } from '../runtime-primitives'
+import {
+  type FairShareDecision,
+  type SpendCapDecision,
+} from './inference-abuse-controls'
+import { type PremiumAccessDecision } from './inference-premium-allowlist'
+import {
+  KHALA_CODE_VERIFIER_WORKER_ID,
+  type KhalaCodeVerificationVerdict,
+  verifyKhalaCodeCompletion,
+} from './khala-code-verifier'
+import {
+  type MeteringHook,
+  type MeteringOutcome,
+  stubMeteringHook,
+} from './metering-hook'
+import {
+  type DispatchDeps,
+  classifyModel,
+  dispatchWithOverflow,
+} from './model-router'
+import {
+  type SupplyLaneArming,
+  resolveNamedModelServability,
+} from './model-serving-policy'
+import { type FundingKind, KHALA_CODE_MODEL_ID, isKhalaModel } from './pricing'
 import {
   type InferenceMessage,
   type InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
 } from './provider-adapter'
-import { type MeteringHook, stubMeteringHook } from './metering-hook'
-import { type FundingKind, isKhalaModel } from './pricing'
-import {
-  type SupplyLaneArming,
-  resolveNamedModelServability,
-} from './model-serving-policy'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
-import {
-  classifyModel,
-  type DispatchDeps,
-  dispatchWithOverflow,
-} from './model-router'
-import {
-  type FairShareDecision,
-  type SpendCapDecision,
-} from './inference-abuse-controls'
-import { type PremiumAccessDecision } from './inference-premium-allowlist'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. The free-tier default is
@@ -63,9 +71,7 @@ export type InferenceAuth = (
 // Read-only available-credit check (msat) for the account. The Worker wires
 // this to `readAgentBalance(...).availableMsat`. #5476 only GATES on balance;
 // it never decrements (that is #5477's metering path).
-export type InferenceBalanceReader = (
-  accountRef: string,
-) => Promise<number>
+export type InferenceBalanceReader = (accountRef: string) => Promise<number>
 
 // FUNDING-KIND SEAM -------------------------------------------------------
 // Resolves how an account funds its balance (card | bitcoin) so the metering
@@ -178,17 +184,13 @@ export type ChatCompletionsDeps = Readonly<{
   // the decision's statusCode (429) and sets RateLimit-* headers from the
   // bounded counters. Checked AFTER auth (so it is keyed to the account) and
   // BEFORE provider dispatch (so a starve-attempt never reaches a provider).
-  checkFairShare?: (
-    accountRef: string,
-  ) => Promise<FairShareDecision>
+  checkFairShare?: (accountRef: string) => Promise<FairShareDecision>
   // PER-ACCOUNT SPEND-CAP GATE. Returns the spend-cap decision for the account in
   // the current window. When `allowed` is false the route rejects with the
   // decision's statusCode (402, distinct from the balance gate's
   // insufficient_credits). Checked after the balance gate; pre-flight it bounds
   // the already-spent window total (no per-request estimate exists yet).
-  checkSpendCap?: (
-    accountRef: string,
-  ) => Promise<SpendCapDecision>
+  checkSpendCap?: (accountRef: string) => Promise<SpendCapDecision>
   // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Returns the
   // premium-access decision for the (account, model) pair. Premium models
   // (Claude / GPT / partner-passthrough) require the account's resolved OWNER
@@ -228,9 +230,7 @@ const ChatCompletionsRequestBody = S.Struct({
 // Resolve the effective requested model: a present, non-blank `model` as given,
 // otherwise the free-tier default. Centralized so the default applies uniformly
 // to routing, premium gating, response echo, and metering.
-export const resolveRequestedModel = (
-  model: string | undefined,
-): string => {
+export const resolveRequestedModel = (model: string | undefined): string => {
   const trimmed = model?.trim()
   return trimmed === undefined || trimmed === '' ? DEFAULT_CHAT_MODEL : trimmed
 }
@@ -274,8 +274,82 @@ type OpenAgentsReceipt = Readonly<{
   served_model: string
   worker: string
   lane: string
-  verification: 'none'
+  verification: 'none' | 'test_passed' | 'failed'
+  verified?: boolean | undefined
+  receipt?: string | undefined
+  receipt_url?: string | undefined
+  route?: 'coding' | undefined
+  workers?: ReadonlyArray<string> | undefined
+  verification_receipt?: string | undefined
+  verification_command?: string | undefined
+  scalar_reward?: number | undefined
+  reward_handoff?: string | undefined
+  rubric?:
+    | Readonly<{
+        ref: string
+        passed_checks: ReadonlyArray<string>
+        failed_checks: ReadonlyArray<string>
+      }>
+    | undefined
 }>
+
+const publicInferenceReceiptUrl = (receiptRef: string): string =>
+  `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
+
+const khalaReceiptForResult = (
+  input: Readonly<{
+    adapterId: string
+    metering: MeteringOutcome
+    requestedModel: string
+    responseId: string
+    result: InferenceResult
+  }>,
+): OpenAgentsReceipt | undefined => {
+  if (!isKhalaModel(input.requestedModel)) {
+    return undefined
+  }
+
+  const base = {
+    lane: classifyModel(input.requestedModel),
+    requested_model: input.requestedModel,
+    served_model: input.result.servedModel,
+    worker: input.adapterId,
+  } satisfies Omit<OpenAgentsReceipt, 'verification'>
+
+  if (input.requestedModel !== KHALA_CODE_MODEL_ID) {
+    return { ...base, verification: 'none' }
+  }
+
+  const verdict: KhalaCodeVerificationVerdict = verifyKhalaCodeCompletion({
+    content: input.result.content,
+    meteringReceiptRef: input.metering.receiptRef,
+    requestId: input.responseId,
+    servedModel: input.result.servedModel,
+    worker: input.adapterId,
+  })
+  const receipt = input.metering.receiptRef ?? verdict.receiptRef
+
+  return {
+    ...base,
+    receipt,
+    ...(input.metering.receiptRef === null
+      ? {}
+      : { receipt_url: publicInferenceReceiptUrl(input.metering.receiptRef) }),
+    reward_handoff: verdict.reward.handoffRef,
+    route: 'coding',
+    rubric: {
+      failed_checks: verdict.failedChecks,
+      passed_checks: verdict.passedChecks,
+      ref: verdict.rubricRef,
+    },
+    scalar_reward: verdict.scalarReward,
+    verification: verdict.verification,
+    verification_command: verdict.command.commandRef,
+    verification_receipt: verdict.receiptRef,
+    verified: verdict.verified,
+    workers: [input.adapterId, KHALA_CODE_VERIFIER_WORKER_ID],
+  }
+}
 
 // OpenAI non-streaming response envelope.
 const openAiResponse = (
@@ -298,9 +372,7 @@ const openAiResponse = (
   id: input.id,
   model: input.model,
   object: 'chat.completion',
-  ...(input.openagents === undefined
-    ? {}
-    : { openagents: input.openagents }),
+  ...(input.openagents === undefined ? {} : { openagents: input.openagents }),
   usage: {
     completion_tokens: input.result.usage.completionTokens,
     prompt_tokens: input.result.usage.promptTokens,
@@ -385,10 +457,7 @@ export const handleChatCompletions = (
 
     const body = decodeBody(rawBody)
     if (body === undefined || body.messages.length === 0) {
-      return noStoreJsonResponse(
-        { error: 'invalid_request' },
-        { status: 400 },
-      )
+      return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
     }
 
     // Resolve the effective model once: an unspecified/blank model defaults to
@@ -634,7 +703,7 @@ export const handleChatCompletions = (
       )
     }
 
-    yield* meteringHook({
+    const metering = yield* meteringHook({
       accountRef: session.accountRef,
       adapterId: result.served.adapterId,
       fundingKind,
@@ -651,17 +720,17 @@ export const handleChatCompletions = (
         id: responseId,
         model: requestedModel,
         // Khala requests carry the disclosure block (which concrete model/worker
-        // served this one endpoint). Non-Khala responses are byte-identical to
-        // before. Streaming carries the same disclosure in a later slice.
-        openagents: isKhalaModel(requestedModel)
-          ? {
-              lane: classifyModel(requestedModel),
-              requested_model: requestedModel,
-              served_model: result.served.value.servedModel,
-              verification: 'none',
-              worker: result.served.adapterId,
-            }
-          : undefined,
+        // served this one endpoint). `khala-code` additionally runs the
+        // deterministic verifier and attaches the test verdict; non-Khala
+        // responses are byte-identical to before. Streaming carries the same
+        // disclosure in a later slice.
+        openagents: khalaReceiptForResult({
+          adapterId: result.served.adapterId,
+          metering,
+          requestedModel,
+          responseId,
+          result: result.served.value,
+        }),
         result: result.served.value,
       }),
     )
