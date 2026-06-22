@@ -48,6 +48,7 @@ import {
   makeReconnectPlan,
   makeSnapshotFrame,
   normalizeRegionRef,
+  regionClockFromStorageRows,
   regionDurableObjectMigrationStatements,
   regionRefFromSocketPath,
   serializeWorldFrame,
@@ -991,16 +992,15 @@ export class RegionDurableObject extends DurableObject<Env> {
   }
 
   private readRegionClock(regionRef: string): { currentSeq: number; minReplaySeq: number } {
-    const clock = this.sql.exec<{ current_seq: number; min_replay_seq: number }>(
-      "SELECT current_seq, min_replay_seq FROM region_transport_clock WHERE region_ref = ?",
-      regionRef,
-    ).one()
+    const clock = regionClockFromStorageRows(
+      this.sql.exec<{ current_seq: number; min_replay_seq: number }>(
+        "SELECT current_seq, min_replay_seq FROM region_transport_clock WHERE region_ref = ?",
+        regionRef,
+      ).toArray(),
+    )
 
     if (clock !== null) {
-      return {
-        currentSeq: Number(clock.current_seq),
-        minReplaySeq: Number(clock.min_replay_seq),
-      }
+      return clock
     }
 
     this.sql.exec(

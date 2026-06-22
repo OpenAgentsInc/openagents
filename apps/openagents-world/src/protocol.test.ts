@@ -18,6 +18,7 @@ import {
   makeZeroSnapshotDelta,
   normalizeRegionRef,
   planSightDelta,
+  regionClockFromStorageRows,
   regionDurableObjectMigrationStatements,
   regionRefFromSocketPath,
   socketUrlForRegion,
@@ -44,6 +45,14 @@ describe("openagents-world protocol helpers", () => {
     const request = new Request("https://openagents-world.openagents.workers.dev/connect?region=ignored")
     expect(regionRefFromSocketPath("/regions/region.run.1/socket")).toBe("region.run.1")
     expect(socketUrlForRegion(request, "region.run.1")).toBe("wss://openagents-world.openagents.workers.dev/regions/region.run.1/socket")
+  })
+
+  test("decodes optional region clock rows for first-touch dynamic regions", () => {
+    expect(regionClockFromStorageRows([])).toBeNull()
+    expect(regionClockFromStorageRows([{ current_seq: 4, min_replay_seq: 2 }])).toEqual({
+      currentSeq: 4,
+      minReplaySeq: 2,
+    })
   })
 
   test("produces a typed zero-row snapshot delta", () => {

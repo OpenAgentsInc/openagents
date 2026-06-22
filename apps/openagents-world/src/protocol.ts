@@ -65,6 +65,11 @@ export type RegionClock = Readonly<{
   minReplaySeq: number
 }>
 
+export type RegionClockStorageRow = Readonly<{
+  current_seq: number
+  min_replay_seq: number
+}>
+
 export type ReconnectPlan =
   | Readonly<{
       kind: "resume"
@@ -240,6 +245,19 @@ export const makeZeroSnapshotDelta = (
 
 export const cursorForSequence = (regionRef: string, sequence: number): string =>
   `cursor.${normalizeRegionRef(regionRef)}.${Math.max(0, Math.floor(sequence))}`
+
+export const regionClockFromStorageRows = (
+  rows: ReadonlyArray<RegionClockStorageRow>,
+): RegionClock | null => {
+  const row = rows[0]
+  if (row === undefined) {
+    return null
+  }
+  return {
+    currentSeq: Number(row.current_seq),
+    minReplaySeq: Number(row.min_replay_seq),
+  }
+}
 
 export const sequenceFromCursor = (cursor: string, regionRef: string): number | null => {
   const prefix = `cursor.${normalizeRegionRef(regionRef)}.`
