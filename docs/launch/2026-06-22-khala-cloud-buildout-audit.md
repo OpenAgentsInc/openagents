@@ -28,7 +28,7 @@ heuristic router until M6.
 | #6008 | **M0** serve metered + receipt | **OPEN — code landed** | `khala-mini` priced catalog alias (#6018); `openagents` disclosure block on non-stream responses; tests + typecheck green | **Owner**: provider secrets + flip `INFERENCE_GATEWAY_ENABLED` (staging→prod) + live SDK smoke |
 | #6009 | **M1** Autopilot calls Khala | **OPEN — not started** | — | Cockpit POST to `khala-*` + render receipt; needs M0 enabled (staging ok) |
 | #6010 | **M2** verified coding outcomes | **CLOSED — done & verified** | `khala-code` model; crossy-road rubric; Playwright headless verifier (`khala-code-verifier.ts`); route returns `verification`/`verified`/rubric/receipt; 88 tests, check:deploy green | — (tick the EPIC box) |
-| #6011 | **M3** Bitcoin settlement | **OPEN — not started** | metering/referral/payout code exists but unproven E2E | **Owner-gated**: staging Stripe TEST chain (#5520) before any prod keys/payout arming |
+| #6011 | **M3** Bitcoin settlement | **OPEN — not started** | metering/referral/payout code exists but unproven E2E | **Bitcoin-only, Spark-primary** payout (**no Stripe**; MDK = checkout-only) → agent-testable now; first proof = pay the guinea-pig Pylon (`.secrets/khala-test-payout.env`) |
 | #6012 | **M4** Pylon workers in pool | **OPEN — not started** | — | Fabric supply adapter (gateway↔Psionic ask-plan→execute→consume-receipt); whole-small-model serving first |
 | #6013 | **M5** Verse serving view | **OPEN — partial** | world-contract Khala **gateway projection contract** + bridge + commands (`e0e33aad61`); desktop **projects Khala inference into Verse** (`11a7c3ca98`) | The two `three-effect` render primitives (`createCracklingArc`, `createGatewayPortal`) live in the separate `three-effect` repo; wire real inference events from the activity timeline |
 | #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
@@ -57,9 +57,14 @@ heuristic router until M6.
    first), M0-live, M1, M3, and M8-live are all blocked. This single step turns
    on the entire upstream money loop. *Recommend: enable on a staging/preview
    Worker first, run the M0 live smoke, then prod.*
-2. **Payments staging-first rule (owner-gated).** Per the roadmap's Agent Ledger
-   lane, no prod Stripe/Spark/MDK arming until #5520 has a full Stripe **TEST**
-   receipt chain. M3 cannot honestly close before that chain exists.
+2. **Payments are Bitcoin-only this wave, Spark-primary (owner direction
+   2026-06-22).** Settle payouts over **Spark** (Lightning as the rail); **no
+   Stripe / no card funding** (MDK is checkout-only, not used for payouts). This
+   *un-gates* M3 — Bitcoin moves in testing without prod card secrets — so M3 is
+   agent-testable now. The first proof must **pay the guinea-pig Pylon** (Spark
+   address in `/Users/christopherdavid/work/.secrets/khala-test-payout.env`) with
+   a settled `realBitcoinMoved:true` receipt. Keep amounts small and
+   treasury-bounded; it is still real money.
 3. **Learned coordinator substrate missing (pure-eng long pole).** Psionic has
    no hidden-state extraction, sep-CMA-ES, or SVF (the P1–P5 primitives), so M6
    (and therefore M7 and the "learned composition" framing of M8) cannot start
@@ -77,7 +82,7 @@ heuristic router until M6.
                                           │
    M2 verifier (DONE) ──────────────────► │
                                           ▼
-[OWNER] Stripe TEST chain (#5520) ──► M3 settlement (staging) ─┐
+   M3 Bitcoin/Spark payout (pay guinea-pig Pylon) ───────────┐
    M4 whole-model Pylon serving ─────────────────────────────┤
    M5 render primitives + live events ───────────────────────┼─► M8 head-to-head
    M6 Psionic P1–P5 + ES training ──► M7 Conductor (GRPO) ────┘   (heuristic first;

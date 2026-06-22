@@ -448,6 +448,141 @@ Ledger; real Pylon-payout claims wait on Agent Pylon + Agent Ledger; learned
 router promotion waits on Agent Psion + Agent Verifier + Agent Pylon; published
 head-to-head claims wait on Agent Demo with receipt-backed measurements.
 
+## Next-wave delegation — 2026-06-22 (post first wave)
+
+The first wave landed: **M0** code (catalog alias + `openagents` disclosure block,
+owner-gated for live), **M2** done (khala-code rubric + Playwright verifier),
+**M5** partial (world-contract gateway projection + desktop Verse projection), and
+**M8** self-gating scaffold (reducer/closure-audit/publication, blocked on live
+evidence). Audit: `docs/launch/2026-06-22-khala-cloud-buildout-audit.md`.
+
+The single highest-leverage step is **NEEDS-OWNER**, not an agent lane:
+
+> **NEEDS-OWNER (unblocks M0-live, M1, M8):** wire one provider secret
+> (Fireworks is verified-live and cheapest) and set `INFERENCE_GATEWAY_ENABLED=on`
+> on a **staging/preview** Worker, then run the M0 live SDK smoke. Prod after
+> staging proves out. No agent can flip prod secrets/flags.
+
+### Payments: Bitcoin-only, and pay the guinea-pig Pylon first
+
+Owner direction (2026-06-22): **all payment work is Bitcoin-only for now**, with
+**Spark as the primary payout method** (over Lightning). **No Stripe.** (MDK is
+checkout-only and not relevant to payouts; card/credit funding is explicitly out
+of scope this wave.) Bitcoin/Spark lets us move real money in testing without
+prod card secrets or fragile env wiring, so M3 is **agent-testable today** rather
+than gated on a card-payment chain.
+
+There is a designated **test payout target — the "guinea-pig" Pylon**: a live
+online Pylon in an Autopilot instance whose **Spark receive address** is in
+`/Users/christopherdavid/work/.secrets/khala-test-payout.env`
+(`KHALA_TEST_PAYOUT_SPARK_ADDRESS`, gitignored, shared across all agent
+sessions — do not commit it into tracked files). **Rule for every lane:** in
+payment/serving tests, **pay this node first**, route test work/assignments to
+it, and use its Pylon as the primary serving worker, so the first end-to-end
+"verified work → Bitcoin to a real contributor" loop lands on a known node we
+control.
+
+Below is the next wave as **5 parallel lanes** that do not block on that owner
+step (they build against the stub adapter / fixtures / staging) and **do not
+collide**. Every lane: work on a **fresh worktree off clean `origin/main`**
+(never touch another agent's dirty checkout — CLAUDE.md rule); read the cited
+docs first; keep edits inside your owned paths; post a claim + status comment on
+your issue; label fixture/inert results as scaffold, never product proof.
+
+### Shared-seam ownership (collision rules)
+
+A few files are touched by more than one lane. To avoid stepping on each other:
+
+| Shared seam | Sole owner (edits) | Everyone else |
+|---|---|---|
+| `src/inference/provider-adapter.ts` (registry/interface) + adapter registration | **Lane B (Supply)** | read-only; request a registration via Lane B |
+| `src/inference/chat-completions-routes.ts` `openagents` block | **Lane A (Cockpit)** may extend *consumption*; **Lane B/E** add fields only via PR review | coordinate field additions in the issue first |
+| `src/inference/metering-hook.ts` + billing/referral/settlement | **Lane E (Ledger)** | read-only |
+| `packages/world-contract` + `apps/openagents-world` bridge | **Lane D (Verse)** | read-only |
+| `@openagentsinc/three-effect` (separate repo) | **Lane D (Verse)** | n/a |
+| `psionic` repo | **Lane C (Psion)** | n/a (different repo) |
+
+If two lanes must both change one file, the **owner** lands the change and the
+other rebases — never edit the same file from two worktrees in flight.
+
+### Lane A — Cockpit (M1, #6009)
+
+**Goal:** Autopilot submits a prompt to `openagents/khala-*` and renders the
+`openagents` receipt (route, worker, cost, verification). **Owns:**
+`apps/autopilot-desktop` cockpit + the web client call path. **Reads:**
+`docs/inference/khala.md` §3, `chat-completions-routes.ts` (read-only).
+**Not blocked by owner:** build against a local/staging gateway or the stub
+adapter; gate the "live" badge on a real receipt. **First output:** the
+crossy-road prompt round-trips through the cockpit and shows the receipt block.
+**Collision rule:** consume the `openagents` block; do not change its shape
+without Lane B/E sign-off.
+
+### Lane B — Supply / Pylon (M4, #6012)
+
+**Goal:** the **fabric supply adapter** (gateway↔Psionic: ask-plan → execute →
+consume exact-parity receipt), whole-small-model serving first; register it
+behind the existing adapter registry. **Owns:** the new adapter file +
+`provider-adapter.ts` registration + the Psionic serving seam.
+**Reads:** `docs/inference/2026-06-19-decentralized-serving-shard-wan.md`,
+`apps/pylon`. **Not blocked by owner:** prove the adapter against a local Psionic
+serve + parity receipt; defer shard-WAN. **Use the guinea-pig Pylon as the
+primary test worker** — dispatch test assignments to the node at
+`KHALA_TEST_PAYOUT_SPARK_ADDRESS` (`.secrets/khala-test-payout.env`) so its
+serve → parity receipt → Bitcoin payout (with Lane E) is the first proven loop.
+**First output:** a Khala request served by that Pylon adapter returns an
+exact-parity receipt in tests. **Collision rule:** sole owner of the adapter
+registry; other lanes request registrations.
+
+### Lane C — Psion (M6, #6014) — the long pole, start now
+
+**Goal:** Psionic primitives **P1–P5** (hidden-state extraction → coordinator
+head + SVF → sep-CMA-ES optimizer → scalar terminal-reward adapter → typed
+worker-pool binding), then a first shadow run rewarded by the M2 verdict.
+**Owns:** the `psionic` repo (fully isolated — different repo, zero collision).
+**Reads:** `docs/sakana/psionic-coordinator-roadmap.md`,
+`docs/sakana/coordinator-as-verified-work.md`, `docs/research/tmax/synthesis.md`.
+**First output:** P1 hidden-state extraction with a reproducibility test, then the
+ES optimizer on a trivial head. **Note:** needs real ML-training compute later;
+begin the primitives now so they are ready when M0–M5 are green.
+
+### Lane D — Verse (M5, #6013)
+
+**Goal:** finish the serving visualization — land the two `three-effect`
+primitives (`createCracklingArc`, `createGatewayPortal`) and wire **real**
+inference events from the activity timeline into the world projection + desktop
+scene. **Owns:** `@openagentsinc/three-effect` (separate repo),
+`apps/openagents-world` bridge inference-event path, the desktop Verse scene.
+**Reads:** `docs/inference/khala-in-the-world.md`. **Not blocked by owner:** drive
+from fixture/replayed activity-timeline events under the evidence-bound motion
+contract. **First output:** a Khala request renders a crackling arc to its
+worker + a gateway portal for an external lane, each dereferencing a receipt.
+
+### Lane E — Ledger (M3, #6011) — **Bitcoin-only**
+
+**Goal:** the end-to-end **Bitcoin** money loop — metered Khala spend →
+verified-work payout **settled over Spark** (our primary payout method; Lightning
+as the rail) to a real contributor, with a dereferenceable receipt. **No Stripe /
+no card funding this wave** (MDK is checkout-only, not used here); use the Spark
+payout path the tip / treasury tests already exercise. **Owns:** `metering-hook.ts`
++ the Bitcoin
+settlement/referral path. **Reads:** the revenue-loop spine (#5457, RL-1/RL-2/
+RL-3), the existing tip/treasury runbooks, `docs/inference/2026-06-19-pricing-model.md`
+(for the sats pricing basis). **First output, and the milestone proof:** route a
+small verified-work payout to the **guinea-pig Pylon's Spark address**
+(`.secrets/khala-test-payout.env`) and show the settled receipt
+(`realBitcoinMoved:true`) — **get that node paid first.** Then parallelize
+payouts to additional workers. Keep amounts small and treasury-bounded; this is
+real money. **Collision rule:** sole owner of the metering/settlement path.
+
+### What still waits (do NOT fake)
+
+- **M7 (Conductor)** waits on Lane C (M6) — no parallel start; it is the next
+  thing after the learned substrate exists.
+- **M8 live run** waits on the owner gateway-enable + Lanes A/E (a real metered,
+  settled completion) and ideally M6/M7. The M8 harness already refuses to close
+  on fixture evidence (`closureAudit.canClose:false`); feed it real refs, don't
+  add more scaffold.
+
 ## Sequenced milestones
 
 Each milestone converges the workstreams toward the demo; later ones depend on
