@@ -248,6 +248,29 @@ describe("code-mode sync projection (#5929)", () => {
     )
   })
 
+  test("node projection gaps stay recoverable instead of surfacing red blocked copy", () => {
+    const snapshot = projectCodeModeSyncSnapshot({
+      source: "node_state",
+      node: nodeState({ ok: false, schema: "openagents.pylon.control.v0.3" }),
+      managedAccounts: managed(["work"]),
+      inferenceGatewayReadiness: gatewayReadiness(),
+      builtInAgentReadiness: builtInReadiness(),
+      appleFmReadiness: null,
+      selectedSessionRef: sessionRef,
+      composerAdapter: "codex",
+      composerAccountRef: "work",
+    })
+
+    const nodeDiagnostic = snapshot.diagnostics.find((row) =>
+      row.key.startsWith("node."),
+    )
+    expect(nodeDiagnostic?.key).toBe("node.reconnecting")
+    expect(nodeDiagnostic?.severity).toBe("info")
+    expect(nodeDiagnostic?.title).toBe("Node sync reconnecting")
+    expect(nodeDiagnostic?.body).not.toContain("not OK")
+    expect(nodeDiagnostic?.body).not.toContain("blocked")
+  })
+
   test("one node-state tick updates Sessions, Agent Stream, Decisions, and Diff/Artifacts", () => {
     let model = Model.make({
       ...initialModel,

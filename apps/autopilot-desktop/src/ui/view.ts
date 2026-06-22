@@ -7352,7 +7352,7 @@ const pylonBalanceHud = (model: Model): Html => {
           known: true,
           valueText: `${Math.max(0, Math.floor(onboardingBalance)).toLocaleString()} sats`,
         }
-  const state = balance.known ? "known" : "unknown"
+  const state = balance.known ? "known" : "pending"
   const displayValue = balance.known ? balance.valueText : "wallet pending"
   const title = balance.known
     ? `Pylon Bitcoin balance: ${balance.valueText}`

@@ -286,10 +286,10 @@ const diagnosticsFor = (
     })
   } else if (!input.node.ok) {
     add({
-      key: "node.blocked",
-      severity: "error",
-      title: "Node sync blocked",
-      body: "The latest node-state projection is not OK; coding panes should stay repairable.",
+      key: "node.reconnecting",
+      severity: "info",
+      title: "Node sync reconnecting",
+      body: "Waiting for a fresh node-state projection; coding panes remain available.",
       sourceRef: input.node.schema,
     })
   }

@@ -67,6 +67,14 @@ const activeNode = (): NodeStateMessage => ({
   },
 })
 
+const reconnectingNode = (): NodeStateMessage => ({
+  ...activeNode(),
+  ok: false,
+  sessions: [],
+  approvals: [],
+  events: {},
+})
+
 describe("Verse code dock (#5923)", () => {
   test("renders only in Verse code mode and remains a DOM overlay, not a pane", () => {
     const explore = Model.make({ ...initialModel, pane: "chat", verseMode: "explore" })
@@ -107,6 +115,22 @@ describe("Verse code dock (#5923)", () => {
     expect(tree).toContain("Thinking")
     expect(tree).toContain("Check")
     expect(tree).not.toContain("approval.codex.exec.1")
+  })
+
+  test("shows node reconnecting as calm sync status instead of a red blocked error", () => {
+    let model = Model.make({
+      ...initialModel,
+      pane: "chat",
+      verseMode: "code",
+    })
+    ;[model] = update(model, GotNodeState({ node: reconnectingNode() }))
+
+    const tree = serializeView(view(model).body)
+    expect(tree).toContain("Node sync reconnecting")
+    expect(tree).toContain("code-mode-sync-info")
+    expect(tree).not.toContain("code-mode-sync-error")
+    expect(tree).not.toContain("Node sync blocked")
+    expect(tree).not.toContain("not OK")
   })
 
   test("hiding code mode preserves the active session, open panes, and Verse pose", () => {

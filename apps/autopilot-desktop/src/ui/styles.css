@@ -172,7 +172,7 @@ body {
   white-space: nowrap;
 }
 
-.pylon-balance-hud-unknown .pylon-balance-hud-value {
+.pylon-balance-hud-pending .pylon-balance-hud-value {
   color: rgb(255 255 255 / 0.52);
 }
 
