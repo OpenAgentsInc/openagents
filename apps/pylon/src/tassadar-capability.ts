@@ -23,6 +23,7 @@ import {
 import { runPinnedTassadarExecutorSelfTest } from "@openagentsinc/tassadar-executor/self-test"
 
 import { assertPublicProjectionSafe } from "./state.js"
+import { stripUnreceiptedServingCapability } from "./serving-capability.js"
 
 export const PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF =
   "blocker.pylon.tassadar_executor_self_test_failed"
@@ -109,10 +110,12 @@ export function mergeTassadarCapabilityRefs(
 
 /**
  * Publishable capability refs for presence (register/heartbeat): an
- * executor claim without its self-test receipt never leaves the device.
+ * executor claim without its self-test receipt never leaves the device, and
+ * a serving claim without its self-benchmark receipt is likewise stripped
+ * (book P1-6, openagents#6089) — no unproven serving overclaim is published.
  */
 export function publishableCapabilityRefs(refs: string[]): string[] {
-  return [...stripUnreceiptedTassadarExecutorCapability(refs)]
+  return stripUnreceiptedServingCapability([...stripUnreceiptedTassadarExecutorCapability(refs)])
 }
 
 /** Writes the local public-safe self-test evidence file under PYLON_HOME. */
