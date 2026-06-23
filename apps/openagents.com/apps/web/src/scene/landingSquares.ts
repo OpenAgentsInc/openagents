@@ -20,7 +20,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 // (three-effect #16 / openagents #6068) without pulling the full Foldkit/three
 // scene host for this raw background.
 
-export type LandingPose = 'landing' | 'khala' | 'tassadar'
+export type LandingPose = 'landing' | 'khala' | 'tassadar' | 'autopilot'
 
 const BACKGROUND_COLOR = 0x000000
 // A tasteful cool blue, driven above 1.0 (HDR) so the cores survive the bloom
@@ -37,21 +37,32 @@ const NEIGHBORS = 2 // connections per pylon
 // `tassadar` flies the camera up and across to a third, distinct vantage —
 // looking down the network from above-left — so entering /tassadar is another
 // continuous move through the same space, not a cut.
-const POSES: Record<LandingPose, { pos: Three.Vector3; target: Three.Vector3 }> =
-  {
-    landing: {
-      pos: new Three.Vector3(0, 1.2, 19),
-      target: new Three.Vector3(0, 0, 0),
-    },
-    khala: {
-      pos: new Three.Vector3(9.5, -2.6, 8.5),
-      target: new Three.Vector3(2.6, -0.6, -2.2),
-    },
-    tassadar: {
-      pos: new Three.Vector3(-8.5, 6.2, 11),
-      target: new Three.Vector3(-1.4, 1.1, -2),
-    },
-  }
+// `autopilot` is the onboarding vantage: the camera drops low and pushes in
+// close from below-right, banking up into the heart of the constellation so
+// the pylons loom overhead. It reads as arriving inside the network (you are
+// now flying it), distinct from every other pose — closer and more immersive
+// than `landing`, and on the opposite side from `tassadar`'s above-left view.
+export const POSES: Record<
+  LandingPose,
+  { pos: Three.Vector3; target: Three.Vector3 }
+> = {
+  landing: {
+    pos: new Three.Vector3(0, 1.2, 19),
+    target: new Three.Vector3(0, 0, 0),
+  },
+  khala: {
+    pos: new Three.Vector3(9.5, -2.6, 8.5),
+    target: new Three.Vector3(2.6, -0.6, -2.2),
+  },
+  tassadar: {
+    pos: new Three.Vector3(-8.5, 6.2, 11),
+    target: new Three.Vector3(-1.4, 1.1, -2),
+  },
+  autopilot: {
+    pos: new Three.Vector3(5.5, -4.5, 6.0),
+    target: new Three.Vector3(0.4, 1.6, -3.2),
+  },
+}
 
 // Deterministic hash in [0, 1) so pylon placement + the glow subset stay stable
 // across reloads (no Math.random flicker).
