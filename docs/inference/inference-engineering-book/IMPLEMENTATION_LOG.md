@@ -387,6 +387,34 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
 
 ---
 
+## P2-10 — Multi-Cloud And Geo-Aware Routing — DONE (first slice, #6093)
+
+- **Notes ref:** `khala-investigation-notes.md` §P2 item 10 ("Multi-Cloud And
+  Geo-Aware Routing"); book Ch.7 (multi-cloud control plane / workload plane).
+- **What shipped:** a typed routing-metadata path for the existing
+  bounded-backoff overflow dispatcher. `dispatchWithOverflowWithMetadata`
+  returns the served adapter, primary adapter, fallback reason, and optional
+  control-plane lane signals while the legacy `dispatchWithOverflow` remains a
+  value-only compatibility wrapper. Khala receipts now include an additive
+  `routing` block with `provider_health_score`, `region`, and
+  `fallback_reason`. The canonical `openagents.khala.telemetry.v1` record adds
+  `providerHealthScore` beside the existing `region` and `fallbackReason`
+  fields.
+- **Where:** `apps/openagents.com/workers/api/src/inference/model-router.ts`,
+  `chat-completions-routes.ts`, `khala-telemetry.ts`, and the focused tests;
+  doc `docs/inference/2026-06-23-khala-multi-cloud-geo-routing.md`.
+- **Verification bar:** focused router, chat-completion, and Khala telemetry
+  tests cover provider-health-scored overflow metadata, public Khala receipt
+  routing fields, and honest `not_measured` telemetry blockers when no score is
+  exposed.
+- **Honest scope:** inert unless an optional `routingSignals` oracle is injected.
+  No global capacity service, account-level residency policy, live provider
+  routing change, deploy, traffic, spend, Pylon registration, or provider secret
+  changed. Missing health/region snapshots degrade receipt metadata to
+  sentinels; workload-plane serving still uses the local plan.
+
+---
+
 ## P2-11 — Modality-Specific Cloud Primitives — DONE (study, #6094)
 
 - **Notes ref:** `khala-investigation-notes.md` §P2 item 11

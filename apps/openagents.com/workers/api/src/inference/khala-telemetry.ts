@@ -254,6 +254,9 @@ export const KhalaTelemetryRecord = S.Struct({
   provider: S.String,
   // The serving region when the provider/lane exposes it; sentinel otherwise.
   region: S.Union([S.String, S.Literal(NOT_MEASURED)]),
+  // Public-safe provider health score for the served lane, in [0, 1], when the
+  // control plane/gateway has a measured score. Sentinel otherwise.
+  providerHealthScore: MeasuredNumber,
   // Public-safe HASH of the cache-affinity key (account/session/codebase). NEVER
   // the raw key. Null when no affinity key applied to this request.
   cacheAffinityKeyHash: S.NullOr(S.String),
@@ -446,6 +449,9 @@ export type KhalaTelemetryInput = Readonly<{
 
   // Routing identity.
   region?: string | undefined
+  // Public-safe provider health score in [0, 1] for the served lane. Undefined
+  // means the gateway/control plane did not expose a measured score.
+  providerHealthScore?: number | undefined
   // The RAW cache-affinity key. It is hashed here and NEVER stored raw.
   cacheAffinityKeyRaw?: string | undefined
   // undefined => not reported by the route yet; null => primary lane served and
@@ -581,6 +587,9 @@ export const buildKhalaTelemetryRecord = (
     ...(input.region === undefined || input.region.trim() === ''
       ? ['region_not_measured']
       : []),
+    ...(isMeasured(measured(input.providerHealthScore))
+      ? []
+      : ['provider_health_score_not_measured']),
     ...(input.fallbackReason === undefined ? ['fallback_reason_not_reported'] : []),
     ...(economicsState === 'not_measured' ? ['economics_not_measured'] : []),
     ...(economicsState === 'pending' ? ['economics_pending'] : []),
@@ -610,6 +619,7 @@ export const buildKhalaTelemetryRecord = (
       input.region === undefined || input.region.trim() === ''
         ? NOT_MEASURED
         : input.region,
+    providerHealthScore: measured(input.providerHealthScore),
     cacheAffinityKeyHash:
       input.cacheAffinityKeyRaw === undefined ||
       input.cacheAffinityKeyRaw.trim() === ''

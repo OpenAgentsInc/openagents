@@ -402,19 +402,32 @@ describe('POST /v1/chat/completions', () => {
     }
     // The PRIOR (non-telemetry) disclosure fields are identical streamed vs
     // non-streamed — and byte-for-byte the prior contract (non-breaking).
-    const stripTelemetry = (
-      block: { telemetry?: unknown } | undefined,
+    const stripAdditiveReceiptFields = (
+      block: { routing?: unknown; telemetry?: unknown } | undefined,
     ): Record<string, unknown> => {
-      const { telemetry: _telemetry, ...rest } = (block ?? {}) as Record<
-        string,
-        unknown
-      >
+      const {
+        routing: _routing,
+        telemetry: _telemetry,
+        ...rest
+      } = (block ?? {}) as Record<string, unknown>
       return rest
     }
-    expect(stripTelemetry(finalOpenagents as { telemetry?: unknown })).toEqual(
-      stripTelemetry(nonStreamedBody.openagents),
+    expect(
+      stripAdditiveReceiptFields(
+        finalOpenagents as { routing?: unknown; telemetry?: unknown } | undefined,
+      ),
+    ).toEqual(
+      stripAdditiveReceiptFields(
+        nonStreamedBody.openagents as
+          | { routing?: unknown; telemetry?: unknown }
+          | undefined,
+      ),
     )
-    expect(stripTelemetry(finalOpenagents as { telemetry?: unknown })).toEqual({
+    expect(
+      stripAdditiveReceiptFields(
+        finalOpenagents as { routing?: unknown; telemetry?: unknown } | undefined,
+      ),
+    ).toEqual({
       lane: 'gemini',
       requested_model: KHALA_MINI_MODEL_ID,
       served_model: KHALA_MINI_MODEL_ID,
@@ -593,6 +606,58 @@ describe('POST /v1/chat/completions', () => {
     // Metering attributes the request to the lane that actually served it.
     expect(captured).toHaveLength(1)
     expect(captured[0]?.adapterId).toBe('overflow')
+  })
+
+  test('a Khala overflow receipt carries region, provider health score, and fallback reason', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      failing('primary', true),
+    )
+    registry.register(echoAdapter('overflow'))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({
+          dispatch: {
+            routingSignals: id =>
+              id === 'overflow'
+                ? { providerHealthScore: 0.91, region: 'us-central1' }
+                : undefined,
+            sleep: () => Effect.void,
+          },
+          lanePlan: () => ['primary', 'overflow'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: {
+          fallback_reason: string | null
+          provider_health_score: number | typeof NOT_MEASURED
+          region: string | typeof NOT_MEASURED
+        }
+        telemetry?: Record<string, unknown>
+        worker: string
+      }
+    }
+
+    expect(body.openagents?.worker).toBe('overflow')
+    expect(body.openagents?.routing).toEqual({
+      fallback_reason: 'retryable_provider_error',
+      provider_health_score: 0.91,
+      region: 'us-central1',
+    })
+    expect(body.openagents?.telemetry).toMatchObject({
+      requestClass: 'async_job',
+      schemaVersion: 'openagents.khala.telemetry.v1',
+    })
   })
 
   test('surfaces a non-retryable failure as 502 without overflow', async () => {

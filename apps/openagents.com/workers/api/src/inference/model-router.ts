@@ -271,6 +271,20 @@ export type AdapterOperation<A> = (
   request: InferenceRequest,
 ) => Effect.Effect<A, InferenceAdapterError>
 
+export type ProviderRoutingSignals = Readonly<{
+  // Public-safe provider health score in [0, 1], where 1 means the lane is fully
+  // healthy according to the injected control-plane snapshot. Undefined means
+  // the gateway has no measured score for this lane.
+  providerHealthScore?: number | undefined
+  // Coarse serving region exposed by the lane/control plane. Undefined means the
+  // provider did not disclose a region to the gateway.
+  region?: string | undefined
+}>
+
+export type ProviderRoutingSignalsOracle = (
+  adapterId: string,
+) => ProviderRoutingSignals | undefined
+
 export type DispatchDeps = Readonly<{
   registry: InferenceProviderRegistry
   // Defaults to the pure selector; injectable for tests.
@@ -278,18 +292,50 @@ export type DispatchDeps = Readonly<{
   backoff?: OverflowBackoff | undefined
   // Injected delay (defaults to Effect.sleep). Tests pass `() => Effect.void`.
   sleep?: ((ms: number) => Effect.Effect<void>) | undefined
+  // Optional inert-by-default control-plane snapshot. When absent, dispatch
+  // behavior is unchanged and receipts use honest not_measured sentinels.
+  routingSignals?: ProviderRoutingSignalsOracle | undefined
 }>
+
+export type DispatchRouteMetadata = Readonly<{
+  primaryAdapterId: string
+  servedAdapterId: string
+  fallbackReason: string | null
+  providerHealthScore?: number | undefined
+  region?: string | undefined
+}>
+
+export type DispatchWithOverflowResult<A> = Readonly<{
+  value: A
+  route: DispatchRouteMetadata
+}>
+
+const normalizeProviderHealthScore = (
+  value: number | undefined,
+): number | undefined =>
+  value === undefined || !Number.isFinite(value) || value < 0 || value > 1
+    ? undefined
+    : value
+
+const normalizeRegion = (value: string | undefined): string | undefined =>
+  value === undefined || value.trim() === '' ? undefined : value.trim()
+
+const fallbackReasonFor = (error: InferenceAdapterError): string =>
+  error.kind ??
+  (error.httpStatus === undefined
+    ? 'retryable_provider_error'
+    : `http_${error.httpStatus}`)
 
 // Run an adapter operation across the model's lane plan with bounded-backoff
 // overflow. Lanes that are not registered (e.g. an absent partner secret) are
 // skipped. A retryable failure backs off and overflows to the next lane; a
 // non-retryable failure surfaces immediately. When every viable lane fails (or
 // none is configured) the last/first failure surfaces as a typed error.
-export const dispatchWithOverflow = <A>(
+export const dispatchWithOverflowWithMetadata = <A>(
   request: InferenceRequest,
   operation: AdapterOperation<A>,
   deps: DispatchDeps,
-): Effect.Effect<A, InferenceAdapterError> =>
+): Effect.Effect<DispatchWithOverflowResult<A>, InferenceAdapterError> =>
   Effect.gen(function* () {
     const planFor = deps.plan ?? selectAdapterPlan
     const backoff = deps.backoff ?? DEFAULT_OVERFLOW_BACKOFF
@@ -314,6 +360,8 @@ export const dispatchWithOverflow = <A>(
 
     let lastError: InferenceAdapterError | undefined
     let overflowCount = 0
+    let fallbackReason: string | null = null
+    const primaryAdapterId = adapters[0]!.id
 
     for (let index = 0; index < adapters.length; index += 1) {
       const adapter = adapters[index]!
@@ -329,7 +377,21 @@ export const dispatchWithOverflow = <A>(
       )
 
       if (outcome.ok) {
-        return outcome.value
+        const signals = deps.routingSignals?.(adapter.id)
+        const providerHealthScore = normalizeProviderHealthScore(
+          signals?.providerHealthScore,
+        )
+        const region = normalizeRegion(signals?.region)
+        return {
+          route: {
+            fallbackReason,
+            primaryAdapterId,
+            servedAdapterId: adapter.id,
+            ...(providerHealthScore === undefined ? {} : { providerHealthScore }),
+            ...(region === undefined ? {} : { region }),
+          },
+          value: outcome.value,
+        }
       }
 
       lastError = outcome.error
@@ -337,6 +399,7 @@ export const dispatchWithOverflow = <A>(
       if (!outcome.error.retryable) {
         return yield* Effect.fail(outcome.error)
       }
+      fallbackReason = fallbackReasonFor(outcome.error)
       // Retryable: continue to the next viable lane (loop), backing off above.
     }
 
@@ -353,3 +416,12 @@ export const dispatchWithOverflow = <A>(
         }),
     )
   })
+
+export const dispatchWithOverflow = <A>(
+  request: InferenceRequest,
+  operation: AdapterOperation<A>,
+  deps: DispatchDeps,
+): Effect.Effect<A, InferenceAdapterError> =>
+  dispatchWithOverflowWithMetadata(request, operation, deps).pipe(
+    Effect.map(result => result.value),
+  )

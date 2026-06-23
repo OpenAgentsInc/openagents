@@ -38,6 +38,7 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
       priceMsat: 170,
       promptTokens: 400,
       provider: 'fireworks',
+      providerHealthScore: 0.97,
       providerTimeMs: 900,
       gatewayOverheadMs: 40,
       verifierTimeMs: 80,
@@ -76,6 +77,7 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.verifierTimeMs).toBe(80)
     expect(record.settlementTimeMs).toBe(0)
     expect(record.region).toBe('us-central1')
+    expect(record.providerHealthScore).toBe(0.97)
     expect(record.fallbackReason).toBe(null)
     expect(record.verificationClass).toBe('test_passed')
     expect(record.executedVerdict).toBe('passed')
@@ -127,6 +129,7 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.marginBucket).toBe('not_measured')
     expect(record.economicsState).toBe('not_measured')
     expect(record.region).toBe(NOT_MEASURED)
+    expect(record.providerHealthScore).toBe(NOT_MEASURED)
     // No affinity key => null hash (not a fabricated digest).
     expect(record.cacheAffinityKeyHash).toBe(null)
     expect(record.fallbackReason).toBe(null)
@@ -136,6 +139,7 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.blockerRefs).toContain('verifier_time_not_measured')
     expect(record.blockerRefs).toContain('settlement_time_not_measured')
     expect(record.blockerRefs).toContain('region_not_measured')
+    expect(record.blockerRefs).toContain('provider_health_score_not_measured')
     expect(record.blockerRefs).toContain('fallback_reason_not_reported')
     expect(record.blockerRefs).toContain('economics_not_measured')
     expect(Option.isSome(decodeKhalaTelemetryRecord(record))).toBe(true)

@@ -11,6 +11,7 @@ import {
   VERTEX_GEMINI_ADAPTER_ID,
   classifyModel,
   dispatchWithOverflow,
+  dispatchWithOverflowWithMetadata,
   openModelsByCost,
   selectAdapterPlan,
   selectPrimaryAdapterId,
@@ -280,6 +281,45 @@ describe('dispatchWithOverflow', () => {
     }
     expect(fireworks.calls()).toBe(1)
     expect(passthrough.calls()).toBe(1)
+  })
+
+  test('metadata reports the served lane, fallback reason, region, and health score', async () => {
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: FIREWORKS_ADAPTER_ID,
+        httpStatus: 429,
+        kind: 'rate_limited',
+        reason: 'rate limited',
+        retryable: true,
+      }),
+    ])
+    const passthrough = mockAdapter(PASSTHROUGH_OPENAI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(fireworks.adapter)
+    registry.register(passthrough.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request('kimi-k2p6'), completeOp, {
+        plan: () => [FIREWORKS_ADAPTER_ID, PASSTHROUGH_OPENAI_ADAPTER_ID],
+        registry,
+        routingSignals: id =>
+          id === PASSTHROUGH_OPENAI_ADAPTER_ID
+            ? { providerHealthScore: 0.82, region: 'us-east-1' }
+            : undefined,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toEqual({
+        fallbackReason: 'rate_limited',
+        primaryAdapterId: FIREWORKS_ADAPTER_ID,
+        providerHealthScore: 0.82,
+        region: 'us-east-1',
+        servedAdapterId: PASSTHROUGH_OPENAI_ADAPTER_ID,
+      })
+    }
   })
 
   test('503 overflows the same way (service overloaded)', async () => {

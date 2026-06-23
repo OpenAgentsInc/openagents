@@ -72,12 +72,15 @@ import {
   type KhalaSettlementState,
   type KhalaTelemetryBlock,
   type KhalaVerificationClass,
+  NOT_MEASURED,
   buildKhalaTelemetryBlock,
 } from './khala-telemetry'
 import {
+  type DispatchRouteMetadata,
   type DispatchDeps,
   classifyModel,
   dispatchWithOverflow,
+  dispatchWithOverflowWithMetadata,
 } from './model-router'
 import {
   type CacheWarmthOracle,
@@ -496,6 +499,13 @@ type OpenAgentsReceipt = Readonly<{
   served_model: string
   worker: string
   lane: string
+  routing?:
+    | Readonly<{
+        provider_health_score: number | typeof NOT_MEASURED
+        region: string | typeof NOT_MEASURED
+        fallback_reason: string | null
+      }>
+    | undefined
   // `unverified` is the HONEST default for an executable artifact we have not actually
   // run yet (EPIC #6017): the regex pre-screen passed but the out-of-Worker headless
   // acceptance runner has not executed it, so we do NOT certify it. `test_passed` is
@@ -592,6 +602,7 @@ const khalaReceiptForResult = (
     requestedModel: string
     responseId: string
     result: InferenceResult
+    routeMetadata?: DispatchRouteMetadata | undefined
     // The executed-acceptance verdict from the out-of-Worker headless runner, when an
     // execution actually ran (EPIC #6017). PRESENT => `verified`/`scalarReward` derive
     // from EXECUTION. ABSENT (the hot Worker path today, which cannot launch a browser)
@@ -618,6 +629,12 @@ const khalaReceiptForResult = (
     served_model: input.result.servedModel,
     worker: input.adapterId,
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
+  const routing = {
+    fallback_reason: input.routeMetadata?.fallbackReason ?? null,
+    provider_health_score:
+      input.routeMetadata?.providerHealthScore ?? NOT_MEASURED,
+    region: input.routeMetadata?.region ?? NOT_MEASURED,
+  } satisfies NonNullable<OpenAgentsReceipt['routing']>
 
   // Shared telemetry inputs measurable for EVERY Khala request (tokens from the
   // provider usage, latency from the gateway edge). The cache-affinity key (book
@@ -648,11 +665,18 @@ const khalaReceiptForResult = (
         priceMsat: undefined,
         promptTokens: input.result.usage.promptTokens,
         provider: input.adapterId,
+        ...(input.routeMetadata?.providerHealthScore === undefined
+          ? {}
+          : { providerHealthScore: input.routeMetadata.providerHealthScore }),
         requestClass: telemetryRequestClass(streamed),
         requestId: input.responseId,
         requestedModel: input.requestedModel,
         route: classifyModel(input.requestedModel),
         servedModel: input.result.servedModel,
+        ...(input.routeMetadata?.region === undefined
+          ? {}
+          : { region: input.routeMetadata.region }),
+        fallbackReason: input.routeMetadata?.fallbackReason ?? null,
         ...(cacheAffinityKeyRaw === undefined
           ? {}
           : { cacheAffinityKeyRaw }),
@@ -678,7 +702,7 @@ const khalaReceiptForResult = (
         ? null
         : publicInferenceReceiptUrl(input.metering.receiptRef),
     )
-    return { ...base, telemetry, verification: 'none' }
+    return { ...base, routing, telemetry, verification: 'none' }
   }
 
   const verdict: KhalaCodeVerificationVerdict = verifyKhalaCodeCompletion({
@@ -700,11 +724,18 @@ const khalaReceiptForResult = (
       priceMsat: undefined,
       promptTokens: input.result.usage.promptTokens,
       provider: input.adapterId,
+      ...(input.routeMetadata?.providerHealthScore === undefined
+        ? {}
+        : { providerHealthScore: input.routeMetadata.providerHealthScore }),
       requestClass: telemetryRequestClass(streamed),
       requestId: input.responseId,
       requestedModel: input.requestedModel,
       route: 'coding',
       servedModel: input.result.servedModel,
+      ...(input.routeMetadata?.region === undefined
+        ? {}
+        : { region: input.routeMetadata.region }),
+      fallbackReason: input.routeMetadata?.fallbackReason ?? null,
       scalarReward: verdict.scalarReward,
       settlementState: verdict.verified ? 'pending' : 'not_applicable',
       totalTokens: input.result.usage.totalTokens,
@@ -743,6 +774,7 @@ const khalaReceiptForResult = (
       : { receipt_url: publicInferenceReceiptUrl(input.metering.receiptRef) }),
     reward_handoff: verdict.reward.handoffRef,
     route: 'coding',
+    routing,
     rubric: {
       failed_checks: verdict.failedChecks,
       passed_checks: verdict.passedChecks,
@@ -916,6 +948,7 @@ const makePassThroughResponseStream = (
     requestedModel: string
     responseId: string
     source: InferenceStreamSource
+    routeMetadata?: DispatchRouteMetadata | undefined
     // DURABLE-PROXY SEAM (#6058). When present, every upstream frame is teed into
     // a per-request durable offset log (`@openagentsinc/durable-stream`) keyed by
     // `responseId` so a client disconnect mid-generation can be resumed by offset.
@@ -1034,6 +1067,9 @@ const makePassThroughResponseStream = (
       requestedModel: input.requestedModel,
       responseId: input.responseId,
       result: streamResult,
+      ...(input.routeMetadata === undefined
+        ? {}
+        : { routeMetadata: input.routeMetadata }),
       timing: streamTiming,
     })
     return chunkFrame('', terminal.finishReason ?? 'stop', openagents)
@@ -1385,6 +1421,9 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.sleep === undefined
         ? {}
         : { sleep: deps.dispatch.sleep }),
+      ...(deps.dispatch?.routingSignals === undefined
+        ? {}
+        : { routingSignals: deps.dispatch.routingSignals }),
     }
 
     if (inferenceRequest.stream) {
@@ -1399,7 +1438,7 @@ export const handleChatCompletions = (
       // partial output). Metering settles receipt-first from the terminal usage
       // frame after the upstream stream closes. Adapters without `streamSse`
       // (stub/echo, simple test adapters) fall through to the buffered path.
-      const sseDispatch = yield* dispatchWithOverflow(
+      const sseDispatch = yield* dispatchWithOverflowWithMetadata(
         inferenceRequest,
         (adapter, request) => {
           if (adapter.streamSse === undefined) {
@@ -1432,7 +1471,7 @@ export const handleChatCompletions = (
       )
 
       if (sseDispatch.ok) {
-        const { adapterId, source } = sseDispatch.served
+        const { adapterId, source } = sseDispatch.served.value
         // DURABLE-STREAM RANK-1 (#6058). Resolve a per-request durable store when
         // the flag is on AND a store factory is wired; a failing/absent factory
         // leaves `durableStore` undefined so the stream degrades to today's
@@ -1458,6 +1497,7 @@ export const handleChatCompletions = (
           requestedModel,
           responseId,
           source,
+          routeMetadata: sseDispatch.served.route,
         })
         return new Response(responseStream, {
           headers: {
@@ -1490,7 +1530,7 @@ export const handleChatCompletions = (
 
       // Run the stream op across the lane plan; the served adapter id rides
       // alongside the chunks so metering reports the lane that actually served.
-      const chunks = yield* dispatchWithOverflow(
+      const chunks = yield* dispatchWithOverflowWithMetadata(
         inferenceRequest,
         (adapter, request) =>
           adapter
@@ -1509,7 +1549,7 @@ export const handleChatCompletions = (
           { status: 502 },
         )
       }
-      const servedChunks = chunks.served.value
+      const servedChunks = chunks.served.value.value
       // Settle metering from the terminal usage frame (receipt-first).
       const terminal = [...servedChunks]
         .reverse()
@@ -1522,7 +1562,7 @@ export const handleChatCompletions = (
         const streamServedModel = terminal.servedModel ?? requestedModel
         streamMetering = yield* meteringHook({
           accountRef: session.accountRef,
-          adapterId: chunks.served.adapterId,
+          adapterId: chunks.served.value.adapterId,
           fundingKind,
           requestId: responseId,
           requestedModel: requestedModel,
@@ -1571,7 +1611,7 @@ export const handleChatCompletions = (
         },
       }
       const streamOpenagents = khalaReceiptForResult({
-        adapterId: chunks.served.adapterId,
+        adapterId: chunks.served.value.adapterId,
         ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
         // `khalaReceiptForResult` requires a MeteringOutcome; when no terminal
         // usage frame was served (so no metering ran) fall back to the stub
@@ -1580,6 +1620,7 @@ export const handleChatCompletions = (
         requestedModel,
         responseId,
         result: streamResult,
+        routeMetadata: chunks.served.route,
         // Buffered fallback (adapter has no incremental `streamSse`): the WHOLE
         // completion is materialized before a byte is emitted, so there is no
         // observable first-token boundary here — TTFT/ITL stay honest sentinels.
@@ -1665,7 +1706,7 @@ export const handleChatCompletions = (
       })
     }
 
-    const result = yield* dispatchWithOverflow(
+    const result = yield* dispatchWithOverflowWithMetadata(
       inferenceRequest,
       (adapter, request) =>
         adapter
@@ -1695,8 +1736,8 @@ export const handleChatCompletions = (
     // unchanged — and only runs for Khala models (non-Khala responses are
     // byte-identical to before). The re-ask re-dispatches across the same lane
     // plan with the reinforcement appended as a leading system message.
-    const servedValue = result.served.value
-    const servedAdapterId = result.served.adapterId
+    const servedValue = result.served.value.value
+    const servedAdapterId = result.served.value.adapterId
     let guardedContent = servedValue.content
     if (isKhalaModel(requestedModel)) {
       // Verify the original completion against the identity signatures. Only on
@@ -1787,6 +1828,7 @@ export const handleChatCompletions = (
           requestedModel,
           responseId,
           result: guardedResult,
+          routeMetadata: result.served.route,
           // Non-streaming: total wall-clock is measurable; TTFT/ITL are not (no
           // first-token boundary on a buffered completion) => honest sentinels.
           timing: {
