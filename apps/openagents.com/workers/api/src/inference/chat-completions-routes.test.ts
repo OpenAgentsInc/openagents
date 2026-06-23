@@ -27,6 +27,10 @@ import {
   BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML,
   GOOD_CROSSY_ROAD_HTML,
 } from './khala-code-verifier.fixtures'
+import {
+  KHALA_CODE_HEADLESS_COMMAND_REF,
+  KHALA_CODE_VERIFIER_WORKER_ID,
+} from './khala-code-verifier'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
@@ -716,6 +720,7 @@ describe('POST /v1/chat/completions', () => {
         scalar_reward: number
         served_model: string
         verification: string
+        verification_command: string
         verification_receipt: string
         verified: boolean
         executed: boolean
@@ -736,13 +741,20 @@ describe('POST /v1/chat/completions', () => {
       scalar_reward: 0,
       served_model: KHALA_CODE_MODEL_ID,
       verification: 'unverified',
+      verification_command: KHALA_CODE_HEADLESS_COMMAND_REF,
       verified: false,
       worker: FIREWORKS_ADAPTER_ID,
-      workers: [FIREWORKS_ADAPTER_ID, 'khala-code-crossy-road-verifier'],
+      workers: [FIREWORKS_ADAPTER_ID, KHALA_CODE_VERIFIER_WORKER_ID],
     })
+    expect(body.openagents?.verified).not.toBe(true)
+    expect(body.openagents?.verification).not.toBe('test_passed')
+    expect(body.openagents?.verification_command).toBe(
+      KHALA_CODE_HEADLESS_COMMAND_REF,
+    )
     expect(body.openagents?.verification_receipt).toMatch(
       /^receipt\.inference\.khala_code\.verification\.chatcmpl-khala-code-pass\./u,
     )
+    expect(body.openagents?.workers).toContain(KHALA_CODE_VERIFIER_WORKER_ID)
     expect(body.openagents?.reward_handoff).toContain(
       'accepted_outcome.khala_code.crossy_road.',
     )

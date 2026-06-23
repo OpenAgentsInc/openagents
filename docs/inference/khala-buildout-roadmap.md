@@ -224,9 +224,11 @@ settlement, Pylon payout, Verse rendering, or learned coordinator promotion.
   verifier verdict shape.
 - **#6010-D — Receipt bridge:** `POST /v1/chat/completions` now recognizes
   `openagents/khala-code`, routes it through the priced open/code lane, and
-  attaches `verification: test_passed|failed`, `verified`, rubric checks,
-  verifier receipt, charge receipt URL when metered, and worker provenance in
-  the `openagents` block.
+  attaches `verification: unverified|failed|test_passed`, `executed`, `verified`,
+  rubric checks, verifier receipt, verifier command ref, charge receipt URL when
+  metered, and worker provenance in the `openagents` block. A fresh hot-path
+  artifact that only passes the cheap pre-screen stays `unverified` until the
+  out-of-Worker acceptance runner posts an executed verdict callback.
 - **#6010-E — Reward handoff:** the verdict carries `scalar_reward` plus a
   public-safe `accepted_outcome.khala_code.crossy_road...` handoff ref for Psion
   and later accepted-outcome pricing.

@@ -355,8 +355,10 @@ verification-class registry (`docs/sakana/tassadar-run-integration.md`):
 | Khala `verification` | Meaning | When |
 |---|---|---|
 | `none` | unverified single-model answer | cheap chat, `khala-mini` default |
+| `unverified` | runnable artifact produced, but the out-of-Worker acceptance suite has not executed yet | fresh `khala-code` hot-path response |
 | `seeded` | re-run under `seeded_replication` (fixed seed/temp) | stochastic LLM outcomes |
 | `test_passed` | a deterministic test / verification command passed | `khala-code` |
+| `failed` | cheap pre-screen failed, or an executed acceptance suite rejected the artifact | `khala-code` |
 | `exact_trace_replay` | independent device re-executed; digests matched | executor / kernel-parity work |
 
 Why independent verification, not self-grading: TMAX (App. D.6) showed an RL'd
@@ -369,6 +371,15 @@ at different prices.
 Receipts (the `openagents` block) carry the receipt id, route, workers,
 verification class, cost/price in msat, and settled state — enough for a stranger
 to re-check without exposing CoT.
+
+For `openagents/khala-code`, `verified: true` is reserved for an executed
+acceptance result: `verification: "test_passed"` plus a verifier receipt,
+verifier command ref, and verifier worker provenance. The hot Worker route may
+pre-screen and enqueue a runnable artifact, but a pre-screen alone remains
+`verification: "unverified"`, `executed: false`, and `verified: false` until the
+out-of-Worker runner posts the callback. The supported product path is acceptance
+contract injection; bare-prompt success remains residual, with arbitrary-task
+contract discovery tracked as #6010-F / Q4.
 
 **Quantization disclosure (book P1-7 / #6090).** A model served at a reduced
 precision (FP8 / MXFP8 / NVFP4 / INT4 / …) is **not the same product** as the
