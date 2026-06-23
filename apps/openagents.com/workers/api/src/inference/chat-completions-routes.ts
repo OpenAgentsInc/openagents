@@ -67,6 +67,14 @@ import {
   stubMeteringHook,
 } from './metering-hook'
 import {
+  type KhalaExecutedVerdict,
+  type KhalaRequestClass,
+  type KhalaSettlementState,
+  type KhalaTelemetryBlock,
+  type KhalaVerificationClass,
+  buildKhalaTelemetryBlock,
+} from './khala-telemetry'
+import {
   type DispatchDeps,
   classifyModel,
   dispatchWithOverflow,
@@ -447,6 +455,15 @@ type OpenAgentsReceipt = Readonly<{
         failed_checks: ReadonlyArray<string>
       }>
     | undefined
+  // KHALA REQUEST-TELEMETRY SCORECARD (book P0-1 / Open Q #1-2). The SMALL,
+  // immediate lifecycle summary — request class, tokens, TTFT, total wall-clock,
+  // verification class + executed verdict + scalar reward, and a `detailRef`
+  // pointer to the full dereferenceable record. Non-breaking additive field;
+  // every numeric is a real measurement or the honest `not_measured` sentinel.
+  // The full P0-1 record (time split, queue/batch wait, region, cache-affinity
+  // hash, fallback reason, cost basis / margin bucket / settlement state /
+  // blockers) is the depth behind the receipt detail, off this hot path.
+  telemetry?: KhalaTelemetryBlock | undefined
   // Bitcoin/Spark settlement on a VERIFIED accepted outcome (#6011, EPIC #6017).
   // `settled` is the honest default `false` on the hot path: settlement fires
   // ASYNC after an out-of-Worker headless acceptance run verifies the outcome
@@ -462,6 +479,47 @@ type OpenAgentsReceipt = Readonly<{
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
   `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
 
+// What the gateway can MEASURE about this request's lifecycle on the hot path
+// today (book P0-1). All optional: an unmeasured value becomes the honest
+// `not_measured` sentinel in the telemetry builder — never a fabricated number.
+type KhalaTelemetryTiming = Readonly<{
+  // True for the streaming path. Determines the request class (interactive_stream
+  // vs async_job/batch later) and whether TTFT/ITL are measurable at all.
+  streamed: boolean
+  // Total wall-clock from request accept to completion (ms), gateway-edge
+  // measured. Undefined on a path that did not capture it => sentinel.
+  totalWallClockMs?: number | undefined
+  // Time to first token (ms), measurable on the streaming path only.
+  ttftMs?: number | undefined
+  // Generation wall-clock (first byte -> last byte, ms) used to DERIVE perceived
+  // TPS + mean inter-token latency. Streaming only; undefined => those derived
+  // metrics are the sentinel (we never guess them from total wall-clock).
+  generationWallClockMs?: number | undefined
+}>
+
+// Map a khala-code verifier verdict's CLASS onto the telemetry verification
+// class vocabulary (khala.md §6). Reuses the existing values; never invents one.
+const telemetryVerificationClass = (
+  verification: KhalaCodeVerificationVerdict['verification'],
+): KhalaVerificationClass => verification
+
+// Map executed-ness + class onto the executed verdict. `not_executed` is the
+// honest default whenever the headless run did not produce a verdict.
+const telemetryExecutedVerdict = (
+  verdict: KhalaCodeVerificationVerdict,
+): KhalaExecutedVerdict => {
+  if (!verdict.executed) {
+    return 'not_executed'
+  }
+  return verdict.verification === 'test_passed' ? 'passed' : 'failed'
+}
+
+// Derive the request class from the measured shape. Streaming => interactive
+// stream; otherwise an async/synchronous job. (batch/verifier_run lanes set
+// their own class once those request paths land; this is the chat path.)
+const telemetryRequestClass = (streamed: boolean): KhalaRequestClass =>
+  streamed ? 'interactive_stream' : 'async_job'
+
 const khalaReceiptForResult = (
   input: Readonly<{
     adapterId: string
@@ -475,6 +533,9 @@ const khalaReceiptForResult = (
     // => HONEST DOWNGRADE to `unverified`. Full prod wiring (async sandbox dispatch of
     // the runner + receipt backfill) threads a real verdict in here.
     acceptance?: AcceptanceVerdict | undefined
+    // What the gateway measured about this request's lifecycle (book P0-1). When
+    // absent, every telemetry numeric is the honest `not_measured` sentinel.
+    timing?: KhalaTelemetryTiming | undefined
   }>,
 ): OpenAgentsReceipt | undefined => {
   if (!isKhalaModel(input.requestedModel)) {
@@ -488,8 +549,56 @@ const khalaReceiptForResult = (
     worker: input.adapterId,
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
 
+  // Shared telemetry inputs measurable for EVERY Khala request (tokens from the
+  // provider usage, latency from the gateway edge). The cache-affinity key is not
+  // wired on the gateway yet (no session-affinity header is read here today), so
+  // it is honestly absent => the hash is null and a blocker records why.
+  const streamed = input.timing?.streamed ?? false
+  const settlementBlockers =
+    input.metering.receiptRef === null ? ['cost_not_measured'] : []
+  const cacheBlockers = ['cache_affinity_key_not_wired']
+
   if (input.requestedModel !== KHALA_CODE_MODEL_ID) {
-    return { ...base, verification: 'none' }
+    // Non-coding Khala lane: no verifier pass (verification class `none`). Still
+    // carries the full lifecycle telemetry summary (tokens + latency + request
+    // class) so EVERY Khala response is measurable, not just khala-code.
+    const settlementState: KhalaSettlementState = 'not_applicable'
+    const telemetry = buildKhalaTelemetryBlock(
+      {
+        completionTokens: input.result.usage.completionTokens,
+        costBasisMsat: undefined,
+        executedVerdict: 'not_executed',
+        priceMsat: undefined,
+        promptTokens: input.result.usage.promptTokens,
+        provider: input.adapterId,
+        requestClass: telemetryRequestClass(streamed),
+        requestId: input.responseId,
+        requestedModel: input.requestedModel,
+        route: classifyModel(input.requestedModel),
+        servedModel: input.result.servedModel,
+        ...(input.result.usage.cachedPromptTokens === undefined
+          ? {}
+          : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
+        ...(input.timing?.generationWallClockMs === undefined
+          ? {}
+          : { generationWallClockMs: input.timing.generationWallClockMs }),
+        ...(input.timing?.totalWallClockMs === undefined
+          ? {}
+          : { totalWallClockMs: input.timing.totalWallClockMs }),
+        ...(input.timing?.ttftMs === undefined
+          ? {}
+          : { ttftMs: input.timing.ttftMs }),
+        scalarReward: undefined,
+        settlementState,
+        totalTokens: input.result.usage.totalTokens,
+        verificationClass: 'none',
+        blockerRefs: [...settlementBlockers, ...cacheBlockers],
+      },
+      input.metering.receiptRef === null
+        ? null
+        : publicInferenceReceiptUrl(input.metering.receiptRef),
+    )
+    return { ...base, telemetry, verification: 'none' }
   }
 
   const verdict: KhalaCodeVerificationVerdict = verifyKhalaCodeCompletion({
@@ -501,6 +610,48 @@ const khalaReceiptForResult = (
     ...(input.acceptance === undefined ? {} : { acceptance: input.acceptance }),
   })
   const receipt = input.metering.receiptRef ?? verdict.receiptRef
+
+  const verifierBlockers = verdict.executed ? [] : ['verifier_not_executed']
+  const telemetry = buildKhalaTelemetryBlock(
+    {
+      completionTokens: input.result.usage.completionTokens,
+      costBasisMsat: undefined,
+      executedVerdict: telemetryExecutedVerdict(verdict),
+      priceMsat: undefined,
+      promptTokens: input.result.usage.promptTokens,
+      provider: input.adapterId,
+      requestClass: telemetryRequestClass(streamed),
+      requestId: input.responseId,
+      requestedModel: input.requestedModel,
+      route: 'coding',
+      servedModel: input.result.servedModel,
+      scalarReward: verdict.scalarReward,
+      settlementState: verdict.verified ? 'pending' : 'not_applicable',
+      totalTokens: input.result.usage.totalTokens,
+      verificationClass: telemetryVerificationClass(verdict.verification),
+      verifierReceiptRef: verdict.receiptRef,
+      ...(input.result.usage.cachedPromptTokens === undefined
+        ? {}
+        : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
+      ...(input.timing?.generationWallClockMs === undefined
+        ? {}
+        : { generationWallClockMs: input.timing.generationWallClockMs }),
+      ...(input.timing?.totalWallClockMs === undefined
+        ? {}
+        : { totalWallClockMs: input.timing.totalWallClockMs }),
+      ...(input.timing?.ttftMs === undefined
+        ? {}
+        : { ttftMs: input.timing.ttftMs }),
+      blockerRefs: [
+        ...settlementBlockers,
+        ...cacheBlockers,
+        ...verifierBlockers,
+      ],
+    },
+    input.metering.receiptRef === null
+      ? null
+      : publicInferenceReceiptUrl(input.metering.receiptRef),
+  )
 
   return {
     ...base,
@@ -522,6 +673,7 @@ const khalaReceiptForResult = (
     // A fresh completion is not yet settled; the public receipt read reflects the
     // settled state once the callback has run.
     settled: false,
+    telemetry,
     verification: verdict.verification,
     verification_command: verdict.command.commandRef,
     verification_receipt: verdict.receiptRef,
@@ -691,9 +843,17 @@ const makePassThroughResponseStream = (
     // Deterministic clock for the durable log (TTL/offset bookkeeping). Defaults
     // to a fixed epoch in tests; the route threads `currentEpochMillis`.
     durableNowMs?: number | undefined
+    // TELEMETRY CLOCK (book P0-1). On the TRUE pass-through stream, TTFT and
+    // generation wall-clock are GENUINELY measurable (first content delta and
+    // EOF are observable here). `nowMs` is the wall-clock source (ms);
+    // `requestStartMs` is the request-accept instant the route captured. Both
+    // optional: absent => the telemetry numerics degrade to honest sentinels.
+    nowMs?: (() => number) | undefined
+    requestStartMs?: number | undefined
   }>,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
+  const telemetryNow = input.nowMs ?? currentEpochMillis
   const chunkFrame = (
     delta: string,
     finishReason: string | null,
@@ -723,6 +883,10 @@ const makePassThroughResponseStream = (
   const buildTerminalFrame = async (
     terminal: ReturnType<InferenceStreamSource['terminal']>,
     content: string,
+    // Telemetry boundaries captured by the producer drain (book P0-1): the
+    // first-token instant (for TTFT) and the EOF instant (for total + generation
+    // wall-clock). `undefined` => that boundary was never observed => sentinel.
+    timing?: Readonly<{ firstTokenMs?: number | undefined; eofMs: number }>,
   ): Promise<string> => {
     const servedModel = terminal.servedModel ?? input.requestedModel
     let streamMetering: MeteringOutcome | undefined
@@ -751,12 +915,39 @@ const makePassThroughResponseStream = (
         totalTokens: 0,
       },
     }
+    // Derive the measurable lifecycle timing for the TRUE streaming path. TTFT =
+    // first-token − request-accept; total wall-clock = EOF − request-accept;
+    // generation wall-clock = EOF − first-token (the decode window, used to derive
+    // perceived TPS + ITL). Any boundary we did not observe stays undefined =>
+    // honest sentinel downstream.
+    const start = input.requestStartMs
+    const streamTiming =
+      timing === undefined
+        ? { streamed: true as const }
+        : {
+            streamed: true as const,
+            ...(start === undefined
+              ? {}
+              : { totalWallClockMs: Math.max(0, timing.eofMs - start) }),
+            ...(start === undefined || timing.firstTokenMs === undefined
+              ? {}
+              : { ttftMs: Math.max(0, timing.firstTokenMs - start) }),
+            ...(timing.firstTokenMs === undefined
+              ? {}
+              : {
+                  generationWallClockMs: Math.max(
+                    0,
+                    timing.eofMs - timing.firstTokenMs,
+                  ),
+                }),
+          }
     const openagents = khalaReceiptForResult({
       adapterId: input.adapterId,
       metering: streamMetering ?? { metered: false, receiptRef: null },
       requestedModel: input.requestedModel,
       responseId: input.responseId,
       result: streamResult,
+      timing: streamTiming,
     })
     return chunkFrame('', terminal.finishReason ?? 'stop', openagents)
   }
@@ -767,12 +958,25 @@ const makePassThroughResponseStream = (
       // AND to the client; persist+close on EOF; settle metering EXACTLY ONCE in
       // the `onEof` callback above. The producer drain is the only consumer of
       // the live upstream, so a replay read can never re-bill.
+      // Telemetry: the first observed content delta (TTFT boundary). Captured on
+      // BOTH the durable and non-durable drains so streaming TTFT is real.
+      let firstTokenMs: number | undefined
       if (input.durableStore !== undefined) {
         await teeUpstreamToDurable({
-          emit: frame => controller.enqueue(encoder.encode(frame)),
+          emit: frame => {
+            if (firstTokenMs === undefined) {
+              // First emitted frame on the durable path marks first-token.
+              firstTokenMs = telemetryNow()
+            }
+            controller.enqueue(encoder.encode(frame))
+          },
           frameForDelta: delta => chunkFrame(delta, null),
           nowMs: input.durableNowMs ?? 0,
-          onEof: buildTerminalFrame,
+          onEof: (terminal, content) =>
+            buildTerminalFrame(terminal, content, {
+              eofMs: telemetryNow(),
+              firstTokenMs,
+            }),
           requestId: input.responseId,
           source: input.source,
           store: input.durableStore,
@@ -788,6 +992,9 @@ const makePassThroughResponseStream = (
         // Pump every upstream content delta to the client immediately.
         for await (const event of input.source.frames) {
           if (event.contentDelta !== '') {
+            if (firstTokenMs === undefined) {
+              firstTokenMs = telemetryNow()
+            }
             contentParts.push(event.contentDelta)
             controller.enqueue(
               encoder.encode(chunkFrame(event.contentDelta, null)),
@@ -811,6 +1018,7 @@ const makePassThroughResponseStream = (
       const terminalFrame = await buildTerminalFrame(
         input.source.terminal(),
         contentParts.join(''),
+        { eofMs: telemetryNow(), firstTokenMs },
       )
       controller.enqueue(encoder.encode(terminalFrame))
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))
@@ -1026,8 +1234,12 @@ export const handleChatCompletions = (
       deps.resolveFundingKind ?? defaultCardFundingResolver
     const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
     const newId = deps.newId ?? defaultId
+    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
     const created = nowEpochSeconds()
     const responseId = newId()
+    // Request-accept wall-clock start (ms). Telemetry total wall-clock is measured
+    // from here to completion (book P0-1). Deterministic in tests via nowEpochMillis.
+    const requestStartMs = nowEpochMillis()
     // Funding kind (card | bitcoin) for the metering charge. Resolved once per
     // request so the Bitcoin discount in `priceRequest` applies; defaults card.
     const fundingKind = yield* Effect.promise(() =>
@@ -1107,10 +1319,14 @@ export const handleChatCompletions = (
           accountRef: session.accountRef,
           adapterId,
           created,
-          durableNowMs: (deps.nowEpochMillis ?? currentEpochMillis)(),
+          durableNowMs: nowEpochMillis(),
           durableStore,
           fundingKind,
           meteringHook,
+          // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
+          // and generation wall-clock are genuinely observable (first delta + EOF).
+          nowMs: nowEpochMillis,
+          requestStartMs,
           requestedModel,
           responseId,
           source,
@@ -1235,6 +1451,14 @@ export const handleChatCompletions = (
         requestedModel,
         responseId,
         result: streamResult,
+        // Buffered fallback (adapter has no incremental `streamSse`): the WHOLE
+        // completion is materialized before a byte is emitted, so there is no
+        // observable first-token boundary here — TTFT/ITL stay honest sentinels.
+        // Total wall-clock IS measurable from request accept to drain.
+        timing: {
+          streamed: true,
+          totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+        },
       })
 
       // When the identity guard rewrote the content, the original per-delta
@@ -1433,6 +1657,12 @@ export const handleChatCompletions = (
           requestedModel,
           responseId,
           result: guardedResult,
+          // Non-streaming: total wall-clock is measurable; TTFT/ITL are not (no
+          // first-token boundary on a buffered completion) => honest sentinels.
+          timing: {
+            streamed: false,
+            totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+          },
         }),
         result: guardedResult,
       }),

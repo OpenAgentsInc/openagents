@@ -1,6 +1,13 @@
 import { MemoryStreamStore } from '@openagentsinc/durable-stream'
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import { describe, expect, test } from 'vitest'
+
+import type { InferenceReceiptReadStore } from '../inference-receipts'
+import { makePublicInferenceReceiptRoutes } from '../public-inference-receipt-routes'
+import {
+  NOT_MEASURED,
+  decodeKhalaTelemetryBlock,
+} from './khala-telemetry'
 
 import {
   type ChatCompletionsDeps,
@@ -64,6 +71,11 @@ const baseDeps = (
 ): ChatCompletionsDeps => ({
   authenticate: authOk,
   enabled: true,
+  // Deterministic telemetry clock (book P0-1): a fixed wall-clock so the
+  // `openagents` telemetry block's `totalWallClockMs` is a stable measured `0`
+  // in tests (a measured zero, NOT the `not_measured` sentinel) instead of a
+  // flaky real elapsed time. Tests that assert real TTFT inject a stepping clock.
+  nowEpochMillis: () => 0,
   readAvailableMsat: fundedBalance,
   registry: registryWithStub(),
   ...overrides,
@@ -381,14 +393,46 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({ lanePlan: selectAdapterPlan, registry: nonStreamRegistry }),
       ),
     )
-    const nonStreamedBody = (await nonStreamed.json()) as { openagents?: unknown }
-    expect(finalOpenagents).toEqual(nonStreamedBody.openagents)
-    expect(finalOpenagents).toEqual({
+    const nonStreamedBody = (await nonStreamed.json()) as {
+      openagents?: { telemetry?: Record<string, unknown> }
+    }
+    // The PRIOR (non-telemetry) disclosure fields are identical streamed vs
+    // non-streamed — and byte-for-byte the prior contract (non-breaking).
+    const stripTelemetry = (
+      block: { telemetry?: unknown } | undefined,
+    ): Record<string, unknown> => {
+      const { telemetry: _telemetry, ...rest } = (block ?? {}) as Record<
+        string,
+        unknown
+      >
+      return rest
+    }
+    expect(stripTelemetry(finalOpenagents as { telemetry?: unknown })).toEqual(
+      stripTelemetry(nonStreamedBody.openagents),
+    )
+    expect(stripTelemetry(finalOpenagents as { telemetry?: unknown })).toEqual({
       lane: 'gemini',
       requested_model: KHALA_MINI_MODEL_ID,
       served_model: KHALA_MINI_MODEL_ID,
       verification: 'none',
       worker: VERTEX_GEMINI_ADAPTER_ID,
+    })
+    // The additive telemetry block correctly DIFFERS by request shape: the
+    // buffered-stream path is `interactive_stream`, the non-stream path is
+    // `async_job` (book P0-1 request class). Both carry the lifecycle summary.
+    expect(
+      (finalOpenagents as { telemetry?: Record<string, unknown> }).telemetry,
+    ).toMatchObject({
+      detailRef: null,
+      executedVerdict: 'not_executed',
+      requestClass: 'interactive_stream',
+      schemaVersion: 'openagents.khala.telemetry.v1',
+      totalWallClockMs: 0,
+      verificationClass: 'none',
+    })
+    expect(nonStreamedBody.openagents?.telemetry).toMatchObject({
+      requestClass: 'async_job',
+      schemaVersion: 'openagents.khala.telemetry.v1',
     })
   })
 
@@ -608,12 +652,24 @@ describe('POST /v1/chat/completions', () => {
       }
     }
     expect(body.model).toBe(KHALA_MINI_MODEL_ID)
-    expect(body.openagents).toEqual({
+    // The prior disclosure fields are byte-for-byte unchanged (non-breaking).
+    expect(body.openagents).toMatchObject({
       lane: 'gemini',
       requested_model: KHALA_MINI_MODEL_ID,
       served_model: KHALA_MINI_MODEL_ID,
       verification: 'none',
       worker: VERTEX_GEMINI_ADAPTER_ID,
+    })
+    // The additive telemetry block: a non-coding Khala lane (async, non-stream)
+    // carries the lifecycle summary with verification class `none`.
+    expect(
+      (body.openagents as { telemetry?: Record<string, unknown> } | undefined)
+        ?.telemetry,
+    ).toMatchObject({
+      requestClass: 'async_job',
+      schemaVersion: 'openagents.khala.telemetry.v1',
+      totalWallClockMs: 0,
+      verificationClass: 'none',
     })
   })
 
@@ -1282,6 +1338,240 @@ describe('POST /v1/chat/completions — streamSse pass-through', () => {
     expect(captured).toHaveLength(1)
     expect(captured[0]?.streamed).toBe(true)
   })
+})
+
+// KHALA TELEMETRY SCORECARD (book P0-1 / Open Q #1-2) ------------------------
+// The `openagents` block carries the SMALL lifecycle telemetry summary; the full
+// record dereferences via the receipt. These assert the MEASURED fields are real
+// on the true-streaming path (TTFT, total wall-clock from a stepping clock) and
+// the genuinely-unmeasurable ones are the honest `not_measured` sentinel — never
+// a fabricated number — and that the receipt detailRef dereferences.
+describe('POST /v1/chat/completions — telemetry scorecard', () => {
+  const passThroughAuth: InferenceAuth = async () => ({
+    accountRef: 'agent:test-user',
+  })
+  const funded: InferenceBalanceReader = async () => 100_000
+
+  const streamSseAdapter = (
+    id: string,
+    script: ReadonlyArray<InferenceStreamEvent>,
+    terminal: Readonly<{
+      finishReason: string | undefined
+      usage: InferenceUsage | undefined
+      servedModel: string | undefined
+    }>,
+  ): InferenceProviderAdapter => ({
+    ...stubEchoAdapter,
+    id,
+    streamSse: () =>
+      Effect.sync<InferenceStreamSource>(() => ({
+        frames: (async function* () {
+          for (const event of script) {
+            yield event
+          }
+        })(),
+        terminal: () => terminal,
+      })),
+  })
+
+  // A stepping wall-clock so the lifecycle boundaries are deterministic AND
+  // distinct: 1000 (request accept) -> 1200 (first token) -> 1500 (EOF). So
+  // TTFT = 200ms and total wall-clock = 500ms are REAL measured numbers.
+  const steppingClock = (steps: ReadonlyArray<number>): (() => number) => {
+    let index = 0
+    return () => {
+      const value = steps[Math.min(index, steps.length - 1)] ?? 0
+      index += 1
+      return value
+    }
+  }
+
+  const telemetryFor = (
+    block: { telemetry?: Record<string, unknown> } | undefined,
+  ): Record<string, unknown> => (block?.telemetry ?? {}) as Record<
+    string,
+    unknown
+  >
+
+  test('a streamed khala-code request carries REAL measured TTFT + total wall-clock and honest sentinels', async () => {
+    const meteringHook: MeteringHook = () =>
+      Effect.sync(() => ({
+        metered: true,
+        receiptRef: 'receipt.inference.charge.chatcmpl-telemetry',
+      }))
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter(
+        FIREWORKS_ADAPTER_ID,
+        // Two content deltas, then the terminal usage frame. The provider does NOT
+        // report a cached-token dimension here (so cached input is `not_measured`).
+        [
+          { contentDelta: '<html>' },
+          { contentDelta: '</html>' },
+          {
+            contentDelta: '',
+            finishReason: 'stop',
+            servedModel: 'accounts/fireworks/models/kimi-k2p7-code',
+            usage: { completionTokens: 12, promptTokens: 400, totalTokens: 412 },
+          },
+        ],
+        {
+          finishReason: 'stop',
+          servedModel: 'accounts/fireworks/models/kimi-k2p7-code',
+          usage: { completionTokens: 12, promptTokens: 400, totalTokens: 412 },
+        },
+      ),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: GOOD_CROSSY_ROAD_HTML, role: 'user' }],
+            model: KHALA_CODE_MODEL_ID,
+            stream: true,
+          }),
+          method: 'POST',
+        }),
+        {
+          authenticate: passThroughAuth,
+          enabled: true,
+          lanePlan: selectAdapterPlan,
+          meteringHook,
+          newId: () => 'chatcmpl-telemetry',
+          // Clock read order on the true-streaming path: (1) request accept=1000,
+          // (2) the durable-log clock read at the stream call site=1100 (a no-op
+          // for telemetry, durable streaming is off), (3) first-token=1200,
+          // (4) EOF=1500. So TTFT=200 and total wall-clock=500 are real.
+          nowEpochMillis: steppingClock([1000, 1100, 1200, 1500]),
+          readAvailableMsat: funded,
+          registry,
+        },
+      ),
+    )
+    expect(response.status).toBe(200)
+
+    const frames = (await response.text())
+      .split('\n\n')
+      .map(block => block.replace(/^data: /u, '').trim())
+      .filter(payload => payload !== '' && payload !== '[DONE]')
+      .map(payload => JSON.parse(payload) as { openagents?: { telemetry?: Record<string, unknown> } })
+    const finalBlock = frames[frames.length - 1]?.openagents
+    const telemetry = telemetryFor(finalBlock)
+
+    // The block decodes against the schema (a valid public-safe projection).
+    expect(Option.isSome(decodeKhalaTelemetryBlock(telemetry))).toBe(true)
+
+    // MEASURED-NOW fields are REAL numbers, not sentinels.
+    expect(telemetry.requestClass).toBe('interactive_stream')
+    expect(telemetry.promptTokens).toBe(400)
+    expect(telemetry.completionTokens).toBe(12)
+    expect(telemetry.totalTokens).toBe(412)
+    expect(telemetry.ttftMs).toBe(200) // 1200 - 1000
+    expect(telemetry.totalWallClockMs).toBe(500) // 1500 - 1000
+    // khala-code on the hot Worker path NEVER executes the artifact (no browser),
+    // so the executed verdict is the honest `not_executed` — NEVER a fabricated
+    // `passed`. The verification class reflects the cheap pre-screen verdict
+    // (here `failed`: the artifact's prescreen rejected it), and scalar_reward is
+    // 0. A real `failed`/`not_executed` beats a fake `passed`.
+    expect(telemetry.verificationClass).toBe('failed')
+    expect(telemetry.executedVerdict).toBe('not_executed')
+    expect(telemetry.scalarReward).toBe(0)
+    // The detailRef points at the dereferenceable receipt.
+    expect(telemetry.detailRef).toBe(
+      '/api/public/inference/receipts/receipt.inference.charge.chatcmpl-telemetry',
+    )
+
+    // The block is the SMALL summary — the deep P0-1 fields (cached tokens,
+    // time split, cost basis, cache-affinity hash) are NOT on the immediate
+    // block; they live in the dereferenceable record.
+    expect(telemetry).not.toHaveProperty('cachedInputTokens')
+    expect(telemetry).not.toHaveProperty('providerTimeMs')
+    expect(telemetry).not.toHaveProperty('costBasisMsat')
+    expect(telemetry).not.toHaveProperty('cacheAffinityKeyHash')
+
+    // No raw account/session/prompt material leaked into the disclosure.
+    const serialized = JSON.stringify(finalBlock)
+    expect(serialized).not.toContain('agent:test-user')
+
+    // DEREFERENCE: the detailRef receipt resolves through the public receipt
+    // route to a public-safe paid projection (no private payment material).
+    const receiptRoutes = makePublicInferenceReceiptRoutes<{
+      store: InferenceReceiptReadStore
+    }>({
+      makeStore: env => env.store,
+      nowIso: () => '2026-06-23T00:00:00.000Z',
+    })
+    const store: InferenceReceiptReadStore = {
+      readInferenceReceiptByRef: async receiptRef =>
+        receiptRef === 'receipt.inference.charge.chatcmpl-telemetry'
+          ? {
+              contextRef: null,
+              createdAt: '2026-06-23T00:00:00.000Z',
+              payInType: 'adjustment',
+              receiptRef,
+              state: 'paid',
+              stateChangedAt: '2026-06-23T00:00:00.500Z',
+            }
+          : null,
+    }
+    const dereferenceEffect = receiptRoutes.routePublicInferenceReceiptRequest(
+      new Request(`https://openagents.com${telemetry.detailRef as string}`),
+      { store },
+    )
+    expect(dereferenceEffect).toBeDefined()
+    const dereferenced = await run(dereferenceEffect!)
+    expect(dereferenced.status).toBe(200)
+    const dereferencedBody = (await dereferenced.json()) as {
+      receipt: { ledgerState: string; schemaVersion: string }
+    }
+    expect(dereferencedBody.receipt.ledgerState).toBe('paid')
+    expect(dereferencedBody.receipt.schemaVersion).toBe(
+      'openagents.inference.receipt.v1',
+    )
+  })
+
+  test('a non-stream Khala request records total wall-clock but honest sentinel TTFT (no first-token boundary)', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapterForTelemetry(VERTEX_GEMINI_ADAPTER_ID))
+
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hello world', role: 'user' }],
+            model: KHALA_MINI_MODEL_ID,
+          }),
+          method: 'POST',
+        }),
+        {
+          authenticate: passThroughAuth,
+          enabled: true,
+          lanePlan: selectAdapterPlan,
+          nowEpochMillis: steppingClock([2000, 2350]),
+          readAvailableMsat: funded,
+          registry,
+        },
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { telemetry?: Record<string, unknown> }
+    }
+    const telemetry = telemetryFor(body.openagents)
+    expect(telemetry.requestClass).toBe('async_job')
+    expect(telemetry.totalWallClockMs).toBe(350) // 2350 - 2000
+    // A buffered/non-stream completion has no observable first-token boundary =>
+    // TTFT is the honest sentinel, NEVER a fabricated number.
+    expect(telemetry.ttftMs).toBe(NOT_MEASURED)
+    expect(telemetry.verificationClass).toBe('none')
+  })
+})
+
+const echoAdapterForTelemetry = (id: string): InferenceProviderAdapter => ({
+  ...stubEchoAdapter,
+  id,
 })
 
 // KHALA IDENTITY GUARD (never identify as Gemini/Google/etc.) -----------------

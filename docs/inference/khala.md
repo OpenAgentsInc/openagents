@@ -114,10 +114,78 @@ A normal OpenAI chat completion plus a **non-breaking `openagents` block**:
     "verification": "none|seeded|test_passed|exact_trace_replay",
     "cost_msat": 123,
     "price_msat": 170,
-    "settled": false
+    "settled": false,
+    "telemetry": {
+      "schemaVersion": "openagents.khala.telemetry.v1",
+      "requestClass": "interactive_stream",
+      "promptTokens": 400,
+      "completionTokens": 12,
+      "totalTokens": 412,
+      "ttftMs": 200,
+      "totalWallClockMs": 500,
+      "verificationClass": "test_passed",
+      "executedVerdict": "passed",
+      "scalarReward": 1,
+      "detailRef": "/api/public/inference/receipts/receipt.inference.charge.chatcmpl_..."
+    }
   }
 }
 ```
+
+### Request-telemetry scorecard (book P0-1 / Open Questions #1–2)
+
+The `openagents` block carries a non-breaking `telemetry` summary — the canonical,
+public-safe **Khala request-lifecycle telemetry** the inference-engineering book's
+P0-1 asks us to record *before* optimizing serving. The full typed schema is
+`apps/openagents.com/workers/api/src/inference/khala-telemetry.ts` (Effect Schema,
+`openagents.khala.telemetry.v1`); the book P0-1 cross-reference is
+[`2026-06-23-khala-telemetry-scorecard-book-p0-1.md`](2026-06-23-khala-telemetry-scorecard-book-p0-1.md).
+
+**Honest measured-vs-`not_measured` discipline.** Every numeric is either a real
+measured number or the explicit sentinel `not_measured`. A field is *never*
+fabricated and *never* a misleading `0`. `not_measured` ("no measurement exists")
+and a measured `0` are different products — the same discipline as the M8 metric
+table (`docs/inference/2026-06-23-khala-head-to-head-m8-status.md`).
+
+**Block-vs-receipt split (Open Question #2 — RESOLVED).** The *immediate* block
+stays small: request class, prompt/completion/total tokens, TTFT, total
+wall-clock, verification class + executed verdict + scalar reward, and a
+`detailRef` pointer. The *full* P0-1 record — the time split (provider / gateway
+overhead / verifier / settlement), inter-token latency / perceived TPS, queue and
+batch wait, region, the cache-affinity key **hash** (never the raw key), fallback
+reason, cached input tokens, cost basis / price / margin **bucket** (never the raw
+margin) / settlement state / blocker refs — is the dereferenceable depth behind
+`/api/public/inference/receipts/<ref>`. Depth lives off the hot path.
+
+**What is measured NOW vs honestly `not_measured`.**
+
+| field | now | source |
+| --- | --- | --- |
+| prompt / completion / total tokens | measured | provider `usage` (receipt-first) |
+| total wall-clock | measured | gateway edge (request accept → completion) |
+| TTFT | measured on the **true-streaming** path | first content delta − request accept |
+| inter-token latency / perceived TPS | measured on the **true-streaming** path | derived from completion tokens + generation wall-clock |
+| request class | measured | stream → `interactive_stream`, else `async_job` |
+| route / provider / served model | measured | coordinator + adapter |
+| verification class / executed verdict / scalar reward | measured | reuse of the existing `khala-code` verifier verdict (no parallel grader) |
+| cached input tokens | `not_measured` unless the provider reports it | provider `usage.cachedPromptTokens` where present |
+| provider / gateway / verifier / settlement time split | `not_measured` (no split instrumentation yet) | future per-stage timers |
+| queue / batch wait | `not_measured` (chat path) | future batch-job consumer |
+| region / cache-affinity hash / fallback reason | `not_measured` / `null` (not wired on the gateway yet — recorded as a `blockerRef`) | future session-affinity + region wiring |
+| cost basis / price / margin bucket | `not_measured` on this hot path (the immediate block omits raw economics) | metering hook (receipt-first) feeds the full record |
+
+**Privacy (INVARIANTS).** The cache-affinity key is recorded only as a one-way
+FNV-1a hash; no raw account/session/codebase key, prompt, completion,
+chain-of-thought, amount, destination, or payment material is ever a telemetry
+field — only token counts, durations, neutral classifiers, public refs, and the
+coarse margin bucket.
+
+**How it feeds M8 + the coordinator reward.** This closes the M8 "tokens / cost /
+verification telemetry are `not_measured`" gap by making the request lifecycle a
+typed, dereferenceable artifact: M8 manifests can read measured tokens + latency +
+verdict instead of treating them as afterthoughts, and the learned coordinator's
+reward inputs (accepted outcome per sat and per second) read from a stable schema
+rather than ad-hoc fields.
 
 ## 4. Request flow
 
