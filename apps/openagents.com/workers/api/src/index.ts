@@ -8266,6 +8266,34 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   }
 }
 
+// PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC
+// #6017). Returns an `enqueueBatchJob` that sends the executable
+// `BatchJobQueueMessage` onto the batch-job queue so the consumer (the `queue`
+// handler below) runs it OFF the request path. INERT BY DEFAULT and FAIL-SAFE:
+//   - when `INFERENCE_BATCH_JOBS_ENABLED` is off, returns `undefined` so the
+//     submit route persists the pending row + returns the receipt exactly as
+//     before, with nothing queued (no behaviour change to the existing route);
+//   - when the queue binding is absent (not provisioned), also returns
+//     `undefined` rather than throwing, so arming the flag without the binding
+//     degrades to accept-only instead of erroring the request.
+// The job id is the idempotency unit (the consumer no-ops a redelivered/dup
+// message), so a duplicate enqueue is always safe.
+type BatchJobProducerEnv = OpenAgentsWorkerConfigEnv &
+  Readonly<{ INFERENCE_BATCH_JOBS_QUEUE?: Queue | undefined }>
+const makeBatchJobEnqueue = (
+  env: BatchJobProducerEnv,
+): ((message: BatchJobQueueMessage) => Effect.Effect<void>) | undefined => {
+  if (!isInferenceGatewayEnabled(env.INFERENCE_BATCH_JOBS_ENABLED)) {
+    return undefined
+  }
+  const queue = env.INFERENCE_BATCH_JOBS_QUEUE
+  if (queue === undefined) {
+    return undefined
+  }
+  return message =>
+    Effect.tryPromise(() => queue.send(message)).pipe(Effect.orDie)
+}
+
 // #5480 Vertex Anthropic (Claude lane) — registered exactly once. INERT until
 // the VERTEX_SA_KEY Worker secret is present: with no key, `tokenProvider` is
 // undefined and every call returns a typed non-retryable error (mapped by the
@@ -9702,6 +9730,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         },
         db: openAgentsDatabase(env),
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        // Inert producer by default: undefined unless the batch-jobs flag is on
+        // AND the queue binding is provisioned (see makeBatchJobEnqueue).
+        enqueueBatchJob: makeBatchJobEnqueue(env),
         nowIso: currentIsoTimestamp,
       }),
   },
