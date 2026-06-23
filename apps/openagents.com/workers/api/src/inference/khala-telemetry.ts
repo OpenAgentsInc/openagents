@@ -48,6 +48,12 @@
 // `not_measured`. The schema is the same whether a field is measured today or
 // becomes measurable later, so adding a measurement never reshapes the contract.
 import { Schema as S } from 'effect'
+import {
+  type KhalaQuantizationInput,
+  KhalaQuantizationMetadata,
+  UNKNOWN_QUANTIZATION,
+  buildKhalaQuantizationMetadata,
+} from './khala-quantization'
 
 // ---------------------------------------------------------------------------
 // The honest sentinel.
@@ -204,6 +210,14 @@ export const KhalaTelemetryRecord = S.Struct({
   requestId: S.String,
   requestedModel: S.String,
   servedModel: S.String,
+  // How the served model was served at the BIT LEVEL (book P1-7 / #6090): the
+  // precision/quant mode, backend/engine, scope, and eval-gate status. A model
+  // served at a reduced precision is NOT the same product as the unqualified
+  // model id, so the precision is a first-class receipt field — honest
+  // `unquantized` / `not_measured` where unknown, never a fabricated full
+  // precision. The same-model-claim guard reads this to reject an undisclosed
+  // quantized variant fronting an unqualified public alias.
+  quantization: KhalaQuantizationMetadata,
   // The coordinator route lane (coding | cheap | long_context | default | ...).
   route: S.String,
   // The provider/adapter id that actually served (provider-capacity attribution).
@@ -360,6 +374,13 @@ export type KhalaTelemetryInput = Readonly<{
   provider: string
   requestClass: KhalaRequestClass
 
+  // How the served model was served at the bit level (book P1-7 / #6090). When
+  // the gateway/lane discloses precision/backend/scope it is recorded here;
+  // absence collapses to the honest-unknown shape (`UNKNOWN_QUANTIZATION`) —
+  // never a fabricated full-precision claim. This is the typed quant metadata
+  // the same-model guard + eval gate read.
+  quantization?: KhalaQuantizationInput | undefined
+
   // Tokens (receipt-first from provider usage).
   promptTokens?: number | undefined
   completionTokens?: number | undefined
@@ -475,6 +496,12 @@ export const buildKhalaTelemetryRecord = (
     requestId: input.requestId,
     requestedModel: input.requestedModel,
     servedModel: input.servedModel,
+    // Honest quant metadata: built from disclosed lane signals, or the
+    // honest-unknown shape when the lane disclosed nothing (book P1-7 / #6090).
+    quantization:
+      input.quantization === undefined
+        ? UNKNOWN_QUANTIZATION
+        : buildKhalaQuantizationMetadata(input.quantization),
     route: input.route,
     provider: input.provider,
     region:
