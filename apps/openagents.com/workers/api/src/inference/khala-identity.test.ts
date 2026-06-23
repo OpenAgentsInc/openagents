@@ -185,7 +185,7 @@ describe('Khala identity guard — verify + correct', () => {
     // The model stated identity correctly once AND then leaked. The backstop
     // must remove the leak WITHOUT adding a second copy of the identity line.
     const mixed =
-      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents, built and operated by OpenAgents. We are powered by Gemini under the hood. How can we help?'
+      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are powered by Gemini under the hood. How can we help?'
     const out = await guardKhalaCompletion({ completion: mixed })
     expect(out.corrected).toBe(true)
     expect(out.method).toBe('redacted')
