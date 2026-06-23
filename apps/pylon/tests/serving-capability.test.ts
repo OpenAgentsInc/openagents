@@ -5,6 +5,7 @@ import {
   PYLON_SERVING_SELF_BENCH_RECEIPT_PREFIX,
   buildServingCapabilityEvidence,
   estimatedColdStartMs,
+  preflightRealPylonServing,
   publishableServingCapabilityRefs,
   stripUnreceiptedServingCapability,
   warmResidency,
@@ -23,6 +24,7 @@ import {
   computeServingVerification,
   runServingReplayChallenge,
 } from "../src/serving-receipt"
+import { assertPublicProjectionSafe } from "../src/state"
 import { publishableCapabilityRefs } from "../src/tassadar-capability"
 
 const OBSERVED_AT = "2026-06-23T08:00:00.000Z"
@@ -366,5 +368,231 @@ describe("publishable capability refs strip unproven serving claims", () => {
     const refs = publishableCapabilityRefs([PYLON_SERVING_CAPABILITY_REF, receiptRef])
     expect(refs).toContain(PYLON_SERVING_CAPABILITY_REF)
     expect(refs).toContain(receiptRef)
+  })
+})
+
+describe("real Pylon serving readiness preflight (read-only, no spend)", () => {
+  const receiptRef = `${PYLON_SERVING_SELF_BENCH_RECEIPT_PREFIX}realproof`
+
+  function realGpuCapability() {
+    return buildServingCapabilityEvidence({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      usableGpuMemoryGb: 72,
+      totalGpuMemoryGb: 80,
+      bandwidthClass: "hbm_high",
+      interconnect: "single_gpu",
+      engines: ["vllm"],
+      residency: [
+        warmResidencyEntry({
+          modelRef: "model.psionic.qwen35.0_8b.fp8",
+          engine: "vllm",
+          quantization: "fp8",
+          residency: "warm",
+        }),
+      ],
+      selfBenchmarkReceiptRef: receiptRef,
+      realGpuAdapter: true,
+    })
+  }
+
+  function realGpuSelfBenchmark() {
+    return {
+      schema: "openagents.pylon.serving_self_benchmark.v0.6" as const,
+      receiptRef,
+      observedAt: OBSERVED_AT,
+      workloadRef: "workload.pylon.serving.self_bench.real.v1",
+      modelRef: "model.psionic.qwen35.0_8b.fp8",
+      engine: "vllm" as const,
+      engineVersion: "vllm@0.6.0",
+      quantization: "fp8" as const,
+      gpuClass: "gpu.class.hopper_h100",
+      warmState: "warm" as const,
+      adapter: "real_gpu" as const,
+      metrics: {
+        ttftMs: 31,
+        tokensPerSecond: 122,
+        totalTokens: 64,
+        wallClockMs: 524,
+      },
+      parity: {
+        expectedOutputDigest: "digest.expected",
+        measuredOutputDigest: "digest.expected",
+        parityPassed: true,
+      },
+      blockerRefs: [],
+    }
+  }
+
+  function verifiedServingReceipt() {
+    const base = buildServingReceipt({
+      servedAt: OBSERVED_AT,
+      modelRef: "model.psionic.qwen35.0_8b.fp8",
+      engine: "vllm",
+      engineVersion: "vllm@0.6.0",
+      quantization: "fp8",
+      gpuClass: "gpu.class.hopper_h100",
+      warmState: "warm",
+      residencyAtServe: "warm",
+      promptDigest: "prompt-digest-real",
+      outputDigest: "output-digest-real",
+      maxNewTokens: 64,
+      temperature: 0,
+      samplingSeed: 7,
+      metrics: {
+        ttftMs: 31,
+        tokensPerSecond: 122,
+        promptTokens: 11,
+        completionTokens: 64,
+        wallClockMs: 524,
+      },
+      verification: computeServingVerification({ parityPassed: true }),
+    })
+    const replay = runServingReplayChallenge({
+      challengedAt: "2026-06-23T08:05:00.000Z",
+      receipt: base,
+      replayedOutputDigest: base.outputDigest,
+      replayEngine: "vllm",
+      replayEngineVersion: "vllm@0.6.0",
+      replayQuantization: "fp8",
+    })
+    return buildServingReceipt({
+      servedAt: OBSERVED_AT,
+      modelRef: "model.psionic.qwen35.0_8b.fp8",
+      engine: "vllm",
+      engineVersion: "vllm@0.6.0",
+      quantization: "fp8",
+      gpuClass: "gpu.class.hopper_h100",
+      warmState: "warm",
+      residencyAtServe: "warm",
+      promptDigest: "prompt-digest-real",
+      outputDigest: base.outputDigest,
+      maxNewTokens: 64,
+      temperature: 0,
+      samplingSeed: 7,
+      metrics: base.metrics,
+      verification: computeServingVerification({
+        parityPassed: true,
+        canary: { canaryRef: "canary.pylon.serving.known_answer.v1", passed: true },
+        replay,
+      }),
+    })
+  }
+
+  test("fixture/current evidence fails closed before a live Pylon route is armed", () => {
+    const bench = runServingSelfBenchmark({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      engineVersion: "llama_cpp@b3000",
+    })
+    const capability = buildServingCapabilityEvidence({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      usableGpuMemoryGb: 72,
+      totalGpuMemoryGb: 80,
+      bandwidthClass: "hbm_high",
+      interconnect: "single_gpu",
+      engines: ["llama_cpp"],
+      residency: [warmResidencyEntry()],
+      selfBenchmarkReceiptRef: bench.receiptRef,
+    })
+
+    const preflight = preflightRealPylonServing({
+      observedAt: OBSERVED_AT,
+      capability,
+      selfBenchmarkReceipt: bench,
+      ownerConfirmed: false,
+      fabricTransportReady: false,
+    })
+
+    expect(preflight.canArmRealServing).toBe(false)
+    expect(preflight.paidRoutingEligible).toBe(false)
+    expect(preflight.blockerRefs).toEqual(
+      expect.arrayContaining([
+        "blocker.pylon.serving_preflight.owner_confirmation_missing",
+        "blocker.pylon.serving_preflight.owner_approval_ref_missing",
+        "blocker.pylon.serving_preflight.pylon_admission_missing",
+        "blocker.pylon.serving_preflight.fabric_transport_missing",
+        "blocker.pylon.serving_preflight.real_gpu_capability_missing",
+        "blocker.pylon.serving_preflight.proven_engine_missing",
+        "blocker.pylon.serving_preflight.warm_residency_missing",
+        "blocker.pylon.serving_preflight.self_benchmark_not_real_gpu",
+        "blocker.pylon.serving_preflight.serving_receipt_missing",
+      ]),
+    )
+    assertPublicProjectionSafe(preflight)
+  })
+
+  test("real GPU vLLM evidence with canary/replay receipt clears the preflight", () => {
+    const preflight = preflightRealPylonServing({
+      observedAt: OBSERVED_AT,
+      capability: realGpuCapability(),
+      selfBenchmarkReceipt: realGpuSelfBenchmark(),
+      servingReceipt: verifiedServingReceipt(),
+      ownerConfirmed: true,
+      ownerApprovalRef: "owner.approval.khala.pylon.real_serve.2026-06-23",
+      admittedPylonRef: "pylon.khala.guinea_pig",
+      fabricTransportReady: true,
+      gatewayRouteReady: true,
+      requireGatewayRouteReady: true,
+    })
+
+    expect(preflight.canArmRealServing).toBe(true)
+    expect(preflight.paidRoutingEligible).toBe(true)
+    expect(preflight.realGpuAdapterReady).toBe(true)
+    expect(preflight.blockerRefs).toEqual([])
+    expect(preflight.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        PYLON_SERVING_CAPABILITY_REF,
+        receiptRef,
+        "canary.pylon.serving.known_answer.v1",
+      ]),
+    )
+    assertPublicProjectionSafe(preflight)
+  })
+
+  test("parity-only serving receipts do not clear paid routing readiness", () => {
+    const parityOnlyReceipt = buildServingReceipt({
+      servedAt: OBSERVED_AT,
+      modelRef: "model.psionic.qwen35.0_8b.fp8",
+      engine: "vllm",
+      engineVersion: "vllm@0.6.0",
+      quantization: "fp8",
+      gpuClass: "gpu.class.hopper_h100",
+      warmState: "warm",
+      residencyAtServe: "warm",
+      promptDigest: "prompt-digest-real",
+      outputDigest: "output-digest-real",
+      maxNewTokens: 64,
+      temperature: 0,
+      samplingSeed: 7,
+      metrics: {
+        ttftMs: 31,
+        tokensPerSecond: 122,
+        promptTokens: 11,
+        completionTokens: 64,
+        wallClockMs: 524,
+      },
+      verification: computeServingVerification({ parityPassed: true }),
+    })
+
+    const preflight = preflightRealPylonServing({
+      observedAt: OBSERVED_AT,
+      capability: realGpuCapability(),
+      selfBenchmarkReceipt: realGpuSelfBenchmark(),
+      servingReceipt: parityOnlyReceipt,
+      ownerConfirmed: true,
+      ownerApprovalRef: "owner.approval.khala.pylon.real_serve.2026-06-23",
+      admittedPylonRef: "pylon.khala.guinea_pig",
+      fabricTransportReady: true,
+    })
+
+    expect(preflight.canArmRealServing).toBe(false)
+    expect(preflight.blockerRefs).toEqual(
+      expect.arrayContaining([
+        "blocker.pylon.serving_preflight.serving_receipt_canary_missing",
+        "blocker.pylon.serving_preflight.serving_receipt_replay_missing",
+      ]),
+    )
   })
 })

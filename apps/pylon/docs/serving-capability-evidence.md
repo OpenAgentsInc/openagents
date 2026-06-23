@@ -48,6 +48,15 @@ ideas drive the schema here:
   or replay challenge failed (an identity mismatch on replay also fails the
   gate). **This module computes eligibility; it never moves money.** A product
   surface owns the payout decision.
+- `preflightRealPylonServing` in `src/serving-capability.ts` — a read-only,
+  public-safe readiness preflight for #6089. It classifies whether a candidate
+  Pylon has all evidence needed before a real whole-small-model serving route
+  can be armed: owner confirmation and approval ref, admitted Pylon ref, fabric
+  transport readiness, real-GPU capability evidence, vLLM/SGLang warm
+  residency, matching real-GPU self-benchmark receipt, and a live serving
+  receipt with parity, canary, replay, and payout eligibility. Missing pieces
+  become typed `blocker.pylon.serving_preflight.*` refs. The preflight touches
+  no GPU, network, wallet, gateway route, or payout system.
 - `apps/openagents.com/workers/api/src/inference/openagents-network-adapter.ts`
   now has the product-side paid-routing wrapper,
   `makeAdmittedOpenAgentsNetworkAdapter`. That wrapper checks the Khala Pylon
@@ -65,6 +74,11 @@ ideas drive the schema here:
   rather than fabricating a measurement — wiring a real vLLM/SGLang serve +
   measured benchmark is owner/compute-gated work, out of scope for this change.
 - Tests and CI always run the fixture path (`realGpuAdapter: false`).
+- The real-serving preflight therefore fails closed on current fixture evidence:
+  it will report missing real-GPU evidence, missing live fabric transport or
+  admitted Pylon refs when they are absent, and missing canary/replay evidence
+  for parity-only receipts. A passing preflight is a launch-readiness proof, not
+  the live serving implementation itself.
 
 ## Where this plugs in next (not in this change)
 

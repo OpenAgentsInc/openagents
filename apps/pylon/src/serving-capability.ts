@@ -35,6 +35,8 @@
  * never decides payment.
  */
 import { assertPublicProjectionSafe } from "./state.js"
+import type { ServingSelfBenchmarkReceipt } from "./serving-benchmark.js"
+import type { PylonServingReceipt } from "./serving-receipt.js"
 
 // Capability refs declared into the heartbeat/register capabilityRefs.
 // A serving claim without a self-benchmark receipt ref never publishes (the
@@ -46,6 +48,7 @@ export const PYLON_SERVING_SELF_BENCH_FAILED_BLOCKER_REF =
 export const PYLON_SERVING_NO_PARITY_BLOCKER_REF = "blocker.pylon.serving.no_parity"
 export const PYLON_SERVING_REAL_GPU_GATED_BLOCKER_REF =
   "blocker.pylon.serving.real_gpu_adapter_gated"
+export const PYLON_SERVING_PREFLIGHT_SCHEMA = "openagents.pylon.serving_preflight.v0.1"
 
 /**
  * Proven inference engines per the book (ch.4): vLLM for broad support and
@@ -156,12 +159,61 @@ export type PylonServingCapabilityEvidence = {
   blockerRefs: string[]
 }
 
+export type PylonRealServingPreflightBlockerRef =
+  | "blocker.pylon.serving_preflight.owner_confirmation_missing"
+  | "blocker.pylon.serving_preflight.owner_approval_ref_missing"
+  | "blocker.pylon.serving_preflight.pylon_admission_missing"
+  | "blocker.pylon.serving_preflight.fabric_transport_missing"
+  | "blocker.pylon.serving_preflight.gateway_route_not_ready"
+  | "blocker.pylon.serving_preflight.capability_blocked"
+  | "blocker.pylon.serving_preflight.real_gpu_capability_missing"
+  | "blocker.pylon.serving_preflight.proven_engine_missing"
+  | "blocker.pylon.serving_preflight.warm_residency_missing"
+  | "blocker.pylon.serving_preflight.self_benchmark_receipt_missing"
+  | "blocker.pylon.serving_preflight.self_benchmark_receipt_mismatch"
+  | "blocker.pylon.serving_preflight.self_benchmark_not_real_gpu"
+  | "blocker.pylon.serving_preflight.self_benchmark_blocked"
+  | "blocker.pylon.serving_preflight.self_benchmark_parity_failed"
+  | "blocker.pylon.serving_preflight.serving_receipt_missing"
+  | "blocker.pylon.serving_preflight.serving_receipt_blocked"
+  | "blocker.pylon.serving_preflight.serving_receipt_model_not_resident"
+  | "blocker.pylon.serving_preflight.serving_receipt_engine_not_allowed"
+  | "blocker.pylon.serving_preflight.serving_receipt_no_parity"
+  | "blocker.pylon.serving_preflight.serving_receipt_canary_missing"
+  | "blocker.pylon.serving_preflight.serving_receipt_replay_missing"
+  | "blocker.pylon.serving_preflight.serving_receipt_unverified"
+  | "blocker.pylon.serving_preflight.serving_receipt_not_payout_eligible"
+
+export type PylonRealServingReadinessPreflight = {
+  schema: typeof PYLON_SERVING_PREFLIGHT_SCHEMA
+  observedAt: string
+  canArmRealServing: boolean
+  paidRoutingEligible: boolean
+  ownerApprovalRef: string | null
+  admittedPylonRef: string | null
+  fabricTransportReady: boolean
+  gatewayRouteReady: boolean
+  realGpuAdapterReady: boolean
+  allowedEngines: ServingEngine[]
+  residentModelRefs: string[]
+  evidenceRefs: string[]
+  blockerRefs: PylonRealServingPreflightBlockerRef[]
+}
+
 const COLD_START_ZERO = {
   gpuProcurementMs: 0,
   imageLoadMs: 0,
   weightLoadMs: 0,
   engineStartupMs: 0,
 } as const
+
+const DEFAULT_REAL_SERVING_ENGINES: ServingEngine[] = ["vllm", "sglang"]
+
+const normalizedNonBlank = (value: string | null | undefined): string | null => {
+  if (value === null || value === undefined) return null
+  const trimmed = value.trim()
+  return trimmed === "" ? null : trimmed
+}
 
 /**
  * Total cold-start estimate for a residency entry (sum of the book's four
@@ -242,6 +294,167 @@ export function buildServingCapabilityEvidence(input: {
   }
   assertPublicProjectionSafe(evidence)
   return evidence
+}
+
+/**
+ * Read-only preflight for arming real whole-small-model Pylon serving.
+ *
+ * This function is intentionally stricter than publishable fixture capability
+ * evidence: #6089 is only clear when an owner-approved admitted Pylon has real
+ * GPU evidence, a proven engine (vLLM/SGLang by default), warm model residency,
+ * a real-GPU self-benchmark receipt, a parity/canary/replay-eligible serving
+ * receipt, and a ready fabric transport. It touches no GPU, network, wallet, or
+ * gateway route; it only classifies the public-safe evidence already supplied
+ * by those systems.
+ */
+export function preflightRealPylonServing(input: {
+  observedAt: string
+  capability: PylonServingCapabilityEvidence
+  selfBenchmarkReceipt?: ServingSelfBenchmarkReceipt | null
+  servingReceipt?: PylonServingReceipt | null
+  ownerConfirmed: boolean
+  ownerApprovalRef?: string | null
+  admittedPylonRef?: string | null
+  fabricTransportReady: boolean
+  gatewayRouteReady?: boolean
+  requireGatewayRouteReady?: boolean
+  allowedEngines?: ServingEngine[]
+}): PylonRealServingReadinessPreflight {
+  const ownerApprovalRef = normalizedNonBlank(input.ownerApprovalRef)
+  const admittedPylonRef = normalizedNonBlank(input.admittedPylonRef)
+  const allowedEngines = [...new Set(input.allowedEngines ?? DEFAULT_REAL_SERVING_ENGINES)]
+  const allowedEngineSet = new Set<ServingEngine>(allowedEngines)
+  const selfBenchmarkReceipt = input.selfBenchmarkReceipt ?? null
+  const servingReceipt = input.servingReceipt ?? null
+  const blockerRefs = new Set<PylonRealServingPreflightBlockerRef>()
+
+  if (!input.ownerConfirmed) {
+    blockerRefs.add("blocker.pylon.serving_preflight.owner_confirmation_missing")
+  }
+  if (ownerApprovalRef === null) {
+    blockerRefs.add("blocker.pylon.serving_preflight.owner_approval_ref_missing")
+  }
+  if (admittedPylonRef === null) {
+    blockerRefs.add("blocker.pylon.serving_preflight.pylon_admission_missing")
+  }
+  if (!input.fabricTransportReady) {
+    blockerRefs.add("blocker.pylon.serving_preflight.fabric_transport_missing")
+  }
+  const gatewayRouteReady = input.gatewayRouteReady ?? false
+  if ((input.requireGatewayRouteReady ?? false) && !gatewayRouteReady) {
+    blockerRefs.add("blocker.pylon.serving_preflight.gateway_route_not_ready")
+  }
+  if (input.capability.blockerRefs.length > 0) {
+    blockerRefs.add("blocker.pylon.serving_preflight.capability_blocked")
+  }
+  if (!input.capability.realGpuAdapter) {
+    blockerRefs.add("blocker.pylon.serving_preflight.real_gpu_capability_missing")
+  }
+  if (!input.capability.engines.some((engine) => allowedEngineSet.has(engine))) {
+    blockerRefs.add("blocker.pylon.serving_preflight.proven_engine_missing")
+  }
+
+  const realWarmResidency = input.capability.residency.filter(
+    (entry) => entry.residency === "warm" && allowedEngineSet.has(entry.engine),
+  )
+  if (realWarmResidency.length === 0) {
+    blockerRefs.add("blocker.pylon.serving_preflight.warm_residency_missing")
+  }
+
+  if (selfBenchmarkReceipt === null) {
+    blockerRefs.add("blocker.pylon.serving_preflight.self_benchmark_receipt_missing")
+  } else {
+    if (selfBenchmarkReceipt.receiptRef !== input.capability.selfBenchmarkReceiptRef) {
+      blockerRefs.add("blocker.pylon.serving_preflight.self_benchmark_receipt_mismatch")
+    }
+    if (selfBenchmarkReceipt.adapter !== "real_gpu") {
+      blockerRefs.add("blocker.pylon.serving_preflight.self_benchmark_not_real_gpu")
+    }
+    if (selfBenchmarkReceipt.blockerRefs.length > 0) {
+      blockerRefs.add("blocker.pylon.serving_preflight.self_benchmark_blocked")
+    }
+    if (!selfBenchmarkReceipt.parity.parityPassed) {
+      blockerRefs.add("blocker.pylon.serving_preflight.self_benchmark_parity_failed")
+    }
+  }
+
+  if (servingReceipt === null) {
+    blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_missing")
+  } else {
+    if (servingReceipt.blockerRefs.length > 0) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_blocked")
+    }
+    const servesResidentModel = realWarmResidency.some(
+      (entry) =>
+        entry.modelRef === servingReceipt.modelRef &&
+        entry.engine === servingReceipt.engine &&
+        entry.quantization === servingReceipt.quantization,
+    )
+    if (!servesResidentModel) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_model_not_resident")
+    }
+    if (!allowedEngineSet.has(servingReceipt.engine)) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_engine_not_allowed")
+    }
+    if (!servingReceipt.verification.parityPassed) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_no_parity")
+    }
+    if (servingReceipt.verification.canary === null) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_canary_missing")
+    }
+    if (servingReceipt.verification.replay === null) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_replay_missing")
+    }
+    if (!servingReceipt.verification.verified) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_unverified")
+    }
+    if (!servingReceipt.verification.payoutEligible) {
+      blockerRefs.add("blocker.pylon.serving_preflight.serving_receipt_not_payout_eligible")
+    }
+  }
+
+  const evidenceRefs = new Set<string>(publishableServingCapabilityRefs(input.capability))
+  if (selfBenchmarkReceipt !== null) {
+    evidenceRefs.add(selfBenchmarkReceipt.receiptRef)
+  }
+  if (servingReceipt !== null) {
+    evidenceRefs.add(servingReceipt.receiptRef)
+    const replay = servingReceipt.verification.replay
+    if (replay !== null) {
+      evidenceRefs.add(replay.challengeRef)
+    }
+    const canary = servingReceipt.verification.canary
+    if (canary !== null) {
+      evidenceRefs.add(canary.canaryRef)
+    }
+  }
+
+  const realGpuAdapterReady =
+    input.capability.realGpuAdapter &&
+    selfBenchmarkReceipt?.adapter === "real_gpu" &&
+    selfBenchmarkReceipt.blockerRefs.length === 0 &&
+    selfBenchmarkReceipt.parity.parityPassed
+  const canArmRealServing = blockerRefs.size === 0
+  const paidRoutingEligible =
+    canArmRealServing && (input.requireGatewayRouteReady ? gatewayRouteReady : true)
+
+  const preflight: PylonRealServingReadinessPreflight = {
+    schema: PYLON_SERVING_PREFLIGHT_SCHEMA,
+    observedAt: input.observedAt,
+    canArmRealServing,
+    paidRoutingEligible,
+    ownerApprovalRef,
+    admittedPylonRef,
+    fabricTransportReady: input.fabricTransportReady,
+    gatewayRouteReady,
+    realGpuAdapterReady,
+    allowedEngines,
+    residentModelRefs: realWarmResidency.map((entry) => entry.modelRef),
+    evidenceRefs: [...evidenceRefs],
+    blockerRefs: [...blockerRefs],
+  }
+  assertPublicProjectionSafe(preflight)
+  return preflight
 }
 
 /**
