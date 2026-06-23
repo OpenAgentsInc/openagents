@@ -88,3 +88,23 @@ now owns the canaryable paid-routing gate for a registered Pylon. The remaining
 owner/compute-gated work is wiring a real vLLM/SGLang serving transport and
 real-GPU benchmark receipt. Any payout still goes through the separate
 settlement gates; this evidence path does not move money.
+
+## Khala M6 shadow-run preflight
+
+`apps/pylon/src/khala-m6-shadow-preflight.ts` adds the read-only M6 readiness
+projection `openagents.khala.m6.shadow_run_preflight.v0.1`. It composes the
+existing Psionic training boundary, the real Pylon serving preflight, owner
+approval and spend-cap inputs, the live verdict source, the shadow candidate,
+the baseline router, and paid-shadow/publication refs into one public-safe
+blocker list.
+
+The projection distinguishes two states:
+
+- `canStartShadowRun` may become true once owner approval, caps, Psionic
+  boundary evidence, live serving evidence, verdict source, candidate, baseline,
+  and live rollout refs are present.
+- `canPublishM6Claim` remains false until the paid shadow win and publication
+  refs are also present.
+
+This is still not a dispatcher. It does not run Psionic, call a Pylon, spend
+sats, promote runtime artifacts, or green the M6 public claim by itself.

@@ -665,6 +665,16 @@ verification verdict; ship as a shadow candidate vs the heuristic router; promot
 on cost-per-accepted-outcome (a gated `runtime_promotion`). _Done when:_ the
 learned router beats heuristic on cost-per-accepted-outcome in shadow.
 
+Current guardrail: Pylon now exposes the read-only
+`openagents.khala.m6.shadow_run_preflight.v0.1` projection in
+`apps/pylon/src/khala-m6-shadow-preflight.ts`. It does not run the coordinator;
+it only composes owner approval, capped spend, Psionic training-boundary
+evidence, real Pylon serving preflight evidence, live verdict source, shadow
+candidate, baseline router, live rollout, paid-shadow-win, and publication refs
+into explicit blockers. A passing start preflight is enough to begin a capped
+shadow run, but the public M6 claim still requires the paid shadow-win and
+publication refs.
+
 **M7 — Conductor lane (compose to win the benchmark).** _(A, C, D)_
 GRPO-trained NL planner (DPPO + FP32 head, TMAX recipe) that decomposes the
 crossy-road task — plan (frontier via gateway) → implement (best coding worker) →
