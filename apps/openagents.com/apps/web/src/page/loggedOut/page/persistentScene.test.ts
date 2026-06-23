@@ -121,7 +121,7 @@ describe('persistent landing and Khala scene', () => {
     ).toBe(true)
   })
 
-  test('renders the landing scene with both glowing CTAs', () => {
+  test('renders the landing scene with the Tassadar CTA (Khala CTA hidden)', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(LandingRoute())),
@@ -130,14 +130,10 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-persistent-scene-shell="landing"]'),
       ).toExist(),
       Scene.expect(Scene.selector('[data-route="landing"]')).toExist(),
-      // CTA 1: renamed "What is Khala?" (still navigates to /khala).
-      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toExist(),
-      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toHaveAttr(
-        'type',
-        'button',
-      ),
-      Scene.expect(Scene.text('What is Khala?')).toExist(),
-      // CTA 2: new "Join the Tassadar training run" (navigates to /tassadar).
+      // The "What is Khala?" CTA is hidden until Khala is fully live.
+      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).not.toExist(),
+      Scene.expect(Scene.text('What is Khala?')).not.toExist(),
+      // CTA: "Join the Tassadar training run" (navigates to /tassadar).
       Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toExist(),
       Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toHaveAttr(
         'type',
