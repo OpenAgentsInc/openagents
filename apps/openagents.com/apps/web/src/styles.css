@@ -366,3 +366,95 @@
     gap: 0;
   }
 }
+
+/*
+ * Khala / Protoss energy layer (DESIGN.md, house style).
+ *
+ * The base design language for OpenAgents public surfaces: a dark void lit by
+ * Protoss psionic energy. These tokens echo the live 3D pylon scene
+ * (src/scene/landingSquares.ts: HDR core #3a7bff blooming through an
+ * UnrealBloomPass) into flat UI, so the page and the canvas behind it share one
+ * palette. The flat UI conveys energy with shadow-glow; it does not re-implement
+ * bloom in CSS.
+ */
+@theme {
+  --color-khala-energy: #3a7bff;
+  --color-khala-cyan: #4fd0ff;
+  --color-khala-ink-blue: #8fb6ff;
+}
+
+/*
+ * Glow halos as Tailwind v4 utilities so variants (hover:, group-hover:) work.
+ * Energy is conveyed by light, not fills.
+ */
+@utility khala-glow {
+  box-shadow: 0 0 24px -6px rgba(58, 123, 255, 0.45);
+}
+
+@utility khala-glow-strong {
+  box-shadow:
+    0 0 0 1px rgba(58, 123, 255, 0.35),
+    0 0 36px -8px rgba(58, 123, 255, 0.6);
+}
+
+@layer components {
+  /* Energized hairline: a glowing seam, not a flat gray rule. */
+  .khala-rule {
+    height: 1px;
+    border: 0;
+    background: linear-gradient(
+      90deg,
+      rgba(58, 123, 255, 0.55) 0%,
+      rgba(79, 208, 255, 0.28) 28%,
+      rgba(58, 123, 255, 0.06) 70%,
+      transparent 100%
+    );
+    box-shadow: 0 0 16px -4px rgba(58, 123, 255, 0.4);
+  }
+
+  /* Glowing-blue index marker that replaces a per-section eyebrow. */
+  .khala-index {
+    box-shadow:
+      inset 0 0 10px -3px rgba(79, 208, 255, 0.55),
+      0 0 14px -4px rgba(58, 123, 255, 0.5);
+  }
+
+  /* The content panel: a faint, slow energy bloom along the top edge so the
+     void feels alive without animating layout. */
+  .khala-panel {
+    box-shadow:
+      0 0 0 1px rgba(58, 123, 255, 0.14),
+      0 1px 0 0 rgba(79, 208, 255, 0.12) inset,
+      0 30px 120px -40px rgba(58, 123, 255, 0.35);
+  }
+
+  /* Slow, low-amplitude glow pulse echoing the scene's pulsing cores. */
+  .khala-pulse {
+    animation: khala-pulse 6s ease-in-out infinite;
+  }
+
+  /* Focus ring legible on the dark void. */
+  .khala-focus:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(58, 123, 255, 0.75),
+      0 0 22px -4px rgba(58, 123, 255, 0.7);
+  }
+}
+
+@keyframes khala-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 16px -6px rgba(58, 123, 255, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 28px -4px rgba(58, 123, 255, 0.6);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .khala-pulse {
+    animation: none;
+    box-shadow: 0 0 20px -5px rgba(58, 123, 255, 0.45);
+  }
+}
