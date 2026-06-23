@@ -1,4 +1,4 @@
-import { Match as M, Option } from 'effect'
+import { Match as M } from 'effect'
 import { Submodel } from 'foldkit'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
@@ -6,9 +6,9 @@ import { html } from 'foldkit/html'
 import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
+import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
-import * as AutopilotOnboarding from '../autopilot-onboarding'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
@@ -22,7 +22,12 @@ import * as Privacy from '../privacy'
 import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
-import { Message } from './message'
+import {
+  ClickedAutopilotOnboardingCreditKickoff,
+  Message,
+  SubmittedAutopilotOnboardingTurn,
+  UpdatedAutopilotOnboardingComposer,
+} from './message'
 import { Model } from './model'
 import * as Home from './page/home'
 import * as Moksha from './page/moksha'
@@ -65,6 +70,29 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   ) {
     return Ui.pageShell<Message>([
       PersistentScene.view(model.route._tag, model.copiedAgentInstructions),
+    ])
+  }
+
+  // /autopilot and /autopilot/{vertical}: the onboarding HUD mounts as the
+  // overlay of the SAME persistent scene at the `autopilot` pose (no second
+  // scene). The HUD (conversation + surfaced typed components + composer) is
+  // built from the flow slice and threaded into the scene as its overlay.
+  if (
+    model.route._tag === 'Autopilot' ||
+    model.route._tag === 'AutopilotVertical'
+  ) {
+    return Ui.pageShell<Message>([
+      PersistentScene.view(
+        'Autopilot',
+        model.copiedAgentInstructions,
+        AutopilotOnboardingPage.overlayView<Message>(model.autopilotOnboarding, {
+          updatedComposer: value =>
+            UpdatedAutopilotOnboardingComposer({ value }),
+          submittedTurn: () => SubmittedAutopilotOnboardingTurn(),
+          clickedCreditKickoff: () =>
+            ClickedAutopilotOnboardingCreditKickoff(),
+        }),
+      ),
     ])
   }
 
@@ -139,13 +167,9 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               ComponentsFamily: route =>
                 Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
-              Autopilot: () =>
-                AutopilotOnboarding.view({ _tag: 'LoggedOut' }),
-              AutopilotVertical: route =>
-                AutopilotOnboarding.view(
-                  { _tag: 'LoggedOut' },
-                  Option.some(route.vertical),
-                ),
+              // /autopilot + /autopilot/{vertical} are handled by the persistent
+              // scene early-return above (they mount the onboarding HUD over the
+              // shared canvas), so the route union here no longer includes them.
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),

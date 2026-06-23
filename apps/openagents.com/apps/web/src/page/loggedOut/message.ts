@@ -2,6 +2,7 @@ import { CursorGap, SyncPatch } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { m } from 'foldkit/message'
 
+import { OnboardingTurnResponse } from '../autopilot-onboarding/flow'
 import {
   OnboardingStep,
   PublicAdjutantActivity,
@@ -190,6 +191,30 @@ export const ReceivedSettledFeedPatch = m('ReceivedSettledFeedPatch', {
 export const ReceivedSettledFeedCursorGap = m('ReceivedSettledFeedCursorGap', {
   gap: CursorGap,
 })
+
+// /autopilot onboarding conversation (#6129).
+export const UpdatedAutopilotOnboardingComposer = m(
+  'UpdatedAutopilotOnboardingComposer',
+  { value: S.String },
+)
+export const SubmittedAutopilotOnboardingTurn = m(
+  'SubmittedAutopilotOnboardingTurn',
+)
+export const SucceededAutopilotOnboardingTurn = m(
+  'SucceededAutopilotOnboardingTurn',
+  { response: OnboardingTurnResponse },
+)
+export const FailedAutopilotOnboardingTurn = m(
+  'FailedAutopilotOnboardingTurn',
+  { reason: S.String },
+)
+export const ClickedAutopilotOnboardingCreditKickoff = m(
+  'ClickedAutopilotOnboardingCreditKickoff',
+)
+export const CompletedAutopilotOnboardingCreditKickoff = m(
+  'CompletedAutopilotOnboardingCreditKickoff',
+)
+
 export const Message = S.Union([
   ClickedCopyShareLink,
   ClickedEnterKhala,
@@ -234,5 +259,11 @@ export const Message = S.Union([
   FailedSettledFeedStream,
   ReceivedSettledFeedPatch,
   ReceivedSettledFeedCursorGap,
+  UpdatedAutopilotOnboardingComposer,
+  SubmittedAutopilotOnboardingTurn,
+  SucceededAutopilotOnboardingTurn,
+  FailedAutopilotOnboardingTurn,
+  ClickedAutopilotOnboardingCreditKickoff,
+  CompletedAutopilotOnboardingCreditKickoff,
 ])
 export type Message = typeof Message.Type

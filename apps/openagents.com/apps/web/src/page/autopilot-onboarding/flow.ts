@@ -1,0 +1,278 @@
+// Autopilot onboarding — the client flow state machine (issue #6129).
+//
+// This is the self-contained, transport-agnostic state for the `/autopilot`
+// onboarding conversation. The page (`./page.ts`) renders it; the loggedOut
+// MVU (`page/loggedOut/{model,message,update}.ts`) owns one slot of this model
+// and delegates turn submission to the command defined alongside the route.
+//
+// The flow drives turns against `POST /api/autopilot/onboarding/{sessionId}/turn`
+// (the merged Khala program, #6126). The v1 program returns assistant TEXT plus
+// the accumulated 10-section Output Spec; the model-chosen typed-component
+// streaming over the gateway (#6127) stays inert for now (triple-gated), so this
+// module SURFACES the closed-catalog components (#6128) deterministically from
+// the conversation/spec state instead. That is the honest v1 scope: the renderer
+// and the catalog are real and exercised, and the page is ready to swap the
+// derived frames for streamed ones once the gateway flag flips.
+//
+// Determinism: no `Math.random` / time-of-day here. Component ids are derived
+// from stable keys (the spec section name, the turn count) so captures, tests,
+// and the flutter-in stagger are reproducible.
+
+import { Option, Schema as S } from 'effect'
+import { ts } from 'foldkit/schema'
+
+import {
+  type RenderableFrame,
+  validateComponentFrame,
+} from './component-catalog'
+
+// MODEL -------------------------------------------------------------------
+
+// A single rendered transcript turn. Mirrors the server transcript turn but
+// stays a client-local schema so the page model is self-describing.
+export const FlowTurn = S.Struct({
+  role: S.Literals(['user', 'assistant']),
+  content: S.String,
+})
+export type FlowTurn = typeof FlowTurn.Type
+
+// The 10-section Output Spec, mirrored from the server program. Every field is
+// optional so a partial spec mid-interview is valid; the page lights up sections
+// as they fill in.
+export const FlowOutputSpec = S.Struct({
+  business: S.optionalKey(S.String),
+  goal: S.optionalKey(S.String),
+  chosenOfferings: S.optionalKey(S.String),
+  quickWin: S.optionalKey(S.String),
+  successMetric: S.optionalKey(S.String),
+  scope: S.optionalKey(S.String),
+  constraints: S.optionalKey(S.String),
+  timeline: S.optionalKey(S.String),
+  payment: S.optionalKey(S.String),
+  openQuestions: S.optionalKey(S.String),
+})
+export type FlowOutputSpec = typeof FlowOutputSpec.Type
+
+// The request lifecycle for a turn. `error` carries an operator-readable reason
+// the composer surfaces; the user can retry.
+export const FlowStatus = S.Literals(['idle', 'submitting', 'error'])
+export type FlowStatus = typeof FlowStatus.Type
+
+// The onboarding flow model. `sessionId` is generated once the first turn is
+// submitted (in the command, off the pure update path). `vertical` is the
+// optional `/autopilot/{vertical}` segment, threaded to the program's
+// vertical-overlay slot but never interpreted here (#6130 owns the legal
+// overlay content).
+export const FlowModel = ts('AutopilotOnboardingFlow', {
+  vertical: S.NullOr(S.String),
+  sessionId: S.NullOr(S.String),
+  composerDraft: S.String,
+  status: FlowStatus,
+  errorReason: S.NullOr(S.String),
+  transcript: S.Array(FlowTurn),
+  outputSpec: FlowOutputSpec,
+  turnCount: S.Int,
+})
+export type FlowModel = typeof FlowModel.Type
+
+// The turn response from `POST /api/autopilot/onboarding/{sessionId}/turn`,
+// mirrored client-side from the server program's `OnboardingTurnResponse`
+// (workers/api `autopilot-onboarding-program.ts`). The web and api packages are
+// separate, so this is a deliberate, narrow mirror decoded at the client
+// boundary; if the server contract changes, this decode fails loudly.
+export const OnboardingTurnResponse = S.Struct({
+  sessionId: S.String,
+  reply: S.String,
+  status: S.Literals(['interviewing', 'complete']),
+  turnCount: S.Int,
+  outputSpec: FlowOutputSpec,
+})
+export type OnboardingTurnResponse = typeof OnboardingTurnResponse.Type
+
+export const initFlowModel = (vertical: Option.Option<string>): FlowModel =>
+  FlowModel({
+    vertical: Option.getOrNull(vertical),
+    sessionId: null,
+    composerDraft: '',
+    status: 'idle',
+    errorReason: null,
+    transcript: [],
+    outputSpec: {},
+    turnCount: 0,
+  })
+
+// OUTPUT-SPEC SECTIONS ----------------------------------------------------
+
+// The ordered 10 sections, with display labels. The `intake_progress` register
+// lights these up as they are captured; the order is the interview order from
+// the intake spec (#6126).
+export const OUTPUT_SPEC_SECTIONS: ReadonlyArray<{
+  readonly id: keyof FlowOutputSpec
+  readonly label: string
+}> = [
+  { id: 'business', label: 'Your business' },
+  { id: 'goal', label: 'What you want done' },
+  { id: 'chosenOfferings', label: 'Offerings' },
+  { id: 'quickWin', label: 'First quick win' },
+  { id: 'successMetric', label: 'Success metric' },
+  { id: 'scope', label: 'Scope' },
+  { id: 'constraints', label: 'Constraints' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'payment', label: 'Payment' },
+  { id: 'openQuestions', label: 'Open questions' },
+]
+
+const isCaptured = (spec: FlowOutputSpec, id: keyof FlowOutputSpec): boolean => {
+  const value = spec[id]
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+// How many sections are captured (filled, non-blank). Used by the progress
+// register and to decide whether the flow has reached a quote-ready state.
+export const capturedSectionCount = (spec: FlowOutputSpec): number =>
+  OUTPUT_SPEC_SECTIONS.reduce(
+    (count, section) => count + (isCaptured(spec, section.id) ? 1 : 0),
+    0,
+  )
+
+// The index of the FIRST not-yet-captured section, clamped into range — the
+// "current" step for `intake_progress`. When all are captured it points at the
+// last section.
+export const currentSectionIndex = (spec: FlowOutputSpec): number => {
+  const firstOpen = OUTPUT_SPEC_SECTIONS.findIndex(
+    section => !isCaptured(spec, section.id),
+  )
+  return firstOpen === -1 ? OUTPUT_SPEC_SECTIONS.length - 1 : firstOpen
+}
+
+// The flow is "quote-ready" once the credit-kickoff-relevant facts are captured:
+// the business, the goal, the quick win, and the payment intent. This is the
+// honest v1 gate for surfacing the `credit_kickoff` card — it does not pretend
+// the full spec is complete, only that enough is known to kick off paid work.
+export const isQuoteReady = (spec: FlowOutputSpec): boolean =>
+  isCaptured(spec, 'business') &&
+  isCaptured(spec, 'goal') &&
+  isCaptured(spec, 'quickWin')
+
+// DERIVED COMPONENT FRAMES ------------------------------------------------
+
+// The default credit-kickoff grant for the v1 flow: $5.00 (matches the existing
+// onboarding funding floor). The amount is honest chrome, not a claimed balance.
+export const CREDIT_KICKOFF_AMOUNT_CENTS = 500
+
+// Derive the closed-catalog component frames to surface for the current flow
+// state. Pure and deterministic: same spec/status in, same frames out. These go
+// through the #6128 renderer exactly as a gateway-streamed frame would; the only
+// difference today is that the page produces them from session state rather than
+// reading them off the `oa.component` SSE channel (which is inert in v1).
+//
+// Ordering follows document order so the renderer interleaves them naturally:
+//   1. intake_progress   — always, as the assembling work surface
+//   2. consent_gate      — when a regulated vertical is active and consent is due
+//   3. quick_win_card    — once a quick win is captured
+//   4. dashboard_preview — once enough is captured to seed a workspace preview
+//   5. credit_kickoff    — once quote-ready (rendered + clickable; backend deferred)
+export const deriveComponentFrames = (
+  model: FlowModel,
+): ReadonlyArray<RenderableFrame> => {
+  const spec = model.outputSpec
+
+  // Build plain frame records and run each through `validateComponentFrame`, the
+  // SAME closed-catalog decode (#6128) a gateway-streamed frame goes through.
+  // This validates props (defense in depth) and yields the renderer's typed
+  // `RenderableFrame`; a record that somehow failed would degrade to the safe
+  // fallback rather than crash — exactly the gateway contract.
+  const records: Array<Record<string, unknown>> = []
+
+  // intake_progress — the interview assembling. Always present (even before the
+  // first turn) so the work surface is visible on a headless render, not gated
+  // behind a class-triggered reveal.
+  records.push({
+    v: 1,
+    component: 'intake_progress',
+    id: 'intake-progress',
+    props: {
+      steps: OUTPUT_SPEC_SECTIONS.map(section => ({
+        id: section.id,
+        label: section.label,
+      })),
+      current: currentSectionIndex(spec),
+    },
+  })
+
+  // consent_gate — for regulated verticals (legal/health), surface an explicit
+  // consent gate before anything client-identifying. v1 only knows `legal`; the
+  // overlay CONTENT is #6130. Honors the closed catalog shape.
+  if (model.vertical === 'legal') {
+    records.push({
+      v: 1,
+      component: 'consent_gate',
+      id: 'consent-gate-legal',
+      props: {
+        scope: 'Legal intake',
+        dataPractices: [
+          'Information you share is used only to scope and run your requested work.',
+          'No client-identifying detail is published; review gates precede anything sensitive.',
+        ],
+        required: true,
+      },
+    })
+  }
+
+  // quick_win_card — the scoped first deliverable, once captured.
+  const quickWin = spec.quickWin
+  if (typeof quickWin === 'string' && quickWin.trim() !== '') {
+    records.push({
+      v: 1,
+      component: 'quick_win_card',
+      id: 'quick-win',
+      props: {
+        title: quickWin.trim(),
+        scope:
+          typeof spec.scope === 'string' && spec.scope.trim() !== ''
+            ? spec.scope.trim()
+            : 'A bounded first deliverable, reviewed before anything ships.',
+        etaDays: 3,
+      },
+    })
+  }
+
+  // dashboard_preview — "here's your dashboard, already seeded": surfaced once
+  // the business is known. Seeded facts are the captured spec fields, labelled.
+  const business = spec.business
+  if (typeof business === 'string' && business.trim() !== '') {
+    const seededFacts = OUTPUT_SPEC_SECTIONS.flatMap(section => {
+      const value = spec[section.id]
+      return typeof value === 'string' && value.trim() !== ''
+        ? [`${section.label}: ${value.trim()}`]
+        : []
+    })
+
+    records.push({
+      v: 1,
+      component: 'dashboard_preview',
+      id: 'dashboard-preview',
+      props: {
+        workspaceRef: `${business.trim()} workspace`,
+        seededFacts,
+      },
+    })
+  }
+
+  // credit_kickoff — the earned ask, once quote-ready. Rendered + clickable; the
+  // click stubs to the existing `POST /api/billing/checkout` entry (the
+  // payment->workspace->promise backend is explicitly deferred, #6129).
+  if (isQuoteReady(spec)) {
+    records.push({
+      v: 1,
+      component: 'credit_kickoff',
+      id: 'credit-kickoff',
+      props: {
+        amountCents: CREDIT_KICKOFF_AMOUNT_CENTS,
+        label: 'Kick off the work',
+      },
+    })
+  }
+
+  return records.map(validateComponentFrame)
+}

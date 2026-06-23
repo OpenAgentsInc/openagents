@@ -18,6 +18,7 @@ import { html } from 'foldkit/html'
 
 import {
   AiElements,
+  className,
   eyebrowClass,
   metaClass,
   surfaceClass,
@@ -98,13 +99,13 @@ const quickWinCardView = <Message>(props: QuickWinCardProps): Html => {
   const h = html<Message>()
 
   return h.div(
-    [h.Class(cardClass)],
+    [className<Message>(cardClass)],
     [
-      h.span([h.Class(eyebrowClass)], ['Quick win']),
-      h.span([h.Class(titleClass)], [props.title]),
-      h.p([h.Class(metaClass)], [props.scope]),
+      h.span([className<Message>(eyebrowClass)], ['Quick win']),
+      h.span([className<Message>(titleClass)], [props.title]),
+      h.p([className<Message>(metaClass)], [props.scope]),
       h.p(
-        [h.Class(metaClass)],
+        [className<Message>(metaClass)],
         [`Estimated ${props.etaDays} day${props.etaDays === 1 ? '' : 's'}`],
       ),
     ],
@@ -117,16 +118,16 @@ const dashboardPreviewView = <Message>(props: DashboardPreviewProps): Html => {
   const h = html<Message>()
 
   return h.div(
-    [h.Class(cardClass)],
+    [className<Message>(cardClass)],
     [
-      h.span([h.Class(eyebrowClass)], ['Your dashboard']),
-      h.span([h.Class(titleClass)], [props.workspaceRef]),
+      h.span([className<Message>(eyebrowClass)], ['Your dashboard']),
+      h.span([className<Message>(titleClass)], [props.workspaceRef]),
       props.seededFacts.length === 0
-        ? h.p([h.Class(metaClass)], ['No facts seeded yet'])
+        ? h.p([className<Message>(metaClass)], ['No facts seeded yet'])
         : h.ul(
-            [h.Class('grid gap-1')],
+            [className<Message>('grid gap-1')],
             props.seededFacts.map(fact =>
-              h.li([h.Class(metaClass)], [fact]),
+              h.li([className<Message>(metaClass)], [fact]),
             ),
           ),
     ],
@@ -139,11 +140,11 @@ const humanHandoffView = <Message>(props: HumanHandoffProps): Html => {
   const h = html<Message>()
 
   return h.div(
-    [h.Class(cardClass)],
+    [className<Message>(cardClass)],
     [
-      h.span([h.Class(eyebrowClass)], ['Handoff to a person']),
-      h.p([h.Class(metaClass)], [props.reason]),
-      h.p([h.Class(titleClass)], [props.contact]),
+      h.span([className<Message>(eyebrowClass)], ['Handoff to a person']),
+      h.p([className<Message>(metaClass)], [props.reason]),
+      h.p([className<Message>(titleClass)], [props.contact]),
     ],
   )
 }
@@ -158,16 +159,16 @@ const consentGateView = <Message>(
   const h = html<Message>()
 
   return h.div(
-    [h.Class('grid gap-2')],
+    [className<Message>('grid gap-2')],
     [
       h.div(
-        [h.Class(cardClass)],
+        [className<Message>(cardClass)],
         [
-          h.span([h.Class(eyebrowClass)], ['Data practices']),
+          h.span([className<Message>(eyebrowClass)], ['Data practices']),
           h.ul(
-            [h.Class('grid gap-1')],
+            [className<Message>('grid gap-1')],
             props.dataPractices.map(practice =>
-              h.li([h.Class(metaClass)], [practice]),
+              h.li([className<Message>(metaClass)], [practice]),
             ),
           ),
         ],

@@ -4,13 +4,21 @@ import { describe, expect, test } from 'vitest'
 
 import { authBootstrapFromSession } from './domain/session'
 import { Flags, init } from './main'
-import * as AutopilotOnboarding from './page/autopilot-onboarding'
+import { initFlowModel } from './page/autopilot-onboarding/flow'
+import * as AutopilotOnboardingPage from './page/autopilot-onboarding/page'
 import {
   AutopilotRoute,
   AutopilotVerticalRoute,
   AutopilotWorkRoute,
   urlToAppRoute,
 } from './route'
+
+// Stub action constructors for the page view (the test only inspects markup).
+const onboardingActions = {
+  updatedComposer: (value: string) => ({ _tag: 'stub-composer', value }),
+  submittedTurn: () => ({ _tag: 'stub-submit' }),
+  clickedCreditKickoff: () => ({ _tag: 'stub-kickoff' }),
+}
 
 const appUrl = (pathname: string) => ({
   protocol: 'https:',
@@ -161,20 +169,38 @@ describe('autopilot onboarding route', () => {
     })
   })
 
-  test('renders the placeholder heading and intro, adapting the intro to the vertical', () => {
+  test('renders the onboarding HUD heading, intro, composer, and intake register', () => {
     const bare = renderHtml(
-      AutopilotOnboarding.view({ _tag: 'LoggedOut' }, Option.none()),
+      AutopilotOnboardingPage.overlayView(
+        initFlowModel(Option.none()),
+        onboardingActions,
+      ),
     )
 
     expect(bare).toContain('Put an AI workforce to work')
-    expect(bare).toContain('Tell Autopilot what you want done.')
-    expect(bare).toContain('data-autopilot-onboarding-shell')
+    expect(bare).toContain('Describe what you want done.')
+    expect(bare).toContain(`data-${AutopilotOnboardingPage.HUD_ROOT_ATTR}`)
+    // The command composer is present (text now, voice deferred).
+    expect(bare).toContain(`data-${AutopilotOnboardingPage.HUD_COMPOSER_ATTR}`)
+    // The intake_progress register surfaces from the first render (a complete,
+    // readable surface, not a class-gated blank).
+    expect(bare).toContain('Onboarding progress')
+    // No credit_kickoff before the flow is quote-ready.
+    expect(bare).not.toContain('Kick off the work')
+  })
 
+  test('adapts the intro and surfaces a legal consent gate for /autopilot/legal', () => {
     const legal = renderHtml(
-      AutopilotOnboarding.view({ _tag: 'LoggedOut' }, Option.some('legal')),
+      AutopilotOnboardingPage.overlayView(
+        initFlowModel(Option.some('legal')),
+        onboardingActions,
+      ),
     )
 
     expect(legal).toContain('Put an AI workforce to work')
-    expect(legal).toContain('for your legal work')
+    expect(legal).toContain('legal work')
+    // The legal vertical surfaces a consent gate (content owned by #6130; this
+    // only asserts the page accepts and threads the vertical).
+    expect(legal).toContain('Data practices')
   })
 })

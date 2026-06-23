@@ -11,7 +11,6 @@ import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
-import * as AutopilotOnboarding from './page/autopilot-onboarding'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as Components from './page/components'
@@ -471,6 +470,26 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  // /autopilot + /autopilot/{vertical} render through the loggedOut Submodel so
+  // the onboarding flow has model/update access (the conversation, surfaced
+  // typed components, and composer are stateful). The Submodel mounts the
+  // onboarding HUD over the SHARED persistent scene at the `autopilot` pose
+  // (#6129); it does NOT use the stateless public-header shell below.
+  if (
+    model._tag === 'LoggedOut' &&
+    (model.route._tag === 'Autopilot' ||
+      model.route._tag === 'AutopilotVertical')
+  ) {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-autopilot-onboarding',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (model._tag === 'LoggedOut' && model.route._tag === 'Pylon') {
     const h = html<Message>()
 
@@ -557,16 +576,9 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     return Business.view<Message>(authState)
   }
 
-  if (model.route._tag === 'Autopilot') {
-    return AutopilotOnboarding.view<Message>(authState)
-  }
-
-  if (model.route._tag === 'AutopilotVertical') {
-    return AutopilotOnboarding.view<Message>(
-      authState,
-      Option.some(model.route.vertical),
-    )
-  }
+  // Note: /autopilot and /autopilot/{vertical} are rendered above through the
+  // loggedOut Submodel (the stateful, scene-backed onboarding flow), so they do
+  // not fall through to this stateless public-header shell.
 
   if (model.route._tag === 'Terms') {
     return Terms.view<Message>(authState)
@@ -618,6 +630,16 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     model.route._tag === 'SiteCheckoutDemoReturn'
   ) {
     return SiteCheckoutDemo.view<Message>(model.route, authState)
+  }
+
+  // /autopilot + /autopilot/{vertical} are rendered through the loggedOut
+  // Submodel above for the LoggedOut model. They never reach this stateless
+  // shell, so there is no public-header body for them here.
+  if (
+    model.route._tag === 'Autopilot' ||
+    model.route._tag === 'AutopilotVertical'
+  ) {
+    return undefined
   }
 
   return Blog.view<Message>(model.route, authState)

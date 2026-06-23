@@ -458,3 +458,43 @@
     box-shadow: 0 0 20px -5px rgba(58, 123, 255, 0.45);
   }
 }
+
+/*
+ * Autopilot onboarding component flutter-in (design doc §2, §11 — the signature
+ * entrance). Components assemble around the request on an ease-out-expo curve
+ * (no bounce/elastic), deterministically staggered per surface via the
+ * `--oa-flutter-index` custom property the page sets from document order (NOT
+ * Math.random / time-of-day, so captures and replays are stable).
+ *
+ * Honesty rule from the doc: the reveal ENHANCES an already-visible default — the
+ * surface ships fully opaque/in-place, and the animation only plays forward from
+ * a slightly offset start, so a headless render (or reduced-motion) shows the
+ * complete, readable surface, never a blank gated one. The per-surface stagger
+ * delay is set inline (`animation-delay`) from document order by the page — a
+ * deterministic value, NOT Math.random / time-of-day.
+ */
+@keyframes oa-flutter-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 0.6rem, 0) scale(0.985) rotate(-0.35deg);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1) rotate(0deg);
+  }
+}
+
+@layer components {
+  .oa-flutter-in {
+    animation: oa-flutter-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-flutter-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

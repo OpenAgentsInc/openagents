@@ -286,6 +286,8 @@ export const browserCommandProductIntents = {
   NavigateToKhala: 'public.khala.navigate',
   NavigateToLanding: 'public.landing.navigate',
   NavigateToTassadar: 'public.tassadar.navigate',
+  OpenAutopilotCreditKickoff: 'public.autopilot.onboarding.credit-kickoff',
+  SubmitAutopilotOnboardingTurn: 'public.autopilot.onboarding.turn.submit',
   CreateBillingCheckout: 'billing.checkout.create',
   PrepareBillingCardSetup: 'billing.card.setup.prepare',
   RunBillingAutoTopUp: 'billing.auto_top_up.run',

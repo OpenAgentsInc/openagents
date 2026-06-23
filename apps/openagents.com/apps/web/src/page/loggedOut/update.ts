@@ -1,6 +1,6 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 import { Command } from 'foldkit'
-import { pushUrl } from 'foldkit/navigation'
+import { load, pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
 
 import {
@@ -9,6 +9,9 @@ import {
   CompletedNavigateToKhala,
   CompletedNavigateToLanding,
   CompletedNavigateToTassadar,
+  CompletedAutopilotOnboardingCreditKickoff,
+  FailedAutopilotOnboardingTurn,
+  SucceededAutopilotOnboardingTurn,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -67,6 +70,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
+import { OnboardingTurnResponse } from '../autopilot-onboarding/flow'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
@@ -136,6 +140,13 @@ class ShareProjectionLoadError extends S.TaggedErrorClass<ShareProjectionLoadErr
 
 class ShareLinkCopyError extends S.TaggedErrorClass<ShareLinkCopyError>()(
   'ShareLinkCopyError',
+  {
+    error: S.Defect,
+  },
+) {}
+
+class AutopilotOnboardingTurnError extends S.TaggedErrorClass<AutopilotOnboardingTurnError>()(
+  'AutopilotOnboardingTurnError',
   {
     error: S.Defect,
   },
@@ -728,6 +739,106 @@ export const NavigateToLanding = Command.define(
   // /tassadar pushes the root and flies the camera home.
 )(pushUrl(homeRouter()).pipe(Effect.as(CompletedNavigateToLanding())))
 
+// Generate a session id for a new onboarding conversation. Uses secure browser
+// randomness (the same primitive the checkout idempotency key uses); no
+// Math.random. Lives in the command (effect side) so the pure update path stays
+// deterministic.
+const newOnboardingSessionId = (): string => {
+  const bytes = new Uint8Array(12)
+  if (
+    globalThis.crypto !== undefined &&
+    typeof globalThis.crypto.getRandomValues === 'function'
+  ) {
+    globalThis.crypto.getRandomValues(bytes)
+    const segment = Array.from(bytes, byte =>
+      byte.toString(16).padStart(2, '0'),
+    ).join('')
+    return `ob_${segment}`
+  }
+
+  throw new Error('Secure browser randomness is required to start onboarding.')
+}
+
+// Drive one /autopilot onboarding turn against the merged Khala program
+// (`POST /api/autopilot/onboarding/{sessionId}/turn`, #6126). `sessionId` is the
+// existing session or null (a fresh one is minted here). `verticalOverlay` is
+// only honored by the server on the first turn that creates the session.
+export const SubmitAutopilotOnboardingTurn = Command.define(
+  'SubmitAutopilotOnboardingTurn',
+  {
+    sessionId: S.NullOr(S.String),
+    userText: S.String,
+    verticalOverlay: S.NullOr(S.String),
+  },
+  SucceededAutopilotOnboardingTurn,
+  FailedAutopilotOnboardingTurn,
+)(({ sessionId, userText, verticalOverlay }) =>
+  Effect.gen(function* () {
+    const resolvedSessionId =
+      sessionId ?? (yield* Effect.sync(() => newOnboardingSessionId()))
+
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `/api/autopilot/onboarding/${encodeURIComponent(resolvedSessionId)}/turn`,
+          {
+            method: 'POST',
+            cache: 'no-store',
+            headers: {
+              accept: 'application/json',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              userText,
+              ...(verticalOverlay === null ? {} : { verticalOverlay }),
+            }),
+          },
+        ),
+      catch: error => new AutopilotOnboardingTurnError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new AutopilotOnboardingTurnError({
+        error: `Onboarding turn returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new AutopilotOnboardingTurnError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(OnboardingTurnResponse)(payload)
+
+    return SucceededAutopilotOnboardingTurn({ response: decoded })
+  }).pipe(
+    Effect.catch(() =>
+      Effect.succeed(
+        FailedAutopilotOnboardingTurn({
+          reason:
+            'Autopilot could not respond just now. Try sending that again.',
+        }),
+      ),
+    ),
+  ),
+)
+
+// The credit_kickoff stub. A logged-out visitor cannot top up directly (the
+// `/api/billing/checkout` entry needs an authenticated session); the honest v1
+// stub routes them into the existing funded path via GitHub login, exactly like
+// the legacy onboarding CTA. The payment->workspace->promise backend is
+// explicitly deferred (#6129). `load` is a full-page navigation, so the
+// completion message is a benign no-op that is effectively never observed.
+const ONBOARDING_GITHUB_LOGIN_HREF = '/login/github'
+
+export const OpenAutopilotCreditKickoff = Command.define(
+  'OpenAutopilotCreditKickoff',
+  CompletedAutopilotOnboardingCreditKickoff,
+)(
+  load(ONBOARDING_GITHUB_LOGIN_HREF).pipe(
+    Effect.as(CompletedAutopilotOnboardingCreditKickoff()),
+  ),
+)
+
 const publicAgentIdForRef = (agentRef: string): string => {
   const knownAgentIds: Readonly<Record<string, string>> = {
     adjutant: 'agent_adjutant',
@@ -1032,5 +1143,77 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      UpdatedAutopilotOnboardingComposer: ({ value }) => [
+        evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, { composerDraft: () => value }),
+        }),
+        [],
+      ],
+      SubmittedAutopilotOnboardingTurn: () => {
+        const flow = model.autopilotOnboarding
+        const userText = flow.composerDraft.trim()
+
+        // Guard the empty/in-flight submit on the pure path so a double-enter or
+        // an empty composer never fires a turn (the composer also disables the
+        // control, but the model stays authoritative).
+        if (userText === '' || flow.status === 'submitting') {
+          return [model, []]
+        }
+
+        return [
+          evo(model, {
+            autopilotOnboarding: current =>
+              evo(current, {
+                status: () => 'submitting',
+                errorReason: () => null,
+                composerDraft: () => '',
+                transcript: transcript => [
+                  ...transcript,
+                  { role: 'user', content: userText },
+                ],
+              }),
+          }),
+          [
+            SubmitAutopilotOnboardingTurn({
+              sessionId: flow.sessionId,
+              userText,
+              verticalOverlay: flow.vertical,
+            }),
+          ],
+        ]
+      },
+      SucceededAutopilotOnboardingTurn: ({ response }) => [
+        evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, {
+              sessionId: () => response.sessionId,
+              status: () => 'idle',
+              errorReason: () => null,
+              turnCount: () => response.turnCount,
+              outputSpec: () => response.outputSpec,
+              transcript: transcript => [
+                ...transcript,
+                { role: 'assistant', content: response.reply },
+              ],
+            }),
+        }),
+        [],
+      ],
+      FailedAutopilotOnboardingTurn: ({ reason }) => [
+        evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, {
+              status: () => 'error',
+              errorReason: () => (reason === '' ? null : reason),
+            }),
+        }),
+        [],
+      ],
+      ClickedAutopilotOnboardingCreditKickoff: () => [
+        model,
+        [OpenAutopilotCreditKickoff()],
+      ],
+      CompletedAutopilotOnboardingCreditKickoff: () => [model, []],
     }),
   )
