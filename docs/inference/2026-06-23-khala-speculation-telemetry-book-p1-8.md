@@ -2,7 +2,10 @@
 
 Status: buildable-now telemetry + decision-policy + receipt-disclosure machinery
 merged; the REAL speculative decode (a draft model / a real serving engine) is
-compute/owner-gated and stays inert. Not deployed by this change.
+compute/owner-gated and stays inert. A real lane now has a pure evidence
+preflight that refuses missing owner approval, missing public-safe evidence,
+unmeasured draft counts, and high-batch/high-pressure policy failures before it
+can project active speculation metadata. Not deployed by this change.
 
 ## The principle (book Ch.5 "Speculative Decoding", in our own words)
 
@@ -116,6 +119,11 @@ may speculate without telling us) — honest, never a fabricated active mode.
 - The typed speculation telemetry metadata + honest builder
   (`khala-speculation.ts`), wired onto the telemetry record.
 - The bounded `decideSpeculation` dynamic-disablement policy + thresholds.
+- The pure `preflightRealSpeculationLane` evidence gate: it accepts only
+  owner-confirmed, public-safe, engine-backed `n_gram`/`lookahead` measurements
+  with workload/model/route/temperature context, draft proposed/accepted counts,
+  acceptance evidence, latency evidence, and a low-batch policy decision. It
+  returns active metadata only when all gates pass.
 - The fixture decode-trace lane (`benchmark/speculation-lane.ts`): a deterministic
   per-cell speculation outcome that REQUESTS a draft-free mode for code workloads,
   runs the policy against the cell's batch (concurrency) + derived pressure, and
@@ -130,7 +138,10 @@ may speculate without telling us) — honest, never a fabricated active mode.
 - The REAL speculative decode (an actual n-gram/lookahead drafter or a learned
   draft head) needs a real serving engine; there is none in the Worker, so the
   live path discloses `not_measured`/`none`. A future serving engine threads real
-  draft counts into the same metadata fields.
+  draft counts into the same metadata fields. Until that engine exists and the
+  owner supplies approval/caps plus public-safe evidence refs,
+  `preflightRealSpeculationLane` returns `eligible:false` and cannot mint active
+  speculation metadata.
 - EAGLE / learned hidden-state drafting is a Psionic learned-serving lane that
   needs target-model hidden-state data + training. Named, never selected.
 - A real, billable benchmark sweep stays behind the owner-armed real lane seam
@@ -139,7 +150,8 @@ may speculate without telling us) — honest, never a fabricated active mode.
 ## Where
 
 - `apps/openagents.com/workers/api/src/inference/khala-speculation.ts` — the typed
-  metadata, canonical shapes, builder, and the `decideSpeculation` policy.
+  metadata, canonical shapes, builder, the `decideSpeculation` policy, and the
+  real-lane evidence preflight.
 - `apps/openagents.com/workers/api/src/inference/khala-telemetry.ts` — the
   `speculation` field on the record + input, built honestly.
 - `apps/openagents.com/workers/api/src/inference/benchmark/speculation-lane.ts` —
@@ -158,7 +170,9 @@ The inference test suites (807 tests, incl. the new speculation suites),
 `check:public-projection-freshness`. Tests cover: acceptance-rate telemetry
 populating from a fixture decode trace (honest sentinel when no speculation ran);
 `decideSpeculation` enabling at low batch and disabling at high batch / pressure /
-unknown-signal / learned-mode / not-requested; the speculation mode disclosed in
-the record; the report acceptance aggregate keyed by the four axes; and the real
+unknown-signal / learned-mode / not-requested; real-lane preflight accepting only
+owner-armed, public-safe, measured low-batch evidence and returning known inactive
+metadata when policy disables speculation; the speculation mode disclosed in the
+record; the report acceptance aggregate keyed by the four axes; and the real
 speculative-decoding engine staying flag-gated off (the fixture seam never spends,
 the un-armed real seam refuses to run).

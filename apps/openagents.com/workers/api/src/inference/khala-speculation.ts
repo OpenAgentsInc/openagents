@@ -416,3 +416,171 @@ export const decideSpeculation = (
     reason: 'enabled_low_batch',
   }
 }
+
+// ---------------------------------------------------------------------------
+// Real speculative-decoding lane preflight — owner/engine/evidence-gated.
+// ---------------------------------------------------------------------------
+
+export type RealSpeculationLaneEvidence = Readonly<{
+  schemaVersion: 'openagents.khala.real-speculation-evidence.v1'
+  evidenceRef: string
+  ownerApprovalRef: string
+  workloadRef: string
+  workload: string
+  model: string
+  route: string
+  temperature: number
+  mode: KhalaSpeculationMode
+  engineRef: string
+  engineKind: 'draft_free_engine' | 'draft_model'
+  signal: KhalaSpeculationPressureSignal
+  draftTokensProposed: number
+  draftTokensAccepted: number
+  acceptanceEvidenceRef: string
+  latencyEvidenceRef: string
+  publicSafeEvidenceRefs: ReadonlyArray<string>
+}>
+
+export type RealSpeculationLaneBlocker =
+  | 'owner_confirmation_missing'
+  | 'owner_approval_ref_missing'
+  | 'real_speculation_evidence_missing'
+  | 'evidence_ref_missing'
+  | 'workload_context_missing'
+  | 'model_context_missing'
+  | 'route_context_missing'
+  | 'temperature_not_measured'
+  | 'mode_not_real_speculation'
+  | 'engine_ref_missing'
+  | 'draft_counts_not_measured'
+  | 'accepted_exceeds_proposed'
+  | 'acceptance_evidence_ref_missing'
+  | 'latency_evidence_ref_missing'
+  | 'public_safe_evidence_refs_missing'
+  | 'policy_disabled'
+
+export type RealSpeculationLanePreflightInput = Readonly<{
+  ownerConfirmed: boolean
+  evidence?: RealSpeculationLaneEvidence | undefined
+  policy?: KhalaSpeculationPolicyConfig | undefined
+}>
+
+export type RealSpeculationLanePreflight = Readonly<{
+  schemaVersion: 'openagents.khala.real-speculation-preflight.v1'
+  eligible: boolean
+  decision: KhalaSpeculationDecision
+  metadata: KhalaSpeculationMetadata
+  blockers: ReadonlyArray<RealSpeculationLaneBlocker>
+  evidenceRef: string | null
+  publicSafeEvidenceRefs: ReadonlyArray<string>
+}>
+
+const nonBlank = (value: string): boolean => value.trim().length > 0
+
+const evidenceBlockers = (
+  input: RealSpeculationLanePreflightInput,
+): ReadonlyArray<RealSpeculationLaneBlocker> => {
+  const blockers: Array<RealSpeculationLaneBlocker> = []
+  if (!input.ownerConfirmed) {
+    blockers.push('owner_confirmation_missing')
+  }
+
+  const evidence = input.evidence
+  if (evidence === undefined) {
+    return [...blockers, 'real_speculation_evidence_missing']
+  }
+
+  if (!nonBlank(evidence.evidenceRef)) {
+    blockers.push('evidence_ref_missing')
+  }
+  if (!nonBlank(evidence.ownerApprovalRef)) {
+    blockers.push('owner_approval_ref_missing')
+  }
+  if (!nonBlank(evidence.workloadRef) || !nonBlank(evidence.workload)) {
+    blockers.push('workload_context_missing')
+  }
+  if (!nonBlank(evidence.model)) {
+    blockers.push('model_context_missing')
+  }
+  if (!nonBlank(evidence.route)) {
+    blockers.push('route_context_missing')
+  }
+  if (!Number.isFinite(evidence.temperature)) {
+    blockers.push('temperature_not_measured')
+  }
+  if (!isDraftFreeMode(evidence.mode)) {
+    blockers.push('mode_not_real_speculation')
+  }
+  if (!nonBlank(evidence.engineRef)) {
+    blockers.push('engine_ref_missing')
+  }
+  if (
+    !isFiniteNonNegative(evidence.draftTokensProposed) ||
+    !isFiniteNonNegative(evidence.draftTokensAccepted) ||
+    evidence.draftTokensProposed <= 0
+  ) {
+    blockers.push('draft_counts_not_measured')
+  } else if (evidence.draftTokensAccepted > evidence.draftTokensProposed) {
+    blockers.push('accepted_exceeds_proposed')
+  }
+  if (!nonBlank(evidence.acceptanceEvidenceRef)) {
+    blockers.push('acceptance_evidence_ref_missing')
+  }
+  if (!nonBlank(evidence.latencyEvidenceRef)) {
+    blockers.push('latency_evidence_ref_missing')
+  }
+  if (
+    evidence.publicSafeEvidenceRefs.length === 0 ||
+    evidence.publicSafeEvidenceRefs.some(ref => !nonBlank(ref))
+  ) {
+    blockers.push('public_safe_evidence_refs_missing')
+  }
+  return blockers
+}
+
+// Preflight a real speculative-decoding lane. This does not execute a draft
+// model or engine. It only validates that supplied real measurement evidence is
+// owner-armed, public-safe, count-backed, and still inside the low-batch policy
+// window before it can be projected into Khala receipt metadata.
+export const preflightRealSpeculationLane = (
+  input: RealSpeculationLanePreflightInput,
+): RealSpeculationLanePreflight => {
+  const blockers = evidenceBlockers(input)
+  const evidence = input.evidence
+  const decision =
+    evidence === undefined
+      ? disabled('disabled_pressure_unknown')
+      : decideSpeculation({
+          requestedMode: evidence.mode,
+          signal: evidence.signal,
+          policy: input.policy,
+        })
+
+  const policyBlockers: ReadonlyArray<RealSpeculationLaneBlocker> =
+    decision.enabled ? [] : ['policy_disabled']
+  const allBlockers = [...blockers, ...policyBlockers]
+  const eligible = allBlockers.length === 0 && evidence !== undefined
+  const metadata =
+    eligible && evidence !== undefined
+      ? buildKhalaSpeculationMetadata({
+          mode: evidence.mode,
+          active: true,
+          draftTokensProposed: evidence.draftTokensProposed,
+          draftTokensAccepted: evidence.draftTokensAccepted,
+        })
+      : decision.reason === 'disabled_high_batch' ||
+          decision.reason === 'disabled_high_pressure'
+        ? NO_SPECULATION
+        : UNKNOWN_SPECULATION
+
+  return {
+    schemaVersion: 'openagents.khala.real-speculation-preflight.v1',
+    eligible,
+    decision,
+    metadata,
+    blockers: allBlockers,
+    evidenceRef: eligible && evidence !== undefined ? evidence.evidenceRef : null,
+    publicSafeEvidenceRefs:
+      eligible && evidence !== undefined ? evidence.publicSafeEvidenceRefs : [],
+  }
+}

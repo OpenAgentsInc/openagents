@@ -11,6 +11,8 @@ import {
   decodeKhalaSpeculationMetadata,
   isDraftFreeMode,
   isLearnedMode,
+  preflightRealSpeculationLane,
+  type RealSpeculationLaneEvidence,
 } from './khala-speculation'
 
 describe('khala speculation — mode classifiers', () => {
@@ -202,5 +204,101 @@ describe('decideSpeculation — dynamic disablement (the book operating rule)', 
       signal: { batchSize: 2, computePressure: 0.2 },
     }
     expect(decideSpeculation(input)).toEqual(decideSpeculation(input))
+  })
+})
+
+const realSpeculationEvidence = (
+  overrides: Partial<RealSpeculationLaneEvidence> = {},
+): RealSpeculationLaneEvidence => ({
+  schemaVersion: 'openagents.khala.real-speculation-evidence.v1',
+  evidenceRef: 'evidence:khala:speculation:n-gram:2026-06-23',
+  ownerApprovalRef: 'owner-approval:khala-speculation:cap-001',
+  workloadRef: 'workload:khala-code:artifact-gen:observed-launch',
+  workload: 'khala-code-artifact-gen',
+  model: 'openagents/khala-code',
+  route: 'khala-code-artifact-gen',
+  temperature: 0,
+  mode: 'n_gram',
+  engineRef: 'engine:vllm:n-gram-speculation:worker-001',
+  engineKind: 'draft_free_engine',
+  signal: { batchSize: 1, computePressure: 0.2 },
+  draftTokensProposed: 200,
+  draftTokensAccepted: 156,
+  acceptanceEvidenceRef: 'receipt:khala-speculation:acceptance:001',
+  latencyEvidenceRef: 'receipt:khala-speculation:latency:001',
+  publicSafeEvidenceRefs: [
+    'receipt:khala-speculation:public-closeout:001',
+  ],
+  ...overrides,
+})
+
+describe('preflightRealSpeculationLane — owner-armed real lane evidence', () => {
+  test('accepts complete owner-armed low-batch evidence and builds active metadata', () => {
+    const evidence = realSpeculationEvidence()
+    const preflight = preflightRealSpeculationLane({
+      ownerConfirmed: true,
+      evidence,
+    })
+    expect(preflight.eligible).toBe(true)
+    expect(preflight.blockers).toEqual([])
+    expect(preflight.decision.enabled).toBe(true)
+    expect(preflight.decision.reason).toBe('enabled_low_batch')
+    expect(preflight.evidenceRef).toBe(evidence.evidenceRef)
+    expect(preflight.publicSafeEvidenceRefs).toEqual(
+      evidence.publicSafeEvidenceRefs,
+    )
+    expect(preflight.metadata.mode).toBe('n_gram')
+    expect(preflight.metadata.active).toBe(true)
+    expect(preflight.metadata.acceptanceRate).toBe(0.78)
+  })
+
+  test('dynamically disables real evidence at high batch and records known inactive metadata', () => {
+    const preflight = preflightRealSpeculationLane({
+      ownerConfirmed: true,
+      evidence: realSpeculationEvidence({
+        signal: { batchSize: 32, computePressure: 0.2 },
+      }),
+    })
+    expect(preflight.eligible).toBe(false)
+    expect(preflight.decision.reason).toBe('disabled_high_batch')
+    expect(preflight.blockers).toContain('policy_disabled')
+    expect(preflight.metadata).toEqual(NO_SPECULATION)
+  })
+
+  test('refuses missing owner confirmation or missing evidence without fabricating active speculation', () => {
+    const preflight = preflightRealSpeculationLane({
+      ownerConfirmed: false,
+    })
+    expect(preflight.eligible).toBe(false)
+    expect(preflight.blockers).toEqual([
+      'owner_confirmation_missing',
+      'real_speculation_evidence_missing',
+      'policy_disabled',
+    ])
+    expect(preflight.metadata).toEqual(UNKNOWN_SPECULATION)
+    expect(preflight.evidenceRef).toBeNull()
+  })
+
+  test('refuses incomplete evidence with public-safe blockers', () => {
+    const preflight = preflightRealSpeculationLane({
+      ownerConfirmed: true,
+      evidence: realSpeculationEvidence({
+        ownerApprovalRef: '',
+        mode: 'eagle',
+        engineRef: '',
+        draftTokensProposed: 0,
+        publicSafeEvidenceRefs: [''],
+      }),
+    })
+    expect(preflight.eligible).toBe(false)
+    expect(preflight.blockers).toEqual([
+      'owner_approval_ref_missing',
+      'mode_not_real_speculation',
+      'engine_ref_missing',
+      'draft_counts_not_measured',
+      'public_safe_evidence_refs_missing',
+      'policy_disabled',
+    ])
+    expect(preflight.metadata).toEqual(UNKNOWN_SPECULATION)
   })
 })
