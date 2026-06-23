@@ -55,6 +55,8 @@ type BatchRow = {
   results_r2_key: string | null
   created_at: string
   updated_at: string
+  enqueued_at: string | null
+  started_at: string | null
 }
 
 const makeStatefulDb = (): D1Database => {
@@ -96,16 +98,20 @@ const makeStatefulDb = (): D1Database => {
             resultsR2Key,
             createdAt,
             updatedAt,
+            enqueuedAt,
+            startedAt,
           ] = bindings
           rows.set(String(jobId), {
             account_ref: String(accountRef),
             charge_receipt_ref: String(chargeReceiptRef),
             created_at: String(createdAt),
             dataset_size: Number(datasetSize),
+            enqueued_at: enqueuedAt === null ? null : String(enqueuedAt),
             failed_items: Number(failedItems),
             job_id: String(jobId),
             processed_items: Number(processedItems),
             results_r2_key: resultsR2Key === null ? null : String(resultsR2Key),
+            started_at: startedAt === null ? null : String(startedAt),
             status: String(status),
             updated_at: String(updatedAt),
           })
@@ -134,6 +140,10 @@ const makeStatefulDb = (): D1Database => {
             }
             if (sql.includes('results_r2_key = ?')) {
               next.results_r2_key = String(bindings[cursor])
+              cursor += 1
+            }
+            if (sql.includes('started_at = ?')) {
+              next.started_at = String(bindings[cursor])
               cursor += 1
             }
             rows.set(jobId, next)
@@ -268,6 +278,9 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
     expect(captured[0]?.jobId).toBe(jobId)
     expect(captured[0]?.items).toHaveLength(1)
     expect(captured[0]?.items[0]?.model).toBe('gemini-3.5-flash')
+    // Book P0-3: the message carries the enqueue instant (START of the batch wait)
+    // so the consumer can compute the wait.
+    expect(captured[0]?.enqueuedAtIso).toBe('2026-06-22T00:00:00.000Z')
 
     // The receipt is NOT yet dereferenceable: the job is still pending.
     const earlyReceipt = await run(
@@ -290,6 +303,10 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
         {
           dispatch: dispatchDeps(fakeGatewayAdapter('fireworks')),
           meteringHook: metering.hook,
+          // Book P0-3: the consumer stamps the start-of-processing time (END of
+          // the batch wait) with this clock; with the 00:00:00 enqueue the receipt
+          // discloses a real batchWaitMs of 120000 (2 min in queue).
+          nowIso: () => '2026-06-22T00:02:00.000Z',
           store: makeD1BatchJobStore(db, () => '2026-06-22T00:02:00.000Z'),
         },
         message,
@@ -320,6 +337,13 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
         successfulItems: number
         failedItems: number
         totalCostMsat: number
+        openagents: {
+          requestClass: string
+          queueWaitMs: number | string
+          batchWaitMs: number | string
+          verificationClass: string
+          settlementState: string
+        }
       }
     }
     expect(receiptBody.receipt.jobId).toBe(jobId)
@@ -327,6 +351,18 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
     expect(receiptBody.receipt.successfulItems).toBe(1)
     expect(receiptBody.receipt.failedItems).toBe(0)
     expect(receiptBody.receipt.totalCostMsat).toBe(50_000)
+
+    // Book P0-3: the TERMINAL `openagents` telemetry record makes the detached job
+    // auditable — distinguishable from an interactive stream (`requestClass:
+    // batch`), with a measured zero edge queue wait and the REAL in-queue
+    // batch wait (00:00:00 enqueue -> 00:02:00 consumer start = 120000ms).
+    expect(receiptBody.receipt.openagents.requestClass).toBe('batch')
+    expect(receiptBody.receipt.openagents.queueWaitMs).toBe(0)
+    expect(receiptBody.receipt.openagents.batchWaitMs).toBe(120_000)
+    expect(receiptBody.receipt.openagents.verificationClass).toBe('none')
+    expect(receiptBody.receipt.openagents.settlementState).toBe(
+      'not_applicable',
+    )
   })
 
   it('re-delivering the same enqueued message is idempotent (no re-run, no re-charge)', async () => {

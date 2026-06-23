@@ -8,7 +8,11 @@ import {
 } from './batch-job-consumer'
 import { settleBatchJobCharge } from './batch-job-metering'
 import { makeD1BatchJobStore } from './batch-job-store'
-import { projectBatchJobCloseoutReceipt } from './batch-job-closeout-receipts'
+import {
+  buildBatchJobTelemetryRecord,
+  computeBatchWaitMs,
+  projectBatchJobCloseoutReceipt,
+} from './batch-job-closeout-receipts'
 // public-projection-staleness
 import { estimateRequestCost } from './cost-estimate'
 
@@ -165,25 +169,12 @@ export const handleBatchJobsSubmit = (
       )
     }
 
-    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
-    yield* store.insertBatchJob({
-      jobId,
-      accountRef: session.accountRef,
-      status: 'pending',
-      chargeReceiptRef: settle.receiptRef,
-      datasetSize: payload.dataset.length,
-      processedItems: 0,
-      failedItems: 0,
-      resultsR2Key: null,
-      createdAt: deps.nowIso(),
-    })
-
-    // Hand the job to the async consumer OFF the request path. Only rows that
-    // carry `messages` are executable; token-only rows are skipped (they priced
-    // the charge but have no prompt to run). When no producer is wired, or when
-    // no row is executable, nothing is enqueued — the job is still accepted and
-    // persisted (pending), preserving the pre-producer behaviour. The job id is
-    // the idempotency unit, so a re-enqueue is a safe no-op in the consumer.
+    // Book P0-3: the enqueue instant is the START of the batch wait. Computed
+    // ONCE here so the persisted row AND the queue message agree on the same
+    // timestamp; the consumer stamps the END (`startedAt`) when it begins, and
+    // the closeout receipt discloses `batchWaitMs = startedAt - enqueuedAt`. A
+    // token-only job (never enqueued for execution) keeps `enqueuedAt` null, so
+    // its receipt honestly reports `batchWaitMs: not_measured`.
     const executableItems: ReadonlyArray<BatchJobExecutableItem> =
       payload.dataset.flatMap(item =>
         item.messages === undefined
@@ -198,13 +189,40 @@ export const handleBatchJobsSubmit = (
               },
             ],
       )
+    const willEnqueue =
+      deps.enqueueBatchJob !== undefined && executableItems.length > 0
+    const enqueuedAtIso = willEnqueue ? deps.nowIso() : null
 
-    if (deps.enqueueBatchJob !== undefined && executableItems.length > 0) {
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    yield* store.insertBatchJob({
+      jobId,
+      accountRef: session.accountRef,
+      status: 'pending',
+      chargeReceiptRef: settle.receiptRef,
+      datasetSize: payload.dataset.length,
+      processedItems: 0,
+      failedItems: 0,
+      resultsR2Key: null,
+      createdAt: deps.nowIso(),
+      enqueuedAt: enqueuedAtIso,
+      startedAt: null,
+    })
+
+    // Hand the job to the async consumer OFF the request path. Only rows that
+    // carry `messages` are executable; token-only rows are skipped (they priced
+    // the charge but have no prompt to run). When no producer is wired, or when
+    // no row is executable, nothing is enqueued — the job is still accepted and
+    // persisted (pending), preserving the pre-producer behaviour. The job id is
+    // the idempotency unit, so a re-enqueue is a safe no-op in the consumer. The
+    // message carries the same `enqueuedAtIso` stamped on the row so the consumer
+    // can compute the batch wait (book P0-3).
+    if (willEnqueue && deps.enqueueBatchJob !== undefined) {
       yield* deps.enqueueBatchJob(
         new BatchJobQueueMessage({
           schemaVersion: 'openagents.inference.batch_job.v1',
           jobId,
           items: executableItems,
+          ...(enqueuedAtIso === null ? {} : { enqueuedAtIso }),
         }),
       )
     }
@@ -269,6 +287,17 @@ export const handleBatchJobReceiptRead = (
 
     const costMsat = costMsatRaw ? costMsatRaw.cost_msat : 0
 
+    // Book P0-3: the TERMINAL `openagents` telemetry record for the detached job.
+    // `batchWaitMs` is the real enqueue→consumer-start wait (or `not_measured`
+    // when timing is unavailable); `requestClass` is `batch`, distinguishing this
+    // detached job from an interactive stream.
+    const batchWaitMs = computeBatchWaitMs(job.enqueuedAt, job.startedAt)
+    const openagents = buildBatchJobTelemetryRecord({
+      jobId: job.jobId,
+      servedModel: 'inference.batch_job',
+      ...(batchWaitMs === undefined ? {} : { batchWaitMs }),
+    })
+
     const receipt = {
       schemaVersion: 'openagents.inference.batch_job.closeout.v1' as const,
       receiptRef,
@@ -280,6 +309,7 @@ export const handleBatchJobReceiptRead = (
       totalCostMsat: costMsat,
       completedAtIso: job.updatedAt,
       resultsR2Key: job.resultsR2Key || '',
+      openagents,
     }
 
     return noStoreJsonResponse(
@@ -323,6 +353,10 @@ export const handleBatchJobStatusRead = (
       return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
     }
 
+    // Book P0-3: expose job state AND the batch wait so long-running detached work
+    // is auditable from the status poll, not only the closeout receipt. The wait
+    // is `null` (honest "not measured yet") until the consumer has started.
+    const batchWaitMs = computeBatchWaitMs(job.enqueuedAt, job.startedAt)
     return noStoreJsonResponse({
       jobId: job.jobId,
       status: job.status,
@@ -332,5 +366,8 @@ export const handleBatchJobStatusRead = (
       resultsR2Key: job.resultsR2Key,
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
+      enqueuedAt: job.enqueuedAt,
+      startedAt: job.startedAt,
+      batchWaitMs: batchWaitMs ?? null,
     })
   })

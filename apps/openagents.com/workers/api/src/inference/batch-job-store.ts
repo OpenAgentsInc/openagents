@@ -13,6 +13,16 @@ export type BatchJobRecord = Readonly<{
   resultsR2Key: string | null
   createdAt: string
   updatedAt: string
+  // Book P0-3 (#6086): batch-wait timing for an auditable detached job.
+  // `enqueuedAt` is when the submit route handed the executable message to the
+  // queue producer (the START of the batch wait); `startedAt` is when the
+  // consumer began processing it (the END of the batch wait). Both are NULL for
+  // a job that was never enqueued (token-only) or submitted before migration
+  // `0223`, so the closeout receipt honestly reports `not_measured` for
+  // `batchWaitMs` rather than a fabricated number. `batchWaitMs = startedAt -
+  // enqueuedAt`.
+  enqueuedAt: string | null
+  startedAt: string | null
 }>
 
 export type BatchJobStore = Readonly<{
@@ -20,7 +30,12 @@ export type BatchJobStore = Readonly<{
   updateBatchJobStatus: (
     jobId: string,
     status: BatchJobStatus,
-    updates: Partial<Pick<BatchJobRecord, 'processedItems' | 'failedItems' | 'resultsR2Key'>>
+    updates: Partial<
+      Pick<BatchJobRecord, 'processedItems' | 'failedItems' | 'resultsR2Key'>
+    > &
+      // `startedAt` is only ever WRITTEN as a real timestamp (never reset to
+      // null), so narrow it to a non-null string here.
+      Readonly<{ startedAt?: string }>,
   ) => Effect.Effect<void>
   getBatchJob: (jobId: string) => Effect.Effect<BatchJobRecord | null>
 }>
@@ -31,9 +46,10 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
       db
         .prepare(
           `INSERT INTO inference_batch_jobs (
-             job_id, account_ref, status, charge_receipt_ref, dataset_size, 
-             processed_items, failed_items, results_r2_key, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             job_id, account_ref, status, charge_receipt_ref, dataset_size,
+             processed_items, failed_items, results_r2_key, created_at, updated_at,
+             enqueued_at, started_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           job.jobId,
@@ -45,7 +61,9 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           job.failedItems,
           job.resultsR2Key,
           job.createdAt,
-          nowIso()
+          nowIso(),
+          job.enqueuedAt,
+          job.startedAt
         )
         .run()
     ).pipe(Effect.asVoid, Effect.orDie),
@@ -67,6 +85,12 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
         query += ', results_r2_key = ?'
         bindings.push(updates.resultsR2Key)
       }
+      // Book P0-3: stamp the consumer-start time (closes the batch wait). Only
+      // written once, when the consumer transitions the job to `processing`.
+      if (updates.startedAt !== undefined) {
+        query += ', started_at = ?'
+        bindings.push(updates.startedAt)
+      }
 
       query += ' WHERE job_id = ?'
       bindings.push(jobId)
@@ -78,8 +102,9 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
     Effect.tryPromise(() =>
       db
         .prepare(
-          `SELECT job_id, account_ref, status, charge_receipt_ref, dataset_size, 
-             processed_items, failed_items, results_r2_key, created_at, updated_at
+          `SELECT job_id, account_ref, status, charge_receipt_ref, dataset_size,
+             processed_items, failed_items, results_r2_key, created_at, updated_at,
+             enqueued_at, started_at
            FROM inference_batch_jobs WHERE job_id = ? LIMIT 1`
         )
         .bind(jobId)
@@ -98,6 +123,8 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           resultsR2Key: row.results_r2_key ? String(row.results_r2_key) : null,
           createdAt: String(row.created_at),
           updatedAt: String(row.updated_at),
+          enqueuedAt: row.enqueued_at ? String(row.enqueued_at) : null,
+          startedAt: row.started_at ? String(row.started_at) : null,
         }
       }),
       Effect.orDie
