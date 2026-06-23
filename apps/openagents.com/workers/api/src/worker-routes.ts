@@ -40,6 +40,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAutopilotWorkRequest: OptionalEffectRoute
   routeCloudCodingSessionRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
+  routeAutopilotOnboardingTurnRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
   routeCheckoutPageRequest: OptionalEffectRoute
   routeTreasuryPageRequest: OptionalEffectRoute
@@ -326,6 +327,13 @@ export const makeWorkerRouteRequest =
 
       if (agentGoalResponse !== undefined) {
         return yield* agentGoalResponse
+      }
+
+      const autopilotOnboardingTurnResponse =
+        dependencies.routeAutopilotOnboardingTurnRequest(request, env, ctx)
+
+      if (autopilotOnboardingTurnResponse !== undefined) {
+        return yield* autopilotOnboardingTurnResponse
       }
 
       const agentOwnerClaimResponse = dependencies.routeAgentOwnerClaimRequest(
