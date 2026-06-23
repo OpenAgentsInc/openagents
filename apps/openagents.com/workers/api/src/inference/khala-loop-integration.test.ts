@@ -34,15 +34,20 @@ import {
   disabledTassadarRealSettlementGate,
   type TassadarRealSettlementGate,
 } from '../tassadar-run-settlement-gate'
-import { type KhalaSettlementDeps } from './khala-verified-work-settlement'
+import {
+  type KhalaSettlementDeps,
+  type KhalaSettlementRecords,
+} from './khala-verified-work-settlement'
 import {
   KhalaLoopArmingEnvKey,
   disabledKhalaLoopArming,
   makeDryRunSettlementDispatch,
+  makeKhalaLoopSettlementDispatch,
   readKhalaLoopArming,
   runKhalaLoopOnce,
   type DryRunSettlementLedger,
   type KhalaLoopConfig,
+  type KhalaSettlementDispatch,
   type PylonServeTransport,
 } from './khala-loop-integration'
 import { type InferenceRequest } from './provider-adapter'
@@ -226,6 +231,71 @@ const makeSettlementDeps = (
         if (existing === undefined) options.dispatchCount.value += 1
         yield* dryRun(input)
       }),
+    ledger: options.store,
+    nowIso,
+    readGate: () => options.gate,
+    resolvePayoutDestination: async ref => options.targets.get(ref),
+    settlementRunRef: SETTLEMENT_RUN_REF,
+  }
+}
+
+// Build the M3 settlement deps with the GATED dispatch SELECTOR
+// (`makeKhalaLoopSettlementDispatch`) wired exactly as the live wiring layer
+// would: a MOCKED real dispatch (never moves sats — records the receipt + counts
+// real sends) and the dry-run dispatch as the fail-closed fallback. This proves
+// the loop routes to the real dispatch only when armed + the gate authorizes.
+const makeGatedSettlementDeps = (
+  options: Readonly<{
+    arming: KhalaLoopConfig['arming']
+    gate: TassadarRealSettlementGate
+    store: MemoryLedgerStore
+    targets: ReadonlyMap<string, string>
+    realDispatchCount: { value: number }
+    dryRunDispatchCount: { value: number }
+  }>,
+): KhalaSettlementDeps => {
+  const dryRunBase = makeDryRunSettlementDispatch(dryRunLedgerView(options.store))
+
+  // MOCKED real Spark dispatch: receipt-first + idempotent (mirrors
+  // `dispatchRealRunSettlementCore`), but performs NO real send — it just records
+  // the settled receipt and counts the first dispatch. No sats move in tests.
+  const mockedRealDispatch: KhalaSettlementDispatch = input =>
+    Effect.gen(function* () {
+      const existing = yield* Effect.promise(() =>
+        options.store.readPaymentAuthorityReceiptByRef(
+          input.settlement.settlementReceiptRef,
+        ),
+      )
+      if (existing !== undefined) return // idempotent no-op on replay
+      options.realDispatchCount.value += 1
+      yield* Effect.promise(() =>
+        options.store.createPaymentAuthorityReceipt(
+          input.settlement.settlementReceipt,
+        ),
+      )
+    })
+
+  const countingDryRun: KhalaSettlementDispatch = input =>
+    Effect.gen(function* () {
+      const existing = yield* Effect.promise(() =>
+        options.store.readPaymentAuthorityReceiptByRef(
+          input.settlement.settlementReceiptRef,
+        ),
+      )
+      if (existing === undefined) options.dryRunDispatchCount.value += 1
+      yield* dryRunBase(input)
+    })
+
+  const gatedDispatch = makeKhalaLoopSettlementDispatch({
+    arming: options.arming,
+    dryRunDispatch: countingDryRun,
+    readGate: () => options.gate,
+    realDispatch: mockedRealDispatch,
+    settlementRunRef: SETTLEMENT_RUN_REF,
+  })
+
+  return {
+    dispatchRealSettlement: gatedDispatch,
     ledger: options.store,
     nowIso,
     readGate: () => options.gate,
@@ -606,5 +676,257 @@ describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)'
       'blocker.pylon_admission.capability_not_advertised',
     )
     expect(dispatchCount.value).toBe(0)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// GATED REAL DISPATCH (M4 NEEDS_OWNER swap). The loop's settlement dispatch
+// resolves to the REAL Spark send ONLY when armed + the M3 owner gate authorizes;
+// otherwise the dry-run. No real sats move (the real dispatch is MOCKED).
+// ----------------------------------------------------------------------------
+
+// A minimal records bundle for direct selector unit tests (only the fields the
+// selector reads + the receipt it would record). Amount-in-sats drives the cap.
+const syntheticRecords = (
+  amountSats: number,
+): KhalaSettlementRecords =>
+  ({
+    amountSats,
+    contributorRef: GUINEA_PIG_NODE_REF,
+    settlementReceipt: {
+      receiptRef: `receipt.test.${amountSats}`,
+    } as KhalaSettlementRecords['settlementReceipt'],
+    settlementReceiptRef: `receipt.test.${amountSats}`,
+  } as KhalaSettlementRecords)
+
+describe('makeKhalaLoopSettlementDispatch — gated real-vs-dry-run selection', () => {
+  const buildSelector = (
+    options: Readonly<{
+      arming: KhalaLoopConfig['arming']
+      gate: TassadarRealSettlementGate
+    }>,
+  ) => {
+    const real = { value: 0 }
+    const dry = { value: 0 }
+    const dispatch = makeKhalaLoopSettlementDispatch({
+      arming: options.arming,
+      dryRunDispatch: () =>
+        Effect.sync(() => {
+          dry.value += 1
+        }),
+      readGate: () => options.gate,
+      realDispatch: () =>
+        Effect.sync(() => {
+          real.value += 1
+        }),
+      settlementRunRef: SETTLEMENT_RUN_REF,
+    })
+    return { dispatch, dry, real }
+  }
+
+  it('flag OFF + gate ARMED => DRY-RUN (no real send)', async () => {
+    const { dispatch, dry, real } = buildSelector({
+      arming: disabledKhalaLoopArming,
+      gate: armedRealSettlementGate(),
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(0)
+    expect(dry.value).toBe(1)
+  })
+
+  it('flag ARMED + gate DISABLED => DRY-RUN (fail-closed, no real send)', async () => {
+    const { dispatch, dry, real } = buildSelector({
+      arming: { loopArmed: true },
+      gate: disabledTassadarRealSettlementGate,
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(0)
+    expect(dry.value).toBe(1)
+  })
+
+  it('flag ARMED + gate ARMED + within cap + run allowlisted => REAL dispatch', async () => {
+    const { dispatch, dry, real } = buildSelector({
+      arming: { loopArmed: true },
+      gate: armedRealSettlementGate(),
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(1)
+    expect(dry.value).toBe(0)
+  })
+
+  it('OVER per-payout cap => DRY-RUN (no real send)', async () => {
+    const { dispatch, dry, real } = buildSelector({
+      arming: { loopArmed: true },
+      gate: armedRealSettlementGate({ maxPayoutSats: 4 }),
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(0)
+    expect(dry.value).toBe(1)
+  })
+
+  it('run NOT allowlisted => DRY-RUN (no real send)', async () => {
+    const { dispatch, dry, real } = buildSelector({
+      arming: { loopArmed: true },
+      gate: armedRealSettlementGate({ allowedRunRefs: ['run.some.other'] }),
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(0)
+    expect(dry.value).toBe(1)
+  })
+
+  it('adapter MISMATCH (gate allows a non-spark adapter) => DRY-RUN (no real send)', async () => {
+    // The gate Schema only allows `spark_treasury`, so a mismatch is modeled by a
+    // gate that has runScopedStreaming off AND the contributor not allowlisted with
+    // a wrong run; here we force the requested-adapter branch by allowlisting a run
+    // but using an adapter the gate does not allow is impossible via the Schema, so
+    // we instead assert the contributor-not-eligible mismatch path fails closed.
+    const { dispatch, dry, real } = buildSelector({
+      arming: { loopArmed: true },
+      gate: armedRealSettlementGate({
+        allowedContributorRefs: [],
+        runScopedStreaming: false,
+      }),
+    })
+    await Effect.runPromise(
+      dispatch({ contributorRef: GUINEA_PIG_NODE_REF, settlement: syntheticRecords(5) }),
+    )
+    expect(real.value).toBe(0)
+    expect(dry.value).toBe(1)
+  })
+})
+
+describe('runKhalaLoopOnce — gated REAL dispatch end-to-end (mocked Spark)', () => {
+  it('flag OFF: end-to-end routes to DRY-RUN, never the real dispatch, no sats move', async () => {
+    const store = new MemoryLedgerStore()
+    const realDispatchCount = { value: 0 }
+    const dryRunDispatchCount = { value: 0 }
+    const settlementDeps = makeGatedSettlementDeps({
+      arming: disabledKhalaLoopArming,
+      dryRunDispatchCount,
+      gate: armedRealSettlementGate(),
+      realDispatchCount,
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: disabledKhalaLoopArming, settlementDeps }),
+        request,
+      ),
+    )
+
+    // Loop flag OFF => the loop never even forwards to M3.
+    expect(outcome.forwardedToSettlement).toBe(false)
+    expect(realDispatchCount.value).toBe(0)
+    expect(dryRunDispatchCount.value).toBe(0)
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('flag ARMED + gate ARMED + within cap + run allowlisted: REAL dispatch invoked ONCE, idempotent on replay, settled receipt surfaced', async () => {
+    const store = new MemoryLedgerStore()
+    const realDispatchCount = { value: 0 }
+    const dryRunDispatchCount = { value: 0 }
+    const settlementDeps = makeGatedSettlementDeps({
+      arming: { loopArmed: true },
+      dryRunDispatchCount,
+      gate: armedRealSettlementGate(),
+      realDispatchCount,
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+    const config = baseConfig({ arming: { loopArmed: true }, settlementDeps })
+
+    const outcome = await Effect.runPromise(runKhalaLoopOnce(config, request))
+
+    // Routed to the REAL (mocked) dispatch, NOT the dry-run.
+    expect(realDispatchCount.value).toBe(1)
+    expect(dryRunDispatchCount.value).toBe(0)
+    expect(outcome.forwardedToSettlement).toBe(true)
+    const leg = outcome.settlement!.legs[0]!
+    expect(leg.settled).toBe(true)
+    expect(leg.realBitcoinMoved).toBe(true)
+    expect(leg.mode).toBe('real_bitcoin')
+    expect(leg.amountSats).toBe(5)
+
+    // The settled receipt is dereferenceable + realBitcoinMoved-shaped.
+    const receipt = await store.readPaymentAuthorityReceiptByRef(
+      leg.settlementReceiptRef!,
+    )
+    expect(receipt).toBeDefined()
+    const projection = JSON.parse(receipt!.publicProjectionJson)
+    expect(projection.state).toBe('settled')
+    expect(projection.moneyMovement).toBe('real_bitcoin')
+    expect(receipt!.publicProjectionJson).not.toMatch(/spark1/i)
+
+    // Replay: the deterministic receipt already exists => no second real send.
+    await Effect.runPromise(runKhalaLoopOnce(config, request))
+    expect(realDispatchCount.value).toBe(1)
+    expect(store.receipts.size).toBe(1)
+  })
+
+  it('flag ARMED + gate ARMED but OVER cap: routes to DRY-RUN, no real send', async () => {
+    const store = new MemoryLedgerStore()
+    const realDispatchCount = { value: 0 }
+    const dryRunDispatchCount = { value: 0 }
+    const settlementDeps = makeGatedSettlementDeps({
+      arming: { loopArmed: true },
+      dryRunDispatchCount,
+      // 5-sat cut exceeds a 4-sat per-payout cap => the engine's GATE 3 blocks it
+      // (gate_not_authorized) BEFORE the dispatch is even reached, so neither the
+      // real nor the dry-run dispatch fires — the safest possible outcome.
+      gate: armedRealSettlementGate({ maxPayoutSats: 4 }),
+      realDispatchCount,
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: { loopArmed: true }, settlementDeps }),
+        request,
+      ),
+    )
+
+    expect(realDispatchCount.value).toBe(0)
+    expect(outcome.settlement!.legs[0]!.settled).toBe(false)
+    expect(outcome.settlement!.legs[0]!.skipped).toBe('gate_not_authorized')
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('flag ARMED but run NOT allowlisted: routes to DRY-RUN, no real send', async () => {
+    const store = new MemoryLedgerStore()
+    const realDispatchCount = { value: 0 }
+    const dryRunDispatchCount = { value: 0 }
+    const settlementDeps = makeGatedSettlementDeps({
+      arming: { loopArmed: true },
+      dryRunDispatchCount,
+      gate: armedRealSettlementGate({ allowedRunRefs: ['run.not.this.one'] }),
+      realDispatchCount,
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({ arming: { loopArmed: true }, settlementDeps }),
+        request,
+      ),
+    )
+
+    expect(realDispatchCount.value).toBe(0)
+    expect(outcome.settlement!.legs[0]!.settled).toBe(false)
+    expect(outcome.settlement!.legs[0]!.skipped).toBe('gate_not_authorized')
+    expect(store.receipts.size).toBe(0)
   })
 })

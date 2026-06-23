@@ -25,9 +25,20 @@
 //     fabric is owner-gated / Psionic-planned).
 //   - A DRY-RUN settlement dispatch: it records the `realBitcoinMoved`-shaped
 //     settlement receipt to an injected ledger so the loop produces a
-//     dereferenceable receipt, but NEVER performs a real Spark send. A real
-//     dispatch (the proven `dispatchRealRunSettlementCore`) is a NEEDS-OWNER
-//     drop-in at the wiring layer.
+//     dereferenceable receipt, but NEVER performs a real Spark send.
+//   - `makeKhalaLoopSettlementDispatch`: the GATED dispatch SELECTOR that picks
+//     between the proven REAL Spark send (`dispatchRealRunSettlementCore`) and the
+//     dry-run, per payout. It resolves to the REAL dispatch ONLY when BOTH the
+//     loop-arming flag is `armed` AND the M3 owner real-settlement gate authorizes
+//     that exact payout (`resolveTassadarSettlementAdapter` -> `realAuthorized`:
+//     gate enabled + adapter match + amount <= cap + run allowlisted + within the
+//     daily cap). Otherwise it routes to the dry-run path and ZERO sats move. This
+//     is the M4 NEEDS-OWNER "swap the dry-run for the real dispatch" step, done
+//     fail-closed: the real branch is a SECOND, independent gate evaluation layered
+//     on top of the M3 engine's own gate, and is unreachable without the owner's
+//     explicit gate JSON + the loop flag. The wiring layer hands the selector a
+//     real dispatch (the core, closed over its Spark resolvers) and the dry-run;
+//     the gate is CONSUMED here, never changed.
 //   - `makeKhalaLoopSettlementSink`: connects the dormant
 //     `makeKhalaServingSettlementSink` (M3) to the metering-hook
 //     `recordServingPayout` shape, BEHIND A FLAG (`KhalaLoopArming`), default
@@ -85,6 +96,10 @@ import {
   type PylonServingSnapshot,
   decidePylonAdmission,
 } from './khala-pylon-admission'
+import {
+  type TassadarRealSettlementGate,
+  resolveTassadarSettlementAdapter,
+} from '../tassadar-run-settlement-gate'
 
 // ----------------------------------------------------------------------------
 // (1) Pluggable Pylon transport — the seam a real Pylon drops into
@@ -210,6 +225,112 @@ export const makeDryRunSettlementDispatch =
     })
 
 // ----------------------------------------------------------------------------
+// (3b) Gated dispatch SELECTOR — REAL Spark send when armed + gate authorizes,
+//      otherwise the dry-run receipt. The owner's M4 NEEDS_OWNER drop-in.
+// ----------------------------------------------------------------------------
+
+// The settlement-dispatch shape the M3 engine consumes (`KhalaSettlementDeps.
+// dispatchRealSettlement`): receipt-first, idempotent, fail-soft. Both the
+// dry-run dispatch and a real `dispatchRealRunSettlementCore`-backed dispatch
+// satisfy this shape, so the selector can pick between them per call without the
+// engine knowing which path it got.
+export type KhalaSettlementDispatch = (input: {
+  contributorRef: string
+  settlement: KhalaSettlementRecords
+}) => Effect.Effect<void, unknown>
+
+// Inputs to the gated dispatch selector. `realDispatch` is the REAL Spark send —
+// at the wiring layer it is `dispatchRealRunSettlementCore` adapted to the
+// `KhalaSettlementDispatch` shape (resolvers closed over; settlement passed
+// through). `dryRunDispatch` is `makeDryRunSettlementDispatch` (records a receipt,
+// NEVER a Spark send). `readGate` reads the owner real-settlement gate
+// (`OPENAGENTS_REAL_SETTLEMENT_GATE`, default DISABLED). `settlementRunRef` is the
+// run allowlist key the gate checks (the SAME ref the M3 engine threads as
+// `KhalaSettlementDeps.settlementRunRef`, so the selector's gate evaluation
+// matches the engine's GATE 3 exactly).
+export type KhalaLoopDispatchSelectorInput = Readonly<{
+  arming: KhalaLoopArming
+  dryRunDispatch: KhalaSettlementDispatch
+  readGate: () => TassadarRealSettlementGate
+  realDispatch: KhalaSettlementDispatch
+  settlementRunRef: string
+}>
+
+// Build the loop's settlement dispatch. It resolves to the REAL Spark dispatch
+// ONLY when BOTH:
+//   (a) the loop-arming flag is armed (`arming.loopArmed` — the FIRST owner gate);
+//       AND
+//   (b) the M3 owner real-settlement gate AUTHORIZES this exact payout
+//       (`resolveTassadarSettlementAdapter(...).realAuthorized`: gate enabled +
+//       requested adapter == `spark_treasury` + amount <= `maxPayoutSats` + run
+//       allowlisted + contributor eligible — the SECOND owner gate).
+// Otherwise it resolves to the DRY-RUN dispatch (records a receipt, NO real send).
+//
+// This is a SECOND, independent fail-closed evaluation of the gate at the dispatch
+// boundary, layered on top of the M3 engine's own GATE 3 (`settleVerifiedServing-
+// Payout` only calls `dispatchRealSettlement` after its own `resolveTassadar-
+// SettlementAdapter` + cap + daily-budget + destination checks pass). So the real
+// branch is unreachable unless EVERY gate — loop flag, owner gate, per-payout cap,
+// daily cap, run allowlist, adapter match, registered destination — holds. With
+// any of them missing/disabled/out-of-bounds the selector routes to the dry-run
+// path and ZERO sats move. The gate is CONSUMED here, never mutated.
+//
+// Receipt-first + idempotent is preserved by construction: both `realDispatch`
+// (`dispatchRealRunSettlementCore`) and `dryRunDispatch` short-circuit when the
+// deterministic settlement receipt already exists, so a replay with the same
+// settlement receipt ref never double-sends regardless of which branch is taken.
+//
+// NOTE: `amountSats` is read from the built records (`settlement.amountSats`),
+// which the engine derived from the per-share floor-to-sat split — the SAME value
+// the engine's own gate evaluation used, so the two cap checks agree.
+export const makeKhalaLoopSettlementDispatch = (
+  input: KhalaLoopDispatchSelectorInput,
+): KhalaSettlementDispatch =>
+  dispatchInput =>
+    Effect.gen(function* () {
+      // Evaluate the owner real-settlement gate for THIS payout (pure, fail-closed).
+      const gate = input.readGate()
+      const decision = resolveTassadarSettlementAdapter({
+        amountSats: dispatchInput.settlement.amountSats,
+        contributorRef: dispatchInput.contributorRef,
+        gate,
+        requestedAdapterKind: 'spark_treasury',
+        trainingRunRef: input.settlementRunRef,
+      })
+
+      const realRoute = input.arming.loopArmed && decision.realAuthorized
+      if (!realRoute) {
+        // Fail-closed default: loop flag OFF, gate disabled, or any bound failed.
+        // Record a dry-run receipt; perform NO real Spark send. Public-safe
+        // diagnostic only (refs + neutral blocker reason; never payment material).
+        yield* Effect.logInfo(
+          workerLogEntry('inference.khala_loop.dispatch_dry_run', {
+            blockedReason: decision.blockedReason,
+            contributorRef: dispatchInput.contributorRef,
+            loopArmed: input.arming.loopArmed,
+            settlementReceiptRef:
+              dispatchInput.settlement.settlementReceiptRef,
+          }),
+        )
+        yield* input.dryRunDispatch(dispatchInput)
+        return
+      }
+
+      // ARMED + AUTHORIZED: route to the REAL Spark dispatch (receipt-first +
+      // idempotent inside the core). Public-safe diagnostic only.
+      yield* Effect.logInfo(
+        workerLogEntry('inference.khala_loop.dispatch_real', {
+          amountSats: dispatchInput.settlement.amountSats,
+          contributorRef: dispatchInput.contributorRef,
+          eligibilitySource: decision.eligibilitySource,
+          settlementReceiptRef:
+            dispatchInput.settlement.settlementReceiptRef,
+        }),
+      )
+      yield* input.realDispatch(dispatchInput)
+    })
+
+// ----------------------------------------------------------------------------
 // (2 cont.) The flagged settlement sink — connects M3 to the metering path
 // ----------------------------------------------------------------------------
 
@@ -293,9 +414,13 @@ export type KhalaLoopConfig = Readonly<{
   transport: PylonServeTransport
   // The loop-arming flag (default OFF).
   arming: KhalaLoopArming
-  // The M3 settlement deps (ledger, destination resolver, owner gate, dry-run or
-  // real dispatch). The DRY-RUN dispatch (`makeDryRunSettlementDispatch`) goes
-  // here in the test/staging path; a real dispatch is a NEEDS-OWNER drop-in.
+  // The M3 settlement deps (ledger, destination resolver, owner gate, dispatch).
+  // The wiring layer builds `dispatchRealSettlement` via the GATED selector
+  // (`makeKhalaLoopSettlementDispatch`): it routes to the REAL Spark dispatch
+  // (`dispatchRealRunSettlementCore`) when armed + the owner gate authorizes,
+  // else to the dry-run. A test may pass the dry-run directly to assert the
+  // money-free path. Either way the M3 engine independently re-checks its own
+  // gate stack before invoking the dispatch.
   settlementDeps: KhalaSettlementDeps
   // The contributor cut to split, in integer msat. Derived upstream from the
   // priced margin (`servingContributorCutMsat`); the test passes a tiny,
