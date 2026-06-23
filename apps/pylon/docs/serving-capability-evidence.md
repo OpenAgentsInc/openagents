@@ -160,6 +160,18 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   receipt evidence. #6089 remains open until a real public gateway transport is
   deployed and smoked through the Worker route without exposing endpoint URLs or
   secrets.
+- Follow-up gateway-transport smoke on 2026-06-23 installed the local
+  Psionic-vLLM proxy as `pylon-psionic-vllm-proxy.service`, protected by a
+  host-local bearer token file, and ran the known-answer canary through both
+  `127.0.0.1:8011` and a temporary `trycloudflare.com` route. The temporary
+  route returned HTTP 200 with `content: "OK"`, `parityVerified: true`,
+  `canaryPassed: true`, `replayPassed: true`, and `payoutEligible: true`;
+  representative public refs were
+  `serve.pylon.gateway_proxy.cAR4xZXQagyw7yBsjeO6IG` and
+  `challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s`. This proves the
+  proxy/tunnel transport path, but still does not claim a durable named tunnel,
+  a production Worker secret deployment, live customer dispatch, sats movement,
+  or a product-promise green flip.
 
 ## Where this plugs in next (not in this change)
 
@@ -220,11 +232,15 @@ PYLON_PSIONIC_PROXY_BEARER_TOKEN=<secret proxy bearer token> \
 PYLON_PSIONIC_PROXY_NODE_REF=gcloud.gswarm508-clean2-20260325044551-contrib \
 PYLON_PSIONIC_PROXY_REPLAY_CHALLENGE_REF=challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s \
 PYLON_PSIONIC_PROXY_SERVED_MODEL=model.psionic.qwen35.0_8b.q8_0 \
-PYLON_PSIONIC_PROXY_UPSTREAM_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
+PYLON_PSIONIC_PROXY_UPSTREAM_MODEL=model.psionic.qwen35.0_8b.q8_0 \
 PYLON_PSIONIC_PROXY_UPSTREAM_URL=http://127.0.0.1:8000/v1/chat/completions \
 PYLON_PSIONIC_PROXY_PORT=8011 \
 bun apps/pylon/scripts/psionic-vllm-proxy.ts
 ```
+
+Use the model id returned by the local vLLM `/v1/models` endpoint for
+`PYLON_PSIONIC_PROXY_UPSTREAM_MODEL`; on the live L4 host that is the served
+alias `model.psionic.qwen35.0_8b.q8_0`, not the Hugging Face source id.
 
 If no named Cloudflare Tunnel credential is available, a temporary
 `trycloudflare.com` tunnel can smoke the route while the proxy's bearer token
