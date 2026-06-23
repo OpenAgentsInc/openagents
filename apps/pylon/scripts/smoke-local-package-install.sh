@@ -36,6 +36,30 @@ if [[ -z "$tassadar_tarball" || ! -f "$workspace_root/packages/tassadar-executor
   exit 1
 fi
 
+# Canonical security-contract packages: Pylon's bundled runtime imports them,
+# so they are transitive deps of the published @openagentsinc/pylon. Pack them
+# locally and supply via overrides so this smoke does not require a registry
+# publish first (same pattern as nip90 / tassadar-executor).
+cd "$workspace_root/packages/provider-account-schema"
+provider_account_pack_output="$(bun pm pack)"
+provider_account_tarball="$(printf '%s\n' "$provider_account_pack_output" | awk '/openagentsinc-provider-account-schema-.*\.tgz$/ {print $1}' | tail -1)"
+
+if [[ -z "$provider_account_tarball" || ! -f "$workspace_root/packages/provider-account-schema/$provider_account_tarball" ]]; then
+  printf 'failed to locate packed @openagentsinc/provider-account-schema tarball\n' >&2
+  printf '%s\n' "$provider_account_pack_output" >&2
+  exit 1
+fi
+
+cd "$workspace_root/packages/blueprint-contracts"
+blueprint_contracts_pack_output="$(bun pm pack)"
+blueprint_contracts_tarball="$(printf '%s\n' "$blueprint_contracts_pack_output" | awk '/openagentsinc-blueprint-contracts-.*\.tgz$/ {print $1}' | tail -1)"
+
+if [[ -z "$blueprint_contracts_tarball" || ! -f "$workspace_root/packages/blueprint-contracts/$blueprint_contracts_tarball" ]]; then
+  printf 'failed to locate packed @openagentsinc/blueprint-contracts tarball\n' >&2
+  printf '%s\n' "$blueprint_contracts_pack_output" >&2
+  exit 1
+fi
+
 cd "$tmp_dir"
 cat > package.json <<EOF
 {
@@ -47,7 +71,9 @@ cat > package.json <<EOF
   },
   "overrides": {
     "@openagentsinc/nip90": "file:$workspace_root/packages/nip90/$nip90_tarball",
-    "@openagentsinc/tassadar-executor": "file:$workspace_root/packages/tassadar-executor/$tassadar_tarball"
+    "@openagentsinc/tassadar-executor": "file:$workspace_root/packages/tassadar-executor/$tassadar_tarball",
+    "@openagentsinc/provider-account-schema": "file:$workspace_root/packages/provider-account-schema/$provider_account_tarball",
+    "@openagentsinc/blueprint-contracts": "file:$workspace_root/packages/blueprint-contracts/$blueprint_contracts_tarball"
   }
 }
 EOF

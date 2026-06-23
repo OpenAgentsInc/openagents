@@ -1,89 +1,37 @@
-import { Schema as S } from 'effect'
+// The Blueprint contract-export schema types and the security-critical
+// `IsPrivateDataSafe` predicate are owned by the canonical
+// `@openagentsinc/blueprint-contracts` package (the single drift-free
+// authority). This module keeps only the openagents.com-specific export seed
+// DATA (`BLUEPRINT_CONTRACT_EXPORT_SEED`) and its app-local coverage/catalog
+// helpers, and re-exports the shared contract for existing import sites.
+//
+// Re-exporting (not redefining) is enforced by scripts/check-contract-drift.mjs.
+// All of these are runtime Effect Schema values in the canonical package, so
+// they are imported and re-exported as values (not type-only) to preserve the
+// original value+type dual binding consumers (e.g. blueprint/index.ts) rely on.
+import {
+  BlueprintContractConsumer,
+  BlueprintContractPrivacyPolicy,
+  BlueprintContractExportSeed,
+  BlueprintContractStability,
+  BlueprintEventCatalogEntry,
+  BlueprintJsonSchemaContract,
+  BlueprintOpenApiContract,
+  BlueprintReceiptCatalogEntry,
+  blueprintContractExportSeedIsPrivateDataSafe,
+} from '@openagentsinc/blueprint-contracts'
 
-export const BlueprintContractConsumer = S.Literals([
-  'ai_agent',
-  'nexus',
-  'oa_node',
-  'oa_workroomd',
-  'probe',
-  'psionic',
-  'pylon',
-  'treasury',
-])
-export type BlueprintContractConsumer = typeof BlueprintContractConsumer.Type
-
-export const BlueprintContractStability = S.Literals(['seed', 'stable'])
-export type BlueprintContractStability = typeof BlueprintContractStability.Type
-
-export const BlueprintContractPrivacyPolicy = S.Literals([
-  'public_refs_only',
-  'operator_refs_only',
-])
-export type BlueprintContractPrivacyPolicy =
-  typeof BlueprintContractPrivacyPolicy.Type
-
-export const BlueprintJsonSchemaContract = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  id: S.String,
-  jsonSchemaUrl: S.String,
-  name: S.String,
-  openApiComponentRef: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  schemaRef: S.String,
-  stability: BlueprintContractStability,
-  versionRef: S.String,
-})
-export type BlueprintJsonSchemaContract =
-  typeof BlueprintJsonSchemaContract.Type
-
-export const BlueprintOpenApiContract = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  id: S.String,
-  method: S.String,
-  operationRef: S.String,
-  path: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  requestSchemaRef: S.NullOr(S.String),
-  responseSchemaRef: S.String,
-  stability: BlueprintContractStability,
-})
-export type BlueprintOpenApiContract = typeof BlueprintOpenApiContract.Type
-
-export const BlueprintEventCatalogEntry = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  eventRef: S.String,
-  id: S.String,
-  payloadSchemaRef: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  receiptRefs: S.Array(S.String),
-  stability: BlueprintContractStability,
-  topicRef: S.String,
-})
-export type BlueprintEventCatalogEntry = typeof BlueprintEventCatalogEntry.Type
-
-export const BlueprintReceiptCatalogEntry = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  evidenceSchemaRef: S.String,
-  id: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  receiptRef: S.String,
-  retentionPolicyRef: S.String,
-  stability: BlueprintContractStability,
-})
-export type BlueprintReceiptCatalogEntry =
-  typeof BlueprintReceiptCatalogEntry.Type
-
-export const BlueprintContractExportSeed = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  eventCatalog: S.Array(BlueprintEventCatalogEntry),
-  id: S.String,
-  jsonSchemas: S.Array(BlueprintJsonSchemaContract),
-  openApi: S.Array(BlueprintOpenApiContract),
-  receiptCatalog: S.Array(BlueprintReceiptCatalogEntry),
-  versionRef: S.String,
-})
-export type BlueprintContractExportSeed =
-  typeof BlueprintContractExportSeed.Type
+export {
+  BlueprintContractConsumer,
+  BlueprintContractExportSeed,
+  BlueprintContractPrivacyPolicy,
+  BlueprintContractStability,
+  BlueprintEventCatalogEntry,
+  BlueprintJsonSchemaContract,
+  BlueprintOpenApiContract,
+  BlueprintReceiptCatalogEntry,
+  blueprintContractExportSeedIsPrivateDataSafe,
+}
 
 export const BLUEPRINT_CONTRACT_CONSUMERS: ReadonlyArray<BlueprintContractConsumer> =
   [
@@ -366,19 +314,12 @@ export const BLUEPRINT_CONTRACT_EXPORT_SEED: BlueprintContractExportSeed = {
   versionRef: 'blueprint_contract_export.seed.v1',
 }
 
-const PROHIBITED_EXPORT_TEXT =
-  /\b(access_token|refresh_token|provider_payload|raw_email|payment_preimage|private_key|mnemonic|xprv)\b/i
-
 export const blueprintContractExportSeedCoversConsumers = (
   seed: BlueprintContractExportSeed,
 ): boolean =>
   BLUEPRINT_CONTRACT_CONSUMERS.every(consumer =>
     seed.consumers.includes(consumer),
   )
-
-export const blueprintContractExportSeedIsPrivateDataSafe = (
-  seed: BlueprintContractExportSeed,
-): boolean => !PROHIBITED_EXPORT_TEXT.test(JSON.stringify(seed))
 
 export const blueprintContractExportSeedHasCatalogs = (
   seed: BlueprintContractExportSeed,

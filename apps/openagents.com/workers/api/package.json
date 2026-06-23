@@ -45,6 +45,7 @@
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openagentsinc/blueprint-contracts": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/sync-worker": "workspace:*",
     "@openauthjs/openauth": "^0.4.3",

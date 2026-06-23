@@ -464,83 +464,43 @@ export const BlueprintProgramRegistryProjection = S.Struct({
 });
 export type BlueprintProgramRegistryProjection = typeof BlueprintProgramRegistryProjection.Type;
 
-export const BlueprintContractConsumer = S.Literals([
-  "ai_agent",
-  "nexus",
-  "oa_node",
-  "oa_workroomd",
-  "probe",
-  "psionic",
-  "pylon",
-  "treasury",
-]);
-export type BlueprintContractConsumer = typeof BlueprintContractConsumer.Type;
+// The Blueprint contract-export schema types and the security-critical
+// `IsPrivateDataSafe` predicate family are owned by the canonical
+// `@openagentsinc/blueprint-contracts` package. Import them for internal use and
+// re-export them so this runtime's import sites keep their existing paths while
+// there is a single drift-free authority for the security contract. Re-exporting
+// (not redefining) these is enforced by scripts/check-contract-drift.mjs.
+import {
+  BlueprintContractConsumer,
+  BlueprintContractExportSeed,
+  BlueprintContractPrivacyPolicy,
+  BlueprintContractStability,
+  BlueprintEventCatalogEntry,
+  BlueprintJsonSchemaContract,
+  BlueprintOpenApiContract,
+  BlueprintProjectionUnsafe,
+  BlueprintReceiptCatalogEntry,
+  blueprintContractExportSeedIsPrivateDataSafe,
+  blueprintPrivateFieldKey,
+  isBlueprintProjectionPrivateDataSafe,
+  sanitizeBlueprintProjection,
+} from "@openagentsinc/blueprint-contracts";
 
-export const BlueprintContractStability = S.Literals(["seed", "stable"]);
-export type BlueprintContractStability = typeof BlueprintContractStability.Type;
-
-export const BlueprintContractPrivacyPolicy = S.Literals(["public_refs_only", "operator_refs_only"]);
-export type BlueprintContractPrivacyPolicy = typeof BlueprintContractPrivacyPolicy.Type;
-
-export const BlueprintJsonSchemaContract = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  id: S.String,
-  jsonSchemaUrl: S.String,
-  name: S.String,
-  openApiComponentRef: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  schemaRef: S.String,
-  stability: BlueprintContractStability,
-  versionRef: S.String,
-});
-export type BlueprintJsonSchemaContract = typeof BlueprintJsonSchemaContract.Type;
-
-export const BlueprintOpenApiContract = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  id: S.String,
-  method: S.String,
-  operationRef: S.String,
-  path: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  requestSchemaRef: S.NullOr(S.String),
-  responseSchemaRef: S.String,
-  stability: BlueprintContractStability,
-});
-export type BlueprintOpenApiContract = typeof BlueprintOpenApiContract.Type;
-
-export const BlueprintEventCatalogEntry = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  eventRef: S.String,
-  id: S.String,
-  payloadSchemaRef: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  receiptRefs: S.Array(S.String),
-  stability: BlueprintContractStability,
-  topicRef: S.String,
-});
-export type BlueprintEventCatalogEntry = typeof BlueprintEventCatalogEntry.Type;
-
-export const BlueprintReceiptCatalogEntry = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  evidenceSchemaRef: S.String,
-  id: S.String,
-  privacyPolicy: BlueprintContractPrivacyPolicy,
-  receiptRef: S.String,
-  retentionPolicyRef: S.String,
-  stability: BlueprintContractStability,
-});
-export type BlueprintReceiptCatalogEntry = typeof BlueprintReceiptCatalogEntry.Type;
-
-export const BlueprintContractExportSeed = S.Struct({
-  consumers: S.Array(BlueprintContractConsumer),
-  eventCatalog: S.Array(BlueprintEventCatalogEntry),
-  id: S.String,
-  jsonSchemas: S.Array(BlueprintJsonSchemaContract),
-  openApi: S.Array(BlueprintOpenApiContract),
-  receiptCatalog: S.Array(BlueprintReceiptCatalogEntry),
-  versionRef: S.String,
-});
-export type BlueprintContractExportSeed = typeof BlueprintContractExportSeed.Type;
+export {
+  BlueprintContractConsumer,
+  BlueprintContractExportSeed,
+  BlueprintContractPrivacyPolicy,
+  BlueprintContractStability,
+  BlueprintEventCatalogEntry,
+  BlueprintJsonSchemaContract,
+  BlueprintOpenApiContract,
+  BlueprintProjectionUnsafe,
+  BlueprintReceiptCatalogEntry,
+  blueprintContractExportSeedIsPrivateDataSafe,
+  blueprintPrivateFieldKey,
+  isBlueprintProjectionPrivateDataSafe,
+  sanitizeBlueprintProjection,
+};
 
 export const BlueprintRegistrySourceKind = S.Literals(["staticFixture", "assignmentInline", "omegaHttp"]);
 export type BlueprintRegistrySourceKind = typeof BlueprintRegistrySourceKind.Type;
@@ -593,26 +553,6 @@ export const ProbeToolMenuPlan = S.Struct({
 });
 export type ProbeToolMenuPlan = typeof ProbeToolMenuPlan.Type;
 
-export class BlueprintProjectionUnsafe extends S.TaggedErrorClass<BlueprintProjectionUnsafe>()("BlueprintProjectionUnsafe", {
-  path: S.String,
-  reason: S.String,
-}) {}
-
-const PRIVATE_FIELD_PATTERN =
-  /(^|[._-])(access_token|authorization|bearer|callback_url|callback_token|client_secret|customer_email|customer_name|id_token|invoice|mnemonic|oauth|password|payment_hash|payment_id|payment_preimage|payout_address|payout_destination|payout_target|preimage|private_key|private_repo|provider_grant|provider_payload|provider_token|raw_email|raw_payload|raw_prompt|raw_run_log|raw_runner|raw_source_archive|raw_webhook|refresh_token|runner_log|secret|source_archive|token|wallet|xprv)([._-]|$)/i;
-
-const PRIVATE_CAMEL_FIELD_PATTERN =
-  /^(accessToken|authorization|bearer|callbackUrl|callbackToken|clientSecret|customerEmail|customerName|idToken|invoice|mnemonic|oauth|password|paymentHash|paymentId|paymentPreimage|payoutAddress|payoutDestination|payoutTarget|preimage|privateKey|privateRepo|providerGrant|providerPayload|providerToken|rawEmail|rawPayload|rawPrompt|rawRunLog|rawRunner|rawSourceArchive|rawWebhook|refreshToken|runnerLog|secret|sourceArchive|token|wallet|xprv)$/i;
-
-const PRIVATE_VALUE_PATTERN =
-  /\b(access_token|authorization|bearer|callback_url|callback_token|client_secret|customer_email|customer_name|id_token|invoice|mnemonic|oauth|payment_hash|payment_id|payment_preimage|payout_address|payout_destination|payout_target|preimage|private_key|private_repo|provider_grant|provider_payload|provider_token|raw_email|raw_payload|raw_prompt|raw_run_log|raw_runner|raw_source_archive|raw_webhook|refresh_token|runner_log|source_archive|wallet|xprv)\b/i;
-
-type BlueprintJsonPrimitive = string | number | boolean | null;
-type BlueprintJsonValue =
-  | BlueprintJsonPrimitive
-  | ReadonlyArray<BlueprintJsonValue>
-  | { readonly [key: string]: BlueprintJsonValue };
-
 export function blueprintProgramRunEvidenceFlagsAreEvidenceOnly(
   flags: BlueprintProgramRunEvidenceFlags,
 ): boolean {
@@ -643,10 +583,6 @@ export function blueprintRegistryProjectionIsSafe(projection: BlueprintProgramRe
     ) &&
     blueprintRegistryProjectionIsPrivateDataSafe(projection)
   );
-}
-
-export function blueprintContractExportSeedIsPrivateDataSafe(seed: BlueprintContractExportSeed): boolean {
-  return isBlueprintProjectionPrivateDataSafe(seed);
 }
 
 export function blueprintRegistryProjectionIsPrivateDataSafe(projection: BlueprintProgramRegistryProjection): boolean {
@@ -683,62 +619,3 @@ export function validateBlueprintContractExportSeed(
       );
 }
 
-export function isBlueprintProjectionPrivateDataSafe(value: unknown): boolean {
-  if (value === null || value === undefined) {
-    return true;
-  }
-
-  if (typeof value === "string") {
-    return !PRIVATE_VALUE_PATTERN.test(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.every(isBlueprintProjectionPrivateDataSafe);
-  }
-
-  if (typeof value !== "object") {
-    return true;
-  }
-
-  for (const [key, child] of Object.entries(value)) {
-    if (blueprintPrivateFieldKey(key) || !isBlueprintProjectionPrivateDataSafe(child)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-export function sanitizeBlueprintProjection<T extends BlueprintJsonValue>(value: T): T {
-  return sanitizeBlueprintJsonValue(value) as T;
-}
-
-function sanitizeBlueprintJsonValue(value: BlueprintJsonValue): BlueprintJsonValue {
-  if (typeof value === "string") {
-    return PRIVATE_VALUE_PATTERN.test(value) ? "[redacted]" : value;
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((entry) => sanitizeBlueprintJsonValue(entry));
-  }
-
-  if (value === null || typeof value !== "object") {
-    return value;
-  }
-
-  const sanitized: Record<string, BlueprintJsonValue> = {};
-
-  for (const [key, child] of Object.entries(value)) {
-    if (blueprintPrivateFieldKey(key)) {
-      continue;
-    }
-
-    sanitized[key] = sanitizeBlueprintJsonValue(child);
-  }
-
-  return sanitized;
-}
-
-function blueprintPrivateFieldKey(key: string): boolean {
-  return PRIVATE_FIELD_PATTERN.test(key) || PRIVATE_CAMEL_FIELD_PATTERN.test(key);
-}
