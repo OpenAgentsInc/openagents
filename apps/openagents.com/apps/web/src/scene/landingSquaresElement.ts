@@ -6,9 +6,9 @@ import {
   mountLandingSquares,
 } from './landingSquares'
 
-// Foldkit binding for the standalone landing-page background: a few white
-// squares drifting and pulsing subtly on black. Full-bleed and pointer-inert,
-// it fills the viewport behind the (intentionally empty) landing surface.
+// Foldkit binding for the standalone landing-page background: a dense grid of
+// small blue-glowing (HDR bloom) squares on near-black. Full-bleed and
+// pointer-inert, it fills the viewport behind the centred landing wordmark.
 
 export const landingSquaresTagName = 'oa-landing-squares'
 
