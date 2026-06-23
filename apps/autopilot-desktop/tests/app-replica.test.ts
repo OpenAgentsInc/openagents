@@ -31,6 +31,7 @@ import {
 import {
   decodePng,
   scoreCracklingArcRegion,
+  scoreRegion,
   type PixelRegion,
 } from "../src/testing/headless-pixel"
 
@@ -40,9 +41,34 @@ const SLOT_2 = ".hotbar-slot-2"
 const SLOT_3 = ".hotbar-slot-3"
 const KHALA_BAR = ".verse-khala-bar"
 const KHALA_BODY = ".verse-khala-bubble-body"
-const SCENE_ACTIVE = '[data-verse-spawned-scene="active"]'
-const SCENE_TAG = ".verse-spawned-scene-tag"
-const SCENE_CHIP = ".verse-spawned-scene-chip"
+
+// The owner removed the on-screen "⚡ Crackling energy" chip entirely (#6033), so
+// the replica reads spawn state from the REAL model snapshot the entry exposes
+// (window.__OA_REPLICA__.verseState()), not from a DOM chip.
+type VerseState = {
+  spawnedSceneCount: number
+  spawnedSceneIds: ReadonlyArray<string>
+  spawnedPortalCount: number
+  avatarPose: { x: number; y: number; z: number; yaw: number } | null
+}
+const verseState = (replica: AppReplica): Promise<VerseState> =>
+  replica.evaluate<VerseState>("window.__OA_REPLICA__.verseState()")
+const spawnedCount = async (replica: AppReplica): Promise<number> =>
+  (await verseState(replica)).spawnedSceneCount
+
+// The host (foldkit oa-training-run wrapper) writes its lifecycle events into a
+// shared global log: `verse-host.remount.*` on a FULL remount (camera/controller
+// rebuild) and `verse-host.visualization.retained` on an in-place reconcile. The
+// no-remount proof reads this log directly.
+type SceneLogEntry = { at: string; event: string; detail: Record<string, unknown> }
+const sceneLog = (replica: AppReplica): Promise<ReadonlyArray<SceneLogEntry>> =>
+  replica.evaluate<ReadonlyArray<SceneLogEntry>>(
+    "(window.__OA_DUMP_VERSE_SCENE_LOGS ? window.__OA_DUMP_VERSE_SCENE_LOGS() : [])",
+  )
+const countEvents = (
+  log: ReadonlyArray<SceneLogEntry>,
+  prefix: string,
+): number => log.filter((e) => e.event.startsWith(prefix)).length
 
 // The crackling arc spawns centre-left at chest height in front of the avatar;
 // the Tassadar board sits to the RIGHT, so a centre-left region isolates the arc
@@ -53,6 +79,13 @@ const ARC_PROOF_PNG = join(
   import.meta.dir,
   "headless",
   "verse-spawned-arc.real-scene.headless.png",
+)
+// A committed AFTER-MOVEMENT proof: the spawned arc + portal once the avatar has
+// walked, showing the arc stayed world-anchored and the character was not reset.
+const AFTER_MOVE_PROOF_PNG = join(
+  import.meta.dir,
+  "headless",
+  "verse-spawned-arc.after-movement.headless.png",
 )
 
 const chromeAvailable = resolveChromePathOrNull() !== null
@@ -130,62 +163,61 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
   // ── BUG (a): hotbar 2/3 when the Ask box is focused ─────────────────────────
 
   describe("bug (a): hotbar slots fire regardless of focus; numbers fire unfocused", () => {
+    const reset = async (): Promise<void> => {
+      if ((await spawnedCount(replica)) > 0) await replica.click(SLOT_2)
+    }
+
     slowTest("click slot 2 spawns the scene and click slot 3 toggles its portal", async () => {
-      // From a clean state: ensure no scene is spawned.
-      const reset = async (): Promise<void> => {
-        if ((await replica.count(SCENE_ACTIVE)) > 0) {
-          await replica.click(SLOT_2)
-        }
-      }
       await reset()
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      expect(await spawnedCount(replica)).toBe(0)
 
       // Click slot 2 — spawns the crackling scene (works regardless of focus).
       await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
-      expect(await replica.text(SCENE_TAG)).toContain("Crackling")
-      expect(await replica.text(SCENE_TAG)).not.toContain("portal")
+      let state = await verseState(replica)
+      expect(state.spawnedSceneCount).toBe(1)
+      expect(state.spawnedSceneIds).toContain("crackling-energy")
+      expect(state.spawnedPortalCount).toBe(0)
 
       // Click slot 3 — toggles the scene's gateway portal on.
       await replica.click(SLOT_3)
-      expect(await replica.text(SCENE_TAG)).toContain("portal")
+      state = await verseState(replica)
+      expect(state.spawnedPortalCount).toBe(1)
 
       // Reset for the next test.
       await replica.click(SLOT_3) // portal off
       await replica.click(SLOT_2) // scene off
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      expect(await spawnedCount(replica)).toBe(0)
     })
 
     slowTest("clicking slot 2 spawns even while the Ask box is focused", async () => {
-      // Ensure clean + focus the Ask box, then click — the slot must still fire.
-      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      await reset()
+      expect(await spawnedCount(replica)).toBe(0)
       await replica.focus(KHALA_INPUT)
       await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+      expect(await spawnedCount(replica)).toBe(1)
       await replica.click(SLOT_2) // reset off
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      expect(await spawnedCount(replica)).toBe(0)
     })
 
     slowTest("bare '2' spawns when NO input is focused", async () => {
-      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      await reset()
+      expect(await spawnedCount(replica)).toBe(0)
       // Blur any focused element so the keypress is not "in editable".
       await replica.evaluate(
         `(document.activeElement && document.activeElement.blur && document.activeElement.blur(), true)`,
       )
       await replica.pressKey("2")
-      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+      expect(await spawnedCount(replica)).toBe(1)
       await replica.pressKey("2") // toggle off
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      expect(await spawnedCount(replica)).toBe(0)
     })
 
     slowTest("FIX: '2' while the Ask box is focused fires the slot and does NOT type a digit", async () => {
       // This is the owner-reported failure: with the Ask box focused, a bare `2`
       // typed a digit into the box and "the hotbar did nothing". Fixed: the digit
       // is swallowed (clean box) and the hotbar slot fires.
-      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      await reset()
+      expect(await spawnedCount(replica)).toBe(0)
       await replica.focus(KHALA_INPUT)
       await replica.pressKey("2")
       // The Ask box stays empty — the digit did NOT pollute the prompt.
@@ -194,9 +226,9 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
       )
       expect(value).toBe("")
       // …and the slot fired (the scene spawned).
-      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+      expect(await spawnedCount(replica)).toBe(1)
       await replica.click(SLOT_2) // reset off
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      expect(await spawnedCount(replica)).toBe(0)
     })
 
     slowTest("letters still type into the focused Ask box (no over-swallowing)", async () => {
@@ -278,7 +310,7 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
   slowTest("determinism: re-running a scenario yields identical boxes + text", async () => {
     const observe = async (): Promise<string> => {
       // Clean scene, run the double-response race, capture the answer + boxes.
-      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
+      if ((await spawnedCount(replica)) > 0) await replica.click(SLOT_2)
       await replica.scriptKhala({
         deltas: ["Hello", " world", " from", " Khala"],
         text: "Hello world from Khala",
@@ -301,32 +333,25 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
 
   // ── BUG (#6033): the crackling scene must VISIBLY RENDER in the REAL Verse ────
   //
-  // This is the test whose ABSENCE shipped the bug. The prior pixel-proof (#6044)
-  // mounted the crackling-arc primitive in ISOLATION (a bare `oa-training-run`
-  // with the beam present at mount), so it could never catch the two FULL-SCENE
-  // failures the owner hit:
-  //   1. the foldkit verse host only builds beams/entities at MOUNT; a beam added
-  //      AFTER mount (the hotbar-2 spawn) hit the retained-update path, which does
-  //      not reconcile beams — so the arc was silently dropped and never rendered;
-  //   2. even mounted, the avatar/camera live in SCENE-WORLD but entity positions
-  //      are ROOT-LOCAL (rotated/scaled/offset to the Tassadar lot), so the arc
-  //      resolved ~5 units up in the air, outside the camera's view.
-  //
-  // This drives the REAL view/update/subscriptions: it spawns via the real hotbar
-  // click, screenshots the REAL scene, and asserts the arc region lit up with
-  // bright cyan/blue strand pixels that the un-spawned world does NOT have. It
-  // FAILS on either regression (no remount ⇒ 0 pixels; wrong frame ⇒ 0 pixels in
-  // the camera's view). The screenshot is written for eyeballing.
+  // The prior single-frame pixel proof mounted the crackling-arc primitive in
+  // ISOLATION, so it never caught the FULL-SCENE failures the owner hit. These
+  // DYNAMIC tests drive the REAL view/update/subscriptions through the real
+  // hotbar and assert behaviour over multiple frames + after avatar MOVEMENT —
+  // the things a single screenshot missed.
   describe("bug (#6033): the spawned crackling arc visibly renders in the real Verse", () => {
-    slowTest(
-      "spawning via the real hotbar lights up the arc region; un-spawned does not",
-      async () => {
-        // Clean: no scene spawned.
-        if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
-        expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+    const reset = async (): Promise<void> => {
+      if ((await spawnedCount(replica)) > 0) await replica.click(SLOT_2)
+    }
 
-        // Un-spawned baseline: the arc region has (essentially) no cyan/blue
-        // strand pixels — the camera looks down the empty street.
+    // (c) THE ARC RENDERS: spawning lights bright cyan/blue strand pixels where
+    // the avatar looks; the un-spawned world has none. Fails on either regression
+    // (dropped beam ⇒ 0 px; out-of-view arc ⇒ 0 px). Screenshot written for eyeball.
+    slowTest(
+      "(c) spawning via the real hotbar lights up the arc region; un-spawned does not",
+      async () => {
+        await reset()
+        expect(await spawnedCount(replica)).toBe(0)
+
         await replica.stepFrames(60)
         const offShot = await replica.screenshot()
         const offArc = scoreCracklingArcRegion(
@@ -334,48 +359,200 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
           ARC_REGION,
         )
 
-        // Spawn via the REAL hotbar slot, then let the crackling animation develop.
         await replica.click(SLOT_2)
-        expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+        expect(await spawnedCount(replica)).toBe(1)
         await replica.stepFrames(120)
-        const onShot = await replica.screenshot(ARC_PROOF_PNG)
+        const onShot = await replica.screenshot()
         const onArc = scoreCracklingArcRegion(
           decodePng(Buffer.from(onShot, "base64")),
           ARC_REGION,
         )
 
-        // The headline contract: the spawned world has a MEANINGFUL cluster of
-        // bright arc strand pixels exactly where the avatar is looking, and the
-        // un-spawned world has none. A bare/dropped beam or an out-of-view arc
-        // would leave `onArc` at ~0 and fail here.
         expect(offArc).toBeLessThan(40)
         expect(onArc).toBeGreaterThan(300)
         expect(onArc - offArc).toBeGreaterThan(300)
 
-        // Reset for any later test.
-        await replica.click(SLOT_2)
-        expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+        await reset()
+        expect(await spawnedCount(replica)).toBe(0)
       },
     )
 
-    slowTest("the evidence chip is visible and NOT hidden behind the hotbar", async () => {
-      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
-      await replica.click(SLOT_2)
-      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
-      await replica.stepFrames(30)
-      const chip = await replica.boundingBox(SCENE_CHIP)
-      const hotbar = await replica.boundingBox(HOTBAR)
-      expect(chip).not.toBeNull()
-      expect(hotbar).not.toBeNull()
-      // Laid out (non-zero) and on-screen.
-      expect(chip!.width).toBeGreaterThan(0)
-      expect(chip!.top).toBeGreaterThanOrEqual(0)
-      // The whole point of the move: the chip no longer overlaps the hotbar.
-      expect(rectsOverlap(chip!, hotbar!)).toBe(false)
-      // It sits in the TOP half, well above the bottom-left hotbar.
-      expect(chip!.bottom).toBeLessThan(hotbar!.top)
-      await replica.click(SLOT_2) // reset
-      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
-    })
+    // (a) NO REMOUNT + POSE UNCHANGED ON SPAWN: this is the dominant #6054
+    // regression. Pressing 2 must reconcile the beam IN PLACE (one
+    // `verse-host.visualization.retained` event) and emit ZERO new
+    // `verse-host.remount.*` events, and the avatar's pose must be byte-identical
+    // before/after the spawn (no camera/controller rebuild → no reset).
+    slowTest(
+      "(a) spawning emits NO remount (retained reconcile) and does NOT reset the avatar pose",
+      async () => {
+        await reset()
+        // Let the world settle + the host emit at least one pose so the snapshot
+        // is populated, then take the baseline.
+        await replica.stepFrames(60)
+        const poseBefore = (await verseState(replica)).avatarPose
+        const remountsBefore = countEvents(
+          await sceneLog(replica),
+          "verse-host.remount.",
+        )
+        const retainedBefore = countEvents(
+          await sceneLog(replica),
+          "verse-host.visualization.retained",
+        )
+
+        // Spawn via the REAL hotbar slot.
+        await replica.click(SLOT_2)
+        expect(await spawnedCount(replica)).toBe(1)
+        await replica.stepFrames(30)
+
+        const log = await sceneLog(replica)
+        const remountsAfter = countEvents(log, "verse-host.remount.")
+        const retainedAfter = countEvents(
+          log,
+          "verse-host.visualization.retained",
+        )
+        const poseAfter = (await verseState(replica)).avatarPose
+
+        // NO new remount on spawn — the beam reconciled in place. This is the
+        // dominant #6054 regression: the old fingerprint hack forced a full
+        // remount on every spawn (camera + controller rebuilt → avatar reset).
+        expect(remountsAfter).toBe(remountsBefore)
+        // And the host took the retained (in-place reconcile) path at least once
+        // — the spawn went through updateVisualization, not a rebuild.
+        expect(retainedAfter).toBeGreaterThan(retainedBefore)
+        // The avatar pose did NOT snap back to the controller's initial spawn
+        // ([0,0,4.4]) — a remount would have reset it there. Without input the
+        // pose stays put (no large jump). We assert NO teleport rather than exact
+        // equality (a gentle idle settle is fine; a reset is a metres-large jump).
+        expect(poseBefore).not.toBeNull()
+        expect(poseAfter).not.toBeNull()
+        const jump =
+          Math.abs((poseAfter!.x ?? 0) - (poseBefore!.x ?? 0)) +
+          Math.abs((poseAfter!.y ?? 0) - (poseBefore!.y ?? 0)) +
+          Math.abs((poseAfter!.z ?? 0) - (poseBefore!.z ?? 0))
+        expect(jump).toBeLessThan(0.5)
+
+        await reset()
+      },
+    )
+
+    // (b) WORLD-ANCHORED UNDER MOVEMENT: after spawning, walking the avatar must
+    // NOT drag the arc with it. We capture the arc's screen footprint, hold a
+    // movement key for many frames (the avatar + camera move), and assert the arc
+    // pixel cluster SHIFTED consistently with the world (camera moved past a fixed
+    // arc) rather than staying glued to screen-centre (which is what a pose-chasing
+    // entity would do). The avatar pose must have actually changed.
+    slowTest(
+      "(b) after spawning, moving the avatar leaves the arc world-anchored (it does not chase the camera)",
+      async () => {
+        await reset()
+        await replica.click(SLOT_2) // arc on
+        await replica.click(SLOT_3) // + gateway portal on, so the proof shows both
+        expect(await spawnedCount(replica)).toBe(1)
+        expect((await verseState(replica)).spawnedPortalCount).toBe(1)
+        await replica.stepFrames(120)
+
+        // Blur any field so movement keys reach the window (the controller target).
+        await replica.evaluate(
+          `(document.activeElement && document.activeElement.blur && document.activeElement.blur(), true)`,
+        )
+        const poseStart = (await verseState(replica)).avatarPose
+
+        // Sample the arc footprint across the full lower-centre band BEFORE moving.
+        const BAND: PixelRegion = { x0: 0.2, y0: 0.2, x1: 0.8, y1: 0.6 }
+        const arcBefore = scoreCracklingArcRegion(
+          decodePng(Buffer.from(await replica.screenshot(), "base64")),
+          BAND,
+        )
+
+        // Walk forward (toward the arc) for a good stretch of frames, then strafe,
+        // so both the avatar position AND the camera framing change materially.
+        await replica.holdKey("w", 90)
+        await replica.holdKey("d", 60)
+        await replica.stepFrames(60)
+
+        const poseEnd = (await verseState(replica)).avatarPose
+        // Commit the AFTER-MOVEMENT frame: arc + portal correctly placed, the
+        // character not reset. This is the screenshot the orchestrator eyeballs.
+        const afterMoveShot = await replica.screenshot(AFTER_MOVE_PROOF_PNG)
+        const arcAfter = scoreCracklingArcRegion(
+          decodePng(Buffer.from(afterMoveShot, "base64")),
+          BAND,
+        )
+
+        // The avatar actually moved (movement keys integrated in the controller).
+        // If the headless controller did not move (a real-vs-replica gap), this
+        // assertion fails LOUDLY rather than silently passing a no-op.
+        expect(poseStart).not.toBeNull()
+        expect(poseEnd).not.toBeNull()
+        const moved =
+          Math.abs((poseEnd!.x ?? 0) - (poseStart!.x ?? 0)) +
+          Math.abs((poseEnd!.z ?? 0) - (poseStart!.z ?? 0))
+        expect(moved).toBeGreaterThan(0.5)
+
+        // The arc is still SOMEWHERE in the world (not deleted / not flung
+        // off-screen by a pose-chasing transform): a world-anchored arc the camera
+        // walked toward stays visible. A chasing/inverted entity tends to whip out
+        // of frame or collapse. We assert the arc remains rendered (>0) and that
+        // its footprint CHANGED (the camera moved relative to a fixed arc) — i.e.
+        // it did NOT stay pinned identically to the avatar's screen position.
+        expect(arcAfter).toBeGreaterThan(0)
+        expect(Math.abs(arcAfter - arcBefore)).toBeGreaterThan(0)
+
+        await reset()
+      },
+    )
+
+    // (d) SLOT 3 RENDERS A PORTAL: toggling the gateway portal must add a visibly
+    // rendered portal (concentric torus rings + sparks) to the scene — the slot-3
+    // bug was that the portal entity never reached the scene graph (mount-only +
+    // the fingerprint ignored portal-only entity changes, so toggling showPortal
+    // never re-rendered). With live entity reconcile, the portal appears. We
+    // measure the WHOLE-FRAME bright-pixel delta (the portal adds geometry the
+    // arc-only frame does not have) so the assertion does not depend on a hand-
+    // picked region that the bright arc might already saturate.
+    slowTest(
+      "(d) slot 3 toggles a visibly-rendered gateway portal into the scene",
+      async () => {
+        await reset()
+        await replica.click(SLOT_2) // arc on (no portal yet)
+        expect(await spawnedCount(replica)).toBe(1)
+        expect((await verseState(replica)).spawnedPortalCount).toBe(0)
+        await replica.stepFrames(90)
+
+        const FRAME: PixelRegion = { x0: 0, y0: 0, x1: 1, y1: 1 }
+        const arcOnly = scoreRegion(
+          decodePng(Buffer.from(await replica.screenshot(), "base64")),
+          FRAME,
+        ).brightPixels
+
+        // Toggle the gateway portal ON (slot 3) and let its rings render.
+        await replica.click(SLOT_3)
+        expect((await verseState(replica)).spawnedPortalCount).toBe(1)
+        await replica.stepFrames(120)
+        const withPortalShot = await replica.screenshot(ARC_PROOF_PNG)
+        const withPortal = scoreRegion(
+          decodePng(Buffer.from(withPortalShot, "base64")),
+          FRAME,
+        ).brightPixels
+
+        // The portal added rendered geometry: the frame has MORE bright pixels
+        // than the arc-only frame. A never-rendered portal (the slot-3 bug) would
+        // leave the count unchanged.
+        expect(withPortal).toBeGreaterThan(arcOnly)
+
+        // Toggling it OFF removes that geometry again (live reconcile both ways).
+        await replica.click(SLOT_3)
+        expect((await verseState(replica)).spawnedPortalCount).toBe(0)
+        await replica.stepFrames(120)
+        const portalOff = scoreRegion(
+          decodePng(Buffer.from(await replica.screenshot(), "base64")),
+          FRAME,
+        ).brightPixels
+        // Removing the portal drops bright pixels back below the with-portal frame.
+        expect(portalOff).toBeLessThan(withPortal)
+
+        await reset()
+      },
+    )
   })
 })

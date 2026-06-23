@@ -93,10 +93,8 @@ import {
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization.js"
 import { withVerseKhalaEffectLayer } from "../shared/verse-khala-effect.js"
-import { verseSceneContentFingerprint } from "../shared/verse-scene-helpers.js"
 import {
   DEFAULT_SPAWNABLE_SCENE_ID,
-  verseSpawnableSceneById,
   withVerseSpawnedSceneLayer,
 } from "../shared/verse-spawned-scene.js"
 import { verseKhalaInputOverlay } from "./verse-khala-input.js"
@@ -7141,19 +7139,13 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
     withKhalaEffect,
     modelVerseSpawnedScenes(model).map((spawned) => ({
       sceneId: spawned.sceneId,
-      // Drop the scene station right in front of the avatar's last pose so the
-      // crackling arc spawns where the avatar is looking and is immediately
-      // visible (not far off at a fixed dark station). Falls back to the fixed
-      // anchor before any pose lands.
-      avatar:
-        model.verseSceneRestorePose === null
-          ? null
-          : {
-              x: model.verseSceneRestorePose.x,
-              y: model.verseSceneRestorePose.y,
-              z: model.verseSceneRestorePose.z,
-              yaw: model.verseSceneRestorePose.yaw,
-            },
+      // Drop the scene station in front of the avatar's pose CAPTURED AT SPAWN
+      // (frozen in `spawned.anchor`), so the crackling arc is world-anchored: it
+      // spawns where the avatar was looking and STAYS THERE as the avatar walks
+      // around it, instead of chasing the live pose every frame (the #6033
+      // "entity moves with the player" bug). Falls back to the fixed default
+      // station for a spawn made before any pose was captured.
+      avatar: spawned.anchor,
       knobs: { showPortal: spawned.showPortal },
     })),
   )
@@ -7210,30 +7202,16 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
         multiplayer,
       )
     : poseStableNavigable
-  // The three-effect verse host builds entity markers, crackling-arc beams, and
-  // bursts ONLY at mount time; its live update path does not reconcile them and
-  // its retain-vs-remount signature ignores those arrays. So a beam/entity added
-  // AFTER mount (the hotbar-2 crackling spawn, the local Khala arc) is otherwise
-  // silently dropped and never renders. Stamp a fingerprint of the dynamic scene
-  // content onto motionPolicy (a field the host folds into its structural
-  // signature) so any change to that content forces a clean remount that rebuilds
-  // the beams. Unchanged content yields an identical fingerprint, so a Verse with
-  // no spawned/local effect is byte-identical to before (no spurious remounts).
-  // The local avatar pose is preserved across remount by the host.
-  const stamped: TrainingRunVisualizationOptions = {
-    ...visualization,
-    motionPolicy: {
-      ...(visualization.motionPolicy ?? {}),
-      // Rendering-neutral marker key: the host only reads the typed motion fields
-      // for animation; this extra key exists solely to drive the remount.
-      ["verseSceneContent" as never]: verseSceneContentFingerprint(
-        visualization,
-      ) as never,
-    },
-  }
+  // The three-effect verse host now RECONCILES beams, gateway portals, bursts,
+  // and their endpoint markers on every live update (no remount), so a beam or
+  // entity added AFTER mount — the hotbar-2 crackling spawn, the slot-3 gateway
+  // portal, the local Khala arc — renders in place without rebuilding the
+  // camera or third-person controller. We just hand the host the updated
+  // visualization; the earlier motionPolicy-fingerprint remount hack (#6054) is
+  // gone, so spawning no longer resets the avatar/camera.
   recordVerseInputBindingDiagnostic(inputBindings)
-  recordVerseVisualizationKey(stamped)
-  return stamped
+  recordVerseVisualizationKey(visualization)
+  return visualization
 }
 
 export const chatSceneVisualization = verseSceneVisualization
@@ -7322,40 +7300,11 @@ const chatSceneInspector = (model: Model): Html =>
 // `<pre class="evidence">` block (motionKind / sourceRefs / simulated /
 // evidenceMode / generatedAt / portal). Honest + isolated: it names every
 // spawned scene as a labelled simulation. Absent until something is spawned.
-// #6033 owner report: the spawned scene used to pop a big intrusive top-right
-// evidence pane (the standalone page's `<pre class="evidence">` block) every time
-// the scene spawned. The owner hated it. The scene itself stays evidence-bound
-// INTERNALLY — every beam still carries its sourceRefs + simulated:true (see
-// verseSpawnedSceneLayer) — but we no longer paint a big text pane over the
-// world. At most a single tiny, unobtrusive chip naming the active effect, so
-// there is a quiet on-screen marker without the wall of contract text.
-//
-// `verseSpawnedSceneEvidenceLines` is intentionally retained (and still tested)
-// as the honest contract derivation; it is just no longer rendered as a pane.
-const verseSpawnedSceneOverlay = (model: Model): Html => {
-  const spawned = modelVerseSpawnedScenes(model)
-  if (spawned.length === 0) {
-    return h.div([cls("verse-spawned-scene verse-spawned-scene-empty")], [])
-  }
-  return h.aside(
-    [
-      cls("verse-spawned-scene verse-spawned-scene-chip mono"),
-      h.AriaLabel("Spawned isolated scene"),
-      h.DataAttribute("verse-spawned-scene", "active"),
-    ],
-    spawned.map((entry) => {
-      const scene = verseSpawnableSceneById(entry.sceneId)
-      const label = scene?.label ?? entry.sceneId
-      return h.span(
-        [
-          cls("verse-spawned-scene-tag"),
-          h.DataAttribute("verse-spawned-scene-id", entry.sceneId),
-        ],
-        [`⚡ ${label}${entry.showPortal ? " · portal" : ""}`],
-      )
-    }),
-  )
-}
+// #6033 owner report: the spawned scene no longer paints ANY on-screen chip or
+// evidence pane over the world. The scene stays evidence-bound INTERNALLY —
+// every beam carries its sourceRefs + simulated:true (see verseSpawnedSceneLayer)
+// — and `verseSpawnedSceneEvidenceLines` is retained (and still tested) as the
+// honest contract derivation, but nothing is rendered on top of the Verse.
 
 const verseBulletinBoardOverlay = (model: Model): Html => {
   const projection = verseTassadarBulletinOverlayProjection(
@@ -7534,7 +7483,6 @@ const chatSceneBackground = (model: Model): Html =>
     ),
     pylonBalanceHud(model),
     chatSceneInspector(model),
-    verseSpawnedSceneOverlay(model),
     verseBulletinBoardOverlay(model),
   ])
 
