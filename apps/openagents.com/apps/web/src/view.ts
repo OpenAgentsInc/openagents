@@ -462,6 +462,17 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  if (model._tag === 'LoggedOut' && model.route._tag === 'Khala') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-khala',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (model._tag === 'LoggedOut' && model.route._tag === 'Pylon') {
     const h = html<Message>()
 

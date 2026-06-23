@@ -24,6 +24,7 @@ import * as Terms from '../terms'
 import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
+import * as Khala from './page/khala'
 import * as Landing from './page/landing'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
@@ -60,6 +61,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
   if (model.route._tag === 'Landing') {
     return Ui.pageShell<Message>([
       h.keyed('div')(model.route._tag, [], [Landing.view()]),
+    ])
+  }
+
+  if (model.route._tag === 'Khala') {
+    return Ui.pageShell<Message>([
+      h.keyed('div')(model.route._tag, [], [Khala.view()]),
     ])
   }
 

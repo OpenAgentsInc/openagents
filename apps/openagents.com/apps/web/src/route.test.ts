@@ -24,6 +24,7 @@ import {
   ForumRoute,
   ForumTopicRoute,
   ImagesRoute,
+  KhalaRoute,
   LandingRoute,
   Moksha2Route,
   MulletRoute,
@@ -142,6 +143,8 @@ describe('app route parser', () => {
   test('accepts the public legal routes', () => {
     expect(urlToAppRoute(appUrl('/terms'))).toEqual(TermsRoute())
     expect(urlToAppRoute(appUrl('/privacy'))).toEqual(PrivacyRoute())
+  test('accepts the public Khala inference route', () => {
+    expect(urlToAppRoute(appUrl('/khala'))).toEqual(KhalaRoute())
   })
 
   test('accepts the public live Tassadar run route', () => {
