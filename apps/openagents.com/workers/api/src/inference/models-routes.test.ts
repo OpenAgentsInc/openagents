@@ -9,6 +9,7 @@ import {
   routeModelRetrieveRequest,
 } from './models-routes'
 import {
+  AUTOPILOT_CONCIERGE_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
   MODEL_PRICING_TABLE,
@@ -60,6 +61,9 @@ describe('handleModelsList', () => {
     expect(body.data.every(m => m.created === 1_700_000_000)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_MINI_MODEL_ID)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_CODE_MODEL_ID)).toBe(true)
+    expect(body.data.some(m => m.id === AUTOPILOT_CONCIERGE_MODEL_ID)).toBe(
+      true,
+    )
   })
 })
 

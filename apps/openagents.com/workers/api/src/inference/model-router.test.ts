@@ -17,7 +17,11 @@ import {
   selectPrimaryAdapterId,
 } from './model-router'
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
-import { KHALA_CODE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
+import {
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+} from './pricing'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -133,6 +137,13 @@ describe('model classification', () => {
   test('routes the Khala mini virtual model to its priced backing lane', () => {
     expect(classifyModel(KHALA_MINI_MODEL_ID)).toBe('gemini')
     expect(selectAdapterPlan(KHALA_MINI_MODEL_ID)).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the Autopilot Concierge virtual model to its priced backing lane', () => {
+    expect(classifyModel(AUTOPILOT_CONCIERGE_MODEL_ID)).toBe('gemini')
+    expect(selectAdapterPlan(AUTOPILOT_CONCIERGE_MODEL_ID)).toEqual([
       VERTEX_GEMINI_ADAPTER_ID,
     ])
   })

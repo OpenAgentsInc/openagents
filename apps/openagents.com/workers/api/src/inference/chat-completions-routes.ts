@@ -24,37 +24,32 @@ import {
   currentEpochMillis,
   currentEpochSeconds,
 } from '../runtime-primitives'
-import {
-  type FairShareDecision,
-  type SpendCapDecision,
-} from './inference-abuse-controls'
-import { type PremiumAccessDecision } from './inference-premium-allowlist'
-// PURE verdict type only — the route NEVER imports the headless runner (playwright)
-// into the Worker bundle. The runner executes out of the Worker; its verdict shape is
-// the only thing the route consumes (EPIC #6017).
-import { type AcceptanceVerdict } from './acceptance-runner/verdict'
 // PURE dispatch producer only — enqueues an out-of-Worker verification job; never
 // imports the headless runner (playwright) into the Worker bundle (EPIC #6017).
 import {
   type AcceptanceJobQueue,
   enqueueAcceptanceJob,
 } from './acceptance-dispatch'
+// PURE verdict type only — the route NEVER imports the headless runner (playwright)
+// into the Worker bundle. The runner executes out of the Worker; its verdict shape is
+// the only thing the route consumes (EPIC #6017).
+import { type AcceptanceVerdict } from './acceptance-runner/verdict'
 import {
   acceptanceContractGuidanceForRequest,
   intentToAcceptanceSpec,
 } from './acceptance-spec'
 import {
-  KHALA_CODE_VERIFIER_WORKER_ID,
-  type KhalaCodeVerificationVerdict,
-  prescreenKhalaCodeArtifact,
-  verifyKhalaCodeCompletion,
-} from './khala-code-verifier'
+  type AutopilotConciergeRequestConfig,
+  buildAutopilotConciergeSystemPrompt,
+  isAutopilotConciergeModel,
+  resolveAutopilotConciergeConfig,
+} from './autopilot-concierge-model'
 import {
-  KHALA_IDENTITY_REINFORCEMENT_PROMPT,
-  KHALA_IDENTITY_SYSTEM_PROMPT,
-  guardKhalaCompletion,
-  verifyKhalaSignatures,
-} from './khala-identity'
+  type CachePinPolicy,
+  type CacheWarmthOracle,
+  type LaneHealthOracle,
+  decideCacheAwareRouting,
+} from './cache-aware-routing'
 import {
   type DurableInferenceStreamStore,
   type StreamStore,
@@ -62,10 +57,30 @@ import {
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
 import {
-  type MeteringHook,
-  type MeteringOutcome,
-  stubMeteringHook,
-} from './metering-hook'
+  type FairShareDecision,
+  type SpendCapDecision,
+} from './inference-abuse-controls'
+import { type PremiumAccessDecision } from './inference-premium-allowlist'
+import {
+  KHALA_CODE_VERIFIER_WORKER_ID,
+  type KhalaCodeVerificationVerdict,
+  prescreenKhalaCodeArtifact,
+  verifyKhalaCodeCompletion,
+} from './khala-code-verifier'
+import {
+  type ComponentChannelOutput,
+  type ComponentRepairReask,
+  KHALA_COMPONENT_CATALOG_PROMPT,
+  type KhalaComponentFrame,
+  runComponentChannel,
+  serializeComponentFrame,
+} from './khala-component-channel'
+import {
+  KHALA_IDENTITY_REINFORCEMENT_PROMPT,
+  KHALA_IDENTITY_SYSTEM_PROMPT,
+  guardKhalaCompletion,
+  verifyKhalaSignatures,
+} from './khala-identity'
 import {
   type KhalaExecutedVerdict,
   type KhalaRequestClass,
@@ -76,18 +91,22 @@ import {
   buildKhalaTelemetryBlock,
 } from './khala-telemetry'
 import {
-  type DispatchRouteMetadata,
+  type MeteringHook,
+  type MeteringOutcome,
+  stubMeteringHook,
+} from './metering-hook'
+import {
   type DispatchDeps,
+  type DispatchRouteMetadata,
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
 } from './model-router'
 import {
-  type CacheWarmthOracle,
-  type LaneHealthOracle,
-  type CachePinPolicy,
-  decideCacheAwareRouting,
-} from './cache-aware-routing'
+  type SupplyLaneArming,
+  resolveNamedModelServability,
+} from './model-serving-policy'
+import { type FundingKind, KHALA_CODE_MODEL_ID, isKhalaModel } from './pricing'
 import {
   type StableBlockKind,
   type TaggedPromptMessage,
@@ -98,11 +117,6 @@ import {
   sessionAffinityParams,
 } from './prompt-prefix-cache'
 import {
-  type SupplyLaneArming,
-  resolveNamedModelServability,
-} from './model-serving-policy'
-import { type FundingKind, KHALA_CODE_MODEL_ID, isKhalaModel } from './pricing'
-import {
   InferenceAdapterError,
   type InferenceMessage,
   type InferenceProviderRegistry,
@@ -111,14 +125,6 @@ import {
   type InferenceStreamSource,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
-import {
-  KHALA_COMPONENT_CATALOG_PROMPT,
-  type ComponentChannelOutput,
-  type ComponentRepairReask,
-  type KhalaComponentFrame,
-  runComponentChannel,
-  serializeComponentFrame,
-} from './khala-component-channel'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. The free-tier default is
@@ -219,6 +225,7 @@ export const resolveComponentChannelActive = (
     request: Request
     rawBody: Record<string, unknown>
     requestedModel: string
+    autopilotConcierge?: boolean | undefined
   }>,
 ): boolean => {
   if (input.config?.enabled !== true) {
@@ -226,6 +233,9 @@ export const resolveComponentChannelActive = (
   }
   if (!isKhalaModel(input.requestedModel)) {
     return false
+  }
+  if (input.autopilotConcierge === true) {
+    return true
   }
   const header = input.request.headers
     .get('x-oa-component-channel')
@@ -454,6 +464,7 @@ const decodeBody = (value: unknown) => {
 const buildTaggedKhalaMessages = (
   clientMessages: ReadonlyArray<InferenceMessage>,
   requestedModel: string,
+  autopilotConcierge: AutopilotConciergeRequestConfig | undefined,
   // COMPONENT-CHANNEL (issue #6127): inject the closed-catalog system prompt as a
   // STABLE prefix block ONLY when the channel is active for this request. Absent /
   // false => no injection, prompt byte-identical to before (additive + opt-in).
@@ -483,6 +494,20 @@ const buildTaggedKhalaMessages = (
     tagged.push({
       message: { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
       stableKind: 'identity' satisfies StableBlockKind,
+    })
+  }
+
+  // Autopilot Concierge product prompt (#6148): server-owned model config,
+  // vertical enum, component catalog metadata, and Output Spec instructions. It
+  // is injected by the gateway for the virtual model only; callers cannot supply
+  // arbitrary vertical/system-prompt text.
+  if (autopilotConcierge !== undefined) {
+    tagged.push({
+      message: {
+        content: buildAutopilotConciergeSystemPrompt(autopilotConcierge),
+        role: 'system',
+      },
+      stableKind: 'otherSystem' satisfies StableBlockKind,
     })
   }
 
@@ -518,6 +543,7 @@ const toInferenceRequest = (
   // COMPONENT-CHANNEL (issue #6127): when active, the closed-catalog system prompt
   // is injected as a stable prefix block. Default false => no injection.
   componentChannelActive?: boolean,
+  autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
 ): InferenceRequest => {
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
@@ -530,6 +556,7 @@ const toInferenceRequest = (
         buildTaggedKhalaMessages(
           clientMessages,
           requestedModel,
+          autopilotConcierge,
           componentChannelActive,
         ),
       ).messages
@@ -555,7 +582,11 @@ const resolveCacheAffinity = (
   accountRef: string,
   raw: Record<string, unknown>,
   request: Request,
-): Readonly<{ rawKey: string; hash: string; params: Readonly<Record<string, string>> }> => {
+): Readonly<{
+  rawKey: string
+  hash: string
+  params: Readonly<Record<string, string>>
+}> => {
   const stringField = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
   const header = (name: string): string | undefined => {
@@ -770,9 +801,7 @@ const khalaReceiptForResult = (
           ? {}
           : { region: input.routeMetadata.region }),
         fallbackReason: input.routeMetadata?.fallbackReason ?? null,
-        ...(cacheAffinityKeyRaw === undefined
-          ? {}
-          : { cacheAffinityKeyRaw }),
+        ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
         ...(input.result.usage.cachedPromptTokens === undefined
           ? {}
           : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
@@ -945,7 +974,10 @@ const maybeEnqueueAcceptanceJob = (
         html: prescreen.html as string,
         requestId: input.responseId,
       }),
-    ).pipe(Effect.map(ref => ref as string | undefined), Effect.orElseSucceed(() => undefined))
+    ).pipe(
+      Effect.map(ref => ref as string | undefined),
+      Effect.orElseSucceed(() => undefined),
+    )
     if (artifactRef === undefined) {
       return
     }
@@ -1324,6 +1356,18 @@ export const handleChatCompletions = (
     // the free-tier default (Gemini 3.5 Flash). Used for premium gating,
     // routing, response echo, and metering.
     const requestedModel = resolveRequestedModel(body.model)
+    const autopilotConcierge = isAutopilotConciergeModel(requestedModel)
+      ? resolveAutopilotConciergeConfig(rawBody)
+      : undefined
+    if (autopilotConcierge?.ok === false) {
+      return noStoreJsonResponse(
+        {
+          allowed: autopilotConcierge.allowed,
+          error: autopilotConcierge.error,
+        },
+        { status: 400 },
+      )
+    }
 
     // PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing). Reject a
     // KNOWN model whose supply lane is NOT armed with the SAME clean
@@ -1479,6 +1523,7 @@ export const handleChatCompletions = (
     // explicit per-request opt-in + Khala model. Default false => the channel is
     // inert and the response is byte-for-byte today's text-only stream.
     const componentChannelActive = resolveComponentChannelActive({
+      autopilotConcierge: autopilotConcierge?.ok === true,
       config: deps.componentChannel,
       rawBody,
       request,
@@ -1491,6 +1536,7 @@ export const handleChatCompletions = (
       requestedModel,
       affinity.params,
       componentChannelActive,
+      autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
     )
     // The raw cache-affinity key threaded into every telemetry build site so the
     // receipt records its public-safe HASH (never the raw key). Undefined for
@@ -1938,7 +1984,9 @@ export const handleChatCompletions = (
           completion: servedValue.content,
           // The re-ask is already resolved (above); the guard just consumes it.
           reask:
-            reaskedContent === undefined ? undefined : async () => reaskedContent,
+            reaskedContent === undefined
+              ? undefined
+              : async () => reaskedContent,
         }),
       )
       guardedContent = guard.text

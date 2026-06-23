@@ -16,7 +16,6 @@
 // + `openagents/khala-code`, receipt-first metering, the `openagents` disclosure
 // block). The MPP/x402 paid endpoint is a FORWARD reference (Phase 2, default
 // OFF) — it is described as "coming / flagged" rather than claimed as live.
-
 import { Effect } from 'effect'
 
 // The four discovery document paths, mirroring the PostalForm directory shape.
@@ -84,6 +83,10 @@ agent compute, sold per call. Khala is the inference front door.
   deterministic acceptance verifier; the response carries an \`openagents\`
   disclosure block recording which concrete worker served it and the
   verification verdict, so a coding outcome is auditable rather than opaque.
+- \`openagents/autopilot-concierge\` — productized onboarding concierge. It uses
+  server-owned vertical config and the closed \`oa.component\` catalog so a
+  standard \`/v1/chat/completions\` call can drive Autopilot intake without a
+  client-supplied system prompt.
 
 ## Best fit
 
@@ -141,8 +144,10 @@ curl ${KHALA_ENDPOINT} \\
   }'
 \`\`\`
 
-Models: \`openagents/khala-mini\` (general) and \`openagents/khala-code\` (coding,
-with a verified-outcome receipt). Catalog: ${KHALA_MODELS_ENDPOINT}
+Models: \`openagents/khala-mini\` (general), \`openagents/khala-code\` (coding,
+with a verified-outcome receipt), and \`openagents/autopilot-concierge\`
+(Autopilot onboarding with server-owned vertical config). Catalog:
+${KHALA_MODELS_ENDPOINT}
 
 Every response is standard OpenAI shape plus a non-breaking \`openagents\`
 disclosure block (which concrete worker served the request; for \`khala-code\`,
@@ -186,7 +191,8 @@ const aiMd = (): string => `# OpenAgents — AI instructions
 You can use OpenAgents Khala for OpenAI-compatible LLM inference, pay-per-call.
 
 - Endpoint: ${KHALA_ENDPOINT} (OpenAI Chat Completions shape)
-- Models: \`openagents/khala-mini\`, \`openagents/khala-code\`
+- Models: \`openagents/khala-mini\`, \`openagents/khala-code\`,
+  \`openagents/autopilot-concierge\`
 - Auth today: \`Authorization: Bearer <openagents-agent-key>\`
 - Pay-per-call machine payments (MPP / x402, rolling out, flagged):
   ${MPP_ENDPOINT}
@@ -206,7 +212,8 @@ Add Khala as an OpenAI-compatible inference tool in your agent.
 - Base URL: ${ORIGIN}/api/v1 (legacy ${ORIGIN}/v1 still works as an alias)
 - Chat Completions: ${KHALA_ENDPOINT}
 - Models endpoint: ${KHALA_MODELS_ENDPOINT}
-- Models: \`openagents/khala-mini\`, \`openagents/khala-code\`
+- Models: \`openagents/khala-mini\`, \`openagents/khala-code\`,
+  \`openagents/autopilot-concierge\`
 - Auth: \`Authorization: Bearer <openagents-agent-key>\`
 
 ## OpenAI client config

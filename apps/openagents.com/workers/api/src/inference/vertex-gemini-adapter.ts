@@ -45,10 +45,10 @@
 // once; with no VERTEX_SA_KEY (and no pre-minted token) the adapter is
 // unconfigured and surfaces a typed error rather than calling out. The whole
 // gateway route stays flag-gated off via INFERENCE_GATEWAY_ENABLED regardless.
-
 import { Effect } from 'effect'
 
 import { parseJsonRecord } from '../json-boundary'
+import { AUTOPILOT_CONCIERGE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -57,8 +57,10 @@ import {
   type InferenceStreamChunk,
   type InferenceUsage,
 } from './provider-adapter'
-import { KHALA_MINI_MODEL_ID } from './pricing'
-import { type VertexFetch, type VertexTokenProvider } from './vertex-anthropic-adapter'
+import {
+  type VertexFetch,
+  type VertexTokenProvider,
+} from './vertex-anthropic-adapter'
 
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 
@@ -105,7 +107,10 @@ export const KNOWN_VERTEX_GEMINI_MODEL_IDS: ReadonlyArray<string> = [
 
 const defaultResolveModelId = (requestedModel: string): string => {
   const requested = requestedModel.trim()
-  if (requested.toLowerCase() === KHALA_MINI_MODEL_ID) {
+  if (
+    requested.toLowerCase() === KHALA_MINI_MODEL_ID ||
+    requested.toLowerCase() === AUTOPILOT_CONCIERGE_MODEL_ID
+  ) {
     return DEFAULT_GEMINI_MODEL_ID
   }
   // Strip a leading provider hint (`vertex/`, `google/`, `gemini/`) if present.
@@ -338,7 +343,11 @@ export const makeVertexGeminiAdapter = (
       const provide = yield* ensureConfigured()
       const token = yield* provide()
       const modelId = resolveModelId(request.model)
-      const url = vertexUrl({ location, project: config.project }, modelId, method)
+      const url = vertexUrl(
+        { location, project: config.project },
+        modelId,
+        method,
+      )
       const body = buildGeminiBody(request)
 
       const { ok, status, text } = yield* Effect.tryPromise({
@@ -475,14 +484,16 @@ const parseGeminiSseChunks = (
       promptTokens = num(u['promptTokenCount']) ?? promptTokens
       completionTokens = num(u['candidatesTokenCount']) ?? completionTokens
       totalTokens = num(u['totalTokenCount']) ?? totalTokens
-      cachedPromptTokens = num(u['cachedContentTokenCount']) ?? cachedPromptTokens
+      cachedPromptTokens =
+        num(u['cachedContentTokenCount']) ?? cachedPromptTokens
     }
   }
 
   const usage: InferenceUsage = {
     completionTokens,
     promptTokens,
-    totalTokens: totalTokens > 0 ? totalTokens : promptTokens + completionTokens,
+    totalTokens:
+      totalTokens > 0 ? totalTokens : promptTokens + completionTokens,
     ...(cachedPromptTokens === undefined || cachedPromptTokens <= 0
       ? {}
       : { cachedPromptTokens }),

@@ -258,16 +258,17 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 // receipt-first metering prices derived from the same source of truth.
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
+export const AUTOPILOT_CONCIERGE_MODEL_ID = 'openagents/autopilot-concierge'
 
-// True when the requested id is an OpenAgents Khala virtual model. M0 ships a
-// single cheap tier (khala-mini) plus the coding verifier tier (khala-code);
-// the `openagents/khala-` prefix keeps future tiers (pro) recognized as Khala
-// without another edit. Used by the gateway to attach the disclosure
-// (`openagents`) block to the response so a Khala request is auditable (which
-// concrete model/worker actually served it). Bounded id check, not an intent
-// parser.
+// True when the requested id is an OpenAgents Khala virtual model. The
+// `openagents/khala-` prefix keeps future tiers (pro) recognized as Khala without
+// another edit; `openagents/autopilot-concierge` is the productized Concierge
+// virtual model whose prompts/components are gateway-owned. Used by the gateway
+// to attach the disclosure (`openagents`) block to the response so a Khala
+// request is auditable. Bounded id check, not an intent parser.
 export const isKhalaModel = (model: string): boolean =>
-  model.trim().toLowerCase().startsWith('openagents/khala-')
+  model.trim().toLowerCase().startsWith('openagents/khala-') ||
+  model.trim().toLowerCase() === AUTOPILOT_CONCIERGE_MODEL_ID
 
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
@@ -345,6 +346,16 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
   // verification, and settlement receipt fields remain separate milestones.
   entry(
     KHALA_MINI_MODEL_ID,
+    'vertex-gemini',
+    VERTEX_GEMINI_COST['gemini-3.5-flash']!,
+    true,
+  ),
+  // Productized Autopilot Concierge virtual model (#6148). It uses the same
+  // Gemini Flash cost basis as khala-mini today; the gateway-owned Concierge
+  // prompt/config and component-channel metadata differentiate the product
+  // surface, while catalog/quote/metering stay in this single pricing table.
+  entry(
+    AUTOPILOT_CONCIERGE_MODEL_ID,
     'vertex-gemini',
     VERTEX_GEMINI_COST['gemini-3.5-flash']!,
     true,

@@ -1,15 +1,15 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import {
-  DEFAULT_GEMINI_MODEL_ID,
-  makeVertexGeminiAdapter,
-} from './vertex-gemini-adapter'
+import { AUTOPILOT_CONCIERGE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceRequest,
 } from './provider-adapter'
-import { KHALA_MINI_MODEL_ID } from './pricing'
+import {
+  DEFAULT_GEMINI_MODEL_ID,
+  makeVertexGeminiAdapter,
+} from './vertex-gemini-adapter'
 
 const run = <A>(effect: Effect.Effect<A, InferenceAdapterError>): Promise<A> =>
   Effect.runPromise(effect)
@@ -26,7 +26,10 @@ const baseRequest = (
 
 const recordingFetch = (
   response: Response,
-): { fetchImpl: typeof fetch; calls: Array<{ url: string; init: RequestInit }> } => {
+): {
+  fetchImpl: typeof fetch
+  calls: Array<{ url: string; init: RequestInit }>
+} => {
   const calls: Array<{ url: string; init: RequestInit }> = []
   const fetchImpl = (async (url: unknown, init?: RequestInit) => {
     calls.push({ init: init ?? {}, url: String(url) })
@@ -82,5 +85,24 @@ describe('vertex gemini adapter request mapping', () => {
     )
     const body = JSON.parse(call.init.body as string) as Record<string, unknown>
     expect(body['model']).toBeUndefined()
+  })
+
+  test('maps the Autopilot Concierge virtual model to the default Gemini backing model', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(baseRequest({ model: AUTOPILOT_CONCIERGE_MODEL_ID })),
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      'https://aiplatform.googleapis.com/v1/projects/openagentsgemini' +
+        `/locations/global/publishers/google/models/${DEFAULT_GEMINI_MODEL_ID}:generateContent`,
+    )
   })
 })
