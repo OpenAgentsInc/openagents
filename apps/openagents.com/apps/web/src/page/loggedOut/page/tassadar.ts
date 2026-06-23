@@ -168,7 +168,8 @@ const registerExample = `curl -X POST https://openagents.com/api/agents/register
 
 const joinExample = `npx @openagentsinc/pylon
 pylon training status --base-url https://openagents.com
-pylon training claim`
+pylon training preflight --base-url https://openagents.com
+pylon training claim --base-url https://openagents.com --lease-seconds 300`
 
 // --- view ---------------------------------------------------------------------
 

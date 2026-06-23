@@ -689,7 +689,8 @@ export const TASSADAR_AGENT_INSTRUCTIONS = [
   'Then install Pylon and join the run:',
   '  npx @openagentsinc/pylon',
   '  pylon training status --base-url https://openagents.com',
-  '  pylon training claim',
+  '  pylon training preflight --base-url https://openagents.com',
+  '  pylon training claim --base-url https://openagents.com --lease-seconds 300',
   '',
   'Accepted work is paid in Bitcoin over Lightning, with public receipts.',
 ].join('\n')
