@@ -1,6 +1,6 @@
-import { Schema as S, pipe } from 'effect'
+import { Effect, Schema as S, pipe } from 'effect'
 import { Route } from 'foldkit'
-import { literal, r, slash, string } from 'foldkit/route'
+import { ParseError, literal, param, r, slash, string } from 'foldkit/route'
 import type { Url } from 'foldkit/url'
 
 export const HomeRoute = r('Home')
@@ -10,7 +10,7 @@ export const OrderRoute = r('Order')
 export const OrderDetailRoute = r('OrderDetail', { orderId: S.String })
 export const AutopilotRoute = r('Autopilot')
 export const AutopilotVerticalRoute = r('AutopilotVertical', {
-  vertical: S.String,
+  vertical: S.Literal('legal'),
 })
 export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
@@ -388,9 +388,23 @@ export const autopilotRouter = pipe(
   literal('autopilot'),
   Route.mapTo(AutopilotRoute),
 )
+const legalVertical = param(
+  'legal autopilot vertical',
+  segment =>
+    segment === 'legal'
+      ? Effect.succeed({ vertical: 'legal' as const })
+      : Effect.fail(
+          new ParseError({
+            message: 'Expected legal autopilot vertical',
+            expected: 'legal',
+            actual: segment,
+          }),
+        ),
+  () => 'legal',
+)
 export const autopilotVerticalRouter = pipe(
   literal('autopilot'),
-  slash(string('vertical')),
+  slash(legalVertical),
   Route.mapTo(AutopilotVerticalRoute),
 )
 export const inviteRouter = pipe(literal('invite'), Route.mapTo(InviteRoute))
