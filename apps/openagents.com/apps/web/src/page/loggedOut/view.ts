@@ -57,8 +57,14 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
-  if (model.route._tag === 'Landing' || model.route._tag === 'Khala') {
-    return Ui.pageShell<Message>([PersistentScene.view(model.route._tag)])
+  if (
+    model.route._tag === 'Landing' ||
+    model.route._tag === 'Khala' ||
+    model.route._tag === 'Tassadar'
+  ) {
+    return Ui.pageShell<Message>([
+      PersistentScene.view(model.route._tag, model.copiedAgentInstructions),
+    ])
   }
 
   if (model.route._tag === 'Pylon') {
@@ -139,7 +145,6 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
               Run: () => Run.view({ _tag: 'LoggedOut' }),
-              Tassadar: () => Run.view({ _tag: 'LoggedOut' }),
               TassadarReplay: route =>
                 Run.view({ _tag: 'LoggedOut' }, route.replaySlug),
               Login: () => Login.view({ _tag: 'LoggedOut' }),

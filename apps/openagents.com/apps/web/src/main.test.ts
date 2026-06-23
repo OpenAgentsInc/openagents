@@ -399,23 +399,54 @@ describe('authenticated startup routing', () => {
     })
   })
 
-  test('renders the retired Tassadar web scene notice through the top-level view', () => {
+  test('keeps serving the live Tassadar run board at /run', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/run'),
+    )
+
+    // /run is unchanged: it still serves the existing Run.view board, separate
+    // from the new /tassadar info page.
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-persistent-scene-overlay="tassadar"]'),
+      ).not.toExist(),
+      Scene.expect(Scene.selector('oa-landing-squares')).not.toExist(),
+    )
+  })
+
+  test('renders the public Tassadar info page over the persistent scene', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/tassadar'),
     )
 
+    // /tassadar is now a third persistent-scene pose (like /landing and /khala):
+    // the 3D pylon scene stays mounted and the camera flies to the tassadar
+    // vantage, with the public info page + Copy Agent Instructions over it.
     Scene.scene(
       { update, view },
       Scene.with(model),
-      Scene.expect(Scene.selector('oa-tassadar-run')).not.toExist(),
-      Scene.expect(Scene.selector('[data-tassadar-scene="retired"]')).toExist(),
-      Scene.expect(Scene.role('heading', { name: 'Tassadar lives in the Verse' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Public summary API' })).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Proof replay' })).toExist(),
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      Scene.expect(Scene.selector('[data-pose="tassadar"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-persistent-scene-overlay="tassadar"]'),
+      ).toExist(),
       Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Tassadar' })).toExist(),
+      Scene.expect(
+        Scene.selector('[data-tassadar-copy="agent-instructions"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Copy Agent Instructions')).toExist(),
+      // The retired Run.view notice is no longer the logged-out /tassadar surface.
+      Scene.expect(
+        Scene.selector('[data-tassadar-scene="retired"]'),
+      ).not.toExist(),
+      // No public-header chrome on the persistent scene.
       Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
-      Scene.expect(Scene.role('link', { name: 'Blog' })).not.toExist(),
       Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
     )
   })

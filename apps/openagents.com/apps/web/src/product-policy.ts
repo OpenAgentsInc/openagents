@@ -279,7 +279,11 @@ export const browserRouteProductIntent = (route: AppRoute): string =>
 
 export const browserCommandProductIntents = {
   ClearSession: 'auth.session.clear',
+  CopyAgentInstructions: 'public.tassadar.agent-instructions.copy',
   CopyShareLink: 'share.link.copy',
+  NavigateToKhala: 'public.khala.navigate',
+  NavigateToLanding: 'public.landing.navigate',
+  NavigateToTassadar: 'public.tassadar.navigate',
   CreateBillingCheckout: 'billing.checkout.create',
   PrepareBillingCardSetup: 'billing.card.setup.prepare',
   RunBillingAutoTopUp: 'billing.auto_top_up.run',

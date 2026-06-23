@@ -22,6 +22,7 @@ import {
   PrivacyRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
+  TassadarRoute,
   TeamProjectChatRoute,
   TermsRoute,
 } from './route'
@@ -192,6 +193,13 @@ describe('browser product policy', () => {
 
   test('keeps the public Khala route bootstrap-free', () => {
     expect(routeRequiresAuthBootstrap(KhalaRoute())).toBe(false)
+  })
+
+  test('classifies the public Tassadar route like Khala (public, no bootstrap)', () => {
+    expect(browserRouteProductIntent(TassadarRoute())).toBe(
+      'public.tassadar.run',
+    )
+    expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
   })
 
   test('catalogs every browser command name with product intent', () => {

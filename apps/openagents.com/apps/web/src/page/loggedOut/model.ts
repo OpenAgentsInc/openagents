@@ -1210,6 +1210,9 @@ export const Model = ts('LoggedOut', {
   publicTrainingRuns: PublicTrainingRunsModel,
   settledFeed: SettledFeedModel,
   shareProjection: ShareProjectionModel,
+  // True once the Tassadar "Copy Agent Instructions" button has written to the
+  // clipboard, so the button can show a "Copied" affirmation.
+  copiedAgentInstructions: S.Boolean,
 })
 
 export type Model = typeof Model.Type
@@ -1270,6 +1273,7 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })
         : IdleShareProjection(),
+    copiedAgentInstructions: false,
   })
 
 export const initOnboardingModel = (): OnboardingModel =>
