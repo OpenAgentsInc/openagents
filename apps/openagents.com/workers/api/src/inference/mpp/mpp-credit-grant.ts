@@ -22,6 +22,7 @@
 
 import { Effect } from 'effect'
 
+import { currentIsoTimestamp } from '../../runtime-primitives'
 import { runLedgerStatements } from '../../payments-ledger'
 import { usdCentsToMsatFloor } from '../usd-msat-conversion'
 import {
@@ -82,7 +83,7 @@ export const mintMppCredits = (
   }>,
 ): Effect.Effect<MppCreditGrantOutcome, MppCreditGrantError> =>
   Effect.gen(function* () {
-    const nowIso = deps.nowIso ?? (() => new Date().toISOString())
+    const nowIso = deps.nowIso ?? currentIsoTimestamp
     const usdCentsToMsat = deps.usdCentsToMsat ?? usdCentsToMsatFloor
     const grantMsat = Math.max(1, usdCentsToMsat(input.amountCents))
     const grantRef = mppGrantRef(input.paymentIntentId)

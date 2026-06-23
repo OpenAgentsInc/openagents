@@ -19,8 +19,6 @@
 
 import { Effect } from 'effect'
 
-import { methodNotAllowed } from '../http/responses'
-
 // The four discovery document paths, mirroring the PostalForm directory shape.
 export type DiscoverySurfacePath =
   | '/llms.txt'
@@ -250,7 +248,14 @@ export const renderDiscoverySurface = (
 ): Effect.Effect<Response> =>
   Effect.sync(() => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      return methodNotAllowed(['GET', 'HEAD'])
+      return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
+        headers: new Headers({
+          allow: 'GET, HEAD',
+          'cache-control': 'no-store',
+          'content-type': 'application/json',
+        }),
+        status: 405,
+      })
     }
     const body = bodyFor(path)
     const headers = new Headers({

@@ -14,6 +14,8 @@
 // This module owns the wire shape only; verification + the Khala completion live
 // in the endpoint handler.
 
+import { parseBase64UrlJsonRecord } from '../../json-boundary'
+
 // One accepted payment method on the 402 challenge.
 export type MppChallenge = Readonly<{
   // Challenge id (binds the retry to this quote).
@@ -166,9 +168,10 @@ export const parsePaymentCredential = (
   // settlement reference; if it does not decode, the raw value still rides
   // through for a sidecar verify.
   try {
-    const normalized = raw.replace(/-/g, '+').replace(/_/g, '/')
-    const decoded = atob(normalized)
-    const parsed = JSON.parse(decoded) as Record<string, unknown>
+    const parsed = parseBase64UrlJsonRecord(raw)
+    if (parsed === undefined) {
+      return { raw, scheme: 'Payment' }
+    }
     const payload = (parsed.payload ?? parsed) as Record<string, unknown>
     const pi =
       payload.payment_intent ??
