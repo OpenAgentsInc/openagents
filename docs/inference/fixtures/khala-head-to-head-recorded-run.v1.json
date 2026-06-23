@@ -118,6 +118,112 @@
         "blocker.khala_demo.cost_usd_not_measured",
         "blocker.khala_demo.m7_live_conductor_missing"
       ]
+    },
+    {
+      "runId": "recorded.khala.crossy_road.executed_passing_run.v1",
+      "lane": "khala",
+      "label": "Khala live run (prod 2026-06-23, served kimi-k2p7-code via Fireworks); EXECUTED acceptance => PASSED 6/6 (verified:true, scalarReward 1). Prompt = north-star + the runner state contract.",
+      "model": "openagents/khala-code",
+      "provider": "openagents",
+      "coordinator": {
+        "mode": "heuristic_router",
+        "policyRef": "recorded.khala.heuristic_router.v0.crossy_road.v1",
+        "promoted": false
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-23T03:00:00.000Z",
+      "completedAt": "2026-06-23T03:01:53.000Z",
+      "wallClockMs": 113000,
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
+      },
+      "costUsd": 0,
+      "costMsat": 0,
+      "priceMsat": 0,
+      "acceptedOutcome": {
+        "accepted": true,
+        "verificationClass": "test_passed",
+        "verdictRef": "recorded.verdict.khala.crossy_road.executed_passed.v1",
+        "verifierRef": "verifier.khala_code.executed_acceptance_suite.v1",
+        "receiptRef": "recorded.receipt.khala.crossy_road.executed_passed_scalar_reward_1.v1",
+        "evidenceRefs": [
+          "recorded.artifact.khala.crossy_road.single_html.passing.v1",
+          "recorded.stream.khala.crossy_road.no_524.113s.v1"
+        ],
+        "blockerRefs": [],
+        "executedAcceptance": {
+          "note": "The PASSING north-star artifact (Khala-code prod stream on 2026-06-23, served model accounts/fireworks/models/kimi-k2p7-code, 16153 bytes, fingerprint fnv1a32:9ef47428, preserved at scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html) was run through the REAL headless acceptance runner (apps/openagents.com/workers/api/src/inference/acceptance-runner, Playwright/chromium) via scripts/khala-demo/run-executed-acceptance.mjs. Full verdict JSON: scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.verdict.json.",
+          "executed": true,
+          "rubricRef": "rubric.khala_code.crossy_road.executed_acceptance.v1",
+          "verification": "test_passed",
+          "verified": true,
+          "scalarReward": 1,
+          "artifactFingerprint": "fnv1a32:9ef47428",
+          "passedChecks": [
+            "loads_without_errors",
+            "play_starts_game",
+            "forward_input_advances_player",
+            "camera_follow_delta_bounded",
+            "world_keeps_generating_ahead",
+            "restart_resets_state"
+          ],
+          "failedChecks": [],
+          "checkDetail": {
+            "loads_without_errors": "PASS — No console or page errors during load (no localStorage-on-load crash).",
+            "play_starts_game": "PASS — Game started (started=true, loopTicks 0->4..6).",
+            "forward_input_advances_player": "PASS — Forward input advanced player by ~0.66 (within the expected ~1-tile tolerance).",
+            "camera_follow_delta_bounded": "PASS — Max camera delta per move ~0.41-0.49 <= bound 5 (no 100x camera bug).",
+            "world_keeps_generating_ahead": "PASS — 24 rows ahead after 12 moves (>= 12; no blue sky).",
+            "restart_resets_state": "PASS — Restart reset player to origin and progress to 0."
+          },
+          "honestNote": "This is the GENUINE executed pass: the headless suite actually ran the game and all six behavioral checks passed. IMPORTANT HONEST CAVEAT ON THE GATEWAY VERDICT: the prod gateway's terminal openagents block on this same stream returned verification:failed, because the gateway's CHEAP PRE-SCREEN (khala-code-verifier.ts prescreenKhalaCodeArtifact) rejects any artifact whose <script> loads three.js from a CDN (the !scriptSrcPattern rule) and so never reaches the execution branch. The north-star prompt explicitly asks for three.js, so a faithful artifact loads three.js from a CDN and is pre-screen-rejected by the gateway today even though it executes correctly. The standalone executed-acceptance runner runs the real Playwright suite directly (no pre-screen gate) and is the authoritative behavioral verdict: verified:true, 6/6, scalarReward 1. PROMPT CAVEAT: the bare north-star prompt (the run above) fails 6/6 because the model has no way to know the __openagentsCrossyRoadState/Start/Restart hooks the headless runner drives; this passing run augmented the prompt with that state contract so the executor could drive the game. Both data points are kept honestly."
+        }
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "recorded.artifact.khala.crossy_road.single_html.passing.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.settlement_owner_armed_not_dispatched"
+        ]
+      },
+      "verse": {
+        "playbackRef": null,
+        "sourceRefs": [],
+        "inWorldWorkUnits": 0,
+        "gatewayWorkUnits": 0,
+        "blockerRefs": [
+          "blocker.khala_demo.verse_playback_missing"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md",
+        "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+        "docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md",
+        "github:OpenAgentsInc/openagents#6016"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.tokens_not_measured",
+        "blocker.khala_demo.cost_usd_not_measured",
+        "blocker.khala_demo.m7_live_conductor_missing",
+        "blocker.khala_demo.gateway_prescreen_rejects_cdn_three_js"
+      ]
     }
   ],
   "externalReportedClaims": [

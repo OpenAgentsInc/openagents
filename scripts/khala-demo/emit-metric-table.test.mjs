@@ -106,41 +106,50 @@ describe("inWorldVsGatewayCell", () => {
   });
 });
 
-describe("recorded run table — EXECUTED acceptance verdict (honest red)", () => {
-  // The recorded north-star run's earlier `verified:true` came from the M2 STATIC
-  // regex pre-screen. Running the preserved artifact through the real executed
-  // acceptance suite (scripts/khala-demo/run-executed-acceptance.mjs) FAILED 6/6
-  // checks, so the recorded manifest now carries the honest executed verdict:
-  // accepted:false, verificationClass:"failed", verified-rate 0. A real `failed`
-  // beats a fake `passed`.
-  test("verified-rate is 0 (executed: failed) and wall-clock is the recorded 106s", () => {
+describe("recorded run table — EXECUTED acceptance verdicts (honest red + genuine green)", () => {
+  // Two honest data points now live in the recorded manifest:
+  //   1. The bare-north-star run: running the preserved artifact through the real
+  //      executed acceptance suite (scripts/khala-demo/run-executed-acceptance.mjs)
+  //      FAILED 6/6 (localStorage-on-load crash; no state-contract hooks exposed).
+  //   2. The contract-augmented run on 2026-06-23: the same headless suite ran the
+  //      game and PASSED 6/6 (verified:true, scalarReward 1). This is the genuine
+  //      executed north-star pass. (Gateway prod returned verification:failed on the
+  //      same stream only because its cheap pre-screen rejects CDN-loaded three.js;
+  //      the standalone Playwright runner has no such gate and is authoritative.)
+  // So verified-rate is now 1/2 = 0.5 across the two runs. A real `failed` and a real
+  // `passed` both beat any fake.
+  test("two runs: verified-rate is 0.5 (one executed-fail, one executed-pass)", () => {
     const table = emitMetricTableFromManifest(recordedManifest(), { json: true });
     const parsed = JSON.parse(table);
-    expect(parsed.verifiedRate).toBe(0);
-    expect(parsed.rows).toHaveLength(1);
-    const khala = parsed.rows[0];
-    expect(khala.lane).toBe("khala");
-    expect(khala.wallClock).toBe("1m 46s");
-    expect(khala.verificationClass).toBe("failed");
-    expect(khala.accepted).toBe(false);
+    expect(parsed.verifiedRate).toBe(0.5);
+    expect(parsed.rows).toHaveLength(2);
+    const failRow = parsed.rows.find((r) => r.verificationClass === "failed");
+    const passRow = parsed.rows.find((r) => r.verificationClass === "test_passed");
+    expect(failRow).toBeDefined();
+    expect(failRow.lane).toBe("khala");
+    expect(failRow.wallClock).toBe("1m 46s");
+    expect(failRow.accepted).toBe(false);
+    expect(passRow).toBeDefined();
+    expect(passRow.lane).toBe("khala");
+    expect(passRow.accepted).toBe(true);
   });
 
-  test("tokens and $ are honestly not_measured; cost/accepted-outcome is not_applicable (unaccepted)", () => {
+  test("tokens and $ are honestly not_measured on the recorded runs", () => {
     const parsed = JSON.parse(emitMetricTableFromManifest(recordedManifest(), { json: true }));
-    const khala = parsed.rows[0];
-    expect(khala.tokens).toBe("not_measured");
-    expect(khala.dollars).toBe("not_measured");
-    expect(khala.costPerAcceptedOutcomeUsd).toBe("not_applicable");
-    expect(khala.acceptedOutcomesPerKwh).toBe("not_measured");
-    expect(khala.inWorldVsGatewaySplit).toBe("not_measured");
-    expect(khala.settled).toBe(false);
+    for (const khala of parsed.rows) {
+      expect(khala.tokens).toBe("not_measured");
+      expect(khala.dollars).toBe("not_measured");
+      expect(khala.acceptedOutcomesPerKwh).toBe("not_measured");
+      expect(khala.inWorldVsGatewaySplit).toBe("not_measured");
+      expect(khala.settled).toBe(false);
+    }
   });
 
-  test("renders a Markdown table with the honest verified-rate 0 and no bare $0.00", () => {
+  test("renders a Markdown table with the honest verified-rate 0.5 and no bare $0.00", () => {
     const md = renderMetricTableMarkdown(
       buildMetricTable(reduceKhalaHeadToHeadManifest(recordedManifest())),
     );
-    expect(md).toContain("Verified-rate: 0");
+    expect(md).toContain("Verified-rate: 0.5");
     expect(md).toContain("1m 46s");
     expect(md).toContain("not_measured");
     expect(md).not.toContain("$0.00");
