@@ -160,11 +160,11 @@ describe('app link routing', () => {
       ChangedUrl({ url: appUrl('/f324f23f') }),
     )
 
-    // The homepage route is the pylon scene (root -> Pylon, the launch routing),
-    // so an unknown logged-out URL redirects to Pylon.
+    // The homepage route is the landing scene; Pylon lives at /pylons.
+    // Unknown logged-out URLs redirect home.
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands.map(command => command.name)).toEqual(['RedirectToHome'])
   })
