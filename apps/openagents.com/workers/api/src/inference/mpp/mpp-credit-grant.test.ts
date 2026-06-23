@@ -5,9 +5,13 @@ import { describe, expect, test } from 'vitest'
 
 import { readAgentBalance } from '../../payments-ledger'
 import {
+  mintLightningCredits,
   mintMppCredits,
   mppCreditGrantContextRef,
   mppGrantRef,
+  mppLightningCreditGrantContextRef,
+  mppLightningGrantRef,
+  mppLightningPayerAccountRef,
   mppPayerAccountRef,
 } from './mpp-credit-grant'
 
@@ -78,7 +82,7 @@ CREATE TABLE agent_balances (
 CREATE TABLE pay_ins (
   id TEXT PRIMARY KEY,
   pay_in_type TEXT NOT NULL CHECK (
-    pay_in_type IN ('tip','sweep','buffer_funding','reward','adjustment','usd_credit_grant')
+    pay_in_type IN ('tip','sweep','buffer_funding','reward','adjustment','usd_credit_grant','lightning_charge')
   ),
   payer_ref TEXT NOT NULL,
   cost_msat INTEGER NOT NULL CHECK (cost_msat > 0),
@@ -163,6 +167,57 @@ describe('mpp credit grant (Phase 3 — settled payment -> Khala credits)', () =
     )
     const balance = await readAgentBalance(db, accountRef)
     // Balance reflects ONE grant, not two.
+    expect(balance?.balanceMsat).toBe(first.grantedMsat)
+  })
+})
+
+describe('lightning credit grant (BITCOIN-ORIGIN, not usd_credit_msat)', () => {
+  const HASH =
+    '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+
+  test('mints Bitcoin-origin credit: balance_msat only, usd_credit_msat untouched', async () => {
+    const db = makeDb()
+    const accountRef = mppLightningPayerAccountRef(HASH)
+    const outcome = await run(
+      mintLightningCredits(
+        { db, nowIso: () => NOW },
+        { accountRef, amountSats: 100, paymentHash: HASH },
+      ),
+    )
+    // 100 sats = 100_000 msat.
+    expect(outcome.grantedMsat).toBe(100_000)
+    expect(outcome.grantRef).toBe(mppLightningGrantRef(HASH))
+
+    const balance = await readAgentBalance(db, accountRef)
+    expect(balance?.balanceMsat).toBe(100_000)
+    // RL-3 (the OPPOSITE of the USDC/card rails): real Bitcoin is NOT tagged
+    // usd_credit_msat, so it stays Bitcoin-withdrawable.
+    expect(balance?.usdCreditMsat).toBe(0)
+
+    const payIn = (await db
+      .prepare(`SELECT context_ref, pay_in_type FROM pay_ins WHERE payer_ref = ?`)
+      .bind(accountRef)
+      .first()) as { context_ref?: string; pay_in_type?: string } | null
+    expect(payIn?.pay_in_type).toBe('lightning_charge')
+    expect(payIn?.context_ref).toBe(mppLightningCreditGrantContextRef(HASH))
+  })
+
+  test('is idempotent per paymentHash (a replayed settlement never double-credits)', async () => {
+    const db = makeDb()
+    const accountRef = mppLightningPayerAccountRef(HASH)
+    const first = await run(
+      mintLightningCredits(
+        { db, nowIso: () => NOW },
+        { accountRef, amountSats: 100, paymentHash: HASH },
+      ),
+    )
+    await run(
+      mintLightningCredits(
+        { db, nowIso: () => NOW },
+        { accountRef, amountSats: 100, paymentHash: HASH },
+      ),
+    )
+    const balance = await readAgentBalance(db, accountRef)
     expect(balance?.balanceMsat).toBe(first.grantedMsat)
   })
 })

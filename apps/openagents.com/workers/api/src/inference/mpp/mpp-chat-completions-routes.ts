@@ -46,9 +46,17 @@ import {
 import { isKhalaModel } from '../pricing'
 import {
   type MppCreditGrantOutcome,
+  mintLightningCredits,
   mintMppCredits,
+  mppLightningPayerAccountRef,
   mppPayerAccountRef,
 } from './mpp-credit-grant'
+import {
+  type MintLightningInvoice,
+  LightningInvoiceError,
+} from './mpp-lightning-invoice'
+import { claimLightningPaymentHash } from './mpp-lightning-replay'
+import { readPreimage, verifyLightningPreimage } from './mpp-lightning-verify'
 import {
   type MppChallenge,
   type MppOpaque,
@@ -60,7 +68,7 @@ import {
   parsePaymentCredential,
   verifyCredential,
 } from './mpp-protocol'
-import { type MppRail, quoteMppCall } from './mpp-pricing'
+import { type MppRail, quoteMppCall, quoteMppLightningCall } from './mpp-pricing'
 import { claimSpt, recordSptPaymentIntent } from './mpp-spt-replay'
 import {
   type StripeFetch,
@@ -75,6 +83,9 @@ const DEFAULT_MPP_MODEL = 'openagents/khala-mini'
 // x402 (Base) + MPP (Solana, Tempo) — all USDC. We advertise all three crypto
 // networks; the agent picks one.
 const CRYPTO_NETWORKS: ReadonlyArray<string> = ['base', 'solana', 'tempo']
+// The Lightning rail method name (draft-lightning-charge-00). Bitcoin-first: this
+// is the PREFERRED rail and is surfaced FIRST in the multi-method 402.
+const LIGHTNING_METHOD = 'lightning'
 // The protection-space realm for our challenges (core spec §5.1.1).
 const MPP_REALM = 'openagents.com'
 // Challenge validity window.
@@ -82,6 +93,18 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000
 
 // Parse the KHALA_MPP_ENABLED flag. Default OFF.
 export const isKhalaMppEnabled = (value: string | undefined): boolean => {
+  if (value === undefined) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// Parse the KHALA_MPP_LIGHTNING_ENABLED flag. Default OFF. The Lightning rail is
+// additionally gated on a configured invoice issuer being present (the MDK
+// wallet binding) — see the deps below.
+export const isKhalaMppLightningEnabled = (
+  value: string | undefined,
+): boolean => {
   if (value === undefined) {
     return false
   }
@@ -98,6 +121,15 @@ export type MppChatCompletionsDeps = Readonly<{
   signingSecret: string | undefined
   // The network profile id (`profile_…`) for SPT/card. Absent => crypto-only.
   stripeNetworkProfileId?: string | undefined
+  // The KHALA_MPP_LIGHTNING_ENABLED flag, parsed. Default OFF => no Lightning
+  // rail offered. HONESTY GATE: the Lightning rail is offered ONLY when this is
+  // on AND `mintLightningInvoice` is present (a working invoice issuer) — we
+  // never advertise a rail we cannot fulfill.
+  lightningEnabled?: boolean | undefined
+  // The injectable BOLT11 invoice issuer (the MDK sidecar/route-backed minter in
+  // production; a fake in tests). Absent => no Lightning rail, even if the flag
+  // is on. Real Bitcoin inbound: the verify path is LOCAL (sha256(preimage)).
+  mintLightningInvoice?: MintLightningInvoice | undefined
   // The deps for the underlying Khala completion path (registry, metering hook,
   // etc). The MPP endpoint reuses these so a paid call runs the SAME completion,
   // metering, receipt, and Bitcoin-payout loop as the keyed `/v1/chat/completions`
@@ -137,11 +169,63 @@ const resolveMppModel = (rawBody: Record<string, unknown> | undefined): string =
   return isKhalaModel(requested) ? requested : DEFAULT_MPP_MODEL
 }
 
-// Build the spec-shaped challenge set for a quote. Always includes the crypto
-// rail (one challenge per supported network, all bound to the SAME crypto
-// deposit PaymentIntent recovered from `opaque`); adds the card/SPT rail only
-// when a network profile id is configured. Each challenge's `id` is the HMAC
-// binding computed inside `buildChallenge`.
+// Build a Lightning charge challenge (draft-lightning-charge-00). amount is in
+// SATS, currency "sat"; methodDetails carries the BOLT11 invoice + paymentHash +
+// network (all PUBLIC). The opaque carries the paymentHash (`ph`) and the
+// invoice expiry (`invExp`) so the retry recovers the settlement target + the
+// invoice-expiry signal STATELESSLY. The HMAC `id` is computed inside
+// `buildChallenge`. The preimage NEVER appears here.
+const buildLightningChallenge = (
+  signingSecret: string,
+  input: Readonly<{
+    model: string
+    expires: string
+    amountSats: number
+    bolt11: string
+    paymentHash: string
+    network: string
+    invoiceExpiresAt: string | undefined
+  }>,
+) =>
+  Effect.promise(() =>
+    buildChallenge(signingSecret, {
+      // amountCents is the decoded mirror field; for Lightning it carries the
+      // SAT amount (sat-native, not cents). Documented at the type.
+      amountCents: input.amountSats,
+      currency: 'sat',
+      expires: input.expires,
+      method: LIGHTNING_METHOD,
+      network: input.network,
+      opaque: {
+        amount: String(input.amountSats),
+        ...(input.invoiceExpiresAt === undefined
+          ? {}
+          : { invExp: input.invoiceExpiresAt }),
+        model: input.model,
+        network: input.network,
+        ph: input.paymentHash,
+      },
+      realm: MPP_REALM,
+      request: {
+        amount: String(input.amountSats),
+        currency: 'sat',
+        description: `OpenAgents Khala ${input.model} pay-per-call`,
+        methodDetails: {
+          invoice: input.bolt11,
+          network: input.network,
+          paymentHash: input.paymentHash,
+        },
+        network: input.network,
+      },
+    }),
+  )
+
+// Build the spec-shaped challenge set for a quote. When a pre-built Lightning
+// challenge is supplied it is FIRST (Bitcoin-first / preferred rail). Always
+// includes the crypto rail (one challenge per supported network, all bound to
+// the SAME crypto deposit PaymentIntent recovered from `opaque`); adds the
+// card/SPT rail only when a network profile id is configured. Each challenge's
+// `id` is the HMAC binding computed inside `buildChallenge`.
 const buildChallenges = (
   signingSecret: string,
   input: Readonly<{
@@ -153,10 +237,16 @@ const buildChallenges = (
     cardEnabled: boolean
     cardAmountCents: number
     cardNetworkProfileId: string | undefined
+    // Pre-built Lightning challenge, prepended FIRST when present.
+    lightningChallenge: MppChallenge | undefined
   }>,
 ) =>
   Effect.gen(function* () {
     const challenges: Array<MppChallenge> = []
+    // Bitcoin-first: the Lightning challenge is offered FIRST when armed.
+    if (input.lightningChallenge !== undefined) {
+      challenges.push(input.lightningChallenge)
+    }
     // The opaque correlation data carries the crypto deposit PaymentIntent id
     // so the retry recovers it statelessly. One opaque per crypto rail (all
     // networks share the same deposit-mode PaymentIntent).
@@ -215,10 +305,66 @@ const buildChallenges = (
     return challenges as ReadonlyArray<MppChallenge>
   })
 
+// The Lightning rail is active only when the flag is on AND an invoice issuer is
+// wired (HONESTY GATE: never advertise a rail we cannot fulfill).
+const lightningRailActive = (
+  deps: MppChatCompletionsDeps,
+): MintLightningInvoice | undefined =>
+  deps.lightningEnabled === true && deps.mintLightningInvoice !== undefined
+    ? deps.mintLightningInvoice
+    : undefined
+
+// Mint a Lightning invoice + build the (Bitcoin-first) Lightning challenge for
+// this quote. Best-effort: if the invoice issuer fails we return undefined and
+// the 402 still carries the other rails — we just do not advertise a Lightning
+// rail we could not actually mint an invoice for (honesty gate). The effective
+// challenge expiry is the EARLIER of the challenge TTL and the invoice expiry.
+const buildLightningChallengeForQuote = (
+  deps: MppChatCompletionsDeps,
+  signingSecret: string,
+  mint: MintLightningInvoice,
+  input: Readonly<{ model: string; newId: () => string; challengeExpiresAt: string }>,
+) =>
+  Effect.gen(function* () {
+    const lightningQuote = quoteMppLightningCall({ model: input.model })
+    const minted = yield* mint({
+      amountSats: lightningQuote.amountSats,
+      correlationRef: `mpp:lightning:${input.model}:${input.newId()}`,
+      description: `OpenAgents Khala ${input.model} pay-per-call`,
+    }).pipe(
+      Effect.map(invoice => ({ ok: true as const, invoice })),
+      Effect.catch((error: LightningInvoiceError) =>
+        Effect.succeed({ ok: false as const, reason: error.reason }),
+      ),
+    )
+    if (!minted.ok) {
+      return undefined
+    }
+    // Effective expiry = earlier of challenge TTL and invoice BOLT11 expiry
+    // (spec §"Challenge Expiry and Invoice Expiry"). The challenge `expires`
+    // auth-param MUST NOT be later than the invoice expiry.
+    const challengeExpires =
+      minted.invoice.invoiceExpiresAt !== undefined &&
+      Date.parse(minted.invoice.invoiceExpiresAt) <
+        Date.parse(input.challengeExpiresAt)
+        ? minted.invoice.invoiceExpiresAt
+        : input.challengeExpiresAt
+    return yield* buildLightningChallenge(signingSecret, {
+      amountSats: lightningQuote.amountSats,
+      bolt11: minted.invoice.bolt11,
+      expires: challengeExpires,
+      invoiceExpiresAt: minted.invoice.invoiceExpiresAt,
+      model: input.model,
+      network: minted.invoice.network,
+      paymentHash: minted.invoice.paymentHash,
+    })
+  })
+
 // Issue a fresh 402 (no credential, or a credential we refused). Creates a
 // crypto deposit PaymentIntent for the quote (the address the crypto challenge
-// points at) and builds the bound challenge set. If Stripe cannot quote, returns
-// a clean 503 (never a broken 402).
+// points at) and builds the bound challenge set. When the Lightning rail is
+// armed the Lightning challenge is offered FIRST (Bitcoin-first). If Stripe
+// cannot quote, returns a clean 503 (never a broken 402).
 const issueChallenge = (
   deps: MppChatCompletionsDeps,
   signingSecret: string,
@@ -233,6 +379,18 @@ const issueChallenge = (
     const model = resolveMppModel(rawBody)
     const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
     const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
+    const challengeExpiresAt = epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS)
+
+    // Bitcoin-first: mint the Lightning challenge first (when the rail is armed).
+    const mint = lightningRailActive(deps)
+    const lightningChallenge =
+      mint === undefined
+        ? undefined
+        : yield* buildLightningChallengeForQuote(deps, signingSecret, mint, {
+            challengeExpiresAt,
+            model,
+            newId,
+          })
 
     const created = yield* createCryptoDepositPaymentIntent(stripeDeps, {
       amountCents: cryptoQuote.amountCents,
@@ -256,7 +414,8 @@ const issueChallenge = (
       cryptoAmountCents: cryptoQuote.amountCents,
       cryptoDeposit: created.intent.deposits[0],
       cryptoPaymentIntentId: created.intent.id,
-      expires: epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS),
+      expires: challengeExpiresAt,
+      lightningChallenge,
       model,
     })
 
@@ -306,6 +465,125 @@ const runPaidCompletion = (
       headers,
       status: response.status,
       statusText: response.statusText,
+    })
+  })
+
+// Settle + serve the LIGHTNING rail once a credential passed the generic HMAC
+// verification. Lightning settlement is LOCAL (draft-lightning-charge-00
+// §Verification): no node call. We:
+//   1. recover the bound paymentHash from the verified `opaque` (`ph`);
+//   2. enforce the invoice-expiry signal (`invExp`) — the EARLIER-of expiry —
+//      on top of the challenge expiry the generic verify already checked;
+//   3. verify sha256(payload.preimage) == paymentHash, fail-closed;
+//   4. atomically CONSUME-ONCE on the paymentHash (claim before serve);
+//   5. mint BITCOIN-ORIGIN credit (idempotent per paymentHash, NOT usd_credit),
+//      run the SAME Khala completion, attach a Payment-Receipt whose `reference`
+//      is the paymentHash (NEVER the preimage — bearer secret).
+// Any failure => fresh 402 (never serves unpaid). The preimage is never logged,
+// persisted, or returned.
+const settleAndServeLightning = (
+  request: Request,
+  deps: MppChatCompletionsDeps,
+  verified: Extract<Awaited<ReturnType<typeof verifyCredential>>, { ok: true }>,
+  credential: ParsedPaymentCredential,
+) =>
+  Effect.gen(function* () {
+    const nowMs = (deps.nowMs ?? currentEpochMillis)()
+    const paymentHash = verified.opaque?.ph
+    if (paymentHash === undefined || paymentHash.trim() === '') {
+      return noStoreJsonResponse(
+        { error: 'payment_verification_failed', reason: 'missing_correlation' },
+        { status: 402 },
+      )
+    }
+
+    // (2) Invoice expiry: the EARLIER-of expiry. The generic verify already
+    // rejected a past challenge `expires`; this additionally rejects a past
+    // invoice expiry (spec §"Challenge Expiry and Invoice Expiry").
+    const invExp = verified.opaque?.invExp
+    if (invExp !== undefined && invExp !== '') {
+      const invExpMs = Date.parse(invExp)
+      if (Number.isNaN(invExpMs) || invExpMs <= nowMs) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'expired_invoice' },
+          { status: 402 },
+        )
+      }
+    }
+
+    // (3) Local preimage verification — sha256(preimage) == paymentHash.
+    const preimage = readPreimage(credential.payload)
+    const preimageResult = yield* Effect.promise(() =>
+      verifyLightningPreimage(preimage, paymentHash),
+    )
+    if (!preimageResult.ok) {
+      // malformed-credential vs invalid-preimage (spec problem types). Either
+      // way => fresh 402 (never serve). The preimage value is never echoed.
+      return noStoreJsonResponse(
+        {
+          error: 'payment_verification_failed',
+          reason:
+            preimageResult.reason === 'malformed'
+              ? 'malformed_preimage'
+              : 'invalid_preimage',
+        },
+        { status: 402 },
+      )
+    }
+
+    // (4) Atomic consume-once on the paymentHash (claim BEFORE serve). A replay
+    // collides on the PRIMARY KEY and is refused before a second free serve.
+    const claimed = yield* claimLightningPaymentHash(deps.db, {
+      challengeId: credential.challenge.id,
+      paymentHash,
+    }).pipe(
+      Effect.map(ok => ({ ok: true as const, claimed: ok })),
+      Effect.catch(() => Effect.succeed({ ok: false as const })),
+    )
+    if (!claimed.ok) {
+      return noStoreJsonResponse(
+        { error: 'payment_verification_failed', reason: 'replay_store' },
+        { status: 502 },
+      )
+    }
+    if (!claimed.claimed) {
+      return noStoreJsonResponse(
+        { error: 'payment_verification_failed', reason: 'preimage_replayed' },
+        { status: 402 },
+      )
+    }
+
+    // (5) SETTLED (real Bitcoin). Mint BITCOIN-ORIGIN credit (NOT usd_credit),
+    // idempotent per paymentHash, then run the SAME Khala completion.
+    const amountSats = Number(verified.request.amount)
+    if (!Number.isFinite(amountSats) || amountSats <= 0) {
+      return noStoreJsonResponse(
+        { error: 'payment_verification_failed', reason: 'amount_invalid' },
+        { status: 402 },
+      )
+    }
+    const accountRef = mppLightningPayerAccountRef(paymentHash)
+    const grant = yield* mintLightningCredits(
+      {
+        db: deps.db,
+        ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
+      },
+      { accountRef, amountSats, paymentHash },
+    ).pipe(
+      Effect.map(outcome => ({ ok: true as const, outcome })),
+      Effect.catch(() => Effect.succeed({ ok: false as const } as const)),
+    )
+    if (!grant.ok) {
+      return noStoreJsonResponse(
+        { error: 'credit_grant_failed', reference: paymentHash },
+        { status: 500 },
+      )
+    }
+
+    // Receipt `reference` = the paymentHash (public), NEVER the preimage.
+    return yield* runPaidCompletion(request, deps, grant.outcome, {
+      method: LIGHTNING_METHOD,
+      reference: paymentHash,
     })
   })
 
@@ -547,22 +825,34 @@ export const handleMppChatCompletions = (
     const model = resolveMppModel(rawBody)
     const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
     const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
-    const allowedMethods = cardEnabled
-      ? [...CRYPTO_NETWORKS, 'stripe']
-      : [...CRYPTO_NETWORKS]
+    const lightningActive = lightningRailActive(deps) !== undefined
+    const lightningQuote = quoteMppLightningCall({ model })
+    // Lightning is offered FIRST when armed (Bitcoin-first). Verification only
+    // ACCEPTS a method we actually offered, so a `lightning` credential is
+    // refused unless the rail is armed.
+    const allowedMethods = [
+      ...(lightningActive ? [LIGHTNING_METHOD] : []),
+      ...CRYPTO_NETWORKS,
+      ...(cardEnabled ? ['stripe'] : []),
+    ]
 
     const verified = yield* Effect.promise(() =>
       verifyCredential(signingSecret, credential, {
         allowedMethods,
         expectedCurrencyForMethod: method =>
-          method === 'stripe' ? 'usd' : 'usdc',
-        // The card rail floor is the card quote; crypto uses the crypto quote.
-        // Use the lower of the two so neither rail under-floors; verification
-        // separately binds the exact amount via the HMAC over `request`.
-        expectedMinAmountCents: Math.min(
-          cryptoQuote.amountCents,
-          cardQuote.amountCents,
-        ),
+          method === LIGHTNING_METHOD
+            ? 'sat'
+            : method === 'stripe'
+              ? 'usd'
+              : 'usdc',
+        // Per-method floor: Lightning is sat-native (sats floor), the USDC/card
+        // rails are cent-native (cents floor). Verification separately binds the
+        // exact amount via the HMAC over `request`; this just floors a downward
+        // tamper in the method's native unit.
+        expectedMinAmountCents: method =>
+          method === LIGHTNING_METHOD
+            ? lightningQuote.amountSats
+            : Math.min(cryptoQuote.amountCents, cardQuote.amountCents),
         ...(deps.nowMs === undefined ? {} : { nowMs: deps.nowMs() }),
         realm: MPP_REALM,
       }),
@@ -583,6 +873,11 @@ export const handleMppChatCompletions = (
     }
 
     // ---- VERIFIED: settle for the rail, then serve ----
+    // Lightning settles LOCALLY (no Stripe); the USDC/card rails settle via
+    // Stripe. Dispatch on the verified method.
+    if (verified.method === LIGHTNING_METHOD) {
+      return yield* settleAndServeLightning(request, deps, verified, credential)
+    }
     return yield* settleAndServe(
       request,
       deps,

@@ -162,6 +162,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Absent => the MPP endpoint is fail-safe inert and never issues a challenge or
   // verifies a credential (alongside KHALA_MPP_ENABLED + STRIPE_API_KEY).
   KHALA_MPP_SIGNING_SECRET?: string | undefined
+  // The Lightning rail feature flag for the MPP endpoint (EPIC #6049,
+  // draft-lightning-charge-00). Default OFF: the `/mpp/v1/chat/completions` 402
+  // does NOT offer a Lightning charge until this is armed. Bitcoin-first: when
+  // armed AND a working BOLT11 invoice issuer is present (the MDK wallet binding
+  // — MDK_CHECKOUT_ROUTE_URL + MDK_CHECKOUT_ROUTE_SECRET/MDK_ACCESS_TOKEN, or the
+  // self-hosted MDK_SIDECAR), the Lightning offer is surfaced FIRST in the 402
+  // and the discovery doc. HONESTY GATE: with the flag off OR no invoice issuer,
+  // the Lightning rail is not advertised (we never offer a rail we cannot
+  // fulfill). The crypto/card rails are unaffected. Set "1"/"true"/"yes"/"on".
+  KHALA_MPP_LIGHTNING_ENABLED?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
   // live Worker until those builds land. Set "true"/"1"/"on" to enable. The

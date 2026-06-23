@@ -17,7 +17,14 @@ import {
   type MppChatCompletionsDeps,
   handleMppChatCompletions,
   isKhalaMppEnabled,
+  isKhalaMppLightningEnabled,
 } from './mpp-chat-completions-routes'
+import {
+  type LightningInvoice,
+  type MintLightningInvoice,
+  LightningInvoiceError,
+} from './mpp-lightning-invoice'
+import { sha256Hex } from './mpp-lightning-verify'
 import { buildChallenge, type MppChallenge } from './mpp-protocol'
 import { type StripeFetch } from './stripe-mpp-client'
 
@@ -94,7 +101,7 @@ CREATE TABLE agent_balances (
 CREATE TABLE pay_ins (
   id TEXT PRIMARY KEY,
   pay_in_type TEXT NOT NULL CHECK (
-    pay_in_type IN ('tip','sweep','buffer_funding','reward','adjustment','usd_credit_grant')
+    pay_in_type IN ('tip','sweep','buffer_funding','reward','adjustment','usd_credit_grant','lightning_charge')
   ),
   payer_ref TEXT NOT NULL,
   cost_msat INTEGER NOT NULL CHECK (cost_msat > 0),
@@ -125,6 +132,11 @@ CREATE TABLE mpp_spt_replay (
   spt TEXT PRIMARY KEY,
   challenge_id TEXT NOT NULL,
   payment_intent_id TEXT,
+  consumed_at TEXT NOT NULL
+);
+CREATE TABLE mpp_lightning_replay (
+  payment_hash TEXT PRIMARY KEY,
+  challenge_id TEXT NOT NULL,
   consumed_at TEXT NOT NULL
 );
 `
@@ -726,5 +738,359 @@ describe('MPP endpoint — card/SPT settlement + replay', () => {
     )
     // Only the FIRST attempt hit Stripe with a charge.
     expect(chargeCount).toBe(1)
+  })
+})
+
+// ---- Lightning rail (draft-lightning-charge-00) ----
+
+// A known preimage and the deterministic invoice/paymentHash it pays. The fake
+// issuer returns this invoice; the test pays with this preimage.
+const LIGHTNING_PREIMAGE =
+  '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
+const LIGHTNING_INVOICE = `lnbc100n1p${'a'.repeat(48)}`
+
+const lightningPaymentHash = (): Promise<string> =>
+  sha256Hex(
+    Uint8Array.from(
+      (LIGHTNING_PREIMAGE.match(/.{2}/g) ?? []).map(b => Number.parseInt(b, 16)),
+    ),
+  )
+
+// A fake invoice issuer returning a fixed invoice whose paymentHash is the
+// sha256 of LIGHTNING_PREIMAGE. `invoiceExpiresAt` is overridable for the
+// expiry test; `fail` makes the issuer fail (honesty-gate test).
+const fakeLightningIssuer = (
+  opts: { invoiceExpiresAt?: string; fail?: boolean } = {},
+): { mint: MintLightningInvoice; calls: () => number } => {
+  let calls = 0
+  return {
+    calls: () => calls,
+    mint: () =>
+      Effect.gen(function* () {
+        calls += 1
+        if (opts.fail === true) {
+          return yield* Effect.fail(
+            new LightningInvoiceError('provider_unavailable'),
+          )
+        }
+        const paymentHash = yield* Effect.promise(lightningPaymentHash)
+        const invoice: LightningInvoice = {
+          bolt11: LIGHTNING_INVOICE,
+          network: 'mainnet',
+          paymentHash,
+          ...(opts.invoiceExpiresAt === undefined
+            ? {}
+            : { invoiceExpiresAt: opts.invoiceExpiresAt }),
+        }
+        return invoice
+      }),
+  }
+}
+
+// Parse one `WWW-Authenticate: Payment ...` header for `method` from a 402 and
+// reconstruct the issued challenge shape so a retry can echo it.
+const lightningChallengeFrom402 = (response: Response): MppChallenge | undefined => {
+  const headers = response.headers.get('www-authenticate') ?? ''
+  // getSetCookie-style: multiple headers are comma-joined; split on the scheme.
+  const parts = headers.split(/,\s*(?=Payment\s)/i).map(h => h.trim())
+  for (const part of parts) {
+    const params: Record<string, string> = {}
+    for (const m of part.matchAll(/(\w+)="((?:[^"\\]|\\.)*)"/g)) {
+      params[m[1]!] = m[2]!.replace(/\\"/g, '"')
+    }
+    if (params.method === 'lightning') {
+      return {
+        amountCents: 0,
+        currency: 'sat',
+        expires: params.expires ?? '',
+        id: params.id!,
+        intent: 'charge',
+        method: 'lightning',
+        opaque: params.opaque,
+        realm: params.realm!,
+        request: params.request!,
+      }
+    }
+  }
+  return undefined
+}
+
+const lightningQuoteFetch = (id = 'pi_quote_ln'): StripeFetch => async () =>
+  new Response(
+    JSON.stringify({
+      amount: 1,
+      currency: 'usd',
+      id,
+      next_action: {
+        crypto_display_details: {
+          deposit_addresses: { base: { address: '0xabc', supported_tokens: [] } },
+        },
+      },
+      status: 'requires_payment',
+    }),
+    { status: 200 },
+  )
+
+describe('isKhalaMppLightningEnabled flag', () => {
+  test('default OFF; on for explicit truthy tokens', () => {
+    expect(isKhalaMppLightningEnabled(undefined)).toBe(false)
+    expect(isKhalaMppLightningEnabled('false')).toBe(false)
+    expect(isKhalaMppLightningEnabled('1')).toBe(true)
+    expect(isKhalaMppLightningEnabled('on')).toBe(true)
+  })
+})
+
+describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
+  test('OFFER ORDERING: armed Lightning challenge is emitted FIRST', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: lightningQuoteFetch(),
+        lightningEnabled: true,
+        mintLightningInvoice: issuer.mint,
+        newId: () => 'fixed',
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+    expect(response.status).toBe(402)
+    // The FIRST www-authenticate header is the lightning challenge.
+    const wwwAuth = response.headers.get('www-authenticate') ?? ''
+    const firstChallenge = wwwAuth.split(/,\s*(?=Payment\s)/i)[0] ?? ''
+    expect(firstChallenge).toContain('method="lightning"')
+    // The problem body lists lightning FIRST too.
+    const problem = (await response.json()) as {
+      challenges: Array<{ method: string }>
+    }
+    expect(problem.challenges[0]?.method).toBe('lightning')
+    expect(issuer.calls()).toBe(1)
+  })
+
+  test('INERT: flag OFF => no lightning challenge even with an issuer present', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: lightningQuoteFetch(),
+        lightningEnabled: false,
+        mintLightningInvoice: issuer.mint,
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+    expect(response.status).toBe(402)
+    expect(response.headers.get('www-authenticate') ?? '').not.toContain(
+      'method="lightning"',
+    )
+    expect(issuer.calls()).toBe(0)
+  })
+
+  test('HONESTY GATE: flag ON but no issuer => no lightning challenge', async () => {
+    const db = makeDb()
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: lightningQuoteFetch(),
+        lightningEnabled: true,
+        // mintLightningInvoice omitted => rail not advertised
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+    expect(response.status).toBe(402)
+    expect(response.headers.get('www-authenticate') ?? '').not.toContain(
+      'method="lightning"',
+    )
+  })
+
+  test('PAY LOOP: a valid preimage settles, mints Bitcoin-origin credit, serves 200 + receipt', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: lightningQuoteFetch(),
+      lightningEnabled: true,
+      mintLightningInvoice: issuer.mint,
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    // 1) Drive a 402 and grab the issued lightning challenge.
+    const challengeResp = await run(handleMppChatCompletions(mppRequest(), deps))
+    const challenge = lightningChallengeFrom402(challengeResp)!
+    expect(challenge).toBeDefined()
+    // 2) Retry with the preimage credential.
+    const header = credentialHeader(challenge, { preimage: LIGHTNING_PREIMAGE })
+    const served = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(served.status).toBe(200)
+    // Receipt: method lightning, reference = paymentHash (NEVER the preimage).
+    const receipt = served.headers.get('payment-receipt')
+    expect(receipt).toBeTruthy()
+    const decoded = JSON.parse(
+      Buffer.from(receipt!.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(),
+    ) as { method: string; reference: string }
+    expect(decoded.method).toBe('lightning')
+    const paymentHash = await lightningPaymentHash()
+    expect(decoded.reference).toBe(paymentHash)
+    expect(decoded.reference).not.toBe(LIGHTNING_PREIMAGE)
+    // Bitcoin-origin credit: balance_msat credited, usd_credit_msat NOT bumped.
+    const row = (await (
+      db.prepare(
+        'SELECT balance_msat, usd_credit_msat FROM agent_balances WHERE actor_ref = ?',
+      ).bind(`agent:mpp-lightning:${paymentHash}`) as unknown as {
+        first: () => Promise<{ balance_msat: number; usd_credit_msat: number } | null>
+      }
+    ).first())
+    expect(row).not.toBeNull()
+    expect(Number(row?.usd_credit_msat)).toBe(0)
+    expect(Number(row?.balance_msat)).toBeGreaterThanOrEqual(0)
+    // The pay-in was recorded as lightning_charge (Bitcoin-origin), not usd_credit_grant.
+    const payIn = (await (
+      db.prepare(
+        'SELECT pay_in_type FROM pay_ins WHERE payer_ref = ?',
+      ).bind(`agent:mpp-lightning:${paymentHash}`) as unknown as {
+        first: () => Promise<{ pay_in_type: string } | null>
+      }
+    ).first())
+    expect(payIn?.pay_in_type).toBe('lightning_charge')
+  })
+
+  test('REPLAY: a second use of the same preimage is refused (consume-once)', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: lightningQuoteFetch(),
+      lightningEnabled: true,
+      mintLightningInvoice: issuer.mint,
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const challengeResp = await run(handleMppChatCompletions(mppRequest(), deps))
+    const challenge = lightningChallengeFrom402(challengeResp)!
+    const header = credentialHeader(challenge, { preimage: LIGHTNING_PREIMAGE })
+    const first = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(first.status).toBe(200)
+    const second = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(second.status).toBe(402)
+    expect(((await second.json()) as { reason?: string }).reason).toBe(
+      'preimage_replayed',
+    )
+  })
+
+  test('INVALID PREIMAGE: a wrong preimage is rejected with invalid_preimage', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: lightningQuoteFetch(),
+      lightningEnabled: true,
+      mintLightningInvoice: issuer.mint,
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const challengeResp = await run(handleMppChatCompletions(mppRequest(), deps))
+    const challenge = lightningChallengeFrom402(challengeResp)!
+    const wrong =
+      'ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100'
+    const header = credentialHeader(challenge, { preimage: wrong })
+    const served = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(served.status).toBe(402)
+    expect(((await served.json()) as { reason?: string }).reason).toBe(
+      'invalid_preimage',
+    )
+  })
+
+  test('TAMPERED CHALLENGE: a forged HMAC id is rejected (re-issues 402, no serve)', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: lightningQuoteFetch(),
+      lightningEnabled: true,
+      mintLightningInvoice: issuer.mint,
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const challengeResp = await run(handleMppChatCompletions(mppRequest(), deps))
+    const challenge = lightningChallengeFrom402(challengeResp)!
+    const tampered: MppChallenge = { ...challenge, id: 'forged-id' }
+    const header = credentialHeader(tampered, { preimage: LIGHTNING_PREIMAGE })
+    const served = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    // Verification fails => fresh 402 (never served).
+    expect(served.status).toBe(402)
+  })
+
+  test('EXPIRED INVOICE: a past invoice expiry is rejected (earlier-of expiry)', async () => {
+    const db = makeDb()
+    // Issue an invoice that has ALREADY expired per its BOLT11 expiry.
+    const issuer = fakeLightningIssuer({
+      invoiceExpiresAt: '2000-01-01T00:00:00.000Z',
+    })
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: lightningQuoteFetch(),
+      lightningEnabled: true,
+      mintLightningInvoice: issuer.mint,
+      // now is well past the invoice expiry but the challenge TTL would be future
+      nowMs: () => Date.parse('2026-06-22T12:00:00.000Z'),
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const challengeResp = await run(handleMppChatCompletions(mppRequest(), deps))
+    const challenge = lightningChallengeFrom402(challengeResp)!
+    // The challenge `expires` is clamped to the (past) invoice expiry, so the
+    // generic verify already rejects on challenge expiry => fresh 402.
+    const header = credentialHeader(challenge, { preimage: LIGHTNING_PREIMAGE })
+    const served = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(served.status).toBe(402)
   })
 })

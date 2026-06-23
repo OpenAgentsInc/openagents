@@ -833,6 +833,28 @@ This is the invariant ledger for `openagents`.
   bounded by the available USD balance; the conversion is the single-source rate
   in `workers/api/src/inference/usd-msat-conversion.ts`. Regression coverage:
   `workers/api/src/inference/usd-credit-bridge.test.ts`.
+- MPP rail asset origin (EPIC #6049): a settled machine-payment that funds a
+  Khala completion mints inference credit, and the asset TAG must match the
+  inbound rail. The USDC/card MPP rails (`mintMppCredits`) are USD/Stripe
+  liabilities and are tagged USD-origin (`usd_credit_msat`,
+  NOT Bitcoin-withdrawable), exactly as the card->credit bridge above. The
+  Lightning MPP rail (`mintLightningCredits`, draft-lightning-charge-00) settles
+  REAL Bitcoin (a paid BOLT11 invoice verified LOCALLY by
+  `sha256(preimage)==paymentHash`), so it must NOT be tagged `usd_credit_msat`:
+  it mints a Bitcoin-origin `lightning_charge` pay-in that credits `balance_msat`
+  ONLY (Bitcoin-withdrawable, like a tip), keyed/idempotent per paymentHash.
+  Tagging real Bitcoin as USD-origin (or USD/card as Bitcoin-origin) is a
+  boundary violation. The preimage is a bearer secret: never logged, persisted,
+  or returned; the receipt/replay key is the paymentHash. The Lightning rail is
+  fail-closed inert unless `KHALA_MPP_LIGHTNING_ENABLED` + `KHALA_MPP_ENABLED` +
+  a working MDK BOLT11 invoice issuer are all present (honesty gate: never
+  advertise a rail we cannot fulfill), and consume-once is enforced atomically
+  via `mpp_lightning_replay`. Regression coverage:
+  `workers/api/src/inference/mpp/mpp-lightning-verify.test.ts`,
+  `workers/api/src/inference/mpp/mpp-lightning-replay.test.ts`,
+  `workers/api/src/inference/mpp/mpp-credit-grant.test.ts`, and the Lightning
+  rail cases in
+  `workers/api/src/inference/mpp/mpp-chat-completions-routes.test.ts`.
 
 ## Provider Capacity Marketplace Gate
 

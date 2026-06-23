@@ -337,7 +337,9 @@ import { renderMppDiscoveryDocument } from './inference/mpp-discovery-document'
 import {
   handleMppChatCompletions,
   isKhalaMppEnabled,
+  isKhalaMppLightningEnabled,
 } from './inference/mpp/mpp-chat-completions-routes'
+import { makeMdkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-mdk'
 import {
   isAcceptanceDispatchEnabled,
   makeD1KhalaVerificationStore,
@@ -6644,6 +6646,51 @@ const hostedMdkClientForEnv = (
   )
 }
 
+// The MDK-backed BOLT11 invoice issuer for the Lightning MPP rail (EPIC #6049).
+// Returns undefined when no MDK route is configured (route URL + secret), so the
+// Lightning rail is never offered without a working invoice issuer (honesty
+// gate). POSTs `create_checkout` to the SAME route/sidecar the Forum L402 flow
+// uses (the `self_hosted_mdkd_sidecar` route kind goes through the MDK_SIDECAR
+// container) and reads the RAW bolt11 + paymentHash. The invoice + paymentHash
+// are public (they go into the 402 challenge); the preimage is never seen here.
+const lightningInvoiceIssuerForEnv = (
+  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) => {
+  const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
+  const routeSecret = redactedValue(checkout.routeSecret)
+
+  if (
+    !checkout.configured ||
+    checkout.routeUrl === undefined ||
+    routeSecret === undefined
+  ) {
+    return undefined
+  }
+
+  const routeUrl = checkout.routeUrl
+  const isSidecar = checkout.routeKind === 'self_hosted_mdkd_sidecar'
+
+  const post = async (
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>> => {
+    const request = new Request(routeUrl, {
+      body: JSON.stringify(body),
+      headers: {
+        'content-type': 'application/json',
+        'x-moneydevkit-webhook-secret': routeSecret,
+      },
+      method: 'POST',
+    })
+    const response = isSidecar
+      ? await fetchMdkSidecarRequest(request, env)
+      : await fetch(request)
+    const payload = await response.json().catch(() => ({}))
+    return { ok: response.ok, payload, status: response.status }
+  }
+
+  return makeMdkLightningInvoiceIssuer(post)
+}
+
 const forumL402SigningBoundaryForEnv = async (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
@@ -9893,6 +9940,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         cardRailEnabled:
           env.STRIPE_MPP_NETWORK_PROFILE_ID !== undefined &&
           env.STRIPE_MPP_NETWORK_PROFILE_ID.trim() !== '',
+        // Bitcoin-first Lightning offer: armed flag AND a working MDK invoice
+        // issuer present (the SAME condition that arms the rail in the route).
+        // Honesty gate: omitted when we cannot actually mint an invoice.
+        lightningRailEnabled:
+          isKhalaMppLightningEnabled(env.KHALA_MPP_LIGHTNING_ENABLED) &&
+          lightningInvoiceIssuerForEnv(env) !== undefined,
         mppEnabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
       })
     },
@@ -10248,9 +10301,23 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
+      // Bitcoin-first Lightning rail (EPIC #6049). Offered FIRST when armed:
+      // KHALA_MPP_LIGHTNING_ENABLED on AND an MDK invoice issuer is configured
+      // (the MDK route/sidecar wallet binding). With either absent the issuer is
+      // undefined and the rail is never advertised (honesty gate).
+      const lightningEnabled = isKhalaMppLightningEnabled(
+        env.KHALA_MPP_LIGHTNING_ENABLED,
+      )
+      const mintLightningInvoice = lightningEnabled
+        ? lightningInvoiceIssuerForEnv(env)
+        : undefined
       return handleMppChatCompletions(request, {
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
+        lightningEnabled,
+        ...(mintLightningInvoice === undefined
+          ? {}
+          : { mintLightningInvoice }),
         signingSecret: env.KHALA_MPP_SIGNING_SECRET,
         stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
         stripeSecretKey: env.STRIPE_API_KEY,
