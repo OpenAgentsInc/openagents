@@ -5,6 +5,7 @@ import {
 
 export type InferenceReceiptKind =
   | 'charge'
+  | 'free_allowance'
   | 'usd_credit_grant'
   | 'batch_job_charge'
 
@@ -22,7 +23,7 @@ export type PublicInferenceReceiptProjection = Readonly<{
   caveatRefs: ReadonlyArray<string>
   generatedAt: string
   kind: InferenceReceiptKind
-  ledgerState: 'paid'
+  ledgerState: 'paid' | 'free_allowance'
   receiptRef: string
   schemaVersion: 'openagents.inference.receipt.v1'
   sourceRefs: ReadonlyArray<string>
@@ -36,11 +37,12 @@ export type InferenceReceiptReadStore = Readonly<{
   ) => Promise<InferenceReceiptRecord | null>
 }>
 
-export type InferenceReceiptStore = InferenceReceiptReadStore & Readonly<{
-  listRecentInferenceReceipts: (
-    limit: number,
-  ) => Promise<ReadonlyArray<InferenceReceiptRecord>>
-}>
+export type InferenceReceiptStore = InferenceReceiptReadStore &
+  Readonly<{
+    listRecentInferenceReceipts: (
+      limit: number,
+    ) => Promise<ReadonlyArray<InferenceReceiptRecord>>
+  }>
 
 const unsafePublicReceiptPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|bearer\s+|bolt11|cookie|cs_(?:live|test)_|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|idempotency|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?key|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(invoice|payment|payload|prompt|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|stripe|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
@@ -60,6 +62,13 @@ const kindForRecord = (
     record.payInType === 'adjustment'
   ) {
     return 'batch_job_charge'
+  }
+
+  if (
+    record.receiptRef.startsWith('receipt.inference.free.') &&
+    record.payInType === 'free_allowance'
+  ) {
+    return 'free_allowance'
   }
 
   if (
@@ -96,12 +105,14 @@ export const publicInferenceReceiptFromRecord = (
     ],
     generatedAt,
     kind,
-    ledgerState: 'paid',
+    ledgerState: kind === 'free_allowance' ? 'free_allowance' : 'paid',
     receiptRef: record.receiptRef,
     schemaVersion: 'openagents.inference.receipt.v1',
     sourceRefs: [
       `route:/api/public/inference/receipts/${record.receiptRef}`,
-      `ledger.pay_ins.public_receipt_ref.${kind}`,
+      kind === 'free_allowance'
+        ? 'ledger.inference_free_usage_events.request_id'
+        : `ledger.pay_ins.public_receipt_ref.${kind}`,
     ],
     staleness: liveAtReadStaleness(['pay_ins.public_receipt_ref']),
     stateChangedAt: record.stateChangedAt,
@@ -119,6 +130,11 @@ type InferenceReceiptRow = Readonly<{
   state_changed_at: string
 }>
 
+type FreeInferenceReceiptRow = Readonly<{
+  created_at: string
+  request_id: string
+}>
+
 const rowToInferenceReceiptRecord = (
   row: InferenceReceiptRow,
 ): InferenceReceiptRecord | null =>
@@ -132,6 +148,24 @@ const rowToInferenceReceiptRecord = (
         state: row.state,
         stateChangedAt: row.state_changed_at,
       }
+
+const freeRowToInferenceReceiptRecord = (
+  row: FreeInferenceReceiptRow,
+): InferenceReceiptRecord => ({
+  contextRef: null,
+  createdAt: row.created_at,
+  payInType: 'free_allowance',
+  receiptRef: `receipt.inference.free.${row.request_id}`,
+  state: 'paid',
+  stateChangedAt: row.created_at,
+})
+
+const freeRequestIdFromReceiptRef = (receiptRef: string): string | null => {
+  const prefix = 'receipt.inference.free.'
+  return receiptRef.startsWith(prefix) && receiptRef.length > prefix.length
+    ? receiptRef.slice(prefix.length)
+    : null
+}
 
 export const makeD1InferenceReceiptStore = (
   db: D1Database,
@@ -167,6 +201,26 @@ export const makeD1InferenceReceiptStore = (
       .bind(receiptRef)
       .first<InferenceReceiptRow>()
 
-    return row === null ? null : rowToInferenceReceiptRecord(row)
+    const payInRecord = row === null ? null : rowToInferenceReceiptRecord(row)
+    if (payInRecord !== null) {
+      return payInRecord
+    }
+
+    const requestId = freeRequestIdFromReceiptRef(receiptRef)
+    if (requestId === null) {
+      return null
+    }
+
+    const freeRow = await db
+      .prepare(
+        `SELECT request_id, created_at
+           FROM inference_free_usage_events
+          WHERE request_id = ?
+          LIMIT 1`,
+      )
+      .bind(requestId)
+      .first<FreeInferenceReceiptRow>()
+
+    return freeRow === null ? null : freeRowToInferenceReceiptRecord(freeRow)
   },
 })

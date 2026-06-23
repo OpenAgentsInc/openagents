@@ -2,8 +2,8 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type {
-  InferenceReceiptRecord,
   InferenceReceiptReadStore,
+  InferenceReceiptRecord,
 } from './inference-receipts'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 
@@ -107,6 +107,30 @@ describe('public inference receipt routes', () => {
 
     expect(response.status).toBe(200)
     expect(body.receipt.kind).toBe('usd_credit_grant')
+  })
+
+  test('serves free allowance inference receipts without account or amount material', async () => {
+    const response = await route(
+      storeFor([
+        receiptRecord({
+          payInType: 'free_allowance',
+          receiptRef: 'receipt.inference.free.chatcmpl_free',
+        }),
+      ]),
+      'receipt.inference.free.chatcmpl_free',
+    )
+    const body = (await response.json()) as Record<string, any>
+
+    expect(response.status).toBe(200)
+    expect(body.receipt).toMatchObject({
+      kind: 'free_allowance',
+      ledgerState: 'free_allowance',
+      receiptRef: 'receipt.inference.free.chatcmpl_free',
+      schemaVersion: 'openagents.inference.receipt.v1',
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /agent:|amountMsat|amount_msat|billing_ledger|cost_msat|invoice|lnbc|payment_hash|preimage|wallet/i,
+    )
   })
 
   test('serves paid inference batch-job-charge receipts', async () => {

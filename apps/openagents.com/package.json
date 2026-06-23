@@ -44,6 +44,7 @@
     "smoke:forum:void": "node scripts/forum-void-smoke.mjs",
     "smoke:tassadar:live-page": "node scripts/tassadar-live-page-smoke.mjs",
     "smoke:activity:proof-links": "node scripts/public-activity-proof-links-smoke.mjs",
+    "smoke:khala:gateway-readiness": "node scripts/khala-gateway-readiness-smoke.mjs",
     "smoke:visibility:browser": "node scripts/visibility-browser-smoke.mjs",
     "lint": "eslint .",
     "format": "prettier -w .",
