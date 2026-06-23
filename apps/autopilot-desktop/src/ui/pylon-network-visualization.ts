@@ -82,5 +82,12 @@ export function pylonNetworkVisualizationOptions(
     pulseSpeed,
     nodes: [centerNode, ...pylonNodes],
     worldLabelDensity: "compact",
+    // Glow up the pylon network: route the render loop through the HDR bloom
+    // composer so the pylon stations + their connections read as energy in the
+    // dark scene (graphics audit A1/A2/A3). The pylon stations, fat connection
+    // cores, gateway portals, and active-pylon spark accents carry HDR signal
+    // (color above 1.0); the threshold near 1.0 means HUD/world text — which
+    // clamps at/below 1.0 — never smears.
+    bloom: { enabled: true },
   }
 }

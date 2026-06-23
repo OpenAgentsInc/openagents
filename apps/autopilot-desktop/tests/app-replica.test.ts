@@ -517,33 +517,45 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
         await replica.click(SLOT_2) // arc on (no portal yet)
         expect(await spawnedCount(replica)).toBe(1)
         expect((await verseState(replica)).spawnedPortalCount).toBe(0)
-        await replica.stepFrames(90)
 
         const FRAME: PixelRegion = { x0: 0, y0: 0, x1: 1, y1: 1 }
-        const arcOnly = scoreRegion(
+        // The crackling arc's per-strand opacity + geometry OSCILLATE over two
+        // incommensurate cycles, so a single whole-frame bright-pixel count swings
+        // by more than the (steady) portal's contribution. Comparing two frames at
+        // DIFFERENT arc phases is fragile (a dimmer arc phase can swamp the
+        // portal's pixels) — the historical source of this test's flakiness. To
+        // isolate the portal's contribution we hold the arc phase FIXED across the
+        // toggle: settle the arc, then capture portal-OFF and portal-ON only ONE
+        // frame apart, so the arc barely advances and the bright-pixel delta is
+        // the portal's geometry, not arc-phase noise. (Deterministic fake clock.)
+        await replica.stepFrames(120)
+
+        const portalOffBefore = scoreRegion(
           decodePng(Buffer.from(await replica.screenshot(), "base64")),
           FRAME,
         ).brightPixels
 
-        // Toggle the gateway portal ON (slot 3) and let its rings render.
+        // Toggle the gateway portal ON (slot 3); step a single frame so the live
+        // reconcile applies and the rings render at essentially the same arc phase.
         await replica.click(SLOT_3)
         expect((await verseState(replica)).spawnedPortalCount).toBe(1)
-        await replica.stepFrames(120)
+        await replica.stepFrames(1)
         const withPortalShot = await replica.screenshot(ARC_PROOF_PNG)
         const withPortal = scoreRegion(
           decodePng(Buffer.from(withPortalShot, "base64")),
           FRAME,
         ).brightPixels
 
-        // The portal added rendered geometry: the frame has MORE bright pixels
-        // than the arc-only frame. A never-rendered portal (the slot-3 bug) would
-        // leave the count unchanged.
-        expect(withPortal).toBeGreaterThan(arcOnly)
+        // The portal added rendered geometry: at the held arc phase the frame has
+        // MORE bright pixels than the immediately-prior portal-off frame. A
+        // never-rendered portal (the slot-3 bug) would leave the count unchanged.
+        expect(withPortal).toBeGreaterThan(portalOffBefore)
 
-        // Toggling it OFF removes that geometry again (live reconcile both ways).
+        // Toggling it OFF removes that geometry again (live reconcile both ways),
+        // captured one frame later at essentially the same arc phase.
         await replica.click(SLOT_3)
         expect((await verseState(replica)).spawnedPortalCount).toBe(0)
-        await replica.stepFrames(120)
+        await replica.stepFrames(1)
         const portalOff = scoreRegion(
           decodePng(Buffer.from(await replica.screenshot(), "base64")),
           FRAME,
