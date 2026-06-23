@@ -558,6 +558,24 @@ state. The headless snapshot is for support and service-manager runs: it shows
 refs, blockers, readiness, and recovery gates without exposing raw wallet
 material, provider tokens, private repo content, or local cache paths.
 
+## Multi-Earning Ledger (cross-mode projection)
+
+```sh
+pylon multi-earning ledger --json
+```
+
+A read-only, no-network projection of the local cross-mode earning ledger for
+`pylon.v0_3_multi_earning_node.v1`. It rolls per-mode earning records into a
+node-level summary, distinguishes the `modeled`/`observed`/`pending`/`paid`/`settled`
+amount classes, and honestly counts how many distinct modes carry a SETTLED
+receipt (the `>=2` bar). It is INERT by default — with
+`PYLON_MULTI_EARNING_LEDGER_ENABLED` off it emits an empty projection
+(`inert: true`, zero settled modes, promise `red`) and ingests no live earning
+records. It moves no money, reads no wallet, and never prints raw payment
+material; amounts are aggregate sats only. The green flip stays owner-signed.
+See `docs/promises/2026-06-23-pylon-multi-earning-node-receipt-machinery.md` in
+the repo root.
+
 ## Release Gate
 
 ```sh

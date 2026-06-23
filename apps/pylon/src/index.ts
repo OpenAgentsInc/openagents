@@ -218,6 +218,7 @@ import {
   type PylonAssignmentLease,
 } from "./assignment.js"
 import { discoverHostInventory } from "./inventory.js"
+import { summarizeMultiEarning } from "./multi-earning-ledger.js"
 import {
   autoUpdateDisabledReason,
   checkForUpdate,
@@ -2909,6 +2910,22 @@ async function main() {
   if (args[0] === "inventory" && args.includes("--json")) {
     const inventory = await discoverHostInventory({ env: Bun.env })
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`)
+    return
+  }
+
+  // `pylon multi-earning ledger` — INERT, read-only, no-network cross-mode
+  // earning projection for pylon.v0_3_multi_earning_node.v1. With the flag off
+  // (default) it emits an honest empty projection: zero settled modes, the bar
+  // unmet, the promise red, and the three remaining owner-gated blockers named.
+  // It moves no money, reads no wallet, and ingests no live earning records;
+  // the live earning paths feed it only when an operator wires real settled
+  // receipts. This is the dereferenceable receipt that addresses
+  // `multi_earning_mode_receipts_missing` — the green flip stays owner-signed.
+  if (args[0] === "multi-earning") {
+    const summary = summarizeMultiEarning([], new Date().toISOString(), {
+      env: Bun.env,
+    })
+    process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`)
     return
   }
 
