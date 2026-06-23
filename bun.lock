@@ -371,6 +371,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/durable-stream": {
+      "name": "@openagentsinc/durable-stream",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/input-bindings": {
       "name": "@openagentsinc/input-bindings",
       "version": "0.1.0",
@@ -1067,6 +1078,8 @@
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
     "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
+
+    "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
 
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
 
