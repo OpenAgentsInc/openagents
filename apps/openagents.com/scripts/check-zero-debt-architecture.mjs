@@ -366,7 +366,18 @@ const budgetChecks = [
     // the sibling `handlePublicArtanisLaborReceiptsApi` already counted here, is
     // no-store and mints no authority. Ratchet back down when these Artanis read
     // handlers are extracted behind shared route mappers.
-    budget: 106,
+    // +1 (106 -> 107) on 2026-06-23 (EPIC #6049) for the MPP service-discovery
+    // document renderer in inference/mpp-discovery-document.ts
+    // (`renderMppDiscoveryDocument` `Effect.Effect<Response>`, mounted from
+    // index.ts at `GET /openapi.json`). It serves the OpenAPI 3.1 discovery doc
+    // the MPP registries (MPPScan, mpp.dev/services) crawl to light the Machine
+    // Payments badge; the paid path's offers + 402 are gated behind the same
+    // KHALA_MPP_ENABLED flag the route reads, so an inert endpoint advertises
+    // nothing payable. It returns `Effect.Effect<Response>` like the sibling
+    // crawlable discovery-surface renderer already counted here, is public +
+    // cacheable, mints no authority, and never charges. Ratchet back down when
+    // these discovery handlers are extracted behind shared route mappers.
+    budget: 107,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

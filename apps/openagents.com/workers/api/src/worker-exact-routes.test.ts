@@ -120,6 +120,7 @@ const approvedExactRoutePaths = [
   '/agents.md',
   '/ai.md',
   '/skill.md',
+  '/openapi.json',
   '/api/openapi.json',
   '/api/omni/sdk-seed',
   '/api/developer/signature-packages/validate',
