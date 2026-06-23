@@ -99,7 +99,7 @@ const incompleteAuth = {
 }
 
 describe('startup route policy', () => {
-  test('keeps logged-out root visitors on the public Pylon scene', () => {
+  test('keeps logged-out visitors on the public Pylon scene (now at /pylons)', () => {
     expect(startupRouteForLoggedOut(PylonRoute())).toEqual({
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
@@ -434,7 +434,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
   })
 
@@ -509,7 +509,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
   })
 
@@ -522,7 +522,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
   })
 
@@ -535,7 +535,7 @@ describe('startup route policy', () => {
         _tag: 'Some',
         value: { _tag: 'StartupRedirectToHome', href: '/' },
       },
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
   })
 

@@ -27,7 +27,7 @@ describe('logged-out nav + copy update', () => {
     expect(commandNames(commands)).toEqual(['NavigateToTassadar'])
   })
 
-  test('ClickedExitKhala returns to /landing (shared by both info pages)', () => {
+  test('ClickedExitKhala returns home to / (shared by both info pages)', () => {
     const [, commands] = update(model, ClickedExitKhala())
     expect(commandNames(commands)).toEqual(['NavigateToLanding'])
   })

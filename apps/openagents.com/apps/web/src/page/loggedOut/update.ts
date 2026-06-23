@@ -67,7 +67,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { khalaRouter, landingRouter, tassadarRouter } from '../../route'
+import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
   applySettledFeedPatch,
@@ -724,7 +724,9 @@ export const NavigateToTassadar = Command.define(
 export const NavigateToLanding = Command.define(
   'NavigateToLanding',
   CompletedNavigateToLanding,
-)(pushUrl(landingRouter()).pipe(Effect.as(CompletedNavigateToLanding())))
+  // Landing IS home now (root `/`), so the back button on /khala and
+  // /tassadar pushes the root and flies the camera home.
+)(pushUrl(homeRouter()).pipe(Effect.as(CompletedNavigateToLanding())))
 
 const publicAgentIdForRef = (agentRef: string): string => {
   const knownAgentIds: Readonly<Record<string, string>> = {
