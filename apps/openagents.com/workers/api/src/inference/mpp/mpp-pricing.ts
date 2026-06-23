@@ -19,6 +19,7 @@ import {
   DEFAULT_MARGIN,
   priceRequest,
 } from '../pricing'
+import { usdToSatsCeil } from '../usd-msat-conversion'
 
 // MPP / Stripe microtransaction floor: individual charges can be as low as
 // 0.01 USDC (Stripe machine-payments docs). We never quote below this.
@@ -28,6 +29,11 @@ export const MPP_MIN_USDC = 0.01
 // (Stripe MPP docs). Used for the card challenge floor only; crypto uses
 // MPP_MIN_USDC.
 export const SPT_MIN_USD = 0.5
+
+// Lightning microtransaction floor in SATS. Lightning settles real Bitcoin and
+// supports true micropayments, so the floor is 1 sat (an invoice must be a
+// positive integer number of sats). This is a sat-native floor, not a USD one.
+export const LIGHTNING_MIN_SATS = 1
 
 // Representative per-call token budget used to size the flat quote. A typical
 // single-turn Khala call is on the order of a few hundred prompt tokens and a
@@ -98,5 +104,56 @@ export const quoteMppCall = (
     model: priced.model,
     priceUsd,
     rail: input.rail,
+  }
+}
+
+export type MppLightningQuote = Readonly<{
+  // The model the quote was priced against (canonical).
+  model: string
+  // The per-call price in SATS for the BOLT11 invoice. Always >= the sat floor.
+  amountSats: number
+  // The pre-conversion per-call price in USD (Bitcoin funding rate), retained
+  // for parity reporting/logging. NOT what the invoice is denominated in.
+  priceUsd: number
+}>
+
+// Derive the flat per-call Lightning quote for a model, in SATS. PURE. Lightning
+// settles REAL Bitcoin, so unlike the USDC/card rails it is priced at the
+// BITCOIN funding rate (it earns the Bitcoin funding discount — owner
+// Bitcoin-first priority), then converted to sats at the SAME single-source
+// BTC/USD rate the metering hook uses (`usdToSatsCeil`), and clamped to the
+// 1-sat invoice floor. The runtime 402 challenge re-quotes the requested model
+// and remains authoritative.
+export const quoteMppLightningCall = (
+  input: Readonly<{
+    model: string
+    margin?: number
+    promptTokens?: number
+    completionTokens?: number
+  }>,
+): MppLightningQuote => {
+  const priced = priceRequest({
+    fundingKind: 'bitcoin' as FundingKind,
+    margin: input.margin ?? DEFAULT_MARGIN,
+    model: input.model,
+    usage: {
+      completionTokens:
+        input.completionTokens ?? REPRESENTATIVE_COMPLETION_TOKENS,
+      promptTokens: input.promptTokens ?? REPRESENTATIVE_PROMPT_TOKENS,
+      totalTokens:
+        (input.promptTokens ?? REPRESENTATIVE_PROMPT_TOKENS) +
+        (input.completionTokens ?? REPRESENTATIVE_COMPLETION_TOKENS),
+    },
+  })
+
+  const amountSats = Math.max(
+    LIGHTNING_MIN_SATS,
+    usdToSatsCeil(priced.chargeUsd),
+  )
+
+  return {
+    amountSats,
+    model: priced.model,
+    priceUsd: priced.chargeUsd,
   }
 }

@@ -58,7 +58,15 @@ export type MppOpaque = Readonly<{
   amount?: string | undefined
   network?: string | undefined
   model?: string | undefined
-}>
+  // Lightning rail: the BOLT11 paymentHash (lowercase hex) we stash so the retry
+  // recovers the settlement target statelessly. PUBLIC (not the preimage). When
+  // present, the challenge is a Lightning charge.
+  ph?: string | undefined
+  // Lightning rail: the invoice's BOLT11 expiry (RFC 3339), so verification can
+  // enforce the EARLIER of challenge expiry and invoice expiry (spec
+  // §"Challenge Expiry and Invoice Expiry").
+  invExp?: string | undefined
+}>;
 
 // One accepted payment method on the 402 challenge (server-side shape before
 // HMAC id computation; the id is filled by buildChallengeHeader).
@@ -362,8 +370,11 @@ export const verifyCredential = async (
     allowedMethods: ReadonlyArray<string>
     // The currency we expect for the credential's method.
     expectedCurrencyForMethod: (method: string) => string
-    // The minimum amount in minor units we expect (>= floors a downward tamper).
-    expectedMinAmountCents: number
+    // The minimum amount in the METHOD'S native minor unit we expect (>= floors
+    // a downward tamper). A number applies to every method; a function lets a
+    // sat-native method (Lightning, currency "sat") floor in sats while the
+    // cent-native rails (USDC/card) floor in cents.
+    expectedMinAmountCents: number | ((method: string) => number)
     nowMs?: number | undefined
   }>,
 ): Promise<CredentialVerifyResult> => {
@@ -416,10 +427,11 @@ export const verifyCredential = async (
     return { ok: false, reason: 'request-mismatch' }
   }
   const amountCents = Number(amount)
-  if (
-    !Number.isFinite(amountCents) ||
-    amountCents < expectations.expectedMinAmountCents
-  ) {
+  const minAmount =
+    typeof expectations.expectedMinAmountCents === 'function'
+      ? expectations.expectedMinAmountCents(echoed.method)
+      : expectations.expectedMinAmountCents
+  if (!Number.isFinite(amountCents) || amountCents < minAmount) {
     return { ok: false, reason: 'request-mismatch' }
   }
   if (
@@ -477,8 +489,10 @@ const decodeOpaque = (opaqueB64: string): MppOpaque | undefined => {
   }
   return {
     amount: readString(record, 'amount'),
+    invExp: readString(record, 'invExp'),
     model: readString(record, 'model'),
     network: readString(record, 'network'),
+    ph: readString(record, 'ph'),
     pi: readString(record, 'pi'),
   }
 }

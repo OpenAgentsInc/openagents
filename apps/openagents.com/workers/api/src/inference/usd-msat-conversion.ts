@@ -40,6 +40,18 @@ export const usdToMsatCeil = (
   return Math.max(1, Math.ceil(msat - FLOAT_DUST))
 }
 
+// Convert a USD charge to integer SATOSHIS at a given BTC/USD rate, rounding UP
+// (1 sat = 1000 msat). Used by the Lightning MPP rail to size a BOLT11 invoice
+// in sats from the same per-call USD quote the other rails price against, at the
+// SAME single-source BTC/USD rate. A zero/negative/non-finite charge maps to 0.
+export const usdToSatsCeil = (
+  chargeUsd: number,
+  btcUsd: number = DEFAULT_BTC_USD,
+): number => {
+  const msat = usdToMsatCeil(chargeUsd, btcUsd)
+  return msat <= 0 ? 0 : Math.ceil(msat / 1000)
+}
+
 // Convert USD CENTS to integer msat, rounding DOWN so a credit grant never
 // over-credits the buyer beyond the dollars they actually paid (the grant must
 // be bounded by — and never exceed — the USD debited). A zero/negative/
