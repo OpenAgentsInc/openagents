@@ -339,6 +339,8 @@ export const browserCommandProductIntents = {
   LoadWorkroomSurface: 'workroom.delivery.surface.load',
   LogError: 'telemetry.error.log',
   NavigateInternal: 'navigation.internal.navigate',
+  NavigateToKhala: 'public.khala.navigate',
+  NavigateToLanding: 'public.landing.navigate',
   PollProviderDeviceLogin: 'providers.chatgpt-device-login.poll',
   PostTeamChatMessage: 'workroom.chat.team.message.post',
   RaiseBrowserNotifications: 'notifications.browser.raise',

@@ -17,13 +17,15 @@ import { ClickedExitKhala } from '../message'
 // Truthfulness rules (grounded in docs/inference/khala.md, AGENTS.md, and the
 // live gateway in workers/api/src/inference):
 //   - First-person plural "We are Khala". Never name an underlying provider.
-//   - Only the two live model ids: `openagents/khala-mini`, `openagents/khala-code`.
+//   - Only the two public model ids: `openagents/khala-mini`, `openagents/khala-code`.
 //   - Base URL `https://openagents.com/v1`, OpenAI-compatible `/chat/completions`,
 //     streaming via SSE (`"stream": true`).
 //   - API keys come from the agent registration flow (`POST /api/agents/register`
 //     -> `oa_agent_...` token, used as `Authorization: Bearer`).
-//   - Verified work / receipts / credits + card/Bitcoin are framed honestly,
-//     without promising capabilities we do not ship.
+//   - Launch posture is public explainer/API preview + owner-gated dogfood until
+//     readiness, billing, and receipt proof gates are dereferenceable.
+//   - Verified work / receipts / credits + card/Bitcoin are framed as gated
+//     capabilities unless the public receipt proof exists.
 
 // --- design tokens (Protoss house style — see root DESIGN.md) -----------------
 
@@ -62,8 +64,7 @@ const eyebrowClass =
   'inline-flex items-center gap-2 font-mono text-[0.7rem] font-semibold uppercase ' +
   'tracking-[0.32em] text-[#8fb6ff]'
 
-const eyebrowDotClass =
-  'h-1.5 w-1.5 rounded-full bg-[#4fd0ff] khala-pulse'
+const eyebrowDotClass = 'h-1.5 w-1.5 rounded-full bg-[#4fd0ff] khala-pulse'
 
 const h1Class =
   'mt-6 font-mono text-[clamp(3rem,9vw,5.5rem)] font-bold leading-[0.95] tracking-[-0.04em] ' +
@@ -105,7 +106,8 @@ const cardClass =
   'transition-all duration-300 ease-out hover:border-[#3a7bff]/55 hover:bg-[#101926] ' +
   'hover:khala-glow motion-reduce:transition-none'
 
-const cardTitleClass = 'font-mono text-sm font-bold tracking-[-0.01em] text-[#7fc4ff]'
+const cardTitleClass =
+  'font-mono text-sm font-bold tracking-[-0.01em] text-[#7fc4ff]'
 
 const cardBodyClass = 'mt-3 font-mono text-sm leading-relaxed text-[#c2ccd8]'
 
@@ -241,10 +243,7 @@ export const view = (): Html => {
   )
 
   return h.div(
-    [
-      h.DataAttribute('route', 'khala'),
-      Ui.className<Message>(pageClass),
-    ],
+    [h.DataAttribute('route', 'khala'), Ui.className<Message>(pageClass)],
     [
       backButton,
       h.main(
@@ -265,7 +264,15 @@ export const view = (): Html => {
             [
               'We are Khala — one OpenAI-compatible endpoint over a network of agents. ' +
                 'You call a single API. Underneath, requests are routed and orchestrated across a pool ' +
-                'of models, tools, and validators, with verified work and public receipts.',
+                'of models, tools, and validators, with receipt-backed routing and verification evidence.',
+            ],
+          ),
+          h.p(
+            [Ui.className<Message>(noteClass)],
+            [
+              'Launch status: public explainer and API preview. Owner-gated dogfood is active as the ' +
+                'gateway readiness, billing, and production receipt proof gates are completed. Treat ' +
+                'broad paid-launch claims as pending until those receipts are linked.',
             ],
           ),
 
@@ -280,15 +287,16 @@ export const view = (): Html => {
                   'Khala is a single inference endpoint that behaves like one model but is an agent ' +
                     'network underneath. To your code it is just an OpenAI-compatible Chat Completions API. ' +
                     'Behind that one surface, Khala routes each request across a pool of models and ' +
-                    'validators, picks a lane, runs the work, and returns the answer — plus a receipt ' +
-                    'describing what actually happened.',
+                    'validators, picks a lane, runs the work, and returns the answer with receipt fields ' +
+                    'describing what actually happened when the gateway path is armed.',
                 ],
               ),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'The contract is always "one Khala endpoint." Each response discloses which concrete ' +
-                    'worker served it, so you can see the route without changing how you call the API.',
+                  'The contract is always "one Khala endpoint." Successful gateway responses disclose ' +
+                    'which concrete worker served them, so you can see the route without changing how ' +
+                    'you call the API.',
                 ],
               ),
             ],
@@ -302,9 +310,9 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Two models are live today. Pass the model id in the standard OpenAI ',
+                  'Two model ids define the current Khala API contract. Pass the model id in the standard OpenAI ',
                   h.code([Ui.className<Message>(inlineCodeClass)], ['model']),
-                  ' field.',
+                  ' field; production availability follows the owner-armed gateway readiness state.',
                 ],
               ),
               h.div(
@@ -320,8 +328,8 @@ export const view = (): Html => {
                       h.p(
                         [Ui.className<Message>(cardBodyClass)],
                         [
-                          'The cheap default. A cheapest-viable router over the pool — a good fit for ' +
-                            'agents, chat, and general text work.',
+                          'The default preview lane. It targets cheap general text work while receipt ' +
+                            'proof and production readiness gates are completed.',
                         ],
                       ),
                     ],
@@ -336,8 +344,8 @@ export const view = (): Html => {
                       h.p(
                         [Ui.className<Message>(cardBodyClass)],
                         [
-                          'Coding-optimized. Can run tests and verification commands and returns a ' +
-                            'verification verdict in the receipt.',
+                          'Coding-optimized. It reports verification state in the receipt, with ' +
+                            '`verified: true` reserved for an executed `test_passed` verifier result.',
                         ],
                       ),
                     ],
@@ -385,8 +393,11 @@ export const view = (): Html => {
                     ['chat.completion.chunk'],
                   ),
                   ' deltas, and the final chunk carries an ',
-                  h.code([Ui.className<Message>(inlineCodeClass)], ['openagents']),
-                  ' block with the route and receipt. Clients that do not recognize that ' +
+                  h.code(
+                    [Ui.className<Message>(inlineCodeClass)],
+                    ['openagents'],
+                  ),
+                  ' block with the route and receipt fields when the gateway has metered the request. Clients that do not recognize that ' +
                     'block simply ignore it, so existing OpenAI SDKs work unchanged.',
                 ],
               ),
@@ -401,8 +412,8 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Khala uses OpenAgents agent tokens. Register an agent to get one — no auth required ' +
-                    'to register.',
+                  'Khala uses OpenAgents agent tokens. Register an agent to get one. Account funding ' +
+                    'and broad production access are still gated by the current launch-readiness proof.',
                 ],
               ),
               h.div(
@@ -522,16 +533,17 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Khala is pay-per-call and per-token. Usage is billed in credits and metered from ' +
-                    'the receipt, never from an estimate. Fund your account with a card or with Bitcoin — ' +
-                    'Bitcoin carries a small discount funded by the card-processing fees we save.',
+                  'Khala is designed for pay-per-call, per-token usage. In the current launch posture, ' +
+                    'owner-gated dogfood and proof smokes are metered from receipts while broad card, ' +
+                    'Bitcoin, and MPP funding remain behind production proof gates.',
                 ],
               ),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Every call returns a dereferenceable receipt with token counts and metered cost, so ' +
-                    'spend is auditable rather than opaque.',
+                  'When the paid gateway path is armed, spend claims should point to dereferenceable ' +
+                    'receipts with token counts and metered cost. Until then, public copy should stay ' +
+                    'at API-preview and dogfood language.',
                 ],
               ),
             ],
@@ -545,24 +557,28 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'What sets Khala apart from a plain router is evidence. Every response carries an ',
-                  h.code([Ui.className<Message>(inlineCodeClass)], ['openagents']),
-                  ' block: which lane served the request, the metered cost, and a receipt id you ' +
-                    'can dereference. For ',
+                  'What sets Khala apart from a plain router is evidence. Successful gateway responses carry an ',
+                  h.code(
+                    [Ui.className<Message>(inlineCodeClass)],
+                    ['openagents'],
+                  ),
+                  ' block: which lane served the request, what was measured, and the receipt id when ' +
+                    'that path is armed. For ',
                   h.code(
                     [Ui.className<Message>(inlineCodeClass)],
                     ['openagents/khala-code'],
                   ),
-                  ', the receipt records a verification verdict — for example, that tests passed.',
+                  ', pre-screen results stay distinct from executed verifier results; `verified: true` ' +
+                    'requires an executed `test_passed` callback with verifier receipt, command, and worker provenance.',
                 ],
               ),
               h.p(
                 [Ui.className<Message>(noteClass)],
                 [
                   'Khala is built in the open and shipping in phases. Verification classes and public ' +
-                    'usage receipts are live now; learned coordination, contributor worker payouts, and ' +
-                    'machine-payable settlement are on the roadmap. We say so plainly rather than ' +
-                    'over-claiming.',
+                    'receipt shapes are visible now; learned coordination, contributor worker payouts, ' +
+                    'billing/MPP proof, and machine-payable settlement stay gated until exact receipts ' +
+                    'support broader claims. We say so plainly rather than over-claiming.',
                 ],
               ),
             ],
