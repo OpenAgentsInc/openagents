@@ -10,6 +10,7 @@ import {
   AutopilotRoute,
   AutopilotVerticalRoute,
   AutopilotWorkRoute,
+  NotFoundRoute,
   urlToAppRoute,
 } from './route'
 
@@ -112,7 +113,7 @@ const renderHtml = (html: Html): string => {
 }
 
 describe('autopilot onboarding route', () => {
-  test('parses /autopilot and /autopilot/<vertical>, leaving /autopilot/work for the cockpit', () => {
+  test('parses /autopilot and /autopilot/legal, leaving /autopilot/work for the cockpit', () => {
     expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(AutopilotRoute())
     expect(urlToAppRoute(appUrl('/autopilot/legal'))).toEqual(
       AutopilotVerticalRoute({ vertical: 'legal' }),
@@ -120,6 +121,15 @@ describe('autopilot onboarding route', () => {
     // The cockpit sub-route still wins over the optional vertical segment.
     expect(urlToAppRoute(appUrl('/autopilot/work'))).toEqual(
       AutopilotWorkRoute(),
+    )
+  })
+
+  test('does not claim arbitrary or deeper autopilot verticals as live onboarding pages', () => {
+    expect(urlToAppRoute(appUrl('/autopilot/foo'))).toEqual(
+      NotFoundRoute({ path: '/autopilot/foo' }),
+    )
+    expect(urlToAppRoute(appUrl('/autopilot/legal/foo'))).toEqual(
+      NotFoundRoute({ path: '/autopilot/legal/foo' }),
     )
   })
 
