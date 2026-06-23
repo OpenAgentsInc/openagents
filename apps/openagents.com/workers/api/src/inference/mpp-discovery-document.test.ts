@@ -74,14 +74,34 @@ const isValidPaymentInfo = (value: unknown): boolean => {
   return isValidOffer(value)
 }
 
-const ARMED: MppDiscoveryFlags = { cardRailEnabled: true, mppEnabled: true }
-const ARMED_CRYPTO_ONLY: MppDiscoveryFlags = {
-  cardRailEnabled: false,
+const ARMED: MppDiscoveryFlags = {
+  cardRailEnabled: true,
+  lightningRailEnabled: false,
   mppEnabled: true,
 }
-const INERT: MppDiscoveryFlags = { cardRailEnabled: false, mppEnabled: false }
+const ARMED_CRYPTO_ONLY: MppDiscoveryFlags = {
+  cardRailEnabled: false,
+  lightningRailEnabled: false,
+  mppEnabled: true,
+}
+const ARMED_LIGHTNING: MppDiscoveryFlags = {
+  cardRailEnabled: true,
+  lightningRailEnabled: true,
+  mppEnabled: true,
+}
+const INERT: MppDiscoveryFlags = {
+  cardRailEnabled: false,
+  lightningRailEnabled: false,
+  mppEnabled: false,
+}
 const INERT_WITH_PROFILE: MppDiscoveryFlags = {
   cardRailEnabled: true,
+  lightningRailEnabled: false,
+  mppEnabled: false,
+}
+const INERT_WITH_LIGHTNING_FLAG: MppDiscoveryFlags = {
+  cardRailEnabled: false,
+  lightningRailEnabled: true,
   mppEnabled: false,
 }
 
@@ -218,5 +238,44 @@ describe('MPP discovery document (EPIC #6049 — /openapi.json)', () => {
     const paths = doc.paths as Record<string, Record<string, unknown>>
     const op = paths['/mpp/v1/chat/completions']?.post as Record<string, unknown>
     expect(isValidPaymentInfo(op['x-payment-info'])).toBe(true)
+  })
+
+  test('BITCOIN-FIRST: armed Lightning => Lightning (sat) offer is listed FIRST', () => {
+    const doc = buildMppDiscoveryDocument(ARMED_LIGHTNING)
+    const paths = doc.paths as Record<string, Record<string, unknown>>
+    const op = paths['/mpp/v1/chat/completions']?.post as Record<string, unknown>
+    const offers = (
+      op['x-payment-info'] as { offers: ReadonlyArray<Record<string, unknown>> }
+    ).offers
+    // The FIRST offer is the Lightning charge (Bitcoin-first / preferred).
+    expect(offers[0]?.method).toBe('lightning')
+    expect(offers[0]?.currency).toBe('sat')
+    expect(offers[0]?.intent).toBe('charge')
+    // sat amount is a positive-integer string.
+    expect(/^[1-9][0-9]*$/.test(offers[0]?.amount as string)).toBe(true)
+    // Crypto + card offers still follow.
+    const methods = offers.map(o => o.method)
+    expect(methods).toContain('tempo')
+    expect(methods).toContain('stripe')
+    // Every offer still validates against the draft schema.
+    expect(isValidPaymentInfo(op['x-payment-info'])).toBe(true)
+  })
+
+  test('HONESTY GATE: Lightning flag on but MPP inert => no paid path at all', () => {
+    const doc = buildMppDiscoveryDocument(INERT_WITH_LIGHTNING_FLAG)
+    const paths = doc.paths as Record<string, unknown>
+    expect(paths['/mpp/v1/chat/completions']).toBeUndefined()
+    expect(JSON.stringify(doc)).not.toContain('x-payment-info')
+    expect(JSON.stringify(doc)).not.toContain('lightning')
+  })
+
+  test('HONESTY GATE: Lightning rail OFF => no lightning offer advertised', () => {
+    const doc = buildMppDiscoveryDocument(ARMED)
+    const paths = doc.paths as Record<string, Record<string, unknown>>
+    const op = paths['/mpp/v1/chat/completions']?.post as Record<string, unknown>
+    const offers = (
+      op['x-payment-info'] as { offers: ReadonlyArray<Record<string, unknown>> }
+    ).offers
+    expect(offers.some(o => o.method === 'lightning')).toBe(false)
   })
 })

@@ -26,7 +26,11 @@
 import { Effect } from 'effect'
 
 import { isKhalaModel } from './pricing'
-import { type MppRail, quoteMppCall } from './mpp/mpp-pricing'
+import {
+  type MppRail,
+  quoteMppCall,
+  quoteMppLightningCall,
+} from './mpp/mpp-pricing'
 
 // The canonical public origin.
 const ORIGIN = 'https://openagents.com'
@@ -71,6 +75,11 @@ export type MppDiscoveryFlags = Readonly<{
   // STRIPE_MPP_NETWORK_PROFILE_ID presence (the same condition that arms the
   // card rail in the route). When absent the document omits the card offer.
   cardRailEnabled: boolean
+  // KHALA_MPP_LIGHTNING_ENABLED + a working invoice issuer (the SAME condition
+  // that arms the Lightning rail in the route). When present the Lightning offer
+  // is listed FIRST (Bitcoin-first / preferred). HONESTY GATE: omitted when the
+  // rail is not actually armed — never advertise a rail we cannot fulfill.
+  lightningRailEnabled: boolean
 }>
 
 // Build the offer set for the paid MPP path. Always includes one USDC `charge`
@@ -87,6 +96,21 @@ const buildOffers = (
   const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
   const cryptoAmount = usdcBaseUnits(cryptoQuote.priceUsd)
 
+  // Bitcoin-first: the Lightning offer (sats, real Bitcoin) is listed FIRST when
+  // the rail is armed. amount is in SATS (the smallest denomination of the "sat"
+  // currency per draft-lightning-charge-00).
+  const lightningOffers: ReadonlyArray<PaymentOffer> = flags.lightningRailEnabled
+    ? [
+        {
+          amount: String(quoteMppLightningCall({ model }).amountSats),
+          currency: 'sat',
+          description: `Pay-per-call Khala chat completion over Lightning (BOLT11; real Bitcoin). Advisory quote for ${model}; the runtime 402 challenge re-quotes the requested model and is authoritative.`,
+          intent: 'charge' as const,
+          method: 'lightning',
+        },
+      ]
+    : []
+
   const cryptoOffers: ReadonlyArray<PaymentOffer> = CRYPTO_NETWORKS.map(
     network => ({
       amount: cryptoAmount,
@@ -98,7 +122,7 @@ const buildOffers = (
   )
 
   if (!flags.cardRailEnabled) {
-    return cryptoOffers
+    return [...lightningOffers, ...cryptoOffers]
   }
 
   const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
@@ -111,7 +135,7 @@ const buildOffers = (
     method: 'stripe',
   }
 
-  return [...cryptoOffers, cardOffer]
+  return [...lightningOffers, ...cryptoOffers, cardOffer]
 }
 
 // The OpenAI chat-completions request-body schema (model + messages), per the

@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
 import { KHALA_MINI_MODEL_ID } from '../pricing'
-import { MPP_MIN_USDC, SPT_MIN_USD, quoteMppCall } from './mpp-pricing'
+import {
+  LIGHTNING_MIN_SATS,
+  MPP_MIN_USDC,
+  SPT_MIN_USD,
+  quoteMppCall,
+  quoteMppLightningCall,
+} from './mpp-pricing'
 
 describe('mpp per-call pricing', () => {
   test('quotes a crypto call for khala-mini at or above the 0.01 USDC floor', () => {
@@ -49,5 +55,45 @@ describe('mpp per-call pricing', () => {
       rail: 'crypto',
     })
     expect(large.priceUsd).toBeGreaterThan(small.priceUsd)
+  })
+
+  test('the Lightning rail quotes a positive integer SAT amount at/above the floor', () => {
+    const quote = quoteMppLightningCall({ model: KHALA_MINI_MODEL_ID })
+    expect(quote.amountSats).toBeGreaterThanOrEqual(LIGHTNING_MIN_SATS)
+    expect(Number.isInteger(quote.amountSats)).toBe(true)
+    expect(quote.priceUsd).toBeGreaterThan(0)
+  })
+
+  test('the Lightning rail prices at the BITCOIN funding rate (cheaper than card)', () => {
+    // Lightning settles real Bitcoin, so it earns the Bitcoin funding discount
+    // and is the cheapest rail for the same representative call (owner
+    // Bitcoin-first). Compare the pre-conversion USD on a pricier model so the
+    // floors do not mask the discount.
+    const lightning = quoteMppLightningCall({
+      completionTokens: 5000,
+      model: 'openagents/khala-code',
+      promptTokens: 5000,
+    })
+    const card = quoteMppCall({
+      completionTokens: 5000,
+      model: 'openagents/khala-code',
+      promptTokens: 5000,
+      rail: 'card',
+    })
+    expect(lightning.priceUsd).toBeLessThan(card.priceUsd)
+  })
+
+  test('a pricier model quotes more sats than a cheap one (monotonic in usage)', () => {
+    const small = quoteMppLightningCall({
+      completionTokens: 100,
+      model: 'openagents/khala-code',
+      promptTokens: 100,
+    })
+    const large = quoteMppLightningCall({
+      completionTokens: 200_000,
+      model: 'openagents/khala-code',
+      promptTokens: 200_000,
+    })
+    expect(large.amountSats).toBeGreaterThan(small.amountSats)
   })
 })
