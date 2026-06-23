@@ -15,9 +15,11 @@
 //      address + a challenge `id`.
 //   2. Recover the deposit PaymentIntent id from the challenge `opaque`
 //      (base64url JCS JSON).
-//   3. Call Stripe's `simulate_crypto_deposit` TEST helper (API
-//      2026-05-27.preview) with the success transaction-hash to settle that
-//      PaymentIntent on the sandbox (testnets are not auto-detected).
+//   3. Call Stripe's `test_helpers/.../simulate_crypto_deposit` TEST helper
+//      (API 2026-03-04.preview) with the success transaction-hash, the
+//      challenge network, token_currency=usdc, and a zero buyer wallet to
+//      settle that PaymentIntent on the sandbox (testnets are not
+//      auto-detected).
 //   4. Construct an `Authorization: Payment <base64url>` credential that ECHOES
 //      the issued challenge (so the server recomputes the same HMAC id) and
 //      retry. Assert 200 + a `Payment-Receipt` header + a real Khala completion
@@ -232,13 +234,20 @@ export const mppCreditGrantReceiptRef = paymentIntentId =>
 
 const DEFAULT_BASE = process.env.KHALA_MPP_PAYLOOP_BASE_URL || ''
 const STRIPE_API_BASE = 'https://api.stripe.com/v1'
-// Stripe TEST-helper API version (sandbox crypto deposit simulation).
-const STRIPE_SIMULATE_API_VERSION = '2026-05-27.preview'
+// Stripe TEST-helper API version (sandbox crypto deposit simulation). The
+// authoritative version from the Stripe deposit-mode crypto guide for the
+// `test_helpers/.../simulate_crypto_deposit` endpoint.
+const STRIPE_SIMULATE_API_VERSION = '2026-03-04.preview'
 // The deterministic success transaction-hash for the sandbox crypto-deposit
 // simulator (Stripe deposit-mode test docs). Drives the PI to `succeeded`
 // within ~15s. The failure hash ends in `testfailed`.
 const STRIPE_SIMULATE_SUCCESS_TX_HASH =
   '0x00000000000000000000000000000000000000000000000000000testsuccess'
+// Deterministic zero buyer wallet for the sandbox simulator (deposit-mode docs).
+const STRIPE_SIMULATE_BUYER_WALLET =
+  '0x0000000000000000000000000000000000000000'
+// The stablecoin currency simulated for the deposit (deposit-mode docs).
+const STRIPE_SIMULATE_TOKEN_CURRENCY = 'usdc'
 const CRYPTO_NETWORKS = ['base', 'solana', 'tempo']
 
 export const parseArgs = argv => {
@@ -379,13 +388,23 @@ const encodeForm = params =>
     .join('&')
 
 // Call the Stripe TEST-helper to simulate a crypto deposit settling the PI.
-const simulateCryptoDeposit = async (stripeTestKey, paymentIntentId) => {
+// Authoritative endpoint (Stripe deposit-mode crypto guide):
+//   POST /v1/test_helpers/payment_intents/{id}/simulate_crypto_deposit
+//   Stripe-Version: 2026-03-04.preview
+// with transaction_hash (success), network (from the 402 challenge),
+// token_currency=usdc, and buyer_wallet=0x0…0.
+const simulateCryptoDeposit = async (stripeTestKey, paymentIntentId, network) => {
   const response = await fetch(
-    `${STRIPE_API_BASE}/payment_intents/${encodeURIComponent(
+    `${STRIPE_API_BASE}/test_helpers/payment_intents/${encodeURIComponent(
       paymentIntentId,
     )}/simulate_crypto_deposit`,
     {
-      body: encodeForm({ transaction_hash: STRIPE_SIMULATE_SUCCESS_TX_HASH }),
+      body: encodeForm({
+        transaction_hash: STRIPE_SIMULATE_SUCCESS_TX_HASH,
+        network,
+        token_currency: STRIPE_SIMULATE_TOKEN_CURRENCY,
+        buyer_wallet: STRIPE_SIMULATE_BUYER_WALLET,
+      }),
       headers: {
         authorization: `Bearer ${stripeTestKey}`,
         'content-type': 'application/x-www-form-urlencoded',
@@ -544,11 +563,17 @@ const runSmoke = async options => {
   }
 
   // STEP 3 — settle the PI via the Stripe TEST-helper, then poll to succeeded.
-  const sim = await simulateCryptoDeposit(options.stripeTestKey, paymentIntentId)
+  // `network` is the crypto network recovered from the 402 challenge.
+  const sim = await simulateCryptoDeposit(
+    options.stripeTestKey,
+    paymentIntentId,
+    crypto.network,
+  )
   const simOk = sim.status >= 200 && sim.status < 300
   record('stripe_simulate_crypto_deposit', simOk ? 'PASS' : 'FAIL', {
     http: sim.status,
     apiVersion: STRIPE_SIMULATE_API_VERSION,
+    network: crypto.network,
     body: simOk ? undefined : redact(sim.body),
   })
   if (!simOk) {
