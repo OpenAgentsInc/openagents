@@ -21,6 +21,8 @@ import {
 export const ClickedCopyShareLink = m('ClickedCopyShareLink', {
   url: S.String,
 })
+export const ClickedEnterKhala = m('ClickedEnterKhala')
+export const CompletedNavigateToKhala = m('CompletedNavigateToKhala')
 export const ClickedOnboardingStep = m('ClickedOnboardingStep', {
   step: OnboardingStep,
 })
@@ -180,6 +182,8 @@ export const ReceivedSettledFeedCursorGap = m('ReceivedSettledFeedCursorGap', {
 })
 export const Message = S.Union([
   ClickedCopyShareLink,
+  ClickedEnterKhala,
+  CompletedNavigateToKhala,
   ClickedOnboardingStep,
   SelectedOnboardingRepository,
   SkippedOnboardingRepository,

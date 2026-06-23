@@ -25,6 +25,7 @@ import {
   ForumReceiptRoute,
   HomeRoute,
   InviteRoute,
+  KhalaRoute,
   LandingRoute,
   Moksha2Route,
   MokshaRoute,
@@ -32,6 +33,7 @@ import {
   NotFoundRoute,
   OnboardingRoute,
   OrderRoute,
+  PrivacyRoute,
   PublicAgentRoute,
   PublicStatsArchiveRoute,
   PylonRoute,
@@ -43,6 +45,7 @@ import {
   TassadarReplayRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
+  TermsRoute,
 } from '../route'
 import {
   routeRequiresAuthBootstrap,
@@ -217,6 +220,26 @@ describe('startup route policy', () => {
       redirect: Option.none(),
       route: pylonRoute,
     })
+  })
+
+  test('keeps Khala and legal pages public for every auth state', () => {
+    for (const publicRoute of [KhalaRoute(), TermsRoute(), PrivacyRoute()]) {
+      expect(startupRouteForLoggedOut(publicRoute)).toEqual({
+        _tag: 'LoggedOutStartupRoute',
+        redirect: Option.none(),
+        route: publicRoute,
+      })
+      expect(startupRouteForLoggedIn(publicRoute, completeAuth)).toEqual({
+        _tag: 'LoggedOutStartupRoute',
+        redirect: Option.none(),
+        route: publicRoute,
+      })
+      expect(startupRouteForLoggedIn(publicRoute, incompleteAuth)).toEqual({
+        _tag: 'LoggedOutStartupRoute',
+        redirect: Option.none(),
+        route: publicRoute,
+      })
+    }
   })
 
   test('keeps the live Tassadar run route available for every auth state', () => {

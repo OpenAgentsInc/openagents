@@ -451,22 +451,14 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
-  if (model._tag === 'LoggedOut' && model.route._tag === 'Landing') {
+  if (
+    model._tag === 'LoggedOut' &&
+    (model.route._tag === 'Landing' || model.route._tag === 'Khala')
+  ) {
     const h = html<Message>()
 
     return h.submodel({
-      slotId: 'logged-out-landing',
-      model,
-      view: LoggedOut.view,
-      toParentMessage: message => GotLoggedOutMessage({ message }),
-    })
-  }
-
-  if (model._tag === 'LoggedOut' && model.route._tag === 'Khala') {
-    const h = html<Message>()
-
-    return h.submodel({
-      slotId: 'logged-out-khala',
+      slotId: 'logged-out-landing-scene',
       model,
       view: LoggedOut.view,
       toParentMessage: message => GotLoggedOutMessage({ message }),

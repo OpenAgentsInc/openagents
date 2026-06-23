@@ -24,11 +24,10 @@ import * as Terms from '../terms'
 import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
-import * as Khala from './page/khala'
-import * as Landing from './page/landing'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
+import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
 import * as Pylon from './page/pylon'
@@ -58,16 +57,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
-  if (model.route._tag === 'Landing') {
-    return Ui.pageShell<Message>([
-      h.keyed('div')(model.route._tag, [], [Landing.view()]),
-    ])
-  }
-
-  if (model.route._tag === 'Khala') {
-    return Ui.pageShell<Message>([
-      h.keyed('div')(model.route._tag, [], [Khala.view()]),
-    ])
+  if (model.route._tag === 'Landing' || model.route._tag === 'Khala') {
+    return Ui.pageShell<Message>([PersistentScene.view(model.route._tag)])
   }
 
   if (model.route._tag === 'Pylon') {

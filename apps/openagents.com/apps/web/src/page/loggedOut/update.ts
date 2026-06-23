@@ -1,9 +1,11 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 import { Command } from 'foldkit'
+import { pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
 
 import {
   CompletedCopyShareLink,
+  CompletedNavigateToKhala,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -62,6 +64,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
+import { khalaRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
   applySettledFeedPatch,
@@ -666,6 +669,11 @@ export const CopyShareLink = Command.define(
   ),
 )
 
+export const NavigateToKhala = Command.define(
+  'NavigateToKhala',
+  CompletedNavigateToKhala,
+)(pushUrl(khalaRouter()).pipe(Effect.as(CompletedNavigateToKhala())))
+
 const publicAgentIdForRef = (agentRef: string): string => {
   const knownAgentIds: Readonly<Record<string, string>> = {
     adjutant: 'agent_adjutant',
@@ -736,6 +744,8 @@ export const update = (model: Model, message: Message): UpdateReturn =>
     withUpdateReturn,
     M.tagsExhaustive({
       ClickedCopyShareLink: ({ url }) => [model, [CopyShareLink({ url })]],
+      ClickedEnterKhala: () => [model, [NavigateToKhala()]],
+      CompletedNavigateToKhala: () => [model, []],
       ClickedOnboardingStep: ({ step }) => [
         evo(model, {
           onboarding: onboarding => evo(onboarding, { step: () => step }),
