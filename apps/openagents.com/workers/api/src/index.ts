@@ -36,6 +36,11 @@ import {
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
+import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
+import {
+  type OnboardingInferenceClient,
+  OnboardingInferenceError,
+} from './autopilot-onboarding-program'
 import {
   handleProgrammaticAgentHome,
   handleProgrammaticAgentSelfUpdate,
@@ -365,7 +370,7 @@ import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
-import { selectAdapterPlan } from './inference/model-router'
+import { dispatchWithOverflow, selectAdapterPlan } from './inference/model-router'
 import { resolveSupplyLaneArming } from './inference/model-serving-policy'
 import {
   handleModelsList,
@@ -377,6 +382,8 @@ import {
 } from './inference/passthrough-adapter'
 import {
   InferenceAdapterError,
+  type InferenceRequest,
+  type InferenceResult,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
 import { makePsionicFabricAdapter } from './inference/psionic-fabric-serve'
@@ -6993,6 +7000,10 @@ const agentGoalRoutes = makeAgentGoalRoutes({
   requireBrowserSession,
 })
 
+const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>({
+  makeInferenceClient: env => makeOnboardingInferenceClient(env),
+})
+
 const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
   hostedMdkClient: env => hostedMdkClientForEnv(env),
 })
@@ -8459,6 +8470,36 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
     nowIso: currentIsoTimestamp,
     store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
   }
+}
+
+// Onboarding program inference client (EPIC #6123, #6126). Builds an
+// `OnboardingInferenceClient` that calls the Khala orchestrator
+// (`openagents/khala-mini`) through the SAME provider-adapter registry +
+// cheapest-viable overflow dispatch the interactive /v1/chat/completions handler
+// uses — an INTERNAL call, no external HTTP hop. It first registers the
+// per-request env (partner/fabric adapters + Vertex config) exactly like the
+// batch consumer, so khala-mini routes to its live supply lane. When no lane is
+// configured (e.g. no provider secrets / inert env) the dispatch fails with a
+// typed adapter error, which the onboarding route maps to a stable
+// inference_unavailable response.
+type OnboardingInferenceEnv = OpenAgentsWorkerConfigEnv
+const makeOnboardingInferenceClient = (
+  env: OnboardingInferenceEnv,
+): OnboardingInferenceClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerFabricServeAdapter(inferenceProviderRegistry, env)
+  setInferenceAdapterEnv(env)
+  return (request: InferenceRequest) =>
+    dispatchWithOverflow<InferenceResult>(
+      request,
+      (adapter, req) => adapter.complete(req),
+      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+    ).pipe(
+      Effect.map(result => result.content),
+      Effect.mapError(
+        error => new OnboardingInferenceError({ reason: error.reason }),
+      ),
+    )
 }
 
 // PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC
@@ -10419,6 +10460,8 @@ const routeRequest = makeWorkerRouteRequest({
       enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
+  routeAutopilotOnboardingTurnRequest: (request, env) =>
+    autopilotOnboardingRoutes.routeOnboardingTurnRequest(request, env),
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
   routeCheckoutPageRequest: (request, env) =>
