@@ -138,6 +138,8 @@ const approvedExactRoutePaths = [
   '/v1/chat/completions',
   '/mpp/v1/chat/completions',
   '/v1/inference/acceptance-verdicts',
+  '/v1/inference/acceptance-jobs/lease',
+  '/v1/inference/acceptance-jobs/ack',
   '/v1/models',
   '/v1/quote',
   '/v1/gateway/readiness',

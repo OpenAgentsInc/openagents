@@ -337,6 +337,11 @@ import {
   handleAcceptanceVerdictCallback,
 } from './inference/acceptance-verdict-callback-routes'
 import {
+  handleAcceptanceJobAck,
+  handleAcceptanceJobLease,
+} from './inference/acceptance-job-lease-routes'
+import { makeD1AcceptanceJobQueueStore } from './inference/acceptance-job-queue-store'
+import {
   settleVerifiedAcceptedOutcome,
   summarizeAcceptedOutcomeSettlement,
 } from './inference/khala-accepted-outcome-settlement'
@@ -10178,6 +10183,48 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ...((sink => (sink === undefined ? {} : { settlement: sink }))(
           makeAcceptedOutcomeSettlementSink(env),
         )),
+      }),
+  },
+  {
+    // Out-of-Worker runner JOB LEASE (EPIC #6017). The runner CANNOT be a Cloudflare
+    // Queue consumer (a consumer is a Worker; chromium never runs in a Worker), so it
+    // PULLS work here: an authenticated GET leases the next pending acceptance job (or
+    // 204 when idle). The runner runs the headless suite OUT of the Worker and POSTs the
+    // verdict to the callback above. INERT by default: gated by INFERENCE_GATEWAY_ENABLED
+    // AND closed unless ACCEPTANCE_VERDICT_CALLBACK_TOKEN is configured (every request
+    // 401), AND empty until the dispatch producer enqueues into the pull queue (a
+    // NEEDS-OWNER step owned by the dispatch lane). The lease uses the SAME bearer token
+    // as the verdict callback — one secret authenticates the whole runner<->gateway
+    // channel.
+    path: '/v1/inference/acceptance-jobs/lease',
+    handler: (request, env) =>
+      handleAcceptanceJobLease(request, {
+        callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        newLeaseId: () => crypto.randomUUID(),
+        nowIso: currentIsoTimestamp,
+        store: makeD1AcceptanceJobQueueStore(
+          openAgentsDatabase(env),
+          currentIsoTimestamp,
+        ),
+      }),
+  },
+  {
+    // Out-of-Worker runner JOB ACK (EPIC #6017). The runner reports a leased job's
+    // terminal outcome: delivered (the verdict was posted + the receipt backfilled) =>
+    // remove the job; retryable (delivery failed) => return it to pending for re-lease.
+    // Same INERT gate + bearer auth as the lease route.
+    path: '/v1/inference/acceptance-jobs/ack',
+    handler: (request, env) =>
+      handleAcceptanceJobAck(request, {
+        callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        newLeaseId: () => crypto.randomUUID(),
+        nowIso: currentIsoTimestamp,
+        store: makeD1AcceptanceJobQueueStore(
+          openAgentsDatabase(env),
+          currentIsoTimestamp,
+        ),
       }),
   },
   {

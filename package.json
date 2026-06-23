@@ -11,6 +11,7 @@
       "apps/openagents.com/packages/*",
       "apps/openagents.com/services/*",
       "apps/openagents.com/workers/*",
+      "apps/acceptance-runner",
       "apps/autopilot-desktop",
       "apps/forum",
       "apps/oa-updates",

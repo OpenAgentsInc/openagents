@@ -122,6 +122,55 @@ const settle = async (page: Page, ms: number): Promise<void> => {
   await page.waitForTimeout(ms)
 }
 
+// Settle until the player STOPS MOVING (the hop/move animation has completed), then
+// return the final state — bounded by `maxMs` so a stuck/never-settling artifact still
+// returns honestly rather than hanging. A fixed `settle(ms)` samples MID-ANIMATION when
+// the artifact's hop tween is slower than the wait (e.g. a ~125ms hop sampled at 80ms
+// reads ~0.2-0.7 of a tile, not a full tile), which made the single-press
+// `forward_input_advances_player` check measure a partial hop and fail an otherwise
+// good artifact. Polling for position stability measures the COMPLETED advance — the
+// honest intent of the check ("one forward press advances ~one tile") — without
+// weakening the pass threshold. Stops as soon as the player position is unchanged
+// between two consecutive polls (within an epsilon), or when `maxMs` elapses.
+const settleUntilStable = async (
+  page: Page,
+  options?: Readonly<{
+    pollMs?: number
+    maxMs?: number
+    epsilon?: number
+    stableReads?: number
+  }>,
+): Promise<GameState | undefined> => {
+  const pollMs = options?.pollMs ?? 60
+  const maxMs = options?.maxMs ?? 900
+  const epsilon = options?.epsilon ?? 1e-4
+  // Require TWO consecutive unchanged polls before declaring stable. The artifact's
+  // render loop is requestAnimationFrame-driven and throttled in headless chromium
+  // (~25fps), so a SINGLE zero-delta between two close polls can be a skipped frame
+  // mid-hop, not the landed position. Requiring consecutive stable reads (with a poll
+  // step coarser than a frame) waits for the hop tween to truly plateau before we
+  // measure the advance. Still bounded by `maxMs` so a never-settling artifact returns
+  // honestly rather than hanging.
+  const stableReads = Math.max(2, options?.stableReads ?? 2)
+  let previous = await readState(page)
+  let stable = 0
+  const deadline = Date.now() + maxMs
+  for (;;) {
+    await settle(page, pollMs)
+    const current = await readState(page)
+    const moved = vecDelta(current?.player, previous?.player)
+    previous = current
+    if (Number.isFinite(moved) && moved <= epsilon) {
+      stable += 1
+    } else {
+      stable = 0
+    }
+    if (stable >= stableReads || Date.now() >= deadline) {
+      return current
+    }
+  }
+}
+
 // Run the full crossy-road acceptance suite against a live page. PURE w.r.t. the spec
 // + page (no global state); returns one result per spec check.
 const runCrossyRoadChecks = async (
@@ -165,11 +214,13 @@ const runCrossyRoadChecks = async (
     passed: loopRunning,
   })
 
-  // 3. forward_input_advances_player — one forward press advances ~one tile.
+  // 3. forward_input_advances_player — one forward press advances ~one tile. Settle
+  //    UNTIL the hop animation lands (not a fixed wait) so we measure the COMPLETED
+  //    advance, not a mid-hop fraction; a fixed wait shorter than the artifact's hop
+  //    duration under-measures the tile and fails a good artifact.
   const preMove = await readState(page)
   await pressForward(page)
-  await settle(page, 80)
-  const postMove = await readState(page)
+  const postMove = await settleUntilStable(page)
   const advance = vecDelta(postMove?.player, preMove?.player)
   const advancedOneTile =
     Number.isFinite(advance) &&
@@ -189,8 +240,9 @@ const runCrossyRoadChecks = async (
   let maxCameraDelta = 0
   for (let move = 0; move < params.forwardMoves; move += 1) {
     await pressForward(page)
-    await settle(page, 60)
-    const next = await readState(page)
+    // Snapshot AFTER the hop lands so each per-move camera delta is measured between
+    // settled positions (consistent with the single-press check), not mid-tween.
+    const next = await settleUntilStable(page)
     const camDelta = vecDelta(next?.camera?.position, prevState?.camera?.position)
     if (Number.isFinite(camDelta)) {
       maxCameraDelta = Math.max(maxCameraDelta, camDelta)
