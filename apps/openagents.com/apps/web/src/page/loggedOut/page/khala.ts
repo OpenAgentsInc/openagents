@@ -23,8 +23,11 @@ import type { Message } from '../message'
 
 // --- design tokens (match the site dark public palette) -----------------------
 
+// Transparent background: the page sits over the persistent 3D pylon scene
+// (dimmed by the shared 50%-black scrim in persistentScene), so the canvas stays
+// visible on /khala just like /landing instead of an opaque page hiding it.
 const pageClass =
-  'min-h-screen min-h-dvh w-full overflow-y-auto bg-[#0c0f13] text-[#f1efe8] antialiased'
+  'min-h-screen min-h-dvh w-full overflow-y-auto text-[#f1efe8] antialiased'
 
 const containerClass = 'mx-auto w-[min(100%,860px)] px-5 py-16 sm:py-20'
 
