@@ -1483,13 +1483,17 @@ describe('POST /v1/chat/completions — telemetry scorecard', () => {
       '/api/public/inference/receipts/receipt.inference.charge.chatcmpl-telemetry',
     )
 
-    // The block is the SMALL summary — the deep P0-1 fields (cached tokens,
-    // time split, cost basis, cache-affinity hash) are NOT on the immediate
-    // block; they live in the dereferenceable record.
-    expect(telemetry).not.toHaveProperty('cachedInputTokens')
+    // The block carries the headline prefix-caching metric (cachedInputTokens,
+    // book P0-2 / #6084) alongside the token counts — here honestly not_measured
+    // because this fixture provider reported no cached dimension.
+    expect(telemetry.cachedInputTokens).toBe('not_measured')
+    // The deeper P0-1 fields (time split, cost basis, cache-affinity hash,
+    // unaccounted-token reconciliation) are NOT on the immediate block; they
+    // live in the dereferenceable record.
     expect(telemetry).not.toHaveProperty('providerTimeMs')
     expect(telemetry).not.toHaveProperty('costBasisMsat')
     expect(telemetry).not.toHaveProperty('cacheAffinityKeyHash')
+    expect(telemetry).not.toHaveProperty('unaccountedTokens')
 
     // No raw account/session/prompt material leaked into the disclosure.
     const serialized = JSON.stringify(finalBlock)
@@ -2269,5 +2273,313 @@ describe('Khala-code acceptance-contract injection', () => {
     })
     expect(guidance).toBeDefined()
     expect(guidance).toContain('__openagentsCrossyRoadState')
+  })
+})
+
+// BOOK P0-2 (#6084): prefix caching as a product feature. The gateway must
+// assemble a stable prompt layout (stable content first, novel last), pin a
+// provider session-affinity key, record a public-safe cache-affinity HASH in the
+// telemetry, and route a same-session follow-up to the cache-warm lane.
+describe('Khala prefix caching (book P0-2 / #6084)', () => {
+  type Captured = Readonly<{
+    messages: ReadonlyArray<{ role: string; content: string }>
+    passthroughParams: Readonly<Record<string, unknown>>
+  }>
+
+  const recordingAdapter = (
+    id: string,
+    captured: Array<Captured>,
+    usage: InferenceUsage = {
+      completionTokens: 4,
+      promptTokens: 4,
+      totalTokens: 8,
+    },
+  ): InferenceProviderAdapter => ({
+    complete: request =>
+      Effect.sync(() => {
+        captured.push({
+          messages: request.messages.map(m => ({
+            content: m.content,
+            role: m.role,
+          })),
+          passthroughParams: request.passthroughParams,
+        })
+        return {
+          content: 'ok',
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage,
+        }
+      }),
+    id,
+    stream: () => Effect.sync(() => []),
+  })
+
+  const khalaCodeBody = (userTurn: string) => ({
+    messages: [{ content: userTurn, role: 'user' }],
+    model: KHALA_CODE_MODEL_ID,
+  })
+
+  type OpenAgentsTelemetry = {
+    openagents?: {
+      telemetry?: {
+        cachedInputTokens?: unknown
+        promptTokens?: unknown
+        completionTokens?: unknown
+        totalTokens?: unknown
+      }
+    }
+  }
+  // The cache-affinity hash lives in the FULL telemetry RECORD behind the
+  // receipt; the immediate block carries the summary. We assert the hash via the
+  // full record store (the receipt detail), mirroring the public-projection split.
+
+  test('1+2. stable layout: stable system blocks lead, the novel user turn is last', async () => {
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest(khalaCodeBody('build a crossy road game')),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const roles = captured[0]!.messages.map(m => m.role)
+    // Every leading message is a stable system block; the user turn is strictly last.
+    const lastIndex = roles.length - 1
+    expect(roles[lastIndex]).toBe('user')
+    expect(roles.slice(0, lastIndex).every(r => r === 'system')).toBe(true)
+    // The acceptance contract leads (lowest stable ordinal), identity follows.
+    const systemContents = captured[0]!.messages
+      .filter(m => m.role === 'system')
+      .map(m => m.content)
+    const identityIndex = systemContents.indexOf(KHALA_IDENTITY_SYSTEM_PROMPT)
+    const contractIndex = systemContents.findIndex(c =>
+      c.includes('__openagentsCrossyRoadState'),
+    )
+    expect(contractIndex).toBeGreaterThanOrEqual(0)
+    expect(identityIndex).toBeGreaterThanOrEqual(0)
+    expect(contractIndex).toBeLessThan(identityIndex)
+  })
+
+  test('1. the stable prefix is identical across two turns of one session; only the user turn varies', async () => {
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured))
+    const deps = baseDeps({ lanePlan: selectAdapterPlan, registry })
+
+    await run(handleChatCompletions(chatRequest(khalaCodeBody('first crossy road question')), deps))
+    await run(handleChatCompletions(chatRequest(khalaCodeBody('a different crossy road question')), deps))
+    expect(captured).toHaveLength(2)
+    // The stable (system) prefix is byte-identical turn over turn.
+    const stableOf = (c: Captured) =>
+      c.messages.filter(m => m.role === 'system').map(m => m.content)
+    expect(stableOf(captured[0]!)).toEqual(stableOf(captured[1]!))
+    // The volatile user turns differ.
+    const userOf = (c: Captured) =>
+      c.messages.filter(m => m.role === 'user').map(m => m.content)
+    expect(userOf(captured[0]!)).not.toEqual(userOf(captured[1]!))
+  })
+
+  test('4. session-affinity header (x-session-affinity) + OpenAI `user` are set from the affinity key when supported', async () => {
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest(
+          { ...khalaCodeBody('build a crossy road game'), user: 'session-xyz' },
+        ),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const params = captured[0]!.passthroughParams
+    const affinity = params['x-session-affinity']
+    const user = params['user']
+    // Both carry the SAME opaque, derived value — and it is NOT the raw session id
+    // (privacy: the provider sees only a one-way correlation token).
+    expect(typeof affinity).toBe('string')
+    expect(affinity).toBe(user)
+    expect(affinity).not.toBe('session-xyz')
+    expect(String(affinity)).toMatch(/^cacheaff:fnv1a32:[0-9a-f]{8}$/u)
+  })
+
+  test('4. the same session across two turns derives the SAME affinity value (pins to one replica)', async () => {
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured))
+    const deps = baseDeps({ lanePlan: selectAdapterPlan, registry })
+
+    const body = (turn: string) => ({ ...khalaCodeBody(turn), user: 'sess-1' })
+    await run(handleChatCompletions(chatRequest(body('q1')), deps))
+    await run(handleChatCompletions(chatRequest(body('q2')), deps))
+    expect(captured).toHaveLength(2)
+    expect(captured[0]!.passthroughParams['x-session-affinity']).toBe(
+      captured[1]!.passthroughParams['x-session-affinity'],
+    )
+  })
+
+  test('3. the receipt records a public-safe cache-affinity HASH (never the raw key), populating the telemetry field', async () => {
+    const usage: InferenceUsage = {
+      cachedPromptTokens: 3,
+      completionTokens: 4,
+      promptTokens: 6,
+      totalTokens: 10,
+    }
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured, usage))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...khalaCodeBody('build a crossy road game'), user: 'sess-private' }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    const body = (await response.json()) as OpenAgentsTelemetry
+    // The immediate block carries the cached-input dimension from provider usage.
+    expect(body.openagents?.telemetry?.cachedInputTokens).toBe(3)
+    // The raw session id never appears anywhere in the response body.
+    expect(JSON.stringify(body)).not.toContain('sess-private')
+  })
+
+  test('5. cached input tokens populate from a fixture provider-usage payload', async () => {
+    const usage: InferenceUsage = {
+      cachedPromptTokens: 200,
+      completionTokens: 20,
+      promptTokens: 347,
+      totalTokens: 367,
+    }
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, captured, usage))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    const body = (await response.json()) as OpenAgentsTelemetry
+    expect(body.openagents?.telemetry?.cachedInputTokens).toBe(200)
+    expect(body.openagents?.telemetry?.promptTokens).toBe(347)
+    expect(body.openagents?.telemetry?.completionTokens).toBe(20)
+    expect(body.openagents?.telemetry?.totalTokens).toBe(367)
+  })
+
+  test('5. totalTokens reconciliation: the provider total (679) is recorded receipt-first, NOT recomputed as prompt+completion (367)', async () => {
+    // The exact live discrepancy: a Gemini-backed reply whose totalTokenCount
+    // (679) exceeds prompt (347) + completion (20) because of thinking/tool-use
+    // tokens. Telemetry records the provider's authoritative total honestly.
+    const usage: InferenceUsage = {
+      completionTokens: 20,
+      promptTokens: 347,
+      totalTokens: 679,
+    }
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, captured, usage))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    const body = (await response.json()) as OpenAgentsTelemetry
+    // 679, not 367 — the provider's authoritative count, not a recomputed sum.
+    expect(body.openagents?.telemetry?.totalTokens).toBe(679)
+    expect(body.openagents?.telemetry?.promptTokens).toBe(347)
+    expect(body.openagents?.telemetry?.completionTokens).toBe(20)
+  })
+
+  test('6. cache-aware routing picks the warm lane under a fixture (warm lane served)', async () => {
+    // Two lanes registered; the warm oracle says the OpenAI passthrough lane is
+    // warm for this session, so it should be tried (and serve) FIRST even though
+    // the open-class plan lists Fireworks first.
+    const fireworksCaptured: Array<Captured> = []
+    const passthroughCaptured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, fireworksCaptured))
+    registry.register(
+      recordingAdapter('passthrough-openai', passthroughCaptured),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...khalaCodeBody('build a crossy road game'), user: 'sess-warm' }),
+        baseDeps({
+          // The warm oracle promotes the passthrough lane for ANY affinity hash
+          // (the fixture); health + pin policy allow it.
+          cacheWarmthOracle: () => 'passthrough-openai',
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { worker?: string }
+    }
+    // The warm passthrough lane served; Fireworks was never dispatched.
+    expect(body.openagents?.worker).toBe('passthrough-openai')
+    expect(passthroughCaptured).toHaveLength(1)
+    expect(fireworksCaptured).toHaveLength(0)
+  })
+
+  test('6. cache-aware routing does NOT promote an unhealthy warm lane (falls back to cheapest-viable)', async () => {
+    const fireworksCaptured: Array<Captured> = []
+    const passthroughCaptured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, fireworksCaptured))
+    registry.register(
+      recordingAdapter('passthrough-openai', passthroughCaptured),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...khalaCodeBody('build a crossy road game'), user: 'sess-sick' }),
+        baseDeps({
+          cacheWarmthOracle: () => 'passthrough-openai',
+          laneHealthOracle: lane =>
+            lane === 'passthrough-openai' ? 'unhealthy' : 'healthy',
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { openagents?: { worker?: string } }
+    // The sick warm lane is skipped; the cheapest-viable Fireworks lane serves.
+    expect(body.openagents?.worker).toBe(FIREWORKS_ADAPTER_ID)
+    expect(fireworksCaptured).toHaveLength(1)
+  })
+
+  test('a non-Khala request gets NO gateway affinity params + NO reorder (byte-identical to before)', async () => {
+    const captured: Array<Captured> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(STUB_ECHO_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, user: 'should-pass-through' }),
+        baseDeps({ registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    // The gateway does not inject a derived affinity for non-Khala models; the
+    // client's own `user` is forwarded unchanged (passthrough), not overwritten.
+    expect(captured[0]!.passthroughParams['x-session-affinity']).toBeUndefined()
+    expect(captured[0]!.passthroughParams['user']).toBe('should-pass-through')
   })
 })

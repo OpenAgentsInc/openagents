@@ -167,6 +167,12 @@ export const KhalaTelemetryBlock = S.Struct({
   promptTokens: MeasuredTokens,
   completionTokens: MeasuredTokens,
   totalTokens: MeasuredTokens,
+  // Cached input tokens where the provider exposes them (the headline metric of
+  // the prefix-caching feature, book P0-2 / #6084: how much of the prompt hit
+  // the provider prompt cache). `not_measured` when the provider does not report
+  // a cached dimension. Promoted to the SMALL block (alongside token counts)
+  // because cache hit-rate is an at-a-glance lifecycle fact for Khala traffic.
+  cachedInputTokens: MeasuredTokens,
   // Time to first token (ms), measurable on the streaming path only.
   ttftMs: MeasuredMs,
   // Total wall-clock for the request (ms), gateway-edge measured.
@@ -219,6 +225,17 @@ export const KhalaTelemetryRecord = S.Struct({
   // Cached input tokens where the provider exposes them (e.g. Fireworks prompt
   // cache). `not_measured` when the provider does not report a cached dimension.
   cachedInputTokens: MeasuredTokens,
+  // The reconciliation of `totalTokens` against `promptTokens + completionTokens`
+  // (book P0-2 / #6084). The served models bill tokens BEYOND the visible prompt
+  // + completion — Gemini's `totalTokenCount` includes thinking/tool-use tokens,
+  // reasoning lanes bill internal reasoning — so the live discrepancy (e.g. total
+  // 679 vs prompt 347 + completion 20) is REAL, not a miscount. We record the
+  // provider's authoritative `totalTokens` receipt-first and disclose the gap
+  // here as `unaccountedTokens` rather than silently dropping it or recomputing
+  // the total as prompt+completion (which would under-count billed tokens). `0`
+  // when the total is exactly prompt+completion; `not_measured` when tokens are
+  // unmeasured.
+  unaccountedTokens: MeasuredTokens,
 
   // --- latency (P0-1: TTFT, ITL / perceived TPS, total wall-clock) ---
   ttftMs: MeasuredMs,
@@ -422,6 +439,28 @@ const derivePerceivedTps = (
   return completionTokens / (generationWallClockMs / 1000)
 }
 
+// Reconcile `totalTokens` against `promptTokens + completionTokens` (book P0-2 /
+// #6084). The provider's `totalTokens` is AUTHORITATIVE (receipt-first; never
+// recompute it as prompt+completion, which would under-count billed
+// reasoning/thinking/tool-use tokens). The unaccounted delta is the hidden
+// billed dimension: `max(0, total - (prompt + completion))`. Floors at 0 so a
+// degenerate/malformed total below prompt+completion never yields a negative.
+// `not_measured` unless ALL THREE token counts are measured (we never fabricate a
+// reconciliation from a partial usage frame).
+const deriveUnaccountedTokens = (
+  promptTokens: number | undefined,
+  completionTokens: number | undefined,
+  totalTokens: number | undefined,
+): MeasuredNumber => {
+  const prompt = measured(promptTokens)
+  const completion = measured(completionTokens)
+  const total = measured(totalTokens)
+  if (!isMeasured(prompt) || !isMeasured(completion) || !isMeasured(total)) {
+    return NOT_MEASURED
+  }
+  return Math.max(0, total - (prompt + completion))
+}
+
 // Assemble the canonical full lifecycle record from measured inputs. PURE: same
 // inputs => same record. Unmeasured inputs become the honest sentinel; the raw
 // cache-affinity key is hashed; the margin is coarse-grained to a bucket.
@@ -454,6 +493,11 @@ export const buildKhalaTelemetryRecord = (
     completionTokens: measured(input.completionTokens),
     totalTokens: measured(input.totalTokens),
     cachedInputTokens: measured(input.cachedInputTokens),
+    unaccountedTokens: deriveUnaccountedTokens(
+      input.promptTokens,
+      input.completionTokens,
+      input.totalTokens,
+    ),
 
     ttftMs: measured(input.ttftMs),
     interTokenLatencyMs: deriveInterTokenLatencyMs(
@@ -499,6 +543,7 @@ export const khalaTelemetryBlockFromRecord = (
   promptTokens: record.promptTokens,
   completionTokens: record.completionTokens,
   totalTokens: record.totalTokens,
+  cachedInputTokens: record.cachedInputTokens,
   ttftMs: record.ttftMs,
   totalWallClockMs: record.totalWallClockMs,
   verificationClass: record.verificationClass,

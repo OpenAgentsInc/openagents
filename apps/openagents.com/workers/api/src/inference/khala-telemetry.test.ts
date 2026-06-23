@@ -60,6 +60,8 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.completionTokens).toBe(11)
     expect(record.totalTokens).toBe(411)
     expect(record.cachedInputTokens).toBe(100)
+    // 411 total == 400 prompt + 11 completion => no hidden billed dimension.
+    expect(record.unaccountedTokens).toBe(0)
     expect(record.ttftMs).toBe(200)
     expect(record.totalWallClockMs).toBe(1200)
     // ITL = generation wall-clock / (tokens - 1) = 1000 / 10 = 100ms.
@@ -101,6 +103,8 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.promptTokens).toBe(NOT_MEASURED)
     expect(record.completionTokens).toBe(NOT_MEASURED)
     expect(record.cachedInputTokens).toBe(NOT_MEASURED)
+    // No token counts => the reconciliation is honestly not_measured, never 0.
+    expect(record.unaccountedTokens).toBe(NOT_MEASURED)
     expect(record.ttftMs).toBe(NOT_MEASURED)
     expect(record.interTokenLatencyMs).toBe(NOT_MEASURED)
     expect(record.perceivedTps).toBe(NOT_MEASURED)
@@ -120,6 +124,51 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.fallbackReason).toBe(null)
     expect(record.blockerRefs).toContain('cost_not_measured')
     expect(Option.isSome(decodeKhalaTelemetryRecord(record))).toBe(true)
+  })
+
+  test('reconciles the live totalTokens discrepancy: total 679 != prompt 347 + completion 20 (book P0-2 / #6084)', () => {
+    // The exact live numbers: a Gemini-backed khala-mini reply whose
+    // totalTokenCount (679) exceeds prompt (347) + completion (20) because of
+    // thinking/tool-use tokens. The provider total is recorded receipt-first; the
+    // gap is disclosed as unaccountedTokens (679 - 367 = 312), not dropped.
+    const record = buildKhalaTelemetryRecord({
+      completionTokens: 20,
+      executedVerdict: 'not_executed',
+      promptTokens: 347,
+      provider: 'vertex-gemini',
+      requestClass: 'async_job',
+      requestId: 'chatcmpl-recon',
+      requestedModel: 'openagents/khala-mini',
+      route: 'gemini',
+      servedModel: 'gemini-3.5-flash',
+      settlementState: 'not_applicable',
+      totalTokens: 679,
+      verificationClass: 'none',
+    })
+    expect(record.totalTokens).toBe(679)
+    expect(record.promptTokens).toBe(347)
+    expect(record.completionTokens).toBe(20)
+    expect(record.unaccountedTokens).toBe(312)
+  })
+
+  test('a degenerate total below prompt+completion floors the unaccounted delta at 0 (never negative)', () => {
+    const record = buildKhalaTelemetryRecord({
+      completionTokens: 20,
+      executedVerdict: 'not_executed',
+      promptTokens: 347,
+      provider: 'vertex-gemini',
+      requestClass: 'async_job',
+      requestId: 'chatcmpl-degenerate',
+      requestedModel: 'openagents/khala-mini',
+      route: 'gemini',
+      servedModel: 'gemini-3.5-flash',
+      settlementState: 'not_applicable',
+      totalTokens: 100,
+      verificationClass: 'none',
+    })
+    expect(record.unaccountedTokens).toBe(0)
+    // The provider total is left as reported (never fabricated/corrected).
+    expect(record.totalTokens).toBe(100)
   })
 
   test('single-token completions do not fabricate an inter-token latency', () => {
@@ -184,6 +233,7 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     const block = khalaTelemetryBlockFromRecord(record, detailRef)
 
     expect(block).toEqual({
+      cachedInputTokens: NOT_MEASURED,
       completionTokens: 5,
       detailRef,
       executedVerdict: 'passed',
