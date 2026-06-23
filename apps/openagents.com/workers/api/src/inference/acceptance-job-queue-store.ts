@@ -21,6 +21,8 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import { parseJsonWithSchema } from '../json-boundary'
+import { isoTimestampAfterIso } from '../runtime-primitives'
 import { AcceptanceJobMessage } from './acceptance-dispatch'
 
 export type AcceptanceQueueStatus = 'pending' | 'leased'
@@ -45,16 +47,24 @@ export type AcceptanceJobQueueStore = Readonly<{
 }>
 
 const decodeJobPayload = (text: string): AcceptanceJobMessage =>
-  S.decodeUnknownSync(AcceptanceJobMessage)(JSON.parse(text))
+  parseJsonWithSchema(AcceptanceJobMessage, text)
 
 const encodeJobPayload = (message: AcceptanceJobMessage): string =>
   JSON.stringify(S.encodeSync(AcceptanceJobMessage)(message))
+
+const makeDeterministicInMemoryClock = (): (() => string) => {
+  let sequenceMs = 0
+
+  return () => isoTimestampAfterIso('1970-01-01T00:00:00.000Z', sequenceMs++)
+}
 
 // An in-memory queue store: the reference implementation tests run against and the D1
 // store mirrors. Pure + synchronous under the Effect wrapper. The `lease` claim is
 // single-threaded here (Effect.sync), matching D1's single-statement atomic UPDATE.
 export const makeInMemoryAcceptanceJobQueueStore =
-  (): AcceptanceJobQueueStore => {
+  (
+    nowIso: () => string = makeDeterministicInMemoryClock(),
+  ): AcceptanceJobQueueStore => {
     type Row = {
       requestId: string
       status: AcceptanceQueueStatus
@@ -88,7 +98,7 @@ export const makeInMemoryAcceptanceJobQueueStore =
           if (rows.has(message.requestId)) return
           rows.set(message.requestId, {
             attempts: 0,
-            createdAt: new Date().toISOString(),
+            createdAt: nowIso(),
             leaseExpiresAt: null,
             leaseId: null,
             payload: encodeJobPayload(message),
@@ -112,7 +122,7 @@ export const makeInMemoryAcceptanceJobQueueStore =
           if (row === undefined) return null
           row.status = 'leased'
           row.leaseId = newLeaseId
-          row.leaseExpiresAt = new Date(now + leaseTtlMs).toISOString()
+          row.leaseExpiresAt = isoTimestampAfterIso(nowIso, leaseTtlMs)
           row.attempts += 1
           return { leaseId: newLeaseId, message: decodeJobPayload(row.payload) }
         }),
@@ -164,7 +174,7 @@ export const makeD1AcceptanceJobQueueStore = (
 
   lease: ({ nowIso: at, leaseTtlMs, newLeaseId }) =>
     Effect.tryPromise(async () => {
-      const expiresAt = new Date(Date.parse(at) + leaseTtlMs).toISOString()
+      const expiresAt = isoTimestampAfterIso(at, leaseTtlMs)
       // Atomic claim: stamp the oldest claimable row (pending OR lease-expired).
       await db
         .prepare(

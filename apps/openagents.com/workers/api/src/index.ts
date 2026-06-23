@@ -10215,7 +10215,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleAcceptanceJobLease(request, {
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        newLeaseId: () => crypto.randomUUID(),
+        newLeaseId: randomUuid,
         nowIso: currentIsoTimestamp,
         store: makeD1AcceptanceJobQueueStore(
           openAgentsDatabase(env),
@@ -10233,7 +10233,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleAcceptanceJobAck(request, {
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
-        newLeaseId: () => crypto.randomUUID(),
+        newLeaseId: randomUuid,
         nowIso: currentIsoTimestamp,
         store: makeD1AcceptanceJobQueueStore(
           openAgentsDatabase(env),

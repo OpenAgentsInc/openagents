@@ -60,6 +60,8 @@ const vecDelta = (
   return Math.sqrt(dx * dx + dy * dy + dz * dz)
 }
 
+const monotonicNowMs = (): number => performance.now()
+
 // Read the page's exposed state hook. Returns `undefined` if the artifact never
 // exposed the contract (e.g. it crashed on load before defining it).
 const readState = async (page: Page): Promise<GameState | undefined> => {
@@ -154,7 +156,7 @@ const settleUntilStable = async (
   const stableReads = Math.max(2, options?.stableReads ?? 2)
   let previous = await readState(page)
   let stable = 0
-  const deadline = Date.now() + maxMs
+  const deadline = monotonicNowMs() + maxMs
   for (;;) {
     await settle(page, pollMs)
     const current = await readState(page)
@@ -165,7 +167,7 @@ const settleUntilStable = async (
     } else {
       stable = 0
     }
-    if (stable >= stableReads || Date.now() >= deadline) {
+    if (stable >= stableReads || monotonicNowMs() >= deadline) {
       return current
     }
   }
