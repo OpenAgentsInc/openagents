@@ -117,9 +117,13 @@ export type CreatedCryptoPaymentIntent = Readonly<{
 }>
 
 // Extract deposit addresses from a PaymentIntent's next_action crypto display
-// details. Stripe's deposit-mode crypto response nests the addresses under
-// `next_action.crypto_display_details` (per the MPP/x402 quickstarts). Shape is
-// read defensively.
+// details. Stripe's deposit-mode crypto response exposes
+// `next_action.crypto_display_details.deposit_addresses` as an OBJECT keyed by
+// network name, where each value carries the on-chain `address` (and a
+// `supported_tokens` list). The network is the KEY; there is no `network` field
+// on the value. See the MPP/x402 quickstarts and the deposit-mode stablecoin
+// guide (e.g. `deposit_addresses["base"].address`). This is the authoritative
+// shape; we add a cheap tolerant fallback for a single top-level address only.
 const extractDeposits = (
   intent: Record<string, unknown>,
 ): ReadonlyArray<CryptoDepositAddress> => {
@@ -128,26 +132,31 @@ const extractDeposits = (
     string,
     unknown
   >
-  const addresses = display.addresses
-  if (!Array.isArray(addresses)) {
-    // Some shapes expose a single address + network at the top of display.
-    const network = display.network
-    const address = display.address ?? display.deposit_address
-    if (typeof network === 'string' && typeof address === 'string') {
-      return [{ address, network }]
+  const depositAddresses = display.deposit_addresses
+  if (
+    depositAddresses !== null &&
+    typeof depositAddresses === 'object' &&
+    !Array.isArray(depositAddresses)
+  ) {
+    const out: Array<CryptoDepositAddress> = []
+    for (const [network, value] of Object.entries(
+      depositAddresses as Record<string, unknown>,
+    )) {
+      const entry = (value ?? {}) as Record<string, unknown>
+      const address = entry.address
+      if (typeof network === 'string' && typeof address === 'string') {
+        out.push({ address, network })
+      }
     }
-    return []
+    return out
   }
-  return addresses
-    .map(entry => {
-      const e = entry as Record<string, unknown>
-      const network = e.network
-      const address = e.address ?? e.deposit_address
-      return typeof network === 'string' && typeof address === 'string'
-        ? ({ address, network } satisfies CryptoDepositAddress)
-        : undefined
-    })
-    .filter((v): v is CryptoDepositAddress => v !== undefined)
+  // Cheap tolerant fallback: a single address + network at the top of display.
+  const network = display.network
+  const address = display.address ?? display.deposit_address
+  if (typeof network === 'string' && typeof address === 'string') {
+    return [{ address, network }]
+  }
+  return []
 }
 
 // Create a crypto deposit-mode PaymentIntent for the given amount + networks and
@@ -172,6 +181,9 @@ export const createCryptoDepositPaymentIntent = (
       currency,
       ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
       payment_method_data: { type: 'crypto' },
+      // Stripe's official MPP/x402 SDK samples set this alongside
+      // payment_method_data[type]=crypto for deposit-mode crypto PaymentIntents.
+      payment_method_types: ['crypto'],
       payment_method_options: {
         crypto: {
           deposit_options: { networks: input.networks },
@@ -240,11 +252,11 @@ export type RetrievedPaymentIntent = Readonly<{
   metadata: Record<string, string>
 }>
 
-// Retrieve a PaymentIntent to check it has settled. A `succeeded` status (or
-// `requires_capture` after an authorize, which we treat as settled for the
-// deposit flow) means the agent has paid and we may serve. Anything else
-// (`requires_payment_method`, `processing`, `requires_action`) is NOT settled —
-// a domain outcome, not an error.
+// Retrieve a PaymentIntent to check it has settled. In deposit mode Stripe
+// auto-captures the PaymentIntent after the on-chain funds settle, so a
+// `succeeded` status is the only settled state — it means the agent has paid
+// and we may serve. Anything else (`requires_payment_method`, `processing`,
+// `requires_action`, etc.) is NOT settled — a domain outcome, not an error.
 export const retrievePaymentIntent = (
   deps: StripeMppClientDeps,
   paymentIntentId: string,
@@ -283,7 +295,7 @@ export const retrievePaymentIntent = (
     }
 
     const status = typeof json.status === 'string' ? json.status : 'unknown'
-    const settled = status === 'succeeded' || status === 'requires_capture'
+    const settled = status === 'succeeded'
     const rawMeta = (json.metadata ?? {}) as Record<string, unknown>
     const metadata: Record<string, string> = {}
     for (const [k, v] of Object.entries(rawMeta)) {
