@@ -168,10 +168,12 @@ margin) / settlement state / blocker refs — is the dereferenceable depth behin
 | request class | measured | stream → `interactive_stream`, else `async_job` |
 | route / provider / served model | measured | coordinator + adapter |
 | verification class / executed verdict / scalar reward | measured | reuse of the existing `khala-code` verifier verdict (no parallel grader) |
-| cached input tokens | `not_measured` unless the provider reports it | provider `usage.cachedPromptTokens` where present |
+| cached input tokens | measured when the provider reports a cached dimension (book P0-2, #6084); else `not_measured` | provider `usage.cachedPromptTokens` (Fireworks `prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`, Gemini `cachedContentTokenCount`) → block + record `cachedInputTokens` |
+| unaccounted tokens (`total − (prompt + completion)`) | measured when all three counts are measured (book P0-2, #6084) | reconciliation in the record builder; surfaces the real billed reasoning/thinking/tool-use dimension behind the live total-vs-sum gap |
 | provider / gateway / verifier / settlement time split | `not_measured` (no split instrumentation yet) | future per-stage timers |
 | queue / batch wait | `not_measured` (chat path) | future batch-job consumer |
-| region / cache-affinity hash / fallback reason | `not_measured` / `null` (not wired on the gateway yet — recorded as a `blockerRef`) | future session-affinity + region wiring |
+| cache-affinity hash | measured for Khala requests with an account/session/codebase key (book P0-2, #6084); else `null` with a `cache_affinity_key_not_resolved` `blockerRef` | one-way `hashCacheAffinityKey(account/session/codebase)` |
+| region / fallback reason | `not_measured` / `null` (not wired on the gateway yet) | future region wiring |
 | cost basis / price / margin bucket | `not_measured` on this hot path (the immediate block omits raw economics) | metering hook (receipt-first) feeds the full record |
 
 **Privacy (INVARIANTS).** The cache-affinity key is recorded only as a one-way
@@ -186,6 +188,62 @@ typed, dereferenceable artifact: M8 manifests can read measured tokens + latency
 verdict instead of treating them as afterthoughts, and the learned coordinator's
 reward inputs (accepted outcome per sat and per second) read from a stable schema
 rather than ad-hoc fields.
+
+### Prefix caching as a product feature (book P0-2 / #6084)
+
+The inference-engineering book's §5.3 makes prompt **order** a performance/cost
+lever: prefix caching reuses the shared input "from the start of the sequence
+until the first non-repeated token", so a single novel token at the front voids
+the whole shared prefix. Khala coding traffic (khala-code / Autopilot) repeats
+long *stable* content on every call — the Khala identity prompt, the acceptance
+contract, tool schemas, stable policy — ahead of a small *volatile* user turn.
+P0-2 turns "prompt order is an accident" into a deliberate, tested layout so the
+shared prefix stays cacheable and the provider prompt cache (e.g. Fireworks'
+on-by-default cache, cached input billed at a discount) actually hits.
+
+The six deliverables, all in `apps/openagents.com/workers/api/src/inference/`:
+
+1. **Stable prompt layout** — `assembleStablePromptLayout`
+   (`prompt-prefix-cache.ts`) partitions the outgoing messages into a STABLE
+   prefix (acceptance contract → identity → tool schemas → stable policy) followed
+   by VOLATILE/user content last. The gateway tags its own injected blocks with a
+   `StableBlockKind`, so ordering is deterministic and structural — a
+   classification of *our own* injected blocks, not a keyword match on user intent
+   (honors the workspace semantic-routing rule). The `khala-identity.ts` injection
+   stays in the stable prefix as the primary identity mechanism.
+2. **Deterministic ordering + hashing** — tool schemas and the acceptance
+   contract are serialized canonically (`canonicalJson` / `serializeToolSchemas`,
+   sorted object keys, stable tool order) so the same logical inputs always
+   produce byte-identical prefix text and the same `stablePrefixHash`.
+3. **Cache-affinity keys** — `deriveCacheAffinityKey({account, session?,
+   codebase?})` composes the dimensions into one raw key; it is recorded ONLY as
+   the one-way `hashCacheAffinityKey` digest (`cacheAffinityKeyHash` in telemetry/
+   receipt). The raw account/session/codebase key never leaves the gateway.
+4. **Provider session affinity** — `sessionAffinityParams` sets Fireworks
+   `x-session-affinity` and the OpenAI-style `user` to the SAME opaque value, a
+   hash of the affinity key, so a session's follow-ups pin to one cache-warm
+   replica and the upstream provider sees only a correlation token, never the raw
+   identifiers.
+5. **Cached input tokens + total reconciliation** — `cachedInputTokens` flows
+   from provider usage into the telemetry block + record. The live discrepancy
+   where `totalTokens` (679) ≠ prompt (347) + completion (20) is reconciled in the
+   telemetry record builder: the provider's total is recorded receipt-first
+   (authoritative — never recomputed as prompt+completion, which would under-count
+   billed reasoning/thinking/tool-use), and the gap is disclosed honestly as
+   `unaccountedTokens` (679 − 367 = 312) rather than dropped or treated as a
+   miscount.
+6. **Cache-aware routing** — `decideCacheAwareRouting` (`cache-aware-routing.ts`)
+   reorders — never widens — the coordinator's viable lane plan so a same-session/
+   codebase/account follow-up tries the cache-WARM lane first, via a typed
+   `CacheWarmthOracle` keyed by the affinity HASH (no ad-hoc string routing). A
+   warm hint is promoted only when the lane is still in the plan AND healthy AND
+   allowed by the privacy/region pin policy; otherwise the cheapest-viable plan is
+   preserved. The seam is inert by default (no oracle wired → plan unchanged), so
+   existing behavior is unaffected until the Worker wires the oracle.
+
+Privacy (INVARIANTS): every cross-boundary projection of the affinity key is the
+one-way FNV-1a digest; the raw key, prompt, and volatile content never enter the
+stable prefix hash, the telemetry, the receipt, or the provider header.
 
 ## 4. Request flow
 

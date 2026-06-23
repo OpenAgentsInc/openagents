@@ -80,6 +80,21 @@ import {
   dispatchWithOverflow,
 } from './model-router'
 import {
+  type CacheWarmthOracle,
+  type LaneHealthOracle,
+  type CachePinPolicy,
+  decideCacheAwareRouting,
+} from './cache-aware-routing'
+import {
+  type StableBlockKind,
+  type TaggedPromptMessage,
+  assembleStablePromptLayout,
+  deriveCacheAffinityKey,
+  deriveSessionAffinityValue,
+  hashCacheAffinityKey,
+  sessionAffinityParams,
+} from './prompt-prefix-cache'
+import {
   type SupplyLaneArming,
   resolveNamedModelServability,
 } from './model-serving-policy'
@@ -272,6 +287,19 @@ export type ChatCompletionsDeps = Readonly<{
   // resume/replay read (the resume route has no metering hook).
   durableStreamEnabled?: boolean | undefined
   durableStream?: DurableInferenceStreamStore | undefined
+  // CACHE-AWARE ROUTING SEAM (book P0-2 deliverable 6 / #6084). When wired, a
+  // same-session/codebase/account follow-up is routed to the cache-WARM lane
+  // first (the lane that previously served this affinity hash), subject to the
+  // lane still being viable + healthy + privacy/region-allowed. All three are
+  // INJECTED capabilities so routing stays pure + typed (no ad-hoc string
+  // matching). DEFAULT UNWIRED: with `cacheWarmthOracle` absent the lane plan is
+  // unchanged (cheapest-viable order), so existing behavior is unaffected.
+  //   - `cacheWarmthOracle` : affinity HASH → the lane that last served it.
+  //   - `laneHealthOracle`  : lane → health posture (warm hint ignored if sick).
+  //   - `cachePinPolicy`    : lane → may this account pin here (privacy/region).
+  cacheWarmthOracle?: CacheWarmthOracle | undefined
+  laneHealthOracle?: LaneHealthOracle | undefined
+  cachePinPolicy?: CachePinPolicy | undefined
   // Deterministic clock (epoch ms) for the durable log's TTL/offset bookkeeping.
   // Defaults to a fixed value in tests; the Worker threads `currentEpochMillis`.
   nowEpochMillis?: (() => number) | undefined
@@ -330,90 +358,127 @@ const decodeBody = (value: unknown) => {
   }
 }
 
-// GATEWAY-SIDE KHALA IDENTITY INJECTION (STEP 1). For every `openagents/khala-*`
-// request, prepend the strong Khala identity system message so the identity rule
-// (present only as Khala by OpenAgents; never reveal/name/imply the underlying
-// model or provider) binds to EVERY Khala consumer — desktop, OpenRouter, raw
-// SDK — not just one client. This is the PRIMARY mechanism; the post-completion
-// signature guard is the verification + correction backstop on top of it.
+// GATEWAY-SIDE STABLE PROMPT LAYOUT (book P0-2 / #6084 deliverable 1+2). Build the
+// outgoing messages as TAGGED blocks so the prefix-cache assembler can order them
+// STABLE content first (acceptance contract → identity → tool schemas → stable
+// policy) and NOVEL/volatile content last — the book's rule "novel tokens as late
+// as possible" so the long shared prefix stays cacheable. Each gateway-injected
+// block is tagged with its `StableBlockKind`, so ordering is deterministic and
+// structural (classification of OUR OWN injected blocks, not a keyword match on
+// user intent — honors the workspace semantic-routing rule).
 //
-// It is prepended as a leading `system` message (ahead of any client-supplied
-// system steer) so a weaker or stale client identity steer can never override
-// the gateway identity contract. Non-Khala models are untouched.
-const withKhalaIdentitySystemPrompt = (
-  messages: ReadonlyArray<InferenceMessage>,
-  requestedModel: string,
-): ReadonlyArray<InferenceMessage> => {
-  if (!isKhalaModel(requestedModel)) {
-    return messages
-  }
-  return [
-    { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
-    ...messages,
-  ]
-}
-
-// GATEWAY-SIDE KHALA-CODE ACCEPTANCE-CONTRACT INJECTION (EPIC #6017 — "turn intent
-// into tests it must pass"). For an `openagents/khala-code` CODING request whose
-// intent maps to an executable acceptance lane, prepend the acceptance-contract
-// guidance (the runner's `window` state hooks the artifact must expose) as a
-// leading `system` message, so a game Khala-code produces is drivable/verifiable
-// by default. It is scoped to khala-code (not all Khala models / not all code) and
-// to the matched rubric/target (today: crossy-road); a request with no executable
-// lane gets no contract. ADDITIVE: it composes WITH the identity prompt and never
-// clobbers it — `withKhalaIdentitySystemPrompt` runs first and prepends identity,
-// then this prepends the contract AHEAD of identity (identity stays leading-most
-// after both run, so the identity contract is never weakened).
-const withKhalaCodeAcceptanceContract = (
-  messages: ReadonlyArray<InferenceMessage>,
-  requestedModel: string,
+// Identity injection (STEP 1, the PRIMARY identity mechanism): for every
+// `openagents/khala-*` request the strong Khala identity system message is part of
+// the STABLE prefix so the identity rule binds to every Khala consumer and the
+// post-completion signature guard remains the backstop on top.
+//
+// Acceptance-contract injection (EPIC #6017): for a khala-code coding request whose
+// intent maps to an executable acceptance lane, the contract guidance (the runner's
+// `window` hooks) is a STABLE prefix block too. Both are additive; the assembler
+// orders them canonically (acceptance contract leads, then identity) regardless of
+// append order.
+const buildTaggedKhalaMessages = (
   clientMessages: ReadonlyArray<InferenceMessage>,
-): ReadonlyArray<InferenceMessage> => {
-  if (requestedModel !== KHALA_CODE_MODEL_ID) {
-    return messages
+  requestedModel: string,
+): ReadonlyArray<TaggedPromptMessage> => {
+  const tagged: Array<TaggedPromptMessage> = []
+
+  // Acceptance-contract stable block (khala-code coding lane only).
+  if (requestedModel === KHALA_CODE_MODEL_ID) {
+    const guidance = acceptanceContractGuidanceForRequest({
+      messages: clientMessages.map(message => ({
+        content: message.content,
+        role: message.role,
+      })),
+      model: requestedModel,
+    })
+    if (guidance !== undefined) {
+      tagged.push({
+        message: { content: guidance, role: 'system' },
+        stableKind: 'acceptanceContract' satisfies StableBlockKind,
+      })
+    }
   }
-  // Derive the contract from the ORIGINAL client intent (not the gateway-injected
-  // system messages). Undefined => no executable lane => no contract injected.
-  const guidance = acceptanceContractGuidanceForRequest({
-    messages: clientMessages.map(message => ({
-      content: message.content,
-      role: message.role,
-    })),
-    model: requestedModel,
-  })
-  if (guidance === undefined) {
-    return messages
+
+  // Identity stable block (every khala-* model).
+  if (isKhalaModel(requestedModel)) {
+    tagged.push({
+      message: { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
+      stableKind: 'identity' satisfies StableBlockKind,
+    })
   }
-  return [{ content: guidance, role: 'system' }, ...messages]
+
+  // Client messages: their own `system` messages are stable policy/steer (the
+  // assembler classifies role==='system' as `otherSystem`, ordered after the
+  // known stable blocks); everything else is volatile/novel (ordered last).
+  for (const message of clientMessages) {
+    tagged.push({ message })
+  }
+  return tagged
 }
 
 const toInferenceRequest = (
   body: typeof ChatCompletionsRequestBody.Type,
   raw: Record<string, unknown>,
   requestedModel: string,
+  // The session-affinity passthrough params derived from the request's
+  // cache-affinity key (book P0-2 deliverable 4). MERGED into passthroughParams
+  // (overriding any stray client copy) so the adapters pin the session to one
+  // cache-warm replica. Empty for non-Khala / no-affinity requests.
+  affinityParams: Readonly<Record<string, string>>,
 ): InferenceRequest => {
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
   )
-  // Compose gateway-side guidance: identity first (so it lands ahead of client
-  // steer), then the khala-code acceptance contract prepended ahead of identity.
-  // Order after both: [acceptance-contract, identity, ...client]. Both are
-  // additive; neither clobbers the other.
-  const withIdentity = withKhalaIdentitySystemPrompt(
-    clientMessages,
-    requestedModel,
-  )
-  const messages = withKhalaCodeAcceptanceContract(
-    withIdentity,
-    requestedModel,
-    clientMessages,
-  )
+  // For a non-Khala model, leave the messages exactly as the client sent them
+  // (no gateway injection, no reordering) — byte-identical to prior behavior.
+  // For a Khala model, assemble the cache-optimal stable layout.
+  const messages = isKhalaModel(requestedModel)
+    ? assembleStablePromptLayout(
+        buildTaggedKhalaMessages(clientMessages, requestedModel),
+      ).messages
+    : clientMessages
   const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
   return {
     messages,
     model: requestedModel,
-    passthroughParams: rest,
+    // Gateway-derived session affinity wins over any stray client copy.
+    passthroughParams: { ...rest, ...affinityParams },
     stream: body.stream === true,
+  }
+}
+
+// Resolve the cache-affinity dimensions for a request from the authenticated
+// account plus client-supplied session / codebase hints (book P0-2 deliverable
+// 3). The session/codebase hints are read from the OpenAI-style `user` field and
+// a non-standard `codebase` hint in the raw body, plus the `x-session-affinity` /
+// `x-codebase` request headers — all OPTIONAL, all bounded fields (deterministic
+// parse of explicit caller-supplied identifiers, never an intent parse). Only
+// `account` is required; the others sharpen affinity when present.
+const resolveCacheAffinity = (
+  accountRef: string,
+  raw: Record<string, unknown>,
+  request: Request,
+): Readonly<{ rawKey: string; hash: string; params: Readonly<Record<string, string>> }> => {
+  const stringField = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+  const header = (name: string): string | undefined => {
+    const value = request.headers.get(name)
+    return value !== null && value.trim() !== '' ? value.trim() : undefined
+  }
+  const session =
+    stringField(raw['user']) ?? header('x-session-affinity') ?? undefined
+  const codebase =
+    stringField(raw['codebase']) ?? header('x-codebase') ?? undefined
+  const rawKey = deriveCacheAffinityKey({
+    account: accountRef,
+    ...(session === undefined ? {} : { session }),
+    ...(codebase === undefined ? {} : { codebase }),
+  })
+  return {
+    hash: hashCacheAffinityKey(rawKey),
+    params: sessionAffinityParams(deriveSessionAffinityValue(rawKey)),
+    rawKey,
   }
 }
 
@@ -536,6 +601,11 @@ const khalaReceiptForResult = (
     // What the gateway measured about this request's lifecycle (book P0-1). When
     // absent, every telemetry numeric is the honest `not_measured` sentinel.
     timing?: KhalaTelemetryTiming | undefined
+    // The RAW cache-affinity key for this request (book P0-2 deliverable 3:
+    // account/session/codebase). It is hashed into `cacheAffinityKeyHash` by the
+    // telemetry builder and NEVER stored/exposed raw. Undefined → no affinity key
+    // applied → the hash is null and a blocker records why.
+    cacheAffinityKeyRaw?: string | undefined
   }>,
 ): OpenAgentsReceipt | undefined => {
   if (!isKhalaModel(input.requestedModel)) {
@@ -550,13 +620,20 @@ const khalaReceiptForResult = (
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
 
   // Shared telemetry inputs measurable for EVERY Khala request (tokens from the
-  // provider usage, latency from the gateway edge). The cache-affinity key is not
-  // wired on the gateway yet (no session-affinity header is read here today), so
-  // it is honestly absent => the hash is null and a blocker records why.
+  // provider usage, latency from the gateway edge). The cache-affinity key (book
+  // P0-2 deliverable 3) is now wired: when present it is hashed into the receipt
+  // and the cached-input dimension is populated from provider usage; when absent
+  // (no session/codebase context) the hash is null and a blocker records why.
   const streamed = input.timing?.streamed ?? false
   const settlementBlockers =
     input.metering.receiptRef === null ? ['cost_not_measured'] : []
-  const cacheBlockers = ['cache_affinity_key_not_wired']
+  const cacheAffinityKeyRaw =
+    input.cacheAffinityKeyRaw !== undefined &&
+    input.cacheAffinityKeyRaw.trim() !== ''
+      ? input.cacheAffinityKeyRaw
+      : undefined
+  const cacheBlockers =
+    cacheAffinityKeyRaw === undefined ? ['cache_affinity_key_not_resolved'] : []
 
   if (input.requestedModel !== KHALA_CODE_MODEL_ID) {
     // Non-coding Khala lane: no verifier pass (verification class `none`). Still
@@ -576,6 +653,9 @@ const khalaReceiptForResult = (
         requestedModel: input.requestedModel,
         route: classifyModel(input.requestedModel),
         servedModel: input.result.servedModel,
+        ...(cacheAffinityKeyRaw === undefined
+          ? {}
+          : { cacheAffinityKeyRaw }),
         ...(input.result.usage.cachedPromptTokens === undefined
           ? {}
           : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
@@ -630,6 +710,7 @@ const khalaReceiptForResult = (
       totalTokens: input.result.usage.totalTokens,
       verificationClass: telemetryVerificationClass(verdict.verification),
       verifierReceiptRef: verdict.receiptRef,
+      ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
       ...(input.result.usage.cachedPromptTokens === undefined
         ? {}
         : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
@@ -850,6 +931,9 @@ const makePassThroughResponseStream = (
     // optional: absent => the telemetry numerics degrade to honest sentinels.
     nowMs?: (() => number) | undefined
     requestStartMs?: number | undefined
+    // The RAW cache-affinity key (book P0-2 deliverable 3) so the terminal
+    // disclosure records its public-safe HASH. Undefined → no affinity key.
+    cacheAffinityKeyRaw?: string | undefined
   }>,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
@@ -943,6 +1027,9 @@ const makePassThroughResponseStream = (
           }
     const openagents = khalaReceiptForResult({
       adapterId: input.adapterId,
+      ...(input.cacheAffinityKeyRaw === undefined
+        ? {}
+        : { cacheAffinityKeyRaw: input.cacheAffinityKeyRaw }),
       metering: streamMetering ?? { metered: false, receiptRef: null },
       requestedModel: input.requestedModel,
       responseId: input.responseId,
@@ -1214,7 +1301,38 @@ export const handleChatCompletions = (
         const id = (deps.router ?? stubModelRouter)(model)
         return id === undefined ? [] : [id]
       })
-    const plannedIds = planFor(requestedModel)
+    const basePlannedIds = planFor(requestedModel)
+
+    // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
+    // account/session/codebase key, its public-safe hash (for the receipt), and
+    // the provider session-affinity passthrough params (for replica pinning).
+    // Only Khala models get gateway-managed affinity; non-Khala requests carry no
+    // affinity key (empty params) so their behavior is byte-identical to before.
+    const affinity = isKhalaModel(requestedModel)
+      ? resolveCacheAffinity(session.accountRef, rawBody, request)
+      : { hash: null as string | null, params: {}, rawKey: undefined }
+
+    // CACHE-AWARE ROUTING (book P0-2 deliverable 6). Reorder — never widen — the
+    // viable lane plan so a same-session/codebase/account follow-up tries the
+    // cache-WARM lane first, subject to the warm lane still being in the plan and
+    // passing health + privacy/region gates. Pure reorder: the overflow tail is
+    // preserved behind the warm lane. Inert when no oracle is wired (plan
+    // unchanged) so existing behavior is unaffected until the Worker wires it.
+    const routingDecision = decideCacheAwareRouting({
+      affinityHash: affinity.hash,
+      plannedLanes: basePlannedIds,
+      ...(deps.cacheWarmthOracle === undefined
+        ? {}
+        : { warmthOracle: deps.cacheWarmthOracle }),
+      ...(deps.laneHealthOracle === undefined
+        ? {}
+        : { healthOracle: deps.laneHealthOracle }),
+      ...(deps.cachePinPolicy === undefined
+        ? {}
+        : { pinPolicy: deps.cachePinPolicy }),
+    })
+    const plannedIds = routingDecision.lanes
+
     // model_unavailable when no lane is configured OR none of the planned lanes
     // is actually registered (e.g. an absent partner secret leaves the plan but
     // no resolvable adapter).
@@ -1228,7 +1346,16 @@ export const handleChatCompletions = (
       )
     }
 
-    const inferenceRequest = toInferenceRequest(body, rawBody, requestedModel)
+    const inferenceRequest = toInferenceRequest(
+      body,
+      rawBody,
+      requestedModel,
+      affinity.params,
+    )
+    // The raw cache-affinity key threaded into every telemetry build site so the
+    // receipt records its public-safe HASH (never the raw key). Undefined for
+    // non-Khala / no-affinity requests.
+    const cacheAffinityKeyRaw = affinity.rawKey
     const meteringHook = deps.meteringHook ?? stubMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
@@ -1318,6 +1445,7 @@ export const handleChatCompletions = (
         const responseStream = makePassThroughResponseStream({
           accountRef: session.accountRef,
           adapterId,
+          ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
           created,
           durableNowMs: nowEpochMillis(),
           durableStore,
@@ -1444,6 +1572,7 @@ export const handleChatCompletions = (
       }
       const streamOpenagents = khalaReceiptForResult({
         adapterId: chunks.served.adapterId,
+        ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
         // `khalaReceiptForResult` requires a MeteringOutcome; when no terminal
         // usage frame was served (so no metering ran) fall back to the stub
         // outcome shape so a Khala stream without usage still discloses.
@@ -1653,6 +1782,7 @@ export const handleChatCompletions = (
         // disclosure in a later slice.
         openagents: khalaReceiptForResult({
           adapterId: servedAdapterId,
+          ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
           metering,
           requestedModel,
           responseId,
