@@ -69,44 +69,44 @@ const renderHtml = (html: Html): string => {
 describe("Autopilot UI StyleX migration coverage", () => {
   test("selected domain components route through shared StyleX fallback classes", () => {
     const session = {
-      sessionRef: "session.stylex.fixture",
+      sessionRef: "session.token.fixture",
       adapter: "codex",
       state: "running",
     }
     const decision = pendingDecision(decisionRequestFixture)
     const rendered = [
-      NodeStatusBadge({ nodeRef: "node.stylex.fixture", online: true }),
+      NodeStatusBadge({ nodeRef: "node.token.fixture", online: true }),
       ProviderStatusList({
-        providers: [{ provider: "provider.stylex.fixture", online: false }],
+        providers: [{ provider: "provider.token.fixture", online: false }],
       }),
       CloudQuotaPanel({
         creditBalance: 42,
-        compute: { usedRef: "quota.stylex.fixture", meterLabel: "compute" },
+        compute: { usedRef: "quota.token.fixture", meterLabel: "compute" },
       }),
       EarningsPanel({
         balanceSats: 21,
-        entries: [{ ref: "earning.stylex.fixture", amountSats: 21, at: "2026-06-22T00:00:00Z" }],
+        entries: [{ ref: "earning.token.fixture", amountSats: 21, at: "2026-06-22T00:00:00Z" }],
       }),
       DecisionCard({ decision }),
       DecisionActions({
-        decision: { requestId: "decision.stylex.fixture", state: "pending" },
+        decision: { requestId: "decision.token.fixture", state: "pending" },
         readOnly: false,
       }),
       SessionDetail(session, { events: [1] }),
       SessionActions({ session, readOnly: false }),
       AssignmentList({
-        assignments: [{ ref: "assignment.stylex.fixture", state: "available", progress: 50 }],
+        assignments: [{ ref: "assignment.token.fixture", state: "available", progress: 50 }],
       }),
       ArtifactList({
-        artifacts: [{ name: "artifact.txt", digestRef: "digest.stylex.artifact.fixture" }],
+        artifacts: [{ name: "artifact.txt", digestRef: "digest.token.artifact.fixture" }],
       }),
       ReceiptList({
-        receipts: [{ kind: "verify", digestRef: "digest.stylex.receipt.fixture", status: "ok" }],
+        receipts: [{ kind: "verify", digestRef: "digest.token.receipt.fixture", status: "ok" }],
       }),
       VerifyStatus({
         command: ["bun", "test"],
         status: "pending",
-        requiredArtifacts: [{ ref: "artifact.stylex.required", present: true }],
+        requiredArtifacts: [{ ref: "artifact.token.required", present: true }],
       }),
       EventTimeline({ events: sessionEventStreamFixture.slice(0, 1) }),
     ].map(renderHtml).join("")
@@ -123,7 +123,7 @@ describe("Autopilot UI StyleX migration coverage", () => {
     expect(rendered).toContain("oa-autopilot-domain-action-button")
     expect(rendered).toContain("oa-autopilot-domain-chip")
     expect(rendered).toContain('data-autopilot-decision-id="decision.fixture.req01"')
-    expect(rendered).toContain('data-autopilot-session-ref="session.stylex.fixture"')
+    expect(rendered).toContain('data-autopilot-session-ref="session.token.fixture"')
     expect(rendered).toContain('data-autopilot-verify-command=""')
   })
 })

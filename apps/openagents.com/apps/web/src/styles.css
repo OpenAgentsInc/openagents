@@ -1,6 +1,21 @@
 @import 'tailwindcss';
 @source "../../../workers/api/src";
 
+/*
+ * #6046: central theme injection.
+ *
+ * The ONE typed token source is `@openagentsinc/design-tokens` (re-exported via
+ * `@openagentsinc/ui/tokens`). `theme.css` is its generated `:root { --oa-*: … }`
+ * projection — importing it makes every `--oa-*` token resolvable here. The two
+ * component barrels below are the ports of the deleted StyleX `create()` blocks
+ * (the `oa-ui-*` / `oa-ai-*` / `oa-autopilot-*` classes); they now reference the
+ * `--oa-*` tokens, so importing them styles the components from the central
+ * theme instead of leaving them unstyled.
+ */
+@import '@openagentsinc/design-tokens/theme.css';
+@import '@openagentsinc/ui/styles.css';
+@import '@openagentsinc/autopilot-ui/styles.css';
+
 @theme {
   --color-background-base: var(--background-base);
   --color-background-stronger: var(--background-stronger);

@@ -60,6 +60,27 @@ export const colorTokens = {
   hudLine: "#e6e9ef",
   hudBg: "#0b0d12",
 
+  // Component chrome neutrals (#6046 part 2): the bone-white face/text plus the
+  // near-black surface + border ramp the `oa-ui-*` / `oa-ai-*` component
+  // stylesheets previously hardcoded. Values are kept EXACT so migrating the
+  // component CSS onto these tokens renders identically.
+  componentText: "#f1efe8",
+  componentBorder: "#222",
+  componentBorderStrong: "#333",
+  componentSurface: "#080808",
+  componentSurfaceDeep: "#010102",
+  componentSurfaceActive: "#141414",
+  componentInputBg: "#030303",
+  dangerHover: "#ff6f00",
+
+  // Translucent white text ramp used by the component chrome over the dark
+  // surfaces (muted labels, placeholders, ghost-button text).
+  textOnDark60: "rgba(255, 255, 255, 0.6)",
+  textOnDark55: "rgba(255, 255, 255, 0.55)",
+  textOnDark45: "rgba(255, 255, 255, 0.45)",
+  textOnDark35: "rgba(255, 255, 255, 0.35)",
+  textOnDark30: "rgba(255, 255, 255, 0.3)",
+
   // GitHub-ish review/diff accents (diff-review, status surfaces).
   reviewBorder: "#30363d",
   reviewBorderStrong: "#21262d",

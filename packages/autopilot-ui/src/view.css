@@ -10,10 +10,10 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline,#525458);
-  background-color: var(--bg-secondary,#151515);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
-  color: var(--text,#d7d8e5);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 @media (min-width: 640px) {
@@ -30,13 +30,13 @@
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 14px;
-  color: var(--primary,#fff);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-session-adapter {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--text-secondary,#8a8c93);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-session-progress-ref {
@@ -46,11 +46,11 @@
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--text-secondary,#8a8c93);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-session-empty {
   margin: 0;
   font-size: 14px;
-  color: var(--text-secondary,#8a8c93);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }

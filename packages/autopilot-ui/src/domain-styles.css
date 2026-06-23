@@ -10,10 +10,10 @@
   gap: 12px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 16px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 .oa-autopilot-domain-inline-panel {
@@ -23,11 +23,11 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding-block: 8px;
   padding-inline: 12px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 .oa-autopilot-domain-sub-panel {
@@ -35,7 +35,7 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
+  border-color: var(--oa-color-outline, #525458);
   background-color: transparent;
   padding: 12px;
 }
@@ -90,27 +90,27 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 14px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-domain-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-domain-muted {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-domain-empty {
   margin: 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-domain-code-primary {
@@ -120,7 +120,7 @@
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 14px;
-  color: var(--primary);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-domain-code-muted {
@@ -130,7 +130,7 @@
   white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-domain-value {
@@ -141,14 +141,14 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 18px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-domain-success-value {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   font-weight: 700;
-  color: var(--success);
+  color: var(--oa-color-success, #00c853);
 }
 
 .oa-autopilot-domain-action-button {
@@ -156,15 +156,15 @@
   height: 32px;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-md, 4px);
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
+  border-color: var(--oa-color-outline, #525458);
   padding-inline: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-domain-action-button:disabled {
@@ -176,10 +176,10 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 @media (min-width: 640px) {
@@ -194,8 +194,8 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg, #000);
   padding: 12px;
 }
 
@@ -211,10 +211,10 @@
   gap: 12px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 @media (min-width: 640px) {
@@ -229,10 +229,10 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 @media (min-width: 640px) {
@@ -247,10 +247,10 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
-  color: var(--text);
+  color: var(--oa-color-text, #d7d8e5);
 }
 
 @media (min-width: 640px) {
@@ -265,7 +265,7 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
+  border-color: var(--oa-color-outline, #525458);
   background-color: transparent;
   padding: 12px;
 }
@@ -282,8 +282,8 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg-secondary);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg-secondary, #151515);
   padding: 12px;
 }
 
@@ -302,16 +302,16 @@
 .oa-autopilot-domain-progress-track {
   height: 8px;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-md, 4px);
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg, #000);
 }
 
 .oa-autopilot-domain-progress-bar {
   height: 100%;
-  background-color: var(--info);
+  background-color: var(--oa-color-info, #2979ff);
 }
 
 .oa-autopilot-domain-command-block {
@@ -319,16 +319,16 @@
   min-width: 0;
   overflow-x: auto;
   white-space: pre;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-md, 4px);
   border-width: 1px;
   border-style: solid;
-  border-color: var(--outline);
-  background-color: var(--bg);
+  border-color: var(--oa-color-outline, #525458);
+  background-color: var(--oa-color-bg, #000);
   padding-block: 8px;
   padding-inline: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--primary);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-autopilot-domain-chip {
@@ -336,7 +336,7 @@
   height: 24px;
   align-items: center;
   white-space: nowrap;
-  border-radius: 4px;
+  border-radius: var(--oa-radius-md, 4px);
   border-width: 1px;
   border-style: solid;
   padding-inline: 8px;
@@ -347,31 +347,31 @@
 }
 
 .oa-autopilot-domain-chip-neutral {
-  border-color: var(--outline);
+  border-color: var(--oa-color-outline, #525458);
   background-color: transparent;
-  color: var(--text-secondary);
+  color: var(--oa-color-text-secondary, #8a8c93);
 }
 
 .oa-autopilot-domain-chip-success {
-  border-color: var(--success);
-  background-color: color-mix(in srgb, var(--success) 12%, transparent);
-  color: var(--success);
+  border-color: var(--oa-color-success, #00c853);
+  background-color: color-mix(in srgb, var(--oa-color-success, #00c853) 12%, transparent);
+  color: var(--oa-color-success, #00c853);
 }
 
 .oa-autopilot-domain-chip-warning {
-  border-color: var(--warning);
-  background-color: color-mix(in srgb, var(--warning) 12%, transparent);
-  color: var(--warning);
+  border-color: var(--oa-color-warning, #ffb400);
+  background-color: color-mix(in srgb, var(--oa-color-warning, #ffb400) 12%, transparent);
+  color: var(--oa-color-warning, #ffb400);
 }
 
 .oa-autopilot-domain-chip-danger {
-  border-color: var(--danger);
-  background-color: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
+  border-color: var(--oa-color-danger, #d32f2f);
+  background-color: color-mix(in srgb, var(--oa-color-danger, #d32f2f) 12%, transparent);
+  color: var(--oa-color-danger, #d32f2f);
 }
 
 .oa-autopilot-domain-chip-info {
-  border-color: var(--info);
-  background-color: color-mix(in srgb, var(--info) 12%, transparent);
-  color: var(--info);
+  border-color: var(--oa-color-info, #2979ff);
+  background-color: color-mix(in srgb, var(--oa-color-info, #2979ff) 12%, transparent);
+  color: var(--oa-color-info, #2979ff);
 }

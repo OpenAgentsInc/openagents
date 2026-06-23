@@ -5,28 +5,28 @@
   cursor: pointer;
   border-width: 1px;
   border-style: solid;
-  border-color: #333;
+  border-color: var(--oa-color-component-border-strong, #333);
   background-color: transparent;
   padding-inline: 10px;
   font-family: inherit;
   font-size: 0.8125rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
 }
 
 .oa-ui-form-compact-button:hover {
-  background-color: #080808;
-  color: #f1efe8;
+  background-color: var(--oa-color-component-surface, #080808);
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-form-compact-button-strong {
-  border-color: #f1efe8;
-  background-color: #f1efe8;
-  color: #000;
+  border-color: var(--oa-color-component-text, #f1efe8);
+  background-color: var(--oa-color-component-text, #f1efe8);
+  color: var(--oa-color-bg, #000);
 }
 
 .oa-ui-form-compact-button-strong:hover {
-  background-color: #f1efe8;
-  color: #000;
+  background-color: var(--oa-color-component-text, #f1efe8);
+  color: var(--oa-color-bg, #000);
 }
 
 .oa-ui-form-group {
@@ -49,7 +49,7 @@
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
 }
 
 .oa-ui-form-input {
@@ -57,24 +57,24 @@
   min-width: 0;
   border-width: 1px;
   border-style: solid;
-  border-color: #222;
-  background-color: #030303;
+  border-color: var(--oa-color-component-border, #222);
+  background-color: var(--oa-color-component-input-bg, #030303);
   padding-inline: 12px;
   padding-block: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.8125rem;
   line-height: 1.35;
-  color: #f1efe8;
+  color: var(--oa-color-component-text, #f1efe8);
   outline-style: none;
 }
 
 .oa-ui-form-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--oa-color-text-on-dark30, rgba(255, 255, 255, 0.3));
 }
 
 .oa-ui-form-input:focus {
-  border-color: #ffb400;
-  box-shadow: 0 0 0 1px #ffb400;
+  border-color: var(--oa-color-warning, #ffb400);
+  box-shadow: 0 0 0 1px var(--oa-color-warning, #ffb400);
 }
 
 .oa-ui-form-textarea {
@@ -84,15 +84,15 @@
 
 .oa-ui-form-indicator-info {
   font-size: 0.875rem;
-  color: #2979ff;
+  color: var(--oa-color-info, #2979ff);
 }
 
 .oa-ui-form-indicator-success {
   font-size: 0.875rem;
-  color: #00c853;
+  color: var(--oa-color-success, #00c853);
 }
 
 .oa-ui-form-error {
   font-size: 0.875rem;
-  color: #d32f2f;
+  color: var(--oa-color-danger, #d32f2f);
 }
