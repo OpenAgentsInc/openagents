@@ -94,6 +94,12 @@ ideas drive the schema here:
   with `--accelerator type=count` for the #6089 proven-engine lane. The setup
   path installs and verifies the Pylon node; it still does not install vLLM or
   SGLang, arm paid routing, move money, or claim real-GPU benchmark evidence.
+- `apps/pylon/scripts/real-serving-preflight.ts` is the owner-gated live
+  evidence runner for an already-started vLLM/SGLang OpenAI-compatible
+  endpoint. It emits a public-safe real-GPU self-benchmark receipt, capability
+  evidence, serve receipt, replay challenge, and read-only preflight projection.
+  Endpoint URLs, API keys, prompts, and raw outputs are not copied into the
+  evidence.
 
 ## Live GCloud bring-up evidence (2026-06-23)
 
@@ -108,6 +114,35 @@ ideas drive the schema here:
   `openagents-pylon` active, registered as
   `registration.gcloud.gswarm508-clean2-20260325044551-contrib`, and
   heartbeating.
+- Live local serving backend on the repurposed L4 host: `pylon-vllm.service`
+  runs vLLM `0.10.2` with Torch `2.8.0+cu128`, bound to `127.0.0.1:8000`, using
+  public model `Qwen/Qwen2.5-0.5B-Instruct` served under
+  `model.psionic.qwen35.0_8b.q8_0`. The newer vLLM `0.23.0` install path was
+  rejected because it pulled CUDA 13 / Torch `2.11`, while the repurposed host's
+  working NVIDIA driver is `570.211.01` / CUDA `12.8`. The CUDA-12-compatible
+  stack was installed in `/opt/pylon-vllm-cu128`.
+- The live known-answer run passed the typed no-parity/no-pay gate on
+  2026-06-23 using a one-token `OK` workload with quantization `bf16`.
+  Representative refs:
+  `receipt.pylon.serving.self_bench.*`,
+  `receipt.pylon.serving.*`,
+  `challenge.pylon.serving.*`, and
+  `preflight.pylon.real_serving.ready.v0_1`. This proves a warm local
+  vLLM-backed serving route and replayable receipt evidence; it still does not
+  claim a public gateway route, deploy a product route, move sats, or arm MPP.
+
+Rerun from the Pylon host after the vLLM service is up:
+
+```bash
+cd /opt/openagents-pylon
+PYLON_SERVING_REAL_GPU_BENCH=1 \
+PYLON_SERVING_REAL_GPU_OWNER_APPROVAL_REF=approval.owner.khala.6089.gcloud_l4_smoke.2026_06_23 \
+PYLON_SERVING_REAL_GPU_ENDPOINT=http://127.0.0.1:8000/v1/chat/completions \
+PYLON_SERVING_ADMITTED_PYLON_REF=gcloud.gswarm508-clean2-20260325044551-contrib \
+PYLON_SERVING_FABRIC_TRANSPORT_READY=1 \
+PYLON_SERVING_ENGINE_VERSION=vllm@0.10.2+torch2.8.0-cu128 \
+bun apps/pylon/scripts/real-serving-preflight.ts
+```
 - The repurposed L4 host had stale Psion startup metadata and a
   kernel/module mismatch after boot. The setup path now has
   `--clear-startup-script` and existing-VM tag assurance; the live host was

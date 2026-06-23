@@ -452,6 +452,33 @@ describe("publishable capability refs strip unproven serving claims", () => {
     expect(refs).toContain(PYLON_SERVING_CAPABILITY_REF)
     expect(refs).toContain(receiptRef)
   })
+
+  test("bf16 is a first-class disclosed precision for vLLM residency evidence", () => {
+    const receiptRef = `${PYLON_SERVING_SELF_BENCH_RECEIPT_PREFIX}bf16`
+    const evidence = buildServingCapabilityEvidence({
+      observedAt: OBSERVED_AT,
+      gpuClass: "accelerator.nvidia_l4",
+      usableGpuMemoryGb: 6,
+      totalGpuMemoryGb: 22.5,
+      bandwidthClass: "gddr",
+      interconnect: "single_gpu",
+      engines: ["vllm"],
+      residency: [
+        warmResidencyEntry({
+          modelRef: "model.psionic.qwen35.0_8b.q8_0",
+          engine: "vllm",
+          quantization: "bf16",
+        }),
+      ],
+      selfBenchmarkReceiptRef: receiptRef,
+      realGpuAdapter: true,
+    })
+
+    expect(evidence.residency[0]?.quantization).toBe("bf16")
+    expect(evidence.realGpuAdapter).toBe(true)
+    expect(evidence.blockerRefs).toEqual([])
+    assertPublicProjectionSafe(evidence)
+  })
 })
 
 describe("real Pylon serving readiness preflight (read-only, no spend)", () => {

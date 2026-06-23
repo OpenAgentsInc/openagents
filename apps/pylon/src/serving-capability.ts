@@ -95,6 +95,7 @@ export type InterconnectPosture =
  */
 export type QuantizationMode =
   | "unquantized"
+  | "bf16"
   | "fp8"
   | "mxfp8"
   | "int8"
