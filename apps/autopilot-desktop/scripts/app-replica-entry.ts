@@ -266,6 +266,7 @@ declare global {
         spawnedSceneCount: number
         spawnedSceneIds: ReadonlyArray<string>
         spawnedPortalCount: number
+        gameScreenActive: boolean
         avatarPose: {
           x: number
           y: number
@@ -314,6 +315,9 @@ window.__OA_REPLICA__ = {
       spawnedSceneCount: scenes.length,
       spawnedSceneIds: scenes.map((s) => s.sceneId),
       spawnedPortalCount: scenes.filter((s) => s.showPortal).length,
+      // M8: whether the in-world Khala crossy-road arcade screen is toggled on.
+      gameScreenActive:
+        m === null ? false : (m as { verseGameScreenActive?: boolean }).verseGameScreenActive === true,
       avatarPose:
         pose === null
           ? null

@@ -300,7 +300,7 @@ export type TrainingRunRemoteAvatarDefinition = Readonly<{
   yaw?: number
 }>
 
-export type TrainingRunWorldItemKind = "bulletin_board"
+export type TrainingRunWorldItemKind = "bulletin_board" | "game_screen"
 
 export type TrainingRunWorldItemDefinition = Readonly<{
   detail: string
@@ -314,7 +314,41 @@ export type TrainingRunWorldItemDefinition = Readonly<{
   status?: TrainingRunNodeStatus
   title?: string
   yaw?: number
+  // game_screen: the registry id of the live source canvas + screen face size.
+  screenCanvasId?: string
+  screenWidth?: number
+  screenHeight?: number
 }>
+
+// ── M8 in-world game screen primitives (gameScreenPrimitives.ts) ──────────────
+
+export declare const registerGameScreenCanvas: (
+  id: string,
+  canvas: HTMLCanvasElement,
+) => void
+export declare const unregisterGameScreenCanvas: (id: string) => void
+export declare const gameScreenCanvasFor: (
+  id: string,
+) => HTMLCanvasElement | null
+
+export type CanvasScreenBoardOptions = Readonly<{
+  canvas: HTMLCanvasElement | null
+  width?: number
+  height?: number
+  frameColor?: number
+  placeholderColor?: number
+}>
+
+export type CanvasScreenBoardHandle = Readonly<{
+  object3D: Three.Group
+  update: () => void
+  hasLiveSource: () => boolean
+  dispose: () => void
+}>
+
+export declare const createCanvasScreenBoard: (
+  options: CanvasScreenBoardOptions,
+) => CanvasScreenBoardHandle
 
 export type TrainingRunWorldItemSelection = Readonly<{
   detail: string

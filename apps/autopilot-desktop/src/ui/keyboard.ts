@@ -50,6 +50,9 @@ export type KeyIntent =
   // toggles that scene's optional gateway-portal variant. Explore mode only.
   | Readonly<{ kind: "spawn-verse-scene"; sceneId: string }>
   | Readonly<{ kind: "toggle-verse-scene-portal"; sceneId: string }>
+  // M8 "playable-in-our-world": action-bar slot 4 toggles the in-world Khala
+  // crossy-road arcade screen on/off.
+  | Readonly<{ kind: "toggle-verse-game-screen" }>
   // HUD H1: action-bar slot 1 opens a fresh coder-session surface.
   | Readonly<{ kind: "open-coder-session" }>
   | Readonly<{ kind: "close-managed-panes" }>
@@ -150,6 +153,9 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
         kind: "toggle-verse-scene-portal",
         sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
       }
+    }
+    if (focusedSlotActionIds.includes("action_bar.slot_4")) {
+      return { kind: "toggle-verse-game-screen" }
     }
   }
 

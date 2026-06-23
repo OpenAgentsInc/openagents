@@ -541,8 +541,12 @@ describe("hotbar slots 2 & 3 are wired to spawn / portal (#6033)", () => {
     expect(slot2.iconName).toBeDefined()
     expect(slot3.filled).toBe(true)
     expect(slot3.iconName).toBeDefined()
-    // Slot 1 (coder) stays filled; slots 4..10 stay empty.
+    // Slot 1 (coder) stays filled. M8: slot 4 is now the Khala arcade game
+    // screen (filled, icon-bearing); slots 5..10 stay empty.
     expect(HOTBAR_SLOTS.find((s) => s.number === 1)!.filled).toBe(true)
-    expect(HOTBAR_SLOTS.find((s) => s.number === 4)!.filled).toBeUndefined()
+    const slot4 = HOTBAR_SLOTS.find((s) => s.number === 4)!
+    expect(slot4.filled).toBe(true)
+    expect(slot4.iconName).toBeDefined()
+    expect(HOTBAR_SLOTS.find((s) => s.number === 5)!.filled).toBeUndefined()
   })
 })
