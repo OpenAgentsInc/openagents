@@ -228,3 +228,65 @@ Conventions:
   explicit confirmation and run it (the only path that can spend). NOT run here.
 - **Status:** PR open against `main` (#6088); orchestrator reviews / merges /
   deploys / smokes. NOT deployed, NO spend by this entry.
+
+---
+
+## P1-7 — Quantization needs a Khala eval gate — in progress (PR open, #6090)
+
+- **Notes ref:** `khala-investigation-notes.md` §P1 item 7 ("Quantization Needs
+  A Khala Eval Gate") + Open Question #6 (which quant modes may share a public
+  alias); book Ch.5 (Quantization). Consumes the P0-1 telemetry schema (#6085),
+  the P1-5 benchmark cost-per-accepted-outcome math (#6088), and the P0-4 executed
+  Khala-code verifier `AcceptanceVerdict` (#6087) as the eval gate.
+- **The principle encoded:** a model served at a reduced precision (FP8 / MXFP8 /
+  NVFP4 / INT4 / …) is NOT the same product as the unqualified model id, and a
+  throughput win that lowers the accepted-outcome rate is a LOSS unless
+  cost-per-accepted-outcome improves.
+- **What shipped (the four deliverables):**
+  1. **Quantization metadata** (`khala-quantization.ts`): typed
+     `KhalaQuantizationMetadata` (precision / backend / backendVersion / scope /
+     evalGatePassed / evalGateRef) + `KhalaServedModelDescriptor`. Added as a
+     first-class `quantization` field on `KhalaTelemetryRecord`
+     (`khala-telemetry.ts`). HONEST sentinels: `unquantized` (known full),
+     `not_measured` (honestly unknown), or a concrete reduced-precision value —
+     an unmeasured request records `UNKNOWN_QUANTIZATION`, never a fabricated
+     full precision.
+  2. **Same-model-claim guard** (`khala-quantization-guard.ts`): a typed,
+     fail-closed check over the descriptor (`evaluateSameModelClaim` /
+     `assertSameModelClaim` → `KhalaSameModelClaimError`). REJECTS an undisclosed
+     quantized lane, a `not_measured` lane, and a disclosed-but-ungated quantized
+     lane under an UNQUALIFIED public alias; PASSES an unquantized lane, a
+     qualified alias (precision named in the id), and a disclosed +
+     eval-gate-qualified quantized lane. A bounded enum/field check over the
+     structured descriptor — the receipt-disclosure sibling of the identity guard.
+  3. **Quantization eval gate** (`khala-quantization-eval-gate.ts`): scores a
+     quantized lane vs the original precision on EXECUTED `AcceptanceVerdict`s
+     (reuses P0-4, never a regex) and the cost-per-accepted-outcome delta (reuses
+     the P1-5 report math). PASSES only when accepted-outcome quality HOLDS, or a
+     small drop within the agreed bound is bought back by a sufficient
+     cost-per-accepted-outcome improvement; FAILS a drop beyond bound, a drop
+     without a cost win, an aggressive (KV-cache/attention) scope without owner
+     ack, no baseline accepted outcomes, or no samples.
+  4. **Policy doc** (`docs/inference/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`):
+     weights-only / FP8 before aggressive KV/attention quant; disclosure required;
+     Open Question Q6 alias-sharing policy resolved.
+- **Where:** `apps/openagents.com/workers/api/src/inference/`
+  (`khala-quantization.ts`, `khala-quantization-guard.ts`,
+  `khala-quantization-eval-gate.ts` + `*.test.ts`; `quantization` field added to
+  `khala-telemetry.ts`).
+- **Verification bar (green):** inference suites (779 tests, 37 new),
+  `typecheck`, `check:architecture`, `check:effect-topology`,
+  `check:public-projection-freshness`. Tests: quant metadata populates from a
+  fixture descriptor (honest sentinel when unknown); the guard rejects an
+  undisclosed/unknown/ungated quantized alias and passes a disclosed-gated one +
+  a qualified alias; the eval gate passes when quality holds (or a small drop is
+  offset by a cost win) and fails when accepted-outcome drops without a cost win;
+  the real sweep is flag-gated OFF (no real serving in tests).
+- **Honest scope — fixture vs owner/compute-gated:** the metadata, guard, and the
+  eval-gate LOGIC run on deterministic fixture comparison sets — no real
+  quantized serving, no spend, no compute. The real quantized-vs-original sweep
+  (`collectRealQuantSweepSamples`) throws `RealQuantSweepNotArmedError` unless
+  owner-armed with an executor; a decision-grade gate decision promoting a real
+  lane requires that armed sweep over realistic traffic. NOT run here.
+- **Status:** PR open against `main` (#6090); orchestrator reviews / merges /
+  deploys / smokes. NOT deployed, NO spend by this entry.

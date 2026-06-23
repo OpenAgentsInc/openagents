@@ -370,6 +370,20 @@ Receipts (the `openagents` block) carry the receipt id, route, workers,
 verification class, cost/price in msat, and settled state — enough for a stranger
 to re-check without exposing CoT.
 
+**Quantization disclosure (book P1-7 / #6090).** A model served at a reduced
+precision (FP8 / MXFP8 / NVFP4 / INT4 / …) is **not the same product** as the
+unqualified model id. Receipts therefore carry typed quantization metadata —
+precision, serving backend/engine + version, the quantized **scope** (which
+tensors), and whether the lane passed the quantization eval gate — with honest
+`unquantized` / `not_measured` sentinels where unknown (never a fabricated full
+precision). A quantized lane may carry an **unqualified** public alias only when
+its precision/backend are disclosed in the receipt **and** it has passed an
+executed eval comparison vs the original precision (accepted-outcome rate held,
+or cost-per-accepted-outcome improved). Otherwise it must use a **qualified**
+alias that names the precision (e.g. `openagents/khala-code-fp8`). Policy:
+weights-only / FP8 before aggressive KV-cache or attention quantization. See
+`docs/inference/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`.
+
 ## 7. Metering, pricing, settlement
 
 - **Metering** (`MeteringHook`, #5477): per call record user/agent, model,
@@ -581,6 +595,12 @@ Requirements:
   `settled` field on a streaming response.
 - How `khala-code` defines "accepted outcome" for arbitrary repos (verification
   command discovery) — ties to the Tassadar coding-environment work.
+- ~~Which quantization modes may share a public model alias?~~ **Resolved (P1-7 /
+  #6090):** an unqualified public alias may be served by a quantized lane only
+  when its precision/backend are disclosed in the receipt **and** the lane passed
+  the quantization eval gate; otherwise the lane uses a qualified alias that names
+  the precision. Honestly-unknown precision (`not_measured`) may not share an
+  unqualified alias. See §6 + the eval-gate doc.
 
 ---
 
