@@ -15,6 +15,23 @@ and Bitcoin settlement. The next risk is that we add more routing, engines, or
 benchmark claims before the request lifecycle is measurable enough to compare
 them.
 
+## Khala on Blueprint + Tassadar plugin extensibility
+
+A companion architectural-direction note,
+[`../2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../2026-06-23-khala-blueprint-program-and-plugin-extensibility.md),
+extends the "inference platform + control plane" read here in two ways. First,
+Khala's inference should run as **typed, optimizable Blueprint/DSPy programs**
+(signature lookup + GEPA-optimized prompts/policies + the learned coordinator),
+so quality/cost improve by optimization against the executed evals and
+acceptance receipts this telemetry list is built to capture — the scorecard
+fields above are precisely the reward inputs that learned-program optimization
+needs. Second, that Blueprint program layer should be **extensible via
+independently authored capability units** (Tassadar-style plugins/modules)
+discovered, composed into Khala programs, metered per use, and (FUTURE) paid in
+Bitcoin with a revenue split — so Khala grows capabilities without core
+changes. That note keeps an honest current-vs-future split and honors the
+Tassadar no-public-marketplace boundary; nothing in it is a product promise.
+
 ## P0 - Do First
 
 ### 1. Make The Khala Scorecard Production-Complete
