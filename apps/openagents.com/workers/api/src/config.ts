@@ -103,6 +103,17 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // resumable read URL. Metering still settles EXACTLY ONCE on the real upstream
   // EOF and NEVER on a resume/replay read.
   INFERENCE_DURABLE_STREAM_ENABLED?: string | undefined
+  // Typed component-channel feature flag (Khala, EPIC #6123, issue #6127).
+  // Default OFF: the `/v1/chat/completions` `oa.component` SSE channel is inert,
+  // so the gateway is byte-for-byte today's text-only stream and standard OpenAI
+  // clients are unaffected. Set "true"/"1"/"on" to ARM the gateway flag; even
+  // then the channel only activates for a request that explicitly opts in (the
+  // `x-oa-component-channel: on` header or an `oa_component_channel: true` body
+  // field) AND targets a Khala model — so the default response shape never
+  // changes. The catalog is the CLOSED v1 set; props are validated with Effect
+  // Schema (one bounded repair turn, then drop) and the provider-identity
+  // backstop is honored on the structured channel.
+  KHALA_COMPONENT_CHANNEL_ENABLED?: string | undefined
   // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
   // OFF: the queue handler does NOT route batch-job messages to the consumer
   // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the

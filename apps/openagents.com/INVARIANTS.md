@@ -2242,3 +2242,41 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   confirmed operator email and denied typo. Route, API, export, and redaction
   coverage must be added with the implementation slices that introduce those
   surfaces.
+
+## Khala Typed Component Channel (oa.component SSE)
+
+- The Khala `/v1/chat/completions` typed component channel is ADDITIVE and
+  OPT-IN. It is gated by `KHALA_COMPONENT_CHANNEL_ENABLED` (default off) AND a
+  per-request explicit opt-in (`x-oa-component-channel: on` header or an
+  `oa_component_channel: true` body field) AND a Khala model. With any of those
+  absent, `/v1/chat/completions` is byte-for-byte the prior text-only stream and
+  the default response shape never changes. A standard OpenAI client must always
+  parse the stream as normal `chat.completion.chunk` text; the `oa.component`
+  frame uses a custom SSE `event:` type that standard clients ignore.
+- The component catalog is a CLOSED enum (six v1 components: `credit_kickoff`,
+  `intake_progress`, `quick_win_card`, `dashboard_preview`, `human_handoff`,
+  `consent_gate`). The model may only SELECT from and FILL the catalog; an
+  unknown/model-invented component name is rejected at the gateway and never
+  emitted. Adding a 7th component is a deliberate, reviewed catalog bump in
+  `workers/api/src/inference/khala-component-channel.ts`, never an ad-hoc model
+  invention.
+- Component props are validated against the closed catalog with Effect Schema at
+  the gateway BEFORE a frame leaves Khala. On a schema-invalid candidate exactly
+  ONE bounded repair turn may run; if the repaired candidate is still invalid the
+  component is DROPPED (never ship malformed UI). Each emitted frame is atomic and
+  versioned (`{"v":1,"component":...,"props":...,"id":...}`) — one complete card
+  per frame, no JSON-patch reassembly and no partial-JSON parse.
+- The component channel honors the SAME provider-identity redaction backstop as
+  the prose channel (`khala-identity.ts`). A card whose props assert a forbidden
+  first-person provider/model identity is dropped, so the structured channel
+  cannot become a side door around the prose identity guard. The prose carried
+  alongside component frames is identity-guarded by the same backstop.
+- The component channel is evidence/UX only. A component frame does not grant
+  payment, accepted-work, payout, settlement, deploy, or public-claim authority
+  by itself; a `credit_kickoff` card is a render hint that links to the existing
+  Stripe checkout path, not a settlement event.
+- Regression coverage for this policy lives in
+  `workers/api/src/inference/khala-component-channel.test.ts` and the route
+  integration coverage in
+  `workers/api/src/inference/chat-completions-routes.test.ts` (the "typed
+  component channel (#6127)" suite).

@@ -322,6 +322,7 @@ import {
   isInferenceDurableStreamEnabled,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import { isComponentChannelEnabled } from './inference/khala-component-channel'
 import { routeDurableInferenceReadRequest } from './inference/durable-inference-read-routes'
 import {
   type DiscoverySurfacePath,
@@ -10123,6 +10124,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         durableStreamEnabled: isInferenceDurableStreamEnabled(
           env.INFERENCE_DURABLE_STREAM_ENABLED,
         ),
+        // TYPED COMPONENT CHANNEL (EPIC #6123, issue #6127). Flag-gated INERT by
+        // default: with KHALA_COMPONENT_CHANNEL_ENABLED off the `oa.component` SSE
+        // channel never activates and `/v1/chat/completions` is byte-for-byte
+        // today's text-only stream. Even when the flag is on, the channel only
+        // activates for a request that explicitly opts in (`x-oa-component-channel`
+        // header / `oa_component_channel` body field) AND targets a Khala model.
+        // `repairReask` (the ONE bounded repair turn) is left undefined here for
+        // now — an invalid card is dropped without a repair attempt (still never
+        // shipped). NEEDS-OWNER: wire `repairReask` to a single non-streaming Khala
+        // call once the onboarding program lands, to enable the bounded repair.
+        componentChannel: {
+          enabled: isComponentChannelEnabled(
+            env.KHALA_COMPONENT_CHANNEL_ENABLED,
+          ),
+        },
         registry: inferenceProviderRegistry,
       })
     },
