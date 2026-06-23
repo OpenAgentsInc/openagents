@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    // bun-types for the runtime; @cloudflare/workers-types supplies the ambient D1/Queue/
+    // R2 globals referenced by the bridged worker harness source (the runner never CALLS
+    // those D1 paths — they are dead branches here — but `tsc` follows the imports, so
+    // the ambient types must resolve for a clean typecheck).
+    "types": ["bun-types", "@cloudflare/workers-types"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"]
+}
