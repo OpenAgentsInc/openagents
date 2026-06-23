@@ -332,6 +332,16 @@ type OpenAgentsReceipt = Readonly<{
         failed_checks: ReadonlyArray<string>
       }>
     | undefined
+  // Bitcoin/Spark settlement on a VERIFIED accepted outcome (#6011, EPIC #6017).
+  // `settled` is the honest default `false` on the hot path: settlement fires
+  // ASYNC after an out-of-Worker headless acceptance run verifies the outcome
+  // (the verdict-callback path settles the worker + validator and flips this to
+  // `true`), so a fresh completion is `verified:false`/`settled:false` until the
+  // runner verifies it. The field exists so the receipt shape is stable and a
+  // settled accepted outcome surfaces `settled:true` + the settlement receipt
+  // refs alongside `verified`/`scalar_reward`.
+  settled?: boolean | undefined
+  settlement_receipts?: ReadonlyArray<string> | undefined
 }>
 
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
@@ -392,6 +402,11 @@ const khalaReceiptForResult = (
       ref: verdict.rubricRef,
     },
     scalar_reward: verdict.scalarReward,
+    // Honest hot-path default: settlement fires ASYNC after the headless acceptance
+    // verdict callback verifies the outcome and pays the worker + validator (#6011).
+    // A fresh completion is not yet settled; the public receipt read reflects the
+    // settled state once the callback has run.
+    settled: false,
     verification: verdict.verification,
     verification_command: verdict.command.commandRef,
     verification_receipt: verdict.receiptRef,

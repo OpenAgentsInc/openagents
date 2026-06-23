@@ -31,6 +31,21 @@ import {
   backfillVerdictIntoVerification,
   type KhalaVerificationStore,
 } from './acceptance-dispatch'
+import {
+  type AcceptedOutcomeSettledSummary,
+  type KhalaAcceptedOutcome,
+} from './khala-accepted-outcome-settlement'
+import { KHALA_CODE_VERIFIER_WORKER_ID } from './khala-code-verifier'
+
+// The accepted-outcome settlement sink the callback fires when a verified, executed
+// outcome BACKFILLS for the FIRST time. Returns the settled summary so the route can
+// surface `settled:true` + the settlement receipt refs in the response. The wiring
+// layer (`index.ts`) builds this from `settleVerifiedAcceptedOutcome` +
+// `summarizeAcceptedOutcomeSettlement` behind the loop-arming flag + the M3 owner gate;
+// a test passes a mock. Effect (fail-soft): it must never throw into the route.
+export type AcceptedOutcomeSettlementSink = (
+  outcome: KhalaAcceptedOutcome,
+) => Effect.Effect<AcceptedOutcomeSettledSummary>
 
 export type AcceptanceVerdictCallbackDeps = Readonly<{
   // Gateway flag (INFERENCE_GATEWAY_ENABLED). Default OFF => 404.
@@ -42,6 +57,12 @@ export type AcceptanceVerdictCallbackDeps = Readonly<{
   // in tests). The public receipt read projects from this store.
   store: KhalaVerificationStore
   nowIso: () => string
+  // The accepted-outcome settlement sink (#6011). OPTIONAL: absent => no settlement is
+  // attempted (the honest default before the loop is armed). When present, it fires
+  // ONLY on the FIRST backfill of a VERIFIED + EXECUTED outcome (a redelivered/idempotent
+  // callback never re-fires it, so settlement is at-most-once per accepted outcome). The
+  // sink itself fail-closes by default (owner gate OFF) and is fail-soft.
+  settlement?: AcceptedOutcomeSettlementSink | undefined
 }>
 
 const safeJsonParse = (text: string): unknown => {
@@ -114,6 +135,45 @@ export const handleAcceptanceVerdictCallback = (
       body,
     )
 
+    // ACCEPTED-OUTCOME SETTLEMENT (#6011, EPIC #6017). Fire the settlement sink ONLY on
+    // the FIRST backfill of a VERIFIED + EXECUTED accepted outcome — so a verify is what
+    // pays the worker + validator, and a redelivered/idempotent callback never re-fires
+    // it (at-most-once per accepted outcome). The sink itself fail-closes by default
+    // (owner real-settlement gate OFF) and is fail-soft; we additionally swallow here so
+    // a settlement error never regresses the already-backfilled receipt response.
+    let settled: AcceptedOutcomeSettledSummary | null = null
+    if (
+      deps.settlement !== undefined &&
+      outcome.backfilled &&
+      outcome.record.verified &&
+      outcome.record.executed
+    ) {
+      settled = yield* deps
+        .settlement({
+          executed: outcome.record.executed,
+          requestId: outcome.record.requestId,
+          scalarReward: outcome.record.scalarReward,
+          servedModel: body.servedModel,
+          // The VALIDATOR is the independent verifier that ran the headless acceptance
+          // suite (a distinct party from the producer). The SERVING WORKER that produced
+          // the accepted artifact is echoed back on `body.worker` (the dispatch carried
+          // the serving adapter id through to the runner).
+          validatorRef: KHALA_CODE_VERIFIER_WORKER_ID,
+          verificationReceiptRef: outcome.record.verificationReceiptRef,
+          verified: outcome.record.verified,
+          workerRef: body.worker,
+        })
+        .pipe(
+          Effect.orElseSucceed(
+            (): AcceptedOutcomeSettledSummary => ({
+              settled: false,
+              settledParties: [],
+              settlementReceiptRefs: [],
+            }),
+          ),
+        )
+    }
+
     return noStoreJsonResponse(
       {
         backfilled: outcome.backfilled,
@@ -121,6 +181,16 @@ export const handleAcceptanceVerdictCallback = (
         passedChecks: outcome.record.passedChecks,
         requestId: outcome.record.requestId,
         scalarReward: outcome.record.scalarReward,
+        // Settlement surface (#6011): `settled:true` + the per-party settlement receipt
+        // refs when the worker + validator were actually paid; the honest inert default
+        // (`settled:false`, empty refs) until the loop + owner gate are armed.
+        ...(settled === null
+          ? {}
+          : {
+              settled: settled.settled,
+              settledParties: settled.settledParties,
+              settlementReceiptRefs: settled.settlementReceiptRefs,
+            }),
         verificationReceiptRef: outcome.record.verificationReceiptRef,
         verified: outcome.record.verified,
         verdict: outcome.record.verification,
