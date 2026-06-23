@@ -7,12 +7,12 @@
 // whether the gateway can actually serve that model's supply lane right now. A
 // supply lane is only servable when its upstream credential/binding is
 // provisioned — the Vertex lanes need `VERTEX_SA_KEY`, the Fireworks lane needs
-// `FIREWORKS_API_KEY`, and the OpenAgents serving fabric is not yet live. A
-// PAID gateway must not advertise (and let a credits customer fund a balance
-// toward) a model it cannot serve: a request for an unarmed lane can only fail
-// `model_unavailable` at dispatch time. This module is the SINGLE provider
-// policy that maps which lanes are armed to which catalog models the gateway may
-// publish.
+// `FIREWORKS_API_KEY`, and the OpenAgents serving fabric needs an explicit
+// route-ready flag plus public-safe Pylon evidence refs. A PAID gateway must
+// not advertise (and let a credits customer fund a balance toward) a model it
+// cannot serve: a request for an unarmed lane can only fail `model_unavailable`
+// at dispatch time. This module is the SINGLE provider policy that maps which
+// lanes are armed to which catalog models the gateway may publish.
 //
 // PUBLIC-SAFE + NO SECRETS: the policy reads credential PRESENCE only (a boolean
 // "is this env var a non-empty string"), never the secret value, so it neither
@@ -45,6 +45,22 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
+  // Explicit public-gateway route arming for the OpenAgents/Pylon serving
+  // fabric. `ready` is the only accepted on-token; public-safe refs below carry
+  // the evidence. No endpoint URL, API key, raw prompt, or private host appears
+  // in this policy.
+  OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY?: string | undefined
+  OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF?: string | undefined
+  OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF?: string | undefined
+  OPENAGENTS_NETWORK_SERVING_RECEIPT_REF?: string | undefined
+  OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF?: string | undefined
+  OPENAGENTS_NETWORK_ADMITTED_PYLON_REF?: string | undefined
+}>
+
+export type OpenAgentsNetworkGatewayArming = Readonly<{
+  armed: boolean
+  evidenceRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
 }>
 
 // Is an env credential present (a non-blank string)? Presence-only; the value is
@@ -52,16 +68,86 @@ export type SupplyLaneCredentialEnv = Readonly<{
 const isPresent = (value: string | undefined): boolean =>
   typeof value === 'string' && value.trim() !== ''
 
+const GATEWAY_ROUTE_READY_ON_TOKEN = 'ready'
+
+const PUBLIC_SAFE_REF = /^[a-z0-9][a-z0-9._:-]{1,199}$/iu
+
+const isPublicSafeRef = (value: string | undefined): value is string => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return false
+  }
+  const trimmed = value.trim()
+  return (
+    trimmed === value &&
+    PUBLIC_SAFE_REF.test(trimmed) &&
+    !trimmed.includes('://') &&
+    !trimmed.toLowerCase().startsWith('sk-')
+  )
+}
+
+export const resolveOpenAgentsNetworkGatewayArming = (
+  env: SupplyLaneCredentialEnv,
+): OpenAgentsNetworkGatewayArming => {
+  const evidence: Array<[string, string | undefined]> = [
+    [
+      'blocker.openagents_network_gateway.approval_ref_missing',
+      env.OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF,
+    ],
+    [
+      'blocker.openagents_network_gateway.serving_preflight_ref_missing',
+      env.OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF,
+    ],
+    [
+      'blocker.openagents_network_gateway.serving_receipt_ref_missing',
+      env.OPENAGENTS_NETWORK_SERVING_RECEIPT_REF,
+    ],
+    [
+      'blocker.openagents_network_gateway.replay_challenge_ref_missing',
+      env.OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF,
+    ],
+    [
+      'blocker.openagents_network_gateway.admitted_pylon_ref_missing',
+      env.OPENAGENTS_NETWORK_ADMITTED_PYLON_REF,
+    ],
+  ]
+
+  const blockerRefs: Array<string> = []
+  if (
+    env.OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY?.trim() !==
+    GATEWAY_ROUTE_READY_ON_TOKEN
+  ) {
+    blockerRefs.push('blocker.openagents_network_gateway.route_not_ready')
+  }
+
+  const evidenceRefs: Array<string> = []
+  for (const [blockerRef, value] of evidence) {
+    if (isPublicSafeRef(value)) {
+      evidenceRefs.push(value)
+    } else {
+      blockerRefs.push(blockerRef)
+    }
+  }
+
+  return {
+    armed: blockerRefs.length === 0,
+    blockerRefs,
+    evidenceRefs,
+  }
+}
+
 // Derive which supply lanes are armed from credential PRESENCE. The OpenAgents
-// serving-fabric lane has no live credential surface (Pylons do not yet serve
-// inference — roadmap), so it is conservatively never armed here.
+// serving-fabric lane is stricter than a credential presence check: it only arms
+// when a deploy supplies route-ready plus public-safe evidence refs for an
+// admitted Pylon, serving preflight, serving receipt, replay challenge, and
+// owner approval.
 export const resolveSupplyLaneArming = (
   env: SupplyLaneCredentialEnv,
 ): SupplyLaneArming => {
   const vertex = isPresent(env.VERTEX_SA_KEY)
+  const openAgentsNetwork = resolveOpenAgentsNetworkGatewayArming(env)
   return {
     fireworks: isPresent(env.FIREWORKS_API_KEY),
-    'openagents-network': false,
+    'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,
   }

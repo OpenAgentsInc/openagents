@@ -164,6 +164,29 @@ owner/compute-gated work is wiring a real vLLM/SGLang serving transport and
 real-GPU benchmark receipt. Any payout still goes through the separate
 settlement gates; this evidence path does not move money.
 
+## Worker Gateway Route Arming
+
+The OpenAgents.com Worker serving policy can now arm the `openagents-network`
+catalog lane only when a deploy supplies all of the following public-safe
+route/evidence refs:
+
+```bash
+OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY=ready
+OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF=approval.owner.khala.6089.gateway_route.2026_06_23
+OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF=preflight.pylon.real_serving.ready.v0_1
+OPENAGENTS_NETWORK_SERVING_RECEIPT_REF=receipt.pylon.serving.OWtQlHDIdRmCvGpoOUt8
+OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF=challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s
+OPENAGENTS_NETWORK_ADMITTED_PYLON_REF=gcloud.gswarm508-clean2-20260325044551-contrib
+```
+
+The policy treats these as presence-only, public-safe refs. It rejects raw URLs,
+secret-shaped strings, blank values, and truthy-but-not-`ready` route flags. This
+lets `/v1/models`, `/v1/quote`, `/v1/chat/completions`, and
+`/v1/gateway/readiness` expose the Pylon lane only after the operator has a real
+gateway route plus the serving preflight, serving receipt, replay challenge, and
+admitted-Pylon refs. It still does not deploy the route, expose the private
+GCloud endpoint, move sats, or green a product promise by itself.
+
 ## Khala M6 shadow-run preflight
 
 `apps/pylon/src/khala-m6-shadow-preflight.ts` adds the read-only M6 readiness

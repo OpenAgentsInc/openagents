@@ -6,6 +6,7 @@ import {
   filterServableCatalog,
   isLaneArmed,
   isModelServable,
+  resolveOpenAgentsNetworkGatewayArming,
   resolveNamedModelServability,
   resolveSupplyLaneArming,
   type SupplyLaneArming,
@@ -18,6 +19,20 @@ const ALL_ARMED: SupplyLaneArming = {
   'vertex-anthropic': true,
   'vertex-gemini': true,
 }
+
+const OPENAGENTS_NETWORK_READY_ENV = {
+  OPENAGENTS_NETWORK_ADMITTED_PYLON_REF:
+    'gcloud.gswarm508-clean2-20260325044551-contrib',
+  OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF:
+    'approval.owner.khala.6089.gateway_route.2026_06_23',
+  OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY: 'ready',
+  OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF:
+    'challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s',
+  OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF:
+    'preflight.pylon.real_serving.ready.v0_1',
+  OPENAGENTS_NETWORK_SERVING_RECEIPT_REF:
+    'receipt.pylon.serving.OWtQlHDIdRmCvGpoOUt8',
+} as const
 
 describe('resolveSupplyLaneArming', () => {
   it('arms nothing for an empty env (safe default)', () => {
@@ -44,12 +59,82 @@ describe('resolveSupplyLaneArming', () => {
     )
   })
 
-  it('never arms the openagents-network lane (serving fabric is roadmap)', () => {
+  it('keeps the openagents-network lane unarmed without its route evidence', () => {
     const arming = resolveSupplyLaneArming({
       FIREWORKS_API_KEY: 'fw',
       VERTEX_SA_KEY: 'sa',
     })
     expect(arming['openagents-network']).toBe(false)
+  })
+
+  it('arms openagents-network only from route-ready plus public-safe evidence refs', () => {
+    const arming = resolveSupplyLaneArming(OPENAGENTS_NETWORK_READY_ENV)
+    expect(arming['openagents-network']).toBe(true)
+    expect(arming.fireworks).toBe(false)
+    expect(arming['vertex-gemini']).toBe(false)
+  })
+})
+
+describe('resolveOpenAgentsNetworkGatewayArming', () => {
+  it('fails closed with typed blockers when route evidence is absent', () => {
+    const arming = resolveOpenAgentsNetworkGatewayArming({})
+    expect(arming.armed).toBe(false)
+    expect(arming.evidenceRefs).toEqual([])
+    expect(arming.blockerRefs).toEqual([
+      'blocker.openagents_network_gateway.route_not_ready',
+      'blocker.openagents_network_gateway.approval_ref_missing',
+      'blocker.openagents_network_gateway.serving_preflight_ref_missing',
+      'blocker.openagents_network_gateway.serving_receipt_ref_missing',
+      'blocker.openagents_network_gateway.replay_challenge_ref_missing',
+      'blocker.openagents_network_gateway.admitted_pylon_ref_missing',
+    ])
+  })
+
+  it('requires the exact route-ready token, not a truthy string', () => {
+    const arming = resolveOpenAgentsNetworkGatewayArming({
+      ...OPENAGENTS_NETWORK_READY_ENV,
+      OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY: 'true',
+    })
+    expect(arming.armed).toBe(false)
+    expect(arming.blockerRefs).toContain(
+      'blocker.openagents_network_gateway.route_not_ready',
+    )
+  })
+
+  it('rejects endpoint-shaped or secret-shaped values as evidence refs', () => {
+    const endpoint = resolveOpenAgentsNetworkGatewayArming({
+      ...OPENAGENTS_NETWORK_READY_ENV,
+      OPENAGENTS_NETWORK_SERVING_RECEIPT_REF:
+        'https://10.42.11.3:8000/v1/chat/completions',
+    })
+    expect(endpoint.armed).toBe(false)
+    expect(endpoint.blockerRefs).toContain(
+      'blocker.openagents_network_gateway.serving_receipt_ref_missing',
+    )
+
+    const secret = resolveOpenAgentsNetworkGatewayArming({
+      ...OPENAGENTS_NETWORK_READY_ENV,
+      OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF: 'sk-not-a-public-ref',
+    })
+    expect(secret.armed).toBe(false)
+    expect(secret.blockerRefs).toContain(
+      'blocker.openagents_network_gateway.approval_ref_missing',
+    )
+  })
+
+  it('returns only public-safe refs when the gateway route evidence is complete', () => {
+    const arming = resolveOpenAgentsNetworkGatewayArming(
+      OPENAGENTS_NETWORK_READY_ENV,
+    )
+    expect(arming.armed).toBe(true)
+    expect(arming.blockerRefs).toEqual([])
+    expect(arming.evidenceRefs).toEqual([
+      'approval.owner.khala.6089.gateway_route.2026_06_23',
+      'preflight.pylon.real_serving.ready.v0_1',
+      'receipt.pylon.serving.OWtQlHDIdRmCvGpoOUt8',
+      'challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s',
+      'gcloud.gswarm508-clean2-20260325044551-contrib',
+    ])
   })
 })
 
