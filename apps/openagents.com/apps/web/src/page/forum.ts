@@ -114,7 +114,6 @@ export const forumScript = (
     posts: [],
     topicPostSortDirection: 'asc',
     receipt: null,
-    pylonStats: null,
     tipLeaderboards: null,
   };
   const root = document.querySelector('[data-forum-app]');
@@ -203,10 +202,8 @@ export const forumScript = (
   const postNumberAnchor = post => 'post-' + Number(post.postNumber || 0);
   const postHref = post => topicHref(post) + '#' + postAnchor(post);
   const defaultPostRewardSats = 10;
-  const defaultPylonTipSats = 10;
   const postRewardAmountLabel = amount => String(amount) + ' sats';
   const postRewardCaveat = 'Content reward; receipt separates payment from settlement.';
-  const pylonTipCaveat = 'Pylon reward; receipt separates payment from settlement.';
   const countText = (count, singular, plural) => {
     const normalized = Number(count || 0);
     return normalized === 1 ? '1 ' + singular : normalized + ' ' + plural;
@@ -577,27 +574,12 @@ export const forumScript = (
     panel.setAttribute('data-forum-tip-result', stateName);
     panel.innerHTML = html;
   };
-  const findPylonTipPanel = pylonRef =>
-    Array.from(main.querySelectorAll('[data-pylon-tip-panel]')).find(element =>
-      element.getAttribute('data-pylon-tip-panel') === pylonRef
-    ) || null;
-  const setPylonTipPanel = (pylonRef, stateName, html) => {
-    const panel = findPylonTipPanel(pylonRef);
-    if (!panel) return;
-    panel.setAttribute('data-pylon-tip-result', stateName);
-    panel.innerHTML = html;
-  };
   const tipSessionNonce = String(Math.trunc(performance.timeOrigin));
   let tipSequence = 0;
   const tipIdempotencyKey = postId => {
     tipSequence += 1;
     const nonce = tipSessionNonce + ':' + String(tipSequence);
     return 'forum:browser_tip:' + postId + ':' + nonce;
-  };
-  const pylonTipIdempotencyKey = pylonRef => {
-    tipSequence += 1;
-    const nonce = tipSessionNonce + ':' + String(tipSequence);
-    return 'forum:browser_pylon_tip:' + pylonRef + ':' + nonce;
   };
   const renderTipControls = post => {
     const readiness = post.tipRecipientReadiness || {};
@@ -630,30 +612,6 @@ export const forumScript = (
       renderTipControls(post) +
       '<button type="button" class="rounded border border-forum-row-c bg-forum-panel px-2 py-1 text-xs font-bold text-forum-link hover:border-forum-header hover:bg-forum-post-link-hover-bg hover:text-forum-link-hover" data-forum-copy-permalink="' + escapeHtml(postHref(post)) + '">Permalink</button>' +
       '</div>';
-  const pylonDisplayName = pylon => pylon.nodeLabel || pylon.pylonRef || pylon.nostrPubkeyShort || 'Pylon';
-  const pylonTipRef = pylon => pylon.pylonRef || pylon.nostrPubkeyShort || '';
-  const pylonTipEndpoint = pylon => pylon.tipEndpoint || ('/api/pylons/' + encodeURIComponent(pylonTipRef(pylon)) + '/tips/ladder');
-  const renderPylonTipRow = pylon => {
-    const pylonRef = pylonTipRef(pylon);
-    if (!pylonRef) return '';
-    const status = pylon.walletReadyNow === true ? 'Wallet ready' : 'Ledger credit';
-    const disabled = pylon.tippingAvailable === false ? ' disabled aria-disabled="true"' : '';
-    return '<li class="grid gap-2 border-t border-forum-row-c px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">' +
-      '<div class="min-w-0"><div class="truncate text-sm font-bold text-forum-link">' + escapeHtml(pylonDisplayName(pylon)) + '</div><div class="truncate font-sans text-xs text-forum-text">' + escapeHtml(pylonRef) + ' · ' + escapeHtml(status) + '</div></div>' +
-      '<div class="flex max-w-full flex-wrap items-center justify-end gap-x-2 gap-y-1">' +
-      '<label class="flex items-center gap-1 font-sans text-xs text-forum-text"><span>Tip</span><input class="h-8 w-20 rounded border border-forum-row-c bg-forum-panel px-2 text-right text-forum-heading" data-pylon-tip-amount="' + escapeHtml(pylonRef) + '" inputmode="numeric" min="1" step="1" type="number" value="' + String(defaultPylonTipSats) + '"><span>sats</span></label>' +
-      '<button type="button" class="min-h-8 rounded border border-forum-payment bg-forum-panel px-3 py-1.5 font-sans text-xs font-bold text-forum-payment hover:bg-forum-post-link-hover-bg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-forum-header" data-pylon-tip-ref="' + escapeHtml(pylonRef) + '" data-pylon-tip-endpoint="' + escapeHtml(pylonTipEndpoint(pylon)) + '"' + disabled + '>Tip pylon</button>' +
-      '<span class="basis-full text-right text-xs text-forum-text" data-pylon-tip-panel="' + escapeHtml(pylonRef) + '"></span>' +
-      '</div>' +
-      '</li>';
-  };
-  const renderPylonTipPanel = pylonStats => {
-    const pylons = (pylonStats?.recentPylons || []).slice(0, 6).filter(pylon => pylonTipRef(pylon));
-    if (pylons.length === 0) return '';
-    return '<section class="${panelClass} mb-4 overflow-hidden" data-pylon-tip-list><div class="${forumHeaderClass} rounded-none">Pylons</div>' +
-      '<div class="flex flex-wrap items-start justify-between gap-3 p-3"><div><p class="${eyebrowClass}">Pylon tips</p><h2 class="m-0 text-lg font-bold text-forum-heading">Send sats to pylons</h2></div><span class="font-sans text-xs text-forum-text">' + escapeHtml(pylonTipCaveat) + '</span></div>' +
-      '<ol class="grid">' + pylons.map(renderPylonTipRow).join('') + '</ol></section>';
-  };
   const renderAuthorProfile = post => {
     const actor = post.author || {};
     const displayName = actorDisplayName(actor);
@@ -726,44 +684,6 @@ export const forumScript = (
       button.disabled = false;
     }
   };
-  const renderPylonTipResult = result => {
-    if (result.receiptRef) {
-      return 'Pylon tip recorded · ' + escapeHtml(result.rung || 'credited') + ' · ' + escapeHtml(result.receiptRef);
-    }
-    return 'Pylon tip submitted.';
-  };
-  const handlePylonTipClick = async button => {
-    const pylonRef = button.getAttribute('data-pylon-tip-ref') || '';
-    if (!pylonRef) return;
-    if (authMode !== 'LoggedIn') {
-      setPylonTipPanel(pylonRef, 'login_required', '<a class="text-forum-link underline underline-offset-4 hover:text-forum-link-hover" href="' + escapeHtml(loginHref) + '">Log in with GitHub</a> to tip this pylon.');
-      return;
-    }
-    button.disabled = true;
-    const amountInput = Array.from(main.querySelectorAll('[data-pylon-tip-amount]')).find(element =>
-      element.getAttribute('data-pylon-tip-amount') === pylonRef
-    );
-    const rawAmount = Math.trunc(Number(amountInput?.value || defaultPylonTipSats));
-    const amount = Number.isFinite(rawAmount) && rawAmount > 0 ? rawAmount : defaultPylonTipSats;
-    const endpoint = button.getAttribute('data-pylon-tip-endpoint') || ('/api/pylons/' + encodeURIComponent(pylonRef) + '/tips/ladder');
-    setPylonTipPanel(pylonRef, 'sending', 'Sending ' + postRewardAmountLabel(amount) + '...');
-    try {
-      const result = await api(endpoint, {
-        method: 'POST',
-        headers: {
-          'Idempotency-Key': pylonTipIdempotencyKey(pylonRef + ':' + String(amount)),
-        },
-        body: JSON.stringify({
-          amountSat: amount,
-        }),
-      });
-      setPylonTipPanel(pylonRef, result.receiptRef ? 'success' : 'failed', renderPylonTipResult(result));
-    } catch (error) {
-      setPylonTipPanel(pylonRef, 'failed', 'Payment failed · ' + escapeHtml(error.message || error));
-    } finally {
-      button.disabled = false;
-    }
-  };
   main.addEventListener('click', event => {
     const target = event.target instanceof Element
       ? event.target.closest('[data-forum-tip-post-id]')
@@ -771,15 +691,6 @@ export const forumScript = (
     if (target instanceof HTMLButtonElement) {
       event.preventDefault();
       handleTipClick(target);
-    }
-  });
-  main.addEventListener('click', event => {
-    const target = event.target instanceof Element
-      ? event.target.closest('[data-pylon-tip-ref]')
-      : null;
-    if (target instanceof HTMLButtonElement) {
-      event.preventDefault();
-      handlePylonTipClick(target);
     }
   });
 
@@ -825,7 +736,7 @@ export const forumScript = (
       '<div><p class="${eyebrowClass}">Thread</p><h1 class="m-0 text-2xl font-bold text-forum-heading">' + escapeHtml(topic.title) + '</h1>' +
       '<p class="mt-2 ${mutedClass}">' + postCountText(topic.postCount) + '</p></div>' +
       '<a class="${ghostButtonClass}" href="' + forumHref({ slug: topic.forumId, forumId: topic.forumId }) + '">Forum</a></div>' +
-      '<div class="px-4 pb-4 sm:px-5 sm:pb-5">' + renderPylonTipPanel(state.pylonStats) + postRows(posts) + '</div></section>' +
+      '<div class="px-4 pb-4 sm:px-5 sm:pb-5">' + postRows(posts) + '</div></section>' +
       actionBar(topicSortToggle(topic) + pageSummary(posts.length, 'post'));
     requestAnimationFrame(scrollPostAnchorIntoView);
   };
@@ -886,12 +797,10 @@ export const forumScript = (
         paths: [
           topicApiPath(initial.id),
           '/api/forum/launch-status',
-          '/api/public/pylon-stats',
         ],
         apply: results => {
           state.topic = results[0].topic; state.posts = results[0].posts || [];
           state.launchStatus = results[1];
-          state.pylonStats = results[2];
           renderTopic(state.topic, state.posts);
         },
       };
