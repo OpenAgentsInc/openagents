@@ -129,10 +129,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // (`/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`) are unconditional and do
   // NOT depend on this flag.
   KHALA_MPP_ENABLED?: string | undefined
-  // The Stripe network profile id (`profile_…`) enabling the card/SPT machine-
-  // payment rail for the MPP endpoint. Absent => the MPP endpoint is crypto-only
-  // (USDC via x402/MPP); the crypto rail does not need it. Worker secret; never
-  // committed/logged.
+  // The Stripe Directory network profile id (`profile_…`) enabling the card/SPT
+  // machine-payment rail for the MPP endpoint. Absent => the MPP endpoint is
+  // crypto-only (USDC via x402/MPP); the crypto rail does not need it. This is a
+  // PUBLIC directory identifier (how the public Stripe Directory references the
+  // business), so it ships as a committed Worker `var` in wrangler.jsonc — NOT a
+  // secret. It only NAMES the card rail; it never arms charges on its own (the
+  // endpoint stays inert until KHALA_MPP_ENABLED + a STRIPE_API_KEY secret).
   STRIPE_MPP_NETWORK_PROFILE_ID?: string | undefined
   // The Stripe SECRET API key (also used by the card-billing surface in
   // stripe-billing.ts via the structurally-compatible StripeBillingEnv). The MPP

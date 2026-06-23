@@ -263,6 +263,86 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
     )
     expect(problem.challenges[0]?.paymentIntentId).toBe('pi_quote_1')
   })
+
+  test('NO network profile id => crypto-only (no card/SPT challenge)', async () => {
+    const db = makeDb()
+    const fakeFetch: StripeFetch = async () =>
+      new Response(
+        JSON.stringify({
+          amount: 1,
+          currency: 'usd',
+          id: 'pi_quote_2',
+          next_action: {
+            crypto_display_details: {
+              addresses: [{ address: '0xabc', network: 'base' }],
+            },
+          },
+          status: 'requires_payment',
+        }),
+        { status: 200 },
+      )
+
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: fakeFetch,
+        newId: () => 'fixed',
+        // No stripeNetworkProfileId => card rail disabled.
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+
+    expect(response.status).toBe(402)
+    const problem = (await response.json()) as {
+      challenges: Array<{ method: string }>
+    }
+    // Only the crypto challenge; no `method="stripe"` card challenge.
+    expect(problem.challenges.every(c => c.method !== 'stripe')).toBe(true)
+  })
+
+  test('WITH network profile id => adds the card/SPT (stripe) challenge', async () => {
+    const db = makeDb()
+    const fakeFetch: StripeFetch = async () =>
+      new Response(
+        JSON.stringify({
+          amount: 1,
+          currency: 'usd',
+          id: 'pi_quote_3',
+          next_action: {
+            crypto_display_details: {
+              addresses: [{ address: '0xabc', network: 'base' }],
+            },
+          },
+          status: 'requires_payment',
+        }),
+        { status: 200 },
+      )
+
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: fakeFetch,
+        newId: () => 'fixed',
+        stripeNetworkProfileId:
+          'profile_61Uug9ZHyJKTH8vxOA6Uug9Z3HSQjWfjZIUGSnTl27Xk',
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+
+    expect(response.status).toBe(402)
+    const wwwAuth = response.headers.get('www-authenticate')
+    expect(wwwAuth).toContain('method="stripe"')
+    const problem = (await response.json()) as {
+      challenges: Array<{ method: string }>
+    }
+    // Both the crypto rail and the card/SPT (stripe) rail are advertised.
+    expect(problem.challenges.some(c => c.method === 'base')).toBe(true)
+    expect(problem.challenges.some(c => c.method === 'stripe')).toBe(true)
+  })
 })
 
 describe('MPP endpoint — valid credential serves + meters', () => {
