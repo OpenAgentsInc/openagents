@@ -16,10 +16,15 @@ import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
   type OnboardingSessionStore,
+  type OnboardingStreamClient,
+  type OnboardingStreamTurn,
   OnboardingStorageError,
   OnboardingTurnRequest,
+  type OnboardingTurnResponse,
   OnboardingValidationError,
+  finalizeOnboardingStreamTurn,
   makeD1OnboardingSessionStore,
+  prepareOnboardingStreamTurn,
   runOnboardingTurn,
 } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
@@ -56,6 +61,12 @@ export type OnboardingRouteDependencies<Env extends OnboardingRouteEnv> =
     // the provider-adapter registry + overflow dispatch (no external HTTP hop);
     // tests inject a stub.
     makeInferenceClient: (env: WorkerEnv<Env>) => OnboardingInferenceClient
+    // Resolves the STREAMING inference client for the request env (the SSE path).
+    // Optional: when absent, the route serves the buffered JSON path even for an
+    // `Accept: text/event-stream` request (fail-safe — no behaviour regression).
+    makeStreamClient?:
+      | ((env: WorkerEnv<Env>) => OnboardingStreamClient)
+      | undefined
     // Overridable for tests; defaults to the D1-backed store.
     makeStore?: ((env: WorkerEnv<Env>) => OnboardingSessionStore) | undefined
     nowIso?: (() => string) | undefined
@@ -100,10 +111,99 @@ const routeErrorResponse = (error: OnboardingRouteError): HttpResponse =>
     M.exhaustive,
   )
 
+// A narrow SSE frame for the onboarding stream. We do NOT reuse the
+// OpenAI-compatible chat-completions wire here: the onboarding client only needs
+// prose deltas + a terminal payload, so the wire is intentionally minimal and
+// self-describing (the client's `parseComponentFrames`-style splitter reads it):
+//   event: delta   data: { "text": "…" }     (one per content increment)
+//   event: done    data: <OnboardingTurnResponse JSON>   (terminal, once)
+//   event: error   data: { "error": "…" }     (terminal, on failure)
+const sseFrame = (event: string, payload: unknown): string =>
+  `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+
+const STREAM_HEADERS: Readonly<Record<string, string>> = {
+  'content-type': 'text/event-stream; charset=utf-8',
+  'cache-control': 'no-store',
+  connection: 'keep-alive',
+  'x-accel-buffering': 'no',
+}
+
+const wantsEventStream = (request: Request): boolean => {
+  const accept = request.headers.get('accept') ?? ''
+  return accept.toLowerCase().includes('text/event-stream')
+}
+
+// Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
+// then calls `finalize` (a plain Promise so the effect boundary stays OUT of the
+// Effect.gen request pipeline) to append + persist and resolve the terminal
+// payload, then emits the `done` frame. A failure at any point emits a terminal
+// `error` frame and closes — the client never hangs.
+const makeOnboardingStreamBody = (
+  turn: OnboardingStreamTurn,
+  finalize: (reply: string) => Promise<OnboardingTurnResponse>,
+): ReadableStream<Uint8Array> => {
+  const encoder = new TextEncoder()
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let accumulated = ''
+      try {
+        for await (const delta of turn.source.deltas) {
+          if (delta !== '') {
+            accumulated += delta
+            controller.enqueue(encoder.encode(sseFrame('delta', { text: delta })))
+          }
+        }
+        const final = turn.source.final()
+        const reply = final === '' ? accumulated : final
+        const result = await finalize(reply)
+        controller.enqueue(encoder.encode(sseFrame('done', result)))
+      } catch {
+        controller.enqueue(
+          encoder.encode(sseFrame('error', { error: 'stream_failed' })),
+        )
+      } finally {
+        controller.close()
+      }
+    },
+  })
+}
+
+// Construct the streaming `Response` for a prepared turn. The finalize step
+// (append + persist) is a plain Promise driven by `Effect.runPromise` HERE — at
+// the streaming boundary, outside any request Effect pipeline — so the SSE pump
+// owns its own effect run.
+const buildStreamResponse = (
+  turn: OnboardingStreamTurn,
+  store: OnboardingSessionStore,
+  nowIso: () => string,
+): globalThis.Response => {
+  const finalize = (reply: string): Promise<OnboardingTurnResponse> =>
+    Effect.runPromise(finalizeOnboardingStreamTurn(turn, reply, { store, nowIso }))
+
+  return new Response(makeOnboardingStreamBody(turn, finalize), {
+    headers: STREAM_HEADERS,
+  })
+}
+
+const errorReason = (error: OnboardingRouteError): string =>
+  M.value(error).pipe(
+    M.tags({
+      OnboardingBadRequest: () => 'bad_request',
+      OnboardingValidationError: () => 'validation_error',
+      OnboardingInferenceError: () => 'inference_unavailable',
+      OnboardingStorageError: () => 'storage_error',
+    }),
+    M.exhaustive,
+  )
+
 export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
   dependencies: OnboardingRouteDependencies<Env>,
 ) => {
   const nowIso = dependencies.nowIso ?? currentIsoTimestamp
+
+  const resolveStore = (env: WorkerEnv<Env>): OnboardingSessionStore =>
+    dependencies.makeStore?.(env) ??
+    makeD1OnboardingSessionStore(openAgentsDatabase(env))
 
   const turnResponse = (
     request: Request,
@@ -112,9 +212,6 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
   ): OnboardingRouteEffect =>
     Effect.gen(function* () {
       const body = yield* decodeJsonBody(request, OnboardingTurnRequest)
-      const store =
-        dependencies.makeStore?.(env) ??
-        makeD1OnboardingSessionStore(openAgentsDatabase(env))
 
       const result = yield* runOnboardingTurn(
         {
@@ -125,7 +222,7 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
         {
           infer: dependencies.makeInferenceClient(env),
           nowIso,
-          store,
+          store: resolveStore(env),
         },
       )
 
@@ -133,6 +230,43 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
     }).pipe(
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
+
+  // The SSE streaming path. Prepares the turn (validate + read/create session +
+  // open the stream) on the request path so validation/storage failures map to a
+  // clean error BEFORE any stream byte is committed; then returns a ReadableStream
+  // that pumps prose deltas, finalizes (append + persist), and emits the terminal
+  // `done` payload. A failure mid-prepare returns a normal JSON error response; a
+  // failure mid-stream emits a terminal `error` SSE frame and closes.
+  const streamResponse = (
+    request: Request,
+    env: WorkerEnv<Env>,
+    sessionId: string,
+    makeStreamClient: (env: WorkerEnv<Env>) => OnboardingStreamClient,
+  ): OnboardingRouteEffect => {
+    const store = resolveStore(env)
+    const streamClient = makeStreamClient(env)
+
+    return decodeJsonBody(request, OnboardingTurnRequest).pipe(
+      Effect.flatMap(body =>
+        prepareOnboardingStreamTurn(
+          {
+            sessionId,
+            userText: body.userText,
+            verticalOverlay: body.verticalOverlay ?? null,
+          },
+          { nowIso, store, stream: streamClient },
+        ),
+      ),
+      // The Response construction is a PURE transform of the prepared turn; the
+      // SSE pump + finalize (a plain Promise via `Effect.runPromise`) run AFTER
+      // this request Effect resolves, so the effect boundary stays out of the
+      // request pipeline.
+      Effect.map(turn => buildStreamResponse(turn, store, nowIso)),
+      // A prepare-time failure (validation / storage / inference open) becomes a
+      // clean JSON error — the stream was never started.
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  }
 
   return {
     routeOnboardingTurnRequest: (
@@ -147,9 +281,23 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
         return undefined
       }
 
-      return request.method === 'POST'
-        ? turnResponse(request, env, decodeURIComponent(match[1] ?? ''))
-        : Effect.succeed(methodNotAllowed(['POST']))
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      const sessionId = decodeURIComponent(match[1] ?? '')
+      const makeStreamClient = dependencies.makeStreamClient
+
+      // Content-negotiated: an `Accept: text/event-stream` request streams when a
+      // stream client is wired; otherwise the buffered JSON path serves (and is
+      // the fail-safe default whenever streaming is unavailable).
+      return wantsEventStream(request) && makeStreamClient !== undefined
+        ? streamResponse(request, env, sessionId, makeStreamClient)
+        : turnResponse(request, env, sessionId)
     },
   }
 }
+
+// Re-exported for tests that assert the SSE wire shape directly.
+export const onboardingSseFrame = sseFrame
+export const onboardingStreamError = errorReason

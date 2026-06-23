@@ -12,7 +12,11 @@ import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
   type OnboardingSessionStore,
+  type OnboardingStreamClient,
+  type OnboardingStreamSource,
+  finalizeOnboardingStreamTurn,
   makeD1OnboardingSessionStore,
+  prepareOnboardingStreamTurn,
   runOnboardingTurn,
 } from './autopilot-onboarding-program'
 import type { InferenceRequest } from './inference/provider-adapter'
@@ -332,5 +336,82 @@ describe('onboarding session store', () => {
     expect(persisted?.turnCount).toBe(2)
     expect(persisted?.outputSpec.quickWin).toBe('fix site')
     expect(persisted?.transcript).toHaveLength(2)
+  })
+})
+
+// STREAMING TURN DRIVER ---------------------------------------------------
+
+const chunkStreamClient =
+  (chunks: ReadonlyArray<string>): OnboardingStreamClient =>
+  () =>
+    Effect.succeed<OnboardingStreamSource>({
+      deltas: (async function* () {
+        for (const chunk of chunks) {
+          yield chunk
+        }
+      })(),
+      final: () => chunks.join(''),
+    })
+
+const drain = async (source: OnboardingStreamSource): Promise<string> => {
+  let text = ''
+  for await (const delta of source.deltas) {
+    text += delta
+  }
+  const final = source.final()
+  return final === '' ? text : final
+}
+
+describe('streaming onboarding turn driver', () => {
+  test('prepare reads/creates the session and opens the stream; finalize appends + persists', async () => {
+    const store = makeD1OnboardingSessionStore(makeD1())
+    const deps = {
+      store,
+      stream: chunkStreamClient(['Hel', 'lo!']),
+      nowIso: () => '2026-06-23T00:00:00.000Z',
+    }
+
+    const turn = await run(
+      prepareOnboardingStreamTurn(
+        { sessionId: 'sess-stream', userText: 'hi there', verticalOverlay: null },
+        deps,
+      ),
+    )
+    expect(turn.userText).toBe('hi there')
+    expect(turn.session.id).toBe('sess-stream')
+    // The streaming request flag is set on the assembled inference request.
+    const reply = await drain(turn.source)
+    expect(reply).toBe('Hello!')
+
+    const result = await run(
+      finalizeOnboardingStreamTurn(turn, reply, {
+        store,
+        nowIso: () => '2026-06-23T00:01:00.000Z',
+      }),
+    )
+    expect(result.turnCount).toBe(1)
+    expect(result.reply).toBe('Hello!')
+
+    const persisted = await run(store.read('sess-stream'))
+    expect(persisted?.turnCount).toBe(1)
+    expect(persisted?.transcript).toEqual([
+      { role: 'user', content: 'hi there' },
+      { role: 'assistant', content: 'Hello!' },
+    ])
+  })
+
+  test('prepare rejects an empty user text before opening any stream', async () => {
+    const store = makeD1OnboardingSessionStore(makeD1())
+    const result = await Effect.runPromiseExit(
+      prepareOnboardingStreamTurn(
+        { sessionId: 'sess-empty', userText: '   ', verticalOverlay: null },
+        {
+          store,
+          stream: chunkStreamClient(['unused']),
+          nowIso: () => '2026-06-23T00:00:00.000Z',
+        },
+      ),
+    )
+    expect(result._tag).toBe('Failure')
   })
 })

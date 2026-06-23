@@ -1,10 +1,11 @@
-// Autopilot onboarding — the page view (issue #6129).
+// Autopilot onboarding — the page view (issue #6129, UI follow-up #6123).
 //
 // Assembles the `/autopilot` onboarding HUD that mounts as the overlay of the
 // SHARED persistent 3D scene at the `autopilot` pose (see
 // `page/loggedOut/page/persistentScene.ts`). This module renders ONLY the
-// command-canvas overlay — the conversation transcript, the streamed/surfaced
-// typed components (via the #6128 renderer), and the command composer. The
+// command-canvas overlay — the conversation thread (with progressive Markdown +
+// token streaming), the surfaced typed components (via the #6128 renderer), a
+// compact sidebar intake register, and the pinned command composer. The
 // persistent canvas, scrim, and camera pose are owned by `persistentScene.ts`
 // and are NOT respawned here (one keyed canvas, design doc §1).
 //
@@ -14,16 +15,25 @@
 // build on `@openagentsinc/ui` AI Elements + the kit tokens — no hand-rolled
 // styling, no duplicated tokens.
 //
-// Spatial behavior landed in v1: components flutter in deterministically
-// (`oa-flutter-in`, staggered by document order, with a `prefers-reduced-motion`
-// fallback). The full 3D-anchored `htmlOverlayPrimitives` choreography (cards
-// tracking scene anchors as the camera drifts) is a documented follow-up — see
-// the report and the design doc §12; v1 ships the clean, working, on-brand flow.
+// UI follow-up (this change) fixes five real-user problems on the live page:
+//   1. Markdown rendering — assistant prose renders through the centralized
+//      `response` AI element (bold/headings/lists/code/links), streaming-tolerant.
+//   2. Scroll — the thread is a FIXED-HEIGHT internal scroll region with the
+//      composer pinned below; native scroll anchoring (a bottom sentinel) keeps
+//      the newest message in view without fighting a user who has scrolled up,
+//      and an explicit scroll-to-end command fires when the user sends a turn.
+//   3. Intake progress — moved OUT of the main column into a slim sidebar
+//      register (a lit checklist, not a giant box); on narrow viewports it
+//      collapses to a thin progress strip above the thread.
+//   4. Streaming — the assistant reply lands token-by-token into a live bubble
+//      with a typing cursor; markdown renders progressively as deltas arrive.
+//   5. Clutter — ONE intro treatment (the HUD header), no duplicated hero/first
+//      message, and tightened speaker labels.
 
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { AiElements, eyebrowClass } from '@openagentsinc/ui'
+import { AiElements, eyebrowClass, statusDotClass } from '@openagentsinc/ui'
 
 import * as Ui from '../../ui'
 import {
@@ -32,15 +42,24 @@ import {
 } from './component-renderer'
 import {
   type FlowModel,
+  type IntakeRegisterStep,
+  capturedSectionCount,
   deriveComponentFrames,
+  deriveIntakeRegister,
+  OUTPUT_SPEC_SECTIONS,
 } from './flow'
 
-// Public data attributes so tests / captures can locate the HUD surfaces.
+// Public data attributes so tests / captures / the scroll command can locate the
+// HUD surfaces.
 export const HUD_ROOT_ATTR = 'autopilot-onboarding-hud'
 export const HUD_TRANSCRIPT_ATTR = 'autopilot-onboarding-transcript'
 export const HUD_COMPONENTS_ATTR = 'autopilot-onboarding-components'
 export const HUD_COMPOSER_ATTR = 'autopilot-onboarding-composer'
 export const HUD_COMPONENT_ITEM_ATTR = 'autopilot-onboarding-component'
+export const HUD_REGISTER_ATTR = 'autopilot-onboarding-register'
+export const HUD_THREAD_END_ATTR = 'autopilot-onboarding-thread-end'
+// The selector the scroll-to-end command targets (problem #2).
+export const HUD_THREAD_END_SELECTOR = `[data-${HUD_THREAD_END_ATTR}="true"]`
 // The legal vertical overlay surfaces (VSL slot + verified stat strip). Present
 // only on `/autopilot/legal`; absent on the generic `/autopilot` flow.
 export const HUD_LEGAL_OVERLAY_ATTR = 'autopilot-onboarding-legal-overlay'
@@ -242,25 +261,43 @@ const legalStatStripView = <Message>(): Html => {
   )
 }
 
-// One transcript turn rendered as an AI Elements `message`. The agent surface is
-// the assistant role; the visitor is the user role.
+// TRANSCRIPT --------------------------------------------------------------
+
+// One transcript turn. The assistant body renders as Markdown through the
+// centralized `response` element (problem #1); the user body is plain text.
 const transcriptTurnView = <Message>(turn: {
   role: 'user' | 'assistant'
   content: string
 }): Html =>
+  turn.role === 'assistant'
+    ? AiElements.message<Message>({
+        props: { role: 'assistant', author: HUD_HEADING },
+        markdown: turn.content,
+      })
+    : AiElements.message<Message>({
+        props: { role: 'user', body: turn.content, author: 'You' },
+      })
+
+// The in-flight streaming assistant bubble (problem #4): renders the partial
+// reply as progressive Markdown with a live typing cursor. Only present while a
+// reply is streaming.
+const streamingTurnView = <Message>(partial: string): Html =>
   AiElements.message<Message>({
-    props: {
-      role: turn.role,
-      body: turn.content,
-      author: turn.role === 'assistant' ? 'Autopilot' : 'You',
-    },
+    props: { role: 'assistant', author: HUD_HEADING },
+    markdown: partial,
+    streaming: true,
   })
 
-// The conversation register: the agent's opening line plus the running
-// transcript. Renders the opening even before the first turn so a headless
-// render shows a complete, readable surface (no class-gated blank).
+// The conversation thread: the running transcript plus the in-flight streaming
+// bubble, and a bottom sentinel the scroll-to-end command and native scroll
+// anchoring both target. The intro is NOT duplicated here (problem #5) — it lives
+// once in the HUD header. An empty thread shows a calm starter line so the
+// surface reads complete on first paint (no class-gated blank).
 const transcriptView = <Message>(model: FlowModel): Html => {
   const h = html<Message>()
+
+  const isEmpty =
+    model.transcript.length === 0 && model.streamingReply === null
 
   return h.div(
     [
@@ -268,17 +305,107 @@ const transcriptView = <Message>(model: FlowModel): Html => {
       Ui.className<Message>('grid gap-3'),
     ],
     [
-      AiElements.message<Message>({
-        props: {
-          role: 'assistant',
-          body: introForVertical(model.vertical),
-          author: 'Autopilot',
-        },
-      }),
+      isEmpty
+        ? h.p(
+            [
+              Ui.className<Message>(
+                'm-0 text-[0.8125rem] leading-[1.5] text-white/45',
+              ),
+            ],
+            ['Send a message to start. Autopilot will scope the work with you.'],
+          )
+        : h.empty,
       ...model.transcript.map(turn => transcriptTurnView<Message>(turn)),
+      model.streamingReply === null
+        ? h.empty
+        : streamingTurnView<Message>(model.streamingReply),
+      // Bottom sentinel: the scroll-to-end target (problem #2). `overflow-anchor`
+      // lets the browser keep this in view as content grows ONLY when the user is
+      // already at the bottom — native "don't fight the user" behavior.
+      h.div(
+        [
+          h.DataAttribute(HUD_THREAD_END_ATTR, 'true'),
+          Ui.className<Message>('h-px w-full [overflow-anchor:auto]'),
+        ],
+        [],
+      ),
     ],
   )
 }
+
+// INTAKE REGISTER (SIDEBAR) -----------------------------------------------
+
+const registerRowTone = (status: IntakeRegisterStep['status']) =>
+  status === 'done'
+    ? ('positive' as const)
+    : status === 'active'
+      ? ('info' as const)
+      : ('neutral' as const)
+
+const registerRowView = <Message>(step: IntakeRegisterStep): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        `flex items-center gap-2 text-[0.75rem] leading-[1.3] ${
+          step.status === 'done'
+            ? 'text-white/55'
+            : step.status === 'active'
+              ? 'text-[#f1efe8]'
+              : 'text-white/35'
+        }`,
+      ),
+    ],
+    [
+      h.span([Ui.className<Message>(statusDotClass(registerRowTone(step.status)))], []),
+      h.span([Ui.className<Message>('min-w-0 truncate')], [step.label]),
+    ],
+  )
+}
+
+// The compact sidebar intake register (problem #3): the 10 Output-Spec sections
+// as a slim vertical register that lights up / checks off as each is captured —
+// glanceable, never dominating the column. A small captured/total count anchors
+// it. On narrow viewports the parent grid stacks it above the thread as a thin
+// strip.
+const intakeRegisterView = <Message>(model: FlowModel): Html => {
+  const h = html<Message>()
+  const steps = deriveIntakeRegister(model)
+  const captured = capturedSectionCount(model.outputSpec)
+
+  return h.aside(
+    [
+      h.DataAttribute(HUD_REGISTER_ATTR, ''),
+      h.AriaLabel('Intake progress'),
+      Ui.className<Message>(
+        'grid content-start gap-2 border border-[#222] bg-black/40 p-3',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex items-center justify-between gap-2')],
+        [
+          h.span([Ui.className<Message>(eyebrowClass)], ['Intake']),
+          h.span(
+            [
+              Ui.className<Message>(
+                'text-[0.6875rem] tabular-nums text-white/45',
+              ),
+            ],
+            [`${captured}/${OUTPUT_SPEC_SECTIONS.length}`],
+          ),
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('m-0 grid list-none gap-1.5 p-0')],
+        steps.map(step => registerRowView<Message>(step)),
+      ),
+    ],
+  )
+}
+
+// INLINE COMPONENTS -------------------------------------------------------
 
 // The surfaced typed components, each wrapped in a flutter-in surface whose
 // stagger index is its document order. `credit_kickoff` is wired clickable to
@@ -289,6 +416,10 @@ const componentsView = <Message>(
 ): Html => {
   const h = html<Message>()
   const frames = deriveComponentFrames(model)
+
+  if (frames.length === 0) {
+    return h.empty
+  }
 
   const componentActions: ComponentActionAttrs<Message> = {
     credit_kickoff: [h.OnClick(actions.clickedCreditKickoff())],
@@ -315,6 +446,8 @@ const componentsView = <Message>(
   )
 }
 
+// COMPOSER ----------------------------------------------------------------
+
 // The command composer: transport-agnostic text input (voice deferred — the
 // composer states leave room for `listening`/`speaking` later). Maps the prompt
 // status from the flow status so the submit control tracks the request.
@@ -324,17 +457,20 @@ const composerView = <Message>(
 ): Html => {
   const h = html<Message>()
 
+  const inFlight =
+    model.status === 'submitting' || model.status === 'streaming'
+
   const status =
-    model.status === 'submitting'
-      ? ('submitted' as const)
-      : model.status === 'error'
-        ? ('error' as const)
-        : ('ready' as const)
+    model.status === 'streaming'
+      ? ('streaming' as const)
+      : model.status === 'submitting'
+        ? ('submitted' as const)
+        : model.status === 'error'
+          ? ('error' as const)
+          : ('ready' as const)
 
   const submitAttrs: ReadonlyArray<Attribute<Message>> =
-    model.status === 'submitting' || model.composerDraft.trim() === ''
-      ? [h.Disabled(true)]
-      : []
+    inFlight || model.composerDraft.trim() === '' ? [h.Disabled(true)] : []
 
   return h.div(
     [
@@ -371,42 +507,58 @@ const composerView = <Message>(
   )
 }
 
+// OVERLAY -----------------------------------------------------------------
+
 // The HUD overlay: an operational command pane floating over the dimmed scene.
 // One sanctioned glass surface (design doc §9) — a breath of the scene bleeding
-// through the panel — because it ties the DOM HUD to the 3D backdrop. The pane
-// is a single bordered surface, never nested cards.
+// through the panel — because it ties the DOM HUD to the 3D backdrop. The pane is
+// a single bordered surface (never nested cards) laid out as a two-column grid on
+// wide viewports: a slim intake register rail + the main thread column. The
+// composer is pinned BELOW the scroll region so it never scrolls away; only the
+// thread + inline components scroll internally (problem #2).
 export const overlayView = <Message>(
   model: FlowModel,
   actions: OnboardingViewActions<Message>,
 ): Html => {
   const h = html<Message>()
 
+  // The scrollable region: the thread + inline components. Fixed max height with
+  // internal overflow so the page itself does not scroll; native scroll anchoring
+  // (the bottom sentinel) keeps the newest content in view.
+  const scrollRegion = h.div(
+    [
+      Ui.className<Message>(
+        'oa-thread-scroll grid min-h-0 content-start gap-3 overflow-y-auto pr-1',
+      ),
+    ],
+    [
+      transcriptView<Message>(model),
+      componentsView<Message>(model, actions),
+    ],
+  )
+
   return h.div(
     [
       h.DataAttribute(HUD_ROOT_ATTR, ''),
       h.AriaLabel('Autopilot onboarding'),
       Ui.className<Message>(
-        'pointer-events-none absolute inset-0 z-10 flex items-stretch justify-center overflow-y-auto px-4 py-6 sm:py-10',
+        'pointer-events-none absolute inset-0 z-10 flex items-stretch justify-center px-4 py-6 sm:py-10',
       ),
     ],
     [
       h.div(
         [
           Ui.className<Message>(
-            'pointer-events-auto m-auto grid w-[min(100%,46rem)] content-start gap-5 border border-[#3a7bff]/25 bg-black/55 p-4 backdrop-blur-md khala-glow sm:p-6',
+            'pointer-events-auto m-auto grid max-h-full w-[min(100%,60rem)] content-start gap-5 border border-[#3a7bff]/25 bg-black/55 p-4 backdrop-blur-md khala-glow sm:p-6',
           ),
         ],
         [
+          // ONE intro treatment (problem #5): the HUD header. The first-message
+          // duplicate is gone; the thread starts empty with a calm starter line.
           h.div(
             [Ui.className<Message>('grid gap-1.5')],
             [
-              h.span(
-                [Ui.className<Message>(eyebrowClass)],
-                [HUD_HEADING],
-              ),
-              // The HUD heading + intro are prose, not strip rows, so they use
-              // explicit on-brand classes (mono off-white, balanced) rather than
-              // the single-line-truncating `titleClass`/`metaClass` strip tokens.
+              h.span([Ui.className<Message>(eyebrowClass)], [HUD_HEADING]),
               h.h1(
                 [
                   Ui.className<Message>(
@@ -426,9 +578,34 @@ export const overlayView = <Message>(
             ],
           ),
           legalOverlaySection<Message>(model),
-          transcriptView<Message>(model),
-          componentsView<Message>(model, actions),
-          composerView<Message>(model, actions),
+          // Two-column work area: the intake register rail + the thread column.
+          // `min-h-0` on the grid + the scroll region is what lets the inner
+          // overflow actually scroll inside the capped pane. On narrow viewports
+          // the rail stacks above the thread (a thin progress strip).
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid min-h-0 gap-4 sm:grid-cols-[minmax(0,1fr)_13rem] sm:gap-5',
+              ),
+            ],
+            [
+              // Thread column first in source order so it leads the document /
+              // a11y order; the rail is pulled to the right on wide via grid
+              // column placement.
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'grid min-h-0 content-start gap-4 sm:col-start-1 sm:row-start-1',
+                  ),
+                ],
+                [scrollRegion, composerView<Message>(model, actions)],
+              ),
+              h.div(
+                [Ui.className<Message>('sm:col-start-2 sm:row-start-1')],
+                [intakeRegisterView<Message>(model)],
+              ),
+            ],
+          ),
         ],
       ),
     ],

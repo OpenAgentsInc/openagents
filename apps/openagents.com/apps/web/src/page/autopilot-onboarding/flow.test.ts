@@ -21,6 +21,7 @@ import {
   capturedSectionCount,
   currentSectionIndex,
   deriveComponentFrames,
+  deriveIntakeRegister,
   initFlowModel,
   isQuoteReady,
 } from './flow'
@@ -30,10 +31,16 @@ import {
   HUD_LEGAL_OVERLAY_ATTR,
   HUD_LEGAL_STAT_STRIP_ATTR,
   HUD_LEGAL_VSL_ATTR,
+  HUD_REGISTER_ATTR,
   HUD_ROOT_ATTR,
+  HUD_THREAD_END_ATTR,
   LEGAL_VERIFIED_STATS,
   overlayView,
 } from './page'
+import {
+  OpenedAutopilotOnboardingStream,
+  ReceivedAutopilotOnboardingDelta,
+} from '../loggedOut/message'
 import {
   LEGAL_VERTICAL_OVERLAY,
   verticalOverlayForSegment,
@@ -130,13 +137,11 @@ describe('autopilot onboarding — output spec progress', () => {
 })
 
 describe('autopilot onboarding — derived component frames', () => {
-  test('surfaces intake_progress from the first render, nothing else yet', () => {
+  test('surfaces nothing inline on the first render (intake is the sidebar register)', () => {
+    // intake_progress moved to the sidebar register (problem #3); the inline
+    // component column starts empty until facts are captured.
     const frames = deriveComponentFrames(initFlowModel(Option.none()))
-    expect(frames).toHaveLength(1)
-    expect(frames[0]).toMatchObject({
-      _tag: 'CatalogComponentFrame',
-      frame: { component: 'intake_progress' },
-    })
+    expect(frames).toHaveLength(0)
   })
 
   test('legal vertical adds a consent_gate', () => {
@@ -144,7 +149,7 @@ describe('autopilot onboarding — derived component frames', () => {
     const components = frames.map(frame =>
       frame._tag === 'CatalogComponentFrame' ? frame.frame.component : 'unknown',
     )
-    expect(components).toEqual(['intake_progress', 'consent_gate'])
+    expect(components).toEqual(['consent_gate'])
   })
 
   test('quote-ready state surfaces quick_win, dashboard_preview, credit_kickoff', () => {
@@ -161,7 +166,6 @@ describe('autopilot onboarding — derived component frames', () => {
       frame._tag === 'CatalogComponentFrame' ? frame.frame.component : 'unknown',
     )
     expect(components).toEqual([
-      'intake_progress',
       'quick_win_card',
       'dashboard_preview',
       'credit_kickoff',
@@ -169,14 +173,38 @@ describe('autopilot onboarding — derived component frames', () => {
   })
 })
 
+describe('autopilot onboarding — intake register (sidebar)', () => {
+  test('lights up captured sections and marks the current step active', () => {
+    const model: FlowModel = {
+      ...initFlowModel(Option.none()),
+      outputSpec: { business: 'Acme', goal: 'Launch a site' },
+    }
+    const register = deriveIntakeRegister(model)
+    expect(register).toHaveLength(10)
+    expect(register[0]).toMatchObject({ id: 'business', status: 'done' })
+    expect(register[1]).toMatchObject({ id: 'goal', status: 'done' })
+    // chosenOfferings is the first open section -> active.
+    expect(register[2]).toMatchObject({ id: 'chosenOfferings', status: 'active' })
+    expect(register[3]).toMatchObject({ status: 'queued' })
+  })
+})
+
 describe('autopilot onboarding — page overlay rendering', () => {
-  test('renders the HUD shell, composer, and intake register on first paint', () => {
+  test('renders the HUD shell, composer, scrollable thread, and sidebar register on first paint', () => {
     const markup = renderHtml(
       overlayView(initFlowModel(Option.none()), stubActions),
     )
     expect(markup).toContain(`data-${HUD_ROOT_ATTR}`)
     expect(markup).toContain(`data-${HUD_COMPOSER_ATTR}`)
-    expect(markup).toContain('Onboarding progress')
+    // The intake progress is now a compact sidebar register (problem #3), not a
+    // giant "Onboarding progress" box in the main column.
+    expect(markup).toContain(`data-${HUD_REGISTER_ATTR}`)
+    expect(markup).toContain('Intake')
+    expect(markup).toContain('0/10')
+    expect(markup).not.toContain('Onboarding progress')
+    // The thread is an internal scroll region with a bottom sentinel (problem #2).
+    expect(markup).toContain('oa-thread-scroll')
+    expect(markup).toContain(`data-${HUD_THREAD_END_ATTR}="true"`)
     // No credit kickoff before quote-ready.
     expect(markup).not.toContain('Kick off the work')
   })
@@ -235,7 +263,7 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
   const flowOf = (model: { autopilotOnboarding: FlowModel }): FlowModel =>
     model.autopilotOnboarding
 
-  test('submitting a turn appends the user turn, clears the draft, and fires the program command', () => {
+  test('submitting a turn appends the user turn, clears the draft, sets a pending turn, and scrolls', () => {
     const base = init(AutopilotRoute())
     const [typed] = update(
       base,
@@ -252,8 +280,87 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
     expect(flowOf(submitted).transcript).toEqual([
       { role: 'user', content: 'I run a bakery' },
     ])
+    // The turn is now driven by the streaming subscription: submit sets a
+    // pendingTurn (the subscription opens the SSE stream) and scrolls to the
+    // just-sent message. No fetch command fires on the pure path.
+    const pending = flowOf(submitted).pendingTurn
+    expect(pending).not.toBeNull()
+    expect(pending?.userText).toBe('I run a bakery')
     expect(commands.map(command => command.name)).toEqual([
-      'SubmitAutopilotOnboardingTurn',
+      'ScrollAutopilotOnboardingThreadToEnd',
+    ])
+  })
+
+  test('the streaming lifecycle: open -> deltas accumulate -> done commits and resets', () => {
+    const base = init(AutopilotRoute())
+    const [typed] = update(
+      base,
+      UpdatedAutopilotOnboardingComposer({ value: 'I run a bakery' }),
+    )
+    const [submitted] = update(typed, SubmittedAutopilotOnboardingTurn())
+    const turnId = flowOf(submitted).pendingTurn?.id ?? ''
+    expect(turnId).not.toBe('')
+
+    const [opened] = update(
+      submitted,
+      OpenedAutopilotOnboardingStream({ turnId }),
+    )
+    expect(flowOf(opened).status).toBe('streaming')
+    expect(flowOf(opened).streamingReply).toBe('')
+
+    const [d1] = update(
+      opened,
+      ReceivedAutopilotOnboardingDelta({ turnId, text: 'Great' }),
+    )
+    const [d2] = update(
+      d1,
+      ReceivedAutopilotOnboardingDelta({ turnId, text: ' — what next?' }),
+    )
+    expect(flowOf(d2).streamingReply).toBe('Great — what next?')
+    expect(flowOf(d2).status).toBe('streaming')
+
+    const [done] = update(
+      d2,
+      SucceededAutopilotOnboardingTurn({
+        response: turnResponse({
+          reply: 'Great — what next?',
+          outputSpec: { business: 'A neighborhood bakery' },
+          turnCount: 1,
+        }),
+      }),
+    )
+    const flow = flowOf(done)
+    expect(flow.status).toBe('idle')
+    expect(flow.streamingReply).toBeNull()
+    expect(flow.pendingTurn).toBeNull()
+    expect(flow.transcript).toEqual([
+      { role: 'user', content: 'I run a bakery' },
+      { role: 'assistant', content: 'Great — what next?' },
+    ])
+  })
+
+  test('a stale delta for a resolved turn is ignored', () => {
+    const base = init(AutopilotRoute())
+    const [typed] = update(
+      base,
+      UpdatedAutopilotOnboardingComposer({ value: 'hi' }),
+    )
+    const [submitted] = update(typed, SubmittedAutopilotOnboardingTurn())
+    const [done] = update(
+      submitted,
+      SucceededAutopilotOnboardingTurn({
+        response: turnResponse({ reply: 'ok', turnCount: 1 }),
+      }),
+    )
+    // A late delta for the now-cleared turn must not mutate the committed state.
+    const [after] = update(
+      done,
+      ReceivedAutopilotOnboardingDelta({ turnId: 'new:1', text: 'late' }),
+    )
+    expect(flowOf(after).streamingReply).toBeNull()
+    expect(flowOf(after).transcript).toEqual([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: 'ok' },
     ])
   })
 
@@ -347,23 +454,17 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
       base,
       UpdatedAutopilotOnboardingComposer({ value: 'Help with an NDA' }),
     )
-    const [submitted, commands] = update(
-      typed,
-      SubmittedAutopilotOnboardingTurn(),
-    )
-    // The verticalOverlay is threaded to the program command on the first turn.
+    const [submitted] = update(typed, SubmittedAutopilotOnboardingTurn())
+    // The verticalOverlay is threaded to the pending turn on the first turn (the
+    // streaming subscription posts it to the program's vertical-overlay slot).
     expect(flowOf(submitted).vertical).toBe('legal')
-    // The command carries the legal SYSTEM-PROMPT OVERLAY text (not the raw
+    // The pending turn carries the legal SYSTEM-PROMPT OVERLAY text (not the raw
     // `legal` segment) so the program's vertical-overlay slot gets real guidance.
-    const turnCommand = commands.find(
-      command => command.name === 'SubmitAutopilotOnboardingTurn',
+    expect(flowOf(submitted).pendingTurn?.verticalOverlay).toBe(
+      LEGAL_VERTICAL_OVERLAY,
     )
-    expect(turnCommand).toBeDefined()
-    expect(turnCommand?.args).toMatchObject({
-      verticalOverlay: LEGAL_VERTICAL_OVERLAY,
-    })
 
-    // Simulate the command's failure terminal.
+    // Simulate the stream's failure terminal.
     const [failed] = update(
       submitted,
       FailedAutopilotOnboardingTurn({

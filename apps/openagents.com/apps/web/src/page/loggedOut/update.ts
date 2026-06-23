@@ -1,5 +1,5 @@
 import { Effect, Match as M, Schema as S } from 'effect'
-import { Command } from 'foldkit'
+import { Command, Dom } from 'foldkit'
 import { load, pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
 
@@ -10,8 +10,7 @@ import {
   CompletedNavigateToLanding,
   CompletedNavigateToTassadar,
   CompletedAutopilotOnboardingCreditKickoff,
-  FailedAutopilotOnboardingTurn,
-  SucceededAutopilotOnboardingTurn,
+  CompletedScrollAutopilotOnboardingThread,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -70,8 +69,9 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { OnboardingTurnResponse } from '../autopilot-onboarding/flow'
+import { HUD_THREAD_END_SELECTOR } from '../autopilot-onboarding/page'
 import { verticalOverlayForSegment } from '../autopilot-onboarding/vertical-overlay'
+import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
@@ -141,13 +141,6 @@ class ShareProjectionLoadError extends S.TaggedErrorClass<ShareProjectionLoadErr
 
 class ShareLinkCopyError extends S.TaggedErrorClass<ShareLinkCopyError>()(
   'ShareLinkCopyError',
-  {
-    error: S.Defect,
-  },
-) {}
-
-class AutopilotOnboardingTurnError extends S.TaggedErrorClass<AutopilotOnboardingTurnError>()(
-  'AutopilotOnboardingTurnError',
   {
     error: S.Defect,
   },
@@ -628,10 +621,7 @@ export const LoadShareProjection = Command.define(
         try: () => response.json(),
         catch: () => ({ error: 'share_unavailable' }),
       })
-      const record =
-        typeof payload === 'object' && payload !== null
-          ? (payload as Record<string, unknown>)
-          : {}
+      const record = recordFromUnknown(payload) ?? {}
       const error =
         typeof record.error === 'string'
           ? record.error
@@ -742,9 +732,9 @@ export const NavigateToLanding = Command.define(
 
 // Generate a session id for a new onboarding conversation. Uses secure browser
 // randomness (the same primitive the checkout idempotency key uses); no
-// Math.random. Lives in the command (effect side) so the pure update path stays
-// deterministic.
-const newOnboardingSessionId = (): string => {
+// Math.random. Exported so the streaming subscription mints the first-turn
+// session id at the stream boundary (off the pure update path).
+export const newOnboardingSessionId = (): string => {
   const bytes = new Uint8Array(12)
   if (
     globalThis.crypto !== undefined &&
@@ -760,65 +750,27 @@ const newOnboardingSessionId = (): string => {
   throw new Error('Secure browser randomness is required to start onboarding.')
 }
 
-// Drive one /autopilot onboarding turn against the merged Khala program
-// (`POST /api/autopilot/onboarding/{sessionId}/turn`, #6126). `sessionId` is the
-// existing session or null (a fresh one is minted here). `verticalOverlay` is
-// only honored by the server on the first turn that creates the session.
-export const SubmitAutopilotOnboardingTurn = Command.define(
-  'SubmitAutopilotOnboardingTurn',
-  {
-    sessionId: S.NullOr(S.String),
-    userText: S.String,
-    verticalOverlay: S.NullOr(S.String),
-  },
-  SucceededAutopilotOnboardingTurn,
-  FailedAutopilotOnboardingTurn,
-)(({ sessionId, userText, verticalOverlay }) =>
-  Effect.gen(function* () {
-    const resolvedSessionId =
-      sessionId ?? (yield* Effect.sync(() => newOnboardingSessionId()))
+// The /autopilot onboarding turn now STREAMS (issue #6123 UI follow-up): a
+// `pendingTurn` set on submit is picked up by the `autopilotOnboardingStream`
+// subscription (`subscriptions.ts`), which opens the SSE stream
+// (`POST /api/autopilot/onboarding/{sessionId}/turn` with
+// `Accept: text/event-stream`) and dispatches `Opened…` / `Received…Delta` /
+// `Succeeded…` / `Failed…` messages as deltas land. The submit handler stays a
+// pure model transition (no fetch on the command path).
 
-    const response = yield* Effect.tryPromise({
-      try: () =>
-        fetch(
-          `/api/autopilot/onboarding/${encodeURIComponent(resolvedSessionId)}/turn`,
-          {
-            method: 'POST',
-            cache: 'no-store',
-            headers: {
-              accept: 'application/json',
-              'content-type': 'application/json',
-            },
-            body: JSON.stringify({
-              userText,
-              ...(verticalOverlay === null ? {} : { verticalOverlay }),
-            }),
-          },
-        ),
-      catch: error => new AutopilotOnboardingTurnError({ error }),
-    })
-
-    if (!response.ok) {
-      return yield* new AutopilotOnboardingTurnError({
-        error: `Onboarding turn returned HTTP ${response.status}.`,
-      })
-    }
-
-    const payload = yield* Effect.tryPromise({
-      try: () => response.json(),
-      catch: error => new AutopilotOnboardingTurnError({ error }),
-    })
-    const decoded = yield* S.decodeUnknownEffect(OnboardingTurnResponse)(payload)
-
-    return SucceededAutopilotOnboardingTurn({ response: decoded })
+// Scroll the onboarding thread's bottom sentinel into view after a turn is sent
+// or finishes. Fire-and-forget; the native scroll anchoring keeps it pinned
+// while content grows, and this jumps to the bottom when the user sends.
+export const ScrollAutopilotOnboardingThreadToEnd = Command.define(
+  'ScrollAutopilotOnboardingThreadToEnd',
+  CompletedScrollAutopilotOnboardingThread,
+)(
+  Dom.scrollIntoViewAfterPaint(HUD_THREAD_END_SELECTOR, {
+    block: 'end',
   }).pipe(
+    Effect.as(CompletedScrollAutopilotOnboardingThread()),
     Effect.catch(() =>
-      Effect.succeed(
-        FailedAutopilotOnboardingTurn({
-          reason:
-            'Autopilot could not respond just now. Try sending that again.',
-        }),
-      ),
+      Effect.succeed(CompletedScrollAutopilotOnboardingThread()),
     ),
   ),
 )
@@ -1158,9 +1110,19 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         // Guard the empty/in-flight submit on the pure path so a double-enter or
         // an empty composer never fires a turn (the composer also disables the
         // control, but the model stays authoritative).
-        if (userText === '' || flow.status === 'submitting') {
+        if (
+          userText === '' ||
+          flow.status === 'submitting' ||
+          flow.status === 'streaming'
+        ) {
           return [model, []]
         }
+
+        // A deterministic per-turn id: the transcript length AFTER appending this
+        // user turn is unique and monotonic within the session, so the streaming
+        // subscription opens the SSE stream exactly once for this turn (no
+        // Math.random; deterministic for captures/tests).
+        const turnId = `${flow.sessionId ?? 'new'}:${flow.transcript.length + 1}`
 
         return [
           evo(model, {
@@ -1169,24 +1131,63 @@ export const update = (model: Model, message: Message): UpdateReturn =>
                 status: () => 'submitting',
                 errorReason: () => null,
                 composerDraft: () => '',
+                streamingReply: () => null,
                 transcript: transcript => [
                   ...transcript,
                   { role: 'user', content: userText },
                 ],
+                // Thread the legal SYSTEM-PROMPT OVERLAY (not the raw `legal`
+                // segment) to the program's vertical-overlay slot. The server
+                // only honors it on the first turn that creates the session;
+                // non-legal / absent verticals resolve to null (#6130).
+                pendingTurn: () => ({
+                  id: turnId,
+                  sessionId: current.sessionId,
+                  userText,
+                  verticalOverlay: verticalOverlayForSegment(current.vertical),
+                }),
               }),
           }),
-          [
-            // Thread the legal SYSTEM-PROMPT OVERLAY (not the raw `legal`
-            // segment) to the program's vertical-overlay slot. The server only
-            // honors it on the first turn that creates the session; non-legal /
-            // absent verticals resolve to null so the generic intake carries no
-            // overlay (#6130).
-            SubmitAutopilotOnboardingTurn({
-              sessionId: flow.sessionId,
-              userText,
-              verticalOverlay: verticalOverlayForSegment(flow.vertical),
-            }),
-          ],
+          // Jump the thread to the just-sent message; the subscription opens the
+          // stream and deltas land into the streaming bubble.
+          [ScrollAutopilotOnboardingThreadToEnd()],
+        ]
+      },
+      OpenedAutopilotOnboardingStream: ({ turnId }) => {
+        const flow = model.autopilotOnboarding
+        // Ignore a stream-open for a turn that is no longer pending (a stale
+        // subscription tail after the turn already resolved).
+        if (flow.pendingTurn === null || flow.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        return [
+          evo(model, {
+            autopilotOnboarding: current =>
+              evo(current, {
+                status: () => 'streaming',
+                streamingReply: () => '',
+              }),
+          }),
+          [],
+        ]
+      },
+      ReceivedAutopilotOnboardingDelta: ({ turnId, text }) => {
+        const flow = model.autopilotOnboarding
+        if (flow.pendingTurn === null || flow.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        return [
+          evo(model, {
+            autopilotOnboarding: current =>
+              evo(current, {
+                status: () => 'streaming',
+                streamingReply: reply => (reply ?? '') + text,
+              }),
+          }),
+          // Keep the newest tokens in view as they land (native scroll anchoring
+          // only pins when already at the bottom, so this never fights a user who
+          // scrolled up).
+          [ScrollAutopilotOnboardingThreadToEnd()],
         ]
       },
       SucceededAutopilotOnboardingTurn: ({ response }) => [
@@ -1198,13 +1199,15 @@ export const update = (model: Model, message: Message): UpdateReturn =>
               errorReason: () => null,
               turnCount: () => response.turnCount,
               outputSpec: () => response.outputSpec,
+              streamingReply: () => null,
+              pendingTurn: () => null,
               transcript: transcript => [
                 ...transcript,
                 { role: 'assistant', content: response.reply },
               ],
             }),
         }),
-        [],
+        [ScrollAutopilotOnboardingThreadToEnd()],
       ],
       FailedAutopilotOnboardingTurn: ({ reason }) => [
         evo(model, {
@@ -1212,6 +1215,8 @@ export const update = (model: Model, message: Message): UpdateReturn =>
             evo(flow, {
               status: () => 'error',
               errorReason: () => (reason === '' ? null : reason),
+              streamingReply: () => null,
+              pendingTurn: () => null,
             }),
         }),
         [],
@@ -1221,5 +1226,6 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [OpenAutopilotCreditKickoff()],
       ],
       CompletedAutopilotOnboardingCreditKickoff: () => [model, []],
+      CompletedScrollAutopilotOnboardingThread: () => [model, []],
     }),
   )

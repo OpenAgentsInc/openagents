@@ -2,6 +2,8 @@ import { ServerMessage, SyncPatch } from '@openagentsinc/sync-schema'
 import { Duration, Effect, Exit, Queue, Schema as S, Stream } from 'effect'
 import { Subscription } from 'foldkit'
 
+import { parseJsonRecord } from './json-boundary'
+
 import {
   GotDemoMessage,
   GotLoggedInMessage,
@@ -20,11 +22,18 @@ import {
 } from './page/loggedIn/message'
 import {
   ClosedSettledFeedStream,
+  FailedAutopilotOnboardingTurn,
   FailedSettledFeedStream,
+  OpenedAutopilotOnboardingStream,
   OpenedSettledFeedStream,
+  ReceivedAutopilotOnboardingDelta,
   ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
+  SucceededAutopilotOnboardingTurn,
 } from './page/loggedOut/message'
+import type { Message as LoggedOutMessage } from './page/loggedOut/message'
+import { parseOnboardingStreamEvent } from './page/autopilot-onboarding/flow'
+import { newOnboardingSessionId } from './page/loggedOut/update'
 import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import {
   syncAgentRunScope,
@@ -427,6 +436,189 @@ const syncStreams = (
   )
 }
 
+// Live /autopilot onboarding turn stream (issue #6123 UI follow-up). When a turn
+// is pending (set on submit), open the SSE stream and dispatch prose deltas as
+// they arrive, then the terminal success/failure. Keyed by the turn id so the
+// stream opens EXACTLY ONCE per turn (the keepAliveEquivalence below holds the
+// open stream stable while a turn is in flight, and tears it down when the turn
+// resolves and `pendingTurn` clears).
+const inactiveOnboardingStream: {
+  readonly isActive: boolean
+  readonly turnId: string
+  readonly sessionId: string
+  readonly userText: string
+  readonly verticalOverlay: string | null
+} = {
+  isActive: false,
+  turnId: '',
+  sessionId: '',
+  userText: '',
+  verticalOverlay: null,
+}
+
+type OnboardingStreamDependencies = typeof inactiveOnboardingStream
+
+export const onboardingStreamDependenciesForModel = (
+  model: Model,
+): OnboardingStreamDependencies => {
+  if (model._tag !== 'LoggedOut') {
+    return inactiveOnboardingStream
+  }
+
+  const pending = model.autopilotOnboarding.pendingTurn
+  if (pending === null) {
+    return inactiveOnboardingStream
+  }
+
+  return {
+    isActive: true,
+    turnId: pending.id,
+    // Mint a session id at the stream boundary for the first turn (the server
+    // creates the session on first contact; later turns reuse it).
+    sessionId: pending.sessionId ?? newOnboardingSessionId(),
+    userText: pending.userText,
+    verticalOverlay: pending.verticalOverlay,
+  }
+}
+
+// Read a fetch SSE body to completion, parsing `event:`/`data:` blocks and
+// offering one message per parsed event into the subscription queue. The wire is
+// the narrow onboarding stream (`event: delta|done|error`). Mirrors the
+// settled-feed `Stream.callback` + acquireRelease lifecycle so an unmount aborts
+// the in-flight request cleanly.
+const onboardingStream = (
+  dependencies: OnboardingStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { turnId, sessionId, userText, verticalOverlay } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const controller = new AbortController()
+        const resource = { aborted: false, controller }
+
+        const offer = (message: LoggedOutMessage): void => {
+          if (!resource.aborted) {
+            Queue.offerUnsafe(queue, GotLoggedOutMessage({ message }))
+          }
+        }
+
+        const fail = (): void =>
+          offer(
+            FailedAutopilotOnboardingTurn({
+              reason:
+                'Autopilot could not respond just now. Try sending that again.',
+            }),
+          )
+
+        const run = async (): Promise<void> => {
+          const response = await fetch(
+            `/api/autopilot/onboarding/${encodeURIComponent(sessionId)}/turn`,
+            {
+              method: 'POST',
+              cache: 'no-store',
+              signal: controller.signal,
+              headers: {
+                accept: 'text/event-stream',
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({
+                userText,
+                ...(verticalOverlay === null ? {} : { verticalOverlay }),
+              }),
+            },
+          )
+
+          if (!response.ok || response.body === null) {
+            fail()
+            return
+          }
+
+          offer(OpenedAutopilotOnboardingStream({ turnId }))
+
+          const reader = response.body
+            .pipeThrough(new TextDecoderStream())
+            .getReader()
+          let buffer = ''
+
+          const drainBlock = (block: string): void => {
+            const lines = block.split(/\r?\n/)
+            const eventLine = lines.find(line => line.startsWith('event:'))
+            const dataLines = lines
+              .filter(line => line.startsWith('data:'))
+              .map(line => line.slice('data:'.length).replace(/^ /, ''))
+
+            if (dataLines.length === 0) {
+              return
+            }
+
+            const eventName =
+              eventLine === undefined
+                ? 'message'
+                : eventLine.slice('event:'.length).replace(/^ /, '').trim()
+            const data = parseJsonRecord(dataLines.join('\n'))
+            const parsed = parseOnboardingStreamEvent(eventName, data)
+
+            if (parsed === undefined) {
+              return
+            }
+
+            if (parsed.kind === 'delta') {
+              offer(
+                ReceivedAutopilotOnboardingDelta({
+                  turnId,
+                  text: parsed.text,
+                }),
+              )
+            } else if (parsed.kind === 'done') {
+              offer(SucceededAutopilotOnboardingTurn({ response: parsed.response }))
+            } else {
+              fail()
+            }
+          }
+
+          // Read frames; SSE events are separated by a blank line.
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) {
+              break
+            }
+            buffer += value
+            let separator = buffer.search(/\r?\n\r?\n/)
+            while (separator !== -1) {
+              const block = buffer.slice(0, separator)
+              buffer = buffer.slice(separator).replace(/^\r?\n\r?\n/, '')
+              drainBlock(block)
+              separator = buffer.search(/\r?\n\r?\n/)
+            }
+          }
+          // Flush any trailing block without a terminating blank line.
+          if (buffer.trim() !== '') {
+            drainBlock(buffer)
+          }
+        }
+
+        run().catch(() => {
+          if (!resource.aborted) {
+            fail()
+          }
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.aborted = true
+          resource.controller.abort()
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
 export const demoKeyboardDependenciesForModel = (model: Model) =>
   model._tag === 'Demo' && model.playback !== 'complete'
     ? { isActive: true, key: model.routeKey }
@@ -544,6 +736,23 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.scope === right.scope,
       dependenciesToStream: settledFeedStream,
+    },
+  ),
+  autopilotOnboardingStream: entry(
+    {
+      isActive: S.Boolean,
+      turnId: S.String,
+      sessionId: S.String,
+      userText: S.String,
+      verticalOverlay: S.NullOr(S.String),
+    },
+    {
+      modelToDependencies: onboardingStreamDependenciesForModel,
+      // Hold the open stream stable for the duration of a single turn; a change
+      // of `turnId` (a new turn) tears down the old stream and opens a new one.
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive && left.turnId === right.turnId,
+      dependenciesToStream: onboardingStream,
     },
   ),
   demoPlayback: entry(

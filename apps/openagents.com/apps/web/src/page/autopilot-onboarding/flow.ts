@@ -53,9 +53,15 @@ export const FlowOutputSpec = S.Struct({
 })
 export type FlowOutputSpec = typeof FlowOutputSpec.Type
 
-// The request lifecycle for a turn. `error` carries an operator-readable reason
-// the composer surfaces; the user can retry.
-export const FlowStatus = S.Literals(['idle', 'submitting', 'error'])
+// The request lifecycle for a turn:
+//   - `idle`        — no request in flight.
+//   - `submitting`  — a turn is posted; the SSE stream may not have opened yet.
+//   - `streaming`   — the assistant reply is landing token-by-token (deltas are
+//                     accumulating in `streamingReply`).
+//   - `error`       — the last turn failed; `errorReason` carries the message.
+// `error` carries an operator-readable reason the composer surfaces; the user
+// can retry.
+export const FlowStatus = S.Literals(['idle', 'submitting', 'streaming', 'error'])
 export type FlowStatus = typeof FlowStatus.Type
 
 // The onboarding flow model. `sessionId` is generated once the first turn is
@@ -63,6 +69,19 @@ export type FlowStatus = typeof FlowStatus.Type
 // optional `/autopilot/{vertical}` segment, threaded to the program's
 // vertical-overlay slot but never interpreted here (#6130 owns the legal
 // overlay content).
+// A turn waiting for (or receiving) its streamed reply. The subscription
+// (`subscriptions.ts`) reads this to open the SSE stream and dispatch deltas;
+// `id` is the stable per-turn key so the subscription opens the stream exactly
+// once per turn (never re-fires while it is in flight). `null` when no turn is
+// pending.
+export const FlowPendingTurn = S.Struct({
+  id: S.String,
+  sessionId: S.NullOr(S.String),
+  userText: S.String,
+  verticalOverlay: S.NullOr(S.String),
+})
+export type FlowPendingTurn = typeof FlowPendingTurn.Type
+
 export const FlowModel = ts('AutopilotOnboardingFlow', {
   vertical: S.NullOr(S.String),
   sessionId: S.NullOr(S.String),
@@ -70,6 +89,14 @@ export const FlowModel = ts('AutopilotOnboardingFlow', {
   status: FlowStatus,
   errorReason: S.NullOr(S.String),
   transcript: S.Array(FlowTurn),
+  // The in-flight assistant reply, accumulating as SSE deltas arrive. `null`
+  // when no reply is streaming. On stream completion it is committed to the
+  // transcript and reset to null. Held separately so the streaming turn renders
+  // a live, markdown-progressive bubble without mutating the durable transcript.
+  streamingReply: S.NullOr(S.String),
+  // The turn the streaming subscription should drive, or null when none is in
+  // flight. Carries the per-turn id so the SSE stream opens exactly once.
+  pendingTurn: S.NullOr(FlowPendingTurn),
   outputSpec: FlowOutputSpec,
   turnCount: S.Int,
 })
@@ -89,6 +116,51 @@ export const OnboardingTurnResponse = S.Struct({
 })
 export type OnboardingTurnResponse = typeof OnboardingTurnResponse.Type
 
+// STREAM WIRE -------------------------------------------------------------
+
+// The narrow SSE wire the streaming turn route emits (see
+// `workers/api/src/autopilot-onboarding-routes.ts`):
+//   event: delta  data: { "text": "…" }
+//   event: done   data: <OnboardingTurnResponse>
+//   event: error  data: { "error": "…" }
+// One parsed SSE event from the stream, normalized for the subscription. The
+// subscription maps these to the streaming messages.
+export type OnboardingStreamEvent =
+  | Readonly<{ kind: 'delta'; text: string }>
+  | Readonly<{ kind: 'done'; response: OnboardingTurnResponse }>
+  | Readonly<{ kind: 'error'; reason: string }>
+
+const DeltaPayload = S.Struct({ text: S.String })
+
+// Parse one decoded SSE block (its `event` name + JSON `data` payload) into a
+// typed stream event. Unknown events / malformed payloads yield `undefined` so
+// the consumer simply skips them (forward-compatible, never throws).
+export const parseOnboardingStreamEvent = (
+  event: string,
+  data: unknown,
+): OnboardingStreamEvent | undefined => {
+  if (event === 'delta') {
+    return S.decodeUnknownOption(DeltaPayload)(data).pipe(
+      Option.match({
+        onNone: () => undefined,
+        onSome: ({ text }) => ({ kind: 'delta' as const, text }),
+      }),
+    )
+  }
+  if (event === 'done') {
+    return S.decodeUnknownOption(OnboardingTurnResponse)(data).pipe(
+      Option.match({
+        onNone: () => undefined,
+        onSome: response => ({ kind: 'done' as const, response }),
+      }),
+    )
+  }
+  if (event === 'error') {
+    return { kind: 'error', reason: 'stream_failed' }
+  }
+  return undefined
+}
+
 export const initFlowModel = (vertical: Option.Option<string>): FlowModel =>
   FlowModel({
     vertical: Option.getOrNull(vertical),
@@ -97,6 +169,8 @@ export const initFlowModel = (vertical: Option.Option<string>): FlowModel =>
     status: 'idle',
     errorReason: null,
     transcript: [],
+    streamingReply: null,
+    pendingTurn: null,
     outputSpec: {},
     turnCount: 0,
   })
@@ -145,6 +219,38 @@ export const currentSectionIndex = (spec: FlowOutputSpec): number => {
   return firstOpen === -1 ? OUTPUT_SPEC_SECTIONS.length - 1 : firstOpen
 }
 
+// INTAKE REGISTER ---------------------------------------------------------
+
+// One row of the sidebar intake register (problem #3). The 10 Output-Spec
+// sections render as a slim vertical register that lights up / checks off as
+// each is captured — glanceable, not a giant box. `done` = captured, `active` =
+// the current (first open) step, `queued` = not yet reached.
+export type IntakeRegisterStatus = 'done' | 'active' | 'queued'
+
+export type IntakeRegisterStep = Readonly<{
+  id: keyof FlowOutputSpec
+  label: string
+  status: IntakeRegisterStatus
+}>
+
+// Derive the register rows for the current spec. Pure + deterministic.
+export const deriveIntakeRegister = (
+  model: FlowModel,
+): ReadonlyArray<IntakeRegisterStep> => {
+  const spec = model.outputSpec
+  const current = currentSectionIndex(spec)
+
+  return OUTPUT_SPEC_SECTIONS.map((section, index) => ({
+    id: section.id,
+    label: section.label,
+    status: isCaptured(spec, section.id)
+      ? ('done' as const)
+      : index === current
+        ? ('active' as const)
+        : ('queued' as const),
+  }))
+}
+
 // The flow is "quote-ready" once the credit-kickoff-relevant facts are captured:
 // the business, the goal, the quick win, and the payment intent. This is the
 // honest v1 gate for surfacing the `credit_kickoff` card — it does not pretend
@@ -166,12 +272,16 @@ export const CREDIT_KICKOFF_AMOUNT_CENTS = 500
 // difference today is that the page produces them from session state rather than
 // reading them off the `oa.component` SSE channel (which is inert in v1).
 //
+// The `intake_progress` register is NOT in this list any more (problem #3): the
+// 10-section interhview progress is now a compact sidebar register (see
+// `deriveIntakeRegister`), so it stays glanceable and never dominates the main
+// column. The components below are the inline, in-thread surfaces only.
+//
 // Ordering follows document order so the renderer interleaves them naturally:
-//   1. intake_progress   — always, as the assembling work surface
-//   2. consent_gate      — when a regulated vertical is active and consent is due
-//   3. quick_win_card    — once a quick win is captured
-//   4. dashboard_preview — once enough is captured to seed a workspace preview
-//   5. credit_kickoff    — once quote-ready (rendered + clickable; backend deferred)
+//   1. consent_gate      — when a regulated vertical is active and consent is due
+//   2. quick_win_card    — once a quick win is captured
+//   3. dashboard_preview — once enough is captured to seed a workspace preview
+//   4. credit_kickoff    — once quote-ready (rendered + clickable; backend deferred)
 export const deriveComponentFrames = (
   model: FlowModel,
 ): ReadonlyArray<RenderableFrame> => {
@@ -183,22 +293,6 @@ export const deriveComponentFrames = (
   // `RenderableFrame`; a record that somehow failed would degrade to the safe
   // fallback rather than crash — exactly the gateway contract.
   const records: Array<Record<string, unknown>> = []
-
-  // intake_progress — the interview assembling. Always present (even before the
-  // first turn) so the work surface is visible on a headless render, not gated
-  // behind a class-triggered reveal.
-  records.push({
-    v: 1,
-    component: 'intake_progress',
-    id: 'intake-progress',
-    props: {
-      steps: OUTPUT_SPEC_SECTIONS.map(section => ({
-        id: section.id,
-        label: section.label,
-      })),
-      current: currentSectionIndex(spec),
-    },
-  })
 
   // consent_gate — for regulated verticals (legal/health), surface an explicit
   // consent gate before anything client-identifying. v1 only knows `legal`; the

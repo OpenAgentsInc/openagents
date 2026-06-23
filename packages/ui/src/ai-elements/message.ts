@@ -5,6 +5,7 @@ import { html } from 'foldkit/html'
 
 import { eyebrowClass, metaClass } from '../primitives'
 import { aiElementBase } from './base'
+import { response } from './response'
 
 const MODULE_ID = 'message'
 
@@ -81,15 +82,35 @@ export const messageContent = <Message>(input: {
   )
 }
 
-// A single chat turn. `body` is the simple text path; pass `extra` (e.g. a code
-// block, sources, or an actions row) for richer assistant turns.
+// A single chat turn. Body paths, in precedence order:
+//   - `markdown`: render the body through the centralized `response` Markdown
+//     element (bold/italics/headings/lists/code/links), streaming-tolerant.
+//     Pass `streaming: true` to append a live typing cursor while a reply lands.
+//   - `props.body`: the plain-text path (no markdown parsing).
+// `extra` (e.g. a code block, sources, or an actions row) appends after the body.
 export const message = <Message>(input: {
   props: MessageProps
+  markdown?: string
+  streaming?: boolean
   extra?: ReadonlyArray<Html>
   attrs?: ReadonlyArray<Attribute<Message>>
 }): Html => {
   const h = html<Message>()
   const props = Schema.decodeUnknownSync(MessageProps)(input.props)
+
+  const bodyChildren: ReadonlyArray<Html | string> =
+    input.markdown !== undefined
+      ? [
+          response<Message>({
+            markdown: input.markdown,
+            ...(input.streaming === undefined
+              ? {}
+              : { streaming: input.streaming }),
+          }),
+        ]
+      : props.body === undefined
+        ? []
+        : [props.body]
 
   return h.div(
     [
@@ -111,10 +132,7 @@ export const message = <Message>(input: {
           }),
       messageContent<Message>({
         role: props.role,
-        children: [
-          ...(props.body === undefined ? [] : [props.body]),
-          ...(input.extra ?? []),
-        ],
+        children: [...bodyChildren, ...(input.extra ?? [])],
       }),
     ],
   )

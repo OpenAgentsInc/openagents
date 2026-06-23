@@ -498,3 +498,63 @@
     transform: none;
   }
 }
+
+/*
+ * Streaming type cursor for the assistant reply (the `response` AI element).
+ * A Khala-cyan caret that blinks while a reply lands token-by-token. Honesty +
+ * accessibility rule: reduced-motion holds it static (no blink) but visible, so
+ * the "live" affordance still reads without motion.
+ */
+@keyframes oa-stream-cursor {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  95% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  .oa-stream-cursor {
+    animation: oa-stream-cursor 1.1s steps(2, jump-none) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-stream-cursor {
+    animation: none;
+    opacity: 0.85;
+  }
+}
+
+/*
+ * Autopilot onboarding thread scroll region (problem #2). The thread is a
+ * fixed-height internal scroll area with the composer pinned below; only this
+ * region scrolls, not the whole page. `overscroll-contain` stops scroll-chaining
+ * to the page/scene; a thin dark scrollbar keeps it on-brand.
+ */
+@layer components {
+  .oa-thread-scroll {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+
+  .oa-thread-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .oa-thread-scroll::-webkit-scrollbar-thumb {
+    background-color: #2a2a2a;
+    border-radius: 0;
+  }
+
+  .oa-thread-scroll::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+}

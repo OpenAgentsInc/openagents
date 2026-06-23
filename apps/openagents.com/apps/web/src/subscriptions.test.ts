@@ -4,7 +4,13 @@ import {
   authBootstrapFromSession,
   incompleteOnboardingStatus,
 } from './domain/session'
-import { Demo, LoggedIn } from './model'
+import { Demo, LoggedIn, LoggedOut } from './model'
+import {
+  SubmittedAutopilotOnboardingTurn,
+  UpdatedAutopilotOnboardingComposer,
+} from './page/loggedOut/message'
+import { update as loggedOutUpdate } from './page/loggedOut/update'
+import { AutopilotRoute } from './route'
 import {
   ActiveChatRun,
   agentRunExternalRefFromNullable,
@@ -25,6 +31,7 @@ import {
   demoClockDependenciesForModel,
   demoKeyboardDependenciesForModel,
   demoPlaybackDependenciesForModel,
+  onboardingStreamDependenciesForModel,
   syncMessageFromPayload,
   syncStreamDependenciesForModel,
   workspaceSyncDependenciesForModel,
@@ -483,5 +490,37 @@ describe('demo clock subscriptions', () => {
       isActive: false,
       key: '',
     })
+  })
+})
+
+describe('autopilot onboarding stream subscription', () => {
+  const loggedOutBase = () => LoggedOut.init(AutopilotRoute())
+
+  test('is inactive with no pending turn', () => {
+    expect(onboardingStreamDependenciesForModel(loggedOutBase())).toEqual({
+      isActive: false,
+      turnId: '',
+      sessionId: '',
+      userText: '',
+      verticalOverlay: null,
+    })
+  })
+
+  test('activates and carries the pending turn once a turn is submitted', () => {
+    const [typed] = loggedOutUpdate(
+      loggedOutBase(),
+      UpdatedAutopilotOnboardingComposer({ value: 'I run a bakery' }),
+    )
+    const [submitted] = loggedOutUpdate(
+      typed,
+      SubmittedAutopilotOnboardingTurn(),
+    )
+
+    const deps = onboardingStreamDependenciesForModel(submitted)
+    expect(deps.isActive).toBe(true)
+    expect(deps.userText).toBe('I run a bakery')
+    // A first turn mints a fresh session id at the stream boundary.
+    expect(deps.sessionId).toMatch(/^ob_/)
+    expect(deps.turnId).not.toBe('')
   })
 })

@@ -115,6 +115,25 @@ export class OnboardingInferenceError extends S.TaggedErrorClass<OnboardingInfer
   },
 ) {}
 
+// STREAMING INFERENCE SEAM ------------------------------------------------
+
+// The streaming inference seam. Given the assembled message list, return a
+// source whose `deltas` async-iterable yields assistant TEXT increments as the
+// upstream produces them, and whose `final()` resolves the full reply once the
+// stream is drained. Production wires this to the provider-adapter `streamSse`
+// (or buffered `stream`) path; tests inject a deterministic stub. This is the
+// streaming complement to `OnboardingInferenceClient` — same input, incremental
+// output. Errors surface as the same tagged failure the route already maps.
+export type OnboardingStreamSource = Readonly<{
+  deltas: AsyncIterable<string>
+  // Resolves AFTER `deltas` is exhausted, with the full accumulated reply.
+  final: () => string
+}>
+
+export type OnboardingStreamClient = (
+  request: InferenceRequest,
+) => Effect.Effect<OnboardingStreamSource, OnboardingInferenceError>
+
 export class OnboardingStorageError extends S.TaggedErrorClass<OnboardingStorageError>()(
   'OnboardingStorageError',
   {
@@ -318,6 +337,120 @@ export const runOnboardingTurn = (
     }
 
     const reply = yield* deps.infer(request)
+
+    const userTurn: OnboardingTranscriptTurn = { role: 'user', content: userText }
+    const assistantTurn: OnboardingTranscriptTurn = {
+      role: 'assistant',
+      content: reply,
+    }
+
+    const advanced: OnboardingSession = {
+      id: session.id,
+      verticalOverlay: session.verticalOverlay,
+      status: session.status,
+      transcript: [...session.transcript, userTurn, assistantTurn],
+      outputSpec: session.outputSpec,
+      turnCount: session.turnCount + 1,
+      createdAt: session.createdAt,
+      updatedAt: now,
+    }
+
+    yield* deps.store.upsert(advanced)
+
+    return {
+      sessionId: advanced.id,
+      reply,
+      status: advanced.status,
+      turnCount: advanced.turnCount,
+      outputSpec: advanced.outputSpec,
+    } satisfies OnboardingTurnResponse
+  })
+
+// STREAMING TURN DRIVER ---------------------------------------------------
+
+// The validated, in-flight state of a streaming turn: the session it advances,
+// the user text for this turn, and the live stream source. The route pumps the
+// source's `deltas` to the client, then calls `finalizeOnboardingStreamTurn`
+// with the same session + the full reply to append + persist + build the final
+// response. Splitting prepare/finalize lets the route own the SSE pump while the
+// program keeps the read/build/persist logic and the single validation point.
+export type OnboardingStreamTurn = Readonly<{
+  session: OnboardingSession
+  userText: string
+  source: OnboardingStreamSource
+}>
+
+export type OnboardingStreamTurnDeps = Readonly<{
+  store: OnboardingSessionStore
+  stream: OnboardingStreamClient
+  nowIso: () => string
+}>
+
+// Prepare a streaming turn: validate the user text, read (or create) the
+// session, and open the stream. Mirrors the non-streaming driver's validation +
+// session-resolution, so the streaming and buffered paths cannot diverge.
+export const prepareOnboardingStreamTurn = (
+  input: OnboardingTurnInput,
+  deps: OnboardingStreamTurnDeps,
+): Effect.Effect<
+  OnboardingStreamTurn,
+  OnboardingInferenceError | OnboardingStorageError | OnboardingValidationError
+> =>
+  Effect.gen(function* () {
+    const userText = input.userText.trim()
+    if (userText === '') {
+      return yield* new OnboardingValidationError({
+        reason: 'userText must not be empty',
+      })
+    }
+    if (userText.length > MAX_USER_TEXT_LENGTH) {
+      return yield* new OnboardingValidationError({
+        reason: `userText exceeds ${MAX_USER_TEXT_LENGTH} characters`,
+      })
+    }
+
+    const now = deps.nowIso()
+    const existing = yield* deps.store.read(input.sessionId)
+
+    const session: OnboardingSession =
+      existing ??
+      ({
+        id: input.sessionId,
+        verticalOverlay: input.verticalOverlay,
+        status: 'interviewing',
+        transcript: [],
+        outputSpec: {},
+        turnCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      } satisfies OnboardingSession)
+
+    const messages = buildOnboardingMessages(session, userText)
+
+    const request: InferenceRequest = {
+      model: KHALA_ONBOARDING_MODEL,
+      messages,
+      stream: true,
+      passthroughParams: {},
+    }
+
+    const source = yield* deps.stream(request)
+
+    return { session, userText, source }
+  })
+
+// Finalize a streaming turn once the deltas are drained: append the exchange,
+// persist, and build the same `OnboardingTurnResponse` the buffered path returns.
+// Only needs the store + clock (the stream is already drained), so it takes the
+// narrower deps shape — the route drives it at the streaming boundary.
+export const finalizeOnboardingStreamTurn = (
+  turn: OnboardingStreamTurn,
+  reply: string,
+  deps: Readonly<{ store: OnboardingSessionStore; nowIso: () => string }>,
+): Effect.Effect<OnboardingTurnResponse, OnboardingStorageError> =>
+  Effect.gen(function* () {
+    const { session, userText } = turn
+    const now = deps.nowIso()
 
     const userTurn: OnboardingTranscriptTurn = { role: 'user', content: userText }
     const assistantTurn: OnboardingTranscriptTurn = {

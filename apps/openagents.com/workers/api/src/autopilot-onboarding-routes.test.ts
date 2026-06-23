@@ -6,6 +6,8 @@ import { describe, expect, test } from 'vitest'
 import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
+  type OnboardingStreamClient,
+  type OnboardingStreamSource,
 } from './autopilot-onboarding-program'
 import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
 
@@ -189,6 +191,124 @@ describe('POST /api/autopilot/onboarding/{sessionId}/turn', () => {
     expect(response.status).toBe(502)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('inference_unavailable')
+  })
+
+  // STREAMING (SSE) PATH ---------------------------------------------------
+
+  const streamRequest = (sessionId: string, body: unknown): Request =>
+    new Request(
+      `https://openagents.com/api/autopilot/onboarding/${sessionId}/turn`,
+      {
+        body: JSON.stringify(body),
+        method: 'POST',
+        headers: { accept: 'text/event-stream' },
+      },
+    )
+
+  // A stub stream client that yields the given chunks as deltas.
+  const chunkStream =
+    (chunks: ReadonlyArray<string>): OnboardingStreamClient =>
+    () =>
+      Effect.succeed<OnboardingStreamSource>({
+        deltas: (async function* () {
+          for (const chunk of chunks) {
+            yield chunk
+          }
+        })(),
+        final: () => chunks.join(''),
+      })
+
+  const failingStream: OnboardingStreamClient = () =>
+    new OnboardingInferenceError({ reason: 'no provider lane configured' })
+
+  const streamRoutesWith = (stream: OnboardingStreamClient) =>
+    makeAutopilotOnboardingRoutes<Env>({
+      makeInferenceClient: () => echoInference,
+      makeStreamClient: () => stream,
+      nowIso: () => '2026-06-23T00:00:00.000Z',
+    })
+
+  test('streams prose deltas then a terminal done payload (SSE)', async () => {
+    const routes = streamRoutesWith(chunkStream(['Great', ' — ', 'what next?']))
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-stream', { userText: 'I run a bakery.' }),
+        makeEnv(),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+
+    const text = await response.text()
+    // Three delta frames, in order, then one done frame.
+    expect(text).toContain('event: delta\ndata: {"text":"Great"}')
+    expect(text).toContain('event: delta\ndata: {"text":" — "}')
+    expect(text).toContain('event: delta\ndata: {"text":"what next?"}')
+    expect(text).toContain('event: done')
+
+    // The done frame carries the full reply + advanced turn count.
+    const doneLine = text
+      .split('\n')
+      .find(line => line.startsWith('data: {"sessionId"'))
+    const done = JSON.parse((doneLine ?? '').slice('data: '.length)) as {
+      reply: string
+      turnCount: number
+      sessionId: string
+    }
+    expect(done.reply).toBe('Great — what next?')
+    expect(done.turnCount).toBe(1)
+    expect(done.sessionId).toBe('sess-stream')
+  })
+
+  test('the streamed turn persists (a follow-up turn advances the count)', async () => {
+    const routes = streamRoutesWith(chunkStream(['ok']))
+    const env = makeEnv()
+    await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-stream-2', { userText: 'first' }),
+        env,
+      ),
+    )
+    const second = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-stream-2', { userText: 'second' }),
+        env,
+      ),
+    )
+    const text = await second.text()
+    const doneLine = text
+      .split('\n')
+      .find(line => line.startsWith('data: {"sessionId"'))
+    const done = JSON.parse((doneLine ?? '').slice('data: '.length)) as {
+      turnCount: number
+    }
+    expect(done.turnCount).toBe(2)
+  })
+
+  test('a stream-open failure maps to a clean 502 before any byte is sent', async () => {
+    const routes = streamRoutesWith(failingStream)
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-stream-3', { userText: 'hello' }),
+        makeEnv(),
+      ),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('inference_unavailable')
+  })
+
+  test('an SSE request with no stream client wired falls back to the buffered JSON path', async () => {
+    // No makeStreamClient -> content negotiation degrades to JSON (fail-safe).
+    const routes = routesWith(echoInference)
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-fallback', { userText: 'hello' }),
+        makeEnv(),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('application/json')
   })
 
   test('passes the vertical overlay through to the inference seam', async () => {
