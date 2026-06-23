@@ -26,8 +26,12 @@ import {
   onboardingVerticalStorageValue,
   resolveOnboardingPromptVertical,
 } from './autopilot-onboarding-system-prompt'
-import { type AutopilotConciergeVertical } from './inference/autopilot-concierge-model'
-import { parseJsonWithSchema } from './json-boundary'
+import {
+  type AutopilotConciergeVertical,
+  OA_OUTPUT_SPEC_FENCE_TAG as CONCIERGE_OUTPUT_SPEC_FENCE_TAG,
+  OUTPUT_SPEC_FIELDS as CONCIERGE_OUTPUT_SPEC_FIELDS,
+} from './inference/autopilot-concierge-model'
+import { parseJsonUnknown, parseJsonWithSchema } from './json-boundary'
 
 export const KHALA_ONBOARDING_MODEL = 'openagents/khala-mini'
 
@@ -57,6 +61,158 @@ export const OnboardingOutputSpec = S.Struct({
   openQuestions: S.optionalKey(S.String),
 })
 export type OnboardingOutputSpec = typeof OnboardingOutputSpec.Type
+
+// OUTPUT SPEC EXTRACTION (issue #6148) --------------------------------------
+//
+// The model surfaces the current Output Spec as a structured artifact via a
+// fenced `oa-output-spec` JSON block (every field optional; a partial spec is
+// valid mid-interview). The program OWNS the schema, so the extractor lives here
+// (the inference surface re-exports it) — keeping ONE source of truth and no
+// circular dependency. The fenced JSON block is the reliable primary; a markdown
+// `Output Spec` section is a bounded best-effort fallback. Pure; never throws.
+
+// The fenced-block language tag the model uses to surface the structured spec
+// + the 10 canonical spec field keys. Re-exported from the concierge model
+// module (the shared, cycle-free home), so the schema, the parser, and the
+// system prompt all derive from ONE field list.
+export const OA_OUTPUT_SPEC_FENCE_TAG = CONCIERGE_OUTPUT_SPEC_FENCE_TAG
+export const ONBOARDING_OUTPUT_SPEC_FIELDS = CONCIERGE_OUTPUT_SPEC_FIELDS
+
+const OUTPUT_SPEC_FENCE_RE = new RegExp(
+  '```' + OA_OUTPUT_SPEC_FENCE_TAG + '\\s*\\n([\\s\\S]*?)\\n?```',
+  'g',
+)
+
+// The LAST fenced `oa-output-spec` block's raw JSON body (the freshest snapshot),
+// or undefined when none is present.
+const lastFencedOutputSpecJson = (completion: string): string | undefined => {
+  OUTPUT_SPEC_FENCE_RE.lastIndex = 0
+  let match: RegExpExecArray | null
+  let last: string | undefined
+  while ((match = OUTPUT_SPEC_FENCE_RE.exec(completion)) !== null) {
+    last = match[1] ?? ''
+  }
+  return last
+}
+
+// Narrow an arbitrary record to the closed set of known string fields, then
+// validate against the schema. Returns undefined on parse/validation failure or
+// when no known field survives. Never throws.
+const decodeOutputSpecObject = (
+  value: unknown,
+): OnboardingOutputSpec | undefined => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const narrowed: Record<string, string> = {}
+  for (const field of ONBOARDING_OUTPUT_SPEC_FIELDS) {
+    const fieldValue = record[field]
+    if (typeof fieldValue === 'string' && fieldValue.trim() !== '') {
+      narrowed[field] = fieldValue.trim()
+    }
+  }
+  if (Object.keys(narrowed).length === 0) {
+    return undefined
+  }
+  try {
+    return S.decodeUnknownSync(OnboardingOutputSpec)(narrowed)
+  } catch {
+    return undefined
+  }
+}
+
+const MARKDOWN_OUTPUT_SPEC_LABELS: ReadonlyArray<
+  Readonly<{ field: keyof OnboardingOutputSpec; labels: ReadonlyArray<string> }>
+> = [
+  { field: 'business', labels: ['business'] },
+  { field: 'goal', labels: ['goal'] },
+  { field: 'chosenOfferings', labels: ['chosen offerings', 'offerings'] },
+  { field: 'quickWin', labels: ['quick win'] },
+  { field: 'successMetric', labels: ['success metric'] },
+  { field: 'scope', labels: ['scope'] },
+  { field: 'constraints', labels: ['constraints'] },
+  { field: 'timeline', labels: ['timeline'] },
+  { field: 'payment', labels: ['payment'] },
+  { field: 'openQuestions', labels: ['open questions'] },
+]
+
+// Text AFTER the last `Output Spec` heading, or undefined when absent.
+const outputSpecMarkdownSection = (completion: string): string | undefined => {
+  const headingRe = /(?:^|\n)[#*\s]*output spec[#*:\s]*\n/gi
+  let match: RegExpExecArray | null
+  let lastEnd: number | undefined
+  while ((match = headingRe.exec(completion)) !== null) {
+    lastEnd = match.index + match[0].length
+  }
+  return lastEnd === undefined ? undefined : completion.slice(lastEnd)
+}
+
+const parseMarkdownOutputSpec = (
+  section: string,
+): OnboardingOutputSpec | undefined => {
+  const collected: Record<string, string> = {}
+  for (const rawLine of section.split('\n')) {
+    const line = rawLine
+      .replace(/^[\s>]*[-*]?\s*/, '')
+      .replace(/^\d+[.)]\s*/, '')
+      .replace(/\*\*/g, '')
+      .trim()
+    if (line === '') continue
+    const sep = line.search(/\s—\s|\s–\s|:\s/u)
+    if (sep === -1) continue
+    const label = line
+      .slice(0, sep)
+      .trim()
+      .toLowerCase()
+      .replace(/^\d+[.)]?\s*/, '')
+      .trim()
+    const value = line.slice(sep).replace(/^\s*[—–:]\s*/u, '').trim()
+    if (value === '') continue
+    if (/^\(?(none|n\/a|na|tbd|unknown|—|-)\)?$/i.test(value)) continue
+    const binding = MARKDOWN_OUTPUT_SPEC_LABELS.find(b =>
+      b.labels.some(l => label === l || label.startsWith(l)),
+    )
+    if (binding === undefined) continue
+    if (collected[binding.field] === undefined) {
+      collected[binding.field] = value
+    }
+  }
+  return decodeOutputSpecObject(collected)
+}
+
+// Extract the structured Output Spec from a completion: the LAST fenced
+// `oa-output-spec` JSON block first (reliable), then a markdown `Output Spec`
+// section (best-effort). Returns undefined when neither yields a known field.
+export const extractOnboardingOutputSpec = (
+  completion: string,
+): OnboardingOutputSpec | undefined => {
+  const fenced = lastFencedOutputSpecJson(completion)
+  if (fenced !== undefined) {
+    let parsed: unknown
+    try {
+      // Parse at the named JSON boundary helper (zero-debt: raw JSON.parse stays
+      // inside json-boundary.ts).
+      parsed = parseJsonUnknown(fenced)
+    } catch {
+      parsed = undefined
+    }
+    const spec = decodeOutputSpecObject(parsed)
+    if (spec !== undefined) {
+      return spec
+    }
+  }
+  const section = outputSpecMarkdownSection(completion)
+  return section === undefined ? undefined : parseMarkdownOutputSpec(section)
+}
+
+// Merge a freshly-extracted spec over a prior accumulated spec so a session's
+// spec only GROWS across turns (a later non-empty field overrides; an omitted
+// field does not erase the earlier value). Pure.
+export const mergeOnboardingOutputSpec = (
+  prior: OnboardingOutputSpec,
+  next: OnboardingOutputSpec | undefined,
+): OnboardingOutputSpec => (next === undefined ? prior : { ...prior, ...next })
 
 export const OnboardingSessionStatus = S.Literals(['interviewing', 'complete'])
 export type OnboardingSessionStatus = typeof OnboardingSessionStatus.Type
@@ -359,7 +515,13 @@ export const runOnboardingTurn = (
       ),
       status: session.status,
       transcript: [...session.transcript, userTurn, assistantTurn],
-      outputSpec: session.outputSpec,
+      // Accumulate the structured Output Spec from this reply over the prior
+      // session spec (issue #6148), so the persisted spec grows across turns and
+      // the page + programmatic consumers read the same structured artifact.
+      outputSpec: mergeOnboardingOutputSpec(
+        session.outputSpec,
+        extractOnboardingOutputSpec(reply),
+      ),
       turnCount: session.turnCount + 1,
       createdAt: session.createdAt,
       updatedAt: now,
@@ -475,7 +637,12 @@ export const finalizeOnboardingStreamTurn = (
       ),
       status: session.status,
       transcript: [...session.transcript, userTurn, assistantTurn],
-      outputSpec: session.outputSpec,
+      // Accumulate the structured Output Spec from this reply over the prior
+      // session spec (issue #6148) — same as the buffered driver.
+      outputSpec: mergeOnboardingOutputSpec(
+        session.outputSpec,
+        extractOnboardingOutputSpec(reply),
+      ),
       turnCount: session.turnCount + 1,
       createdAt: session.createdAt,
       updatedAt: now,

@@ -1794,6 +1794,94 @@ describe('Khala identity guard', () => {
     )
   })
 
+  test('Autopilot Concierge surfaces the structured Output Spec + declared tools on the disclosure block', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    // The model emits a fenced `oa-output-spec` JSON block alongside prose.
+    const reply = [
+      'Thanks — here is where we are.',
+      '',
+      '```oa-output-spec',
+      '{"business":"Acme LLC, a small law firm","goal":"win back review hours","quickWin":"draft an intake checklist"}',
+      '```',
+    ].join('\n')
+    registry.register(cannedAdapter(VERTEX_GEMINI_ADAPTER_ID, reply, captured))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          autopilot_concierge: { vertical: 'general' },
+          messages: [{ content: 'help onboard my firm', role: 'user' }],
+          model: AUTOPILOT_CONCIERGE_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        output_spec?: Record<string, string>
+        tools?: ReadonlyArray<{
+          id: string
+          status: string
+          human_review_gated: boolean
+          effect_class: string
+        }>
+      }
+    }
+    // Structured Output Spec extracted from the fenced block.
+    expect(body.openagents?.output_spec?.['business']).toBe(
+      'Acme LLC, a small law firm',
+    )
+    expect(body.openagents?.output_spec?.['goal']).toBe('win back review hours')
+    expect(body.openagents?.output_spec?.['quickWin']).toBe(
+      'draft an intake checklist',
+    )
+    // Declared, not-yet-executed bounded tool set.
+    const tools = body.openagents?.tools ?? []
+    expect(tools.map(t => t.id)).toEqual([
+      'web_search_enrichment',
+      'prefilled_workspace_seeding',
+      'checkout_credit_kickoff',
+      'crm_write',
+    ])
+    expect(tools.every(t => t.status === 'declared_not_executed')).toBe(true)
+    // Mutating/spending tools are human-review-gated.
+    expect(
+      tools.find(t => t.id === 'checkout_credit_kickoff')?.human_review_gated,
+    ).toBe(true)
+    expect(
+      tools.find(t => t.id === 'web_search_enrichment')?.human_review_gated,
+    ).toBe(false)
+  })
+
+  test('khala-mini (non-concierge) carries NO concierge output_spec or tools', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      cannedAdapter(
+        VERTEX_GEMINI_ADAPTER_ID,
+        '```oa-output-spec\n{"business":"x"}\n```',
+        captured,
+      ),
+    )
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    const body = (await response.json()) as {
+      openagents?: { output_spec?: unknown; tools?: unknown }
+    }
+    expect(body.openagents?.output_spec).toBeUndefined()
+    expect(body.openagents?.tools).toBeUndefined()
+  })
+
   test('rejects an unknown Autopilot Concierge vertical before provider dispatch', async () => {
     const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
     const registry = new InferenceProviderRegistry()

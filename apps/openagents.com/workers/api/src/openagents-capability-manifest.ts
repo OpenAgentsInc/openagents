@@ -239,6 +239,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Compact under-10KB agent onboarding tier sourced from docs/live/AGENTS-CORE.md.',
       },
       {
+        id: 'inference_models_catalog',
+        href: 'https://openagents.com/api/v1/models',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'OpenAI-compatible model catalog for the Khala inference gateway, with published per-1M-token price and policy. Served models include openagents/khala-mini, openagents/khala-code, and openagents/autopilot-concierge (the productized Autopilot onboarding concierge). Public pre-purchase discovery; no prompts, balances, or credentials.',
+      },
+      {
         id: 'agent_full_reference',
         href: 'https://openagents.com/AGENTS.md',
         method: 'GET',
@@ -856,6 +864,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
     ],
     actions: [
+      {
+        id: 'autopilot_concierge_chat',
+        href: 'https://openagents.com/api/v1/chat/completions',
+        method: 'POST',
+        auth: 'registered_agent_token',
+        status: 'available',
+        description:
+          'Call the Autopilot Concierge as an OpenAI-compatible Khala virtual model: POST with model "openagents/autopilot-concierge" runs the productized onboarding intake (registry-honesty contract + server-owned vertical enum, e.g. legal — never client-supplied system-prompt text). Inherits the gateway auth + credit/balance gate + receipt-first metering. Opt into the closed oa.component typed-card channel and read the structured 10-section Output Spec from the openagents disclosure block. A bounded tool set is declared but not yet executable from this surface. Canonical under the /api base; the legacy bare /v1/chat/completions path remains a non-breaking alias.',
+      },
       {
         id: 'register_agent',
         href: 'https://openagents.com/api/agents/register',

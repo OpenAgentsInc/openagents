@@ -7,6 +7,7 @@
 // `/v1` auth, rate/fair-share, balance, metering, receipt, and component-channel
 // boundaries.
 import { KHALA_COMPONENT_NAMES } from './khala-component-channel'
+import { AUTOPILOT_CONCIERGE_TOOLS_PROMPT } from './autopilot-concierge-tools'
 
 export const AUTOPILOT_CONCIERGE_MODEL_ID =
   'openagents/autopilot-concierge' as const
@@ -15,7 +16,12 @@ export const AUTOPILOT_CONCIERGE_VERTICALS = ['general', 'legal'] as const
 export type AutopilotConciergeVertical =
   (typeof AUTOPILOT_CONCIERGE_VERTICALS)[number]
 
-const OUTPUT_SPEC_FIELDS = [
+// The 10-section Output Spec field keys, in section order. CANONICAL here (this
+// module has no dependency on the onboarding program, so it is a safe shared
+// home that the program + the inference extractor both import — avoiding an
+// import cycle). The fenced-block tag the model uses to surface the structured
+// spec (issue #6148).
+export const OUTPUT_SPEC_FIELDS = [
   'business',
   'goal',
   'chosenOfferings',
@@ -27,6 +33,19 @@ const OUTPUT_SPEC_FIELDS = [
   'payment',
   'openQuestions',
 ] as const
+
+export const OA_OUTPUT_SPEC_FENCE_TAG = 'oa-output-spec' as const
+
+// The system-prompt instruction telling the model to emit the structured Output
+// Spec block (issue #6148). Lives here (alongside the field list) so the prompt
+// and the parser derive from the same field constant, and so the concierge model
+// module does not import the program-coupled extractor module.
+export const AUTOPILOT_CONCIERGE_OUTPUT_SPEC_PROMPT = [
+  'STRUCTURED OUTPUT SPEC (for programmatic consumers).',
+  `When you have any Output Spec content, emit the current spec as a single fenced \`\`\`${OA_OUTPUT_SPEC_FENCE_TAG}\`\`\` JSON block, in addition to your normal prose.`,
+  `The JSON object's keys are exactly: ${OUTPUT_SPEC_FIELDS.join(', ')}. Every key is optional; include only fields you can support from the conversation. Values are short plain strings.`,
+  'Re-emit the full current spec each materially-complete turn (it accumulates). Put the block at the end of your reply. Never invent a key outside that list and never put model/provider identity inside it.',
+].join(' ')
 
 export type AutopilotConciergeRequestConfig = Readonly<{
   vertical: AutopilotConciergeVertical
@@ -122,6 +141,10 @@ Operating rules:
 - Ask for missing facts only when they change the first win or the consent boundary.
 - If you emit a component, use only the closed catalog and valid props. Never invent a component name.
 - End each materially complete turn with an \`Output Spec\` section containing only fields you can support from the conversation; mark unknowns as open questions.
+
+${AUTOPILOT_CONCIERGE_OUTPUT_SPEC_PROMPT}
+
+${AUTOPILOT_CONCIERGE_TOOLS_PROMPT}
 
 ${verticalBlock}`
 }

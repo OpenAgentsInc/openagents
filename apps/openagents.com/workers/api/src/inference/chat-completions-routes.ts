@@ -45,6 +45,14 @@ import {
   resolveAutopilotConciergeConfig,
 } from './autopilot-concierge-model'
 import {
+  type AutopilotConciergeOutputSpec,
+  extractConciergeOutputSpec,
+} from './autopilot-concierge-output-spec'
+import {
+  type ConciergeToolDeclaration,
+  autopilotConciergeToolDeclarations,
+} from './autopilot-concierge-tools'
+import {
   type CachePinPolicy,
   type CacheWarmthOracle,
   type LaneHealthOracle,
@@ -673,6 +681,18 @@ type OpenAgentsReceipt = Readonly<{
   // refs alongside `verified`/`scalar_reward`.
   settled?: boolean | undefined
   settlement_receipts?: ReadonlyArray<string> | undefined
+  // AUTOPILOT CONCIERGE STRUCTURED ARTIFACTS (#6148). Present ONLY for the
+  // `openagents/autopilot-concierge` virtual model.
+  //   - `output_spec` is the 10-section intake Output Spec reliably extracted
+  //     from the completion (the fenced `oa-output-spec` JSON block, with a
+  //     markdown-section fallback), so a programmatic consumer reads the
+  //     accumulated intake state as a STRUCTURED field rather than parsing prose.
+  //     Absent when the turn surfaced no parseable spec content.
+  //   - `tools` is the bounded, server-declared Concierge tool set with each
+  //     tool's review/effect posture and an honest `declared_not_executed`
+  //     status (live execution is a deferred seam — see autopilot-concierge-tools.ts).
+  output_spec?: AutopilotConciergeOutputSpec | undefined
+  tools?: ReadonlyArray<ConciergeToolDeclaration> | undefined
 }>
 
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
@@ -824,7 +844,26 @@ const khalaReceiptForResult = (
         ? null
         : publicInferenceReceiptUrl(input.metering.receiptRef),
     )
-    return { ...base, routing, telemetry, verification: 'none' }
+    // AUTOPILOT CONCIERGE artifacts (#6148): surface the structured Output Spec
+    // (reliably extracted from the completion) and the declared bounded tool set
+    // on the disclosure block, so a programmatic `/api/v1/chat/completions`
+    // consumer reads them as structured fields. Only for the concierge virtual
+    // model; every other Khala model is byte-identical to before.
+    const conciergeOutputSpec = isAutopilotConciergeModel(input.requestedModel)
+      ? extractConciergeOutputSpec(input.result.content)
+      : undefined
+    return {
+      ...base,
+      routing,
+      telemetry,
+      verification: 'none' as const,
+      ...(isAutopilotConciergeModel(input.requestedModel)
+        ? { tools: autopilotConciergeToolDeclarations() }
+        : {}),
+      ...(conciergeOutputSpec === undefined
+        ? {}
+        : { output_spec: conciergeOutputSpec }),
+    }
   }
 
   const verdict: KhalaCodeVerificationVerdict = verifyKhalaCodeCompletion({
