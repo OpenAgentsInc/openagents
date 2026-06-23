@@ -2,6 +2,27 @@
 
 This is the invariant ledger for `openagents`.
 
+## Payment Rail Separation — Spark for agent/MPP payments, MDK for checkouts only
+
+- **Spark (`@breeztech/breez-sdk-spark`) is the PRIMARY rail and MUST back ALL
+  agent payments and Machine Payments (MPP).** This includes the Lightning MPP
+  rail (`POST /mpp/v1/chat/completions`), agent-facing pay-per-call, and any
+  agent payment issuance / receipt / settlement. Spark is required because it
+  supports **offline receives**, which agent payments need.
+- **MDK (MoneyDevKit, `@moneydevkit/*`, the `MDK_SIDECAR` / `mdkd` container) is
+  SECONDARY and for CHECKOUTS ONLY** (the `/api/mdk` `self_hosted_mdkd_sidecar`
+  flow, Forum tips/checkouts). MDK **must not** be used for agent payments or
+  MPP — it does not support offline receives.
+- History (do not regress): Spark was stripped for MDK previously, then **re-added
+  as the primary rail**, demoting MDK to secondary; Pylon was moved to Spark
+  (2026-06). Never re-assert "MDK is the agent/MPP rail."
+- **Open violation:** the current MPP Lightning issuer
+  (`workers/api/src/inference/mpp/mpp-lightning-invoice-mdk.ts`) mints via the MDK
+  sidecar and therefore breaks this invariant. It is **disarmed**
+  (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod) and must be **rebuilt on Spark**
+  before the Lightning MPP rail is armed. See `docs/mpp/`.
+- Owner directive, 2026-06-23.
+
 ## Login Surface
 
 - The `/login` SPA page (`LoginRoute` / `loginRouter`, `apps/web/src/page/login.ts`)

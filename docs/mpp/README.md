@@ -74,13 +74,13 @@ Two supporting pieces make us *discoverable*:
   gets a real `402` with a deposit address; `/openapi.json` advertises the offers.
   The full crypto pay loop (pay → verify → completion → receipt → credit) was
   proven end-to-end on staging.
-- ❌ **Not live yet: Lightning.** It's built, but arming it on prod **hung the
-  endpoint** (the invoice-minting step had no timeout and ran first, so a slow
-  mint blocked everything). We caught it, rolled it back immediately, and prod
-  stayed healthy. A fix (add a timeout + isolate each rail so one can't block the
-  others + confirm our Bitcoin wallet can actually mint these invoices) is in
-  progress. **Once fixed, Lightning gets re-armed and becomes the first option
-  shown.**
+- ❌ **Not live yet: Lightning.** It was first built on **MDK**, but (a) arming it
+  hung the endpoint, and (b) a **hard invariant now requires Spark (not MDK) for
+  all agent/MPP payments**. The hang itself is fixed (timeout + per-rail
+  isolation, PR #6149), but the rail stays **disarmed** and must be **rebuilt on
+  Spark** (`@breeztech/breez-sdk-spark`) before it can go live — then it becomes
+  the first option shown. (MDK is checkouts-only; it lacks the offline receives
+  agent payments need. See `apps/openagents.com/INVARIANTS.md`.)
 - ⏳ **The badge:** everything on our side is done; it now depends on Stripe's
   crawler indexing `/openapi.json`, which is **asynchronous (up to ~24h)**. A
   background watch re-checks the directory every 30 min and will announce the

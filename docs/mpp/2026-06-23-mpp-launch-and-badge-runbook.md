@@ -18,7 +18,7 @@ Stripe Directory **Machine Payments** badge.
 |---|---|
 | **Crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **ARMED on prod**, full pay-loop proven on staging |
 | **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ armed on prod (unit-tested + fail-closed; no live SPT round-trip yet) |
-| **⚡ Lightning** (BOLT11 via MDK, local preimage verify) | ❌ **not live** — arm hung the 402 (see §6); fix in flight |
+| **⚡ Lightning** (BOLT11, local preimage verify) | ❌ **not live** — must run on **Spark**, not MDK (see §6); MDK-based attempt disarmed |
 | **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` |
 
 Prod worker: `openagents-autopilot`. `POST /mpp/v1/chat/completions` → `402` with
@@ -39,6 +39,10 @@ a real deposit address (~2.6s). `GET /openapi.json` advertises the offers.
   `profile_…` id is the `networkId`. Single-use SPT replay guard in D1.
 - **Lightning:** mint a BOLT11 invoice as the challenge, client returns the
   preimage, verify locally with `sha256(preimage) == paymentHash` (no node call).
+  The issuer **MUST be Spark** (`@breeztech/breez-sdk-spark`) per the rail
+  invariant — MDK is checkouts-only and lacks offline receives. The current
+  `mpp-lightning-invoice-mdk.ts` issuer violates this and is disarmed pending a
+  Spark rebuild (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation).
 - **Credit semantics (RL-3):** USDC/card mint **USD-origin** credit
   (`agent_balances.usd_credit_msat`, inference-spendable, **NOT**
   Bitcoin-withdrawable). Lightning mints **Bitcoin-origin** `balance_msat`
@@ -103,6 +107,13 @@ isolation so one rail can't block others; (3) verify the MDK `create_checkout`/S
 mint actually returns a BOLT11 on prod (Forum L402 uses a *different* local-HMAC
 path, so its health does NOT prove this). After (1)+(2), re-arming is safe by
 construction (worst case Lightning is silently suppressed by the honesty gate).
+
+**Rail correction (hard invariant, 2026-06-23):** the timeout + per-rail isolation
+fix landed (PR #6149), so arming can no longer hang. BUT a hard owner invariant
+now requires **Spark (`@breeztech/breez-sdk-spark`) for all agent/MPP payments;
+MDK is checkouts-only** (no offline receives). The current MDK-based Lightning
+issuer therefore stays **disarmed** and must be **rebuilt on Spark** before the
+rail is armed. See `apps/openagents.com/INVARIANTS.md` › Payment Rail Separation.
 
 ## 7. Watching for the Stripe Directory badge
 
