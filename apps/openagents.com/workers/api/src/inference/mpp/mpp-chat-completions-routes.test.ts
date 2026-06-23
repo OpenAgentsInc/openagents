@@ -1206,23 +1206,26 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
 
   // ---- BUDGET RAISE (#6049): cover REAL warm Spark mint latency ----
   //
-  // The real Spark `/spark/funding-invoice` mint takes ~1.5–3.1s even warm, so
-  // the old 1.2s issuer cap + 2.5s leg guard always tripped and the honesty gate
-  // dropped Lightning from every prod 402. The budgets are now
-  // `SPARK_LIGHTNING_MINT_TIMEOUT_MS = 4000` and `LIGHTNING_LEG_GUARD_MS = 4500`.
+  // The real warm Spark `/spark/funding-invoice` mint subrequest returns 200 in
+  // ~3.76–3.95s (observed in prod `wrangler tail`), and the worker-side
+  // round-trip lands at/just over 4s — so the old 1.2s issuer cap + 2.5s leg
+  // guard (and even a first-raise 4s/4.5s) tripped and the honesty gate dropped
+  // Lightning from every prod 402. The budgets are now
+  // `SPARK_LIGHTNING_MINT_TIMEOUT_MS = 6000` and `LIGHTNING_LEG_GUARD_MS = 6500`.
   // These two tests pin the new semantics: a mint that completes within the
   // budget SUCCEEDS and surfaces Lightning FIRST; a mint that exceeds the outer
   // guard still DROPS only Lightning (crypto + card stay fast, no hang).
 
-  test('SLOW-BUT-IN-BUDGET MINT (~3.5s, real warm Spark): lightning SURFACES first, crypto + card present', async () => {
+  test('SLOW-BUT-IN-BUDGET MINT (~4s, real warm Spark): lightning SURFACES first, crypto + card present', async () => {
     const db = makeDb()
     let mintStarted = false
-    // Models a real warm Spark mint: resolves after ~3.5s, under the 4.5s outer
-    // leg guard. The honesty gate must now ACCEPT it (old 1.2s cap would drop).
+    // Models a real warm Spark mint: resolves after ~4s, under the 6.5s outer
+    // leg guard. The honesty gate must now ACCEPT it (old 1.2s/4s caps would
+    // drop this real-world latency).
     const slowMint: MintLightningInvoice = () =>
       Effect.gen(function* () {
         mintStarted = true
-        yield* Effect.sleep(Duration.millis(3_500))
+        yield* Effect.sleep(Duration.millis(4_000))
         const paymentHash = yield* Effect.promise(lightningPaymentHash)
         return {
           bolt11: LIGHTNING_INVOICE,
@@ -1246,8 +1249,8 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
             stripeSecretKey: 'sk_test_x',
           }),
         )
-        // Advance past the ~3.5s mint but still under the 4.5s guard.
-        yield* TestClock.adjust(4_000)
+        // Advance past the ~4s mint but still under the 6.5s guard.
+        yield* TestClock.adjust(5_000)
         return yield* Fiber.join(fiber)
       }).pipe(Effect.provide(TestClock.layer())),
     )
@@ -1267,16 +1270,16 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
     expect(problem.challenges.some(c => c.method === 'stripe')).toBe(true)
   })
 
-  test('OVER-GUARD MINT (~6s, exceeds 4.5s guard): lightning DROPPED, crypto + card still present, no hang', async () => {
+  test('OVER-GUARD MINT (~8s, exceeds 6.5s guard): lightning DROPPED, crypto + card still present, no hang', async () => {
     const db = makeDb()
     let mintStarted = false
-    // Models a mint that exceeds even the raised 4.5s outer leg guard. Per-rail
+    // Models a mint that exceeds even the raised 6.5s outer leg guard. Per-rail
     // isolation (#6149) must still hold: the leg is interrupted and ONLY Lightning
     // is dropped — crypto + card are unaffected and the 402 never hangs.
     const tooSlowMint: MintLightningInvoice = () =>
       Effect.gen(function* () {
         mintStarted = true
-        yield* Effect.sleep(Duration.millis(6_000))
+        yield* Effect.sleep(Duration.millis(8_000))
         const paymentHash = yield* Effect.promise(lightningPaymentHash)
         return {
           bolt11: LIGHTNING_INVOICE,
@@ -1300,7 +1303,7 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
             stripeSecretKey: 'sk_test_x',
           }),
         )
-        // Advance well past the 4.5s guard AND the 6s mint.
+        // Advance well past the 6.5s guard AND the 8s mint.
         yield* TestClock.adjust(10_000)
         return yield* Fiber.join(fiber)
       }).pipe(Effect.provide(TestClock.layer())),
