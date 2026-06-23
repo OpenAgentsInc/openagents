@@ -4,10 +4,10 @@ import { html } from 'foldkit/html'
 /**
  * #6046: StyleX removed.
  *
- * This module used to bridge `@stylexjs/stylex` compiled styles into Foldkit
- * attributes. StyleX's `stylex.create` runs `window`-dependent code at module
- * load, which threw `window is not defined` whenever the renderer's import
- * graph was mounted headless (the desktop app-replica harness) and forced the
+ * This module used to bridge StyleX compiled styles into Foldkit attributes.
+ * The old StyleX style factory ran `window`-dependent code at module load,
+ * which threw `window is not defined` whenever the renderer's import graph was
+ * mounted headless (the desktop app-replica harness) and forced the
  * `OA_STYLEX_RUNTIME_FALLBACK` shim hack.
  *
  * The bridge is now a thin class-name carrier with NO StyleX dependency: a

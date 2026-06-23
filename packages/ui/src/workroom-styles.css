@@ -229,7 +229,7 @@
 .oa-ui-workroom-bash-output {
   width: 100%;
   border: 1px solid var(--border-weak-base);
-  border-radius: 6px;
+  border-radius: var(--oa-radius-lg, 6px);
   background: transparent;
   position: relative;
   overflow: hidden;

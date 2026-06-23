@@ -5,7 +5,8 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./theme.css": "./src/theme.css"
   },
   "files": [
     "src",

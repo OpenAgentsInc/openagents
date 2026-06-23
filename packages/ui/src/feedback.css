@@ -6,8 +6,8 @@
   gap: 12px;
   border-width: 1px;
   border-style: dashed;
-  border-color: #333;
-  background-color: #010102;
+  border-color: var(--oa-color-component-border-strong, #333);
+  background-color: var(--oa-color-component-surface-deep, #010102);
   padding: 24px;
 }
 

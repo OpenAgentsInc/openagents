@@ -9,7 +9,7 @@
   font-weight: 500;
   line-height: 1.1;
   letter-spacing: 0;
-  color: #f1efe8;
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-heading-title-level-1 {
@@ -36,7 +36,7 @@
   max-width: 58ch;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--oa-color-text-on-dark55, rgba(255, 255, 255, 0.55));
 }
 
 .oa-ui-button {
@@ -74,61 +74,61 @@
 }
 
 .oa-ui-button-primary {
-  border-color: #f1efe8;
-  background-color: #f1efe8;
-  color: #000;
+  border-color: var(--oa-color-component-text, #f1efe8);
+  background-color: var(--oa-color-component-text, #f1efe8);
+  color: var(--oa-color-bg, #000);
 }
 
 .oa-ui-button-primary:hover {
-  border-color: #ffb400;
+  border-color: var(--oa-color-warning, #ffb400);
 }
 
 .oa-ui-button-secondary {
-  border-color: #222;
+  border-color: var(--oa-color-component-border, #222);
   background-color: transparent;
-  color: #f1efe8;
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-button-secondary:hover {
-  border-color: #ffb400;
+  border-color: var(--oa-color-warning, #ffb400);
 }
 
 .oa-ui-button-ghost {
   border-color: transparent;
   background-color: transparent;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
 }
 
 .oa-ui-button-ghost:hover {
-  border-color: #333;
-  background-color: #080808;
-  color: #f1efe8;
+  border-color: var(--oa-color-component-border-strong, #333);
+  background-color: var(--oa-color-component-surface, #080808);
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-button-danger {
-  border-color: #d32f2f;
-  background-color: #d32f2f;
-  color: #fff;
+  border-color: var(--oa-color-danger, #d32f2f);
+  background-color: var(--oa-color-danger, #d32f2f);
+  color: var(--oa-color-primary, #fff);
 }
 
 .oa-ui-button-danger:hover {
-  border-color: #ff6f00;
+  border-color: var(--oa-color-danger-hover, #ff6f00);
 }
 
 .oa-ui-text-link {
-  color: #f1efe8;
+  color: var(--oa-color-component-text, #f1efe8);
   text-decoration-line: underline;
   text-underline-offset: 3px;
 }
 
 .oa-ui-text-link:hover {
-  color: #ffb400;
+  color: var(--oa-color-warning, #ffb400);
 }
 
 .oa-ui-avatar-image {
   border-width: 1px;
   border-style: solid;
-  border-color: #222;
+  border-color: var(--oa-color-component-border, #222);
   object-fit: cover;
 }
 
@@ -137,9 +137,9 @@
   place-items: center;
   border-width: 1px;
   border-style: solid;
-  border-color: #222;
-  background-color: #080808;
-  color: rgba(255, 255, 255, 0.45);
+  border-color: var(--oa-color-component-border, #222);
+  background-color: var(--oa-color-component-surface, #080808);
+  color: var(--oa-color-text-on-dark45, rgba(255, 255, 255, 0.45));
 }
 
 .oa-ui-avatar-sm {
@@ -178,8 +178,8 @@
   gap: 8px;
   border-width: 1px;
   border-style: solid;
-  border-color: #222;
-  background-color: #010102;
+  border-color: var(--oa-color-component-border, #222);
+  background-color: var(--oa-color-component-surface-deep, #010102);
   padding: 8px;
 }
 
@@ -191,12 +191,12 @@
   gap: 12px;
   border-width: 1px;
   border-style: solid;
-  border-color: #333;
-  background-color: #080808;
+  border-color: var(--oa-color-component-border-strong, #333);
+  background-color: var(--oa-color-component-surface, #080808);
   padding-inline: 12px;
   font-family: inherit;
   font-size: 0.875rem;
-  color: #f1efe8;
+  color: var(--oa-color-component-text, #f1efe8);
   text-align: left;
 }
 
@@ -217,20 +217,20 @@
   padding-inline: 10px;
   padding-block: 8px;
   font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--oa-color-text-on-dark60, rgba(255, 255, 255, 0.6));
   text-decoration-line: none;
 }
 
 .oa-ui-dropdown-item:hover {
-  border-color: #333;
-  background-color: #080808;
-  color: #f1efe8;
+  border-color: var(--oa-color-component-border-strong, #333);
+  background-color: var(--oa-color-component-surface, #080808);
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-dropdown-item-active {
-  border-color: #333;
-  background-color: #141414;
-  color: #f1efe8;
+  border-color: var(--oa-color-component-border-strong, #333);
+  background-color: var(--oa-color-component-surface-active, #141414);
+  color: var(--oa-color-component-text, #f1efe8);
 }
 
 .oa-ui-dropdown-label {
