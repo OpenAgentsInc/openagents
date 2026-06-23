@@ -94,7 +94,7 @@ export const view = (route: PersistentSceneRoute): Html => {
     ],
     [
       persistentCanvasLayer(h, route),
-      // 50%-black scrim ABOVE the scene, BEHIND the text — on both routes — so
+      // 75%-black scrim ABOVE the scene, BEHIND the text — on both routes — so
       // the 3D pylon scene stays visible (not hidden by an opaque page bg) while
       // the overlaid copy stays readable. Keyed the same across routes so it
       // persists with the canvas.
@@ -102,7 +102,7 @@ export const view = (route: PersistentSceneRoute): Html => {
         'persistent-scene-scrim',
         [
           Ui.className<Message>(
-            'pointer-events-none absolute inset-0 z-[5] bg-black/50',
+            'pointer-events-none absolute inset-0 z-[5] bg-black/75',
           ),
         ],
         [],
