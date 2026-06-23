@@ -82,62 +82,15 @@ export const verseSceneWorldToRootLocal = (
     world[1] / VERSE_ROOT_SCALE,
   ])
 
-// A compact, stable fingerprint of the visualization's DYNAMICALLY-RENDERED
-// EFFECT content: every beam (endpoints + style) and burst (anchor), plus the
-// resolved position/status of ONLY the entities those beams/bursts reference.
-//
-// WHY THIS EXISTS (the no-particle-effect bug): the three-effect verse host
-// (`trainingRunView` + the foldkit `oa-training-run` element) only builds the
-// crackling-arc beams, payout bursts, and their endpoint markers ONCE, at mount
-// time. Its live update path (`updateVisualization`) reconciles remote avatars
-// and world items but NOT beams/bursts/entities, and its retained-vs-remount
-// decision (`trainingRunVisualizationRetainedStructuralSignature`) deliberately
-// ignores those arrays. So a beam added AFTER mount — the hotbar-2 "crackling
-// energy" spawn or the local Khala arc — is treated as non-structural, the scene
-// is kept, and the new beam is silently dropped: it never reaches the scene graph
-// and nothing renders.
-//
-// `verseSceneVisualization` stamps this fingerprint onto a structural-signature
-// field so any change to the effect content flips the host's structural signature
-// and forces a clean REMOUNT (which rebuilds the beams). The local avatar pose is
-// preserved across remount by the host, so the rebuild is seamless.
-//
-// SCOPE: only beams/bursts and their referenced endpoints are fingerprinted — not
-// the whole base-world entity set — so unrelated base-scene churn (pylons, etc.)
-// never triggers a remount. No beams/bursts ⇒ a stable empty fingerprint, so a
-// Verse with no spawned/local effect is byte-identical to before (no remounts).
-export const verseSceneContentFingerprint = (
-  options: TrainingRunVisualizationOptions,
-): string => {
-  const beams = options.beams ?? []
-  const bursts = options.bursts ?? []
-  if (beams.length === 0 && bursts.length === 0) return ""
-  const round = (value: number): number => roundVerseNumber(value, 2)
-  // The endpoint ids any effect references (so moving/adding an arc endpoint, or
-  // a verified turn's burst anchor, re-fingerprints; base entities do not).
-  const referenced = new Set<string>()
-  for (const beam of beams) {
-    referenced.add(beam.fromId)
-    referenced.add(beam.toId)
-  }
-  for (const burst of bursts) referenced.add(burst.atId)
-  const endpoints = (options.entities ?? [])
-    .filter((entity) => referenced.has(entity.id))
-    .map((entity) => {
-      const position = entity.position
-      const at =
-        position === undefined
-          ? "ring"
-          : `${round(position[0])},${round(position[1])},${round(position[2])}`
-      return `${entity.id}@${at}#${entity.status}:${entity.visualKind ?? ""}`
-    })
-    .sort()
-  const beamKeys = beams
-    .map((beam) => `${beam.fromId}->${beam.toId}:${beam.style ?? "flow"}`)
-    .sort()
-  const burstKeys = bursts.map((burst) => burst.atId).sort()
-  return JSON.stringify({ endpoints, beams: beamKeys, bursts: burstKeys })
-}
+// The three-effect verse host (`trainingRunView` / the foldkit `oa-training-run`
+// element) RECONCILES beams, gateway portals, bursts, and their endpoint markers
+// on every live `updateVisualization` (add new, remove gone, rebuild moved) WITHOUT
+// a full remount, so a beam/entity/portal added AFTER mount — the hotbar-2
+// "crackling energy" spawn, the slot-3 gateway portal, the local Khala arc —
+// renders in place and the avatar/camera/controller are never rebuilt. The old
+// motionPolicy-fingerprint remount hack (#6054) that forced a scene rebuild on
+// every spawn has been removed; the consumer just hands the host the updated
+// visualization.
 
 export const appendVerseVisualization = (
   base: TrainingRunVisualizationOptions,

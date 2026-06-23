@@ -43,6 +43,7 @@ import {
   type DesktopRequests,
 } from "../src/ui/bridge.js"
 import { GotVerseKhalaToken } from "../src/ui/message.js"
+import { latestVerseLocalPose } from "../src/ui/verse-local-pose.js"
 import type { KhalaTurnResponse } from "../src/shared/rpc.js"
 
 // ── Test-controlled bridge state ──────────────────────────────────────────────
@@ -257,12 +258,36 @@ declare global {
       scriptKhala: (script: KhalaScript) => void
       // Every RPC verb the stub bridge has seen (for assertions).
       calls: () => ReadonlyArray<{ method: string; payload: unknown }>
+      // A read-only snapshot of dynamic Verse state the dynamic tests assert on:
+      // how many isolated scenes are spawned, and the live avatar restore pose
+      // (updated every frame by the host pose callback). Stashed by a thin update
+      // wrapper so the tests never reach into Foldkit internals.
+      verseState: () => {
+        spawnedSceneCount: number
+        spawnedSceneIds: ReadonlyArray<string>
+        spawnedPortalCount: number
+        avatarPose: {
+          x: number
+          y: number
+          z: number
+          yaw: number
+        } | null
+      }
     }
     __OA_REPLICA_CRASH__?: string
   }
 }
 
 setRequest(stubRequest)
+
+// Latest model, stashed by a thin update wrapper so the dynamic tests can read
+// spawn state + the live avatar pose without reaching into Foldkit internals.
+let latestModel: ModelType | null = null
+const recordingUpdate: typeof update = (model, message) => {
+  const result = update(model, message)
+  latestModel = Array.isArray(result) ? result[0] : result
+  return result
+}
 
 // NOT frozen — `start()` flips `ready` to true once the real program mounts so
 // the CDP driver can wait deterministically.
@@ -272,6 +297,29 @@ window.__OA_REPLICA__ = {
     replicaState.khala = script
   },
   calls: () => [...replicaState.calls],
+  verseState: () => {
+    const m = latestModel
+    const scenes =
+      m === null
+        ? []
+        : (m.verseSpawnedScenes as ReadonlyArray<{
+            sceneId: string
+            showPortal: boolean
+          }>)
+    // The LIVE avatar pose (updated every frame by the host pose callback into
+    // the pose cache) — what the dynamic movement test needs. Falls back to the
+    // model's restore pose before the first frame pose lands.
+    const pose = latestVerseLocalPose() ?? m?.verseSceneRestorePose ?? null
+    return {
+      spawnedSceneCount: scenes.length,
+      spawnedSceneIds: scenes.map((s) => s.sceneId),
+      spawnedPortalCount: scenes.filter((s) => s.showPortal).length,
+      avatarPose:
+        pose === null
+          ? null
+          : { x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw },
+    }
+  },
 }
 
 // Crash overlay: render a `data-replica-crash` <pre> with the error + stack so a
@@ -293,7 +341,7 @@ const start = (): void => {
     Runtime.makeProgram<ModelType, import("../src/ui/message.js").Message>({
       Model,
       init: initialRuntimeState,
-      update,
+      update: recordingUpdate,
       view,
       subscriptions,
       container: document.getElementById("root"),

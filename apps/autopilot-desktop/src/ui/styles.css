@@ -2520,43 +2520,10 @@ body {
   display: none;
 }
 
-/* Dev affordance (#6033): the spawned isolated-scene evidence overlay — mirrors
-   the standalone crackling-arc page's evidence block, anchored top-right so it
-   does not collide with the bulletin board on the left. */
-/* #6033: the spawned scene no longer pops a big intrusive evidence pane. All
-   that remains is a single tiny, quiet chip naming the active effect, anchored
-   bottom-left out of the way (it does not box the world). */
-.verse-spawned-scene {
-  /* TOP-left, not bottom-left: the hotbar is fixed at bottom-left (z-index 40)
-     and was covering this chip almost entirely (#6033 owner report — "a tiny
-     chip but no effect"). Top-left is clear in the Verse, so the evidence label
-     for a spawned scene is actually readable. Above the hotbar's z so it is
-     never re-occluded. */
-  position: absolute;
-  left: clamp(0.8rem, 2vw, 1.25rem);
-  top: clamp(0.8rem, 2vh, 1.25rem);
-  z-index: 50;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  pointer-events: none;
-  user-select: none;
-}
-
-.verse-spawned-scene-empty {
-  display: none;
-}
-
-.verse-spawned-scene-tag {
-  padding: 0.18rem 0.5rem;
-  font-size: 0.66rem;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
-  border: 1px solid rgb(147 197 253 / 0.22);
-  border-radius: 999px;
-  background: rgb(3 8 10 / 0.5);
-  color: rgb(147 197 253 / 0.82);
-}
+/* #6033: the spawned isolated scene paints NO on-screen chip or evidence pane
+   over the Verse. The scene stays evidence-bound internally (each beam carries
+   sourceRefs + simulated:true); there is simply nothing rendered on top of the
+   world for it. */
 
 .verse-bulletin-title {
   color: rgb(255 255 255 / 0.94);

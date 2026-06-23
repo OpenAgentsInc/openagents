@@ -214,6 +214,10 @@ export type AppReplica = Readonly<{
   type: (selector: string, text: string) => Promise<void>
   // Real mouse click at the element's centre (a real Foldkit OnClick fires).
   click: (selector: string) => Promise<void>
+  // Hold a key DOWN, pump `frames` deterministic frames (so a held movement key
+  // integrates in the third-person controller), then release it. The keydown/up
+  // hit `window` (blur any field first) like a real held keystroke.
+  holdKey: (key: string, frames: number, mods?: KeyModifiers) => Promise<void>
   // Focus an element (so a subsequent pressKey is "in editable" if it is a field).
   focus: (selector: string) => Promise<void>
   // The visible text content of the first matching element ("" if absent).
@@ -561,6 +565,40 @@ export const launchAppReplica = async (
     const pressKey = async (key: string, mods: KeyModifiers = {}): Promise<void> =>
       dispatchKey(key, mods)
 
+    // Hold a key down across `frames` pumped frames, then release — so a movement
+    // key actually integrates in the third-person controller's `update(delta)`
+    // (a back-to-back keydown/keyup moves nothing). keydown/keyup target `window`
+    // (the controller listens there), so we do NOT route through a focused field.
+    const holdKey = async (
+      key: string,
+      frames: number,
+      mods: KeyModifiers = {},
+    ): Promise<void> => {
+      const { code, keyCode } = keyToCode(key)
+      const modifiers = cdpModifiers(mods)
+      await client.send("Input.dispatchKeyEvent", {
+        type: "rawKeyDown",
+        key,
+        ...(code === "" ? {} : { code }),
+        ...(keyCode === 0
+          ? {}
+          : { windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode }),
+        modifiers,
+      })
+      // Pump frames WHILE the key is held so the controller integrates motion.
+      await pumpFrames(frames)
+      await client.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key,
+        ...(code === "" ? {} : { code }),
+        ...(keyCode === 0
+          ? {}
+          : { windowsVirtualKeyCode: keyCode, nativeVirtualKeyCode: keyCode }),
+        modifiers,
+      })
+      await pumpFrames(2)
+    }
+
     const typeInto = async (selector: string, text: string): Promise<void> => {
       await focus(selector)
       for (const ch of text) {
@@ -630,6 +668,7 @@ export const launchAppReplica = async (
       pressKey,
       type: typeInto,
       click,
+      holdKey,
       focus,
       text,
       count,

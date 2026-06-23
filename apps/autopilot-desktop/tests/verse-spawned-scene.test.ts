@@ -317,7 +317,10 @@ describe("verseSceneVisualization places the spawned scene in the SAME world + k
   test("after spawn: the crackling arc objects appear in the SAME world visualization", () => {
     const spawned = Model.make({
       ...poseModel,
-      verseSpawnedScenes: [{ sceneId: CRACKLING, showPortal: false }],
+      // The spawn freezes the avatar's pose at spawn time (world-anchored station).
+      verseSpawnedScenes: [
+        { sceneId: CRACKLING, showPortal: false, anchor: { x: 0, y: 0, z: 0, yaw: 0 } },
+      ],
     })
     const after = verseSceneVisualization(spawned)
     const entityIds = (after.entities ?? []).map((e) => e.id)
@@ -340,10 +343,53 @@ describe("verseSceneVisualization places the spawned scene in the SAME world + k
     expect(spawned.verseSceneRestorePose).toEqual(poseModel.verseSceneRestorePose)
   })
 
+  // #6033 fix (symptom 2): the spawned entity is WORLD-ANCHORED. The station is
+  // frozen at the avatar's pose AT SPAWN, so once spawned the entity positions do
+  // NOT change as the avatar walks (the live pose updates every frame, but the
+  // frozen `anchor` does not). Previously the station was recomputed from the LIVE
+  // pose every render, so the entity chased/inverted against the avatar's motion.
+  test("the spawned entity stays world-anchored as the avatar moves (frozen anchor)", () => {
+    const anchor = { x: 0, y: 0, z: 0, yaw: 0 }
+    const spawned = Model.make({
+      ...poseModel,
+      verseSpawnedScenes: [{ sceneId: CRACKLING, showPortal: false, anchor }],
+    })
+    const positionsFor = (m: typeof spawned): Record<string, readonly number[]> => {
+      const viz = verseSceneVisualization(m)
+      const out: Record<string, readonly number[]> = {}
+      for (const e of viz.entities ?? []) {
+        if (e.id === fromId || e.id === toId) out[e.id] = e.position ?? [0, 0, 0]
+      }
+      return out
+    }
+    const atSpawn = positionsFor(spawned)
+    // The avatar walks well away from the spawn point (live pose updated by the
+    // host pose callback every frame). The frozen anchor must keep the station put.
+    const walkedAway = Model.make({
+      ...spawned,
+      verseSceneRestorePose: {
+        regionRef: "world.region.tassadar",
+        x: 12,
+        y: 0,
+        z: -8,
+        yaw: 1.4,
+        animation: "walk",
+        capturedAtMs: 99,
+      },
+    })
+    const afterWalk = positionsFor(walkedAway)
+    // Same entities, identical world positions — the entity did not chase the avatar.
+    expect(Object.keys(afterWalk).sort()).toEqual([fromId, toId].sort())
+    expect(afterWalk[fromId]).toEqual(atSpawn[fromId])
+    expect(afterWalk[toId]).toEqual(atSpawn[toId])
+  })
+
   test("the portal toggle adds the gateway_portal object into the live world", () => {
     const spawned = Model.make({
       ...poseModel,
-      verseSpawnedScenes: [{ sceneId: CRACKLING, showPortal: true }],
+      verseSpawnedScenes: [
+        { sceneId: CRACKLING, showPortal: true, anchor: { x: 0, y: 0, z: 0, yaw: 0 } },
+      ],
     })
     const after = verseSceneVisualization(spawned)
     const portal = (after.entities ?? []).find((e) => e.id === portalId)

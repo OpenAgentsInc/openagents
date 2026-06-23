@@ -218,12 +218,25 @@ export type VerseKhalaReceipt = typeof VerseKhalaReceipt.Type
 
 // Dev affordance (#6033): one isolated scene spawned into the live Verse. `sceneId`
 // is a registered spawnable-scene id (shared/verse-spawned-scene.ts); `showPortal`
-// toggles the optional gateway-portal variant for this spawn. The fixed in-world
-// station + synthetic simulated evidence are derived by the scene mapper, so the
-// model only carries the developer's spawn choice.
+// toggles the optional gateway-portal variant for this spawn.
+//
+// `anchor` is the avatar's SCENE-WORLD pose CAPTURED AT SPAWN TIME (x/y/z/yaw),
+// frozen so the scene station is WORLD-ANCHORED: it stays fixed where it was
+// dropped while the avatar walks around it, instead of chasing the live avatar
+// pose every frame (the #6033 "entity moves with the player" bug). Null only for
+// a spawn made before any pose was captured (it then falls back to the fixed
+// default station). The synthetic simulated evidence is derived by the mapper.
 export const VerseSpawnedSceneState = S.Struct({
   sceneId: S.String,
   showPortal: S.Boolean,
+  anchor: S.NullOr(
+    S.Struct({
+      x: S.Number,
+      y: S.Number,
+      z: S.Number,
+      yaw: S.Number,
+    }),
+  ),
 })
 export type VerseSpawnedSceneState = typeof VerseSpawnedSceneState.Type
 

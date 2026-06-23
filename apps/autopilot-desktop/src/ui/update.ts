@@ -233,9 +233,20 @@ const verseControlsDisabled = (model: Model): boolean =>
 const toggleVerseSpawnedScene = (model: Model, sceneId: string): Model => {
   if (verseSpawnableSceneById(sceneId) === null) return model
   const present = model.verseSpawnedScenes.some((s) => s.sceneId === sceneId)
+  // Freeze the avatar's pose AT SPAWN so the station is world-anchored: it stays
+  // where it was dropped while the avatar walks around it (not chasing the live
+  // pose every frame). Read the LIVE pose cache (`latestVerseLocalPose`), which
+  // tracks the avatar every frame, rather than `model.verseSceneRestorePose`
+  // (only refreshed on a chat-world-scene snapshot, so it can be stale by the time
+  // the user has walked somewhere and presses 2). Null before any pose landed.
+  const live = latestVerseLocalPose() ?? model.verseSceneRestorePose
+  const anchor =
+    live === null
+      ? null
+      : { x: live.x, y: live.y, z: live.z, yaw: live.yaw }
   const verseSpawnedScenes = present
     ? model.verseSpawnedScenes.filter((s) => s.sceneId !== sceneId)
-    : [...model.verseSpawnedScenes, { sceneId, showPortal: false }]
+    : [...model.verseSpawnedScenes, { sceneId, showPortal: false, anchor }]
   return Model.make({ ...model, verseSpawnedScenes })
 }
 
