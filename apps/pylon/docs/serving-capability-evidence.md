@@ -100,6 +100,12 @@ ideas drive the schema here:
   evidence, serve receipt, replay challenge, and read-only preflight projection.
   Endpoint URLs, API keys, prompts, and raw outputs are not copied into the
   evidence.
+- `apps/pylon/scripts/psionic-vllm-proxy.ts` is the bearer-protected local
+  bridge from the Worker HTTP transport to the live vLLM endpoint. It accepts the
+  Psionic serve request shape and returns the Psionic serve response shape with
+  paid-traffic verification. Current scope is intentionally narrow: it clears
+  the known-answer `OK` canary route smoke and keeps arbitrary/non-canary output
+  unpayable until a fuller per-request verifier/proxy exists.
 
 ## Live GCloud bring-up evidence (2026-06-23)
 
@@ -150,19 +156,20 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   `linux-modules-nvidia-570-server-open-6.8.0-1053-gcp` module makes
   `nvidia-smi` report one NVIDIA L4, driver `570.211.01`, CUDA `12.8`, and
   23034 MiB VRAM.
-- This is Pylon setup and GPU inventory evidence only. #6089 remains open until
-  a real vLLM/SGLang endpoint is installed, benchmarked through
-  `PYLON_SERVING_REAL_GPU_*`, and paired with parity, canary, and replay
-  receipts before any paid routing or payout claim.
+- This is Pylon setup, GPU inventory, local vLLM residency, and known-answer
+  receipt evidence. #6089 remains open until a real public gateway transport is
+  deployed and smoked through the Worker route without exposing endpoint URLs or
+  secrets.
 
 ## Where this plugs in next (not in this change)
 
 The fabric supply adapter behind `InferenceProviderAdapter`
 (`apps/openagents.com/workers/api/src/inference/provider-adapter.ts`, P1-5 lane)
-now owns the canaryable paid-routing gate for a registered Pylon. The remaining
-owner/compute-gated work is wiring a real vLLM/SGLang serving transport and
-real-GPU benchmark receipt. Any payout still goes through the separate
-settlement gates; this evidence path does not move money.
+now owns the canaryable paid-routing gate for a registered Pylon. The Worker can
+also register a secret-backed HTTP Psionic serve transport when the route refs,
+transport URL/token, and Pylon admission snapshot are present. Any payout still
+goes through the separate settlement gates; this evidence path does not move
+money.
 
 ## Worker Gateway Route Arming
 
@@ -180,12 +187,55 @@ OPENAGENTS_NETWORK_ADMITTED_PYLON_REF=gcloud.gswarm508-clean2-20260325044551-con
 ```
 
 The policy treats these as presence-only, public-safe refs. It rejects raw URLs,
-secret-shaped strings, blank values, and truthy-but-not-`ready` route flags. This
-lets `/v1/models`, `/v1/quote`, `/v1/chat/completions`, and
+secret-shaped strings, blank values, and truthy-but-not-`ready` route flags. It
+also requires the secret-backed transport URL and bearer token to be present via
+Worker secrets:
+
+```bash
+OPENAGENTS_NETWORK_FABRIC_SERVE_URL=<secret Pylon proxy URL>
+OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN=<secret proxy bearer token>
+OPENAGENTS_NETWORK_PYLON_HEARTBEAT_AT=<fresh heartbeat ISO timestamp>
+OPENAGENTS_NETWORK_PYLON_HEARTBEAT_STATUS=ok
+OPENAGENTS_NETWORK_PYLON_SERVING_CAPABILITY_REF=pylon.capability.serving.whole_small_model.v0.6
+OPENAGENTS_NETWORK_PYLON_SERVING_LANE_REF=lane.openagents.pylon.vllm.whole_small_model.v1
+OPENAGENTS_NETWORK_SPARK_PAYOUT_TARGET_REF=payout.spark.aab6617b16f096dfe02fc6b4
+```
+
+The URL/token values are read only for presence in catalog/readiness policy and
+are never returned from public routes. The actual dispatch path posts a Psionic
+serve request to the proxy with `Authorization: Bearer ...`, consumes the
+Psionic serve response, then runs the admitted Pylon gate and full
+parity/canary/replay/payout-eligibility receipt gate before returning success.
+This lets `/v1/models`, `/v1/quote`, `/v1/chat/completions`, and
 `/v1/gateway/readiness` expose the Pylon lane only after the operator has a real
 gateway route plus the serving preflight, serving receipt, replay challenge, and
 admitted-Pylon refs. It still does not deploy the route, expose the private
 GCloud endpoint, move sats, or green a product promise by itself.
+
+Run the local proxy on the Pylon host:
+
+```bash
+cd /opt/openagents-pylon
+PYLON_PSIONIC_PROXY_BEARER_TOKEN=<secret proxy bearer token> \
+PYLON_PSIONIC_PROXY_NODE_REF=gcloud.gswarm508-clean2-20260325044551-contrib \
+PYLON_PSIONIC_PROXY_REPLAY_CHALLENGE_REF=challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s \
+PYLON_PSIONIC_PROXY_SERVED_MODEL=model.psionic.qwen35.0_8b.q8_0 \
+PYLON_PSIONIC_PROXY_UPSTREAM_MODEL=Qwen/Qwen2.5-0.5B-Instruct \
+PYLON_PSIONIC_PROXY_UPSTREAM_URL=http://127.0.0.1:8000/v1/chat/completions \
+PYLON_PSIONIC_PROXY_PORT=8011 \
+bun apps/pylon/scripts/psionic-vllm-proxy.ts
+```
+
+If no named Cloudflare Tunnel credential is available, a temporary
+`trycloudflare.com` tunnel can smoke the route while the proxy's bearer token
+protects the origin:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8011
+```
+
+Use the emitted HTTPS URL only as `OPENAGENTS_NETWORK_FABRIC_SERVE_URL` secret
+input; do not paste it into issues, public docs, commits, or product promises.
 
 ## Khala M6 shadow-run preflight
 

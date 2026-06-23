@@ -222,6 +222,21 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
   // actually dispatched by routing (#5482).
   FIREWORKS_API_KEY?: string | undefined
+  // OpenAgents/Pylon serving-fabric HTTP transport (#6089). The URL points at a
+  // secret-backed gateway/proxy for an admitted Pylon `psionic-serve` compatible
+  // endpoint; the bearer token authenticates Worker->proxy calls. Both are
+  // Worker secrets and are presence-checked before the public openagents-network
+  // lane can arm. Neither value may appear in catalog/readiness payloads,
+  // public evidence, docs, issues, or logs.
+  OPENAGENTS_NETWORK_FABRIC_SERVE_URL?: string | undefined
+  OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN?: string | undefined
+  // Public-safe admission snapshot fields for the admitted Pylon route. These
+  // are refs/status strings only, never endpoint, wallet, or payment material.
+  OPENAGENTS_NETWORK_PYLON_HEARTBEAT_AT?: string | undefined
+  OPENAGENTS_NETWORK_PYLON_HEARTBEAT_STATUS?: string | undefined
+  OPENAGENTS_NETWORK_PYLON_SERVING_CAPABILITY_REF?: string | undefined
+  OPENAGENTS_NETWORK_PYLON_SERVING_LANE_REF?: string | undefined
+  OPENAGENTS_NETWORK_SPARK_PAYOUT_TARGET_REF?: string | undefined
   GITHUB_CLIENT_ID?: string | undefined
   GITHUB_CLIENT_SECRET?: string | undefined
   MDK_ACCESS_TOKEN?: string | undefined

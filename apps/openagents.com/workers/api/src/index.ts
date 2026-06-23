@@ -388,7 +388,13 @@ import {
   type InferenceResult,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
-import { makePsionicFabricAdapter } from './inference/psionic-fabric-serve'
+import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
+import {
+  makePylonFabricHttpTransport,
+  pylonFabricHttpTransportConfigFromEnv,
+  pylonGatewayAdmissionFromEnv,
+} from './inference/pylon-fabric-http-transport'
+import { dispatchPsionicServe } from './inference/psionic-fabric-serve'
 import { handleQuote } from './inference/quote-routes'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
@@ -8395,36 +8401,38 @@ const registerPassthroughAdapters = (
   }
 }
 
-// OpenAgents serving-fabric lane (#5483 / Khala M4 #6012) — the `openagents-
-// network` adapter wired to a Psionic serve transport. The lane is routed AHEAD
-// of passthrough for the OPEN class (model-router.ts), but stays INERT until a
-// LIVE Psionic serve transport is wired: with no transport bound the lane is
-// simply NOT registered, and `dispatchWithOverflow` (which filters the plan to
-// registered adapters) skips it and overflows to passthrough — never a faked
-// serve. The live fabric is owner-gated / Psionic-planned (decentralized-serving
-// -shard-wan.md §7), so no transport is bound here today; the concrete dispatch
-// (ask-plan -> execute -> consume EXACT-PARITY receipt; no parity -> no success)
-// is proven against a local/fake serve in psionic-fabric-serve.test.ts and
-// registers behind this seam with no routing change once a transport lands.
+// OpenAgents serving-fabric lane (#5483 / Khala M4 #6012 / #6089) — the
+// `openagents-network` adapter wired to a Psionic serve transport. The lane is
+// routed AHEAD of passthrough for the OPEN class (model-router.ts), but stays
+// INERT unless the live deploy has BOTH:
+//   1. the public route/evidence arming refs checked by model-serving-policy,
+//   2. a secret HTTP endpoint + bearer token for the actual Pylon proxy.
 //
-// The Worker env carries no live fabric serve binding yet, so this narrow env
-// slice has no transport field to read; the function is the activation point a
-// future wiring fills in (mirroring registerPassthroughAdapters). It is a no-op
-// today and keeps the lane honestly skipped.
-type FabricServeEnv = Readonly<Record<string, unknown>>
+// The endpoint must speak the Psionic serve response contract, not raw vLLM
+// OpenAI output: the admitted adapter still checks Pylon admission before
+// dispatch and requires parity + canary + replay + payout-eligibility evidence
+// before paid routing clears. With any piece absent, no adapter is registered,
+// so dispatch skips the lane and overflows to the existing cloud paths.
+type FabricServeEnv = OpenAgentsWorkerConfigEnv
 
 const registerFabricServeAdapter = (
   registry: InferenceProviderRegistry,
-  _env: FabricServeEnv,
+  env: FabricServeEnv,
 ): void => {
-  // No live Psionic serve transport is bound in this repo (owner-gated). When a
-  // real transport client lands, build it from the env here and register:
-  //   registry.register(makePsionicFabricAdapter({ transport }))
-  // Until then the lane stays unregistered and routing skips it. The unused
-  // factory import is intentionally referenced so the seam stays type-checked
-  // and the registration path cannot silently rot.
-  void makePsionicFabricAdapter
-  void registry
+  if (!resolveSupplyLaneArming(env)['openagents-network']) {
+    return
+  }
+  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env)
+  if (transportConfig === undefined) {
+    return
+  }
+  const transport = makePylonFabricHttpTransport(transportConfig)
+  registry.register(
+    makeAdmittedOpenAgentsNetworkAdapter({
+      admission: () => pylonGatewayAdmissionFromEnv(env, currentEpochMillis()),
+      dispatch: dispatchPsionicServe({ transport }),
+    }),
+  )
 }
 
 // Per-request env holder for env-dependent inference adapters. A Cloudflare

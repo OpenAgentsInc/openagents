@@ -157,6 +157,10 @@ export type PsionicServeResponse = Readonly<{
   // Whether the declared parity check PASSED (token-identical to the reference
   // greedy decode). Only `exact_greedy_parity` && `true` clears the gate.
   parityVerified: boolean
+  // Optional full paid-traffic verification bundle. Raw parity is not enough
+  // for paid Pylon routing; the admitted adapter requires parity + canary +
+  // replay + payout eligibility before the network lane can clear.
+  paidTrafficVerification?: ServingReceipt['paidTrafficVerification'] | undefined
 }>
 
 // The injectable serve transport — the ask-plan / execute seam to Psionic. A
@@ -226,6 +230,36 @@ const parseStages = (raw: unknown): ReadonlyArray<ServingStage> | undefined => {
   return parsed as ReadonlyArray<ServingStage>
 }
 
+const parsePaidTrafficVerification = (
+  raw: unknown,
+): ServingReceipt['paidTrafficVerification'] | undefined => {
+  if (raw === undefined) return undefined
+  const record = recordFromUnknown(raw)
+  if (record === undefined) return undefined
+  const parityPassed = record['parityPassed']
+  const canaryPassed = record['canaryPassed']
+  const replayPassed = record['replayPassed']
+  const payoutEligible = record['payoutEligible']
+  const blockerRefs = record['blockerRefs']
+  if (
+    typeof parityPassed !== 'boolean' ||
+    typeof canaryPassed !== 'boolean' ||
+    typeof replayPassed !== 'boolean' ||
+    typeof payoutEligible !== 'boolean' ||
+    !Array.isArray(blockerRefs) ||
+    blockerRefs.some(ref => typeof ref !== 'string')
+  ) {
+    return undefined
+  }
+  return {
+    blockerRefs: blockerRefs as ReadonlyArray<string>,
+    canaryPassed,
+    parityPassed,
+    payoutEligible,
+    replayPassed,
+  }
+}
+
 // Normalize whatever the transport returned (object or JSON string) into a
 // validated `PsionicServeResponse`, or undefined when it is malformed. Fails
 // closed: any missing/ill-typed load-bearing field yields undefined so the
@@ -245,6 +279,9 @@ const normalizeServeResponse = (
   const parityVerified = record['parityVerified']
   const usage = parseUsage(record['usage'])
   const stages = parseStages(record['stages'])
+  const paidTrafficVerification = parsePaidTrafficVerification(
+    record['paidTrafficVerification'],
+  )
 
   if (
     typeof content !== 'string' ||
@@ -267,6 +304,9 @@ const normalizeServeResponse = (
     finishReason,
     parityMode,
     parityVerified,
+    ...(paidTrafficVerification === undefined
+      ? {}
+      : { paidTrafficVerification }),
     servedModel,
     servingRunRef,
     stages,
@@ -295,6 +335,9 @@ const toServedResult = (serve: PsionicServeResponse): NetworkServedResult => {
   const receipt: ServingReceipt = {
     parityMode: serve.parityMode,
     parityVerified: serve.parityVerified,
+    ...(serve.paidTrafficVerification === undefined
+      ? {}
+      : { paidTrafficVerification: serve.paidTrafficVerification }),
     servedModel: serve.servedModel,
     // Whole-small-model: exactly one stage => not sharded. Carried explicitly
     // for legibility (doc §3b); >1 stage is refused before we ever get here.

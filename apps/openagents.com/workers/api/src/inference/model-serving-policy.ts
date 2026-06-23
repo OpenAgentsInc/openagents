@@ -55,6 +55,11 @@ export type SupplyLaneCredentialEnv = Readonly<{
   OPENAGENTS_NETWORK_SERVING_RECEIPT_REF?: string | undefined
   OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF?: string | undefined
   OPENAGENTS_NETWORK_ADMITTED_PYLON_REF?: string | undefined
+  // Secret-backed transport presence for the real serving route. Presence-only:
+  // the URL/token values are never returned from this policy and must not appear
+  // in public readiness/catalog payloads.
+  OPENAGENTS_NETWORK_FABRIC_SERVE_URL?: string | undefined
+  OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN?: string | undefined
 }>
 
 export type OpenAgentsNetworkGatewayArming = Readonly<{
@@ -117,6 +122,12 @@ export const resolveOpenAgentsNetworkGatewayArming = (
     GATEWAY_ROUTE_READY_ON_TOKEN
   ) {
     blockerRefs.push('blocker.openagents_network_gateway.route_not_ready')
+  }
+  if (!isPresent(env.OPENAGENTS_NETWORK_FABRIC_SERVE_URL)) {
+    blockerRefs.push('blocker.openagents_network_gateway.transport_url_missing')
+  }
+  if (!isPresent(env.OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN)) {
+    blockerRefs.push('blocker.openagents_network_gateway.transport_bearer_missing')
   }
 
   const evidenceRefs: Array<string> = []

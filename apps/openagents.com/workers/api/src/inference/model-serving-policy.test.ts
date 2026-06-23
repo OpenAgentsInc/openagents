@@ -23,6 +23,8 @@ const ALL_ARMED: SupplyLaneArming = {
 const OPENAGENTS_NETWORK_READY_ENV = {
   OPENAGENTS_NETWORK_ADMITTED_PYLON_REF:
     'gcloud.gswarm508-clean2-20260325044551-contrib',
+  OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN: 'secret-route-token',
+  OPENAGENTS_NETWORK_FABRIC_SERVE_URL: 'https://pylon-route.example.test/serve',
   OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF:
     'approval.owner.khala.6089.gateway_route.2026_06_23',
   OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY: 'ready',
@@ -82,6 +84,8 @@ describe('resolveOpenAgentsNetworkGatewayArming', () => {
     expect(arming.evidenceRefs).toEqual([])
     expect(arming.blockerRefs).toEqual([
       'blocker.openagents_network_gateway.route_not_ready',
+      'blocker.openagents_network_gateway.transport_url_missing',
+      'blocker.openagents_network_gateway.transport_bearer_missing',
       'blocker.openagents_network_gateway.approval_ref_missing',
       'blocker.openagents_network_gateway.serving_preflight_ref_missing',
       'blocker.openagents_network_gateway.serving_receipt_ref_missing',
@@ -98,6 +102,26 @@ describe('resolveOpenAgentsNetworkGatewayArming', () => {
     expect(arming.armed).toBe(false)
     expect(arming.blockerRefs).toContain(
       'blocker.openagents_network_gateway.route_not_ready',
+    )
+  })
+
+  it('requires the secret-backed transport URL and bearer token by presence only', () => {
+    const noUrl = resolveOpenAgentsNetworkGatewayArming({
+      ...OPENAGENTS_NETWORK_READY_ENV,
+      OPENAGENTS_NETWORK_FABRIC_SERVE_URL: '   ',
+    })
+    expect(noUrl.armed).toBe(false)
+    expect(noUrl.blockerRefs).toContain(
+      'blocker.openagents_network_gateway.transport_url_missing',
+    )
+
+    const noBearer = resolveOpenAgentsNetworkGatewayArming({
+      ...OPENAGENTS_NETWORK_READY_ENV,
+      OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN: '',
+    })
+    expect(noBearer.armed).toBe(false)
+    expect(noBearer.blockerRefs).toContain(
+      'blocker.openagents_network_gateway.transport_bearer_missing',
     )
   })
 

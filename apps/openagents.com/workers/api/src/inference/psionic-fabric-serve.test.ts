@@ -219,6 +219,33 @@ describe('psionic-fabric-serve adapter — registration-ready behind the seam', 
     }
   })
 
+  test('dispatch preserves paid-traffic verification from a Psionic HTTP response', async () => {
+    const transport: PsionicServeTransport = () =>
+      Effect.succeed(
+        JSON.stringify({
+          ...parityPassingServe(),
+          paidTrafficVerification: {
+            blockerRefs: [],
+            canaryPassed: true,
+            parityPassed: true,
+            payoutEligible: true,
+            replayPassed: true,
+          },
+        }),
+      )
+    const outcome = await runResult(dispatchPsionicServe({ transport })(request()))
+    expect(outcome._tag).toBe('Success')
+    if (outcome._tag === 'Success') {
+      expect(outcome.success.receipt.paidTrafficVerification).toEqual({
+        blockerRefs: [],
+        canaryPassed: true,
+        parityPassed: true,
+        payoutEligible: true,
+        replayPassed: true,
+      })
+    }
+  })
+
   test('the adapter enforces the parity gate through the complete() path too', async () => {
     const adapter = makePsionicFabricAdapter({
       transport: fakeServe(parityPassingServe({ parityVerified: false })),
