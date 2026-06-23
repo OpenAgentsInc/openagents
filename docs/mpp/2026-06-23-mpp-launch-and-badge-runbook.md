@@ -1,0 +1,148 @@
+# Khala Machine Payments (MPP) — Launch & Operations Runbook
+
+**Date:** 2026-06-23 · **Epic:** [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049)
+
+How the OpenAgents Khala inference API accepts per-call machine payments (MPP /
+x402), how it's armed/rolled back, how to prove it, and how to watch for the
+Stripe Directory **Machine Payments** badge.
+
+> Authoritative protocol spec is the local mirror at `docs/reference/mpp/`
+> (paymentauth specs + mpp.dev SDK). The runtime 402 challenge is always
+> authoritative over the discovery doc.
+
+---
+
+## 1. Status (2026-06-23)
+
+| Rail | State |
+|---|---|
+| **Crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **ARMED on prod**, full pay-loop proven on staging |
+| **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ armed on prod (unit-tested + fail-closed; no live SPT round-trip yet) |
+| **⚡ Lightning** (BOLT11 via MDK, local preimage verify) | ❌ **not live** — arm hung the 402 (see §6); fix in flight |
+| **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` |
+
+Prod worker: `openagents-autopilot`. `POST /mpp/v1/chat/completions` → `402` with
+a real deposit address (~2.6s). `GET /openapi.json` advertises the offers.
+
+## 2. Architecture (Worker-native, no Node sidecar)
+
+- **Endpoint:** `POST /mpp/v1/chat/completions`. Method-agnostic HMAC challenge
+  binding in `workers/api/src/inference/mpp/mpp-canonical.ts` (WebCrypto SHA-256,
+  RFC-8785 JCS, base64url) per `draft-httpauth-payment-00`. The crypto deposit
+  PaymentIntent id / Lightning paymentHash ride in the challenge `opaque` for
+  stateless recovery; verification is fail-closed.
+- **Crypto:** Stripe deposit-mode PaymentIntent; deposit addresses are
+  `next_action.crypto_display_details.deposit_addresses` — a **network-keyed
+  object** `{ "base": { "address": "0x…", "supported_tokens": [...] }, … }` (NOT
+  an array). API version `2026-03-04.preview`.
+- **Card/SPT:** create+confirm a PaymentIntent with the client's SPT; the
+  `profile_…` id is the `networkId`. Single-use SPT replay guard in D1.
+- **Lightning:** mint a BOLT11 invoice as the challenge, client returns the
+  preimage, verify locally with `sha256(preimage) == paymentHash` (no node call).
+- **Credit semantics (RL-3):** USDC/card mint **USD-origin** credit
+  (`agent_balances.usd_credit_msat`, inference-spendable, **NOT**
+  Bitcoin-withdrawable). Lightning mints **Bitcoin-origin** `balance_msat`
+  (pay-in type `lightning_charge`). Idempotent per PaymentIntent / paymentHash.
+- **Discovery:** `GET /openapi.json` (OpenAPI 3.1, `x-service-info
+  categories:["ai"]`, `x-payment-info.offers[]`). Offers are **flag-gated** — a
+  rail is advertised only when it is actually armed AND can fulfill (honesty
+  gate; never advertise an unfulfillable rail).
+
+## 3. Config / arming (Worker secrets — never committed)
+
+Set from `apps/openagents.com/workers/api` (prod = no `--env`; staging =
+`--env staging`). Key material lives in `~/work/.secrets/openagents-stripe-mpp.env`
+(gitignored) — pipe into wrangler via stdin, never echo:
+
+| Name | Kind | Purpose |
+|---|---|---|
+| `KHALA_MPP_ENABLED` | secret `true` | master arm |
+| `STRIPE_API_KEY` | secret (`rk_live` restricted, PaymentIntents:Write) | crypto + card settle |
+| `KHALA_MPP_SIGNING_SECRET` | secret (`openssl rand -hex 32`) | HMAC challenge binding |
+| `STRIPE_MPP_NETWORK_PROFILE_ID` | var (`profile_…`) | card/SPT networkId; presence enables the card offer |
+| `KHALA_MPP_LIGHTNING_ENABLED` | flag | Lightning rail (also needs a working MDK issuer) |
+
+Triple-gate: with `KHALA_MPP_ENABLED` OR `STRIPE_API_KEY` OR
+`KHALA_MPP_SIGNING_SECRET` absent → `503 mpp_not_configured`, never a charge.
+
+**Deploy (manual — no auto-deploy CI):** from `apps/openagents.com`,
+`bun run build:web` (web app builds to `apps/openagents.com/apps/web/dist`), then
+`cd workers/api && npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist`.
+Apply D1 migrations: `npx wrangler d1 migrations apply openagents-autopilot --remote`.
+Always deploy from a clean `origin/main` worktree.
+
+## 4. Rollback (make a rail inert without a code revert)
+
+- Whole endpoint: `wrangler secret delete KHALA_MPP_ENABLED` → `503` inert.
+- A single rail: delete its flag (e.g. `KHALA_MPP_LIGHTNING_ENABLED`) or unset
+  `STRIPE_MPP_NETWORK_PROFILE_ID` (card). Confirm with the proof smoke.
+
+## 5. Proving it
+
+- **Inert/armed:** `bun run smoke:khala:billing-mpp-proof -- --base-url <url> --json`
+  → `mpp_unauthenticated_safe_state` = `inert` (503) or `armed_402` (never a free
+  completion). Sends no payment.
+- **Full crypto pay-loop** (staging, test key): `bun run smoke:khala:mpp-payloop`
+  with `KHALA_MPP_PAYLOOP_BASE_URL` + `KHALA_MPP_PAYLOOP_STRIPE_TEST_KEY`. Proves
+  402 → settle → 200 + `Payment-Receipt` + credit. The settle step calls
+  `POST /v1/test_helpers/payment_intents/{id}/simulate_crypto_deposit`
+  (`Stripe-Version: 2026-03-04.preview`; params `transaction_hash` (`…testsuccess`),
+  `network`, `token_currency=usdc`, `buyer_wallet`). Testnets aren't auto-detected,
+  so the simulate helper is required in sandbox; **prod/mainnet uses real on-chain
+  settlement — no simulate**.
+
+## 6. Lightning blocker (as of 2026-06-23)
+
+Arming `KHALA_MPP_LIGHTNING_ENABLED` on prod **hung the entire 402 handler**. The
+Lightning leg mints a BOLT11 synchronously via the MDK sidecar `create_checkout`
+(SAT/AMOUNT) with **no client-side timeout** (`Effect.tryPromise` catches throws,
+not hangs) and runs **first** in `issueChallenge`, so a slow/cold sidecar blocks
+crypto+card too. Disarmed → prod recovered. Migrations `0225`/`0226` left applied
+(inert). **Before re-arm:** (1) bounded mint timeout → fail-fast; (2) per-rail
+isolation so one rail can't block others; (3) verify the MDK `create_checkout`/SAT
+mint actually returns a BOLT11 on prod (Forum L402 uses a *different* local-HMAC
+path, so its health does NOT prove this). After (1)+(2), re-arming is safe by
+construction (worst case Lightning is silently suppressed by the honesty gate).
+
+## 7. Watching for the Stripe Directory badge
+
+The badge appears when Stripe's directory crawler indexes `/openapi.json` and
+associates the Machine Payments capability — **asynchronous, up to ~24h** per the
+discovery spec. Our side is done. To check:
+
+```sh
+stripe directory search "llm inference api" --mpp-supported   # look for OpenAgents / @openagents with Machine Payments ✅
+stripe directory search "openagents"
+stripe directory me                                           # see note below
+```
+
+> **Known CLI quirk:** `stripe directory me` persistently returns "Your account
+> does not have a Stripe profile" even though the Dashboard shows `@openagents`
+> live/public (Network ID `profile_61Uug9…`). Treat the Dashboard as truth; this
+> is most likely network-index lag. If the badge hasn't appeared well after the
+> crawl window, the profile may need a poke (re-save, or contact Stripe).
+
+**Expedite discovery** (broader than the Stripe badge): register on
+[MPPScan](https://www.mppscan.com/register) (one-click), submit a PR to
+[mpp.dev/services](https://github.com/tempoxyz/mpp), and check the Stripe
+Dashboard agentic-commerce/directory area for any submit.
+
+## 8. Gotchas
+
+- `deposit_addresses` is a **network-keyed object**, not an array.
+- `simulate_crypto_deposit` lives under `/v1/test_helpers/…`.
+- `check-contract-drift.test.ts` **false-fails when run from inside `.worktrees/`**
+  (its own SKIP_DIR regex skips `.worktrees`); the file passes 5/5 from a normal
+  checkout. Don't chase a contract-drift-only red in a worktree.
+- Build outputs to `apps/openagents.com/apps/web/dist`; deploy `--assets
+  ../../apps/web/dist` is **mandatory** or you ship stale UI / a 404 `/`.
+
+## 9. References
+
+- Epic [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049); PRs
+  #6131 (profile id), #6132 (deposit parser), #6138 (Worker-native verify),
+  #6139 (`/openapi.json`), #6141/#6144 (pay-loop smoke), #6146 (Lightning rail).
+- Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`; survey:
+  `docs/stripe/2026-06-22-stripe-directory-mpp-khala.md`.
+- Protocol mirror: `docs/reference/mpp/`.
+- Production-proof gate: `apps/openagents.com/docs/launch/2026-06-23-khala-billing-mpp-production-proof.md`.
