@@ -106,35 +106,41 @@ describe("inWorldVsGatewayCell", () => {
   });
 });
 
-describe("recorded verified run table", () => {
-  test("verified-rate is 1 and wall-clock is the recorded 106s", () => {
+describe("recorded run table — EXECUTED acceptance verdict (honest red)", () => {
+  // The recorded north-star run's earlier `verified:true` came from the M2 STATIC
+  // regex pre-screen. Running the preserved artifact through the real executed
+  // acceptance suite (scripts/khala-demo/run-executed-acceptance.mjs) FAILED 6/6
+  // checks, so the recorded manifest now carries the honest executed verdict:
+  // accepted:false, verificationClass:"failed", verified-rate 0. A real `failed`
+  // beats a fake `passed`.
+  test("verified-rate is 0 (executed: failed) and wall-clock is the recorded 106s", () => {
     const table = emitMetricTableFromManifest(recordedManifest(), { json: true });
     const parsed = JSON.parse(table);
-    expect(parsed.verifiedRate).toBe(1);
+    expect(parsed.verifiedRate).toBe(0);
     expect(parsed.rows).toHaveLength(1);
     const khala = parsed.rows[0];
     expect(khala.lane).toBe("khala");
     expect(khala.wallClock).toBe("1m 46s");
-    expect(khala.verificationClass).toBe("test_passed");
-    expect(khala.accepted).toBe(true);
+    expect(khala.verificationClass).toBe("failed");
+    expect(khala.accepted).toBe(false);
   });
 
-  test("tokens, $, and cost-per-accepted-outcome are honestly not_measured", () => {
+  test("tokens and $ are honestly not_measured; cost/accepted-outcome is not_applicable (unaccepted)", () => {
     const parsed = JSON.parse(emitMetricTableFromManifest(recordedManifest(), { json: true }));
     const khala = parsed.rows[0];
     expect(khala.tokens).toBe("not_measured");
     expect(khala.dollars).toBe("not_measured");
-    expect(khala.costPerAcceptedOutcomeUsd).toBe("not_measured");
+    expect(khala.costPerAcceptedOutcomeUsd).toBe("not_applicable");
     expect(khala.acceptedOutcomesPerKwh).toBe("not_measured");
     expect(khala.inWorldVsGatewaySplit).toBe("not_measured");
     expect(khala.settled).toBe(false);
   });
 
-  test("renders a Markdown table that does not print a bare $0.00 for the unmeasured run", () => {
+  test("renders a Markdown table with the honest verified-rate 0 and no bare $0.00", () => {
     const md = renderMetricTableMarkdown(
       buildMetricTable(reduceKhalaHeadToHeadManifest(recordedManifest())),
     );
-    expect(md).toContain("Verified-rate: 1");
+    expect(md).toContain("Verified-rate: 0");
     expect(md).toContain("1m 46s");
     expect(md).toContain("not_measured");
     expect(md).not.toContain("$0.00");

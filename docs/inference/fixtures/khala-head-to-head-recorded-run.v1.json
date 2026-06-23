@@ -15,7 +15,7 @@
     {
       "runId": "recorded.khala.crossy_road.verified_run.v1",
       "lane": "khala",
-      "label": "Khala recorded verified run (prod 2026-06-22)",
+      "label": "Khala recorded run (prod 2026-06-22); EXECUTED acceptance on 2026-06-23 => failed 6/6 (verified:false)",
       "model": "openagents/khala-code",
       "provider": "openagents",
       "coordinator": {
@@ -36,18 +36,45 @@
       "costMsat": 0,
       "priceMsat": 0,
       "acceptedOutcome": {
-        "accepted": true,
-        "verificationClass": "test_passed",
-        "verdictRef": "recorded.verdict.khala.crossy_road.test_passed.v1",
-        "verifierRef": "verifier.khala_code.static_prescreen.v1",
-        "receiptRef": "recorded.receipt.khala.crossy_road.verified_true_scalar_reward_1.v1",
+        "accepted": false,
+        "verificationClass": "failed",
+        "verdictRef": "recorded.verdict.khala.crossy_road.executed_failed.v1",
+        "verifierRef": "verifier.khala_code.executed_acceptance_suite.v1",
+        "receiptRef": "recorded.receipt.khala.crossy_road.executed_failed_scalar_reward_0.v1",
         "evidenceRefs": [
           "recorded.artifact.khala.crossy_road.single_html.v1",
           "recorded.stream.khala.crossy_road.no_524.106s.v1"
         ],
         "blockerRefs": [
-          "blocker.khala_demo.verifier_static_prescreen_not_executed"
-        ]
+          "blocker.khala_demo.executed_acceptance_failed_six_of_six"
+        ],
+        "executedAcceptance": {
+          "note": "Authoritative north-star artifact (reconstructed from the verified prod SSE stream at /tmp/khala-stream.txt, fingerprint fnv1a32:10cb2792, 53426 bytes, preserved at scripts/khala-demo/artifacts/khala-crossy-road-northstar-run.v1.html) was run through the REAL headless acceptance runner (apps/openagents.com/workers/api/src/inference/acceptance-runner) and verifyKhalaCodeCompletion via scripts/khala-demo/run-executed-acceptance.mjs.",
+          "executed": true,
+          "rubricRef": "rubric.khala_code.crossy_road.executed_acceptance.v1",
+          "verification": "failed",
+          "verified": false,
+          "scalarReward": 0,
+          "artifactFingerprint": "fnv1a32:10cb2792",
+          "passedChecks": [],
+          "failedChecks": [
+            "loads_without_errors",
+            "play_starts_game",
+            "forward_input_advances_player",
+            "camera_follow_delta_bounded",
+            "world_keeps_generating_ahead",
+            "restart_resets_state"
+          ],
+          "checkDetail": {
+            "loads_without_errors": "FAIL — 1 page error during construction: localStorage access throws in the constructor (the Game ctor reads localStorage before the start-btn listener attaches), consistent with the documented crash-on-load defect; the game never finishes constructing.",
+            "play_starts_game": "FAIL — PLAY did not start the game (started=undefined; loop never ticked).",
+            "forward_input_advances_player": "FAIL — forward input did not advance the player (state unreadable).",
+            "camera_follow_delta_bounded": "FAIL — no bounded camera motion observed (state unreadable).",
+            "world_keeps_generating_ahead": "FAIL — world rows ahead unknown (state unreadable).",
+            "restart_resets_state": "FAIL — restart did not reset (state unreadable)."
+          },
+          "honestNote": "Two distinct, honest reasons for the red: (1) a real load-time crash (localStorage-in-constructor / DOM-ref ordering) so the game never starts; and (2) the artifact never exposes the runner state contract (__openagentsCrossyRoadState/Start/Restart), so the five state-dependent checks fail honestly rather than producing a false green. An artifact that does not expose the contract cannot be execution-verified — by design. A real `failed` beats a fake `passed`."
+        }
       },
       "artifact": {
         "kind": "single_html",
