@@ -290,3 +290,69 @@ Conventions:
   lane requires that armed sweep over realistic traffic. NOT run here.
 - **Status:** PR open against `main` (#6090); orchestrator reviews / merges /
   deploys / smokes. NOT deployed, NO spend by this entry.
+
+---
+
+## P1-8 — Test speculation where Khala is actually low-batch — in progress (PR open, #6091)
+
+- **Notes ref:** `khala-investigation-notes.md` §P1 item 8 ("Test Speculation
+  Where Khala Is Actually Low-Batch"); book Ch.5 (Speculative Decoding);
+  `docs/inference/speculative-decoding-article.md`;
+  `2026-06-19-decentralized-serving-shard-wan.md` (receipt-mode disclosure).
+- **The principle (book, our words):** speculative decoding speeds up DECODE by
+  letting a cheap drafter guess tokens and the target model verify them in one
+  parallel pass. It profits ONLY when there is spare compute to spend on
+  verification — at LOW batch. At HIGH batch / under compute pressure the
+  verification work competes with throughput and it is a LOSS. So it must be
+  MEASURED (acceptance rate), DYNAMICALLY DISABLED, and DISCLOSED in the receipt.
+  Code is a fit (syntax + prompt-context repetition) for draft-free n-gram /
+  lookahead modes; EAGLE is a later learned Psionic lane (needs target
+  hidden-state data + training).
+- **What shipped (the four deliverables):**
+  1. **Acceptance-rate telemetry** (`khala-speculation.ts` + the `speculation`
+     field on `khala-telemetry.ts`): typed mode (n-gram / lookahead / EAGLE /
+     none / not_measured), `active`, the acceptance rate, and the draft-token
+     count pair behind it. Honest `not_measured` when no draft/verify pass
+     produced counts; `none` (known no speculation) distinct from `not_measured`
+     (unknown managed lane); rate clamped to `[0,1]`, never fabricated.
+  2. **Dynamic-disablement policy** (`decideSpeculation`): a bounded, typed
+     decision over `{batchSize, computePressure}` with documented thresholds
+     (default batch ≤ 4, pressure ≤ 0.6). Enables a draft-free mode at low
+     batch/pressure; disables on high batch / high pressure / unknown signal /
+     learned-or-unavailable mode / not-requested — each with a typed reason.
+  3. **Receipt-mode disclosure:** the speculation mode is a first-class field on
+     the canonical `openagents.khala.telemetry.v1` record (ties to the shard-WAN
+     speculative/direct-return/async receipt-mode idea).
+  4. **Policy doc** (`docs/inference/2026-06-23-khala-speculation-telemetry-book-p1-8.md`):
+     n-gram/lookahead fit for code repetition; EAGLE flagged as a later
+     learned/Psionic lane needing target hidden-state data + training.
+- **Fixture decode trace:** `benchmark/speculation-lane.ts` derives a
+  deterministic per-cell speculation outcome — code workloads request a draft-free
+  mode, the policy decides on/off from the cell's batch (concurrency) + derived
+  pressure, and honest draft counts populate only when ENABLED. Threaded through
+  the fixture seam + runner so a benchmark sample discloses speculation the same
+  way production will; the report adds a draft-acceptance aggregate per
+  (workload × model × temperature × route), with a null rate (honest absence)
+  where speculation did not run.
+- **Where:** `apps/openagents.com/workers/api/src/inference/`
+  (`khala-speculation.ts` + `khala-speculation.test.ts`,
+  `khala-speculation-telemetry.test.ts`; `speculation` field on
+  `khala-telemetry.ts`; `benchmark/speculation-lane.ts`, and the
+  `lane-seam.ts` / `runner.ts` / `report.ts` / `index.ts` threads).
+- **Verification bar (green):** inference suites (807 tests, 28 new),
+  `typecheck`, `check:architecture`, `check:effect-topology`,
+  `check:public-projection-freshness`. Tests: acceptance-rate telemetry populates
+  from a fixture decode trace (honest sentinel when no speculation ran);
+  `decideSpeculation` enables at low batch + disables at high batch / pressure /
+  unknown / learned-mode / not-requested; speculation mode disclosed in the
+  record + the per-axis report aggregate; the real speculative-decoding engine is
+  flag-gated OFF (fixture seam never spends; un-armed real seam refuses to run).
+- **Honest scope — fixture vs owner/compute-gated:** the telemetry, the policy,
+  and the fixture decode trace run deterministically with no real draft model and
+  no spend. The REAL speculative decode (an actual n-gram/lookahead drafter or a
+  learned EAGLE head) needs a real serving engine that does not exist in the
+  Worker, so the live hot path discloses `not_measured`/`none`; a future
+  compute/owner-gated serving engine threads real counts into the same fields.
+  EAGLE is a named-but-unbuilt Psionic learned-serving lane. NOT run/armed here.
+- **Status:** PR open against `main` (#6091); orchestrator reviews / merges /
+  deploys / smokes. NOT deployed, NO spend by this entry.
