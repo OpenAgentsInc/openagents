@@ -40,7 +40,10 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
       provider: 'fireworks',
       providerTimeMs: 900,
       gatewayOverheadMs: 40,
+      verifierTimeMs: 80,
+      settlementTimeMs: 0,
       region: 'us-central1',
+      fallbackReason: null,
       requestClass: 'interactive_stream',
       requestId: 'chatcmpl-x',
       requestedModel: 'openagents/khala-code',
@@ -70,11 +73,15 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.perceivedTps).toBe(11)
     expect(record.providerTimeMs).toBe(900)
     expect(record.gatewayOverheadMs).toBe(40)
+    expect(record.verifierTimeMs).toBe(80)
+    expect(record.settlementTimeMs).toBe(0)
     expect(record.region).toBe('us-central1')
+    expect(record.fallbackReason).toBe(null)
     expect(record.verificationClass).toBe('test_passed')
     expect(record.executedVerdict).toBe('passed')
     expect(record.scalarReward).toBe(1)
     expect(record.settlementState).toBe('pending')
+    expect(record.economicsState).toBe('measured')
     // margin = 170 - 100 = 70; ratio 70/170 ~= 0.41 => 'rich'.
     expect(record.marginBucket).toBe('rich')
     // The raw cache-affinity key is NEVER stored; only a stable hash.
@@ -118,12 +125,57 @@ describe('khala telemetry — honest measured/sentinel discipline', () => {
     expect(record.costBasisMsat).toBe(NOT_MEASURED)
     expect(record.priceMsat).toBe(NOT_MEASURED)
     expect(record.marginBucket).toBe('not_measured')
+    expect(record.economicsState).toBe('not_measured')
     expect(record.region).toBe(NOT_MEASURED)
     // No affinity key => null hash (not a fabricated digest).
     expect(record.cacheAffinityKeyHash).toBe(null)
     expect(record.fallbackReason).toBe(null)
     expect(record.blockerRefs).toContain('cost_not_measured')
+    expect(record.blockerRefs).toContain('provider_time_not_measured')
+    expect(record.blockerRefs).toContain('gateway_overhead_not_measured')
+    expect(record.blockerRefs).toContain('verifier_time_not_measured')
+    expect(record.blockerRefs).toContain('settlement_time_not_measured')
+    expect(record.blockerRefs).toContain('region_not_measured')
+    expect(record.blockerRefs).toContain('fallback_reason_not_reported')
+    expect(record.blockerRefs).toContain('economics_not_measured')
     expect(Option.isSome(decodeKhalaTelemetryRecord(record))).toBe(true)
+  })
+
+  test('economics state distinguishes pending and simulated from measured and not_measured', () => {
+    const pending = buildKhalaTelemetryRecord({
+      executedVerdict: 'passed',
+      provider: 'fireworks',
+      requestClass: 'verifier_run',
+      requestId: 'chatcmpl-pending-economics',
+      requestedModel: 'openagents/khala-code',
+      route: 'coding',
+      scalarReward: 1,
+      servedModel: 'accounts/fireworks/models/kimi-k2p7-code',
+      settlementState: 'pending',
+      verificationClass: 'test_passed',
+    })
+    expect(pending.economicsState).toBe('pending')
+    expect(pending.blockerRefs).toContain('economics_pending')
+
+    const simulated = buildKhalaTelemetryRecord({
+      costBasisMsat: 10,
+      economicsState: 'simulated',
+      executedVerdict: 'not_executed',
+      priceMsat: 15,
+      provider: 'fixture',
+      requestClass: 'batch',
+      requestId: 'chatcmpl-sim-economics',
+      requestedModel: 'openagents/khala-mini',
+      route: 'fixture',
+      servedModel: 'fixture-model',
+      settlementState: 'not_applicable',
+      verificationClass: 'none',
+    })
+    expect(simulated.costBasisMsat).toBe(10)
+    expect(simulated.priceMsat).toBe(15)
+    expect(simulated.marginBucket).toBe('standard')
+    expect(simulated.economicsState).toBe('simulated')
+    expect(simulated.blockerRefs).toContain('economics_simulated')
   })
 
   test('reconciles the live totalTokens discrepancy: total 679 != prompt 347 + completion 20 (book P0-2 / #6084)', () => {

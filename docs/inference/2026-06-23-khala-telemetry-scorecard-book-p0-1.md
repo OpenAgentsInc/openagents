@@ -41,8 +41,8 @@ the raw key), and a coarse margin **bucket** (never the raw margin).
 - **Dereferenceable receipt detail (`KhalaTelemetryRecord`)** — the depth: the
   provider/gateway/verifier/settlement time split, inter-token latency / perceived
   TPS, queue and batch wait, region, cache-affinity hash, fallback reason, cached
-  input tokens, cost basis / price / margin bucket / settlement state / blocker
-  refs. Reached via `/api/public/inference/receipts/<ref>`.
+  input tokens, cost basis / price / economics state / margin bucket / settlement
+  state / blocker refs. Reached via `/api/public/inference/receipts/<ref>`.
 
 The immediate block stays small; the receipt carries the depth.
 
@@ -61,11 +61,24 @@ provider / served model; verification class + executed verdict + scalar reward
 (reusing the existing `khala-code` verifier verdict — no parallel grader).
 
 Honestly `not_measured` today: cached input tokens unless the provider reports
-them; the provider/gateway/verifier/settlement time split (no per-stage timers
-yet); queue / batch wait (chat path); region / cache-affinity hash / fallback
-reason (session-affinity + region not wired on the gateway yet — each records a
-`blockerRef` so the reason for the sentinel is explicit); cost basis / price /
-margin bucket on the immediate hot path (the metering hook feeds the full record).
+them; the provider/gateway/verifier/settlement time split where the route has no
+per-stage timer yet; queue / batch wait on the chat path; region, cache-affinity
+hash, and fallback reason when the route has not reported them; cost basis,
+price, and margin bucket when the economics inputs are not present on the
+receipt. The builder now adds public-safe blocker refs automatically for these
+absences (`provider_time_not_measured`, `gateway_overhead_not_measured`,
+`verifier_time_not_measured`, `settlement_time_not_measured`,
+`region_not_measured`, `fallback_reason_not_reported`,
+`economics_not_measured`) so a reader can distinguish "not wired" from "zero."
+
+Economics also has a typed state separate from settlement:
+
+| `economicsState` | Meaning |
+| --- | --- |
+| `measured` | cost basis and price are measured values |
+| `simulated` | economics came from staging/fixture/simulation evidence and must not be treated as live money |
+| `pending` | accepted-outcome economics are waiting on the gated settlement path |
+| `not_measured` | no public-safe economics measurement exists for this receipt |
 
 ## How it feeds M8 + the coordinator reward
 

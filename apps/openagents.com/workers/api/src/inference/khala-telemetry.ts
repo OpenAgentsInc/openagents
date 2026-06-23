@@ -162,6 +162,18 @@ export const KhalaMarginBucket = S.Literals([
 ])
 export type KhalaMarginBucket = typeof KhalaMarginBucket.Type
 
+// Economics measurement state for the public receipt. This is separate from
+// `settlementState`: a request can have measured pricing with no settlement, a
+// pending accepted-outcome settlement with no final settlement timing, or a
+// simulated/staging economics run that must not be treated as live money.
+export const KhalaEconomicsState = S.Literals([
+  'measured',
+  'simulated',
+  'pending',
+  'not_measured',
+])
+export type KhalaEconomicsState = typeof KhalaEconomicsState.Type
+
 // ---------------------------------------------------------------------------
 // The IMMEDIATE block (small — rides on the `openagents` response block).
 // ---------------------------------------------------------------------------
@@ -302,6 +314,9 @@ export const KhalaTelemetryRecord = S.Struct({
   // disclosure of the unit economics inputs; sentinel when unpriced.
   costBasisMsat: MeasuredNumber,
   priceMsat: MeasuredNumber,
+  // Whether the economics fields are real measured values, simulated/staging
+  // evidence, pending accepted-outcome economics, or honestly unmeasured.
+  economicsState: KhalaEconomicsState,
   // Coarse margin bucket only — never the raw margin.
   marginBucket: KhalaMarginBucket,
   settlementState: KhalaSettlementState,
@@ -433,7 +448,9 @@ export type KhalaTelemetryInput = Readonly<{
   region?: string | undefined
   // The RAW cache-affinity key. It is hashed here and NEVER stored raw.
   cacheAffinityKeyRaw?: string | undefined
-  fallbackReason?: string | undefined
+  // undefined => not reported by the route yet; null => primary lane served and
+  // there was no fallback. A string names the public-safe fallback reason.
+  fallbackReason?: string | null | undefined
 
   // Verification.
   verificationClass: KhalaVerificationClass
@@ -444,6 +461,7 @@ export type KhalaTelemetryInput = Readonly<{
   // Economics.
   costBasisMsat?: number | undefined
   priceMsat?: number | undefined
+  economicsState?: KhalaEconomicsState | undefined
   settlementState: KhalaSettlementState
   settlementReceiptRefs?: ReadonlyArray<string> | undefined
   blockerRefs?: ReadonlyArray<string> | undefined
@@ -509,6 +527,30 @@ const deriveUnaccountedTokens = (
   return Math.max(0, total - (prompt + completion))
 }
 
+const deriveEconomicsState = (
+  input: Readonly<{
+    costBasisMsat: MeasuredNumber
+    economicsState?: KhalaEconomicsState | undefined
+    priceMsat: MeasuredNumber
+    settlementState: KhalaSettlementState
+  }>,
+): KhalaEconomicsState => {
+  if (input.economicsState !== undefined) {
+    return input.economicsState
+  }
+  if (isMeasured(input.costBasisMsat) && isMeasured(input.priceMsat)) {
+    return 'measured'
+  }
+  if (input.settlementState === 'pending') {
+    return 'pending'
+  }
+  return 'not_measured'
+}
+
+const uniq = (values: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(values),
+]
+
 // Assemble the canonical full lifecycle record from measured inputs. PURE: same
 // inputs => same record. Unmeasured inputs become the honest sentinel; the raw
 // cache-affinity key is hashed; the margin is coarse-grained to a bucket.
@@ -517,6 +559,33 @@ export const buildKhalaTelemetryRecord = (
 ): KhalaTelemetryRecord => {
   const costBasisMsat = measured(input.costBasisMsat)
   const priceMsat = measured(input.priceMsat)
+  const economicsState = deriveEconomicsState({
+    costBasisMsat,
+    economicsState: input.economicsState,
+    priceMsat,
+    settlementState: input.settlementState,
+  })
+  const autoBlockerRefs = [
+    ...(isMeasured(measured(input.providerTimeMs))
+      ? []
+      : ['provider_time_not_measured']),
+    ...(isMeasured(measured(input.gatewayOverheadMs))
+      ? []
+      : ['gateway_overhead_not_measured']),
+    ...(isMeasured(measured(input.verifierTimeMs))
+      ? []
+      : ['verifier_time_not_measured']),
+    ...(isMeasured(measured(input.settlementTimeMs))
+      ? []
+      : ['settlement_time_not_measured']),
+    ...(input.region === undefined || input.region.trim() === ''
+      ? ['region_not_measured']
+      : []),
+    ...(input.fallbackReason === undefined ? ['fallback_reason_not_reported'] : []),
+    ...(economicsState === 'not_measured' ? ['economics_not_measured'] : []),
+    ...(economicsState === 'pending' ? ['economics_pending'] : []),
+    ...(economicsState === 'simulated' ? ['economics_simulated'] : []),
+  ]
   return {
     schemaVersion: 'openagents.khala.telemetry.v1',
 
@@ -546,7 +615,12 @@ export const buildKhalaTelemetryRecord = (
       input.cacheAffinityKeyRaw.trim() === ''
         ? null
         : hashCacheAffinityKey(input.cacheAffinityKeyRaw),
-    fallbackReason: input.fallbackReason ?? null,
+    fallbackReason:
+      input.fallbackReason === undefined ||
+      input.fallbackReason === null ||
+      input.fallbackReason.trim() === ''
+        ? null
+        : input.fallbackReason,
     requestClass: input.requestClass,
 
     promptTokens: measured(input.promptTokens),
@@ -585,10 +659,11 @@ export const buildKhalaTelemetryRecord = (
 
     costBasisMsat,
     priceMsat,
+    economicsState,
     marginBucket: deriveMarginBucket(costBasisMsat, priceMsat),
     settlementState: input.settlementState,
     settlementReceiptRefs: input.settlementReceiptRefs ?? [],
-    blockerRefs: input.blockerRefs ?? [],
+    blockerRefs: uniq([...(input.blockerRefs ?? []), ...autoBlockerRefs]),
   }
 }
 
