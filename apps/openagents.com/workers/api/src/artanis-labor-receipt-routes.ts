@@ -16,6 +16,10 @@
 import { Effect } from 'effect'
 
 import {
+  projectArtanisLaborGreenReadinessProjection,
+  type ArtanisLaborGreenReadinessProjection,
+} from './artanis-labor-green-readiness'
+import {
   verifyArtanisLaborUnattendedRequestReceipt,
   type ArtanisLaborReceiptTerminalState,
 } from './artanis-labor-request-receipt'
@@ -226,6 +230,45 @@ export const handlePublicArtanisLaborReceiptsApi = (
     const sealed = await input.store.list().catch(() => [])
     return noStoreJsonResponse(
       buildArtanisLaborReceiptFeedProjection({ sealed, filter, generatedAt }),
+    )
+  })
+}
+
+// Build the green-readiness projection for artanis.labor_requester.v1 from the
+// store. It reuses the same feed projection the public receipt feed serves (so
+// the readiness counts and dereferenceable refs are exactly those the feed
+// exposes), then folds it onto the two named green-flip blockers. Pure read,
+// no-store, mints no authority.
+export const buildArtanisLaborGreenReadinessProjection = async (
+  input: Readonly<{
+    store: ArtanisLaborUnattendedReceiptStore
+    generatedAt: string
+  }>,
+): Promise<ArtanisLaborGreenReadinessProjection> => {
+  const sealed = await input.store.list().catch(() => [])
+  const feed = buildArtanisLaborReceiptFeedProjection({
+    sealed,
+    generatedAt: input.generatedAt,
+  })
+  return projectArtanisLaborGreenReadinessProjection(feed, input.generatedAt)
+}
+
+// GET handler for the green-readiness surface. Read-only, no-store.
+export const handlePublicArtanisLaborGreenReadinessApi = (
+  request: Request,
+  input: Readonly<{
+    store: ArtanisLaborUnattendedReceiptStore
+    nowIso?: () => string
+  }>,
+): Effect.Effect<Response> => {
+  if (request.method !== 'GET') {
+    return Effect.succeed(methodNotAllowed(['GET']))
+  }
+
+  return Effect.promise(async () => {
+    const generatedAt = input.nowIso?.() ?? currentIsoTimestamp()
+    return noStoreJsonResponse(
+      await buildArtanisLaborGreenReadinessProjection({ store: input.store, generatedAt }),
     )
   })
 }

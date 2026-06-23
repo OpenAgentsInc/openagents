@@ -358,7 +358,15 @@ const budgetChecks = [
     // flag-gated INERT by default. The DO `fetch` is a required Cloudflare runtime
     // signature; ratchet back down when the read route is extracted behind a shared
     // prefix-route mapper.
-    budget: 105,
+    // +1 (105 -> 106) on 2026-06-23 (#5531, DE-8) for the Artanis labor-requester
+    // green-readiness read handler in artanis-labor-receipt-routes.ts
+    // (`handlePublicArtanisLaborGreenReadinessApi` `Effect.Effect<Response>`),
+    // a public read-only projection that folds the labor receipt feed onto the
+    // two named green-flip blockers. It returns `Effect.Effect<Response>` like
+    // the sibling `handlePublicArtanisLaborReceiptsApi` already counted here, is
+    // no-store and mints no authority. Ratchet back down when these Artanis read
+    // handlers are extracted behind shared route mappers.
+    budget: 106,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -672,6 +680,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/artanis-labor-receipt-routes.ts',
     route: '/api/public/artanis/labor-receipts',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/artanis-labor-green-readiness.ts',
+    route: '/api/public/artanis/labor-green-readiness',
     status: 'staleness_declared',
   },
   {
