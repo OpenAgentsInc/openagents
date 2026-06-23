@@ -17,6 +17,7 @@ import {
   routeRequiresAuthBootstrap,
 } from './product-policy'
 import {
+  KhalaRoute,
   MulletRoute,
   PrivacyRoute,
   SiteCheckoutDemoRoute,
@@ -186,6 +187,11 @@ describe('browser product policy', () => {
     expect(browserRouteProductIntent(StatsRoute())).toBe(
       'admin.token-usage.stats',
     )
+    expect(browserRouteProductIntent(KhalaRoute())).toBe('public.khala')
+  })
+
+  test('keeps the public Khala route bootstrap-free', () => {
+    expect(routeRequiresAuthBootstrap(KhalaRoute())).toBe(false)
   })
 
   test('catalogs every browser command name with product intent', () => {
