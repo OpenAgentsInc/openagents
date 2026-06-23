@@ -547,14 +547,6 @@ export const view = (copied: boolean): Html => {
                 ['Training runs'],
               ),
               h.span([Ui.className<Message>(footDividerClass)], ['·']),
-              h.a(
-                [
-                  h.Href('https://openagents.com/khala'),
-                  Ui.className<Message>(linkClass),
-                ],
-                ['Khala'],
-              ),
-              h.span([Ui.className<Message>(footDividerClass)], ['·']),
               h.span([], ['OpenAgents']),
             ],
           ),

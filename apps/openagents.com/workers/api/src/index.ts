@@ -3351,6 +3351,12 @@ const handleAppShellPage = async (
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> => {
+  // /khala temporarily redirects to the homepage until Khala is fully live.
+  // Remove this block (and re-link the CTA) to restore the /khala scene page.
+  if (new URL(request.url).pathname === '/khala') {
+    return Response.redirect(new URL('/', request.url).toString(), 302)
+  }
+
   const cookies = parseCookies(request)
   const hadSessionCookie =
     cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE)
