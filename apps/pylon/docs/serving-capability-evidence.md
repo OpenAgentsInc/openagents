@@ -1,10 +1,10 @@
 # Pylon Proven-Engine Serving Capability Evidence
 
 Status: schema + self-benchmark + receipt machinery landed (book P1-6,
-openagents#6089). The real vLLM/SGLang GPU serving path and the real-GPU
-benchmark adapter are **compute/owner-gated and not implemented** — see the
-flag below. Nothing here is a green product promise; it is the supply-side
-evidence shape Khala's marketplace can verify before it pays anyone.
+openagents#6089). The real vLLM/SGLang GPU benchmark path is
+**compute/owner-gated** — see the flags below. Nothing here is a green product
+promise; it is the supply-side evidence shape Khala's marketplace can verify
+before it pays anyone.
 
 ## Why this exists (from the book)
 
@@ -39,7 +39,10 @@ ideas drive the schema here:
   (same input → byte-identical metrics + parity digest), touching no GPU and no
   network. Quantization is part of the parity digest, so changing the quant mode
   changes the digest and fails parity against the original — the book's "FP8 is
-  a different product" rule expressed mechanically.
+  a different product" rule expressed mechanically. The real-engine path is an
+  async OpenAI-compatible HTTP runner for owner-provided vLLM/SGLang endpoints;
+  it remains fail-closed unless the real-GPU flag, approval ref, and endpoint
+  are present.
 - `src/serving-receipt.ts` — per-serve `PylonServingReceipt` carrying
   engine/version/quantization/GPU class/warm-cold/parity, plus the
   **canary + replay-challenge** shape needed to verify a worker **before**
@@ -69,10 +72,16 @@ ideas drive the schema here:
 
 - The **real-GPU benchmark adapter** (`realGpuServingBenchmarkAdapter`) is
   reachable only when `PYLON_SERVING_REAL_GPU_BENCH=1`. Until then it refuses
-  with `blocker.pylon.serving.real_gpu_adapter_gated`. Even with the flag set it
-  currently refuses with `blocker.pylon.serving.real_gpu_adapter_not_implemented`
-  rather than fabricating a measurement — wiring a real vLLM/SGLang serve +
-  measured benchmark is owner/compute-gated work, out of scope for this change.
+  with `blocker.pylon.serving.real_gpu_adapter_gated`. The synchronous adapter
+  still refuses with `blocker.pylon.serving.real_gpu_http_runner_required` so
+  CI/default registration cannot accidentally perform network I/O.
+- `runRealGpuServingSelfBenchmark` is the owner-gated HTTP runner. It requires:
+  `PYLON_SERVING_REAL_GPU_BENCH=1`,
+  `PYLON_SERVING_REAL_GPU_OWNER_APPROVAL_REF`, and
+  `PYLON_SERVING_REAL_GPU_ENDPOINT`; `PYLON_SERVING_REAL_GPU_API_KEY` is
+  optional for private endpoints. Endpoint URLs and API keys are never copied
+  into the public receipt. Missing gates emit typed blocker refs instead of
+  fabricating a measurement.
 - Tests and CI always run the fixture path (`realGpuAdapter: false`).
 - The real-serving preflight therefore fails closed on current fixture evidence:
   it will report missing real-GPU evidence, missing live fabric transport or

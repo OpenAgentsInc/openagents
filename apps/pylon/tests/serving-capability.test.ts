@@ -14,10 +14,14 @@ import {
 import {
   PINNED_SELF_BENCHMARK_WORKLOAD,
   PYLON_SERVING_REAL_GPU_BENCH_ENV,
+  PYLON_SERVING_REAL_GPU_ENDPOINT_ENV,
+  PYLON_SERVING_REAL_GPU_OWNER_APPROVAL_REF_ENV,
   fixtureServingBenchmarkAdapter,
   realGpuServingBenchmarkAdapter,
+  runRealGpuServingSelfBenchmark,
   runServingSelfBenchmark,
   selectServingBenchmarkAdapter,
+  textOutputDigest,
 } from "../src/serving-benchmark"
 import {
   buildServingReceipt,
@@ -204,7 +208,7 @@ describe("worker self-benchmark before registration", () => {
     expect(receipt.blockerRefs).toContain(PYLON_SERVING_REAL_GPU_GATED_BLOCKER_REF)
   })
 
-  test("even with the gate flag set, the real-GPU path refuses (owner-gated, not implemented)", () => {
+  test("sync real-GPU adapter requires the async HTTP runner when enabled", () => {
     const env = { [PYLON_SERVING_REAL_GPU_BENCH_ENV]: "1" } as NodeJS.ProcessEnv
     const selected = selectServingBenchmarkAdapter(env)
     expect(selected.realGpu).toBe(true)
@@ -215,10 +219,89 @@ describe("worker self-benchmark before registration", () => {
       env,
     })
     expect(receipt.adapter).toBe("real_gpu")
-    expect(receipt.blockerRefs).toContain(
-      "blocker.pylon.serving.real_gpu_adapter_not_implemented",
-    )
+    expect(receipt.blockerRefs).toContain("blocker.pylon.serving.real_gpu_http_runner_required")
     expect(receipt.parity.parityPassed).toBe(false)
+  })
+
+  test("real-GPU HTTP runner fails closed without owner approval and endpoint", async () => {
+    const gated = await runRealGpuServingSelfBenchmark({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      engineVersion: "vllm@0.6.0",
+      workload: { ...PINNED_SELF_BENCHMARK_WORKLOAD, engine: "vllm" },
+      env: {},
+    })
+    expect(gated.blockerRefs).toContain(PYLON_SERVING_REAL_GPU_GATED_BLOCKER_REF)
+
+    const missingApproval = await runRealGpuServingSelfBenchmark({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      engineVersion: "vllm@0.6.0",
+      workload: { ...PINNED_SELF_BENCHMARK_WORKLOAD, engine: "vllm" },
+      env: { [PYLON_SERVING_REAL_GPU_BENCH_ENV]: "1" } as NodeJS.ProcessEnv,
+    })
+    expect(missingApproval.blockerRefs).toContain(
+      "blocker.pylon.serving.real_gpu_owner_approval_ref_missing",
+    )
+
+    const missingEndpoint = await runRealGpuServingSelfBenchmark({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      engineVersion: "vllm@0.6.0",
+      workload: { ...PINNED_SELF_BENCHMARK_WORKLOAD, engine: "vllm" },
+      env: {
+        [PYLON_SERVING_REAL_GPU_BENCH_ENV]: "1",
+        [PYLON_SERVING_REAL_GPU_OWNER_APPROVAL_REF_ENV]:
+          "github:OpenAgentsInc/openagents#6089-owner-approval",
+      } as NodeJS.ProcessEnv,
+    })
+    expect(missingEndpoint.blockerRefs).toContain(
+      "blocker.pylon.serving.real_gpu_endpoint_missing",
+    )
+  })
+
+  test("real-GPU HTTP runner turns a mocked vLLM/SGLang response into a public-safe receipt", async () => {
+    const output = "canonical Pylon vLLM benchmark response"
+    const workload = {
+      ...PINNED_SELF_BENCHMARK_WORKLOAD,
+      engine: "vllm" as const,
+      quantization: "fp8" as const,
+      expectedOutputDigest: textOutputDigest(output),
+    }
+    let nowIndex = 0
+    const receipt = await runRealGpuServingSelfBenchmark({
+      observedAt: OBSERVED_AT,
+      gpuClass: "gpu.class.hopper_h100",
+      engineVersion: "vllm@0.6.0",
+      workload,
+      env: {
+        [PYLON_SERVING_REAL_GPU_BENCH_ENV]: "1",
+        [PYLON_SERVING_REAL_GPU_OWNER_APPROVAL_REF_ENV]:
+          "github:OpenAgentsInc/openagents#6089-owner-approval",
+        [PYLON_SERVING_REAL_GPU_ENDPOINT_ENV]: "https://pylon.example.test/v1/chat/completions",
+      } as NodeJS.ProcessEnv,
+      now: () => [1000, 1500][nowIndex++] ?? 1500,
+      httpClient: async (request) => {
+        expect(request.endpoint).toBe("https://pylon.example.test/v1/chat/completions")
+        expect(request.payload.model).toBe(workload.modelRef)
+        expect(request.payload.messages[0]?.content).toBe(workload.prompt)
+        return {
+          choices: [{ message: { content: output } }],
+          usage: { completion_tokens: 25, total_tokens: 30 },
+        }
+      },
+    })
+
+    expect(receipt.adapter).toBe("real_gpu")
+    expect(receipt.engine).toBe("vllm")
+    expect(receipt.quantization).toBe("fp8")
+    expect(receipt.warmState).toBe("warm")
+    expect(receipt.metrics.wallClockMs).toBe(500)
+    expect(receipt.metrics.totalTokens).toBe(25)
+    expect(receipt.metrics.tokensPerSecond).toBe(50)
+    expect(receipt.parity.parityPassed).toBe(true)
+    expect(receipt.blockerRefs).toEqual([])
+    assertPublicProjectionSafe(receipt)
   })
 
   test("quantization is part of product identity: changing it changes the parity digest", () => {
