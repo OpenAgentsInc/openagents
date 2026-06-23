@@ -41,14 +41,18 @@ import {
 //
 // BUDGET (#6049): the real Spark `/spark/funding-invoice` mint takes ~1.5–3.1s
 // even WARM, so the old 1.2s cap always tripped and the honesty gate dropped
-// Lightning from every 402. This budget is raised to 4s so a real warm Spark
-// mint actually completes and surfaces the Lightning rail. The tradeoff is ~1s
-// more 402 latency in exchange for Lightning visibility; the zero-latency fix is
-// a pre-minted Spark invoice pool (future optimization, tracked on #6049). The
-// per-rail isolation (#6149) is preserved: a mint that exceeds this budget (or
-// the outer `LIGHTNING_LEG_GUARD_MS`) still only DROPS the Lightning rail — it
-// can never hang the endpoint, which always returns crypto + card fast.
-export const SPARK_LIGHTNING_MINT_TIMEOUT_MS = 4_000
+// Lightning from every 402. PROD `wrangler tail` after the first raise showed the
+// `MdkTreasuryContainer` mint subrequest itself returning 200 in ~3.76–3.95s
+// warm — and the worker-side round-trip (DO dispatch + queue overhead on top of
+// the container time) lands right AT/just over a 4s cap, so a 4s budget still
+// tripped. This budget is raised to 6s to give the real warm mint genuine
+// headroom and reliably surface the Lightning rail. The tradeoff is the 402 now
+// takes ~4–5s when Lightning mints; the zero-latency fix is a pre-minted Spark
+// invoice pool (future optimization, tracked on #6049). The per-rail isolation
+// (#6149) is preserved: a mint that exceeds this budget (or the outer
+// `LIGHTNING_LEG_GUARD_MS`) still only DROPS the Lightning rail — it can never
+// hang the endpoint, which always returns crypto + card fast.
+export const SPARK_LIGHTNING_MINT_TIMEOUT_MS = 6_000
 
 // A POST transport to the Spark treasury route. Returns the HTTP ok flag +
 // status + parsed JSON payload (no throwing — the issuer maps a non-ok status to
