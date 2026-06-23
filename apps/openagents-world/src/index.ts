@@ -44,6 +44,7 @@ import {
   makeDiagnostic,
   makeDiagnosticFrame,
   makeDiagnosticResponse,
+  makeHeartbeatFrame,
   makeInitialSessionAttachment,
   makeReconnectPlan,
   makeSnapshotFrame,
@@ -54,10 +55,20 @@ import {
   serializeWorldFrame,
   socketUrlForRegion,
   stableWorldRef,
+  type ReconnectPlan,
   type RegionSocketSessionAttachment,
   type WorldBridgeQueueMessage,
   type WorldRuntimeConfig,
 } from "./protocol"
+import {
+  type DeltaReplayBufferRow,
+  type ReplayBufferConfig,
+  makeReplayBufferRow,
+  planReplayBufferReconnect,
+  regionDeltaReplayBufferMigrationStatements,
+  replayBufferConfigFromEnv,
+  replayBufferEvictionPlan,
+} from "./replay-buffer"
 import {
   approveSubscriptionPlan,
   entitiesFromRows,
@@ -81,6 +92,9 @@ export interface Env {
   readonly OPENAGENTS_WORLD_ACTIVITY_TIMELINE_LIMIT?: string
   readonly OPENAGENTS_WORLD_MODERATION_HARD_TOKENS_JSON?: string
   readonly OPENAGENTS_WORLD_MODERATION_SOFT_TOKENS_JSON?: string
+  readonly OPENAGENTS_WORLD_DELTA_REPLAY?: string
+  readonly OPENAGENTS_WORLD_DELTA_REPLAY_MAX_DELTAS?: string
+  readonly OPENAGENTS_WORLD_DELTA_REPLAY_MAX_BYTES?: string
 }
 
 type RegionSqlRow = Readonly<Record<string, unknown>>
@@ -664,9 +678,11 @@ const normalizeSubscriptionPolicyError = (error: unknown): WorldSubscriptionPoli
 export class RegionDurableObject extends DurableObject<Env> {
   private initialized: Promise<void>
   private hotState: WorldHotState | null = null
+  private readonly replayConfig: ReplayBufferConfig
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
+    this.replayConfig = replayBufferConfigFromEnv(env)
     this.initialized = ctx.blockConcurrencyWhile(async () => {
       this.migrateRegionStorage()
       this.restoreHibernatedSessions()
@@ -693,7 +709,12 @@ export class RegionDurableObject extends DurableObject<Env> {
     const [client, server] = Object.values(pair)
     const connectedAt = new Date().toISOString()
     const clock = this.readRegionClock(regionRef)
-    const reconnectPlan = makeReconnectPlan(regionRef, url.searchParams.get("cursor"), clock, connectedAt)
+    const reconnectPlan = this.resolveReconnectPlan(
+      regionRef,
+      url.searchParams.get("cursor"),
+      clock,
+      connectedAt,
+    )
     const snapshotRows = reconnectPlan.kind === "fresh_snapshot"
       ? await readSnapshotProjectionRows(this.env.WORLD_DB, regionRef)
       : []
@@ -789,6 +810,12 @@ export class RegionDurableObject extends DurableObject<Env> {
       this.writeRegionClock(result.state.regionRef, result.state.sequence, result.state.minReplaySeq, observedAt)
       this.persistExpiryRefs(result.state)
       await this.scheduleNextExpiryAlarm(result.state)
+      // Buffer only sequence-advancing deltas (accepted commands). Rejected
+      // commands emit a `diagnostic` delta that keeps the prior sequence and
+      // must NOT collide with the accepted payload already at that offset.
+      if (result.delta.kind !== "diagnostic") {
+        this.appendReplayBufferDelta(result.delta, result.state.sequence, observedAt)
+      }
       this.broadcastCommandDelta(result.delta, observedAt)
     } catch (error) {
       const diagnostic = makeDiagnostic({
@@ -897,6 +924,9 @@ export class RegionDurableObject extends DurableObject<Env> {
     this.writeRegionClock(plan.state.regionRef, plan.state.sequence, plan.state.minReplaySeq, now)
     this.persistExpiryRefs(plan.state)
     if (plan.delta !== null) {
+      // Expiry advances the sequence and emits a `delete` delta; buffer it so a
+      // reconnect across an expiry boundary still gets gap replay.
+      this.appendReplayBufferDelta(plan.delta, plan.state.sequence, now)
       const frame = serializeWorldFrame(expiryDeltaFrame(plan.delta))
       for (const webSocket of this.ctx.getWebSockets()) {
         webSocket.send(frame)
@@ -911,6 +941,9 @@ export class RegionDurableObject extends DurableObject<Env> {
 
   private migrateRegionStorage(): void {
     for (const statement of regionDurableObjectMigrationStatements) {
+      this.sql.exec(statement)
+    }
+    for (const statement of regionDeltaReplayBufferMigrationStatements) {
       this.sql.exec(statement)
     }
 
@@ -989,6 +1022,107 @@ export class RegionDurableObject extends DurableObject<Env> {
       lastSeenAt,
       JSON.stringify(attachment),
     )
+  }
+
+  /**
+   * Resolve the reconnect plan, preferring TRUE gap replay from the bounded
+   * delta-replay buffer when the cursor is within the buffered window. Falls
+   * back to the existing heartbeat / fresh-snapshot reconnect plan when the
+   * feature flag is off, the buffer is unavailable, or the cursor is older than
+   * the buffered window (evicted). Fail-safe by construction: any uncertainty
+   * degrades to today's snapshot behavior.
+   */
+  private resolveReconnectPlan(
+    regionRef: string,
+    reconnectCursor: string | null,
+    clock: { currentSeq: number; minReplaySeq: number },
+    connectedAt: string,
+  ): ReconnectPlan {
+    if (!this.replayConfig.enabled) {
+      return makeReconnectPlan(regionRef, reconnectCursor, clock, connectedAt)
+    }
+
+    const gap = planReplayBufferReconnect({
+      regionRef,
+      reconnectCursor,
+      currentSeq: clock.currentSeq,
+      bufferedRows: this.readReplayBufferRows(regionRef),
+      generatedAt: connectedAt,
+      makeHeartbeatFrame: (cursor, generatedAt) => makeHeartbeatFrame(regionRef, cursor, generatedAt),
+    })
+
+    if (gap.kind === "gap_replay") {
+      // TRUE gap replay: the exact buffered delta suffix, no snapshot.
+      return { kind: "resume", cursor: gap.cursor, frames: gap.frames }
+    }
+    if (gap.kind === "at_tail") {
+      return { kind: "resume", cursor: gap.cursor, frames: gap.frames }
+    }
+
+    // snapshot_fallback (evicted / empty / no cursor): defer to the existing
+    // reconnect planner so stale-cursor diagnostics + the fresh snapshot are
+    // produced exactly as before.
+    return makeReconnectPlan(regionRef, reconnectCursor, clock, connectedAt)
+  }
+
+  private readReplayBufferRows(regionRef: string): ReadonlyArray<DeltaReplayBufferRow> {
+    const rows = this.sql.exec<{
+      sequence: number
+      byte_len: number
+      delta_json: string
+      generated_at: string
+    }>(
+      "SELECT sequence, byte_len, delta_json, generated_at FROM region_delta_replay_buffer WHERE region_ref = ? ORDER BY sequence ASC",
+      regionRef,
+    ).toArray()
+    return rows.map(row => ({
+      regionRef,
+      sequence: Number(row.sequence),
+      byteLen: Number(row.byte_len),
+      deltaJson: row.delta_json,
+      generatedAt: row.generated_at,
+    }))
+  }
+
+  /**
+   * Append a broadcast delta into the bounded replay buffer and evict the oldest
+   * rows so it respects both the count cap and the byte cap. Bounded growth: the
+   * retained set is always a contiguous suffix ending at the live sequence.
+   */
+  private appendReplayBufferDelta(delta: WorldDelta, sequence: number, generatedAt: string): void {
+    if (!this.replayConfig.enabled) {
+      return
+    }
+    const regionRef = delta.regionRef
+    const row = makeReplayBufferRow({ regionRef, sequence, delta, generatedAt })
+    const existing = this.readReplayBufferRows(regionRef).filter(r => r.sequence !== row.sequence)
+    const plan = replayBufferEvictionPlan(existing, row, this.replayConfig)
+
+    this.sql.exec(
+      `INSERT INTO region_delta_replay_buffer (
+        region_ref,
+        sequence,
+        byte_len,
+        delta_json,
+        generated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(region_ref, sequence) DO UPDATE SET
+        byte_len = excluded.byte_len,
+        delta_json = excluded.delta_json,
+        generated_at = excluded.generated_at`,
+      regionRef,
+      row.sequence,
+      row.byteLen,
+      row.deltaJson,
+      row.generatedAt,
+    )
+    for (const evicted of plan.evictedSequences) {
+      this.sql.exec(
+        "DELETE FROM region_delta_replay_buffer WHERE region_ref = ? AND sequence = ?",
+        regionRef,
+        evicted,
+      )
+    }
   }
 
   private readRegionClock(regionRef: string): { currentSeq: number; minReplaySeq: number } {

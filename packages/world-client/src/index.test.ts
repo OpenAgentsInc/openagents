@@ -513,4 +513,78 @@ describe("world-client", () => {
     expect(ack.status).toBe("applied")
     expect(String(readModel.intents["intent.focus.pylon.1"]?.targetRef)).toBe("pylon.alpha")
   })
+
+  // durable-stream Rank-2 (#6059): when the Region DO serves an in-window
+  // reconnect as TRUE gap replay, the connect-result carries the exact missing
+  // delta suffix (NOT a fresh snapshot). The client must resume from its cursor
+  // and apply every gap delta into the WorldReadModel in order.
+  test("resumes from its cursor and applies a gap-replay delta suffix into the read model (no re-snapshot)", async () => {
+    const avatarAt = (seq: number, label: string) =>
+      decodeWorldRow({
+        kind: "agent_avatar",
+        avatarRef: `avatar.gap.${seq}`,
+        characterId: `char.${seq}`,
+        regionRef,
+        label,
+        avatarKind: "human",
+        updatedAt: observedAt,
+        safety,
+      })
+
+    let resumeCursorSeen: string | undefined
+    const transport: WorldClientTransport = {
+      // First connect: a snapshot establishing the client at sequence 2.
+      // Reconnect from `cursor.region.run.1.2`: gap replay of sequences 3 and 4
+      // as plain delta payloads — the server never re-snapshots.
+      connect: (request) =>
+        Effect.sync(() => {
+          resumeCursorSeen = request.resumeCursor
+          if (request.resumeCursor === undefined) {
+            return {
+              regionRef,
+              socketUrl: "wss://world.test/regions/region.run.1/socket",
+              subscriptionPlan: plan(),
+              deltas: [
+                makeStubWorldDelta({
+                  regionRef,
+                  cursor: "cursor.region.run.1.2",
+                  generatedAt: observedAt,
+                  kind: "snapshot",
+                  rows: [avatarAt(2, "Avatar 2")],
+                }),
+              ],
+            }
+          }
+          return {
+            regionRef,
+            socketUrl: "wss://world.test/regions/region.run.1/socket",
+            subscriptionPlan: plan(),
+            deltas: [
+              rowDelta([avatarAt(3, "Avatar 3")], "cursor.region.run.1.3"),
+              rowDelta([avatarAt(4, "Avatar 4")], "cursor.region.run.1.4"),
+            ],
+          }
+        }),
+      command: () =>
+        Effect.fail(new WorldClientError({ phase: "command", reason: "unused", retryable: false, sourceRefs: ["test"] })),
+      disconnect: () => Effect.void,
+    }
+
+    const client = createWorldClient({ transport, initialRegionRef: regionRef, now: () => observedAt })
+    const connected = await Effect.runPromise(client.connect())
+    expect(connected.readModel.avatars["avatar.gap.2"]?.label).toBe("Avatar 2")
+    expect(String(connected.readModel.cursor)).toBe("cursor.region.run.1.2")
+
+    const reconnected = await Effect.runPromise(client.reconnect())
+
+    // The client resumed from the cursor it had applied through.
+    expect(resumeCursorSeen).toBe("cursor.region.run.1.2")
+    // Every gap delta landed; the pre-gap avatar was preserved (additive, not a
+    // replacing snapshot).
+    expect(reconnected.readModel.avatars["avatar.gap.2"]?.label).toBe("Avatar 2")
+    expect(reconnected.readModel.avatars["avatar.gap.3"]?.label).toBe("Avatar 3")
+    expect(reconnected.readModel.avatars["avatar.gap.4"]?.label).toBe("Avatar 4")
+    // The read model advanced to the live tail via the last applied delta.
+    expect(String(reconnected.readModel.cursor)).toBe("cursor.region.run.1.4")
+  })
 })
