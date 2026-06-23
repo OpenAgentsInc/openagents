@@ -9,7 +9,7 @@ import {
 describe('pylon stats boot payload', () => {
   test('injects public stats JSON before the app shell closes', async () => {
     const response = await injectPylonStatsBootPayloadIntoAssetResponse(
-      new Request('https://openagents.com/pylon', {
+      new Request('https://openagents.com/pylons', {
         headers: { accept: 'text/html' },
       }),
       {},
@@ -35,7 +35,7 @@ describe('pylon stats boot payload', () => {
     )
   })
 
-  test('preserves the asset response when a snapshot is unavailable', async () => {
+  test('does not inject into the landing homepage at / (kept lean + cacheable)', async () => {
     const appShell = '<!doctype html><div id="root"></div>'
     const response = await injectPylonStatsBootPayloadIntoAssetResponse(
       new Request('https://openagents.com/', {
@@ -45,10 +45,13 @@ describe('pylon stats boot payload', () => {
       new Response(appShell, {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       }),
-      async () => null,
+      async () => JSON.stringify({ available: true, pylonsOnlineNow: 4 }),
     )
 
+    // / is the landing 3D scene now — it must stay a small, cacheable shell with
+    // no injected pylon-stats payload and no no-store header.
     expect(await response.text()).toBe(appShell)
+    expect(response.headers.get('cache-control')).not.toBe('no-store')
   })
 
   test('does not inject into unrelated document routes', async () => {

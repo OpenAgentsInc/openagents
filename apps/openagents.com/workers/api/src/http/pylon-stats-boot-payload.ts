@@ -15,8 +15,12 @@ type PylonStatsBootEnv = AssetEnv & PublicPylonStatsRouteEnv
 const shouldInjectPylonStatsBootPayload = (request: Request): boolean => {
   if (request.method !== 'GET') return false
 
+  // The pylon-stats snapshot is only needed by the Pylon scene, which now lives
+  // at /pylons. The root `/` is the landing 3D scene and must NOT carry this
+  // ~90KB no-store payload — injecting it at `/` made the homepage large AND
+  // uncacheable (cache-control: no-store below), which was the slow first load.
   const pathname = new URL(request.url).pathname
-  return pathname === '/' || pathname === '/pylon'
+  return pathname === '/pylons'
 }
 
 const responseIsHtml = (response: Response): boolean =>
