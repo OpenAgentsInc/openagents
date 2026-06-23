@@ -111,6 +111,14 @@ import {
   type InferenceStreamSource,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
+import {
+  KHALA_COMPONENT_CATALOG_PROMPT,
+  type ComponentChannelOutput,
+  type ComponentRepairReask,
+  type KhalaComponentFrame,
+  runComponentChannel,
+  serializeComponentFrame,
+} from './khala-component-channel'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. The free-tier default is
@@ -186,6 +194,51 @@ export const isInferenceDurableStreamEnabled = (
     return false
   }
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// COMPONENT-CHANNEL CONFIG (issue #6127). `enabled` is the gateway-level flag
+// (default off). When on, the channel is STILL only activated per-request via an
+// explicit opt-in for a Khala model. `repairReask` (optional) wires the ONE
+// bounded repair turn over a single non-streaming Khala call; absent => an
+// invalid card is dropped without a repair attempt (still never shipped).
+export type ComponentChannelConfig = Readonly<{
+  enabled: boolean
+  repairReask?: ComponentRepairReask | undefined
+}>
+
+// Resolve whether the typed component channel is active FOR THIS REQUEST. Three
+// AND-gated conditions, all required, so the default `/v1` shape never changes:
+//   1. the gateway-level flag is on (`config.enabled`)
+//   2. the request explicitly opts in (header `x-oa-component-channel: on`, or a
+//      truthy `oa_component_channel` body field) — a deterministic parse of an
+//      explicit caller-supplied switch, never an intent inference
+//   3. the model is a Khala model (the channel is a Khala capability)
+export const resolveComponentChannelActive = (
+  input: Readonly<{
+    config: ComponentChannelConfig | undefined
+    request: Request
+    rawBody: Record<string, unknown>
+    requestedModel: string
+  }>,
+): boolean => {
+  if (input.config?.enabled !== true) {
+    return false
+  }
+  if (!isKhalaModel(input.requestedModel)) {
+    return false
+  }
+  const header = input.request.headers
+    .get('x-oa-component-channel')
+    ?.trim()
+    .toLowerCase()
+  const headerOptIn =
+    header !== undefined && ['1', 'true', 'yes', 'on'].includes(header)
+  const bodyField = input.rawBody['oa_component_channel']
+  const bodyOptIn =
+    bodyField === true ||
+    (typeof bodyField === 'string' &&
+      ['1', 'true', 'yes', 'on'].includes(bodyField.trim().toLowerCase()))
+  return headerOptIn || bodyOptIn
 }
 
 export type ChatCompletionsDeps = Readonly<{
@@ -290,6 +343,24 @@ export type ChatCompletionsDeps = Readonly<{
   // resume/replay read (the resume route has no metering hook).
   durableStreamEnabled?: boolean | undefined
   durableStream?: DurableInferenceStreamStore | undefined
+  // TYPED COMPONENT CHANNEL SEAM (EPIC #6123, issue #6127). The ADDITIVE,
+  // OPT-IN `oa.component` SSE channel: a Khala turn may stream prose PLUS one or
+  // more validated, versioned `oa.component` cards from the CLOSED v1 catalog
+  // (khala-component-channel.ts). DEFAULT OFF: with `componentChannel` absent or
+  // `enabled: false`, `/v1/chat/completions` is byte-for-byte today's text-only
+  // stream — standard OpenAI clients are unaffected. When `enabled` is true the
+  // channel is STILL only activated for a request that explicitly opts in (the
+  // `x-oa-component-channel: on` header or an `oa_component_channel: true` body
+  // field) AND targets a Khala model, so the default response shape never
+  // changes. On activation, the gateway:
+  //   - injects the closed-catalog system prompt (stable prefix),
+  //   - assembles the completion, splits prose vs fenced `oa-component` blocks,
+  //   - validates each card's props against the closed catalog with Effect
+  //     Schema (ONE bounded repair turn, then drop — never ship malformed),
+  //   - honors the SAME provider-identity redaction backstop as the prose path,
+  //   - re-emits prose as `{content}` deltas and each card as one atomic
+  //     `event: oa.component` frame.
+  componentChannel?: ComponentChannelConfig | undefined
   // CACHE-AWARE ROUTING SEAM (book P0-2 deliverable 6 / #6084). When wired, a
   // same-session/codebase/account follow-up is routed to the cache-WARM lane
   // first (the lane that previously served this affinity hash), subject to the
@@ -383,6 +454,10 @@ const decodeBody = (value: unknown) => {
 const buildTaggedKhalaMessages = (
   clientMessages: ReadonlyArray<InferenceMessage>,
   requestedModel: string,
+  // COMPONENT-CHANNEL (issue #6127): inject the closed-catalog system prompt as a
+  // STABLE prefix block ONLY when the channel is active for this request. Absent /
+  // false => no injection, prompt byte-identical to before (additive + opt-in).
+  componentChannelActive?: boolean,
 ): ReadonlyArray<TaggedPromptMessage> => {
   const tagged: Array<TaggedPromptMessage> = []
 
@@ -411,6 +486,17 @@ const buildTaggedKhalaMessages = (
     })
   }
 
+  // Component-catalog stable block (issue #6127): only when the typed component
+  // channel is active for this Khala request. The catalog prompt lists the closed
+  // v1 component set + prop shapes so the model surfaces a card via the fenced
+  // `oa-component` mechanism that works across all Khala backends.
+  if (componentChannelActive === true && isKhalaModel(requestedModel)) {
+    tagged.push({
+      message: { content: KHALA_COMPONENT_CATALOG_PROMPT, role: 'system' },
+      stableKind: 'identity' satisfies StableBlockKind,
+    })
+  }
+
   // Client messages: their own `system` messages are stable policy/steer (the
   // assembler classifies role==='system' as `otherSystem`, ordered after the
   // known stable blocks); everything else is volatile/novel (ordered last).
@@ -429,6 +515,9 @@ const toInferenceRequest = (
   // (overriding any stray client copy) so the adapters pin the session to one
   // cache-warm replica. Empty for non-Khala / no-affinity requests.
   affinityParams: Readonly<Record<string, string>>,
+  // COMPONENT-CHANNEL (issue #6127): when active, the closed-catalog system prompt
+  // is injected as a stable prefix block. Default false => no injection.
+  componentChannelActive?: boolean,
 ): InferenceRequest => {
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
@@ -438,7 +527,11 @@ const toInferenceRequest = (
   // For a Khala model, assemble the cache-optimal stable layout.
   const messages = isKhalaModel(requestedModel)
     ? assembleStablePromptLayout(
-        buildTaggedKhalaMessages(clientMessages, requestedModel),
+        buildTaggedKhalaMessages(
+          clientMessages,
+          requestedModel,
+          componentChannelActive,
+        ),
       ).messages
     : clientMessages
   const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
@@ -1382,11 +1475,22 @@ export const handleChatCompletions = (
       )
     }
 
+    // COMPONENT-CHANNEL ACTIVATION (issue #6127). AND-gated: gateway flag on +
+    // explicit per-request opt-in + Khala model. Default false => the channel is
+    // inert and the response is byte-for-byte today's text-only stream.
+    const componentChannelActive = resolveComponentChannelActive({
+      config: deps.componentChannel,
+      rawBody,
+      request,
+      requestedModel,
+    })
+
     const inferenceRequest = toInferenceRequest(
       body,
       rawBody,
       requestedModel,
       affinity.params,
+      componentChannelActive,
     )
     // The raw cache-affinity key threaded into every telemetry build site so the
     // receipt records its public-safe HASH (never the raw key). Undefined for
@@ -1438,18 +1542,38 @@ export const handleChatCompletions = (
       // partial output). Metering settles receipt-first from the terminal usage
       // frame after the upstream stream closes. Adapters without `streamSse`
       // (stub/echo, simple test adapters) fall through to the buffered path.
+      //
+      // COMPONENT-CHANNEL (issue #6127): when the typed component channel is
+      // active for this request, we deliberately take the BUFFERED path instead
+      // of the true pass-through. A component frame is ATOMIC (one complete
+      // validated card) and the prose/component split + schema validation + the
+      // bounded repair turn all need the WHOLE assembled completion — which the
+      // true pass-through (delta-as-it-arrives) cannot provide. So we signal the
+      // SAME non-retryable `stream_not_supported` the no-`streamSse` lane signals,
+      // and the existing fallthrough re-frames the completion through the channel.
+      // This keeps the default (channel-off) path byte-for-byte unchanged.
       const sseDispatch = yield* dispatchWithOverflowWithMetadata(
         inferenceRequest,
         (adapter, request) => {
-          if (adapter.streamSse === undefined) {
+          if (componentChannelActive || adapter.streamSse === undefined) {
             // Signal "this lane cannot stream incrementally" as a NON-retryable
             // typed failure so the overflow loop surfaces it without retrying;
             // the route catches it and falls back to the buffered path.
+            //
+            // COMPONENT-CHANNEL (issue #6127): when the typed component channel is
+            // active for this request, we deliberately force the BUFFERED path. A
+            // component frame is ATOMIC (one complete validated card) and the
+            // prose/component split + schema validation + the bounded repair turn
+            // all need the WHOLE assembled completion — which the true pass-through
+            // (delta-as-it-arrives) cannot provide. The default (channel-off) path
+            // is byte-for-byte unchanged.
             return Effect.fail(
               new InferenceAdapterError({
                 adapterId: adapter.id,
                 kind: 'stream_not_supported',
-                reason: 'adapter does not support incremental streaming',
+                reason: componentChannelActive
+                  ? 'component channel active: buffered re-frame required'
+                  : 'adapter does not support incremental streaming',
                 retryable: false,
               }),
             )
@@ -1592,7 +1716,30 @@ export const handleChatCompletions = (
       // re-emitted delta-for-delta unchanged; only an identity leak is rewritten.
       let guardedStreamContent = assembledContent
       let streamIdentityCorrected = false
-      if (isKhalaModel(requestedModel)) {
+      // COMPONENT-CHANNEL TRANSFORM (issue #6127). When the channel is active for
+      // this request, run the assembled completion through the gateway transform:
+      // split prose vs fenced `oa-component` blocks, validate each card against
+      // the closed catalog (ONE bounded repair turn, then drop), identity-guard
+      // the prose, and surface the validated frames. The transform ALSO runs the
+      // identity backstop over the prose, so it subsumes the plain identity guard
+      // for this request. Inert for every channel-off request (the `else` below is
+      // the unchanged prior behavior).
+      let componentFrames: ReadonlyArray<KhalaComponentFrame> = []
+      if (componentChannelActive) {
+        const channel: ComponentChannelOutput = yield* Effect.promise(() =>
+          runComponentChannel(assembledContent, {
+            ...(deps.componentChannel?.repairReask === undefined
+              ? {}
+              : { reask: deps.componentChannel.repairReask }),
+          }),
+        )
+        guardedStreamContent = channel.prose
+        componentFrames = channel.frames
+        // The transform already identity-guarded the prose; force the re-frame
+        // path below (a single corrected content frame + the component frames),
+        // since the per-delta chunks no longer match the stripped prose.
+        streamIdentityCorrected = true
+      } else if (isKhalaModel(requestedModel)) {
         const guard = yield* Effect.promise(() =>
           guardKhalaCompletion({ completion: assembledContent }),
         )
@@ -1638,10 +1785,20 @@ export const handleChatCompletions = (
       // exactly as served (byte-for-byte the prior behavior).
       const frameStrings: Array<string> = []
       if (streamIdentityCorrected) {
+        // Prose content frame. When the component channel stripped all prose to
+        // empty (a card-only turn), emit an empty-delta frame so the stream shape
+        // stays a valid OpenAI chunk sequence.
         frameStrings.push(
           sseFrame({
             choices: [
-              { delta: { content: guardedStreamContent }, finish_reason: null, index: 0 },
+              {
+                delta:
+                  guardedStreamContent === ''
+                    ? {}
+                    : { content: guardedStreamContent },
+                finish_reason: null,
+                index: 0,
+              },
             ],
             created,
             id: responseId,
@@ -1649,6 +1806,14 @@ export const handleChatCompletions = (
             object: 'chat.completion.chunk',
           }),
         )
+        // COMPONENT-CHANNEL FRAMES (issue #6127). Each validated card is emitted
+        // as one ATOMIC `event: oa.component` SSE frame, AFTER the prose and
+        // BEFORE the terminal `chat.completion.chunk`. Standard OpenAI clients
+        // ignore the unknown `event:` type and still parse the stream as text;
+        // the Foldkit client switches on `oa.component` to render the typed card.
+        for (const frame of componentFrames) {
+          frameStrings.push(serializeComponentFrame(frame))
+        }
         frameStrings.push(
           sseFrame({
             choices: [

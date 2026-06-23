@@ -47,6 +47,10 @@ import {
 } from './khala-identity'
 import { KHALA_CODE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
+  OA_COMPONENT_SSE_EVENT,
+  type ComponentRepairReask,
+} from './khala-component-channel'
+import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   InferenceProviderRegistry,
@@ -2658,5 +2662,362 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
     // client's own `user` is forwarded unchanged (passthrough), not overwritten.
     expect(captured[0]!.passthroughParams['x-session-affinity']).toBeUndefined()
     expect(captured[0]!.passthroughParams['user']).toBe('should-pass-through')
+  })
+})
+
+// TYPED COMPONENT CHANNEL (EPIC #6123, issue #6127) ------------------------
+// The additive, opt-in `oa.component` SSE channel. These exercise the route
+// wiring end-to-end: a Khala turn streams prose + >=1 validated component frame;
+// the channel is inert by default + for non-opted-in / non-Khala requests; an
+// invalid card is dropped; a provider-identity leak never crosses the channel;
+// and a standard OpenAI client still parses the stream as normal text.
+describe('POST /v1/chat/completions — typed component channel (#6127)', () => {
+  // A buffered (non-streamSse) adapter that returns a scripted completion as a
+  // single chunk. The component channel deliberately forces the buffered path,
+  // so this is the adapter shape the channel re-frames.
+  const bufferedAdapter = (
+    id: string,
+    content: string,
+  ): InferenceProviderAdapter => ({
+    complete: () =>
+      Effect.sync(() => ({
+        content,
+        finishReason: 'stop',
+        servedModel: id,
+        usage: { completionTokens: 5, promptTokens: 5, totalTokens: 10 },
+      })),
+    id,
+    stream: () =>
+      Effect.sync(() => [
+        { contentDelta: content },
+        {
+          contentDelta: '',
+          finishReason: 'stop',
+          servedModel: id,
+          usage: { completionTokens: 5, promptTokens: 5, totalTokens: 10 },
+        },
+      ]),
+  })
+
+  const khalaRegistry = (content: string): InferenceProviderRegistry => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(bufferedAdapter(VERTEX_GEMINI_ADAPTER_ID, content))
+    return registry
+  }
+
+  // Parse an SSE body into BOTH the content deltas (default `data:` chunks) and
+  // the custom `event: oa.component` frames a standard client would ignore.
+  const parseChannelSse = (
+    text: string,
+  ): Readonly<{
+    contentDeltas: ReadonlyArray<string>
+    componentFrames: ReadonlyArray<{
+      v: number
+      component: string
+      props: Record<string, unknown>
+      id: string
+    }>
+    done: boolean
+  }> => {
+    const contentDeltas: Array<string> = []
+    const componentFrames: Array<{
+      v: number
+      component: string
+      props: Record<string, unknown>
+      id: string
+    }> = []
+    let done = false
+    for (const block of text.split('\n\n')) {
+      const lines = block.split('\n')
+      const eventLine = lines.find(l => l.startsWith('event: '))
+      const dataLine = lines.find(l => l.startsWith('data: '))
+      if (dataLine === undefined) continue
+      const payload = dataLine.replace(/^data: /u, '').trim()
+      if (payload === '[DONE]') {
+        done = true
+        continue
+      }
+      if (eventLine?.replace('event: ', '').trim() === OA_COMPONENT_SSE_EVENT) {
+        componentFrames.push(JSON.parse(payload))
+        continue
+      }
+      const chunk = JSON.parse(payload) as {
+        choices?: Array<{ delta?: { content?: string } }>
+      }
+      const delta = chunk.choices?.[0]?.delta?.content
+      if (typeof delta === 'string') contentDeltas.push(delta)
+    }
+    return { componentFrames, contentDeltas, done }
+  }
+
+  const channelDeps = (
+    registry: InferenceProviderRegistry,
+    overrides: Partial<ChatCompletionsDeps> = {},
+  ): ChatCompletionsDeps =>
+    baseDeps({
+      lanePlan: selectAdapterPlan,
+      nowEpochMillis: () => 0,
+      registry,
+      ...overrides,
+    })
+
+  const channelOnConfig = { enabled: true }
+
+  const khalaStreamBody = (extra: Record<string, unknown> = {}) => ({
+    messages: [{ content: 'help me get started', role: 'user' }],
+    model: KHALA_MINI_MODEL_ID,
+    stream: true,
+    ...extra,
+  })
+
+  test('streams prose + >=1 validated oa.component frame when opted in', async () => {
+    const completion = [
+      'Great — here is how we kick this off.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Kick off with $500 in credits"}}',
+      '```',
+      'Click the card to continue.',
+    ].join('\n\n')
+
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const parsed = parseChannelSse(await response.text())
+    // Prose came through as normal content deltas...
+    expect(parsed.contentDeltas.join('')).toContain('kick this off')
+    expect(parsed.contentDeltas.join('')).not.toContain('oa-component')
+    // ...and the validated card came through as one atomic oa.component frame.
+    expect(parsed.componentFrames).toHaveLength(1)
+    expect(parsed.componentFrames[0]?.component).toBe('credit_kickoff')
+    expect(parsed.componentFrames[0]?.v).toBe(1)
+    expect(parsed.componentFrames[0]?.props['amountCents']).toBe(50000)
+    expect(parsed.done).toBe(true)
+  })
+
+  test('a standard OpenAI client still parses the stream as normal text', async () => {
+    // A standard client only reads default `data:` chunks and ignores unknown
+    // `event:` types — so it sees a valid chat.completion.chunk sequence + DONE.
+    const completion = [
+      'Onboarding prose.',
+      '```oa-component',
+      '{"component":"human_handoff","props":{"reason":"x","contact":"y"}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig,
+        }),
+      ),
+    )
+    const text = await response.text()
+    // Every default data frame is a valid chat.completion.chunk; DONE terminates.
+    const parsed = parseChannelSse(text)
+    expect(parsed.done).toBe(true)
+    expect(parsed.contentDeltas.join('')).toContain('Onboarding prose')
+    // A standard client never sees a raw oa-component fence in its text channel.
+    expect(parsed.contentDeltas.join('')).not.toContain('oa-component')
+  })
+
+  test('INERT when the gateway flag is off (no component frames, text unchanged)', async () => {
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Go"}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        // componentChannel ABSENT => flag off => channel inert.
+        channelDeps(khalaRegistry(completion)),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    // No oa.component frames; the fence rides in the raw text channel unchanged.
+    expect(parsed.componentFrames).toHaveLength(0)
+    expect(parsed.contentDeltas.join('')).toContain('oa-component')
+  })
+
+  test('INERT when the request does NOT opt in (default text-only shape)', async () => {
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Go"}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody()), // no opt-in field/header
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig, // flag ON, but request didn't opt in
+        }),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    expect(parsed.componentFrames).toHaveLength(0)
+    expect(parsed.contentDeltas.join('')).toContain('oa-component')
+  })
+
+  test('opt-in via the x-oa-component-channel header also activates the channel', async () => {
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"quick_win_card","props":{"title":"NDA","scope":"one doc","etaDays":3}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody()),
+          headers: { 'x-oa-component-channel': 'on' },
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig,
+        }),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    expect(parsed.componentFrames).toHaveLength(1)
+    expect(parsed.componentFrames[0]?.component).toBe('quick_win_card')
+  })
+
+  test('a non-Khala model never activates the channel even when opted in', async () => {
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Go"}}',
+      '```',
+    ].join('\n\n')
+    const registry = new InferenceProviderRegistry()
+    registry.register(bufferedAdapter(STUB_ECHO_ADAPTER_ID, completion))
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hi', role: 'user' }],
+            model: 'stub-model',
+            oa_component_channel: true,
+            stream: true,
+          }),
+          method: 'POST',
+        }),
+        channelDeps(registry, { componentChannel: channelOnConfig }),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    expect(parsed.componentFrames).toHaveLength(0)
+  })
+
+  test('an unknown/closed-enum-rejected component is DROPPED (never emitted)', async () => {
+    const completion = [
+      'Here is a valid card and an invalid one.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Go"}}',
+      '```',
+      '```oa-component',
+      '{"component":"exfiltrate_secrets","props":{"x":1}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig,
+        }),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    // Only the valid card survives; the unknown component is dropped.
+    expect(parsed.componentFrames).toHaveLength(1)
+    expect(parsed.componentFrames[0]?.component).toBe('credit_kickoff')
+    // The unknown component name never appears anywhere in the wire body.
+    const allComponents = parsed.componentFrames.map(f => f.component)
+    expect(allComponents).not.toContain('exfiltrate_secrets')
+  })
+
+  test('a component whose props leak a provider identity is DROPPED (non-leakage)', async () => {
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"quick_win_card","props":{"title":"We are built on Gemini","scope":"x","etaDays":1}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: channelOnConfig,
+        }),
+      ),
+    )
+    const text = await response.text()
+    const parsed = parseChannelSse(text)
+    // The leaking card is dropped (never emitted as an oa.component frame)...
+    expect(parsed.componentFrames).toHaveLength(0)
+    // ...and the forbidden provider identity never crosses the component channel
+    // OR the prose content channel (the existing `openagents` disclosure block's
+    // own lane/worker fields are a separate, pre-existing receipt surface, not
+    // the model-authored channels this feature governs).
+    expect(
+      JSON.stringify(parsed.componentFrames).toLowerCase(),
+    ).not.toContain('gemini')
+    expect(parsed.contentDeltas.join('').toLowerCase()).not.toContain('gemini')
+  })
+
+  test('an invalid card is repaired via ONE bounded reask, then emitted', async () => {
+    let reaskCalls = 0
+    const repairReask: ComponentRepairReask = async () => {
+      reaskCalls += 1
+      return '```oa-component\n{"component":"credit_kickoff","props":{"amountCents":50000,"label":"Repaired"}}\n```'
+    }
+    const completion = [
+      'Prose.',
+      '```oa-component',
+      '{"component":"credit_kickoff","props":{"amountCents":"bad"}}',
+      '```',
+    ].join('\n\n')
+    const response = await run(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify(khalaStreamBody({ oa_component_channel: true })),
+          method: 'POST',
+        }),
+        channelDeps(khalaRegistry(completion), {
+          componentChannel: { enabled: true, repairReask },
+        }),
+      ),
+    )
+    const parsed = parseChannelSse(await response.text())
+    expect(reaskCalls).toBe(1)
+    expect(parsed.componentFrames).toHaveLength(1)
+    expect(parsed.componentFrames[0]?.props['label']).toBe('Repaired')
   })
 })
