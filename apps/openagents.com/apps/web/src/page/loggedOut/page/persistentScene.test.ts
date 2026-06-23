@@ -2,7 +2,7 @@ import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
-import { KhalaRoute, LandingRoute } from '../../../route'
+import { KhalaRoute, LandingRoute, TassadarRoute } from '../../../route'
 import { update } from '../../../update'
 import { view } from '../../../view'
 import {
@@ -95,7 +95,23 @@ describe('persistent landing and Khala scene', () => {
     expect(stableKeys(allKeys(landing))).toEqual(stableKeys(allKeys(khala)))
   })
 
-  test('renders the landing scene with a client-side Khala link', () => {
+  test('keeps the canvas wrapper key stable for the Tassadar pose too', () => {
+    const landing = persistentSceneView('Landing') as SnabbVNode
+    const tassadar = persistentSceneView('Tassadar') as SnabbVNode
+
+    const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
+    const tassadarCanvas = findByKey(tassadar, PERSISTENT_SCENE_KEY)
+
+    expect(landingCanvas).toBeDefined()
+    expect(tassadarCanvas).toBeDefined()
+    expect(landingCanvas?.sel).toBe(tassadarCanvas?.sel)
+    expect(landingCanvas?.key).toBe(tassadarCanvas?.key)
+    expect(
+      hasSelector(tassadarCanvas as SnabbVNode, 'oa-landing-squares'),
+    ).toBe(true)
+  })
+
+  test('renders the landing scene with both glowing CTAs', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(LandingRoute())),
@@ -104,11 +120,22 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-persistent-scene-shell="landing"]'),
       ).toExist(),
       Scene.expect(Scene.selector('[data-route="landing"]')).toExist(),
+      // CTA 1: renamed "What is Khala?" (still navigates to /khala).
       Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toExist(),
       Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toHaveAttr(
         'type',
         'button',
       ),
+      Scene.expect(Scene.text('What is Khala?')).toExist(),
+      // CTA 2: new "Join the Tassadar training run" (navigates to /tassadar).
+      Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toExist(),
+      Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toHaveAttr(
+        'type',
+        'button',
+      ),
+      Scene.expect(Scene.text('Join the Tassadar training run')).toExist(),
+      // The old neutral copy is gone.
+      Scene.expect(Scene.text('Enter Khala')).not.toExist(),
     )
   })
 
@@ -121,6 +148,26 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-persistent-scene-overlay="khala"]'),
       ).toExist(),
       Scene.expect(Scene.selector('[data-route="khala"]')).toExist(),
+    )
+  })
+
+  test('renders Tassadar as a third pose over the same persistent scene', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(TassadarRoute())),
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-persistent-scene-overlay="tassadar"]'),
+      ).toExist(),
+      Scene.expect(Scene.selector('[data-route="tassadar"]')).toExist(),
+      // The continuous-flight camera pose is passed to the canvas.
+      Scene.expect(Scene.selector('[data-pose="tassadar"]')).toExist(),
+      // The public Tassadar info content + the Copy Agent Instructions button.
+      Scene.expect(Scene.text('Tassadar')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-tassadar-copy="agent-instructions"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Copy Agent Instructions')).toExist(),
     )
   })
 })

@@ -4,9 +4,11 @@ import { pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
 
 import {
+  CompletedCopyAgentInstructions,
   CompletedCopyShareLink,
   CompletedNavigateToKhala,
   CompletedNavigateToLanding,
+  CompletedNavigateToTassadar,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -65,7 +67,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { khalaRouter, landingRouter } from '../../route'
+import { khalaRouter, landingRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
   applySettledFeedPatch,
@@ -670,10 +672,53 @@ export const CopyShareLink = Command.define(
   ),
 )
 
+// The exact, pasteable instruction block the "Copy Agent Instructions" button
+// writes to the clipboard. Composed from the live agent contract
+// (https://openagents.com/AGENTS.md): point the agent at the contract, then the
+// one concrete first step the contract specifies — register an agent — so the
+// pasted text is self-sufficient and grounded, not aspirational.
+export const TASSADAR_AGENT_INSTRUCTIONS = [
+  'Read https://openagents.com/AGENTS.md and join the OpenAgents Tassadar training run.',
+  '',
+  'First step — register an agent (no auth required):',
+  '',
+  'curl -X POST https://openagents.com/api/agents/register \\',
+  '  -H "Content-Type: application/json" \\',
+  "  -d '{\"displayName\": \"YOUR_AGENT_NAME\", \"slug\": \"your-agent-name\"}'",
+  '',
+  'Then install Pylon and join the run:',
+  '  npx @openagentsinc/pylon',
+  '  pylon training status --base-url https://openagents.com',
+  '  pylon training claim',
+  '',
+  'Accepted work is paid in Bitcoin over Lightning, with public receipts.',
+].join('\n')
+
+const CopyAgentInstructionsError = ShareLinkCopyError
+
+export const CopyAgentInstructions = Command.define(
+  'CopyAgentInstructions',
+  { text: S.String },
+  CompletedCopyAgentInstructions,
+)(({ text }) =>
+  Effect.tryPromise({
+    try: () => navigator.clipboard.writeText(text),
+    catch: error => new CopyAgentInstructionsError({ error }),
+  }).pipe(
+    Effect.as(CompletedCopyAgentInstructions()),
+    Effect.catch(() => Effect.succeed(CompletedCopyAgentInstructions())),
+  ),
+)
+
 export const NavigateToKhala = Command.define(
   'NavigateToKhala',
   CompletedNavigateToKhala,
 )(pushUrl(khalaRouter()).pipe(Effect.as(CompletedNavigateToKhala())))
+
+export const NavigateToTassadar = Command.define(
+  'NavigateToTassadar',
+  CompletedNavigateToTassadar,
+)(pushUrl(tassadarRouter()).pipe(Effect.as(CompletedNavigateToTassadar())))
 
 export const NavigateToLanding = Command.define(
   'NavigateToLanding',
@@ -753,6 +798,16 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedEnterKhala: () => [model, [NavigateToKhala()]],
       CompletedNavigateToKhala: () => [model, []],
       ClickedExitKhala: () => [model, [NavigateToLanding()]],
+      ClickedEnterTassadar: () => [model, [NavigateToTassadar()]],
+      CompletedNavigateToTassadar: () => [model, []],
+      ClickedCopyAgentInstructions: ({ text }) => [
+        model,
+        [CopyAgentInstructions({ text })],
+      ],
+      CompletedCopyAgentInstructions: () => [
+        evo(model, { copiedAgentInstructions: () => true }),
+        [],
+      ],
       CompletedNavigateToLanding: () => [model, []],
       ClickedOnboardingStep: ({ step }) => [
         evo(model, {

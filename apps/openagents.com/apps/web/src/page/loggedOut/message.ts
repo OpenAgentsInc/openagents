@@ -24,6 +24,14 @@ export const ClickedCopyShareLink = m('ClickedCopyShareLink', {
 export const ClickedEnterKhala = m('ClickedEnterKhala')
 export const CompletedNavigateToKhala = m('CompletedNavigateToKhala')
 export const ClickedExitKhala = m('ClickedExitKhala')
+export const ClickedEnterTassadar = m('ClickedEnterTassadar')
+export const CompletedNavigateToTassadar = m('CompletedNavigateToTassadar')
+export const ClickedCopyAgentInstructions = m('ClickedCopyAgentInstructions', {
+  text: S.String,
+})
+export const CompletedCopyAgentInstructions = m(
+  'CompletedCopyAgentInstructions',
+)
 export const CompletedNavigateToLanding = m('CompletedNavigateToLanding')
 export const ClickedOnboardingStep = m('ClickedOnboardingStep', {
   step: OnboardingStep,
@@ -187,6 +195,10 @@ export const Message = S.Union([
   ClickedEnterKhala,
   CompletedNavigateToKhala,
   ClickedExitKhala,
+  ClickedEnterTassadar,
+  CompletedNavigateToTassadar,
+  ClickedCopyAgentInstructions,
+  CompletedCopyAgentInstructions,
   CompletedNavigateToLanding,
   ClickedOnboardingStep,
   SelectedOnboardingRepository,
