@@ -333,12 +333,95 @@ export const sparkTreasuryFundingPayload = async () => {
   }
 }
 
+// ---- BOLT11 payment-hash decode (dependency-free) ----
+//
+// The Spark `receivePayment` response returns only the bolt11 `paymentRequest`
+// (and a fee) — NOT the payment hash. The OpenAgents MPP Lightning rail needs the
+// raw payment hash for the 402 challenge (the bearer preimage is verified
+// LOCALLY in the Worker as sha256(preimage) === paymentHash; the container never
+// sees the preimage). The payment hash IS carried inside the bolt11 itself: the
+// BOLT11 `p` tagged field is the 32-byte payment hash. We decode it here from the
+// invoice the SDK just minted — deterministic, no extra SDK round-trip, no new
+// dependency. Failure to decode is non-fatal: we still return the invoice and the
+// Worker fail-closes (drops the Lightning rail) on a missing/invalid hash.
+const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l'
+
+export const bolt11PaymentHashHex = bolt11 => {
+  try {
+    if (typeof bolt11 !== 'string') {
+      return null
+    }
+    const lower = bolt11.trim().toLowerCase()
+    const sep = lower.lastIndexOf('1')
+    if (sep < 1) {
+      return null
+    }
+    const data = lower.slice(sep + 1)
+    // The trailing 6 5-bit groups are the bech32 checksum (not signature). The
+    // signature is 104 5-bit groups before that. Decode every data char to a
+    // 5-bit value first; we then walk the tagged fields from the front.
+    const values = []
+    for (const ch of data) {
+      const v = BECH32_CHARSET.indexOf(ch)
+      if (v === -1) {
+        return null
+      }
+      values.push(v)
+    }
+    // Strip the 6-group checksum.
+    const body = values.slice(0, Math.max(0, values.length - 6))
+    // Timestamp is the first 7 groups (35 bits); tagged fields follow.
+    let i = 7
+    while (i + 3 <= body.length) {
+      const tag = body[i]
+      const len = body[i + 1] * 32 + body[i + 2]
+      const dataStart = i + 3
+      const dataEnd = dataStart + len
+      if (dataEnd > body.length) {
+        return null
+      }
+      // Tag 1 ('p') is the payment hash: 52 groups = 260 bits, first 256 = hash.
+      if (tag === 1 && len === 52) {
+        const fieldGroups = body.slice(dataStart, dataEnd)
+        // Convert 5-bit groups to bytes (big-endian), take the first 32 bytes.
+        let acc = 0
+        let bits = 0
+        const bytes = []
+        for (const g of fieldGroups) {
+          acc = (acc << 5) | g
+          bits += 5
+          while (bits >= 8) {
+            bits -= 8
+            bytes.push((acc >> bits) & 0xff)
+          }
+        }
+        if (bytes.length < 32) {
+          return null
+        }
+        return bytes
+          .slice(0, 32)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('')
+      }
+      i = dataEnd
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 export const sparkTreasuryFundingInvoicePayload = async input => {
   const amountSat = Number(input?.amountSat)
 
   if (!Number.isInteger(amountSat) || amountSat <= 0) {
     return { error: 'amount_sat_must_be_positive_integer', status: 400 }
   }
+
+  const description =
+    typeof input?.description === 'string' && input.description.trim() !== ''
+      ? input.description.trim().slice(0, 120)
+      : 'OpenAgents Spark treasury funding'
 
   const sdk = await buildSparkSdk()
   await syncWallet(sdk)
@@ -349,7 +432,7 @@ export const sparkTreasuryFundingInvoicePayload = async input => {
       sdk.receivePayment({
         paymentMethod: {
           amountSats: amountSat,
-          description: 'OpenAgents Spark treasury funding',
+          description,
           expirySecs: 3600,
           type: 'bolt11Invoice',
         },
@@ -376,19 +459,95 @@ export const sparkTreasuryFundingInvoicePayload = async input => {
     }
   }
 
-  return typeof response?.paymentRequest === 'string' &&
-    response.paymentRequest.trim() !== ''
-    ? {
-        amountSat,
-        bolt11Invoice: response.paymentRequest,
-        expiresInSeconds: 3600,
-        rail: 'spark',
-      }
-    : {
-        error: 'spark_treasury_funding_invoice_unavailable',
-        failureStage: 'spark_receive_payment_bolt11_invoice_empty_response',
-        status: 502,
-      }
+  if (
+    typeof response?.paymentRequest !== 'string' ||
+    response.paymentRequest.trim() === ''
+  ) {
+    return {
+      error: 'spark_treasury_funding_invoice_unavailable',
+      failureStage: 'spark_receive_payment_bolt11_invoice_empty_response',
+      status: 502,
+    }
+  }
+
+  const bolt11Invoice = response.paymentRequest.trim()
+  // Prefer the SDK-reported payment hash when present; otherwise decode it from
+  // the bolt11 we just minted (the `p` tagged field). Either way the hash is
+  // PUBLIC (it goes into the 402 challenge); only the preimage is secret.
+  const sdkPaymentHash =
+    typeof response?.payment?.details?.htlcDetails?.paymentHash === 'string'
+      ? response.payment.details.htlcDetails.paymentHash.toLowerCase()
+      : null
+  const paymentHash =
+    sdkPaymentHash !== null && /^[0-9a-f]{64}$/.test(sdkPaymentHash)
+      ? sdkPaymentHash
+      : bolt11PaymentHashHex(bolt11Invoice)
+
+  return {
+    amountSat,
+    bolt11Invoice,
+    expiresInSeconds: 3600,
+    ...(paymentHash === null ? {} : { paymentHash }),
+    rail: 'spark',
+  }
+}
+
+// Offline-receive confirmation for a Spark BOLT11 invoice. Spark supports
+// receiving while the recipient is offline; once the wallet next syncs, the
+// settled payment appears in `listPayments` (receive type) with status
+// Completed and its htlcDetails.paymentHash matching the minted invoice. This is
+// how the Worker confirms an MPP Lightning charge was paid. We return only the
+// minimal public-safe receipt fields; no preimage or raw payment material.
+export const sparkTreasuryReceivedPayload = async paymentHash => {
+  const normalized =
+    typeof paymentHash === 'string' ? paymentHash.trim().toLowerCase() : ''
+
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    return { error: 'payment_hash_must_be_hex_32_bytes', status: 400 }
+  }
+
+  const sdk = await buildSparkSdk()
+  await syncWallet(sdk)
+
+  let payments
+  try {
+    const response = await withTimeout(
+      sdk.listPayments({
+        limit: 200,
+        offset: 0,
+        typeFilter: ['receive'],
+      }),
+      timeoutMs(),
+      'spark listPayments',
+    )
+    payments = Array.isArray(response?.payments)
+      ? response.payments
+      : Array.isArray(response)
+        ? response
+        : []
+  } catch {
+    return { received: false, settled: false, status: 200 }
+  }
+
+  const match = payments.find(payment => {
+    const hash = payment?.details?.htlcDetails?.paymentHash
+    return typeof hash === 'string' && hash.toLowerCase() === normalized
+  })
+
+  if (match === undefined) {
+    return { received: false, settled: false, status: 200 }
+  }
+
+  const status = publicStatus(match.status)
+  const settled =
+    status !== null && /^(completed|complete|succeeded|success)$/i.test(status)
+
+  return {
+    amountSat: toSatNumber(match.amount) ?? null,
+    received: true,
+    settled,
+    status: 200,
+  }
 }
 
 export const sparkTreasuryPayPayload = async input => {

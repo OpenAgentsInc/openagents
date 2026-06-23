@@ -10,17 +10,29 @@ This is the invariant ledger for `openagents`.
   agent payment issuance / receipt / settlement. Spark is required because it
   supports **offline receives**, which agent payments need.
 - **MDK (MoneyDevKit, `@moneydevkit/*`, the `MDK_SIDECAR` / `mdkd` container) is
-  SECONDARY and for CHECKOUTS ONLY** (the `/api/mdk` `self_hosted_mdkd_sidecar`
-  flow, Forum tips/checkouts). MDK **must not** be used for agent payments or
-  MPP — it does not support offline receives.
+  for CHECKOUTS ONLY** (the `/api/mdk` `self_hosted_mdkd_sidecar` flow, Forum
+  tips/checkouts) and is permitted as an agent/MPP rail **ONLY as an explicit
+  FALLBACK Lightning issuer (never primary)**. MDK must never be re-asserted as
+  the primary or default agent/MPP rail — it does not support offline receives,
+  so it is used only when Spark is unavailable/unconfigured.
 - History (do not regress): Spark was stripped for MDK previously, then **re-added
   as the primary rail**, demoting MDK to secondary; Pylon was moved to Spark
   (2026-06). Never re-assert "MDK is the agent/MPP rail."
-- **Open violation:** the current MPP Lightning issuer
-  (`workers/api/src/inference/mpp/mpp-lightning-invoice-mdk.ts`) mints via the MDK
-  sidecar and therefore breaks this invariant. It is **disarmed**
-  (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod) and must be **rebuilt on Spark**
-  before the Lightning MPP rail is armed. See `docs/mpp/`.
+- **MPP Lightning issuer (Spark primary, MDK fallback):** the Lightning MPP rail
+  issuer selector (`workers/api/src/index.ts` `lightningInvoiceIssuerForEnv`)
+  tries the **Spark issuer first**
+  (`workers/api/src/inference/mpp/mpp-lightning-invoice-spark.ts`, minting a Spark
+  BOLT11 via the `MDK_TREASURY` container's `POST /spark/funding-invoice`), and
+  falls back to the MDK issuer
+  (`workers/api/src/inference/mpp/mpp-lightning-invoice-mdk.ts`) **only when Spark
+  is unavailable/unconfigured**. Both legs stay behind the
+  `KHALA_MPP_LIGHTNING_ENABLED` gate, each keeps its bounded mint timeout, and the
+  combined attempt stays under the route's per-rail guard (#6149) so a slow/failed
+  issuer can only ever drop the Lightning rail, never hang the endpoint. The
+  preimage is verified LOCALLY (`sha256(preimage) === paymentHash`); offline
+  receipt is confirmable via the container's `GET /spark/received/:paymentHash`.
+  Disarmed by default (`KHALA_MPP_LIGHTNING_ENABLED` unset on prod). See
+  `docs/mpp/`.
 - Owner directive, 2026-06-23.
 
 ## Login Surface
@@ -868,8 +880,9 @@ This is the invariant ledger for `openagents`.
   boundary violation. The preimage is a bearer secret: never logged, persisted,
   or returned; the receipt/replay key is the paymentHash. The Lightning rail is
   fail-closed inert unless `KHALA_MPP_LIGHTNING_ENABLED` + `KHALA_MPP_ENABLED` +
-  a working MDK BOLT11 invoice issuer are all present (honesty gate: never
-  advertise a rail we cannot fulfill), and consume-once is enforced atomically
+  a working BOLT11 invoice issuer (Spark primary, MDK fallback) are all present
+  (honesty gate: never advertise a rail we cannot fulfill), and consume-once is
+  enforced atomically
   via `mpp_lightning_replay`. Regression coverage:
   `workers/api/src/inference/mpp/mpp-lightning-verify.test.ts`,
   `workers/api/src/inference/mpp/mpp-lightning-replay.test.ts`,
