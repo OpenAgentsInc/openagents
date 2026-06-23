@@ -327,6 +327,7 @@ import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
 } from './inference/discovery-surfaces'
+import { renderMppDiscoveryDocument } from './inference/mpp-discovery-document'
 import {
   handleMppChatCompletions,
   isKhalaMppEnabled,
@@ -9815,6 +9816,37 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       path: surfacePath,
     }),
   ),
+  {
+    // MPP service-discovery document (EPIC #6049). The Machine Payments Protocol
+    // registries (MPPScan, mpp.dev/services) crawl `GET /openapi.json` to light
+    // the Machine Payments badge for Khala. OpenAPI 3.1 with `x-service-info`
+    // (root) + per-operation `x-payment-info` (canonical multi-offer form).
+    //
+    // HONESTY GATE: the paid `/mpp/v1/chat/completions` path's offers + 402 are
+    // emitted ONLY when the MPP endpoint is actually armed — the SAME
+    // KHALA_MPP_ENABLED flag the route reads from config.ts (and the card offer
+    // only when STRIPE_MPP_NETWORK_PROFILE_ID is set, the same condition that
+    // arms the card rail). Inert => the document omits the paid path and
+    // advertises nothing payable. The document itself is always served (free
+    // description + x-service-info) so registries can still discover the service.
+    path: '/openapi.json',
+    handler: (request, env, ctx) => {
+      recordPublicAgentFunnelRead(
+        request,
+        openAgentsDatabase(env),
+        ctx,
+        'openapi_read',
+        '/openapi.json',
+      )
+
+      return renderMppDiscoveryDocument(request, {
+        cardRailEnabled:
+          env.STRIPE_MPP_NETWORK_PROFILE_ID !== undefined &&
+          env.STRIPE_MPP_NETWORK_PROFILE_ID.trim() !== '',
+        mppEnabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
+      })
+    },
+  },
   {
     path: '/api/openapi.json',
     handler: (request, env, ctx) => {
