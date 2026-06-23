@@ -215,6 +215,9 @@ Current checks:
 - `openagents_khala_model`: the Khala lane uses `openagents/khala`.
 - `khala_accepted_outcome`: the Khala run has an accepted verifier outcome.
 - `m7_live_conductor`: the Khala coordinator mode is `live_conductor`.
+- `m7_conductor_preflight`: the Khala run cites
+  `preflight.khala.m7.conductor.publishable.v0_1`, proving the M7 Conductor
+  preflight was publishable before the M8 live claim.
 - `settlement_receipts`: the Khala run has settlement receipts.
 - `verse_playback`: the Khala run has a Verse playback ref.
 - `artifact_playable_in_world`: the artifact has a playable-in-world ref.
@@ -238,6 +241,7 @@ Minimum live evidence:
 - a live `openagents/khala` run, not only `khala-mini` or fixture data;
 - a live frontier baseline run;
 - a verifier receipt for the accepted outcome;
+- a publishable M7 Conductor preflight evidence ref;
 - settlement refs for worker and validator payment;
 - Verse playback refs and artifact-in-world playback refs;
 - measured energy telemetry for AO/kWh;

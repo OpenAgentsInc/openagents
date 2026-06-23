@@ -6,6 +6,7 @@ const fixturePath = new URL(
   "../../docs/inference/fixtures/khala-head-to-head-dry-run.v1.json",
   import.meta.url,
 );
+const M7_CONDUCTOR_PREFLIGHT_REF = "preflight.khala.m7.conductor.publishable.v0_1";
 
 function cloneFixtureManifest() {
   return structuredClone(loadManifest(fixturePath));
@@ -60,6 +61,7 @@ function livePromotionManifest() {
   const khalaRun = liveManifest.runs.find((run) => run.lane === "khala");
   khalaRun.coordinator.mode = "live_conductor";
   khalaRun.coordinator.promoted = true;
+  khalaRun.acceptedOutcome.evidenceRefs.push(M7_CONDUCTOR_PREFLIGHT_REF);
   khalaRun.settlement.settled = true;
   khalaRun.settlement.receiptRefs = [liveRef(), liveRef()];
 
@@ -130,6 +132,27 @@ describe("Khala head-to-head reducer", () => {
     expect(metrics.livePromotionAudit.fixtureRefPaths.length).toBeGreaterThan(0);
     expect(metrics.livePromotionAudit.blockerRefs).toContain(
       "blocker.khala_demo.live_manifest_contains_fixture_refs",
+    );
+    expect(metrics.closureAudit.canClose).toBe(false);
+  });
+
+  test("blocks live promotion when the M7 preflight evidence ref is missing", () => {
+    const manifest = livePromotionManifest();
+    const khalaRun = manifest.runs.find((run) => run.lane === "khala");
+    khalaRun.acceptedOutcome.evidenceRefs = khalaRun.acceptedOutcome.evidenceRefs.filter(
+      (ref) => ref !== M7_CONDUCTOR_PREFLIGHT_REF,
+    );
+
+    const metrics = reduceKhalaHeadToHeadManifest(manifest);
+
+    expect(metrics.livePromotionAudit.blockerRefs).toContain(
+      "blocker.khala_demo.m7_conductor_preflight_missing",
+    );
+    expect(metrics.livePromotionAudit.checks).toContainEqual(
+      expect.objectContaining({
+        id: "m7_live_conductor",
+        passed: true,
+      }),
     );
     expect(metrics.closureAudit.canClose).toBe(false);
   });

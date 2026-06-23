@@ -441,8 +441,10 @@ ingests only after they become dereferenceable.
    setup, methodology, raw inputs, accepted-outcome verdict, payment/settlement
    refs, Verse playback refs, artifact playback refs, and honest losses.
 5. **#6016-E — Live promotion gate.** Replace fixture refs only when M3/M5/M7
-   provide dereferenceable evidence. Any world-first, AO/kWh, or public product
-   claim upgrade remains blocked on DE-10 acceptance and owner sign-off.
+   provide dereferenceable evidence, including
+   `preflight.khala.m7.conductor.publishable.v0_1` for the M7 Conductor
+   preflight. Any world-first, AO/kWh, or public product claim upgrade remains
+   blocked on DE-10 acceptance and owner sign-off.
 
 **Starting issue:** start on #6016 with subissue anchor #6016-A ("Evidence schema
 and runbook"). Create real GitHub child issues only when separate agents need

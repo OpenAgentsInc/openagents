@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const MANIFEST_SCHEMA = "openagents.khala_head_to_head_evidence.v1";
 const METRICS_SCHEMA = "openagents.khala_head_to_head_metrics.v1";
+const M7_CONDUCTOR_PREFLIGHT_REF = "preflight.khala.m7.conductor.publishable.v0_1";
 const VALID_TOP_LEVEL_MODES = new Set(["fixture_scaffold", "live"]);
 const VALID_RUN_MODES = new Set(["fixture_scaffold", "live", "reported_external"]);
 const VALID_LANES = new Set(["khala", "frontier_baseline", "reported_external"]);
@@ -279,6 +280,7 @@ function metricForRun(run) {
       verdictRef: run.acceptedOutcome.verdictRef,
       verifierRef: run.acceptedOutcome.verifierRef,
       acceptedOutcomeReceiptRef: run.acceptedOutcome.receiptRef,
+      acceptedOutcomeEvidenceRefs: run.acceptedOutcome.evidenceRefs,
       artifactRef: run.artifact.artifactRef,
       playableInWorldRef: run.artifact.playableInWorldRef,
       versePlaybackRef: run.verse.playbackRef,
@@ -317,6 +319,25 @@ function collectFixtureRefPaths(value, path = "$", out = []) {
     }
   }
   return out;
+}
+
+function runHasRef(run, expectedRef) {
+  if (run === undefined) {
+    return false;
+  }
+  const refs = [
+    run.refs.verdictRef,
+    run.refs.verifierRef,
+    run.refs.acceptedOutcomeReceiptRef,
+    ...run.refs.acceptedOutcomeEvidenceRefs,
+    run.refs.artifactRef,
+    run.refs.playableInWorldRef,
+    run.refs.versePlaybackRef,
+    run.refs.energyMeasurementRef,
+    ...run.refs.sourceRefs,
+    ...run.settlement.receiptRefs,
+  ];
+  return refs.includes(expectedRef);
 }
 
 function promotionCheck(checks, id, passed, blockerRef, detail) {
@@ -378,6 +399,15 @@ function deriveLivePromotionAudit(manifest, metrics) {
     khalaRun !== undefined && khalaRun.coordinatorMode === "live_conductor",
     "blocker.khala_demo.m7_live_conductor_missing",
     khalaRun === undefined ? "missing khala lane" : `coordinator mode is ${khalaRun.coordinatorMode}`,
+  );
+  promotionCheck(
+    checks,
+    "m7_conductor_preflight",
+    runHasRef(khalaRun, M7_CONDUCTOR_PREFLIGHT_REF),
+    "blocker.khala_demo.m7_conductor_preflight_missing",
+    khalaRun === undefined
+      ? "missing khala lane"
+      : `requires evidence ref ${M7_CONDUCTOR_PREFLIGHT_REF}`,
   );
   promotionCheck(
     checks,
@@ -453,6 +483,7 @@ function deriveClosureAudit(manifest, livePromotionAudit) {
       "live openagents/khala run",
       "live frontier baseline run",
       "accepted-outcome verifier receipt",
+      "publishable M7 Conductor preflight ref",
       "worker and validator settlement receipts",
       "Verse playback ref",
       "artifact playable in the three-effect world",
