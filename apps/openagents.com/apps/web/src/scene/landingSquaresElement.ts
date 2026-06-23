@@ -22,7 +22,13 @@ export const landingSquaresTagName = 'oa-landing-squares'
 const POSE_ATTRIBUTE = 'data-pose'
 
 const parsePose = (value: string | null): LandingPose =>
-  value === 'khala' ? 'khala' : value === 'tassadar' ? 'tassadar' : 'landing'
+  value === 'khala'
+    ? 'khala'
+    : value === 'tassadar'
+      ? 'tassadar'
+      : value === 'autopilot'
+        ? 'autopilot'
+        : 'landing'
 
 const landingSquaresElement = defineCustomElement({
   events: {},

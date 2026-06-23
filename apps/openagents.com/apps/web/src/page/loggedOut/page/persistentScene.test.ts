@@ -9,6 +9,7 @@ import {
   PERSISTENT_SCENE_KEY,
   PERSISTENT_SCENE_OVERLAY_PREFIX,
   PERSISTENT_SCENE_SHELL_KEY,
+  poseForRoute,
   view as persistentSceneView,
 } from './persistentScene'
 import { view as khalaView } from './khala'
@@ -118,6 +119,69 @@ describe('persistent landing and Khala scene', () => {
     expect(landingCanvas?.key).toBe(tassadarCanvas?.key)
     expect(
       hasSelector(tassadarCanvas as SnabbVNode, 'oa-landing-squares'),
+    ).toBe(true)
+  })
+
+  test('maps each route to its distinct, non-blank camera pose', () => {
+    expect(poseForRoute('Landing')).toBe('landing')
+    expect(poseForRoute('Khala')).toBe('khala')
+    expect(poseForRoute('Tassadar')).toBe('tassadar')
+    // The /autopilot onboarding route reuses the SAME persistent scene with
+    // its own camera pose (#6125).
+    expect(poseForRoute('Autopilot')).toBe('autopilot')
+
+    const poses = (
+      ['Landing', 'Khala', 'Tassadar', 'Autopilot'] as const
+    ).map(poseForRoute)
+    expect(new Set(poses).size).toBe(poses.length)
+    for (const pose of poses) {
+      expect(pose.trim().length).toBeGreaterThan(0)
+    }
+  })
+
+  test('hosts the Autopilot pose on the same persistent canvas (no second scene)', () => {
+    const landing = persistentSceneView('Landing') as SnabbVNode
+    const autopilot = persistentSceneView('Autopilot') as SnabbVNode
+
+    const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
+    const autopilotCanvas = findByKey(autopilot, PERSISTENT_SCENE_KEY)
+
+    expect(landingCanvas).toBeDefined()
+    expect(autopilotCanvas).toBeDefined()
+    // Same keyed canvas wrapper => one persistent scene instance, not two.
+    expect(landingCanvas?.sel).toBe(autopilotCanvas?.sel)
+    expect(landingCanvas?.key).toBe(autopilotCanvas?.key)
+    expect(
+      hasSelector(autopilotCanvas as SnabbVNode, 'oa-landing-squares'),
+    ).toBe(true)
+
+    // Only the overlay key differs between routes; every other key is stable.
+    const stableKeys = (keys: ReadonlyArray<string>): ReadonlyArray<string> =>
+      keys.filter(k => !k.startsWith(PERSISTENT_SCENE_OVERLAY_PREFIX))
+    expect(stableKeys(allKeys(landing))).toEqual(stableKeys(allKeys(autopilot)))
+  })
+
+  test('passes the autopilot pose + overlay through the shared shell', () => {
+    // The /autopilot route wiring lands in #6124/#6129; here we verify the
+    // persistentScene mapping SUPPORTS the Autopilot pose directly off the view.
+    const autopilot = persistentSceneView('Autopilot') as SnabbVNode
+
+    const hasAttr = (root: SnabbVNode, attr: string, value: string): boolean => {
+      let present = false
+      walk(root, n => {
+        const data = (n as { data?: { attrs?: Record<string, unknown> } }).data
+        if (data?.attrs?.[attr] === value) {
+          present = true
+        }
+      })
+      return present
+    }
+
+    expect(hasSelector(autopilot, 'oa-landing-squares')).toBe(true)
+    expect(hasAttr(autopilot, 'data-pose', 'autopilot')).toBe(true)
+    expect(hasAttr(autopilot, 'data-route', 'autopilot')).toBe(true)
+    expect(
+      hasAttr(autopilot, 'data-persistent-scene-overlay', 'autopilot'),
     ).toBe(true)
   })
 

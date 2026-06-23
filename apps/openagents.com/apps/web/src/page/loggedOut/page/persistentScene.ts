@@ -12,13 +12,25 @@ export const PERSISTENT_SCENE_KEY = 'persistent-landing-scene'
 export const PERSISTENT_SCENE_SHELL_KEY = 'persistent-scene-shell'
 export const PERSISTENT_SCENE_OVERLAY_PREFIX = 'persistent-scene-overlay:'
 
-export type PersistentSceneRoute = 'Landing' | 'Khala' | 'Tassadar'
+export type PersistentSceneRoute =
+  | 'Landing'
+  | 'Khala'
+  | 'Tassadar'
+  | 'Autopilot'
 
 // Active route -> camera pose. The canvas node is keyed the same across
-// /landing <-> /khala <-> /tassadar so it persists; only this attribute
-// changes, and the element eases the camera to the new pose (continuous flight).
-const poseForRoute = (route: PersistentSceneRoute): string =>
-  route === 'Khala' ? 'khala' : route === 'Tassadar' ? 'tassadar' : 'landing'
+// /landing <-> /khala <-> /tassadar <-> /autopilot so the ONE scene instance
+// persists; only this attribute changes, and the element eases the camera to
+// the new pose (continuous flight). /autopilot reuses the same keyed canvas
+// with its own onboarding `autopilot` vantage — no second scene is created.
+export const poseForRoute = (route: PersistentSceneRoute): string =>
+  route === 'Khala'
+    ? 'khala'
+    : route === 'Tassadar'
+      ? 'tassadar'
+      : route === 'Autopilot'
+        ? 'autopilot'
+        : 'landing'
 
 const persistentCanvasLayer = (
   h: ReturnType<typeof html<Message>>,
@@ -119,6 +131,32 @@ const tassadarOverlay = (
     [tassadarView(copiedAgentInstructions)],
   )
 
+// Minimal onboarding overlay for the shared persistent scene at the `autopilot`
+// pose. The full /autopilot onboarding UI + route wiring lands in #6124/#6129;
+// this placeholder only proves the SAME keyed canvas hosts an `Autopilot` pose
+// (no second scene instance). It reuses the shared khala-* glow utilities (see
+// styles.css) so any CTA energy matches the rest of the scene.
+const autopilotOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+  h.div(
+    [
+      h.DataAttribute('persistent-scene-overlay', 'autopilot'),
+      Ui.className<Message>(
+        'pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 px-6',
+      ),
+    ],
+    [
+      h.div(
+        [
+          h.DataAttribute('autopilot-glow', 'energy'),
+          Ui.className<Message>(
+            'khala-glow select-none text-center font-semibold text-white text-4xl sm:text-6xl',
+          ),
+        ],
+        ['Autopilot'],
+      ),
+    ],
+  )
+
 const overlayForRoute = (
   h: ReturnType<typeof html<Message>>,
   route: PersistentSceneRoute,
@@ -128,7 +166,9 @@ const overlayForRoute = (
     ? landingOverlay(h)
     : route === 'Tassadar'
       ? tassadarOverlay(h, copiedAgentInstructions)
-      : khalaOverlay(h)
+      : route === 'Autopilot'
+        ? autopilotOverlay(h)
+        : khalaOverlay(h)
 
 export const view = (
   route: PersistentSceneRoute,
