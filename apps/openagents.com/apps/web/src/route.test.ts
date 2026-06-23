@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  AutopilotOnboardingRoute,
   AutopilotWorkDetailRoute,
   AutopilotWorkRoute,
-  ChatRoute,
   Demo2OrderRoute,
   Demo2Route,
   Demo2TeamFileRoute,
@@ -65,8 +65,16 @@ describe('app route parser', () => {
     )
   })
 
-  test('accepts the operator Autopilot shell route', () => {
-    expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(ChatRoute())
+  test('accepts Autopilot onboarding routes with an optional vertical segment', () => {
+    expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(
+      AutopilotOnboardingRoute({ vertical: null }),
+    )
+    expect(urlToAppRoute(appUrl('/autopilot/legal'))).toEqual(
+      AutopilotOnboardingRoute({ vertical: 'legal' }),
+    )
+    expect(urlToAppRoute(appUrl('/autopilot/Legal'))).toEqual(
+      NotFoundRoute({ path: '/autopilot/Legal' }),
+    )
   })
 
   test('accepts Autopilot work visibility routes', () => {

@@ -8,6 +8,7 @@ import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
+import * as AutopilotOnboarding from '../autopilot-onboarding'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
@@ -113,6 +114,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                   settledFeed: model.settledFeed,
                 }),
               Invite: () => notFoundView('/invite', homeRouter(), 'Go Home'),
+              AutopilotOnboarding: route =>
+                AutopilotOnboarding.view(route, { _tag: 'LoggedOut' }),
               Onboarding: () => Onboarding.view(model.onboarding),
               Docs: route => Docs.view(route, { _tag: 'LoggedOut' }),
               DocsPage: route => Docs.view(route, { _tag: 'LoggedOut' }),

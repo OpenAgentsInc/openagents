@@ -523,6 +523,19 @@ describe('authenticated startup routing', () => {
     expect(commands).toHaveLength(0)
   })
 
+  test('keeps logged-out Autopilot vertical visits on onboarding', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/autopilot/legal'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'AutopilotOnboarding', vertical: 'legal' },
+    })
+    expect(commands).toHaveLength(0)
+  })
+
   test('redirects complete authenticated onboarding visits to order status', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithTeam) }),
@@ -863,6 +876,19 @@ describe('authenticated startup routing', () => {
       href: '/api/sync/workspace/github%3A14167547/snapshot',
       scope: 'workspace:github:14167547',
     })
+  })
+
+  test('keeps signed-in visitors without a workspace on Autopilot onboarding', () => {
+    const [model, commands] = init(
+      Flags.make({ maybeAuth: Option.some(authWithoutCoreTeam) }),
+      appUrl('/autopilot/legal'),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: { _tag: 'AutopilotOnboarding', vertical: 'legal' },
+    })
+    expect(commands).toHaveLength(0)
   })
 
   test('does not expose the deprecated dashboard route', () => {

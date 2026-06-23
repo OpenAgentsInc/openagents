@@ -195,6 +195,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
 
 export const browserRouteProductIntents = {
   Admin: 'admin.overview',
+  AutopilotOnboarding: 'autopilot.onboarding',
   AutopilotWork: 'autopilot.work.index',
   AutopilotWorkDetail: 'autopilot.work.detail',
   Billing: 'billing.credits',

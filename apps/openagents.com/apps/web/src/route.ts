@@ -1,4 +1,4 @@
-import { Schema as S, pipe } from 'effect'
+import { Effect, Schema as S, pipe } from 'effect'
 import { Route } from 'foldkit'
 import { literal, r, slash, string } from 'foldkit/route'
 import type { Url } from 'foldkit/url'
@@ -8,6 +8,9 @@ export const InviteRoute = r('Invite')
 export const OnboardingRoute = r('Onboarding')
 export const OrderRoute = r('Order')
 export const OrderDetailRoute = r('OrderDetail', { orderId: S.String })
+export const AutopilotOnboardingRoute = r('AutopilotOnboarding', {
+  vertical: S.NullOr(S.String),
+})
 export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
@@ -116,6 +119,7 @@ export type InviteRoute = typeof InviteRoute.Type
 export type OnboardingRoute = typeof OnboardingRoute.Type
 export type OrderRoute = typeof OrderRoute.Type
 export type OrderDetailRoute = typeof OrderDetailRoute.Type
+export type AutopilotOnboardingRoute = typeof AutopilotOnboardingRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
 export type ForgeRoute = typeof ForgeRoute.Type
@@ -195,6 +199,7 @@ export const LoggedOutRoute = S.Union([
   PublicStatsArchiveRoute,
   InviteRoute,
   OnboardingRoute,
+  AutopilotOnboardingRoute,
   DocsRoute,
   DocsPageRoute,
   ProductPromisesRoute,
@@ -292,6 +297,7 @@ export const AppRoute = S.Union([
   OnboardingRoute,
   OrderRoute,
   OrderDetailRoute,
+  AutopilotOnboardingRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
   ForgeRoute,
@@ -384,6 +390,60 @@ export const orderDetailRouter = pipe(
   literal('orders'),
   slash(string('orderId')),
   Route.mapTo(OrderDetailRoute),
+)
+const autopilotVerticalPattern = /^[a-z0-9-]+$/
+const autopilotOnboardingHref = (
+  value: Omit<AutopilotOnboardingRoute, '_tag'>,
+): string =>
+  value.vertical === null ? '/autopilot' : `/autopilot/${value.vertical}`
+export const autopilotOnboardingRouter = Object.assign(
+  (value: Omit<AutopilotOnboardingRoute, '_tag'>): string =>
+    autopilotOnboardingHref(value),
+  {
+    build: (value: Omit<AutopilotOnboardingRoute, '_tag'>): string =>
+      autopilotOnboardingHref(value),
+    parse: (
+      segments: ReadonlyArray<string>,
+    ): Effect.Effect<
+      Route.ParseResult<AutopilotOnboardingRoute>,
+      Route.ParseError
+    > => {
+      if (segments[0] !== 'autopilot') {
+        return Effect.fail(
+          new Route.ParseError({
+            actual: segments[0] ?? 'end of path',
+            expected: 'autopilot',
+            message: "Expected 'autopilot'",
+            position: 0,
+          }),
+        )
+      }
+
+      const vertical = segments[1]
+      if (vertical === undefined) {
+        return Effect.succeed([
+          AutopilotOnboardingRoute({ vertical: null }),
+          [],
+        ])
+      }
+
+      if (!autopilotVerticalPattern.test(vertical)) {
+        return Effect.fail(
+          new Route.ParseError({
+            actual: vertical,
+            expected: 'lowercase autopilot vertical segment',
+            message: 'Expected lowercase autopilot vertical segment',
+            position: 1,
+          }),
+        )
+      }
+
+      return Effect.succeed([
+        AutopilotOnboardingRoute({ vertical }),
+        segments.slice(2),
+      ])
+    },
+  },
 )
 export const autopilotWorkRouter = pipe(
   literal('autopilot'),
@@ -722,6 +782,7 @@ const routeParser = Route.oneOf(
   onboardingRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
+  autopilotOnboardingRouter,
   forgeRouter,
   decisionsRouter,
   workspaceRouter,

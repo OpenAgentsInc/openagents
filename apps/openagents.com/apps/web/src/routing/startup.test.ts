@@ -7,6 +7,7 @@ import {
   incompleteOnboardingStatus,
 } from '../domain/session'
 import {
+  AutopilotOnboardingRoute,
   AutopilotWorkRoute,
   ChatRoute,
   Demo2OrderRoute,
@@ -370,6 +371,26 @@ describe('startup route policy', () => {
     })
   })
 
+  test('routes Autopilot onboarding by workspace access', () => {
+    const route = AutopilotOnboardingRoute({ vertical: 'legal' })
+
+    expect(startupRouteForLoggedOut(route)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route,
+    })
+    expect(startupRouteForLoggedIn(route, completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Chat' },
+    })
+    expect(startupRouteForLoggedIn(route, auth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route,
+    })
+  })
+
   test('routes authenticated visitors without Core Team access to order status', () => {
     expect(startupRouteForLoggedIn(HomeRoute(), auth)).toEqual({
       _tag: 'LoggedInStartupRoute',
@@ -576,6 +597,11 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(InviteRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OnboardingRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OrderRoute())).toBe(true)
+    expect(
+      routeRequiresAuthBootstrap(
+        AutopilotOnboardingRoute({ vertical: 'legal' }),
+      ),
+    ).toBe(true)
     expect(routeRequiresAuthBootstrap(AutopilotWorkRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(MulletRoute())).toBe(true)
     expect(

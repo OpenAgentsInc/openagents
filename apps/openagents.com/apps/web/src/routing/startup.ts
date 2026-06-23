@@ -6,11 +6,13 @@ import {
   browserRouteGate,
   defaultLoggedInHrefForAuth,
   defaultLoggedInRouteForAuth,
+  loggedInWorkroomAllowed,
   loggedInPermissionGate,
   routeAllowedForLoggedInAuth,
 } from '../product-policy'
 import {
   type AppRoute,
+  ChatRoute,
   InviteRoute,
   LandingRoute,
   LoggedInRoute,
@@ -78,6 +80,7 @@ export const startupRouteForLoggedOut = (
     M.tag(
       'Docs',
       'DocsPage',
+      'AutopilotOnboarding',
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
@@ -152,6 +155,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
     M.tag(
       'PublicAgent',
       'ProductPromises',
+      'AutopilotOnboarding',
       'PublicStatsArchive',
       'Share',
       'Moksha',
@@ -244,6 +248,17 @@ const startupRouteForCompleteOnboarding = (
           }),
         ),
       }),
+    ),
+    M.tag('AutopilotOnboarding', route =>
+      loggedInWorkroomAllowed(auth)
+        ? LoggedInStartupRoute({
+            route: ChatRoute(),
+            redirect: Option.none(),
+          })
+        : LoggedOutStartupRoute({
+            route,
+            redirect: Option.none(),
+          }),
     ),
     M.tag(
       'PublicAgent',
