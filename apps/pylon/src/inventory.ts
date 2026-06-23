@@ -35,7 +35,8 @@ export type PylonHostInventoryProjection = {
     externalInterfaceCount: number
   }
   accelerator: {
-    kind: "apple_silicon" | "gpu_unknown" | "none"
+    kind: "apple_silicon" | "nvidia_cuda" | "gpu_unknown" | "none"
+    modelRef: string | null
     vramGb: number | null
     blockerRefs: string[]
   }
@@ -66,7 +67,15 @@ export type HostInventoryFixture = {
   psionicReady?: boolean
   psionicModelRefs?: string[]
   localModelRefs?: string[]
+  accelerator?: HostAcceleratorFixture
   now?: string
+}
+
+export type HostAcceleratorFixture = {
+  kind: "apple_silicon" | "nvidia_cuda" | "gpu_unknown" | "none"
+  modelRef?: string | null
+  vramBytes?: number | null
+  blockerRefs?: string[]
 }
 
 const gb = (bytes: number) => Math.round((bytes / 1024 / 1024 / 1024) * 10) / 10
@@ -167,6 +176,7 @@ export function projectHostInventoryFixture(input: HostInventoryFixture): PylonH
   if (backend.every((entry) => entry.state !== "ready" && entry.state !== "configured")) {
     blockerRefs.add("blocker.inventory.no_configured_backend")
   }
+  const accelerator = input.accelerator ?? defaultAccelerator(input.platform, input.arch)
 
   const projection: PylonHostInventoryProjection = {
     schema: "openagents.pylon.host_inventory.v0.3",
@@ -190,9 +200,10 @@ export function projectHostInventoryFixture(input: HostInventoryFixture): PylonH
       externalInterfaceCount: input.externalNetworkInterfaceCount,
     },
     accelerator: {
-      kind: input.platform === "darwin" && input.arch === "arm64" ? "apple_silicon" : "gpu_unknown",
-      vramGb: null,
-      blockerRefs: input.platform === "darwin" && input.arch === "arm64" ? [] : ["blocker.inventory.accelerator_unproven"],
+      kind: accelerator.kind,
+      modelRef: sanitizeAcceleratorModelRef(accelerator.modelRef),
+      vramGb: accelerator.vramBytes === undefined || accelerator.vramBytes === null ? null : gb(accelerator.vramBytes),
+      blockerRefs: accelerator.blockerRefs ?? [],
     },
     resourceMode: isSupported ? "background_20" : "unavailable",
     backendHealth: backend,
@@ -205,6 +216,47 @@ export function projectHostInventoryFixture(input: HostInventoryFixture): PylonH
   }
   assertPublicProjectionSafe(projection)
   return projection
+}
+
+function defaultAccelerator(platformValue: InventoryPlatform, archValue: string): HostAcceleratorFixture {
+  if (platformValue === "darwin" && archValue === "arm64") {
+    return {
+      kind: "apple_silicon",
+      modelRef: "accelerator.apple_silicon",
+      vramBytes: null,
+      blockerRefs: [],
+    }
+  }
+  return {
+    kind: platformValue === "linux" ? "gpu_unknown" : "none",
+    modelRef: null,
+    vramBytes: null,
+    blockerRefs: platformValue === "linux" ? ["blocker.inventory.accelerator_unproven"] : [],
+  }
+}
+
+function discoverNvidiaAccelerator(): HostAcceleratorFixture | undefined {
+  if (platform() !== "linux" || !Bun.which("nvidia-smi")) return undefined
+  const result = Bun.spawnSync({
+    cmd: [
+      "nvidia-smi",
+      "--query-gpu=name,memory.total",
+      "--format=csv,noheader,nounits",
+    ],
+    stdout: "pipe",
+    stderr: "ignore",
+  })
+  if (result.exitCode !== 0) return undefined
+  const firstLine = new TextDecoder().decode(result.stdout).split(/\r?\n/).find((line) => line.trim().length > 0)
+  if (!firstLine) return undefined
+  const [rawName, rawMemoryMiB] = firstLine.split(",").map((value) => value.trim())
+  const memoryMiB = Number(rawMemoryMiB)
+  return {
+    kind: "nvidia_cuda",
+    modelRef: `accelerator.${sanitizeRefSegment(rawName)}`,
+    vramBytes: Number.isFinite(memoryMiB) ? memoryMiB * 1024 * 1024 : null,
+    blockerRefs: [],
+  }
 }
 
 export async function discoverHostInventory(input: { now?: Date; env?: Record<string, string | undefined> } = {}) {
@@ -234,8 +286,14 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
     psionicReady: false,
     psionicModelRefs: [],
     localModelRefs: [],
+    accelerator: discoverNvidiaAccelerator(),
     now: (input.now ?? new Date()).toISOString(),
   })
+}
+
+function sanitizeAcceleratorModelRef(value: string | null | undefined) {
+  if (!value) return null
+  return /^accelerator\.[a-z0-9._-]+$/.test(value) ? value : `accelerator.${sanitizeRefSegment(value)}`
 }
 
 function sanitizeModelRefs(values: string[]) {

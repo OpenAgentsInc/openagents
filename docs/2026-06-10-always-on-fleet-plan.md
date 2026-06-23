@@ -92,14 +92,23 @@ spin-up/teardown from the worker itself — the first rung where
 
 A small always-free-tier or e2-micro instance with a cloud-init that
 installs bun + the packaged pylon, writes the systemd unit, and joins
-with a `gcloud.` pylonRef. Terraform-or-script kept in
-`apps/pylon/deploy/gcloud/` so spinning N more is one command. Used
+with a `gcloud.` pylonRef. The setup script now lives in
+`apps/pylon/deploy/gcloud/setup-pylon.sh`, using IAP/SSH plus the existing
+`apps/pylon/scripts/install-cloud-node.sh` installer so spinning N more is one
+command once a compute-capable GCP credential is active. Used
 when the lane needs guaranteed capacity (training windows, demos)
 rather than as the default — owned hardware first, rented second,
 matching the economics gates already in the training promises.
 
 - Acceptance: scripted create → online → dispatched → destroyed cycle
-  with the cost recorded.
+  with the cost recorded. For #6089's proven-engine lane, use the script's
+  optional `--accelerator type=count` path to create a GPU host, then install
+  and verify vLLM/SGLang separately before emitting serving benchmark refs.
+- 2026-06-23 live evidence: `pylon-gcloud-khala-6089-check` is online as a CPU
+  GCloud Pylon, and the existing stopped L4 host
+  `gswarm508-clean2-20260325044551-contrib` was repurposed with old startup
+  metadata cleared, booted into the kernel with matching NVIDIA modules, and
+  brought online as `gcloud.gswarm508-clean2-20260325044551-contrib`.
 
 ### Rung 4 — supervision as a platform feature (close the loop)
 

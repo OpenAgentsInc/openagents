@@ -27,6 +27,7 @@ describe("Pylon host inventory projection", () => {
     expect(inventory.freshness).toBe("fresh")
     expect(inventory.platform).toBe("darwin")
     expect(inventory.accelerator.kind).toBe("apple_silicon")
+    expect(inventory.accelerator.modelRef).toBe("accelerator.apple_silicon")
     expect(inventory.backendHealth.find((backend) => backend.backendRef === "backend.apple_fm")?.state).toBe("ready")
     expect(inventory.backendHealth.find((backend) => backend.backendRef === "backend.opencode.cli")?.state).toBe("ready")
     expect(inventory.backendHealth.find((backend) => backend.backendRef === "backend.psionic.qwen35")).toMatchObject({
@@ -37,6 +38,36 @@ describe("Pylon host inventory projection", () => {
     expect(inventory.eligibleInventoryCount).toBe(1)
     expect(JSON.stringify(inventory)).not.toContain("/Users/")
     expect(JSON.stringify(inventory)).not.toContain("GEMINI_API_KEY")
+  })
+
+  test("projects a Linux NVIDIA CUDA fixture without calling it serving-ready", () => {
+    const inventory = projectHostInventoryFixture({
+      platform: "linux",
+      arch: "x64",
+      cpuCores: 8,
+      cpuModel: "Intel Xeon",
+      totalMemoryBytes: 32 * 1024 * 1024 * 1024,
+      freeMemoryBytes: 24 * 1024 * 1024 * 1024,
+      homeFreeBytes: 160 * 1024 * 1024 * 1024,
+      networkInterfaceCount: 4,
+      externalNetworkInterfaceCount: 1,
+      geminiConfigured: true,
+      accelerator: {
+        kind: "nvidia_cuda",
+        modelRef: "NVIDIA L4",
+        vramBytes: 23034 * 1024 * 1024,
+      },
+      now: "2026-06-23T20:16:22.000Z",
+    })
+
+    expect(inventory.accelerator).toMatchObject({
+      kind: "nvidia_cuda",
+      modelRef: "accelerator.nvidia_l4",
+      vramGb: 22.5,
+      blockerRefs: [],
+    })
+    expect(inventory.blockerRefs).not.toContain("blocker.inventory.accelerator_unproven")
+    expect(inventory.backendHealth.find((backend) => backend.backendRef === "backend.local_model")?.state).toBe("unknown")
   })
 
   test("projects a Linux baseline with unavailable accelerator but configured Gemini", () => {

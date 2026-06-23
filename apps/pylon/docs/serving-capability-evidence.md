@@ -88,6 +88,37 @@ ideas drive the schema here:
   admitted Pylon refs when they are absent, and missing canary/replay evidence
   for parity-only receipts. A passing preflight is a launch-readiness proof, not
   the live serving implementation itself.
+- `apps/pylon/deploy/gcloud/setup-pylon.sh` is the GCE setup path for bringing
+  an always-on Pylon host online through IAP/SSH without putting owner tokens in
+  instance metadata. It can create CPU hosts for standing capacity or GPU hosts
+  with `--accelerator type=count` for the #6089 proven-engine lane. The setup
+  path installs and verifies the Pylon node; it still does not install vLLM or
+  SGLang, arm paid routing, move money, or claim real-GPU benchmark evidence.
+
+## Live GCloud bring-up evidence (2026-06-23)
+
+- CPU standing-capacity host: `pylon-gcloud-khala-6089-check` in
+  `openagentsgemini/us-central1-a`, Pylon ref
+  `gcloud.pylon-gcloud-khala-6089-check`, systemd service
+  `openagents-pylon` active, registered as
+  `registration.gcloud.pylon-gcloud-khala-6089-check`, and heartbeating.
+- Repurposed L4 host: `gswarm508-clean2-20260325044551-contrib` in
+  `openagentsgemini/us-central1-b`, Pylon ref
+  `gcloud.gswarm508-clean2-20260325044551-contrib`, systemd service
+  `openagents-pylon` active, registered as
+  `registration.gcloud.gswarm508-clean2-20260325044551-contrib`, and
+  heartbeating.
+- The repurposed L4 host had stale Psion startup metadata and a
+  kernel/module mismatch after boot. The setup path now has
+  `--clear-startup-script` and existing-VM tag assurance; the live host was
+  rebooted once into `6.8.0-1053-gcp`, where the installed
+  `linux-modules-nvidia-570-server-open-6.8.0-1053-gcp` module makes
+  `nvidia-smi` report one NVIDIA L4, driver `570.211.01`, CUDA `12.8`, and
+  23034 MiB VRAM.
+- This is Pylon setup and GPU inventory evidence only. #6089 remains open until
+  a real vLLM/SGLang endpoint is installed, benchmarked through
+  `PYLON_SERVING_REAL_GPU_*`, and paired with parity, canary, and replay
+  receipts before any paid routing or payout claim.
 
 ## Where this plugs in next (not in this change)
 
