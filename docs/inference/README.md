@@ -100,6 +100,12 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     contract, metric reducer, fixture evidence pack, publication skeleton, and
     closure audit for the head-to-head demo.
 
+12. **[`2026-06-23-gcloud-gpu-quota-inventory.md`](./2026-06-23-gcloud-gpu-quota-inventory.md)**
+    — local `gcloud` GPU access and quota inventory for `openagentsgemini`:
+    live L4/G4 instances, `us-central1` quota, visible accelerator families
+    (RTX PRO 6000, H100/H200/B200/GB200/L4/A100), and practical inference
+    deployment recommendations.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
