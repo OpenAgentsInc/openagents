@@ -10,6 +10,7 @@ import {
   DEFAULT_GEMINI_MODEL_ID,
   makeVertexGeminiAdapter,
 } from './vertex-gemini-adapter'
+import type { InferenceStreamEvent } from './provider-adapter'
 
 const run = <A>(effect: Effect.Effect<A, InferenceAdapterError>): Promise<A> =>
   Effect.runPromise(effect)
@@ -104,5 +105,134 @@ describe('vertex gemini adapter request mapping', () => {
       'https://aiplatform.googleapis.com/v1/projects/openagentsgemini' +
         `/locations/global/publishers/google/models/${DEFAULT_GEMINI_MODEL_ID}:generateContent`,
     )
+  })
+})
+
+// Build a Vertex Gemini streamGenerateContent(?alt=sse)-shaped ReadableStream
+// from a list of GenerateContentResponse fragments, each on its own `data:`
+// line. Mirrors how Vertex emits SSE so the adapter's incremental reader sees
+// many fragments rather than one buffered body.
+const sseStreamResponse = (
+  fragments: ReadonlyArray<unknown>,
+): Response => {
+  const encoder = new TextEncoder()
+  let index = 0
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= fragments.length) {
+        controller.close()
+        return
+      }
+      const fragment = fragments[index]
+      index += 1
+      controller.enqueue(
+        encoder.encode(`data: ${JSON.stringify(fragment)}\n\n`),
+      )
+    },
+  })
+  return new Response(stream, {
+    headers: { 'content-type': 'text/event-stream' },
+    status: 200,
+  })
+}
+
+const drainFrames = async (
+  frames: AsyncIterable<InferenceStreamEvent>,
+): Promise<Array<InferenceStreamEvent>> => {
+  const collected: Array<InferenceStreamEvent> = []
+  for await (const frame of frames) {
+    collected.push(frame)
+  }
+  return collected
+}
+
+describe('vertex gemini adapter streamSse — incremental pass-through', () => {
+  test('parses a multi-fragment Gemini SSE body into multiple events (one per fragment)', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseStreamResponse([
+        { candidates: [{ content: { parts: [{ text: 'Hello' }] } }] },
+        { candidates: [{ content: { parts: [{ text: ', ' }] } }] },
+        {
+          candidates: [
+            {
+              content: { parts: [{ text: 'world' }] },
+              finishReason: 'STOP',
+            },
+          ],
+          modelVersion: DEFAULT_GEMINI_MODEL_ID,
+          usageMetadata: {
+            candidatesTokenCount: 3,
+            promptTokenCount: 5,
+            totalTokenCount: 8,
+          },
+        },
+      ]),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    expect(adapter.streamSse).toBeDefined()
+    const source = await run(adapter.streamSse!(baseRequest({ stream: true })))
+    const frames = await drainFrames(source.frames)
+
+    // MANY events, not one buffered chunk: one per upstream Gemini fragment.
+    const contentFrames = frames.filter(frame => frame.contentDelta !== '')
+    expect(contentFrames.map(frame => frame.contentDelta)).toEqual([
+      'Hello',
+      ', ',
+      'world',
+    ])
+
+    // Receipt-first terminal state from the final fragment's cumulative usage.
+    const terminal = source.terminal()
+    expect(terminal.finishReason).toBe('STOP')
+    expect(terminal.servedModel).toBe(DEFAULT_GEMINI_MODEL_ID)
+    expect(terminal.usage?.promptTokens).toBe(5)
+    expect(terminal.usage?.completionTokens).toBe(3)
+    expect(terminal.usage?.totalTokens).toBe(8)
+  })
+
+  test('hits the streamGenerateContent?alt=sse endpoint', async () => {
+    const { calls, fetchImpl } = recordingFetch(
+      sseStreamResponse([
+        { candidates: [{ content: { parts: [{ text: 'hi' }] } }] },
+      ]),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const source = await run(adapter.streamSse!(baseRequest({ stream: true })))
+    await drainFrames(source.frames)
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toContain(':streamGenerateContent?alt=sse')
+  })
+
+  test('a non-2xx stream open surfaces a typed retryable adapter error before any frame', async () => {
+    const { fetchImpl } = recordingFetch(
+      new Response('quota exceeded', { status: 429 }),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await Effect.runPromise(
+      adapter.streamSse!(baseRequest({ stream: true })).pipe(
+        Effect.map(() => 'ok' as const),
+        Effect.catch(error =>
+          Effect.succeed({ reason: error.reason, retryable: error.retryable }),
+        ),
+      ),
+    )
+    expect(result).not.toBe('ok')
+    expect(result).toMatchObject({ retryable: true })
   })
 })

@@ -395,9 +395,9 @@ import {
   InferenceAdapterError,
   type InferenceRequest,
   type InferenceResult,
-  type InferenceStreamChunk,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
+import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
 import {
   makePylonFabricHttpTransport,
@@ -8618,13 +8618,22 @@ const makeOnboardingInferenceClient = (
     )
 }
 
-// STREAMING onboarding client (issue #6123 UI follow-up). The same provider-
-// adapter registry + overflow dispatch as the buffered client, but it dispatches
-// the adapter's chunked `stream` and exposes the chunks as an
-// `OnboardingStreamSource` (a deltas async-iterable + a `final()` accumulation).
-// The interview reply is short, so the buffered-chunk path is the right reuse:
-// every adapter implements `stream` (the optional `streamSse` is for the long-
-// generation hot path), and the route pumps the chunks to the client as SSE.
+// STREAMING onboarding client (issue #6123 UI follow-up; #6154 incremental).
+// The same provider-adapter registry + overflow dispatch as the buffered client,
+// but it prefers the adapter's TRUE incremental `streamSse` so the onboarding
+// reply streams token-by-token — one `event: delta` per upstream Gemini fragment
+// — instead of one buffered reply materialized server-side. Adapters without a
+// `streamSse` (stub/echo, simple test adapters) fall back to the buffered chunk
+// `stream`. Overflow happens at source-open time exactly like the `/v1` gateway:
+// the dispatched Effect resolves once the upstream stream HEAD is accepted (a
+// non-2xx surfaces as a retryable adapter error BEFORE any frame is consumed), so
+// a failing lane overflows to the next without buffering the body.
+//
+// The source's `final()` returns '' (no content re-buffering): the route already
+// accumulates the deltas it emits and persists that accumulation, so the lazy
+// frames stay the single source of truth (receipt-first, matching the gateway).
+// The dispatch operation + source shaping live in `onboarding-stream-source.ts`
+// so the prefer-streamSse / fall-back-to-stream behavior is unit-testable.
 const makeOnboardingStreamClient = (
   env: OnboardingInferenceEnv,
 ): OnboardingStreamClient => {
@@ -8632,24 +8641,11 @@ const makeOnboardingStreamClient = (
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   return (request: InferenceRequest) =>
-    dispatchWithOverflow<ReadonlyArray<InferenceStreamChunk>>(
+    dispatchWithOverflow<OnboardingStreamSource>(
       request,
-      (adapter, req) => adapter.stream(req),
+      dispatchOnboardingStreamSource,
       { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
     ).pipe(
-      Effect.map((chunks): OnboardingStreamSource => {
-        const reply = chunks.map(chunk => chunk.contentDelta).join('')
-        return {
-          deltas: (async function* () {
-            for (const chunk of chunks) {
-              if (chunk.contentDelta !== '') {
-                yield chunk.contentDelta
-              }
-            }
-          })(),
-          final: () => reply,
-        }
-      }),
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
       ),
