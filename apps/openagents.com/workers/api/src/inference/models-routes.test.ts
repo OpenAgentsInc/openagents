@@ -12,6 +12,7 @@ import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
+  KHALA_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
 } from './pricing'
 
@@ -256,6 +257,7 @@ describe('provider serving policy (laneArming)', () => {
     expect(body.data.some(m => m.id === geminiId)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_MINI_MODEL_ID)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_CODE_MODEL_ID)).toBe(false)
+    expect(body.data.some(m => m.id === KHALA_OSS_20B_MODEL_ID)).toBe(false)
     expect(body.data.some(m => m.id === fireworksId)).toBe(false)
     expect(body.data.every(m => m.oa_lane.startsWith('vertex-'))).toBe(true)
   })
@@ -315,6 +317,52 @@ describe('provider serving policy (laneArming)', () => {
     const body = (await response.json()) as { id: string; oa_lane: string }
     expect(body.id).toBe(KHALA_CODE_MODEL_ID)
     expect(body.oa_lane).toBe('fireworks')
+  })
+
+  it('lists and retrieves the Khala GPT-OSS alias only when Hydralisk is armed', async () => {
+    const hydraliskEnv = {
+      HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
+      HYDRALISK_BEARER_TOKEN: 'secret-route-token',
+      HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
+      HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
+        'preflight.hydralisk.gpt_oss_20b.l4.v1',
+      HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
+        'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+    }
+    const list = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming(hydraliskEnv),
+      },
+    )
+    const listBody = (await list.json()) as {
+      data: ReadonlyArray<{ id: string; oa_lane: string }>
+    }
+    expect(listBody.data).toEqual([
+      expect.objectContaining({
+        id: KHALA_OSS_20B_MODEL_ID,
+        oa_lane: 'hydralisk',
+      }),
+    ])
+
+    const retrieved = await runRetrieve(
+      new Request(`https://x/v1/models/${KHALA_OSS_20B_MODEL_ID}`, {
+        method: 'GET',
+      }),
+      KHALA_OSS_20B_MODEL_ID,
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming(hydraliskEnv),
+      },
+    )
+    expect(retrieved.status).toBe(200)
+    const retrieveBody = (await retrieved.json()) as {
+      id: string
+      oa_lane: string
+    }
+    expect(retrieveBody.id).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(retrieveBody.oa_lane).toBe('hydralisk')
   })
 
   it('reports model_not_found for a known model on an UNARMED lane', async () => {

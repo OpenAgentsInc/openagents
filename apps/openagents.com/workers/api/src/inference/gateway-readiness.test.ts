@@ -15,6 +15,7 @@ import type { SupplyLaneArming } from './model-serving-policy'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
+  hydralisk: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,
@@ -101,6 +102,7 @@ describe('projectGatewayReadiness', () => {
       'vertex-gemini',
       'vertex-anthropic',
       'fireworks',
+      'hydralisk',
       'openagents-network',
     ])
     const gemini = readiness.lanes.find(l => l.lane === 'vertex-gemini')

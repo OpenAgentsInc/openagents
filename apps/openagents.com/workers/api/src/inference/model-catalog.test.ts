@@ -8,6 +8,7 @@ import {
 } from './model-catalog'
 import {
   DEFAULT_MARGIN,
+  KHALA_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
   sellPricePerMtok,
 } from './pricing'
@@ -85,6 +86,9 @@ describe('buildModelCatalog', () => {
     )
     expect(catalog.find(m => m.id === 'glm-5p2')?.ownedBy).toBe(
       'openagents/fireworks',
+    )
+    expect(catalog.find(m => m.id === KHALA_OSS_20B_MODEL_ID)?.ownedBy).toBe(
+      'openagents/hydralisk',
     )
   })
 

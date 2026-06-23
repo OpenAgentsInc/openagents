@@ -33,6 +33,7 @@ import { isFreeEligibleModel } from './inference-free-allowance'
 // customer contracts with directly.
 const LANE_OWNED_BY: Readonly<Record<SupplyLane, string>> = {
   fireworks: 'openagents/fireworks',
+  hydralisk: 'openagents/hydralisk',
   'openagents-network': 'openagents/serving-fabric',
   'vertex-anthropic': 'openagents/vertex-anthropic',
   'vertex-gemini': 'openagents/vertex-gemini',

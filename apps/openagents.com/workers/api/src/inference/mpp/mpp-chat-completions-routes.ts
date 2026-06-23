@@ -355,7 +355,8 @@ const buildLightningChallengeForQuote = (
   input: Readonly<{ model: string; newId: () => string; challengeExpiresAt: string }>,
 ): Effect.Effect<MppChallenge | undefined, never> =>
   Effect.gen(function* () {
-    const legStartMs = Date.now()
+    const nowMs = deps.nowMs ?? currentEpochMillis
+    const legStartMs = nowMs()
     const lightningQuote = quoteMppLightningCall({ model: input.model })
     const invoice = yield* mint({
       amountSats: lightningQuote.amountSats,
@@ -368,7 +369,7 @@ const buildLightningChallengeForQuote = (
       // mint timeout). Logged with elapsed ms; carries NO invoice/secret content.
       Effect.tapCause((cause: Cause.Cause<unknown>) =>
         Effect.logWarning('mpp_lightning_leg_dropped', {
-          elapsedMs: Date.now() - legStartMs,
+          elapsedMs: nowMs() - legStartMs,
           model: input.model,
           reason: Cause.pretty(cause).slice(0, 240),
         }),
@@ -395,7 +396,7 @@ const buildLightningChallengeForQuote = (
     // DIAGNOSTIC (#6049): a Lightning leg that actually minted + surfaced, with
     // elapsed ms. NO invoice/secret content.
     yield* Effect.logInfo('mpp_lightning_leg_surfaced', {
-      elapsedMs: Date.now() - legStartMs,
+      elapsedMs: nowMs() - legStartMs,
       model: input.model,
     })
     return challenge

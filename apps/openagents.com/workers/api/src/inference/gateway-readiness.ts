@@ -34,6 +34,7 @@ const LANE_ORDER: ReadonlyArray<SupplyLane> = [
   'vertex-gemini',
   'vertex-anthropic',
   'fireworks',
+  'hydralisk',
   'openagents-network',
 ]
 

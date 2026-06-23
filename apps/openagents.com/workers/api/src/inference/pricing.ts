@@ -77,6 +77,7 @@ export type SupplyLane =
   | 'vertex-anthropic'
   | 'vertex-gemini'
   | 'fireworks'
+  | 'hydralisk'
   | 'openagents-network'
 
 // Our marginal cost for a model, per 1M tokens, by billed dimension. Cost is
@@ -258,6 +259,7 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 // receipt-first metering prices derived from the same source of truth.
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
+export const KHALA_OSS_20B_MODEL_ID = 'openagents/khala-oss-20b'
 export const AUTOPILOT_CONCIERGE_MODEL_ID = 'openagents/autopilot-concierge'
 
 // True when the requested id is an OpenAgents Khala virtual model. The
@@ -368,6 +370,15 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     KHALA_CODE_MODEL_ID,
     'fireworks',
     FIREWORKS_OPEN_COST['kimi-k2p7-code']!,
+    false,
+  ),
+  // Khala GPT-OSS dogfood lane (#6155). Hydralisk serves the public-safe Khala
+  // alias on owned L4/vLLM infrastructure; direct `gpt-oss-20b` remains
+  // Fireworks-first until Hydralisk cost/fallback is proven.
+  entry(
+    KHALA_OSS_20B_MODEL_ID,
+    'hydralisk',
+    FIREWORKS_OPEN_COST['gpt-oss-20b']!,
     false,
   ),
   // Fireworks open-model lane — REAL cost (verified 2026-06-19).

@@ -232,6 +232,17 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
   // actually dispatched by routing (#5482).
   FIREWORKS_API_KEY?: string | undefined
+  // Hydralisk GPT-OSS 20B lane (#6155). The Worker registers this owned
+  // OpenAI-compatible vLLM adapter only when HYDRALISK_GPT_OSS_20B_ENABLED is
+  // exactly "ready", HYDRALISK_BASE_URL and HYDRALISK_BEARER_TOKEN are present,
+  // and the public-safe preflight/receipt refs below are valid. The URL/token
+  // are Worker secrets and must never appear in catalog/readiness payloads,
+  // public evidence, docs, issues, or logs.
+  HYDRALISK_GPT_OSS_20B_ENABLED?: string | undefined
+  HYDRALISK_BASE_URL?: string | undefined
+  HYDRALISK_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GPT_OSS_20B_RECEIPT_REF?: string | undefined
   // OpenAgents/Pylon serving-fabric HTTP transport (#6089). The URL points at a
   // secret-backed gateway/proxy for an admitted Pylon `psionic-serve` compatible
   // endpoint; the bearer token authenticates Worker->proxy calls. Both are

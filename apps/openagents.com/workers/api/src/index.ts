@@ -372,6 +372,7 @@ import {
 } from './inference/khala-loop-integration'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
+import { makeHydraliskVllmAdapter } from './inference/hydralisk-adapter'
 import {
   checkFreeAllowancePreflight,
   withFreeAllowance,
@@ -381,7 +382,11 @@ import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
-import { dispatchWithOverflow, selectAdapterPlan } from './inference/model-router'
+import {
+  dispatchWithOverflow,
+  HYDRALISK_ADAPTER_ID,
+  selectAdapterPlan,
+} from './inference/model-router'
 import { resolveSupplyLaneArming } from './inference/model-serving-policy'
 import {
   handleModelsList,
@@ -8507,6 +8512,44 @@ const registerPassthroughAdapters = (
   }
 }
 
+// Hydralisk GPT-OSS 20B lane (#6155). Registered only when the presence-derived
+// serving policy arms the lane, so catalog/quote/chat all agree: unarmed
+// Hydralisk is absent and known-model requests cleanly fail model_unavailable
+// before dispatch.
+const hydraliskAdaptersRegistered = new WeakSet<object>()
+
+type HydraliskServeEnv = OpenAgentsWorkerConfigEnv
+
+const registerHydraliskAdapter = (
+  registry: InferenceProviderRegistry,
+  env: HydraliskServeEnv,
+): void => {
+  if (hydraliskAdaptersRegistered.has(env)) {
+    return
+  }
+  if (!resolveSupplyLaneArming(env).hydralisk) {
+    return
+  }
+  const bearerToken = env.HYDRALISK_BEARER_TOKEN?.trim()
+  const baseUrl = env.HYDRALISK_BASE_URL?.trim()
+  if (
+    bearerToken === undefined ||
+    bearerToken === '' ||
+    baseUrl === undefined ||
+    baseUrl === ''
+  ) {
+    return
+  }
+  hydraliskAdaptersRegistered.add(env)
+  registry.register(
+    makeHydraliskVllmAdapter({
+      apiKey: Redacted.make(bearerToken),
+      baseUrl,
+      id: HYDRALISK_ADAPTER_ID,
+    }),
+  )
+}
+
 // OpenAgents serving-fabric lane (#5483 / Khala M4 #6012 / #6089) — the
 // `openagents-network` adapter wired to a Psionic serve transport. The lane is
 // routed AHEAD of passthrough for the OPEN class (model-router.ts), but stays
@@ -8572,6 +8615,7 @@ type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
   Pick<WorkerBindings, 'OPENAGENTS_DB'>
 const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   return {
@@ -8603,6 +8647,7 @@ const makeOnboardingInferenceClient = (
   env: OnboardingInferenceEnv,
 ): OnboardingInferenceClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   return (request: InferenceRequest) =>
@@ -8638,6 +8683,7 @@ const makeOnboardingStreamClient = (
   env: OnboardingInferenceEnv,
 ): OnboardingStreamClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   return (request: InferenceRequest) =>
@@ -10206,6 +10252,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/chat/completions',
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
+      registerHydraliskAdapter(inferenceProviderRegistry, env)
       // Serving-fabric lane (#5483 / Khala M4 #6012). No-op today (no live
       // Psionic serve transport bound); keeps the lane honestly skipped until a
       // transport lands, with no routing change required to activate it.
@@ -10392,6 +10439,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/mpp/v1/chat/completions',
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
+      registerHydraliskAdapter(inferenceProviderRegistry, env)
       registerFabricServeAdapter(inferenceProviderRegistry, env)
       setInferenceAdapterEnv(env)
       const ownerClaimStore = makeD1AgentOwnerClaimStore(

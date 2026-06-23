@@ -114,7 +114,13 @@ import {
   type SupplyLaneArming,
   resolveNamedModelServability,
 } from './model-serving-policy'
-import { type FundingKind, KHALA_CODE_MODEL_ID, isKhalaModel } from './pricing'
+import {
+  type FundingKind,
+  KHALA_CODE_MODEL_ID,
+  isKhalaModel,
+  lookupModel,
+  type SupplyLane,
+} from './pricing'
 import {
   type StableBlockKind,
   type TaggedPromptMessage,
@@ -631,6 +637,10 @@ type OpenAgentsReceipt = Readonly<{
   served_model: string
   worker: string
   lane: string
+  // Concrete priced supply lane, distinct from the legacy `lane` model class
+  // (`open` / `gemini` / `claude`). Additive and public-safe; lets Khala expose
+  // day-zero Hydralisk routing without changing older receipt readers.
+  supply_lane?: SupplyLane | undefined
   routing?:
     | Readonly<{
         provider_health_score: number | typeof NOT_MEASURED
@@ -767,10 +777,12 @@ const khalaReceiptForResult = (
     return undefined
   }
 
+  const supplyLane = lookupModel(input.requestedModel)?.lane
   const base = {
     lane: classifyModel(input.requestedModel),
     requested_model: input.requestedModel,
     served_model: input.result.servedModel,
+    ...(supplyLane === undefined ? {} : { supply_lane: supplyLane }),
     worker: input.adapterId,
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
   const routing = {

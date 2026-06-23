@@ -6,6 +6,7 @@ import {
   filterServableCatalog,
   isLaneArmed,
   isModelServable,
+  resolveHydraliskGptOss20bArming,
   resolveOpenAgentsNetworkGatewayArming,
   resolveNamedModelServability,
   resolveSupplyLaneArming,
@@ -15,10 +16,21 @@ import type { SupplyLane } from './pricing'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
+  hydralisk: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,
 }
+
+const HYDRALISK_READY_ENV = {
+  HYDRALISK_BASE_URL: 'https://hydralisk-gpt-oss-20b.example.test',
+  HYDRALISK_BEARER_TOKEN: 'secret-hydralisk-token',
+  HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+} as const
 
 const OPENAGENTS_NETWORK_READY_ENV = {
   OPENAGENTS_NETWORK_ADMITTED_PYLON_REF:
@@ -53,6 +65,13 @@ describe('resolveSupplyLaneArming', () => {
     expect(arming.fireworks).toBe(true)
     expect(arming['vertex-gemini']).toBe(false)
     expect(arming['vertex-anthropic']).toBe(false)
+  })
+
+  it('arms Hydralisk only from ready flag, transport presence, and public-safe refs', () => {
+    const arming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
+    expect(arming.hydralisk).toBe(true)
+    expect(arming.fireworks).toBe(false)
+    expect(arming['openagents-network']).toBe(false)
   })
 
   it('treats a blank/whitespace credential as absent', () => {
@@ -162,9 +181,56 @@ describe('resolveOpenAgentsNetworkGatewayArming', () => {
   })
 })
 
+describe('resolveHydraliskGptOss20bArming', () => {
+  it('fails closed with typed blockers when route evidence is absent', () => {
+    const arming = resolveHydraliskGptOss20bArming({})
+    expect(arming.armed).toBe(false)
+    expect(arming.evidenceRefs).toEqual([])
+    expect(arming.blockerRefs).toEqual([
+      'blocker.hydralisk_gpt_oss_20b.route_not_ready',
+      'blocker.hydralisk_gpt_oss_20b.base_url_missing',
+      'blocker.hydralisk_gpt_oss_20b.bearer_missing',
+      'blocker.hydralisk_gpt_oss_20b.preflight_ref_missing',
+      'blocker.hydralisk_gpt_oss_20b.receipt_ref_missing',
+    ])
+  })
+
+  it('requires the exact ready token and public-safe evidence refs', () => {
+    const wrongFlag = resolveHydraliskGptOss20bArming({
+      ...HYDRALISK_READY_ENV,
+      HYDRALISK_GPT_OSS_20B_ENABLED: 'true',
+    })
+    expect(wrongFlag.armed).toBe(false)
+    expect(wrongFlag.blockerRefs).toContain(
+      'blocker.hydralisk_gpt_oss_20b.route_not_ready',
+    )
+
+    const endpointRef = resolveHydraliskGptOss20bArming({
+      ...HYDRALISK_READY_ENV,
+      HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
+        'https://hydralisk.example.test/hydralisk/v1/receipts/x',
+    })
+    expect(endpointRef.armed).toBe(false)
+    expect(endpointRef.blockerRefs).toContain(
+      'blocker.hydralisk_gpt_oss_20b.receipt_ref_missing',
+    )
+  })
+
+  it('returns only public-safe refs when the lane evidence is complete', () => {
+    const arming = resolveHydraliskGptOss20bArming(HYDRALISK_READY_ENV)
+    expect(arming.armed).toBe(true)
+    expect(arming.blockerRefs).toEqual([])
+    expect(arming.evidenceRefs).toEqual([
+      'preflight.hydralisk.gpt_oss_20b.l4.v1',
+      'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+    ])
+  })
+})
+
 describe('isLaneArmed / isModelServable', () => {
   const lanes: ReadonlyArray<SupplyLane> = [
     'fireworks',
+    'hydralisk',
     'openagents-network',
     'vertex-anthropic',
     'vertex-gemini',

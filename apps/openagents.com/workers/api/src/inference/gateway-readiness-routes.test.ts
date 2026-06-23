@@ -11,6 +11,7 @@ import type { SupplyLane } from './pricing'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
+  hydralisk: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,

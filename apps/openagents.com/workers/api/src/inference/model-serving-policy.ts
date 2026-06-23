@@ -32,6 +32,7 @@ export type SupplyLaneArming = Readonly<Record<SupplyLane, boolean>>
 // no paid models rather than advertising models it cannot serve.
 export const ALL_LANES_UNARMED: SupplyLaneArming = {
   fireworks: false,
+  hydralisk: false,
   'openagents-network': false,
   'vertex-anthropic': false,
   'vertex-gemini': false,
@@ -45,6 +46,14 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
+  // Hydralisk GPT-OSS 20B lane. The URL/token are secret-backed transport
+  // presence only; the public-safe preflight/receipt refs are the evidence that
+  // the owned L4/vLLM route is ready for Khala traffic.
+  HYDRALISK_GPT_OSS_20B_ENABLED?: string | undefined
+  HYDRALISK_BASE_URL?: string | undefined
+  HYDRALISK_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GPT_OSS_20B_RECEIPT_REF?: string | undefined
   // Explicit public-gateway route arming for the OpenAgents/Pylon serving
   // fabric. `ready` is the only accepted on-token; public-safe refs below carry
   // the evidence. No endpoint URL, API key, raw prompt, or private host appears
@@ -68,12 +77,19 @@ export type OpenAgentsNetworkGatewayArming = Readonly<{
   blockerRefs: ReadonlyArray<string>
 }>
 
+export type HydraliskGptOss20bArming = Readonly<{
+  armed: boolean
+  evidenceRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+}>
+
 // Is an env credential present (a non-blank string)? Presence-only; the value is
 // never returned or logged.
 const isPresent = (value: string | undefined): boolean =>
   typeof value === 'string' && value.trim() !== ''
 
 const GATEWAY_ROUTE_READY_ON_TOKEN = 'ready'
+const HYDRALISK_ROUTE_READY_ON_TOKEN = 'ready'
 
 const PUBLIC_SAFE_REF = /^[a-z0-9][a-z0-9._:-]{1,199}$/iu
 
@@ -146,6 +162,50 @@ export const resolveOpenAgentsNetworkGatewayArming = (
   }
 }
 
+export const resolveHydraliskGptOss20bArming = (
+  env: SupplyLaneCredentialEnv,
+): HydraliskGptOss20bArming => {
+  const blockerRefs: Array<string> = []
+  if (
+    env.HYDRALISK_GPT_OSS_20B_ENABLED?.trim() !==
+    HYDRALISK_ROUTE_READY_ON_TOKEN
+  ) {
+    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.route_not_ready')
+  }
+  if (!isPresent(env.HYDRALISK_BASE_URL)) {
+    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.base_url_missing')
+  }
+  if (!isPresent(env.HYDRALISK_BEARER_TOKEN)) {
+    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.bearer_missing')
+  }
+
+  const evidence: Array<[string, string | undefined]> = [
+    [
+      'blocker.hydralisk_gpt_oss_20b.preflight_ref_missing',
+      env.HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF,
+    ],
+    [
+      'blocker.hydralisk_gpt_oss_20b.receipt_ref_missing',
+      env.HYDRALISK_GPT_OSS_20B_RECEIPT_REF,
+    ],
+  ]
+
+  const evidenceRefs: Array<string> = []
+  for (const [blockerRef, value] of evidence) {
+    if (isPublicSafeRef(value)) {
+      evidenceRefs.push(value)
+    } else {
+      blockerRefs.push(blockerRef)
+    }
+  }
+
+  return {
+    armed: blockerRefs.length === 0,
+    blockerRefs,
+    evidenceRefs,
+  }
+}
+
 // Derive which supply lanes are armed from credential PRESENCE. The OpenAgents
 // serving-fabric lane is stricter than a credential presence check: it only arms
 // when a deploy supplies route-ready plus public-safe evidence refs for an
@@ -156,8 +216,10 @@ export const resolveSupplyLaneArming = (
 ): SupplyLaneArming => {
   const vertex = isPresent(env.VERTEX_SA_KEY)
   const openAgentsNetwork = resolveOpenAgentsNetworkGatewayArming(env)
+  const hydralisk = resolveHydraliskGptOss20bArming(env)
   return {
     fireworks: isPresent(env.FIREWORKS_API_KEY),
+    hydralisk: hydralisk.armed,
     'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,

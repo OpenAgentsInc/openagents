@@ -2,8 +2,9 @@
 
 Date: 2026-06-23
 
-Status: architecture/specification note. This is not a running service, a quota
-reservation, or a product promise.
+Status: implementation-backed architecture note. Hydralisk now has a standalone
+repo scaffold and the OpenAgents Worker has day-zero routing hooks, but this is
+not yet a live GPU service, quota reservation, or public product promise.
 
 Scope: define **Hydralisk** as the Python/NVIDIA inference lane for OpenAgents:
 the stack we use when the right move is to stay in conventional Python ML
@@ -35,6 +36,49 @@ The first execution roadmap now lives in the standalone Hydralisk repo:
 `/Users/christopherdavid/work/hydralisk/docs/gpt-oss-20b-khala-live-roadmap.md`.
 It makes `gpt-oss-20b` on L4 the ASAP live-serving lane behind the OpenAgents
 API for Khala.
+
+## 2026-06-23 Implementation Update
+
+The Hydralisk repository exists at `OpenAgentsInc/hydralisk`.
+
+Repo-side Hydralisk work landed first:
+
+- `0648235` added the L4/vLLM serving scaffold: FastAPI proxy, bearer auth,
+  OpenAI-compatible `/v1/chat/completions` and `/v1/responses`, systemd units,
+  Caddy example, and a GCE L4 runbook.
+- `80a5455` added public-safe capabilities, run receipts, streaming usage
+  capture, and the `scripts/smoke-gpt-oss-20b.sh` smoke path.
+
+OpenAgents Worker work now defines the product-facing lane:
+
+- adapter id: `hydralisk-vllm`
+- supply lane: `hydralisk`
+- Khala alias: `openagents/khala-oss-20b`
+- upstream model: `openai/gpt-oss-20b`
+- direct `gpt-oss-20b`: still Fireworks-first for day zero
+
+The Worker arms Hydralisk only when all of these are present:
+
+```text
+HYDRALISK_GPT_OSS_20B_ENABLED=ready
+HYDRALISK_BASE_URL=https://<hydralisk-origin>
+HYDRALISK_BEARER_TOKEN=<secret-backed bearer>
+HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.v1
+HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.smoke.v1
+```
+
+When unarmed, `/v1/models` hides `openagents/khala-oss-20b` and
+`/v1/chat/completions` returns `model_unavailable` for the alias before
+balance, premium, or provider dispatch. When armed, the route discloses
+`openagents.worker: hydralisk-vllm` and the additive
+`openagents.supply_lane: hydralisk`; the legacy `openagents.lane` remains the
+model class (`open`) for backward compatibility.
+
+The remaining blocker is live host promotion. The latest GCloud audit showed
+`openagentsgemini` has L4 quota in `us-central1`, but the active L4 VM was a
+Psion training contributor and was not reclaimed. Hydralisk issue #1 stays open
+until a fresh or explicitly reclaimed L4 host runs the smoke script against real
+vLLM and publishes the preflight and receipt refs used by the Worker gate.
 
 The important boundary is simple: Hydralisk can own Python serving mechanics and
 model/runtime evidence, but OpenAgents/Khala keeps pricing, credits, payout,

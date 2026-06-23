@@ -40,6 +40,7 @@ import { Effect } from 'effect'
 
 import {
   blendedCostPerMtok,
+  KHALA_OSS_20B_MODEL_ID,
   lookupModel,
   MODEL_PRICING_TABLE,
   type SupplyLane,
@@ -60,6 +61,7 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 // gemini-* ids from our first-party Vertex quota — the default/free-tier lane.
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
+export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
 // The OpenAgents serving-fabric lane (#5483). Maps to the network adapter id.
@@ -91,6 +93,7 @@ const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
   'vertex-anthropic': [VERTEX_ANTHROPIC_ADAPTER_ID],
   'vertex-gemini': [VERTEX_GEMINI_ADAPTER_ID],
   fireworks: [FIREWORKS_ADAPTER_ID],
+  hydralisk: [HYDRALISK_ADAPTER_ID],
   'openagents-network': [OPENAGENTS_NETWORK_ADAPTER_ID],
   passthrough: [
     PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
@@ -113,6 +116,7 @@ const classForPricedLane = (lane: SupplyLane): ModelClass => {
     case 'vertex-gemini':
       return 'gemini'
     case 'fireworks':
+    case 'hydralisk':
     case 'openagents-network':
       return 'open'
   }
@@ -228,6 +232,9 @@ const LANE_PLAN_BY_CLASS: Readonly<
 // Resolve a requested model to its ORDERED list of candidate adapter ids
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
+  if (model.trim().toLowerCase() === KHALA_OSS_20B_MODEL_ID) {
+    return [HYDRALISK_ADAPTER_ID]
+  }
   const plan = LANE_PLAN_BY_CLASS[classifyModel(model)]
   return plan.flatMap(lane => LANE_ADAPTER_IDS[lane])
 }

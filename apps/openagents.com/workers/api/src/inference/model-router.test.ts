@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_OVERFLOW_BACKOFF,
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
   PASSTHROUGH_OPENAI_ADAPTER_ID,
@@ -21,6 +22,7 @@ import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
+  KHALA_OSS_20B_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -151,6 +153,22 @@ describe('model classification', () => {
   test('routes the Khala code virtual model to the open coding lane', () => {
     expect(classifyModel(KHALA_CODE_MODEL_ID)).toBe('open')
     expect(selectAdapterPlan(KHALA_CODE_MODEL_ID)).toEqual([
+      FIREWORKS_ADAPTER_ID,
+      OPENAGENTS_NETWORK_ADAPTER_ID,
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the Khala GPT-OSS alias only to the Hydralisk lane', () => {
+    expect(classifyModel(KHALA_OSS_20B_MODEL_ID)).toBe('open')
+    expect(selectAdapterPlan(KHALA_OSS_20B_MODEL_ID)).toEqual([
+      HYDRALISK_ADAPTER_ID,
+    ])
+  })
+
+  test('keeps direct gpt-oss-20b Fireworks-first on day zero', () => {
+    expect(selectAdapterPlan('gpt-oss-20b')).toEqual([
       FIREWORKS_ADAPTER_ID,
       OPENAGENTS_NETWORK_ADAPTER_ID,
       PASSTHROUGH_ANTHROPIC_ADAPTER_ID,

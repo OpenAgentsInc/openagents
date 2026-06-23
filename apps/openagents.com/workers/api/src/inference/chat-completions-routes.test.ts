@@ -39,6 +39,7 @@ import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
@@ -50,6 +51,7 @@ import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
+  KHALA_OSS_20B_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -101,6 +103,22 @@ const helloBody = {
   messages: [{ content: 'hello world', role: 'user' }],
   model: 'stub-model',
 }
+
+const hydraliskReadyArming = resolveSupplyLaneArming({
+  HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
+  HYDRALISK_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+})
+
+const HYDRALISK_RETRYABLE_STATUS_CASES = [
+  [429, 'rate_limited'],
+  [503, 'service_overloaded'],
+  [500, 'upstream_error'],
+] as const
 
 describe('inference gateway feature flag', () => {
   test('defaults off and only enables on explicit truthy tokens', () => {
@@ -408,10 +426,13 @@ describe('POST /v1/chat/completions', () => {
     // The PRIOR (non-telemetry) disclosure fields are identical streamed vs
     // non-streamed — and byte-for-byte the prior contract (non-breaking).
     const stripAdditiveReceiptFields = (
-      block: { routing?: unknown; telemetry?: unknown } | undefined,
+      block:
+        | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
+        | undefined,
     ): Record<string, unknown> => {
       const {
         routing: _routing,
+        supply_lane: _supply_lane,
         telemetry: _telemetry,
         ...rest
       } = (block ?? {}) as Record<string, unknown>
@@ -420,20 +441,20 @@ describe('POST /v1/chat/completions', () => {
     expect(
       stripAdditiveReceiptFields(
         finalOpenagents as
-          | { routing?: unknown; telemetry?: unknown }
+          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
           | undefined,
       ),
     ).toEqual(
       stripAdditiveReceiptFields(
         nonStreamedBody.openagents as
-          | { routing?: unknown; telemetry?: unknown }
+          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
           | undefined,
       ),
     )
     expect(
       stripAdditiveReceiptFields(
         finalOpenagents as
-          | { routing?: unknown; telemetry?: unknown }
+          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
           | undefined,
       ),
     ).toEqual({
@@ -749,6 +770,204 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('a Khala GPT-OSS request routes through Hydralisk when armed', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'READY',
+          finishReason: 'stop',
+          servedModel: 'openai/gpt-oss-20b',
+          usage: { completionTokens: 1, promptTokens: 7, totalTokens: 8 },
+        })),
+      id: HYDRALISK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'receipt.hydralisk.route.test' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_OSS_20B_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook,
+          newId: () => 'chatcmpl-hydralisk',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      model: string
+      openagents?: {
+        lane: string
+        requested_model: string
+        served_model: string
+        supply_lane: string
+        worker: string
+      }
+      usage: {
+        prompt_tokens: number
+        completion_tokens: number
+        total_tokens: number
+      }
+    }
+    expect(body.model).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(body.choices[0]?.message.content).toBe('READY')
+    expect(body.usage).toEqual({
+      completion_tokens: 1,
+      prompt_tokens: 7,
+      total_tokens: 8,
+    })
+    expect(body.openagents).toMatchObject({
+      lane: 'open',
+      requested_model: KHALA_OSS_20B_MODEL_ID,
+      served_model: 'openai/gpt-oss-20b',
+      supply_lane: 'hydralisk',
+      worker: HYDRALISK_ADAPTER_ID,
+    })
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
+    expect(captured[0]?.requestedModel).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(captured[0]?.servedModel).toBe('openai/gpt-oss-20b')
+    expect(captured[0]?.usage.totalTokens).toBe(8)
+  })
+
+  test('a streaming Khala GPT-OSS request carries Hydralisk disclosure and usage', async () => {
+    const usage: InferenceUsage = {
+      completionTokens: 1,
+      promptTokens: 7,
+      totalTokens: 8,
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'READY',
+          finishReason: 'stop',
+          servedModel: 'openai/gpt-oss-20b',
+          usage,
+        })),
+      id: HYDRALISK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+      streamSse: () =>
+        Effect.sync<InferenceStreamSource>(() => ({
+          frames: (async function* () {
+            yield { contentDelta: 'RE' }
+            yield { contentDelta: 'ADY' }
+          })(),
+          terminal: () => ({
+            finishReason: 'stop',
+            servedModel: 'openai/gpt-oss-20b',
+            usage,
+          }),
+        })),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'receipt.hydralisk.stream.test' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_OSS_20B_MODEL_ID,
+          stream: true,
+        }),
+        baseDeps({
+          laneArming: hydraliskReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook,
+          newId: () => 'chatcmpl-hydralisk-stream',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    expect(text).toContain('"content":"RE"')
+    expect(text).toContain('"content":"ADY"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    const frames = parseSseChunks(text) as ReadonlyArray<{
+      openagents?: {
+        lane?: string
+        requested_model?: string
+        served_model?: string
+        supply_lane?: string
+        worker?: string
+      }
+    }>
+    expect(frames[frames.length - 1]?.openagents).toMatchObject({
+      lane: 'open',
+      requested_model: KHALA_OSS_20B_MODEL_ID,
+      served_model: 'openai/gpt-oss-20b',
+      supply_lane: 'hydralisk',
+      worker: HYDRALISK_ADAPTER_ID,
+    })
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.streamed).toBe(true)
+    expect(captured[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
+    expect(captured[0]?.usage.totalTokens).toBe(8)
+  })
+
+  test.each(HYDRALISK_RETRYABLE_STATUS_CASES)(
+    'surfaces Hydralisk upstream %s as a provider_error on the Khala GPT-OSS route',
+    async (status, kind) => {
+      const registry = new InferenceProviderRegistry()
+      registry.register({
+        complete: () =>
+          Effect.fail(
+            new InferenceAdapterError({
+              adapterId: HYDRALISK_ADAPTER_ID,
+              httpStatus: status,
+              kind,
+              reason: `hydralisk upstream ${status}`,
+              retryable: true,
+            }),
+          ),
+        id: HYDRALISK_ADAPTER_ID,
+        stream: () => Effect.sync(() => []),
+      })
+
+      const response = await run(
+        handleChatCompletions(
+          chatRequest({
+            messages: [{ content: 'Say READY.', role: 'user' }],
+            model: KHALA_OSS_20B_MODEL_ID,
+          }),
+          baseDeps({
+            laneArming: hydraliskReadyArming,
+            lanePlan: selectAdapterPlan,
+            registry,
+          }),
+        ),
+      )
+
+      expect(response.status).toBe(502)
+      const body = (await response.json()) as {
+        error: string
+        reason: string
+      }
+      expect(body.error).toBe('provider_error')
+      expect(body.reason).toBe(`hydralisk upstream ${status}`)
+    },
+  )
+
   // EPIC #6017 honest downgrade: the hot Worker route cannot launch a browser, so it
   // does NOT execute the artifact. A prescreen-passing artifact comes back `unverified`
   // (we did not run it) with scalar_reward 0 — NEVER test_passed / 1 from regex.
@@ -919,6 +1138,26 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
     const body = (await response.json()) as { error: string; model: string }
     expect(body.error).toBe('model_unavailable')
     expect(body.model).toBe('gemini-3.5-flash')
+  })
+
+  test('rejects the Khala GPT-OSS alias when Hydralisk is unarmed', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_OSS_20B_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: ALL_LANES_UNARMED,
+          lanePlan: selectAdapterPlan,
+          readAvailableMsat: emptyBalance,
+        }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string; model: string }
+    expect(body.error).toBe('model_unavailable')
+    expect(body.model).toBe(KHALA_OSS_20B_MODEL_ID)
   })
 
   test('serves a KNOWN model when its lane IS armed', async () => {
@@ -1951,6 +2190,36 @@ describe('Khala identity guard', () => {
     expect(content.toLowerCase()).toContain('khala')
     expect(content.toLowerCase()).not.toContain('gemini')
     expect(content.toLowerCase()).not.toContain('google')
+  })
+
+  test('catches GPT/OpenAI identity leakage on the Khala GPT-OSS Hydralisk alias', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      leakingThenCleanAdapter(
+        HYDRALISK_ADAPTER_ID,
+        'I am GPT-OSS, an OpenAI model served by vLLM.',
+      ),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'what model are you?', role: 'user' }],
+          model: KHALA_OSS_20B_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskReadyArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const { content } = await readReply(response)
+    expect(content.toLowerCase()).toContain('khala')
+    expect(content.toLowerCase()).not.toContain('gpt')
+    expect(content.toLowerCase()).not.toContain('openai')
+    expect(content.toLowerCase()).not.toContain('vllm')
   })
 
   test('fail-closed backstop: a persistent leak is deterministically redacted to the Khala identity', async () => {
