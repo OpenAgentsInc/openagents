@@ -338,7 +338,12 @@ import {
   settleVerifiedAcceptedOutcome,
   summarizeAcceptedOutcomeSettlement,
 } from './inference/khala-accepted-outcome-settlement'
-import { readKhalaLoopArming } from './inference/khala-loop-integration'
+import {
+  type KhalaSettlementDispatch,
+  makeDryRunSettlementDispatch,
+  makeKhalaLoopSettlementDispatch,
+  readKhalaLoopArming,
+} from './inference/khala-loop-integration'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import {
@@ -1129,50 +1134,79 @@ const makeAcceptedOutcomeSettlementSink = (
       .then(registration => registration?.ownerAgentUserId)
   }
 
-  return outcome =>
-    settleVerifiedAcceptedOutcome(
+  // The REAL Spark dispatch (the proven receipt-first idempotent core). Performs a
+  // real send once every gate downstream authorizes it. The Khala records are
+  // structurally identical to the Tassadar run-settlement records the core takes.
+  const realDispatch: KhalaSettlementDispatch = dispatchInput =>
+    dispatchRealRunSettlementCore<WorkerBindings>(
       {
-        dispatchRealSettlement: dispatchInput =>
-          dispatchRealRunSettlementCore<WorkerBindings>(
-            {
-              env,
-              makeSettlementPaymentAuthority: (authorityEnv, context) =>
-                makeTreasuryPaymentAuthority({
-                  adapters: [
-                    makeSparkTreasuryPayoutAdapter({
-                      fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
-                      providerRef: context.providerRef,
-                      resolveDestination: () =>
-                        Effect.succeed(context.privatePayoutDestination),
-                    }),
-                  ],
-                  ledgerStore: context.ledgerStore,
-                }),
-              readSettlementWalletReadiness: async authorityEnv => {
-                const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
-                if (fetchTreasury === undefined) {
-                  return 'absent'
-                }
-                try {
-                  const response = await fetchTreasury('/spark/balance')
-                  return response.ok ? 'ready' : 'absent'
-                } catch {
-                  return 'absent'
-                }
-              },
-              resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
-                resolveSparkPayoutDestination(
-                  sparkTargetStore,
-                  ref,
-                  resolveContributorOwnerAgentUserId,
-                ),
-            },
-            {
-              contributorRef: dispatchInput.contributorRef,
-              ledger,
-              settlement: dispatchInput.settlement,
-            },
+        env,
+        makeSettlementPaymentAuthority: (authorityEnv, context) =>
+          makeTreasuryPaymentAuthority({
+            adapters: [
+              makeSparkTreasuryPayoutAdapter({
+                fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
+                providerRef: context.providerRef,
+                resolveDestination: () =>
+                  Effect.succeed(context.privatePayoutDestination),
+              }),
+            ],
+            ledgerStore: context.ledgerStore,
+          }),
+        readSettlementWalletReadiness: async authorityEnv => {
+          const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
+          if (fetchTreasury === undefined) {
+            return 'absent'
+          }
+          try {
+            const response = await fetchTreasury('/spark/balance')
+            return response.ok ? 'ready' : 'absent'
+          } catch {
+            return 'absent'
+          }
+        },
+        resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
+          resolveSparkPayoutDestination(
+            sparkTargetStore,
+            ref,
+            resolveContributorOwnerAgentUserId,
           ),
+      },
+      {
+        contributorRef: dispatchInput.contributorRef,
+        ledger,
+        settlement: dispatchInput.settlement,
+      },
+    )
+
+  // The DRY-RUN dispatch (records the dereferenceable receipt, NEVER a real send).
+  // It is the fail-closed fallback the gated selector routes to whenever the loop
+  // flag or the owner gate does not authorize a real payout for this exact outcome.
+  const dryRunDispatch = makeDryRunSettlementDispatch({
+    readReceiptByRef: ref => ledger.readPaymentAuthorityReceiptByRef(ref),
+    recordReceipt: record => ledger.createPaymentAuthorityReceipt(record),
+  })
+
+  return outcome => {
+    // The gate allowlist enrolls a specific accepted outcome by its derived run ref.
+    const settlementRunRef = `accepted_outcome.${outcome.verificationReceiptRef
+      .replace(/[^A-Za-z0-9_.:/-]/g, '_')
+      .slice(0, 180)}`
+    // GATED dispatch: real Spark send ONLY when the loop flag is armed AND the
+    // owner real-settlement gate authorizes THIS payout (adapter + cap + run
+    // allowlist + daily cap); otherwise the dry-run. This is a SECOND, independent
+    // fail-closed gate evaluation at the dispatch boundary, on top of the engine's
+    // own GATE 3, so a real send is unreachable without the owner's gate JSON + flag.
+    const gatedDispatch = makeKhalaLoopSettlementDispatch({
+      arming: readKhalaLoopArming(env as unknown as Record<string, unknown>),
+      dryRunDispatch,
+      readGate: () => readTassadarRealSettlementGate(env),
+      realDispatch,
+      settlementRunRef,
+    })
+    return settleVerifiedAcceptedOutcome(
+      {
+        dispatchRealSettlement: gatedDispatch,
         ledger,
         nowIso: currentIsoTimestamp(),
         readGate: () => readTassadarRealSettlementGate(env),
@@ -1182,10 +1216,7 @@ const makeAcceptedOutcomeSettlementSink = (
             ref,
             resolveContributorOwnerAgentUserId,
           ),
-        // The gate allowlist enrolls a specific accepted outcome by its derived run ref.
-        settlementRunRef: `accepted_outcome.${outcome.verificationReceiptRef
-          .replace(/[^A-Za-z0-9_.:/-]/g, '_')
-          .slice(0, 180)}`,
+        settlementRunRef,
       },
       outcome,
     ).pipe(
@@ -1193,6 +1224,7 @@ const makeAcceptedOutcomeSettlementSink = (
         summarizeAcceptedOutcomeSettlement(outcome, result),
       ),
     )
+  }
 }
 
 const TIPS_BUFFER_SERVICE_TOKEN_HEADER = 'x-tips-buffer-service-token'
