@@ -37,6 +37,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    startedAt?: string
   }>
 } => {
   let record = initial
@@ -44,6 +45,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    startedAt?: string
   }> = []
   const store: BatchJobStore = {
     getBatchJob: () => Effect.succeed(record),
@@ -60,6 +62,10 @@ const makeFakeStore = (
             updates.resultsR2Key === undefined
               ? record.resultsR2Key
               : updates.resultsR2Key,
+          startedAt:
+            updates.startedAt === undefined
+              ? record.startedAt
+              : updates.startedAt,
         }
       }
       return Effect.void
@@ -79,10 +85,12 @@ const pendingJob = (
   chargeReceiptRef: 'receipt.inference.batch_job_charge.batch_test',
   createdAt: '2026-06-22T00:00:00.000Z',
   datasetSize: 2,
+  enqueuedAt: '2026-06-22T00:00:00.000Z',
   failedItems: 0,
   jobId: 'batch_test',
   processedItems: 0,
   resultsR2Key: null,
+  startedAt: null,
   status: 'pending',
   updatedAt: '2026-06-22T00:00:00.000Z',
   ...overrides,
@@ -211,6 +219,36 @@ describe('executeBatchJob', () => {
     expect(terminal?.processedItems).toBe(2)
     expect(terminal?.failedItems).toBe(0)
     expect(fake.reads()?.status).toBe('completed')
+  })
+
+  it('stamps the consumer-start time (END of the batch wait) from the injected clock', async () => {
+    // Book P0-3: the consumer marks `startedAt` at the `processing` transition so
+    // the closeout receipt can disclose `batchWaitMs = startedAt - enqueuedAt`.
+    const fake = makeFakeStore(pendingJob({ datasetSize: 1 }))
+    const gateway = makeFakeAdapter('fireworks', {
+      kind: 'ok',
+      usage: { completionTokens: 5, promptTokens: 5, totalTokens: 10 },
+    })
+
+    await run(
+      executeBatchJob(
+        {
+          dispatch: dispatchDepsFor(gateway.adapter),
+          nowIso: () => '2026-06-22T00:00:03.000Z',
+          store: fake.store,
+        },
+        makeQueueMessage('batch_test', 1),
+      ),
+    )
+
+    // The processing transition carries the start time; the row reflects it, so a
+    // later closeout read computes a real batch wait (3s after the 00:00:00
+    // enqueue) rather than `not_measured`.
+    const processing = fake
+      .statusWrites()
+      .find(write => write.status === 'processing')
+    expect(processing?.startedAt).toBe('2026-06-22T00:00:03.000Z')
+    expect(fake.reads()?.startedAt).toBe('2026-06-22T00:00:03.000Z')
   })
 
   it('counts a failed item but still completes the job (partial success)', async () => {

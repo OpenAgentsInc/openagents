@@ -93,3 +93,77 @@ Conventions:
   `not_measured` (P0-1 follow-on, unchanged here).
 - **Status:** PR open against `main` (#6084); orchestrator reviews / merges /
   deploys / smokes. NOT deployed by this entry.
+
+---
+
+## P0-3 — Finish the streaming/async split — DONE (PR open, #6086)
+
+- **Notes ref:** `khala-investigation-notes.md` §P0 item 3 ("Finish The
+  Streaming/Async Split"); book Ch.7 (Production — streaming vs async / client
+  code); the local 524 postmortem
+  `docs/inference/2026-06-22-long-running-inference-response-strategies.md`.
+- **Already partial before this entry (NOT re-done):** the durable-stream EPIC
+  #6056 (single-client reconnect-resumable SSE proxy) merged; the
+  `openagents-inference-batch-jobs` queue exists in `wrangler.jsonc`; the submit
+  route + `inference_batch_jobs` D1 table (migration `0217`) + the public receipt
+  route + the `executeBatchJob` Queue consumer + the Worker `queue` handler
+  routing batch-job messages to it (all flag-gated by
+  `INFERENCE_BATCH_JOBS_ENABLED`) were already wired; and the **interactive
+  stream already attaches the terminal `openagents` receipt at stream close**
+  (`buildTerminalFrame` in `chat-completions-routes.ts`) with
+  `requestClass: interactive_stream`. So deliverable 2 (terminal receipt at
+  stream close) and the interactive-vs-async request-class distinction on the
+  chat path were already in place.
+- **What this entry FINISHED (the remaining gaps):**
+  1. **Batch closeout receipt is now an auditable terminal receipt.** The
+     dereferenceable batch closeout receipt
+     (`/api/public/inference/batch-job-receipts/<ref>`) now carries the canonical
+     `openagents.khala.telemetry.v1` **record** as its `openagents` block — the
+     async-lane counterpart of the interactive stream's stream-close receipt —
+     with `requestClass: batch` (distinguishing detached work from an interactive
+     stream), a measured `queueWaitMs: 0` (a batch job never blocks the edge), and
+     the real `batchWaitMs`. (`batch-job-closeout-receipts.ts`
+     `buildBatchJobTelemetryRecord` + `batch-job-routes.ts`.)
+  2. **Batch/queue wait is now measured.** Migration `0223` adds
+     `enqueued_at`/`started_at` to `inference_batch_jobs`; the submit route stamps
+     `enqueued_at` and the queue message carries `enqueuedAtIso` (the START of the
+     batch wait), the consumer stamps `started_at` from an injected clock (the
+     END), and `computeBatchWaitMs` derives `batchWaitMs = started_at -
+     enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
+     when timing is unavailable (a pre-`0223` job, a token-only job that was never
+     enqueued). Surfaced on the closeout receipt AND `GET
+     /v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
+  3. **Durable-connection scope documented + confirmed (deliverable 4).** The
+     chat gateway uses a DO only for the #6056 single-client reconnect proxy (not
+     multi-subscriber); DO + hibernatable-WebSocket multi-subscriber transport is
+     reserved for the live Verse world (`apps/openagents-world`). Plain
+     request/response inference spins up no DO/WebSocket. Documented in
+     `docs/inference/khala.md` §4 "Streaming / async split".
+- **Where:** `apps/openagents.com/workers/api/migrations/0223_inference_batch_jobs_wait_timing.sql`,
+  `src/inference/batch-job-store.ts` (timing columns), `batch-job-consumer.ts`
+  (`enqueuedAtIso` on the message, `nowIso` clock, `started_at` stamp),
+  `batch-job-closeout-receipts.ts` (terminal telemetry record + `computeBatchWaitMs`),
+  `batch-job-routes.ts` (submit stamps enqueue time; receipt + status read populate
+  the telemetry/wait), minimal `index.ts` consumer-deps clock wiring. Docs:
+  `docs/inference/khala.md` (§3 telemetry table + §4 streaming/async split).
+- **Verification bar (green):** the inference test suites (703 tests),
+  `typecheck`, `check:architecture`, `check:effect-topology`,
+  `check:public-projection-freshness`, and the exact-route manifest test
+  (`worker-exact-routes.test.ts` — no route changes, the three batch routes were
+  already registered). New tests: a detached job enqueues → consumer runs it →
+  the closeout receipt dereferences with `requestClass: batch` + `queueWaitMs: 0`
+  + a real `batchWaitMs` (end-to-end `batch-job-flow.test.ts`); the consumer
+  stamps `started_at` from the injected clock; `computeBatchWaitMs` derives the
+  delta or rejects unmeasurable/negative inputs; an unmeasured wait records a
+  `batch_wait_not_measured` blocker rather than a fake `0`; the status poll exposes
+  the wait.
+- **Honest scope — still `not_measured` / inert:** the async consumer stays
+  flag-gated off (`INFERENCE_BATCH_JOBS_ENABLED`) until the orchestrator arms it;
+  the batch closeout telemetry record leaves per-item token counts `not_measured`
+  at the closeout summary (they are metered per item, not re-aggregated) with a
+  `batch_token_usage_per_item` blocker; the interactive-stream `queueWaitMs` stays
+  `not_measured` (no edge queue instrumentation); region + the
+  provider/gateway/verifier/settlement time split stay `not_measured` (P0-1
+  follow-on, unchanged here).
+- **Status:** PR open against `main` (#6086); orchestrator reviews / merges /
+  deploys / smokes. NOT deployed by this entry.

@@ -29,6 +29,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { workerLogEntry } from '../observability'
+import { currentIsoTimestamp } from '../runtime-primitives'
 import {
   type DispatchDeps,
   dispatchWithOverflow,
@@ -73,6 +74,13 @@ export class BatchJobQueueMessage extends S.Class<BatchJobQueueMessage>(
   schemaVersion: S.Literal('openagents.inference.batch_job.v1'),
   jobId: S.String,
   items: S.Array(BatchJobExecutableItemSchema),
+  // Book P0-3 (#6086): when the producer enqueued this message (ISO 8601), so the
+  // consumer can compute the batch WAIT (`startedAt - enqueuedAt`) and make a
+  // detached job's time-in-queue auditable in its closeout receipt. Optional so a
+  // message published before this field existed still decodes; when absent the
+  // receipt honestly reports `not_measured` for `batchWaitMs` rather than a
+  // fabricated number.
+  enqueuedAtIso: S.optionalKey(S.String),
 }) {}
 
 // Result of running a batch job, surfaced to the queue handler for ack/retry
@@ -107,6 +115,12 @@ export type BatchJobConsumerDeps = Readonly<{
   meteringHook?: MeteringHook | undefined
   // Funding kind for the metering context (card | bitcoin). Defaults to card.
   fundingKind?: MeteringContext['fundingKind'] | undefined
+  // Book P0-3 (#6086): the clock the consumer stamps the start-of-processing time
+  // with (the END of the batch wait). Defaults to the canonical
+  // `currentIsoTimestamp` primitive in prod; tests inject a deterministic clock so
+  // `batchWaitMs` is exactly assertable. Injectable so the consumer stays a pure
+  // function of its seams.
+  nowIso?: (() => string) | undefined
 }>
 
 const toInferenceRequest = (
@@ -132,6 +146,7 @@ export const executeBatchJob = (
   Effect.gen(function* () {
     const meteringHook = deps.meteringHook ?? stubMeteringHook
     const fundingKind = deps.fundingKind ?? 'card'
+    const nowIso = deps.nowIso ?? currentIsoTimestamp
     const receiptRef = batchJobCloseoutReceiptRef(message.jobId)
 
     const job = yield* deps.store.getBatchJob(message.jobId)
@@ -170,7 +185,11 @@ export const executeBatchJob = (
       }
     }
 
-    yield* deps.store.updateBatchJobStatus(message.jobId, 'processing', {})
+    // Stamp the start-of-processing time as the END of the batch wait (book
+    // P0-3). `batchWaitMs` (in the closeout receipt) = startedAt - enqueuedAt.
+    yield* deps.store.updateBatchJobStatus(message.jobId, 'processing', {
+      startedAt: nowIso(),
+    })
 
     let processedItems = 0
     let failedItems = 0

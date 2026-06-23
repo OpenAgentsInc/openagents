@@ -165,13 +165,13 @@ margin) / settlement state / blocker refs — is the dereferenceable depth behin
 | total wall-clock | measured | gateway edge (request accept → completion) |
 | TTFT | measured on the **true-streaming** path | first content delta − request accept |
 | inter-token latency / perceived TPS | measured on the **true-streaming** path | derived from completion tokens + generation wall-clock |
-| request class | measured | stream → `interactive_stream`, else `async_job` |
+| request class | measured | stream → `interactive_stream`; detached batch job → `batch`; else `async_job` (book P0-3, #6086) |
 | route / provider / served model | measured | coordinator + adapter |
 | verification class / executed verdict / scalar reward | measured | reuse of the existing `khala-code` verifier verdict (no parallel grader) |
 | cached input tokens | measured when the provider reports a cached dimension (book P0-2, #6084); else `not_measured` | provider `usage.cachedPromptTokens` (Fireworks `prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`, Gemini `cachedContentTokenCount`) → block + record `cachedInputTokens` |
 | unaccounted tokens (`total − (prompt + completion)`) | measured when all three counts are measured (book P0-2, #6084) | reconciliation in the record builder; surfaces the real billed reasoning/thinking/tool-use dimension behind the live total-vs-sum gap |
 | provider / gateway / verifier / settlement time split | `not_measured` (no split instrumentation yet) | future per-stage timers |
-| queue / batch wait | `not_measured` (chat path) | future batch-job consumer |
+| queue / batch wait | chat path: `not_measured`. **Async batch lane (book P0-3, #6086): measured** — `queueWaitMs` = `0` (a batch job never blocks the edge), `batchWaitMs` = the real enqueue→consumer-start wait (or `not_measured` when timing is unavailable) | batch-job consumer stamps `enqueued_at`/`started_at`; surfaced on the closeout receipt + `GET /v1/inference/batches/:jobId` |
 | cache-affinity hash | measured for Khala requests with an account/session/codebase key (book P0-2, #6084); else `null` with a `cache_affinity_key_not_resolved` `blockerRef` | one-way `hashCacheAffinityKey(account/session/codebase)` |
 | region / fallback reason | `not_measured` / `null` (not wired on the gateway yet) | future region wiring |
 | cost basis / price / margin bucket | `not_measured` on this hot path (the immediate block omits raw economics) | metering hook (receipt-first) feeds the full record |
@@ -266,6 +266,58 @@ Components, mapped to existing seams: gateway route (#5476) · auth+balance
 **provider adapters/registry** (#5479/#5480/#5481 + Pylon + Tassadar) · verifier
 (verification-class registry) · **meter = `MeteringHook`** (#5477) · receipt +
 settlement (revenue-loop spine, EPIC #5457).
+
+### Streaming / async split (book P0-3 / #6086)
+
+Long synchronous inference through the Cloudflare edge is the wrong shape: the
+edge gives up on an origin that produces no bytes for ~100s and returns a `524`
+(the local 524 postmortem,
+[`2026-06-22-long-running-inference-response-strategies.md`](2026-06-22-long-running-inference-response-strategies.md),
+independently rediscovered the book's Ch.7 production lesson). The request lane is
+therefore chosen by the request *shape*, and the chosen lane is recorded as the
+telemetry `requestClass`:
+
+| Request shape | Transport | `requestClass` | Wait telemetry |
+|---|---|---|---|
+| **Interactive** (a human/agent waits on it) | **Streaming SSE** — `stream:true`, true pass-through (#6035); first byte ~1s, every chunk resets the edge idle-timer so a 3-min generation never 524s | `interactive_stream` | `queueWaitMs` ~`not_measured`/0 (no edge queue); no batch wait |
+| **Detached / minutes-long / agentic** | **Async batch job** — submit → `202 {jobId, receiptRef}` → a **Queue consumer** runs it OFF the request path → a dereferenceable **batch closeout receipt** | `batch` | `queueWaitMs` = measured `0` (never blocks the edge); `batchWaitMs` = real enqueue→consumer-start wait (or `not_measured`) |
+| **Live multi-subscriber UI** (cockpit, Verse projection) | **Durable Object + hibernatable WebSocket** | (world transport, not the chat gateway) | — |
+
+**Terminal receipt at the end of BOTH lanes.** The interactive stream attaches
+the terminal `openagents` disclosure block (built by the same
+`khalaReceiptForResult`) as the final `chat.completion.chunk` at stream close
+(EOF), settling metering receipt-first from the terminal usage frame. The async
+lane attaches the canonical `openagents.khala.telemetry.v1` *record* to the batch
+closeout receipt at `/api/public/inference/batch-job-receipts/<ref>`, with
+`requestClass: batch` and the batch/queue wait. Both classes are distinguishable,
+and both end with an auditable receipt.
+
+**Async lane internals (Khala, #6028 / EPIC #6017).** Submit
+(`handleBatchJobsSubmit`) prices + charges up front, persists a `pending`
+`inference_batch_jobs` row stamped with `enqueued_at` (the START of the batch
+wait), and hands the executable items to the queue producer. The Queue consumer
+(`executeBatchJob`, dispatched from the Worker `queue` handler when
+`INFERENCE_BATCH_JOBS_ENABLED` is armed) loads the row, stamps `started_at` (the
+END of the batch wait), runs each item against the **same provider-adapter
+registry** the interactive route uses, meters each through the **same
+`MeteringHook`** (per-item idempotency key → no double-charge on redelivery), and
+drives the row to `completed`/`failed`. Job state and the batch wait are queryable
+at `GET /v1/inference/batches/:jobId`; the closeout receipt becomes
+dereferenceable once the job is `completed`. Idempotent on the job id: a
+redelivered queue message is a safe no-op.
+
+**Durable-connection scope (deliverable 4).** The chat gateway uses Durable
+Objects in exactly one bounded place: the durable-stream proxy (#6056 /
+`durable-inference-proxy.ts`) tees a single client's paid token stream into a
+per-`requestId` offset log so a *reconnect* can replay the suffix — it is a
+single-subscriber resumability aid, not multi-subscriber fan-out, and metering
+still fires exactly once on the real upstream EOF (replays are free). DO +
+hibernatable-WebSocket **multi-subscriber** transport is reserved for the live
+Verse world (`apps/openagents-world` Region DO + `packages/world-client`), where a
+live "watch the energy flow" projection genuinely needs many subscribers on one
+long-lived generation. Plain request/response inference does **not** spin up a DO
+or WebSocket — that would be over-applying the heaviest transport to the lightest
+shape.
 
 ## 5. The coordinator (the missing middle)
 

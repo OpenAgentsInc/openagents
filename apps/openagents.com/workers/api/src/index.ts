@@ -8447,6 +8447,10 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
       registry: inferenceProviderRegistry,
     },
     meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+    // Book P0-3 (#6086): the consumer stamps the start-of-processing time (the
+    // END of the batch wait) with this clock so the closeout receipt can disclose
+    // an honest `batchWaitMs`.
+    nowIso: currentIsoTimestamp,
     store: makeD1BatchJobStore(openAgentsDatabase(env), currentIsoTimestamp),
   }
 }

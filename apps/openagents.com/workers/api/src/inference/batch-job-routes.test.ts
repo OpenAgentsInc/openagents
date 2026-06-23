@@ -156,6 +156,9 @@ describe('handleBatchJobReceiptRead', () => {
                 results_r2_key: 'batch_123/results.jsonl',
                 created_at: '2026-06-20T12:00:00.000Z',
                 updated_at: '2026-06-20T12:05:00.000Z',
+                // Book P0-3: enqueue -> consumer-start timing for the batch wait.
+                enqueued_at: '2026-06-20T12:00:00.000Z',
+                started_at: '2026-06-20T12:00:30.000Z',
               }
             }
             if (sql.includes('pay_ins')) {
@@ -226,6 +229,61 @@ describe('handleBatchJobReceiptRead', () => {
     expect(body.receipt.failedItems).toBe(1)
     expect(body.receipt.totalCostMsat).toBe(50000)
     expect(body.staleness.composition).toBe('live_at_read')
+
+    // Book P0-3: the route attaches the TERMINAL `openagents` telemetry record so
+    // the detached job is auditable — distinguishable from an interactive stream
+    // (`requestClass: batch`), with a measured zero edge wait and the real
+    // in-queue batch wait (12:00:00 enqueue -> 12:00:30 start = 30000ms).
+    expect(body.receipt.openagents.requestClass).toBe('batch')
+    expect(body.receipt.openagents.queueWaitMs).toBe(0)
+    expect(body.receipt.openagents.batchWaitMs).toBe(30000)
+  })
+
+  it('reports batchWaitMs not_measured when timing is unavailable (no fabrication)', async () => {
+    // A completed job with no enqueue/start timing (e.g. submitted before the
+    // timing columns existed) must honestly report not_measured, never a fake 0.
+    const db = {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          first: async () => {
+            if (sql.includes('inference_batch_jobs')) {
+              return {
+                job_id: 'batch_123',
+                account_ref: 'agent:123',
+                status: 'completed',
+                charge_receipt_ref:
+                  'receipt.inference.batch_job_charge.batch_123',
+                dataset_size: 100,
+                processed_items: 99,
+                failed_items: 1,
+                results_r2_key: 'batch_123/results.jsonl',
+                created_at: '2026-06-20T12:00:00.000Z',
+                updated_at: '2026-06-20T12:05:00.000Z',
+                enqueued_at: null,
+                started_at: null,
+              }
+            }
+            if (sql.includes('pay_ins')) {
+              return { cost_msat: 50000 }
+            }
+            return null
+          },
+        }),
+      }),
+    } as unknown as D1Database
+    const response = await run(
+      handleBatchJobReceiptRead(
+        makeReadRequest('receipt.inference.batch_job.closeout.batch_123'),
+        baseDeps({ db }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as any
+    expect(body.receipt.openagents.requestClass).toBe('batch')
+    expect(body.receipt.openagents.batchWaitMs).toBe('not_measured')
+    expect(body.receipt.openagents.blockerRefs).toContain(
+      'batch_wait_not_measured',
+    )
   })
 })
 
@@ -248,6 +306,8 @@ describe('handleBatchJobStatusRead', () => {
                 results_r2_key: 'batch_123/results.jsonl',
                 created_at: '2026-06-20T12:00:00.000Z',
                 updated_at: '2026-06-20T12:05:00.000Z',
+                enqueued_at: '2026-06-20T12:00:00.000Z',
+                started_at: '2026-06-20T12:00:45.000Z',
               }
             }
             return null
@@ -313,5 +373,11 @@ describe('handleBatchJobStatusRead', () => {
     expect(body.datasetSize).toBe(100)
     expect(body.processedItems).toBe(99)
     expect(body.failedItems).toBe(1)
+    // Book P0-3: the status poll exposes the batch wait so long-running detached
+    // work is auditable without waiting for the closeout receipt (12:00:00
+    // enqueue -> 12:00:45 start = 45000ms).
+    expect(body.enqueuedAt).toBe('2026-06-20T12:00:00.000Z')
+    expect(body.startedAt).toBe('2026-06-20T12:00:45.000Z')
+    expect(body.batchWaitMs).toBe(45000)
   })
 })
