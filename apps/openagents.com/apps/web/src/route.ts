@@ -68,6 +68,7 @@ export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
 export const ShareRoute = r('Share', { shareId: S.String })
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
+export const LandingRoute = r('Landing')
 export const PylonRoute = r('Pylon')
 export const DownloadRoute = r('Download')
 export const DashboardRoute = r('Dashboard')
@@ -154,6 +155,7 @@ export type PublicAgentRoute = typeof PublicAgentRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
 export type Moksha2Route = typeof Moksha2Route.Type
+export type LandingRoute = typeof LandingRoute.Type
 export type PylonRoute = typeof PylonRoute.Type
 export type DownloadRoute = typeof DownloadRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
@@ -214,6 +216,7 @@ export const LoggedOutRoute = S.Union([
   ShareRoute,
   MokshaRoute,
   Moksha2Route,
+  LandingRoute,
   PylonRoute,
   DownloadRoute,
   WorkspaceRoute,
@@ -321,6 +324,7 @@ export const AppRoute = S.Union([
   ShareRoute,
   MokshaRoute,
   Moksha2Route,
+  LandingRoute,
   PylonRoute,
   DownloadRoute,
   DashboardRoute,
@@ -541,6 +545,7 @@ export const shareRouter = pipe(
 )
 export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
 export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
+export const landingRouter = pipe(literal('landing'), Route.mapTo(LandingRoute))
 export const pylonRouter = pipe(literal('pylon'), Route.mapTo(PylonRoute))
 export const downloadRouter = pipe(
   literal('download'),
@@ -680,6 +685,7 @@ const routeParser = Route.oneOf(
   shareRouter,
   moksha2Router,
   mokshaRouter,
+  landingRouter,
   pylonRouter,
   downloadRouter,
   inviteRouter,

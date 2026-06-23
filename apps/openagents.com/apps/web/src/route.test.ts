@@ -24,6 +24,7 @@ import {
   ForumRoute,
   ForumTopicRoute,
   ImagesRoute,
+  LandingRoute,
   Moksha2Route,
   MulletRoute,
   NotFoundRoute,
@@ -130,6 +131,10 @@ describe('app route parser', () => {
 
   test('accepts the OpenAgents Moksha narrative route', () => {
     expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
+  })
+
+  test('accepts the standalone landing route', () => {
+    expect(urlToAppRoute(appUrl('/landing'))).toEqual(LandingRoute())
   })
 
   test('accepts the public live Tassadar run route', () => {
