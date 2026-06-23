@@ -14,7 +14,7 @@ paths before or alongside the Rust-native Psionic stack.
 
 Hydralisk should be a sibling stack to Psionic, not a replacement for it. If it
 becomes a standalone repository, treat it like a named lane in the same spirit
-as Cyanic: a focused stack with its own identity, contracts, and operational
+as Psionic: a focused stack with its own identity, contracts, and operational
 truth, not a miscellaneous scripts folder.
 
 Psionic remains the "build the substrate ourselves" Rust ML framework: tensors,
