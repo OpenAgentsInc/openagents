@@ -45,6 +45,7 @@
     "smoke:tassadar:live-page": "node scripts/tassadar-live-page-smoke.mjs",
     "smoke:activity:proof-links": "node scripts/public-activity-proof-links-smoke.mjs",
     "smoke:khala:billing-mpp-proof": "node scripts/khala-billing-mpp-proof-smoke.mjs",
+    "smoke:khala:mpp-payloop": "node scripts/khala-mpp-payloop-smoke.mjs",
     "smoke:khala:gateway-readiness": "node scripts/khala-gateway-readiness-smoke.mjs",
     "smoke:visibility:browser": "node scripts/visibility-browser-smoke.mjs",
     "lint": "eslint .",
