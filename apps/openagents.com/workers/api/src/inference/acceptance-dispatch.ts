@@ -38,6 +38,9 @@
 
 import { Effect, Schema as S } from 'effect'
 
+import { parseJsonStringArray } from '../json-boundary'
+import { currentIsoTimestamp } from '../runtime-primitives'
+
 import type { AcceptanceSpec } from './acceptance-spec'
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
 import {
@@ -304,7 +307,7 @@ export type KhalaVerificationStore = Readonly<{
 // An in-memory verification store. Used by tests + as the reference implementation a
 // D1-backed store mirrors. Pure + synchronous under the Effect wrapper.
 export const makeInMemoryKhalaVerificationStore = (
-  nowIso: () => string = () => new Date().toISOString(),
+  nowIso: () => string = currentIsoTimestamp,
 ): KhalaVerificationStore => {
   const rows = new Map<string, KhalaVerificationRecord>()
   return {
@@ -322,7 +325,7 @@ export const makeInMemoryKhalaVerificationStore = (
 // `unverified` row; the caller's `version` guard keeps it idempotent.
 export const makeD1KhalaVerificationStore = (
   db: D1Database,
-  nowIso: () => string = () => new Date().toISOString(),
+  nowIso: () => string = currentIsoTimestamp,
 ): KhalaVerificationStore => ({
   read: requestId =>
     Effect.tryPromise(() =>
@@ -338,14 +341,8 @@ export const makeD1KhalaVerificationStore = (
     ).pipe(
       Effect.map(row => {
         if (row === null) return null
-        const parseArray = (value: unknown): ReadonlyArray<string> => {
-          try {
-            const parsed = JSON.parse(String(value ?? '[]'))
-            return Array.isArray(parsed) ? parsed.map(String) : []
-          } catch {
-            return []
-          }
-        }
+        const parseArray = (value: unknown): ReadonlyArray<string> =>
+          parseJsonStringArray(typeof value === 'string' ? value : null)
         return {
           executed: Number(row.executed) === 1,
           failedChecks: parseArray(row.failed_checks),

@@ -20,6 +20,7 @@
 import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../../http/responses'
+import { randomUuid } from '../../runtime-primitives'
 import {
   type ChatCompletionsDeps,
   handleChatCompletions,
@@ -190,7 +191,7 @@ export const handleMppChatCompletions = (
         ? {}
         : { networkProfileId: deps.stripeNetworkProfileId }),
     }
-    const newId = deps.newId ?? (() => crypto.randomUUID())
+    const newId = deps.newId ?? randomUuid
     const cardEnabled =
       deps.stripeNetworkProfileId !== undefined &&
       deps.stripeNetworkProfileId.trim() !== ''
