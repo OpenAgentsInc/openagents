@@ -21,7 +21,12 @@ import {
   type InferenceMessage,
   type InferenceRequest,
 } from './inference/provider-adapter'
-import { buildOnboardingSystemPrompt } from './autopilot-onboarding-system-prompt'
+import {
+  buildOnboardingSystemPrompt,
+  onboardingVerticalStorageValue,
+  resolveOnboardingPromptVertical,
+} from './autopilot-onboarding-system-prompt'
+import { type AutopilotConciergeVertical } from './inference/autopilot-concierge-model'
 import { parseJsonWithSchema } from './json-boundary'
 
 export const KHALA_ONBOARDING_MODEL = 'openagents/khala-mini'
@@ -72,10 +77,13 @@ export type OnboardingSession = typeof OnboardingSession.Type
 // ROUTE I/O ---------------------------------------------------------------
 
 // Turn request body. `userText` is the human's message for this turn.
-// `verticalOverlay` is the optional vertical-guidance slot, only honored on the
-// FIRST turn that creates the session (a session's overlay is fixed once set).
+// `vertical` is the server-owned Concierge vertical enum. `verticalOverlay` is a
+// deprecated compatibility field: callers may still send it, but the server only
+// uses it to recover the bounded `legal` enum from the old client. Raw overlay
+// text is never injected into prompts.
 export const OnboardingTurnRequest = S.Struct({
   userText: S.String,
+  vertical: S.optionalKey(S.NullOr(S.String)),
   verticalOverlay: S.optionalKey(S.NullOr(S.String)),
 })
 export type OnboardingTurnRequest = typeof OnboardingTurnRequest.Type
@@ -86,7 +94,7 @@ export type OnboardingTurnRequest = typeof OnboardingTurnRequest.Type
 export type OnboardingTurnInput = Readonly<{
   sessionId: string
   userText: string
-  verticalOverlay: string | null
+  vertical: AutopilotConciergeVertical
 }>
 
 export const OnboardingTurnResponse = S.Struct({
@@ -318,7 +326,7 @@ export const runOnboardingTurn = (
       existing ??
       ({
         id: input.sessionId,
-        verticalOverlay: input.verticalOverlay,
+        verticalOverlay: onboardingVerticalStorageValue(input.vertical),
         status: 'interviewing',
         transcript: [],
         outputSpec: {},
@@ -346,7 +354,9 @@ export const runOnboardingTurn = (
 
     const advanced: OnboardingSession = {
       id: session.id,
-      verticalOverlay: session.verticalOverlay,
+      verticalOverlay: onboardingVerticalStorageValue(
+        resolveOnboardingPromptVertical(session.verticalOverlay),
+      ),
       status: session.status,
       transcript: [...session.transcript, userTurn, assistantTurn],
       outputSpec: session.outputSpec,
@@ -416,7 +426,7 @@ export const prepareOnboardingStreamTurn = (
       existing ??
       ({
         id: input.sessionId,
-        verticalOverlay: input.verticalOverlay,
+        verticalOverlay: onboardingVerticalStorageValue(input.vertical),
         status: 'interviewing',
         transcript: [],
         outputSpec: {},
@@ -460,7 +470,9 @@ export const finalizeOnboardingStreamTurn = (
 
     const advanced: OnboardingSession = {
       id: session.id,
-      verticalOverlay: session.verticalOverlay,
+      verticalOverlay: onboardingVerticalStorageValue(
+        resolveOnboardingPromptVertical(session.verticalOverlay),
+      ),
       status: session.status,
       transcript: [...session.transcript, userTurn, assistantTurn],
       outputSpec: session.outputSpec,

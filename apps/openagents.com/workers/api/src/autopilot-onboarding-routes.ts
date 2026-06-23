@@ -13,6 +13,11 @@
 import { Effect, Match as M, Schema as S } from 'effect'
 
 import {
+  AUTOPILOT_CONCIERGE_VERTICALS,
+  type AutopilotConciergeVertical,
+} from './inference/autopilot-concierge-model'
+import { resolveOnboardingPromptVertical } from './autopilot-onboarding-system-prompt'
+import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
   type OnboardingSessionStore,
@@ -196,6 +201,30 @@ const errorReason = (error: OnboardingRouteError): string =>
     M.exhaustive,
   )
 
+const resolveRequestedVertical = (
+  body: OnboardingTurnRequest,
+): Effect.Effect<AutopilotConciergeVertical, OnboardingBadRequest> => {
+  const explicit = body.vertical?.trim().toLowerCase()
+  if (explicit !== undefined && explicit !== '') {
+    if (
+      AUTOPILOT_CONCIERGE_VERTICALS.includes(
+        explicit as AutopilotConciergeVertical,
+      )
+    ) {
+      return Effect.succeed(explicit as AutopilotConciergeVertical)
+    }
+    return Effect.fail(
+      new OnboardingBadRequest({
+        reason: `invalid vertical; allowed: ${AUTOPILOT_CONCIERGE_VERTICALS.join(', ')}`,
+      }),
+    )
+  }
+
+  return Effect.succeed(
+    resolveOnboardingPromptVertical(body.verticalOverlay ?? null),
+  )
+}
+
 export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
   dependencies: OnboardingRouteDependencies<Env>,
 ) => {
@@ -212,12 +241,13 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
   ): OnboardingRouteEffect =>
     Effect.gen(function* () {
       const body = yield* decodeJsonBody(request, OnboardingTurnRequest)
+      const vertical = yield* resolveRequestedVertical(body)
 
       const result = yield* runOnboardingTurn(
         {
           sessionId,
           userText: body.userText,
-          verticalOverlay: body.verticalOverlay ?? null,
+          vertical,
         },
         {
           infer: dependencies.makeInferenceClient(env),
@@ -248,11 +278,17 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
 
     return decodeJsonBody(request, OnboardingTurnRequest).pipe(
       Effect.flatMap(body =>
+        Effect.map(resolveRequestedVertical(body), vertical => ({
+          body,
+          vertical,
+        })),
+      ),
+      Effect.flatMap(({ body, vertical }) =>
         prepareOnboardingStreamTurn(
           {
             sessionId,
             userText: body.userText,
-            verticalOverlay: body.verticalOverlay ?? null,
+            vertical,
           },
           { nowIso, store, stream: streamClient },
         ),

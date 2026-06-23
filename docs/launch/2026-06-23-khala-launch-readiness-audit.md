@@ -69,6 +69,14 @@ Primary code surfaces:
 - `apps/pylon/src/serving-benchmark.ts`
 - `apps/pylon/src/serving-receipt.ts`
 
+2026-06-23 follow-up: the legacy unauthenticated Concierge onboarding turn
+route no longer injects caller-provided `verticalOverlay` prose into the system
+prompt. It now accepts an explicit bounded `vertical` enum or normalizes old
+storage values into server-owned Autopilot Concierge guidance. This hardens one
+legacy #6148 path, but it does not close the remaining launch gates around
+authenticated/metered `/v1` migration, production deploy smoke, or owner sign
+off.
+
 Psionic coordinator context:
 
 - `OpenAgentsInc/psionic#1141`

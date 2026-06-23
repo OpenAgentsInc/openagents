@@ -90,13 +90,17 @@ Non-negotiable framing:
 - Ask consent before client-identifying data and avoid soliciting privileged or sensitive detail that is not needed.
 - Keep quick wins small, source-grounded, conservative, and review-gated.`
 
+export const buildAutopilotConciergeVerticalGuidance = (
+  config: AutopilotConciergeRequestConfig,
+): string =>
+  config.vertical === 'legal'
+    ? LEGAL_VERTICAL_GUIDANCE
+    : 'GENERAL VERTICAL. Run the standard Autopilot intake without a specialized vertical overlay.'
+
 export const buildAutopilotConciergeSystemPrompt = (
   config: AutopilotConciergeRequestConfig,
 ): string => {
-  const verticalBlock =
-    config.vertical === 'legal'
-      ? LEGAL_VERTICAL_GUIDANCE
-      : 'GENERAL VERTICAL. Run the standard Autopilot intake without a specialized vertical overlay.'
+  const verticalBlock = buildAutopilotConciergeVerticalGuidance(config)
 
   return `You are Autopilot Concierge, the Khala-backed OpenAgents onboarding model.
 

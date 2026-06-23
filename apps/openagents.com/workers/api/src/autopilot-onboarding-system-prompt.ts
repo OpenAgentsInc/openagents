@@ -15,12 +15,17 @@
 //      block is regenerated from `publicProductPromisesDocument()` so a promise
 //      flip in source changes what the onboarding agent may sell — no second copy
 //      of the truth.
-//   3. An optional VERTICAL OVERLAY slot — extra vertical guidance injected by a
-//      caller (used later by /autopilot/legal) without forking this module.
+//   3. A server-owned VERTICAL GUIDANCE slot — extra vertical guidance selected
+//      from the bounded Autopilot Concierge vertical enum. Callers never supply
+//      raw prompt text for this slot.
 //
 // Pure + transport-agnostic: this returns a string. Voice (STT -> route -> TTS)
 // can layer on later without touching the prompt.
 
+import {
+  type AutopilotConciergeVertical,
+  buildAutopilotConciergeVerticalGuidance,
+} from './inference/autopilot-concierge-model'
 import { publicProductPromisesDocument } from './product-promises'
 
 // The promise areas the offerings menu maps onto. We surface the live state of a
@@ -203,18 +208,33 @@ THE 10-SECTION OUTPUT SPEC (accumulate into this structure):
   9. Payment — quick-win budget (rough); payment preference (credit card / USD credits / Bitcoin); ongoing model (usage-metered / fixed monthly / pay-per-accepted-outcome).
   10. Open questions / requests beyond the menu — anything the human asked for that is not in the offerings menu; things OpenAgents needs to confirm before starting.`
 
-// Build the full system prompt for a turn. `verticalOverlay`, when present,
-// injects extra vertical guidance (e.g. legal) as a clearly-bounded block; it
-// MUST NOT be allowed to override the honesty contract.
+export const resolveOnboardingPromptVertical = (
+  verticalOverlay: string | null,
+): AutopilotConciergeVertical => {
+  const normalized = verticalOverlay?.trim().toLowerCase()
+  if (normalized === 'legal' || normalized?.startsWith('legal vertical')) {
+    return 'legal'
+  }
+  return 'general'
+}
+
+export const onboardingVerticalStorageValue = (
+  vertical: AutopilotConciergeVertical,
+): string | null => (vertical === 'general' ? null : vertical)
+
+// Build the full system prompt for a turn. `verticalOverlay` is a legacy storage
+// column now treated only as a bounded vertical marker (`legal` or null). Old
+// persisted overlay prose is normalized before use and is never injected raw.
 export const buildOnboardingSystemPrompt = (
   verticalOverlay: string | null,
 ): string => {
+  const vertical = resolveOnboardingPromptVertical(verticalOverlay)
   const overlayBlock =
-    verticalOverlay !== null && verticalOverlay.trim() !== ''
+    vertical !== 'general'
       ? [
           '',
-          'VERTICAL OVERLAY (extra guidance for this engagement). It refines tone, examples, and which offerings to lead with. It does NOT relax the honesty contract — registry state still governs what you may sell:',
-          verticalOverlay.trim(),
+          'VERTICAL GUIDANCE (server-owned Autopilot Concierge config). It refines tone, examples, and which offerings to lead with. It does NOT relax the honesty contract — registry state still governs what you may sell:',
+          buildAutopilotConciergeVerticalGuidance({ vertical }),
         ]
       : []
 
