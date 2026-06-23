@@ -17,12 +17,14 @@ import { ClickedExitKhala } from '../message'
 // Truthfulness rules (grounded in docs/inference/khala.md, AGENTS.md, and the
 // live gateway in workers/api/src/inference):
 //   - First-person plural "We are Khala". Never name an underlying provider.
-//   - Only the two live model ids: `openagents/khala-mini`, `openagents/khala-code`.
+//   - Only the two public Khala model ids: `openagents/khala-mini`,
+//     `openagents/khala-code`; availability follows the gateway readiness and
+//     lane-arming policy.
 //   - Base URL `https://openagents.com/v1`, OpenAI-compatible `/chat/completions`,
 //     streaming via SSE (`"stream": true`).
 //   - API keys come from the agent registration flow (`POST /api/agents/register`
 //     -> `oa_agent_...` token, used as `Authorization: Bearer`).
-//   - Verified work / receipts / credits + card/Bitcoin are framed honestly,
+//   - Verified work / receipts / credits + payment rails are framed honestly,
 //     without promising capabilities we do not ship.
 
 // --- design tokens (Protoss house style — see root DESIGN.md) -----------------
@@ -265,7 +267,7 @@ export const view = (): Html => {
             [
               'We are Khala — one OpenAI-compatible endpoint over a network of agents. ' +
                 'You call a single API. Underneath, requests are routed and orchestrated across a pool ' +
-                'of models, tools, and validators, with verified work and public receipts.',
+                'of models, tools, and validators, with receipt-backed disclosure about what happened.',
             ],
           ),
 
@@ -280,8 +282,8 @@ export const view = (): Html => {
                   'Khala is a single inference endpoint that behaves like one model but is an agent ' +
                     'network underneath. To your code it is just an OpenAI-compatible Chat Completions API. ' +
                     'Behind that one surface, Khala routes each request across a pool of models and ' +
-                    'validators, picks a lane, runs the work, and returns the answer — plus a receipt ' +
-                    'describing what actually happened.',
+                    'validators, picks an available lane, runs the work, and returns the answer — plus a ' +
+                    'receipt describing what actually happened.',
                 ],
               ),
               h.p(
@@ -302,9 +304,9 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Two models are live today. Pass the model id in the standard OpenAI ',
+                  'The public Khala catalog uses two model ids. Pass the model id in the standard OpenAI ',
                   h.code([Ui.className<Message>(inlineCodeClass)], ['model']),
-                  ' field.',
+                  ' field; the gateway only serves models whose underlying lane is armed and ready.',
                 ],
               ),
               h.div(
@@ -337,7 +339,12 @@ export const view = (): Html => {
                         [Ui.className<Message>(cardBodyClass)],
                         [
                           'Coding-optimized. Can run tests and verification commands and returns a ' +
-                            'verification verdict in the receipt.',
+                            'verification state in the receipt; ',
+                          h.code(
+                            [Ui.className<Message>(inlineCodeClass)],
+                            ['verified:true'],
+                          ),
+                          ' is reserved for an executed acceptance verdict.',
                         ],
                       ),
                     ],
@@ -522,16 +529,16 @@ export const view = (): Html => {
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Khala is pay-per-call and per-token. Usage is billed in credits and metered from ' +
-                    'the receipt, never from an estimate. Fund your account with a card or with Bitcoin — ' +
-                    'Bitcoin carries a small discount funded by the card-processing fees we save.',
+                  'Khala is priced per call and per token. Usage is billed in credits and metered from ' +
+                    'provider usage through the receipt path, never from a fabricated estimate.',
                 ],
               ),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
-                  'Every call returns a dereferenceable receipt with token counts and metered cost, so ' +
-                    'spend is auditable rather than opaque.',
+                  'During preview, use an owner-provided or already funded agent token. Broad self-serve ' +
+                    'card, Bitcoin, and MPP funding stay behind receipt proof and owner activation until ' +
+                    'the public promise gate is green.',
                 ],
               ),
             ],
@@ -553,16 +560,16 @@ export const view = (): Html => {
                     [Ui.className<Message>(inlineCodeClass)],
                     ['openagents/khala-code'],
                   ),
-                  ', the receipt records a verification verdict — for example, that tests passed.',
+                  ', the receipt records whether executable acceptance actually ran, failed, or remains ' +
+                    'unverified.',
                 ],
               ),
               h.p(
                 [Ui.className<Message>(noteClass)],
                 [
-                  'Khala is built in the open and shipping in phases. Verification classes and public ' +
-                    'usage receipts are live now; learned coordination, contributor worker payouts, and ' +
-                    'machine-payable settlement are on the roadmap. We say so plainly rather than ' +
-                    'over-claiming.',
+                  'Khala is built in the open and shipping in phases. Receipt disclosure and verifier ' +
+                    'truth rules are live; broad paid funding, learned coordination, contributor worker ' +
+                    'payouts, and machine-payable settlement remain gated by evidence and owner activation.',
                 ],
               ),
             ],

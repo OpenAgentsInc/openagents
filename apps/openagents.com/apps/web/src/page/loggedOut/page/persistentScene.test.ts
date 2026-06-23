@@ -11,10 +11,12 @@ import {
   PERSISTENT_SCENE_SHELL_KEY,
   view as persistentSceneView,
 } from './persistentScene'
+import { view as khalaView } from './khala'
 
 type SnabbVNode = {
   readonly sel?: string
   readonly key?: string
+  readonly text?: string
   readonly children?: ReadonlyArray<SnabbVNode | string>
 }
 
@@ -55,6 +57,14 @@ const allKeys = (root: SnabbVNode): ReadonlyArray<string> => {
     }
   })
   return keys
+}
+
+const textContent = (node: SnabbVNode | string): string => {
+  if (typeof node === 'string') {
+    return node
+  }
+
+  return node.text ?? (node.children ?? []).map(textContent).join('')
 }
 
 describe('persistent landing and Khala scene', () => {
@@ -169,5 +179,27 @@ describe('persistent landing and Khala scene', () => {
       ).toExist(),
       Scene.expect(Scene.text('Copy Agent Instructions')).toExist(),
     )
+  })
+
+  test('keeps public Khala copy inside the promise gate', () => {
+    const rendered = textContent(khalaView() as SnabbVNode)
+
+    expect(rendered).toContain('The public Khala catalog uses two model ids')
+    expect(rendered).toContain(
+      'gateway only serves models whose underlying lane is armed and ready',
+    )
+    expect(rendered).toContain(
+      'verified:true is reserved for an executed acceptance verdict',
+    )
+    expect(rendered).toContain(
+      'Broad self-serve card, Bitcoin, and MPP funding stay behind receipt proof and owner activation',
+    )
+    expect(rendered).toContain(
+      'the receipt records whether executable acceptance actually ran, failed, or remains unverified',
+    )
+    expect(rendered).not.toContain('Two models are live today')
+    expect(rendered).not.toContain('Fund your account with a card')
+    expect(rendered).not.toContain('Bitcoin carries a small discount')
+    expect(rendered).not.toContain('for example, that tests passed')
   })
 })
