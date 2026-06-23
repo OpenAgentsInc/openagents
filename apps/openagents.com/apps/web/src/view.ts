@@ -21,8 +21,10 @@ import type {
   PublicPylonStats,
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
+import * as Privacy from './page/privacy'
 import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
+import * as Terms from './page/terms'
 import * as Ui from './ui'
 
 const githubLoginHref = '/login/github'
@@ -373,6 +375,10 @@ const title = (model: Model): string => {
       return 'Components - OpenAgents'
     case 'Business':
       return 'For your business - OpenAgents'
+    case 'Terms':
+      return 'Terms of Service - OpenAgents'
+    case 'Privacy':
+      return 'Privacy Policy - OpenAgents'
     case 'Animations':
       return 'Animations - OpenAgents'
     case 'Activity':
@@ -511,6 +517,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
+      model.route._tag !== 'Terms' &&
+      model.route._tag !== 'Privacy' &&
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'Activity' &&
       model.route._tag !== 'DemoLegal' &&
@@ -536,6 +544,14 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Terms') {
+    return Terms.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Privacy') {
+    return Privacy.view<Message>(authState)
   }
 
   if (model.route._tag === 'Animations') {

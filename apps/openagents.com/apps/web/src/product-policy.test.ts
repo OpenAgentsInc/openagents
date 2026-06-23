@@ -14,12 +14,15 @@ import {
   loggedInPermissionGate,
   loggedInWorkroomAllowed,
   projectMissionVisible,
+  routeRequiresAuthBootstrap,
 } from './product-policy'
 import {
   MulletRoute,
+  PrivacyRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
   TeamProjectChatRoute,
+  TermsRoute,
 } from './route'
 
 const sourceRoot = join(process.cwd(), 'src')
@@ -198,5 +201,14 @@ describe('browser product policy', () => {
 
     expect(missing).toEqual([])
     expect(stale).toEqual([])
+  })
+
+  test('classifies the legal routes as public with no auth bootstrap', () => {
+    expect(routeRequiresAuthBootstrap(TermsRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(PrivacyRoute())).toBe(false)
+    expect(browserRouteGate(TermsRoute())._tag).toBe('BrowserRouteAllowed')
+    expect(browserRouteGate(PrivacyRoute())._tag).toBe('BrowserRouteAllowed')
+    expect(browserRouteProductIntent(TermsRoute())).toBe('public.terms')
+    expect(browserRouteProductIntent(PrivacyRoute())).toBe('public.privacy')
   })
 })
