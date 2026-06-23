@@ -114,6 +114,54 @@ const looksLikeCrossyRoad = (text: string): boolean => {
   )
 }
 
+// ---------------------------------------------------------------------------
+// ACCEPTANCE-CONTRACT GUIDANCE (EPIC #6017 — "turn intent into tests it must
+// pass"). A generated game is only execution-VERIFIABLE if it EXPOSES the state
+// hooks the headless runner drives. Left unsaid, a model writes a self-contained
+// game that plays fine for a human but exposes nothing the runner can read, so
+// every executed check fails honestly and the artifact never reaches an accepted
+// outcome. So we tell the model the contract up front, gateway-side, as guidance
+// — additive to (never clobbering) the identity prompt. This is the SAME `window`
+// state contract the runner asserts (`acceptance-runner/runner.ts`).
+//
+// SCOPED + EXTENSIBLE: the contract text is keyed on the spec `kind`, so the
+// crossy-road target gets the crossy-road hooks and a future lane adds its own
+// branch here without touching the route. A request with no executable lane gets
+// no contract guidance (returns undefined).
+// ---------------------------------------------------------------------------
+
+// The crossy-road `window` state contract, mirrored from the runner's documented
+// hooks. Concrete and copy-pasteable so the model wires it deterministically.
+const CROSSY_ROAD_ACCEPTANCE_CONTRACT_GUIDANCE = [
+  'ACCEPTANCE CONTRACT (REQUIRED so the game is automatically verifiable):',
+  'In addition to building a great playable game, you MUST expose these hooks on `window` so an automated runner can drive and check it:',
+  '- `window.__openagentsCrossyRoadState()` returns an object: { player: { x, y, z }, camera: { position: { x, y, z } }, progress: number, worldRowsAhead?: number, started?: boolean, loopTicks?: number }. `player` is the player world-unit position; `camera.position` is the camera world position; `progress` is forward tiles travelled; `worldRowsAhead` is distinct rows generated ahead of the player; `started` is true once play begins; `loopTicks` increments each update tick.',
+  '- A PLAY control: either `window.__openagentsCrossyRoadStart()` OR a clickable element with id `start-btn` or `play` that hides the start overlay and begins the update loop.',
+  '- `window.__openagentsCrossyRoadRestart()` resets the player position and progress back to the start.',
+  'Keep these hooks accurate every frame (e.g. update `progress`, `loopTicks`, and the player/camera positions as the game runs). They are read-only probes for verification and must not change the gameplay a human sees.',
+].join('\n')
+
+// Map a selected acceptance spec to its model-facing contract guidance. Keyed on
+// `kind` so each lane owns its contract; exhaustive so a new lane must add text.
+export const acceptanceContractGuidanceForSpec = (
+  spec: AcceptanceSpec,
+): string => {
+  switch (spec.kind) {
+    case 'crossy_road_single_html':
+      return CROSSY_ROAD_ACCEPTANCE_CONTRACT_GUIDANCE
+  }
+}
+
+// Resolve the acceptance-contract guidance for a request, or undefined when the
+// request has no executable acceptance lane (so no contract is injected). Pure +
+// Worker-safe; the route injects the returned text as a leading system message.
+export const acceptanceContractGuidanceForRequest = (
+  request: AcceptanceIntentRequest,
+): string | undefined => {
+  const spec = intentToAcceptanceSpec(request)
+  return spec === undefined ? undefined : acceptanceContractGuidanceForSpec(spec)
+}
+
 // Intent -> AcceptanceSpec. For the khala-code crossy-road lane this returns the
 // concrete bounded spec. For other prompts in the khala-code lane today it falls back
 // to the crossy-road spec (the only executable lane built so far); a future
