@@ -323,7 +323,15 @@ import {
   isAcceptanceDispatchEnabled,
   makeD1KhalaVerificationStore,
 } from './inference/acceptance-dispatch'
-import { handleAcceptanceVerdictCallback } from './inference/acceptance-verdict-callback-routes'
+import {
+  type AcceptedOutcomeSettlementSink,
+  handleAcceptanceVerdictCallback,
+} from './inference/acceptance-verdict-callback-routes'
+import {
+  settleVerifiedAcceptedOutcome,
+  summarizeAcceptedOutcomeSettlement,
+} from './inference/khala-accepted-outcome-settlement'
+import { readKhalaLoopArming } from './inference/khala-loop-integration'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import {
@@ -1060,6 +1068,123 @@ const fetchMdkTreasuryPath = (
         method: init?.method ?? 'GET',
         ...(init?.signal === undefined ? {} : { signal: init.signal }),
       }),
+    )
+}
+
+// Build the accepted-outcome settlement sink (#6011, EPIC #6017) the verdict-callback
+// route fires when a VERIFIED + EXECUTED accepted outcome backfills for the first time.
+// REUSES the proven Spark dispatch core (`dispatchRealRunSettlementCore` +
+// `makeSparkTreasuryPayoutAdapter` + `resolveSparkPayoutDestination`) and the owner
+// real-settlement gate (`readTassadarRealSettlementGate`) — NO parallel money path.
+//
+// INERT BY DEFAULT, double-gated:
+//   - returns `undefined` (no settlement attempted at all) unless the KHALA loop-arming
+//     flag is armed (`readKhalaLoopArming`) — the FIRST default-OFF gate; and
+//   - even when armed, every per-party leg independently fail-closes on the owner
+//     real-settlement gate (default OFF), the per-payout cap, the daily budget, and a
+//     registered Spark destination — the SECOND gate stack, inside the engine.
+// So arming a real accepted-outcome payout requires BOTH the loop flag AND the owner
+// gate; with either OFF no sats move. The serving-run ref is derived from the
+// verification receipt ref so the gate allowlist enrolls a specific accepted outcome.
+const makeAcceptedOutcomeSettlementSink = (
+  env: Env,
+): AcceptedOutcomeSettlementSink | undefined => {
+  // FIRST gate: the loop-arming flag. OFF (default) => no sink => no settlement.
+  if (!readKhalaLoopArming(env as unknown as Record<string, unknown>).loopArmed) {
+    return undefined
+  }
+
+  const db = openAgentsDatabase(env)
+  const ledger = makeD1NexusTreasuryPayoutLedgerStore(db)
+  const sparkTargetStore = makeD1PylonSparkPayoutTargetStore(db)
+  const contributionStore = makeD1TrainingTraceContributionStore(db)
+
+  // Owner resolver for a contributor's Spark payout destination — same shape as the
+  // Tassadar autostream: direct registered-pylon lookup, then the owner-scoped fallback
+  // via the contributor's most-recent worker pylon. Never crosses agent ownership.
+  const resolveContributorOwnerAgentUserId = async (
+    contributorRef: string,
+  ): Promise<string | undefined> => {
+    const pylonApiStore = makeD1PylonApiStore(db)
+    const direct = await pylonApiStore
+      .readRegistration(contributorRef)
+      .then(registration => registration?.ownerAgentUserId)
+    if (direct !== undefined && direct.trim() !== '') {
+      return direct
+    }
+    const pylonRefForDevice =
+      await contributionStore.readMostRecentPylonRefByDeviceRef(contributorRef)
+    if (pylonRefForDevice === undefined) {
+      return undefined
+    }
+    return pylonApiStore
+      .readRegistration(pylonRefForDevice)
+      .then(registration => registration?.ownerAgentUserId)
+  }
+
+  return outcome =>
+    settleVerifiedAcceptedOutcome(
+      {
+        dispatchRealSettlement: dispatchInput =>
+          dispatchRealRunSettlementCore<WorkerBindings>(
+            {
+              env,
+              makeSettlementPaymentAuthority: (authorityEnv, context) =>
+                makeTreasuryPaymentAuthority({
+                  adapters: [
+                    makeSparkTreasuryPayoutAdapter({
+                      fetchTreasury: fetchMdkTreasuryPath(authorityEnv),
+                      providerRef: context.providerRef,
+                      resolveDestination: () =>
+                        Effect.succeed(context.privatePayoutDestination),
+                    }),
+                  ],
+                  ledgerStore: context.ledgerStore,
+                }),
+              readSettlementWalletReadiness: async authorityEnv => {
+                const fetchTreasury = fetchMdkTreasuryPath(authorityEnv)
+                if (fetchTreasury === undefined) {
+                  return 'absent'
+                }
+                try {
+                  const response = await fetchTreasury('/spark/balance')
+                  return response.ok ? 'ready' : 'absent'
+                } catch {
+                  return 'absent'
+                }
+              },
+              resolveSettlementPayoutDestination: (_authorityEnv, ref) =>
+                resolveSparkPayoutDestination(
+                  sparkTargetStore,
+                  ref,
+                  resolveContributorOwnerAgentUserId,
+                ),
+            },
+            {
+              contributorRef: dispatchInput.contributorRef,
+              ledger,
+              settlement: dispatchInput.settlement,
+            },
+          ),
+        ledger,
+        nowIso: currentIsoTimestamp(),
+        readGate: () => readTassadarRealSettlementGate(env),
+        resolvePayoutDestination: ref =>
+          resolveSparkPayoutDestination(
+            sparkTargetStore,
+            ref,
+            resolveContributorOwnerAgentUserId,
+          ),
+        // The gate allowlist enrolls a specific accepted outcome by its derived run ref.
+        settlementRunRef: `accepted_outcome.${outcome.verificationReceiptRef
+          .replace(/[^A-Za-z0-9_.:/-]/g, '_')
+          .slice(0, 180)}`,
+      },
+      outcome,
+    ).pipe(
+      Effect.map(result =>
+        summarizeAcceptedOutcomeSettlement(outcome, result),
+      ),
     )
 }
 
@@ -9978,6 +10103,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaVerificationStore(openAgentsDatabase(env)),
+        // Accepted-outcome settlement (#6011): fires worker+validator Bitcoin payout on
+        // the first VERIFIED+EXECUTED backfill. Double-gated + inert by default (undefined
+        // unless the KHALA loop flag is armed; even then the owner real-settlement gate +
+        // caps + destination fail-close inside the engine). NEEDS-OWNER to arm real money.
+        ...((sink => (sink === undefined ? {} : { settlement: sink }))(
+          makeAcceptedOutcomeSettlementSink(env),
+        )),
       }),
   },
   {

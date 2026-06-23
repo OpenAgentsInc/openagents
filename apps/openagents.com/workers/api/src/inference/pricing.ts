@@ -493,6 +493,84 @@ export const priceRequest = (input: PriceInput): PriceResult => {
   }
 }
 
+// ----------------------------------------------------------------------------
+// Accepted-outcome pricing (Khala M3 / #6011, EPIC #6017)
+// ----------------------------------------------------------------------------
+//
+// `khala-code` is paid TWICE over: per-token (the metered charge above) AND per
+// ACCEPTED OUTCOME — a flat price the customer is charged (and the worker +
+// validator are settled against) when a verified, EXECUTED accepted outcome is
+// produced (a crossy-road build that actually passed the headless acceptance
+// suite). Per-token covers the compute; the accepted-outcome price covers the
+// VERIFIED RESULT — the thing the customer actually wanted. Pure config, like
+// every other number here; the settlement path derives the worker/validator
+// shares from it (`khala-accepted-outcome-settlement.ts`).
+//
+// Denominated in msat so it slots straight into the Bitcoin/Spark settlement
+// path (1 sat = 1000 msat). Kept deliberately TINY + treasury-bounded for the
+// guinea-pig test wave: a few sats per accepted outcome, well under the gate's
+// per-payout cap. Tune here; the catalog + settlement re-solve.
+export type AcceptedOutcomePrice = Readonly<{
+  // The model the accepted-outcome price applies to (canonical id).
+  model: string
+  // The flat price per accepted (verified, executed) outcome, in integer msat.
+  priceMsat: number
+  // The fraction of the accepted-outcome price that goes to the serving WORKER
+  // (the rest goes to the VALIDATOR). The validator earns a smaller, published
+  // share for the independent verification. Worker + validator shares sum to 1.
+  workerShare: number
+}>
+
+// The published accepted-outcome price for khala-code. 5 sats total (5_000 msat)
+// split 60/40 worker/validator: the worker that produced the accepted artifact
+// earns the larger share; the validator earns a real, published cut for the
+// independent headless verification that made the outcome trustworthy. Both
+// well under the owner gate's per-payout cap. TINY + treasury-bounded by design.
+export const KHALA_CODE_ACCEPTED_OUTCOME_PRICE: AcceptedOutcomePrice = {
+  model: KHALA_CODE_MODEL_ID,
+  priceMsat: 5_000,
+  workerShare: 0.6,
+}
+
+// The accepted-outcome price table, keyed by lowercased model id. Only models
+// with a verified accepted-outcome rubric have an entry; everything else has no
+// accepted-outcome price (per-token only).
+const ACCEPTED_OUTCOME_PRICE_INDEX: ReadonlyMap<string, AcceptedOutcomePrice> =
+  new Map([
+    [KHALA_CODE_MODEL_ID.toLowerCase(), KHALA_CODE_ACCEPTED_OUTCOME_PRICE],
+  ])
+
+// Resolve a model's accepted-outcome price (case-insensitive). Returns undefined
+// when the model has no accepted-outcome lane (per-token pricing only). PURE.
+export const lookupAcceptedOutcomePrice = (
+  model: string,
+): AcceptedOutcomePrice | undefined =>
+  ACCEPTED_OUTCOME_PRICE_INDEX.get(model.trim().toLowerCase())
+
+// The integer-msat worker + validator split of an accepted-outcome price. PURE +
+// deterministic: the worker share floors and the validator share takes the exact
+// remainder, so worker + validator sum EXACTLY to `priceMsat` (no dust lost or
+// minted). A non-positive price yields a zero split.
+export const acceptedOutcomeSettlementShares = (
+  price: AcceptedOutcomePrice,
+): Readonly<{ workerMsat: number; validatorMsat: number }> => {
+  const total =
+    Number.isFinite(price.priceMsat) && price.priceMsat > 0
+      ? Math.floor(price.priceMsat)
+      : 0
+  if (total <= 0) {
+    return { validatorMsat: 0, workerMsat: 0 }
+  }
+  const share =
+    Number.isFinite(price.workerShare) && price.workerShare > 0
+      ? Math.min(price.workerShare, 1)
+      : 0
+  const workerMsat = Math.floor(total * share)
+  // Validator takes the EXACT remainder so the split conserves the price.
+  const validatorMsat = total - workerMsat
+  return { validatorMsat, workerMsat }
+}
+
 // Convenience: published sell price $/Mtok for a model + dimension, for the
 // pricing table / public price page. Pure, derived from cost × (1 + margin).
 export const sellPricePerMtok = (

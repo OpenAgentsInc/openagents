@@ -36,6 +36,7 @@ import { Effect } from 'effect'
 
 import type {
   NexusPaymentAuthorityReceiptRecord,
+  NexusPayoutTargetApprovalRecord,
   NexusTreasuryPayoutAttemptRecord,
   NexusTreasuryPayoutIntentRecord,
   NexusTreasuryPayoutLedgerStore,
@@ -68,6 +69,10 @@ export type KhalaSettlementRecords = Readonly<{
   reconciliationEvent: NexusTreasuryPayoutReconciliationEventRecord
   settlementReceipt: NexusPaymentAuthorityReceiptRecord
   settlementReceiptRef: string
+  // The payout-target approval record. Carried so these records are directly
+  // dispatchable through the SAME proven `dispatchRealRunSettlementCore` the
+  // Tassadar autostream uses (it requires a `targetApproval`) — no parallel path.
+  targetApproval: NexusPayoutTargetApprovalRecord
 }>
 
 // Public-safe ref helpers (neutral; never payment material).
@@ -120,7 +125,7 @@ export const buildKhalaSettlementRecords = (
     'metadata.khala.verified_work_settlement.accepted_work',
   ])
 
-  const targetApproval = {
+  const targetApproval: NexusPayoutTargetApprovalRecord = {
     agentRef: 'agent.artanis',
     approvalPolicyRef: KHALA_SETTLEMENT_PAYOUT_TARGET_APPROVAL_POLICY_REF,
     approvalRef: `payout_target_approval.khala_serving_settlement.${suffix}`,
@@ -258,6 +263,7 @@ export const buildKhalaSettlementRecords = (
     reconciliationEvent,
     settlementReceipt,
     settlementReceiptRef,
+    targetApproval,
   }
 }
 
