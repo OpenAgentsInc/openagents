@@ -6,11 +6,12 @@
 // they only exercise PURE logic (helpers + the update reducer) — they never
 // render. A minimal global shim lets those modules import without a real DOM.
 //
-// Shared StyleX-authored packages are also imported as source in these tests,
-// outside the web/desktop production compilers. Keep their test-only fallback on
-// here so raw `stylex.create(...)` authoring calls do not execute under Bun.
-
-Bun.env.OA_STYLEX_RUNTIME_FALLBACK = "1"
+// #6046: StyleX is gone. The shared UI packages no longer execute any
+// `window`-dependent `stylex.create(...)` at module load, so the old
+// `OA_STYLEX_RUNTIME_FALLBACK` hack is no longer needed and has been removed.
+// The only remaining browser-global dependency is snabbdom (foldkit's vdom),
+// which a real headless chromium provides natively and this shim provides under
+// Bun.
 
 const g = globalThis as unknown as {
   window?: unknown

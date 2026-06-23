@@ -1,0 +1,17 @@
+/* #6046: ported from the deleted StyleX create() block in feedback.ts — theme-preserving. */
+
+.oa-ui-empty-state-root {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  border-width: 1px;
+  border-style: dashed;
+  border-color: #333;
+  background-color: #010102;
+  padding: 24px;
+}
+
+.oa-ui-empty-state-body {
+  display: grid;
+  gap: 4px;
+}

@@ -1,0 +1,108 @@
+/* #6046: ported from the deleted StyleX create() block in ai-elements/prompt-input.ts — theme-preserving. */
+
+.oa-ai-prompt-input {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #222;
+  background-color: #010102;
+  padding: 8px;
+}
+
+.oa-ai-prompt-input-body {
+  display: grid;
+  gap: 8px;
+}
+
+.oa-ai-prompt-input-textarea {
+  max-height: 192px;
+  min-height: 64px;
+  width: 100%;
+  resize: none;
+  border-width: 0;
+  background-color: transparent;
+  padding-inline: 8px;
+  padding-block: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #f1efe8;
+  outline-style: none;
+}
+
+.oa-ai-prompt-input-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.oa-ai-prompt-input-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.oa-ai-prompt-input-tools {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.oa-ai-prompt-input-button {
+  display: inline-flex;
+  min-height: 32px;
+  cursor: pointer;
+  align-items: center;
+  gap: 6px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #333;
+  background-color: transparent;
+  padding-inline: 10px;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.oa-ai-prompt-input-button:hover {
+  border-color: #ffb400;
+  color: #f1efe8;
+}
+
+.oa-ai-prompt-input-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.oa-ai-prompt-input-submit {
+  display: inline-flex;
+  min-height: 32px;
+  cursor: pointer;
+  align-items: center;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #f1efe8;
+  background-color: #f1efe8;
+  padding-inline: 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #000;
+}
+
+.oa-ai-prompt-input-submit:hover {
+  border-color: #ffb400;
+}
+
+.oa-ai-prompt-input-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

@@ -397,7 +397,10 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
-  test("desktop shell and managed panes render through StyleX fallback classes", () => {
+  // #6046: StyleX is gone — the desktop shell/pane chrome now renders through the
+  // plain literal class names (styled by styles.css), not the old `oa-desktop-*`
+  // StyleX fallback classes.
+  test("desktop shell and managed panes render through the plain chrome classes", () => {
     const document = view({
       ...initialModel,
       pane: "shell",
@@ -424,21 +427,16 @@ describe("CL-53 sanitizeTree", () => {
     })
 
     expect(treeContainsClass(document.body, "app-shell-shell")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-root-shell-shell")).toBe(true)
     expect(treeContainsClass(document.body, "shell-pane")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-shell-pane")).toBe(true)
     expect(treeContainsClass(document.body, "shell-input")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-shell-input")).toBe(true)
     expect(treeContainsClass(document.body, "shell-stream-part")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-shell-stream-part")).toBe(true)
     expect(treeContainsClass(document.body, "pane-layer")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-pane-layer")).toBe(true)
     expect(treeContainsClass(document.body, "pane-window")).toBe(true)
-    expect(treeContainsClass(document.body, "oa-desktop-pane-window")).toBe(true)
     expect(treeContainsClass(document.body, "pane-window-resize-bottomright")).toBe(true)
-    expect(
-      treeContainsClass(document.body, "oa-desktop-pane-window-resize-bottomright"),
-    ).toBe(true)
+    // The old `oa-desktop-*` StyleX fallback classes must be gone.
+    expect(treeContainsClass(document.body, "oa-desktop-root-shell-shell")).toBe(false)
+    expect(treeContainsClass(document.body, "oa-desktop-shell-pane")).toBe(false)
+    expect(treeContainsClass(document.body, "oa-desktop-pane-window")).toBe(false)
   })
 
   test("all rendered panes use style objects, not CSS strings", () => {

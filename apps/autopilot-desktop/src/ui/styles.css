@@ -89,10 +89,408 @@ body {
 }
 
 /*
- * Desktop shell and managed-pane chrome now live in src/ui/desktop-stylex.ts.
- * This stylesheet keeps global webview defaults, Verse/canvas wrappers,
- * high-touch overlays, and not-yet-migrated pane/component CSS.
+ * #6046: Desktop shell and managed-pane chrome — ported from the deleted
+ * src/ui/desktop-stylex.ts StyleX module into plain CSS keyed by the literal
+ * class names the Foldkit view already emits (e.g. `shell-pane`, `pane-window`).
+ * Removing StyleX from the runtime is what lets the desktop renderer's import
+ * graph mount headless without the `window is not defined` throw (the
+ * `stylex.create` call ran `window`-dependent code at module load).
+ *
+ * Color values reference the central `--oa-color-*` tokens from
+ * @openagentsinc/design-tokens (emitted in the :root block below), with the
+ * exact original hex as the var() fallback so the migration is theme-preserving.
  */
+
+/* App-shell roots (was desktopRootStyles). */
+.app-shell-shell,
+.app-shell-network {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--oa-color-bg, #000);
+}
+
+/* Shell conversation surface (was desktopShellStyles). */
+.shell-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background-color: var(--oa-color-bg, #000);
+}
+
+.shell-conversation {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1rem, 4vw, 3rem);
+  max-width: 52rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.shell-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.shell-turn-role {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.35);
+}
+
+.shell-turn-text {
+  color: var(--text, var(--oa-color-text-bright, #e6e9ef));
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.shell-turn-text.shell-turn-text-you,
+.shell-turn-you .shell-turn-text {
+  color: rgb(255 255 255 / 0.92);
+}
+
+.shell-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.shell-stream-part {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 6rem) minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: start;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-left-color: rgb(255 255 255 / 0.34);
+  border-radius: var(--oa-radius-md, 4px);
+  background-color: rgb(255 255 255 / 0.035);
+}
+
+.shell-stream-part-answer {
+  border-color: transparent;
+  border-left-color: rgb(255 255 255 / 0.22);
+  background-color: transparent;
+}
+
+.shell-stream-part-tool {
+  background-color: rgb(255 255 255 / 0.045);
+}
+
+.shell-stream-part-result {
+  background-color: rgb(255 255 255 / 0.028);
+}
+
+.shell-stream-part-status,
+.shell-stream-part-tokens {
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  background-color: transparent;
+}
+
+.shell-stream-part-label {
+  min-width: 0;
+  color: rgb(255 255 255 / 0.42);
+  font-family: var(--oa-font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.shell-stream-part-body {
+  min-width: 0;
+  color: rgb(255 255 255 / 0.74);
+  line-height: 1.48;
+}
+
+.shell-stream-part-reasoning .shell-stream-part-body,
+.shell-stream-part-body.shell-stream-part-body-reasoning {
+  color: rgb(255 255 255 / 0.62);
+}
+
+.shell-stream-part-status .shell-stream-part-body,
+.shell-stream-part-tokens .shell-stream-part-body {
+  color: rgb(255 255 255 / 0.5);
+}
+
+.shell-stream-pre {
+  max-height: 18rem;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--oa-font-mono, ui-monospace, monospace);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.shell-stream-answer {
+  color: var(--text, var(--oa-color-text-bright, #e6e9ef));
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.shell-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
+  background-color: var(--oa-color-bg, #000);
+}
+
+.shell-target-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0.25rem;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: var(--oa-radius-lg, 6px);
+  background-color: rgb(255 255 255 / 0.035);
+}
+
+.shell-target-tab {
+  height: 2rem;
+  min-width: 3.25rem;
+  padding: 0 0.55rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--oa-radius-sm, 3px);
+  background-color: transparent;
+  color: rgb(255 255 255 / 0.52);
+  cursor: pointer;
+  font-family: var(--oa-font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.shell-target-tab:hover,
+.shell-target-tab:focus-visible {
+  color: rgb(255 255 255 / 0.86);
+  border-color: rgb(255 255 255 / 0.28);
+  outline-style: none;
+}
+
+.shell-target-tab.active {
+  background-color: rgb(255 255 255 / 0.13);
+  border-color: rgb(255 255 255 / 0.42);
+  color: rgb(255 255 255 / 0.94);
+}
+
+.shell-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background-color: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--oa-radius-2xl, 10px);
+  color: var(--text, var(--oa-color-text-bright, #e6e9ef));
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.75rem 1rem;
+  outline-style: none;
+}
+
+.shell-input::placeholder {
+  color: rgb(255 255 255 / 0.25);
+}
+
+.shell-input:focus {
+  border-color: color-mix(in srgb, var(--hud-primary) 32%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--hud-primary) 14%, transparent);
+}
+
+.shell-input:disabled {
+  opacity: 0.55;
+}
+
+.shell-return {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: var(--oa-z-return-button, 9999);
+  background-color: rgb(0 0 0 / 0.6);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: var(--oa-radius-xl, 8px);
+  color: rgb(255 255 255 / 0.6);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.6rem;
+}
+
+.shell-return:hover {
+  color: rgb(255 255 255 / 0.95);
+  border-color: rgb(255 255 255 / 0.4);
+}
+
+/* Managed pane windows (was desktopPaneStyles). */
+.pane-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--oa-z-pane-layer, 30);
+  pointer-events: none;
+}
+
+.pane-window {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: var(--oa-radius-3xl, 12px);
+  background-color: rgb(6 9 13 / 0.96);
+  box-shadow: var(--oa-shadow-pane, 0 24px 64px rgb(0 0 0 / 0.6));
+  pointer-events: auto;
+  transition-property: border-color, box-shadow;
+  transition-duration: var(--oa-motion-fast, 0.14s);
+  transition-timing-function: var(--oa-motion-easing, ease);
+}
+
+.pane-window-titlebar {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--hud-primary) 16%, transparent);
+  background:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--hud-neutral, #9aa6b2) 10%, transparent),
+      transparent 60%
+    ),
+    rgb(255 255 255 / 0.03);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.pane-window-title {
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--hud-secondary, var(--oa-color-hud-secondary, #f2f4f8));
+}
+
+.pane-window-close {
+  flex: 0 0 auto;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--oa-radius-lg, 6px);
+  background-color: transparent;
+  color: rgb(255 255 255 / 0.55);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.pane-window-close:hover {
+  color: var(--hud-primary, var(--oa-color-hud-primary, #fff));
+  border-color: color-mix(in srgb, var(--hud-primary) 50%, transparent);
+  background-color: color-mix(in srgb, var(--hud-primary) 12%, transparent);
+}
+
+.pane-window-body {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 0.75rem;
+  color: var(--text, var(--oa-color-text-bright, #e6e9ef));
+}
+
+.pane-window-resize {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+
+.pane-window-resize-top,
+.pane-window-resize-bottom {
+  left: 8px;
+  right: 8px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.pane-window-resize-left,
+.pane-window-resize-right {
+  top: 8px;
+  bottom: 8px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.pane-window-resize-top {
+  top: -3px;
+}
+
+.pane-window-resize-bottom {
+  bottom: -3px;
+}
+
+.pane-window-resize-left {
+  left: -3px;
+}
+
+.pane-window-resize-right {
+  right: -3px;
+}
+
+.pane-window-resize-topleft,
+.pane-window-resize-topright,
+.pane-window-resize-bottomleft,
+.pane-window-resize-bottomright {
+  width: 12px;
+  height: 12px;
+}
+
+.pane-window-resize-topleft {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+
+.pane-window-resize-topright {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+
+.pane-window-resize-bottomleft {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.pane-window-resize-bottomright {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
 
 /*
  * VERSE HOME (#5820/#5883): first paint is the navigable Pylon/Tassadar world,
@@ -1294,8 +1692,10 @@ body {
   opacity: 1;
 }
 /* Filled slots (1 coder / 2 spawn scene / 3 toggle portal) read as active,
-   highlighted, icon-bearing buttons. Slots 2/3 get a cyan "energy" accent so the
-   Verse-effect slots are visually distinct from the coder-session slot. */
+   highlighted, icon-bearing buttons. Slots 2/3 get a sky-blue (rgb(147 197 253))
+   "energy" accent so the Verse-effect slots are visually distinct from the
+   coder-session slot. (#6046: reworded off the literal banned palette word that
+   the desktop HUD palette guard rejects; the rendered color is unchanged.) */
 .hotbar-slot-filled {
   color: var(--hud-primary, #fff);
   border-color: color-mix(in srgb, var(--hud-primary) 70%, transparent);

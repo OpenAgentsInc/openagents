@@ -1,0 +1,98 @@
+/* #6046: ported from the deleted StyleX create() block in forms.ts — theme-preserving. */
+
+.oa-ui-form-compact-button {
+  min-height: 32px;
+  cursor: pointer;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #333;
+  background-color: transparent;
+  padding-inline: 10px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.oa-ui-form-compact-button:hover {
+  background-color: #080808;
+  color: #f1efe8;
+}
+
+.oa-ui-form-compact-button-strong {
+  border-color: #f1efe8;
+  background-color: #f1efe8;
+  color: #000;
+}
+
+.oa-ui-form-compact-button-strong:hover {
+  background-color: #f1efe8;
+  color: #000;
+}
+
+.oa-ui-form-group {
+  display: grid;
+  gap: 6px;
+}
+
+.oa-ui-form-validation-group {
+  display: grid;
+  gap: 4px;
+}
+
+.oa-ui-form-validation-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.oa-ui-form-validation-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.oa-ui-form-input {
+  width: 100%;
+  min-width: 0;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #222;
+  background-color: #030303;
+  padding-inline: 12px;
+  padding-block: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: #f1efe8;
+  outline-style: none;
+}
+
+.oa-ui-form-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.oa-ui-form-input:focus {
+  border-color: #ffb400;
+  box-shadow: 0 0 0 1px #ffb400;
+}
+
+.oa-ui-form-textarea {
+  min-height: 128px;
+  resize: vertical;
+}
+
+.oa-ui-form-indicator-info {
+  font-size: 0.875rem;
+  color: #2979ff;
+}
+
+.oa-ui-form-indicator-success {
+  font-size: 0.875rem;
+  color: #00c853;
+}
+
+.oa-ui-form-error {
+  font-size: 0.875rem;
+  color: #d32f2f;
+}
