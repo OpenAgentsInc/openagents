@@ -56,7 +56,7 @@ Conventions:
      `serializeToolSchemas` (sorted keys, stable tool order) → byte-identical
      prefix text → stable `stablePrefixHash` for the same logical inputs.
   3. **Cache-affinity keys** — `deriveCacheAffinityKey({account, session?,
-     codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
+codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
      (`cacheAffinityKeyHash`). Raw key never leaves the gateway.
   4. **Provider session affinity** — `sessionAffinityParams` sets Fireworks
      `x-session-affinity` and OpenAI-style `user` to the same opaque hash value,
@@ -129,10 +129,10 @@ Conventions:
      `enqueued_at` and the queue message carries `enqueuedAtIso` (the START of the
      batch wait), the consumer stamps `started_at` from an injected clock (the
      END), and `computeBatchWaitMs` derives `batchWaitMs = started_at -
-     enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
+enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
      when timing is unavailable (a pre-`0223` job, a token-only job that was never
      enqueued). Surfaced on the closeout receipt AND `GET
-     /v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
+/v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
   3. **Durable-connection scope documented + confirmed (deliverable 4).** The
      chat gateway uses a DO only for the #6056 single-client reconnect proxy (not
      multi-subscriber); DO + hibernatable-WebSocket multi-subscriber transport is
@@ -152,11 +152,11 @@ Conventions:
   (`worker-exact-routes.test.ts` — no route changes, the three batch routes were
   already registered). New tests: a detached job enqueues → consumer runs it →
   the closeout receipt dereferences with `requestClass: batch` + `queueWaitMs: 0`
-  + a real `batchWaitMs` (end-to-end `batch-job-flow.test.ts`); the consumer
-  stamps `started_at` from the injected clock; `computeBatchWaitMs` derives the
-  delta or rejects unmeasurable/negative inputs; an unmeasured wait records a
-  `batch_wait_not_measured` blocker rather than a fake `0`; the status poll exposes
-  the wait.
+  - a real `batchWaitMs` (end-to-end `batch-job-flow.test.ts`); the consumer
+    stamps `started_at` from the injected clock; `computeBatchWaitMs` derives the
+    delta or rejects unmeasurable/negative inputs; an unmeasured wait records a
+    `batch_wait_not_measured` blocker rather than a fake `0`; the status poll exposes
+    the wait.
 - **Honest scope — still `not_measured` / inert:** the async consumer stays
   flag-gated off (`INFERENCE_BATCH_JOBS_ENABLED`) until the orchestrator arms it;
   the batch closeout telemetry record leaves per-item token counts `not_measured`
@@ -174,7 +174,7 @@ Conventions:
 
 - **Notes ref:** `khala-investigation-notes.md` §P1 item 5 ("Build A Provider
   And Engine Benchmark Matrix") + Open Question #5 (minimum lane decision suite);
-  book Ch.4 §4.5 (software benchmarking — "faster at *what*", shadow real
+  book Ch.4 §4.5 (software benchmarking — "faster at _what_", shadow real
   traffic, match production sequence shapes/contents/concurrency, change one
   variable at a time) and Ch.1 §1.4.1 (latency percentiles over a right-skewed
   distribution). Consumes the P0-1 telemetry schema (#6085) and the P0-2 prefix
@@ -187,7 +187,7 @@ Conventions:
      khala-code-artifact-gen / verifier-run / long-context-codebase-question),
      sequence shape (ISL / OSL / cacheable-prefix / concurrency, tagged
      realistic|synthetic), streaming-vs-batch, temperature/reasoning, and the
-     verification expectation *derived from the workload*. `expandMatrix` is
+     verification expectation _derived from the workload_. `expandMatrix` is
      deterministic with a stable axis-encoded `cellId`.
   2. **Runner + pluggable seam** (`benchmark/runner.ts`, `lane-seam.ts`): records
      a canonical `openagents.khala.telemetry.v1` record per sample (reuses the
@@ -197,7 +197,7 @@ Conventions:
      un-armed env can ever issue a billable request. Not-yet-available lanes are
      never executed (skipped run, null record, honest reason).
   3. **Dereferenceable report** (`benchmark/report.ts`): per-(lane × workload)
-     latency percentiles (P50/P90/P99 + mean over *measured* samples only),
+     latency percentiles (P50/P90/P99 + mean over _measured_ samples only),
      perceived TPS, cost-per-accepted-outcome (null when zero accepted — never a
      fake 0), verification rate, cache hit rate. Public-safe (only counts /
      durations / neutral classifiers / coarse region) with a structural
@@ -226,6 +226,14 @@ Conventions:
   decision-grade sweep requires the owner to (1) source realistic Khala traffic
   shapes, (2) provide a live `RealLaneExecutor`, (3) arm `makeRealLaneSeam` with
   explicit confirmation and run it (the only path that can spend). NOT run here.
+- **2026-06-23 continuation:** added `benchmark/real-sweep-plan.ts`, a pure
+  no-provider-call preflight for the owner-armed real sweep. It requires explicit
+  owner confirmation, a public-safe approval ref, a positive msat budget cap, and
+  a maximum billable sample cap before the real seam can be armed. It counts only
+  currently available lane cells toward the billable sample upper bound, warns
+  when future lanes are skipped, requires public-safe observed Khala traffic
+  evidence for every `realistic` shape, and keeps synthetic or unevidenced
+  traffic out of `decisionGrade` even when it is owner-approved for a smoke.
 - **Status:** PR open against `main` (#6088); orchestrator reviews / merges /
   deploys / smokes. NOT deployed, NO spend by this entry.
 

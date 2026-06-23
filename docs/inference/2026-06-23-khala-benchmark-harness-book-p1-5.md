@@ -1,14 +1,14 @@
 # Khala provider/engine benchmark harness — book P1-5 / #6088
 
-*2026-06-23. This note ties the new typed Khala benchmark harness to the
+_2026-06-23. This note ties the new typed Khala benchmark harness to the
 inference-engineering book's P1-5 ("build a provider and engine benchmark
 matrix") and Open Question #5 (the minimum lane decision suite). It is the
-fixture-driven, no-spend foundation for an eventual owner-armed real sweep.*
+fixture-driven, no-spend foundation for an eventual owner-armed real sweep._
 
 ## What the book asked for (P1-5)
 
 The book's Ch.4 §4.5 lesson is that **"faster" is meaningless until you say
-faster at *what*** — TTFT vs inter-token latency / perceived TPS vs throughput vs
+faster at _what_** — TTFT vs inter-token latency / perceived TPS vs throughput vs
 cost vs verification rate — on **which lane**, under **which traffic shape**,
 judged on **which outcome**. A benchmark is therefore not an ad-hoc script with
 hard-coded numbers; it is a **matrix** that varies the dimensions production
@@ -20,9 +20,9 @@ performance in production won't match expectations"). Latency must be read in
 **percentiles** (Ch.1 §1.4.1) because the inference time distribution is
 right-skewed — the mean hides the P90/P99 outliers that erode user trust.
 
-P1-5 also folds in the notes' Open Question #5: *what is the minimum benchmark
+P1-5 also folds in the notes' Open Question #5: _what is the minimum benchmark
 suite for deciding between Fireworks, Vertex, Pylon whole-small, and later
-shard-WAN lanes?*
+shard-WAN lanes?_
 
 ## What shipped
 
@@ -44,15 +44,15 @@ dimensions:
   unbuilt lanes are still first-class matrix axes so the decision suite is shaped
   for them, but they are never measured.
 - **engine** — `provider-native`, `vllm`, `sglang`, `tensorrt-llm`. Engines are
-  *paired* with lanes (not blindly crossed) so impossible cells (e.g. a managed
+  _paired_ with lanes (not blindly crossed) so impossible cells (e.g. a managed
   provider on our own vLLM) are never fabricated.
 - **workload** — `chat`, `khala-code-artifact-gen`, `verifier-run`,
   `long-context-codebase-question`.
 - **sequence shape** — input length (ISL), output length (OSL), cacheable prefix
   length, and concurrency — each shape tagged `realistic` or `synthetic`.
 - **streaming vs batch** transport, and **temperature / reasoning effort**.
-- **verification outcome** — the expected verification class is *derived from the
-  workload* (chat → `none`; artifact-gen/verifier → executed `test_passed`;
+- **verification outcome** — the expected verification class is _derived from the
+  workload_ (chat → `none`; artifact-gen/verifier → executed `test_passed`;
   long-context → `seeded`), so every cell is scored on outcome, not just token
   speed.
 
@@ -72,7 +72,7 @@ reward, cost basis). Two seams exist:
   fixture profile (no clock, no randomness), so the same config always produces
   the same runs. A small index-keyed jitter spreads repeated samples so
   percentiles are non-degenerate. `canSpend: false` always.
-- **`makeRealLaneSeam` (flag/owner-gated, default OFF)** — the seam that *would*
+- **`makeRealLaneSeam` (flag/owner-gated, default OFF)** — the seam that _would_
   hit a live provider adapter and measure a real, billable request. It is armed
   only by an explicit `armRealSweep: true` **and** an injected live executor;
   absent that it throws `RealLaneNotArmedError` and reports `canSpend: false`, so
@@ -87,10 +87,10 @@ record (honest absence, never a fabricated zero).
 ### 3. The dereferenceable report (`report.ts`)
 
 `buildBenchmarkReport` aggregates a run set into per-`(lane × workload)` metrics —
-the book's "best is product-specific, *measured*" framing as a typed artifact:
+the book's "best is product-specific, _measured_" framing as a typed artifact:
 
 - **latency percentiles** (P50 / P90 / P99 + mean) for TTFT, total wall-clock,
-  perceived TPS, and inter-token latency, over *measured* samples only (the
+  perceived TPS, and inter-token latency, over _measured_ samples only (the
   `not_measured` sentinel is dropped, never coerced to a number);
 - **cost-per-accepted-outcome** (msat) = total cost basis / accepted outcomes —
   the only cost metric that respects verification: a cheap lane that fails
@@ -146,12 +146,19 @@ until real traffic and an owner-armed sweep replace the synthetic shapes.
 ## Owner step for a real sweep
 
 1. Replace the synthetic `SequenceShape`s with shapes sourced from **real
-   observed Khala traffic** (provenance `realistic`).
-2. Provide a live `RealLaneExecutor` that drives the production provider adapters
+   observed Khala traffic** (provenance `realistic`) and attach public-safe
+   evidence refs for each shape.
+2. Run `preflightRealBenchmarkSweep(...)` against the matrix with an explicit
+   owner approval ref, positive msat budget cap, maximum billable sample cap, and
+   observed-traffic evidence for every realistic shape. A synthetic matrix may be
+   used for a real-lane smoke, but the preflight marks it **not decision-grade**
+   until every shape is realistic and backed by actual Khala usage evidence.
+3. Provide a live `RealLaneExecutor` that drives the production provider adapters
    and measures real samples.
-3. Construct `makeRealLaneSeam({ armRealSweep: true, executor })` with explicit
-   owner confirmation (this is the only path that can spend), run the suite, and
-   publish the now-`decisionGrade` report.
+4. Construct `makeRealLaneSeam({ armRealSweep: true, executor })` only after the
+   preflight is green for arming (this is the only path that can spend), run the
+   suite, and publish the now-`decisionGrade` report only when the preflight also
+   says it is decision-grade eligible.
 
 ## Verification bar (green)
 
