@@ -172,6 +172,22 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   proxy/tunnel transport path, but still does not claim a durable named tunnel,
   a production Worker secret deployment, live customer dispatch, sats movement,
   or a product-promise green flip.
+- Durable named-tunnel follow-up on 2026-06-23 created Cloudflare Tunnel
+  `pylon-khala-6089-gcloud-l4`
+  (`055cc100-c9a8-46c9-85f6-90ebf1accf09`) with remote ingress to the same
+  host-local proxy at `127.0.0.1:8011`, installed its token as a root-readable
+  file on the admitted L4 host, and enabled
+  `pylon-khala-6089-named-tunnel.service`. The service is active/enabled,
+  `cloudflared` prechecks pass with QUIC, and Cloudflare reports the named
+  tunnel `healthy`. A local proxy canary after the named-tunnel install still
+  returned HTTP 200, content `OK`, parity true, canary true, replay true, and
+  payout eligible true. This proves the durable connector is running, but the
+  public DNS route is not yet installed: the current Wrangler OAuth token can
+  manage tunnels and read the `openagents.com` zone, but `dns_records` calls
+  return Cloudflare API `403` authentication errors. Do not deploy Worker
+  `OPENAGENTS_NETWORK_FABRIC_SERVE_URL` / bearer secrets, claim a public
+  gateway route, or retire the temporary tunnel until an owner supplies DNS
+  write authority or creates the required CNAME to this tunnel target.
 
 ## Where this plugs in next (not in this change)
 
