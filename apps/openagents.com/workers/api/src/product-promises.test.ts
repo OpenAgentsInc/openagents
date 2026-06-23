@@ -793,7 +793,10 @@ describe('public product promises document', () => {
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
             'blocker.product_promises.cloud_sandbox_live_metering_billing_unwired',
-            'blocker.product_promises.cloud_sandbox_paid_receipt_missing',
+            // The receipt ARTIFACT now exists (PAID-charge settle + dereference
+            // route, DE-2 #5525); the remaining gate is a real renter +
+            // owner sign-off, not a missing receipt.
+            'blocker.product_promises.cloud_sandbox_real_renter_demand_provenance_and_owner_signoff_missing',
           ]),
         }),
         expect.objectContaining({

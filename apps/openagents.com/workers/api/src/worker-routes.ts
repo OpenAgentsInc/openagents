@@ -59,6 +59,7 @@ type WorkerRouteDependencies = Readonly<{
   routeOnboardingRequest: OptionalEffectRoute
   routeNexusPylonVisibilityRequest: OptionalEffectRoute
   routePublicCardCreditSpendReceiptRequest: OptionalEffectRoute
+  routePublicCloudPrimitiveReceiptRequest: OptionalEffectRoute
   routePublicInferenceReceiptRequest: OptionalEffectRoute
   routePublicNip90MarketReceiptRequest: OptionalEffectRoute
   routePublicPartnerPayoutReceiptRequest: OptionalEffectRoute
@@ -489,6 +490,13 @@ export const makeWorkerRouteRequest =
 
       if (publicInferenceReceiptResponse !== undefined) {
         return yield* publicInferenceReceiptResponse
+      }
+
+      const publicCloudPrimitiveReceiptResponse =
+        dependencies.routePublicCloudPrimitiveReceiptRequest(request, env, ctx)
+
+      if (publicCloudPrimitiveReceiptResponse !== undefined) {
+        return yield* publicCloudPrimitiveReceiptResponse
       }
 
       const publicCardCreditSpendReceiptResponse =

@@ -26,6 +26,7 @@ import { noStoreJsonResponse } from '../http/responses'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
 import {
+  cloudChargeReceiptRef,
   type CloudMeteringDeps,
   type CloudMeteringOutcome,
   settleCloudPrimitiveCharge,
@@ -184,9 +185,14 @@ export type FineTuningMeteringHook = (
 ) => Effect.Effect<FineTuningMeteringOutcome>
 
 // Public-safe receipt ref for a fine-tune job charge, resolvable without
-// exposing any payment material. Mirrors `inferenceChargeReceiptRef`.
+// exposing any payment material. This MUST equal the `public_receipt_ref` the
+// metering seam writes to the ledger (`cloudChargeReceiptRef`), so the ref the
+// surface advertises is the same ref `GET /api/public/cloud/receipts/:ref`
+// dereferences. (Previously this returned a `.job.<id>` shape that did NOT match
+// the ledger's `.job.charge.<id>` row, so an advertised fine-tune receipt could
+// never be dereferenced.)
 export const fineTuningJobReceiptRef = (jobId: string): string =>
-  `receipt.cloud.fine_tuning.job.${jobId}`
+  cloudChargeReceiptRef(FINE_TUNING_PRIMITIVE, jobId)
 
 // No-op stub. Logs (public-safe: account, job, model only) and reports
 // `metered: false`. Used on the inert path and as the default in tests.

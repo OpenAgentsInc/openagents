@@ -1452,6 +1452,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicInferenceBatchJobCloseoutReceiptEnvelope: objectSummary(
     'Public-safe inference batch-job closeout receipt envelope for `receipt.inference.batch_job.closeout.*`. It carries generatedAt and a live_at_read staleness contract, resolves only completed jobs, exposes the projected closeout receipt and public-safe refs, and excludes account ids, raw datasets, R2 payloads, provider payloads, wallet material, invoices, preimages, and private job bodies. Read-only; grants no job execution, spend, refund, settlement, provider, or registry authority.',
   ),
+  PublicCloudPrimitiveReceiptEnvelope: objectSummary(
+    'Public-safe OpenAgents Cloud primitive ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (rebuildsOn pay_ins.public_receipt_ref). It proves a PAID metered-charge `pay_ins` row exists for a sellable Cloud primitive (`receipt.cloud.sandbox_compute.rental.charge.*` or `receipt.cloud.fine_tuning.job.charge.*`) without exposing account ids, amounts, idempotency keys, invoices, preimages, wallet material, provider payloads, or raw job/sandbox bodies. The projection carries caveats noting demand provenance and owner sign-off are still pending, so it asserts no product-promise is green. Read-only; grants no spend, refund, payout, provisioning, settlement, provider, public-claim, or registry authority.',
+  ),
   InferenceBatchJobSubmitRequest: objectSummary(
     'Programmatic-agent batch inference request. Carries a bounded dataset of model plus prompt/completion token counts for cost estimation and initial job persistence. Do not send raw private datasets or provider payloads.',
   ),
@@ -4747,6 +4750,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public inference receipt.',
           '#/components/schemas/PublicInferenceReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/cloud/receipts/{receiptRef}': {
+    get: operation({
+      operationId: 'getPublicCloudPrimitiveReceipt',
+      summary: 'Read public Cloud primitive metered-charge receipt',
+      description:
+        'Returns a public-safe receipt projection for a PAID sellable-Cloud-primitive charge ledger row (`receipt.cloud.sandbox_compute.rental.charge.*` or `receipt.cloud.fine_tuning.job.charge.*`). Only a settled (paid) metered charge resolves; pending/failed rows and non-cloud refs return not_found. The projection carries generatedAt and a live_at_read staleness contract, proves the metered debit exists, and excludes account ids, amounts, idempotency keys, invoices, preimages, wallet material, provider payloads, and raw job/sandbox bodies. It carries caveats noting demand provenance and owner sign-off are still pending, so it asserts no product-promise is green; read-only, granting no spend, refund, payout, provisioning, settlement, provider, or registry authority.',
+      tags: ['Public Proof', 'Billing'],
+      security: publicRead,
+      parameters: [
+        pathParam(
+          'receiptRef',
+          'Cloud primitive charge receipt ref, such as receipt.cloud.sandbox_compute.rental.charge.<sandboxId> or receipt.cloud.fine_tuning.job.charge.<jobId>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Cloud primitive metered-charge receipt.',
+          '#/components/schemas/PublicCloudPrimitiveReceiptEnvelope',
         ),
         ...errorResponses(),
       },

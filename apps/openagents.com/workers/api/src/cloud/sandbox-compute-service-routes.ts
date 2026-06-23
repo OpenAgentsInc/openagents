@@ -27,6 +27,7 @@ import { noStoreJsonResponse } from '../http/responses'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
 import {
+  cloudChargeReceiptRef,
   type CloudMeteringDeps,
   type CloudMeteringOutcome,
   settleCloudPrimitiveCharge,
@@ -187,9 +188,14 @@ export type SandboxMeteringHook = (
 ) => Effect.Effect<SandboxMeteringOutcome>
 
 // Public-safe receipt ref for a sandbox rental charge, resolvable without
-// exposing any payment material.
+// exposing any payment material. This MUST equal the `public_receipt_ref` the
+// metering seam writes to the ledger (`cloudChargeReceiptRef`), so the ref the
+// surface advertises is the same ref `GET /api/public/cloud/receipts/:ref`
+// dereferences. (Previously this returned a `.rental.<id>` shape that did NOT
+// match the ledger's `.rental.charge.<id>` row, so an advertised sandbox receipt
+// could never be dereferenced.)
 export const sandboxRentalReceiptRef = (sandboxId: string): string =>
-  `receipt.cloud.sandbox_compute.rental.${sandboxId}`
+  cloudChargeReceiptRef(SANDBOX_COMPUTE_PRIMITIVE, sandboxId)
 
 // No-op stub. Logs (public-safe: account, sandbox, image only) and reports
 // `metered: false`. Used on the inert path and as the default in tests.

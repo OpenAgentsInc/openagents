@@ -905,6 +905,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/cloud/cloud-primitive-receipts.ts',
+    route: '/api/public/cloud/receipts/{receiptRef}',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/stripe-checkout-receipts.ts',
     route: '/api/public/billing/stripe-checkout-receipts/{receiptRef}',
     status: 'staleness_declared',

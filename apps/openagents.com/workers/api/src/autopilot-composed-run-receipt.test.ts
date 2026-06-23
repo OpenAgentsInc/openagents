@@ -118,17 +118,18 @@ describe('autopilot composed-run receipt reconciliation (#5519)', () => {
       COMPOSED_RUN_RECEIPT_REAL_RECEIPT_MISSING_REF,
     )
 
-    // The reconciliation's whole point: the SURFACE ref (what the plan advertises)
-    // and the SETTLEMENT ref (what the execution settles under) DIFFER for
-    // fine-tuning, and the receipt binds BOTH so the run is dereferenceable at
-    // either layer.
+    // The receipt binds the SURFACE ref (what the plan advertises) and the
+    // SETTLEMENT ref (what the execution settles under) for each component. The
+    // cloud primitive surface ref is now ALIGNED to the ledger ref, so the two
+    // coincide for fine-tuning (the run is dereferenceable at a single ledger
+    // ref) — the binding still asserts BOTH explicitly.
     const fineTuning = receipt.components.find(c => c.primitive === 'fine_tuning')
     expect(fineTuning).toBeDefined()
     expect(fineTuning?.surfaceReceiptRef).toBe(fineTuningJobReceiptRef('ft-1'))
     expect(fineTuning?.settlementReceiptRef).toBe(
       cloudChargeReceiptRef(FINE_TUNING_PRIMITIVE, 'ft-1'),
     )
-    expect(fineTuning?.surfaceReceiptRef).not.toBe(
+    expect(fineTuning?.surfaceReceiptRef).toBe(
       fineTuning?.settlementReceiptRef,
     )
 

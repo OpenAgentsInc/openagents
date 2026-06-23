@@ -9,22 +9,23 @@
 // Episode 239 ("Let's Make Money", docs/transcripts/239.md): a business runs on
 // Autopilot, composed of OpenAgents Cloud primitives bought from ONE balance,
 // and the run produces ONE receipt that shows the composed usage billed. For that
-// receipt to be REAL it must DEREFERENCE the actual charges — but the two layers
-// of the scaffold currently name a component's receipt with TWO different refs:
+// receipt to be REAL it must DEREFERENCE the actual charges. Each component is
+// named at TWO layers:
 //
 //   - the PLAN's receipt envelope advertises each component's SURFACE receipt ref
 //     (the one the owning primitive's public surface advertises, e.g.
-//     fineTuningJobReceiptRef -> `receipt.cloud.fine_tuning.job.<id>`);
+//     fineTuningJobReceiptRef);
 //   - the EXECUTION settles each component under the cloud-metering LEDGER receipt
-//     ref (cloudChargeReceiptRef -> `receipt.cloud.fine_tuning.job.charge.<id>`),
+//     ref (cloudChargeReceiptRef -> `receipt.cloud.<primitive>.charge.<id>`),
 //     which is the ref the atomic credit ledger actually writes.
 //
-// These never reconcile today, so there is no single composed-run receipt that a
-// reviewer (or a future armed run) can dereference at BOTH layers. This module is
-// that reconciliation: for each component it BINDS the surface ref to the
-// settlement ref, proves the plan and execution describe the SAME components, and
-// proves the composed spend total reconciles to the sum of the per-component
-// charges.
+// The cloud primitives' surface refs are now ALIGNED to the ledger ref (the
+// surface advertises exactly the ref `GET /api/public/cloud/receipts/:ref`
+// dereferences), so a component's surface and settlement refs coincide. This
+// module still binds BOTH explicitly, proves the plan and execution describe the
+// SAME components, and proves the composed spend total reconciles to the sum of
+// the per-component charges — so the binding stays correct even if a future
+// primitive reintroduces distinct surface/settlement ref shapes.
 //
 // SCOPE / HONESTY: this is PURE and INERT. It moves no money, settles no charge,
 // writes no receipt row, and reads no balance. It only assembles + verifies the

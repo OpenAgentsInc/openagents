@@ -157,7 +157,11 @@ describe('POST /v1/fine_tuning/jobs', () => {
     )
     const body = (await response.json()) as Record<string, unknown>
     expect(body.metered).toBe(true)
-    expect(body.receipt_ref).toBe('receipt.cloud.fine_tuning.job.ftjob_fixed')
+    // The advertised receipt ref is the SAME ref the ledger writes and the
+    // public receipt route dereferences (cloudChargeReceiptRef shape).
+    expect(body.receipt_ref).toBe(
+      'receipt.cloud.fine_tuning.job.charge.ftjob_fixed',
+    )
   })
 
   test('the stub adapter never returns a servable model', async () => {

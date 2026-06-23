@@ -214,6 +214,8 @@ import {
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
 } from './cloud/sandbox-compute-service-routes'
+import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
+import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
@@ -7409,6 +7411,17 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
+// Dereferenceable PAID receipt read for sellable Cloud primitives (sandbox
+// compute #5517 / fine-tuning #5516). Public proof read only — it derefs the
+// metered-charge `pay_ins` row the cloud-metering seam already wrote; it grants
+// no authority and asserts no promise is green.
+const publicCloudPrimitiveReceiptRoutes =
+  makePublicCloudPrimitiveReceiptRoutes<Env>({
+    makeStore: env =>
+      makeD1CloudPrimitiveReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes<Env>({
     makeClaimStore: _env => makeInMemoryMarketingAgencyPaidDeliveryClaimStore([])
@@ -10497,6 +10510,8 @@ const routeRequest = makeWorkerRouteRequest({
     publicCardCreditSpendReceiptRoutes.routePublicCardCreditSpendReceiptRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,
+  routePublicCloudPrimitiveReceiptRequest:
+    publicCloudPrimitiveReceiptRoutes.routePublicCloudPrimitiveReceiptRequest,
   routePublicNip90MarketReceiptRequest:
     publicNip90MarketReceiptRoutes.routePublicNip90MarketReceiptRequest,
   routePublicPartnerPayoutReceiptRequest:
