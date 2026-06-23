@@ -41,6 +41,11 @@ export const HUD_TRANSCRIPT_ATTR = 'autopilot-onboarding-transcript'
 export const HUD_COMPONENTS_ATTR = 'autopilot-onboarding-components'
 export const HUD_COMPOSER_ATTR = 'autopilot-onboarding-composer'
 export const HUD_COMPONENT_ITEM_ATTR = 'autopilot-onboarding-component'
+// The legal vertical overlay surfaces (VSL slot + verified stat strip). Present
+// only on `/autopilot/legal`; absent on the generic `/autopilot` flow.
+export const HUD_LEGAL_OVERLAY_ATTR = 'autopilot-onboarding-legal-overlay'
+export const HUD_LEGAL_VSL_ATTR = 'autopilot-onboarding-legal-vsl'
+export const HUD_LEGAL_STAT_STRIP_ATTR = 'autopilot-onboarding-legal-stats'
 
 // The message hooks the page needs. Threading these in (rather than importing a
 // concrete page `Message`) keeps this view decoupled and unit-testable: the
@@ -57,6 +62,185 @@ const introForVertical = (vertical: string | null): string =>
   vertical === 'legal'
     ? 'Describe your legal work. Autopilot scopes it, shows you a quick win, and keeps a review gate before anything is sent — no client-identifying detail leaves without your consent.'
     : 'Describe what you want done. Autopilot scopes the work, shows you a quick win, and keeps a human-review gate before anything ships.'
+
+// LEGAL VERTICAL OVERLAY ---------------------------------------------------
+
+// A single VERIFIED stat for the legal stat strip. Every figure here traces to a
+// primary source the reader can open and check; the citation travels with the
+// figure (issue #6130 hard constraint). Figures are drawn ONLY from the
+// re-authenticated legal data sheet's "verified-to-primary-source" set
+// (docs/blitz/lawpilot/source/DATA_SHEET.md + VERIFICATION_LEDGER.md). Removed or
+// unverified figures are intentionally excluded; nothing here is a scarcity claim
+// or an outcome projection.
+export type LegalVerifiedStat = Readonly<{
+  value: string
+  label: string
+  source: string
+  sourceUrl: string
+}>
+
+export const LEGAL_VERIFIED_STATS: ReadonlyArray<LegalVerifiedStat> = [
+  {
+    value: '69%',
+    label:
+      'of legal professionals now use generative AI for work — more than double a year earlier.',
+    source: '8am 2026 Legal Industry Report (n=1,395)',
+    sourceUrl: 'https://www.8am.com/reports/legal-industry-report-2026/',
+  },
+  {
+    value: '9%',
+    label:
+      'of firms have an actively enforced written AI policy; 43% have none and no plans to create one.',
+    source: '8am 2026 Legal Industry Report',
+    sourceUrl: 'https://www.8am.com/reports/legal-industry-report-2026/',
+  },
+  {
+    value: 'ABA Op. 512',
+    label:
+      'requires understanding an AI tool and obtaining informed client consent before inputting client information.',
+    source: 'ABA Formal Opinion 512 (July 29, 2024)',
+    sourceUrl:
+      'https://www.americanbar.org/content/dam/aba/administrative/professional_responsibility/ethics-opinions/aba-formal-opinion-512.pdf',
+  },
+]
+
+// Legal-flavored starter prompts kept generic (no client/brand/person material):
+// bounded, template-driven, verifiable first moments per the legal MVP shape.
+const LEGAL_STARTER_PROMPTS: ReadonlyArray<string> = [
+  'Prepare a draft NDA prep packet for a routine vendor conversation.',
+  'Find a fitting formation/intake template and list the missing facts.',
+  'Build a lawyer-review checklist for a routine document.',
+]
+
+// The legal-only overlay: the VSL slot (a placeholder embed region — no real
+// video asset is required for v1), a legal-specific framing line, a bounded set
+// of starter prompts, and the verified stat strip. Rendered ONLY for the `legal`
+// vertical; the generic `/autopilot` flow never sees it.
+const legalOverlaySection = <Message>(model: FlowModel): Html => {
+  const h = html<Message>()
+
+  if (model.vertical !== 'legal') {
+    return h.empty
+  }
+
+  return h.div(
+    [
+      h.DataAttribute(HUD_LEGAL_OVERLAY_ATTR, ''),
+      Ui.className<Message>(
+        'grid gap-4 border border-[#3a7bff]/20 bg-black/40 p-4',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-1.5')],
+        [
+          h.span([Ui.className<Message>(eyebrowClass)], ['For legal teams']),
+          h.p(
+            [
+              Ui.className<Message>(
+                'm-0 max-w-[60ch] text-[0.8125rem] leading-[1.5] text-white/65',
+              ),
+            ],
+            [
+              'Stay in expert review mode. You share only the source material you choose; Autopilot prepares a bounded, template-driven, source-linked work surface — a draft prep packet, intake questions, and a lawyer-review checklist — with an attorney-review gate before anything is sent. Not an AI lawyer, not case-law research.',
+            ],
+          ),
+        ],
+      ),
+      // VSL slot — a placeholder embed region. No real video asset is required
+      // for v1; the region reserves the space and is labelled so the asset can
+      // drop in later without a layout change.
+      h.div(
+        [
+          h.DataAttribute(HUD_LEGAL_VSL_ATTR, ''),
+          h.AriaLabel('Legal overview video'),
+          Ui.className<Message>(
+            'grid aspect-video place-items-center border border-[#222] bg-[#010102] text-center',
+          ),
+        ],
+        [
+          h.span(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            ['Overview video — coming soon'],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>(eyebrowClass)],
+            ['Bounded first moves'],
+          ),
+          h.ul(
+            [Ui.className<Message>('m-0 grid list-none gap-1.5 p-0')],
+            LEGAL_STARTER_PROMPTS.map(prompt =>
+              h.li(
+                [
+                  Ui.className<Message>(
+                    'text-[0.8125rem] leading-[1.4] text-white/60',
+                  ),
+                ],
+                [prompt],
+              ),
+            ),
+          ),
+        ],
+      ),
+      legalStatStripView<Message>(),
+    ],
+  )
+}
+
+// The verified stat strip. A single strip of primary-sourced figures, each with
+// its citation as an openable link. No scarcity, no projections, no unproven
+// numbers — only figures the legal data sheet marks verified-to-primary-source.
+const legalStatStripView = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.DataAttribute(HUD_LEGAL_STAT_STRIP_ATTR, ''),
+      Ui.className<Message>(
+        'grid gap-3 border-t border-[#222] pt-3 sm:grid-cols-3',
+      ),
+    ],
+    LEGAL_VERIFIED_STATS.map(stat =>
+      h.div(
+        [Ui.className<Message>('grid gap-1')],
+        [
+          h.span(
+            [
+              Ui.className<Message>(
+                'font-medium text-[#f1efe8] text-lg tabular-nums',
+              ),
+            ],
+            [stat.value],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                'text-[0.75rem] leading-[1.4] text-white/55',
+              ),
+            ],
+            [stat.label],
+          ),
+          h.a(
+            [
+              h.Href(stat.sourceUrl),
+              h.Target('_blank'),
+              h.Rel('noopener noreferrer'),
+              Ui.className<Message>(
+                'text-[0.6875rem] text-[#7aa2ff] underline decoration-[#3a7bff]/40 underline-offset-2 hover:text-[#a8c2ff]',
+              ),
+            ],
+            [stat.source],
+          ),
+        ],
+      ),
+    ),
+  )
+}
 
 // One transcript turn rendered as an AI Elements `message`. The agent surface is
 // the assistant role; the visitor is the user role.
@@ -241,6 +425,7 @@ export const overlayView = <Message>(
               ),
             ],
           ),
+          legalOverlaySection<Message>(model),
           transcriptView<Message>(model),
           componentsView<Message>(model, actions),
           composerView<Message>(model, actions),

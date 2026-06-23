@@ -27,9 +27,17 @@ import {
 import {
   HUD_COMPONENT_ITEM_ATTR,
   HUD_COMPOSER_ATTR,
+  HUD_LEGAL_OVERLAY_ATTR,
+  HUD_LEGAL_STAT_STRIP_ATTR,
+  HUD_LEGAL_VSL_ATTR,
   HUD_ROOT_ATTR,
+  LEGAL_VERIFIED_STATS,
   overlayView,
 } from './page'
+import {
+  LEGAL_VERTICAL_OVERLAY,
+  verticalOverlayForSegment,
+} from './vertical-overlay'
 
 // A minimal Snabbdom-style vnode walker so the test can assert rendered markup
 // without a DOM. Mirrors the existing scene/route tests.
@@ -339,9 +347,21 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
       base,
       UpdatedAutopilotOnboardingComposer({ value: 'Help with an NDA' }),
     )
-    const [submitted] = update(typed, SubmittedAutopilotOnboardingTurn())
+    const [submitted, commands] = update(
+      typed,
+      SubmittedAutopilotOnboardingTurn(),
+    )
     // The verticalOverlay is threaded to the program command on the first turn.
     expect(flowOf(submitted).vertical).toBe('legal')
+    // The command carries the legal SYSTEM-PROMPT OVERLAY text (not the raw
+    // `legal` segment) so the program's vertical-overlay slot gets real guidance.
+    const turnCommand = commands.find(
+      command => command.name === 'SubmitAutopilotOnboardingTurn',
+    )
+    expect(turnCommand).toBeDefined()
+    expect(turnCommand?.args).toMatchObject({
+      verticalOverlay: LEGAL_VERTICAL_OVERLAY,
+    })
 
     // Simulate the command's failure terminal.
     const [failed] = update(
@@ -356,5 +376,69 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
     expect(flow.transcript).toEqual([
       { role: 'user', content: 'Help with an NDA' },
     ])
+  })
+})
+
+describe('autopilot onboarding — legal vertical overlay (#6130)', () => {
+  test('maps the legal segment to the legal system-prompt overlay; everything else to null', () => {
+    expect(verticalOverlayForSegment('legal')).toBe(LEGAL_VERTICAL_OVERLAY)
+    expect(verticalOverlayForSegment(null)).toBeNull()
+    expect(verticalOverlayForSegment('health')).toBeNull()
+    expect(verticalOverlayForSegment('LEGAL')).toBeNull()
+  })
+
+  test('the legal overlay leads with control + provability and bars "AI lawyer" / case-law framing', () => {
+    // Lead with control + provability, attorney-in-the-loop, source-linked.
+    expect(LEGAL_VERTICAL_OVERLAY).toContain('CONTROL and PROVABILITY')
+    expect(LEGAL_VERTICAL_OVERLAY).toContain('Attorney-in-the-loop')
+    expect(LEGAL_VERTICAL_OVERLAY).toContain('human-review gate')
+    // Explicitly NOT an AI lawyer and NOT case-law research.
+    expect(LEGAL_VERTICAL_OVERLAY).toContain('NOT an "AI lawyer"')
+    expect(LEGAL_VERTICAL_OVERLAY).toContain('NOT do case-law research')
+    // Carries no client/brand/scarcity/projection material.
+    expect(LEGAL_VERTICAL_OVERLAY).not.toMatch(/\$\d|slots?|3×|80%|N of/i)
+  })
+
+  test('legal vertical renders the legal overlay: VSL slot, intro, and verified stat strip', () => {
+    const markup = renderHtml(
+      overlayView(initFlowModel(Option.some('legal')), stubActions),
+    )
+    expect(markup).toContain(`data-${HUD_LEGAL_OVERLAY_ATTR}`)
+    expect(markup).toContain(`data-${HUD_LEGAL_VSL_ATTR}`)
+    expect(markup).toContain(`data-${HUD_LEGAL_STAT_STRIP_ATTR}`)
+    // Legal intro framing: control, review gate, no AI-lawyer/case-law claim.
+    expect(markup).toContain('Stay in expert review mode')
+    expect(markup).toContain('Not an AI lawyer, not case-law research.')
+    // Every stat figure carries its primary-source citation label (the openable
+    // link href is a DOM prop; the lightweight walker serializes the citation
+    // text, which is what proves the figure traces to a primary source).
+    expect(markup).toContain('69%')
+    expect(markup).toContain('8am 2026 Legal Industry Report (n=1,395)')
+    expect(markup).toContain('ABA Formal Opinion 512 (July 29, 2024)')
+    // No scarcity, projection, or unproven outcome numbers on this page.
+    expect(markup).not.toMatch(/N of \d|\b3×\b|\$\d+k|80% faster/i)
+  })
+
+  test('every legal stat carries a non-empty figure, label, and a primary-source citation with a real URL', () => {
+    expect(LEGAL_VERIFIED_STATS.length).toBeGreaterThan(0)
+    LEGAL_VERIFIED_STATS.forEach(stat => {
+      expect(stat.value.trim()).not.toBe('')
+      expect(stat.label.trim()).not.toBe('')
+      expect(stat.source.trim()).not.toBe('')
+      // The citation must be an openable primary source (8am report or ABA PDF).
+      expect(stat.sourceUrl).toMatch(/^https:\/\//)
+      expect(stat.sourceUrl).toMatch(/8am\.com|americanbar\.org/)
+    })
+  })
+
+  test('the generic /autopilot path shows NO legal-only content', () => {
+    const markup = renderHtml(
+      overlayView(initFlowModel(Option.none()), stubActions),
+    )
+    expect(markup).not.toContain(`data-${HUD_LEGAL_OVERLAY_ATTR}`)
+    expect(markup).not.toContain(`data-${HUD_LEGAL_VSL_ATTR}`)
+    expect(markup).not.toContain(`data-${HUD_LEGAL_STAT_STRIP_ATTR}`)
+    expect(markup).not.toContain('ABA Formal Opinion 512')
+    expect(markup).not.toContain('Stay in expert review mode')
   })
 })

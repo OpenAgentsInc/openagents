@@ -71,6 +71,7 @@ import {
   ShareProjectionResponse,
 } from './model'
 import { OnboardingTurnResponse } from '../autopilot-onboarding/flow'
+import { verticalOverlayForSegment } from '../autopilot-onboarding/vertical-overlay'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
@@ -1175,10 +1176,15 @@ export const update = (model: Model, message: Message): UpdateReturn =>
               }),
           }),
           [
+            // Thread the legal SYSTEM-PROMPT OVERLAY (not the raw `legal`
+            // segment) to the program's vertical-overlay slot. The server only
+            // honors it on the first turn that creates the session; non-legal /
+            // absent verticals resolve to null so the generic intake carries no
+            // overlay (#6130).
             SubmitAutopilotOnboardingTurn({
               sessionId: flow.sessionId,
               userText,
-              verticalOverlay: flow.vertical,
+              verticalOverlay: verticalOverlayForSegment(flow.vertical),
             }),
           ],
         ]
