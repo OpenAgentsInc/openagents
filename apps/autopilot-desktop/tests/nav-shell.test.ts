@@ -349,14 +349,54 @@ describe("#5465 keyboard layer", () => {
       ).toEqual({ forward: true, preventDefault: true })
     }
 
+    // Hotbar-focus fix: the WIRED hotbar slots (1/2/3) fire even with the Verse
+    // Ask box focused. The forward gate forwards them AND prevents default so the
+    // digit is swallowed (it never pollutes the box) and the reducer fires the
+    // slot. Scoped to the Ask box via `inVerseAskInput`.
+    for (const [keyValue, code] of [
+      ["1", "Digit1"],
+      ["2", "Digit2"],
+      ["3", "Digit3"],
+    ] as const) {
+      expect(
+        keyboardForwardDecision({
+          key: keyValue,
+          code,
+          meta: false,
+          ctrl: false,
+          shift: false,
+          inEditable: true,
+          inVerseAskInput: true,
+        }),
+      ).toEqual({ forward: true, preventDefault: true })
+    }
+
+    // The SAME wired digit in some OTHER focused field (NOT the Ask box) is left
+    // as a normal keystroke — it still types the digit. This is the scope guard
+    // that keeps `1`/`2`/`3` typeable in the composer/terminal/palette.
     expect(
       keyboardForwardDecision({
-        key: "1",
-        code: "Digit1",
+        key: "2",
+        code: "Digit2",
         meta: false,
         ctrl: false,
         shift: false,
         inEditable: true,
+        inVerseAskInput: false,
+      }),
+    ).toEqual({ forward: false, preventDefault: false })
+
+    // An UNWIRED slot digit (e.g. "0" → action_bar.slot_10, no bound effect) is
+    // left as a normal keystroke even in the Ask box, so a bare "0" still types.
+    expect(
+      keyboardForwardDecision({
+        key: "0",
+        code: "Digit0",
+        meta: false,
+        ctrl: false,
+        shift: false,
+        inEditable: true,
+        inVerseAskInput: true,
       }),
     ).toEqual({ forward: false, preventDefault: false })
   })
@@ -673,10 +713,31 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
     expect(model.verseMode).toBe("explore")
   })
 
-  test("bare number keys remain ignored while typing", () => {
+  test("wired hotbar number keys fire even while typing; unwired ones are ignored", () => {
+    // Hotbar-focus fix: the WIRED hotbar slots fire from the keyboard even with a
+    // field focused (the forward gate swallows the digit so it never pollutes the
+    // Ask box), so the owner's "hotbar 2/3 do nothing when the Ask box is focused"
+    // bug is gone. Slot 1 → coder session, 2 → spawn scene, 3 → toggle portal.
     expect(interpretKey(exploreModel, key({
       key: "1",
       code: "Digit1",
+      inEditable: true,
+    })).kind).toBe("open-coder-session")
+    expect(interpretKey(exploreModel, key({
+      key: "2",
+      code: "Digit2",
+      inEditable: true,
+    })).kind).toBe("spawn-verse-scene")
+    expect(interpretKey(exploreModel, key({
+      key: "3",
+      code: "Digit3",
+      inEditable: true,
+    })).kind).toBe("toggle-verse-scene-portal")
+    // An UNWIRED slot digit (e.g. "0" → slot 10, no effect) stays a normal
+    // keystroke while typing.
+    expect(interpretKey(exploreModel, key({
+      key: "0",
+      code: "Digit0",
       inEditable: true,
     })).kind).toBe("none")
   })

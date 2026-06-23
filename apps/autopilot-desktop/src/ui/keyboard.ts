@@ -128,6 +128,31 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
     return { kind: "none" }
   }
 
+  // ── Hotbar action slots fire even with a field focused (verse explore) ─────
+  // The Verse hotbar number keys are the MMO action bar. The owner hit a bug
+  // where, with the in-world Ask box focused, `2`/`3` typed a digit and the
+  // hotbar "did nothing". The hotbar is a dedicated game surface in the verse, so
+  // its slot keys must fire regardless of focus (the matching forward-gate change
+  // already swallows the digit so it never pollutes the box). `actionIdsForKey`
+  // is already scoped to verse_explore + isVerseExploreActionContext(model), so
+  // this only affects the in-world Ask box, never the command palette, composer,
+  // or any other field. Resolved BEFORE the generic in-editable no-op below.
+  {
+    const focusedSlotActionIds = actionIdsForKey(model, event)
+    if (focusedSlotActionIds.includes("action_bar.slot_1")) {
+      return { kind: "open-coder-session" }
+    }
+    if (focusedSlotActionIds.includes("action_bar.slot_2")) {
+      return { kind: "spawn-verse-scene", sceneId: DEFAULT_SPAWNABLE_SCENE_ID }
+    }
+    if (focusedSlotActionIds.includes("action_bar.slot_3")) {
+      return {
+        kind: "toggle-verse-scene-portal",
+        sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
+      }
+    }
+  }
+
   // Focused editor/composer/terminal fields own their keys. They must never
   // trigger global commands, submit turns, or j/k pane movement while text entry
   // is active; the palette-open branch above is the only exception.
@@ -175,24 +200,9 @@ export const interpretKey = (model: Model, event: KeyEvent): KeyIntent => {
   // ── Hotbar action slots (verse_explore) ──────────────────────────────────
   // Slot 1 (key 1) opens a fresh coder session; slot 2 (key 2) spawns the
   // isolated crackling-energy Verse scene; slot 3 (key 3) toggles that scene's
-  // gateway portal. Slots 2/3 mirror the ⌘⇧E / ⌘⇧P chords so the hotbar is just
-  // a second way to fire the SAME spawn/portal intents — pressing them must NOT
-  // pop the (now removed) evidence pane.
-  {
-    const slotActionIds = actionIdsForKey(model, event)
-    if (slotActionIds.includes("action_bar.slot_1")) {
-      return { kind: "open-coder-session" }
-    }
-    if (slotActionIds.includes("action_bar.slot_2")) {
-      return { kind: "spawn-verse-scene", sceneId: DEFAULT_SPAWNABLE_SCENE_ID }
-    }
-    if (slotActionIds.includes("action_bar.slot_3")) {
-      return {
-        kind: "toggle-verse-scene-portal",
-        sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
-      }
-    }
-  }
+  // gateway portal. These now resolve in the focus-independent hotbar block at
+  // the TOP of this function (so they also fire with the in-world Ask box
+  // focused); nothing extra is needed here for the unfocused case.
 
   // ── j / k move between sub-panes of the current group ─────────────────────
   if (key === "j") {

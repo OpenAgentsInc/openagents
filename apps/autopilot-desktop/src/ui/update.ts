@@ -3868,9 +3868,24 @@ export const update = (model: Model, message: Message): Result => {
       ]
     }
     case "GotVerseKhalaToken": {
-      // Append the live delta ONLY for the active turn — a stale/concurrent
-      // turn's deltas never cross-render into the current bubble.
-      if (message.turnId !== model.verseKhalaTurnId) return [model, noCommands]
+      // Append the live delta ONLY for the active, in-flight turn.
+      //
+      // (1) turnId must match the active turn — a stale/concurrent turn's deltas
+      //     never cross-render into the current bubble.
+      // (2) the turn must still be IN FLIGHT. The terminal `RespondedVerseKhala`
+      //     and the streamed `khalaToken` deltas race over the bridge: when the
+      //     terminal answer lands FIRST (the RPC promise resolves before the
+      //     trailing SSE frames push), `RespondedVerseKhala` already set the full
+      //     answer text and flipped `verseKhalaInFlight` false. Without this guard,
+      //     the late deltas then APPEND the same content again, rendering the
+      //     answer TWICE (the double-response bug). Dropping post-settle deltas
+      //     makes the response appear exactly once regardless of arrival order.
+      if (
+        message.turnId !== model.verseKhalaTurnId ||
+        !model.verseKhalaInFlight
+      ) {
+        return [model, noCommands]
+      }
       return [
         Model.make({
           ...model,
