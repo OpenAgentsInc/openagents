@@ -86,7 +86,7 @@ const makeEmissiveMaterial = (strength: number): Three.MeshBasicMaterial => {
 
 type Pylon = Readonly<{
   baseStrength: number
-  core: Three.Mesh<Three.OctahedronGeometry, Three.MeshBasicMaterial>
+  core: Three.Mesh<Three.SphereGeometry, Three.MeshBasicMaterial>
   phase: number
   pulseSpeed: number
 }>
@@ -167,7 +167,7 @@ export const mountLandingSquares = (
   const positions = pylonPositions()
 
   // Pylon cores: small octahedra with HDR-emissive blue that pulse gently.
-  const coreGeometry = new Three.OctahedronGeometry(0.34, 0)
+  const coreGeometry = new Three.SphereGeometry(0.32, 20, 20)
   const pylons: Pylon[] = positions.map((p, i) => {
     const baseStrength = HDR_CORE * (0.75 + hash01(i, 3) * 0.6)
     const material = makeEmissiveMaterial(baseStrength)
