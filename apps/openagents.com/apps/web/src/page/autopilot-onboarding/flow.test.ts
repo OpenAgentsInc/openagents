@@ -41,10 +41,7 @@ import {
   OpenedAutopilotOnboardingStream,
   ReceivedAutopilotOnboardingDelta,
 } from '../loggedOut/message'
-import {
-  LEGAL_VERTICAL_OVERLAY,
-  verticalOverlayForSegment,
-} from './vertical-overlay'
+import { onboardingVerticalForSegment } from './vertical-overlay'
 
 // A minimal Snabbdom-style vnode walker so the test can assert rendered markup
 // without a DOM. Mirrors the existing scene/route tests.
@@ -455,14 +452,10 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
       UpdatedAutopilotOnboardingComposer({ value: 'Help with an NDA' }),
     )
     const [submitted] = update(typed, SubmittedAutopilotOnboardingTurn())
-    // The verticalOverlay is threaded to the pending turn on the first turn (the
-    // streaming subscription posts it to the program's vertical-overlay slot).
+    // The bounded vertical is threaded to the pending turn on the first turn;
+    // server-owned prompt guidance stays server-side.
     expect(flowOf(submitted).vertical).toBe('legal')
-    // The pending turn carries the legal SYSTEM-PROMPT OVERLAY text (not the raw
-    // `legal` segment) so the program's vertical-overlay slot gets real guidance.
-    expect(flowOf(submitted).pendingTurn?.verticalOverlay).toBe(
-      LEGAL_VERTICAL_OVERLAY,
-    )
+    expect(flowOf(submitted).pendingTurn?.vertical).toBe('legal')
 
     // Simulate the stream's failure terminal.
     const [failed] = update(
@@ -480,24 +473,12 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
   })
 })
 
-describe('autopilot onboarding — legal vertical overlay (#6130)', () => {
-  test('maps the legal segment to the legal system-prompt overlay; everything else to null', () => {
-    expect(verticalOverlayForSegment('legal')).toBe(LEGAL_VERTICAL_OVERLAY)
-    expect(verticalOverlayForSegment(null)).toBeNull()
-    expect(verticalOverlayForSegment('health')).toBeNull()
-    expect(verticalOverlayForSegment('LEGAL')).toBeNull()
-  })
-
-  test('the legal overlay leads with control + provability and bars "AI lawyer" / case-law framing', () => {
-    // Lead with control + provability, attorney-in-the-loop, source-linked.
-    expect(LEGAL_VERTICAL_OVERLAY).toContain('CONTROL and PROVABILITY')
-    expect(LEGAL_VERTICAL_OVERLAY).toContain('Attorney-in-the-loop')
-    expect(LEGAL_VERTICAL_OVERLAY).toContain('human-review gate')
-    // Explicitly NOT an AI lawyer and NOT case-law research.
-    expect(LEGAL_VERTICAL_OVERLAY).toContain('NOT an "AI lawyer"')
-    expect(LEGAL_VERTICAL_OVERLAY).toContain('NOT do case-law research')
-    // Carries no client/brand/scarcity/projection material.
-    expect(LEGAL_VERTICAL_OVERLAY).not.toMatch(/\$\d|slots?|3×|80%|N of/i)
+describe('autopilot onboarding — legal vertical selection (#6148)', () => {
+  test('maps route segments to bounded server-owned vertical selectors', () => {
+    expect(onboardingVerticalForSegment('legal')).toBe('legal')
+    expect(onboardingVerticalForSegment(null)).toBe('general')
+    expect(onboardingVerticalForSegment('health')).toBe('general')
+    expect(onboardingVerticalForSegment('LEGAL')).toBe('general')
   })
 
   test('legal vertical renders the legal overlay: VSL slot, intro, and verified stat strip', () => {

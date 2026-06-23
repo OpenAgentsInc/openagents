@@ -66,9 +66,11 @@ export type FlowStatus = typeof FlowStatus.Type
 
 // The onboarding flow model. `sessionId` is generated once the first turn is
 // submitted (in the command, off the pure update path). `vertical` is the
-// optional `/autopilot/{vertical}` segment, threaded to the program's
-// vertical-overlay slot but never interpreted here (#6130 owns the legal
-// overlay content).
+// optional `/autopilot/{vertical}` segment; pending turns resolve it to the
+// bounded `FlowVertical` enum before crossing the transport boundary.
+export const FlowVertical = S.Literals(['general', 'legal'])
+export type FlowVertical = typeof FlowVertical.Type
+
 // A turn waiting for (or receiving) its streamed reply. The subscription
 // (`subscriptions.ts`) reads this to open the SSE stream and dispatch deltas;
 // `id` is the stable per-turn key so the subscription opens the stream exactly
@@ -78,7 +80,7 @@ export const FlowPendingTurn = S.Struct({
   id: S.String,
   sessionId: S.NullOr(S.String),
   userText: S.String,
-  verticalOverlay: S.NullOr(S.String),
+  vertical: FlowVertical,
 })
 export type FlowPendingTurn = typeof FlowPendingTurn.Type
 

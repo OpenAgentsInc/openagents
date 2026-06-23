@@ -447,13 +447,13 @@ const inactiveOnboardingStream: {
   readonly turnId: string
   readonly sessionId: string
   readonly userText: string
-  readonly verticalOverlay: string | null
+  readonly vertical: 'general' | 'legal'
 } = {
   isActive: false,
   turnId: '',
   sessionId: '',
   userText: '',
-  verticalOverlay: null,
+  vertical: 'general',
 }
 
 type OnboardingStreamDependencies = typeof inactiveOnboardingStream
@@ -477,7 +477,7 @@ export const onboardingStreamDependenciesForModel = (
     // creates the session on first contact; later turns reuse it).
     sessionId: pending.sessionId ?? newOnboardingSessionId(),
     userText: pending.userText,
-    verticalOverlay: pending.verticalOverlay,
+    vertical: pending.vertical,
   }
 }
 
@@ -493,7 +493,7 @@ const onboardingStream = (
     return Stream.empty
   }
 
-  const { turnId, sessionId, userText, verticalOverlay } = dependencies
+  const { turnId, sessionId, userText, vertical } = dependencies
 
   return Stream.callback<Message>(queue =>
     Effect.acquireRelease(
@@ -528,7 +528,7 @@ const onboardingStream = (
               },
               body: JSON.stringify({
                 userText,
-                ...(verticalOverlay === null ? {} : { verticalOverlay }),
+                vertical,
               }),
             },
           )
@@ -744,7 +744,7 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       turnId: S.String,
       sessionId: S.String,
       userText: S.String,
-      verticalOverlay: S.NullOr(S.String),
+      vertical: S.Literals(['general', 'legal']),
     },
     {
       modelToDependencies: onboardingStreamDependenciesForModel,

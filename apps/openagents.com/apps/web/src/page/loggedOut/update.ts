@@ -70,7 +70,7 @@ import {
   ShareProjectionResponse,
 } from './model'
 import { HUD_THREAD_END_SELECTOR } from '../autopilot-onboarding/page'
-import { verticalOverlayForSegment } from '../autopilot-onboarding/vertical-overlay'
+import { onboardingVerticalForSegment } from '../autopilot-onboarding/vertical-overlay'
 import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
@@ -1136,15 +1136,13 @@ export const update = (model: Model, message: Message): UpdateReturn =>
                   ...transcript,
                   { role: 'user', content: userText },
                 ],
-                // Thread the legal SYSTEM-PROMPT OVERLAY (not the raw `legal`
-                // segment) to the program's vertical-overlay slot. The server
-                // only honors it on the first turn that creates the session;
-                // non-legal / absent verticals resolve to null (#6130).
+                // Thread only the bounded vertical selector; the server owns
+                // all prompt guidance for the selected vertical.
                 pendingTurn: () => ({
                   id: turnId,
                   sessionId: current.sessionId,
                   userText,
-                  verticalOverlay: verticalOverlayForSegment(current.vertical),
+                  vertical: onboardingVerticalForSegment(current.vertical),
                 }),
               }),
           }),

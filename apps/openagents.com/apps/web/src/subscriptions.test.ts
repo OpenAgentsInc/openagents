@@ -10,7 +10,7 @@ import {
   UpdatedAutopilotOnboardingComposer,
 } from './page/loggedOut/message'
 import { update as loggedOutUpdate } from './page/loggedOut/update'
-import { AutopilotRoute } from './route'
+import { AutopilotRoute, AutopilotVerticalRoute } from './route'
 import {
   ActiveChatRun,
   agentRunExternalRefFromNullable,
@@ -502,7 +502,7 @@ describe('autopilot onboarding stream subscription', () => {
       turnId: '',
       sessionId: '',
       userText: '',
-      verticalOverlay: null,
+      vertical: 'general',
     })
   })
 
@@ -522,5 +522,21 @@ describe('autopilot onboarding stream subscription', () => {
     // A first turn mints a fresh session id at the stream boundary.
     expect(deps.sessionId).toMatch(/^ob_/)
     expect(deps.turnId).not.toBe('')
+    expect(deps.vertical).toBe('general')
+  })
+
+  test('carries the bounded legal vertical for /autopilot/legal', () => {
+    const [typed] = loggedOutUpdate(
+      LoggedOut.init(AutopilotVerticalRoute({ vertical: 'legal' })),
+      UpdatedAutopilotOnboardingComposer({ value: 'Help with an NDA' }),
+    )
+    const [submitted] = loggedOutUpdate(
+      typed,
+      SubmittedAutopilotOnboardingTurn(),
+    )
+
+    const deps = onboardingStreamDependenciesForModel(submitted)
+    expect(deps.isActive).toBe(true)
+    expect(deps.vertical).toBe('legal')
   })
 })
