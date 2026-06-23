@@ -93,6 +93,7 @@ import {
   withChatWorldPaymentLayer,
 } from "../shared/chat-world-visualization.js"
 import { withVerseKhalaEffectLayer } from "../shared/verse-khala-effect.js"
+import { verseSceneContentFingerprint } from "../shared/verse-scene-helpers.js"
 import {
   DEFAULT_SPAWNABLE_SCENE_ID,
   verseSpawnableSceneById,
@@ -7209,9 +7210,30 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
         multiplayer,
       )
     : poseStableNavigable
+  // The three-effect verse host builds entity markers, crackling-arc beams, and
+  // bursts ONLY at mount time; its live update path does not reconcile them and
+  // its retain-vs-remount signature ignores those arrays. So a beam/entity added
+  // AFTER mount (the hotbar-2 crackling spawn, the local Khala arc) is otherwise
+  // silently dropped and never renders. Stamp a fingerprint of the dynamic scene
+  // content onto motionPolicy (a field the host folds into its structural
+  // signature) so any change to that content forces a clean remount that rebuilds
+  // the beams. Unchanged content yields an identical fingerprint, so a Verse with
+  // no spawned/local effect is byte-identical to before (no spurious remounts).
+  // The local avatar pose is preserved across remount by the host.
+  const stamped: TrainingRunVisualizationOptions = {
+    ...visualization,
+    motionPolicy: {
+      ...(visualization.motionPolicy ?? {}),
+      // Rendering-neutral marker key: the host only reads the typed motion fields
+      // for animation; this extra key exists solely to drive the remount.
+      ["verseSceneContent" as never]: verseSceneContentFingerprint(
+        visualization,
+      ) as never,
+    },
+  }
   recordVerseInputBindingDiagnostic(inputBindings)
-  recordVerseVisualizationKey(visualization)
-  return visualization
+  recordVerseVisualizationKey(stamped)
+  return stamped
 }
 
 export const chatSceneVisualization = verseSceneVisualization

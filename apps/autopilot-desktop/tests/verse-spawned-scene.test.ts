@@ -24,12 +24,30 @@ import {
   verseSpawnedSceneEvidenceLines,
   verseSpawnableSceneById,
   verseSpawnedSceneStationForAvatar,
+  verseSpawnedSceneStationWorldForAvatar,
   VERSE_SPAWNABLE_SCENES,
   VERSE_SPAWNED_SCENE_NODE_PREFIX,
   VERSE_SPAWNED_SCENE_SOURCE_REF,
   VERSE_SPAWNED_SCENE_STATION_POSITION,
   DEFAULT_SPAWNABLE_SCENE_ID,
 } from "../src/shared/verse-spawned-scene"
+import type { TrainingRunVector } from "@openagentsinc/three-effect/core"
+import { metaverseStreetLayout } from "@openagentsinc/three-effect/core"
+
+// Inverse of `verseSceneWorldToRootLocal` — the EXACT transform the renderer
+// applies to a root-local entity position to place it in scene-world (scale →
+// rotate -90°X → translate to the Tassadar lot). Used by the placement tests to
+// reconstruct where the arc actually lands in the avatar/camera's frame.
+const verseRootLocalToSceneWorldForTest = (
+  local: TrainingRunVector,
+): TrainingRunVector => {
+  const s = metaverseStreetLayout.tassadarSceneScale
+  return [
+    s * local[0] + metaverseStreetLayout.tassadarLotX,
+    s * local[2],
+    -s * local[1] + metaverseStreetLayout.tassadarLotZ,
+  ]
+}
 import { HOTBAR_SLOTS } from "../src/ui/nav"
 import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
@@ -348,14 +366,27 @@ describe("the spawned crackling arc is dialed UP + placed in front of the avatar
     expect(appearance!.jitter).toBeGreaterThan(0.2)
   })
 
-  test("the station is dropped in front of the avatar (not the far fixed anchor)", () => {
-    // Avatar at origin, yaw 0. In perspective_walk the ground plane is X/Y and
-    // HEIGHT is +Z, so "forward" is +Y and "up" is +Z. Station should land
-    // forward (+Y) and lifted (+Z), distinct from the fixed fallback anchor.
-    const station = verseSpawnedSceneStationForAvatar({ x: 0, y: 0, z: 0, yaw: 0 })
-    expect(station[1]).toBeGreaterThan(0) // forward along the ground (+Y)
-    expect(station[2]).toBeGreaterThan(0) // lifted to viewing height (+Z)
-    expect(station).not.toEqual(VERSE_SPAWNED_SCENE_STATION_POSITION)
+  test("the station is dropped in front of the avatar, reconstructed in SCENE-WORLD", () => {
+    // The station is returned in ROOT-LOCAL coords (what the renderer consumes).
+    // The meaningful assertion is in SCENE-WORLD: converting the root-local station
+    // back to scene-world (the inverse of the renderer's world→local) must land in
+    // FRONT of the avatar (-Z at yaw 0) at chest HEIGHT (+Y) — the frame the avatar
+    // and camera actually live in. Asserting the raw root-local components (as the
+    // old buggy test did) hid the coordinate-frame bug.
+    const avatar = { x: 0, y: 0, z: 0, yaw: 0 }
+    const stationRootLocal = verseSpawnedSceneStationForAvatar(avatar)
+    const stationWorld = verseSpawnedSceneStationWorldForAvatar(avatar)!
+    // The world station is forward (-Z) and lifted (+Y) from the avatar.
+    expect(stationWorld[2]).toBeLessThan(avatar.z) // in front (-Z)
+    expect(stationWorld[1]).toBeGreaterThan(avatar.y) // chest height (+Y)
+    // And it is NOT the pose-less fallback station.
+    expect(stationRootLocal).not.toEqual(VERSE_SPAWNED_SCENE_STATION_POSITION)
+    // Round-trip: root-local → scene-world recovers the world station (the inverse
+    // transform the renderer applies is exactly undone).
+    const roundTrip = verseRootLocalToSceneWorldForTest(stationRootLocal)
+    expect(Math.abs(roundTrip[0] - stationWorld[0])).toBeLessThan(0.05)
+    expect(Math.abs(roundTrip[1] - stationWorld[1])).toBeLessThan(0.05)
+    expect(Math.abs(roundTrip[2] - stationWorld[2])).toBeLessThan(0.05)
   })
 
   test("no avatar pose ⇒ falls back to the fixed station anchor", () => {
@@ -364,15 +395,25 @@ describe("the spawned crackling arc is dialed UP + placed in front of the avatar
     )
   })
 
-  test("spawning with an avatar pose positions the arc endpoints near the avatar", () => {
-    const layer = verseSpawnedSceneLayer({
-      sceneId: CRACKLING,
-      avatar: { x: 5, y: 0, z: 5, yaw: 0 },
-    })
+  test("spawning with an avatar pose tracks the avatar (endpoints land in front, in view)", () => {
+    const avatar = { x: 5, y: 0, z: 5, yaw: 0 }
+    const layer = verseSpawnedSceneLayer({ sceneId: CRACKLING, avatar })
     const from = layer.entities.find((e) => e.id === fromId)!
-    // The arc hangs near the avatar (x≈5±2, z in front of z=5), not at the
-    // origin-relative far station — the endpoints track the avatar.
-    expect(Math.abs((from.position?.[0] ?? 0) - 5)).toBeLessThan(2.5)
+    const to = layer.entities.find((e) => e.id === toId)!
+    // Reconstruct each endpoint in SCENE-WORLD and assert it sits in FRONT of the
+    // avatar (-Z) at roughly chest height — i.e. exactly where the camera looks,
+    // NOT 5 units up in the air (the real no-effect bug) and NOT off at the lot.
+    const fromWorld = verseRootLocalToSceneWorldForTest(from.position!)
+    const toWorld = verseRootLocalToSceneWorldForTest(to.position!)
+    for (const w of [fromWorld, toWorld]) {
+      expect(w[2]).toBeLessThan(avatar.z) // in front of the avatar (-Z)
+      expect(w[1]).toBeGreaterThan(0.5) // off the ground, ~chest height
+      expect(w[1]).toBeLessThan(3) // not floating high overhead
+      // Laterally centred on the avatar (±~2 units of screen width).
+      expect(Math.abs(w[0] - avatar.x)).toBeLessThan(2.5)
+    }
+    // The two endpoints straddle the avatar's left/right (a horizontal arc span).
+    expect(fromWorld[0]).toBeLessThan(toWorld[0])
   })
 })
 

@@ -28,6 +28,11 @@ import {
   resolveChromePathOrNull,
   type AppReplica,
 } from "../src/testing/app-replica"
+import {
+  decodePng,
+  scoreCracklingArcRegion,
+  type PixelRegion,
+} from "../src/testing/headless-pixel"
 
 const KHALA_INPUT = ".verse-khala-input"
 const HOTBAR = ".hotbar"
@@ -37,6 +42,18 @@ const KHALA_BAR = ".verse-khala-bar"
 const KHALA_BODY = ".verse-khala-bubble-body"
 const SCENE_ACTIVE = '[data-verse-spawned-scene="active"]'
 const SCENE_TAG = ".verse-spawned-scene-tag"
+const SCENE_CHIP = ".verse-spawned-scene-chip"
+
+// The crackling arc spawns centre-left at chest height in front of the avatar;
+// the Tassadar board sits to the RIGHT, so a centre-left region isolates the arc
+// strands from the board's white text. Fraction-of-frame coords (1280×800).
+const ARC_REGION: PixelRegion = { x0: 0.37, y0: 0.26, x1: 0.55, y1: 0.4 }
+// The committed real-scene proof (the screenshot the orchestrator can eyeball).
+const ARC_PROOF_PNG = join(
+  import.meta.dir,
+  "headless",
+  "verse-spawned-arc.real-scene.headless.png",
+)
 
 const chromeAvailable = resolveChromePathOrNull() !== null
 const stylesBuilt = existsSync(
@@ -280,5 +297,85 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
     const first = await observe()
     const second = await observe()
     expect(second).toBe(first)
+  })
+
+  // ── BUG (#6033): the crackling scene must VISIBLY RENDER in the REAL Verse ────
+  //
+  // This is the test whose ABSENCE shipped the bug. The prior pixel-proof (#6044)
+  // mounted the crackling-arc primitive in ISOLATION (a bare `oa-training-run`
+  // with the beam present at mount), so it could never catch the two FULL-SCENE
+  // failures the owner hit:
+  //   1. the foldkit verse host only builds beams/entities at MOUNT; a beam added
+  //      AFTER mount (the hotbar-2 spawn) hit the retained-update path, which does
+  //      not reconcile beams — so the arc was silently dropped and never rendered;
+  //   2. even mounted, the avatar/camera live in SCENE-WORLD but entity positions
+  //      are ROOT-LOCAL (rotated/scaled/offset to the Tassadar lot), so the arc
+  //      resolved ~5 units up in the air, outside the camera's view.
+  //
+  // This drives the REAL view/update/subscriptions: it spawns via the real hotbar
+  // click, screenshots the REAL scene, and asserts the arc region lit up with
+  // bright cyan/blue strand pixels that the un-spawned world does NOT have. It
+  // FAILS on either regression (no remount ⇒ 0 pixels; wrong frame ⇒ 0 pixels in
+  // the camera's view). The screenshot is written for eyeballing.
+  describe("bug (#6033): the spawned crackling arc visibly renders in the real Verse", () => {
+    slowTest(
+      "spawning via the real hotbar lights up the arc region; un-spawned does not",
+      async () => {
+        // Clean: no scene spawned.
+        if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
+        expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+
+        // Un-spawned baseline: the arc region has (essentially) no cyan/blue
+        // strand pixels — the camera looks down the empty street.
+        await replica.stepFrames(60)
+        const offShot = await replica.screenshot()
+        const offArc = scoreCracklingArcRegion(
+          decodePng(Buffer.from(offShot, "base64")),
+          ARC_REGION,
+        )
+
+        // Spawn via the REAL hotbar slot, then let the crackling animation develop.
+        await replica.click(SLOT_2)
+        expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+        await replica.stepFrames(120)
+        const onShot = await replica.screenshot(ARC_PROOF_PNG)
+        const onArc = scoreCracklingArcRegion(
+          decodePng(Buffer.from(onShot, "base64")),
+          ARC_REGION,
+        )
+
+        // The headline contract: the spawned world has a MEANINGFUL cluster of
+        // bright arc strand pixels exactly where the avatar is looking, and the
+        // un-spawned world has none. A bare/dropped beam or an out-of-view arc
+        // would leave `onArc` at ~0 and fail here.
+        expect(offArc).toBeLessThan(40)
+        expect(onArc).toBeGreaterThan(300)
+        expect(onArc - offArc).toBeGreaterThan(300)
+
+        // Reset for any later test.
+        await replica.click(SLOT_2)
+        expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+      },
+    )
+
+    slowTest("the evidence chip is visible and NOT hidden behind the hotbar", async () => {
+      if ((await replica.count(SCENE_ACTIVE)) > 0) await replica.click(SLOT_2)
+      await replica.click(SLOT_2)
+      expect(await replica.count(SCENE_ACTIVE)).toBe(1)
+      await replica.stepFrames(30)
+      const chip = await replica.boundingBox(SCENE_CHIP)
+      const hotbar = await replica.boundingBox(HOTBAR)
+      expect(chip).not.toBeNull()
+      expect(hotbar).not.toBeNull()
+      // Laid out (non-zero) and on-screen.
+      expect(chip!.width).toBeGreaterThan(0)
+      expect(chip!.top).toBeGreaterThanOrEqual(0)
+      // The whole point of the move: the chip no longer overlaps the hotbar.
+      expect(rectsOverlap(chip!, hotbar!)).toBe(false)
+      // It sits in the TOP half, well above the bottom-left hotbar.
+      expect(chip!.bottom).toBeLessThan(hotbar!.top)
+      await replica.click(SLOT_2) // reset
+      expect(await replica.count(SCENE_ACTIVE)).toBe(0)
+    })
   })
 })

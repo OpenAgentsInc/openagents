@@ -31,10 +31,12 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const entryModulePath = join(here, "../scripts/crackling-arc-entry.ts")
 
-// The arc hangs above the fixed scene station and is aimed up-and-across, so it
-// lights the upper-middle band of the frame. Score that band specifically — a
-// full-frame score could be fooled by base-scene chrome.
-const ARC_REGION: PixelRegion = { x0: 0.2, y0: 0.0, x1: 0.85, y1: 0.6 }
+// In the real perspective_walk frame the arc hangs at chest height in FRONT of
+// the avatar, centre-left of the frame. Score that centre-left band specifically
+// — a full-frame score could be fooled by base-scene chrome, and the old upper
+// band predated the coordinate-frame fix that moved the arc into the camera's
+// actual view.
+const ARC_REGION: PixelRegion = { x0: 0.28, y0: 0.22, x1: 0.62, y1: 0.58 }
 
 const FRAME_STEPS = 120
 const FRAME_DELTA_MS = 16

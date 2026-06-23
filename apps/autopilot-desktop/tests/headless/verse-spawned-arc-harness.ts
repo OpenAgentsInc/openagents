@@ -34,14 +34,13 @@ const spawn = params.get("spawn") !== "0"
 const mount = document.getElementById("scene")
 if (mount === null) throw new Error("missing #scene mount")
 
-// The avatar's last pose. The trainingRun renderer translates the world root by
-// the tassadar street-lot offset (≈ x 5.8, z 0.8) before the -90°X rotation, so
-// to frame the arc dead-centre (as it is in the full app, where the avatar
-// spawns on the lot) we place the harness avatar at the negative lot offset and
-// pull it back a little so the station+arc lands centred and in view. The
-// spawned-scene layer drops the arc station IN FRONT of this pose (+Y forward,
-// +Z height), exactly like an in-world spawn the owner walks up to.
-const avatar = { x: -5.8, y: -2.6, z: -0.8, yaw: 0 } as const
+// The avatar's last pose, in SCENE-WORLD (the third-person controller frame) —
+// the third-person controller's default spawn. The spawned-scene layer now
+// converts this scene-world pose to root-local internally (it drops the arc
+// station IN FRONT of the avatar at chest height, then inverts the world `root`
+// transform), so the harness avatar is a plain in-world pose, NOT a hand-tuned
+// negative-lot-offset compensation as it was before the coordinate-frame fix.
+const avatar = { x: 0, y: 0, z: 4.4, yaw: 0 } as const
 
 // A minimal walkable base world, then the SHARED spawned-scene layer (the exact
 // call verseSceneVisualization makes). The layer adds the crackling_arc beam +
