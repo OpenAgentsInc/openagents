@@ -1265,7 +1265,9 @@ const domProbeExpression = `
     chatPaneWorld: document.querySelector(".chat-pane-world") !== null,
     verseHotbar:
       document.querySelector(".app-shell-verse .hotbar") !== null &&
-      document.querySelector(".app-shell-verse .hotbar-slot-coder") !== null,
+      document.querySelector(
+        ".app-shell-verse .hotbar [data-hotbar-action='action_bar.slot_1'].hotbar-slot-filled",
+      ) !== null,
     noVerseChatbar:
       document.querySelector(".app-shell-verse .chat-composer-verse") === null &&
       document.querySelector(".app-shell-verse .chat-input") === null,
