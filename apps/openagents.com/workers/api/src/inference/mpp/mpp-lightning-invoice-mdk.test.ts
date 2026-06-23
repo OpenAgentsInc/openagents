@@ -1,9 +1,11 @@
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
+import { TestClock } from 'effect/testing'
 import { describe, expect, test } from 'vitest'
 
 import { LightningInvoiceError } from './mpp-lightning-invoice'
 import {
   type MdkRoutePost,
+  MDK_LIGHTNING_MINT_TIMEOUT_MS,
   makeMdkLightningInvoiceIssuer,
 } from './mpp-lightning-invoice-mdk'
 
@@ -98,5 +100,38 @@ describe('makeMdkLightningInvoiceIssuer', () => {
       ),
     )
     expect(result).toBe('malformed_invoice')
+  })
+
+  // ROOT-CAUSE REGRESSION: the MDK sidecar is a Cloudflare Container that sleeps
+  // after 30m and a cold boot can block `getContainer(...).fetch()` for SECONDS.
+  // `Effect.tryPromise` catches throws, NOT a hang. The bounded mint must
+  // interrupt a hung post and fail typed (`provider_unavailable`) so the rail is
+  // dropped — never propagate the hang. Deterministic via TestClock: the post
+  // NEVER resolves; advancing past the timeout must produce the typed failure.
+  test('a HUNG post is bounded by the mint timeout => provider_unavailable (no hang)', async () => {
+    let postStarted = false
+    const post: MdkRoutePost = () => {
+      postStarted = true
+      // Never resolves — models a cold/blocked container boot.
+      return new Promise(() => {})
+    }
+    const issuer = makeMdkLightningInvoiceIssuer(post)
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          issuer({ amountSats: 1, correlationRef: 'r', description: 'd' }).pipe(
+            Effect.map(() => 'ok' as const),
+            Effect.catch((e: LightningInvoiceError) =>
+              Effect.succeed(e.reason),
+            ),
+          ),
+        )
+        // Advance virtual time just past the bounded mint window.
+        yield* TestClock.adjust(MDK_LIGHTNING_MINT_TIMEOUT_MS + 1)
+        return yield* Fiber.join(fiber)
+      }).pipe(Effect.provide(TestClock.layer())),
+    )
+    expect(postStarted).toBe(true)
+    expect(result).toBe('provider_unavailable')
   })
 })
