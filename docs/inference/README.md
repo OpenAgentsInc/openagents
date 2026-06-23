@@ -119,6 +119,12 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     high-memory H100/H200/B200/G4 allocation and harmony/MXFP4 serving path, and
     both need Khala eval, telemetry, and safety gates before production claims.
 
+15. **[`2026-06-23-hydralisk-python-nvidia-inference-stack.md`](./2026-06-23-hydralisk-python-nvidia-inference-stack.md)**
+    — Hydralisk spec: the Python/NVIDIA inference lane beside Psionic's
+    Rust-native ML framework. Defines vLLM/SGLang/TensorRT-LLM/Dynamo ownership,
+    receipts, refusal gates, and a dogfood path through GPT-OSS 20B, GPT-OSS
+    120B, and GLM-5.2.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
