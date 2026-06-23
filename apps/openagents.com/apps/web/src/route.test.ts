@@ -3,9 +3,9 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  AutopilotRoute,
   AutopilotWorkDetailRoute,
   AutopilotWorkRoute,
-  ChatRoute,
   Demo2OrderRoute,
   Demo2Route,
   Demo2TeamFileRoute,
@@ -65,8 +65,11 @@ describe('app route parser', () => {
     )
   })
 
-  test('accepts the operator Autopilot shell route', () => {
-    expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(ChatRoute())
+  test('accepts the public Autopilot onboarding route', () => {
+    // `/autopilot` is the public onboarding entry (#6124/#6129); the operator
+    // cockpit lives under `/autopilot/work`. The logged-in-with-workspace
+    // resolution to the cockpit happens in the startup router, not the parser.
+    expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(AutopilotRoute())
   })
 
   test('accepts Autopilot work visibility routes', () => {

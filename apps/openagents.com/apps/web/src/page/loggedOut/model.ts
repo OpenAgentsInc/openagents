@@ -1,8 +1,9 @@
 import { ShareProjectionV1 } from '@openagentsinc/sync-schema'
-import { Schema as S } from 'effect'
+import { Option, Schema as S } from 'effect'
 import { ts } from 'foldkit/schema'
 
 import { LoggedOutRoute } from '../../route'
+import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 
 // MODEL
 
@@ -1199,6 +1200,9 @@ export const initSettledFeedModel = (): SettledFeedModel =>
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
+  // The /autopilot onboarding conversation flow (#6129). Holds the session,
+  // transcript, accumulated Output Spec, composer draft, and request status.
+  autopilotOnboarding: FlowModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1223,6 +1227,11 @@ export const init = (route: LoggedOutRoute): Model =>
   Model({
     route,
     onboarding: initOnboardingModel(),
+    autopilotOnboarding: initFlowModel(
+      route._tag === 'AutopilotVertical'
+        ? Option.some(route.vertical)
+        : Option.none(),
+    ),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

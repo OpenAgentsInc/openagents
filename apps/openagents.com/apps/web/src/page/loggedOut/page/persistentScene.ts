@@ -131,12 +131,15 @@ const tassadarOverlay = (
     [tassadarView(copiedAgentInstructions)],
   )
 
-// Minimal onboarding overlay for the shared persistent scene at the `autopilot`
-// pose. The full /autopilot onboarding UI + route wiring lands in #6124/#6129;
-// this placeholder only proves the SAME keyed canvas hosts an `Autopilot` pose
-// (no second scene instance). It reuses the shared khala-* glow utilities (see
-// styles.css) so any CTA energy matches the rest of the scene.
-const autopilotOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+// Onboarding overlay for the shared persistent scene at the `autopilot` pose.
+// The real /autopilot onboarding HUD (#6129) is rendered by the loggedOut view
+// and threaded in here as `autopilotOverlay`, so it mounts as the overlay of the
+// SAME keyed canvas (no second scene instance — design doc §1). When no overlay
+// is supplied (e.g. a unit test of the scene shell in isolation), a minimal
+// energy label stands in, proving the canvas hosts the `Autopilot` pose.
+const autopilotPlaceholderOverlay = (
+  h: ReturnType<typeof html<Message>>,
+): Html =>
   h.div(
     [
       h.DataAttribute('persistent-scene-overlay', 'autopilot'),
@@ -161,18 +164,24 @@ const overlayForRoute = (
   h: ReturnType<typeof html<Message>>,
   route: PersistentSceneRoute,
   copiedAgentInstructions: boolean,
+  autopilotOverlay: Html | undefined,
 ): Html =>
   route === 'Landing'
     ? landingOverlay(h)
     : route === 'Tassadar'
       ? tassadarOverlay(h, copiedAgentInstructions)
       : route === 'Autopilot'
-        ? autopilotOverlay(h)
+        ? (autopilotOverlay ?? autopilotPlaceholderOverlay(h))
         : khalaOverlay(h)
 
+// `autopilotOverlay` is the real /autopilot onboarding HUD (#6129), supplied by
+// the loggedOut view. It is only consulted on the `Autopilot` route; other
+// routes ignore it. Keeping it a parameter (rather than importing the page here)
+// avoids a model/message import cycle through the scene module.
 export const view = (
   route: PersistentSceneRoute,
   copiedAgentInstructions = false,
+  autopilotOverlay?: Html,
 ): Html => {
   const h = html<Message>()
 
@@ -203,7 +212,7 @@ export const view = (
       h.keyed('div')(
         `${PERSISTENT_SCENE_OVERLAY_PREFIX}${route}`,
         [Ui.className<Message>('absolute inset-0 z-10')],
-        [overlayForRoute(h, route, copiedAgentInstructions)],
+        [overlayForRoute(h, route, copiedAgentInstructions, autopilotOverlay)],
       ),
     ],
   )
