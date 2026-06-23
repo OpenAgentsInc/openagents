@@ -8,6 +8,7 @@
 // honesty/public-safety discipline.
 export * from './matrix'
 export * from './lane-seam'
+export * from './speculation-lane'
 export * from './runner'
 export * from './report'
 export * from './fixtures'

@@ -106,6 +106,13 @@ const runSample = (
     verifierTimeMs:
       sample.verifierTimeMs > 0 ? sample.verifierTimeMs : undefined,
     region: sample.region,
+    // Speculation disclosure (book P1-8 / #6091): the seam's per-sample
+    // speculation outcome (mode + draft counts) flows into the canonical record
+    // so a benchmark sample discloses speculation the same way a production
+    // request will. Absent => the builder records the honest-unknown shape.
+    ...(sample.speculation === undefined
+      ? {}
+      : { speculation: sample.speculation }),
     verificationClass: sample.verificationClass,
     executedVerdict: sample.executedVerdict,
     scalarReward: sample.scalarReward,

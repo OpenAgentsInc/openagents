@@ -54,6 +54,12 @@ import {
   UNKNOWN_QUANTIZATION,
   buildKhalaQuantizationMetadata,
 } from './khala-quantization'
+import {
+  type KhalaSpeculationInput,
+  KhalaSpeculationMetadata,
+  UNKNOWN_SPECULATION,
+  buildKhalaSpeculationMetadata,
+} from './khala-speculation'
 
 // ---------------------------------------------------------------------------
 // The honest sentinel.
@@ -218,6 +224,18 @@ export const KhalaTelemetryRecord = S.Struct({
   // precision. The same-model-claim guard reads this to reject an undisclosed
   // quantized variant fronting an unqualified public alias.
   quantization: KhalaQuantizationMetadata,
+  // The SPECULATIVE-DECODING disclosure (book P1-8 / #6091): which drafting mode
+  // (n-gram / lookahead / EAGLE / none) was active, whether it ran, and the draft
+  // acceptance rate + counts. A request served WITH speculation is a different
+  // serving product than plain autoregressive decode (it ties to the shard-WAN
+  // speculative/direct-return receipt-mode disclosure), so the mode is a
+  // first-class receipt field — honest `none` (we know no speculation ran) or
+  // `not_measured` (a managed lane that speculates without disclosing), never a
+  // fabricated acceptance number. The acceptance rate is `not_measured` whenever no
+  // draft/verify pass produced counts. The dynamic-disablement policy
+  // (`decideSpeculation`) lives in `khala-speculation.ts`; this records the
+  // OUTCOME, not the decision inputs.
+  speculation: KhalaSpeculationMetadata,
   // The coordinator route lane (coding | cheap | long_context | default | ...).
   route: S.String,
   // The provider/adapter id that actually served (provider-capacity attribution).
@@ -381,6 +399,15 @@ export type KhalaTelemetryInput = Readonly<{
   // the same-model guard + eval gate read.
   quantization?: KhalaQuantizationInput | undefined
 
+  // The speculative-decoding signals the lane disclosed (book P1-8 / #6091): the
+  // mode, whether it was active, and the draft-token counts behind the acceptance
+  // rate. Absent => the honest-unknown shape (`UNKNOWN_SPECULATION`); an explicit
+  // `none` mode => the known no-speculation shape. Never a fabricated acceptance
+  // rate. There is no real draft model in the Worker, so on the live hot path this
+  // is `not_measured`/`none`; a future compute/owner-gated serving engine threads
+  // real counts here.
+  speculation?: KhalaSpeculationInput | undefined
+
   // Tokens (receipt-first from provider usage).
   promptTokens?: number | undefined
   completionTokens?: number | undefined
@@ -502,6 +529,12 @@ export const buildKhalaTelemetryRecord = (
       input.quantization === undefined
         ? UNKNOWN_QUANTIZATION
         : buildKhalaQuantizationMetadata(input.quantization),
+    // Honest speculation disclosure: built from disclosed lane signals, or the
+    // honest-unknown shape when the lane disclosed nothing (book P1-8 / #6091).
+    speculation:
+      input.speculation === undefined
+        ? UNKNOWN_SPECULATION
+        : buildKhalaSpeculationMetadata(input.speculation),
     route: input.route,
     provider: input.provider,
     region:

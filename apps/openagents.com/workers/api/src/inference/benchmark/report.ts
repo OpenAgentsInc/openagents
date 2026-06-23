@@ -28,6 +28,7 @@
 //
 // PURE: no clock, no randomness, no IO. Same run set → same report.
 import { type MeasuredNumber, isMeasured } from '../khala-telemetry'
+import type { KhalaSpeculationMode } from '../khala-speculation'
 import type { BenchmarkRun, BenchmarkRunSet } from './runner'
 import type { BenchmarkLane, BenchmarkWorkload } from './matrix'
 
@@ -214,6 +215,113 @@ const aggregateGroup = (
 }
 
 // ---------------------------------------------------------------------------
+// Speculation acceptance-rate aggregate (book P1-8 / #6091).
+// ---------------------------------------------------------------------------
+//
+// The issue's done-when: record draft acceptance rate PER (workload × model ×
+// temperature × route). This is a SEPARATE aggregate from the (lane × workload)
+// group metrics so the four keying axes the book/issue ask for are explicit and
+// the acceptance rate is never averaged across different temperatures/models.
+
+// One acceptance-rate cell: the four keying axes + the aggregate acceptance over
+// the runs that ACTUALLY ran speculation. `acceptanceRate` is null (honest
+// absence, never a fabricated 0) when no run in the cell had a measured
+// acceptance rate — e.g. speculation was disabled (high batch) or not requested
+// (chat). The dominant `mode` is recorded so a reader sees which drafting mode
+// produced the rate (or `none` when none ran).
+export type SpeculationAcceptanceCell = Readonly<{
+  // The four keying axes the issue requires.
+  workload: BenchmarkWorkload
+  // The served model identity (`lane/engine`), the same id the telemetry record
+  // carries in `servedModel`.
+  model: string
+  temperature: number
+  // The route lane (the telemetry `route` — derived from the workload).
+  route: BenchmarkWorkload
+  // The speculation mode observed across the cell's runs (the mode every active
+  // run shared; `none` when speculation never ran in the cell).
+  mode: KhalaSpeculationMode
+  // Mean draft acceptance rate over runs that measured one; null when none did.
+  acceptanceRate: number | null
+  // How many runs in the cell ran speculation with a MEASURED acceptance rate
+  // (the read confidence behind the rate).
+  measuredRuns: number
+  // Total executed runs in the cell (measured + non-speculating).
+  executedRuns: number
+}>
+
+// Aggregate the per-cell speculation acceptance rate keyed by (workload × model ×
+// temperature × route). PURE: same runs → same cells, in deterministic order.
+const aggregateSpeculationAcceptance = (
+  runs: ReadonlyArray<BenchmarkRun>,
+): ReadonlyArray<SpeculationAcceptanceCell> => {
+  type Acc = {
+    workload: BenchmarkWorkload
+    model: string
+    temperature: number
+    rates: Array<number>
+    activeMode: KhalaSpeculationMode
+    executedRuns: number
+  }
+  const buckets = new Map<string, Acc>()
+  // Preserve first-seen order so the output is deterministic w.r.t. the runner's
+  // deterministic matrix order.
+  const order: Array<string> = []
+
+  for (const run of runs) {
+    if (run.record === null) {
+      continue
+    }
+    const workload = run.cell.workload
+    const model = run.record.servedModel
+    const temperature = run.cell.sampling.temperature
+    const key = `${workload}::${model}::${temperature}`
+    let acc = buckets.get(key)
+    if (acc === undefined) {
+      acc = {
+        workload,
+        model,
+        temperature,
+        rates: [],
+        activeMode: 'none',
+        executedRuns: 0,
+      }
+      buckets.set(key, acc)
+      order.push(key)
+    }
+    acc.executedRuns += 1
+    const spec = run.record.speculation
+    if (spec.active && spec.mode !== 'none' && spec.mode !== 'not_measured') {
+      acc.activeMode = spec.mode
+    }
+    if (isMeasured(spec.acceptanceRate)) {
+      acc.rates.push(spec.acceptanceRate)
+    }
+  }
+
+  const cells: Array<SpeculationAcceptanceCell> = []
+  for (const key of order) {
+    const acc = buckets.get(key)
+    if (acc === undefined) {
+      continue
+    }
+    cells.push({
+      workload: acc.workload,
+      model: acc.model,
+      temperature: acc.temperature,
+      // The route IS the workload lane in the benchmark (the runner sets
+      // `route: cell.workload`); kept as an explicit axis for the issue's tuple.
+      route: acc.workload,
+      mode: acc.activeMode,
+      acceptanceRate: mean(acc.rates),
+      measuredRuns: acc.rates.length,
+      executedRuns: acc.executedRuns,
+    })
+  }
+  return cells
+}
+
+// ---------------------------------------------------------------------------
 // The full report artifact.
 // ---------------------------------------------------------------------------
 
@@ -232,6 +340,12 @@ export type BenchmarkReport = Readonly<{
   cellsSkipped: number
   // Per (lane × workload) metrics, in deterministic (lane, workload) order.
   groups: ReadonlyArray<BenchmarkGroupMetrics>
+  // Draft acceptance rate per (workload × model × temperature × route) — book
+  // P1-8 / #6091. Separate from `groups` so the acceptance rate is never averaged
+  // across different temperatures/models. A cell with no speculation has a null
+  // rate (honest absence), which is itself the finding that speculation did not
+  // run (e.g. disabled at high batch, or not a code workload).
+  speculationAcceptance: ReadonlyArray<SpeculationAcceptanceCell>
 }>
 
 const ILLUSTRATIVE_NOTICE =
@@ -299,6 +413,7 @@ export const buildBenchmarkReport = (
     cellsExecuted: runSet.cellsExecuted,
     cellsSkipped: runSet.cellsSkipped,
     groups,
+    speculationAcceptance: aggregateSpeculationAcceptance(runSet.runs),
   }
 }
 

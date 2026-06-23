@@ -28,7 +28,9 @@ import type {
   KhalaExecutedVerdict,
   KhalaVerificationClass,
 } from '../khala-telemetry'
+import type { KhalaSpeculationInput } from '../khala-speculation'
 import type { BenchmarkCell } from './matrix'
+import { fixtureSpeculationForCell } from './speculation-lane'
 
 // ---------------------------------------------------------------------------
 // The measured sample a seam returns for one execution of one cell.
@@ -64,6 +66,14 @@ export type BenchmarkLaneSample = Readonly<{
   costBasisMsat: number
   // The serving region the lane reports (public-safe coarse region string).
   region: string
+  // The SPECULATIVE-DECODING signals this sample observed (book P1-8 / #6091).
+  // The fixture lane derives these from the cell's batch/pressure via the
+  // dynamic-disablement policy; a real lane would carry the engine's actual
+  // draft/verify counts. Optional: absent => the telemetry builder records the
+  // honest-unknown speculation shape (`not_measured`). It is honestly `none`
+  // (no speculation ran) on a disabled/high-batch cell, and a real drafting mode
+  // with acceptance counts on a low-batch code cell.
+  speculation?: KhalaSpeculationInput | undefined
 }>
 
 // The pluggable seam. Given a cell, return a measured sample. PURE for the
@@ -289,6 +299,9 @@ export const makeFixtureLaneSeam = (
       gatewayOverheadMs: profile.gatewayOverheadMs,
       costBasisMsat,
       region: profile.region,
+      // Fixture speculation: the policy decides on/off from the cell's batch
+      // (concurrency) + derived pressure; counts only when enabled (book P1-8).
+      speculation: fixtureSpeculationForCell(cell),
       ...fixtureVerification(cell),
     }
   },
