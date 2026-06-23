@@ -369,7 +369,10 @@ export type LoggedOutRoute = typeof LoggedOutRoute.Type
 export type LoggedInRoute = typeof LoggedInRoute.Type
 export type AppRoute = typeof AppRoute.Type
 
-export const homeRouter = pipe(Route.root, Route.mapTo(PylonRoute))
+// The root path `/` is now the Landing persistent scene (the homepage).
+// `homeRouter()` is the canonical "Go Home" URL builder app-wide and resolves
+// to `/`, which renders the Landing scene.
+export const homeRouter = pipe(Route.root, Route.mapTo(LandingRoute))
 export const chatRouter = pipe(literal('autopilot'), Route.mapTo(ChatRoute))
 export const inviteRouter = pipe(literal('invite'), Route.mapTo(InviteRoute))
 export const onboardingRouter = pipe(
@@ -557,11 +560,20 @@ export const shareRouter = pipe(
 )
 export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
 export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
-export const landingRouter = pipe(literal('landing'), Route.mapTo(LandingRoute))
+// Landing IS the homepage at `/`. `landingRouter()` builds the root path so
+// any "navigate to landing / go home" flow lands on `/`. The `/landing` path
+// is kept as an inbound-only alias (see `landingAliasRouter`) so old links and
+// bookmarks still resolve to the same Landing scene.
+export const landingRouter = pipe(Route.root, Route.mapTo(LandingRoute))
+export const landingAliasRouter = pipe(
+  literal('landing'),
+  Route.mapTo(LandingRoute),
+)
 export const termsRouter = pipe(literal('terms'), Route.mapTo(TermsRoute))
 export const privacyRouter = pipe(literal('privacy'), Route.mapTo(PrivacyRoute))
 export const khalaRouter = pipe(literal('khala'), Route.mapTo(KhalaRoute))
-export const pylonRouter = pipe(literal('pylon'), Route.mapTo(PylonRoute))
+// The Pylon scene moved off the root to `/pylons`.
+export const pylonsRouter = pipe(literal('pylons'), Route.mapTo(PylonRoute))
 export const downloadRouter = pipe(
   literal('download'),
   Route.mapTo(DownloadRoute),
@@ -700,11 +712,11 @@ const routeParser = Route.oneOf(
   shareRouter,
   moksha2Router,
   mokshaRouter,
-  landingRouter,
+  landingAliasRouter,
   termsRouter,
   privacyRouter,
   khalaRouter,
-  pylonRouter,
+  pylonsRouter,
   downloadRouter,
   inviteRouter,
   onboardingRouter,

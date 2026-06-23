@@ -12,10 +12,10 @@ import {
 import {
   type AppRoute,
   InviteRoute,
+  LandingRoute,
   LoggedInRoute,
   LoggedOutRoute,
   OnboardingRoute,
-  PylonRoute,
   homeRouter,
   inviteRouter,
   onboardingRouter,
@@ -121,13 +121,13 @@ export const startupRouteForLoggedOut = (
     ),
     M.tag('NotFound', () =>
       LoggedOutStartupRoute({
-        route: PylonRoute(),
+        route: LandingRoute(),
         redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
       }),
     ),
     M.orElse(() =>
       LoggedOutStartupRoute({
-        route: PylonRoute(),
+        route: LandingRoute(),
         redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
       }),
     ),

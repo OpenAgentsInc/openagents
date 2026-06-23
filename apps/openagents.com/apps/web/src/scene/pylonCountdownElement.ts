@@ -6,7 +6,7 @@ import {
   type PylonCountdownHandle,
 } from './pylonCountdown'
 
-// Centered 12-hour countdown overlay for the /pylon page. Lives in its own
+// Centered 12-hour countdown overlay for the /pylons page. Lives in its own
 // shadow root so the slot-text roll CSS is scoped here and does not leak into
 // the rest of the app.
 

@@ -136,7 +136,11 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/moksha2'))).toEqual(Moksha2Route())
   })
 
-  test('accepts the standalone landing route', () => {
+  test('uses the Landing persistent scene as the root route', () => {
+    expect(urlToAppRoute(appUrl('/'))).toEqual(LandingRoute())
+  })
+
+  test('keeps the legacy /landing path as an inbound alias to Landing', () => {
     expect(urlToAppRoute(appUrl('/landing'))).toEqual(LandingRoute())
   })
 
@@ -157,12 +161,14 @@ describe('app route parser', () => {
     ).toEqual(TassadarReplayRoute({ replaySlug: 'first-real-settlement' }))
   })
 
-  test('uses the Pylon scene as the root route', () => {
-    expect(urlToAppRoute(appUrl('/'))).toEqual(PylonRoute())
+  test('serves the Pylon scene at /pylons', () => {
+    expect(urlToAppRoute(appUrl('/pylons'))).toEqual(PylonRoute())
   })
 
-  test('keeps the explicit Pylon scene route alias', () => {
-    expect(urlToAppRoute(appUrl('/pylon'))).toEqual(PylonRoute())
+  test('no longer resolves the old /pylon root alias', () => {
+    expect(urlToAppRoute(appUrl('/pylon'))).toEqual(
+      NotFoundRoute({ path: '/pylon' }),
+    )
   })
 
   test('does not keep the retired live Pylon launch preview route', () => {

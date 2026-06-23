@@ -77,7 +77,7 @@ describe('auth bootstrap flags', () => {
     window.history.replaceState({}, '', '/')
   })
 
-  test('does not request the auth session on the root Pylon route', async () => {
+  test('does not request the auth session on the root Landing route', async () => {
     window.history.replaceState({}, '', '/')
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
@@ -149,7 +149,7 @@ describe('auth bootstrap flags', () => {
   })
 
   test('does not request the auth session on the Pylon route', async () => {
-    window.history.replaceState({}, '', '/pylon')
+    window.history.replaceState({}, '', '/pylons')
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     const loadedFlags = await Effect.runPromise(flags)
@@ -332,10 +332,10 @@ describe('authenticated startup routing', () => {
     )
   })
 
-  test('opens Pylon without an auth session', () => {
+  test('opens Pylon at /pylons without an auth session', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/pylon'),
+      appUrl('/pylons'),
     )
 
     expect(model).toMatchObject({
@@ -494,7 +494,7 @@ describe('authenticated startup routing', () => {
   test('renders the Pylon route through the top-level view', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),
-      appUrl('/pylon'),
+      appUrl('/pylons'),
     )
 
     Scene.scene(
@@ -556,7 +556,7 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps incomplete authenticated root visits on the public Pylon scene', () => {
+  test('keeps incomplete authenticated root visits on the public Landing scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithIncompleteOnboarding) }),
       appUrl('/'),
@@ -564,12 +564,12 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands).toHaveLength(0)
   })
 
-  test('keeps authenticated root visits on the public Pylon scene', () => {
+  test('keeps authenticated root visits on the public Landing scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithoutCoreTeam) }),
       appUrl('/'),
@@ -577,7 +577,7 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands).toHaveLength(0)
   })
@@ -599,7 +599,7 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps logged-out root visitors on the public Pylon scene', () => {
+  test('keeps logged-out root visitors on the public Landing scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/'),
@@ -607,7 +607,7 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands).toHaveLength(0)
   })
@@ -687,7 +687,7 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands.map(command => command.name)).toEqual(['RedirectToHome'])
   })
@@ -775,7 +775,7 @@ describe('authenticated startup routing', () => {
     ])
   })
 
-  test('keeps authenticated root visits on the public Pylon scene', () => {
+  test('keeps Core Team authenticated root visits on the public Landing scene', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.some(authWithTeam) }),
       appUrl('/'),
@@ -783,7 +783,7 @@ describe('authenticated startup routing', () => {
 
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
-      route: { _tag: 'Pylon' },
+      route: { _tag: 'Landing' },
     })
     expect(commands).toHaveLength(0)
   })

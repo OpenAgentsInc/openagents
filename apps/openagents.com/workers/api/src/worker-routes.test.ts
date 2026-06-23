@@ -91,7 +91,7 @@ describe('Worker document route fallback', () => {
 
   test('keeps the Pylon document route in the app shell', () => {
     expect(
-      shouldRedirectUnknownDocumentToHome(requestFor('/pylon'), '/pylon'),
+      shouldRedirectUnknownDocumentToHome(requestFor('/pylons'), '/pylons'),
     ).toBe(false)
   })
 
