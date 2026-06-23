@@ -6,8 +6,8 @@ import { html } from 'foldkit/html'
 import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
-import * as Animations from '../animations'
 import * as Activity from '../activity'
+import * as Animations from '../animations'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
@@ -17,8 +17,10 @@ import * as Docs from '../docs'
 import * as Download from '../download'
 import * as Forum from '../forum'
 import * as Login from '../login'
+import * as Privacy from '../privacy'
 import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
+import * as Terms from '../terms'
 import { Message } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
@@ -132,6 +134,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               ComponentsFamily: route =>
                 Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
+              Terms: () => Terms.view({ _tag: 'LoggedOut' }),
+              Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),

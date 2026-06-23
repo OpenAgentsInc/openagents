@@ -89,6 +89,15 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('serves the public legal document routes in the app shell for unauthed visitors', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/terms'), '/terms'),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/privacy'), '/privacy'),
+    ).toBe(false)
+  })
+
   test('keeps public stats document routes in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/stats'), '/stats'),

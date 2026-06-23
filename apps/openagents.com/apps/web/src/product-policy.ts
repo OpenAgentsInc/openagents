@@ -171,6 +171,8 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'Moksha' &&
   route._tag !== 'Moksha2' &&
   route._tag !== 'Landing' &&
+  route._tag !== 'Terms' &&
+  route._tag !== 'Privacy' &&
   route._tag !== 'Pylon' &&
   route._tag !== 'Download' &&
   route._tag !== 'Demo' &&
@@ -226,6 +228,8 @@ export const browserRouteProductIntents = {
   Moksha: 'public.moksha',
   Moksha2: 'public.moksha2',
   Landing: 'public.landing',
+  Terms: 'public.terms',
+  Privacy: 'public.privacy',
   Pylon: 'public.pylon',
   Download: 'public.download',
   Docs: 'public.docs.index',

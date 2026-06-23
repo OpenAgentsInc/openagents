@@ -128,6 +128,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/onboarding$/,
   /^\/order$/,
   /^\/orders\/[^/]+$/,
+  /^\/privacy$/,
   /^\/promises$/,
   /^\/settings(?:\/[^/]+)?$/,
   /^\/share\/[^/]+$/,
@@ -135,6 +136,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/stats$/,
   /^\/stats-old$/,
   /^\/tassadar$/,
+  /^\/terms$/,
   /^\/tassadar\/replay\/[^/]+$/,
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
   /^\/t\/[^/]+$/,
@@ -546,7 +548,11 @@ export const makeWorkerRouteRequest =
       }
 
       const ecommerceCampaignReceiptOperatorResponse =
-        dependencies.routeEcommerceCampaignReceiptOperatorRequest(request, env, ctx)
+        dependencies.routeEcommerceCampaignReceiptOperatorRequest(
+          request,
+          env,
+          ctx,
+        )
 
       if (ecommerceCampaignReceiptOperatorResponse !== undefined) {
         return yield* ecommerceCampaignReceiptOperatorResponse

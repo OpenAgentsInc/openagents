@@ -30,6 +30,7 @@ import {
   NotFoundRoute,
   OrderDetailRoute,
   OrderRoute,
+  PrivacyRoute,
   PublicAgentRoute,
   PublicStatsArchiveRoute,
   PublicTrainingRunRoute,
@@ -40,8 +41,9 @@ import {
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
-  TassadarRoute,
   TassadarReplayRoute,
+  TassadarRoute,
+  TermsRoute,
   WorkspaceRoute,
   urlToAppRoute,
 } from './route'
@@ -137,14 +139,17 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/landing'))).toEqual(LandingRoute())
   })
 
+  test('accepts the public legal routes', () => {
+    expect(urlToAppRoute(appUrl('/terms'))).toEqual(TermsRoute())
+    expect(urlToAppRoute(appUrl('/privacy'))).toEqual(PrivacyRoute())
+  })
+
   test('accepts the public live Tassadar run route', () => {
     expect(urlToAppRoute(appUrl('/run'))).toEqual(RunRoute())
     expect(urlToAppRoute(appUrl('/tassadar'))).toEqual(TassadarRoute())
     expect(
       urlToAppRoute(appUrl('/tassadar/replay/first-real-settlement')),
-    ).toEqual(
-      TassadarReplayRoute({ replaySlug: 'first-real-settlement' }),
-    )
+    ).toEqual(TassadarReplayRoute({ replaySlug: 'first-real-settlement' }))
   })
 
   test('uses the Pylon scene as the root route', () => {
