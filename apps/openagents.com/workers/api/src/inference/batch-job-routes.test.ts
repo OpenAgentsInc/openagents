@@ -92,7 +92,7 @@ describe('handleBatchJobsSubmit', () => {
       handleBatchJobsSubmit(makeRequest(payload), baseDeps()),
     )
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(202)
 
     const body = (await response.json()) as any
     expect(body.status).toBe('accepted')
