@@ -99,7 +99,16 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000
 // leg runs CONCURRENTLY with the crypto deposit (see `issueChallenge`), so even
 // at the full budget it never DELAYS the other rails — a slow/failed Lightning
 // rail can only ever drop ITSELF.
-const LIGHTNING_LEG_GUARD_MS = 2_500
+//
+// BUDGET (#6049): raised to 4.5s so it stays ABOVE the Spark primary mint budget
+// (`SPARK_LIGHTNING_MINT_TIMEOUT_MS = 4000`). A real warm Spark mint takes
+// ~1.5–3.1s, so the outer guard must not cut it off before it can surface the
+// Lightning rail. The guard still BOUNDS the whole leg: a mint that exceeds 4.5s
+// is interrupted and the Lightning rail is dropped (honesty gate, #6149), so the
+// 402 can never hang and crypto + card stay fast. This trades ~1s of 402 latency
+// for Lightning visibility; the zero-latency fix is a pre-minted Spark invoice
+// pool (future optimization, tracked on #6049).
+const LIGHTNING_LEG_GUARD_MS = 4_500
 
 // Parse the KHALA_MPP_ENABLED flag. Default OFF.
 export const isKhalaMppEnabled = (value: string | undefined): boolean => {
