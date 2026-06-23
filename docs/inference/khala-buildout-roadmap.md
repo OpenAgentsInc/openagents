@@ -13,6 +13,16 @@ Consolidates the per-area roadmaps: [`khala.md`](khala.md) (spec/§11),
 `docs/research/tmax/synthesis.md` (recipe/stability), and the revenue-loop spine
 (EPIC #5457).
 
+> **Direction (architecture):** the learned coordinator (M6/M7) is not the
+> whole story — the longer-run direction is that Khala's inference runs as
+> **typed, GEPA-optimizable Blueprint/DSPy programs**, and that the Blueprint
+> program layer is **extensible via independently authored capability units**
+> (Tassadar-style plugins/modules) composed into Khala programs, metered per
+> use, and (FUTURE) paid in Bitcoin with a revenue split. See
+> [`2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
+> for the current-vs-future split and the surfaces it maps to. Nothing there is
+> a product promise or a public plugin-marketplace claim.
+
 ## North-star goal (the end of the flow)
 
 Run our own version of the head-to-head that's circulating publicly — **Sakana
