@@ -60,8 +60,10 @@ export const VERSE_SPAWNED_SCENE_SOURCE_REF =
 // a clearly visible size — the previous fixed `z:-6` station put the arc far off
 // in the dark Verse where the thin primitive was invisible (#6033 owner report).
 // Tuned HERE (the mapper), not in the renderer.
+// Fallback station when there is no avatar pose yet: in front of the default
+// camera at chest height (HEIGHT is +Y, forward is +Z in the render frame).
 export const VERSE_SPAWNED_SCENE_STATION_POSITION: TrainingRunVector =
-  roundedVerseVector([0, 0, -2.4])
+  roundedVerseVector([0, 1.2, 3.0])
 
 // How far IN FRONT of the avatar (along its facing/-Z by default) the scene
 // station is dropped, plus how high the arc hangs. Close enough to fill the
@@ -199,13 +201,19 @@ export const verseSpawnedSceneStationForAvatar = (
     return VERSE_SPAWNED_SCENE_STATION_POSITION
   }
   const yaw = finite(anchor.yaw ?? Number.NaN) ? (anchor.yaw as number) : 0
-  // Forward along the ground plane (X/Y), rotated by yaw; height is +Z.
+  // The avatar's model pose maps to the render frame as: HEIGHT is +Y, the GROUND
+  // plane is X/Z, and walking forward increases +Z — exactly how the working
+  // `withVerseKhalaEffectLayer` lands its arc at `[x, y + lift, z]`. So forward is
+  // in the X/Z ground plane (rotated by yaw) and the lift goes on +Y.
+  // (The previous code put forward on +Y and the lift on +Z, so the avatar's
+  // forward-walk distance `z` became HEIGHT — the arc floated higher the more you
+  // walked, always above the camera. That is the no-particle-effect bug.)
   const forwardX = Math.sin(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
-  const forwardY = Math.cos(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
+  const forwardZ = Math.cos(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
   return roundedVerseVector([
     anchor.x + forwardX,
-    anchor.y + forwardY,
-    anchor.z + VERSE_SPAWNED_SCENE_AVATAR_HEIGHT,
+    anchor.y + VERSE_SPAWNED_SCENE_AVATAR_HEIGHT,
+    anchor.z + forwardZ,
   ])
 }
 
