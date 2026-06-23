@@ -75,7 +75,10 @@ green/yellow pieces that still need a human/operator path or carry a caveat, and
 
 - **What you get:** Access to open-weight model inference through OpenAgents
   (e.g., Gemini and Fireworks-hosted open models like DeepSeek), with a free
-  taste to start and credit-funded metered usage after that.
+  taste to start and credit-funded metered usage after that. The
+  OpenAI-compatible base URL is `https://openagents.com/api/v1` (`/api` is the
+  canonical base for every OpenAgents API route, #6148; the legacy
+  `https://openagents.com/v1` base still resolves as a non-breaking alias).
 - **Availability:** *Operator-assisted* — a bounded free inference taste and
   verified provider connections are available, but the full paid
   card/Bitcoin→credit→inference-spend path is not collectable end-to-end in
