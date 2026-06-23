@@ -17,8 +17,11 @@ import {
   applyDeltaToReadModel,
   applyDeltaToState,
   commandAckFromReceipt,
+  createStubWorldClientTransport,
   createWorldClient,
   makeEmptyClientWorld,
+  makeStubWorldDelta,
+  makeStubWorldReadModel,
   projectWorldMinimapReadout,
   type WorldClientTransport,
 } from "./index.js"
@@ -93,6 +96,54 @@ const pylonRow = decodeWorldRow({
   position: { x: 25, y: 0, z: -25 },
   status: "working",
   updatedAt: observedAt,
+  safety,
+})
+
+const settlementRow = decodeWorldRow({
+  kind: "settlement_ref",
+  settlementRef: "settlement.khala.1",
+  runRef: "run.tassadar.executor.20260615",
+  label: "Khala mini completion receipt",
+  amountSats: 1,
+  updatedAt: observedAt,
+  safety,
+})
+
+const inferenceEventRow = decodeWorldRow({
+  kind: "world_event",
+  eventRef: "world_event.khala.inference.1",
+  regionRef,
+  runRef: "run.tassadar.executor.20260615",
+  eventKind: "inference.completion",
+  text: "Khala mini completion routed through the public proof feed.",
+  createdAt: observedAt,
+  sourceRefs: ["receipt.openagents.khala.1"],
+  inference: {
+    requestRef: "request.khala.1",
+    receiptRef: "receipt.openagents.khala.1",
+    model: "openagents/khala-mini",
+    route: "khala/fireworks",
+    workers: [
+      {
+        workerRef: "pylon.alpha",
+        workerKind: "pylon",
+        label: "Alpha Pylon",
+        role: "scene relay",
+        sourceRefs: ["pylon.alpha"],
+      },
+      {
+        workerRef: "gateway.fireworks",
+        workerKind: "gateway",
+        label: "Fireworks Gateway",
+        sourceRefs: ["gateway.fireworks"],
+      },
+    ],
+    verification: "test_passed",
+    costMsat: 125,
+    priceMsat: 250,
+    settled: true,
+    sourceRefs: ["receipt.openagents.khala.1"],
+  },
   safety,
 })
 
@@ -367,5 +418,99 @@ describe("world-client", () => {
     expect(ack.appliedSeq).toBe(7)
     expect(state.commandAcks["command.move.1"]?.appliedSeq).toBe(7)
     expect(commandAckFromReceipt(delta.receipt!).rejectedSeq).toBeUndefined()
+  })
+
+  test("stub read-model fixtures hydrate pylon, payment, and inference proof rows", () => {
+    const readModel = makeStubWorldReadModel({
+      regionRef,
+      generatedAt: observedAt,
+      rows: [regionRow, pylonRow, runRow, settlementRow, inferenceEventRow],
+    })
+
+    expect(readModel.pylons["pylon.alpha"]?.status).toBe("working")
+    expect(readModel.settlementRefs["settlement.khala.1"]?.amountSats).toBe(1)
+    expect(readModel.events["world_event.khala.inference.1"]?.inference).toMatchObject({
+      model: "openagents/khala-mini",
+      route: "khala/fireworks",
+      verification: "test_passed",
+      settled: true,
+    })
+  })
+
+  test("stub transport feeds fixture deltas through createWorldClient without backend services", async () => {
+    const transport = createStubWorldClientTransport({
+      regionRef,
+      generatedAt: observedAt,
+      rows: [regionRow, pylonRow, runRow, settlementRow, inferenceEventRow],
+      selectedRefs: ["pylon.alpha", "world_event.khala.inference.1"],
+    })
+    const client = createWorldClient({ transport, initialRegionRef: regionRef, now: () => observedAt })
+    const state = await Effect.runPromise(client.connect())
+    const plan = await Effect.runPromise(client.subscribe({
+      selectedRefs: ["settlement.khala.1"],
+    }))
+
+    expect(state.socketUrl).toBe(`stub://world-client/${regionRef}`)
+    expect(state.readModel.pylons["pylon.alpha"]?.label).toBe("Alpha Pylon")
+    expect(state.readModel.settlementRefs["settlement.khala.1"]?.label).toBe(
+      "Khala mini completion receipt",
+    )
+    expect(state.readModel.events["world_event.khala.inference.1"]?.inference?.priceMsat).toBe(250)
+    expect(plan.interest.selectedRefs.map(String)).toEqual(["settlement.khala.1"])
+  })
+
+  test("stub transport command handlers can append contract-checked fixture deltas", async () => {
+    const command: WorldCommandEnvelope = decodeWorldCommandEnvelope({
+      schemaVersion: "openagents.world_contract.v1",
+      commandRef: "command.focus.pylon.1",
+      command: "focus_pylon",
+      actorClass: "browser",
+      actorRef: "actor.alice",
+      regionRef,
+      seq: 9,
+      issuedAt: observedAt,
+      payload: { pylonRef: "pylon.alpha" },
+    })
+    const transport = createStubWorldClientTransport({
+      regionRef,
+      generatedAt: observedAt,
+      rows: [regionRow, pylonRow],
+      onCommand: (received, context) =>
+        makeStubWorldDelta({
+          regionRef,
+          cursor: `cursor.${regionRef}.stub.command.${context.sequence}`,
+          generatedAt: observedAt,
+          rows: [
+            {
+              kind: "agent_intent",
+              intentRef: "intent.focus.pylon.1",
+              avatarRef: "avatar.alice",
+              regionRef,
+              intent: "focus_pylon:pylon.alpha",
+              targetRef: "pylon.alpha",
+              createdAt: observedAt,
+              expiresAt: "2026-06-22T00:00:05.000Z",
+              safety,
+            },
+          ],
+          receipt: {
+            receiptRef: "receipt.focus.pylon.1",
+            commandRef: received.commandRef,
+            command: received.command,
+            status: "applied",
+            actorClass: received.actorClass,
+            acceptedSeq: context.sequence,
+            appliedSeq: context.sequence,
+            observedAt,
+            changedRefs: ["intent.focus.pylon.1"],
+          },
+        }),
+    })
+    const client = createWorldClient({ transport, initialRegionRef: regionRef, now: () => observedAt })
+    const ack = await Effect.runPromise(client.callCommand(command))
+    const readModel = await Effect.runPromise(client.readModel())
+
+    expect(ack.status).toBe("applied")
+    expect(String(readModel.intents["intent.focus.pylon.1"]?.targetRef)).toBe("pylon.alpha")
   })
 })

@@ -1,6 +1,7 @@
 import { Data, Effect } from "effect"
 
 import {
+  WORLD_DELTA_SCHEMA_VERSION,
   WORLD_READ_MODEL_SCHEMA_VERSION,
   WORLD_CONTRACT_SCHEMA_VERSION,
   decodeWorldDelta,
@@ -390,6 +391,252 @@ export const makeEmptyClientWorld = (
     events: {},
     diagnostics: [],
   })
+
+export type StubWorldSubscriptionPlanInput = Readonly<{
+  regionRef: string
+  planRef?: string
+  scope?: WorldSubscriptionPlan["scope"]
+  runRef?: string
+  selectedEntityRef?: string
+  selectedRefs?: ReadonlyArray<string>
+  resumeCursor?: string
+  center?: Readonly<{ x: number; y: number; z: number }>
+  enterRadius?: number
+  dropRadius?: number
+  nearRadius?: number
+  farRadius?: number
+  nearUpdateMs?: number
+  farUpdateMs?: number
+}>
+
+export const makeStubWorldSubscriptionPlan = (
+  input: StubWorldSubscriptionPlanInput,
+): WorldSubscriptionPlan =>
+  decodeWorldSubscriptionPlan({
+    planRef: input.planRef ?? `plan.stub.${input.regionRef}`,
+    regionRef: input.regionRef,
+    scope: input.scope ?? "region",
+    ...(input.runRef === undefined ? {} : { runRef: input.runRef }),
+    ...(input.selectedEntityRef === undefined ? {} : { selectedEntityRef: input.selectedEntityRef }),
+    interest: {
+      center: input.center ?? { x: 0, y: 0, z: 0 },
+      enterRadius: input.enterRadius ?? 90,
+      dropRadius: input.dropRadius ?? 120,
+      nearRadius: input.nearRadius ?? 32,
+      farRadius: input.farRadius ?? 120,
+      selectedRefs: [...(input.selectedRefs ?? [])],
+    },
+    nearUpdateMs: input.nearUpdateMs ?? 100,
+    farUpdateMs: input.farUpdateMs ?? 1000,
+    ...(input.resumeCursor === undefined ? {} : { resumeCursor: input.resumeCursor }),
+  })
+
+export type StubWorldDeltaInput = Readonly<{
+  regionRef: string
+  cursor: string
+  generatedAt: string
+  deltaRef?: string
+  kind?: WorldDelta["kind"]
+  rows?: ReadonlyArray<unknown>
+  patches?: ReadonlyArray<unknown>
+  deletedRefs?: ReadonlyArray<string>
+  receipt?: unknown
+  diagnostic?: unknown
+}>
+
+export const makeStubWorldDelta = (input: StubWorldDeltaInput): WorldDelta =>
+  decodeWorldDelta({
+    schemaVersion: WORLD_DELTA_SCHEMA_VERSION,
+    deltaRef: input.deltaRef ?? `delta.${input.cursor}`,
+    kind: input.kind ?? "update",
+    regionRef: input.regionRef,
+    cursor: input.cursor,
+    generatedAt: input.generatedAt,
+    ...(
+      input.rows === undefined
+        ? {}
+        : { rows: input.rows.map(row => decodeWorldRow(row)) }
+    ),
+    ...(input.patches === undefined ? {} : { patches: [...input.patches] }),
+    ...(input.deletedRefs === undefined ? {} : { deletedRefs: [...input.deletedRefs] }),
+    ...(input.receipt === undefined ? {} : { receipt: input.receipt }),
+    ...(input.diagnostic === undefined ? {} : { diagnostic: input.diagnostic }),
+  })
+
+export type StubWorldReadModelInput = Readonly<{
+  regionRef: string
+  generatedAt?: string
+  cursor?: string
+  rows?: ReadonlyArray<unknown>
+  deltas?: ReadonlyArray<unknown>
+}>
+
+export const makeStubWorldReadModel = (
+  input: StubWorldReadModelInput,
+): ClientWorld => {
+  const generatedAt = input.generatedAt ?? worldClientNowIso()
+  const cursor = input.cursor ?? `cursor.${input.regionRef}.stub.0`
+  const seedDeltas = [
+    ...(
+      input.rows === undefined
+        ? []
+        : [
+            makeStubWorldDelta({
+              regionRef: input.regionRef,
+              cursor,
+              deltaRef: `delta.${cursor}`,
+              generatedAt,
+              kind: "snapshot",
+              rows: input.rows,
+            }),
+          ]
+    ),
+    ...(input.deltas ?? []).map(delta => decodeWorldDelta(delta)),
+  ]
+
+  return seedDeltas.reduce(
+    (readModel, delta) => applyDeltaToReadModel(readModel, delta),
+    makeEmptyClientWorld(input.regionRef, generatedAt, cursor),
+  )
+}
+
+export type StubWorldClientCommandContext = Readonly<{
+  regionRef: string
+  generatedAt: string
+  cursor: string
+  sequence: number
+  readModel: ClientWorld
+}>
+
+export type StubWorldClientCommandHandler = (
+  command: WorldCommandEnvelope,
+  context: StubWorldClientCommandContext,
+) => WorldDelta | undefined
+
+export type StubWorldClientTransportInput = Readonly<{
+  regionRef: string
+  socketUrl?: string
+  generatedAt?: string
+  cursor?: string
+  rows?: ReadonlyArray<unknown>
+  deltas?: ReadonlyArray<unknown>
+  selectedRefs?: ReadonlyArray<string>
+  subscriptionPlan?: WorldSubscriptionPlan
+  onCommand?: StubWorldClientCommandHandler
+}>
+
+export const createStubWorldClientTransport = (
+  input: StubWorldClientTransportInput,
+): WorldClientTransport => {
+  const regionRef = input.regionRef
+  const generatedAt = input.generatedAt ?? worldClientNowIso()
+  const cursor = input.cursor ?? `cursor.${regionRef}.stub.0`
+  const seedDeltas = [
+    ...(
+      input.rows === undefined
+        ? []
+        : [
+            makeStubWorldDelta({
+              regionRef,
+              cursor,
+              deltaRef: `delta.${cursor}`,
+              generatedAt,
+              kind: "snapshot",
+              rows: input.rows,
+            }),
+          ]
+    ),
+    ...(input.deltas ?? []).map(delta => decodeWorldDelta(delta)),
+  ]
+  const socketUrl = input.socketUrl ?? `stub://world-client/${regionRef}`
+  let historyDeltas = seedDeltas
+  let readModel = makeStubWorldReadModel({
+    regionRef,
+    generatedAt,
+    cursor,
+    deltas: historyDeltas,
+  })
+  let commandSequence = historyDeltas.length
+
+  const planFor = (request: WorldClientConnectRequest): WorldSubscriptionPlan => {
+    if (input.subscriptionPlan !== undefined) return input.subscriptionPlan
+    const selectedRefs = request.selectedRefs ?? input.selectedRefs
+    return makeStubWorldSubscriptionPlan({
+      regionRef,
+      scope: request.scope ?? "region",
+      ...(request.runRef === undefined ? {} : { runRef: request.runRef }),
+      ...(request.selectedEntityRef === undefined ? {} : { selectedEntityRef: request.selectedEntityRef }),
+      ...(selectedRefs === undefined ? {} : { selectedRefs }),
+      ...(request.resumeCursor === undefined ? {} : { resumeCursor: request.resumeCursor }),
+    })
+  }
+
+  const connect = (
+    request: WorldClientConnectRequest,
+    phase: "connect" | "subscribe",
+  ): Effect.Effect<WorldClientConnectResult, WorldClientError> =>
+    Effect.tryPromise({
+      try: async () => ({
+        regionRef,
+        socketUrl,
+        subscriptionPlan: planFor(request),
+        deltas: request.resumeCursor === readModel.cursor ? [] : historyDeltas,
+      }),
+      catch: error => new WorldClientError({
+        phase,
+        reason: error instanceof Error ? error.message : "Stub world transport failed to connect.",
+        retryable: false,
+        sourceRefs: ["world-client.stub.connect"],
+      }),
+    })
+
+  return {
+    connect: request => connect(request, "connect"),
+    subscribe: request => connect(request, "subscribe"),
+    command: command =>
+      Effect.tryPromise({
+        try: async () => {
+          commandSequence += 1
+          const nextGeneratedAt = worldClientNowIso()
+          const nextCursor = `cursor.${regionRef}.stub.command.${commandSequence}`
+          const delta = input.onCommand?.(command, {
+            regionRef,
+            generatedAt: nextGeneratedAt,
+            cursor: readModel.cursor,
+            sequence: commandSequence,
+            readModel,
+          }) ?? makeStubWorldDelta({
+            regionRef,
+            cursor: nextCursor,
+            deltaRef: `delta.stub.command.${commandSequence}`,
+            generatedAt: nextGeneratedAt,
+            receipt: {
+              receiptRef: `receipt.stub.${command.commandRef}`,
+              commandRef: command.commandRef,
+              command: command.command,
+              status: "accepted",
+              actorClass: command.actorClass,
+              acceptedSeq: commandSequence,
+              observedAt: nextGeneratedAt,
+              changedRefs: [],
+            },
+          })
+          historyDeltas = [...historyDeltas, delta]
+          readModel = applyDeltaToReadModel(readModel, delta)
+          return delta
+        },
+        catch: error => error instanceof WorldClientError
+          ? error
+          : new WorldClientError({
+              phase: "command",
+              reason: error instanceof Error ? error.message : "Stub world command failed.",
+              retryable: false,
+              sourceRefs: ["world-client.stub.command"],
+            }),
+      }),
+    disconnect: () => Effect.void,
+  }
+}
 
 export type WorldMinimapMarkerKind =
   | "assignment"
