@@ -43,6 +43,17 @@ This package covers protocol-only behavior:
   `partial`
 - Effect Schema-backed event validation, typed malformed-event errors, and
   SHA-256 digest verification for delivered bundles
+- NIP-LBR labor-market **closeout receipt** (`./lbr-closeout`): composes one
+  complete labor lifecycle (request `5934`, quote `7000`, acceptance `7000`,
+  result `6934`) into a single content-addressed, public-safe
+  `LbrLaborCloseout`. It re-decodes each event through the `./lbr` ref/payment
+  guards, checks the four events describe one job (consistent `requestId`,
+  consistent requester/provider parties, quote within budget), and hashes a
+  canonical projection of the public-safe refs. `verifyLbrLaborCloseoutDigest`
+  re-derives the digest and `receiptRef` so any reader can confirm the receipt
+  dereferences the exact lifecycle that produced it. This is the labor market's
+  dereferenceable-receipt rung; it moves no sats and grants no settlement
+  authority.
 
 Historical contract reference:
 
@@ -72,6 +83,27 @@ bun apps/openagents.com/scripts/nip-ds.ts smoke \
 The script signs and publishes a `30404` listing, `30406` offer, `5960` access
 request, and `6960` access result, then reads them back and verifies the
 delivered bundle digest. It does not move sats or publish private datasets.
+
+## NIP-LBR closeout proof
+
+The labor-market equivalent of the NIP-DS proof. It signs a complete LBR
+lifecycle, composes the four accepted events into one content-addressed
+closeout receipt, and re-derives the digest to prove the receipt dereferences:
+
+```bash
+# Offline (default): build + sign + bind + dereference, no network.
+bun packages/nip90/scripts/lbr-closeout-proof.ts
+
+# Relay smoke (optional): also publish the four events to a scoped market relay
+# and read them back, proving the lifecycle is dippable before the closeout
+# binds it.
+bun packages/nip90/scripts/lbr-closeout-proof.ts --relay https://relay.openagents.com
+```
+
+It signs a `5934` request, two `7000` feedback events (quote + acceptance), and
+a `6934` result, then prints the closeout receipt with `closeoutDereferenced:
+true`. It moves no sats, opens no escrow, and grants no settlement authority — a
+live paid labor run is the owner gate.
 
 ## Verification
 
