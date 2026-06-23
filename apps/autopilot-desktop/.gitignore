@@ -25,3 +25,8 @@ artifacts/
 
 # Temporary Chrome/CDP harness output from `bun run smoke:training-scene`.
 .training-scene-smoke-*/
+
+# Temporary Chrome/CDP harness scratch dirs (auto-cleaned, but ignored in case a
+# crashed run leaves one): the headless pixel harness and the app replica.
+.headless-render-*/
+.app-replica-*/

@@ -79,6 +79,19 @@ const ACTION_BAR_SLOT_ACTION_IDS = Array.from(
 const isActionBarSlotActionId = (actionId: string): boolean =>
   actionId.startsWith("action_bar.slot_")
 
+// The hotbar slots wired to a real Verse effect (keyboard.ts + view.ts): slot 1
+// coder session, slot 2 spawn scene, slot 3 toggle portal. ONLY these fire from
+// (and are swallowed in) a focused field — the empty slots 4-10 stay normal
+// keystrokes so a bare `4`-`0` still types into the Ask box.
+const WIRED_ACTION_BAR_SLOT_ACTION_IDS = new Set([
+  "action_bar.slot_1",
+  "action_bar.slot_2",
+  "action_bar.slot_3",
+])
+
+const isWiredActionBarSlotActionId = (actionId: string): boolean =>
+  WIRED_ACTION_BAR_SLOT_ACTION_IDS.has(actionId)
+
 const DESKTOP_SHORTCUT_ACTION_IDS = new Set([
   ...ACTION_BAR_SLOT_ACTION_IDS,
   "app.command_palette",
@@ -118,6 +131,11 @@ export const keyboardForwardDecision = (input: {
   readonly shift?: boolean
   readonly alt?: boolean
   readonly inEditable: boolean
+  // True only when the focused editable IS the in-world Verse Ask box (the
+  // `.verse-khala-input`). The hotbar-focus fix is scoped to it so a bare slot
+  // digit is never swallowed from any OTHER field (composer/terminal/palette),
+  // where typing `1`/`2`/`3` must still insert the digit.
+  readonly inVerseAskInput?: boolean
 }, actionMap: OpenAgentsInputActionMap = desktopDefaultInputActionMap): {
   readonly forward: boolean
   readonly preventDefault: boolean
@@ -128,6 +146,22 @@ export const keyboardForwardDecision = (input: {
     const paletteEditingAction = actionIds.some((actionId) =>
       PALETTE_ACTION_IDS.has(actionId)
     )
+    // #6045 follow-up (hotbar-focus bug): the Verse hotbar number keys are the
+    // MMO action bar. The owner hit a bug where, with the in-world Ask box
+    // focused, a bare `2`/`3` typed a digit and the hotbar "did nothing" (editable
+    // focus dropped every non-palette key here). The wired hotbar slots are
+    // dedicated game keys in the verse, so when the focused field IS the Verse Ask
+    // box we FORWARD + preventDefault them: preventDefault stops the digit from
+    // polluting the box, and forwarding lets the reducer fire the slot (the
+    // matching `interpretKey` change resolves the slot intent in-editable). This
+    // is scoped to the Ask box via `inVerseAskInput`, so a `1`/`2`/`3` in any
+    // other field still types normally.
+    const editableWiredSlot =
+      input.inVerseAskInput === true &&
+      actionIds.some(isWiredActionBarSlotActionId)
+    if (editableWiredSlot) {
+      return { forward: true, preventDefault: true }
+    }
     return {
       forward: paletteEditingAction,
       preventDefault: paletteEditingAction && key === "Escape",
@@ -198,7 +232,14 @@ const desktopKeyboardContexts = (
   inEditable: boolean,
 ): ReadonlyArray<OpenAgentsInputContext> =>
   inEditable
-    ? ["command_palette"]
+    ? // While a field is focused we resolve the command-palette context (Escape /
+      // Enter / arrows drive the palette) AND `verse_explore` — but ONLY so the
+      // hotbar action-bar slots resolve here. `keyboardForwardDecision`'s editable
+      // branch forwards just the action-bar slot keys (everything else stays a
+      // normal keystroke), so adding verse_explore does NOT leak other Verse keys
+      // into focused fields; it only lets the hotbar fire with the Ask box focused
+      // (the hotbar-focus bug).
+      ["command_palette", "verse_explore"]
     : [
         "global",
         "managed_pane",
@@ -213,6 +254,14 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
   if (el.isContentEditable) return true
   const tag = (el.tagName ?? "").toLowerCase()
   return tag === "input" || tag === "textarea" || tag === "select"
+}
+
+// True only when the focused field is the in-world Verse Ask box. The hotbar
+// keys fire (and swallow their digit) from this field only — never from the
+// composer, terminal, palette, or any other input.
+const isVerseAskInputTarget = (target: EventTarget | null): boolean => {
+  const el = target as { classList?: { contains?: (c: string) => boolean } } | null
+  return el?.classList?.contains?.("verse-khala-input") === true
 }
 
 const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
@@ -239,6 +288,7 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
         const meta = event.metaKey ?? false
         const ctrl = event.ctrlKey ?? false
         const inEditable = isEditableTarget(event.target ?? null)
+        const inVerseAskInput = isVerseAskInputTarget(event.target ?? null)
         const shortcutInput = code === undefined
           ? {
               key,
@@ -257,7 +307,12 @@ const keyboardStream: Stream.Stream<Message> = Stream.callback<Message>((queue) 
             }
         // Only forward actions the reducer might act on. Native edit/movement
         // commands (Cmd-C/V/X/A/Z, Cmd-arrow, etc.) keep reaching WebKit/AppKit.
-        const decision = keyboardForwardDecision(shortcutInput)
+        // `inVerseAskInput` is passed to the gate only (it scopes the hotbar-focus
+        // swallow to the Ask box); the PressedKey message keeps its existing shape.
+        const decision = keyboardForwardDecision({
+          ...shortcutInput,
+          inVerseAskInput,
+        })
         if (!decision.forward) return
         if (decision.preventDefault) {
           event.preventDefault?.()

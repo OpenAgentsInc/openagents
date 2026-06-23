@@ -3226,15 +3226,31 @@ body {
 
 /* EPIC #6017: the in-world Khala textbox overlay (HUD over the Verse scene). */
 .verse-khala-overlay {
-  position: absolute;
-  bottom: clamp(0.9rem, 3vh, 1.8rem);
-  left: 50%;
-  z-index: 6;
+  /* Anchored BESIDE the bottom-left hotbar, not centered over it.
+     ------------------------------------------------------------------
+     The hotbar (`.hotbar`) is fixed at the bottom-left
+     (`left: clamp(0.75rem, 2vw, 1.25rem); bottom: clamp(0.9rem, 2.2vw, 1.4rem)`).
+     This overlay used to be `position: absolute; left: 50%` (centered), which
+     dropped the Ask box directly ON TOP of the hotbar — the input sat behind /
+     over the slots and its `pointer-events: auto` bar could occlude them. We now
+     pin the overlay to the RIGHT side at the SAME bottom as the hotbar, so the
+     input row is horizontally adjacent to (right of) the hotbar and shares its
+     vertical band. The `left` floor guarantees it always starts past a 10-slot
+     hotbar, so the two never overlap at any width. The bubble/receipt/status
+     stack UPWARD from the bar (the bar is the last child = the bottom row, level
+     with the hotbar). */
+  position: fixed;
+  bottom: clamp(0.9rem, 2.2vw, 1.4rem);
+  left: max(
+    calc(clamp(0.75rem, 2vw, 1.25rem) + 34rem),
+    calc(100% - min(34rem, calc(100% - 2rem)) - clamp(0.75rem, 2vw, 1.25rem))
+  );
+  right: clamp(0.75rem, 2vw, 1.25rem);
+  z-index: 40;
   display: flex;
   flex-direction: column;
+  justify-content: flex-end;
   gap: 0.42rem;
-  width: min(34rem, calc(100% - 2rem));
-  transform: translateX(-50%);
   /* The panel itself is click-through except the interactive children below,
      so it never blocks walking/clicking in the scene around the input. */
   pointer-events: none;
@@ -3318,6 +3334,11 @@ body {
   display: flex;
   gap: 0.45rem;
   align-items: stretch;
+  /* Match the hotbar's height so the Ask box sits level and equal-height beside
+     it. The hotbar is a row of 3rem slots inside 0.25rem padding, so its outer
+     height is 3rem + 2 × 0.25rem = 3.5rem. `align-items: stretch` makes the input
+     and Ask button fill this height. */
+  height: 3.5rem;
   pointer-events: auto;
 }
 

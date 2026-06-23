@@ -196,6 +196,86 @@ TestClock), with tests that run twice and assert identical output.
   zero frames advanced) yields too-few bright pixels and fails, instead of a
   model-shape green.
 
+### 5. Headless app replica (`src/testing/app-replica.ts`) — the real renderer
+
+The full-input-path harness reconstructs the input chain in pure TS, and the
+pixel harness drives a single three-effect element. The **app replica** closes
+the last gap: it boots the **whole real renderer** — the SAME `Model` / `view` /
+`update` / `subscriptions` + the real Foldkit `Runtime.run` mount the live app
+uses — in headless Chromium, and drives + asserts it through real DOM events. It
+is now the standing way to verify the real desktop app headless.
+
+```ts
+const replica = await launchAppReplica()
+await replica.click(".hotbar-slot-2")          // real Foldkit OnClick fires
+await replica.pressKey("2")                     // real keydown → forward gate → reducer
+await replica.type(".verse-khala-input", "hi") // real keystrokes into the field
+const box = await replica.boundingBox(".verse-khala-bar")
+const text = await replica.text(".verse-khala-bubble-body")
+await replica.stepFrames(n)                      // deterministic frame stepping
+await replica.screenshot(path)
+await replica.close()
+```
+
+Two things historically made "mount the real Electrobun app and press a key"
+impossible. Both are solved here:
+
+1. **StyleX.** `view.ts` runs `stylex.attrs(...)` over `stylex.create(...)`
+   objects. Bundled with a plain `bun build` those objects are NOT compiled, so
+   `stylex.attrs` throws and the view never mounts (the wall prior agents hit).
+   The replica compiles its entry (`scripts/app-replica-entry.ts`) with the
+   **same `@stylexjs/unplugin` Bun plugin** `scripts/build-css.ts` uses for the
+   real `main.ts`, and serves the **same `src/ui/styles.out.css`** (`bun run
+   build:css` must have run). So the StyleX is real compiled StyleX and the real,
+   styled view mounts — no runtime shim, no throw. (`getComputedStyle(...)`
+   confirms the real CSS is applied, e.g. `.app-shell` is `position: fixed`.)
+2. **The Electrobun bridge.** `window.bun` / `getRequest()` (which `khalaTurn`,
+   `shellTurn`, token resolution, etc. call) is absent in a plain browser. The
+   entry installs a **test-controlled stub through the same `setRequest`/
+   `pushInbound` seam** the live `main.ts` uses (`bridge.ts`), so the real Effect
+   Commands reach a scripted fake, not the network; the live `khalaToken` push is
+   driven for streaming. `scriptKhala({ deltas, text, resolveBeforeStream })`
+   even reproduces the terminal-answer-first **race** that doubled the Khala
+   response. Reuses the #6045 deterministic-env layers for any service timing/seed.
+
+**Determinism.** The page installs a driver-controlled fake `requestAnimationFrame`
++ `performance.now` (the same trick as the pixel harness) BEFORE the entry runs.
+Foldkit batches its DOM patch through `requestAnimationFrame`, so the runtime
+NEVER repaints on its own — a render happens only when the driver pumps frames.
+The same scenario pumps the same frames and yields identical DOM, boxes, and
+text every run (`app-replica.test.ts` asserts re-running a scenario is
+byte-identical).
+
+**The driver drives the REAL DOM event path** via CDP: `pressKey` dispatches a
+real `keydown` (so it flows through the real keyboard subscription → forward gate
+→ `interpretKey` → reducer → re-render), and `click` dispatches a real mouse
+click at the element's box (so a real Foldkit `OnClick` fires). Nothing calls the
+reducer directly.
+
+**It proved-then-fixed three live bugs** (`tests/app-replica.test.ts`), each
+fail-before on current `main` / pass-after the fix, asserted on the real DOM:
+
+- **Hotbar 2/3 with the Ask box focused.** Fail-before: a bare `2`/`3` typed a
+  digit into the focused `.verse-khala-input` and the hotbar "did nothing".
+  Fixed (forward gate + `interpretKey`, scoped to the Ask box via
+  `inVerseAskInput`): the wired slots (1/2/3) fire even while the Ask box is
+  focused and the digit is swallowed (input stays empty), the slot buttons fire
+  on click regardless of focus, and a bare number fires when unfocused — asserted
+  by `count('[data-verse-spawned-scene="active"]')` and the input value. Digits
+  still type in every other field (composer/terminal/palette) and unwired slots.
+- **Khala response renders twice.** Fail-before (terminal-answer-first race):
+  `RespondedVerseKhala` set the full answer, then late streamed deltas appended
+  it again → the answer appeared twice. Fixed in `update.ts` (`GotVerseKhalaToken`
+  now drops deltas once the turn is no longer in flight) — asserted via
+  `text(".verse-khala-bubble-body")` (the answer substring occurs exactly once).
+- **Ask box behind the hotbar.** Fail-before: the overlay was centered
+  (`left: 50%`) at the bottom, overlapping the bottom-left hotbar. Fixed in
+  `styles.css` (the overlay is pinned beside the hotbar at the same bottom and
+  height) — asserted via `boundingBox()` (the bar and hotbar do not overlap, the
+  bar is to the right of the hotbar, same height, bottoms aligned).
+
+Proof screenshots are committed under `docs/testing/proof/2026-06-22-replica-*`.
+
 ## Running
 
 - Pure harness tests (input path + deterministic layers): per-file via
@@ -204,3 +284,8 @@ TestClock), with tests that run twice and assert identical output.
 - Headless pixel regression (needs Chrome/Chromium; set `CHROME_PATH` if not at
   the default macOS location): `bun apps/autopilot-desktop/scripts/crackling-arc-pixel-regression.ts`.
   Gated behind a binary check so it skips cleanly where no Chromium is present.
+- **App replica (needs Chrome/Chromium + `bun run build:css` first):**
+  `bun test apps/autopilot-desktop/tests/app-replica.test.ts`. It skips cleanly
+  where no Chromium is present or the compiled stylesheet is missing. Each test
+  carries a 60s budget (several CDP round-trips), so it passes under the bare
+  `bun test <file>` runner `run-tests.sh` uses without `--timeout`.
