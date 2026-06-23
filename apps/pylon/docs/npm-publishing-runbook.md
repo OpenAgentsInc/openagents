@@ -45,12 +45,23 @@
 Leaf dependencies first, then Pylon:
 
 ```sh
-cd packages/agent-runtime-schema && bun pm pack && npm publish ./openagentsinc-agent-runtime-schema-<v>.tgz --access public && rm -f ./*.tgz
+cd packages/agent-runtime-schema   && bun pm pack && npm publish ./openagentsinc-agent-runtime-schema-<v>.tgz --access public && rm -f ./*.tgz
+cd ../provider-account-schema       && bun pm pack && npm publish ./openagentsinc-provider-account-schema-<v>.tgz --access public && rm -f ./*.tgz
+cd ../blueprint-contracts           && bun pm pack && npm publish ./openagentsinc-blueprint-contracts-<v>.tgz --access public && rm -f ./*.tgz
 cd ../nip90               && bun pm pack && npm publish ./openagentsinc-nip90-<v>.tgz --access public && rm -f ./*.tgz
 cd ../tassadar-executor   && bun pm pack && npm publish ./openagentsinc-tassadar-executor-<v>.tgz --access public && rm -f ./*.tgz
 cd ../../apps/pylon       && bun run release:gate   # must pass first
 bun pm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public && rm -f ./*.tgz
 ```
+
+- `@openagentsinc/provider-account-schema` and `@openagentsinc/blueprint-contracts`
+  are the canonical security-contract packages (one authority for
+  `ProviderSecretRef` + the secret-safety predicates, and the `IsPrivateDataSafe`
+  private-data-safety predicate). Pylon's bundled runtime imports them, so they
+  are `workspace:*` deps of `@openagentsinc/pylon` and must be published as leaf
+  deps BEFORE Pylon (same pattern as `agent-runtime-schema`). `bun pm pack`
+  rewrites the `workspace:*` deps to their concrete versions in the packed Pylon
+  manifest.
 
 - `--tag rc` is load-bearing for any pre-stable Pylon publish: omitting
   it moves `latest` and every plain `npm install @openagentsinc/pylon`

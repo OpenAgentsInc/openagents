@@ -163,13 +163,6 @@
         "effect": "4.0.0-beta.70",
       },
     },
-    "apps/openagents.com/packages/provider-account-schema": {
-      "name": "@openagentsinc/provider-account-schema",
-      "version": "0.1.0",
-      "dependencies": {
-        "effect": "4.0.0-beta.70",
-      },
-    },
     "apps/openagents.com/packages/sync-client": {
       "name": "@openagentsinc/sync-client",
       "version": "0.1.0",
@@ -227,6 +220,7 @@
         "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/durable-stream": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
@@ -265,8 +259,10 @@
         "@noble/hashes": "1.7.1",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
         "@openagentsinc/autopilot-control-protocol": "workspace:*",
+        "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/nip90": "workspace:*",
+        "@openagentsinc/provider-account-schema": "workspace:*",
         "@openagentsinc/tassadar-executor": "workspace:*",
         "@scure/base": "1.2.4",
         "@scure/bip32": "1.6.2",
@@ -292,6 +288,8 @@
         "pylon-runtime": "./src/cli.ts",
       },
       "dependencies": {
+        "@openagentsinc/blueprint-contracts": "workspace:*",
+        "@openagentsinc/provider-account-schema": "workspace:*",
         "@opentui/core": "0.3.4",
         "diff": "^9.0.0",
         "effect": "catalog:",
@@ -364,6 +362,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/blueprint-contracts": {
+      "name": "@openagentsinc/blueprint-contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/design-tokens": {
       "name": "@openagentsinc/design-tokens",
       "version": "0.1.0",
@@ -427,6 +436,8 @@
         "probe": "./src/cli.ts",
       },
       "dependencies": {
+        "@openagentsinc/blueprint-contracts": "workspace:*",
+        "@openagentsinc/provider-account-schema": "workspace:*",
         "@opentui/core": "0.3.4",
         "diff": "^9.0.0",
         "effect": "catalog:",
@@ -438,6 +449,17 @@
       "version": "0.1.0",
       "dependencies": {
         "@openagentsinc/public-activity-timeline": "workspace:*",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/provider-account-schema": {
+      "name": "@openagentsinc/provider-account-schema",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
@@ -1078,6 +1100,8 @@
 
     "@openagentsinc/autopilot-web": ["@openagentsinc/autopilot-web@workspace:apps/openagents.com/apps/web"],
 
+    "@openagentsinc/blueprint-contracts": ["@openagentsinc/blueprint-contracts@workspace:packages/blueprint-contracts"],
+
     "@openagentsinc/design-tokens": ["@openagentsinc/design-tokens@workspace:packages/design-tokens"],
 
     "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
@@ -1114,7 +1138,7 @@
 
     "@openagentsinc/proof-replay": ["@openagentsinc/proof-replay@workspace:packages/proof-replay"],
 
-    "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:apps/openagents.com/packages/provider-account-schema"],
+    "@openagentsinc/provider-account-schema": ["@openagentsinc/provider-account-schema@workspace:packages/provider-account-schema"],
 
     "@openagentsinc/public-activity-timeline": ["@openagentsinc/public-activity-timeline@workspace:packages/public-activity-timeline"],
 
