@@ -9,11 +9,22 @@ Computing surfaces.
 
 ## Bottom line
 
-OpenAgents appears to have enough local Google Cloud access and Spot/preemptible
-quota to start a non-production probe for the newly announced Confidential G4
-path. Access is still not proven as provisionable capacity until an actual
-create attempt succeeds, because quota is necessary but not sufficient for
-preview entitlement and zonal capacity.
+OpenAgents can provision and boot the newly announced Confidential G4 path now.
+On 2026-06-23, a live `g4-standard-48` Spot VM in `us-central1-b` was created
+successfully in project `openagentsgemini` with AMD SEV and one NVIDIA RTX PRO
+6000 Blackwell Server Edition GPU. Guest-side checks confirmed AMD SEV memory
+encryption and, after installing the NVIDIA 580 open kernel module driver and
+the Google-documented LKCA/SPDM setup, `nvidia-smi` reported a working
+Confidential GPU with DRAM encryption enabled and 97,131 MiB of protected GPU
+memory.
+
+The short-term service answer is therefore yes, with caveats that are now
+operational rather than speculative: we need a reproducible SEV-compatible boot
+image or bootstrap layer with the open 580 driver, LKCA config, persistence
+mode, and our inference runtime already baked in. A standard Google Deep
+Learning VM image with NVIDIA 580 was rejected as not SEV-compatible, so the
+fast path is not "use DLVM as-is"; it is "start from supported Ubuntu/COS and
+own the GPU bootstrap."
 
 For Google's Prompt Encryption SDK specifically, the local evidence now points
 more strongly at an A3/H100 Confidential Space probe than a plain G4 VM probe:
@@ -31,13 +42,10 @@ Google's current docs say Confidential VM on G4 is Preview, limited to
 `g4-standard-48` in limited regions and zones. That exact machine type is
 visible in both `us-central1-b` and `us-central1-f`.
 
-The unresolved blocker is preview entitlement/capacity, not basic IAM. The
-newer Cloud Quotas API shows Spot/preemptible quota for both candidate GPU
-families in `us-central1`, while on-demand quota for the exact Confidential VM
-probe shapes is absent or not exposed for normal non-VWS RTX PRO 6000 and H100.
-I did not create a VM during this audit. Treat the next step as a deliberately
-bounded create/delete probe, or as a preview/capacity confirmation with Google
-Cloud support, before making any product or operator promise.
+The old blocker "can we create one?" is closed for the cheapest G4 Spot path.
+The remaining blockers for a service launch are packaging, attestation receipt
+capture, Prompt Encryption SDK integration, capacity/reservation planning, and
+operator policy around retention and logs.
 
 ## What Google announced
 
@@ -67,6 +75,8 @@ References:
   <https://github.com/google/prompt-encryption-sdk>
 - Prompt Encryption SDK codelab:
   <https://codelabs.developers.google.com/prompt-encryption-sdk>
+- Google Cloud "Create a Confidential VM instance with GPU":
+  <https://docs.cloud.google.com/confidential-computing/confidential-vm/docs/create-a-confidential-vm-instance-with-gpu>
 
 Local reference reviewed:
 
@@ -250,8 +260,8 @@ Computing adders:
 
 Practical cost read:
 
-- G4 Spot is the cheapest meaningful confidential-GPU probe path if preview
-  entitlement and capacity work.
+- G4 Spot is the cheapest meaningful confidential-GPU probe path, and it did
+  work in `openagentsgemini` on 2026-06-23.
 - A3/H100 is materially more expensive and should be reserved for a
   Hopper-specific Confidential Space/H100 test or a workload that actually
   needs H100.
@@ -259,11 +269,139 @@ Practical cost read:
   logging noise, but any successful probe should be deleted immediately after
   describe/attestation capture.
 
+### Live G4 Spot probe on 2026-06-23
+
+Result: success for provision, boot, AMD SEV, GPU enumeration, NVIDIA driver,
+and Confidential GPU memory/encryption signal.
+
+Instance:
+
+- Name: `oa-confidential-g4-probe-20260623-1`
+- Project: `openagentsgemini`
+- Zone: `us-central1-b`
+- Machine: `g4-standard-48`
+- Provisioning: Spot / preemptible
+- Confidential type: `SEV`
+- GPU: one `nvidia-rtx-pro-6000`
+- Image that worked: `ubuntu-os-cloud/ubuntu-2404-lts-amd64`
+- Lifecycle: created, tested, and deleted in the same work session
+
+Create command that succeeded:
+
+```sh
+gcloud compute instances create oa-confidential-g4-probe-20260623-1 \
+  --project=openagentsgemini \
+  --zone=us-central1-b \
+  --machine-type=g4-standard-48 \
+  --confidential-compute-type=SEV \
+  --maintenance-policy=TERMINATE \
+  --provisioning-model=SPOT \
+  --instance-termination-action=STOP \
+  --boot-disk-type=hyperdisk-balanced \
+  --boot-disk-size=50GB \
+  --image-family=ubuntu-2404-lts-amd64 \
+  --image-project=ubuntu-os-cloud \
+  --labels=purpose=confidential-g4-probe,owner=openagents,ttl=manual-delete
+```
+
+Compute Engine describe output confirmed:
+
+```text
+confidentialInstanceType: SEV
+machineType: g4-standard-48
+guestAccelerators: nvidia-rtx-pro-6000 x 1
+provisioningModel: SPOT
+status: RUNNING
+```
+
+Guest evidence before GPU driver:
+
+```text
+Vendor ID: AuthenticAMD
+Model name: AMD EPYC 9B45
+Memory Encryption Features active: AMD SEV
+SEV: Status: SEV
+PCI-DMA: Using software bounce buffering for IO (SWIOTLB)
+05:00.0 3D controller: NVIDIA Corporation Device 2bb5 (rev a1)
+```
+
+The stock Ubuntu image did not include `nvidia-smi`. Installing the default
+non-open `nvidia-driver-580-server` path caused:
+
+```text
+NVRM: GPU 0000:05:00.0: RmInitAdapter failed! (0x22:0x38:897)
+No devices were found
+```
+
+The working path was the Google-documented Confidential GPU setup:
+
+```sh
+sudo apt-get update --yes
+sudo apt-get install -y \
+  linux-headers-$(uname -r) \
+  build-essential \
+  libxml2 \
+  libncurses5-dev \
+  pkg-config \
+  libvulkan1 \
+  gcc-12 \
+  linux-modules-nvidia-580-server-open-gcp-6.17 \
+  nvidia-headless-580-server-open \
+  nvidia-utils-580-server
+
+echo "install nvidia /sbin/modprobe ecdsa_generic; /sbin/modprobe ecdh; /sbin/modprobe --ignore-install nvidia" \
+  | sudo tee /etc/modprobe.d/nvidia-lkca.conf
+
+sudo test -f /usr/lib/systemd/system/nvidia-persistenced.service \
+  && sudo sed -i "s/no-persistence-mode/uvm-persistence-mode/g" \
+    /usr/lib/systemd/system/nvidia-persistenced.service
+
+sudo systemctl daemon-reload
+sudo update-initramfs -u
+sudo reboot
+```
+
+After purging the non-open module packages and rebooting, `modinfo nvidia`
+showed:
+
+```text
+filename: /lib/modules/6.17.0-1018-gcp/kernel/nvidia-580srv-open/nvidia.ko
+version: 580.159.03
+license: Dual MIT/GPL
+```
+
+Final `nvidia-smi` evidence:
+
+```text
+GPU 0: NVIDIA RTX PRO 6000 Blackwell Server Edition
+Driver Version: 580.159.03
+CUDA Version: 13.0
+Attached GPUs: 1
+Product Architecture: Blackwell
+FB Memory Usage Total: 97887 MiB
+Conf Compute Protected Memory Usage Total: 97131 MiB
+DRAM Encryption Mode Current: Enabled
+Persistence Mode: Enabled
+```
+
+The attempted shortcut with Google Deep Learning VM image family
+`common-cu129-ubuntu-2404-nvidia-580` failed at create time:
+
+```text
+Confidential Instance Config can only be set when using an SEV compatible image.
+```
+
+Cost model for this live probe: the instance ran for roughly half an hour. At
+the G4 Spot estimate of `$0.92336/hr`, compute/GPU cost should be roughly
+`$0.46` before small disk/network/logging charges. The important service cost
+number remains about `$0.92336/hr` per running one-GPU G4 Spot worker while the
+Preview confidential surcharge/license are waived.
+
 ## Feasibility assessment
 
 ### Confidential G4 VM
 
-Status: likely testable with Spot quota; not proven provisionable.
+Status: proven provisionable and GPU-usable with the right driver path.
 
 Why:
 
@@ -277,50 +415,45 @@ Why:
 - Google docs state that Confidential VM with G4 uses AMD SEV and RTX PRO
   6000 in Preview, and that G4 Confidential VM is limited to
   `g4-standard-48` in limited regions/zones.
+- A live `g4-standard-48` Spot VM was created in `us-central1-b`, booted with
+  `confidentialInstanceType=SEV`, and exposed the RTX PRO 6000 to the guest.
+- With NVIDIA 580 open kernel modules plus LKCA/SPDM configuration, the GPU
+  initialized and reported Confidential Compute protected memory and DRAM
+  encryption enabled.
 
 Remaining unknowns:
 
-- Whether the project is admitted to the Preview feature.
 - Whether non-Spot/on-demand quota exists for normal non-VWS RTX PRO 6000
   probes. Spot quota exists.
-- Whether current zonal capacity is available.
-- Whether the right image and disk choices satisfy both G4 and Confidential VM
-  constraints.
+- Whether current zonal capacity is reliable enough without reservations.
+- Whether we should use Ubuntu or COS for the first service image.
+- Whether Google will keep the exact G4 Preview driver/LKCA path stable through
+  GA.
+- How long our final inference bootstrap takes after we bake the driver path,
+  model/runtime, attestation service, and log redaction into an image.
 
-Recommended bounded probe:
+Recommended repeatable service bootstrap:
 
 ```sh
-gcloud compute instances create oa-confidential-g4-probe-20260623 \
+gcloud compute instances create INSTANCE_NAME \
   --project=openagentsgemini \
   --zone=us-central1-b \
   --machine-type=g4-standard-48 \
   --confidential-compute-type=SEV \
   --maintenance-policy=TERMINATE \
   --provisioning-model=SPOT \
+  --instance-termination-action=STOP \
   --boot-disk-type=hyperdisk-balanced \
+  --boot-disk-size=100GB \
   --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
-  --labels=purpose=confidential-g4-probe,owner=openagents,ttl=manual-delete \
-  --no-address
+  --labels=purpose=confidential-g4-worker,owner=openagents
 ```
 
-If creation succeeds, immediately verify and delete unless a live test is
-intended:
-
-```sh
-gcloud compute instances describe oa-confidential-g4-probe-20260623 \
-  --project=openagentsgemini \
-  --zone=us-central1-b \
-  --format='json(confidentialInstanceConfig,machineType,guestAccelerators,status)'
-
-gcloud compute instances delete oa-confidential-g4-probe-20260623 \
-  --project=openagentsgemini \
-  --zone=us-central1-b
-```
-
-If creation fails, capture only the structured error category, not raw logs with
-private metadata. Likely outcomes are preview entitlement missing, quota missing,
-or capacity unavailable.
+Then install the open 580 driver, LKCA config, persistence mode, inference
+runtime, and Prompt Encryption SDK server into a reusable image. Do not rely on
+a standard Deep Learning VM image for this path; the tested DLVM family was not
+accepted as SEV-compatible.
 
 ### Confidential GKE Nodes on G4
 
@@ -414,12 +547,14 @@ Encryption SDK is the cleaner first probe.
 
 ## OpenAgents product implications
 
-This is infrastructure readiness, not a product claim.
+This is stronger than infrastructure readiness, but still not a public product
+claim.
 
 Do not update product promises, public copy, or agent-readable capabilities to
 say OpenAgents has Confidential AI until:
 
-1. A VM or Confidential Space workload is actually provisioned.
+1. A reusable Confidential G4 worker image is built from the successful Ubuntu
+   plus open 580/LKCA path.
 2. Attestation evidence is captured and stored as a public-safe receipt.
 3. Prompt/response encryption is tested end-to-end with a pinned policy.
 4. Runtime logs prove prompts, raw responses, keys, private repo contents, and
@@ -428,10 +563,10 @@ say OpenAgents has Confidential AI until:
 5. The relevant invariant or product-promise ledger is updated if the claim
    broadens beyond an internal readiness note.
 
-Near-term useful claim after a successful probe:
+Near-term true internal claim:
 
-> OpenAgents has an internal Google Cloud Confidential G4 probe path under
-> evaluation.
+> OpenAgents can provision a Google Cloud Confidential G4 Spot VM and initialize
+> its RTX PRO 6000 GPU in confidential mode.
 
 That remains weaker than:
 
@@ -442,21 +577,26 @@ and public-safe evidence gates.
 
 ## Next actions
 
-1. Run the bounded `oa-confidential-g4-probe-20260623` create/describe/delete
-   flow in `us-central1-b` using Spot first.
-2. Run a separate bounded Prompt Encryption SDK probe only if the expected spend
+1. Convert the working manual bootstrap into a startup script or Packer/image
+   build: Ubuntu 24.04 SEV-compatible base, open NVIDIA 580 server module,
+   LKCA config, persistence mode, CUDA/runtime dependencies, and redacted boot
+   evidence capture.
+2. Re-run the G4 Spot worker from that image and measure cold-start time from
+   create to healthy `nvidia-smi`.
+3. Add a minimal inference container and run one no-secret local prompt through
+   the GPU.
+4. Add the Prompt Encryption SDK server wrapper and client policy check against
+   the G4 worker. For SDK acceptance, require policy failure when hardware
+   model, project, zone, or image digest is changed.
+5. Run a separate bounded A3/H100 Prompt Encryption SDK codelab probe only if the expected spend
    is approved. Use the local codelab as source material, prefer a short
    `a3-highgpu-1g` Spot/TDX/Confidential Space run, record the image digest and
    load balancer IP, run `examples/test_client.py`, then delete the VM, load
    balancer, firewall rules, instance group, bucket contents, and image.
-3. If entitlement or capacity fails, request/confirm Preview access and RTX PRO
+6. If capacity becomes unreliable, request/confirm Preview access and RTX PRO
    6000/G4 capacity for `openagentsgemini`. If quota fails, cite the Cloud
    Quotas evidence showing 16 preemptible RTX PRO 6000 GPUs in `us-central1`
    or 64 preemptible H100 GPUs in `us-central1`, depending on which probe
    failed, and ask Google which quota dimension the create path consumes.
-4. If VM creation succeeds, run a no-secret attestation proof and capture only
-   public-safe metadata.
-5. Test `prompt-encryption-sdk` first against a local/dev server for SDK
-   mechanics, then against the confidential server once one exists.
-6. Write a second audit with exact create result, attestation result, cost
+7. Write a second audit with exact attestation result, inference result, cost
    envelope, teardown state, and whether a product-promise change is justified.
