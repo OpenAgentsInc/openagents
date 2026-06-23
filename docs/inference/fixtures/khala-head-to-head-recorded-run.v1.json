@@ -1,0 +1,134 @@
+{
+  "schema": "openagents.khala_head_to_head_evidence.v1",
+  "manifestRef": "recorded.khala.head_to_head.crossy_road.verified_run.v1",
+  "evidenceMode": "fixture_scaffold",
+  "generatedAt": "2026-06-23T00:00:00.000Z",
+  "scope": {
+    "issueRef": "github:OpenAgentsInc/openagents#6016",
+    "parentIssueRef": "github:OpenAgentsInc/openagents#6017",
+    "roadmapRef": "docs/inference/khala-buildout-roadmap.md#agent-demo--benchmark-metrics-and-publication-pack",
+    "runbookRef": "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+    "prompt": "build a really high quality single html file crossy road game with three.js",
+    "benchmarkRef": "benchmark.khala.crossy_road_threejs.single_html.v1"
+  },
+  "runs": [
+    {
+      "runId": "recorded.khala.crossy_road.verified_run.v1",
+      "lane": "khala",
+      "label": "Khala recorded verified run (prod 2026-06-22)",
+      "model": "openagents/khala-code",
+      "provider": "openagents",
+      "coordinator": {
+        "mode": "heuristic_router",
+        "policyRef": "recorded.khala.heuristic_router.v0.crossy_road.v1",
+        "promoted": false
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-22T00:00:00.000Z",
+      "completedAt": "2026-06-22T00:01:46.000Z",
+      "wallClockMs": 106000,
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
+      },
+      "costUsd": 0,
+      "costMsat": 0,
+      "priceMsat": 0,
+      "acceptedOutcome": {
+        "accepted": true,
+        "verificationClass": "test_passed",
+        "verdictRef": "recorded.verdict.khala.crossy_road.test_passed.v1",
+        "verifierRef": "verifier.khala_code.static_prescreen.v1",
+        "receiptRef": "recorded.receipt.khala.crossy_road.verified_true_scalar_reward_1.v1",
+        "evidenceRefs": [
+          "recorded.artifact.khala.crossy_road.single_html.v1",
+          "recorded.stream.khala.crossy_road.no_524.106s.v1"
+        ],
+        "blockerRefs": [
+          "blocker.khala_demo.verifier_static_prescreen_not_executed"
+        ]
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "recorded.artifact.khala.crossy_road.single_html.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.settlement_owner_armed_not_dispatched"
+        ]
+      },
+      "verse": {
+        "playbackRef": null,
+        "sourceRefs": [],
+        "inWorldWorkUnits": 0,
+        "gatewayWorkUnits": 0,
+        "blockerRefs": [
+          "blocker.khala_demo.verse_playback_missing"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md",
+        "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+        "docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md",
+        "github:OpenAgentsInc/openagents#6016"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.tokens_not_measured",
+        "blocker.khala_demo.cost_usd_not_measured",
+        "blocker.khala_demo.m7_live_conductor_missing"
+      ]
+    }
+  ],
+  "externalReportedClaims": [
+    {
+      "claimRef": "reported.sakana_fugu_ultra.crossy_road.external_unverified.v1",
+      "label": "Sakana Fugu Ultra reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 89000,
+      "costUsd": 7.32,
+      "wallClockMs": 1320000,
+      "verdictSummary": "Reported faster and cheaper; issues included inverted turn direction, wonky camera, no SFX, and not identical to Crossy Road.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    },
+    {
+      "claimRef": "reported.claude_opus_4_8_ultracode.crossy_road.external_unverified.v1",
+      "label": "Claude Opus 4.8 Ultracode reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 940000,
+      "costUsd": 37.85,
+      "wallClockMs": 4740000,
+      "verdictSummary": "Reported higher quality; issues included retry loops and wrong restart character position.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    }
+  ],
+  "publication": {
+    "status": "draft_scaffold",
+    "publicationRef": null,
+    "claimUpgradeRefs": [],
+    "blockerRefs": [
+      "blocker.khala_demo.frontier_baseline_not_run",
+      "blocker.khala_demo.watched_in_verse_pending",
+      "blocker.khala_demo.playable_in_world_pending",
+      "blocker.khala_demo.publication_missing",
+      "blocker.khala_demo.owner_signed_claim_upgrade_missing"
+    ]
+  }
+}

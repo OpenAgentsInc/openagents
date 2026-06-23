@@ -28,15 +28,22 @@ cite or reproduce them. They are never mixed into OpenAgents measurements.
 
 - Fixture manifest:
   `docs/inference/fixtures/khala-head-to-head-dry-run.v1.json`
+- Recorded verified-run manifest (our real 2026-06-22 Khala data point; see
+  `docs/inference/2026-06-23-khala-head-to-head-m8-status.md`):
+  `docs/inference/fixtures/khala-head-to-head-recorded-run.v1.json`
 - Runner (drives both lanes, emits the manifest):
   `scripts/khala-demo/run-head-to-head.mjs`
 - Reducer/validator:
   `scripts/khala-demo/reduce-head-to-head.mjs`
+- Measured metric-table emitter (honest `not_measured` cells from a recorded
+  manifest; read-only over the manifest, no runner network/contract change):
+  `scripts/khala-demo/emit-metric-table.mjs`
 - Publication renderer:
   `scripts/khala-demo/render-publication.mjs`
 - Test:
   `scripts/khala-demo/run-head-to-head.test.mjs`,
-  `scripts/khala-demo/reduce-head-to-head.test.mjs`, and
+  `scripts/khala-demo/reduce-head-to-head.test.mjs`,
+  `scripts/khala-demo/emit-metric-table.test.mjs`, and
   `scripts/khala-demo/render-publication.test.mjs`
 
 Run the runner against the built-in stub transport (no live gateway needed)
