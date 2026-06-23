@@ -29,7 +29,11 @@ import type { Message } from '../message'
 const pageClass =
   'min-h-screen min-h-dvh w-full overflow-y-auto text-[#f1efe8] antialiased'
 
-const containerClass = 'mx-auto w-[min(100%,860px)] px-5 py-16 sm:py-20'
+// The long-form copy sits on its own ~90% opaque panel (a teeny bit of the 3D
+// scene still bleeds through) so it stays readable while the scene lives around
+// it. Centered column with breathing room on the sides where the scene shows.
+const containerClass =
+  'mx-auto my-10 w-[min(100%,880px)] rounded-2xl bg-[#0c0f13]/90 px-6 py-14 ring-1 ring-white/10 sm:my-14 sm:px-10 sm:py-16'
 
 const eyebrowClass =
   'text-xs font-semibold uppercase tracking-[0.22em] text-[#8fb6ff]'
