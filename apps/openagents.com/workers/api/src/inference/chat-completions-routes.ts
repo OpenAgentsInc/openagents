@@ -19,7 +19,11 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
-import { compactRandomId, currentEpochSeconds } from '../runtime-primitives'
+import {
+  compactRandomId,
+  currentEpochMillis,
+  currentEpochSeconds,
+} from '../runtime-primitives'
 import {
   type FairShareDecision,
   type SpendCapDecision,
@@ -48,6 +52,12 @@ import {
   guardKhalaCompletion,
   verifyKhalaSignatures,
 } from './khala-identity'
+import {
+  type DurableInferenceStreamStore,
+  type StreamStore,
+  durableInferenceReadUrl,
+  teeUpstreamToDurable,
+} from './durable-inference-proxy'
 import {
   type MeteringHook,
   type MeteringOutcome,
@@ -128,6 +138,19 @@ export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
 // Parse the INFERENCE_GATEWAY_ENABLED flag value. Default OFF: anything other
 // than an explicit truthy token leaves the gateway inert.
 export const isInferenceGatewayEnabled = (
+  value: string | undefined,
+): boolean => {
+  if (value === undefined) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// Parse the INFERENCE_DURABLE_STREAM_ENABLED flag (durable-stream Rank-1, #6058).
+// Default OFF: the streaming pass-through degrades to today's behaviour (no
+// persistence/resume) unless this is an explicit truthy token AND a durable
+// store factory is wired. Fail-safe + inert by default.
+export const isInferenceDurableStreamEnabled = (
   value: string | undefined,
 ): boolean => {
   if (value === undefined) {
@@ -228,6 +251,19 @@ export type ChatCompletionsDeps = Readonly<{
   // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
   nowEpochSeconds?: () => number
   newId?: () => string
+  // DURABLE-STREAM RANK-1 SEAM (#6058, EPIC #6056). When `durableStreamEnabled`
+  // is true AND `durableStream` resolves a per-request `StreamStore`, a streaming
+  // completion is teed into a durable offset log keyed by the response id, so a
+  // client disconnect mid-generation can be resumed by offset (the durable read
+  // route). DEFAULT OFF + UNWIRED: with the flag off or no store factory, the
+  // streaming path is byte-for-byte today's pass-through (no persistence/resume).
+  // Metering still settles EXACTLY ONCE on the real upstream EOF and NEVER on a
+  // resume/replay read (the resume route has no metering hook).
+  durableStreamEnabled?: boolean | undefined
+  durableStream?: DurableInferenceStreamStore | undefined
+  // Deterministic clock (epoch ms) for the durable log's TTL/offset bookkeeping.
+  // Defaults to a fixed value in tests; the Worker threads `currentEpochMillis`.
+  nowEpochMillis?: (() => number) | undefined
   // ACCEPTANCE-DISPATCH SEAM (EPIC #6017). When a khala-code completion produces an
   // EXECUTABLE artifact (it passes the cheap pre-screen), the gateway enqueues an
   // out-of-Worker verification job: a node-side runner (Pylon / sandbox / Cloud Run)
@@ -574,6 +610,20 @@ const sseFrame = (payload: unknown): string =>
 // executed with `Effect.runPromise` in the flush step (the same hook used on the
 // buffered/non-streaming paths). The metering hook never fails (it returns a
 // typed outcome), so a metering error never breaks the already-delivered stream.
+// Resolve the per-request durable store, swallowing a factory failure into
+// `undefined` (fail-safe: a broken/absent durable substrate must NOT break the
+// completion — it degrades to today's non-durable pass-through).
+const resolveDurableStore = (
+  factory: DurableInferenceStreamStore,
+  requestId: string,
+): StreamStore | undefined => {
+  try {
+    return factory(requestId)
+  } catch {
+    return undefined
+  }
+}
+
 const makePassThroughResponseStream = (
   input: Readonly<{
     accountRef: string
@@ -584,32 +634,107 @@ const makePassThroughResponseStream = (
     requestedModel: string
     responseId: string
     source: InferenceStreamSource
+    // DURABLE-PROXY SEAM (#6058). When present, every upstream frame is teed into
+    // a per-request durable offset log (`@openagentsinc/durable-stream`) keyed by
+    // `responseId` so a client disconnect mid-generation can be resumed by offset.
+    // ABSENT => today's pure pass-through, byte-for-byte unchanged (fail-safe).
+    durableStore?: StreamStore | undefined
+    // Deterministic clock for the durable log (TTL/offset bookkeeping). Defaults
+    // to a fixed epoch in tests; the route threads `currentEpochMillis`.
+    durableNowMs?: number | undefined
   }>,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
-  const contentParts: Array<string> = []
+  const chunkFrame = (
+    delta: string,
+    finishReason: string | null,
+    openagents?: OpenAgentsReceipt | undefined,
+  ): string =>
+    sseFrame({
+      choices: [
+        {
+          delta: delta === '' ? {} : { content: delta },
+          finish_reason: finishReason,
+          index: 0,
+        },
+      ],
+      created: input.created,
+      id: input.responseId,
+      model: input.requestedModel,
+      object: 'chat.completion.chunk',
+      ...(openagents === undefined ? {} : { openagents }),
+    })
+
+  // Settle metering (receipt-first) from the terminal usage frame and build the
+  // terminal SSE frame carrying the `openagents` disclosure. THIS IS THE SINGLE
+  // METERING-ONCE BOUNDARY: it runs only on the real upstream EOF (the producer
+  // drain), never on a resume/replay read. `terminal.usage === undefined` (no
+  // terminal usage frame served) means no settlement, exactly as the buffered
+  // path behaves.
+  const buildTerminalFrame = async (
+    terminal: ReturnType<InferenceStreamSource['terminal']>,
+    content: string,
+  ): Promise<string> => {
+    const servedModel = terminal.servedModel ?? input.requestedModel
+    let streamMetering: MeteringOutcome | undefined
+    if (terminal.usage !== undefined) {
+      streamMetering = await Effect.runPromise(
+        input.meteringHook({
+          accountRef: input.accountRef,
+          adapterId: input.adapterId,
+          fundingKind: input.fundingKind,
+          requestId: input.responseId,
+          requestedModel: input.requestedModel,
+          servedModel,
+          streamed: true,
+          usage: terminal.usage,
+        }),
+      )
+    }
+
+    const streamResult: InferenceResult = {
+      content,
+      finishReason: terminal.finishReason ?? 'stop',
+      servedModel,
+      usage: terminal.usage ?? {
+        completionTokens: 0,
+        promptTokens: 0,
+        totalTokens: 0,
+      },
+    }
+    const openagents = khalaReceiptForResult({
+      adapterId: input.adapterId,
+      metering: streamMetering ?? { metered: false, receiptRef: null },
+      requestedModel: input.requestedModel,
+      responseId: input.responseId,
+      result: streamResult,
+    })
+    return chunkFrame('', terminal.finishReason ?? 'stop', openagents)
+  }
+
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      const chunkFrame = (
-        delta: string,
-        finishReason: string | null,
-        openagents?: OpenAgentsReceipt | undefined,
-      ): string =>
-        sseFrame({
-          choices: [
-            {
-              delta: delta === '' ? {} : { content: delta },
-              finish_reason: finishReason,
-              index: 0,
-            },
-          ],
-          created: input.created,
-          id: input.responseId,
-          model: input.requestedModel,
-          object: 'chat.completion.chunk',
-          ...(openagents === undefined ? {} : { openagents }),
+      // DURABLE PROXY PATH (#6058). Tee each upstream frame into the durable log
+      // AND to the client; persist+close on EOF; settle metering EXACTLY ONCE in
+      // the `onEof` callback above. The producer drain is the only consumer of
+      // the live upstream, so a replay read can never re-bill.
+      if (input.durableStore !== undefined) {
+        await teeUpstreamToDurable({
+          emit: frame => controller.enqueue(encoder.encode(frame)),
+          frameForDelta: delta => chunkFrame(delta, null),
+          nowMs: input.durableNowMs ?? 0,
+          onEof: buildTerminalFrame,
+          requestId: input.responseId,
+          source: input.source,
+          store: input.durableStore,
         })
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
 
+      // NON-DURABLE PASS-THROUGH (today's behaviour, unchanged).
+      const contentParts: Array<string> = []
       try {
         // Pump every upstream content delta to the client immediately.
         for await (const event of input.source.frames) {
@@ -634,52 +759,11 @@ const makePassThroughResponseStream = (
       // Stream drained: settle metering + build the disclosure from the terminal
       // state, receipt-first. No re-buffering of content beyond the join needed
       // for the verifier's full-output rubric.
-      const terminal = input.source.terminal()
-      const servedModel = terminal.servedModel ?? input.requestedModel
-      let streamMetering: MeteringOutcome | undefined
-      if (terminal.usage !== undefined) {
-        streamMetering = await Effect.runPromise(
-          input.meteringHook({
-            accountRef: input.accountRef,
-            adapterId: input.adapterId,
-            fundingKind: input.fundingKind,
-            requestId: input.responseId,
-            requestedModel: input.requestedModel,
-            servedModel,
-            streamed: true,
-            usage: terminal.usage,
-          }),
-        )
-      }
-
-      const streamResult: InferenceResult = {
-        content: contentParts.join(''),
-        finishReason: terminal.finishReason ?? 'stop',
-        servedModel,
-        usage: terminal.usage ?? {
-          completionTokens: 0,
-          promptTokens: 0,
-          totalTokens: 0,
-        },
-      }
-      const openagents = khalaReceiptForResult({
-        adapterId: input.adapterId,
-        metering: streamMetering ?? { metered: false, receiptRef: null },
-        requestedModel: input.requestedModel,
-        responseId: input.responseId,
-        result: streamResult,
-      })
-
-      // Terminal frame: empty delta + finish reason + disclosure block.
-      controller.enqueue(
-        encoder.encode(
-          chunkFrame(
-            '',
-            terminal.finishReason ?? 'stop',
-            openagents,
-          ),
-        ),
+      const terminalFrame = await buildTerminalFrame(
+        input.source.terminal(),
+        contentParts.join(''),
       )
+      controller.enqueue(encoder.encode(terminalFrame))
       controller.enqueue(encoder.encode('data: [DONE]\n\n'))
       controller.close()
     },
@@ -961,10 +1045,21 @@ export const handleChatCompletions = (
 
       if (sseDispatch.ok) {
         const { adapterId, source } = sseDispatch.served
+        // DURABLE-STREAM RANK-1 (#6058). Resolve a per-request durable store when
+        // the flag is on AND a store factory is wired; a failing/absent factory
+        // leaves `durableStore` undefined so the stream degrades to today's
+        // pass-through (fail-safe, idempotent). The durable read URL lets a client
+        // reconnect `?offset=<last>` and replay the suffix without re-billing.
+        const durableStore: StreamStore | undefined =
+          deps.durableStreamEnabled === true && deps.durableStream !== undefined
+            ? resolveDurableStore(deps.durableStream, responseId)
+            : undefined
         const responseStream = makePassThroughResponseStream({
           accountRef: session.accountRef,
           adapterId,
           created,
+          durableNowMs: (deps.nowEpochMillis ?? currentEpochMillis)(),
+          durableStore,
           fundingKind,
           meteringHook,
           requestedModel,
@@ -975,6 +1070,15 @@ export const handleChatCompletions = (
           headers: {
             'cache-control': 'no-store',
             'content-type': 'text/event-stream; charset=utf-8',
+            // Advertise the resumable read URL only when the completion is being
+            // persisted. The opaque request id carries no prompt/credential
+            // material, so this header is safe (INVARIANTS: no leakage).
+            ...(durableStore !== undefined
+              ? {
+                  'openagents-durable-stream-url':
+                    durableInferenceReadUrl(responseId),
+                }
+              : {}),
           },
           status: 200,
         })

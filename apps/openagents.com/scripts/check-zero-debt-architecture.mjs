@@ -348,7 +348,17 @@ const budgetChecks = [
     // `Response`/`Effect.Effect<Response>`/`Promise<Response>` like the sibling
     // route handlers already counted here. Ratchet back down when these MPP and
     // discovery handlers are extracted behind shared route mappers.
-    budget: 103,
+    // +2 (103 -> 105) on 2026-06-22 (#6058, EPIC #6056) for the durable-stream
+    // Rank-1 resumable-inference surfaces: the durable resume-read route
+    // (inference/durable-inference-read-routes.ts `routeDurableInferenceReadRequest`
+    // returning `Response | undefined`, the path-param resume surface the
+    // exact-route registry cannot match — reads stored bytes only, never meters)
+    // and the durable-stream DO class (index.ts `DurableInferenceStreamObject.fetch`
+    // returning `Promise<Response>`, the Cloudflare DO fetch contract). Both are
+    // flag-gated INERT by default. The DO `fetch` is a required Cloudflare runtime
+    // signature; ratchet back down when the read route is extracted behind a shared
+    // prefix-route mapper.
+    budget: 105,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

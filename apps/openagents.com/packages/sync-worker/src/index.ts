@@ -23,6 +23,11 @@ export type WorkerBindings = Readonly<{
   SYNC_ROOM: DurableObjectNamespace
   MDK_SIDECAR: DurableObjectNamespace
   MDK_TREASURY?: DurableObjectNamespace
+  // Durable-stream Rank-1 resumable inference (#6058). Optional SQLite-class DO
+  // namespace; one DO instance per request id holds that completion's durable
+  // offset log. Absent (or the INFERENCE_DURABLE_STREAM_ENABLED flag off) => the
+  // streaming path is today's non-durable pass-through (fail-safe).
+  INFERENCE_DURABLE_STREAM?: DurableObjectNamespace
   MARKET_RELAY_SERVICE?: Fetcher
   ARTIFACTS: R2Bucket
   RUNNER_EVENTS: Queue

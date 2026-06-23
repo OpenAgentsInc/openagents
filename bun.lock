@@ -227,6 +227,7 @@
         "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openagentsinc/durable-stream": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",

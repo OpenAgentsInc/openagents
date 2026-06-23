@@ -50,6 +50,10 @@ type WorkerRouteDependencies = Readonly<{
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
   routeModelRetrieveRequest: OptionalEffectRoute
+  // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
+  // (durable-stream Rank-1, #6058 — the path-param resume surface the exact-route
+  // registry cannot match). Reads stored bytes only; NEVER meters.
+  routeDurableInferenceReadRequest: OptionalEffectRoute
   routeMulletRequest: OptionalEffectRoute
   routeOmniRequest: OptionalEffectRoute
   routeOnboardingRequest: OptionalEffectRoute
@@ -264,6 +268,17 @@ export const makeWorkerRouteRequest =
 
       if (modelRetrieveResponse !== undefined) {
         return yield* modelRetrieveResponse
+      }
+
+      // Durable inference resume read (durable-stream Rank-1, #6058): the
+      // path-param resume surface for a dropped streaming completion. Reads stored
+      // bytes only — never meters. INERT-gated in the handler (shares the gateway
+      // flag); off/unwired => undefined and the router falls through.
+      const durableInferenceReadResponse =
+        dependencies.routeDurableInferenceReadRequest(request, env, ctx)
+
+      if (durableInferenceReadResponse !== undefined) {
+        return yield* durableInferenceReadResponse
       }
 
       const threadFileResponse = dependencies.routeThreadFileRequest(

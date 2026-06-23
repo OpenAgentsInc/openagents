@@ -1,3 +1,4 @@
+import { MemoryStreamStore } from '@openagentsinc/durable-stream'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -8,6 +9,7 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './chat-completions-routes'
+import { replayFromOffset } from './durable-inference-proxy'
 import { decideFairShare, decideSpendCap } from './inference-abuse-controls'
 import {
   BROKEN_EXTERNAL_ASSET_CROSSY_ROAD_HTML,
@@ -1541,5 +1543,281 @@ describe('Khala identity guard', () => {
     expect(content.toLowerCase()).not.toContain('google')
     expect(content).toContain(KHALA_IDENTITY_STATEMENT)
     expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+  })
+})
+
+// DURABLE-STREAM RANK-1 (#6058): the streaming pass-through, when the durable
+// flag is on AND a store factory is wired, tees the upstream token stream into a
+// per-request durable offset log so a client drop can be resumed by offset. These
+// exercise the route wiring end-to-end: persist + resume URL header + metering
+// EXACTLY ONCE on EOF (and NOT on a replay) + flag-off → today's pass-through.
+describe('POST /v1/chat/completions — durable-stream resumable inference (#6058)', () => {
+  const durableAuth: InferenceAuth = async () => ({
+    accountRef: 'agent:test-user',
+  })
+  const funded: InferenceBalanceReader = async () => 100_000
+
+  const streamSseAdapter = (
+    id: string,
+    script: ReadonlyArray<InferenceStreamEvent>,
+    terminal: Readonly<{
+      finishReason: string | undefined
+      usage: InferenceUsage | undefined
+      servedModel: string | undefined
+    }>,
+  ): InferenceProviderAdapter => ({
+    ...stubEchoAdapter,
+    id,
+    streamSse: () =>
+      Effect.sync<InferenceStreamSource>(() => ({
+        frames: (async function* () {
+          for (const event of script) {
+            yield event
+          }
+        })(),
+        terminal: () => terminal,
+      })),
+  })
+
+  const durableRequest = (body: unknown): Request =>
+    new Request('https://openagents.com/v1/chat/completions', {
+      body: JSON.stringify(body),
+      method: 'POST',
+    })
+
+  const okUsage: InferenceUsage = {
+    completionTokens: 4,
+    promptTokens: 8,
+    totalTokens: 12,
+  }
+
+  const baseDurableDeps = (
+    overrides: Partial<ChatCompletionsDeps> = {},
+  ): ChatCompletionsDeps => ({
+    authenticate: durableAuth,
+    enabled: true,
+    readAvailableMsat: funded,
+    registry: new InferenceProviderRegistry(),
+    ...overrides,
+  })
+
+  test('flag ON + store wired: persists the stream, advertises the resume URL, and meters EXACTLY ONCE on EOF', async () => {
+    const store = new MemoryStreamStore()
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'rcpt-durable-1' }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter(
+        'durable-lane',
+        [{ contentDelta: 'Dur' }, { contentDelta: 'able' }],
+        { finishReason: 'stop', servedModel: 'served/m', usage: okUsage },
+      ),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        durableRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        baseDurableDeps({
+          durableStream: () => store,
+          durableStreamEnabled: true,
+          lanePlan: () => ['durable-lane'],
+          meteringHook,
+          newId: () => 'req-durable-route',
+          nowEpochMillis: () => 1_700_000_000_000,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    // The resumable read URL is advertised, keyed by the response id.
+    expect(response.headers.get('openagents-durable-stream-url')).toBe(
+      '/v1/chat/completions/durable/req-durable-route',
+    )
+
+    // The live stream still flows to the client unchanged.
+    const text = await response.text()
+    expect(text).toContain('"content":"Dur"')
+    expect(text).toContain('"content":"able"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+
+    // Metering settled EXACTLY ONCE on the real upstream EOF.
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.streamed).toBe(true)
+    expect(captured[0]?.adapterId).toBe('durable-lane')
+
+    // The completion is PERSISTED: a resume read reconstructs the suffix.
+    const replay = replayFromOffset({
+      nowMs: 1_700_000_000_000,
+      offset: '0',
+      requestId: 'req-durable-route',
+      store,
+    })
+    expect(replay).toBeDefined()
+    expect(replay!.body).toContain('Dur')
+    expect(replay!.body).toContain('able')
+    expect(replay!.streamClosed).toBe(true)
+  })
+
+  test('a resume / replay read of the persisted completion does NOT re-bill', async () => {
+    const store = new MemoryStreamStore()
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'rcpt-durable-2' }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter('durable-lane', [{ contentDelta: 'once' }], {
+        finishReason: 'stop',
+        servedModel: 'served/m',
+        usage: okUsage,
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        durableRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        baseDurableDeps({
+          durableStream: () => store,
+          durableStreamEnabled: true,
+          lanePlan: () => ['durable-lane'],
+          meteringHook,
+          newId: () => 'req-replay',
+          nowEpochMillis: () => 1_700_000_000_000,
+          registry,
+        }),
+      ),
+    )
+    // Drain the live stream so the producer runs to EOF (Web Streams are lazy).
+    await response.text()
+    expect(captured).toHaveLength(1)
+
+    // Many reconnect / catch-up reads of the SAME completion. The read path has
+    // no metering hook, so the metering count stays exactly one — replays are free.
+    for (let i = 0; i < 4; i++) {
+      const replay = replayFromOffset({
+        nowMs: 1_700_000_000_000,
+        offset: i % 2 === 0 ? '0' : undefined,
+        requestId: 'req-replay',
+        store,
+      })
+      expect(replay).toBeDefined()
+    }
+    expect(captured).toHaveLength(1)
+  })
+
+  test('flag OFF: the stream is today’s pass-through (no persistence, no resume URL, metered once)', async () => {
+    const store = new MemoryStreamStore()
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'rcpt-off' }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter(
+        'durable-lane',
+        [{ contentDelta: 'Pass' }, { contentDelta: 'through' }],
+        { finishReason: 'stop', servedModel: 'served/m', usage: okUsage },
+      ),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        durableRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        baseDurableDeps({
+          // Store IS wired, but the flag is OFF → degrade to pass-through.
+          durableStream: () => store,
+          durableStreamEnabled: false,
+          lanePlan: () => ['durable-lane'],
+          meteringHook,
+          newId: () => 'req-off',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    // No resume URL header on the non-durable path.
+    expect(response.headers.get('openagents-durable-stream-url')).toBeNull()
+    const text = await response.text()
+    expect(text).toContain('"content":"Pass"')
+    expect(text).toContain('"content":"through"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    // Metered once (pass-through unchanged).
+    expect(captured).toHaveLength(1)
+    // NOTHING was persisted — the store has no stream for this request.
+    const replay = replayFromOffset({
+      nowMs: 1_700_000_000_000,
+      offset: '0',
+      requestId: 'req-off',
+      store,
+    })
+    expect(replay).toBeUndefined()
+  })
+
+  test('flag ON but store factory returns undefined: fail-safe to pass-through', async () => {
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'rcpt-nostore' }
+      })
+
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      streamSseAdapter('durable-lane', [{ contentDelta: 'safe' }], {
+        finishReason: 'stop',
+        servedModel: 'served/m',
+        usage: okUsage,
+      }),
+    )
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        durableRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'open-model',
+          stream: true,
+        }),
+        baseDurableDeps({
+          durableStream: () => undefined,
+          durableStreamEnabled: true,
+          lanePlan: () => ['durable-lane'],
+          meteringHook,
+          newId: () => 'req-nostore',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('openagents-durable-stream-url')).toBeNull()
+    const text = await response.text()
+    expect(text).toContain('"content":"safe"')
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
+    expect(captured).toHaveLength(1)
   })
 })
