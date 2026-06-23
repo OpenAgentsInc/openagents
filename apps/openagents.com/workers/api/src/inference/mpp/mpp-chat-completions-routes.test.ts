@@ -225,7 +225,9 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
           id: 'pi_quote_1',
           next_action: {
             crypto_display_details: {
-              addresses: [{ address: '0xabc', network: 'base' }],
+              deposit_addresses: {
+                base: { address: '0xabc', supported_tokens: [] },
+              },
             },
           },
           status: 'requires_payment',
@@ -274,7 +276,9 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
           id: 'pi_quote_2',
           next_action: {
             crypto_display_details: {
-              addresses: [{ address: '0xabc', network: 'base' }],
+              deposit_addresses: {
+                base: { address: '0xabc', supported_tokens: [] },
+              },
             },
           },
           status: 'requires_payment',
@@ -312,7 +316,9 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
           id: 'pi_quote_3',
           next_action: {
             crypto_display_details: {
-              addresses: [{ address: '0xabc', network: 'base' }],
+              deposit_addresses: {
+                base: { address: '0xabc', supported_tokens: [] },
+              },
             },
           },
           status: 'requires_payment',

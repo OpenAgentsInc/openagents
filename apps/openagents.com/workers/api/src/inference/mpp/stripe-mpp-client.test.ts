@@ -37,7 +37,13 @@ describe('stripe mpp client — form encoding', () => {
     expect(encoded).toContain(
       encodeURIComponent('payment_method_data[type]') + '=crypto',
     )
-    expect(encoded).not.toContain('payment_method_types')
+  })
+
+  test('encodes payment_method_types as a crypto array', () => {
+    const encoded = encodeStripeForm({ payment_method_types: ['crypto'] })
+    expect(encoded).toContain(
+      encodeURIComponent('payment_method_types[0]') + '=crypto',
+    )
   })
 })
 
@@ -55,11 +61,26 @@ describe('stripe mpp client — create crypto deposit PaymentIntent', () => {
           currency: 'usd',
           id: 'pi_test_1',
           next_action: {
+            // REAL Stripe deposit-mode shape: deposit_addresses is an object
+            // KEYED BY NETWORK NAME; the address lives under `.address`.
             crypto_display_details: {
-              addresses: [{ address: '0xabc', network: 'base' }],
+              deposit_addresses: {
+                base: {
+                  address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+                  supported_tokens: [{ token: 'usdc' }],
+                },
+                solana: {
+                  address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                  supported_tokens: [{ token: 'usdc' }],
+                },
+                tempo: {
+                  address: '0x20c000000000000000000000b9537d11c60e8b50',
+                  supported_tokens: [{ token: 'usdc' }],
+                },
+              },
             },
           },
-          status: 'requires_payment',
+          status: 'requires_action',
         }),
         { headers: { 'content-type': 'application/json' }, status: 200 },
       )
@@ -77,18 +98,37 @@ describe('stripe mpp client — create crypto deposit PaymentIntent', () => {
     )
 
     expect(created.id).toBe('pi_test_1')
-    expect(created.deposits).toEqual([{ address: '0xabc', network: 'base' }])
+    // Parser reads the network-keyed object and returns one entry per network.
+    expect(created.deposits).toEqual([
+      { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', network: 'base' },
+      {
+        address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        network: 'solana',
+      },
+      {
+        address: '0x20c000000000000000000000b9537d11c60e8b50',
+        network: 'tempo',
+      },
+    ])
+    // The first deposit yields a usable recipient address for the 402 challenge
+    // (the bug was that the old array-shape parser returned []).
+    expect(created.deposits[0]?.address).toBe(
+      '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    )
     // API version pinned + auth header set + idempotency key forwarded.
     const headers = new Headers(seen[0]?.init.headers)
     expect(headers.get('stripe-version')).toBe(STRIPE_MPP_API_VERSION)
     expect(headers.get('authorization')).toBe('Bearer sk_test_x')
     expect(headers.get('idempotency-key')).toBe('mpp:quote:abc')
-    // Body requests crypto deposit mode on the requested networks.
+    // Body requests crypto deposit mode on the requested networks, and sets
+    // payment_method_types=['crypto'] to match Stripe's official SDK samples.
     const body = String(seen[0]?.init.body)
     expect(body).toContain(
       encodeURIComponent('payment_method_data[type]') + '=crypto',
     )
-    expect(body).not.toContain('payment_method_types')
+    expect(body).toContain(
+      encodeURIComponent('payment_method_types[0]') + '=crypto',
+    )
   })
 
   test('fails on a Stripe error response', async () => {
@@ -151,5 +191,21 @@ describe('stripe mpp client — retrieve / verify settlement', () => {
     )
     expect(verified.settled).toBe(false)
     expect(verified.status).toBe('requires_payment_method')
+  })
+
+  test('does NOT treat requires_capture as settled in deposit mode', async () => {
+    const fakeFetch = async (): Promise<Response> =>
+      new Response(
+        JSON.stringify({ amount: 5, id: 'pi_3', status: 'requires_capture' }),
+        { status: 200 },
+      )
+    const verified = await run(
+      retrievePaymentIntent(
+        { fetch: fakeFetch, secretKey: 'sk_test_x' },
+        'pi_3',
+      ),
+    )
+    expect(verified.settled).toBe(false)
+    expect(verified.status).toBe('requires_capture')
   })
 })
