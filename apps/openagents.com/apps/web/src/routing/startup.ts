@@ -7,10 +7,12 @@ import {
   defaultLoggedInHrefForAuth,
   defaultLoggedInRouteForAuth,
   loggedInPermissionGate,
+  loggedInWorkroomAllowed,
   routeAllowedForLoggedInAuth,
 } from '../product-policy'
 import {
   type AppRoute,
+  ChatRoute,
   InviteRoute,
   LandingRoute,
   LoggedInRoute,
@@ -93,6 +95,8 @@ export const startupRouteForLoggedOut = (
       'Components',
       'ComponentsFamily',
       'Business',
+      'Autopilot',
+      'AutopilotVertical',
       'Animations',
       'Activity',
       'DemoLegal',
@@ -181,6 +185,15 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
         redirect: Option.none(),
       }),
     ),
+    M.tag('Autopilot', 'AutopilotVertical', route =>
+      // Mid-onboarding users have no workspace yet, so the autopilot entry
+      // serves the public onboarding page rather than forcing the onboarding
+      // flow redirect.
+      LoggedOutStartupRoute({
+        route,
+        redirect: Option.none(),
+      }),
+    ),
     M.tag(
       'Docs',
       'DocsPage',
@@ -244,6 +257,20 @@ const startupRouteForCompleteOnboarding = (
           }),
         ),
       }),
+    ),
+    M.tag('Autopilot', 'AutopilotVertical', route =>
+      // A logged-in user with a workspace lands on the existing cockpit; a
+      // logged-in user without one sees the public onboarding page (same page
+      // logged-out users get). #6129 expands that page into the full flow.
+      loggedInWorkroomAllowed(auth)
+        ? LoggedInStartupRoute({
+            route: ChatRoute(),
+            redirect: Option.none(),
+          })
+        : LoggedOutStartupRoute({
+            route,
+            redirect: Option.none(),
+          }),
     ),
     M.tag(
       'PublicAgent',

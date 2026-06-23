@@ -199,6 +199,8 @@ export const browserRouteProductIntents = {
   AutopilotWorkDetail: 'autopilot.work.detail',
   Billing: 'billing.credits',
   Business: 'public.business.landing',
+  Autopilot: 'public.autopilot.onboarding',
+  AutopilotVertical: 'public.autopilot.onboarding.vertical',
   Animations: 'internal.animations.playground',
   Activity: 'public.activity.timeline',
   Login: 'public.login',

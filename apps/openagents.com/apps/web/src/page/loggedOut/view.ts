@@ -1,4 +1,4 @@
-import { Match as M } from 'effect'
+import { Match as M, Option } from 'effect'
 import { Submodel } from 'foldkit'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
@@ -8,6 +8,7 @@ import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
+import * as AutopilotOnboarding from '../autopilot-onboarding'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
@@ -138,6 +139,13 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               ComponentsFamily: route =>
                 Components.view({ _tag: 'LoggedOut' }, route.family),
               Business: () => Business.view({ _tag: 'LoggedOut' }),
+              Autopilot: () =>
+                AutopilotOnboarding.view({ _tag: 'LoggedOut' }),
+              AutopilotVertical: route =>
+                AutopilotOnboarding.view(
+                  { _tag: 'LoggedOut' },
+                  Option.some(route.vertical),
+                ),
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
