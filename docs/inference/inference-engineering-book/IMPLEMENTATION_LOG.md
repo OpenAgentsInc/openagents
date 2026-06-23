@@ -167,3 +167,64 @@ Conventions:
   follow-on, unchanged here).
 - **Status:** PR open against `main` (#6086); orchestrator reviews / merges /
   deploys / smokes. NOT deployed by this entry.
+
+---
+
+## P1-5 — Build a provider/engine benchmark matrix — DONE (PR open, #6088)
+
+- **Notes ref:** `khala-investigation-notes.md` §P1 item 5 ("Build A Provider
+  And Engine Benchmark Matrix") + Open Question #5 (minimum lane decision suite);
+  book Ch.4 §4.5 (software benchmarking — "faster at *what*", shadow real
+  traffic, match production sequence shapes/contents/concurrency, change one
+  variable at a time) and Ch.1 §1.4.1 (latency percentiles over a right-skewed
+  distribution). Consumes the P0-1 telemetry schema (#6085) and the P0-2 prefix
+  cache (#6084).
+- **What shipped (the four deliverables):**
+  1. **Typed matrix** (`benchmark/matrix.ts`) varying lane (Vertex-Anthropic /
+     Vertex-Gemini / Fireworks / partner-passthrough real; Pylon whole-small /
+     Psionic shard-WAN labeled `not_yet_available`), engine (provider-native /
+     vLLM / SGLang / TensorRT-LLM, paired to lanes), workload (chat /
+     khala-code-artifact-gen / verifier-run / long-context-codebase-question),
+     sequence shape (ISL / OSL / cacheable-prefix / concurrency, tagged
+     realistic|synthetic), streaming-vs-batch, temperature/reasoning, and the
+     verification expectation *derived from the workload*. `expandMatrix` is
+     deterministic with a stable axis-encoded `cellId`.
+  2. **Runner + pluggable seam** (`benchmark/runner.ts`, `lane-seam.ts`): records
+     a canonical `openagents.khala.telemetry.v1` record per sample (reuses the
+     schema, never forks). Default = a deterministic, network-free, spend-free
+     FIXTURE lane; a real-lane adapter (`makeRealLaneSeam`) is flag/owner-gated —
+     unarmed it throws `RealLaneNotArmedError` and `canSpend:false`, so no test or
+     un-armed env can ever issue a billable request. Not-yet-available lanes are
+     never executed (skipped run, null record, honest reason).
+  3. **Dereferenceable report** (`benchmark/report.ts`): per-(lane × workload)
+     latency percentiles (P50/P90/P99 + mean over *measured* samples only),
+     perceived TPS, cost-per-accepted-outcome (null when zero accepted — never a
+     fake 0), verification rate, cache hit rate. Public-safe (only counts /
+     durations / neutral classifiers / coarse region) with a structural
+     `checkReportPublicSafety` tripwire.
+  4. **Realistic-traffic honesty:** a fixture/synthetic report is
+     `decisionGrade:false` + carries an `illustrativeNotice`; decision-grade
+     requires an owner-armed REAL seam over REALISTIC traffic with no
+     synthetic-only group. Each group independently flagged `syntheticOnly`.
+- **Where:** `apps/openagents.com/workers/api/src/inference/benchmark/`
+  (`matrix.ts`, `lane-seam.ts`, `runner.ts`, `report.ts`, `fixtures.ts`,
+  `index.ts` + `*.test.ts`). `fixtures.ts` ships `SAMPLE_DECISION_SUITE_CONFIG`
+  (the Q5 minimum decision suite: Fireworks vs Vertex on chat/code/verifier/
+  long-context + the two future lanes). Doc:
+  `docs/inference/2026-06-23-khala-benchmark-harness-book-p1-5.md`.
+- **Verification bar (green):** the inference test suites (742 tests, 39 new),
+  `typecheck`, `check:architecture`, `check:effect-topology`,
+  `check:public-projection-freshness`. Tests cover: the matrix expands to the
+  expected cells (192 for the decision suite); the fixture runner is deterministic
+  and produces telemetry records with the P0-1 fields; the report aggregation
+  (percentiles, cost-per-accepted-outcome, verification rate, cache hit rate) is
+  correct on a hand-checkable fixture set; the real-lane seam is flag-gated OFF by
+  default (no network); and the report is public-safe (the tripwire trips on a
+  forbidden key).
+- **Honest scope — fixture vs owner-gated:** every number is ILLUSTRATIVE today —
+  produced by the deterministic fixture lane over SYNTHETIC shapes. A real,
+  decision-grade sweep requires the owner to (1) source realistic Khala traffic
+  shapes, (2) provide a live `RealLaneExecutor`, (3) arm `makeRealLaneSeam` with
+  explicit confirmation and run it (the only path that can spend). NOT run here.
+- **Status:** PR open against `main` (#6088); orchestrator reviews / merges /
+  deploys / smokes. NOT deployed, NO spend by this entry.
