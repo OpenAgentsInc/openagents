@@ -93,8 +93,16 @@ const rawInvoiceExpiry = (
 // checkout is created in `amount` mode with `currency: 'SAT'` for the requested
 // sats; the issuer reads the RAW bolt11 + paymentHash and surface-validates them
 // (fail-closed). The preimage is NEVER touched here.
+// Tighter mint timeout for when MDK runs as the FALLBACK leg behind the Spark
+// primary (EPIC #6049). Spark gets its own bounded primary attempt; if Spark
+// times out, the MDK fallback must still finish under the route's outer per-rail
+// guard (#6149), so the chained worst case (Spark + MDK) cannot hang the
+// endpoint. Used by the selector when both issuers are present.
+export const MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS = 1_200
+
 export const makeMdkLightningInvoiceIssuer = (
   post: MdkRoutePost,
+  timeoutMs: number = MDK_LIGHTNING_MINT_TIMEOUT_MS,
 ): MintLightningInvoice => input =>
   Effect.gen(function* () {
     const amountSats = Math.max(1, Math.trunc(input.amountSats))
@@ -118,7 +126,7 @@ export const makeMdkLightningInvoiceIssuer = (
       // SAME typed `provider_unavailable` reason a transport error produces, so
       // the caller drops the Lightning rail and serves the others promptly.
       Effect.timeoutOrElse({
-        duration: Duration.millis(MDK_LIGHTNING_MINT_TIMEOUT_MS),
+        duration: Duration.millis(timeoutMs),
         orElse: () =>
           Effect.fail(new LightningInvoiceError('provider_unavailable')),
       }),

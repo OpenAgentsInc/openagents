@@ -11,6 +11,7 @@ import {
   sparkTreasuryFundingInvoicePayload,
   sparkTreasuryFundingPayload,
   sparkTreasuryPayPayload,
+  sparkTreasuryReceivedPayload,
   sparkTreasuryUnavailableReason,
 } from './spark-treasury.mjs'
 
@@ -458,6 +459,22 @@ const handleRequest = async request => {
     const result = await sparkTreasuryPayPayload(
       await request.json().catch(() => null),
     )
+    const status = typeof result.status === 'number' ? result.status : 200
+
+    return json(status, result)
+  }
+
+  const sparkReceivedMatch = /^\/spark\/received\/([a-f0-9]{64})$/i.exec(
+    url.pathname,
+  )
+
+  if (request.method === 'GET' && sparkReceivedMatch !== null) {
+    const sparkUnavailable = sparkTreasuryUnavailableReason()
+    if (sparkUnavailable !== null) {
+      return json(503, { error: sparkUnavailable })
+    }
+
+    const result = await sparkTreasuryReceivedPayload(sparkReceivedMatch[1])
     const status = typeof result.status === 'number' ? result.status : 200
 
     return json(status, result)

@@ -135,3 +135,27 @@ export const validateLightningInvoice = (
     ...(invoiceExpiresAt === undefined ? {} : { invoiceExpiresAt }),
   }
 }
+
+// Compose a PRIMARY issuer with a FALLBACK issuer (EPIC #6049, owner directive:
+// Spark primary, MDK fallback). Tries `primary` first; on ANY typed
+// `LightningInvoiceError` (including its bounded mint timeout, which surfaces as
+// `provider_unavailable`), tries `fallback`. The combined issuer is itself the
+// SAME `MintLightningInvoice` seam the route already drops on failure — so if
+// BOTH fail it fails with the fallback's error and the route drops only the
+// Lightning rail (per-rail isolation, #6149). Each leg keeps its OWN bounded mint
+// timeout, and both legs are tuned (Spark + MDK) to fit under the route's outer
+// per-rail guard so a primary timeout plus a fallback attempt can never hang the
+// endpoint. When only one issuer is present it is returned as-is; when neither is
+// present `undefined` is returned (the rail is never offered — honesty gate).
+export const makeFallbackLightningInvoiceIssuer = (
+  primary: MintLightningInvoice | undefined,
+  fallback: MintLightningInvoice | undefined,
+): MintLightningInvoice | undefined => {
+  if (primary === undefined) {
+    return fallback
+  }
+  if (fallback === undefined) {
+    return primary
+  }
+  return input => primary(input).pipe(Effect.catch(() => fallback(input)))
+}

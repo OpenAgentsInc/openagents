@@ -339,7 +339,12 @@ import {
   isKhalaMppEnabled,
   isKhalaMppLightningEnabled,
 } from './inference/mpp/mpp-chat-completions-routes'
-import { makeMdkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-mdk'
+import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
+import {
+  makeMdkLightningInvoiceIssuer,
+  MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
+} from './inference/mpp/mpp-lightning-invoice-mdk'
+import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import {
   isAcceptanceDispatchEnabled,
   makeD1KhalaVerificationStore,
@@ -6646,14 +6651,46 @@ const hostedMdkClientForEnv = (
   )
 }
 
-// The MDK-backed BOLT11 invoice issuer for the Lightning MPP rail (EPIC #6049).
-// Returns undefined when no MDK route is configured (route URL + secret), so the
-// Lightning rail is never offered without a working invoice issuer (honesty
-// gate). POSTs `create_checkout` to the SAME route/sidecar the Forum L402 flow
-// uses (the `self_hosted_mdkd_sidecar` route kind goes through the MDK_SIDECAR
-// container) and reads the RAW bolt11 + paymentHash. The invoice + paymentHash
-// are public (they go into the 402 challenge); the preimage is never seen here.
-const lightningInvoiceIssuerForEnv = (
+// The PRIMARY Spark-backed BOLT11 invoice issuer for the Lightning MPP rail
+// (EPIC #6049). Owner directive: Spark is the primary rail for all agent/MPP
+// payments (it supports OFFLINE RECEIVES). Returns undefined when the Spark
+// treasury container is not reachable (the `MDK_TREASURY` binding is absent), so
+// the selector can fall back to MDK. POSTs `/spark/funding-invoice` to the SAME
+// `MDK_TREASURY` container the Spark payout/balance paths already reach
+// (`fetchMdkTreasuryPath` → the `@breeztech/breez-sdk-spark` SDK) and reads the
+// RAW bolt11 + decoded paymentHash. Both are public (they go into the 402
+// challenge); the preimage is never seen here (verified LOCALLY in the Worker).
+const sparkLightningInvoiceIssuerForEnv = (
+  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) => {
+  const fetchTreasury = fetchMdkTreasuryPath(env)
+  if (fetchTreasury === undefined) {
+    return undefined
+  }
+
+  const post = async (
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>> => {
+    const response = await fetchTreasury('/spark/funding-invoice', {
+      body: JSON.stringify(body),
+      method: 'POST',
+    })
+    const payload = await response.json().catch(() => ({}))
+    return { ok: response.ok, payload, status: response.status }
+  }
+
+  return makeSparkLightningInvoiceIssuer(post)
+}
+
+// The FALLBACK MDK-backed BOLT11 invoice issuer for the Lightning MPP rail
+// (EPIC #6049). MDK is permitted ONLY as an explicit fallback Lightning issuer
+// (never primary) and remains checkouts-only otherwise. Returns undefined when
+// no MDK route is configured (route URL + secret). POSTs `create_checkout` to the
+// SAME route/sidecar the Forum L402 flow uses (the `self_hosted_mdkd_sidecar`
+// route kind goes through the MDK_SIDECAR container) and reads the RAW bolt11 +
+// paymentHash. Uses the tighter FALLBACK mint timeout so a Spark primary timeout
+// plus this MDK attempt together stay under the route's per-rail guard (#6149).
+const mdkLightningInvoiceIssuerForEnv = (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
   const checkout = getOpenAgentsWorkerConfig(env).mdk.checkout
@@ -6688,8 +6725,26 @@ const lightningInvoiceIssuerForEnv = (
     return { ok: response.ok, payload, status: response.status }
   }
 
-  return makeMdkLightningInvoiceIssuer(post)
+  return makeMdkLightningInvoiceIssuer(
+    post,
+    MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
+  )
 }
+
+// The Lightning MPP invoice issuer for this env: SPARK PRIMARY, MDK FALLBACK
+// (EPIC #6049, owner directive). Tries Spark first; if Spark is
+// unavailable/unconfigured/slow, falls back to the MDK Lightning issuer. Returns
+// undefined only when NEITHER is reachable, so the Lightning rail is never
+// offered without a working invoice issuer (honesty gate). The combined issuer
+// keeps each leg's bounded mint timeout and stays under the route's per-rail
+// guard (#6149) so a slow/failed issuer can only ever drop the Lightning rail.
+const lightningInvoiceIssuerForEnv = (
+  env: WorkerBindings & OpenAgentsWorkerConfigEnv,
+) =>
+  makeFallbackLightningInvoiceIssuer(
+    sparkLightningInvoiceIssuerForEnv(env),
+    mdkLightningInvoiceIssuerForEnv(env),
+  )
 
 const forumL402SigningBoundaryForEnv = async (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
@@ -9945,9 +10000,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         cardRailEnabled:
           env.STRIPE_MPP_NETWORK_PROFILE_ID !== undefined &&
           env.STRIPE_MPP_NETWORK_PROFILE_ID.trim() !== '',
-        // Bitcoin-first Lightning offer: armed flag AND a working MDK invoice
-        // issuer present (the SAME condition that arms the rail in the route).
-        // Honesty gate: omitted when we cannot actually mint an invoice.
+        // Bitcoin-first Lightning offer: armed flag AND a working Lightning
+        // invoice issuer present (Spark primary, MDK fallback — the SAME
+        // condition that arms the rail in the route). Honesty gate: omitted when
+        // we cannot actually mint an invoice.
         lightningRailEnabled:
           isKhalaMppLightningEnabled(env.KHALA_MPP_LIGHTNING_ENABLED) &&
           lightningInvoiceIssuerForEnv(env) !== undefined,
@@ -10307,8 +10363,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
       // Bitcoin-first Lightning rail (EPIC #6049). Offered FIRST when armed:
-      // KHALA_MPP_LIGHTNING_ENABLED on AND an MDK invoice issuer is configured
-      // (the MDK route/sidecar wallet binding). With either absent the issuer is
+      // KHALA_MPP_LIGHTNING_ENABLED on AND a Lightning invoice issuer is
+      // configured (Spark primary via the MDK_TREASURY container, MDK fallback
+      // via the route/sidecar wallet binding). With either absent the issuer is
       // undefined and the rail is never advertised (honesty gate).
       const lightningEnabled = isKhalaMppLightningEnabled(
         env.KHALA_MPP_LIGHTNING_ENABLED,
