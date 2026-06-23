@@ -25,6 +25,7 @@ import {
   ForumReceiptRoute,
   HomeRoute,
   InviteRoute,
+  LandingRoute,
   Moksha2Route,
   MokshaRoute,
   MulletRoute,
@@ -530,6 +531,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
+    expect(routeRequiresAuthBootstrap(LandingRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
     expect(

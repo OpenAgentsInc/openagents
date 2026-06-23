@@ -77,6 +77,12 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the standalone landing document route in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/landing'), '/landing'),
+    ).toBe(false)
+  })
+
   test('keeps the Pylon document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/pylon'), '/pylon'),
