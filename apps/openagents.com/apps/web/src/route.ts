@@ -8,6 +8,10 @@ export const InviteRoute = r('Invite')
 export const OnboardingRoute = r('Onboarding')
 export const OrderRoute = r('Order')
 export const OrderDetailRoute = r('OrderDetail', { orderId: S.String })
+export const AutopilotRoute = r('Autopilot')
+export const AutopilotVerticalRoute = r('AutopilotVertical', {
+  vertical: S.String,
+})
 export const AutopilotWorkRoute = r('AutopilotWork')
 export const AutopilotWorkDetailRoute = r('AutopilotWorkDetail', {
   workOrderRef: S.String,
@@ -116,6 +120,8 @@ export type InviteRoute = typeof InviteRoute.Type
 export type OnboardingRoute = typeof OnboardingRoute.Type
 export type OrderRoute = typeof OrderRoute.Type
 export type OrderDetailRoute = typeof OrderDetailRoute.Type
+export type AutopilotRoute = typeof AutopilotRoute.Type
+export type AutopilotVerticalRoute = typeof AutopilotVerticalRoute.Type
 export type AutopilotWorkRoute = typeof AutopilotWorkRoute.Type
 export type AutopilotWorkDetailRoute = typeof AutopilotWorkDetailRoute.Type
 export type ForgeRoute = typeof ForgeRoute.Type
@@ -210,6 +216,8 @@ export const LoggedOutRoute = S.Union([
   ComponentsRoute,
   ComponentsFamilyRoute,
   BusinessRoute,
+  AutopilotRoute,
+  AutopilotVerticalRoute,
   AnimationsRoute,
   ActivityRoute,
   RunRoute,
@@ -292,6 +300,8 @@ export const AppRoute = S.Union([
   OnboardingRoute,
   OrderRoute,
   OrderDetailRoute,
+  AutopilotRoute,
+  AutopilotVerticalRoute,
   AutopilotWorkRoute,
   AutopilotWorkDetailRoute,
   ForgeRoute,
@@ -374,6 +384,15 @@ export type AppRoute = typeof AppRoute.Type
 // to `/`, which renders the Landing scene.
 export const homeRouter = pipe(Route.root, Route.mapTo(LandingRoute))
 export const chatRouter = pipe(literal('autopilot'), Route.mapTo(ChatRoute))
+export const autopilotRouter = pipe(
+  literal('autopilot'),
+  Route.mapTo(AutopilotRoute),
+)
+export const autopilotVerticalRouter = pipe(
+  literal('autopilot'),
+  slash(string('vertical')),
+  Route.mapTo(AutopilotVerticalRoute),
+)
 export const inviteRouter = pipe(literal('invite'), Route.mapTo(InviteRoute))
 export const onboardingRouter = pipe(
   literal('onboarding'),
@@ -722,6 +741,8 @@ const routeParser = Route.oneOf(
   onboardingRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
+  autopilotVerticalRouter,
+  autopilotRouter,
   forgeRouter,
   decisionsRouter,
   workspaceRouter,
@@ -747,7 +768,6 @@ const routeParser = Route.oneOf(
   imagesRouter,
   settingsSectionRouter,
   settingsRouter,
-  chatRouter,
   homeRouter,
 )
 

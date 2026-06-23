@@ -65,6 +65,27 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps autopilot onboarding and its optional vertical in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/autopilot'),
+        '/autopilot',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/autopilot/legal'),
+        '/autopilot/legal',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/autopilot/work'),
+        '/autopilot/work',
+      ),
+    ).toBe(false)
+  })
+
   test('keeps the Moksha document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/moksha'), '/moksha'),

@@ -105,7 +105,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/admin$/,
   /^\/agents\/[^/]+$/,
   /^\/artanis$/,
-  /^\/autopilot$/,
+  /^\/autopilot(?:\/[a-z0-9-]+)?$/,
   /^\/billing$/,
   /^\/blog(?:\/[^/]+)?$/,
   /^\/business$/,

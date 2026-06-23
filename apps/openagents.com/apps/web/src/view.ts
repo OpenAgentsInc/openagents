@@ -11,6 +11,7 @@ import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
+import * as AutopilotOnboarding from './page/autopilot-onboarding'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as Components from './page/components'
@@ -375,6 +376,9 @@ const title = (model: Model): string => {
       return 'Components - OpenAgents'
     case 'Business':
       return 'For your business - OpenAgents'
+    case 'Autopilot':
+    case 'AutopilotVertical':
+      return 'Autopilot - OpenAgents'
     case 'Terms':
       return 'Terms of Service - OpenAgents'
     case 'Privacy':
@@ -522,6 +526,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Components' &&
       model.route._tag !== 'ComponentsFamily' &&
       model.route._tag !== 'Business' &&
+      model.route._tag !== 'Autopilot' &&
+      model.route._tag !== 'AutopilotVertical' &&
       model.route._tag !== 'Terms' &&
       model.route._tag !== 'Privacy' &&
       model.route._tag !== 'Animations' &&
@@ -549,6 +555,17 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Business') {
     return Business.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Autopilot') {
+    return AutopilotOnboarding.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'AutopilotVertical') {
+    return AutopilotOnboarding.view<Message>(
+      authState,
+      Option.some(model.route.vertical),
+    )
   }
 
   if (model.route._tag === 'Terms') {
