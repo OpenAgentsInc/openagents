@@ -43,6 +43,12 @@ import {
   verifyKhalaCodeCompletion,
 } from './khala-code-verifier'
 import {
+  KHALA_IDENTITY_REINFORCEMENT_PROMPT,
+  KHALA_IDENTITY_SYSTEM_PROMPT,
+  guardKhalaCompletion,
+  verifyKhalaSignatures,
+} from './khala-identity'
+import {
   type MeteringHook,
   type MeteringOutcome,
   stubMeteringHook,
@@ -277,14 +283,38 @@ const decodeBody = (value: unknown) => {
   }
 }
 
+// GATEWAY-SIDE KHALA IDENTITY INJECTION (STEP 1). For every `openagents/khala-*`
+// request, prepend the strong Khala identity system message so the identity rule
+// (present only as Khala by OpenAgents; never reveal/name/imply the underlying
+// model or provider) binds to EVERY Khala consumer — desktop, OpenRouter, raw
+// SDK — not just one client. This is the PRIMARY mechanism; the post-completion
+// signature guard is the verification + correction backstop on top of it.
+//
+// It is prepended as a leading `system` message (ahead of any client-supplied
+// system steer) so a weaker or stale client identity steer can never override
+// the gateway identity contract. Non-Khala models are untouched.
+const withKhalaIdentitySystemPrompt = (
+  messages: ReadonlyArray<InferenceMessage>,
+  requestedModel: string,
+): ReadonlyArray<InferenceMessage> => {
+  if (!isKhalaModel(requestedModel)) {
+    return messages
+  }
+  return [
+    { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
+    ...messages,
+  ]
+}
+
 const toInferenceRequest = (
   body: typeof ChatCompletionsRequestBody.Type,
   raw: Record<string, unknown>,
   requestedModel: string,
 ): InferenceRequest => {
-  const messages: ReadonlyArray<InferenceMessage> = body.messages.map(
+  const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
   )
+  const messages = withKhalaIdentitySystemPrompt(clientMessages, requestedModel)
   const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
   return {
     messages,
@@ -529,6 +559,16 @@ const sseFrame = (payload: unknown): string =>
 // non-streaming + buffered paths use) and metering settlement happen AFTER the
 // upstream closes, attached to the final `chat.completion.chunk` before
 // `data: [DONE]`. Metering settles receipt-first from the terminal usage frame.
+//
+// KHALA IDENTITY DEFENSE ON THE PASS-THROUGH PATH: because deltas are sent to
+// the client AS THEY ARRIVE (the whole point of this path — to avoid the 524),
+// the post-completion identity guard's redaction backstop cannot un-send an
+// already-streamed token. The PRIMARY mechanism — the strong gateway-side
+// `KHALA_IDENTITY_SYSTEM_PROMPT` injected for every `khala-*` request — is what
+// protects this path: the model never volunteers its provenance in the first
+// place. The buffered stream path (which materializes the whole completion
+// before emitting) and the non-streaming path additionally run the guard
+// backstop over the assembled content.
 //
 // This runs OUTSIDE the route's Effect: the metering hook is an Effect, so it is
 // executed with `Effect.runPromise` in the flush step (the same hook used on the
@@ -1002,8 +1042,29 @@ export const handleChatCompletions = (
       // terminal finishReason/usage, and the terminal served model when the
       // adapter reports one — then attach the block to the FINAL
       // `chat.completion.chunk` frame only, before `data: [DONE]`.
+      const assembledContent = servedChunks
+        .map(chunk => chunk.contentDelta)
+        .join('')
+
+      // KHALA IDENTITY GUARD (buffered stream path). This path materializes the
+      // WHOLE upstream completion before emitting a byte (it builds `body_sse`
+      // from the full chunk array), so the deterministic identity backstop runs
+      // here on the assembled content. No re-ask on this path (the chunks are
+      // already buffered); the gateway identity system prompt is the primary
+      // defense and this is the fail-closed redaction backstop. A clean stream is
+      // re-emitted delta-for-delta unchanged; only an identity leak is rewritten.
+      let guardedStreamContent = assembledContent
+      let streamIdentityCorrected = false
+      if (isKhalaModel(requestedModel)) {
+        const guard = yield* Effect.promise(() =>
+          guardKhalaCompletion({ completion: assembledContent }),
+        )
+        guardedStreamContent = guard.text
+        streamIdentityCorrected = guard.corrected
+      }
+
       const streamResult: InferenceResult = {
-        content: servedChunks.map(chunk => chunk.contentDelta).join(''),
+        content: guardedStreamContent,
         finishReason: terminal?.finishReason ?? 'stop',
         servedModel: terminal?.servedModel ?? requestedModel,
         usage: terminal?.usage ?? {
@@ -1023,17 +1084,30 @@ export const handleChatCompletions = (
         result: streamResult,
       })
 
-      const lastIndex = servedChunks.length - 1
-      const body_sse = servedChunks
-        .map((chunk, index) =>
+      // When the identity guard rewrote the content, the original per-delta
+      // chunks no longer match the corrected text, so re-frame the stream as a
+      // single corrected content frame + a terminal frame carrying the finish
+      // reason and disclosure. When nothing was corrected, re-emit the chunks
+      // exactly as served (byte-for-byte the prior behavior).
+      const frameStrings: Array<string> = []
+      if (streamIdentityCorrected) {
+        frameStrings.push(
+          sseFrame({
+            choices: [
+              { delta: { content: guardedStreamContent }, finish_reason: null, index: 0 },
+            ],
+            created,
+            id: responseId,
+            model: requestedModel,
+            object: 'chat.completion.chunk',
+          }),
+        )
+        frameStrings.push(
           sseFrame({
             choices: [
               {
-                delta:
-                  chunk.contentDelta === ''
-                    ? {}
-                    : { content: chunk.contentDelta },
-                finish_reason: chunk.finishReason ?? null,
+                delta: {},
+                finish_reason: terminal?.finishReason ?? 'stop',
                 index: 0,
               },
             ],
@@ -1041,13 +1115,39 @@ export const handleChatCompletions = (
             id: responseId,
             model: requestedModel,
             object: 'chat.completion.chunk',
-            // Disclosure rides on the terminal frame only (non-breaking field).
-            ...(index === lastIndex && streamOpenagents !== undefined
+            ...(streamOpenagents !== undefined
               ? { openagents: streamOpenagents }
               : {}),
           }),
         )
-        .join('')
+      } else {
+        const lastIndex = servedChunks.length - 1
+        for (const [index, chunk] of servedChunks.entries()) {
+          frameStrings.push(
+            sseFrame({
+              choices: [
+                {
+                  delta:
+                    chunk.contentDelta === ''
+                      ? {}
+                      : { content: chunk.contentDelta },
+                  finish_reason: chunk.finishReason ?? null,
+                  index: 0,
+                },
+              ],
+              created,
+              id: responseId,
+              model: requestedModel,
+              object: 'chat.completion.chunk',
+              // Disclosure rides on the terminal frame only (non-breaking field).
+              ...(index === lastIndex && streamOpenagents !== undefined
+                ? { openagents: streamOpenagents }
+                : {}),
+            }),
+          )
+        }
+      }
+      const body_sse = frameStrings.join('')
       const stream = `${body_sse}data: [DONE]\n\n`
 
       return new Response(stream, {
@@ -1079,15 +1179,74 @@ export const handleChatCompletions = (
       )
     }
 
+    // KHALA IDENTITY GUARD (STEP 2). Run the typed identity signature over the
+    // completion BEFORE metering/response. If the completion asserts a forbidden
+    // provider/model identity ("I am built on Gemini / by Google", Claude, GPT,
+    // …) the guard corrects it: first by RE-ASKING the provider with a stronger
+    // identity instruction, and as a fail-closed backstop by deterministically
+    // redacting the offending identity claim to the Khala identity statement.
+    // It NEVER mangles a normal answer — a clean completion passes through
+    // unchanged — and only runs for Khala models (non-Khala responses are
+    // byte-identical to before). The re-ask re-dispatches across the same lane
+    // plan with the reinforcement appended as a leading system message.
+    const servedValue = result.served.value
+    const servedAdapterId = result.served.adapterId
+    let guardedContent = servedValue.content
+    if (isKhalaModel(requestedModel)) {
+      // Verify the original completion against the identity signatures. Only on
+      // a violation do we re-ask (the native Effect dispatch below), so a clean
+      // answer never triggers an extra provider call. The re-ask result is then
+      // handed to `guardKhalaCompletion` (which re-verifies it and applies the
+      // deterministic backstop if it STILL leaks) — keeping the dispatch in the
+      // Effect topology rather than nesting `Effect.runPromise`.
+      const leaked = verifyKhalaSignatures(servedValue.content).some(
+        verdict => !verdict.satisfied,
+      )
+      const reaskedContent = leaked
+        ? yield* dispatchWithOverflow(
+            {
+              ...inferenceRequest,
+              messages: [
+                {
+                  content: KHALA_IDENTITY_REINFORCEMENT_PROMPT,
+                  role: 'system',
+                },
+                ...inferenceRequest.messages,
+              ],
+            },
+            (adapter, request) => adapter.complete(request),
+            dispatchDeps,
+          ).pipe(
+            Effect.map(value => value.content as string | undefined),
+            Effect.orElseSucceed(() => undefined),
+          )
+        : undefined
+      const guard = yield* Effect.promise(() =>
+        guardKhalaCompletion({
+          completion: servedValue.content,
+          // The re-ask is already resolved (above); the guard just consumes it.
+          reask:
+            reaskedContent === undefined ? undefined : async () => reaskedContent,
+        }),
+      )
+      guardedContent = guard.text
+    }
+    // Apply the (possibly corrected) content. A clean answer is identical to
+    // `servedValue`; only an identity leak changes `content`.
+    const guardedResult: InferenceResult =
+      guardedContent === servedValue.content
+        ? servedValue
+        : { ...servedValue, content: guardedContent }
+
     const metering = yield* meteringHook({
       accountRef: session.accountRef,
-      adapterId: result.served.adapterId,
+      adapterId: servedAdapterId,
       fundingKind,
       requestId: responseId,
       requestedModel: requestedModel,
-      servedModel: result.served.value.servedModel,
+      servedModel: guardedResult.servedModel,
       streamed: false,
-      usage: result.served.value.usage,
+      usage: guardedResult.usage,
     })
 
     // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produced a runnable artifact,
@@ -1096,13 +1255,13 @@ export const handleChatCompletions = (
     // receipt from `unverified` -> `test_passed`/`failed`. Fire-and-forget: never
     // blocks or fails the already-priced completion.
     yield* maybeEnqueueAcceptanceJob({
-      adapterId: result.served.adapterId,
+      adapterId: servedAdapterId,
       dispatch: deps.acceptanceDispatch,
       meteringReceiptRef: metering.receiptRef,
       requestMessages: inferenceRequest.messages,
       requestedModel,
       responseId,
-      result: result.served.value,
+      result: guardedResult,
     })
 
     return noStoreJsonResponse(
@@ -1116,13 +1275,13 @@ export const handleChatCompletions = (
         // responses are byte-identical to before. Streaming carries the same
         // disclosure in a later slice.
         openagents: khalaReceiptForResult({
-          adapterId: result.served.adapterId,
+          adapterId: servedAdapterId,
           metering,
           requestedModel,
           responseId,
-          result: result.served.value,
+          result: guardedResult,
         }),
-        result: result.served.value,
+        result: guardedResult,
       }),
     )
   })
