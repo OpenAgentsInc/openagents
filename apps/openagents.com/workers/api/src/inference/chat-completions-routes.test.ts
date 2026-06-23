@@ -1330,7 +1330,7 @@ describe('Khala identity guard', () => {
             m.content.toLowerCase().includes('answer again'),
         )
         const content = isReask
-          ? 'I am Khala, the OpenAgents inference model. How can I help?'
+          ? 'We are Khala, the OpenAgents inference model. How can we help?'
           : leak
         return {
           content,
@@ -1486,6 +1486,41 @@ describe('Khala identity guard', () => {
     expect(response.status).toBe(200)
     const { content } = await readReply(response)
     expect(content).toBe(clean)
+  })
+
+  test('FIX 2: a clean plural "We are Khala…" identity answer is returned UNCHANGED (no duplicated identity sentence)', async () => {
+    // The exact live-app shape: identity stated once, then a provider denial.
+    // The route guard must NOT prepend or re-state the identity — it passes
+    // through byte-for-byte so the identity sentence appears exactly once.
+    const cleanIdentity =
+      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are not Gemini or any other model. How can we help you today?'
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => ({
+          content: cleanIdentity,
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 12, promptTokens: 4, totalTokens: 16 },
+        })),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'what model are you?', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const { content } = await readReply(response)
+    expect(content).toBe(cleanIdentity)
+    // Identity stated EXACTLY once — the duplication bug is fixed.
+    expect(content.split('We are Khala').length - 1).toBe(1)
   })
 
   test('buffered Khala stream redacts an identity leak in the assembled content', async () => {

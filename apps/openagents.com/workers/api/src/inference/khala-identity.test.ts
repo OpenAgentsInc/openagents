@@ -29,9 +29,36 @@ describe('Khala identity system prompt (STEP 1)', () => {
     ]) {
       expect(prompt).toContain(term)
     }
-    // Forbids the exact leak phrasings.
-    expect(prompt).toContain('i am built on')
+    // Forbids the leak phrasing.
     expect(prompt).toContain('a large language model by')
+  })
+
+  test('FIX 1: instructs first-person PLURAL ("we are Khala"), never "I am"', () => {
+    const prompt = KHALA_IDENTITY_SYSTEM_PROMPT.toLowerCase()
+    // Owner mandate: Khala is a network of agents and always speaks as "we".
+    expect(prompt).toContain('we are khala')
+    expect(prompt).toContain('plural')
+    // The prompt must explicitly tell the model to avoid first-person singular.
+    expect(prompt).toContain('never say "i am"')
+  })
+
+  test('FIX 2: instructs the model to state its identity only ONCE', () => {
+    expect(KHALA_IDENTITY_SYSTEM_PROMPT.toLowerCase()).toContain(
+      'state your identity once',
+    )
+  })
+})
+
+describe('Khala canonical identity statement (plural)', () => {
+  test('FIX 1: the canonical identity statement is first-person PLURAL', () => {
+    expect(KHALA_IDENTITY_STATEMENT).toContain('We are Khala')
+    expect(KHALA_IDENTITY_STATEMENT).toContain('OpenAgents')
+    // Never first-person singular.
+    expect(KHALA_IDENTITY_STATEMENT.toLowerCase()).not.toMatch(/\bi am\b/u)
+    // And the statement must itself satisfy the identity signature (no provider).
+    expect(KHALA_IDENTITY_SIGNATURE.verify(KHALA_IDENTITY_STATEMENT).satisfied).toBe(
+      true,
+    )
   })
 })
 
@@ -99,6 +126,35 @@ describe('Khala identity signature — verify (detection)', () => {
       true,
     )
   })
+
+  test.each([
+    'We are not Gemini or any other model.',
+    "We're not built on Claude.",
+    'I am not Gemini.',
+    'We never run on Vertex.',
+    'No, we are not powered by OpenAI.',
+  ])(
+    'FIX 2 ROOT CAUSE: does NOT flag a DENIAL of a provider identity (%s)',
+    denial => {
+      // The live duplication came from flagging these denials as leaks: the
+      // backstop then replaced the denial sentence with the canonical identity,
+      // producing a SECOND identity sentence. A denial is a correct Khala
+      // answer and must pass through clean.
+      expect(KHALA_IDENTITY_SIGNATURE.verify(denial).satisfied).toBe(true)
+    },
+  )
+
+  test('FIX 1: catches an AFFIRMATIVE first-person PLURAL provider leak', () => {
+    const verdict = KHALA_IDENTITY_SIGNATURE.verify('We are Gemini.')
+    expect(verdict.satisfied).toBe(false)
+    expect(verdict.violations.map(v => v.provider)).toContain('gemini')
+  })
+
+  test('FIX 1: does NOT flag the canonical plural denial-style identity answer', () => {
+    const answer =
+      'We are Khala, the OpenAgents inference model. We are not Gemini, Google, or any other underlying model.'
+    expect(KHALA_IDENTITY_SIGNATURE.verify(answer).satisfied).toBe(true)
+  })
 })
 
 describe('Khala identity guard — verify + correct', () => {
@@ -110,12 +166,42 @@ describe('Khala identity guard — verify + correct', () => {
     expect(out.text).toBe(clean)
   })
 
+  test('FIX 2: a clean "We are Khala…" answer passes through UNCHANGED — the identity is NOT prepended/duplicated', async () => {
+    // This is the exact shape that was getting DUPLICATED in the live app: the
+    // model correctly states identity once, then denies the provider. The guard
+    // must leave it byte-for-byte unchanged (no second identity sentence).
+    const cleanPluralAnswer =
+      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are not Gemini or any other model. How can we help you today?'
+    const out = await guardKhalaCompletion({ completion: cleanPluralAnswer })
+    expect(out.corrected).toBe(false)
+    expect(out.method).toBe('none')
+    expect(out.text).toBe(cleanPluralAnswer)
+    // The identity sentence appears EXACTLY ONCE (no duplication).
+    const occurrences = out.text.split('We are Khala').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  test('FIX 2: when a real leak co-exists with a clean identity, the identity is NOT duplicated (leak dropped, not re-stated)', async () => {
+    // The model stated identity correctly once AND then leaked. The backstop
+    // must remove the leak WITHOUT adding a second copy of the identity line.
+    const mixed =
+      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents, built and operated by OpenAgents. We are powered by Gemini under the hood. How can we help?'
+    const out = await guardKhalaCompletion({ completion: mixed })
+    expect(out.corrected).toBe(true)
+    expect(out.method).toBe('redacted')
+    expect(out.text.toLowerCase()).not.toContain('gemini')
+    // Identity stated exactly once even after the leak was redacted.
+    const occurrences = out.text.split('We are Khala').length - 1
+    expect(occurrences).toBe(1)
+    expect(out.verdicts.every(v => v.satisfied)).toBe(true)
+  })
+
   test('re-ask path: a leak is corrected by re-asking the provider for a clean answer', async () => {
     const leak = 'I am built on Gemini, a large language model by Google.'
     const out = await guardKhalaCompletion({
       completion: leak,
       reask: async () =>
-        'I am Khala, the OpenAgents inference model. How can I help?',
+        'We are Khala, the OpenAgents inference model. How can we help?',
     })
     expect(out.corrected).toBe(true)
     expect(out.method).toBe('re_ask')

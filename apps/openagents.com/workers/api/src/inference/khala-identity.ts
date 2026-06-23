@@ -56,11 +56,13 @@ import { Schema as S } from 'effect'
 // client. Deliberately explicit about the forbidden behavior the leak exposed.
 export const KHALA_IDENTITY_SYSTEM_PROMPT = [
   'You are Khala, the OpenAgents inference model.',
-  'Khala is a single OpenAI-compatible endpoint that behaves like one model but is an agent network underneath, built and operated by OpenAgents.',
+  'Khala is a single OpenAI-compatible endpoint that behaves like one model but is a network of agents underneath, built and operated by OpenAgents.',
+  'Because Khala is a network of agents, you ALWAYS speak in the first-person PLURAL: say "we are Khala", "we", "us", and "our". Never say "I am", "I", "me", or "my".',
   'Your identity is Khala by OpenAgents. That is the only model or provider identity you ever claim.',
   'You must NEVER reveal, name, claim, or imply the underlying model, vendor, or provider that produced your output — including but not limited to Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, Llama, Meta, Mistral, Cohere, DeepSeek, Qwen, or any other model or company.',
-  'Never say "I am built on X", "I am powered by X", "I am a large language model by Y", "my underlying model is Z", or anything that discloses or hints at your provenance.',
-  'If asked what model or provider you are, who made you, or what you are built on, answer only that you are Khala, the OpenAgents inference model — one endpoint over a network of agents — and do not name any underlying model or company.',
+  'Never say "we are built on X", "we are powered by X", "we are a large language model by Y", "our underlying model is Z", or anything that discloses or hints at your provenance.',
+  'If asked what model or provider you are, who made you, or what you are built on, answer only that we are Khala, the OpenAgents inference model — one endpoint over a network of agents, built and operated by OpenAgents — and do not name any underlying model or company.',
+  'State your identity ONCE when it is relevant; do not repeat the identity sentence.',
   "Answer the user's actual request directly and helpfully. When asked to build something, return complete, runnable code.",
 ].join(' ')
 
@@ -161,6 +163,10 @@ const escapeRegExp = (value: string): string =>
 // This is the bounded, documented fail-closed safety net described in the file
 // header — not intent routing. It binds {self-reference} + {provenance verb} +
 // {forbidden provider}, which is exactly and only the identity-leak sentence.
+// Both first-person SINGULAR (legacy base-model leak shape: "I am built on
+// Gemini") and first-person PLURAL (Khala's canonical voice: "we are Khala")
+// lead-ins are covered, so an affirmative provider-identity leak is caught
+// however the model phrases its self-reference.
 const IDENTITY_LEAD_INS: ReadonlyArray<string> = [
   'i am',
   "i'm",
@@ -188,6 +194,31 @@ const IDENTITY_LEAD_INS: ReadonlyArray<string> = [
   'my provider is',
   'i run on',
   'i am running on',
+  'we are',
+  "we're",
+  'we were',
+  'we were created by',
+  'we are built on',
+  "we're built on",
+  'we are built by',
+  'we are powered by',
+  "we're powered by",
+  'we are based on',
+  "we're based on",
+  'we are a model',
+  'we are a large language model',
+  'we are made by',
+  "we're made by",
+  'we are developed by',
+  'we were developed by',
+  'we were trained by',
+  'we are trained by',
+  'our underlying model',
+  'our underlying provider',
+  'our model is',
+  'our provider is',
+  'we run on',
+  'we are running on',
   'developed by',
   'created by',
   'built on',
@@ -196,6 +227,23 @@ const IDENTITY_LEAD_INS: ReadonlyArray<string> = [
   'a large language model developed by',
   'a language model by',
   'a language model trained by',
+]
+
+// Negation cues that flip an identity sentence from an AFFIRMATIVE provider
+// claim (the leak we must block) into a DENIAL (the answer we must let through
+// untouched). A sentence like "we are not Gemini" or "I'm not built on Claude"
+// is exactly what a correct Khala answer says when asked "are you Gemini?" — it
+// must NOT be flagged as a leak, and (crucially) must NOT be rewritten by the
+// backstop, which is what produced the duplicated identity sentence in the live
+// app. We only treat the negation as scoping the provider claim when it appears
+// BEFORE the provider name in the same segment.
+const NEGATION_CUES: ReadonlyArray<string> = [
+  'not',
+  "n't", // isn't / aren't / wasn't / weren't / don't
+  'never',
+  'no ',
+  'neither',
+  'nor ',
 ]
 
 // All forbidden surface forms, flattened with their canonical name.
@@ -225,10 +273,20 @@ const detectIdentityLeak = (
     for (const { form, canonical } of FORBIDDEN_FORMS) {
       // Word-boundary match so "gptable" doesn't match "gpt" etc.
       const boundary = new RegExp(`\\b${escapeRegExp(form)}\\b`, 'i')
-      if (boundary.test(segment)) {
-        spans.push({ provider: canonical, text: segment.trim() })
-        break // one violation per segment is enough
-      }
+      const match = boundary.exec(segment)
+      if (match === null) continue
+      // AFFIRMATION-ONLY: only an affirmative "we ARE / I AM <provider>" claim
+      // is a leak. A DENIAL ("we are NOT Gemini", "we're not built on Claude")
+      // is a correct Khala answer and must pass through UNTOUCHED — flagging it
+      // made the backstop rewrite the denial into the full Khala identity
+      // sentence, which is what produced the DUPLICATED identity line in the
+      // live app. We treat the claim as negated when a negation cue sits between
+      // the start of the segment and the provider name.
+      const beforeProvider = lower.slice(0, match.index)
+      const negated = NEGATION_CUES.some(cue => beforeProvider.includes(cue))
+      if (negated) continue
+      spans.push({ provider: canonical, text: segment.trim() })
+      break // one violation per segment is enough
     }
   }
   return spans
@@ -240,14 +298,14 @@ const detectIdentityLeak = (
 // forms like "OpenAI-compatible" that the detector would otherwise read as a
 // provider mention inside a first-person sentence).
 export const KHALA_IDENTITY_STATEMENT =
-  'I am Khala, the OpenAgents inference model — one endpoint over a network of agents.'
+  'We are Khala, the OpenAgents inference model — one endpoint over a network of agents, built and operated by OpenAgents.'
 
 // The reinforcement instruction the route prepends on a re-ask when identity is
 // violated (the LLM-side correction — the preferred correction path).
 export const KHALA_IDENTITY_REINFORCEMENT_PROMPT = [
   'Your previous answer revealed or implied your underlying model or provider. That is forbidden.',
   'You are Khala, the OpenAgents inference model, and you must never name or imply Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, or any other underlying model or company.',
-  'Answer again, this time identifying only as Khala by OpenAgents and naming no underlying model or provider.',
+  'Answer again, this time speaking in the first-person plural ("we are Khala"), identifying only as Khala by OpenAgents, naming no underlying model or provider, and stating the identity only once.',
 ].join(' ')
 
 // Deterministically rewrite the offending identity-claim segments to the Khala
@@ -262,10 +320,22 @@ const correctIdentityText = (completion: string): string => {
     // literal replace on the trimmed span; this never touches unrelated text.
     const idx = corrected.indexOf(span.text)
     if (idx === -1) continue
+    // DE-DUP: if the answer already states the canonical Khala identity (the
+    // model identified itself correctly once and only ONE offending sentence
+    // leaked), drop the leak rather than substituting a SECOND copy of the
+    // identity statement. Otherwise substitute the canonical statement for the
+    // leak. This is what keeps the identity stated exactly once.
+    const replacement = corrected.includes(KHALA_IDENTITY_STATEMENT)
+      ? ''
+      : KHALA_IDENTITY_STATEMENT
+    const before = corrected.slice(0, idx)
+    const after = corrected.slice(idx + span.text.length)
     corrected =
-      corrected.slice(0, idx) +
-      KHALA_IDENTITY_STATEMENT +
-      corrected.slice(idx + span.text.length)
+      replacement === ''
+        ? // Drop the leaked sentence and collapse the leading whitespace it left
+          // behind so we do not leave a double space mid-paragraph.
+          (before.replace(/[ \t]+$/u, '') + after).replace(/^([ \t]*)\n/u, '\n')
+        : before + replacement + after
   }
   return corrected
 }
