@@ -293,6 +293,19 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     ],
   },
   {
+    command: "multi-earning",
+    summary:
+      "Project the local cross-mode earning ledger (settled receipts across >=2 modes). INERT unless PYLON_MULTI_EARNING_LEDGER_ENABLED=1.",
+    mutates: false,
+    spends: false,
+    needsNetwork: false,
+    json: true,
+    args: [
+      pos("subcommand", "ledger (the only subcommand).", false),
+      flag("--json", "Emit JSON; this command is JSON-only."),
+    ],
+  },
+  {
     command: "receipts",
     summary: "Fetch public settlement receipts for a training run.",
     mutates: false,
