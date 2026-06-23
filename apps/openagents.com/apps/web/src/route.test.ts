@@ -143,6 +143,8 @@ describe('app route parser', () => {
   test('accepts the public legal routes', () => {
     expect(urlToAppRoute(appUrl('/terms'))).toEqual(TermsRoute())
     expect(urlToAppRoute(appUrl('/privacy'))).toEqual(PrivacyRoute())
+  })
+
   test('accepts the public Khala inference route', () => {
     expect(urlToAppRoute(appUrl('/khala'))).toEqual(KhalaRoute())
   })
