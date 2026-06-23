@@ -48,6 +48,13 @@ ideas drive the schema here:
   or replay challenge failed (an identity mismatch on replay also fails the
   gate). **This module computes eligibility; it never moves money.** A product
   surface owns the payout decision.
+- `apps/openagents.com/workers/api/src/inference/openagents-network-adapter.ts`
+  now has the product-side paid-routing wrapper,
+  `makeAdmittedOpenAgentsNetworkAdapter`. That wrapper checks the Khala Pylon
+  admission gate **before** dispatch, and then requires the returned serving
+  receipt to carry parity, canary, replay, and payout-eligibility evidence before
+  the request can clear the paid Pylon lane. A parity-only receipt is still
+  useful for fabric dry-runs, but it does **not** clear paid routing.
 
 ## Compute/owner-gated split (honest bounds)
 
@@ -63,6 +70,7 @@ ideas drive the schema here:
 
 The fabric supply adapter behind `InferenceProviderAdapter`
 (`apps/openagents.com/workers/api/src/inference/provider-adapter.ts`, P1-5 lane)
-is the consumer that would canary/replay a registered Pylon's serving receipt
-before routing paid traffic to it. That wiring, real serving, and any payout are
-deliberately not in this change.
+now owns the canaryable paid-routing gate for a registered Pylon. The remaining
+owner/compute-gated work is wiring a real vLLM/SGLang serving transport and
+real-GPU benchmark receipt. Any payout still goes through the separate
+settlement gates; this evidence path does not move money.

@@ -31,6 +31,11 @@
 import { Effect } from 'effect'
 
 import {
+  type PylonAdmissionDecision,
+  type PylonAdmissionInput,
+  decidePylonAdmission,
+} from './khala-pylon-admission'
+import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   type InferenceRequest,
@@ -52,6 +57,13 @@ export const OPENAGENTS_NETWORK_ADAPTER_ID = 'openagents-network'
 export const NETWORK_DISPATCH_UNAVAILABLE_KIND = 'network_dispatch_unavailable'
 export const NETWORK_DISPATCH_PENDING_REASON =
   'network dispatch pending Psionic fabric'
+export const NETWORK_PYLON_ADMISSION_REFUSED_KIND = 'pylon_admission_refused'
+export const NETWORK_PYLON_ADMISSION_REFUSED_REASON =
+  'candidate Pylon failed the Khala serving admission gate'
+export const NETWORK_PAID_TRAFFIC_RECEIPT_UNVERIFIED_KIND =
+  'paid_traffic_receipt_unverified'
+export const NETWORK_PAID_TRAFFIC_RECEIPT_UNVERIFIED_REASON =
+  'serving receipt did not clear parity, canary, replay, and payout-eligibility checks'
 
 // ----------------------------------------------------------------------------
 // Serving receipt — the per-stage proof the payout split consumes (#5484)
@@ -104,6 +116,20 @@ export type ServingReceipt = Readonly<{
   // reference greedy decode). Only `parityMode: 'exact_greedy_parity'` &&
   // `parityVerified: true` clears the strong payment gate in #5484.
   parityVerified: boolean
+  // Product-layer paid-traffic verification. This mirrors the Pylon
+  // `PylonServingReceipt.verification` gate in `apps/pylon/src/serving-receipt`:
+  // a paid route needs parity AND canary AND replay evidence before it can be
+  // admitted. Optional so old parity-only fabric tests stay honest: they may
+  // prove serving, but they do not clear the paid-traffic gate below.
+  paidTrafficVerification?:
+    | Readonly<{
+        parityPassed: boolean
+        canaryPassed: boolean
+        replayPassed: boolean
+        payoutEligible: boolean
+        blockerRefs: ReadonlyArray<string>
+      }>
+    | undefined
 }>
 
 // What a live fabric dispatch returns: the normalized completion result PLUS the
@@ -130,6 +156,16 @@ export type OpenAgentsNetworkAdapterConfig = Readonly<{
   dispatch?: NetworkFabricDispatch | undefined
 }>
 
+export type OpenAgentsAdmittedNetworkAdapterConfig = Readonly<{
+  // Live fabric dispatch. Required here: this factory is the canaryable paid
+  // Pylon lane, not the inert placeholder.
+  dispatch: NetworkFabricDispatch
+  // Per-request admission input for the candidate Pylon. The provider is sync
+  // and pure; upstream code resolves D1/heartbeat/payout-target projections
+  // before it reaches this adapter.
+  admission: (request: InferenceRequest) => PylonAdmissionInput
+}>
+
 // Build the inert/typed-fail Effect for the no-fabric case. NON-retryable so
 // routing overflows to the next viable lane rather than backing off against a
 // structurally absent lane.
@@ -142,6 +178,57 @@ const dispatchUnavailable = (): Effect.Effect<never, InferenceAdapterError> =>
       retryable: false,
     }),
   )
+
+const admissionRefused = (
+  decision: PylonAdmissionDecision,
+): Effect.Effect<never, InferenceAdapterError> =>
+  Effect.fail(
+    new InferenceAdapterError({
+      adapterId: OPENAGENTS_NETWORK_ADAPTER_ID,
+      kind: NETWORK_PYLON_ADMISSION_REFUSED_KIND,
+      reason:
+        decision.blockerRefs.length === 0
+          ? NETWORK_PYLON_ADMISSION_REFUSED_REASON
+          : `${NETWORK_PYLON_ADMISSION_REFUSED_REASON}: ${decision.blockerRefs.join(',')}`,
+      retryable: false,
+    }),
+  )
+
+const paidTrafficReceiptUnverified = (
+  receipt: ServingReceipt,
+): Effect.Effect<never, InferenceAdapterError> =>
+  Effect.fail(
+    new InferenceAdapterError({
+      adapterId: OPENAGENTS_NETWORK_ADAPTER_ID,
+      kind: NETWORK_PAID_TRAFFIC_RECEIPT_UNVERIFIED_KIND,
+      reason:
+        receipt.paidTrafficVerification === undefined
+          ? NETWORK_PAID_TRAFFIC_RECEIPT_UNVERIFIED_REASON
+          : `${NETWORK_PAID_TRAFFIC_RECEIPT_UNVERIFIED_REASON}: ${receipt.paidTrafficVerification.blockerRefs.join(',')}`,
+      retryable: false,
+    }),
+  )
+
+// Strict paid-traffic gate: parity-only serving receipts are useful for
+// fabric-level tests and dry runs, but paid routing needs the Pylon
+// canary/replay verification bundle to clear too.
+export const servingReceiptClearsPaidTraffic = (
+  receipt: ServingReceipt,
+): boolean => {
+  const parityOk =
+    receipt.parityMode === 'exact_greedy_parity' && receipt.parityVerified
+  const verification = receipt.paidTrafficVerification
+  if (!parityOk || verification === undefined) {
+    return false
+  }
+  return (
+    verification.parityPassed &&
+    verification.canaryPassed &&
+    verification.replayPassed &&
+    verification.payoutEligible &&
+    verification.blockerRefs.length === 0
+  )
+}
 
 // Split a served result into the gateway's stream-chunk shape: one content frame
 // then a terminal frame carrying the receipt-first usage (mirrors the passthrough
@@ -185,6 +272,29 @@ export const makeOpenAgentsNetworkAdapter = (
           ),
         ),
 })
+
+// Paid/canaryable serving-fabric adapter. This wraps the fabric dispatch with
+// the Khala admission gate before dispatch and the full paid-traffic receipt
+// gate after dispatch. Failure is non-retryable because neither a missing
+// admission proof nor a failed canary/replay receipt is a transient provider
+// outage; routing should fall back to cloud lanes without paying the Pylon.
+export const makeAdmittedOpenAgentsNetworkAdapter = (
+  config: OpenAgentsAdmittedNetworkAdapterConfig,
+): InferenceProviderAdapter =>
+  makeOpenAgentsNetworkAdapter({
+    dispatch: (request: InferenceRequest) =>
+      Effect.gen(function* () {
+        const admission = decidePylonAdmission(config.admission(request))
+        if (!admission.admitted) {
+          return yield* admissionRefused(admission)
+        }
+        const served = yield* config.dispatch(request)
+        if (!servingReceiptClearsPaidTraffic(served.receipt)) {
+          return yield* paidTrafficReceiptUnverified(served.receipt)
+        }
+        return served
+      }),
+  })
 
 // The INERT serving-fabric adapter (no fabric dispatch). It is NOT registered in
 // index.ts today: routing's `dispatchWithOverflow` filters the lane plan to
