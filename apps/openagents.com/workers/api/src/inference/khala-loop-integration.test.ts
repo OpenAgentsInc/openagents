@@ -241,6 +241,7 @@ const baseConfig = (
     payoutGate?: KhalaLoopConfig['payoutGate']
     resaleRefs?: KhalaLoopConfig['resaleRefs']
     transport?: PylonServeTransport
+    admission?: KhalaLoopConfig['admission']
   }>,
 ): KhalaLoopConfig => ({
   arming: options.arming,
@@ -251,6 +252,28 @@ const baseConfig = (
   revenueAsset: 'bitcoin',
   settlementDeps: options.settlementDeps,
   transport: options.transport ?? fakePylonTransport(),
+  ...(options.admission === undefined ? {} : { admission: options.admission }),
+})
+
+// A fully-ready admission snapshot for the guinea-pig Pylon, plus the M4 admission
+// config the loop gates on. Tests degrade one field to prove the safe fall-back.
+const REQUIRED_SERVING_CAP = 'capability.serving.khala_mini.v1'
+const admittedSnapshot = () => ({
+  capabilityRefs: [REQUIRED_SERVING_CAP],
+  latestHeartbeatAt: '2026-06-22T17:59:30.000Z', // 30s before nowMs — fresh
+  latestHeartbeatStatus: 'ok',
+  pylonRef: GUINEA_PIG_NODE_REF,
+  servingLaneRefs: ['lane.nip90.serving.v1'],
+  sparkPayoutTargetRef: 'payout.spark.deadbeef',
+  status: 'active' as const,
+  walletReady: true,
+})
+const admissionConfig = (
+  snapshot: ReturnType<typeof admittedSnapshot> = admittedSnapshot(),
+): KhalaLoopConfig['admission'] => ({
+  nowMs: Date.parse('2026-06-22T18:00:00.000Z'),
+  requiredCapabilityRef: REQUIRED_SERVING_CAP,
+  snapshot,
 })
 
 describe('readKhalaLoopArming (flag, default OFF)', () => {
@@ -294,8 +317,8 @@ describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)'
     )
 
     // The serve + parity receipt still happen (M4 works); nothing settled.
-    expect(outcome.receipt.parityVerified).toBe(true)
-    expect(outcome.served.result.content).toContain('guinea-pig')
+    expect(outcome.receipt!.parityVerified).toBe(true)
+    expect(outcome.served!.result.content).toContain('guinea-pig')
     expect(outcome.forwardedToSettlement).toBe(false)
     expect(outcome.settlement).toBeNull()
     expect(dispatchCount.value).toBe(0)
@@ -320,7 +343,7 @@ describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)'
     )
 
     expect(outcome.forwardedToSettlement).toBe(true)
-    expect(outcome.decision.armed).toBe(true)
+    expect(outcome.decision!.armed).toBe(true)
     expect(outcome.settlement).not.toBeNull()
     const legs = outcome.settlement!.legs
     expect(legs).toHaveLength(1)
@@ -415,7 +438,7 @@ describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)'
       ),
     )
 
-    expect(outcome.decision.armed).toBe(false)
+    expect(outcome.decision!.armed).toBe(false)
     expect(outcome.forwardedToSettlement).toBe(false)
     expect(outcome.settlement).toBeNull()
     expect(dispatchCount.value).toBe(0)
@@ -473,6 +496,115 @@ describe('runKhalaLoopOnce — verified-serve -> dry-run Spark payout (M3↔M4)'
 
     expect(outcome.settlement!.legs[0]!.skipped).toBe('no_payout_destination')
     expect(outcome.settlement!.legs[0]!.settled).toBe(false)
+    expect(dispatchCount.value).toBe(0)
+  })
+
+  // --------------------------------------------------------------------------
+  // M4 ADMISSION GATE: route only to admitted Pylons; degrade safely otherwise.
+  // --------------------------------------------------------------------------
+
+  it('ADMITTED Pylon (capability + fresh heartbeat + wallet/payout ready): serves and settles', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({
+          admission: admissionConfig(),
+          arming: { loopArmed: true },
+          settlementDeps,
+        }),
+        request,
+      ),
+    )
+
+    // Admission passed -> the Pylon was routed to, served, and settled.
+    expect(outcome.admission).not.toBeNull()
+    expect(outcome.admission!.admitted).toBe(true)
+    expect(outcome.admittedAndServed).toBe(true)
+    expect(outcome.receipt!.parityVerified).toBe(true)
+    expect(outcome.forwardedToSettlement).toBe(true)
+    expect(outcome.settlement!.legs[0]!.settled).toBe(true)
+  })
+
+  it('NON-ADMITTED Pylon (stale heartbeat): no routing, no serve, no settle (safe fall-back)', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    // The transport must NEVER be touched when admission refuses. A throwing
+    // transport proves the loop short-circuits BEFORE dispatching to the Pylon.
+    const throwingTransport: PylonServeTransport = () => {
+      throw new Error('transport must not be called for a non-admitted Pylon')
+    }
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({
+          // Stale heartbeat (5 min old vs the 90s default TTL) => not admitted.
+          admission: admissionConfig({
+            ...admittedSnapshot(),
+            latestHeartbeatAt: '2026-06-22T17:55:00.000Z',
+          }),
+          arming: { loopArmed: true },
+          settlementDeps,
+          transport: throwingTransport,
+        }),
+        request,
+      ),
+    )
+
+    expect(outcome.admission!.admitted).toBe(false)
+    expect(outcome.admittedAndServed).toBe(false)
+    expect(outcome.served).toBeNull()
+    expect(outcome.receipt).toBeNull()
+    expect(outcome.decision).toBeNull()
+    expect(outcome.settlement).toBeNull()
+    expect(outcome.forwardedToSettlement).toBe(false)
+    // Nothing was dispatched or recorded — the request falls back to cloud.
+    expect(dispatchCount.value).toBe(0)
+    expect(store.receipts.size).toBe(0)
+  })
+
+  it('NON-ADMITTED Pylon (missing capability): refused before any serve, even with the loop armed', async () => {
+    const store = new MemoryLedgerStore()
+    const dispatchCount = { value: 0 }
+    const settlementDeps = makeSettlementDeps({
+      dispatchCount,
+      gate: armedRealSettlementGate(),
+      store,
+      targets: new Map([[GUINEA_PIG_NODE_REF, readGuineaPigSparkAddress()]]),
+    })
+
+    const outcome = await Effect.runPromise(
+      runKhalaLoopOnce(
+        baseConfig({
+          admission: admissionConfig({
+            ...admittedSnapshot(),
+            capabilityRefs: ['capability.unrelated.v1'],
+          }),
+          arming: { loopArmed: true },
+          settlementDeps,
+        }),
+        request,
+      ),
+    )
+
+    expect(outcome.admittedAndServed).toBe(false)
+    expect(outcome.admission!.blockerRefs).toContain(
+      'blocker.pylon_admission.capability_not_advertised',
+    )
     expect(dispatchCount.value).toBe(0)
   })
 })

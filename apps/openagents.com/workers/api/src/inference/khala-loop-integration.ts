@@ -80,6 +80,11 @@ import {
 } from './serving-node-payout'
 import { type InferenceResaleRefs } from '../inference-resale-authorization'
 import { type MdkPayoutModeGateProjection } from '../mdk-payout-mode-gate'
+import {
+  type PylonAdmissionDecision,
+  type PylonServingSnapshot,
+  decidePylonAdmission,
+} from './khala-pylon-admission'
 
 // ----------------------------------------------------------------------------
 // (1) Pluggable Pylon transport — the seam a real Pylon drops into
@@ -254,18 +259,32 @@ export const makeKhalaLoopSettlementSink = (
 export type KhalaLoopRevenueAsset = ServingRevenueAsset
 
 export type KhalaLoopOutcome = Readonly<{
-  // The parity-verified serving receipt the fabric dispatch produced.
-  receipt: ServingReceipt
-  // The full served completion result (content + receipt-first usage).
-  served: NetworkServedResult
-  // The computed (possibly unarmed) per-stage payout decision.
-  decision: ServingNodePayoutDecision
+  // The M4 Pylon admission decision (capability + heartbeat + wallet/payout
+  // readiness), when an admission snapshot was supplied. null when the caller did
+  // not gate on admission (e.g. the local/fake test path). When present and NOT
+  // admitted, the loop refused to route to the Pylon: `served`/`receipt`/
+  // `decision` are null and `admittedAndServed` is false (safe fall-back to the
+  // existing cloud adapters happens at the caller).
+  admission: PylonAdmissionDecision | null
+  // Whether the Pylon was admitted AND actually served. False when admission
+  // refused (no Pylon routing) — the honest "fell back to cloud" signal.
+  admittedAndServed: boolean
+  // The parity-verified serving receipt the fabric dispatch produced. null when
+  // admission refused (no serve was attempted).
+  receipt: ServingReceipt | null
+  // The full served completion result (content + receipt-first usage). null when
+  // admission refused.
+  served: NetworkServedResult | null
+  // The computed (possibly unarmed) per-stage payout decision. null when
+  // admission refused (nothing to settle).
+  decision: ServingNodePayoutDecision | null
   // The settlement outcome from the M3 sink. Present only when the loop flag is
   // armed AND the decision was armed; otherwise null (the loop short-circuited
   // before forwarding to M3). A null outcome with an unarmed decision is the
   // honest inert default.
   settlement: KhalaSettlementOutcome | null
-  // Whether the loop forwarded to M3 at all (loop flag armed AND decision armed).
+  // Whether the loop forwarded to M3 at all (admitted + served + loop flag armed
+  // AND decision armed).
   forwardedToSettlement: boolean
 }>
 
@@ -291,6 +310,21 @@ export type KhalaLoopConfig = Readonly<{
   // RL-3 resale-authorization refs for the api_inference_gateway_resale lane.
   // Required for the decision to ARM; omitted in the honest inert default.
   resaleRefs?: Partial<InferenceResaleRefs> | undefined
+  // M4 ADMISSION GATE (the issue's "capability/registration" task). When present,
+  // the loop checks the candidate Pylon is ADMITTED (advertises the required
+  // capability + has a fresh healthy heartbeat + is wallet/payout ready) BEFORE
+  // dispatching to its transport. A non-admitted Pylon is NOT routed to: the loop
+  // short-circuits with `admittedAndServed: false` and the caller falls back to
+  // the existing cloud adapters — never a serve/pay against an unready node. When
+  // omitted (the local/fake test path), no admission gate runs (admission: null).
+  admission?:
+    | Readonly<{
+        snapshot: PylonServingSnapshot
+        requiredCapabilityRef: string
+        nowMs: number
+        heartbeatTtlMs?: number | undefined
+      }>
+    | undefined
 }>
 
 // Run the loop ONCE for a single inference request: serve via the M4 fabric
@@ -311,6 +345,41 @@ export const runKhalaLoopOnce = (
   request: InferenceRequest,
 ): Effect.Effect<KhalaLoopOutcome, unknown> =>
   Effect.gen(function* () {
+    // M4 ADMISSION GATE (capability + heartbeat + wallet/payout readiness). When
+    // an admission snapshot is supplied, decide whether the candidate Pylon is
+    // admitted BEFORE touching the transport. A non-admitted Pylon is NOT routed
+    // to: short-circuit with no serve, no receipt, no decision, no settlement —
+    // the caller falls back to the existing cloud adapters. PURE + fail-closed.
+    const admission =
+      config.admission === undefined
+        ? null
+        : decidePylonAdmission({
+            nowMs: config.admission.nowMs,
+            requiredCapabilityRef: config.admission.requiredCapabilityRef,
+            snapshot: config.admission.snapshot,
+            ...(config.admission.heartbeatTtlMs === undefined
+              ? {}
+              : { heartbeatTtlMs: config.admission.heartbeatTtlMs }),
+          })
+
+    if (admission !== null && !admission.admitted) {
+      yield* Effect.logInfo(
+        workerLogEntry('inference.khala_loop.pylon_not_admitted', {
+          blockerCount: admission.blockerRefs.length,
+          pylonRef: admission.pylonRef,
+        }),
+      )
+      return {
+        admission,
+        admittedAndServed: false,
+        decision: null,
+        forwardedToSettlement: false,
+        receipt: null,
+        served: null,
+        settlement: null,
+      }
+    }
+
     // M4: serve through the parity-gated fabric dispatch. We need the RECEIPT
     // (not just the completion), so we call the dispatch directly rather than
     // through the InferenceProviderAdapter (which surfaces only the result).
@@ -346,6 +415,8 @@ export const runKhalaLoopOnce = (
     const forwardedToSettlement = config.arming.loopArmed && decision.armed
     if (!forwardedToSettlement) {
       return {
+        admission,
+        admittedAndServed: true,
         decision,
         forwardedToSettlement: false,
         receipt,
@@ -378,6 +449,8 @@ export const runKhalaLoopOnce = (
     })
 
     return {
+      admission,
+      admittedAndServed: true,
       decision,
       forwardedToSettlement: true,
       receipt,

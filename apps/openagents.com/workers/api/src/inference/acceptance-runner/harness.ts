@@ -145,6 +145,22 @@ export const runAcceptanceJob = async (
   return { delivered, verdict }
 }
 
+// Typed delivery failure for the `fetch`-backed verdict poster. A non-2xx
+// callback response is an EXPECTED, retryable delivery fault (the consumer
+// retries the job), so it is a named error class rather than a generic
+// `throw new Error` — the same `*Error extends Error` discipline the rest of the
+// Worker uses. `runAcceptanceJob` catches any `postVerdict` rejection and maps it
+// to `delivered: false`, so the typed class does not change behavior; it only
+// makes the failure legible (status carried as a field, not parsed from a string).
+export class VerdictCallbackDeliveryError extends Error {
+  readonly status: number
+  constructor(status: number) {
+    super(`verdict_callback_failed: ${status}`)
+    this.name = 'VerdictCallbackDeliveryError'
+    this.status = status
+  }
+}
+
 // A `fetch`-backed `postVerdict` builder for the real hosts (Pylon / Cloud Run). It
 // POSTs the verdict to the gateway's callback URL with the bearer token. The token is
 // supplied out of band (the host's local secret), NEVER hard-coded. Rejects on a
@@ -167,7 +183,7 @@ export const makeFetchVerdictPoster = (
       method: 'POST',
     })
     if (!response.ok) {
-      throw new Error(`verdict_callback_failed: ${response.status}`)
+      throw new VerdictCallbackDeliveryError(response.status)
     }
   }
 }
