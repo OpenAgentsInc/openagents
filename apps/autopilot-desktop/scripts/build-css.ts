@@ -1,17 +1,21 @@
 import { spawnSync } from "node:child_process"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, resolve } from "node:path"
-import { createStylexBunPlugin } from "@stylexjs/unplugin/bun"
 
-type StylexBunOptions = NonNullable<
-  Parameters<typeof createStylexBunPlugin>[0]
-> & {
-  externalPackages?: ReadonlyArray<string>
-}
+// The typed token source is re-exported through @openagentsinc/ui (a direct
+// dependency) so the desktop app does not need a separate design-tokens dep.
+import { themeCss } from "@openagentsinc/ui/tokens"
+
+// #6046: StyleX is gone. The desktop webview CSS is now just:
+//   1. the generated `:root { --oa-*: … }` token block (the single typed token
+//      source from @openagentsinc/design-tokens), and
+//   2. the Tailwind v4 output (which also compiles the plain component CSS in
+//      styles.css that replaced the deleted desktop-stylex.ts StyleX module).
+// There is no longer a StyleX extraction/build step or `window`-dependent
+// component CSS pipeline.
 
 const desktopRoot = process.cwd()
 const tailwindCss = resolve(desktopRoot, "src/ui/styles.tailwind.css")
-const stylexCss = resolve(desktopRoot, "src/ui/styles.stylex.css")
 const outputCss = resolve(desktopRoot, "src/ui/styles.out.css")
 const viewBundleOut = resolve(desktopRoot, "resources/ui")
 
@@ -30,19 +34,10 @@ if (tailwind.status !== 0) {
 
 await rm(viewBundleOut, { recursive: true, force: true })
 
-const stylexOptions: StylexBunOptions = {
-  dev: false,
-  runtimeInjection: false,
-  useCSSLayers: true,
-  bunDevCssOutput: stylexCss,
-  externalPackages: ["@openagentsinc/ui", "@openagentsinc/autopilot-ui"],
-}
-
 const result = await Bun.build({
   entrypoints: ["src/ui/main.ts"],
   outdir: viewBundleOut,
   target: "browser",
-  plugins: [createStylexBunPlugin(stylexOptions)],
 })
 
 if (!result.success) {
@@ -52,17 +47,12 @@ if (!result.success) {
 
 await mkdir(dirname(outputCss), { recursive: true })
 
-const [tailwindOutput, stylexOutput] = await Promise.all([
-  readFile(tailwindCss, "utf8"),
-  readFile(stylexCss, "utf8").catch(() => ""),
-])
+const tailwindOutput = await readFile(tailwindCss, "utf8")
 
-await writeFile(
-  outputCss,
-  `${tailwindOutput}\n\n/* StyleX generated component CSS */\n${stylexOutput}`,
-)
+// The generated typed-token custom properties come first so every `var(--oa-*)`
+// reference in the component CSS resolves to the canonical token value.
+const tokensBlock = `/* #6046: generated from @openagentsinc/design-tokens themeCss() — single typed token source. */\n${themeCss()}`
 
-await Promise.all([
-  rm(tailwindCss, { force: true }),
-  rm(stylexCss, { force: true }),
-])
+await writeFile(outputCss, `${tokensBlock}\n${tailwindOutput}\n`)
+
+await rm(tailwindCss, { force: true })

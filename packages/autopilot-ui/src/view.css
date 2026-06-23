@@ -1,0 +1,56 @@
+/* #6046: ported from the deleted StyleX create() block in view.ts — theme-preserving. */
+
+.oa-autopilot-session-list {
+  display: grid;
+  gap: 8px;
+}
+
+.oa-autopilot-session-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline,#525458);
+  background-color: var(--bg-secondary,#151515);
+  padding: 12px;
+  color: var(--text,#d7d8e5);
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-session-row {
+    grid-template-columns: minmax(0,1.7fr) 7rem 7rem minmax(0,1fr);
+    align-items: center;
+  }
+}
+
+.oa-autopilot-session-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  color: var(--primary,#fff);
+}
+
+.oa-autopilot-session-adapter {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text-secondary,#8a8c93);
+}
+
+.oa-autopilot-session-progress-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text-secondary,#8a8c93);
+}
+
+.oa-autopilot-session-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary,#8a8c93);
+}

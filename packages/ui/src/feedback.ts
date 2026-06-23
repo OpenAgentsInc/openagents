@@ -1,5 +1,4 @@
 import { clsx } from 'clsx'
-import * as stylex from '@stylexjs/stylex'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -13,30 +12,12 @@ import type { Tone } from './primitives'
 import {
   stylexAttrs,
   stylexFallback,
-  stylexRuntimeFallbackEnabled,
 } from './stylex-foldkit'
 
-const emptyStateStyles = stylexRuntimeFallbackEnabled()
-  ? {
-      root: stylexFallback('oa-ui-empty-state-root'),
-      body: stylexFallback('oa-ui-empty-state-body'),
-    }
-  : stylex.create({
-      root: {
-        display: 'grid',
-        justifyItems: 'start',
-        gap: 12,
-        borderWidth: 1,
-        borderStyle: 'dashed',
-        borderColor: '#333',
-        backgroundColor: '#010102',
-        padding: 24,
-      },
-      body: {
-        display: 'grid',
-        gap: 4,
-      },
-    })
+const emptyStateStyles = {
+  root: stylexFallback('oa-ui-empty-state-root'),
+  body: stylexFallback('oa-ui-empty-state-body'),
+}
 
 export const alert = <Message>(input: {
   title: string

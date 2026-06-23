@@ -7,13 +7,14 @@
 // perspective-walk / third-person camera — through three-effect's
 // `mountTrainingRunVisualization`, in a real browser.
 //
-// NOTE on scope: we deliberately do NOT import the desktop `view.ts`/
-// `verseSceneVisualization` here. That module pulls in `@stylexjs/stylex`, which
-// throws at runtime unless compiled by its Babel plugin (verified: it errors on
-// mount in a plain browser bundle). The shared scene layer is the SAME code that
-// produces the beam in the real app — this harness renders that beam faithfully,
-// which is exactly the sanctioned fallback in the task: prove the crackling_arc
-// beam renders bright pixels through `mountTrainingRunVisualization`.
+// NOTE on scope: we render straight from the SHARED scene layer rather than the
+// desktop `view.ts`. Historically `view.ts` could not be imported here because
+// it pulled in `@stylexjs/stylex`, whose `stylex.create(...)` threw at runtime
+// unless compiled by its Babel plugin. #6046 removed StyleX entirely, so
+// `view.ts` now mounts headless without that throw (see
+// `tests/stylex-removal-headless-mount.test.ts`); this harness still uses the
+// shared scene layer because that is the SAME code producing the beam in the
+// real app and keeps the pixel proof focused on the scene, not the full shell.
 //
 // A query flag (?spawn=0) renders the identical world WITHOUT the scene so the
 // capture script can prove the arc is what adds the bright pixels.

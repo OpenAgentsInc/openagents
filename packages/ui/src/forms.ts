@@ -1,5 +1,4 @@
 import { clsx } from 'clsx'
-import * as stylex from '@stylexjs/stylex'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -8,108 +7,21 @@ import type { FormOption, ValidationState } from './primitives'
 import {
   stylexAttrs,
   stylexFallback,
-  stylexRuntimeFallbackEnabled,
 } from './stylex-foldkit'
 
-const formStyles = stylexRuntimeFallbackEnabled()
-  ? {
-      compactButton: stylexFallback('oa-ui-form-compact-button'),
-      compactButtonStrong: stylexFallback('oa-ui-form-compact-button-strong'),
-      group: stylexFallback('oa-ui-form-group'),
-      validationGroup: stylexFallback('oa-ui-form-validation-group'),
-      validationHeader: stylexFallback('oa-ui-form-validation-header'),
-      validationLabel: stylexFallback('oa-ui-form-validation-label'),
-      input: stylexFallback('oa-ui-form-input'),
-      textarea: stylexFallback('oa-ui-form-textarea'),
-      indicatorInfo: stylexFallback('oa-ui-form-indicator-info'),
-      indicatorSuccess: stylexFallback('oa-ui-form-indicator-success'),
-      error: stylexFallback('oa-ui-form-error'),
-    }
-  : stylex.create({
-      compactButton: {
-        minHeight: 32,
-        cursor: 'pointer',
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: '#333',
-        backgroundColor: 'transparent',
-        paddingInline: 10,
-        fontFamily: 'inherit',
-        fontSize: '0.8125rem',
-        color: 'rgba(255,255,255,0.6)',
-        ':hover': {
-          backgroundColor: '#080808',
-          color: '#f1efe8',
-        },
-      },
-      compactButtonStrong: {
-        borderColor: '#f1efe8',
-        backgroundColor: '#f1efe8',
-        color: '#000',
-        ':hover': {
-          backgroundColor: '#f1efe8',
-          color: '#000',
-        },
-      },
-      group: {
-        display: 'grid',
-        gap: 6,
-      },
-      validationGroup: {
-        display: 'grid',
-        gap: 4,
-      },
-      validationHeader: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      },
-      validationLabel: {
-        display: 'block',
-        fontSize: '0.875rem',
-        fontWeight: 500,
-        color: 'rgba(255,255,255,0.6)',
-      },
-      input: {
-        width: '100%',
-        minWidth: 0,
-        borderWidth: 1,
-        borderStyle: 'solid',
-        borderColor: '#222',
-        backgroundColor: '#030303',
-        paddingInline: 12,
-        paddingBlock: 10,
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: '0.8125rem',
-        lineHeight: 1.35,
-        color: '#f1efe8',
-        outlineStyle: 'none',
-        '::placeholder': {
-          color: 'rgba(255,255,255,0.3)',
-        },
-        ':focus': {
-          borderColor: '#ffb400',
-          boxShadow: '0 0 0 1px #ffb400',
-        },
-      },
-      textarea: {
-        minHeight: 128,
-        resize: 'vertical',
-      },
-      indicatorInfo: {
-        fontSize: '0.875rem',
-        color: '#2979ff',
-      },
-      indicatorSuccess: {
-        fontSize: '0.875rem',
-        color: '#00c853',
-      },
-      error: {
-        fontSize: '0.875rem',
-        color: '#d32f2f',
-      },
-    })
+const formStyles = {
+  compactButton: stylexFallback('oa-ui-form-compact-button'),
+  compactButtonStrong: stylexFallback('oa-ui-form-compact-button-strong'),
+  group: stylexFallback('oa-ui-form-group'),
+  validationGroup: stylexFallback('oa-ui-form-validation-group'),
+  validationHeader: stylexFallback('oa-ui-form-validation-header'),
+  validationLabel: stylexFallback('oa-ui-form-validation-label'),
+  input: stylexFallback('oa-ui-form-input'),
+  textarea: stylexFallback('oa-ui-form-textarea'),
+  indicatorInfo: stylexFallback('oa-ui-form-indicator-info'),
+  indicatorSuccess: stylexFallback('oa-ui-form-indicator-success'),
+  error: stylexFallback('oa-ui-form-error'),
+}
 
 export const compactButton = <Message>(input: {
   label: string

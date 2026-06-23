@@ -7,9 +7,7 @@ import type {
 import {
   stylexAttrs,
   stylexFallback,
-  stylexRuntimeFallbackEnabled,
 } from "@openagentsinc/ui/stylex-foldkit"
-import * as stylex from "@stylexjs/stylex"
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -36,71 +34,14 @@ const h = html<AutopilotUiMessage>()
 
 const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
 
-const sessionStyles = stylexRuntimeFallbackEnabled()
-  ? {
-      list: stylexFallback("oa-autopilot-session-list"),
-      row: stylexFallback("oa-autopilot-session-row"),
-      sessionRef: stylexFallback("oa-autopilot-session-ref"),
-      adapter: stylexFallback("oa-autopilot-session-adapter"),
-      progressRef: stylexFallback("oa-autopilot-session-progress-ref"),
-      empty: stylexFallback("oa-autopilot-session-empty"),
-    }
-  : stylex.create({
-      list: {
-        display: "grid",
-        gap: 8,
-      },
-      row: {
-        display: "grid",
-        gap: 8,
-        borderWidth: 1,
-        borderStyle: "solid",
-        borderColor: "var(--outline,#525458)",
-        backgroundColor: "var(--bg-secondary,#151515)",
-        padding: 12,
-        color: "var(--text,#d7d8e5)",
-        gridTemplateColumns: {
-          default: null,
-          "@media (min-width: 640px)":
-            "minmax(0,1.7fr) 7rem 7rem minmax(0,1fr)",
-        },
-        alignItems: {
-          default: null,
-          "@media (min-width: 640px)": "center",
-        },
-      },
-      sessionRef: {
-        minWidth: 0,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: 14,
-        color: "var(--primary,#fff)",
-      },
-      adapter: {
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: 12,
-        color: "var(--text-secondary,#8a8c93)",
-      },
-      progressRef: {
-        minWidth: 0,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-        fontFamily:
-          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-        fontSize: 12,
-        color: "var(--text-secondary,#8a8c93)",
-      },
-      empty: {
-        margin: 0,
-        fontSize: 14,
-        color: "var(--text-secondary,#8a8c93)",
-      },
-    })
+const sessionStyles = {
+  list: stylexFallback("oa-autopilot-session-list"),
+  row: stylexFallback("oa-autopilot-session-row"),
+  sessionRef: stylexFallback("oa-autopilot-session-ref"),
+  adapter: stylexFallback("oa-autopilot-session-adapter"),
+  progressRef: stylexFallback("oa-autopilot-session-progress-ref"),
+  empty: stylexFallback("oa-autopilot-session-empty"),
+} as const
 
 const chipToneStyles = {
   neutral: domainStyles.chipNeutral,

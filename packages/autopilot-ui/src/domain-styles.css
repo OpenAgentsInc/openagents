@@ -1,0 +1,377 @@
+/* #6046: ported from the deleted StyleX create() block in domain-styles.ts — theme-preserving. */
+
+.oa-autopilot-domain-list {
+  display: grid;
+  gap: 8px;
+}
+
+.oa-autopilot-domain-panel {
+  display: grid;
+  gap: 12px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 16px;
+  color: var(--text);
+}
+
+.oa-autopilot-domain-inline-panel {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding-block: 8px;
+  padding-inline: 12px;
+  color: var(--text);
+}
+
+.oa-autopilot-domain-sub-panel {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: transparent;
+  padding: 12px;
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-sub-panel {
+    grid-template-columns: minmax(0,1fr) minmax(0,1.4fr);
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oa-autopilot-domain-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.oa-autopilot-domain-stack {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.oa-autopilot-domain-stack-small {
+  display: grid;
+  gap: 4px;
+}
+
+.oa-autopilot-domain-metadata-grid {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-metadata-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.oa-autopilot-domain-title {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.oa-autopilot-domain-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.oa-autopilot-domain-muted {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.oa-autopilot-domain-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.oa-autopilot-domain-code-primary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  color: var(--primary);
+}
+
+.oa-autopilot-domain-code-muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.oa-autopilot-domain-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.oa-autopilot-domain-success-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+}
+
+.oa-autopilot-domain-action-button {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  padding-inline: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.oa-autopilot-domain-action-button:disabled {
+  opacity: 0.45;
+}
+
+.oa-autopilot-domain-provider-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+  color: var(--text);
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-provider-row {
+    grid-template-columns: minmax(0,1fr) 7rem minmax(0,1fr);
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-earnings-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg);
+  padding: 12px;
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-earnings-row {
+    grid-template-columns: minmax(0,1fr) 8rem 12rem;
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-assignment-row {
+  display: grid;
+  gap: 12px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+  color: var(--text);
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-assignment-row {
+    grid-template-columns: minmax(0,1fr) 8rem minmax(8rem,12rem) auto;
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-artifact-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+  color: var(--text);
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-artifact-row {
+    grid-template-columns: minmax(0,1.5fr) minmax(0,1fr) 12rem;
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-receipt-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+  color: var(--text);
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-receipt-row {
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) 7rem;
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-two-column-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: transparent;
+  padding: 12px;
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-two-column-row {
+    grid-template-columns: minmax(0,1fr) 7rem;
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-event-row {
+  display: grid;
+  gap: 8px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg-secondary);
+  padding: 12px;
+}
+
+@media (min-width: 640px) {
+  .oa-autopilot-domain-event-row {
+    grid-template-columns: 4rem 10rem minmax(0,1fr) minmax(0,1fr);
+    align-items: center;
+  }
+}
+
+.oa-autopilot-domain-progress-stack {
+  display: grid;
+  gap: 4px;
+}
+
+.oa-autopilot-domain-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg);
+}
+
+.oa-autopilot-domain-progress-bar {
+  height: 100%;
+  background-color: var(--info);
+}
+
+.oa-autopilot-domain-command-block {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: pre;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--outline);
+  background-color: var(--bg);
+  padding-block: 8px;
+  padding-inline: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--primary);
+}
+
+.oa-autopilot-domain-chip {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  padding-inline: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.oa-autopilot-domain-chip-neutral {
+  border-color: var(--outline);
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+
+.oa-autopilot-domain-chip-success {
+  border-color: var(--success);
+  background-color: color-mix(in srgb, var(--success) 12%, transparent);
+  color: var(--success);
+}
+
+.oa-autopilot-domain-chip-warning {
+  border-color: var(--warning);
+  background-color: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--warning);
+}
+
+.oa-autopilot-domain-chip-danger {
+  border-color: var(--danger);
+  background-color: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+
+.oa-autopilot-domain-chip-info {
+  border-color: var(--info);
+  background-color: color-mix(in srgb, var(--info) 12%, transparent);
+  color: var(--info);
+}
