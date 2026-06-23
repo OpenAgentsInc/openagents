@@ -415,9 +415,17 @@ export type ThreePlayerControllerOptions = Readonly<{
   onCameraControl?: (event: Readonly<Record<string, unknown>>) => void
 }>
 
+export type TrainingRunBloomOptions = Readonly<{
+  enabled?: boolean
+  strength?: number
+  radius?: number
+  threshold?: number
+}>
+
 export type TrainingRunVisualizationOptions = Readonly<{
   backgroundColor?: number
   beams?: readonly TrainingRunBeamDefinition[]
+  bloom?: TrainingRunBloomOptions
   bursts?: readonly TrainingRunBurstDefinition[]
   cameraMode?: "orthographic_map" | "perspective_walk"
   controller?: "none" | "third_person_character" | "wasd_mouselook"
