@@ -1,9 +1,13 @@
-# Talk to Khala from a Verse textbox — audit & minimal path
+# Talk to Khala from a Verse textbox — audit & implementation status
 
 *2026-06-22. What's needed so a user can type a prompt into a textbox **in the
 Verse world** and talk to Khala — streamed response, with the in-world
 crackling-energy effect firing. Most of the hard parts already exist; the gap is a
 small amount of UI + one render wiring.*
+
+**2026-06-23 status:** implemented on current `openagents` main for the desktop
+Verse MVP. The remaining web/multi-user identity and credit flow is still future
+work.
 
 ## Goal
 
@@ -29,21 +33,21 @@ in-world (bubble/panel) and the crackling-energy effect fires from the Khala nex
   `WorldLocalChatMessageRow`, chat bubbles above avatars — a place for the prompt +
   response to live in-world.
 
-## What's missing (the actual gaps)
+## Original gaps and current status
 
-1. **An in-world textbox.** There is **no text input inside the rendered 3D world**
-   today — the desktop chat is a sidebar pane; the Verse plays behind it. Need a
-   Foldkit input surface anchored in/over the scene (HUD panel or a bubble at the
-   avatar).
-2. **Textbox → `khalaTurn`.** Wire submit → `khalaTurn({prompt, model, turnId})`,
-   reusing the existing RPC + token resolution. (Trivial — the RPC exists.)
-3. **Immediate in-world effect from the response.** Today the crackling effect only
-   appears when the public-activity-timeline poll picks up the receipt (~5–10s later).
-   For a responsive feel, drive a **local** scene effect directly from the
-   `khalaTurn` receipt (a Khala-response node + crackling arc near the avatar),
-   mirroring the existing inference-layer mapper. This is the main new wiring.
-4. **Live tokens in-world.** `khalaToken` deltas already stream to the app; no 3D
-   consumer renders them. Render into a response bubble/panel that appends live.
+1. **In-world textbox: implemented.** `src/ui/verse-khala-input.ts` renders a
+   Foldkit HUD surface over the Verse scene with a one-line input, live response
+   bubble, receipt line, and honest status text.
+2. **Textbox → `khalaTurn`: implemented.** `SubmittedVerseKhala` schedules
+   `RunVerseKhalaTurn({prompt, turnId})`, which calls the existing host-side
+   `khalaTurn` RPC with `model:"openagents/khala-mini"`.
+3. **Immediate in-world effect from the response: implemented.**
+   `withVerseKhalaEffectLayer` overlays a local, receipt-bound crackling arc from
+   the Khala nexus to the local avatar as soon as a real receipt lands. The later
+   public-activity-timeline projection remains separate for other viewers.
+4. **Live tokens in-world: implemented.** Bun pushes `khalaToken` deltas
+   correlated by `turnId`; `GotVerseKhalaToken` appends active-turn deltas into
+   the in-world response bubble and ignores stale turn ids.
 
 ## Identity / credits
 
@@ -54,20 +58,26 @@ in-world (bubble/panel) and the crackling-energy effect fires from the Khala nex
   user would need an authenticated identity + their own funded balance (the LN→credit
   bridge / team-credit pool) — out of scope for the first demo.
 
-## Minimal path (desktop MVP)
+## Implemented desktop MVP
 
-1. Add a Foldkit **in-world textbox** (HUD/bubble) — `src/ui/verse-khala-input.ts`,
-   mounted in `src/ui/view.ts`.
-2. On submit → `khalaTurn({prompt, model:"openagents/khala-mini", turnId})`.
-3. Render streamed `khalaToken` deltas into an in-world response bubble/panel.
-4. On receipt, drive a **local** crackling-arc effect from the Khala nexus to the
-   avatar (reuse the M5 inference-layer mapper + `three-effect` `createCracklingArc`),
-   keyed to the receipt ref (evidence-bound). The public-timeline projection still
-   fires too, for other viewers.
+The implemented path is:
 
-**Hardest gap:** #3 (immediate local effect from the receipt) — the render
-infrastructure exists, the wiring doesn't. Everything else is small. **Not blocking
-for desktop:** identity/credits (owner token works).
+1. `verseKhalaInputOverlay(model)` is mounted in the Verse pane in
+   `src/ui/view.ts`.
+2. `SubmittedVerseKhala` records an active turn id and emits
+   `RunVerseKhalaTurn`.
+3. `RunVerseKhalaTurn` calls the Bun host `khalaTurn` RPC; the host resolves the
+   owner agent token without exposing it to the webview and streams deltas through
+   `khalaToken`.
+4. `GotVerseKhalaToken` appends active-turn deltas to the in-world Khala bubble.
+5. `RespondedVerseKhala` lands the terminal text and public-safe Khala receipt.
+6. `verseSceneVisualization` applies `withVerseKhalaEffectLayer`, which renders a
+   local crackling arc only when the receipt is live and carries a receipt ref.
+   No receipt means no effect.
+
+**Still not blocking for desktop:** identity/credits, because the owner desktop
+token path is reused. **Still future:** web Verse identity, per-user credits, and
+multi-user web interaction.
 
 > Quality note: per `docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md`,
 > a code-generating Khala turn from Verse should still be gated by the executed
@@ -76,6 +86,6 @@ for desktop:** identity/credits (owner token works).
 
 ## One line
 
-The call path, auth, streaming, and render all exist; "talk to Khala from Verse" is a
-textbox + one render wiring on the desktop app — a days-not-weeks MVP. A web/multi-user
-Verse is the larger, later piece (per-user identity + credits).
+The call path, auth, streaming, HUD input, response bubble, and receipt-bound
+local render effect now exist for the desktop Verse MVP. A web/multi-user Verse
+remains the larger later piece (per-user identity + credits).
