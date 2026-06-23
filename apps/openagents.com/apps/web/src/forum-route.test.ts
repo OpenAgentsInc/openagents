@@ -36,6 +36,12 @@ afterEach(() => {
   if (typeof localStorage.clear === 'function') {
     localStorage.clear()
   }
+  // Clear any cookies a test set (e.g. the login-error cookie) so cookie
+  // state cannot leak across tests in jsdom and make ordering significant.
+  for (const part of document.cookie.split(';')) {
+    const name = part.split('=')[0]?.trim()
+    if (name) document.cookie = name + '=; Max-Age=0; Path=/'
+  }
   window.history.replaceState({}, '', '/')
 })
 
@@ -499,7 +505,6 @@ describe('Forum routes', () => {
     expect(script).toContain('Log in with GitHub')
     expect(script).toContain('href="\' + escapeHtml(loginHref) + \'"')
     expect(script).toContain("'/api/forum/launch-status'")
-    expect(script).toContain("'/api/public/pylon-stats'")
     expect(script).toContain(
       "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
     )
@@ -516,7 +521,7 @@ describe('Forum routes', () => {
     expect(script).not.toContain('private_key')
   })
 
-  test('browser topic UI posts forum and Pylon tips to ladder endpoints', async () => {
+  test('browser topic UI posts forum tips to the ladder endpoint', async () => {
     const topicId = '55555555-5555-4555-8555-555555555555'
     const postId = '66666666-6666-4666-8666-666666666666'
     const calls: Array<Readonly<{ body: unknown; method: string; path: string }>> =
@@ -574,21 +579,6 @@ describe('Forum routes', () => {
         })
       }
 
-      if (path === '/api/public/pylon-stats') {
-        return jsonResponse({
-          recentPylons: [
-            {
-              nodeLabel: 'Network Pylon',
-              nostrPubkeyShort: 'pylon.public.tip',
-              pylonRef: 'pylon.public.tip',
-              tipEndpoint: '/api/pylons/pylon.public.tip/tips/ladder',
-              tippingAvailable: true,
-              walletReadyNow: true,
-            },
-          ],
-        })
-      }
-
       if (path.includes('/api/forum/posts/')) {
         return jsonResponse({
           amountSat: 10,
@@ -597,18 +587,6 @@ describe('Forum routes', () => {
           receiptRef: 'receipt.forum.tip_ladder.sha256.forumroute',
           rung: 'credited',
           senderBalanceMsatAfter: 90_000,
-        })
-      }
-
-      if (path.includes('/api/pylons/')) {
-        return jsonResponse({
-          amountSat: 10,
-          ladderReason: 'recipient_destination_missing',
-          payInId: 'payin_pylon',
-          pylonRef: 'pylon.public.tip',
-          receiptRef: 'receipt.pylon.tip_ladder.sha256.pylonroute',
-          rung: 'credited',
-          senderBalanceMsatAfter: 80_000,
         })
       }
 
@@ -628,15 +606,10 @@ describe('Forum routes', () => {
     const forumTipButton = document.querySelector<HTMLButtonElement>(
       '[data-forum-tip-post-id]',
     )
-    const pylonTipButton = document.querySelector<HTMLButtonElement>(
-      '[data-pylon-tip-ref]',
-    )
 
     expect(forumTipButton).not.toBeNull()
-    expect(pylonTipButton).not.toBeNull()
 
     forumTipButton?.click()
-    pylonTipButton?.click()
     await flushForumScript()
 
     expect(calls).toEqual([
@@ -645,21 +618,13 @@ describe('Forum routes', () => {
         method: 'POST',
         path: `/api/forum/posts/${postId}/tips/ladder`,
       },
-      {
-        body: { amountSat: 10 },
-        method: 'POST',
-        path: '/api/pylons/pylon.public.tip/tips/ladder',
-      },
     ])
     expect(
       document.querySelector('[data-forum-tip-panel]')?.textContent,
     ).toContain('Payment recorded')
-    expect(
-      document.querySelector('[data-pylon-tip-panel]')?.textContent,
-    ).toContain('Pylon tip recorded')
   })
 
-  test('renders Pylon tip controls on topic pages without wallet material', () => {
+  test('topic pages no longer render the pylon-tips panel', () => {
     const script = forumScript(
       ForumTopicRoute({
         topicId: '55555555-5555-4555-8555-555555555555',
@@ -667,18 +632,21 @@ describe('Forum routes', () => {
       'LoggedIn',
     )
 
-    expect(script).toContain('const renderPylonTipPanel = pylonStats =>')
-    expect(script).toContain('data-pylon-tip-ref')
-    expect(script).toContain('data-pylon-tip-amount')
-    expect(script).toContain('Tip pylon')
+    // The pylon-tips panel and all of its wiring are gone.
+    expect(script).not.toContain('data-pylon-tip')
+    expect(script).not.toContain('Send sats to pylons')
+    expect(script).not.toContain('Pylon tips')
+    expect(script).not.toContain('renderPylonTipPanel')
+    expect(script).not.toContain('Tip pylon')
+    expect(script).not.toContain("'/api/public/pylon-stats'")
+
+    // The per-post Send-tip controls still render.
+    expect(script).toContain('data-forum-tip-post-id')
+    expect(script).toContain('data-forum-tip-amount')
+    expect(script).toContain('Send tip')
     expect(script).toContain(
-      "'/api/pylons/' + encodeURIComponent(pylonRef) + '/tips/ladder'",
+      "'/api/forum/posts/' + encodeURIComponent(postId) + '/tips/ladder'",
     )
-    expect(script).toContain('Pylon tip recorded')
-    expect(script).not.toContain('rawSparkAddress')
-    expect(script).not.toContain('spark1')
-    expect(script).not.toContain('payment_preimage')
-    expect(script).not.toContain('mnemonic')
   })
 
   test('renders Forum login errors from the callback cookie', async () => {
