@@ -55,6 +55,8 @@ import {
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
 import {
@@ -333,9 +335,12 @@ export const makeVertexGeminiAdapter = (
         )
       : Effect.succeed(tokenProvider)
 
-  // Issue a Vertex request and return the raw response body text. Reading the
-  // body here keeps the Cloudflare Response type fully encapsulated.
-  const call = (
+  // Issue a Vertex request and return the raw Cloudflare `Response`. Callers that
+  // want a buffered body call `.text()`; the incremental `streamSse` path reads
+  // `response.body` as bytes arrive instead. Status validation that needs the
+  // body (the non-ok error slice) is left to the caller so the streaming path
+  // never drains a successful body up front.
+  const callResponse = (
     request: InferenceRequest,
     method: 'generateContent' | 'streamGenerateContent',
   ) =>
@@ -350,7 +355,7 @@ export const makeVertexGeminiAdapter = (
       )
       const body = buildGeminiBody(request)
 
-      const { ok, status, text } = yield* Effect.tryPromise({
+      return yield* Effect.tryPromise({
         catch: error =>
           adapterError(
             `Vertex Gemini request transport error: ${
@@ -358,21 +363,40 @@ export const makeVertexGeminiAdapter = (
             }`,
             true,
           ),
-        try: async () => {
-          const response = await fetchImpl(url, {
+        try: () =>
+          fetchImpl(url, {
             body: JSON.stringify(body),
             headers: {
               authorization: `Bearer ${token}`,
               'content-type': 'application/json',
             },
             method: 'POST',
-          })
-          return {
-            ok: response.ok,
-            status: response.status,
-            text: await response.text(),
-          }
-        },
+          }),
+      })
+    })
+
+  // Issue a Vertex request and return the raw response body text (buffered). Used
+  // by `complete` and the buffered `stream` path. Reading the body here keeps the
+  // Cloudflare Response type fully encapsulated.
+  const call = (
+    request: InferenceRequest,
+    method: 'generateContent' | 'streamGenerateContent',
+  ) =>
+    Effect.gen(function* () {
+      const response = yield* callResponse(request, method)
+      const { ok, status, text } = yield* Effect.tryPromise({
+        catch: error =>
+          adapterError(
+            `Vertex Gemini response read error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            true,
+          ),
+        try: async () => ({
+          ok: response.ok,
+          status: response.status,
+          text: await response.text(),
+        }),
       })
 
       if (!ok) {
@@ -417,7 +441,127 @@ export const makeVertexGeminiAdapter = (
         const text = yield* call(request, 'streamGenerateContent')
         return parseGeminiSseChunks(text, request.model, resolveModelId)
       }),
+    // TRUE PASS-THROUGH STREAM (the long-generation 524 fix + onboarding
+    // token-by-token). Returns a lazily consumed SSE source over the upstream
+    // `response.body` so the caller can pump each Gemini SSE fragment as Google
+    // produces it — every fragment is a separate `event: delta`, so onboarding
+    // (khala-mini) streams incrementally instead of one buffered reply. The
+    // buffered `stream` above stays for tests/metering reconstruction/overflow.
+    streamSse: (request: InferenceRequest) =>
+      Effect.gen(function* () {
+        const response = yield* callResponse(request, 'streamGenerateContent')
+        if (!response.ok) {
+          const errorText = yield* Effect.tryPromise({
+            catch: () => adapterError('Vertex Gemini stream read error.', true),
+            try: () => response.text(),
+          })
+          return yield* Effect.fail(
+            adapterError(
+              `Vertex Gemini returned HTTP ${response.status}${
+                errorText === '' ? '' : `: ${errorText.slice(0, 500)}`
+              }`,
+              isRetryableStatus(response.status),
+            ),
+          )
+        }
+        const body = response.body
+        if (body === null) {
+          return yield* Effect.fail(
+            adapterError('Vertex Gemini stream had no response body.', false),
+          )
+        }
+        return makeGeminiSseSource(body, request.model, resolveModelId)
+      }),
   }
+}
+
+const num = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+// Pull the `usageMetadata` (if any) off a single Gemini SSE fragment, layered on
+// the running cumulative usage. Gemini reports usage CUMULATIVELY across the
+// stream — each later fragment supersedes the earlier one — so we carry the prior
+// values forward and only overwrite the fields this fragment actually reports.
+const foldGeminiUsage = (
+  fragment: Record<string, unknown>,
+  prior: InferenceUsage | undefined,
+): InferenceUsage | undefined => {
+  const usage = fragment['usageMetadata']
+  if (typeof usage !== 'object' || usage === null) {
+    return prior
+  }
+  const u = usage as Record<string, unknown>
+  const promptTokens =
+    num(u['promptTokenCount']) ?? prior?.promptTokens ?? 0
+  const completionTokens =
+    num(u['candidatesTokenCount']) ?? prior?.completionTokens ?? 0
+  const reportedTotal = num(u['totalTokenCount']) ?? prior?.totalTokens ?? 0
+  const cached =
+    num(u['cachedContentTokenCount']) ?? prior?.cachedPromptTokens
+  return {
+    completionTokens,
+    promptTokens,
+    totalTokens:
+      reportedTotal > 0 ? reportedTotal : promptTokens + completionTokens,
+    ...(cached === undefined || cached <= 0 ? {} : { cachedPromptTokens: cached }),
+  }
+}
+
+// Normalize one parsed Gemini SSE fragment into the route-facing event shape.
+// Shared by the buffered `stream` array path and the incremental `streamSse`
+// pass-through so both produce identical normalization. `usage` carries the
+// cumulative usage VISIBLE SO FAR (Gemini cumulates), folded over `priorUsage`.
+const eventForGeminiFragment = (
+  fragment: Record<string, unknown>,
+  priorUsage: InferenceUsage | undefined,
+): InferenceStreamEvent => {
+  const event: {
+    contentDelta: string
+    finishReason?: string
+    usage?: InferenceUsage
+    servedModel?: string
+  } = { contentDelta: '' }
+
+  const candidates = fragment['candidates']
+  if (Array.isArray(candidates) && candidates.length > 0) {
+    event.contentDelta = extractText(candidates)
+    // extractFinishReason defaults to 'stop'; only adopt a real terminal reason
+    // when the fragment actually carries one.
+    const first = candidates[0]
+    if (
+      typeof first === 'object' &&
+      first !== null &&
+      typeof (first as Record<string, unknown>)['finishReason'] === 'string'
+    ) {
+      event.finishReason = extractFinishReason(candidates)
+    }
+  }
+
+  if (typeof fragment['modelVersion'] === 'string') {
+    event.servedModel = fragment['modelVersion']
+  }
+
+  const usage = foldGeminiUsage(fragment, priorUsage)
+  if (usage !== undefined) {
+    event.usage = usage
+  }
+  return event
+}
+
+// Parse a single SSE `data:` line into a Gemini fragment record, or undefined for
+// blank/comment/`[DONE]` lines.
+const parseGeminiSseData = (
+  line: string,
+): Record<string, unknown> | undefined => {
+  const trimmed = line.trim()
+  if (!trimmed.startsWith('data:')) {
+    return undefined
+  }
+  const payload = trimmed.slice('data:'.length).trim()
+  if (payload === '' || payload === '[DONE]') {
+    return undefined
+  }
+  return parseJsonRecord(payload)
 }
 
 // Parse a Vertex Gemini streamGenerateContent (?alt=sse) body into our
@@ -432,71 +576,35 @@ const parseGeminiSseChunks = (
   requestedModel: string,
   resolveModelId: (model: string) => string,
 ): ReadonlyArray<InferenceStreamChunk> => {
-  let promptTokens = 0
-  let completionTokens = 0
-  let totalTokens = 0
-  let cachedPromptTokens: number | undefined
   let finishReason: string | undefined
   let servedModel = resolveModelId(requestedModel)
+  let usage: InferenceUsage | undefined
   const contentDeltas: Array<string> = []
 
-  const num = (value: unknown): number | undefined =>
-    typeof value === 'number' && Number.isFinite(value) ? value : undefined
-
   for (const line of body.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('data:')) {
+    const fragment = parseGeminiSseData(line)
+    if (fragment === undefined) {
       continue
     }
-    const payload = trimmed.slice('data:'.length).trim()
-    if (payload === '' || payload === '[DONE]') {
-      continue
+    const event = eventForGeminiFragment(fragment, usage)
+    if (event.contentDelta !== '') {
+      contentDeltas.push(event.contentDelta)
     }
-    const event = parseJsonRecord(payload)
-    if (event === undefined) {
-      continue
+    if (event.finishReason !== undefined) {
+      finishReason = event.finishReason
     }
-    if (typeof event['modelVersion'] === 'string') {
-      servedModel = event['modelVersion']
+    if (event.servedModel !== undefined) {
+      servedModel = event.servedModel
     }
-    // Incremental text + finishReason from this fragment's first candidate.
-    const candidates = event['candidates']
-    if (Array.isArray(candidates) && candidates.length > 0) {
-      const delta = extractText(candidates)
-      if (delta !== '') {
-        contentDeltas.push(delta)
-      }
-      // extractFinishReason defaults to 'stop'; only adopt a real terminal
-      // reason when the fragment actually carries one.
-      const first = candidates[0]
-      if (
-        typeof first === 'object' &&
-        first !== null &&
-        typeof (first as Record<string, unknown>)['finishReason'] === 'string'
-      ) {
-        finishReason = extractFinishReason(candidates)
-      }
-    }
-    // usageMetadata is cumulative across fragments; take the latest values.
-    const usage = event['usageMetadata']
-    if (typeof usage === 'object' && usage !== null) {
-      const u = usage as Record<string, unknown>
-      promptTokens = num(u['promptTokenCount']) ?? promptTokens
-      completionTokens = num(u['candidatesTokenCount']) ?? completionTokens
-      totalTokens = num(u['totalTokenCount']) ?? totalTokens
-      cachedPromptTokens =
-        num(u['cachedContentTokenCount']) ?? cachedPromptTokens
+    if (event.usage !== undefined) {
+      usage = event.usage
     }
   }
 
-  const usage: InferenceUsage = {
-    completionTokens,
-    promptTokens,
-    totalTokens:
-      totalTokens > 0 ? totalTokens : promptTokens + completionTokens,
-    ...(cachedPromptTokens === undefined || cachedPromptTokens <= 0
-      ? {}
-      : { cachedPromptTokens }),
+  const terminalUsage: InferenceUsage = usage ?? {
+    completionTokens: 0,
+    promptTokens: 0,
+    totalTokens: 0,
   }
 
   const chunks: Array<InferenceStreamChunk> = []
@@ -508,7 +616,79 @@ const parseGeminiSseChunks = (
     contentDelta: '',
     finishReason: finishReason ?? 'stop',
     servedModel,
-    usage,
+    usage: terminalUsage,
   })
   return chunks
+}
+
+// Build a true incremental SSE source over the upstream Gemini `ReadableStream`.
+// Fragments are decoded + parsed AS BYTES ARRIVE (partial lines buffered across
+// reads) and yielded one at a time, so the caller can pump each to the client and
+// reset the edge idle-timer — and onboarding emits one `event: delta` per Gemini
+// fragment instead of one buffered reply. The running terminal state
+// (finishReason / cumulative usage / servedModel) is captured during iteration
+// and exposed via `terminal()` once the stream is drained — receipt-first, no
+// re-buffering of content. Blank/comment/`[DONE]` lines are skipped.
+const makeGeminiSseSource = (
+  body: ReadableStream<Uint8Array>,
+  requestedModel: string,
+  resolveModelId: (model: string) => string,
+): InferenceStreamSource => {
+  let finishReason: string | undefined
+  let usage: InferenceUsage | undefined
+  let servedModel: string | undefined = resolveModelId(requestedModel)
+
+  const captureTerminalState = (event: InferenceStreamEvent): void => {
+    if (event.finishReason !== undefined) {
+      finishReason = event.finishReason
+    }
+    if (event.usage !== undefined) {
+      usage = event.usage
+    }
+    if (event.servedModel !== undefined) {
+      servedModel = event.servedModel
+    }
+  }
+
+  const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
+    const reader = body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (value !== undefined) {
+          buffer += decoder.decode(value, { stream: true })
+        }
+        let newlineIndex = buffer.indexOf('\n')
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex)
+          buffer = buffer.slice(newlineIndex + 1)
+          const fragment = parseGeminiSseData(line)
+          if (fragment !== undefined) {
+            const event = eventForGeminiFragment(fragment, usage)
+            captureTerminalState(event)
+            yield event
+          }
+          newlineIndex = buffer.indexOf('\n')
+        }
+        if (done) {
+          const tail = parseGeminiSseData(buffer)
+          if (tail !== undefined) {
+            const event = eventForGeminiFragment(tail, usage)
+            captureTerminalState(event)
+            yield event
+          }
+          break
+        }
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  })()
+
+  return {
+    frames,
+    terminal: () => ({ finishReason, servedModel, usage }),
+  }
 }
