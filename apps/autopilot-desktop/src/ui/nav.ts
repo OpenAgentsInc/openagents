@@ -499,13 +499,15 @@ const HOTBAR_ACTION_SLOT_COUNT = 10
 // reads as more than a bare key chip. Keyboard mapping lives in keyboard.ts; this
 // is purely how the slot presents in the bar.
 // Slot 1 keeps its existing input-binding title ("New Coder Session"); only its
-// icon is pinned here. Slots 2/3 carry descriptive labels + icons.
+// icon is pinned here. Slots 2/3 carry descriptive labels + icons. Slot 4 (M8
+// "playable-in-our-world") toggles the in-world Khala crossy-road arcade screen.
 const HOTBAR_FILLED_SLOTS: Readonly<
   Record<number, { label?: string; iconName: IconName }>
 > = {
   1: { iconName: "OpenaiLogoRegular" },
   2: { label: "Spawn crackling scene", iconName: "Flash" },
   3: { label: "Toggle scene portal", iconName: "GlobeSpin" },
+  4: { label: "Khala arcade — crossy road", iconName: "Playground" },
 }
 
 export const HOTBAR_SLOTS: ReadonlyArray<HotbarSlot> = Array.from(

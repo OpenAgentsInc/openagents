@@ -97,6 +97,7 @@ import {
   DEFAULT_SPAWNABLE_SCENE_ID,
   withVerseSpawnedSceneLayer,
 } from "../shared/verse-spawned-scene.js"
+import { withVerseGameScreenLayer } from "../shared/verse-game-screen.js"
 import { verseKhalaInputOverlay } from "./verse-khala-input.js"
 import {
   VERSE_TRAINING_NODE_PREFIX,
@@ -291,6 +292,7 @@ import {
   ClickedHotbarNewCoderSession,
   SpawnedVerseScene,
   ToggledVerseScenePortal,
+  ToggledVerseGameScreen,
   ToggledArtifactBrowser,
   ToggledChatMessageDetails,
   ChangedShellInput,
@@ -406,6 +408,7 @@ import {
   modelChatWorldParticles,
   modelChatWorldMultiplayer,
   modelChatWorldScene,
+  modelVerseGameScreenActive,
   modelVerseKhalaReceipt,
   modelVerseSpawnedScenes,
   modelCodeModeSync,
@@ -732,6 +735,8 @@ const hotbarSlotClickMessage = (slot: HotbarSlot): Message | null => {
       return SpawnedVerseScene({ sceneId: DEFAULT_SPAWNABLE_SCENE_ID })
     case 3:
       return ToggledVerseScenePortal({ sceneId: DEFAULT_SPAWNABLE_SCENE_ID })
+    case 4:
+      return ToggledVerseGameScreen()
     default:
       return null
   }
@@ -7149,6 +7154,24 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       knobs: { showPortal: spawned.showPortal },
     })),
   )
+  // M8 "playable-in-our-world": when the arcade screen is active, add a
+  // `game_screen` world item near the avatar's last pose. The Verse host textures
+  // the registered Khala crossy-road game canvas onto it as a live CanvasTexture.
+  // Inactive ⇒ no world item (byte-identical Verse). The iframe game host + canvas
+  // registration are owned by the view effect (mountVerseGameScreenEffect), not
+  // here — this layer is a pure options transform.
+  const withGameScreen = withVerseGameScreenLayer(withSpawned, {
+    active: modelVerseGameScreenActive(model),
+    anchor:
+      model.verseSceneRestorePose === null
+        ? null
+        : {
+            x: model.verseSceneRestorePose.x,
+            y: model.verseSceneRestorePose.y,
+            z: model.verseSceneRestorePose.z,
+            yaw: model.verseSceneRestorePose.yaw,
+          },
+  })
   const inputBindings = verseInputBindingProjection(
     model.inputProfile,
     model.verseMode === "code" ? "verse_code_overlay" : "verse_explore",
@@ -7168,11 +7191,11 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
           capturedAtMs: model.verseSceneRestorePose.capturedAtMs,
         }
   const navigable = {
-    ...withSpawned,
+    ...withGameScreen,
     cameraMode: "perspective_walk" as const,
     controller: "third_person_character" as const,
     keyboardTargeting: {
-      ...(withSpawned.keyboardTargeting ?? {}),
+      ...(withGameScreen.keyboardTargeting ?? {}),
       ...inputBindings.keyboardTargeting,
     },
     thirdPersonController: {
@@ -7185,7 +7208,7 @@ export const verseSceneVisualization = (model: Model): TrainingRunVisualizationO
       gravity: -13.5,
     },
     sceneChrome: {
-      ...(withSpawned.sceneChrome ?? {}),
+      ...(withGameScreen.sceneChrome ?? {}),
       lossPanel: "hidden" as const,
       statusChart: "hidden" as const,
     },

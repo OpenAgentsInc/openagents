@@ -681,6 +681,12 @@ export const Model = ts("AutopilotDesktop", {
   // variant for that spawn. Read via `modelVerseSpawnedScenes`.
   verseSpawnedScenes: S.Array(VerseSpawnedSceneState),
 
+  // M8 "playable-in-our-world": when true, the verified Khala-built crossy-road
+  // game runs on an in-world arcade screen near the avatar (canvas textured onto
+  // a Verse board, input forwarded). Toggled by hotbar slot 4. Read via
+  // `modelVerseGameScreenActive`.
+  verseGameScreenActive: S.Boolean,
+
   // CS-A1: account-management surface state (add/select/priority over the
   // node's local dev.accounts config). `managedAccounts` holds the last
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
@@ -890,6 +896,10 @@ export const modelVerseSpawnedScenes = (
   model: Model,
 ): ReadonlyArray<VerseSpawnedSceneState> =>
   model.verseSpawnedScenes as ReadonlyArray<VerseSpawnedSceneState>
+
+// M8: whether the in-world Khala crossy-road arcade screen is currently active.
+export const modelVerseGameScreenActive = (model: Model): boolean =>
+  model.verseGameScreenActive === true
 
 // #5730: typed read boundary for the opaque chat-world state.
 export const modelChatWorldScene = (
@@ -1285,6 +1295,7 @@ export const initialModel: Model = Model.make({
   verseKhalaStatus: { text: "", tone: "idle" },
   verseKhalaReceipt: null,
   verseSpawnedScenes: [],
+  verseGameScreenActive: false,
   managedAccounts: null,
   codeModeSync: null,
   managedAccountsPending: false,

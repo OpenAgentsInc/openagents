@@ -181,6 +181,11 @@ export const ToggledVerseScenePortal = m("ToggledVerseScenePortal", {
   sceneId: S.String,
 })
 
+// M8 "playable-in-our-world": toggle the in-world Khala crossy-road arcade
+// screen on/off. Pure model toggle — the iframe game host + canvas registration
+// are managed by the view effect, not here.
+export const ToggledVerseGameScreen = m("ToggledVerseGameScreen")
+
 // Chat: expand/collapse a single chat message's "program details" disclosure
 // (the scoped-step / Tassadar scaffolding). Collapsed by default so the chat
 // opens to a clean conversation. Pure model toggle — no control verb / RPC.
@@ -792,6 +797,7 @@ export const Message = S.Union([
   ChangedVerseMode,
   SpawnedVerseScene,
   ToggledVerseScenePortal,
+  ToggledVerseGameScreen,
   ClickedHotbarNewCoderSession,
   ToggledChatMessageDetails,
   ClickedCoordinatorToggle,

@@ -12,7 +12,7 @@
 // stream's lifecycle is independent of the Model (it runs for the whole app),
 // exactly like the web app's route-independent listeners.
 
-import { Effect, Queue, Stream } from "effect"
+import { Effect, Queue, Schema as S, Stream } from "effect"
 import { Subscription } from "foldkit"
 import {
   openAgentsDefaultInputProfile,
@@ -46,6 +46,8 @@ import {
   chatWorldCharacterId,
   chatWorldMultiplayerFlag,
 } from "../shared/chat-world-flags.js"
+import { activateVerseGameScreen } from "../shared/verse-game-screen.js"
+import { modelVerseGameScreenActive } from "./model.js"
 
 // The inbound push stream. We stash a queue-backed emitter in the bridge so the
 // Electroview handlers can feed messages in; teardown clears it.
@@ -498,7 +500,23 @@ const verseTrainingProjectionStream: Stream.Stream<Message> = Stream.callback<Me
   ).pipe(Effect.flatMap(() => Effect.never)),
 )
 
-export const subscriptions = Subscription.make<Model, Message>()(() => ({
+// M8 "playable-in-our-world": a Model-keyed lifecycle subscription. While
+// `verseGameScreenActive` is true, the iframe game host is booted, the game is
+// started, and a window keydown forwarder feeds game keys into it; when it flips
+// false the host is torn down. The stream emits NO messages — it owns a DOM/iframe
+// side effect via acquireRelease, gated on the dependency. (No-op headless without
+// a DOM: `activateVerseGameScreen` returns an inert teardown.)
+const verseGameScreenStream = (active: boolean): Stream.Stream<Message> =>
+  !active
+    ? Stream.empty
+    : Stream.callback<Message>(() =>
+        Effect.acquireRelease(
+          Effect.sync(() => activateVerseGameScreen()),
+          (teardown) => Effect.sync(() => teardown()),
+        ).pipe(Effect.flatMap(() => Effect.never)),
+      )
+
+export const subscriptions = Subscription.make<Model, Message>()((entry) => ({
   inbound: Subscription.persistent(inboundStream),
   // #5465: route window keydown into the reducer as PressedKey.
   keyboard: Subscription.persistent(keyboardStream),
@@ -511,4 +529,14 @@ export const subscriptions = Subscription.make<Model, Message>()(() => ({
   chatWorldCloudflare: Subscription.persistent(cloudflareWorldStream),
   onboardingStatusRefresh: Subscription.persistent(onboardingStatusRefreshStream),
   verseTrainingProjection: Subscription.persistent(verseTrainingProjectionStream),
+  // M8: boot/teardown the in-world Khala crossy-road arcade screen with its toggle.
+  verseGameScreen: entry(
+    { active: S.Boolean },
+    {
+      modelToDependencies: (model) => ({
+        active: modelVerseGameScreenActive(model),
+      }),
+      dependenciesToStream: ({ active }) => verseGameScreenStream(active),
+    },
+  ),
 }))

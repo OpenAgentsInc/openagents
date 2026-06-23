@@ -1491,7 +1491,9 @@ export const update = (model: Model, message: Message): Result => {
         // (interpretKey only emits them in the Verse explore context), so they are
         // allowed through even though general explore-mode controls are disabled.
         intent.kind !== "spawn-verse-scene" &&
-        intent.kind !== "toggle-verse-scene-portal"
+        intent.kind !== "toggle-verse-scene-portal" &&
+        // M8: the in-world game-screen toggle is likewise an explicit slot key.
+        intent.kind !== "toggle-verse-game-screen"
       ) {
         return [model, noCommands]
       }
@@ -1538,6 +1540,17 @@ export const update = (model: Model, message: Message): Result => {
         case "toggle-verse-scene-portal":
           return [
             toggleVerseSpawnedScenePortal(model, intent.sceneId),
+            noCommands,
+          ]
+        case "toggle-verse-game-screen":
+          // M8 "playable-in-our-world": inline toggle (message constructors are
+          // type-only imports here). Byte-identical to the ToggledVerseGameScreen
+          // reducer below.
+          return [
+            Model.make({
+              ...model,
+              verseGameScreenActive: !model.verseGameScreenActive,
+            }),
             noCommands,
           ]
         case "open-coder-session":
@@ -1630,6 +1643,16 @@ export const update = (model: Model, message: Message): Result => {
       return [toggleVerseSpawnedScene(model, message.sceneId), noCommands]
     case "ToggledVerseScenePortal":
       return [toggleVerseSpawnedScenePortal(model, message.sceneId), noCommands]
+    // M8 "playable-in-our-world": toggle the in-world Khala crossy-road arcade
+    // screen. Pure model state — the iframe game host is owned by the view effect.
+    case "ToggledVerseGameScreen":
+      return [
+        Model.make({
+          ...model,
+          verseGameScreenActive: !model.verseGameScreenActive,
+        }),
+        noCommands,
+      ]
     case "ClickedHotbarNewCoderSession":
       return openNewCoderSession(model)
     case "ChangedVerseMode": {

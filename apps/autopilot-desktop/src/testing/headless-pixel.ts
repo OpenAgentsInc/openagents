@@ -316,6 +316,36 @@ export const scoreCracklingArcRegion = (
   return arcPixels
 }
 
+// Count SKY-BLUE pixels (the Khala crossy-road game's `#87CEEB` background fills
+// most of its canvas) in a region — the dark Verse world has essentially none of
+// this bright cyan-blue, so a non-trivial count in the in-world screen region
+// proves the GAME canvas actually textured onto the Verse board (recognizable
+// game pixels, not a blank/black face). Used by the M8 playable-in-world proof.
+export const scoreGameScreenSkyRegion = (
+  image: PngImage,
+  region: PixelRegion = FULL_FRAME,
+): number => {
+  const px0 = Math.max(0, Math.floor(region.x0 * image.width))
+  const py0 = Math.max(0, Math.floor(region.y0 * image.height))
+  const px1 = Math.min(image.width, Math.ceil(region.x1 * image.width))
+  const py1 = Math.min(image.height, Math.ceil(region.y1 * image.height))
+  let skyPixels = 0
+  for (let y = py0; y < py1; y += 1) {
+    for (let x = px0; x < px1; x += 1) {
+      const offset = (y * image.width + x) * 4
+      const r = image.data[offset] ?? 0
+      const g = image.data[offset + 1] ?? 0
+      const b = image.data[offset + 2] ?? 0
+      // #87CEEB ≈ (135, 206, 235): bright, b ≥ g > r, with green high. Tolerant
+      // bands catch fog/lighting variation without matching the dark grey street.
+      if (b > 150 && g > 140 && r > 70 && r < 200 && b >= g && g > r) {
+        skyPixels += 1
+      }
+    }
+  }
+  return skyPixels
+}
+
 export type HeadlessRenderOptions = Readonly<{
   // Absolute path to a TS module that, when imported, mounts an `oa-training-run`
   // element into `#scene` and sets its `.visualization`. (See the regression

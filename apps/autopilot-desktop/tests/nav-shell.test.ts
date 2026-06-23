@@ -629,11 +629,15 @@ describe("#5499 HUD H1 hotbar — Verse action bindings", () => {
       kind: "open-coder-session",
     })
     // #6033: slot 2 now spawns the crackling-energy Verse scene (slot 3 toggles
-    // its portal); the remaining slots 4..10 are still no-ops.
+    // its portal). M8: slot 4 toggles the in-world Khala crossy-road arcade
+    // screen; the remaining slots 5..10 are still no-ops.
     expect(interpretKey(exploreModel, key({ key: "2", code: "Digit2" })).kind).toBe(
       "spawn-verse-scene",
     )
     expect(interpretKey(exploreModel, key({ key: "4", code: "Digit4" }))).toEqual({
+      kind: "toggle-verse-game-screen",
+    })
+    expect(interpretKey(exploreModel, key({ key: "5", code: "Digit5" }))).toEqual({
       kind: "none",
     })
 
