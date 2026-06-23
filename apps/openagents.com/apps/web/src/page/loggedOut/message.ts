@@ -23,6 +23,8 @@ export const ClickedCopyShareLink = m('ClickedCopyShareLink', {
 })
 export const ClickedEnterKhala = m('ClickedEnterKhala')
 export const CompletedNavigateToKhala = m('CompletedNavigateToKhala')
+export const ClickedExitKhala = m('ClickedExitKhala')
+export const CompletedNavigateToLanding = m('CompletedNavigateToLanding')
 export const ClickedOnboardingStep = m('ClickedOnboardingStep', {
   step: OnboardingStep,
 })
@@ -184,6 +186,8 @@ export const Message = S.Union([
   ClickedCopyShareLink,
   ClickedEnterKhala,
   CompletedNavigateToKhala,
+  ClickedExitKhala,
+  CompletedNavigateToLanding,
   ClickedOnboardingStep,
   SelectedOnboardingRepository,
   SkippedOnboardingRepository,

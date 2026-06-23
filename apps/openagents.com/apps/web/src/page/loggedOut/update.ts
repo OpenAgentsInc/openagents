@@ -6,6 +6,7 @@ import { evo } from 'foldkit/struct'
 import {
   CompletedCopyShareLink,
   CompletedNavigateToKhala,
+  CompletedNavigateToLanding,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -64,7 +65,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { khalaRouter } from '../../route'
+import { khalaRouter, landingRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
   applySettledFeedPatch,
@@ -674,6 +675,11 @@ export const NavigateToKhala = Command.define(
   CompletedNavigateToKhala,
 )(pushUrl(khalaRouter()).pipe(Effect.as(CompletedNavigateToKhala())))
 
+export const NavigateToLanding = Command.define(
+  'NavigateToLanding',
+  CompletedNavigateToLanding,
+)(pushUrl(landingRouter()).pipe(Effect.as(CompletedNavigateToLanding())))
+
 const publicAgentIdForRef = (agentRef: string): string => {
   const knownAgentIds: Readonly<Record<string, string>> = {
     adjutant: 'agent_adjutant',
@@ -746,6 +752,8 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ClickedCopyShareLink: ({ url }) => [model, [CopyShareLink({ url })]],
       ClickedEnterKhala: () => [model, [NavigateToKhala()]],
       CompletedNavigateToKhala: () => [model, []],
+      ClickedExitKhala: () => [model, [NavigateToLanding()]],
+      CompletedNavigateToLanding: () => [model, []],
       ClickedOnboardingStep: ({ step }) => [
         evo(model, {
           onboarding: onboarding => evo(onboarding, { step: () => step }),
