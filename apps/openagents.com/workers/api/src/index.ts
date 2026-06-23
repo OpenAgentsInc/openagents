@@ -10186,6 +10186,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       return handleMppChatCompletions(request, {
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
+        signingSecret: env.KHALA_MPP_SIGNING_SECRET,
         stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
         stripeSecretKey: env.STRIPE_API_KEY,
         // The underlying Khala completion reuses the SAME registry, metering

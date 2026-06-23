@@ -12,15 +12,20 @@ import {
   InferenceProviderRegistry,
 } from '../provider-adapter'
 import { stubEchoAdapter } from '../stub-echo-adapter'
+import { base64UrlEncode, jcsBase64Url } from './mpp-canonical'
 import {
   type MppChatCompletionsDeps,
   handleMppChatCompletions,
   isKhalaMppEnabled,
 } from './mpp-chat-completions-routes'
+import { buildChallenge, type MppChallenge } from './mpp-protocol'
 import { type StripeFetch } from './stripe-mpp-client'
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(effect as Effect.Effect<A, never>)
+
+const SIGNING_SECRET = 'test-signing-secret'
+const REALM = 'openagents.com'
 
 // In-memory D1 (same harness as usd-credit-bridge.test.ts).
 class SqliteD1Statement {
@@ -42,9 +47,13 @@ class SqliteD1Statement {
       results: this.db.prepare(this.sql).all(...(this.bound as never[])) as T[],
     }
   }
-  async run(): Promise<{ success: true; results: [] }> {
-    this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { results: [], success: true }
+  async run(): Promise<{ success: true; results: []; meta: { changes: number } }> {
+    const info = this.db.prepare(this.sql).run(...(this.bound as never[]))
+    return {
+      meta: { changes: Number(info.changes ?? 0) },
+      results: [],
+      success: true,
+    }
   }
 }
 class SqliteD1 {
@@ -112,6 +121,12 @@ CREATE TABLE pay_in_legs (
   refund_of_leg_id TEXT,
   created_at TEXT NOT NULL
 );
+CREATE TABLE mpp_spt_replay (
+  spt TEXT PRIMARY KEY,
+  challenge_id TEXT NOT NULL,
+  payment_intent_id TEXT,
+  consumed_at TEXT NOT NULL
+);
 `
 
 const makeDb = (): D1Database => {
@@ -120,9 +135,6 @@ const makeDb = (): D1Database => {
   return new SqliteD1(raw) as unknown as D1Database
 }
 
-// The stub echo adapter registered under the Gemini lane id, so khala-mini
-// resolves via `selectAdapterPlan` (khala-mini classifies to the Gemini lane).
-// Reports receipt-first usage so the metering hook settles.
 const echoAdapter = (id: string): InferenceProviderAdapter => ({
   ...stubEchoAdapter,
   id,
@@ -134,9 +146,6 @@ const khalaRegistry = (): InferenceProviderRegistry => {
   return registry
 }
 
-// completionDeps mirroring the keyed route (minus auth/balance, which the MPP
-// handler replaces). enabled = inference-gateway flag (on so the completion can
-// run for a paid call).
 const completionDeps = (
   db: D1Database,
 ): MppChatCompletionsDeps['completionDeps'] => ({
@@ -158,6 +167,41 @@ const mppRequest = (init: RequestInit = {}): Request =>
     ...init,
   })
 
+// Compose a wire credential that echoes a challenge + carries a payload.
+const credentialHeader = (
+  challenge: MppChallenge,
+  payload: Record<string, unknown> = {},
+): string =>
+  `Payment ${base64UrlEncode(
+    JSON.stringify({
+      challenge: {
+        expires: challenge.expires,
+        id: challenge.id,
+        intent: challenge.intent,
+        method: challenge.method,
+        opaque: challenge.opaque,
+        realm: challenge.realm,
+        request: challenge.request,
+      },
+      payload,
+    }),
+  )}`
+
+// A valid crypto challenge whose opaque carries the deposit PaymentIntent id.
+const cryptoChallenge = (pi: string, amountCents = 100): Promise<MppChallenge> =>
+  buildChallenge(SIGNING_SECRET, {
+    amountCents,
+    currency: 'usdc',
+    expires: '2099-01-15T12:05:00.000Z',
+    method: 'base',
+    network: 'base',
+    opaque: { amount: String(amountCents), network: 'base', pi },
+    paymentIntentId: pi,
+    realm: REALM,
+    recipient: '0xabc',
+    request: { amount: String(amountCents), currency: 'usdc', network: 'base' },
+  })
+
 describe('isKhalaMppEnabled flag', () => {
   test('default OFF; on for explicit truthy tokens', () => {
     expect(isKhalaMppEnabled(undefined)).toBe(false)
@@ -170,89 +214,118 @@ describe('isKhalaMppEnabled flag', () => {
 })
 
 describe('MPP endpoint — FAIL-SAFE inert (never charges when unconfigured)', () => {
-  test('flag OFF => 503 not-configured, no Stripe call', async () => {
-    const db = makeDb()
-    let stripeCalled = false
-    const fakeFetch: StripeFetch = async () => {
-      stripeCalled = true
-      return new Response('{}', { status: 200 })
+  const noStripeCall = (): {
+    fetch: StripeFetch
+    called: () => boolean
+  } => {
+    let called = false
+    return {
+      called: () => called,
+      fetch: async () => {
+        called = true
+        return new Response('{}', { status: 200 })
+      },
     }
+  }
+
+  test('flag OFF => 503, no Stripe call', async () => {
+    const db = makeDb()
+    const spy = noStripeCall()
     const response = await run(
       handleMppChatCompletions(mppRequest(), {
         completionDeps: completionDeps(db),
         db,
         enabled: false,
-        fetch: fakeFetch,
+        fetch: spy.fetch,
+        signingSecret: SIGNING_SECRET,
         stripeSecretKey: 'sk_test_x',
       }),
     )
     expect(response.status).toBe(503)
-    const body = (await response.json()) as { error: string }
-    expect(body.error).toBe('mpp_not_configured')
-    expect(stripeCalled).toBe(false)
+    expect(((await response.json()) as { error: string }).error).toBe(
+      'mpp_not_configured',
+    )
+    expect(spy.called()).toBe(false)
   })
 
-  test('no Stripe key => 503 not-configured, no Stripe call', async () => {
+  test('no Stripe key => 503, no Stripe call', async () => {
     const db = makeDb()
-    let stripeCalled = false
-    const fakeFetch: StripeFetch = async () => {
-      stripeCalled = true
-      return new Response('{}', { status: 200 })
-    }
+    const spy = noStripeCall()
     const response = await run(
       handleMppChatCompletions(mppRequest(), {
         completionDeps: completionDeps(db),
         db,
         enabled: true,
-        fetch: fakeFetch,
+        fetch: spy.fetch,
+        signingSecret: SIGNING_SECRET,
         stripeSecretKey: undefined,
       }),
     )
     expect(response.status).toBe(503)
-    expect(stripeCalled).toBe(false)
+    expect(spy.called()).toBe(false)
   })
-})
 
-describe('MPP endpoint — 402 challenge (no payment credential)', () => {
-  test('returns 402 with a WWW-Authenticate Payment challenge + problem+json body', async () => {
+  test('no signing secret => 503, no Stripe call', async () => {
     const db = makeDb()
-    // Fake Stripe create-PaymentIntent (the 402 needs a deposit address).
-    const fakeFetch: StripeFetch = async () =>
-      new Response(
-        JSON.stringify({
-          amount: 1,
-          currency: 'usd',
-          id: 'pi_quote_1',
-          next_action: {
-            crypto_display_details: {
-              deposit_addresses: {
-                base: { address: '0xabc', supported_tokens: [] },
-              },
-            },
-          },
-          status: 'requires_payment',
-        }),
-        { status: 200 },
-      )
-
+    const spy = noStripeCall()
     const response = await run(
       handleMppChatCompletions(mppRequest(), {
         completionDeps: completionDeps(db),
         db,
         enabled: true,
-        fetch: fakeFetch,
-        newId: () => 'fixed',
+        fetch: spy.fetch,
+        signingSecret: undefined,
         stripeSecretKey: 'sk_test_x',
       }),
     )
+    expect(response.status).toBe(503)
+    expect(((await response.json()) as { reason: string }).reason).toContain(
+      'signing secret',
+    )
+    expect(spy.called()).toBe(false)
+  })
+})
 
+describe('MPP endpoint — 402 challenge (no payment credential)', () => {
+  const quoteFetch = (id: string): StripeFetch => async () =>
+    new Response(
+      JSON.stringify({
+        amount: 1,
+        currency: 'usd',
+        id,
+        next_action: {
+          crypto_display_details: {
+            deposit_addresses: { base: { address: '0xabc', supported_tokens: [] } },
+          },
+        },
+        status: 'requires_payment',
+      }),
+      { status: 200 },
+    )
+
+  test('returns 402 with an HMAC-bound WWW-Authenticate Payment challenge', async () => {
+    const db = makeDb()
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: quoteFetch('pi_quote_1'),
+        newId: () => 'fixed',
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
     expect(response.status).toBe(402)
     expect(response.headers.get('content-type')).toBe('application/problem+json')
-    const wwwAuth = response.headers.get('www-authenticate')
+    const wwwAuth = response.headers.get('www-authenticate')!
     expect(wwwAuth).toContain('Payment ')
     expect(wwwAuth).toContain('method="base"')
-    expect(wwwAuth).toContain('recipient="0xabc"')
-    expect(wwwAuth).toContain('payment_intent="pi_quote_1"')
+    expect(wwwAuth).toContain('realm="openagents.com"')
+    expect(wwwAuth).toContain('request=')
+    expect(wwwAuth).toContain('opaque=')
+    // The id is an HMAC, NOT a plaintext "pi_…:crypto".
+    expect(wwwAuth).not.toContain('pi_quote_1:crypto')
 
     const problem = (await response.json()) as {
       type: string
@@ -264,117 +337,95 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
       'https://paymentauth.org/problems/payment-required',
     )
     expect(problem.challenges[0]?.paymentIntentId).toBe('pi_quote_1')
+    expect(problem.challenges[0]?.recipient).toBe('0xabc')
   })
 
-  test('NO network profile id => crypto-only (no card/SPT challenge)', async () => {
+  test('NO network profile id => crypto-only (no stripe/card challenge)', async () => {
     const db = makeDb()
-    const fakeFetch: StripeFetch = async () =>
-      new Response(
-        JSON.stringify({
-          amount: 1,
-          currency: 'usd',
-          id: 'pi_quote_2',
-          next_action: {
-            crypto_display_details: {
-              deposit_addresses: {
-                base: { address: '0xabc', supported_tokens: [] },
-              },
-            },
-          },
-          status: 'requires_payment',
-        }),
-        { status: 200 },
-      )
-
     const response = await run(
       handleMppChatCompletions(mppRequest(), {
         completionDeps: completionDeps(db),
         db,
         enabled: true,
-        fetch: fakeFetch,
+        fetch: quoteFetch('pi_quote_2'),
         newId: () => 'fixed',
-        // No stripeNetworkProfileId => card rail disabled.
+        signingSecret: SIGNING_SECRET,
         stripeSecretKey: 'sk_test_x',
       }),
     )
-
     expect(response.status).toBe(402)
     const problem = (await response.json()) as {
       challenges: Array<{ method: string }>
     }
-    // Only the crypto challenge; no `method="stripe"` card challenge.
     expect(problem.challenges.every(c => c.method !== 'stripe')).toBe(true)
   })
 
   test('WITH network profile id => adds the card/SPT (stripe) challenge', async () => {
     const db = makeDb()
-    const fakeFetch: StripeFetch = async () =>
-      new Response(
-        JSON.stringify({
-          amount: 1,
-          currency: 'usd',
-          id: 'pi_quote_3',
-          next_action: {
-            crypto_display_details: {
-              deposit_addresses: {
-                base: { address: '0xabc', supported_tokens: [] },
-              },
-            },
-          },
-          status: 'requires_payment',
-        }),
-        { status: 200 },
-      )
-
     const response = await run(
       handleMppChatCompletions(mppRequest(), {
         completionDeps: completionDeps(db),
         db,
         enabled: true,
-        fetch: fakeFetch,
+        fetch: quoteFetch('pi_quote_3'),
         newId: () => 'fixed',
-        stripeNetworkProfileId:
-          'profile_61Uug9ZHyJKTH8vxOA6Uug9Z3HSQjWfjZIUGSnTl27Xk',
+        signingSecret: SIGNING_SECRET,
+        stripeNetworkProfileId: 'profile_test',
         stripeSecretKey: 'sk_test_x',
       }),
     )
-
     expect(response.status).toBe(402)
-    const wwwAuth = response.headers.get('www-authenticate')
+    const wwwAuth = response.headers.get('www-authenticate')!
     expect(wwwAuth).toContain('method="stripe"')
     const problem = (await response.json()) as {
       challenges: Array<{ method: string }>
     }
-    // Both the crypto rail and the card/SPT (stripe) rail are advertised.
     expect(problem.challenges.some(c => c.method === 'base')).toBe(true)
     expect(problem.challenges.some(c => c.method === 'stripe')).toBe(true)
   })
 })
 
-describe('MPP endpoint — valid credential serves + meters', () => {
-  test('verifies the settled payment, mints credit, runs Khala, meters, returns the completion', async () => {
+describe('MPP endpoint — credential verification + crypto settlement', () => {
+  // Stripe fetch that verifies a settled crypto deposit on GET and provides a
+  // quote on the re-challenge POST.
+  const settledCryptoFetch = (pi: string, amount = 100): StripeFetch => async (
+    url,
+    init,
+  ) => {
+    if ((init.method ?? 'GET') === 'GET' && url.includes('/payment_intents/')) {
+      return new Response(
+        JSON.stringify({
+          amount,
+          currency: 'usd',
+          id: pi,
+          metadata: { model: KHALA_MINI_MODEL_ID },
+          status: 'succeeded',
+        }),
+        { status: 200 },
+      )
+    }
+    // re-challenge quote
+    return new Response(
+      JSON.stringify({
+        amount: 1,
+        currency: 'usd',
+        id: 'pi_requote',
+        next_action: {
+          crypto_display_details: {
+            deposit_addresses: { base: { address: '0xabc' } },
+          },
+        },
+        status: 'requires_payment',
+      }),
+      { status: 200 },
+    )
+  }
+
+  test('verifies the bound credential, mints credit, runs Khala, meters, serves + Payment-Receipt', async () => {
     const db = makeDb()
     const metered: Array<MeteringContext> = []
+    const challenge = await cryptoChallenge('pi_paid_1', 100)
 
-    // Stripe fetch routes by method: GET /payment_intents/<id> = verify
-    // (settled); we should NOT need a create call on the paid path.
-    const fakeFetch: StripeFetch = async (url, init) => {
-      if ((init.method ?? 'GET') === 'GET' && url.includes('/payment_intents/')) {
-        return new Response(
-          JSON.stringify({
-            amount: 100,
-            currency: 'usd',
-            id: 'pi_paid_1',
-            metadata: { model: KHALA_MINI_MODEL_ID },
-            status: 'succeeded',
-          }),
-          { status: 200 },
-        )
-      }
-      return new Response('{}', { status: 200 })
-    }
-
-    // Spy metering hook wrapping the real ledger hook so we assert it fired.
     const ledger = makeLedgerMeteringHook({ db })
     const spyMetering = (context: MeteringContext) =>
       Effect.gen(function* () {
@@ -386,8 +437,9 @@ describe('MPP endpoint — valid credential serves + meters', () => {
       completionDeps: { ...completionDeps(db), meteringHook: spyMetering },
       db,
       enabled: true,
-      fetch: fakeFetch,
+      fetch: settledCryptoFetch('pi_paid_1', 100),
       nowIso: () => '2026-06-22T12:00:00.000Z',
+      signingSecret: SIGNING_SECRET,
       stripeSecretKey: 'sk_test_x',
     }
 
@@ -395,7 +447,7 @@ describe('MPP endpoint — valid credential serves + meters', () => {
       handleMppChatCompletions(
         mppRequest({
           headers: {
-            authorization: 'Payment id="c:crypto", payment_intent="pi_paid_1"',
+            authorization: credentialHeader(challenge),
             'content-type': 'application/json',
           },
         }),
@@ -403,33 +455,101 @@ describe('MPP endpoint — valid credential serves + meters', () => {
       ),
     )
 
-    // Served the completion (OpenAI shape).
     expect(response.status).toBe(200)
+    // Payment-Receipt header (standards-shaped, base64url JCS).
+    expect(response.headers.get('payment-receipt')).toBe(
+      jcsBase64Url({
+        method: 'base',
+        reference: 'pi_paid_1',
+        status: 'success',
+        timestamp: '2026-06-22T12:00:00.000Z',
+      }),
+    )
+    expect(response.headers.get('cache-control')).toBe('private')
+
     const completion = (await response.json()) as {
       object: string
       choices: Array<{ message: { content: string } }>
-      openagents?: { served_model?: string }
+      openagents?: unknown
     }
     expect(completion.object).toBe('chat.completion')
-    // The stub echoes the last user message back ('hello').
     expect(completion.choices[0]?.message.content).toBe('hello')
-    // Khala disclosure block present.
     expect(completion.openagents).toBeDefined()
 
-    // The metering hook fired (the SAME receipt-first metering as the keyed route).
     expect(metered.length).toBe(1)
     expect(metered[0]?.requestedModel).toBe(KHALA_MINI_MODEL_ID)
 
-    // Phase 3: credit was minted into the payer-bound balance (USD-origin).
     const balance = await readAgentBalance(db, 'agent:mpp:pi_paid_1')
     expect(balance).not.toBeNull()
     expect(balance!.usdCreditMsat).toBeGreaterThan(0)
   })
 
-  test('an unsettled payment returns 402 and serves nothing (never serves unpaid)', async () => {
+  test('credit mint is idempotent across two settled retries (one payment = one grant)', async () => {
+    const db = makeDb()
+    const challenge = await cryptoChallenge('pi_idem_1', 100)
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch: settledCryptoFetch('pi_idem_1', 100),
+      nowIso: () => '2026-06-22T12:00:00.000Z',
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const header = credentialHeader(challenge)
+    const first = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(first.status).toBe(200)
+    const balance1 = await readAgentBalance(db, 'agent:mpp:pi_idem_1')
+    const second = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(second.status).toBe(200)
+    const balance2 = await readAgentBalance(db, 'agent:mpp:pi_idem_1')
+    // The second retry did not double-grant credit (idempotent by pi).
+    expect(balance2!.usdCreditMsat).toBe(balance1!.usdCreditMsat)
+  })
+
+  test('a tampered credential is rejected (fresh 402, never serves)', async () => {
     const db = makeDb()
     let completionRan = false
-    const fakeFetch: StripeFetch = async (url, init) => {
+    const challenge = await cryptoChallenge('pi_tamper_1', 100)
+    const tampered: MppChallenge = { ...challenge, id: `${challenge.id}x` }
+    const spyMetering = () =>
+      Effect.sync(() => {
+        completionRan = true
+        return { metered: false, receiptRef: null }
+      })
+    const response = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: credentialHeader(tampered) } }),
+        {
+          completionDeps: { ...completionDeps(db), meteringHook: spyMetering },
+          db,
+          enabled: true,
+          fetch: settledCryptoFetch('pi_tamper_1'),
+          signingSecret: SIGNING_SECRET,
+          stripeSecretKey: 'sk_test_x',
+        },
+      ),
+    )
+    expect(response.status).toBe(402)
+    expect(response.headers.get('payment-receipt')).toBeNull()
+    expect(completionRan).toBe(false)
+  })
+
+  test('an unsettled crypto payment returns 402 and serves nothing', async () => {
+    const db = makeDb()
+    let completionRan = false
+    const challenge = await cryptoChallenge('pi_pending', 100)
+    const fetch: StripeFetch = async (url, init) => {
       if ((init.method ?? 'GET') === 'GET' && url.includes('/payment_intents/')) {
         return new Response(
           JSON.stringify({ amount: 100, id: 'pi_pending', status: 'processing' }),
@@ -438,33 +558,173 @@ describe('MPP endpoint — valid credential serves + meters', () => {
       }
       return new Response('{}', { status: 200 })
     }
-    const spyMetering = (context: MeteringContext) =>
+    const spyMetering = () =>
       Effect.sync(() => {
         completionRan = true
         return { metered: false, receiptRef: null }
       })
-
     const response = await run(
       handleMppChatCompletions(
-        mppRequest({
-          headers: {
-            authorization: 'Payment payment_intent="pi_pending"',
-            'content-type': 'application/json',
-          },
-        }),
+        mppRequest({ headers: { authorization: credentialHeader(challenge) } }),
         {
           completionDeps: { ...completionDeps(db), meteringHook: spyMetering },
           db,
           enabled: true,
-          fetch: fakeFetch,
+          fetch,
+          signingSecret: SIGNING_SECRET,
           stripeSecretKey: 'sk_test_x',
         },
       ),
     )
-
     expect(response.status).toBe(402)
-    const body = (await response.json()) as { error: string }
-    expect(body.error).toBe('payment_not_settled')
+    expect(((await response.json()) as { error: string }).error).toBe(
+      'payment_not_settled',
+    )
     expect(completionRan).toBe(false)
+  })
+})
+
+describe('MPP endpoint — card/SPT settlement + replay', () => {
+  const PROFILE = 'profile_test'
+  // A stripe challenge (card rail). Currency usd, networkId in methodDetails.
+  const stripeChallenge = (): Promise<MppChallenge> =>
+    buildChallenge(SIGNING_SECRET, {
+      amountCents: 100,
+      currency: 'usd',
+      expires: '2099-01-15T12:05:00.000Z',
+      method: 'stripe',
+      realm: REALM,
+      request: {
+        amount: '100',
+        currency: 'usd',
+        methodDetails: { networkId: PROFILE, paymentMethodTypes: ['card'] },
+      },
+    })
+
+  // Stripe fetch: POST /payment_intents with an SPT body succeeds; re-challenge
+  // quote returns a deposit address.
+  const sptFetch = (pi: string): StripeFetch => async (url, init) => {
+    if ((init.method ?? 'GET') === 'POST' && url.endsWith('/payment_intents')) {
+      const body = String(init.body ?? '')
+      if (body.includes('shared_payment_granted_token')) {
+        return new Response(
+          JSON.stringify({ amount: 100, currency: 'usd', id: pi, status: 'succeeded' }),
+          { status: 200 },
+        )
+      }
+      // quote (deposit-mode crypto create)
+      return new Response(
+        JSON.stringify({
+          amount: 1,
+          id: 'pi_requote',
+          next_action: {
+            crypto_display_details: {
+              deposit_addresses: { base: { address: '0xabc' } },
+            },
+          },
+          status: 'requires_payment',
+        }),
+        { status: 200 },
+      )
+    }
+    return new Response('{}', { status: 200 })
+  }
+
+  test('settles a fresh SPT, mints credit, serves + Payment-Receipt method=stripe', async () => {
+    const db = makeDb()
+    const challenge = await stripeChallenge()
+    const response = await run(
+      handleMppChatCompletions(
+        mppRequest({
+          headers: {
+            authorization: credentialHeader(challenge, { spt: 'spt_abc123' }),
+          },
+        }),
+        {
+          completionDeps: completionDeps(db),
+          db,
+          enabled: true,
+          fetch: sptFetch('pi_card_1'),
+          nowIso: () => '2026-06-22T12:00:00.000Z',
+          signingSecret: SIGNING_SECRET,
+          stripeNetworkProfileId: PROFILE,
+          stripeSecretKey: 'sk_test_x',
+        },
+      ),
+    )
+    expect(response.status).toBe(200)
+    const receipt = response.headers.get('payment-receipt')!
+    expect(receipt).toBe(
+      jcsBase64Url({
+        method: 'stripe',
+        reference: 'pi_card_1',
+        status: 'success',
+        timestamp: '2026-06-22T12:00:00.000Z',
+      }),
+    )
+    const balance = await readAgentBalance(db, 'agent:mpp:pi_card_1')
+    expect(balance!.usdCreditMsat).toBeGreaterThan(0)
+  })
+
+  test('a replayed SPT is rejected (402), never double-charges', async () => {
+    const db = makeDb()
+    const challenge = await stripeChallenge()
+    let chargeCount = 0
+    const fetch: StripeFetch = async (url, init) => {
+      if (
+        (init.method ?? 'GET') === 'POST' &&
+        url.endsWith('/payment_intents') &&
+        String(init.body ?? '').includes('shared_payment_granted_token')
+      ) {
+        chargeCount += 1
+        return new Response(
+          JSON.stringify({ amount: 100, currency: 'usd', id: 'pi_card_2', status: 'succeeded' }),
+          { status: 200 },
+        )
+      }
+      return new Response(
+        JSON.stringify({
+          amount: 1,
+          id: 'pi_requote',
+          next_action: {
+            crypto_display_details: {
+              deposit_addresses: { base: { address: '0xabc' } },
+            },
+          },
+          status: 'requires_payment',
+        }),
+        { status: 200 },
+      )
+    }
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db),
+      db,
+      enabled: true,
+      fetch,
+      nowIso: () => '2026-06-22T12:00:00.000Z',
+      signingSecret: SIGNING_SECRET,
+      stripeNetworkProfileId: PROFILE,
+      stripeSecretKey: 'sk_test_x',
+    }
+    const header = credentialHeader(challenge, { spt: 'spt_replay_me' })
+    const first = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(first.status).toBe(200)
+    const second = await run(
+      handleMppChatCompletions(
+        mppRequest({ headers: { authorization: header } }),
+        deps,
+      ),
+    )
+    expect(second.status).toBe(402)
+    expect(((await second.json()) as { reason?: string }).reason).toBe(
+      'spt_replayed',
+    )
+    // Only the FIRST attempt hit Stripe with a charge.
+    expect(chargeCount).toBe(1)
   })
 })

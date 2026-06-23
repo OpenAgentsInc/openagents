@@ -143,6 +143,14 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Stripe REST API. Worker secret; never committed/logged. Absent => the MPP
   // endpoint is fail-safe inert and never constructs a charge.
   STRIPE_API_KEY?: string | undefined
+  // The MPP/Payment-Auth challenge-binding signing secret (EPIC #6049, defect B).
+  // The 402 challenge `id` is HMAC-SHA256(secret, canonical challenge fields), so
+  // the Worker verifies a retry credential STATELESSLY (draft-httpauth-payment-00
+  // §5.1.3). Worker SECRET; never committed/logged. Set via
+  //   wrangler secret put KHALA_MPP_SIGNING_SECRET
+  // Absent => the MPP endpoint is fail-safe inert and never issues a challenge or
+  // verifies a credential (alongside KHALA_MPP_ENABLED + STRIPE_API_KEY).
+  KHALA_MPP_SIGNING_SECRET?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
   // live Worker until those builds land. Set "true"/"1"/"on" to enable. The

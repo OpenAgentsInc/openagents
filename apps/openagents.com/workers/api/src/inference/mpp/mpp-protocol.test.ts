@@ -1,107 +1,259 @@
 import { describe, expect, test } from 'vitest'
 
+import { base64UrlEncode, jcsBase64Url } from './mpp-canonical'
 import {
   type MppChallenge,
+  type MppRequestParams,
+  buildChallenge,
+  buildPaymentReceipt,
   buildPaymentRequiredHeaders,
   buildPaymentRequiredProblem,
   parsePaymentCredential,
   renderChallengeHeader,
+  verifyCredential,
 } from './mpp-protocol'
 
-const cryptoChallenge: MppChallenge = {
-  amountCents: 1,
-  currency: 'usdc',
-  id: 'chal_abc:crypto',
-  intent: 'charge',
-  method: 'base',
-  network: 'base',
-  paymentIntentId: 'pi_123',
-  recipient: '0xdeadbeef',
-}
+const SECRET = 'test-signing-secret'
+const REALM = 'openagents.com'
+const FUTURE = '2099-01-15T12:05:00.000Z'
 
-describe('mpp protocol — 402 challenge wire shape', () => {
-  test('renders a WWW-Authenticate Payment header with the load-bearing params', () => {
-    const header = renderChallengeHeader(cryptoChallenge)
-    expect(header.startsWith('Payment ')).toBe(true)
-    expect(header).toContain('id="chal_abc:crypto"')
-    expect(header).toContain('method="base"')
-    expect(header).toContain('intent="charge"')
-    expect(header).toContain('amount="1"')
-    expect(header).toContain('currency="usdc"')
-    expect(header).toContain('network="base"')
-    expect(header).toContain('recipient="0xdeadbeef"')
-    expect(header).toContain('payment_intent="pi_123"')
+// Build a spec-shaped crypto challenge with a valid HMAC id.
+const cryptoChallenge = (
+  overrides: Partial<Parameters<typeof buildChallenge>[1]> = {},
+): Promise<MppChallenge> =>
+  buildChallenge(SECRET, {
+    amountCents: 100,
+    currency: 'usdc',
+    expires: FUTURE,
+    method: 'base',
+    network: 'base',
+    opaque: { amount: '100', network: 'base', pi: 'pi_dep_1' },
+    paymentIntentId: 'pi_dep_1',
+    realm: REALM,
+    recipient: '0xdeadbeef',
+    request: {
+      amount: '100',
+      currency: 'usdc',
+      network: 'base',
+      recipient: '0xdeadbeef',
+    },
+    ...overrides,
   })
 
-  test('builds one WWW-Authenticate header per challenge', () => {
-    const headers = buildPaymentRequiredHeaders([
-      cryptoChallenge,
-      {
-        amountCents: 50,
-        currency: 'usd',
-        id: 'chal_abc:card',
-        intent: 'charge',
-        method: 'stripe',
+// Compose a wire credential that echoes a challenge + carries a payload.
+const credentialFor = (
+  challenge: MppChallenge,
+  payload: Record<string, unknown>,
+): string =>
+  base64UrlEncode(
+    JSON.stringify({
+      challenge: {
+        expires: challenge.expires,
+        id: challenge.id,
+        intent: challenge.intent,
+        method: challenge.method,
+        opaque: challenge.opaque,
+        realm: challenge.realm,
+        request: challenge.request,
       },
-    ])
+      payload,
+    }),
+  )
+
+describe('mpp protocol — 402 challenge wire shape (HMAC-bound)', () => {
+  test('renders a WWW-Authenticate Payment header with the spec params', async () => {
+    const challenge = await cryptoChallenge()
+    const header = renderChallengeHeader(challenge)
+    expect(header.startsWith('Payment ')).toBe(true)
+    expect(header).toContain(`id="${challenge.id}"`)
+    expect(header).toContain('realm="openagents.com"')
+    expect(header).toContain('method="base"')
+    expect(header).toContain('intent="charge"')
+    expect(header).toContain(`request="${challenge.request}"`)
+    expect(header).toContain(`expires="${FUTURE}"`)
+    expect(header).toContain('opaque=')
+    // The id is an HMAC, not a plaintext quote id.
+    expect(challenge.id).not.toContain(':crypto')
+  })
+
+  test('builds one WWW-Authenticate per challenge + problem body', async () => {
+    const crypto = await cryptoChallenge()
+    const card = await buildChallenge(SECRET, {
+      amountCents: 50,
+      currency: 'usd',
+      expires: FUTURE,
+      method: 'stripe',
+      realm: REALM,
+      request: {
+        amount: '50',
+        currency: 'usd',
+        methodDetails: { networkId: 'profile_x', paymentMethodTypes: ['card'] },
+      },
+    })
+    const headers = buildPaymentRequiredHeaders([crypto, card])
     const all = headers.get('www-authenticate')
     expect(all).toContain('method="base"')
     expect(all).toContain('method="stripe"')
-    expect(headers.get('content-type')).toBe('application/problem+json')
     expect(headers.get('cache-control')).toBe('no-store')
-  })
 
-  test('builds the problem+json body with the paymentauth.org type', () => {
-    const problem = buildPaymentRequiredProblem([cryptoChallenge])
+    const problem = buildPaymentRequiredProblem([crypto, card])
     expect(problem.status).toBe(402)
     expect(problem.type).toBe(
       'https://paymentauth.org/problems/payment-required',
     )
-    expect(problem.title).toBe('Payment Required')
-    expect(problem.challengeId).toBe('chal_abc:crypto')
-    expect(problem.challenges).toHaveLength(1)
-    expect(problem.challenges[0]?.paymentIntentId).toBe('pi_123')
+    expect(problem.challenges).toHaveLength(2)
+    expect(problem.challenges[0]?.paymentIntentId).toBe('pi_dep_1')
+  })
+
+  test('Payment-Receipt is base64url JCS with status success', () => {
+    const receipt = buildPaymentReceipt({
+      method: 'base',
+      reference: 'pi_1',
+      timestamp: FUTURE,
+    })
+    expect(receipt).not.toContain('=')
+    expect(receipt).toBe(
+      jcsBase64Url({
+        method: 'base',
+        reference: 'pi_1',
+        status: 'success',
+        timestamp: FUTURE,
+      }),
+    )
   })
 })
 
 describe('mpp protocol — credential parsing', () => {
-  test('undefined for a missing Authorization header', () => {
+  test('undefined for missing / non-Payment scheme', () => {
     expect(parsePaymentCredential(null)).toBeUndefined()
-  })
-
-  test('undefined for a non-Payment scheme (so the endpoint re-challenges)', () => {
     expect(parsePaymentCredential('Bearer xyz')).toBeUndefined()
   })
 
-  test('parses the quoted-param Payment credential and extracts the payment intent', () => {
+  test('undefined for malformed (no challenge/payload)', () => {
+    expect(parsePaymentCredential('Payment not-base64')).toBeUndefined()
+    expect(
+      parsePaymentCredential(`Payment ${base64UrlEncode('{"x":1}')}`),
+    ).toBeUndefined()
+  })
+
+  test('parses an echoed-challenge + payload credential', async () => {
+    const challenge = await cryptoChallenge()
     const parsed = parsePaymentCredential(
-      'Payment id="chal_abc:crypto", method="base", payment_intent="pi_123"',
+      `Payment ${credentialFor(challenge, { ref: '0xpay' })}`,
     )
     expect(parsed?.scheme).toBe('Payment')
-    expect(parsed?.challengeId).toBe('chal_abc:crypto')
-    expect(parsed?.method).toBe('base')
-    expect(parsed?.paymentIntentId).toBe('pi_123')
+    expect(parsed?.challenge.id).toBe(challenge.id)
+    expect(parsed?.challenge.method).toBe('base')
+    expect(parsed?.payload.ref).toBe('0xpay')
+  })
+})
+
+describe('mpp protocol — stateless HMAC verification (FAIL-CLOSED)', () => {
+  const expectations = {
+    allowedMethods: ['base', 'solana', 'tempo', 'stripe'],
+    expectedCurrencyForMethod: (m: string) => (m === 'stripe' ? 'usd' : 'usdc'),
+    expectedMinAmountCents: 1,
+    nowMs: Date.parse('2026-06-23T12:00:00.000Z'),
+    realm: REALM,
+  }
+
+  test('accepts a correctly-bound credential and recovers opaque/request', async () => {
+    const challenge = await cryptoChallenge()
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(challenge, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, expectations)
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.method).toBe('base')
+      expect(result.opaque?.pi).toBe('pi_dep_1')
+      expect(result.request.amount).toBe('100')
+    }
   })
 
-  test('parses a base64url JSON Payment token and extracts the payment intent', () => {
-    const token = btoa(
-      JSON.stringify({
-        challengeId: 'chal_zzz',
-        method: 'tempo',
-        payload: { payment_intent: 'pi_999' },
-      }),
-    )
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-    const parsed = parsePaymentCredential(`Payment ${token}`)
-    expect(parsed?.paymentIntentId).toBe('pi_999')
-    expect(parsed?.challengeId).toBe('chal_zzz')
+  test('rejects a tampered challenge (forged id)', async () => {
+    const challenge = await cryptoChallenge()
+    const tampered: MppChallenge = { ...challenge, id: `${challenge.id}x` }
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(tampered, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, expectations)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('invalid-challenge')
   })
 
-  test('retains the raw value when a token does not decode (sidecar verify path)', () => {
-    const parsed = parsePaymentCredential('Payment not-base64-or-params')
-    expect(parsed?.scheme).toBe('Payment')
-    expect(parsed?.paymentIntentId).toBeUndefined()
-    expect(parsed?.raw).toBe('not-base64-or-params')
+  test('rejects a credential whose request was swapped (binding catches it)', async () => {
+    const challenge = await cryptoChallenge()
+    // Swap the bound request for a cheaper one but keep the original id.
+    const cheaperRequest: MppRequestParams = {
+      amount: '1',
+      currency: 'usdc',
+      network: 'base',
+    }
+    const tampered: MppChallenge = {
+      ...challenge,
+      request: jcsBase64Url(cheaperRequest),
+    }
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(tampered, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, expectations)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('invalid-challenge')
+  })
+
+  test('rejects an expired challenge', async () => {
+    const challenge = await cryptoChallenge({
+      expires: '2000-01-01T00:00:00.000Z',
+    })
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(challenge, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, expectations)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('expired')
+  })
+
+  test('rejects a wrong-secret credential (different signer)', async () => {
+    const challenge = await buildChallenge('OTHER-secret', {
+      amountCents: 100,
+      currency: 'usdc',
+      expires: FUTURE,
+      method: 'base',
+      realm: REALM,
+      request: { amount: '100', currency: 'usdc' },
+    })
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(challenge, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, expectations)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('invalid-challenge')
+  })
+
+  test('rejects a method we never offered', async () => {
+    const challenge = await cryptoChallenge()
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(challenge, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, {
+      ...expectations,
+      allowedMethods: ['solana'], // base not offered
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('method-mismatch')
+  })
+
+  test('rejects a request whose currency does not match the method', async () => {
+    const challenge = await cryptoChallenge()
+    const parsed = parsePaymentCredential(
+      `Payment ${credentialFor(challenge, {})}`,
+    )!
+    const result = await verifyCredential(SECRET, parsed, {
+      ...expectations,
+      expectedCurrencyForMethod: () => 'eur',
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe('request-mismatch')
   })
 })
