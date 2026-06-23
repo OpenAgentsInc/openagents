@@ -29,7 +29,7 @@
 // 503 and NEVER constructs a charge or issues a challenge. A missing `profile_`
 // id only disables the CARD rail; the crypto rail still works.
 
-import { Effect } from 'effect'
+import { Duration, Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../../http/responses'
 import {
@@ -51,10 +51,7 @@ import {
   mppLightningPayerAccountRef,
   mppPayerAccountRef,
 } from './mpp-credit-grant'
-import {
-  type MintLightningInvoice,
-  LightningInvoiceError,
-} from './mpp-lightning-invoice'
+import { type MintLightningInvoice } from './mpp-lightning-invoice'
 import { claimLightningPaymentHash } from './mpp-lightning-replay'
 import { readPreimage, verifyLightningPreimage } from './mpp-lightning-verify'
 import {
@@ -90,6 +87,19 @@ const LIGHTNING_METHOD = 'lightning'
 const MPP_REALM = 'openagents.com'
 // Challenge validity window.
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
+// PER-RAIL ISOLATION GUARD for the Lightning leg of challenge issuance. The
+// MDK-backed invoice issuer already caps its own mint round-trip
+// (`MDK_LIGHTNING_MINT_TIMEOUT_MS`, ~2s), but the route MUST NOT trust any single
+// issuer to be well-behaved: a buggy, mis-wired, or non-MDK issuer could hang,
+// reject in an unmapped way, or die with a defect. So the route wraps the WHOLE
+// Lightning leg in its own bounded, defect-swallowing guard (`Effect.timeout` +
+// `Effect.catchAllCause`) that resolves to "no Lightning challenge" on ANY
+// failure. Slightly LARGER than the issuer's internal mint timeout so the inner,
+// more specific bound normally wins; this is the outer safety net. The Lightning
+// leg runs CONCURRENTLY with the crypto deposit (see `issueChallenge`), so even
+// at the full budget it never DELAYS the other rails — a slow/failed Lightning
+// rail can only ever drop ITSELF.
+const LIGHTNING_LEG_GUARD_MS = 2_500
 
 // Parse the KHALA_MPP_ENABLED flag. Default OFF.
 export const isKhalaMppEnabled = (value: string | undefined): boolean => {
@@ -315,50 +325,58 @@ const lightningRailActive = (
     : undefined
 
 // Mint a Lightning invoice + build the (Bitcoin-first) Lightning challenge for
-// this quote. Best-effort: if the invoice issuer fails we return undefined and
-// the 402 still carries the other rails — we just do not advertise a Lightning
-// rail we could not actually mint an invoice for (honesty gate). The effective
-// challenge expiry is the EARLIER of the challenge TTL and the invoice expiry.
+// this quote. Best-effort and FULLY ISOLATED: if the invoice issuer fails,
+// times out, or dies with a defect we return undefined and the 402 still carries
+// the other rails — we just do not advertise a Lightning rail we could not
+// actually mint an invoice for (honesty gate). The effective challenge expiry is
+// the EARLIER of the challenge TTL and the invoice expiry.
+//
+// SAFETY (the central fix): this leg can NEVER hang or break the 402. The whole
+// computation is bounded by `LIGHTNING_LEG_GUARD_MS` and ANY failure cause —
+// typed `LightningInvoiceError`, a hang/timeout, OR an unexpected defect from a
+// mis-wired issuer — is swallowed back to `undefined` (drop the rail). The
+// observed prod hang was a cold MDK-sidecar container blocking the entire
+// (sequential) issuance Effect; here a hung mint is interrupted and dropped.
 const buildLightningChallengeForQuote = (
   deps: MppChatCompletionsDeps,
   signingSecret: string,
   mint: MintLightningInvoice,
   input: Readonly<{ model: string; newId: () => string; challengeExpiresAt: string }>,
-) =>
+): Effect.Effect<MppChallenge | undefined, never> =>
   Effect.gen(function* () {
     const lightningQuote = quoteMppLightningCall({ model: input.model })
-    const minted = yield* mint({
+    const invoice = yield* mint({
       amountSats: lightningQuote.amountSats,
       correlationRef: `mpp:lightning:${input.model}:${input.newId()}`,
       description: `OpenAgents Khala ${input.model} pay-per-call`,
-    }).pipe(
-      Effect.map(invoice => ({ ok: true as const, invoice })),
-      Effect.catch((error: LightningInvoiceError) =>
-        Effect.succeed({ ok: false as const, reason: error.reason }),
-      ),
-    )
-    if (!minted.ok) {
-      return undefined
-    }
+    })
     // Effective expiry = earlier of challenge TTL and invoice BOLT11 expiry
     // (spec §"Challenge Expiry and Invoice Expiry"). The challenge `expires`
     // auth-param MUST NOT be later than the invoice expiry.
     const challengeExpires =
-      minted.invoice.invoiceExpiresAt !== undefined &&
-      Date.parse(minted.invoice.invoiceExpiresAt) <
+      invoice.invoiceExpiresAt !== undefined &&
+      Date.parse(invoice.invoiceExpiresAt) <
         Date.parse(input.challengeExpiresAt)
-        ? minted.invoice.invoiceExpiresAt
+        ? invoice.invoiceExpiresAt
         : input.challengeExpiresAt
     return yield* buildLightningChallenge(signingSecret, {
       amountSats: lightningQuote.amountSats,
-      bolt11: minted.invoice.bolt11,
+      bolt11: invoice.bolt11,
       expires: challengeExpires,
-      invoiceExpiresAt: minted.invoice.invoiceExpiresAt,
+      invoiceExpiresAt: invoice.invoiceExpiresAt,
       model: input.model,
-      network: minted.invoice.network,
-      paymentHash: minted.invoice.paymentHash,
+      network: invoice.network,
+      paymentHash: invoice.paymentHash,
     })
-  })
+  }).pipe(
+    // Outer per-rail safety net: bound the WHOLE leg, then swallow ANY cause
+    // (typed error, the timeout's `TimeoutException`, or an interrupt/defect)
+    // back to "no Lightning challenge". This is what makes a Lightning failure
+    // ALWAYS safe regardless of issuer behavior. `catchCause` (not `catch`)
+    // recovers from BOTH recoverable errors and unrecoverable defects.
+    Effect.timeout(Duration.millis(LIGHTNING_LEG_GUARD_MS)),
+    Effect.catchCause(() => Effect.succeed(undefined)),
+  )
 
 // Issue a fresh 402 (no credential, or a credential we refused). Creates a
 // crypto deposit PaymentIntent for the quote (the address the crypto challenge
@@ -381,27 +399,36 @@ const issueChallenge = (
     const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
     const challengeExpiresAt = epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS)
 
-    // Bitcoin-first: mint the Lightning challenge first (when the rail is armed).
+    // PER-RAIL ISOLATION: the Lightning leg ("Bitcoin-first" in PRESENTATION
+    // order) and the crypto deposit creation run CONCURRENTLY, so a slow/cold
+    // Lightning mint can never delay the crypto/card rails beyond its own bounded
+    // guard. The Lightning leg is fully self-contained — it resolves to
+    // `undefined` (drop the rail) on ANY failure/timeout/defect and never fails
+    // this Effect (`Effect.Effect<…, never>`). Presentation order still puts
+    // Lightning FIRST, but only when it actually minted (see `buildChallenges`).
     const mint = lightningRailActive(deps)
-    const lightningChallenge =
-      mint === undefined
-        ? undefined
-        : yield* buildLightningChallengeForQuote(deps, signingSecret, mint, {
-            challengeExpiresAt,
-            model,
-            newId,
-          })
-
-    const created = yield* createCryptoDepositPaymentIntent(stripeDeps, {
-      amountCents: cryptoQuote.amountCents,
-      idempotencyKey: `mpp:quote:${newId()}`,
-      metadata: { model, product: 'openagents_khala_mpp' },
-      networks: CRYPTO_NETWORKS,
-    }).pipe(
-      Effect.map(intent => ({ ok: true as const, intent })),
-      Effect.catch(error =>
-        Effect.succeed({ ok: false as const, reason: error.detail }),
-      ),
+    const [lightningChallenge, created] = yield* Effect.all(
+      [
+        mint === undefined
+          ? Effect.succeed(undefined)
+          : buildLightningChallengeForQuote(deps, signingSecret, mint, {
+              challengeExpiresAt,
+              model,
+              newId,
+            }),
+        createCryptoDepositPaymentIntent(stripeDeps, {
+          amountCents: cryptoQuote.amountCents,
+          idempotencyKey: `mpp:quote:${newId()}`,
+          metadata: { model, product: 'openagents_khala_mpp' },
+          networks: CRYPTO_NETWORKS,
+        }).pipe(
+          Effect.map(intent => ({ ok: true as const, intent })),
+          Effect.catch(error =>
+            Effect.succeed({ ok: false as const, reason: error.detail }),
+          ),
+        ),
+      ] as const,
+      { concurrency: 'unbounded' },
     )
     if (!created.ok) {
       return notConfigured(`stripe quote failed: ${created.reason}`)

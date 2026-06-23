@@ -11,7 +11,7 @@
 // (route URL + secret) and the Lightning flag is on. With no route the route
 // wiring passes `mintLightningInvoice: undefined` and the rail is never offered.
 
-import { Effect } from 'effect'
+import { Duration, Effect } from 'effect'
 
 import { isRecord, nestedUnknown, optionalString } from '../../json-boundary'
 import {
@@ -20,6 +20,18 @@ import {
   LightningInvoiceError,
   validateLightningInvoice,
 } from './mpp-lightning-invoice'
+
+// Hard upper bound on the MDK sidecar `create_checkout` mint round-trip. The MDK
+// route is the `self_hosted_mdkd_sidecar` Cloudflare Container, which sleeps
+// after 30m of inactivity (`MdkSidecarContainer.sleepAfter = '30m'`). A cold
+// container boot blocks `getContainer(...).fetch()` for SECONDS — and
+// `Effect.tryPromise` only catches THROWS, never a hang. Without this bound a
+// cold/slow mint would block the whole 402 handler (the observed prod hang:
+// arming the rail timed out crypto+card too because the Lightning leg runs in
+// the same Effect). With it, a slow mint resolves to a typed `provider_unavailable`
+// failure and the Lightning rail is silently dropped (honesty gate), while the
+// other rails return promptly. 2s is well under any client/edge timeout budget.
+export const MDK_LIGHTNING_MINT_TIMEOUT_MS = 2_000
 
 // A POST transport to the MDK route/sidecar. Returns the HTTP ok flag + status +
 // parsed JSON payload (no throwing — the issuer maps a non-ok status to a typed
@@ -99,7 +111,18 @@ export const makeMdkLightningInvoiceIssuer = (
             type: 'AMOUNT',
           },
         }),
-    })
+    }).pipe(
+      // Bounded mint: a cold/slow MDK sidecar container can block for seconds.
+      // `Effect.tryPromise` catches throws, NOT a hang — so we cap the wall-clock
+      // here. On timeout the in-flight effect is interrupted and we fail with the
+      // SAME typed `provider_unavailable` reason a transport error produces, so
+      // the caller drops the Lightning rail and serves the others promptly.
+      Effect.timeoutOrElse({
+        duration: Duration.millis(MDK_LIGHTNING_MINT_TIMEOUT_MS),
+        orElse: () =>
+          Effect.fail(new LightningInvoiceError('provider_unavailable')),
+      }),
+    )
     if (!result.ok) {
       return yield* Effect.fail(
         new LightningInvoiceError(

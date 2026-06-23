@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
+import { TestClock } from 'effect/testing'
 import { describe, expect, test } from 'vitest'
 
 import { readAgentBalance } from '../../payments-ledger'
@@ -1092,5 +1093,114 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
       ),
     )
     expect(served.status).toBe(402)
+  })
+
+  // ---- PER-RAIL ISOLATION / NO-HANG (root-cause regression) ----
+  //
+  // The observed prod hang: arming KHALA_MPP_LIGHTNING_ENABLED made a slow/cold
+  // MDK-sidecar mint block the ENTIRE 402 handler (crypto + card timed out too)
+  // because the Lightning leg ran first and synchronously. These tests prove the
+  // Lightning leg is now fully isolated: a hung/slow mint is bounded and dropped,
+  // and the endpoint still returns a 402 carrying the crypto (+ card) challenges.
+
+  test('HANGING MINT: a never-resolving mint is bounded => 402 still carries crypto + card, lightning DROPPED', async () => {
+    const db = makeDb()
+    let mintStarted = false
+    // A mint that NEVER resolves — models a cold/blocked MDK sidecar container.
+    const hangingMint: MintLightningInvoice = () =>
+      Effect.callback<LightningInvoice, LightningInvoiceError>(() => {
+        mintStarted = true
+        // never resume => the effect hangs until interrupted by the timeout.
+      })
+    const response = await run(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          handleMppChatCompletions(mppRequest(), {
+            completionDeps: completionDeps(db),
+            db,
+            enabled: true,
+            fetch: lightningQuoteFetch(),
+            lightningEnabled: true,
+            mintLightningInvoice: hangingMint,
+            newId: () => 'fixed',
+            signingSecret: SIGNING_SECRET,
+            // card rail armed too, to prove BOTH non-lightning rails survive.
+            stripeNetworkProfileId: 'profile_test',
+            stripeSecretKey: 'sk_test_x',
+          }),
+        )
+        // Advance well past BOTH the inner mint timeout and the outer leg guard.
+        yield* TestClock.adjust(10_000)
+        return yield* Fiber.join(fiber)
+      }).pipe(Effect.provide(TestClock.layer())),
+    )
+    expect(mintStarted).toBe(true)
+    // The endpoint still returns a 402 (NOT a hang, NOT a 503).
+    expect(response.status).toBe(402)
+    const wwwAuth = response.headers.get('www-authenticate') ?? ''
+    // Lightning is DROPPED (honesty gate) but the other rails are present.
+    expect(wwwAuth).not.toContain('method="lightning"')
+    expect(wwwAuth).toContain('method="base"')
+    expect(wwwAuth).toContain('method="stripe"')
+    const problem = (await response.json()) as {
+      challenges: Array<{ method: string }>
+    }
+    expect(problem.challenges.some(c => c.method === 'lightning')).toBe(false)
+    expect(problem.challenges.some(c => c.method === 'base')).toBe(true)
+    expect(problem.challenges.some(c => c.method === 'stripe')).toBe(true)
+  })
+
+  test('FAILING MINT: a fast typed failure drops ONLY lightning; crypto still present', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer({ fail: true })
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: lightningQuoteFetch(),
+        lightningEnabled: true,
+        mintLightningInvoice: issuer.mint,
+        newId: () => 'fixed',
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+    expect(response.status).toBe(402)
+    expect(issuer.calls()).toBe(1)
+    const wwwAuth = response.headers.get('www-authenticate') ?? ''
+    expect(wwwAuth).not.toContain('method="lightning"')
+    expect(wwwAuth).toContain('method="base"')
+  })
+
+  test('FAST SUCCESS: a fast mint => lightning challenge present and FIRST, crypto still present', async () => {
+    const db = makeDb()
+    const issuer = fakeLightningIssuer()
+    const response = await run(
+      handleMppChatCompletions(mppRequest(), {
+        completionDeps: completionDeps(db),
+        db,
+        enabled: true,
+        fetch: lightningQuoteFetch(),
+        lightningEnabled: true,
+        mintLightningInvoice: issuer.mint,
+        newId: () => 'fixed',
+        signingSecret: SIGNING_SECRET,
+        stripeSecretKey: 'sk_test_x',
+      }),
+    )
+    expect(response.status).toBe(402)
+    expect(issuer.calls()).toBe(1)
+    const wwwAuth = response.headers.get('www-authenticate') ?? ''
+    // Lightning is the FIRST presented challenge (Bitcoin-first).
+    const firstChallenge = wwwAuth.split(/,\s*(?=Payment\s)/i)[0] ?? ''
+    expect(firstChallenge).toContain('method="lightning"')
+    // ...and the crypto rail is still present.
+    expect(wwwAuth).toContain('method="base"')
+    const problem = (await response.json()) as {
+      challenges: Array<{ method: string }>
+    }
+    expect(problem.challenges[0]?.method).toBe('lightning')
+    expect(problem.challenges.some(c => c.method === 'base')).toBe(true)
   })
 })
