@@ -1,0 +1,28 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/mcp-server-card/v1.json",
+  "version": "1.0",
+  "protocolVersion": "2025-06-18",
+  "serverInfo": {
+    "name": "mpp-docs",
+    "title": "MPP documentation MCP server",
+    "version": "1.0.0"
+  },
+  "description": "Search and read mpp.dev documentation plus linked source repositories through the built-in MCP endpoint.",
+  "documentationUrl": "https://mpp.dev/guides/building-with-an-llm",
+  "iconUrl": "https://mpp.dev/favicon.svg",
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "https://mpp.dev/api/mcp"
+  },
+  "capabilities": {
+    "resources": {},
+    "tools": {}
+  },
+  "authentication": {
+    "required": false,
+    "schemes": []
+  },
+  "instructions": "Use list_pages, read_page, and search_docs for documentation lookup. Use the source browsing tools for repository inspection when you need implementation details.",
+  "resources": "dynamic",
+  "tools": "dynamic"
+}
