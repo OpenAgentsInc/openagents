@@ -9238,6 +9238,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       operatorBuyModeRoutes.handleOperatorBuyModeDispatchApi(request, env),
   },
   {
+    path: '/api/operator/buy-mode/eval',
+    handler: (request, env) =>
+      operatorBuyModeRoutes.handleOperatorBuyModeEvalApi(request, env),
+  },
+  {
     path: '/api/operator/buy-mode/results/settle',
     handler: (request, env) =>
       operatorBuyModeRoutes.handleOperatorBuyModeSettleApi(request, env),

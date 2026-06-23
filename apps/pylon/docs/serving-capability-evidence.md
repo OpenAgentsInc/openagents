@@ -289,6 +289,21 @@ The projection distinguishes two states:
 This is still not a dispatcher. It does not run Psionic, call a Pylon, spend
 sats, promote runtime artifacts, or green the M6 public claim by itself.
 
+### Worker HTTP buy-mode eval adapter
+
+`POST /api/operator/buy-mode/eval` is the owner/admin-authenticated HTTP target
+for Psionic's `HttpBuyModeDispatch` client. It accepts Psionic's compact
+`BuyModeEvalJob` shape (`worker_id`, `role_index`, `sample_id`,
+`amount_msats`) and returns the matching compact settled result
+(`verdict.class`, `verdict.passed`, `settled_msats`) only after the request has
+passed the existing OpenAgents buy-mode campaign, per-job cap, daily cap, and
+relay-publication boundaries.
+
+The endpoint deliberately remains fail-closed unless the live eval bridge is
+configured in the Worker runtime. An admitted dispatch without that bridge
+returns `blocker.buy_mode.eval_bridge_unconfigured`; it does not fabricate a
+verification pass, move sats, or publish the M6 shadow-win claim.
+
 ## Khala M7 Conductor preflight
 
 `apps/pylon/src/khala-m7-conductor-preflight.ts` adds the read-only M7 readiness

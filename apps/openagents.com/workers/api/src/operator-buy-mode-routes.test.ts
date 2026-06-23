@@ -10,7 +10,10 @@ import {
   type BuyModeRelayJobRequest,
   type BuyModeRelayPublisher,
 } from './buy-mode-dispatcher'
-import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
+import {
+  type BuyModeEvalBridge,
+  makeOperatorBuyModeRoutes,
+} from './operator-buy-mode-routes'
 
 const nowIso = '2026-06-10T08:00:00.000Z'
 
@@ -115,15 +118,36 @@ class FakePaymentBridge implements BuyModePaymentBridge {
   }
 }
 
+class FakeEvalBridge implements BuyModeEvalBridge {
+  readonly requests: Parameters<BuyModeEvalBridge['dispatchEval']>[0][] = []
+
+  dispatchEval = async (
+    input: Parameters<BuyModeEvalBridge['dispatchEval']>[0],
+  ) => {
+    this.requests.push(input)
+
+    return {
+      settledMsats: input.job.amountMsats,
+      verdict: {
+        class: 'exact_trace_replay' as const,
+        passed: true,
+      },
+    }
+  }
+}
+
 const makeRoutes = (
   store: MemoryBuyModeStore,
   relay = new FakeRelayPublisher(),
   paymentBridge = new FakePaymentBridge(),
+  evalBridge: FakeEvalBridge | undefined = undefined,
 ) => ({
+  evalBridge,
   paymentBridge,
   relay,
   routes: makeOperatorBuyModeRoutes<{ store: MemoryBuyModeStore }>({
     currentIsoTimestamp: () => nowIso,
+    makeEvalBridge: () => evalBridge,
     makePaymentBridge: () => paymentBridge,
     makeRelayPublisher: () => relay,
     makeStore: env => env.store,
@@ -246,6 +270,120 @@ describe('operator buy-mode routes', () => {
     expect(body.result.alert.reasonRef).toBe('alert.buy_mode.per_job_cap_breach')
     expect((await store.latestCampaign())?.state).toBe('halted')
     expect(relay.requests).toHaveLength(0)
+  })
+
+  test('exposes Psionic-compatible eval endpoint behind existing dispatch admission', async () => {
+    const store = new MemoryBuyModeStore()
+    const evalBridge = new FakeEvalBridge()
+    const { relay, routes } = makeRoutes(
+      store,
+      new FakeRelayPublisher(),
+      new FakePaymentBridge(),
+      evalBridge,
+    )
+
+    await run(routes.handleOperatorBuyModeStartApi(
+      request('/api/operator/buy-mode/start', {
+        dailyCapMsats: 10_000,
+        perJobCapMsats: 2_000,
+        spendEnabled: true,
+      }, 'start-key-eval'),
+      { store },
+    ))
+    const response = await run(routes.handleOperatorBuyModeEvalApi(
+      request('/api/operator/buy-mode/eval', {
+        amount_msats: 1_250,
+        role_index: 2,
+        sample_id: 'sample.http',
+        worker_id: '11'.repeat(32),
+      }),
+      { store },
+    ))
+    const body = await response.json() as Record<string, any>
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual({
+      settled_msats: 1_250,
+      verdict: {
+        class: 'exact_trace_replay',
+        passed: true,
+      },
+    })
+    expect(relay.requests).toHaveLength(1)
+    expect(evalBridge.requests).toHaveLength(1)
+    expect(evalBridge.requests[0]?.job).toEqual({
+      amountMsats: 1_250,
+      roleIndex: 2,
+      sampleId: 'sample.http',
+      workerId: '11'.repeat(32),
+    })
+    expect(JSON.stringify(relay.requests[0])).not.toContain('Bearer')
+  })
+
+  test('blocks Psionic eval when live eval bridge is not configured', async () => {
+    const store = new MemoryBuyModeStore()
+    const { relay, routes } = makeRoutes(store)
+
+    await run(routes.handleOperatorBuyModeStartApi(
+      request('/api/operator/buy-mode/start', {
+        dailyCapMsats: 10_000,
+        perJobCapMsats: 2_000,
+        spendEnabled: true,
+      }, 'start-key-eval-unconfigured'),
+      { store },
+    ))
+    const response = await run(routes.handleOperatorBuyModeEvalApi(
+      request('/api/operator/buy-mode/eval', {
+        amount_msats: 1_250,
+        role_index: 2,
+        sample_id: 'sample.http',
+        worker_id: '11'.repeat(32),
+      }),
+      { store },
+    ))
+    const body = await response.json() as Record<string, any>
+
+    expect(response.status).toBe(409)
+    expect(body.result).toEqual({
+      kind: 'blocked',
+      reasonRef: 'blocker.buy_mode.eval_bridge_unconfigured',
+    })
+    expect(relay.requests).toHaveLength(1)
+  })
+
+  test('Psionic eval cap breaches halt before relay or eval bridge calls', async () => {
+    const store = new MemoryBuyModeStore()
+    const evalBridge = new FakeEvalBridge()
+    const { relay, routes } = makeRoutes(
+      store,
+      new FakeRelayPublisher(),
+      new FakePaymentBridge(),
+      evalBridge,
+    )
+
+    await run(routes.handleOperatorBuyModeStartApi(
+      request('/api/operator/buy-mode/start', {
+        dailyCapMsats: 10_000,
+        perJobCapMsats: 1_000,
+        spendEnabled: true,
+      }, 'start-key-eval-cap'),
+      { store },
+    ))
+    const response = await run(routes.handleOperatorBuyModeEvalApi(
+      request('/api/operator/buy-mode/eval', {
+        amount_msats: 1_250,
+        role_index: 2,
+        sample_id: 'sample.http',
+        worker_id: '11'.repeat(32),
+      }),
+      { store },
+    ))
+    const body = await response.json() as Record<string, any>
+
+    expect(response.status).toBe(409)
+    expect(body.result.kind).toBe('halted')
+    expect(relay.requests).toHaveLength(0)
+    expect(evalBridge.requests).toHaveLength(0)
   })
 
   test('blocks settlement until operator explicitly enables spend', async () => {

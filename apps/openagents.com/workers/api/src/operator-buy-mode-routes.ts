@@ -3,7 +3,9 @@ import { Effect } from 'effect'
 import { sha256Hex as agentSha256Hex } from './agent-registration'
 import {
   DefaultBuyModeRelayUrl,
+  type BuyModeDispatcherResult,
   type BuyModeDispatcherStore,
+  type BuyModeJobRecord,
   type BuyModePaymentBridge,
   type BuyModeRelayPublisher,
   dispatchBuyModeJob,
@@ -30,8 +32,38 @@ type OperatorBuyModeSession = Readonly<{
   }>
 }>
 
+type VerificationClass = 'exact_trace_replay' | 'command_check'
+
+type VerificationClassVerdict = Readonly<{
+  class: VerificationClass
+  passed: boolean
+}>
+
+type BuyModeEvalJob = Readonly<{
+  amountMsats: number
+  roleIndex: number
+  sampleId: string
+  workerId: string
+}>
+
+type BuyModeEvalResult = Readonly<{
+  settledMsats: number
+  verdict: VerificationClassVerdict
+}>
+
+export type BuyModeEvalBridge = Readonly<{
+  dispatchEval: (
+    input: Readonly<{
+      job: BuyModeEvalJob
+      dispatchedJob: BuyModeJobRecord
+      requestEventId: string
+    }>,
+  ) => Promise<BuyModeEvalResult>
+}>
+
 export type OperatorBuyModeRouteDependencies<Bindings> = Readonly<{
   currentIsoTimestamp?: () => string
+  makeEvalBridge?: (env: Bindings) => BuyModeEvalBridge | undefined
   makePaymentBridge?: (env: Bindings) => BuyModePaymentBridge
   makeRelayPublisher?: (env: Bindings) => BuyModeRelayPublisher
   makeStore: (env: Bindings) => BuyModeDispatcherStore
@@ -112,6 +144,76 @@ const defaultRelayPublisher = <Bindings>(_env: Bindings): BuyModeRelayPublisher 
 
 const resultResponse = (result: unknown, status = 200): HttpResponse =>
   noStoreJsonResponse({ result }, { status })
+
+const psionicEvalResponse = (
+  result: BuyModeEvalResult,
+  status = 200,
+): HttpResponse =>
+  noStoreJsonResponse({
+    settled_msats: result.settledMsats,
+    verdict: result.verdict,
+  }, { status })
+
+const psionicBlockedResponse = (reasonRef: string): HttpResponse =>
+  resultResponse({ kind: 'blocked', reasonRef }, 409)
+
+const textFromBody = (
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined => optionalString(body[key])
+
+const parsePsionicEvalJob = (
+  body: Record<string, unknown>,
+): BuyModeEvalJob | HttpResponse => {
+  const workerId = textFromBody(body, 'worker_id')
+  const sampleId = textFromBody(body, 'sample_id')
+  const roleIndex = numberFromBody(body, 'role_index')
+  const amountMsats = numberFromBody(body, 'amount_msats')
+
+  if (
+    workerId === undefined ||
+    sampleId === undefined ||
+    roleIndex === undefined ||
+    amountMsats === undefined
+  ) {
+    return badRequest(
+      'worker_id, role_index, sample_id, and amount_msats are required.',
+    )
+  }
+
+  if (!Number.isInteger(roleIndex) || roleIndex < 0) {
+    return badRequest('role_index must be a non-negative integer.')
+  }
+
+  return {
+    amountMsats,
+    roleIndex,
+    sampleId,
+    workerId,
+  }
+}
+
+const psionicEvalContent = (job: BuyModeEvalJob): string =>
+  JSON.stringify({
+    amount_msats: job.amountMsats,
+    job_kind: 'psionic_buy_mode_eval',
+    role_index: job.roleIndex,
+    sample_id: job.sampleId,
+    schema_version: 'psionic.buy_mode_eval_job.v1',
+    worker_id: job.workerId,
+  })
+
+const psionicEvalIdempotencyKey = async (
+  job: BuyModeEvalJob,
+): Promise<string> =>
+  `psionic.eval.${(await agentSha256Hex(psionicEvalContent(job))).slice(0, 48)}`
+
+const resultJob = (
+  result: BuyModeDispatcherResult,
+): BuyModeJobRecord | undefined =>
+  result.kind === 'dispatched' || result.kind === 'idempotent_replay'
+    ? result.job
+    : undefined
 
 const statusResponse = async <Bindings>(
   dependencies: OperatorBuyModeRouteDependencies<Bindings>,
@@ -263,6 +365,63 @@ const dispatchResponse = async <Bindings>(
   )
 }
 
+const evalResponse = async <Bindings>(
+  dependencies: OperatorBuyModeRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Promise<HttpResponse> => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const operator = await requireOperator(dependencies, request, env)
+
+  if (operator instanceof Response) {
+    return operator
+  }
+
+  const body = await readJsonObject(request)
+  const parsedJob = parsePsionicEvalJob(body)
+
+  if (parsedJob instanceof Response) {
+    return parsedJob
+  }
+
+  const idempotencyKey = await psionicEvalIdempotencyKey(parsedJob)
+  const dispatchResult = await dispatchBuyModeJob(
+    dependencies.makeStore(env),
+    (dependencies.makeRelayPublisher ?? defaultRelayPublisher)(env),
+    {
+      amountMsats: parsedJob.amountMsats,
+      content: psionicEvalContent(parsedJob),
+      idempotencyKeyHash: await agentSha256Hex(idempotencyKey),
+      jobId: `buy_mode_eval_${(await agentSha256Hex(idempotencyKey)).slice(0, 32)}`,
+      nowIso: (dependencies.currentIsoTimestamp ?? currentIsoTimestamp)(),
+      providerPubkeys: [parsedJob.workerId],
+    },
+  )
+
+  const dispatchedJob = resultJob(dispatchResult)
+
+  if (dispatchedJob === undefined) {
+    return resultResponse(dispatchResult, 409)
+  }
+
+  const evalBridge = dependencies.makeEvalBridge?.(env)
+
+  if (evalBridge === undefined) {
+    return psionicBlockedResponse('blocker.buy_mode.eval_bridge_unconfigured')
+  }
+
+  const evalResult = await evalBridge.dispatchEval({
+    dispatchedJob,
+    job: parsedJob,
+    requestEventId: dispatchedJob.requestEventId,
+  })
+
+  return psionicEvalResponse(evalResult)
+}
+
 const settleResponse = async <Bindings>(
   dependencies: OperatorBuyModeRouteDependencies<Bindings>,
   request: Request,
@@ -344,6 +503,8 @@ export const makeOperatorBuyModeRoutes = <Bindings>(
 ) => ({
   handleOperatorBuyModeDispatchApi: (request: Request, env: Bindings) =>
     Effect.promise(() => dispatchResponse(dependencies, request, env)),
+  handleOperatorBuyModeEvalApi: (request: Request, env: Bindings) =>
+    Effect.promise(() => evalResponse(dependencies, request, env)),
   handleOperatorBuyModeSettleApi: (request: Request, env: Bindings) =>
     Effect.promise(() => settleResponse(dependencies, request, env)),
   handleOperatorBuyModeStartApi: (request: Request, env: Bindings) =>
