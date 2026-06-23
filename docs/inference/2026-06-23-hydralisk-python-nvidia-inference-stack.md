@@ -31,6 +31,11 @@ The first Hydralisk targets should be:
 3. GLM-5.2 first as a hosted baseline and then as a high-memory SGLang/Dynamo
    research lane.
 
+The first execution roadmap now lives in the standalone Hydralisk repo:
+`/Users/christopherdavid/work/hydralisk/docs/gpt-oss-20b-khala-live-roadmap.md`.
+It makes `gpt-oss-20b` on L4 the ASAP live-serving lane behind the OpenAgents
+API for Khala.
+
 The important boundary is simple: Hydralisk can own Python serving mechanics and
 model/runtime evidence, but OpenAgents/Khala keeps pricing, credits, payout,
 referral, customer routing, and public product promises. Hydralisk receipts
