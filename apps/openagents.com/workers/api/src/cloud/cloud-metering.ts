@@ -29,6 +29,7 @@ import { Effect } from 'effect'
 import { workerLogEntry } from '../observability'
 import {
   createPayInStatements,
+  markPayInPaidStatements,
   type PayInPlan,
   runLedgerStatements,
 } from '../payments-ledger'
@@ -155,10 +156,24 @@ export const settleCloudPrimitiveCharge = (
 
     const plan = cloudChargePayInPlan(charge)
 
+    const settledAt = nowIso()
     const settle = yield* Effect.tryPromise({
       catch: cloudMeteringPersistenceError,
       try: () =>
-        runLedgerStatements(deps.db, createPayInStatements(plan, nowIso())),
+        runLedgerStatements(deps.db, [
+          ...createPayInStatements(plan, settledAt),
+          // A cloud-primitive charge is a debit-only adjustment: the balance is
+          // already decremented by the funding `in` leg above, with no external
+          // forwarding. Mark it `paid` in the SAME atomic batch (empty payout
+          // legs) so the settled debit is the public receipt's `paid` event —
+          // identical discipline to the inference metering hook. Without this the
+          // row would linger `pending` and no dereferenceable paid receipt could
+          // exist for the charge.
+          ...markPayInPaidStatements(
+            { balancePayoutLegs: [], payInId: plan.payInId },
+            settledAt,
+          ),
+        ]),
     }).pipe(
       Effect.map(() => ({ ok: true as const })),
       Effect.catch(() => Effect.succeed({ ok: false as const })),

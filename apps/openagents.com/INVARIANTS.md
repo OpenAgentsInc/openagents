@@ -2057,6 +2057,22 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     checkout, settlement, provider, public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-inference-receipt-routes.test.ts`.
+  - `GET /api/public/cloud/receipts/{receiptRef}` — live at read over
+    `pay_ins.public_receipt_ref` for sellable Cloud primitive charges
+    (`receipt.cloud.sandbox_compute.rental.charge.*` and
+    `receipt.cloud.fine_tuning.job.charge.*`) — compliant (`generatedAt`,
+    top-level `projection_staleness.v1` `live_at_read` contract, paid-ledger-row
+    proof only). It resolves only a settled (`paid`) `adjustment` cloud-primitive
+    charge into the receipt ref, kind, paid state, caveats, and source refs,
+    returning 404 for pending/mismatched/non-cloud refs, while omitting account
+    ids, amounts, idempotency keys, invoices, preimages, wallet material,
+    provider payloads, and raw job/sandbox bodies. The projection carries a
+    caveat noting demand provenance and owner sign-off are still pending, so it
+    asserts no product-promise is green. Read-only; grants no spend, refund,
+    payout, provisioning, settlement, provider, public-claim, or registry
+    authority. Regression coverage:
+    `workers/api/src/cloud/public-cloud-primitive-receipt-routes.test.ts` and
+    `workers/api/src/cloud/cloud-primitive-receipts.test.ts`.
   - `GET /api/public/billing/stripe-checkout-receipts/{receiptRef}` — live at
     read over `stripe_checkout_sessions` plus `billing_ledger_entries` for
     `receipt.billing.stripe_checkout.*` — compliant (`generatedAt`, top-level
