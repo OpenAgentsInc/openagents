@@ -50,12 +50,27 @@ export type KhalaCodePrescreenCheck = Readonly<{
   failureReason?: string | undefined
 }>
 
+// A single external library reference the pre-screen ALLOWED through (an
+// allowlisted CDN host). `pinned` records whether it carries a concrete version
+// token — we prefer pinned (a `@latest`/unversioned URL can change under us),
+// but an allowlisted-yet-unpinned URL is allowed (execution is the authority).
+export type KhalaCodeAllowedCdnLibrary = Readonly<{
+  url: string
+  host: string
+  pinned: boolean
+}>
+
 export type KhalaCodePrescreen = Readonly<{
   // Whether the artifact is worth ATTEMPTING to execute (one self-contained HTML file
   // with a script + a game surface). This gates execution; it never verifies behavior.
   attemptExecution: boolean
   checks: ReadonlyArray<KhalaCodePrescreenCheck>
   html: string | undefined
+  // The external library references the pre-screen allowed through (allowlisted
+  // CDN hosts only). Empty for a fully self-contained artifact. Surfaced so the
+  // receipt/runner can see exactly which pinned CDN libs an artifact pulled and
+  // flag any that are unpinned.
+  allowedCdnLibraries: ReadonlyArray<KhalaCodeAllowedCdnLibrary>
 }>
 
 export type KhalaCodeVerificationCommand = Readonly<{
@@ -104,12 +119,132 @@ export type KhalaCodeVerifierInput = Readonly<{
   acceptance?: AcceptanceVerdict | undefined
 }>
 
-const externalAssetPattern =
-  /<(?:script|link|img|audio|video)\b[^>]*(?:src|href)\s*=\s*["'](?:https?:)?\/\//iu
+// ALLOWLISTED CDN LIBRARY HOSTS (EPIC #6017 — pre-screen CDN allowance).
+//
+// WHY: the north-star prompt is "build a crossy road game WITH three.js". A
+// FAITHFUL artifact loads three.js (and its standard addons) from a well-known
+// CDN, so a blanket "any external <script src> => reject" gate fails a correct
+// artifact at the cheap pre-screen and it never reaches the AUTHORITATIVE
+// execution verifier. The fix is conservative: a small allowlist of pinned,
+// well-known library CDN HOSTS for `<script src>` only — three.js + its
+// addons load from these in practice. Everything else external is STILL
+// rejected: an unknown/arbitrary script host, and ANY external stylesheet,
+// image, audio, or video. The gate's real purpose (no random external assets)
+// is preserved; the only relaxation is "a script tag pointing at a known
+// library CDN is allowed through the pre-screen so the runner can execute it."
+//
+// This is NOT intent routing or retrieval selection — it is a bounded, exact,
+// documented host allowlist over a static source gate (workspace semantic-routing
+// rule §"Deterministic parsing is acceptable ... for bounded fields").
+const ALLOWLISTED_CDN_HOSTS: ReadonlyArray<string> = [
+  'unpkg.com',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
+  'esm.sh',
+  'esm.run',
+  'ga.jspm.io',
+]
 
-const scriptSrcPattern = /<script\b[^>]*\bsrc\s*=/iu
-const linkedStylesheetPattern =
-  /<link\b[^>]*\brel\s*=\s*["'][^"']*stylesheet[^"']*["'][^>]*\bhref\s*=/iu
+// A host is allowlisted iff it exactly matches an entry or is a subdomain of one
+// (e.g. `fastly.jsdelivr.net` for `cdn.jsdelivr.net`'s parent is NOT auto-allowed;
+// only declared hosts and their subdomains). Case-insensitive.
+const isAllowlistedCdnHost = (host: string): boolean => {
+  const lower = host.toLowerCase()
+  return ALLOWLISTED_CDN_HOSTS.some(
+    allowed => lower === allowed || lower.endsWith(`.${allowed}`),
+  )
+}
+
+// Heuristic "looks version-pinned" check over a CDN URL. We PREFER pinned
+// versions (a stale `@latest` / unversioned path can silently change under us),
+// so an allowlisted-but-unpinned URL is still allowed through the pre-screen
+// (execution is the authority) but we record it. A URL is treated as pinned when
+// it carries a concrete version token: `@1.2.3`, `/three.js/r128/`, `/0.160.0/`,
+// `?v=...`, etc. Bounded + documented; never used to REJECT, only to annotate.
+const looksVersionPinned = (url: string): boolean =>
+  /@\d|\/(?:r?\d+(?:\.\d+)*)\//iu.test(url) || /[?&]v(?:er(?:sion)?)?=/iu.test(url)
+
+// Pull the host out of an absolute or protocol-relative URL. Returns undefined
+// for a relative/inline reference (which is never an EXTERNAL asset anyway).
+const externalUrlHost = (url: string): string | undefined => {
+  const normalized = url.startsWith('//') ? `https:${url}` : url
+  try {
+    return new URL(normalized).host
+  } catch {
+    return undefined
+  }
+}
+
+// Match each `<script ... src="URL">` (classic script tag). `src` may be quoted
+// or unquoted; the URL is captured for host classification.
+const scriptSrcUrlPattern =
+  /<script\b[^>]*\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]+))/giu
+
+// Any EXTERNAL stylesheet / image / audio / video, or an external `<link>` of
+// any rel — NONE of these are allowlisted (the allowance is for library scripts
+// only). Protocol-relative or absolute http(s).
+const externalNonScriptAssetPattern =
+  /<(?:link|img|audio|video)\b[^>]*(?:src|href)\s*=\s*["'](?:https?:)?\/\//iu
+
+// An ES-module / importmap reference to an external URL inside a `<script>`
+// body, e.g. `import * as THREE from 'https://.../three.module.js'` or an
+// `<script type="importmap">{ "imports": { "three": "https://..." } }`. These
+// are classified the same way as a classic `src` (allowlisted CDN host => ok).
+const moduleImportUrlPattern =
+  /(?:\bimport\b[^'"]*?|["'])((?:https?:)?\/\/[^\s'"]+)/giu
+
+// Collect every EXTERNAL (protocol-relative/absolute) script `src` + module /
+// importmap URL referenced by the HTML. Bare specifiers and relative paths are
+// not external and are ignored.
+const collectExternalScriptUrls = (html: string): ReadonlyArray<string> => {
+  const urls: Array<string> = []
+
+  for (const match of html.matchAll(scriptSrcUrlPattern)) {
+    const url = match[1] ?? match[2] ?? match[3]
+    if (url !== undefined && /^(?:https?:)?\/\//iu.test(url)) {
+      urls.push(url)
+    }
+  }
+
+  // Module imports / importmap URLs inside <script> bodies (e.g. esm.sh /
+  // jsdelivr `three.module.js`).
+  for (const match of html.matchAll(moduleImportUrlPattern)) {
+    const url = match[1]
+    if (url !== undefined && /^(?:https?:)?\/\//iu.test(url)) {
+      urls.push(url)
+    }
+  }
+
+  return urls
+}
+
+// Classify the external script/module URLs into (a) whether EVERY one resolves
+// to an allowlisted CDN host — false on the FIRST non-allowlisted URL, so an
+// unknown CDN / random script host is rejected — and (b) the allowed library
+// references (host + pinned annotation) for the receipt/runner.
+const classifyExternalScripts = (
+  html: string,
+): Readonly<{
+  allAllowlisted: boolean
+  allowed: ReadonlyArray<KhalaCodeAllowedCdnLibrary>
+}> => {
+  // Dedupe URLs — a classic `<script src>` URL is also caught as a quoted string
+  // by the module-import pattern, so the same URL can appear twice.
+  const urls = Array.from(new Set(collectExternalScriptUrls(html)))
+  const allowed: Array<KhalaCodeAllowedCdnLibrary> = []
+  let allAllowlisted = true
+
+  for (const url of urls) {
+    const host = externalUrlHost(url)
+    if (host !== undefined && isAllowlistedCdnHost(host)) {
+      allowed.push({ host, pinned: looksVersionPinned(url), url })
+    } else {
+      allAllowlisted = false
+    }
+  }
+
+  return { allAllowlisted, allowed }
+}
 
 export const extractSingleHtmlArtifact = (
   content: string,
@@ -175,13 +310,28 @@ export const prescreenKhalaCodeArtifact = (
   const artifactText = html ?? content.trim()
   const lower = artifactText.toLowerCase()
 
+  // Classify external script/module refs once: are they ALL allowlisted CDN
+  // libraries, and which allowed library refs (host + pinned) did we see?
+  const externalScripts =
+    html === undefined
+      ? { allAllowlisted: true, allowed: [] as ReadonlyArray<KhalaCodeAllowedCdnLibrary> }
+      : classifyExternalScripts(html)
+
+  // SINGLE-FILE GATE (with the pinned-CDN-library allowance, EPIC #6017):
+  //   - one `<html>...</html>` document, AND
+  //   - NO external stylesheet/image/audio/video and NO external `<link>` of any
+  //     kind (those must be inlined — the gate's real purpose), AND
+  //   - every external `<script src>` / module-import URL resolves to an
+  //     allowlisted, well-known library CDN host (three.js + addons load from
+  //     these). An UNKNOWN/arbitrary external script host fails the gate.
+  // A purely self-contained artifact (no external refs at all) still passes, as
+  // before — `classifyExternalScripts` is vacuously `allAllowlisted` with no URLs.
   const hasSingleHtml =
     html !== undefined &&
     /<html\b/iu.test(html) &&
     /<\/html>/iu.test(html) &&
-    !externalAssetPattern.test(html) &&
-    !scriptSrcPattern.test(html) &&
-    !linkedStylesheetPattern.test(html)
+    !externalNonScriptAssetPattern.test(html) &&
+    externalScripts.allAllowlisted
 
   const hasRunnableSurface =
     hasSingleHtml &&
@@ -195,13 +345,14 @@ export const prescreenKhalaCodeArtifact = (
   const checks: ReadonlyArray<KhalaCodePrescreenCheck> = [
     {
       id: 'single_html_file',
-      label: 'The delivered artifact is one self-contained HTML file.',
+      label:
+        'The delivered artifact is one self-contained HTML file (pinned, well-known CDN library scripts allowed).',
       passed: hasSingleHtml,
       ...(hasSingleHtml
         ? {}
         : {
             failureReason:
-              'Expected one self-contained HTML file with no external script/style/media dependencies.',
+              'Expected one self-contained HTML file: inline all styles/media, and load scripts inline or from a pinned, well-known CDN (three.js + addons via unpkg/jsdelivr/cdnjs/esm.sh). No arbitrary external scripts, stylesheets, images, audio, or video.',
           }),
     },
     {
@@ -219,6 +370,7 @@ export const prescreenKhalaCodeArtifact = (
   ]
 
   return {
+    allowedCdnLibraries: externalScripts.allowed,
     attemptExecution: hasSingleHtml && hasRunnableSurface,
     checks,
     html,

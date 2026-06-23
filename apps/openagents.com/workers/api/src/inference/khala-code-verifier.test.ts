@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { describe, expect, test } from 'vitest'
 
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
@@ -121,5 +124,110 @@ describe('Khala code verifier — honest downgrade (EPIC #6017)', () => {
     expect(verdict.scalarReward).toBeGreaterThan(0)
     expect(verdict.scalarReward).toBeLessThan(1)
     expect(verdict.failedChecks.length).toBeGreaterThan(0)
+  })
+})
+
+// GAP 1 (EPIC #6017): the pre-screen must ALLOW a faithful three.js game that
+// loads three.js from a pinned, well-known CDN (so it reaches the authoritative
+// execution verifier), while STILL rejecting arbitrary/unknown external assets.
+describe('Khala code verifier — pinned-CDN library allowance', () => {
+  const threeJsGame = (cdnUrl: string): string => `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>three.js crossy road</title>
+<style>body{margin:0}#game{display:block}</style>
+<script src="${cdnUrl}"></script>
+</head>
+<body>
+  <canvas id="game" width="960" height="540"></canvas>
+  <script>
+    const scene = new THREE.Scene();
+    function loop(){ requestAnimationFrame(loop); }
+    loop();
+  </script>
+</body>
+</html>`
+
+  test('a three.js game from each allowlisted CDN PASSES the pre-screen (reaches execution)', () => {
+    const cdnUrls = [
+      'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
+      'https://unpkg.com/three@0.160.0/build/three.min.js',
+      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js',
+      'https://esm.sh/three@0.160.0',
+    ]
+    for (const url of cdnUrls) {
+      const prescreen = prescreenKhalaCodeArtifact(threeJsGame(url))
+      expect(prescreen.attemptExecution).toBe(true)
+      expect(
+        prescreen.checks.find(c => c.id === 'single_html_file')?.passed,
+      ).toBe(true)
+      expect(prescreen.allowedCdnLibraries.map(l => l.url)).toContain(url)
+      expect(prescreen.allowedCdnLibraries.every(l => l.pinned)).toBe(true)
+    }
+  })
+
+  test('an ES-module import of three.js from an allowlisted CDN also PASSES', () => {
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>g</title></head>
+<body>
+  <canvas id="game"></canvas>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+    const scene = new THREE.Scene();
+  </script>
+</body></html>`
+    const prescreen = prescreenKhalaCodeArtifact(html)
+    expect(prescreen.attemptExecution).toBe(true)
+    expect(prescreen.allowedCdnLibraries).toHaveLength(1)
+    expect(prescreen.allowedCdnLibraries[0]?.host).toBe('cdn.jsdelivr.net')
+  })
+
+  test('an arbitrary/unknown external script is STILL rejected', () => {
+    const prescreen = prescreenKhalaCodeArtifact(
+      threeJsGame('https://evil.example.test/three.min.js'),
+    )
+    expect(prescreen.attemptExecution).toBe(false)
+    expect(
+      prescreen.checks.find(c => c.id === 'single_html_file')?.passed,
+    ).toBe(false)
+    expect(prescreen.allowedCdnLibraries).toHaveLength(0)
+  })
+
+  test('an external stylesheet/image is STILL rejected even with an allowlisted script', () => {
+    const html = `<!doctype html>
+<html><head>
+  <link rel="stylesheet" href="https://unpkg.com/some-theme/style.css">
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+</head><body><canvas id="game"></canvas></body></html>`
+    expect(prescreenKhalaCodeArtifact(html).attemptExecution).toBe(false)
+  })
+
+  test('a mix of allowlisted + one unknown script host is rejected', () => {
+    const html = `<!doctype html>
+<html><head>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://random-host.example/extra.js"></script>
+</head><body><canvas id="game"></canvas></body></html>`
+    expect(prescreenKhalaCodeArtifact(html).attemptExecution).toBe(false)
+  })
+
+  test('the committed passing north-star artifact now PASSES the pre-screen', () => {
+    const artifactPath = fileURLToPath(
+      new URL(
+        '../../../../../../scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html',
+        import.meta.url,
+      ),
+    )
+    const html = readFileSync(artifactPath, 'utf8')
+    const prescreen = prescreenKhalaCodeArtifact(html)
+    expect(prescreen.attemptExecution).toBe(true)
+    expect(
+      prescreen.checks.find(c => c.id === 'single_html_file')?.passed,
+    ).toBe(true)
+    // It pulls three.js from cdnjs (pinned to r128) — exactly the allowance.
+    expect(
+      prescreen.allowedCdnLibraries.some(
+        l => l.host === 'cdnjs.cloudflare.com' && l.pinned,
+      ),
+    ).toBe(true)
   })
 })

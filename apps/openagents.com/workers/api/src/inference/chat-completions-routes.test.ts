@@ -9,6 +9,11 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './chat-completions-routes'
+import {
+  acceptanceContractGuidanceForRequest,
+  crossyRoadAcceptanceSpec,
+  acceptanceContractGuidanceForSpec,
+} from './acceptance-spec'
 import { replayFromOffset } from './durable-inference-proxy'
 import { decideFairShare, decideSpendCap } from './inference-abuse-controls'
 import {
@@ -1819,5 +1824,125 @@ describe('POST /v1/chat/completions — durable-stream resumable inference (#605
     expect(text).toContain('"content":"safe"')
     expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
     expect(captured).toHaveLength(1)
+  })
+})
+
+// GAP 2 (EPIC #6017 — "turn intent into tests it must pass"): the gateway must
+// inject the acceptance-contract guidance for an `openagents/khala-code` coding
+// request so a produced game is drivable/verifiable by default — ADDITIVELY,
+// without clobbering the identity prompt, and scoped to khala-code (not all Khala
+// models, not non-coding).
+describe('Khala-code acceptance-contract injection', () => {
+  const recordingAdapter = (
+    id: string,
+    captured: Array<ReadonlyArray<{ role: string; content: string }>>,
+  ): InferenceProviderAdapter => ({
+    complete: request =>
+      Effect.sync(() => {
+        captured.push(
+          request.messages.map(m => ({ content: m.content, role: m.role })),
+        )
+        return {
+          content: 'ok',
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+        }
+      }),
+    id,
+    stream: () => Effect.sync(() => []),
+  })
+
+  test('injects the acceptance contract AND the identity prompt for khala-code (additive)', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(FIREWORKS_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [
+            {
+              content: 'build a really high quality crossy road game with three.js',
+              role: 'user',
+            },
+          ],
+          model: KHALA_CODE_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const messages = captured[0]!
+    const systemContents = messages
+      .filter(m => m.role === 'system')
+      .map(m => m.content)
+    // The identity prompt is still present (not clobbered).
+    expect(systemContents).toContain(KHALA_IDENTITY_SYSTEM_PROMPT)
+    // The acceptance contract is present and names the runner's state hooks.
+    const contract = acceptanceContractGuidanceForSpec(crossyRoadAcceptanceSpec())
+    expect(systemContents).toContain(contract)
+    expect(contract).toContain('__openagentsCrossyRoadState')
+    expect(contract).toContain('__openagentsCrossyRoadRestart')
+    // The original user intent is preserved.
+    expect(
+      messages.some(m => m.role === 'user' && m.content.includes('crossy road')),
+    ).toBe(true)
+  })
+
+  test('does NOT inject the acceptance contract for a non-code Khala model', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const systemContents = captured[0]!
+      .filter(m => m.role === 'system')
+      .map(m => m.content)
+    // khala-mini still gets identity, but NOT the code acceptance contract.
+    expect(systemContents).toContain(KHALA_IDENTITY_SYSTEM_PROMPT)
+    expect(
+      systemContents.some(c => c.includes('__openagentsCrossyRoadState')),
+    ).toBe(false)
+  })
+
+  test('does NOT inject the acceptance contract for a non-Khala model', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(recordingAdapter(STUB_ECHO_ADAPTER_ID, captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'build a crossy road game', role: 'user' }],
+          model: 'stub-model',
+        }),
+        baseDeps({ registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const systemContents = captured[0]!
+      .filter(m => m.role === 'system')
+      .map(m => m.content)
+    expect(systemContents).toHaveLength(0)
+  })
+
+  test('the contract resolver is scoped to a khala-code intent and is extensible', () => {
+    // A crossy-road intent resolves the crossy-road contract.
+    const guidance = acceptanceContractGuidanceForRequest({
+      messages: [{ content: 'build a crossy road game', role: 'user' }],
+      model: KHALA_CODE_MODEL_ID,
+    })
+    expect(guidance).toBeDefined()
+    expect(guidance).toContain('__openagentsCrossyRoadState')
   })
 })

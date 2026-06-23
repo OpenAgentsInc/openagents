@@ -39,7 +39,10 @@ import {
   type AcceptanceJobQueue,
   enqueueAcceptanceJob,
 } from './acceptance-dispatch'
-import { intentToAcceptanceSpec } from './acceptance-spec'
+import {
+  acceptanceContractGuidanceForRequest,
+  intentToAcceptanceSpec,
+} from './acceptance-spec'
 import {
   KHALA_CODE_VERIFIER_WORKER_ID,
   type KhalaCodeVerificationVerdict,
@@ -342,6 +345,40 @@ const withKhalaIdentitySystemPrompt = (
   ]
 }
 
+// GATEWAY-SIDE KHALA-CODE ACCEPTANCE-CONTRACT INJECTION (EPIC #6017 — "turn intent
+// into tests it must pass"). For an `openagents/khala-code` CODING request whose
+// intent maps to an executable acceptance lane, prepend the acceptance-contract
+// guidance (the runner's `window` state hooks the artifact must expose) as a
+// leading `system` message, so a game Khala-code produces is drivable/verifiable
+// by default. It is scoped to khala-code (not all Khala models / not all code) and
+// to the matched rubric/target (today: crossy-road); a request with no executable
+// lane gets no contract. ADDITIVE: it composes WITH the identity prompt and never
+// clobbers it — `withKhalaIdentitySystemPrompt` runs first and prepends identity,
+// then this prepends the contract AHEAD of identity (identity stays leading-most
+// after both run, so the identity contract is never weakened).
+const withKhalaCodeAcceptanceContract = (
+  messages: ReadonlyArray<InferenceMessage>,
+  requestedModel: string,
+  clientMessages: ReadonlyArray<InferenceMessage>,
+): ReadonlyArray<InferenceMessage> => {
+  if (requestedModel !== KHALA_CODE_MODEL_ID) {
+    return messages
+  }
+  // Derive the contract from the ORIGINAL client intent (not the gateway-injected
+  // system messages). Undefined => no executable lane => no contract injected.
+  const guidance = acceptanceContractGuidanceForRequest({
+    messages: clientMessages.map(message => ({
+      content: message.content,
+      role: message.role,
+    })),
+    model: requestedModel,
+  })
+  if (guidance === undefined) {
+    return messages
+  }
+  return [{ content: guidance, role: 'system' }, ...messages]
+}
+
 const toInferenceRequest = (
   body: typeof ChatCompletionsRequestBody.Type,
   raw: Record<string, unknown>,
@@ -350,7 +387,19 @@ const toInferenceRequest = (
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
     message => ({ content: message.content, role: message.role }),
   )
-  const messages = withKhalaIdentitySystemPrompt(clientMessages, requestedModel)
+  // Compose gateway-side guidance: identity first (so it lands ahead of client
+  // steer), then the khala-code acceptance contract prepended ahead of identity.
+  // Order after both: [acceptance-contract, identity, ...client]. Both are
+  // additive; neither clobbers the other.
+  const withIdentity = withKhalaIdentitySystemPrompt(
+    clientMessages,
+    requestedModel,
+  )
+  const messages = withKhalaCodeAcceptanceContract(
+    withIdentity,
+    requestedModel,
+    clientMessages,
+  )
   const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
   return {
     messages,
