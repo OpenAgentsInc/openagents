@@ -6,6 +6,79 @@ Scope: OpenAgentsInc/openagents#6049 plus the payment, credit, Stripe, and MPP
 issues that affect whether Khala can accept Machine Payments Protocol (MPP)
 payments before Stripe Directory profile approval.
 
+## Defect B Resolution (2026-06-23, Worker-native)
+
+Defect B — "the credential verify path expected a Stripe `payment_intent="…"`
+inside the returned credential, did not find one from a real `mppx` client, and
+fell into an infinite 402 loop and never served" — is RESOLVED Worker-native
+(WebCrypto, no Node sidecar). The verify path now implements the canonical
+Payment Auth protocol instead of a handwritten quoted-param guess:
+
+- **Stateless HMAC challenge binding** (`mpp-canonical.ts`,
+  `draft-httpauth-payment-00` §5.1.3). The 402 challenge `id` is
+  `base64url(HMAC-SHA256(server_secret, "|".join([realm, method, intent,
+  request_b64url, expires, digest, opaque_b64url])))` with JCS/RFC-8785
+  canonicalization of the `request` and `opaque` JSON. The server-held secret is
+  the new Worker SECRET `KHALA_MPP_SIGNING_SECRET`.
+- **Challenge issuance** carries our correlation data (crypto deposit
+  PaymentIntent id + amount + network + model) in the `opaque` field
+  (base64url JCS), so retry verification recovers it statelessly with no
+  per-challenge storage. One `WWW-Authenticate: Payment …` per supported method
+  (crypto networks always; `stripe`/SPT only when
+  `STRIPE_MPP_NETWORK_PROFILE_ID` is set).
+- **Credential verification** decodes `Authorization: Payment <base64url>` →
+  `{challenge, payload, source?}` and FAILS CLOSED (returns 402, never serves)
+  on any of: (a) recomputed HMAC `id` mismatch (constant-time compare),
+  (b) expired challenge, (c) `request` amount/currency not binding to the
+  served quote, (d) a method we did not offer. Only after that does it settle:
+  - **crypto:** recover the deposit PaymentIntent id from `opaque`, retrieve it
+    from Stripe, serve only when `status === 'succeeded'`.
+  - **card/SPT:** extract `payload.spt`, enforce single-use via a D1 replay
+    cache (`mpp_spt_replay`, migration `0224`), create+confirm a PaymentIntent
+    with `shared_payment_granted_token` + the `profile_…` networkId, serve only
+    when `succeeded`.
+- **Payment-Receipt** (`draft-httpauth-payment-00` §6.3) is now returned on a
+  settled paid completion (base64url JCS `{status:"success", method, timestamp,
+  reference}`) alongside the unchanged OpenAgents receipt block, with
+  `Cache-Control: private`. (Slice B.)
+- The settled-payment path still mints USD-origin Khala credits (idempotent
+  `mpp:<pi>`, RL-3: inference-spendable, not Bitcoin-withdrawable) and runs the
+  SAME completion + metering + receipt loop.
+
+There is NO infinite-402 loop on a real `mppx` credential anymore: a well-formed
+crypto or SPT credential that binds to a settled payment serves; a malformed,
+tampered, expired, mismatched, replayed, or unsettled credential returns a fresh
+402 (with a detail string) exactly as the spec prescribes.
+
+### Arming + secret steps (owner-gated; endpoint stays INERT until all done)
+
+The endpoint is triple-gated and fail-safe inert. To arm it on the live Worker:
+
+1. `wrangler secret put KHALA_MPP_SIGNING_SECRET` (a high-entropy random string;
+   the HMAC challenge-binding key — Worker SECRET, never committed/logged).
+2. `wrangler secret put STRIPE_API_KEY` (the Stripe secret key; absent ⇒ inert).
+3. Set `KHALA_MPP_ENABLED` to `true` (the var, currently OFF).
+4. The card/SPT rail additionally needs `STRIPE_MPP_NETWORK_PROFILE_ID` (already a
+   committed `var`); without it the endpoint is crypto-only.
+
+With any of `KHALA_MPP_ENABLED` off, no `STRIPE_API_KEY`, or no
+`KHALA_MPP_SIGNING_SECRET`, the endpoint returns `503 mpp_not_configured` and
+constructs no charge and issues no challenge. THIS DEFECT-B CHANGE DID NOT ARM
+THE ENDPOINT, set any live key, or deploy.
+
+### Smoke before arming
+
+Before flipping `KHALA_MPP_ENABLED`, prove the crypto rail end-to-end against
+staging with a real MPP/x402 client: issue a 402 with a `KHALA_MPP_SIGNING_SECRET`
+set, use Stripe's `simulate_crypto_deposit` (test mode) to settle the deposit
+PaymentIntent named in `opaque`, retry with the echoed-challenge credential, and
+assert a 200 + `Payment-Receipt` + a dereferenceable USD-credit grant + metered
+spend receipt. A real `mppx fetch <staging endpoint>` is now EXPECTED to complete
+the crypto flow once the signing secret + test Stripe key are present, because the
+challenge/credential wire format is now spec-canonical (HMAC-bound `id`, JCS
+`request`/`opaque`, echoed challenge). The card/SPT rail additionally needs the
+approved `profile_…` and an SPT-capable client.
+
 ## Verdict
 
 OpenAgents is not blocked on the Stripe Directory profile to keep adding MPP
@@ -146,15 +219,20 @@ handwritten quoted-param parser.
 
 - `mppx fetch <openagents endpoint>` can complete an end-to-end paid request
   against staging or production.
-- The Worker-native `WWW-Authenticate` challenge is bit-compatible with the
-  canonical MPP/mppx challenge format, including request/body digest, opaque
-  metadata, expiry, HMAC binding, and exact base64url/JCS payload expectations.
-- The card/SPT rail can settle without a Node sidecar.
 - The crypto rail can be paid and verified by a real MPP/x402 client on staging.
-- `Payment-Receipt` is returned on successful MPP completions. Today the route
-  returns the normal OpenAI-compatible completion with the `openagents` receipt
-  block, but the audit did not find a MPP `Payment-Receipt` header on the paid
-  route.
+  (The wire format is now spec-canonical per "Defect B Resolution" above; the
+  remaining gap is a live staging proof with a real `mppx` client + Stripe test
+  `simulate_crypto_deposit`, not the protocol shape.)
+
+Resolved 2026-06-23 by the Defect B change (see above):
+
+- The Worker-native challenge is now HMAC-bound with JCS `request`/`opaque`,
+  expiry, and a slot for body digest, matching `draft-httpauth-payment-00`
+  §5.1.3.
+- The card/SPT rail settles Worker-native (create+confirm PaymentIntent with
+  `shared_payment_granted_token` + replay cache) without a Node sidecar.
+- `Payment-Receipt` is now returned on successful MPP completions alongside the
+  unchanged `openagents` receipt block.
 
 ## Issue Read
 

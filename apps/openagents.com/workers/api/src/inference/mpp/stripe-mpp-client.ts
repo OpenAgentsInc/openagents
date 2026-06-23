@@ -242,6 +242,90 @@ export const createCryptoDepositPaymentIntent = (
     }
   })
 
+// Create + confirm a PaymentIntent from a Stripe Shared Payment Token (SPT),
+// the card/SPT charge settlement (draft-stripe-charge-00 §"Settlement
+// Procedure"). The SPT rides as `shared_payment_granted_token`, `confirm: true`,
+// with automatic payment methods (no explicit `payment_method_types`, per
+// OpenAgents Stripe best practice — the SPT itself carries the method). The
+// challenge id + SPT form the Stripe idempotency key so a client retry never
+// double-charges. We serve only when the returned status is `succeeded`.
+export const createSptChargePaymentIntent = (
+  deps: StripeMppClientDeps,
+  input: Readonly<{
+    amountCents: number
+    currency?: string
+    spt: string
+    challengeId: string
+    networkProfileId: string
+    metadata?: Record<string, string>
+  }>,
+): Effect.Effect<RetrievedPaymentIntent, StripeMppError> =>
+  Effect.gen(function* () {
+    const doFetch = deps.fetch ?? ((u, i) => fetch(u, i))
+    const currency = input.currency ?? 'usd'
+    const body = encodeStripeForm({
+      amount: input.amountCents,
+      automatic_payment_methods: { allow_redirects: 'never', enabled: true },
+      confirm: true,
+      currency,
+      metadata: {
+        ...(input.metadata ?? {}),
+        challenge_id: input.challengeId,
+        network_id: input.networkProfileId,
+      },
+      shared_payment_granted_token: input.spt,
+    })
+
+    const response = yield* Effect.tryPromise({
+      catch: (cause: unknown) =>
+        new StripeMppError('create_spt_payment_intent', String(cause)),
+      try: () =>
+        doFetch(`${STRIPE_API_BASE}/payment_intents`, {
+          body,
+          headers: {
+            ...authHeaders(deps.secretKey),
+            // Spec idempotency key: `${challenge.id}_${credential.spt}`.
+            'idempotency-key': `${input.challengeId}_${input.spt}`,
+          },
+          method: 'POST',
+        }),
+    })
+
+    const json = yield* Effect.tryPromise({
+      catch: (cause: unknown) =>
+        new StripeMppError('create_spt_payment_intent_parse', String(cause)),
+      try: () => response.json() as Promise<Record<string, unknown>>,
+    })
+
+    if (!response.ok) {
+      const err = (json.error ?? {}) as Record<string, unknown>
+      return yield* Effect.fail(
+        new StripeMppError(
+          'create_spt_payment_intent',
+          `${response.status} ${String(err.message ?? 'stripe error')}`,
+        ),
+      )
+    }
+
+    const status = typeof json.status === 'string' ? json.status : 'unknown'
+    const rawMeta = (json.metadata ?? {}) as Record<string, unknown>
+    const metadata: Record<string, string> = {}
+    for (const [k, v] of Object.entries(rawMeta)) {
+      if (typeof v === 'string') {
+        metadata[k] = v
+      }
+    }
+    return {
+      amountCents:
+        typeof json.amount === 'number' ? json.amount : input.amountCents,
+      currency: typeof json.currency === 'string' ? json.currency : currency,
+      id: typeof json.id === 'string' ? json.id : '',
+      metadata,
+      settled: status === 'succeeded',
+      status,
+    }
+  })
+
 export type RetrievedPaymentIntent = Readonly<{
   id: string
   status: string

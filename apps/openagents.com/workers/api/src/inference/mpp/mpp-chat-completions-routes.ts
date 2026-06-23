@@ -1,26 +1,43 @@
-// The 402-gated, machine-payable Khala endpoint (EPIC #6049, Phase 2 + 3).
+// The 402-gated, machine-payable Khala endpoint (EPIC #6049, Phase 2/3 + defect
+// B Worker-native MPP verification + settlement).
 //
 // Flagged, default OFF. Wraps the EXISTING Khala completion path
-// (`handleChatCompletions`) behind an MPP/x402 paywall:
+// (`handleChatCompletions`) behind an MPP / Payment-Auth (HTTP 402) paywall,
+// implemented per the canonical spec mirrored at
+// docs/reference/mpp/paymentauth/specs/:
 //
-//   1. No payment credential  -> 402 Payment Required + WWW-Authenticate
-//      challenge(s) (USDC crypto, and card/SPT when a profile id is configured).
-//   2. Valid credential        -> verify settlement via the Stripe REST API
-//      (Worker-native, API version 2026-03-04.preview), mint Khala credits into
-//      a payer-bound balance (Phase 3, reuses the USD-origin credit-grant seam),
-//      then run the SAME Khala completion against that credit and return it with
-//      the `openagents` receipt.
+//   1. No payment credential  -> 402 Payment Required with one
+//      `WWW-Authenticate: Payment ...` per supported method. Each challenge `id`
+//      is HMAC-SHA256 over the canonical challenge fields with a server-held
+//      secret (draft-httpauth-payment-00 §5.1.3), and our crypto deposit
+//      PaymentIntent id rides in the `opaque` field so we recover it statelessly.
+//   2. `Authorization: Payment <base64url>` -> decode {challenge,payload}, verify
+//      the HMAC binding + expiry + request-amount/currency FAIL-CLOSED, then
+//      settle:
+//        - crypto: recover the deposit PaymentIntent id from `opaque`, retrieve
+//          it from Stripe, serve only when `succeeded`;
+//        - card/SPT: take `payload.spt`, enforce single-use (replay cache),
+//          create+confirm a PaymentIntent with the SPT, serve only when
+//          `succeeded`.
+//      On success: mint USD-origin Khala credits (idempotent `mpp:<pi>`), run the
+//      SAME Khala completion + metering + receipt, and return it with a
+//      standards-shaped `Payment-Receipt` header.
 //
 // FAIL-SAFE (the central safety property): the endpoint is INERT unless it is
-// fully configured. With no Stripe key, OR no flag (KHALA_MPP_ENABLED), the
-// endpoint returns a clean "not configured" 503 and NEVER constructs a charge.
-// A missing `profile_` id only disables the CARD rail; the crypto rail still
-// works. So a half-configured deploy can charge nothing it should not.
+// fully configured. With no flag (KHALA_MPP_ENABLED), no Stripe key, OR no
+// signing secret (KHALA_MPP_SIGNING_SECRET) it returns a clean "not configured"
+// 503 and NEVER constructs a charge or issues a challenge. A missing `profile_`
+// id only disables the CARD rail; the crypto rail still works.
 
 import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../../http/responses'
-import { randomUuid } from '../../runtime-primitives'
+import {
+  currentEpochMillis,
+  currentIsoTimestamp,
+  epochMillisToIsoTimestamp,
+  randomUuid,
+} from '../../runtime-primitives'
 import {
   type ChatCompletionsDeps,
   handleChatCompletions,
@@ -34,14 +51,21 @@ import {
 } from './mpp-credit-grant'
 import {
   type MppChallenge,
+  type MppOpaque,
+  type ParsedPaymentCredential,
+  buildChallenge,
+  buildPaymentReceipt,
   buildPaymentRequiredHeaders,
   buildPaymentRequiredProblem,
   parsePaymentCredential,
+  verifyCredential,
 } from './mpp-protocol'
 import { type MppRail, quoteMppCall } from './mpp-pricing'
+import { claimSpt, recordSptPaymentIntent } from './mpp-spt-replay'
 import {
   type StripeFetch,
   createCryptoDepositPaymentIntent,
+  createSptChargePaymentIntent,
   retrievePaymentIntent,
 } from './stripe-mpp-client'
 
@@ -51,6 +75,10 @@ const DEFAULT_MPP_MODEL = 'openagents/khala-mini'
 // x402 (Base) + MPP (Solana, Tempo) — all USDC. We advertise all three crypto
 // networks; the agent picks one.
 const CRYPTO_NETWORKS: ReadonlyArray<string> = ['base', 'solana', 'tempo']
+// The protection-space realm for our challenges (core spec §5.1.1).
+const MPP_REALM = 'openagents.com'
+// Challenge validity window.
+const CHALLENGE_TTL_MS = 5 * 60 * 1000
 
 // Parse the KHALA_MPP_ENABLED flag. Default OFF.
 export const isKhalaMppEnabled = (value: string | undefined): boolean => {
@@ -65,6 +93,9 @@ export type MppChatCompletionsDeps = Readonly<{
   enabled: boolean
   // The Stripe secret key (live or test). Absent => inert (never charges).
   stripeSecretKey: string | undefined
+  // The challenge-binding signing secret (HMAC key). Absent => inert (never
+  // issues a challenge or verifies a credential).
+  signingSecret: string | undefined
   // The network profile id (`profile_…`) for SPT/card. Absent => crypto-only.
   stripeNetworkProfileId?: string | undefined
   // The deps for the underlying Khala completion path (registry, metering hook,
@@ -83,6 +114,7 @@ export type MppChatCompletionsDeps = Readonly<{
   // Injectable seams for tests.
   fetch?: StripeFetch
   nowIso?: () => string
+  nowMs?: () => number
   usdCentsToMsat?: (amountCents: number) => number
   newId?: () => string
 }>
@@ -95,43 +127,6 @@ const notConfigured = (reason: string): Response =>
     { status: 503 },
   )
 
-// Build the 402 challenge set for a quote. Always includes the crypto rail; adds
-// the card/SPT rail only when a network profile id is configured.
-const buildChallenges = (
-  input: Readonly<{
-    model: string
-    cryptoPaymentIntentId: string
-    cryptoAmountCents: number
-    cryptoDeposit: { network: string; address: string } | undefined
-    cardEnabled: boolean
-    cardAmountCents: number
-    challengeIdPrefix: string
-  }>,
-): ReadonlyArray<MppChallenge> => {
-  const challenges: Array<MppChallenge> = [
-    {
-      amountCents: input.cryptoAmountCents,
-      currency: 'usdc',
-      id: `${input.challengeIdPrefix}:crypto`,
-      intent: 'charge',
-      method: input.cryptoDeposit?.network ?? 'base',
-      network: input.cryptoDeposit?.network ?? 'base',
-      paymentIntentId: input.cryptoPaymentIntentId,
-      recipient: input.cryptoDeposit?.address,
-    },
-  ]
-  if (input.cardEnabled) {
-    challenges.push({
-      amountCents: input.cardAmountCents,
-      currency: 'usd',
-      id: `${input.challengeIdPrefix}:card`,
-      intent: 'charge',
-      method: 'stripe',
-    })
-  }
-  return challenges
-}
-
 // Resolve the requested model from the body, defaulting to khala-mini, and
 // constrained to Khala models (the MPP endpoint sells Khala). A non-Khala model
 // is coerced to the default so the paywall always quotes a Khala price.
@@ -142,22 +137,341 @@ const resolveMppModel = (rawBody: Record<string, unknown> | undefined): string =
   return isKhalaModel(requested) ? requested : DEFAULT_MPP_MODEL
 }
 
+// Build the spec-shaped challenge set for a quote. Always includes the crypto
+// rail (one challenge per supported network, all bound to the SAME crypto
+// deposit PaymentIntent recovered from `opaque`); adds the card/SPT rail only
+// when a network profile id is configured. Each challenge's `id` is the HMAC
+// binding computed inside `buildChallenge`.
+const buildChallenges = (
+  signingSecret: string,
+  input: Readonly<{
+    model: string
+    expires: string
+    cryptoPaymentIntentId: string
+    cryptoAmountCents: number
+    cryptoDeposit: { network: string; address: string } | undefined
+    cardEnabled: boolean
+    cardAmountCents: number
+    cardNetworkProfileId: string | undefined
+  }>,
+) =>
+  Effect.gen(function* () {
+    const challenges: Array<MppChallenge> = []
+    // The opaque correlation data carries the crypto deposit PaymentIntent id
+    // so the retry recovers it statelessly. One opaque per crypto rail (all
+    // networks share the same deposit-mode PaymentIntent).
+    const cryptoNetwork = input.cryptoDeposit?.network ?? CRYPTO_NETWORKS[0]!
+    const cryptoOpaque: MppOpaque = {
+      amount: String(input.cryptoAmountCents),
+      model: input.model,
+      network: cryptoNetwork,
+      pi: input.cryptoPaymentIntentId,
+    }
+    // Crypto challenge (single network = the deposit-mode network Stripe
+    // returned; the deposit-mode PaymentIntent backs the settlement).
+    const crypto = yield* Effect.promise(() =>
+      buildChallenge(signingSecret, {
+        amountCents: input.cryptoAmountCents,
+        currency: 'usdc',
+        expires: input.expires,
+        method: cryptoNetwork,
+        network: cryptoNetwork,
+        opaque: cryptoOpaque,
+        paymentIntentId: input.cryptoPaymentIntentId,
+        realm: MPP_REALM,
+        recipient: input.cryptoDeposit?.address,
+        request: {
+          amount: String(input.cryptoAmountCents),
+          currency: 'usdc',
+          description: `OpenAgents Khala ${input.model} pay-per-call`,
+          network: cryptoNetwork,
+          recipient: input.cryptoDeposit?.address,
+        },
+      }),
+    )
+    challenges.push(crypto)
+
+    if (input.cardEnabled && input.cardNetworkProfileId !== undefined) {
+      const card = yield* Effect.promise(() =>
+        buildChallenge(signingSecret, {
+          amountCents: input.cardAmountCents,
+          currency: 'usd',
+          expires: input.expires,
+          method: 'stripe',
+          realm: MPP_REALM,
+          request: {
+            amount: String(input.cardAmountCents),
+            currency: 'usd',
+            description: `OpenAgents Khala ${input.model} pay-per-call`,
+            methodDetails: {
+              networkId: input.cardNetworkProfileId,
+              paymentMethodTypes: ['card', 'link'],
+            },
+          },
+        }),
+      )
+      challenges.push(card)
+    }
+    return challenges as ReadonlyArray<MppChallenge>
+  })
+
+// Issue a fresh 402 (no credential, or a credential we refused). Creates a
+// crypto deposit PaymentIntent for the quote (the address the crypto challenge
+// points at) and builds the bound challenge set. If Stripe cannot quote, returns
+// a clean 503 (never a broken 402).
+const issueChallenge = (
+  deps: MppChatCompletionsDeps,
+  signingSecret: string,
+  stripeDeps: Parameters<typeof createCryptoDepositPaymentIntent>[0],
+  cardEnabled: boolean,
+  rawBody: Record<string, unknown> | undefined,
+  detail?: string,
+) =>
+  Effect.gen(function* () {
+    const newId = deps.newId ?? randomUuid
+    const nowMs = (deps.nowMs ?? currentEpochMillis)()
+    const model = resolveMppModel(rawBody)
+    const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
+    const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
+
+    const created = yield* createCryptoDepositPaymentIntent(stripeDeps, {
+      amountCents: cryptoQuote.amountCents,
+      idempotencyKey: `mpp:quote:${newId()}`,
+      metadata: { model, product: 'openagents_khala_mpp' },
+      networks: CRYPTO_NETWORKS,
+    }).pipe(
+      Effect.map(intent => ({ ok: true as const, intent })),
+      Effect.catch(error =>
+        Effect.succeed({ ok: false as const, reason: error.detail }),
+      ),
+    )
+    if (!created.ok) {
+      return notConfigured(`stripe quote failed: ${created.reason}`)
+    }
+
+    const challenges = yield* buildChallenges(signingSecret, {
+      cardAmountCents: cardQuote.amountCents,
+      cardEnabled,
+      cardNetworkProfileId: deps.stripeNetworkProfileId,
+      cryptoAmountCents: cryptoQuote.amountCents,
+      cryptoDeposit: created.intent.deposits[0],
+      cryptoPaymentIntentId: created.intent.id,
+      expires: epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS),
+      model,
+    })
+
+    return new Response(
+      JSON.stringify(buildPaymentRequiredProblem(challenges, detail)),
+      {
+        headers: buildPaymentRequiredHeaders(challenges),
+        status: 402,
+      },
+    )
+  })
+
 // Run the underlying Khala completion as the payer-bound account (credit already
-// minted). Replaces auth + balance reader so the completion runs against the
-// minted credit; everything else (registry, metering hook, receipt, lane plan)
-// is the SAME as the keyed route.
+// minted), then attach the standards-shaped `Payment-Receipt` header on success.
 const runPaidCompletion = (
   request: Request,
   deps: MppChatCompletionsDeps,
   grant: MppCreditGrantOutcome,
-): Effect.Effect<Response> =>
-  handleChatCompletions(request, {
-    ...deps.completionDeps,
-    authenticate: async () => ({ accountRef: grant.accountRef }),
-    enabled: deps.completionDeps.enabled,
-    // The minted credit is the available balance; the metering hook decrements
-    // it receipt-first on the real completion.
-    readAvailableMsat: async () => grant.grantedMsat,
+  receipt: Readonly<{ method: string; reference: string }>,
+) =>
+  Effect.gen(function* () {
+    const nowIso = (deps.nowIso ?? currentIsoTimestamp)()
+    const response = yield* handleChatCompletions(request, {
+      ...deps.completionDeps,
+      authenticate: async () => ({ accountRef: grant.accountRef }),
+      enabled: deps.completionDeps.enabled,
+      // The minted credit is the available balance; the metering hook decrements
+      // it receipt-first on the real completion.
+      readAvailableMsat: async () => grant.grantedMsat,
+    })
+    // Attach the Payment-Receipt only on a 2xx (success). Core spec: receipts are
+    // issued only on success; error responses carry none.
+    if (response.status < 200 || response.status >= 300) {
+      return response
+    }
+    const headers = new Headers(response.headers)
+    headers.set(
+      'payment-receipt',
+      buildPaymentReceipt({
+        method: receipt.method,
+        reference: receipt.reference,
+        timestamp: nowIso,
+      }),
+    )
+    headers.set('cache-control', 'private')
+    return new Response(response.body, {
+      headers,
+      status: response.status,
+      statusText: response.statusText,
+    })
+  })
+
+// Settle + serve once a credential has passed stateless verification. The method
+// chooses the settlement rail. On a settled payment: mint credit (idempotent),
+// run the completion, attach the receipt. Anything not settled => 402 (never
+// serves unpaid).
+const settleAndServe = (
+  request: Request,
+  deps: MppChatCompletionsDeps,
+  stripeDeps: Parameters<typeof retrievePaymentIntent>[0],
+  verified: Extract<
+    Awaited<ReturnType<typeof verifyCredential>>,
+    { ok: true }
+  >,
+  credential: ParsedPaymentCredential,
+) =>
+  Effect.gen(function* () {
+    // Resolve the settled PaymentIntent for the rail.
+    let settledPi:
+      | Readonly<{ id: string; amountCents: number }>
+      | undefined
+
+    if (verified.method === 'stripe') {
+      // ---- card/SPT rail ----
+      const spt = credential.payload.spt
+      if (typeof spt !== 'string' || !spt.startsWith('spt_')) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'missing_spt' },
+          { status: 402 },
+        )
+      }
+      const profileId = deps.stripeNetworkProfileId
+      if (profileId === undefined || profileId.trim() === '') {
+        // Card rail not configured — should not happen (we never offered it) but
+        // fail-closed.
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'card_rail_off' },
+          { status: 402 },
+        )
+      }
+      // Single-use SPT: claim BEFORE charging. A replay collides and is refused.
+      const claimed = yield* claimSpt(deps.db, {
+        challengeId: credential.challenge.id,
+        spt,
+      }).pipe(
+        Effect.map(ok => ({ ok: true as const, claimed: ok })),
+        Effect.catch(() => Effect.succeed({ ok: false as const })),
+      )
+      if (!claimed.ok) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'replay_store' },
+          { status: 502 },
+        )
+      }
+      if (!claimed.claimed) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'spt_replayed' },
+          { status: 402 },
+        )
+      }
+      const charged = yield* createSptChargePaymentIntent(stripeDeps, {
+        amountCents: Number(verified.request.amount),
+        challengeId: credential.challenge.id,
+        metadata: { model: verified.opaque?.model ?? '', product: 'openagents_khala_mpp' },
+        networkProfileId: profileId,
+        spt,
+      }).pipe(
+        Effect.map(intent => ({ ok: true as const, intent })),
+        Effect.catch(error =>
+          Effect.succeed({ ok: false as const, reason: error.detail }),
+        ),
+      )
+      if (!charged.ok) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: charged.reason },
+          { status: 502 },
+        )
+      }
+      if (!charged.intent.settled) {
+        return noStoreJsonResponse(
+          {
+            error: 'payment_not_settled',
+            payment_intent: charged.intent.id,
+            status: charged.intent.status,
+          },
+          { status: 402 },
+        )
+      }
+      yield* recordSptPaymentIntent(deps.db, {
+        paymentIntentId: charged.intent.id,
+        spt,
+      }).pipe(Effect.catch(() => Effect.void))
+      settledPi = { amountCents: charged.intent.amountCents, id: charged.intent.id }
+    } else {
+      // ---- crypto rail ----
+      // Recover our deposit PaymentIntent id from the bound `opaque`.
+      const paymentIntentId = verified.opaque?.pi
+      if (paymentIntentId === undefined || paymentIntentId.trim() === '') {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: 'missing_correlation' },
+          { status: 402 },
+        )
+      }
+      const retrieved = yield* retrievePaymentIntent(
+        stripeDeps,
+        paymentIntentId,
+      ).pipe(
+        Effect.map(intent => ({ ok: true as const, intent })),
+        Effect.catch(error =>
+          Effect.succeed({ ok: false as const, reason: error.detail }),
+        ),
+      )
+      if (!retrieved.ok) {
+        return noStoreJsonResponse(
+          { error: 'payment_verification_failed', reason: retrieved.reason },
+          { status: 502 },
+        )
+      }
+      if (!retrieved.intent.settled) {
+        return noStoreJsonResponse(
+          {
+            error: 'payment_not_settled',
+            payment_intent: retrieved.intent.id,
+            status: retrieved.intent.status,
+          },
+          { status: 402 },
+        )
+      }
+      settledPi = {
+        amountCents: retrieved.intent.amountCents,
+        id: retrieved.intent.id,
+      }
+    }
+
+    // SETTLED. Mint Khala credits for the settled amount into a payer-bound
+    // balance (idempotent per payment id), then run the SAME Khala completion.
+    const accountRef = mppPayerAccountRef(settledPi.id)
+    const grant = yield* mintMppCredits(
+      {
+        db: deps.db,
+        ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
+        ...(deps.usdCentsToMsat === undefined
+          ? {}
+          : { usdCentsToMsat: deps.usdCentsToMsat }),
+      },
+      {
+        accountRef,
+        amountCents: settledPi.amountCents,
+        paymentIntentId: settledPi.id,
+      },
+    ).pipe(
+      Effect.map(outcome => ({ ok: true as const, outcome })),
+      Effect.catch(() => Effect.succeed({ ok: false as const } as const)),
+    )
+    if (!grant.ok) {
+      return noStoreJsonResponse(
+        { error: 'credit_grant_failed', payment_intent: settledPi.id },
+        { status: 500 },
+      )
+    }
+
+    return yield* runPaidCompletion(request, deps, grant.outcome, {
+      method: verified.method,
+      reference: settledPi.id,
+    })
   })
 
 export const handleMppChatCompletions = (
@@ -176,6 +490,15 @@ export const handleMppChatCompletions = (
     ) {
       return notConfigured('stripe key not configured')
     }
+    // FAIL-SAFE GATE 3: no signing secret => inert. Cannot bind/verify a
+    // challenge, so we never issue one or accept a credential.
+    if (
+      deps.signingSecret === undefined ||
+      deps.signingSecret.trim() === ''
+    ) {
+      return notConfigured('signing secret not configured')
+    }
+    const signingSecret = deps.signingSecret
 
     if (request.method !== 'POST') {
       return noStoreJsonResponse(
@@ -191,14 +514,12 @@ export const handleMppChatCompletions = (
         ? {}
         : { networkProfileId: deps.stripeNetworkProfileId }),
     }
-    const newId = deps.newId ?? randomUuid
     const cardEnabled =
       deps.stripeNetworkProfileId !== undefined &&
       deps.stripeNetworkProfileId.trim() !== ''
 
     // We need the body for BOTH the 402 quote (model) and the paid retry (the
-    // completion). Read it once; reconstruct a fresh Request for the underlying
-    // handler so its own `request.json()` works.
+    // completion). Read it once; the underlying handler reads its own clone.
     const rawBody = yield* Effect.promise(async () => {
       try {
         return (await request.clone().json()) as Record<string, unknown>
@@ -207,151 +528,66 @@ export const handleMppChatCompletions = (
       }
     })
 
-    const credential = parsePaymentCredential(request.headers.get('authorization'))
+    const credential = parsePaymentCredential(
+      request.headers.get('authorization'),
+    )
 
-    // ---- NO CREDENTIAL: return 402 + challenge(s) ----
+    // ---- NO CREDENTIAL (or malformed): return 402 + challenge(s) ----
     if (credential === undefined) {
-      const model = resolveMppModel(rawBody)
-      const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
-      const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
-
-      // Create a crypto deposit PaymentIntent to get a deposit address for the
-      // challenge. If Stripe fails here, the endpoint is effectively unable to
-      // quote — return a clean 503 (never a broken 402).
-      const created = yield* createCryptoDepositPaymentIntent(stripeDeps, {
-        amountCents: cryptoQuote.amountCents,
-        idempotencyKey: `mpp:quote:${newId()}`,
-        metadata: { model, product: 'openagents_khala_mpp' },
-        networks: CRYPTO_NETWORKS,
-      }).pipe(
-        Effect.map(intent => ({ ok: true as const, intent })),
-        Effect.catch(error =>
-          Effect.succeed({ ok: false as const, reason: error.detail }),
-        ),
-      )
-      if (!created.ok) {
-        return notConfigured(`stripe quote failed: ${created.reason}`)
-      }
-
-      const challenges = buildChallenges({
-        cardAmountCents: cardQuote.amountCents,
+      return yield* issueChallenge(
+        deps,
+        signingSecret,
+        stripeDeps,
         cardEnabled,
-        challengeIdPrefix: created.intent.id,
-        cryptoAmountCents: cryptoQuote.amountCents,
-        cryptoDeposit: created.intent.deposits[0],
-        cryptoPaymentIntentId: created.intent.id,
-        model,
-      })
-
-      return new Response(
-        JSON.stringify(buildPaymentRequiredProblem(challenges)),
-        {
-          headers: buildPaymentRequiredHeaders(challenges),
-          status: 402,
-        },
+        rawBody,
       )
     }
 
-    // ---- CREDENTIAL PRESENT: verify settlement, mint credits, serve ----
-    const paymentIntentId = credential.paymentIntentId
-    if (paymentIntentId === undefined || paymentIntentId.trim() === '') {
-      // A credential we cannot verify Worker-native (e.g. an SPT/card token that
-      // needs the Node MPP SDK to settle). We do NOT guess; return a fresh 402
-      // so the client retries with a verifiable crypto credential, and flag the
-      // sidecar requirement in the body.
-      const model = resolveMppModel(rawBody)
-      const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
-      const created = yield* createCryptoDepositPaymentIntent(stripeDeps, {
-        amountCents: cryptoQuote.amountCents,
-        idempotencyKey: `mpp:quote:${newId()}`,
-        metadata: { model, product: 'openagents_khala_mpp' },
-        networks: CRYPTO_NETWORKS,
-      }).pipe(
-        Effect.map(intent => ({ ok: true as const, intent })),
-        Effect.catch(error =>
-          Effect.succeed({ ok: false as const, reason: error.detail }),
-        ),
-      )
-      if (!created.ok) {
-        return notConfigured(`stripe quote failed: ${created.reason}`)
-      }
-      const challenges = buildChallenges({
-        cardAmountCents: cryptoQuote.amountCents,
-        cardEnabled,
-        challengeIdPrefix: created.intent.id,
-        cryptoAmountCents: cryptoQuote.amountCents,
-        cryptoDeposit: created.intent.deposits[0],
-        cryptoPaymentIntentId: created.intent.id,
-        model,
-      })
-      const problem = {
-        ...buildPaymentRequiredProblem(challenges),
-        detail:
-          'Could not verify the supplied payment credential Worker-native. Retry with a crypto payment credential (Base/Solana/Tempo USDC). Card/SPT settlement may require the Node MPP sidecar.',
-      }
-      return new Response(JSON.stringify(problem), {
-        headers: buildPaymentRequiredHeaders(challenges),
-        status: 402,
-      })
-    }
+    // ---- CREDENTIAL PRESENT: verify the HMAC binding FAIL-CLOSED ----
+    const model = resolveMppModel(rawBody)
+    const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
+    const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
+    const allowedMethods = cardEnabled
+      ? [...CRYPTO_NETWORKS, 'stripe']
+      : [...CRYPTO_NETWORKS]
 
-    const verified = yield* retrievePaymentIntent(
-      stripeDeps,
-      paymentIntentId,
-    ).pipe(
-      Effect.map(intent => ({ ok: true as const, intent })),
-      Effect.catch(error =>
-        Effect.succeed({ ok: false as const, reason: error.detail }),
-      ),
+    const verified = yield* Effect.promise(() =>
+      verifyCredential(signingSecret, credential, {
+        allowedMethods,
+        expectedCurrencyForMethod: method =>
+          method === 'stripe' ? 'usd' : 'usdc',
+        // The card rail floor is the card quote; crypto uses the crypto quote.
+        // Use the lower of the two so neither rail under-floors; verification
+        // separately binds the exact amount via the HMAC over `request`.
+        expectedMinAmountCents: Math.min(
+          cryptoQuote.amountCents,
+          cardQuote.amountCents,
+        ),
+        ...(deps.nowMs === undefined ? {} : { nowMs: deps.nowMs() }),
+        realm: MPP_REALM,
+      }),
     )
+
     if (!verified.ok) {
-      return noStoreJsonResponse(
-        { error: 'payment_verification_failed', reason: verified.reason },
-        { status: 502 },
-      )
-    }
-    if (!verified.intent.settled) {
-      // Paid not yet settled — return 402 again so the client waits/retries. No
-      // completion runs; nothing is served unpaid.
-      return noStoreJsonResponse(
-        {
-          error: 'payment_not_settled',
-          payment_intent: verified.intent.id,
-          status: verified.intent.status,
-        },
-        { status: 402 },
+      // Verification failed => fresh 402 (never serve). Re-issue a challenge so a
+      // well-behaved client can retry with a correctly-bound credential.
+      const detail = `Payment credential rejected (${verified.reason}). Retry against a fresh challenge.`
+      return yield* issueChallenge(
+        deps,
+        signingSecret,
+        stripeDeps,
+        cardEnabled,
+        rawBody,
+        detail,
       )
     }
 
-    // SETTLED. Phase 3: mint Khala credits for the settled amount into a
-    // payer-bound balance (idempotent per payment id), then run the SAME Khala
-    // completion against that credit.
-    const accountRef = mppPayerAccountRef(verified.intent.id)
-    const grant = yield* mintMppCredits(
-      {
-        db: deps.db,
-        ...(deps.nowIso === undefined ? {} : { nowIso: deps.nowIso }),
-        ...(deps.usdCentsToMsat === undefined
-          ? {}
-          : { usdCentsToMsat: deps.usdCentsToMsat }),
-      },
-      {
-        accountRef,
-        amountCents: verified.intent.amountCents,
-        paymentIntentId: verified.intent.id,
-      },
-    ).pipe(
-      Effect.map(outcome => ({ ok: true as const, outcome })),
-      Effect.catch(() =>
-        Effect.succeed({ ok: false as const } as const),
-      ),
+    // ---- VERIFIED: settle for the rail, then serve ----
+    return yield* settleAndServe(
+      request,
+      deps,
+      stripeDeps,
+      verified,
+      credential,
     )
-    if (!grant.ok) {
-      return noStoreJsonResponse(
-        { error: 'credit_grant_failed', payment_intent: verified.intent.id },
-        { status: 500 },
-      )
-    }
-
-    return yield* runPaidCompletion(request, deps, grant.outcome)
   })
