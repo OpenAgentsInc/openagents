@@ -2527,10 +2527,15 @@ body {
    that remains is a single tiny, quiet chip naming the active effect, anchored
    bottom-left out of the way (it does not box the world). */
 .verse-spawned-scene {
+  /* TOP-left, not bottom-left: the hotbar is fixed at bottom-left (z-index 40)
+     and was covering this chip almost entirely (#6033 owner report — "a tiny
+     chip but no effect"). Top-left is clear in the Verse, so the evidence label
+     for a spawned scene is actually readable. Above the hotbar's z so it is
+     never re-occluded. */
   position: absolute;
   left: clamp(0.8rem, 2vw, 1.25rem);
-  bottom: clamp(0.8rem, 2vh, 1.25rem);
-  z-index: 4;
+  top: clamp(0.8rem, 2vh, 1.25rem);
+  z-index: 50;
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;

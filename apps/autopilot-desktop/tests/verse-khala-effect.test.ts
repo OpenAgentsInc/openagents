@@ -19,6 +19,7 @@ import {
   VERSE_KHALA_NEXUS_NODE_ID,
   VERSE_KHALA_EFFECT_NODE_PREFIX,
 } from "../src/shared/verse-khala-effect"
+import { metaverseStreetLayout } from "@openagentsinc/three-effect/core"
 import type { KhalaReceiptProjection } from "../src/shared/khala-cockpit"
 import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
@@ -70,6 +71,39 @@ describe("verseKhalaEffectLayer (evidence-bound local crackling arc)", () => {
     expect(layer.entities.every((e) => e.detail?.includes("receipt.khala.req_abc123"))).toBe(true)
     // A verified turn bursts at the avatar.
     expect(layer.bursts).toHaveLength(1)
+  })
+
+  test("the arc endpoints land in front of the avatar IN THE CAMERA'S VIEW (root-frame fix)", () => {
+    // The avatar anchor is SCENE-WORLD; the renderer interprets entity positions
+    // in ROOT-LOCAL (rotated/scaled/offset to the Tassadar lot). The endpoints are
+    // therefore converted scene-world → root-local. Reconstruct them back to
+    // scene-world (the camera/avatar frame) and assert the arc sits at the avatar
+    // at chest/overhead height — NOT ~5 units up at the lot (the no-effect bug).
+    const a = { x: 4, y: 0, z: -2 }
+    const layer = verseKhalaEffectLayer({ receipt: liveReceipt(), avatar: a })
+    const nexus = layer.entities.find((e) => e.id === VERSE_KHALA_NEXUS_NODE_ID)!
+    const you = layer.entities.find((e) =>
+      e.id.startsWith(VERSE_KHALA_EFFECT_NODE_PREFIX),
+    )!
+    const s = metaverseStreetLayout.tassadarSceneScale
+    const toWorld = (l: readonly [number, number, number]) =>
+      [
+        s * l[0] + metaverseStreetLayout.tassadarLotX,
+        s * l[2],
+        -s * l[1] + metaverseStreetLayout.tassadarLotZ,
+      ] as const
+    const youWorld = toWorld(you.position!)
+    const nexusWorld = toWorld(nexus.position!)
+    // The "You" endpoint sits at the avatar's scene-world position, torso height.
+    expect(Math.abs(youWorld[0] - a.x)).toBeLessThan(0.05)
+    expect(Math.abs(youWorld[2] - a.z)).toBeLessThan(0.05)
+    expect(youWorld[1]).toBeGreaterThan(0.5)
+    expect(youWorld[1]).toBeLessThan(2.5)
+    // The nexus floats above + in front of the avatar (overhead, toward -Z), not
+    // pinned at the lot far from the camera.
+    expect(nexusWorld[1]).toBeGreaterThan(youWorld[1])
+    expect(nexusWorld[2]).toBeLessThan(a.z)
+    expect(Math.abs(nexusWorld[0] - a.x)).toBeLessThan(0.5)
   })
 
   test("NO receipt ref ⇒ no motion (the evidence gate)", () => {

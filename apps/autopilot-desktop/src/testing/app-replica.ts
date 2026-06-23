@@ -367,27 +367,15 @@ export const launchAppReplica = async (
   }
 
   try {
-    // BUILD THE ENTRY WITH THE STYLEX PLUGIN — this is the StyleX fix. The same
-    // @stylexjs/unplugin Bun plugin scripts/build-css.ts uses for the real
-    // main.ts, so `stylex.create`/`stylex.attrs` are compiled and view.ts mounts
-    // without throwing. CSS comes from the served styles.out.css.
-    const { createStylexBunPlugin } = await import("@stylexjs/unplugin/bun")
+    // StyleX was removed from the app (the typed-token system in
+    // `@openagentsinc/design-tokens` replaced it, #6046/#6050), so the entry no
+    // longer needs a compile plugin — a plain browser bundle mounts view.ts. CSS
+    // comes from the served styles.out.css.
     const build = await Bun.build({
       entrypoints: [entryModulePath],
       outdir: distDir,
       target: "browser",
       format: "esm",
-      plugins: [
-        createStylexBunPlugin({
-          dev: false,
-          runtimeInjection: false,
-          useCSSLayers: true,
-          // The generated component CSS is already baked into styles.out.css by
-          // build:css; we discard the entry's stylex CSS output and rely on it.
-          bunDevCssOutput: join(distDir, "replica.stylex.css"),
-          externalPackages: ["@openagentsinc/ui", "@openagentsinc/autopilot-ui"],
-        } as never),
-      ],
     })
     if (!build.success) {
       const logs = build.logs.map((log) => String(log)).join("\n")

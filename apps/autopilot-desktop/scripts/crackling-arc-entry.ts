@@ -23,7 +23,6 @@ import {
 
 import {
   withVerseSpawnedSceneLayer,
-  VERSE_SPAWNED_SCENE_STATION_POSITION,
   DEFAULT_SPAWNABLE_SCENE_ID,
 } from "../src/shared/verse-spawned-scene.js"
 
@@ -70,12 +69,27 @@ const baseVisualization: TrainingRunVisualizationOptions =
     verifiedWorkCount: 0,
   })
 
+// Render in the REAL perspective_walk / third-person frame (the frame the live
+// Verse uses), with an avatar pose, so the spawned-scene layer's scene-world →
+// root-local conversion is exercised exactly as it is in the app. (The avatar is
+// the controller's default spawn; the layer drops the arc in front of it.)
+const avatar = { x: 0, y: 0, z: 4.4, yaw: 0 } as const
+const walkableBase: TrainingRunVisualizationOptions = {
+  ...baseVisualization,
+  cameraMode: "perspective_walk",
+  controller: "third_person_character",
+  thirdPersonController: {
+    character: { walkSpeed: 3.8, runSpeed: 6.7 },
+    initialPosition: [avatar.x, avatar.y, avatar.z],
+  },
+}
+
 // The REAL spawned-scene render path: a crackling_arc beam evidence-bound to its
 // synthetic source ref, with motionPolicy.evidence = "required".
-const spawned = withVerseSpawnedSceneLayer(baseVisualization, [
+const spawned = withVerseSpawnedSceneLayer(walkableBase, [
   {
     sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
-    station: VERSE_SPAWNED_SCENE_STATION_POSITION,
+    avatar,
     generatedAt: "2026-06-22T00:00:00.000Z",
   },
 ])

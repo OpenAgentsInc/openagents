@@ -475,6 +475,19 @@ export type TrainingRunVisualizationHandle = Readonly<{
 
 export const defaultTrainingRunNodes: readonly TrainingRunNodeDefinition[]
 
+// The metaverse-street layout constants (perspective_walk). The Verse spawned-
+// scene layer reads `tassadarLotX/Z` + `tassadarSceneScale` to invert the world
+// `root` transform (scale → rotate -90°X → translate to the lot) so a scene-world
+// avatar pose can be placed as a root-local entity position the renderer accepts.
+export const metaverseStreetLayout: {
+  readonly nearZ: number
+  readonly farZ: number
+  readonly parcelX: number
+  readonly tassadarLotX: number
+  readonly tassadarLotZ: number
+  readonly tassadarSceneScale: number
+}
+
 export const trainingRunVisualizationOptionsFromSnapshot: (
   snapshot?: TrainingRunVisualizationSnapshot,
 ) => TrainingRunVisualizationOptions

@@ -40,7 +40,11 @@ import type {
 import {
   appendVerseVisualization,
   roundedVerseVector,
+  verseSceneWorldToRootLocal,
+  VERSE_ROOT_SCALE,
 } from "./verse-scene-helpers.js"
+// Re-export so existing importers (and tests) keep their import path.
+export { verseSceneWorldToRootLocal } from "./verse-scene-helpers.js"
 import type { ChatWorldVisualEntityDefinition } from "./chat-world-visualization.js"
 
 // Stable scene-node prefix so a spawned isolated scene never collides on id with
@@ -54,30 +58,70 @@ export const VERSE_SPAWNED_SCENE_NODE_PREFIX = "verse:spawned:"
 export const VERSE_SPAWNED_SCENE_SOURCE_REF =
   "github:OpenAgentsInc/openagents#6033"
 
-// Fallback in-world "scene station" anchor used only when we do not yet know the
-// avatar's pose. The live spawn (verseSceneVisualization) derives the station
-// from the avatar's last pose so the arc spawns RIGHT IN FRONT of the avatar at
-// a clearly visible size — the previous fixed `z:-6` station put the arc far off
-// in the dark Verse where the thin primitive was invisible (#6033 owner report).
-// Tuned HERE (the mapper), not in the renderer.
-export const VERSE_SPAWNED_SCENE_STATION_POSITION: TrainingRunVector =
-  roundedVerseVector([0, 0, -2.4])
-
+// ── THE COORDINATE FRAME (the real no-particle-effect bug) ────────────────────
+//
+// The renderer (three-effect trainingRun.ts, perspective_walk) builds the WALKABLE
+// world in two DIFFERENT spaces:
+//
+//   • The avatar + camera live in SCENE-WORLD space (the third-person controller's
+//     `getPosition`, which is what `verseSceneRestorePose` captures). The camera
+//     follows the avatar there. "Forward" for the avatar is -Z, "up" is +Y, "right"
+//     is +X — plain scene-world axes.
+//
+//   • Entity / beam positions are added to a `root` group that is ROTATED -90° about
+//     X, SCALED by `tassadarSceneScale`, and TRANSLATED to the Tassadar street lot
+//     (`tassadarLotX/Z`). So a beam endpoint position is interpreted in ROOT-LOCAL
+//     space, NOT scene-world space.
+//
+// The old code placed the arc endpoints using the avatar's scene-world pose AS IF
+// they were root-local — so after the root rotate+scale+offset they landed ~5 units
+// up in the air and ~3-8 units to the side, far outside the camera's view. The arc
+// DID render; you just never saw it. (Earlier "chest-height" tuning only moved it
+// around inside the wrong frame.) The sibling `withVerseKhalaEffectLayer` has the
+// SAME latent bug; it only looks fine because its nexus is pinned near root-local
+// origin, which happens to fall on the lot.
+//
+// THE FIX: author the arc in SCENE-WORLD, in front of the avatar, then convert each
+// endpoint to ROOT-LOCAL with the inverse of the documented root transform before
+// handing it to the renderer. Now the arc lands exactly where the avatar is looking.
 // How far IN FRONT of the avatar (along its facing/-Z by default) the scene
-// station is dropped, plus how high the arc hangs. Close enough to fill the
-// avatar's view, far enough not to clip the camera.
-export const VERSE_SPAWNED_SCENE_AVATAR_FORWARD = 2.4
-export const VERSE_SPAWNED_SCENE_AVATAR_HEIGHT = 1.2
+// station is dropped, plus how high the arc hangs, in SCENE-WORLD units. Close
+// enough to fill the avatar's view, far enough not to clip the camera.
+export const VERSE_SPAWNED_SCENE_AVATAR_FORWARD = 3.0
+export const VERSE_SPAWNED_SCENE_AVATAR_HEIGHT = 1.4
+
+// Fallback avatar (scene-world) when no pose has been captured yet: the third-
+// person controller's own default spawn. Keeps the arc in front of the camera on
+// the very first spawn, before any pose round-trips back into the model.
+export const VERSE_SPAWNED_SCENE_DEFAULT_AVATAR: VerseSpawnedSceneAvatarAnchor = {
+  x: 0,
+  y: 0,
+  z: 4.4,
+  yaw: 0,
+}
+
+// Fallback scene station (ROOT-LOCAL): the default avatar's scene-world spawn,
+// pushed forward + lifted to chest height, then converted to root-local — so the
+// pose-less spawn still lands in the camera's view rather than at a fixed far lot.
+export const VERSE_SPAWNED_SCENE_STATION_POSITION: TrainingRunVector =
+  verseSceneWorldToRootLocal([
+    VERSE_SPAWNED_SCENE_DEFAULT_AVATAR.x,
+    VERSE_SPAWNED_SCENE_AVATAR_HEIGHT,
+    VERSE_SPAWNED_SCENE_DEFAULT_AVATAR.z - VERSE_SPAWNED_SCENE_AVATAR_FORWARD,
+  ])
 
 // ── Eyeball knobs (mirrors the standalone's URL knobs as typed options) ───────
 
 // The crackling-arc knobs the standalone scene exposes (strandCount/rate/color/
 // endpoints). Defaults match crackling-arc-standalone so the in-world spawn reads
-// the same as the isolated page. Endpoints are RELATIVE to the station anchor.
+// the same as the isolated page. Endpoint offsets are RELATIVE to the station
+// anchor, in SCENE-WORLD avatar axes: X = screen-right, Y = up/height, Z = forward
+// (toward where the avatar faces). They are converted to root-local with the
+// station, so the arc reads correctly from the avatar's point of view.
 export type VerseSpawnedSceneKnobs = Readonly<{
-  /** arc start, relative to the station anchor. */
+  /** arc start offset (scene-world avatar axes: X=right, Y=up, Z=forward). */
   fromOffset?: TrainingRunVector
-  /** arc end, relative to the station anchor. */
+  /** arc end offset (scene-world avatar axes: X=right, Y=up, Z=forward). */
   toOffset?: TrainingRunVector
   strandCount?: number
   rate?: number
@@ -105,14 +149,14 @@ export type VerseSpawnableScene = Readonly<{
 // arc reads as REAL crackling energy in the dark live Verse, not a faint hairline
 // at a far station (the #6033 owner report). The arc spans ~3.2 units wide and
 // hangs at chest/head height in front of the avatar; the strand count, opacity,
-// and jitter are pushed well above the renderer's faint default. Endpoints are
-// RELATIVE to the (avatar-derived) station anchor.
-// Offsets are RELATIVE to the (avatar-derived) station, in WORLD axes: X is
-// screen width, Y is ground-forward (kept ~constant so the arc faces the
-// avatar), Z is HEIGHT (so the arc rises off the ground at chest/head height).
+// and jitter are pushed well above the renderer's faint default.
+// Offsets are RELATIVE to the (avatar-derived) station, in SCENE-WORLD avatar
+// axes: X = screen width (left/right), Y = HEIGHT (so the arc hangs at chest/head
+// height), Z = forward depth (a slight near/far stagger so the arc has a little
+// depth toward the avatar). Converted to root-local with the station.
 const CRACKLING_ENERGY_DEFAULTS: VerseSpawnedSceneKnobs = {
   fromOffset: [-1.6, 0, 0.2],
-  toOffset: [1.6, 0, 1.2],
+  toOffset: [1.6, 0, -0.2],
   strandCount: 11,
   rate: 2.6,
   opacity: 0.95,
@@ -153,15 +197,29 @@ const EMPTY_LAYER: VerseSpawnedSceneLayer = { entities: [], beams: [], bursts: [
 const finite = (value: number): boolean =>
   Number.isFinite(value) && !Number.isNaN(value)
 
-const addOffset = (
-  anchor: TrainingRunVector,
+// Apply an avatar-axis offset (X=right, Y=up, Z=forward) to a SCENE-WORLD anchor,
+// rotating the X/Z (ground) part by the avatar's yaw so "right"/"forward" track
+// the avatar's facing. Y (height) is yaw-invariant. Avatar faces -Z at yaw 0.
+const addSceneWorldOffset = (
+  anchorWorld: TrainingRunVector,
   offset: TrainingRunVector,
-): TrainingRunVector =>
-  roundedVerseVector([
-    anchor[0] + offset[0],
-    anchor[1] + offset[1],
-    anchor[2] + offset[2],
+  yaw: number,
+): TrainingRunVector => {
+  const cos = Math.cos(yaw)
+  const sin = Math.sin(yaw)
+  const right = offset[0]
+  const up = offset[1]
+  const forward = offset[2]
+  // Avatar faces -Z at yaw 0; yaw rotates facing in the X/Z plane. "forward" is
+  // -Z, "right" is +X (rotated by yaw). Mirrors the third-person controller frame.
+  const dx = right * cos + forward * sin
+  const dz = -forward * cos + right * sin
+  return roundedVerseVector([
+    anchorWorld[0] + dx,
+    anchorWorld[1] + up,
+    anchorWorld[2] + dz,
   ])
+}
 
 // One spawned scene's input: which registry scene, where its station sits, and
 // the (optional) knob overrides. `generatedAt` rides the evidence so the renderer
@@ -180,15 +238,17 @@ export type VerseSpawnedSceneAvatarAnchor = Readonly<{
 // comfortable viewing height. Falls back to the fixed station anchor when there
 // is no pose yet. Pure; tuned here, not in the renderer.
 //
-// COORDINATE NOTE (perspective_walk): the trainingRun renderer rotates the scene
-// root by -90° about X, so the world GROUND PLANE is the X/Y axes and HEIGHT is
-// the +Z axis (this is why the Khala layer's nexus sits at y≈1.85, z≈0.6, not
-// y=height). So "forward" along the ground is the +Y axis (rotated by yaw in the
-// X/Y plane), and "up" is a small +Z lift. Getting this wrong (forward=-Z,
-// height=+Y) is exactly what dropped the arc off to the side / underfoot.
-export const verseSpawnedSceneStationForAvatar = (
+// Returns the station in ROOT-LOCAL coordinates (what the renderer's entity
+// positions are interpreted in). It does so by placing the station in SCENE-WORLD
+// — in front of the avatar (-Z, rotated by yaw) at chest height (+Y) — and then
+// converting to root-local with `verseSceneWorldToRootLocal`. The avatar pose
+// itself is captured in SCENE-WORLD (the third-person controller's getPosition),
+// so this is the only frame in which "in front of the avatar" is meaningful; the
+// earlier code treated the scene-world pose as if it were root-local and the arc
+// ended up ~5 units in the air, far outside the camera — the real no-effect bug.
+export const verseSpawnedSceneStationWorldForAvatar = (
   anchor: VerseSpawnedSceneAvatarAnchor | null | undefined,
-): TrainingRunVector => {
+): TrainingRunVector | null => {
   if (
     anchor === null ||
     anchor === undefined ||
@@ -196,17 +256,23 @@ export const verseSpawnedSceneStationForAvatar = (
     !finite(anchor.y) ||
     !finite(anchor.z)
   ) {
-    return VERSE_SPAWNED_SCENE_STATION_POSITION
+    return null
   }
   const yaw = finite(anchor.yaw ?? Number.NaN) ? (anchor.yaw as number) : 0
-  // Forward along the ground plane (X/Y), rotated by yaw; height is +Z.
-  const forwardX = Math.sin(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
-  const forwardY = Math.cos(yaw) * VERSE_SPAWNED_SCENE_AVATAR_FORWARD
-  return roundedVerseVector([
-    anchor.x + forwardX,
-    anchor.y + forwardY,
-    anchor.z + VERSE_SPAWNED_SCENE_AVATAR_HEIGHT,
-  ])
+  // Scene-world: forward is -Z (avatar faces -Z at yaw 0), up is +Y, rotated by yaw.
+  return addSceneWorldOffset(
+    [anchor.x, anchor.y, anchor.z],
+    [0, VERSE_SPAWNED_SCENE_AVATAR_HEIGHT, VERSE_SPAWNED_SCENE_AVATAR_FORWARD],
+    yaw,
+  )
+}
+
+export const verseSpawnedSceneStationForAvatar = (
+  anchor: VerseSpawnedSceneAvatarAnchor | null | undefined,
+): TrainingRunVector => {
+  const world = verseSpawnedSceneStationWorldForAvatar(anchor)
+  if (world === null) return VERSE_SPAWNED_SCENE_STATION_POSITION
+  return verseSceneWorldToRootLocal(world)
 }
 
 export type VerseSpawnedSceneInput = Readonly<{
@@ -231,11 +297,44 @@ export const verseSpawnedSceneLayer = (
   const scene = verseSpawnableSceneById(input.sceneId)
   if (scene === null) return EMPTY_LAYER
 
-  // Prefer an explicit station, else drop the station in front of the avatar,
-  // else the fixed fallback anchor. This is what makes the arc visible: it spawns
-  // right where the avatar is looking instead of far off in the dark.
+  // The arc geometry is authored in SCENE-WORLD avatar axes (X=right, Y=up,
+  // Z=forward), placed in front of the avatar, then converted to ROOT-LOCAL for
+  // the renderer. We compute the SCENE-WORLD station + yaw here so each endpoint
+  // offset is applied in the avatar's own frame before the single root-local
+  // conversion. This is what makes the arc land in the camera's actual view.
+  //
+  //   • explicit `station` (rare/dev): given in root-local, used as-is.
+  //   • avatar pose: station in front of the avatar in scene-world.
+  //   • neither: the fixed fallback station (already root-local, in front of the
+  //     default camera).
+  const explicitRootLocalStation = input.station
+  const stationWorld = verseSpawnedSceneStationWorldForAvatar(input.avatar)
+  const yaw =
+    input.avatar !== null &&
+    input.avatar !== undefined &&
+    finite(input.avatar.yaw ?? Number.NaN)
+      ? (input.avatar.yaw as number)
+      : 0
+
+  // Resolve one endpoint offset (scene-world avatar axes) to a ROOT-LOCAL vector.
+  const resolveEndpoint = (offset: TrainingRunVector): TrainingRunVector => {
+    if (stationWorld !== null) {
+      return verseSceneWorldToRootLocal(
+        addSceneWorldOffset(stationWorld, offset, yaw),
+      )
+    }
+    // No avatar pose: fall back to a fixed root-local station and add the offset's
+    // X (width) directly; map Y (height) onto root-local Z and Z (forward) onto
+    // root-local -Y, matching `verseSceneWorldToRootLocal`'s axis mapping.
+    const base = explicitRootLocalStation ?? VERSE_SPAWNED_SCENE_STATION_POSITION
+    return roundedVerseVector([
+      base[0] + offset[0] / VERSE_ROOT_SCALE,
+      base[1] - offset[2] / VERSE_ROOT_SCALE,
+      base[2] + offset[1] / VERSE_ROOT_SCALE,
+    ])
+  }
   const stationAnchor =
-    input.station ?? verseSpawnedSceneStationForAvatar(input.avatar)
+    explicitRootLocalStation ?? verseSpawnedSceneStationForAvatar(input.avatar)
   if (!finite(stationAnchor[0]) || !finite(stationAnchor[1]) || !finite(stationAnchor[2])) {
     return EMPTY_LAYER
   }
@@ -279,8 +378,8 @@ export const verseSpawnedSceneLayer = (
   const toId = `${keyBase}:to`
   const portalId = `${keyBase}:portal`
 
-  const fromPosition = addOffset(stationAnchor, knobs.fromOffset)
-  const toPosition = addOffset(stationAnchor, knobs.toOffset)
+  const fromPosition = resolveEndpoint(knobs.fromOffset)
+  const toPosition = resolveEndpoint(knobs.toOffset)
 
   const sourceRefs = [VERSE_SPAWNED_SCENE_SOURCE_REF] as const
   const detail = `${VERSE_SPAWNED_SCENE_SOURCE_REF} · ${scene.motionKind} · simulated`
@@ -341,8 +440,8 @@ export const verseSpawnedSceneLayer = (
       label: "Gateway portal",
       detail: `${VERSE_SPAWNED_SCENE_SOURCE_REF} · gateway_portal · ${knobs.portalLane} · simulated`,
       status: "active",
-      // Just below the arc (lower height: smaller +Z than the arc endpoints).
-      position: addOffset(stationAnchor, [0, 0, -0.2]),
+      // Just below the arc (lower height: a negative Y offset in avatar axes).
+      position: resolveEndpoint([0, -0.6, 0]),
       iconRecipe: verseIconRecipeForId(`gateway:${knobs.portalLane}:${scene.id}`),
       visualKind: "gateway_portal",
       gatewayLane: knobs.portalLane,

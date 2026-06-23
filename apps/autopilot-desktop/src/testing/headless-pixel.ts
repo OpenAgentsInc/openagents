@@ -162,7 +162,11 @@ const waitForPageWebSocket = async (debugPort: number): Promise<string> => {
 
 // ── PNG decode (no image deps) ────────────────────────────────────────────────
 
-type PngImage = { readonly data: Uint8Array; readonly height: number; readonly width: number }
+export type PngImage = {
+  readonly data: Uint8Array
+  readonly height: number
+  readonly width: number
+}
 
 const paethPredictor = (left: number, up: number, upLeft: number): number => {
   const estimate = left + up - upLeft
@@ -174,7 +178,7 @@ const paethPredictor = (left: number, up: number, upLeft: number): number => {
   return upLeft
 }
 
-const decodePng = (png: Buffer): PngImage => {
+export const decodePng = (png: Buffer): PngImage => {
   if (png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") {
     throw new Error("Chrome screenshot was not a PNG")
   }
@@ -257,7 +261,10 @@ export type RegionScore = Readonly<{
   sampledPixels: number
 }>
 
-const scoreRegion = (image: PngImage, region: PixelRegion): RegionScore => {
+export const scoreRegion = (
+  image: PngImage,
+  region: PixelRegion,
+): RegionScore => {
   const px0 = Math.max(0, Math.floor(region.x0 * image.width))
   const py0 = Math.max(0, Math.floor(region.y0 * image.height))
   const px1 = Math.min(image.width, Math.ceil(region.x1 * image.width))
@@ -278,6 +285,35 @@ const scoreRegion = (image: PngImage, region: PixelRegion): RegionScore => {
     }
   }
   return { brightPixels, distinctLumaBuckets: buckets.size, sampledPixels }
+}
+
+// Count BRIGHT, CYAN/BLUE-DOMINANT pixels in a region — the crackling-arc strands
+// are bright near-white/cyan (≈ #93c5fd / #f8fafc) on a near-black world, so this
+// isolates the arc from the dim grey street geometry and the warm pylon/board
+// tones. Used by the real-scene render regression (app-replica.test.ts) to assert
+// the spawned arc actually lit up where the avatar is looking — the exact check
+// the false #6044 "isolated primitive" proof never ran against the full scene.
+export const scoreCracklingArcRegion = (
+  image: PngImage,
+  region: PixelRegion = FULL_FRAME,
+): number => {
+  const px0 = Math.max(0, Math.floor(region.x0 * image.width))
+  const py0 = Math.max(0, Math.floor(region.y0 * image.height))
+  const px1 = Math.min(image.width, Math.ceil(region.x1 * image.width))
+  const py1 = Math.min(image.height, Math.ceil(region.y1 * image.height))
+  let arcPixels = 0
+  for (let y = py0; y < py1; y += 1) {
+    for (let x = px0; x < px1; x += 1) {
+      const offset = (y * image.width + x) * 4
+      const r = image.data[offset] ?? 0
+      const g = image.data[offset + 1] ?? 0
+      const b = image.data[offset + 2] ?? 0
+      // Bright AND blue-leaning (b dominates red; green present for the near-white
+      // strands) — the arc's cyan/white palette, never the warm/grey world.
+      if (b > 150 && b >= r && g > 110) arcPixels += 1
+    }
+  }
+  return arcPixels
 }
 
 export type HeadlessRenderOptions = Readonly<{
