@@ -200,6 +200,14 @@ export const UpdatedAutopilotOnboardingComposer = m(
 export const SubmittedAutopilotOnboardingTurn = m(
   'SubmittedAutopilotOnboardingTurn',
 )
+export const OpenedAutopilotOnboardingStream = m(
+  'OpenedAutopilotOnboardingStream',
+  { turnId: S.String },
+)
+export const ReceivedAutopilotOnboardingDelta = m(
+  'ReceivedAutopilotOnboardingDelta',
+  { turnId: S.String, text: S.String },
+)
 export const SucceededAutopilotOnboardingTurn = m(
   'SucceededAutopilotOnboardingTurn',
   { response: OnboardingTurnResponse },
@@ -213,6 +221,9 @@ export const ClickedAutopilotOnboardingCreditKickoff = m(
 )
 export const CompletedAutopilotOnboardingCreditKickoff = m(
   'CompletedAutopilotOnboardingCreditKickoff',
+)
+export const CompletedScrollAutopilotOnboardingThread = m(
+  'CompletedScrollAutopilotOnboardingThread',
 )
 
 export const Message = S.Union([
@@ -261,9 +272,12 @@ export const Message = S.Union([
   ReceivedSettledFeedCursorGap,
   UpdatedAutopilotOnboardingComposer,
   SubmittedAutopilotOnboardingTurn,
+  OpenedAutopilotOnboardingStream,
+  ReceivedAutopilotOnboardingDelta,
   SucceededAutopilotOnboardingTurn,
   FailedAutopilotOnboardingTurn,
   ClickedAutopilotOnboardingCreditKickoff,
   CompletedAutopilotOnboardingCreditKickoff,
+  CompletedScrollAutopilotOnboardingThread,
 ])
 export type Message = typeof Message.Type

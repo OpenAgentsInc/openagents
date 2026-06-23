@@ -40,6 +40,8 @@ import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
 import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
+  type OnboardingStreamClient,
+  type OnboardingStreamSource,
 } from './autopilot-onboarding-program'
 import {
   handleProgrammaticAgentHome,
@@ -393,6 +395,7 @@ import {
   InferenceAdapterError,
   type InferenceRequest,
   type InferenceResult,
+  type InferenceStreamChunk,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
@@ -7112,6 +7115,7 @@ const agentGoalRoutes = makeAgentGoalRoutes({
 
 const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>({
   makeInferenceClient: env => makeOnboardingInferenceClient(env),
+  makeStreamClient: env => makeOnboardingStreamClient(env),
 })
 
 const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
@@ -8608,6 +8612,44 @@ const makeOnboardingInferenceClient = (
       { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
     ).pipe(
       Effect.map(result => result.content),
+      Effect.mapError(
+        error => new OnboardingInferenceError({ reason: error.reason }),
+      ),
+    )
+}
+
+// STREAMING onboarding client (issue #6123 UI follow-up). The same provider-
+// adapter registry + overflow dispatch as the buffered client, but it dispatches
+// the adapter's chunked `stream` and exposes the chunks as an
+// `OnboardingStreamSource` (a deltas async-iterable + a `final()` accumulation).
+// The interview reply is short, so the buffered-chunk path is the right reuse:
+// every adapter implements `stream` (the optional `streamSse` is for the long-
+// generation hot path), and the route pumps the chunks to the client as SSE.
+const makeOnboardingStreamClient = (
+  env: OnboardingInferenceEnv,
+): OnboardingStreamClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerFabricServeAdapter(inferenceProviderRegistry, env)
+  setInferenceAdapterEnv(env)
+  return (request: InferenceRequest) =>
+    dispatchWithOverflow<ReadonlyArray<InferenceStreamChunk>>(
+      request,
+      (adapter, req) => adapter.stream(req),
+      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+    ).pipe(
+      Effect.map((chunks): OnboardingStreamSource => {
+        const reply = chunks.map(chunk => chunk.contentDelta).join('')
+        return {
+          deltas: (async function* () {
+            for (const chunk of chunks) {
+              if (chunk.contentDelta !== '') {
+                yield chunk.contentDelta
+              }
+            }
+          })(),
+          final: () => reply,
+        }
+      }),
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
       ),

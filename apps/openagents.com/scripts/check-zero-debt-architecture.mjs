@@ -496,6 +496,14 @@ const runPromiseAllowlist = new Map([
   // run at that boundary. Named bridge; ratchet down if the streaming response is
   // expressed as an Effect Stream program end-to-end.
   ['workers/api/src/inference/chat-completions-routes.ts', 1],
+  // Added 2026-06-23 (#6123 UI follow-up): the /autopilot onboarding streaming
+  // turn route bridges the Effect-returning finalize step (append + persist) into
+  // the Web Streams `ReadableStream.start` controller callback ONCE, after the
+  // prose deltas drain, to commit the turn receipt-first. Same boundary as the
+  // chat-completions SSE bridge above (the controller API is not Effect-native and
+  // streaming must flow incrementally). Named bridge; ratchet down if the
+  // onboarding stream is expressed as an Effect Stream program end-to-end.
+  ['workers/api/src/autopilot-onboarding-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

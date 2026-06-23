@@ -16,6 +16,7 @@ import {
 const expectedCatalog = [
   { moduleId: 'prompt-input', primitives: 7 },
   { moduleId: 'message', primitives: 4 },
+  { moduleId: 'response', primitives: 3 },
   { moduleId: 'code-block', primitives: 4 },
   { moduleId: 'task', primitives: 5 },
   { moduleId: 'sources', primitives: 4 },
@@ -72,6 +73,7 @@ describe('AI Elements catalog coverage', () => {
   it('exposes the family through the package barrel namespace', () => {
     expect(typeof AiElements.promptInput).toBe('function')
     expect(typeof AiElements.message).toBe('function')
+    expect(typeof AiElements.response).toBe('function')
     expect(typeof AiElements.codeBlock).toBe('function')
     expect(typeof AiElements.task).toBe('function')
     expect(typeof AiElements.sources).toBe('function')

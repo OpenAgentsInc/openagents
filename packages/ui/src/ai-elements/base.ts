@@ -70,6 +70,14 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
     primitives: ['Message', 'MessageContent', 'MessageActions', 'MessageMeta'],
   },
   {
+    moduleId: 'response',
+    label: 'Response',
+    category: 'chat',
+    purpose:
+      'Render assistant Markdown prose (bold, italics, headings, lists, inline/fenced code, links, blockquotes, rules) as typed Foldkit nodes, tolerating incomplete/streaming markdown, with a streaming cursor affordance.',
+    primitives: ['Response', 'ResponseCode', 'ResponseCursor'],
+  },
+  {
     moduleId: 'code-block',
     label: 'Code Block',
     category: 'code',
