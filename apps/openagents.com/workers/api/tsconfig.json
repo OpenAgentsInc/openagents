@@ -3,6 +3,11 @@
   "compilerOptions": {
     "lib": ["ES2022", "WebWorker"],
     "noEmit": true,
+    // The consumed `@openagentsinc/durable-stream` package uses explicit `.ts`
+    // extensions in its internal imports (its own deliberate style). This Worker
+    // is `noEmit`, so allowing `.ts` import specifiers here only affects
+    // typechecking of that package's source, not any emitted output.
+    "allowImportingTsExtensions": true,
     "types": ["@cloudflare/workers-types"]
   },
   "include": ["src/**/*", "vitest.config.ts", "wrangler.jsonc"]

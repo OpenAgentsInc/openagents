@@ -1,5 +1,10 @@
 import { Container, getContainer } from '@cloudflare/containers'
 import {
+  type DurableObjectStateLike as DurableStreamObjectStateLike,
+  handleDurableStreamAlarm,
+  handleDurableStreamFetch,
+} from '@openagentsinc/durable-stream'
+import {
   type WorkerBindings,
   badRequest,
   cursorGap,
@@ -309,8 +314,10 @@ import {
 import { makeD1BatchJobStore } from './inference/batch-job-store'
 import {
   handleChatCompletions,
+  isInferenceDurableStreamEnabled,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import { routeDurableInferenceReadRequest } from './inference/durable-inference-read-routes'
 import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
@@ -10026,6 +10033,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           // here once a runner host exists. Until then the seam is inert.
           queue: undefined,
         },
+        // DURABLE-STREAM RANK-1 (#6058, EPIC #6056). Flag-gated INERT by default:
+        // with INFERENCE_DURABLE_STREAM_ENABLED off the streaming path is today's
+        // pure pass-through (no persistence/resume). The producer factory is left
+        // undefined here so the LIVE Worker stays inert even with the flag on —
+        // the DO class (`DurableInferenceStreamObject`) + binding
+        // (`INFERENCE_DURABLE_STREAM`) ship deployable, but the per-token producer
+        // write into the DO is wired in a follow-up. Metering still settles
+        // EXACTLY ONCE on the real upstream EOF and NEVER on a replay (proven by
+        // the in-memory durable-proxy tests, which use the SAME StreamStore port
+        // the DO implements).
+        // NEEDS-OWNER: wire the DO-fetch-backed producer factory + the read-route
+        // dispatcher's `durableStream` to `env.INFERENCE_DURABLE_STREAM` here.
+        durableStream: undefined,
+        durableStreamEnabled: isInferenceDurableStreamEnabled(
+          env.INFERENCE_DURABLE_STREAM_ENABLED,
+        ),
         registry: inferenceProviderRegistry,
       })
     },
@@ -10355,6 +10378,22 @@ const routeRequest = makeWorkerRouteRequest({
       enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
       laneArming: resolveSupplyLaneArming(env),
     }),
+  // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
+  // (durable-stream Rank-1, #6058). Reads stored bytes only — NEVER meters.
+  // Shares the gateway flag AND the durable-stream flag; with the producer
+  // factory left undefined (see the chat route above) this returns 404, so the
+  // surface is honestly inert until the DO producer is wired. Synchronous
+  // Response wrapped into the Effect dispatcher shape.
+  routeDurableInferenceReadRequest: (request, env) => {
+    const response = routeDurableInferenceReadRequest(request, {
+      durableStream: undefined,
+      enabled:
+        isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
+        isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
+      nowEpochMillis: currentEpochMillis,
+    })
+    return response === undefined ? undefined : Effect.succeed(response)
+  },
   routeMulletRequest: mulletRoutes.routeMulletRequest,
   routeOmniRequest: (request, env, ctx) =>
     omniRoutes.routeOmniRequest(request, env, ctx) ??
@@ -10552,6 +10591,34 @@ const syncScopeFromRequest = (request: Request, url: URL): string | undefined =>
   request.headers.get('x-openagents-sync-scope') ??
   url.searchParams.get('scope') ??
   undefined
+
+// Durable-stream Rank-1 resumable inference DO (#6058, EPIC #6056). One DO
+// instance per request id (`idFromName(requestId)`) holds that completion's
+// durable offset log in SQLite (the `@openagentsinc/durable-stream`
+// `SqliteStreamStore`). The gateway tees the upstream token stream in as the
+// producer; a dropped client resumes by reading `/v1/stream/{requestId}?offset=`.
+// TTL/expiry is driven by DO alarms (storage bounded). INERT unless the
+// INFERENCE_DURABLE_STREAM_ENABLED flag is on AND this binding is wired.
+export class DurableInferenceStreamObject {
+  // The durable offset log is entirely self-contained in this DO's SQLite
+  // storage, so the DO needs no `Env` — it does not read bindings/secrets. The
+  // constructor takes only the DO state (Cloudflare passes `(state, env)`; the
+  // unused `env` is intentionally not bound).
+  constructor(private readonly state: DurableObjectState) {}
+
+  async fetch(request: Request): Promise<Response> {
+    return handleDurableStreamFetch(
+      this.state as unknown as DurableStreamObjectStateLike,
+      request,
+    )
+  }
+
+  async alarm(): Promise<void> {
+    handleDurableStreamAlarm(
+      this.state as unknown as DurableStreamObjectStateLike,
+    )
+  }
+}
 
 export class SyncRoomDurableObject {
   constructor(

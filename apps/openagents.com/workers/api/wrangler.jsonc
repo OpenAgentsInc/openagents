@@ -173,6 +173,13 @@
         "name": "MDK_TIPS_BUFFER",
         "class_name": "MdkTipsBufferContainer",
       },
+      // Durable-stream Rank-1 resumable inference (#6058). One SQLite-class DO
+      // per request id holds that completion's durable offset log. INERT unless
+      // INFERENCE_DURABLE_STREAM_ENABLED is on AND the producer is wired.
+      {
+        "name": "INFERENCE_DURABLE_STREAM",
+        "class_name": "DurableInferenceStreamObject",
+      },
     ],
   },
   "migrations": [
@@ -191,6 +198,10 @@
     {
       "tag": "v4",
       "new_sqlite_classes": ["MdkTipsBufferContainer"],
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["DurableInferenceStreamObject"],
     },
   ],
   "env": {
