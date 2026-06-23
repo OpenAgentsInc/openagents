@@ -112,6 +112,25 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // the gateway rejects any verdict that does not present it. Worker secret; never
   // committed/logged. Absent => the callback is closed (every verdict rejected).
   ACCEPTANCE_VERDICT_CALLBACK_TOKEN?: string | undefined
+  // Machine-payable Khala endpoint feature flag (EPIC #6049). Default OFF: the
+  // `/mpp/v1/chat/completions` 402-gated endpoint is INERT on the live Worker
+  // until launch. Set "true"/"1"/"on" to arm. The endpoint is ALSO fail-safe on
+  // a missing Stripe key: with this off OR no STRIPE_API_KEY it returns "not
+  // configured" and never constructs a charge. The discovery surfaces
+  // (`/llms.txt`, `/agents.md`, `/ai.md`, `/skill.md`) are unconditional and do
+  // NOT depend on this flag.
+  KHALA_MPP_ENABLED?: string | undefined
+  // The Stripe network profile id (`profile_…`) enabling the card/SPT machine-
+  // payment rail for the MPP endpoint. Absent => the MPP endpoint is crypto-only
+  // (USDC via x402/MPP); the crypto rail does not need it. Worker secret; never
+  // committed/logged.
+  STRIPE_MPP_NETWORK_PROFILE_ID?: string | undefined
+  // The Stripe SECRET API key (also used by the card-billing surface in
+  // stripe-billing.ts via the structurally-compatible StripeBillingEnv). The MPP
+  // endpoint reads it to create/verify machine-payment PaymentIntents against the
+  // Stripe REST API. Worker secret; never committed/logged. Absent => the MPP
+  // endpoint is fail-safe inert and never constructs a charge.
+  STRIPE_API_KEY?: string | undefined
   // Cloud primitive scaffold feature flags (EPIC #5510, #5516/#5517). Default
   // OFF: the `/v1/fine_tuning/jobs` and `/v1/sandboxes` routes are inert on the
   // live Worker until those builds land. Set "true"/"1"/"on" to enable. The

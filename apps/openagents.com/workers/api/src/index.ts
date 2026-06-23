@@ -312,6 +312,14 @@ import {
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
 import {
+  type DiscoverySurfacePath,
+  renderDiscoverySurface,
+} from './inference/discovery-surfaces'
+import {
+  handleMppChatCompletions,
+  isKhalaMppEnabled,
+} from './inference/mpp/mpp-chat-completions-routes'
+import {
   isAcceptanceDispatchEnabled,
   makeD1KhalaVerificationStore,
 } from './inference/acceptance-dispatch'
@@ -9559,6 +9567,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleOpenAgentsCompanionFile(request, env.ASSETS, '/skill.json'),
   },
+  // Agent-discovery surfaces for Khala + the OpenAgents Agent Cloud (EPIC #6049,
+  // Phase 1). Ship-ready, UNCONDITIONAL (no flag): plain-language, machine-
+  // readable docs that describe the live Khala inference API so agents — and the
+  // Stripe Directory crawler (StripeBot) — can find and understand it. They make
+  // no money claim and require no payment config; they only describe the API and
+  // forward-reference the (flagged) MPP endpoint. Crawlable (public, cacheable,
+  // no auth, no robots block). Mirrors the live PostalForm directory shape.
+  ...(['/llms.txt', '/agents.md', '/ai.md', '/skill.md'] as const).map(
+    surfacePath => ({
+      handler: (request: Request) =>
+        renderDiscoverySurface(request, surfacePath as DiscoverySurfacePath),
+      path: surfacePath,
+    }),
+  ),
   {
     path: '/api/openapi.json',
     handler: (request, env, ctx) => {
@@ -9849,6 +9871,66 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           queue: undefined,
         },
         registry: inferenceProviderRegistry,
+      })
+    },
+  },
+  {
+    // Machine-payable (MPP / x402) Khala endpoint (EPIC #6049, Phase 2 + 3).
+    // 402-gated: a request with no payment credential returns 402 + a payment
+    // challenge (USDC crypto; card/SPT when a network profile id is configured);
+    // a verified credential mints Khala credits (Phase 3, reuses the USD-origin
+    // credit-grant seam) and runs the SAME Khala completion path + metering +
+    // receipt, so a paid call lands in the one-balance, two-inbound-rails loop
+    // with contributor payout still Bitcoin/Spark.
+    //
+    // FAIL-SAFE INERT: with KHALA_MPP_ENABLED off OR no STRIPE_API_KEY the
+    // endpoint returns a clean "not configured" 503 and NEVER constructs a
+    // charge. A missing STRIPE_MPP_NETWORK_PROFILE_ID disables only the card
+    // rail; the crypto rail still works.
+    path: '/mpp/v1/chat/completions',
+    handler: (request, env) => {
+      registerPassthroughAdapters(inferenceProviderRegistry, env)
+      registerFabricServeAdapter(inferenceProviderRegistry, env)
+      setInferenceAdapterEnv(env)
+      const ownerClaimStore = makeD1AgentOwnerClaimStore(
+        openAgentsDatabase(env),
+      )
+      const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
+        ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
+      )
+      return handleMppChatCompletions(request, {
+        db: openAgentsDatabase(env),
+        enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
+        stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
+        stripeSecretKey: env.STRIPE_API_KEY,
+        // The underlying Khala completion reuses the SAME registry, metering
+        // hook, receipt, lane plan, serving policy, and premium gate as the keyed
+        // `/v1/chat/completions` route — only auth + balance are replaced by the
+        // payer-bound account + minted MPP credit inside the MPP handler. The
+        // completion still runs gated by INFERENCE_GATEWAY_ENABLED.
+        completionDeps: {
+          enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+          meteringHook: withFreeAllowance(
+            withReferralAccrual(
+              makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+              { db: openAgentsDatabase(env) },
+            ),
+            { db: openAgentsDatabase(env), resolveOwnerIdentity },
+          ),
+          lanePlan: selectAdapterPlan,
+          laneArming: resolveSupplyLaneArming(env),
+          checkPremiumAccess: makePremiumAccessGate({
+            db: openAgentsDatabase(env),
+            resolveOwnerIdentity,
+          }),
+          acceptanceDispatch: {
+            enabled: isAcceptanceDispatchEnabled(
+              env.KHALA_ACCEPTANCE_DISPATCH_ENABLED,
+            ),
+            queue: undefined,
+          },
+          registry: inferenceProviderRegistry,
+        },
       })
     },
   },
