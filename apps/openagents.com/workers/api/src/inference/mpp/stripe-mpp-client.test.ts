@@ -17,9 +17,12 @@ describe('stripe mpp client — form encoding', () => {
       amount: 1,
       currency: 'usd',
       payment_method_options: {
-        crypto: { deposit_options: { networks: ['base', 'solana'] }, mode: 'deposit' },
+        crypto: {
+          deposit_options: { networks: ['base', 'solana'] },
+          mode: 'deposit',
+        },
       },
-      payment_method_types: ['crypto'],
+      payment_method_data: { type: 'crypto' },
     })
     expect(encoded).toContain('amount=1')
     expect(encoded).toContain('currency=usd')
@@ -32,15 +35,19 @@ describe('stripe mpp client — form encoding', () => {
       ) + '=base',
     )
     expect(encoded).toContain(
-      encodeURIComponent('payment_method_types[0]') + '=crypto',
+      encodeURIComponent('payment_method_data[type]') + '=crypto',
     )
+    expect(encoded).not.toContain('payment_method_types')
   })
 })
 
 describe('stripe mpp client — create crypto deposit PaymentIntent', () => {
   test('pins the 2026-03-04.preview API version and returns deposit addresses', async () => {
     const seen: Array<{ url: string; init: RequestInit }> = []
-    const fakeFetch = async (url: string, init: RequestInit): Promise<Response> => {
+    const fakeFetch = async (
+      url: string,
+      init: RequestInit,
+    ): Promise<Response> => {
       seen.push({ init, url })
       return new Response(
         JSON.stringify({
@@ -78,7 +85,10 @@ describe('stripe mpp client — create crypto deposit PaymentIntent', () => {
     expect(headers.get('idempotency-key')).toBe('mpp:quote:abc')
     // Body requests crypto deposit mode on the requested networks.
     const body = String(seen[0]?.init.body)
-    expect(body).toContain(encodeURIComponent('payment_method_types[0]') + '=crypto')
+    expect(body).toContain(
+      encodeURIComponent('payment_method_data[type]') + '=crypto',
+    )
+    expect(body).not.toContain('payment_method_types')
   })
 
   test('fails on a Stripe error response', async () => {
@@ -113,7 +123,10 @@ describe('stripe mpp client — retrieve / verify settlement', () => {
         { status: 200 },
       )
     const verified = await run(
-      retrievePaymentIntent({ fetch: fakeFetch, secretKey: 'sk_test_x' }, 'pi_1'),
+      retrievePaymentIntent(
+        { fetch: fakeFetch, secretKey: 'sk_test_x' },
+        'pi_1',
+      ),
     )
     expect(verified.settled).toBe(true)
     expect(verified.amountCents).toBe(5)
@@ -123,11 +136,18 @@ describe('stripe mpp client — retrieve / verify settlement', () => {
   test('does NOT mark an unsettled PaymentIntent settled', async () => {
     const fakeFetch = async (): Promise<Response> =>
       new Response(
-        JSON.stringify({ amount: 5, id: 'pi_2', status: 'requires_payment_method' }),
+        JSON.stringify({
+          amount: 5,
+          id: 'pi_2',
+          status: 'requires_payment_method',
+        }),
         { status: 200 },
       )
     const verified = await run(
-      retrievePaymentIntent({ fetch: fakeFetch, secretKey: 'sk_test_x' }, 'pi_2'),
+      retrievePaymentIntent(
+        { fetch: fakeFetch, secretKey: 'sk_test_x' },
+        'pi_2',
+      ),
     )
     expect(verified.settled).toBe(false)
     expect(verified.status).toBe('requires_payment_method')

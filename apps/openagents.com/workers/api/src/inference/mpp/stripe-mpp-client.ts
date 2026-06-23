@@ -23,7 +23,6 @@
 // that fronts this Worker for challenge signing only; the Worker still owns auth,
 // the Khala completion, metering, and the receipt. This is documented in the
 // PR + the integration plan as a known go-live consideration.
-
 import { Effect } from 'effect'
 
 // The API version the machine-payments / crypto-deposit feature requires
@@ -53,9 +52,7 @@ export class StripeMppError extends Error {
 // Form-encode a flat/nested params object the way the Stripe REST API expects
 // (e.g. `payment_method_options[crypto][mode]=deposit`). Supports nested
 // objects and arrays (`deposit_options[networks][0]=base`).
-export const encodeStripeForm = (
-  params: Record<string, unknown>,
-): string => {
+export const encodeStripeForm = (params: Record<string, unknown>): string => {
   const out: Array<[string, string]> = []
   const walk = (prefix: string, value: unknown): void => {
     if (value === undefined || value === null) {
@@ -85,10 +82,7 @@ export const encodeStripeForm = (
 
 // The injectable fetch seam so tests run without network. Defaults to global
 // fetch. A test passes a fake that returns canned Stripe JSON.
-export type StripeFetch = (
-  url: string,
-  init: RequestInit,
-) => Promise<Response>
+export type StripeFetch = (url: string, init: RequestInit) => Promise<Response>
 
 export type StripeMppClientDeps = Readonly<{
   // The Stripe SECRET key (live or test). NEVER logged.
@@ -184,7 +178,6 @@ export const createCryptoDepositPaymentIntent = (
           mode: 'deposit',
         },
       },
-      payment_method_types: ['crypto'],
     })
 
     const response = yield* Effect.tryPromise({
