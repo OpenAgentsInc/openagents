@@ -4485,6 +4485,32 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/v1/models': {
+    get: operation({
+      operationId: 'listInferenceModels',
+      summary: 'List inference gateway models',
+      description:
+        'OpenAI-compatible model catalog for the Khala inference gateway. Public, pre-purchase discovery (published per-1M-token price + policy only; no prompts, balances, or credentials). The served models include openagents/khala-mini (general chat), openagents/khala-code (coding with a verified-outcome receipt), and openagents/autopilot-concierge (the productized Autopilot onboarding concierge: a Khala-backed agent driven over POST /api/v1/chat/completions with a server-owned vertical enum, the closed oa.component typed-card channel, and a structured Output Spec on the openagents disclosure block). Canonical under the /api base; the legacy bare /v1/models path remains a non-breaking alias.',
+      tags: ['Inference'],
+      security: publicRead,
+      responses: {
+        '200': {
+          description:
+            'OpenAI-compatible { object: "list", data: [...] } model catalog. Each entry carries id, owned_by, and oa_* price/policy fields.',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'OpenAI /v1/models list response; data entries include openagents/autopilot-concierge.',
+              },
+            },
+          },
+        },
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/v1/inference/batches': {
     post: operation({
       operationId: 'createInferenceBatchJob',

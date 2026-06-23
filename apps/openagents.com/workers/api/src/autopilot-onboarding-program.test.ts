@@ -206,6 +206,38 @@ describe('onboarding turn driver', () => {
     expect(persisted?.transcript).toHaveLength(2)
   })
 
+  test('accumulates the structured Output Spec from fenced replies across turns', async () => {
+    const store = makeD1OnboardingSessionStore(makeD1())
+    const first = recordingInferenceClient(
+      'Got it.\n```oa-output-spec\n{"business":"Acme bakery"}\n```',
+    )
+    const r1 = await run(
+      runOnboardingTurn(
+        { sessionId: 'sess-spec', userText: 'We run a bakery.', vertical: 'general' },
+        { infer: first.client, nowIso: () => '2026-06-23T00:00:00.000Z', store },
+      ),
+    )
+    expect(r1.outputSpec.business).toBe('Acme bakery')
+
+    const second = recordingInferenceClient(
+      'Thanks.\n```oa-output-spec\n{"goal":"more walk-ins","quickWin":"fix the site"}\n```',
+    )
+    const r2 = await run(
+      runOnboardingTurn(
+        { sessionId: 'sess-spec', userText: 'More foot traffic.', vertical: 'general' },
+        { infer: second.client, nowIso: () => '2026-06-23T00:01:00.000Z', store },
+      ),
+    )
+    // Prior field is preserved; new fields are added (the spec only grows).
+    expect(r2.outputSpec.business).toBe('Acme bakery')
+    expect(r2.outputSpec.goal).toBe('more walk-ins')
+    expect(r2.outputSpec.quickWin).toBe('fix the site')
+
+    const persisted = await run(store.read('sess-spec'))
+    expect(persisted?.outputSpec.business).toBe('Acme bakery')
+    expect(persisted?.outputSpec.goal).toBe('more walk-ins')
+  })
+
   test('a multi-turn session advances and replays prior transcript', async () => {
     const store = makeD1OnboardingSessionStore(makeD1())
     const first = recordingInferenceClient('Got it. Who are your customers?')
