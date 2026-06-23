@@ -952,6 +952,11 @@ This is the invariant ledger for `openagents`.
   data, or local paths. Policy caveats and allow/deny refs may attach to runs,
   leases, work orders, and receipts, but do not override the credential,
   security-review, telemetry, retention, or ToS gates.
+- The security-contract drift guard (`scripts/check-contract-drift.mjs`) scans
+  repository source for duplicate provider-account and Blueprint contract
+  authorities. Ignored local worktree/cache mirrors such as `.claude/`,
+  `.worktrees/`, and `.pylon-local/` are outside the guard's authority model;
+  tracked source copies and former-copy shims remain forbidden.
 - Regression coverage for the API-key connect boundary lives in
   `workers/api/src/provider-account-api-key.test.ts` and
   `workers/api/src/provider-account-lease-policy.test.ts`.

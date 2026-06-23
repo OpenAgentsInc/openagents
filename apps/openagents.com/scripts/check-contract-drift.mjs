@@ -19,7 +19,8 @@
 //       re-exports (no local definitions).
 //
 // Run from apps/openagents.com (wired into `check:architecture`). It walks the
-// whole monorepo (repo root is two levels up), skipping build/dep dirs.
+// whole monorepo (repo root is two levels up), skipping build/dep dirs and
+// ignored local worktree mirrors that are not repository source.
 // ---------------------------------------------------------------------------
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -36,7 +37,7 @@ const CANONICAL_FILES = new Set(
   ].map(p => join(repoRoot, p)),
 )
 
-const SKIP_DIR = /(^|\/)(node_modules|\.git|dist|build|target|\.wrangler|\.turbo|coverage|\.next)(\/|$)/
+const SKIP_DIR = /(^|\/)(node_modules|\.git|\.claude|\.pylon-local|\.worktrees|dist|build|target|\.wrangler|\.turbo|coverage|\.next)(\/|$)/
 
 const listFiles = dir =>
   readdirSync(dir, { withFileTypes: true }).flatMap(entry => {

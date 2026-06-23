@@ -79,6 +79,31 @@ describe('security-contract drift guard', () => {
     expect(result.output).toContain('isBlueprintProjectionPrivateDataSafe')
   })
 
+  test('ignores duplicate-looking definitions in ignored local worktree mirrors', () => {
+    for (const root of [
+      '.claude/worktrees/__drift_guard_ignored__',
+      '.worktrees/__drift_guard_ignored__',
+      '.pylon-local/cache/multi-session-worktrees/__drift_guard_ignored__',
+    ]) {
+      const dir = join(
+        repoRoot,
+        root,
+        'apps/openagents.com/packages/provider-account-schema/src',
+      )
+      mkdirSync(dir, { recursive: true })
+      createdPaths.push(join(repoRoot, root))
+      writeFileSync(
+        join(dir, 'index.ts'),
+        'export const ProviderSecretRef = "ignored-local-mirror" as never\n',
+        'utf8',
+      )
+    }
+
+    const result = runGuard()
+    expect(result.code).toBe(0)
+    expect(result.output).toContain('one authority, no drift')
+  })
+
   test('FAILS on residual drift when a former-copy shim regains a local definition', () => {
     // Temporarily turn a former-copy shim back into an authority. We use the
     // mtime-safe approach of appending a definition then restoring.
