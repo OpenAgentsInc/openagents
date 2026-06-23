@@ -1,6 +1,14 @@
+import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { shouldRedirectUnknownDocumentToHome } from './worker-routes'
+import type { ExactRoute } from './http/router'
+import type { Env } from './index'
+import { WorkerRequestLayer } from './runtime'
+import {
+  gatewayLegacyPathname,
+  makeWorkerRouteRequest,
+  shouldRedirectUnknownDocumentToHome,
+} from './worker-routes'
 
 const requestFor = (pathname: string, init: RequestInit = {}) =>
   new Request(`https://openagents.com${pathname}`, {
@@ -203,5 +211,222 @@ describe('Worker document route fallback', () => {
         '/favicon.ico',
       ),
     ).toBe(false)
+  })
+})
+
+describe('Canonical /api gateway base alias (#6148)', () => {
+  test('maps canonical /api/v1 + /api/mpp paths back to their legacy gateway path', () => {
+    expect(gatewayLegacyPathname('/api/v1/models')).toBe('/v1/models')
+    expect(gatewayLegacyPathname('/api/v1/chat/completions')).toBe(
+      '/v1/chat/completions',
+    )
+    expect(gatewayLegacyPathname('/api/v1/quote')).toBe('/v1/quote')
+    expect(gatewayLegacyPathname('/api/v1/inference/batches')).toBe(
+      '/v1/inference/batches',
+    )
+    expect(gatewayLegacyPathname('/api/mpp/v1/chat/completions')).toBe(
+      '/mpp/v1/chat/completions',
+    )
+  })
+
+  test('leaves legacy gateway paths and ordinary /api product routes untouched', () => {
+    expect(gatewayLegacyPathname('/v1/models')).toBeUndefined()
+    expect(gatewayLegacyPathname('/mpp/v1/chat/completions')).toBeUndefined()
+    expect(gatewayLegacyPathname('/api/billing/checkout')).toBeUndefined()
+    expect(
+      gatewayLegacyPathname('/api/public/product-promises'),
+    ).toBeUndefined()
+    // Must not match a non-gateway `/api/v1x...` lookalike or a bare `/api/v`.
+    expect(gatewayLegacyPathname('/api/v1x/models')).toBeUndefined()
+    expect(gatewayLegacyPathname('/api/mppx/v1')).toBeUndefined()
+  })
+})
+
+describe('Worker route dual-serve resolution (#6148)', () => {
+  const env = {
+    OPENAGENTS_DB: {} as unknown,
+    SYNC_ROOM: {} as unknown,
+  } as unknown as Env
+
+  const ctx = {
+    passThroughOnException: () => undefined,
+    props: undefined,
+    waitUntil: () => undefined,
+  } as unknown as ExecutionContext
+
+  // Records the exact-route path that matched, and the request.url an optional
+  // path-param dispatcher observed, so the test can prove the canonical and
+  // legacy paths reach the SAME handler with the SAME normalized request.
+  const makeProbe = () => {
+    const observed = {
+      exactPath: undefined as string | undefined,
+      dispatcherPathname: undefined as string | undefined,
+    }
+
+    const okResponse = new Response('ok', { status: 200 })
+
+    const exactRoute = (path: string): ExactRoute<Env> => ({
+      path,
+      handler: () =>
+        Effect.sync(() => {
+          observed.exactPath = path
+          return okResponse
+        }),
+    })
+
+    const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
+      exactRoute('/v1/models'),
+      exactRoute('/v1/chat/completions'),
+      exactRoute('/mpp/v1/chat/completions'),
+    ]
+
+    const noRoute = () => undefined
+
+    // The model-retrieve dispatcher reads request.url directly; it stands in for
+    // every path-param dispatcher that re-parses the request rather than the
+    // exact-route pathname. It only matches `/v1/models/:model`.
+    const routeModelRetrieveRequest = (request: Request) => {
+      const pathname = new URL(request.url).pathname
+      if (/^\/v1\/models\/[^/]+$/.test(pathname)) {
+        return Effect.sync(() => {
+          observed.dispatcherPathname = pathname
+          return okResponse
+        })
+      }
+      return undefined
+    }
+
+    const dependencies = {
+      cleanProductRouteRedirectLocation: () => undefined,
+      exactRoutes,
+      handleAssetRequest: () => Effect.succeed(okResponse),
+      handleAppShellPage: () => Effect.succeed(okResponse),
+      handleThreadPage: () => Effect.succeed(okResponse),
+      handleForumThreadPage: () => Effect.succeed(okResponse),
+      optionalUuid: (value: string | undefined) => value,
+      routeAutopilotWorkRequest: noRoute,
+      routeCloudCodingSessionRequest: noRoute,
+      routeAgentGoalRequest: noRoute,
+      routeAutopilotOnboardingTurnRequest: noRoute,
+      routeAgentOwnerClaimRequest: noRoute,
+      routeCheckoutPageRequest: noRoute,
+      routeTreasuryPageRequest: noRoute,
+      routeAgentProposalRequest: noRoute,
+      routeAgentSearchRequest: noRoute,
+      routeAgentScopedGrantRequest: noRoute,
+      routeAgentSiteRequest: noRoute,
+      routeForumRequest: noRoute,
+      routeImageGenerationRequest: noRoute,
+      routeModelRetrieveRequest,
+      routeDurableInferenceReadRequest: noRoute,
+      routeMulletRequest: noRoute,
+      routeOmniRequest: noRoute,
+      routeOnboardingRequest: noRoute,
+      routeNexusPylonVisibilityRequest: noRoute,
+      routePublicCardCreditSpendReceiptRequest: noRoute,
+      routePublicCloudPrimitiveReceiptRequest: noRoute,
+      routePublicInferenceReceiptRequest: noRoute,
+      routePublicNip90MarketReceiptRequest: noRoute,
+      routePublicPartnerPayoutReceiptRequest: noRoute,
+      routePublicSiteReferralPayoutReceiptRequest: noRoute,
+      routePublicStripeCheckoutReceiptRequest: noRoute,
+      routeEcommerceCampaignReceiptRequest: noRoute,
+      routeEcommerceCampaignReceiptOperatorRequest: noRoute,
+      routeEcommerceCampaignSelfServeRequest: noRoute,
+      routeMarketingAgencyReceiptRequest: noRoute,
+      routeMarketingAgencySelfServeRequest: noRoute,
+      routePylonApiRequest: noRoute,
+      routeSiteCommerceRequest: noRoute,
+      routeSiteReferralInspectionRequest: noRoute,
+      routeSiteReferralPayoutLedgerRequest: noRoute,
+      routeInferenceReferralRequest: noRoute,
+      routeSiteReferralRequest: noRoute,
+      routeOperatorAdjutantRequest: noRoute,
+      routeOperatorArtanisConsoleRequest: noRoute,
+      routeOperatorEmailInspectionRequest: noRoute,
+      routeOperatorOrderTriageRequest: noRoute,
+      routeOperatorPylonMarketplaceRequest: noRoute,
+      routeOperatorProviderAccountRequest: noRoute,
+      routeOperatorSitesRequest: noRoute,
+      routeProviderAccountRequest: noRoute,
+      routeShareRequest: noRoute,
+      routeSyncRequest: () => Effect.succeed(okResponse),
+      routeHygieneLaneSettlementRequest: noRoute,
+      routeFirmupLaneSettlementRequest: noRoute,
+      routeTassadarTraceContributionRequest: noRoute,
+      routeTeamChatRequest: noRoute,
+      routeThreadFileRequest: noRoute,
+      routeTrainingRunWindowRequest: noRoute,
+      routeTrainingVerificationRequest: noRoute,
+    }
+
+    return { dependencies, observed }
+  }
+
+  const runRoute = async (request: Request) => {
+    const { dependencies, observed } = makeProbe()
+    const response = await Effect.runPromise(
+      makeWorkerRouteRequest(dependencies)().pipe(
+        Effect.provide(WorkerRequestLayer({ ctx, env, request })),
+      ),
+    )
+    return { response, observed }
+  }
+
+  test('canonical /api/v1/models resolves to the same exact handler as /v1/models', async () => {
+    const legacy = await runRoute(
+      new Request('https://openagents.com/v1/models'),
+    )
+    const canonical = await runRoute(
+      new Request('https://openagents.com/api/v1/models'),
+    )
+
+    expect(legacy.response.status).toBe(200)
+    expect(canonical.response.status).toBe(200)
+    expect(legacy.observed.exactPath).toBe('/v1/models')
+    expect(canonical.observed.exactPath).toBe('/v1/models')
+  })
+
+  test('canonical /api/v1/chat/completions reaches the gateway handler (POST, not redirected)', async () => {
+    const canonical = await runRoute(
+      new Request('https://openagents.com/api/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'x', messages: [] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    // Dual-served: a 200 from the handler, never a 3xx redirect that an
+    // OpenAI client would not re-POST.
+    expect(canonical.response.status).toBe(200)
+    expect(canonical.observed.exactPath).toBe('/v1/chat/completions')
+  })
+
+  test('canonical /api/mpp/v1/chat/completions reaches the MPP handler', async () => {
+    const canonical = await runRoute(
+      new Request('https://openagents.com/api/mpp/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: 'x', messages: [] }),
+        headers: { 'content-type': 'application/json' },
+      }),
+    )
+
+    expect(canonical.response.status).toBe(200)
+    expect(canonical.observed.exactPath).toBe('/mpp/v1/chat/completions')
+  })
+
+  test('canonical /api/v1/models/:model reaches the path-param dispatcher with the normalized url', async () => {
+    const legacy = await runRoute(
+      new Request('https://openagents.com/v1/models/gpt-x'),
+    )
+    const canonical = await runRoute(
+      new Request('https://openagents.com/api/v1/models/gpt-x'),
+    )
+
+    expect(legacy.observed.dispatcherPathname).toBe('/v1/models/gpt-x')
+    // The dispatcher re-reads request.url, so dual-serve requires the request
+    // object itself to be rewritten to the legacy path — not just the pathname
+    // passed to the exact-route matcher.
+    expect(canonical.observed.dispatcherPathname).toBe('/v1/models/gpt-x')
   })
 })

@@ -20,8 +20,9 @@ import { ClickedExitKhala } from '../message'
 //   - Only the two public Khala model ids: `openagents/khala-mini`,
 //     `openagents/khala-code`; availability follows the gateway readiness and
 //     lane-arming policy.
-//   - Base URL `https://openagents.com/v1`, OpenAI-compatible `/chat/completions`,
-//     streaming via SSE (`"stream": true`).
+//   - Base URL `https://openagents.com/api/v1` (canonical; legacy
+//     `https://openagents.com/v1` still works as an alias), OpenAI-compatible
+//     `/chat/completions`, streaming via SSE (`"stream": true`).
 //   - API keys come from the agent registration flow (`POST /api/agents/register`
 //     -> `oa_agent_...` token, used as `Authorization: Bearer`).
 //   - Verified work / receipts / credits + payment rails are framed honestly,
@@ -154,7 +155,7 @@ const footDividerClass = 'text-[#3a7bff]/40'
 
 // --- code samples (kept as plain strings so the page is purely declarative) ---
 
-const curlExample = `curl https://openagents.com/v1/chat/completions \\
+const curlExample = `curl https://openagents.com/api/v1/chat/completions \\
   -H "Authorization: Bearer $OA_AGENT_TOKEN" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -167,7 +168,7 @@ const curlExample = `curl https://openagents.com/v1/chat/completions \\
 const sdkExample = `from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://openagents.com/v1",
+    base_url="https://openagents.com/api/v1",
     api_key="oa_agent_...",  # your OpenAgents agent token
 )
 
@@ -365,7 +366,7 @@ export const view = (): Html => {
                   'Point any OpenAI-compatible client at the base URL ',
                   h.code(
                     [Ui.className<Message>(inlineCodeClass)],
-                    ['https://openagents.com/v1'],
+                    ['https://openagents.com/api/v1'],
                   ),
                   ' and call ',
                   h.code(
@@ -495,7 +496,7 @@ export const view = (): Html => {
                           ' on every request to ',
                           h.code(
                             [Ui.className<Message>(inlineCodeClass)],
-                            ['https://openagents.com/v1'],
+                            ['https://openagents.com/api/v1'],
                           ),
                           '.',
                         ],

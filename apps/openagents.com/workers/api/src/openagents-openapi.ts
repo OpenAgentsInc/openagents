@@ -4485,12 +4485,12 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/v1/inference/batches': {
+  '/api/v1/inference/batches': {
     post: operation({
       operationId: 'createInferenceBatchJob',
       summary: 'Create an inference batch job',
       description:
-        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, and persists the pending job. This is only the paid receipt surface for inference.batch_processing_jobs.v1: background execution, R2 result storage, completion closeout, and green product-promise status remain separate gates.',
+        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, and persists the pending job. This is only the paid receipt surface for inference.batch_processing_jobs.v1: background execution, R2 result storage, completion closeout, and green product-promise status remain separate gates. The OpenAI-compatible inference gateway and MPP are canonical under the /api base (POST /api/v1/chat/completions, GET /api/v1/models, POST /api/mpp/v1/chat/completions); the legacy bare /v1 and /mpp/v1 paths remain non-breaking aliases that resolve to the same handlers.',
       tags: ['Inference', 'Billing'],
       security: agentBearer,
       requestBody: jsonContent(

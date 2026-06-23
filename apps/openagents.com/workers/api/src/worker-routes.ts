@@ -100,6 +100,26 @@ type WorkerRouteDependencies = Readonly<{
   routeTrainingVerificationRequest: OptionalEffectRoute
 }>
 
+// API base canonicalization (#6148): `/api` is the canonical base for ALL API
+// routes, including the OpenAI-compatible inference gateway (`/v1/*`) and MPP
+// (`/mpp/v1/*`). To keep the historical `/v1` + `/mpp/v1` paths working as
+// non-breaking aliases — OpenAI/MPP clients integrate at the bare `/v1` base by
+// convention and POST endpoints must not be redirected — we DUAL-SERVE by
+// normalizing the `/api`-prefixed canonical path back to its legacy path at the
+// single route entry. The same handler then answers both `/api/v1/...` and
+// `/v1/...` (and `/api/mpp/v1/...` and `/mpp/v1/...`) identically: same auth,
+// metering, streaming, and component channel. Zero duplicate handlers.
+const canonicalApiGatewayPrefixes: ReadonlyArray<string> = ['/api/v1', '/api/mpp']
+
+export const gatewayLegacyPathname = (
+  pathname: string,
+): string | undefined =>
+  canonicalApiGatewayPrefixes.some(
+    prefix => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  )
+    ? pathname.slice('/api'.length)
+    : undefined
+
 const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/$/,
   /^\/adjutant$/,
@@ -193,7 +213,33 @@ export const makeWorkerRouteRequest =
   (dependencies: WorkerRouteDependencies) =>
   (): Effect.Effect<Response, never, OpenAgentsWorkerRequest> =>
     Effect.gen(function* () {
-      const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
+      const {
+        ctx,
+        env,
+        request: rawRequest,
+        url: rawUrl,
+      } = yield* OpenAgentsWorkerRequest
+
+      // Canonical `/api` base alias for the gateway + MPP (#6148). When the
+      // request arrives at the canonical `/api/v1/...` or `/api/mpp/...` path,
+      // rewrite BOTH the request URL and the parsed url to the legacy path so the
+      // existing exact-route table and the path-param dispatchers (which re-read
+      // `request.url`) resolve to the SAME handler. Method, headers, and body are
+      // preserved by constructing the rewritten request from the original.
+      const legacyPathname = gatewayLegacyPathname(rawUrl.pathname)
+      const url =
+        legacyPathname === undefined
+          ? rawUrl
+          : (() => {
+              const rewritten = new URL(rawUrl.toString())
+              rewritten.pathname = legacyPathname
+              return rewritten
+            })()
+      const request =
+        legacyPathname === undefined
+          ? rawRequest
+          : new Request(url.toString(), rawRequest)
+
       const cleanProductRouteLocation =
         dependencies.cleanProductRouteRedirectLocation(url)
 

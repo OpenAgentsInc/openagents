@@ -30,8 +30,10 @@ the payment, and then returning the completion.
 
 ## How it works (the whole flow in plain terms)
 
-1. An agent calls our endpoint **`POST /mpp/v1/chat/completions`** with no
-   payment.
+1. An agent calls our endpoint **`POST /api/mpp/v1/chat/completions`** with no
+   payment. (`/api` is the canonical base for all OpenAgents API routes, #6148;
+   the legacy `POST /mpp/v1/chat/completions` path keeps working as a
+   non-breaking alias to the same handler.)
 2. We reply **`402 Payment Required`** with a *challenge*: here's the price and
    here's how to pay (one option per supported rail).
 3. The agent's wallet pays and **retries** the request, attaching proof of

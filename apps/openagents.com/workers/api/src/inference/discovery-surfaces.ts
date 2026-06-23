@@ -48,10 +48,15 @@ const ORIGIN = 'https://openagents.com'
 // live gateway. Keep these in sync with the model ids in `pricing.ts`.
 // ---------------------------------------------------------------------------
 
-const KHALA_ENDPOINT = `${ORIGIN}/v1/chat/completions`
-const KHALA_MODELS_ENDPOINT = `${ORIGIN}/v1/models`
+// `/api` is the canonical base for every OpenAgents API route, including the
+// OpenAI-compatible inference gateway and MPP (#6148). The legacy bare `/v1` and
+// `/mpp/v1` paths keep working as non-breaking aliases (OpenAI/MPP clients
+// integrate at the `/v1` base by convention), so existing integrations do not
+// break — but new copy points at the canonical `/api` base.
+const KHALA_ENDPOINT = `${ORIGIN}/api/v1/chat/completions`
+const KHALA_MODELS_ENDPOINT = `${ORIGIN}/api/v1/models`
 const PRICING_DOC = `${ORIGIN}/docs/product-promises`
-const MPP_ENDPOINT = `${ORIGIN}/mpp/v1/chat/completions`
+const MPP_ENDPOINT = `${ORIGIN}/api/mpp/v1/chat/completions`
 
 // `/llms.txt` — the plain-language directory entry. This is what a crawler /
 // agent reads first to decide whether Khala fits the job.
@@ -198,7 +203,7 @@ const skillMd = (): string => `# OpenAgents Khala — skill setup
 
 Add Khala as an OpenAI-compatible inference tool in your agent.
 
-- Base URL: ${ORIGIN}/v1
+- Base URL: ${ORIGIN}/api/v1 (legacy ${ORIGIN}/v1 still works as an alias)
 - Chat Completions: ${KHALA_ENDPOINT}
 - Models endpoint: ${KHALA_MODELS_ENDPOINT}
 - Models: \`openagents/khala-mini\`, \`openagents/khala-code\`
@@ -208,7 +213,7 @@ Add Khala as an OpenAI-compatible inference tool in your agent.
 
 \`\`\`json
 {
-  "baseURL": "${ORIGIN}/v1",
+  "baseURL": "${ORIGIN}/api/v1",
   "apiKey": "<your-openagents-agent-key>",
   "model": "openagents/khala-mini"
 }

@@ -6,6 +6,15 @@
 > specifies what Khala *is*, its API, its coordinator, its verification and
 > economics, and a phased roadmap keyed to the existing gateway seams. It does
 > not claim anything is shipped beyond what the gateway README documents.
+>
+> **Canonical base (#6148):** `/api` is the canonical base for every OpenAgents
+> API route, so the OpenAI-compatible base URL is
+> `https://openagents.com/api/v1` (`POST /api/v1/chat/completions`,
+> `GET /api/v1/models`, `POST /api/mpp/v1/chat/completions`). The legacy bare
+> `/v1` and `/mpp/v1` paths keep working as non-breaking aliases that resolve to
+> the same handlers, so existing OpenAI/MPP client integrations do not break.
+> Older `/v1/...` references below predate the canonical-base move; read them as
+> the `/api/v1/...` canonical path.
 
 Khala is a single OpenAI-compatible inference endpoint that **behaves like one
 model but is an agent network underneath** — it routes and orchestrates a pool
@@ -592,7 +601,8 @@ Requirements:
    cost_msat, price_msat, route, latency, status, verification_class, receipt_id.
 8. Add the non-breaking `openagents` response block (receipt, route, workers,
    verification, cost_msat, price_msat, settled).
-9. Tests with the OpenAI SDK pointed at baseURL=https://openagents.com/v1.
+9. Tests with the OpenAI SDK pointed at baseURL=https://openagents.com/api/v1
+   (canonical; the legacy https://openagents.com/v1 base still resolves).
 10. Do NOT implement learned routing yet; keep the coordinator interface swappable.
 ```
 
