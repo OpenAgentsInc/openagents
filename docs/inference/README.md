@@ -113,6 +113,12 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     but not production-proven on our infrastructure today, and the next probes
     needed before a self-hosted frontier lane is honest.
 
+14. **[`2026-06-23-gpt-oss-20b-120b-gpu-fit-and-serving-path.md`](./2026-06-23-gpt-oss-20b-120b-gpu-fit-and-serving-path.md)**
+    — repeat of the model-fit analysis for OpenAI's `gpt-oss-20b` and
+    `gpt-oss-120b` model card: 20B is an immediate L4/vLLM lane, 120B is a
+    high-memory H100/H200/B200/G4 allocation and harmony/MXFP4 serving path, and
+    both need Khala eval, telemetry, and safety gates before production claims.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
