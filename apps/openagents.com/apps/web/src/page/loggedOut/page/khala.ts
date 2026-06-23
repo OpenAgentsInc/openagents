@@ -3,12 +3,16 @@ import { html } from 'foldkit/html'
 
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
+import { ClickedExitKhala } from '../message'
 
 // Public `/khala` surface: a readable, scrollable explainer for Khala, the
-// OpenAgents OpenAI-compatible inference endpoint. This is a normal public
-// content page (not the chrome-free landing/moksha canvas): a dark, legible
-// theme that matches the site palette, with sections for what Khala is, the
-// models, how to call it, how to get an API key, and credits/pricing.
+// OpenAgents OpenAI-compatible inference endpoint. This is a public content
+// page rendered in the OpenAgents house style — StarCraft-Protoss energy: a
+// dark void lit by glowing blue psionic energy, precise high-craft, technical
+// mono typography (Berkeley Mono). The page sits transparently over the
+// persistent 3D pylon scene (dimmed by the shared 75%-black scrim in
+// persistentScene), with the long-form copy on a near-black, blue-tinted panel
+// that lets a breath of the scene bleed through. See root DESIGN.md.
 //
 // Truthfulness rules (grounded in docs/inference/khala.md, AGENTS.md, and the
 // live gateway in workers/api/src/inference):
@@ -21,70 +25,130 @@ import type { Message } from '../message'
 //   - Verified work / receipts / credits + card/Bitcoin are framed honestly,
 //     without promising capabilities we do not ship.
 
-// --- design tokens (match the site dark public palette) -----------------------
+// --- design tokens (Protoss house style — see root DESIGN.md) -----------------
 
 // Transparent background: the page sits over the persistent 3D pylon scene
-// (dimmed by the shared 50%-black scrim in persistentScene), so the canvas stays
-// visible on /khala just like /landing instead of an opaque page hiding it.
+// (dimmed by the shared 75%-black scrim in persistentScene), so the canvas
+// stays visible on /khala just like /landing instead of an opaque page bg.
 const pageClass =
-  'min-h-screen min-h-dvh w-full overflow-y-auto text-[#f1efe8] antialiased'
+  'relative min-h-screen min-h-dvh w-full overflow-y-auto font-mono text-[#f1efe8] antialiased'
 
-// The long-form copy sits on its own ~90% opaque panel (a teeny bit of the 3D
-// scene still bleeds through) so it stays readable while the scene lives around
-// it. Centered column with breathing room on the sides where the scene shows.
+// Back-to-home control: glowing-blue Protoss button on dark glass, fixed
+// top-left so it is always reachable while scrolling. Emits ClickedExitKhala
+// (wired in message.ts + update.ts -> NavigateToLanding, continuous camera
+// flight back). No bounce; ease-out glow on hover.
+const backButtonWrapClass = 'fixed left-4 top-4 z-20 sm:left-6 sm:top-6'
+
+const backButtonClass =
+  'khala-focus group pointer-events-auto inline-flex items-center gap-2 rounded-full ' +
+  'border border-[#3a7bff]/45 bg-[#070b12]/80 px-4 py-2 font-mono text-xs font-semibold ' +
+  'uppercase tracking-[0.2em] text-[#bcd4ff] backdrop-blur-md transition-all duration-300 ' +
+  'ease-out hover:border-[#4fd0ff]/80 hover:text-white hover:khala-glow ' +
+  'motion-reduce:transition-none'
+
+const backArrowClass =
+  'text-[#4fd0ff] transition-transform duration-300 ease-out group-hover:-translate-x-0.5 ' +
+  'motion-reduce:transition-none'
+
+// The long-form copy sits on its own near-black, blue-tinted panel (~92% so a
+// breath of the 3D scene still bleeds through) with a faint energy bloom along
+// its edges. Centered column with breathing room where the scene shows.
 const containerClass =
-  'mx-auto my-10 w-[min(100%,880px)] rounded-2xl bg-[#0c0f13]/90 px-6 py-14 ring-1 ring-white/10 sm:my-14 sm:px-10 sm:py-16'
+  'khala-panel relative mx-auto my-12 w-[min(100%,880px)] overflow-hidden rounded-2xl ' +
+  'bg-[#0a0e14]/92 px-6 py-16 ring-1 ring-[#3a7bff]/15 sm:my-16 sm:px-12 sm:py-20'
 
+// Hero ------------------------------------------------------------------------
 const eyebrowClass =
-  'text-xs font-semibold uppercase tracking-[0.22em] text-[#8fb6ff]'
+  'inline-flex items-center gap-2 font-mono text-[0.7rem] font-semibold uppercase ' +
+  'tracking-[0.32em] text-[#8fb6ff]'
+
+const eyebrowDotClass =
+  'h-1.5 w-1.5 rounded-full bg-[#4fd0ff] khala-pulse'
 
 const h1Class =
-  'mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl'
+  'mt-6 font-mono text-[clamp(3rem,9vw,5.5rem)] font-bold leading-[0.95] tracking-[-0.04em] ' +
+  'text-white text-balance'
 
-const leadClass = 'mt-5 max-w-2xl text-lg leading-relaxed text-[#c9d2dd]'
+const heroRuleClass = 'khala-rule mt-7 w-40'
 
-const sectionClass = 'mt-14 border-t border-[#1d2530] pt-12 first:mt-0'
+const leadClass =
+  'mt-7 max-w-[68ch] font-mono text-lg leading-relaxed text-[#d2dbe6] text-pretty'
+
+// Sections --------------------------------------------------------------------
+const sectionClass = 'mt-20 first:mt-0'
+
+// Energized divider that opens each section (skipped on the first/hero section).
+const sectionDividerClass = 'khala-rule mb-14 w-full'
+
+const sectionHeadClass = 'flex items-center gap-4'
+
+// Glowing-blue index marker replaces a per-section eyebrow (avoids AI eyebrow
+// grammar; the number carries the section rhythm honestly).
+const sectionIndexClass =
+  'khala-index inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ' +
+  'border border-[#3a7bff]/40 bg-[#0c1320] font-mono text-sm font-semibold text-[#7fc4ff]'
 
 const sectionHeadingClass =
-  'text-2xl font-semibold tracking-tight text-white sm:text-3xl'
+  'font-mono text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl'
 
-const bodyClass = 'mt-4 max-w-2xl text-base leading-relaxed text-[#c9d2dd]'
+const bodyClass =
+  'mt-5 max-w-[68ch] font-mono text-base leading-relaxed text-[#c9d2dd] text-pretty'
 
-const subHeadingClass = 'mt-8 text-lg font-semibold text-white'
+const subHeadingClass =
+  'mt-9 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-[#8fb6ff]'
 
-const cardGridClass = 'mt-6 grid gap-4 sm:grid-cols-2'
+// Model cards -----------------------------------------------------------------
+const cardGridClass = 'mt-7 grid gap-4 sm:grid-cols-2'
 
 const cardClass =
-  'rounded-xl border border-[#1d2530] bg-[#11161d] p-5 leading-relaxed'
+  'group rounded-xl border border-[#1d2733] bg-[#0e141d] p-6 leading-relaxed ' +
+  'transition-all duration-300 ease-out hover:border-[#3a7bff]/55 hover:bg-[#101926] ' +
+  'hover:khala-glow motion-reduce:transition-none'
 
-const cardTitleClass = 'font-mono text-sm font-semibold text-[#8fb6ff]'
+const cardTitleClass = 'font-mono text-sm font-bold tracking-[-0.01em] text-[#7fc4ff]'
 
-const cardBodyClass = 'mt-2 text-sm leading-relaxed text-[#c9d2dd]'
+const cardBodyClass = 'mt-3 font-mono text-sm leading-relaxed text-[#c2ccd8]'
 
+// Code ------------------------------------------------------------------------
 const codeBlockClass =
-  'mt-5 overflow-x-auto rounded-xl border border-[#1d2530] bg-[#0a0d12] p-5 font-mono text-[13px] leading-relaxed text-[#d7e2f0]'
+  'mt-5 overflow-x-auto rounded-xl border border-[#1d2733] bg-[#06090e] p-5 font-mono ' +
+  'text-[13px] leading-relaxed text-[#d7e2f0] ring-1 ring-inset ring-[#3a7bff]/10'
 
 const inlineCodeClass =
-  'rounded bg-[#11161d] px-1.5 py-0.5 font-mono text-[0.9em] text-[#cfe0ff]'
+  'rounded bg-[#101926] px-1.5 py-0.5 font-mono text-[0.9em] text-[#cfe0ff] ' +
+  'ring-1 ring-inset ring-[#3a7bff]/15'
 
-const stepListClass = 'mt-6 grid gap-4'
+// Numbered key steps ----------------------------------------------------------
+const stepListClass = 'mt-7 grid gap-4'
 
-const stepClass = 'rounded-xl border border-[#1d2530] bg-[#11161d] p-5'
+const stepClass =
+  'rounded-xl border border-[#1d2733] bg-[#0e141d] p-6 transition-colors duration-300 ' +
+  'ease-out hover:border-[#3a7bff]/35 motion-reduce:transition-none'
 
 const stepNumClass =
-  'inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#1f3354] font-mono text-xs font-semibold text-[#bcd4ff]'
+  'khala-index inline-flex h-7 w-7 items-center justify-center rounded-full ' +
+  'border border-[#3a7bff]/45 bg-[#0c1320] font-mono text-xs font-bold text-[#7fc4ff]'
 
-const stepTitleClass = 'ml-3 text-base font-semibold text-white'
+const stepTitleClass =
+  'ml-3 font-mono text-base font-semibold tracking-[-0.01em] text-white'
 
-const stepBodyClass = 'mt-2 text-sm leading-relaxed text-[#c9d2dd]'
+const stepBodyClass = 'mt-3 font-mono text-sm leading-relaxed text-[#c2ccd8]'
 
+// Misc ------------------------------------------------------------------------
 const linkClass =
-  'font-medium text-[#8fb6ff] underline decoration-[#345] underline-offset-2 hover:text-white'
+  'font-medium text-[#7fc4ff] underline decoration-[#3a7bff]/50 underline-offset-2 ' +
+  'transition-colors hover:text-[#4fd0ff] hover:decoration-[#4fd0ff]/70 ' +
+  'motion-reduce:transition-none'
 
 const noteClass =
-  'mt-6 rounded-xl border border-[#243043] bg-[#0e141c] p-5 text-sm leading-relaxed text-[#aeb9c6]'
+  'mt-7 rounded-xl border border-[#3a7bff]/20 bg-[#080d15] p-6 font-mono text-sm ' +
+  'leading-relaxed text-[#aeb9c6] ring-1 ring-inset ring-[#3a7bff]/10'
 
-const footnoteClass = 'mt-16 border-t border-[#1d2530] pt-8 text-sm text-[#7e8a98]'
+const footnoteClass =
+  'mt-20 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-[#1d2733] pt-8 ' +
+  'font-mono text-sm text-[#7e8a98]'
+
+const footDividerClass = 'text-[#3a7bff]/40'
 
 // --- code samples (kept as plain strings so the page is purely declarative) ---
 
@@ -140,21 +204,62 @@ export const view = (): Html => {
       ],
     )
 
+  // A section opens with an energized divider, a glowing index marker, and a
+  // mono heading. The index carries the rhythm honestly (it is a sequence).
+  const sectionHead = (index: string, heading: string): Html =>
+    h.div(
+      [],
+      [
+        h.hr([Ui.className<Message>(sectionDividerClass)]),
+        h.div(
+          [Ui.className<Message>(sectionHeadClass)],
+          [
+            h.span([Ui.className<Message>(sectionIndexClass)], [index]),
+            h.h2([Ui.className<Message>(sectionHeadingClass)], [heading]),
+          ],
+        ),
+      ],
+    )
+
+  const backButton = h.div(
+    [Ui.className<Message>(backButtonWrapClass)],
+    [
+      h.button(
+        [
+          h.Type('button'),
+          h.OnClick(ClickedExitKhala()),
+          h.AriaLabel('Back to OpenAgents home'),
+          h.DataAttribute('khala-back', 'home'),
+          Ui.className<Message>(backButtonClass),
+        ],
+        [
+          h.span([Ui.className<Message>(backArrowClass)], ['←']),
+          h.span([], ['OpenAgents']),
+        ],
+      ),
+    ],
+  )
+
   return h.div(
     [
       h.DataAttribute('route', 'khala'),
       Ui.className<Message>(pageClass),
     ],
     [
+      backButton,
       h.main(
         [h.AriaLabel('Khala'), Ui.className<Message>(containerClass)],
         [
           // Hero -------------------------------------------------------------
           h.div(
             [Ui.className<Message>(eyebrowClass)],
-            ['OpenAgents Inference'],
+            [
+              h.span([Ui.className<Message>(eyebrowDotClass)], []),
+              h.span([], ['OpenAgents Inference']),
+            ],
           ),
           h.h1([Ui.className<Message>(h1Class)], ['Khala']),
+          h.hr([Ui.className<Message>(heroRuleClass)]),
           h.p(
             [Ui.className<Message>(leadClass)],
             [
@@ -168,10 +273,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2(
-                [Ui.className<Message>(sectionHeadingClass)],
-                ['What is Khala'],
-              ),
+              sectionHead('01', 'What is Khala'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -196,7 +298,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2([Ui.className<Message>(sectionHeadingClass)], ['Models']),
+              sectionHead('02', 'Models'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -249,10 +351,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2(
-                [Ui.className<Message>(sectionHeadingClass)],
-                ['How to use it'],
-              ),
+              sectionHead('03', 'How to use it'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -298,10 +397,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2(
-                [Ui.className<Message>(sectionHeadingClass)],
-                ['Get an API key'],
-              ),
+              sectionHead('04', 'Get an API key'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -422,10 +518,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2(
-                [Ui.className<Message>(sectionHeadingClass)],
-                ['Credits & pricing'],
-              ),
+              sectionHead('05', 'Credits & pricing'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -448,10 +541,7 @@ export const view = (): Html => {
           h.section(
             [Ui.className<Message>(sectionClass)],
             [
-              h.h2(
-                [Ui.className<Message>(sectionHeadingClass)],
-                ['Verified, with receipts'],
-              ),
+              sectionHead('06', 'Verified, with receipts'),
               h.p(
                 [Ui.className<Message>(bodyClass)],
                 [
@@ -489,7 +579,7 @@ export const view = (): Html => {
                 ],
                 ['AGENTS.md'],
               ),
-              '  ·  ',
+              h.span([Ui.className<Message>(footDividerClass)], ['·']),
               h.a(
                 [
                   h.Href('https://openagents.com/docs/product-promises'),
@@ -497,7 +587,8 @@ export const view = (): Html => {
                 ],
                 ['Product promises'],
               ),
-              '  ·  OpenAgents',
+              h.span([Ui.className<Message>(footDividerClass)], ['·']),
+              h.span([], ['OpenAgents']),
             ],
           ),
         ],
