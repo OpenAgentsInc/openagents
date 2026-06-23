@@ -364,3 +364,23 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   EAGLE is a named-but-unbuilt Psionic learned-serving lane. NOT run/armed here.
 - **Status:** PR open against `main` (#6091); orchestrator reviews / merges /
   deploys / smokes. NOT deployed, NO spend by this entry.
+
+---
+
+## P2-9 — Disaggregation And Dynamo Patterns — DONE (study, #6092)
+
+- **Notes ref:** `khala-investigation-notes.md` §P2 item 9 ("Disaggregation And
+  Dynamo Patterns") + Open Question Q7; book Ch.5 (parallelism /
+  disaggregation) and Ch.7 (serving-system pressure).
+- **What shipped:** the short design-spike doc
+  `docs/inference/2026-06-23-khala-disaggregation-dynamo-study.md`. It records
+  the measured traffic/context trigger for reopening prefill/decode
+  disaggregation, the prefill-queue and KV-pressure metrics that must exist
+  first, and the Dynamo decision.
+- **Recommendation:** NOT YET for MVP. Keep Khala on the simpler monolithic
+  serving path until production receipts show high-volume, large-model,
+  long-context traffic where prefill dominates after prefix caching. Use
+  NVIDIA Dynamo as an architecture reference for KV-block management,
+  KV-aware routing, and prefill/decode scheduling, not as a dependency today.
+- **Honest scope:** docs-only study. No serving engine, gateway route,
+  dependency, live traffic, cost, or deploy behavior changed.
