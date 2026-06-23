@@ -1715,6 +1715,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     content-addressed, public-safe consolidated request receipts into a feed:
     per-terminal-state counts, placed-request count, and each receipt's
     lifecycle refs re-verified against the ref it is keyed under).
+  - `GET /api/public/artanis/labor-green-readiness` — live at read over the
+    durable Artanis unattended-labor receipt store — compliant (`generatedAt`,
+    `staleness` contract `projection_staleness.v1` live_at_read; the
+    green-readiness projection for artanis.labor_requester.v1: folds the labor
+    receipt feed onto the two named green-flip blockers, reporting
+    placedRequestCount, liveEnablementProven, unattendedRequestReceiptsProven,
+    greenGateMet — the mechanical receipt-evidence predicate only, never the
+    owner sign-off — and the dereferenceable placed-request receipt refs).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
     honesty caveat refs).

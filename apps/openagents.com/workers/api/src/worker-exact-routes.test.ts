@@ -99,6 +99,7 @@ const approvedExactRoutePaths = [
   '/api/public/labor-earnings',
   '/api/public/labor-earnings/payout',
   '/api/public/artanis/labor-receipts',
+  '/api/public/artanis/labor-green-readiness',
   '/api/public/artanis/admin-ticks',
   '/api/public/artanis/tick-streak',
   '/api/public/artanis/tassadar-distillation-dataset',

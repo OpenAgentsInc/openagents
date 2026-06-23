@@ -3393,6 +3393,63 @@ const schemaComponents = (): JsonSchema => ({
       summary: { type: 'object' },
     },
   },
+  ArtanisLaborGreenReadinessProjection: {
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Public-safe green-readiness projection for artanis.labor_requester.v1. It folds the Artanis labor receipt feed onto the two named green-flip blockers (live enablement, unattended request receipts) and reports whether the mechanical receipt-evidence gate is met. It grants no dispatch, spend, escrow, settlement, or registry authority and never includes the separate owner sign-off.',
+    required: [
+      'authorityBoundary',
+      'blockerRefs',
+      'generatedAt',
+      'greenGateMet',
+      'kind',
+      'liveEnablementProven',
+      'placedRequestCount',
+      'placedRequests',
+      'publicSafe',
+      'staleness',
+      'unattendedRequestReceiptsProven',
+      'unattendedRequestTarget',
+    ],
+    properties: {
+      authorityBoundary: { type: 'string' },
+      blockerRefs: { type: 'array', items: { type: 'string' } },
+      byTerminalState: { type: 'object' },
+      generatedAt: { type: 'string', format: 'date-time' },
+      greenGateMet: { type: 'boolean' },
+      kind: {
+        type: 'string',
+        enum: ['artanis_labor_requester_green_readiness'],
+      },
+      liveEnablementProven: { type: 'boolean' },
+      notes: { type: 'array', items: { type: 'string' } },
+      placedRequestCount: { type: 'integer' },
+      placedRequests: { type: 'array', items: { type: 'object' } },
+      publicSafe: { type: 'boolean' },
+      staleness: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'composition',
+          'contractVersion',
+          'maxStalenessSeconds',
+          'rebuildsOn',
+        ],
+        properties: {
+          composition: { type: 'string', enum: ['live_at_read'] },
+          contractVersion: {
+            type: 'string',
+            enum: ['projection_staleness.v1'],
+          },
+          maxStalenessSeconds: { type: 'integer', enum: [0] },
+          rebuildsOn: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      unattendedRequestReceiptsProven: { type: 'boolean' },
+      unattendedRequestTarget: { type: 'integer' },
+    },
+  },
   OmniContributorAccrualBundleEnvelope: {
     type: 'object',
     additionalProperties: true,
@@ -5054,6 +5111,24 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Artanis labor receipt feed projection.',
           '#/components/schemas/ArtanisLaborReceiptFeedProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/labor-green-readiness': {
+    get: operation({
+      operationId: 'getPublicArtanisLaborGreenReadiness',
+      summary: 'Read the Artanis labor-requester green-readiness projection',
+      description:
+        'Returns the public-safe green-readiness projection for artanis.labor_requester.v1: it folds the Artanis labor receipt feed onto the two named green-flip blockers and reports placedRequestCount (unattended request receipts that reserved escrow - a state only an operator-enabled tick can reach), liveEnablementProven (>=1 placed receipt), unattendedRequestReceiptsProven (>=10 placed receipts), greenGateMet (both - the mechanical receipt-evidence predicate only), per-terminal-state counts, and the placed receipts (each dereferenceable at /api/public/artanis/labor-receipts?receiptRef=<ref>). It never includes the separate owner sign-off and grants no dispatch, spend, escrow, settlement, or registry authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [],
+      responses: {
+        '200': okJson(
+          'Artanis labor-requester green-readiness projection.',
+          '#/components/schemas/ArtanisLaborGreenReadinessProjection',
         ),
         ...errorResponses(),
       },

@@ -90,7 +90,10 @@ import {
   ARTANIS_REGISTERED_ACTOR_REF,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
-import { handlePublicArtanisLaborReceiptsApi } from './artanis-labor-receipt-routes'
+import {
+  handlePublicArtanisLaborGreenReadinessApi,
+  handlePublicArtanisLaborReceiptsApi,
+} from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
@@ -9598,6 +9601,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/artanis/labor-receipts',
     handler: (request, env) =>
       handlePublicArtanisLaborReceiptsApi(request, {
+        nowIso: currentIsoTimestamp,
+        store: makeD1ArtanisLaborUnattendedReceiptStore(
+          openAgentsDatabase(env),
+          currentIsoTimestamp,
+        ),
+      }),
+  },
+  {
+    path: '/api/public/artanis/labor-green-readiness',
+    handler: (request, env) =>
+      handlePublicArtanisLaborGreenReadinessApi(request, {
         nowIso: currentIsoTimestamp,
         store: makeD1ArtanisLaborUnattendedReceiptStore(
           openAgentsDatabase(env),
