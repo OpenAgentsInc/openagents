@@ -49,9 +49,15 @@ import {
   KHALA_MINI_MODEL_ID,
 } from "../shared/khala-cockpit.js"
 
-// A short, neutral system steer so Khala answers as the cockpit agent.
+// A short, neutral TASK steer for the cockpit. IDENTITY IS OWNED BY THE GATEWAY:
+// the `openagents.com` inference gateway injects the authoritative Khala identity
+// system message (`KHALA_IDENTITY_SYSTEM_PROMPT`) for every `openagents/khala-*`
+// request, so Khala presents only as Khala by OpenAgents and never reveals or
+// implies its underlying model/provider (the Gemini/Google leak fix). This
+// client steer deliberately carries NO identity claim — it would otherwise
+// compete with the gateway contract — and only nudges answer shape.
 export const KHALA_COCKPIT_SYSTEM_PROMPT =
-  "You are Autopilot, the OpenAgents desktop agent. Answer the user's message directly. " +
+  "Answer the user's message directly. " +
   "When asked to build something, return complete, runnable code."
 
 const NO_TOKEN_MESSAGE =

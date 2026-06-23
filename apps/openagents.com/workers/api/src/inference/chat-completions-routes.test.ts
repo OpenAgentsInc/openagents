@@ -23,6 +23,10 @@ import {
   ALL_LANES_UNARMED,
   resolveSupplyLaneArming,
 } from './model-serving-policy'
+import {
+  KHALA_IDENTITY_STATEMENT,
+  KHALA_IDENTITY_SYSTEM_PROMPT,
+} from './khala-identity'
 import { KHALA_CODE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
@@ -1270,5 +1274,272 @@ describe('POST /v1/chat/completions — streamSse pass-through', () => {
     expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
     expect(captured).toHaveLength(1)
     expect(captured[0]?.streamed).toBe(true)
+  })
+})
+
+// KHALA IDENTITY GUARD (never identify as Gemini/Google/etc.) -----------------
+// Proves: (a) the gateway injects the strong Khala identity system prompt for
+// khala-* lanes; (b) the identity signature guard catches a completion claiming
+// "I am built on Gemini / by Google" (and Claude/etc.) and corrects it; (c) a
+// normal khala completion passes through unchanged; (d) "are you Gemini?" yields
+// a Khala-by-OpenAgents answer with no provider leak; and that non-Khala
+// responses are untouched.
+describe('Khala identity guard', () => {
+  // An adapter that records the messages it received and returns a fixed reply.
+  const cannedAdapter = (
+    id: string,
+    reply: string,
+    captured: Array<ReadonlyArray<{ role: string; content: string }>>,
+  ): InferenceProviderAdapter => ({
+    complete: request =>
+      Effect.sync(() => {
+        captured.push(
+          request.messages.map(m => ({ content: m.content, role: m.role })),
+        )
+        return {
+          content: reply,
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+        }
+      }),
+    id,
+    stream: () => Effect.sync(() => []),
+  })
+
+  // An adapter that LEAKS its provider identity on the first call, then returns a
+  // clean Khala answer if the request carries the reinforcement re-ask (a system
+  // message that mentions the forbidden providers + "answer again"). This models
+  // a base model that volunteers provenance, then complies on the stronger steer.
+  const leakingThenCleanAdapter = (
+    id: string,
+    leak: string,
+  ): InferenceProviderAdapter => ({
+    complete: request =>
+      Effect.sync(() => {
+        const isReask = request.messages.some(
+          m =>
+            m.role === 'system' &&
+            m.content.toLowerCase().includes('answer again'),
+        )
+        const content = isReask
+          ? 'I am Khala, the OpenAgents inference model. How can I help?'
+          : leak
+        return {
+          content,
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+        }
+      }),
+    id,
+    stream: () => Effect.sync(() => []),
+  })
+
+  const readReply = async (
+    response: Response,
+  ): Promise<{ content: string }> => {
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+    }
+    return { content: body.choices[0]?.message.content ?? '' }
+  }
+
+  test('injects the Khala identity system prompt as the leading message for khala-* lanes', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(cannedAdapter(VERTEX_GEMINI_ADAPTER_ID, 'ok', captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    const messages = captured[0]!
+    // The gateway identity prompt is the FIRST message the adapter sees.
+    expect(messages[0]?.role).toBe('system')
+    expect(messages[0]?.content).toBe(KHALA_IDENTITY_SYSTEM_PROMPT)
+    // The original user message is preserved after it.
+    expect(messages.some(m => m.role === 'user' && m.content === 'hi')).toBe(
+      true,
+    )
+  })
+
+  test('does NOT inject the identity prompt for a non-Khala model', async () => {
+    const captured: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register(cannedAdapter(STUB_ECHO_ADAPTER_ID, 'ok', captured))
+
+    await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hi', role: 'user' }],
+          model: 'stub-model',
+        }),
+        baseDeps({ registry }),
+      ),
+    )
+    expect(captured).toHaveLength(1)
+    expect(
+      captured[0]!.some(m => m.content === KHALA_IDENTITY_SYSTEM_PROMPT),
+    ).toBe(false)
+  })
+
+  test('catches a Gemini/Google identity leak and corrects it via re-ask', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(
+      leakingThenCleanAdapter(
+        VERTEX_GEMINI_ADAPTER_ID,
+        'I am Autopilot. I am built on Gemini, a large language model by Google.',
+      ),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'what model are you?', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const { content } = await readReply(response)
+    expect(content.toLowerCase()).toContain('khala')
+    expect(content.toLowerCase()).not.toContain('gemini')
+    expect(content.toLowerCase()).not.toContain('google')
+  })
+
+  test('fail-closed backstop: a persistent leak is deterministically redacted to the Khala identity', async () => {
+    // This adapter ALWAYS leaks, even on the re-ask, so the guard must fall
+    // through to the deterministic redaction backstop.
+    const alwaysLeaks: InferenceProviderAdapter = {
+      complete: request =>
+        Effect.sync(() => ({
+          content:
+            'Sure. I am built on Gemini, a large language model by Google.',
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+        })),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register(alwaysLeaks)
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'are you Gemini?', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const { content } = await readReply(response)
+    expect(content.toLowerCase()).not.toContain('gemini')
+    expect(content.toLowerCase()).not.toContain('google')
+    expect(content).toContain(KHALA_IDENTITY_STATEMENT)
+    // Surrounding non-offending text is preserved.
+    expect(content).toContain('Sure.')
+  })
+
+  test('a normal, non-identity khala completion passes through UNCHANGED', async () => {
+    const clean =
+      'Here is a function:\n\nfunction add(a, b) { return a + b }\n\nIt returns the sum.'
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => ({
+          content: clean,
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 12, promptTokens: 4, totalTokens: 16 },
+        })),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'write add()', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const { content } = await readReply(response)
+    expect(content).toBe(clean)
+  })
+
+  test('buffered Khala stream redacts an identity leak in the assembled content', async () => {
+    // A streaming adapter (no streamSse) whose chunks assemble into a leak. The
+    // buffered stream path materializes the whole completion, so the
+    // deterministic backstop rewrites it before any byte is emitted.
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => ({
+          content: 'unused',
+          finishReason: 'stop',
+          servedModel: request.model,
+          usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+        })),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: request =>
+        Effect.sync(() => [
+          { contentDelta: 'I am built on Gemini, ' },
+          { contentDelta: 'a model by Google.' },
+          {
+            contentDelta: '',
+            finishReason: 'stop',
+            servedModel: request.model,
+            usage: { completionTokens: 4, promptTokens: 4, totalTokens: 8 },
+          },
+        ]),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'what are you?', role: 'user' }],
+          model: KHALA_MINI_MODEL_ID,
+          stream: true,
+        }),
+        baseDeps({ lanePlan: selectAdapterPlan, registry }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const text = await response.text()
+    // Assemble the user-facing CONTENT from the delta frames. The `openagents`
+    // disclosure block legitimately names the served worker (`vertex-gemini`) for
+    // auditability — that is the receipt, not the answer — so assert on the
+    // assistant content only.
+    const content = text
+      .split('\n\n')
+      .map(block => block.replace(/^data: /u, '').trim())
+      .filter(payload => payload !== '' && payload !== '[DONE]')
+      .map(
+        payload =>
+          (
+            JSON.parse(payload) as {
+              choices?: ReadonlyArray<{ delta?: { content?: string } }>
+            }
+          ).choices?.[0]?.delta?.content ?? '',
+      )
+      .join('')
+    expect(content.toLowerCase()).not.toContain('gemini')
+    expect(content.toLowerCase()).not.toContain('google')
+    expect(content).toContain(KHALA_IDENTITY_STATEMENT)
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true)
   })
 })
