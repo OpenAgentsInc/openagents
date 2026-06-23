@@ -108,3 +108,24 @@ The projection distinguishes two states:
 
 This is still not a dispatcher. It does not run Psionic, call a Pylon, spend
 sats, promote runtime artifacts, or green the M6 public claim by itself.
+
+## Khala M7 Conductor preflight
+
+`apps/pylon/src/khala-m7-conductor-preflight.ts` adds the read-only M7 readiness
+projection `openagents.khala.m7.conductor_preflight.v0.1`. It consumes the M6
+shadow-run preflight and mirrors Psionic's `ConductorReadiness` close gates:
+7B policy backend, GRPO training run, armed paid verdict source, paid M6
+shadow-win, Verse fan-out, crossy-road composition proof, and publication refs.
+
+The projection distinguishes:
+
+- `canStartConductorTraining`, which may become true when M6 is publishable,
+  the 7B policy backend is wired, the paid verdict source is armed, and owner
+  caps approve the run.
+- `canPublishM7Claim`, which remains false until the actual GRPO training run,
+  Verse fan-out, verified crossy-road composition result, and publication refs
+  exist.
+
+This is not the Conductor implementation or a training launcher. It does not run
+GRPO, serve a 7B model, dispatch workers, spend sats, or publish the benchmark
+claim.

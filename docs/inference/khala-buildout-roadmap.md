@@ -682,6 +682,16 @@ verify (rubric/replay) → refine — and the Verse shows the multi-worker fan-o
 _Done when:_ `openagents/khala` solves the crossy-road task by composition, beating
 single-model cost at comparable quality.
 
+Current guardrail: Pylon now exposes the read-only
+`openagents.khala.m7.conductor_preflight.v0.1` projection in
+`apps/pylon/src/khala-m7-conductor-preflight.ts`. It consumes the M6 shadow-run
+preflight and mirrors the Psionic `ConductorReadiness` gates: 7B policy backend,
+GRPO training run, armed paid verdict source, paid M6 shadow win, Verse fan-out,
+crossy-road composition proof, and publication refs. A passing training
+preflight is enough to start the owner-capped Conductor run; the public M7 claim
+still requires the executed GRPO run plus verified composition/publication
+evidence.
+
 **M8 — The head-to-head demo (north-star).** _(all)_
 Run the crossy-road prompt through `openagents/khala` vs a frontier baseline,
 side by side: report tokens, $, time, **cost-per-accepted-outcome**,
