@@ -13,14 +13,25 @@ export const PERSISTENT_SCENE_OVERLAY_PREFIX = 'persistent-scene-overlay:'
 
 export type PersistentSceneRoute = 'Landing' | 'Khala'
 
-const persistentCanvasLayer = (h: ReturnType<typeof html<Message>>): Html =>
+const persistentCanvasLayer = (
+  h: ReturnType<typeof html<Message>>,
+  route: PersistentSceneRoute,
+): Html =>
   h.keyed('div')(
     PERSISTENT_SCENE_KEY,
     [
       h.DataAttribute('persistent-scene', 'landing-squares'),
       Ui.className<Message>('absolute inset-0 z-0'),
     ],
-    [landingSquaresView<Message>([Ui.className<Message>('block')])],
+    [
+      landingSquaresView<Message>([
+        Ui.className<Message>('block'),
+        // Active route -> camera pose. The canvas node is keyed the same across
+        // /landing <-> /khala so it persists; only this attribute changes, and
+        // the element eases the camera to the new pose (continuous flight).
+        h.DataAttribute('pose', route === 'Landing' ? 'landing' : 'khala'),
+      ]),
+    ],
   )
 
 const landingOverlay = (h: ReturnType<typeof html<Message>>): Html =>
@@ -82,7 +93,7 @@ export const view = (route: PersistentSceneRoute): Html => {
       ),
     ],
     [
-      persistentCanvasLayer(h),
+      persistentCanvasLayer(h, route),
       h.keyed('div')(
         `${PERSISTENT_SCENE_OVERLAY_PREFIX}${route}`,
         [Ui.className<Message>('absolute inset-0 z-10')],
