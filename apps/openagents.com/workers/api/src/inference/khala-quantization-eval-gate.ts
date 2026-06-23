@@ -31,8 +31,15 @@
 //
 // PURE: no Worker, no clock, no randomness, no IO. Same inputs => same verdict.
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
-import type { KhalaQuantizationScope } from './khala-quantization'
-import { isAggressiveScope } from './khala-quantization'
+import type {
+  KhalaPrecisionMode,
+  KhalaQuantizationBackend,
+  KhalaQuantizationScope,
+} from './khala-quantization'
+import {
+  isAggressiveScope,
+  isQuantizedPrecision,
+} from './khala-quantization'
 
 // ---------------------------------------------------------------------------
 // A single comparison sample: the SAME task scored on both precisions.
@@ -58,6 +65,103 @@ export type QuantizationComparisonSample = Readonly<{
   // win — which is exactly why quality must be proven to hold).
   quantizedCostBasisMsat: number
 }>
+
+// The owner-armed evidence bundle required before a passing gate may be called
+// DECISION GRADE. This is still pure data: the real serving, acceptance runner,
+// and storage of dereferenceable evidence happen outside this module.
+export type RealQuantSweepEvidence = Readonly<{
+  schemaVersion: 'openagents.khala.real-quant-sweep-evidence.v1'
+  // Dereferenceable, public-safe closeout for this sweep. This is the ref the
+  // quantization metadata may later store as `evalGateRef`.
+  evidenceRef: string
+  // Explicit owner approval/cap ref for running real original+quantized compute.
+  ownerApprovalRef: string
+  // The realistic traffic/workload set used for the comparison.
+  workloadRef: string
+  originalModelId: string
+  quantizedModelId: string
+  // Original should be full precision; quantized must be a reduced precision.
+  originalPrecision: KhalaPrecisionMode
+  quantizedPrecision: KhalaPrecisionMode
+  quantizationBackend: KhalaQuantizationBackend
+  quantizationBackendVersion: string
+  // Must match the comparison samples fed to the gate.
+  sampleCount: number
+  // Evidence refs for the executed verifier, latency, and cost basis. All must
+  // be public-safe refs, not raw prompts, secrets, or private traces.
+  acceptanceVerifierRef: string
+  latencyEvidenceRef: string
+  costEvidenceRef: string
+  publicSafeEvidenceRefs: ReadonlyArray<string>
+}>
+
+export type QuantizationDecisionGradeBlocker =
+  | 'real_sweep_evidence_missing'
+  | 'evidence_ref_missing'
+  | 'owner_approval_ref_missing'
+  | 'workload_ref_missing'
+  | 'model_context_missing'
+  | 'original_precision_not_full'
+  | 'quantized_precision_not_reduced'
+  | 'same_precision_compared'
+  | 'acceptance_verifier_ref_missing'
+  | 'latency_evidence_ref_missing'
+  | 'cost_evidence_ref_missing'
+  | 'public_safe_evidence_refs_missing'
+  | 'sample_count_mismatch'
+
+const nonBlank = (value: string): boolean => value.trim().length > 0
+
+export const decisionGradeBlockersForRealQuantSweepEvidence = (input: {
+  evidence?: RealQuantSweepEvidence | undefined
+  sampleCount: number
+}): ReadonlyArray<QuantizationDecisionGradeBlocker> => {
+  const { evidence, sampleCount } = input
+  if (evidence === undefined) {
+    return ['real_sweep_evidence_missing']
+  }
+
+  const blockers: Array<QuantizationDecisionGradeBlocker> = []
+  if (!nonBlank(evidence.evidenceRef)) blockers.push('evidence_ref_missing')
+  if (!nonBlank(evidence.ownerApprovalRef)) {
+    blockers.push('owner_approval_ref_missing')
+  }
+  if (!nonBlank(evidence.workloadRef)) blockers.push('workload_ref_missing')
+  if (
+    !nonBlank(evidence.originalModelId) ||
+    !nonBlank(evidence.quantizedModelId)
+  ) {
+    blockers.push('model_context_missing')
+  }
+  if (evidence.originalPrecision !== 'unquantized') {
+    blockers.push('original_precision_not_full')
+  }
+  if (!isQuantizedPrecision(evidence.quantizedPrecision)) {
+    blockers.push('quantized_precision_not_reduced')
+  }
+  if (evidence.originalPrecision === evidence.quantizedPrecision) {
+    blockers.push('same_precision_compared')
+  }
+  if (!nonBlank(evidence.acceptanceVerifierRef)) {
+    blockers.push('acceptance_verifier_ref_missing')
+  }
+  if (!nonBlank(evidence.latencyEvidenceRef)) {
+    blockers.push('latency_evidence_ref_missing')
+  }
+  if (!nonBlank(evidence.costEvidenceRef)) {
+    blockers.push('cost_evidence_ref_missing')
+  }
+  if (
+    evidence.publicSafeEvidenceRefs.length === 0 ||
+    evidence.publicSafeEvidenceRefs.some(ref => !nonBlank(ref))
+  ) {
+    blockers.push('public_safe_evidence_refs_missing')
+  }
+  if (evidence.sampleCount !== sampleCount || evidence.sampleCount <= 0) {
+    blockers.push('sample_count_mismatch')
+  }
+  return blockers
+}
 
 // ---------------------------------------------------------------------------
 // The gate policy (the agreed bounds).
@@ -137,6 +241,12 @@ export type QuantizationGateResult = Readonly<{
   // Whether this is a decision-grade gate (an owner-armed real sweep over real
   // traffic) vs the default fixture gate (proves the gate logic only).
   decisionGrade: boolean
+  // The dereferenceable real-sweep evidence ref backing a decision-grade result.
+  // Null for fixtures, unarmed sweeps, or invalid evidence.
+  realSweepEvidenceRef: string | null
+  // Why a requested decision-grade result was downgraded to fixture/logical
+  // evidence. Empty when decisionGrade is true or decision-grade was not asked.
+  decisionGradeBlockers: ReadonlyArray<QuantizationDecisionGradeBlocker>
 }>
 
 // ---------------------------------------------------------------------------
@@ -194,6 +304,10 @@ export type QuantizationGateInput = Readonly<{
   // Whether this result is decision-grade (an owner-armed real sweep). Default
   // false — the fixture gate proves the LOGIC, not a real lane.
   decisionGrade?: boolean | undefined
+  // Required when `decisionGrade:true`. Without this structured real-sweep
+  // closeout, the gate may pass logically but is downgraded to
+  // `decisionGrade:false`.
+  realSweepEvidence?: RealQuantSweepEvidence | undefined
   // The policy bounds; defaults to the conservative `DEFAULT_QUANT_GATE_POLICY`.
   policy?: QuantizationGatePolicy | undefined
 }>
@@ -206,7 +320,15 @@ export const runQuantizationEvalGate = (
   input: QuantizationGateInput,
 ): QuantizationGateResult => {
   const policy = input.policy ?? DEFAULT_QUANT_GATE_POLICY
-  const decisionGrade = input.decisionGrade ?? false
+  const requestedDecisionGrade = input.decisionGrade ?? false
+  const decisionGradeBlockers = requestedDecisionGrade
+    ? decisionGradeBlockersForRealQuantSweepEvidence({
+        evidence: input.realSweepEvidence,
+        sampleCount: input.samples.length,
+      })
+    : []
+  const decisionGrade =
+    requestedDecisionGrade && decisionGradeBlockers.length === 0
   const aggressiveScope = isAggressiveScope(input.scope)
 
   const base = {
@@ -214,6 +336,10 @@ export const runQuantizationEvalGate = (
     sampleCount: input.samples.length,
     aggressiveScope,
     decisionGrade,
+    realSweepEvidenceRef: decisionGrade
+      ? (input.realSweepEvidence?.evidenceRef ?? null)
+      : null,
+    decisionGradeBlockers,
   }
 
   if (input.samples.length === 0) {

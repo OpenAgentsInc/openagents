@@ -4,8 +4,10 @@ import {
   DEFAULT_QUANT_GATE_POLICY,
   RealQuantSweepNotArmedError,
   collectRealQuantSweepSamples,
+  decisionGradeBlockersForRealQuantSweepEvidence,
   runQuantizationEvalGate,
   type QuantizationComparisonSample,
+  type RealQuantSweepEvidence,
 } from './khala-quantization-eval-gate'
 
 // Build a deterministic EXECUTED acceptance verdict fixture. `verified` is the
@@ -52,6 +54,27 @@ const heldQualitySet: ReadonlyArray<QuantizationComparisonSample> = [
   sample({ taskId: 't3', originalVerified: true, quantizedVerified: true, originalCostBasisMsat: 1000, quantizedCostBasisMsat: 600 }),
   sample({ taskId: 't4', originalVerified: true, quantizedVerified: true, originalCostBasisMsat: 1000, quantizedCostBasisMsat: 600 }),
 ]
+
+const realSweepEvidence = (
+  overrides: Partial<RealQuantSweepEvidence> = {},
+): RealQuantSweepEvidence => ({
+  schemaVersion: 'openagents.khala.real-quant-sweep-evidence.v1',
+  evidenceRef: 'evidence:khala:quant:fp8:2026-06-23',
+  ownerApprovalRef: 'owner-approval:khala-quant-fp8:cap-001',
+  workloadRef: 'workload:khala-code:realistic:launch-p1-7',
+  originalModelId: 'openagents/khala-code:original',
+  quantizedModelId: 'openagents/khala-code:fp8',
+  originalPrecision: 'unquantized',
+  quantizedPrecision: 'fp8',
+  quantizationBackend: 'vllm',
+  quantizationBackendVersion: 'vllm:real-sweep-fixture-ref',
+  sampleCount: heldQualitySet.length,
+  acceptanceVerifierRef: 'verifier:khala-code:executed:receipt-001',
+  latencyEvidenceRef: 'latency:khala-quant:receipt-001',
+  costEvidenceRef: 'cost:khala-quant:receipt-001',
+  publicSafeEvidenceRefs: ['receipt:khala-quant:public-closeout-001'],
+  ...overrides,
+})
 
 describe('quantization eval gate — quality holds (book P1-7 / #6090)', () => {
   it('PASSES when the quantized lane holds the accepted-outcome rate', () => {
@@ -182,6 +205,56 @@ describe('quantization eval gate — policy and edge cases', () => {
     expect(result.reason).toBe('no_baseline_accepted_outcomes')
     // cost-per-accepted is null (zero accepted) — never a fabricated 0.
     expect(result.originalCostPerAcceptedMsat).toBeNull()
+  })
+})
+
+describe('quantization eval gate — decision-grade real-sweep evidence', () => {
+  it('downgrades a passing gate when decision-grade evidence is missing', () => {
+    const result = runQuantizationEvalGate({
+      samples: heldQualitySet,
+      scope: 'weights_only',
+      decisionGrade: true,
+    })
+    expect(result.passed).toBe(true)
+    expect(result.decisionGrade).toBe(false)
+    expect(result.realSweepEvidenceRef).toBeNull()
+    expect(result.decisionGradeBlockers).toEqual([
+      'real_sweep_evidence_missing',
+    ])
+  })
+
+  it('marks a passing gate decision-grade only with complete real-sweep evidence', () => {
+    const evidence = realSweepEvidence()
+    const result = runQuantizationEvalGate({
+      samples: heldQualitySet,
+      scope: 'weights_only',
+      decisionGrade: true,
+      realSweepEvidence: evidence,
+    })
+    expect(result.passed).toBe(true)
+    expect(result.decisionGrade).toBe(true)
+    expect(result.realSweepEvidenceRef).toBe(evidence.evidenceRef)
+    expect(result.decisionGradeBlockers).toEqual([])
+  })
+
+  it('blocks decision-grade promotion when evidence is not public-safe and matching', () => {
+    const blockers = decisionGradeBlockersForRealQuantSweepEvidence({
+      sampleCount: heldQualitySet.length,
+      evidence: realSweepEvidence({
+        ownerApprovalRef: '',
+        originalPrecision: 'fp8',
+        quantizedPrecision: 'fp8',
+        publicSafeEvidenceRefs: [''],
+        sampleCount: heldQualitySet.length + 1,
+      }),
+    })
+    expect(blockers).toEqual([
+      'owner_approval_ref_missing',
+      'original_precision_not_full',
+      'same_precision_compared',
+      'public_safe_evidence_refs_missing',
+      'sample_count_mismatch',
+    ])
   })
 })
 

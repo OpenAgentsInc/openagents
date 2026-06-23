@@ -2,7 +2,9 @@
 
 Status: buildable-now metadata + guard + eval-gate machinery merged; the real
 quantized-model serving and the real quant-vs-original sweep are
-flag/owner/compute-gated (built but not armed). Not deployed by this change.
+flag/owner/compute-gated (built but not armed). Decision-grade promotion now
+requires a structured real-sweep evidence bundle, not a bare boolean. Not
+deployed by this change.
 
 ## The principle (book Ch.5, in our own words)
 
@@ -90,7 +92,11 @@ All in `apps/openagents.com/workers/api/src/inference/`:
    report's accepted-outcome + cost math shape). `runQuantizationEvalGate` PASSES
    only when accepted-outcome quality HOLDS, or a small drop (within an agreed
    bound) is bought back by a sufficient cost-per-accepted-outcome improvement.
-   Deterministic/fixture by default (`decisionGrade:false`).
+   Deterministic/fixture by default (`decisionGrade:false`). A request for
+   `decisionGrade:true` is downgraded unless the caller also supplies
+   `RealQuantSweepEvidence` with owner approval, model/precision context, sample
+   count match, executed-verifier evidence, latency evidence, cost evidence, and
+   public-safe dereferenceable refs.
 
 ## Fixture vs owner/compute-gated split
 
@@ -102,20 +108,39 @@ All in `apps/openagents.com/workers/api/src/inference/`:
   Khala verifier on BOTH precisions. `collectRealQuantSweepSamples` throws
   `RealQuantSweepNotArmedError` unless `armRealQuantSweep:true` plus an injected
   executor are owner-supplied. A decision-grade gate result (promoting a real lane
-  to a public alias) requires this armed sweep over realistic traffic; the default
-  fixture path proves the gate logic only.
+  to a public alias) requires this armed sweep over realistic traffic plus
+  `RealQuantSweepEvidence`; the default fixture path proves the gate logic only.
+
+## Decision-grade evidence requirements
+
+`decisionGrade:true` is accepted only when the evidence bundle proves all of:
+
+- owner approval/spend cap ref exists;
+- a public-safe sweep closeout ref exists and can be stored as the eval-gate ref;
+- workload, original model id, and quantized model id are non-empty;
+- original precision is `unquantized`, quantized precision is a concrete
+  reduced-precision value, and the two precisions differ;
+- sample count matches the paired comparison samples fed to the gate;
+- executed verifier, latency, and cost-basis evidence refs are all non-empty;
+- at least one public-safe evidence ref is present.
+
+If any field is missing or mismatched, the gate may still return `passed:true`
+for the logical comparison, but it returns `decisionGrade:false`,
+`realSweepEvidenceRef:null`, and a typed `decisionGradeBlockers` list. That
+prevents fixture or private/local-only output from becoming a public equivalence
+claim.
 
 ## Tests
 
 `khala-quantization.test.ts`, `khala-quantization-guard.test.ts`,
-`khala-quantization-eval-gate.test.ts` (37 new): quant metadata populates from a
+`khala-quantization-eval-gate.test.ts` (40 new): quant metadata populates from a
 fixture served-model descriptor and records the honest sentinel when unknown; the
 same-model guard rejects an undisclosed/unknown/ungated quantized alias and passes
 a disclosed-gated one and a qualified alias; the eval gate passes when quality
 holds (or a small drop is offset by a cost-per-accepted win) and fails when the
 accepted-outcome rate drops beyond bound or without a cost win, fails an
-aggressive scope without ack, and the real sweep is flag-gated off (no real
-serving in tests).
+aggressive scope without ack, downgrades missing/incomplete decision-grade
+evidence, and the real sweep is flag-gated off (no real serving in tests).
 
 ## Verification
 
