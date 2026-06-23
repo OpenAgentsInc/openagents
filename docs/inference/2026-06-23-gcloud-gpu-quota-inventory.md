@@ -2,6 +2,14 @@
 
 Date: 2026-06-23
 
+Update later on 2026-06-23: a follow-up `gcloud compute instances list
+--filter='guestAccelerators:*'` refresh for the GLM-5.2 feasibility pass no
+longer showed `oa-confidential-g4-probe-20260623-1` or any
+`oa-confidential-g4-probe-*` instance. Treat the G4 entry below as proof that
+the Spot G4 RTX PRO 6000 shape was allocatable during the original audit, not as
+current live capacity. Current live GPU instances are the running L4 contributor
+and the terminated L4 coordinator.
+
 Scope: local `gcloud` audit of project `openagentsgemini` for GPU capacity
 usable by the OpenAgents / Khala inference work. This is an access and quota
 inventory, not a capacity reservation. A quota number means Google will allow us
@@ -18,14 +26,14 @@ The most useful current lane is `us-central1`:
 | Lane | Current quota signal | Current usage | Practical inference read |
 | --- | ---: | ---: | --- |
 | L4 / `g2-standard-*` | 16 on-demand, 16 Spot | 1 running L4, 1 stopped L4 | Cheap always-on or small/medium open-weight inference lane; about 15 on-demand L4 quota free in `us-central1`. |
-| RTX PRO 6000 / `g4-standard-*` | 16 Spot RTX PRO 6000, 16 on-demand VWS RTX PRO 6000 | 1 running Spot RTX PRO 6000 G4 probe | Best immediate Blackwell-ish single-GPU lane. We have proven VM creation for a Spot `g4-standard-48` with 1 RTX PRO 6000 in `us-central1-b`. |
+| RTX PRO 6000 / `g4-standard-*` | 16 Spot RTX PRO 6000, 16 on-demand VWS RTX PRO 6000 | 0 current live in the later refresh | Best immediate Blackwell-ish single-GPU lane if re-created. We have proven VM creation for a Spot `g4-standard-48` with 1 RTX PRO 6000 in `us-central1-b`, but the probe is no longer live. |
 | H100 / `a3-highgpu-*` | 64 Spot/preemptible H100 | 0 observed running | Strong single/multi-GPU lane for vLLM/SGLang probes and the Prompt Encryption SDK path. Quota exists; allocation still needs a create test. |
 | H200 | 64 Spot/preemptible H200 | 0 observed running | Promising high-memory lane; visible in `us-central1-b`, but no create test yet. |
 | B200 | 64 Spot/preemptible B200 | 0 observed running | Next-gen lane visible in `us-central1-b`; no create test yet. |
 | A100 40GB | 16 on-demand, 64 Spot/preemptible | 0 observed running | Useful fallback for engines that do not need H100/RTX PRO 6000. |
 | A100 80GB | older Compute quota shows 0 in `us-central1`; Cloud Quotas did not show a usable nonblank regional value | 0 observed running | Do not plan on A100 80GB here unless quota is raised or a create test proves otherwise. |
 
-The live inventory already includes:
+The original live inventory included:
 
 | Instance | Zone | Shape | GPU | Scheduling | Confidential | Status |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -33,9 +41,9 @@ The live inventory already includes:
 | `gswarm508-clean2-20260325044551-contrib` | `us-central1-b` | `g2-standard-8` | 1 x `nvidia-l4` | standard on-demand | none | `RUNNING` |
 | `gswarm508-clean2-20260325044551-coord` | `us-central1-a` | `g2-standard-8` | 1 x `nvidia-l4` | not inspected in detail | none | `TERMINATED` |
 
-The running G4 probe is the biggest update versus the earlier confidential AI
-access note: access to G4 is not just visible; one Spot G4 VM with an RTX PRO
-6000 has already been allocated and is running.
+The G4 probe is still the biggest update versus the earlier confidential AI
+access note: access to G4 was not just visible; one Spot G4 VM with an RTX PRO
+6000 had already been allocated. A later refresh no longer shows it as live.
 
 ## Active gcloud context
 
@@ -56,8 +64,8 @@ Relevant enabled APIs:
 
 `confidentialcomputing.googleapis.com` was not listed as enabled by the simple
 enabled-service check. Compute Engine Confidential VM creation can still work
-through Compute Engine, as the running G4 probe shows, but Confidential Space and
-attestation workflows should verify API needs before productizing.
+through Compute Engine, as the original G4 probe showed, but Confidential Space
+and attestation workflows should verify API needs before productizing.
 
 ## `us-central1` quota details
 
@@ -87,7 +95,7 @@ Newer Cloud Quotas API values whose `applicableLocations` include
 
 | Quota ID | Value | Read |
 | --- | ---: | --- |
-| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-GPUS-per-project-region` | 16 | Spot quota for non-VWS G4 RTX PRO 6000. This is the quota lane used by the running G4 probe. |
+| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-GPUS-per-project-region` | 16 | Spot quota for non-VWS G4 RTX PRO 6000. This is the quota lane used by the original G4 probe. |
 | `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region` | 16 | Spot quota for RTX PRO 6000 VWS. |
 | `NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region` | 16 | On-demand RTX PRO 6000 VWS quota. I did not see normal non-VWS on-demand RTX PRO 6000 quota. |
 | `PREEMPTIBLE-NVIDIA-H100-GPUS-per-project-region` | 64 | Spot H100 quota. |
@@ -111,7 +119,7 @@ families Google exposes to this project by zone.
 
 | GPU family | Visible regions | `us-central1` zones visible | Notes |
 | --- | ---: | --- | --- |
-| NVIDIA RTX PRO 6000 | 20 regions | `us-central1-b`, `us-central1-f` | G4 lane. We have a running Spot G4 probe in `us-central1-b`. |
+| NVIDIA RTX PRO 6000 | 20 regions | `us-central1-b`, `us-central1-f` | G4 lane. We proved Spot G4 allocation in `us-central1-b`, but the probe is no longer live in the later refresh. |
 | NVIDIA RTX PRO 6000 VWS | 20 regions | `us-central1-b`, `us-central1-f` | Workstation quota exists; not the primary inference lane. |
 | NVIDIA H100 80GB | 19 regions | `us-central1-a`, `us-central1-b`, `us-central1-c` | Strong H100 lane; quota signal is Spot/preemptible 64 per region. |
 | NVIDIA H100 80GB Mega | 19 regions | `us-central1-a`, `us-central1-b`, `us-central1-c` | Same visible zones as H100. |
@@ -150,14 +158,15 @@ scheduling model`, then prove it with a create/delete or actual run.
 ## Practical recommendations for Khala / inference
 
 1. Keep `us-central1` as the first owner-operated GPU lane. It already has live
-   G4 and L4 instances, the default `gcloud` config points there, and the
-   inference docs already frame it as the initial cloud supply lane.
+   L4 capacity, previously proved G4 allocation, the default `gcloud` config
+   points there, and the inference docs already frame it as the initial cloud
+   supply lane.
 2. Use L4 for cheap always-on serving and smaller open-weight models. There is
    on-demand quota available, and one L4 contributor is already running.
-3. Use the running G4 RTX PRO 6000 probe for the first Blackwell/Confidential G4
-   inference smoke if the instance is intentionally live. If it is only a probe,
-   either stop/delete it after recording evidence or deliberately convert it into
-   a named serving lane.
+3. Re-create a G4 RTX PRO 6000 probe for the first Blackwell/Confidential G4
+   inference smoke if that lane is intentionally needed. The original probe
+   proved allocation once, but it is no longer visible in the current live
+   instance list.
 4. Treat H100/H200/B200 as Spot-first until a successful create test proves the
    exact shape. The quota is there, but quota is not capacity.
 5. Do not promise A100 80GB availability from this project today. It is visible

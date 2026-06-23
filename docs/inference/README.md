@@ -102,9 +102,16 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
 
 12. **[`2026-06-23-gcloud-gpu-quota-inventory.md`](./2026-06-23-gcloud-gpu-quota-inventory.md)**
     — local `gcloud` GPU access and quota inventory for `openagentsgemini`:
-    live L4/G4 instances, `us-central1` quota, visible accelerator families
-    (RTX PRO 6000, H100/H200/B200/GB200/L4/A100), and practical inference
-    deployment recommendations.
+    live L4 capacity, previously proved G4 allocation, `us-central1` quota,
+    visible accelerator families (RTX PRO 6000, H100/H200/B200/GB200/L4/A100),
+    and practical inference deployment recommendations.
+
+13. **[`2026-06-23-gpu-inventory-model-fit-and-glm-52.md`](./2026-06-23-gpu-inventory-model-fit-and-glm-52.md)**
+    — cross-reference of the Google Cloud GPU inventory with the inference
+    engineering book notes and Baseten's GLM-5.2 writeup: what model classes fit
+    our L4/G4/A100/H100/H200/B200 quota, why GLM-5.2 is possible in principle
+    but not production-proven on our infrastructure today, and the next probes
+    needed before a self-hosted frontier lane is honest.
 
 ## The shape, in one line
 
