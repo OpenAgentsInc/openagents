@@ -37,10 +37,18 @@ import {
 // cold/slow mint would block the Lightning leg. With it, a slow mint resolves to
 // a typed `provider_unavailable` failure so the SELECTOR can fall back to MDK and
 // still finish under the route's outer per-rail guard (#6149,
-// `LIGHTNING_LEG_GUARD_MS`). Kept tight (1.2s) so a Spark timeout + an MDK
-// fallback attempt together stay under that guard; the route guard is the final
-// safety net either way.
-export const SPARK_LIGHTNING_MINT_TIMEOUT_MS = 1_200
+// `LIGHTNING_LEG_GUARD_MS`).
+//
+// BUDGET (#6049): the real Spark `/spark/funding-invoice` mint takes ~1.5–3.1s
+// even WARM, so the old 1.2s cap always tripped and the honesty gate dropped
+// Lightning from every 402. This budget is raised to 4s so a real warm Spark
+// mint actually completes and surfaces the Lightning rail. The tradeoff is ~1s
+// more 402 latency in exchange for Lightning visibility; the zero-latency fix is
+// a pre-minted Spark invoice pool (future optimization, tracked on #6049). The
+// per-rail isolation (#6149) is preserved: a mint that exceeds this budget (or
+// the outer `LIGHTNING_LEG_GUARD_MS`) still only DROPS the Lightning rail — it
+// can never hang the endpoint, which always returns crypto + card fast.
+export const SPARK_LIGHTNING_MINT_TIMEOUT_MS = 4_000
 
 // A POST transport to the Spark treasury route. Returns the HTTP ok flag +
 // status + parsed JSON payload (no throwing — the issuer maps a non-ok status to
