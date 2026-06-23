@@ -4,70 +4,91 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 
-// Ambient WebGL background for the standalone `/landing` page: a dense grid of
-// a few hundred small blue squares on a near-black field. The mood is DARK and
-// subtle, not a bright pegboard: most squares read as very dim/near-black, only
-// a sparse deterministic subset keeps a faint blue glow, the center is cleared
-// (no squares behind the "OpenAgents" wordmark), and a vignette darkens the
-// periphery so visibility falls off toward the edges.
+// 3D pylon-network scene for the standalone `/landing` surface. A constellation
+// of glowing pylon cores connected by faint energy lines on a near-black field,
+// rendered through an EffectComposer -> UnrealBloomPass -> OutputPass chain so
+// the HDR-emissive blue (color above 1.0, `toneMapped = false`) blooms in the
+// dark. OutputPass owns tone-mapping, so the renderer stays linear/no-tone-map.
 //
-// The look ports the pylon-network glow-up (three-effect #16 / openagents
-// #6068): the glowing squares carry HDR-emissive blue (color above 1.0,
-// `toneMapped = false`) and the render loop runs through an EffectComposer ->
-// UnrealBloomPass -> OutputPass chain so they read as faint energy in the dark.
-// OutputPass owns tone-mapping, so the renderer must NOT tone-map (no double
-// tone-map). This mirrors `createEffectComposerResources` from
-// `@openagentsinc/three-effect` but stays self-contained so the landing route
-// owns a small, lightweight composer for its raw scene.
+// The whole point: ONE persistent scene with named CAMERA POSES. Navigating
+// `/landing` <-> `/khala` tweens the camera between vantages — a continuous move
+// through the same space — instead of cutting between two pages. The host passes
+// the active pose via `setPose`; the render loop eases the camera toward it every
+// frame (exponential smoothing), so the transition is smooth and interruptible.
+//
+// Self-contained + lightweight, mirroring the pylon glow-up recipe
+// (three-effect #16 / openagents #6068) without pulling the full Foldkit/three
+// scene host for this raw background.
 
-const WORLD_HEIGHT = 6
+export type LandingPose = 'landing' | 'khala'
+
 const BACKGROUND_COLOR = 0x000000
+// A tasteful cool blue, driven above 1.0 (HDR) so the cores survive the bloom
+// threshold and glow; lines ride a little lower.
+const PYLON_BLUE = new Three.Color(0x3a7bff)
+const PYLON_COUNT = 18
+const HDR_CORE = 2.4 // pylon-core HDR strength (blooms strongly)
+const HDR_LINE = 1.15 // connection-line HDR strength (faint energy)
+const NEIGHBORS = 2 // connections per pylon
 
-// A tasteful blue. Driven above 1.0 (HDR) only for the sparse glowing subset so
-// those pixels survive the bloom threshold; the base color stays a calm, cool
-// blue.
-const SQUARE_BLUE = new Three.Color(0x3a7bff)
-// HDR strength for the GLOWING subset: emissive = color * strength * intensity.
-// Tuned so the lit squares bloom faintly without flooding the field.
-const HDR_STRENGTH = 1.55
+// Camera poses: position + look-at target. `landing` is a wide establishing
+// vantage centered on the constellation; `khala` flies in and rotates to a
+// different part of the same space, so entering Khala reads as travelling there.
+const POSES: Record<LandingPose, { pos: Three.Vector3; target: Three.Vector3 }> =
+  {
+    landing: {
+      pos: new Three.Vector3(0, 1.2, 19),
+      target: new Three.Vector3(0, 0, 0),
+    },
+    khala: {
+      pos: new Three.Vector3(9.5, -2.6, 8.5),
+      target: new Three.Vector3(2.6, -0.6, -2.2),
+    },
+  }
 
-// Dim squares (the majority) sit well below the bloom threshold so they read as
-// very dark texture rather than energy. This is the "way darker" base.
-const DIM_INTENSITY = 0.16
-// Glowing squares (the sparse subset) ride above 1.0 so they bloom.
-const GLOW_INTENSITY = 1.0
-// Deterministic fraction of squares that keep a subtle glow (~14%).
-const GLOW_FRACTION = 0.14
-
-// Grid layout: ~24 columns x 16 rows = 384 small squares with clear gaps. The
-// columns are recentred per-aspect at resize; rows fill WORLD_HEIGHT.
-const GRID_COLUMNS = 24
-const GRID_ROWS = 16
-// Square edge as a fraction of the cell pitch — small, with clear space around.
-const SQUARE_FILL = 0.36
-
-// Cleared-center radius as a fraction of the smaller world dimension. The
-// wordmark plus a comfortable margin sits on pure black; squares whose center
-// falls inside this radius are hidden. Responsive to aspect (wider viewports
-// clear a wider horizontal band so the wide wordmark stays clean).
-const CENTER_CLEAR_RATIO = 0.52
-
-// Deterministic hash in [0, 1) so the glowing subset and per-square variation
-// stay stable frame-to-frame and across reloads (no Math.random flicker).
-const hash01 = (row: number, col: number): number => {
-  const n = Math.sin(row * 127.1 + col * 311.7) * 43758.5453
+// Deterministic hash in [0, 1) so pylon placement + the glow subset stay stable
+// across reloads (no Math.random flicker).
+const hash01 = (i: number, salt: number): number => {
+  const n = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453
   return n - Math.floor(n)
 }
 
-type Square = Readonly<{
-  baseIntensity: number
-  col: number
-  glowing: boolean
-  material: Three.MeshBasicMaterial
-  mesh: Three.Mesh<Three.PlaneGeometry, Three.MeshBasicMaterial>
+// A loose constellation in a flattened volume around the origin.
+const pylonPositions = (): Three.Vector3[] => {
+  const pts: Three.Vector3[] = []
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  for (let i = 0; i < PYLON_COUNT; i += 1) {
+    const r = 3 + hash01(i, 1) * 7.5
+    const a = i * golden
+    pts.push(
+      new Three.Vector3(
+        Math.cos(a) * r,
+        (hash01(i, 2) - 0.5) * 7.5,
+        Math.sin(a) * r * 0.85 - 2,
+      ),
+    )
+  }
+  return pts
+}
+
+// HDR-emissive blue: color * strength, additive, no tone-map on the material so
+// the OutputPass tone-mapper at the end of the chain is the only one.
+const makeEmissiveMaterial = (strength: number): Three.MeshBasicMaterial => {
+  const material = new Three.MeshBasicMaterial({
+    blending: Three.AdditiveBlending,
+    color: PYLON_BLUE.clone().multiplyScalar(strength),
+    depthWrite: false,
+    transparent: true,
+  })
+  material.toneMapped = false
+  return material
+}
+
+type Pylon = Readonly<{
+  baseStrength: number
+  core: Three.Mesh<Three.OctahedronGeometry, Three.MeshBasicMaterial>
   phase: number
   pulseSpeed: number
-  row: number
 }>
 
 const hostSize = (element: HTMLElement): { height: number; width: number } => {
@@ -80,28 +101,15 @@ const hostSize = (element: HTMLElement): { height: number; width: number } => {
   return { height, width }
 }
 
-// HDR-emissive blue: color * strength, additive, no tone-map on the material so
-// the OutputPass tone-mapper at the end of the chain is the only one. This is
-// the same "glow in the dark" recipe the pylon cores use.
-const makeEmissiveBlueMaterial = (
-  intensity: number,
-): Three.MeshBasicMaterial => {
-  const material = new Three.MeshBasicMaterial({
-    blending: Three.AdditiveBlending,
-    color: SQUARE_BLUE.clone().multiplyScalar(HDR_STRENGTH * intensity),
-    depthTest: false,
-    depthWrite: false,
-    transparent: true,
-  })
-  material.toneMapped = false
-  return material
-}
-
 export type LandingSquaresOptions = Readonly<{
   pixelRatio?: number
+  pose?: LandingPose
 }>
 
-export type LandingSquaresHandle = Readonly<{ dispose: () => void }>
+export type LandingSquaresHandle = Readonly<{
+  dispose: () => void
+  setPose: (pose: LandingPose) => void
+}>
 
 export const mountLandingSquares = (
   element: HTMLElement,
@@ -123,20 +131,20 @@ export const mountLandingSquares = (
   canvas.style.width = '100%'
   element.append(canvas)
 
-  // Vignette overlay: a radial gradient layered above the canvas (transparent
-  // center -> near-black edges) so brightness falls off toward the periphery
-  // for a moody look. Pointer-inert; the wordmark in the page sits above it.
+  // Vignette overlay: radial gradient above the canvas (transparent center ->
+  // near-black edges) for a moody falloff. Pointer-inert; the wordmark sits
+  // above it.
   const vignette = document.createElement('div')
   vignette.style.position = 'absolute'
   vignette.style.inset = '0'
   vignette.style.pointerEvents = 'none'
   vignette.style.background =
-    'radial-gradient(ellipse 80% 80% at 50% 50%,' +
+    'radial-gradient(ellipse 85% 85% at 50% 50%,' +
     ' rgba(0,0,0,0) 0%,' +
-    ' rgba(0,0,0,0) 30%,' +
-    ' rgba(0,0,0,0.35) 55%,' +
-    ' rgba(0,0,0,0.78) 82%,' +
-    ' rgba(0,0,0,0.97) 100%)'
+    ' rgba(0,0,0,0) 38%,' +
+    ' rgba(0,0,0,0.30) 62%,' +
+    ' rgba(0,0,0,0.72) 85%,' +
+    ' rgba(0,0,0,0.95) 100%)'
   element.append(vignette)
 
   const renderer = new Three.WebGLRenderer({
@@ -145,134 +153,164 @@ export const mountLandingSquares = (
     canvas,
   })
   renderer.outputColorSpace = Three.SRGBColorSpace
-  // OutputPass owns tone-mapping at the end of the composer chain; the renderer
-  // must stay linear/no-tone-map so we do not tone-map twice.
   renderer.toneMapping = Three.NoToneMapping
   renderer.setClearColor(BACKGROUND_COLOR, 1)
 
   const scene = new Three.Scene()
-  const camera = new Three.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000)
-  camera.position.set(0, 0, 50)
-  camera.lookAt(0, 0, 0)
+  const camera = new Three.PerspectiveCamera(52, 1, 0.1, 200)
 
-  // One shared geometry; each square gets its own emissive material so the
-  // gentle per-square pulse can ride the HDR intensity independently.
-  const geometry = new Three.PlaneGeometry(1, 1)
-  const squares: Square[] = []
-  for (let row = 0; row < GRID_ROWS; row += 1) {
-    for (let col = 0; col < GRID_COLUMNS; col += 1) {
-      // A deterministic subset glows; the rest stay very dim. The glowing base
-      // also varies a little so the lit squares are not all identical.
-      const glowing = hash01(row, col) < GLOW_FRACTION
-      const baseIntensity = glowing
-        ? GLOW_INTENSITY * (0.85 + hash01(row + 3, col + 7) * 0.3)
-        : DIM_INTENSITY * (0.7 + hash01(row + 5, col + 11) * 0.6)
-      const phase = ((row * 31 + col * 17) % 360) / 360
-      const pulseSpeed = 0.16 + ((row + col) % 5) * 0.015
-      const material = makeEmissiveBlueMaterial(baseIntensity)
-      const mesh = new Three.Mesh(geometry, material)
-      mesh.position.set(0, 0, -1)
-      mesh.renderOrder = -1
-      scene.add(mesh)
-      squares.push({
-        baseIntensity,
-        col,
-        glowing,
-        material,
-        mesh,
-        phase,
-        pulseSpeed,
-        row,
-      })
+  // The constellation lives in a group so the whole network drifts slowly
+  // (ambient life) independent of the camera move.
+  const group = new Three.Group()
+  scene.add(group)
+
+  const positions = pylonPositions()
+
+  // Pylon cores: small octahedra with HDR-emissive blue that pulse gently.
+  const coreGeometry = new Three.OctahedronGeometry(0.34, 0)
+  const pylons: Pylon[] = positions.map((p, i) => {
+    const baseStrength = HDR_CORE * (0.75 + hash01(i, 3) * 0.6)
+    const material = makeEmissiveMaterial(baseStrength)
+    const core = new Three.Mesh(coreGeometry, material)
+    core.position.copy(p)
+    group.add(core)
+    return {
+      baseStrength,
+      core,
+      phase: hash01(i, 4),
+      pulseSpeed: 0.4 + hash01(i, 5) * 0.5,
     }
-  }
+  })
 
-  // Self-contained EffectComposer mirroring `createEffectComposerResources`:
-  // RenderPass -> UnrealBloomPass (HDR glow) -> OutputPass (tone-map). The
-  // threshold sits below the HDR squares (which are color > 1.0) so only the
-  // blue energy blooms while the near-black field stays dark.
+  // Connection lines: each pylon links to its nearest neighbors. Deduped into a
+  // single additive HDR LineSegments so the network reads as faint energy that
+  // brightens through the bloom pass.
+  const seen = new Set<string>()
+  const linePoints: number[] = []
+  positions.forEach((p, i) => {
+    positions
+      .map((q, j) => ({ d: p.distanceTo(q), j }))
+      .filter(o => o.j !== i)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, NEIGHBORS)
+      .forEach(({ j }) => {
+        const key = i < j ? `${i}:${j}` : `${j}:${i}`
+        if (seen.has(key)) return
+        seen.add(key)
+        const q = positions[j]
+        if (q === undefined) return
+        linePoints.push(p.x, p.y, p.z, q.x, q.y, q.z)
+      })
+  })
+  const lineGeometry = new Three.BufferGeometry()
+  lineGeometry.setAttribute(
+    'position',
+    new Three.Float32BufferAttribute(linePoints, 3),
+  )
+  const lineMaterial = new Three.LineBasicMaterial({
+    blending: Three.AdditiveBlending,
+    color: PYLON_BLUE.clone().multiplyScalar(HDR_LINE),
+    depthWrite: false,
+    transparent: true,
+  })
+  lineMaterial.toneMapped = false
+  const lines = new Three.LineSegments(lineGeometry, lineMaterial)
+  group.add(lines)
+
+  // Sparse drifting sparks for depth/energy (additive HDR points).
+  const SPARKS = 140
+  const sparkPositions = new Float32Array(SPARKS * 3)
+  for (let i = 0; i < SPARKS; i += 1) {
+    sparkPositions[i * 3] = (hash01(i, 6) - 0.5) * 34
+    sparkPositions[i * 3 + 1] = (hash01(i, 7) - 0.5) * 20
+    sparkPositions[i * 3 + 2] = (hash01(i, 8) - 0.5) * 30 - 4
+  }
+  const sparkGeometry = new Three.BufferGeometry()
+  sparkGeometry.setAttribute(
+    'position',
+    new Three.Float32BufferAttribute(sparkPositions, 3),
+  )
+  const sparkMaterial = new Three.PointsMaterial({
+    blending: Three.AdditiveBlending,
+    color: PYLON_BLUE.clone().multiplyScalar(1.4),
+    depthWrite: false,
+    size: 0.06,
+    sizeAttenuation: true,
+    transparent: true,
+  })
+  sparkMaterial.toneMapped = false
+  const sparks = new Three.Points(sparkGeometry, sparkMaterial)
+  group.add(sparks)
+
+  // EffectComposer: RenderPass -> UnrealBloomPass (HDR glow) -> OutputPass.
+  // Threshold sits below the HDR cores (color > 1.0) so only the blue energy
+  // blooms while the near-black field stays dark.
   const composer = new EffectComposer(renderer)
   composer.addPass(new RenderPass(scene, camera))
-  // Dialed way down from the old bright field: lower strength + higher
-  // threshold so only the sparse HDR (>1.0) squares bloom, and faintly.
   const bloomPass = new UnrealBloomPass(
     new Three.Vector2(1, 1),
-    /* strength */ 0.45,
-    /* radius */ 0.55,
-    /* threshold */ 0.95,
+    /* strength */ 0.9,
+    /* radius */ 0.6,
+    /* threshold */ 0.85,
   )
   composer.addPass(bloomPass)
   composer.addPass(new OutputPass())
 
+  // Camera pose state: the camera eases toward `targetPos`/`targetLook` every
+  // frame, so changing the pose produces a continuous flight rather than a cut.
+  const initialPose: LandingPose = options.pose ?? 'landing'
+  const camPos = POSES[initialPose].pos.clone()
+  const camLook = POSES[initialPose].target.clone()
+  const targetPos = POSES[initialPose].pos.clone()
+  const targetLook = POSES[initialPose].target.clone()
+  camera.position.copy(camPos)
+  camera.lookAt(camLook)
+
+  const setPose = (pose: LandingPose): void => {
+    const next = POSES[pose] ?? POSES.landing
+    targetPos.copy(next.pos)
+    targetLook.copy(next.target)
+  }
+
   let size = hostSize(element)
   const ratio = (): number => Math.min(window.devicePixelRatio || 1, pixelRatio)
 
-  // Place the grid so it fills the viewport with even spacing and clear gaps.
-  // Recomputed on resize because column spacing follows the world aspect.
-  const layoutGrid = (): void => {
-    const aspect = size.width / size.height
-    const worldWidth = WORLD_HEIGHT * aspect
-    const cellW = worldWidth / GRID_COLUMNS
-    const cellH = WORLD_HEIGHT / GRID_ROWS
-    const squareEdge = Math.min(cellW, cellH) * SQUARE_FILL
-    // Cleared center: hide squares whose center sits inside an ellipse around
-    // the middle so the wordmark sits on pure black. The ellipse follows the
-    // world aspect (wider band on wide viewports for the wide wordmark) and the
-    // base radius scales with the smaller world dimension.
-    const clearRadius = (Math.min(worldWidth, WORLD_HEIGHT) / 2) * CENTER_CLEAR_RATIO
-    const clearX = clearRadius * Math.max(1, Math.min(aspect, 2.2))
-    const clearY = clearRadius
-    squares.forEach(square => {
-      const x = (square.col - (GRID_COLUMNS - 1) / 2) * cellW
-      const y = (square.row - (GRID_ROWS - 1) / 2) * cellH
-      const nx = x / clearX
-      const ny = y / clearY
-      square.mesh.visible = nx * nx + ny * ny >= 1
-      square.mesh.position.set(x, y, -1)
-      square.mesh.scale.set(squareEdge, squareEdge, 1)
-    })
-  }
-
   const resize = (): void => {
     size = hostSize(element)
-    const aspect = size.width / size.height
-    const worldWidth = WORLD_HEIGHT * aspect
     const r = ratio()
     renderer.setPixelRatio(r)
     renderer.setSize(size.width, size.height, false)
     composer.setPixelRatio(r)
     composer.setSize(size.width, size.height)
     bloomPass.setSize(size.width * r, size.height * r)
-    camera.left = -worldWidth / 2
-    camera.right = worldWidth / 2
-    camera.top = WORLD_HEIGHT / 2
-    camera.bottom = -WORLD_HEIGHT / 2
+    camera.aspect = size.width / size.height
     camera.updateProjectionMatrix()
-    layoutGrid()
   }
 
   let disposed = false
   let frame = 0
-  const blueScratch = new Three.Color()
+  const colorScratch = new Three.Color()
 
   const renderScene = (time: number): void => {
     if (disposed) return
     const seconds = time * 0.001
-    // Calm ambient pulse: each square's HDR intensity breathes gently around
-    // its base so the grid shimmers slowly without ever feeling busy.
-    squares.forEach(square => {
-      if (!square.mesh.visible) return
-      // Only the glowing subset breathes; the dim majority stays steady-dark so
-      // the field reads calm and mostly unlit.
-      const amplitude = square.glowing ? 0.22 : 0.06
-      const wave = Math.sin(
-        seconds * square.pulseSpeed + square.phase * Math.PI * 2,
-      )
-      const intensity = square.baseIntensity * (1 + wave * amplitude)
-      blueScratch
-        .copy(SQUARE_BLUE)
-        .multiplyScalar(HDR_STRENGTH * Math.max(0.05, intensity))
-      square.material.color.copy(blueScratch)
+
+    // Ease the camera toward the active pose (continuous flight on nav).
+    camPos.lerp(targetPos, 0.045)
+    camLook.lerp(targetLook, 0.045)
+    camera.position.copy(camPos)
+    camera.lookAt(camLook)
+
+    // Ambient life: the whole constellation drifts slowly.
+    group.rotation.y = seconds * 0.04
+    group.rotation.x = Math.sin(seconds * 0.13) * 0.05
+
+    // Each core breathes around its base HDR strength.
+    pylons.forEach(pylon => {
+      const wave = Math.sin(seconds * pylon.pulseSpeed + pylon.phase * Math.PI * 2)
+      const strength = pylon.baseStrength * (1 + wave * 0.28)
+      colorScratch.copy(PYLON_BLUE).multiplyScalar(Math.max(0.2, strength))
+      pylon.core.material.color.copy(colorScratch)
     })
 
     composer.render()
@@ -294,15 +332,20 @@ export const mountLandingSquares = (
       disposed = true
       cancelAnimationFrame(frame)
       observer?.disconnect()
-      squares.forEach(square => {
-        scene.remove(square.mesh)
-        square.material.dispose()
+      pylons.forEach(pylon => {
+        group.remove(pylon.core)
+        pylon.core.material.dispose()
       })
-      geometry.dispose()
+      coreGeometry.dispose()
+      lineGeometry.dispose()
+      lineMaterial.dispose()
+      sparkGeometry.dispose()
+      sparkMaterial.dispose()
       bloomPass.dispose()
       composer.dispose()
       renderer.dispose()
       element.replaceChildren()
     },
+    setPose,
   }
 }
