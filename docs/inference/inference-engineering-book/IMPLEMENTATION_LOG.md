@@ -384,3 +384,25 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   KV-aware routing, and prefill/decode scheduling, not as a dependency today.
 - **Honest scope:** docs-only study. No serving engine, gateway route,
   dependency, live traffic, cost, or deploy behavior changed.
+
+---
+
+## P2-11 — Modality-Specific Cloud Primitives — DONE (study, #6094)
+
+- **Notes ref:** `khala-investigation-notes.md` §P2 item 11
+  ("Modality-Specific Cloud Primitives"); book Ch.6 (modalities);
+  `docs/inference/khala.md` (Khala as one Agent Cloud primitive);
+  `docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md`.
+- **What shipped:** the per-modality contract doc
+  `docs/inference/2026-06-23-khala-modality-cloud-primitive-contracts.md`.
+  It defines request shape, receipt/metric fields, scaling lane, and
+  product-promise gating for embeddings/bulk documents, live voice, and
+  image/video primitives.
+- **Principle recorded:** shared account, balance, receipt, referral, and
+  settlement rails do not imply shared chat metrics. Embeddings are
+  async/batch-first, live voice is bidirectional/session-first, and image/video
+  lanes are compute-bound artifact jobs scaled independently from LLM
+  decode-heavy traffic.
+- **Honest scope:** docs-only study. No production primitive, WebSocket route,
+  batch worker, image/video worker, telemetry schema, product-promise state,
+  traffic, spend, or deploy behavior changed.
