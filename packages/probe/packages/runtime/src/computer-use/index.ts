@@ -10,6 +10,7 @@ export * from "./timeline";
 export * from "./page";
 export * from "./browser";
 export * from "./terminal";
+export * from "./terminal-snapshot";
 export * from "./filesystem";
 export * from "./tools";
 export * from "./playwright-page";

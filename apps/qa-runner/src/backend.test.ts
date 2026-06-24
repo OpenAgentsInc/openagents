@@ -7,7 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { CloudVmBackendNotArmedError, cloudVmBackend, localBackend } from "./backend";
+import {
+  CloudVmBackendNotArmedError,
+  cloudVmBackend,
+  inertCloudVmProvisioner,
+  localBackend,
+  nativeDesktopDriver,
+  NativeDesktopDriverNotImplementedError,
+} from "./backend";
 import { makeFakeChromium } from "./fake-chromium";
 import { makeTarget } from "./target";
 
@@ -40,5 +47,29 @@ describe("cloudVmBackend", () => {
     await expect(backend.provision({ target, artifactDir: dir })).rejects.toBeInstanceOf(
       CloudVmBackendNotArmedError,
     );
+  });
+
+  test("inert provisioner errors honestly on both provision and provisionVm", async () => {
+    const provisioner = inertCloudVmProvisioner();
+    await expect(provisioner.provision({ target, artifactDir: dir })).rejects.toBeInstanceOf(
+      CloudVmBackendNotArmedError,
+    );
+    await expect(
+      provisioner.provisionVm({ target, artifactDir: dir, os: "linux" }),
+    ).rejects.toBeInstanceOf(CloudVmBackendNotArmedError);
+  });
+
+  test("cloudVmBackend wired with the inert provisioner still errors honestly (no fake green)", async () => {
+    const backend = cloudVmBackend({ provisioner: inertCloudVmProvisioner() });
+    await expect(backend.provision({ target, artifactDir: dir })).rejects.toBeInstanceOf(
+      CloudVmBackendNotArmedError,
+    );
+  });
+});
+
+describe("nativeDesktopDriver (spec-only stub)", () => {
+  test("throws NativeDesktopDriverNotImplementedError — not a working driver", () => {
+    expect(() => nativeDesktopDriver("macos")).toThrow(NativeDesktopDriverNotImplementedError);
+    expect(() => nativeDesktopDriver("windows")).toThrow(NativeDesktopDriverNotImplementedError);
   });
 });

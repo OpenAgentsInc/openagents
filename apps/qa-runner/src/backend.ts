@@ -77,6 +77,11 @@ export class CloudVmBackendNotArmedError extends Error {
  * A provisioner for a real isolated VM. The cloud wiring (oa-node/oa-workroomd)
  * implements this; the shape mirrors executor's VmHandle (ssh/push/tunnel) but
  * is reduced here to what the runner needs: give it a session.
+ *
+ * `provision` is the only method the browser runner needs today. The richer
+ * lifecycle below (`CloudVmProvisionerV2`) is the typed provision/exec/teardown
+ * seam the cross-OS Cloud-VM work (#6186) grows into; it is additive and
+ * optional so existing provisioners keep working.
  */
 export interface CloudVmProvisioner {
   readonly provision: (input: {
@@ -84,6 +89,63 @@ export interface CloudVmProvisioner {
     readonly artifactDir: string;
     readonly headed?: boolean;
   }) => Promise<BackendSession>;
+}
+
+/** The OS tier a Cloud microVM is requested on (executor's 3-OS breadth). */
+export type CloudVmOs = "linux" | "macos" | "windows";
+
+/** A handle to a provisioned microVM, mirroring executor's VmHandle (reduced). */
+export interface CloudVmHandle {
+  /** Opaque provider id (e.g. firecracker microVM id / sek8s pod name). */
+  readonly id: string;
+  /** The OS this VM is running. */
+  readonly os: CloudVmOs;
+  /**
+   * Run a command inside the VM (ssh/exec). Returns combined output + exit
+   * code. Used by terminal/native-desktop drivers running INSIDE the VM.
+   */
+  readonly exec: (
+    command: string,
+    args?: ReadonlyArray<string>,
+  ) => Promise<{ readonly code: number; readonly output: string }>;
+  /** Acquire a browser session inside the VM (for the browser runner). */
+  readonly acquireBrowser: BackendSession["acquireBrowser"];
+  /** Tear the VM down and release its resources. */
+  readonly teardown: () => Promise<void>;
+}
+
+/**
+ * The typed cross-OS provisioner the cloud wiring implements later. Distinct
+ * from the v1 `provision`-only seam so it can be added without breaking the
+ * existing browser-only contract: `provisionVm` returns a full VM handle
+ * (provision / exec / teardown) on a requested OS tier.
+ *
+ * OWNER-GATED: the real implementation lives in `cloud` (oa-node/oa-workroomd
+ * over firecracker / sek8s). There is intentionally NO live implementation here.
+ */
+export interface CloudVmProvisionerV2 extends CloudVmProvisioner {
+  readonly provisionVm: (input: {
+    readonly target: Target;
+    readonly artifactDir: string;
+    readonly os: CloudVmOs;
+    readonly headed?: boolean;
+  }) => Promise<CloudVmHandle>;
+}
+
+/**
+ * An INERT stub provisioner: every method errors honestly with
+ * `CloudVmBackendNotArmedError`. This is the owner-gated default — wiring this
+ * in does NOT silently fall back to local; it makes the un-armed state explicit
+ * and testable. The real provisioner from `cloud` replaces it.
+ */
+export function inertCloudVmProvisioner(): CloudVmProvisionerV2 {
+  const fail = (): never => {
+    throw new CloudVmBackendNotArmedError();
+  };
+  return {
+    provision: async () => fail(),
+    provisionVm: async () => fail(),
+  };
 }
 
 export interface CloudVmBackendOptions {
@@ -109,4 +171,54 @@ export function cloudVmBackend(options: CloudVmBackendOptions = {}): Backend {
       return options.provisioner.provision(input);
     },
   };
+}
+
+// ── Native-desktop driver — SPEC ONLY (stretch, #6186) ───────────────────────
+//
+// droid-control uses trycua/cua's `cua-driver` (accessibility tree + screenshots
+// over a native desktop). This is the SPEC for that seam so the contract is
+// settled before any real native driver lands. There is intentionally NO real
+// implementation here: `nativeDesktopDriver()` returns a stub that errors. A
+// real macOS/Windows driver (likely a trycua/cua adapter running INSIDE a
+// `CloudVmHandle`) implements `NativeDesktopDriver` later.
+
+export type NativeDesktopOs = "macos" | "windows";
+
+/**
+ * A native-desktop driver: read the accessibility tree + screenshots, and
+ * synthesize input — the surface a native UI test drives against. Mirrors the
+ * computer-use browser/terminal seams so the runner stays driver-agnostic.
+ */
+export interface NativeDesktopDriver {
+  readonly os: NativeDesktopOs;
+  /** Snapshot the accessibility tree as a serializable, public-safe structure. */
+  readonly accessibilityTree: () => Promise<unknown>;
+  /** Capture a screenshot to `path` (PNG). Returns the written path. */
+  readonly screenshot: (path: string) => Promise<string>;
+  /** Click an accessibility node by a stable selector/role+name intent. */
+  readonly click: (selector: string) => Promise<void>;
+  /** Type text into the focused element. */
+  readonly type: (text: string) => Promise<void>;
+  /** Release the driver/session. */
+  readonly teardown: () => Promise<void>;
+}
+
+export class NativeDesktopDriverNotImplementedError extends Error {
+  constructor() {
+    super(
+      "nativeDesktopDriver is spec-only (#6186 stretch): the native-desktop " +
+        "accessibility+screenshot driver (trycua/cua-style, macOS/Windows) is " +
+        "not implemented. It will run inside a CloudVmHandle and is wired later.",
+    );
+    this.name = "NativeDesktopDriverNotImplementedError";
+  }
+}
+
+/**
+ * SPEC-ONLY stub. Throws `NativeDesktopDriverNotImplementedError`. Present so
+ * the seam + error are typed and testable; do NOT mistake this for a working
+ * native driver.
+ */
+export function nativeDesktopDriver(_os: NativeDesktopOs): NativeDesktopDriver {
+  throw new NativeDesktopDriverNotImplementedError();
 }
