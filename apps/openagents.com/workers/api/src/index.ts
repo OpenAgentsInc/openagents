@@ -21,7 +21,6 @@ import {
 import { GithubProvider } from '@openauthjs/openauth/provider/github'
 import { createSubjects } from '@openauthjs/openauth/subject'
 import { CodeUI } from '@openauthjs/openauth/ui/code'
-import { THEME_OPENAUTH } from '@openauthjs/openauth/ui/theme'
 import { Cause, Effect, Layer, Option, Redacted, Schema as S } from 'effect'
 import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
@@ -3126,16 +3125,16 @@ const makeAuthIssuer = (env: Env) => {
   })
 
   return issuer({
+    // Full OpenAgents-branded auth theme (replaces the OpenAuth defaults: the grid
+    // logo, openauth.js.org favicon, IBM Plex font, and #6772e5 purple accent).
     theme: {
-      ...THEME_OPENAUTH,
       title: 'OpenAgents',
-      // OpenAgents wordmark (inline SVG) replacing the default OpenAuth grid logo.
-      // No hosted asset exists; the brand is the wordmark. light = dark ink (light
-      // bg), dark = off-white ink (the dark auth page).
-      logo: {
-        light: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
-        dark: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
-      },
+      radius: 'none' as const,
+      primary: { light: '#0a0a0a', dark: '#f1efe8' },
+      background: { light: '#ffffff', dark: '#000000' },
+      font: { family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+      logo: { light: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E', dark: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E' },
+      favicon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20fill%3D%27%23000000%27%2F%3E%3Ctext%20x%3D%2732%27%20y%3D%2744%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2734%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-2%27%20fill%3D%27%23f1efe8%27%3Eoa%3C%2Ftext%3E%3C%2Fsvg%3E',
     },
     providers: {
       github: GithubProvider({
