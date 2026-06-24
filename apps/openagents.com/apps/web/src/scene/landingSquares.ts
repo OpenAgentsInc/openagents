@@ -20,7 +20,12 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 // (three-effect #16 / openagents #6068) without pulling the full Foldkit/three
 // scene host for this raw background.
 
-export type LandingPose = 'landing' | 'khala' | 'tassadar' | 'autopilot'
+export type LandingPose =
+  | 'landing'
+  | 'khala'
+  | 'tassadar'
+  | 'autopilot'
+  | 'login'
 
 const BACKGROUND_COLOR = 0x000000
 // A tasteful cool blue, driven above 1.0 (HDR) so the cores survive the bloom
@@ -42,6 +47,9 @@ const NEIGHBORS = 2 // connections per pylon
 // the pylons loom overhead. It reads as arriving inside the network (you are
 // now flying it), distinct from every other pose — closer and more immersive
 // than `landing`, and on the opposite side from `tassadar`'s above-left view.
+// `login` is a calm, settled vantage close to `landing` but eased gently to the
+// right and a touch lower, so the constellation drifts to frame a centered sign-in
+// card; navigating /  <-> /login is a short continuous glide, not a cut.
 export const POSES: Record<
   LandingPose,
   { pos: Three.Vector3; target: Three.Vector3 }
@@ -61,6 +69,10 @@ export const POSES: Record<
   autopilot: {
     pos: new Three.Vector3(5.5, -4.5, 6.0),
     target: new Three.Vector3(0.4, 1.6, -3.2),
+  },
+  login: {
+    pos: new Three.Vector3(3.4, -0.4, 16.5),
+    target: new Three.Vector3(-1.1, 0.2, -0.6),
   },
 }
 

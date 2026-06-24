@@ -28,7 +28,9 @@ const parsePose = (value: string | null): LandingPose =>
       ? 'tassadar'
       : value === 'autopilot'
         ? 'autopilot'
-        : 'landing'
+        : value === 'login'
+          ? 'login'
+          : 'landing'
 
 const landingSquaresElement = defineCustomElement({
   events: {},

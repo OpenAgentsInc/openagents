@@ -2,7 +2,12 @@ import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
-import { KhalaRoute, LandingRoute, TassadarRoute } from '../../../route'
+import {
+  KhalaRoute,
+  LandingRoute,
+  LoginRoute,
+  TassadarRoute,
+} from '../../../route'
 import { update } from '../../../update'
 import { view } from '../../../view'
 import {
@@ -121,14 +126,39 @@ describe('persistent landing and Khala scene', () => {
     // The /autopilot onboarding route reuses the SAME persistent scene with
     // its own camera pose (#6125).
     expect(poseForRoute('Autopilot')).toBe('autopilot')
+    // /login reuses the SAME persistent scene with its own login vantage.
+    expect(poseForRoute('Login')).toBe('login')
 
     const poses = (
-      ['Landing', 'Khala', 'Tassadar', 'Autopilot'] as const
+      ['Landing', 'Khala', 'Tassadar', 'Autopilot', 'Login'] as const
     ).map(poseForRoute)
     expect(new Set(poses).size).toBe(poses.length)
     for (const pose of poses) {
       expect(pose.trim().length).toBeGreaterThan(0)
     }
+  })
+
+  test('hosts the Login pose on the same persistent canvas (no second scene)', () => {
+    const landing = persistentSceneView('Landing') as SnabbVNode
+    const login = persistentSceneView('Login') as SnabbVNode
+
+    const landingCanvas = findByKey(landing, PERSISTENT_SCENE_KEY)
+    const loginCanvas = findByKey(login, PERSISTENT_SCENE_KEY)
+
+    expect(landingCanvas).toBeDefined()
+    expect(loginCanvas).toBeDefined()
+    // Same keyed canvas wrapper => one persistent scene instance, not two.
+    expect(landingCanvas?.sel).toBe(loginCanvas?.sel)
+    expect(landingCanvas?.key).toBe(loginCanvas?.key)
+    expect(hasSelector(loginCanvas as SnabbVNode, 'oa-landing-squares')).toBe(
+      true,
+    )
+
+    // Only the overlay key differs between routes; every other key is stable, so
+    // navigating /  <-> /login eases the camera through ONE scene (no recreate).
+    const stableKeys = (keys: ReadonlyArray<string>): ReadonlyArray<string> =>
+      keys.filter(k => !k.startsWith(PERSISTENT_SCENE_OVERLAY_PREFIX))
+    expect(stableKeys(allKeys(landing))).toEqual(stableKeys(allKeys(login)))
   })
 
   test('hosts the Autopilot pose on the same persistent canvas (no second scene)', () => {
@@ -238,6 +268,35 @@ describe('persistent landing and Khala scene', () => {
       // Clicking Close dismisses it.
       Scene.click(Scene.selector('[aria-label="Close"]')),
       Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),
+    )
+  })
+
+  test('renders /login as the sign-in card over the same persistent scene', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LoginRoute())),
+      // The ONE persistent scene canvas is present (not a second/isolated one).
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      // The login card mounts as this route's overlay, at the login pose.
+      Scene.expect(
+        Scene.selector('[data-persistent-scene-overlay="login"]'),
+      ).toExist(),
+      Scene.expect(Scene.selector('[data-pose="login"]')).toExist(),
+      // The flush public header (no separate isolated scene) is present.
+      Scene.expect(Scene.role('link', { name: 'Homepage' })).toExist(),
+      // The login card content + form are preserved verbatim.
+      Scene.expect(
+        Scene.role('heading', { name: 'Log in to OpenAgents' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.text(
+          'Enter your email and we’ll send a one-time sign-in code, or continue with GitHub.',
+        ),
+      ).toExist(),
+      Scene.expect(Scene.text('Email me a code')).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Continue with GitHub' }),
+      ).toHaveAttr('href', '/login/github'),
     )
   })
 

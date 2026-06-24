@@ -16,12 +16,13 @@ export type PersistentSceneRoute =
   | 'Khala'
   | 'Tassadar'
   | 'Autopilot'
+  | 'Login'
 
 // Active route -> camera pose. The canvas node is keyed the same across
-// /landing <-> /khala <-> /tassadar <-> /autopilot so the ONE scene instance
-// persists; only this attribute changes, and the element eases the camera to
-// the new pose (continuous flight). /autopilot reuses the same keyed canvas
-// with its own onboarding `autopilot` vantage — no second scene is created.
+// /landing <-> /khala <-> /tassadar <-> /autopilot <-> /login so the ONE scene
+// instance persists; only this attribute changes, and the element eases the
+// camera to the new pose (continuous flight). /autopilot and /login reuse the
+// same keyed canvas with their own vantage — no second scene is created.
 export const poseForRoute = (route: PersistentSceneRoute): string =>
   route === 'Khala'
     ? 'khala'
@@ -29,7 +30,9 @@ export const poseForRoute = (route: PersistentSceneRoute): string =>
       ? 'tassadar'
       : route === 'Autopilot'
         ? 'autopilot'
-        : 'landing'
+        : route === 'Login'
+          ? 'login'
+          : 'landing'
 
 const persistentCanvasLayer = (
   h: ReturnType<typeof html<Message>>,
@@ -176,12 +179,41 @@ const autopilotPlaceholderOverlay = (
     ],
   )
 
+// Placeholder login overlay for the shared persistent scene at the `login`
+// pose. The real /login card + flush header (issue: unify /login with the scene)
+// is rendered by the loggedOut view — it owns the public-header auth state — and
+// threaded in here as `loginOverlay`, so it mounts as the overlay of the SAME
+// keyed canvas (no second scene). When no overlay is supplied (e.g. a unit test
+// of the scene shell in isolation), a minimal energy label stands in, proving
+// the canvas hosts the `Login` pose.
+const loginPlaceholderOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+  h.div(
+    [
+      h.DataAttribute('persistent-scene-overlay', 'login'),
+      Ui.className<Message>(
+        'pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 px-6',
+      ),
+    ],
+    [
+      h.div(
+        [
+          h.DataAttribute('login-glow', 'energy'),
+          Ui.className<Message>(
+            'khala-glow select-none text-center font-semibold text-white text-4xl sm:text-6xl',
+          ),
+        ],
+        ['Log in'],
+      ),
+    ],
+  )
+
 const overlayForRoute = (
   h: ReturnType<typeof html<Message>>,
   route: PersistentSceneRoute,
   copiedAgentInstructions: boolean,
   autopilotOverlay: Html | undefined,
   khalaOverlay: Html | undefined,
+  loginOverlay: Html | undefined,
 ): Html =>
   route === 'Landing'
     ? landingOverlay(h)
@@ -189,18 +221,22 @@ const overlayForRoute = (
       ? tassadarOverlay(h, copiedAgentInstructions)
       : route === 'Autopilot'
         ? (autopilotOverlay ?? autopilotPlaceholderOverlay(h))
-        : (khalaOverlay ?? khalaPlaceholderOverlay(h))
+        : route === 'Login'
+          ? (loginOverlay ?? loginPlaceholderOverlay(h))
+          : (khalaOverlay ?? khalaPlaceholderOverlay(h))
 
-// `autopilotOverlay` is the real /autopilot onboarding HUD (#6129) and
-// `khalaOverlay` is the real /khala chat HUD, both supplied by the loggedOut
-// view. Each is only consulted on its own route; other routes ignore it.
-// Keeping them parameters (rather than importing the pages here) avoids a
-// model/message import cycle through the scene module.
+// `autopilotOverlay` is the real /autopilot onboarding HUD (#6129),
+// `khalaOverlay` is the real /khala chat HUD, and `loginOverlay` is the real
+// /login card + flush header — all supplied by the loggedOut view. Each is only
+// consulted on its own route; other routes ignore it. Keeping them parameters
+// (rather than importing the pages here) avoids a model/message import cycle
+// through the scene module.
 export const view = (
   route: PersistentSceneRoute,
   copiedAgentInstructions = false,
   autopilotOverlay?: Html,
   khalaOverlay?: Html,
+  loginOverlay?: Html,
 ): Html => {
   const h = html<Message>()
 
@@ -238,6 +274,7 @@ export const view = (
             copiedAgentInstructions,
             autopilotOverlay,
             khalaOverlay,
+            loginOverlay,
           ),
         ],
       ),

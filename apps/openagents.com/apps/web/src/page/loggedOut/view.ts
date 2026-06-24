@@ -78,6 +78,23 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
+  // /login: the sign-in card + flush public header mount as the overlay of the
+  // SAME persistent scene at the `login` pose (no second scene). Navigating
+  // home <-> login is a continuous camera glide through ONE scene. The page
+  // renders ONLY the header + card over the shared dimmed scene; the scene
+  // canvas and readability scrim come from the persistent shell.
+  if (model.route._tag === 'Login') {
+    return Ui.pageShell<Message>([
+      PersistentScene.view(
+        'Login',
+        model.copiedAgentInstructions,
+        undefined,
+        undefined,
+        Login.overlayView<Message>({ _tag: 'LoggedOut' }),
+      ),
+    ])
+  }
+
   // /khala: the generic Khala chat box mounts as the overlay of the SAME
   // persistent scene at the `khala` pose (no second scene). The page renders ONLY
   // the chat box + the "What is Khala?" info popup over the dimmed scene; the
@@ -209,7 +226,9 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Run: () => Run.view({ _tag: 'LoggedOut' }),
               TassadarReplay: route =>
                 Run.view({ _tag: 'LoggedOut' }, route.replaySlug),
-              Login: () => Login.view({ _tag: 'LoggedOut' }),
+              // /login is handled by the persistent-scene early-return above (it
+              // mounts the sign-in card over the shared canvas), so the route
+              // union here no longer includes it.
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),
               PublicAgent: route => PublicAgent.view(model, route.agentRef),

@@ -1,50 +1,53 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
-import { constellationView } from '../scene/animations/constellation'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
-// The real /login page. Branded dark surface with the constellation network
-// animation behind a centered card. Sign in by email one-time code (the OpenAuth
-// CodeProvider flow, started at /login/email) or GitHub (/login/github). Login
-// only authenticates; product access stays gated downstream (see auth audit).
+// The real /login page. It is NOT its own isolated scene: it mounts as the
+// OVERLAY of the shared persistent 3D pylon scene (the same keyed canvas the
+// homepage `/` and `/tassadar` use), so navigating home <-> login is a
+// continuous camera glide through ONE scene rather than a page cut. The scene
+// canvas and the 75%-black readability scrim are supplied by the persistent
+// shell (see persistentScene.ts); this view only renders the flush public
+// header and the centered sign-in card floating over that scene.
+//
+// Login only authenticates; product access stays gated downstream (see auth
+// audit). Sign in by email one-time code (the OpenAuth CodeProvider flow,
+// started at /login/email) or GitHub (/login/github).
 
-const pageShellClass =
-  'relative min-h-dvh overflow-hidden bg-[#000] text-[#f1efe8]'
+const overlayClass = 'absolute inset-0 z-10 flex flex-col overflow-y-auto'
 
-export const view = <Message>(
+const cardClass =
+  'grid w-full max-w-[420px] gap-6 rounded-xl border border-white/10 bg-black/55 ' +
+  'p-8 backdrop-blur-sm'
+
+export const overlayView = <Message>(
   authState: PublicHeaderAuthState<Message>,
 ): Html => {
   const h = html<Message>()
 
   return h.div(
-    [Ui.className<Message>(pageShellClass)],
     [
-      h.div(
-        [
-          Ui.className<Message>(
-            'pointer-events-none absolute inset-0 z-0 opacity-70',
-          ),
-        ],
-        [constellationView<Message>()],
-      ),
-      h.div([Ui.className<Message>('relative z-10')], [PublicHeader.view(authState)]),
+      h.DataAttribute('persistent-scene-overlay', 'login'),
+      h.DataAttribute('route', 'login'),
+      Ui.className<Message>(overlayClass),
+    ],
+    [
+      // Flush public header — same placement as the rest of the public chrome,
+      // pinned to the top of the overlay with no dead band above it.
+      PublicHeader.view(authState),
       h.main(
         [
           h.AriaLabel('Log in'),
           Ui.className<Message>(
-            'relative z-10 grid min-h-[calc(100dvh-72px)] place-items-center px-4 py-16',
+            'flex min-h-0 flex-1 items-center justify-center px-4 py-12',
           ),
         ],
         [
           h.div(
-            [
-              Ui.className<Message>(
-                'grid w-full max-w-[420px] gap-6 rounded-xl border border-white/10 bg-black/55 p-8 backdrop-blur-sm',
-              ),
-            ],
+            [Ui.className<Message>(cardClass)],
             [
               h.div(
                 [Ui.className<Message>('grid gap-2')],
