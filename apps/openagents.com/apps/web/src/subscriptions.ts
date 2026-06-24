@@ -33,6 +33,7 @@ import {
   ReceivedAutopilotOnboardingStreamHandshake,
   ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
+  RequestedPollKhalaTokensServed,
   SucceededAutopilotOnboardingTurn,
   SucceededResumeAutopilotOnboardingTurn,
   FailedKhalaChatTurn,
@@ -266,6 +267,24 @@ export const settledFeedDependenciesForModel = (
     streamHref: syncStreamHref(SETTLED_FEED_SCOPE, cursor),
   }
 }
+
+// "Khala Tokens Served" homepage counter (#6227). v1 realtime = poll: while the
+// logged-out homepage / stats surface is mounted, tick every few seconds and
+// re-fetch the public aggregate so the odometer count-up reads live. Reuses the
+// exact poll shape as autopilotRunPoll (Stream.tick + Stream.when); no Durable
+// Object / WebSocket for this pass (a true-push v2 is a noted follow-up).
+const KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS = 4
+
+const inactiveKhalaTokensServedPoll = { isActive: false }
+
+type KhalaTokensServedPollDependencies = typeof inactiveKhalaTokensServedPoll
+
+export const khalaTokensServedPollDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  model._tag === 'LoggedOut' && settledFeedRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
 
 const settledFeedStream = (
   dependencies: SettledFeedDependencies,
@@ -1077,6 +1096,27 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.scope === right.scope,
       dependenciesToStream: settledFeedStream,
+    },
+  ),
+  khalaTokensServedPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: khalaTokensServedPollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollKhalaTokensServed(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
     },
   ),
   autopilotOnboardingStream: entry(

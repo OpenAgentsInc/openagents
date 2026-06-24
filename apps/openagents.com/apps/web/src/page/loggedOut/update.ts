@@ -22,6 +22,7 @@ import {
   FailedLoadPublicArtanisReport,
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
+  FailedLoadPublicKhalaTokensServed,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
@@ -35,6 +36,7 @@ import {
   SucceededLoadPublicArtanisReport,
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
+  SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
@@ -49,6 +51,7 @@ import {
   FailedPublicArtanisReport,
   FailedPublicForumLaunchStatus,
   FailedPublicForumTipLeaderboards,
+  FailedPublicKhalaTokensServed,
   FailedPublicProductPromises,
   FailedPublicPromiseTransitions,
   FailedPublicPylonStats,
@@ -59,6 +62,7 @@ import {
   LoadedPublicArtanisReport,
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
+  LoadedPublicKhalaTokensServed,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
   LoadedPublicPylonStats,
@@ -73,6 +77,7 @@ import {
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
+  PublicKhalaTokensServed,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -136,6 +141,11 @@ class PublicAgentGoalLoadError extends S.TaggedErrorClass<PublicAgentGoalLoadErr
 
 class PublicPylonStatsLoadError extends S.TaggedErrorClass<PublicPylonStatsLoadError>()(
   'PublicPylonStatsLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicKhalaTokensServedLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedLoadError>()(
+  'PublicKhalaTokensServedLoadError',
   { error: S.Defect },
 ) {}
 
@@ -355,6 +365,50 @@ export const LoadPublicPylonStats = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicPylonStats({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+// "Khala Tokens Served" homepage counter (#6227). Cold-reads the public-safe
+// aggregate; the poll subscription re-runs this every few seconds so the
+// odometer count-up animates between fetched totals. Public read: no-store, no
+// auth, aggregate only.
+export const LoadPublicKhalaTokensServed = Command.define(
+  'LoadPublicKhalaTokensServed',
+  SucceededLoadPublicKhalaTokensServed,
+  FailedLoadPublicKhalaTokensServed,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/khala-tokens-served', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicKhalaTokensServedLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicKhalaTokensServedLoadError({
+        error: `Public Khala tokens served returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicKhalaTokensServedLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(PublicKhalaTokensServed)(payload)
+
+    return SucceededLoadPublicKhalaTokensServed({ served: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicKhalaTokensServed({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1161,6 +1215,7 @@ export const initialCommands = (
         model.route._tag === 'PublicStatsArchive'
       ? [
           LoadPublicPylonStats(),
+          LoadPublicKhalaTokensServed(),
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
           LoadSettledFeedSnapshot(),
@@ -1385,6 +1440,27 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       FailedLoadPublicPylonStats: ({ error }) => [
         evo(model, {
           publicPylonStats: () => FailedPublicPylonStats({ error }),
+        }),
+        [],
+      ],
+      // Poll tick from the subscription: re-fetch the aggregate. The model is
+      // left as-is (no flash to Loading) so the odometer holds its last value
+      // until the next total arrives, then animates to it.
+      RequestedPollKhalaTokensServed: () => [
+        model,
+        [LoadPublicKhalaTokensServed()],
+      ],
+      SucceededLoadPublicKhalaTokensServed: ({ served }) => [
+        evo(model, {
+          publicKhalaTokensServed: () =>
+            LoadedPublicKhalaTokensServed({ served }),
+        }),
+        [],
+      ],
+      FailedLoadPublicKhalaTokensServed: ({ error }) => [
+        evo(model, {
+          publicKhalaTokensServed: () =>
+            FailedPublicKhalaTokensServed({ error }),
         }),
         [],
       ],

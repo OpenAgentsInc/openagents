@@ -1,4 +1,5 @@
 import {
+  PublicKhalaTokensServedAggregate,
   TokenUsageAggregateResponse,
   TokenUsageCounts,
   TokenUsageEventIngestBody,
@@ -101,6 +102,10 @@ export type TokenUsageLedgerShape = Readonly<{
     filters?: TokenUsageLedgerFilters,
   ) => Effect.Effect<
     typeof TokenUsageAggregateResponse.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
+  readPublicTokensServed: () => Effect.Effect<
+    typeof PublicKhalaTokensServedAggregate.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
   readLeaderboardPreference: (
@@ -416,6 +421,21 @@ const decodeAggregateResponse = (
     catch: error =>
       new TokenUsageLedgerValidationError({
         field: 'aggregate_response',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
+const decodePublicTokensServedAggregate = (
+  value: unknown,
+): Effect.Effect<
+  typeof PublicKhalaTokensServedAggregate.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(PublicKhalaTokensServedAggregate)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'public_tokens_served_aggregate',
         message: error instanceof Error ? error.message : String(error),
       }),
   })
@@ -1031,7 +1051,7 @@ const aggregateSourceRefRows = (
       .slice(0, 100)
   })
 
-const makeD1TokenUsageLedger = (
+export const makeD1TokenUsageLedger = (
   db: D1Database,
   runtime: TokenUsageLedgerRuntime = systemTokenUsageLedgerRuntime,
 ): TokenUsageLedgerShape => ({
@@ -1254,6 +1274,28 @@ const makeD1TokenUsageLedger = (
         recentEvents,
         totals: countsFromRow(totals),
         usageEvents: totals?.usage_events ?? 0,
+      })
+    }),
+
+  // Public-safe "Khala Tokens Served" aggregate: the running network-wide SUM
+  // of input + output tokens across ALL ledger events. No filters, no grouping,
+  // no per-actor or provider material — a single non-negative scalar. The route
+  // layer wraps it with generatedAt + the staleness contract before serving.
+  readPublicTokensServed: () =>
+    Effect.gen(function* () {
+      const row = yield* d1Effect('tokenUsageEvents.publicTokensServed', () =>
+        db
+          .prepare(
+            `SELECT
+                COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                  AS tokens_served
+               FROM token_usage_events`,
+          )
+          .first<{ tokens_served: number | null }>(),
+      )
+
+      return yield* decodePublicTokensServedAggregate({
+        tokensServed: Math.max(0, Math.trunc(row?.tokens_served ?? 0)),
       })
     }),
 

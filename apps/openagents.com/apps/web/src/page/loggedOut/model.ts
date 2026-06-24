@@ -933,6 +933,45 @@ export const PublicPylonStatsModel = S.Union([
 ])
 export type PublicPylonStatsModel = typeof PublicPylonStatsModel.Type
 
+// "Khala Tokens Served" homepage counter (#6227). The public-safe aggregate
+// from GET /api/public/khala-tokens-served, polled every few seconds so the
+// odometer count-up reads live. `tokensServed` is the running network-wide SUM
+// of input + output tokens served, powered by Khala.
+export const PublicKhalaTokensServed = S.Struct({
+  tokensServed: S.Number,
+  generatedAt: S.String,
+})
+export type PublicKhalaTokensServed = typeof PublicKhalaTokensServed.Type
+
+export const IdlePublicKhalaTokensServed = ts(
+  'PublicKhalaTokensServedIdle',
+  {},
+)
+export const LoadingPublicKhalaTokensServed = ts(
+  'PublicKhalaTokensServedLoading',
+  {},
+)
+export const LoadedPublicKhalaTokensServed = ts(
+  'PublicKhalaTokensServedLoaded',
+  {
+    served: PublicKhalaTokensServed,
+  },
+)
+export const FailedPublicKhalaTokensServed = ts(
+  'PublicKhalaTokensServedFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicKhalaTokensServedModel = S.Union([
+  IdlePublicKhalaTokensServed,
+  LoadingPublicKhalaTokensServed,
+  LoadedPublicKhalaTokensServed,
+  FailedPublicKhalaTokensServed,
+])
+export type PublicKhalaTokensServedModel =
+  typeof PublicKhalaTokensServedModel.Type
+
 export const IdlePublicForumLaunchStatus = ts('PublicForumLaunchStatusIdle', {})
 export const LoadingPublicForumLaunchStatus = ts(
   'PublicForumLaunchStatusLoading',
@@ -1258,6 +1297,7 @@ export const Model = ts('LoggedOut', {
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
   publicPylonStats: PublicPylonStatsModel,
+  publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
@@ -1312,6 +1352,12 @@ export const init = (
       route._tag === 'PublicAgent'
         ? LoadingPublicPylonStats()
         : IdlePublicPylonStats(),
+    publicKhalaTokensServed:
+      route._tag === 'Home' ||
+      route._tag === 'Stats' ||
+      route._tag === 'PublicStatsArchive'
+        ? LoadingPublicKhalaTokensServed()
+        : IdlePublicKhalaTokensServed(),
     publicForumLaunchStatus:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||

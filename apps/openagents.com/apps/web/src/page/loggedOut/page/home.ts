@@ -1,3 +1,4 @@
+import { motionOdometerClass } from '@openagentsinc/ui'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -8,6 +9,7 @@ import type {
   PublicForumLaunchStatusModel,
   PublicForumTipLeaderboards,
   PublicForumTipLeaderboardsModel,
+  PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
   SettledFeedModel,
@@ -16,6 +18,7 @@ import type {
 export type HomeViewInput = {
   forumLaunchStatus: PublicForumLaunchStatusModel
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
+  publicKhalaTokensServed: PublicKhalaTokensServedModel
   publicPylonStats: PublicPylonStatsModel
   settledFeed: SettledFeedModel
 }
@@ -852,6 +855,88 @@ export const heroIntroLinks = (): Html => {
   )
 }
 
+// "Khala Tokens Served" live counter (#6227). OpenAgents (the network) serves
+// tokens powered by Khala (the engine), so the label is fixed. The number span
+// carries `motionOdometerClass` and is KEYED on the value: when the poll brings
+// a new total, Foldkit remounts the span and the `oa-odometer-roll` keyframe
+// re-fires, animating the count-up between fetched totals. `tabular-nums` keeps
+// the digits from jiggling as they change.
+const khalaTokensServedFromModel = (
+  model: PublicKhalaTokensServedModel,
+): number | null =>
+  model._tag === 'PublicKhalaTokensServedLoaded'
+    ? model.served.tokensServed
+    : null
+
+const khalaTokensServedCounter = (
+  model: PublicKhalaTokensServedModel,
+): Html => {
+  const h = html<Message>()
+  const tokensServed = khalaTokensServedFromModel(model)
+  const display = tokensServed === null ? '—' : formatNumber(tokensServed)
+  const live = model._tag === 'PublicKhalaTokensServedLoaded'
+
+  return h.section(
+    [
+      h.DataAttribute('counter', 'khala-tokens-served'),
+      Ui.className<Message>(
+        'flex flex-col items-center gap-2 border border-[#242424] bg-[#030303] px-4 py-6 text-center sm:py-7',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-center gap-2 text-[0.66rem] uppercase leading-none tracking-[0.08em] text-white/45',
+          ),
+        ],
+        [
+          h.span(
+            [
+              h.DataAttribute(
+                'status',
+                live ? 'live' : 'pending',
+              ),
+              Ui.className<Message>(
+                `inline-block h-1.5 w-1.5 rounded-full ${
+                  live ? 'bg-[#00c853]' : 'bg-white/30'
+                }`,
+              ),
+            ],
+            [],
+          ),
+          h.span([], ['Khala Tokens Served']),
+        ],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 text-[2.4rem] font-semibold leading-none tabular-nums text-[#f1efe8] sm:text-[3.25rem]',
+          ),
+        ],
+        [
+          h.span(
+            [
+              h.DataAttribute('value', display),
+              h.Class(motionOdometerClass),
+              h.Key(display),
+            ],
+            [display],
+          ),
+        ],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 text-[0.66rem] leading-4 text-white/35',
+          ),
+        ],
+        ['Total input + output tokens served across the network, powered by Khala.'],
+      ),
+    ],
+  )
+}
+
 const topStatTile = (label: string, value: string, detail: string): Html => {
   const h = html<Message>()
   return h.div(
@@ -1028,6 +1113,7 @@ export const view = (input: HomeViewInput): Html => {
                 publicAgentPath(),
               ],
             ),
+            khalaTokensServedCounter(input.publicKhalaTokensServed),
             topStatsStrip(input),
             liveSettledFeedPanel(
               input.settledFeed,

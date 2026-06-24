@@ -675,6 +675,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/public-khala-tokens-served-routes.ts',
+    route: '/api/public/khala-tokens-served',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/marketing-agency-receipt-public-routes.ts',
     route: '/api/public/marketing-agency/receipts',
     status: 'staleness_declared',

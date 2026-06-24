@@ -681,6 +681,7 @@ describe('authenticated startup routing', () => {
     })
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicPylonStats',
+      'LoadPublicKhalaTokensServed',
       'LoadPublicForumLaunchStatus',
       'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',

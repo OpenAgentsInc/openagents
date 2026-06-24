@@ -175,6 +175,7 @@ const makeRoutes = (
 
       return Effect.succeed(aggregateResponse)
     },
+    readPublicTokensServed: () => Effect.succeed({ tokensServed: 0 }),
     readLeaderboardPreference: input => {
       preferenceInputs.push(input)
 

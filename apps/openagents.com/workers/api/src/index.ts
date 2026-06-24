@@ -602,6 +602,7 @@ import { handlePublicForumActivityApiForEnv } from './public-forum-activity-rout
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
+import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
@@ -9681,6 +9682,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/pylon-stats',
     handler: (request, env) => handlePublicPylonStatsApi(request, env),
+  },
+  {
+    path: '/api/public/khala-tokens-served',
+    handler: (request, env) => handlePublicKhalaTokensServedApi(request, env),
   },
   {
     path: '/api/public/pylon-capacity-funnel',

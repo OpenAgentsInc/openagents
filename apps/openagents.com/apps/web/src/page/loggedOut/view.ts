@@ -207,6 +207,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Home.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),
@@ -214,6 +215,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Home.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),
@@ -221,6 +223,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Stats.view({
                   forumLaunchStatus: model.publicForumLaunchStatus,
                   forumTipLeaderboards: model.publicForumTipLeaderboards,
+                  publicKhalaTokensServed: model.publicKhalaTokensServed,
                   publicPylonStats: model.publicPylonStats,
                   settledFeed: model.settledFeed,
                 }),

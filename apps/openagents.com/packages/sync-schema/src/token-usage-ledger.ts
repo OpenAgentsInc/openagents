@@ -242,3 +242,19 @@ export class TokenUsageLeaderboardPreferenceUpdateBody extends S.Class<TokenUsag
   leaderboardParticipation: TokenUsageLeaderboardParticipation,
   leaderboardVisibility: TokenUsageLeaderboardVisibility,
 }) {}
+
+// Public-safe aggregate: the running network-wide total of tokens SERVED
+// (input + output) — "Khala Tokens Served" on the homepage. This is an
+// aggregate-only projection of the canonical token usage ledger; it carries NO
+// per-user, per-team, per-account, provider-payload, or any other private
+// material. `tokensServed` is the SUM of input + output tokens across ALL
+// ledger events (privacy opt-out events still count toward the global aggregate
+// per the ledger invariant — only leaderboard projections exclude them). The
+// route layer wraps this scalar with the shared public-projection staleness
+// contract (generatedAt + staleness) before serving.
+export class PublicKhalaTokensServedAggregate extends S.Class<PublicKhalaTokensServedAggregate>(
+  'PublicKhalaTokensServedAggregate',
+)({
+  // Always a non-negative integer; the producer clamps with Math.max(0, ...).
+  tokensServed: S.Int,
+}) {}

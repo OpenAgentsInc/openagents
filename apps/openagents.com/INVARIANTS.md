@@ -1858,6 +1858,7 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
 - Projection inventory (staleness mode → compliance as of epic #4751):
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
+  - `GET /api/public/khala-tokens-served` — live at read over the canonical token usage ledger; the running network-wide SUM of input + output tokens served, powered by Khala ("Khala Tokens Served" homepage counter, #6227) — compliant (`generatedAt`, `live_at_read` contract over `token_usage_events`). Aggregate only; no per-user/team/account/provider material. A short in-isolate cache is a perf detail under the live-at-read contract. `staleness_declared`.
   - `GET /api/public/marketing-agency/receipts/{receiptRef}` — live at read
   - `GET /api/public/marketing-agency/self-serve/deliverability/{workspaceRef}` — live at read
   - `POST /api/public/business/coding-quick-win-pipeline` — live at read

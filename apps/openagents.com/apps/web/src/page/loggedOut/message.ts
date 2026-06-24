@@ -14,6 +14,7 @@ import {
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
+  PublicKhalaTokensServed,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -151,6 +152,24 @@ export const SucceededLoadPublicPylonStats = m(
 export const FailedLoadPublicPylonStats = m('FailedLoadPublicPylonStats', {
   error: S.String,
 })
+// "Khala Tokens Served" homepage counter (#6227). The poll subscription fires
+// RequestedPollKhalaTokensServed on a short interval; the command resolves to
+// Succeeded/Failed and the odometer animates between fetched totals.
+export const RequestedPollKhalaTokensServed = m(
+  'RequestedPollKhalaTokensServed',
+)
+export const SucceededLoadPublicKhalaTokensServed = m(
+  'SucceededLoadPublicKhalaTokensServed',
+  {
+    served: PublicKhalaTokensServed,
+  },
+)
+export const FailedLoadPublicKhalaTokensServed = m(
+  'FailedLoadPublicKhalaTokensServed',
+  {
+    error: S.String,
+  },
+)
 export const SucceededLoadPublicForumLaunchStatus = m(
   'SucceededLoadPublicForumLaunchStatus',
   {
@@ -423,6 +442,9 @@ export const Message = S.Union([
   FailedLoadPublicAdjutantActivity,
   SucceededLoadPublicPylonStats,
   FailedLoadPublicPylonStats,
+  RequestedPollKhalaTokensServed,
+  SucceededLoadPublicKhalaTokensServed,
+  FailedLoadPublicKhalaTokensServed,
   SucceededLoadPublicForumLaunchStatus,
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
