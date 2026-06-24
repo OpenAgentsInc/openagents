@@ -7,6 +7,7 @@ import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
+import * as KhalaChatPage from '../khala-chat/page'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
 import * as Blog from '../blog'
@@ -25,9 +26,13 @@ import * as Terms from '../terms'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
   ClickedAutopilotOnboardingStartOver,
+  ClosedKhalaChatInfo,
   Message,
+  OpenedKhalaChatInfo,
   SubmittedAutopilotOnboardingTurn,
+  SubmittedKhalaChatTurn,
   UpdatedAutopilotOnboardingComposer,
+  UpdatedKhalaChatComposer,
 } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
@@ -64,13 +69,29 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
-  if (
-    model.route._tag === 'Landing' ||
-    model.route._tag === 'Khala' ||
-    model.route._tag === 'Tassadar'
-  ) {
+  if (model.route._tag === 'Landing' || model.route._tag === 'Tassadar') {
     return Ui.pageShell<Message>([
       PersistentScene.view(model.route._tag, model.copiedAgentInstructions),
+    ])
+  }
+
+  // /khala: the generic Khala chat box mounts as the overlay of the SAME
+  // persistent scene at the `khala` pose (no second scene). The page renders ONLY
+  // the chat box + the "What is Khala?" info popup over the dimmed scene; the
+  // long-form explainer is gone (condensed into the popup).
+  if (model.route._tag === 'Khala') {
+    return Ui.pageShell<Message>([
+      PersistentScene.view(
+        'Khala',
+        model.copiedAgentInstructions,
+        undefined,
+        KhalaChatPage.overlayView<Message>(model.khalaChat, {
+          updatedComposer: value => UpdatedKhalaChatComposer({ value }),
+          submittedTurn: () => SubmittedKhalaChatTurn(),
+          openedInfo: () => OpenedKhalaChatInfo(),
+          closedInfo: () => ClosedKhalaChatInfo(),
+        }),
+      ),
     ])
   }
 

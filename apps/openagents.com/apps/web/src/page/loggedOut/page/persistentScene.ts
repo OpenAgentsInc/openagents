@@ -5,7 +5,6 @@ import { landingSquaresView } from '../../../scene/landingSquaresElement'
 import * as Ui from '../../../ui'
 import { ClickedEnterTassadar } from '../message'
 import type { Message } from '../message'
-import { view as khalaView } from './khala'
 import { view as tassadarView } from './tassadar'
 
 export const PERSISTENT_SCENE_KEY = 'persistent-landing-scene'
@@ -110,13 +109,30 @@ const landingOverlay = (h: ReturnType<typeof html<Message>>): Html =>
     ],
   )
 
-const khalaOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+// The real /khala chat HUD (the chat box + info popup) is rendered by the
+// loggedOut view and threaded in here as `khalaOverlay`, so it mounts as the
+// overlay of the SAME keyed canvas (no second scene). When none is supplied
+// (e.g. a unit test of the scene shell in isolation), a minimal energy label
+// stands in, proving the canvas hosts the `Khala` pose.
+const khalaPlaceholderOverlay = (h: ReturnType<typeof html<Message>>): Html =>
   h.div(
     [
       h.DataAttribute('persistent-scene-overlay', 'khala'),
-      Ui.className<Message>('absolute inset-0 z-10 overflow-y-auto'),
+      Ui.className<Message>(
+        'pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 px-6',
+      ),
     ],
-    [khalaView()],
+    [
+      h.div(
+        [
+          h.DataAttribute('khala-glow', 'energy'),
+          Ui.className<Message>(
+            'khala-glow select-none text-center font-semibold text-white text-4xl sm:text-6xl',
+          ),
+        ],
+        ['Khala'],
+      ),
+    ],
   )
 
 const tassadarOverlay = (
@@ -165,6 +181,7 @@ const overlayForRoute = (
   route: PersistentSceneRoute,
   copiedAgentInstructions: boolean,
   autopilotOverlay: Html | undefined,
+  khalaOverlay: Html | undefined,
 ): Html =>
   route === 'Landing'
     ? landingOverlay(h)
@@ -172,16 +189,18 @@ const overlayForRoute = (
       ? tassadarOverlay(h, copiedAgentInstructions)
       : route === 'Autopilot'
         ? (autopilotOverlay ?? autopilotPlaceholderOverlay(h))
-        : khalaOverlay(h)
+        : (khalaOverlay ?? khalaPlaceholderOverlay(h))
 
-// `autopilotOverlay` is the real /autopilot onboarding HUD (#6129), supplied by
-// the loggedOut view. It is only consulted on the `Autopilot` route; other
-// routes ignore it. Keeping it a parameter (rather than importing the page here)
-// avoids a model/message import cycle through the scene module.
+// `autopilotOverlay` is the real /autopilot onboarding HUD (#6129) and
+// `khalaOverlay` is the real /khala chat HUD, both supplied by the loggedOut
+// view. Each is only consulted on its own route; other routes ignore it.
+// Keeping them parameters (rather than importing the pages here) avoids a
+// model/message import cycle through the scene module.
 export const view = (
   route: PersistentSceneRoute,
   copiedAgentInstructions = false,
   autopilotOverlay?: Html,
+  khalaOverlay?: Html,
 ): Html => {
   const h = html<Message>()
 
@@ -212,7 +231,15 @@ export const view = (
       h.keyed('div')(
         `${PERSISTENT_SCENE_OVERLAY_PREFIX}${route}`,
         [Ui.className<Message>('absolute inset-0 z-10')],
-        [overlayForRoute(h, route, copiedAgentInstructions, autopilotOverlay)],
+        [
+          overlayForRoute(
+            h,
+            route,
+            copiedAgentInstructions,
+            autopilotOverlay,
+            khalaOverlay,
+          ),
+        ],
       ),
     ],
   )

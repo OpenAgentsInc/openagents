@@ -12,6 +12,7 @@ import {
   CompletedAutopilotOnboardingCreditKickoff,
   CompletedPersistAutopilotOnboarding,
   CompletedScrollAutopilotOnboardingThread,
+  CompletedScrollKhalaChatThread,
   FailedReconcileAutopilotOnboardingSession,
   LoadedStoredAutopilotOnboarding,
   SucceededReconcileAutopilotOnboardingSession,
@@ -74,6 +75,7 @@ import {
   ShareProjectionResponse,
 } from './model'
 import { HUD_THREAD_END_SELECTOR } from '../autopilot-onboarding/page'
+import { KHALA_CHAT_THREAD_END_SELECTOR } from '../khala-chat/page'
 import { onboardingVerticalForSegment } from '../autopilot-onboarding/vertical-overlay'
 import {
   OnboardingSessionResponse,
@@ -786,6 +788,20 @@ export const ScrollAutopilotOnboardingThreadToEnd = Command.define(
     Effect.catch(() =>
       Effect.succeed(CompletedScrollAutopilotOnboardingThread()),
     ),
+  ),
+)
+
+// Scroll the generic /khala chat thread's bottom sentinel into view after a turn
+// is sent or a delta lands. Same fire-and-forget shape as the onboarding scroll.
+export const ScrollKhalaChatThreadToEnd = Command.define(
+  'ScrollKhalaChatThreadToEnd',
+  CompletedScrollKhalaChatThread,
+)(
+  Dom.scrollIntoViewAfterPaint(KHALA_CHAT_THREAD_END_SELECTOR, {
+    block: 'end',
+  }).pipe(
+    Effect.as(CompletedScrollKhalaChatThread()),
+    Effect.catch(() => Effect.succeed(CompletedScrollKhalaChatThread())),
   ),
 )
 
@@ -1702,5 +1718,131 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ],
       CompletedAutopilotOnboardingCreditKickoff: () => [model, []],
       CompletedScrollAutopilotOnboardingThread: () => [model, []],
+
+      // GENERIC /khala CHAT (stateless streaming, NOT the concierge intake). The
+      // composer/turn lifecycle mirrors the onboarding stream handlers minus the
+      // persistence/resume/output-spec machinery; the subscription reads
+      // `khalaChat.pendingTurn` and posts the whole running conversation.
+      UpdatedKhalaChatComposer: ({ value }) => [
+        evo(model, {
+          khalaChat: chat => evo(chat, { composerDraft: () => value }),
+        }),
+        [],
+      ],
+      SubmittedKhalaChatTurn: () => {
+        const chat = model.khalaChat
+        const userText = chat.composerDraft.trim()
+        if (
+          userText === '' ||
+          chat.status === 'submitting' ||
+          chat.status === 'streaming'
+        ) {
+          return [model, []]
+        }
+
+        // A deterministic per-turn id (the transcript length after appending the
+        // user turn) so the streaming subscription opens the stream exactly once.
+        const turnId = String(chat.transcript.length + 1)
+        // The prior transcript is the stateless history the subscription posts
+        // alongside the new user turn.
+        const history = chat.transcript
+
+        const nextModel = evo(model, {
+          khalaChat: current =>
+            evo(current, {
+              status: () => 'submitting',
+              errorReason: () => null,
+              composerDraft: () => '',
+              streamingReply: () => null,
+              transcript: transcript => [
+                ...transcript,
+                { role: 'user', content: userText },
+              ],
+              pendingTurn: () => ({ id: turnId, userText, history }),
+            }),
+        })
+
+        return [nextModel, [ScrollKhalaChatThreadToEnd()]]
+      },
+      OpenedKhalaChatStream: ({ turnId }) => {
+        const chat = model.khalaChat
+        if (chat.pendingTurn === null || chat.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        return [
+          evo(model, {
+            khalaChat: current =>
+              evo(current, {
+                status: () => 'streaming',
+                streamingReply: () => '',
+              }),
+          }),
+          [],
+        ]
+      },
+      ReceivedKhalaChatDelta: ({ turnId, text }) => {
+        const chat = model.khalaChat
+        if (chat.pendingTurn === null || chat.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        return [
+          evo(model, {
+            khalaChat: current =>
+              evo(current, {
+                status: () => 'streaming',
+                streamingReply: reply => (reply ?? '') + text,
+              }),
+          }),
+          [ScrollKhalaChatThreadToEnd()],
+        ]
+      },
+      SucceededKhalaChatTurn: ({ turnId }) => {
+        const chat = model.khalaChat
+        if (chat.pendingTurn === null || chat.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        const reply = chat.streamingReply ?? ''
+        return [
+          evo(model, {
+            khalaChat: current =>
+              evo(current, {
+                status: () => 'idle',
+                errorReason: () => null,
+                streamingReply: () => null,
+                pendingTurn: () => null,
+                transcript: transcript => [
+                  ...transcript,
+                  { role: 'assistant', content: reply },
+                ],
+              }),
+          }),
+          [ScrollKhalaChatThreadToEnd()],
+        ]
+      },
+      FailedKhalaChatTurn: ({ reason }) => [
+        evo(model, {
+          khalaChat: chat =>
+            evo(chat, {
+              status: () => 'error',
+              errorReason: () => (reason === '' ? null : reason),
+              streamingReply: () => null,
+              pendingTurn: () => null,
+            }),
+        }),
+        [],
+      ],
+      CompletedScrollKhalaChatThread: () => [model, []],
+      OpenedKhalaChatInfo: () => [
+        evo(model, {
+          khalaChat: chat => evo(chat, { infoOpen: () => true }),
+        }),
+        [],
+      ],
+      ClosedKhalaChatInfo: () => [
+        evo(model, {
+          khalaChat: chat => evo(chat, { infoOpen: () => false }),
+        }),
+        [],
+      ],
     }),
   )

@@ -35,12 +35,21 @@ import {
   ReceivedSettledFeedPatch,
   SucceededAutopilotOnboardingTurn,
   SucceededResumeAutopilotOnboardingTurn,
+  FailedKhalaChatTurn,
+  OpenedKhalaChatStream,
+  ReceivedKhalaChatDelta,
+  SucceededKhalaChatTurn,
 } from './page/loggedOut/message'
 import type { Message as LoggedOutMessage } from './page/loggedOut/message'
 import {
   type OnboardingStreamEvent,
   parseOnboardingStreamEvent,
 } from './page/autopilot-onboarding/flow'
+import {
+  type KhalaChatStreamEvent,
+  KhalaChatTurn,
+  parseKhalaChatStreamEvent,
+} from './page/khala-chat/flow'
 import { newOnboardingSessionId } from './page/loggedOut/update'
 import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import {
@@ -644,6 +653,175 @@ const onboardingStream = (
   )
 }
 
+// GENERIC /khala CHAT stream (a minimal stateless streaming chat — NOT the
+// concierge intake). When a turn is pending (set on submit), POST the whole
+// running conversation to `POST /api/khala/chat` and dispatch prose deltas as
+// they arrive, then the terminal success/failure. Keyed by the turn id so the
+// stream opens EXACTLY ONCE per turn. Stateless: there is no session id, no
+// durable resume — the body carries the running message list each turn.
+const inactiveKhalaChatStream: {
+  readonly isActive: boolean
+  readonly turnId: string
+  readonly userText: string
+  readonly history: ReadonlyArray<KhalaChatTurn>
+} = {
+  isActive: false,
+  turnId: '',
+  userText: '',
+  history: [],
+}
+
+type KhalaChatStreamDependencies = typeof inactiveKhalaChatStream
+
+export const khalaChatStreamDependenciesForModel = (
+  model: Model,
+): KhalaChatStreamDependencies => {
+  if (model._tag !== 'LoggedOut') {
+    return inactiveKhalaChatStream
+  }
+  const pending = model.khalaChat.pendingTurn
+  if (pending === null) {
+    return inactiveKhalaChatStream
+  }
+  return {
+    isActive: true,
+    turnId: pending.id,
+    userText: pending.userText,
+    history: pending.history,
+  }
+}
+
+// Read a fetch SSE body to completion, parsing each `event:`/`data:` block into
+// a typed `KhalaChatStreamEvent`. Same block-splitting wire as the onboarding
+// reader; differs only in the parser (the khala wire has no handshake).
+const readKhalaChatSseEvents = async (
+  body: NonNullable<Response['body']>,
+  onEvent: (event: KhalaChatStreamEvent) => void,
+): Promise<void> => {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+
+  const drainBlock = (block: string): void => {
+    const lines = block.split(/\r?\n/)
+    const eventLine = lines.find(line => line.startsWith('event:'))
+    const dataLines = lines
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice('data:'.length).replace(/^ /, ''))
+
+    if (dataLines.length === 0) {
+      return
+    }
+
+    const eventName =
+      eventLine === undefined
+        ? 'message'
+        : eventLine.slice('event:'.length).replace(/^ /, '').trim()
+    const parsed = parseKhalaChatStreamEvent(
+      eventName,
+      parseJsonRecord(dataLines.join('\n')),
+    )
+
+    if (parsed !== undefined) {
+      onEvent(parsed)
+    }
+  }
+
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += value
+    let separator = buffer.search(/\r?\n\r?\n/)
+    while (separator !== -1) {
+      const block = buffer.slice(0, separator)
+      buffer = buffer.slice(separator).replace(/^\r?\n\r?\n/, '')
+      drainBlock(block)
+      separator = buffer.search(/\r?\n\r?\n/)
+    }
+  }
+  if (buffer.trim() !== '') {
+    drainBlock(buffer)
+  }
+}
+
+const khalaChatStream = (
+  dependencies: KhalaChatStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { turnId, userText, history } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const controller = new AbortController()
+        const resource = { aborted: false, controller }
+
+        const offer = (message: LoggedOutMessage): void => {
+          if (!resource.aborted) {
+            Queue.offerUnsafe(queue, GotLoggedOutMessage({ message }))
+          }
+        }
+
+        const fail = (): void =>
+          offer(
+            FailedKhalaChatTurn({
+              reason: 'Khala could not respond just now. Try sending that again.',
+            }),
+          )
+
+        const run = async (): Promise<void> => {
+          const response = await fetch('/api/khala/chat', {
+            method: 'POST',
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: {
+              accept: 'text/event-stream',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              messages: [...history, { role: 'user', content: userText }],
+            }),
+          })
+
+          if (!response.ok || response.body === null) {
+            fail()
+            return
+          }
+
+          offer(OpenedKhalaChatStream({ turnId }))
+
+          await readKhalaChatSseEvents(response.body, event => {
+            if (event.kind === 'delta') {
+              offer(ReceivedKhalaChatDelta({ turnId, text: event.text }))
+            } else if (event.kind === 'done') {
+              offer(SucceededKhalaChatTurn({ turnId }))
+            } else {
+              fail()
+            }
+          })
+        }
+
+        run().catch(() => {
+          if (!resource.aborted) {
+            fail()
+          }
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.aborted = true
+          resource.controller.abort()
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
 // Resume read of an in-flight onboarding turn after reload (#6154 tier 4). When
 // the rehydrated model carries a `resumeTurn` (a turn was mid-stream when the
 // tab went away), open the durable resume read
@@ -935,6 +1113,22 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
         left.turnIndex === right.turnIndex &&
         left.offset === right.offset,
       dependenciesToStream: onboardingResumeStream,
+    },
+  ),
+  khalaChatStream: entry(
+    {
+      isActive: S.Boolean,
+      turnId: S.String,
+      userText: S.String,
+      history: S.Array(KhalaChatTurn),
+    },
+    {
+      modelToDependencies: khalaChatStreamDependenciesForModel,
+      // Hold the open stream stable for the duration of a single turn; a change
+      // of `turnId` (a new turn) tears down the old stream and opens a new one.
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive && left.turnId === right.turnId,
+      dependenciesToStream: khalaChatStream,
     },
   ),
   demoPlayback: entry(

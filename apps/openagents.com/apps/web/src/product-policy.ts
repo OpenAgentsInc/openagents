@@ -288,7 +288,14 @@ export const browserCommandProductIntents = {
   NavigateToLanding: 'public.landing.navigate',
   NavigateToTassadar: 'public.tassadar.navigate',
   OpenAutopilotCreditKickoff: 'public.autopilot.onboarding.credit-kickoff',
-  SubmitAutopilotOnboardingTurn: 'public.autopilot.onboarding.turn.submit',
+  ScrollAutopilotOnboardingThreadToEnd:
+    'public.autopilot.onboarding.thread.scroll-end',
+  PersistAutopilotOnboarding: 'public.autopilot.onboarding.persist',
+  ClearAutopilotOnboardingStorage: 'public.autopilot.onboarding.storage.clear',
+  RehydrateAutopilotOnboarding: 'public.autopilot.onboarding.rehydrate',
+  ReconcileAutopilotOnboardingSession:
+    'public.autopilot.onboarding.session.reconcile',
+  ScrollKhalaChatThreadToEnd: 'public.khala.chat.thread.scroll-end',
   CreateBillingCheckout: 'billing.checkout.create',
   PrepareBillingCardSetup: 'billing.card.setup.prepare',
   RunBillingAutoTopUp: 'billing.auto_top_up.run',

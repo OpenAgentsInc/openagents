@@ -4,6 +4,7 @@ import { ts } from 'foldkit/schema'
 
 import { LoggedOutRoute } from '../../route'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
+import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
 
 // MODEL
 
@@ -1203,6 +1204,10 @@ export const Model = ts('LoggedOut', {
   // The /autopilot onboarding conversation flow (#6129). Holds the session,
   // transcript, accumulated Output Spec, composer draft, and request status.
   autopilotOnboarding: FlowModel,
+  // The generic /khala chat (a minimal stateless streaming chat — NOT the
+  // concierge intake). Holds the transcript, composer draft, request status,
+  // in-flight streaming reply, and the info-popup open flag.
+  khalaChat: KhalaChatModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1232,6 +1237,7 @@ export const init = (route: LoggedOutRoute): Model =>
         ? Option.some(route.vertical)
         : Option.none(),
     ),
+    khalaChat: initKhalaChatModel(),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

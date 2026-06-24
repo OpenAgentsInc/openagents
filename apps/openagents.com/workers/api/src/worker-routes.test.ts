@@ -314,6 +314,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeCloudCodingSessionRequest: noRoute,
       routeAgentGoalRequest: noRoute,
       routeAutopilotOnboardingTurnRequest: noRoute,
+      routeKhalaChatRequest: noRoute,
       routeAgentOwnerClaimRequest: noRoute,
       routeCheckoutPageRequest: noRoute,
       routeTreasuryPageRequest: noRoute,
