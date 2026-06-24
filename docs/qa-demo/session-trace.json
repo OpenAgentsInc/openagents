@@ -1,0 +1,128 @@
+{
+  "schemaVersion": "openagents.khala.session_trace.v1",
+  "goal": "Verify the login page works on this site: open /login, confirm the sign-in form renders (the page shows \"Log in to OpenAgents\"), and confirm it does NOT redirect to the homepage (the URL still includes /login). Assert each of these, screenshot the login page, then finish.",
+  "target": {
+    "name": "openagents.com",
+    "baseUrl": "https://openagents.com"
+  },
+  "model": "openagents/khala",
+  "beats": [
+    {
+      "kind": "chat_turn",
+      "role": "assistant",
+      "contentRef": "sha256:110ff0dd633c3523"
+    },
+    {
+      "kind": "tool_call",
+      "tool": "navigate",
+      "argsHash": "sha256:110ff0dd633c3523",
+      "effect": "read"
+    },
+    {
+      "kind": "browser",
+      "action": "navigate",
+      "targetHint": "/login",
+      "status": "ok"
+    },
+    {
+      "kind": "chat_turn",
+      "role": "assistant",
+      "contentRef": "sha256:e1f861c1496eaca5"
+    },
+    {
+      "kind": "tool_call",
+      "tool": "readText",
+      "argsHash": "sha256:e1f861c1496eaca5",
+      "effect": "read"
+    },
+    {
+      "kind": "browser",
+      "action": "readText",
+      "targetHint": "",
+      "status": "ok"
+    },
+    {
+      "kind": "chat_turn",
+      "role": "assistant",
+      "contentRef": "sha256:aca268a18a29fdac"
+    },
+    {
+      "kind": "tool_call",
+      "tool": "assert",
+      "argsHash": "sha256:aca268a18a29fdac",
+      "effect": "read"
+    },
+    {
+      "kind": "browser",
+      "action": "assert",
+      "targetHint": "Login page contains 'Log in to OpenAgents'",
+      "status": "ok"
+    },
+    {
+      "kind": "chat_turn",
+      "role": "assistant",
+      "contentRef": "sha256:2f082549c1c22f59"
+    },
+    {
+      "kind": "tool_call",
+      "tool": "assert",
+      "argsHash": "sha256:2f082549c1c22f59",
+      "effect": "read"
+    },
+    {
+      "kind": "browser",
+      "action": "assert",
+      "targetHint": "URL still includes /login",
+      "status": "ok"
+    },
+    {
+      "kind": "chat_turn",
+      "role": "assistant",
+      "contentRef": "sha256:4ea2c0e68a6ec0f7"
+    },
+    {
+      "kind": "tool_call",
+      "tool": "screenshot",
+      "argsHash": "sha256:4ea2c0e68a6ec0f7",
+      "effect": "read"
+    },
+    {
+      "kind": "browser",
+      "action": "screenshot",
+      "targetHint": "login_page",
+      "status": "ok"
+    },
+    {
+      "kind": "verdict",
+      "verificationClass": "test_passed"
+    }
+  ],
+  "inputs": [
+    {
+      "name": "target",
+      "type": "Target",
+      "description": "the deployment under test"
+    },
+    {
+      "name": "path",
+      "type": "string",
+      "description": "the route to verify"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Login page contains 'Log in to OpenAgents'",
+      "type": "boolean",
+      "description": "an outcome asserted by the session"
+    },
+    {
+      "name": "URL still includes /login",
+      "type": "boolean",
+      "description": "an outcome asserted by the session"
+    }
+  ],
+  "receipts": [
+    "result:result.json"
+  ],
+  "digest": "6f7cee66c7c236a9be1bcc2d4c9cb6a09ab73ec4ea89a889ce5ce9d977626609"
+}
