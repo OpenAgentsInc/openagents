@@ -203,7 +203,10 @@ const SECRET_KEYWORDS = /\bbearer\s+[A-Za-z0-9._-]{16,}\b/i
 const WALLET_OR_PAYMENT_MATERIAL =
   /\b(?:lnbc[0-9][a-z0-9]{20,}|lntb[0-9][a-z0-9]{20,}|lno1[a-z0-9]{20,}|bc1[a-z0-9]{20,}|(?:xpub|ypub|zpub|tpub)[1-9A-HJ-NP-Za-km-z]{20,})\b/i
 
-const LOCAL_PATH = /(?:\/Users\/|\/home\/|[A-Za-z]:\\\\|file:\/\/)/
+// Real local paths only. The Windows-drive branch requires an actual path char
+// after `<letter>:\` so it matches `C:\Users` but NOT JSON-escaped content like
+// `target:\"prod\"` or `kind:\|` (a letter+colon+backslash that is just escaped text).
+const LOCAL_PATH = /(?:\/Users\/|\/home\/|[A-Za-z]:\\\\[A-Za-z0-9_.]|file:\/\/)/
 
 const PII_EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
 

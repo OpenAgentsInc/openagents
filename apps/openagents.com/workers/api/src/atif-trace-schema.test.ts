@@ -205,4 +205,34 @@ describe('ATIF public-safety tripwire', () => {
     })
     expect(findings.map(f => f.code)).toContain('pii_email')
   })
+
+  it('ALLOWS JSON-escaped text that looks like a drive path (kind:\\| etc.)', () => {
+    // `<letter>:\` appears constantly in escaped content (grep patterns, escaped
+    // quotes); it is NOT a Windows path and must not false-trip local_path.
+    const findings = atifTraceTripwire({
+      ...cleanTrajectory(),
+      steps: [
+        {
+          step_id: 1,
+          source: 'agent',
+          message: 'ran grep -n "kind:\\|wait" with target:\\"prod\\"',
+        },
+      ],
+    })
+    expect(findings).toEqual([])
+  })
+
+  it('rejects a real Windows drive path', () => {
+    const findings = atifTraceTripwire({
+      ...cleanTrajectory(),
+      steps: [
+        {
+          step_id: 1,
+          source: 'agent',
+          message: 'opened C:\\Users\\me\\secret.txt',
+        },
+      ],
+    })
+    expect(findings.map(f => f.code)).toContain('local_path')
+  })
 })
