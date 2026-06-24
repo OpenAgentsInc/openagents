@@ -70,6 +70,11 @@ jobs:
       - name: Run chill-eval + compose comment
         id: eval
         continue-on-error: true
+        env:
+          # CI has no browser; gh-attach authenticates from this exported
+          # github.com user-session secret so the video uploads + embeds inline
+          # (else the composer falls back to a relative ref — honest, no fake embed).
+          GH_ATTACH_USER_SESSION: ${{ secrets.GH_ATTACH_USER_SESSION }}
         run: |
           ARMED="${{ vars.CHILL_EVAL_ARMED }}"
           ATTACH_FLAG=""
