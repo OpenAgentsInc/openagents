@@ -164,6 +164,11 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/stats-old$/,
   /^\/tassadar$/,
   /^\/terms$/,
+  // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
+  // NOTE: duplicated from the client route registry — see the single-route-table
+  // unification issue. This server-side allowlist must admit it or the SPA route
+  // 302s to "/".
+  /^\/trace(?:\/.*)?$/,
   /^\/tassadar\/replay\/[^/]+$/,
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
   /^\/t\/[^/]+$/,
