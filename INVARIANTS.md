@@ -38,6 +38,11 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Rationale: keep build, test, scheduling, and automation on owned infra —
   consistent with the no-Expo/EAS-cloud mobile policy — and avoid handing repo
   automation, secrets, or scheduling to third-party GitHub-hosted runners.
+- **Enforced** by `check:no-github-actions` (in `check:deploy`): it fails if any
+  `.github/workflows/*.yml` exists. PR-evidence / autonomous-QA on a PR is **agent- or
+  manually-triggered** — an agent runs `apps/qa-runner/src/pr-comment-run.ts` (or the
+  `qa-runner` directly) and posts the verdict/trace/video comment itself (e.g. PR #6224) —
+  never a `pull_request`/`push`/`schedule` workflow.
 
 ## Product Surface Ownership
 

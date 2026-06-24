@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
-// CI entrypoint (#6185): diff-scope -> run eval -> compose PR comment.
+// Agentic PR-evidence entrypoint (#6185): diff-scope -> run eval -> compose PR comment.
+// NOT a GitHub Action (see the No-GitHub-Hosted-CI invariant): an agent/operator runs this
+// on owned infra and posts the comment itself (e.g. via `gh pr comment`), as on PR #6224.
 //
-// On a PR, the CI workflow runs this: it maps changed paths to affected
+// On a PR, an agent runs this: it maps changed paths to affected
 // scenarios (diff-scope), runs the qa-runner eval (fixtures/own-infra by
 // DEFAULT — no network, no spend; real-model only when armed + capped upstream),
 // uploads the per-variant videos via gh-attach when available, and writes the PR

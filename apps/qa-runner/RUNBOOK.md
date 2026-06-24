@@ -58,7 +58,7 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
 - **BYO model / any target:** `bun run src/byo.ts run --url <url> --model <id> --out ./runs/x`
   (bring-your-own model, no OpenAgents login).
 - **Compare configs ("chill-eval"):** `bun run src/pr-comment-run.ts --changed "<paths>" --out ./runs/pr-eval`
-  → comparison table + a `/trace/compare` link; runs in CI on PRs (`.github/workflows/chill-eval.yml`).
+  → comparison table + a `/trace/compare` link. **Agent-triggered** (no GitHub Actions — per the no-GHA invariant): an agent runs this and posts the PR comment itself, e.g. PR #6224.
 - **Import an existing Claude Code / Codex session → trace:**
   `bun run src/trace-import.ts <session.jsonl>` (detect → convert → redact → publish).
 - **Distill a session → committed e2e test:** the distiller (`src/distiller.ts`) lowers a
