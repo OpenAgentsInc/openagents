@@ -1,21 +1,68 @@
 {
   "name": "@openagentsinc/qa-runner",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "type": "module",
-  "description": "Khala autonomous-QA runner (EPIC #6174). Executes a computer-use session through the Probe computer-use tools against a Target (dev/prod), inside an isolation backend, and emits dereferenceable public-safe artifacts: a playable video (mp4/webm) + Playwright trace + per-step screenshots + result.json. A scriptedBrain + localBackend run NOW; khalaBrain and cloudVmBackend are owner/flag-gated seams.",
+  "description": "OSS, local-first, runtime-agnostic autonomous-QA runner. Drive any web target with a bring-your-own OpenAI-compatible model (no login), record a playable video + Playwright trace + screenshots, and distill the session into a committed e2e test. Khala / OpenAgents Cloud / receipts are optional add-ons, not dependencies of the core local run.",
+  "keywords": [
+    "qa",
+    "e2e",
+    "testing",
+    "playwright",
+    "computer-use",
+    "agent",
+    "openai-compatible",
+    "bring-your-own-model",
+    "local-first",
+    "oss"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/OpenAgentsInc/openagents/tree/main/apps/qa-runner",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenAgentsInc/openagents.git",
+    "directory": "apps/qa-runner"
+  },
+  "bugs": {
+    "url": "https://github.com/OpenAgentsInc/openagents/issues"
+  },
+  "bin": {
+    "qa": "src/byo.ts"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./byo": "./src/byo.ts",
+    "./byo-model": "./src/byo-model.ts",
+    "./target": "./src/target.ts",
+    "./brain": "./src/brain.ts",
+    "./backend": "./src/backend.ts",
+    "./runner": "./src/runner.ts",
+    "./distiller": "./src/distiller.ts",
+    "./result": "./src/result.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE",
+    "docs/oss-quickstart.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "qa": "bun run src/byo.ts",
     "serve": "bun run src/daemon.ts",
     "api": "bun run src/daemon.ts --api",
     "run-once": "bun run src/run-once.ts",
     "run-targets": "bun run src/run-targets.ts",
     "terminal-once": "bun run src/terminal-once.ts",
+    "demo:byo": "bun run src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
     "demo:login": "bun run src/demo-login.ts",
     "demo:khala": "bun run src/demo-khala.ts",
     "compose": "bun run src/compose/cli.ts",
     "evals": "bun run src/evals-run.ts",
     "pr-comment": "bun run src/pr-comment-run.ts",
-    "test": "bun test src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts",
+    "test": "bun test src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "playwright:install": "playwright install --with-deps chromium"
   },

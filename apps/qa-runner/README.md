@@ -1,7 +1,31 @@
 # @openagentsinc/qa-runner
 
-Khala autonomous-QA runner — the substrate + headline demo for the **Khala
-autonomous-QA example flow** (epic #6174).
+OSS, local-first, runtime-agnostic autonomous-QA runner — the substrate + the
+headline demo for the **Khala autonomous-QA example flow** (epic #6174).
+
+> **OSS + BYO-model + no login (issue #6191 / Rhys req #5).** The core path runs
+> on YOUR machine, against YOUR target, driven by ANY OpenAI-compatible model you
+> bring (model + base URL + key via flags/env) — **no OpenAgents account, login,
+> or key required**. It records a video + trace + screenshots and distills the
+> session into a **committed e2e test**. Khala / OpenAgents Cloud / `/pro` /
+> receipts / settlement are **optional add-ons, not dependencies of the core
+> run**. MIT-licensed (`LICENSE`). Full walkthrough:
+> [`docs/oss-quickstart.md`](docs/oss-quickstart.md).
+>
+> ```sh
+> # 10-second proof: no key, no network, no login. Emits a video + a committed test.
+> bun run --cwd apps/qa-runner demo:byo
+>
+> # Real run against your dev server with your model:
+> bun run --cwd apps/qa-runner qa run \
+>   --url http://localhost:3000 --model gpt-4o-mini \
+>   --base-url https://api.openai.com/v1 --api-key "$OPENAI_API_KEY" --out ./runs/my-app
+> ```
+>
+> The `@openagentsinc/probe-runtime` (computer-use) dependency is not yet
+> independently published; today the runnable-OSS path is "clone the monorepo and
+> run `qa`". The path to a bare `bunx @openagentsinc/qa-runner` is documented
+> honestly in the quick-start (§5).
 
 It executes a **computer-use session** (via the Probe computer-use tools, #6175)
 against a **Target** (dev or prod), inside an **isolation backend**, and emits a
