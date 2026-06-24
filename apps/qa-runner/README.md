@@ -81,7 +81,24 @@ bun run --cwd apps/qa-runner run-once -- --url https://openagents.com --out ./ru
 
 # Long-running daemon scaffold (inert without QA_JOB_LEASE_URL)
 bun run --cwd apps/qa-runner serve
+
+# QA CONTROL API (#6196): drive the full submit->run->fetch flow over HTTP, not
+# just the CLI. Auth'd by a Khala agent bearer token; deterministic mock path
+# (no Chrome/network/spend) by default; real runs gated by QA_CONTROL_ARM_REAL=1.
+QA_CONTROL_TOKENS="raynor:tok_demo_secret" bun run --cwd apps/qa-runner api
+#   curl quick-start a third party can follow: docs/control-api-quickstart.md
 ```
+
+## QA Control API (#6196): everything over HTTP
+
+The runner is also drivable **programmatically over HTTP** so the whole flow —
+submit → run → fetch artifacts + verdict + `/pro` link — is API-first (for
+`executor.sh`'s CI and "do everything via API"). It is a **qa-runner HTTP
+daemon** (the runner drives a real Chrome, which can't run in a Cloudflare
+Worker), running the existing engine **in-process** with an in-memory job store.
+Auth is a **Khala agent bearer token**; a deterministic **mock path** runs with
+no Chrome/network/spend; real runs are owner-gated. Full curl walkthrough:
+[`docs/control-api-quickstart.md`](docs/control-api-quickstart.md).
 
 ## Artifacts (`result.json` + receipt)
 

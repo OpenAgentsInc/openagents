@@ -6,6 +6,7 @@
   "description": "Khala autonomous-QA runner (EPIC #6174). Executes a computer-use session through the Probe computer-use tools against a Target (dev/prod), inside an isolation backend, and emits dereferenceable public-safe artifacts: a playable video (mp4/webm) + Playwright trace + per-step screenshots + result.json. A scriptedBrain + localBackend run NOW; khalaBrain and cloudVmBackend are owner/flag-gated seams.",
   "scripts": {
     "serve": "bun run src/daemon.ts",
+    "api": "bun run src/daemon.ts --api",
     "run-once": "bun run src/run-once.ts",
     "terminal-once": "bun run src/terminal-once.ts",
     "demo:login": "bun run src/demo-login.ts",
@@ -13,7 +14,8 @@
     "compose": "bun run src/compose/cli.ts",
     "evals": "bun run src/evals-run.ts",
     "pr-comment": "bun run src/pr-comment-run.ts",
-    "test": "bun test src/runner.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts",
+    "test": "bun test src/runner.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
