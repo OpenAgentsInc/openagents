@@ -37,6 +37,7 @@ import {
   OnboardingRoute,
   OrderRoute,
   PrivacyRoute,
+  ProRoute,
   PublicAgentRoute,
   PublicStatsArchiveRoute,
   PylonRoute,
@@ -508,6 +509,41 @@ describe('startup route policy', () => {
       redirect: Option.none(),
       route: { _tag: 'GymOss' },
     })
+  })
+
+  // /pro (issue 6179) is open to ANY signed-in user — NOT admin/operator-gated.
+  test('lets any signed-in user (no Core Team, no admin) onto /pro in place', () => {
+    expect(startupRouteForLoggedIn(ProRoute(), auth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Pro' },
+    })
+  })
+
+  test('lets a Core Team user stay on /pro in place', () => {
+    expect(startupRouteForLoggedIn(ProRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'Pro' },
+    })
+  })
+
+  test('routes a logged-out visitor away from /pro like other auth routes', () => {
+    // Same disposition as Billing/Admin/Order for the logged-out case: /pro is
+    // not in the LoggedOut union, so it resolves to the public home redirect
+    // (the public header offers login) rather than a bespoke blanket bounce.
+    expect(startupRouteForLoggedOut(ProRoute())).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Landing' },
+    })
+  })
+
+  test('fetches the auth bootstrap for /pro', () => {
+    expect(routeRequiresAuthBootstrap(ProRoute())).toBe(true)
   })
 
   test('routes incomplete authenticated users through onboarding', () => {

@@ -188,6 +188,7 @@ export const browserRouteProductIntents = {
   Order: 'customer.order.active',
   OrderDetail: 'customer.order.detail',
   PersonalFile: 'files.personal.detail',
+  Pro: 'pro.operator.console',
   ProductPromises: 'public.product-promises',
   PublicAgent: 'public.agent.profile',
   PublicStatsArchive: 'public.stats.archive',

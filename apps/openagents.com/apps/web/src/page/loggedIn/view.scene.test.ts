@@ -34,6 +34,7 @@ import {
   OnboardingRoute,
   OrderDetailRoute,
   OrderRoute,
+  ProRoute,
   SettingsRoute,
   SettingsSectionRoute,
   StatsRoute,
@@ -1778,6 +1779,43 @@ describe('logged-in workroom sidebar', () => {
       // (The neutral lane label + honest-number assertions are covered in
       // gymOss.test.ts; here we only assert the page+element render.)
       Scene.expect(Scene.selector('oa-gym-oss-controller')).toExist(),
+    )
+  })
+
+  test('renders the /pro operator console shell + teaching Overview for any signed-in user', () => {
+    // Explicitly a NON-admin, NON-Core-Team user: /pro is open to any signed-in
+    // user, so the console shell + teaching empty state must render for them.
+    const plainUser: AuthBootstrap = { ...auth, isAdmin: false, teams: [] }
+
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedIn.init(ProRoute(), plainUser)),
+      // The bespoke top-level Pro shell, NOT the workroom sidebar shell.
+      Scene.expect(
+        Scene.selector('[data-component="logged-in-pro-shell"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-component="logged-in-workroom-shell"]'),
+      ).not.toExist(),
+      Scene.expect(Scene.selector('[data-component="pro-console"]')).toExist(),
+      Scene.expect(Scene.selector('[data-component="pro-top-strip"]')).toExist(),
+      Scene.expect(Scene.selector('[data-component="pro-register"]')).toExist(),
+      // The teaching Overview empty state with its honest forward affordances.
+      Scene.expect(
+        Scene.selector('[data-component="pro-overview-empty"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', {
+          name: 'Pro is a power-user operator console',
+        }),
+      ).toExist(),
+      // Forward affordances are present but disabled (honest placeholders).
+      Scene.expect(
+        Scene.role('button', { name: 'Add credits' }),
+      ).toBeDisabled(),
+      Scene.expect(
+        Scene.role('button', { name: 'Connect a coding agent' }),
+      ).toBeDisabled(),
     )
   })
 

@@ -37,6 +37,7 @@ import {
   orderDetailRouter,
   orderRouter,
   personalFileRouter,
+  proRouter,
   publicAgentRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
@@ -79,6 +80,7 @@ import * as Images from './page/images'
 import * as Invite from './page/invite'
 import * as Onboarding from './page/onboarding'
 import * as Order from './page/order'
+import * as Pro from './page/pro'
 import * as Settings from './page/settings'
 import * as Stats from './page/stats'
 import * as Usage from './page/usage'
@@ -136,6 +138,7 @@ const currentHref = (model: Model): string =>
       PublicTrainingRuns: () => publicTrainingRunsRouter(),
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
+      Pro: () => proRouter(),
       Billing: () => billingRouter(),
       Usage: () => usageRouter(),
       Stats: () => statsRouter(),
@@ -199,6 +202,7 @@ const routeKey = (model: Model): string =>
       PublicTrainingRuns: () => 'PublicTrainingRuns',
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
+      Pro: () => 'Pro',
       Billing: () => 'Billing',
       Usage: () => 'Usage',
       Stats: () => 'Stats',
@@ -615,6 +619,11 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               Dashboard.view(model.session),
             ]),
+          // /pro renders as a top-level page in the `view` function below
+          // (its own top-strip + register + pane), so this workroom-shell case
+          // is a defensive fallback only and never normally reached.
+          Pro: () =>
+            Ui.workroomScrollableRoute<Message>([Pro.view(model.session)]),
           Billing: () =>
             Ui.workroomScrollableRoute<Message>([Billing.view(model)]),
           Usage: () => Ui.workroomScrollableRoute<Message>([Usage.view(model)]),
@@ -656,6 +665,16 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
       [
         h.Key('logged-in-onboarding-shell'),
         h.DataAttribute('component', 'logged-in-onboarding-shell'),
+      ],
+    )
+  }
+
+  if (model.route._tag === 'Pro') {
+    return Ui.pageShell<Message>(
+      [Pro.view(model.session)],
+      [
+        h.Key('logged-in-pro-shell'),
+        h.DataAttribute('component', 'logged-in-pro-shell'),
       ],
     )
   }

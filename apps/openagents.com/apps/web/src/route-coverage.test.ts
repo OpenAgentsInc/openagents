@@ -44,6 +44,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
+  ['/pro', 'Pro'],
   ['/billing', 'Billing'],
   ['/usage', 'Usage'],
   ['/images', 'Images'],
@@ -74,8 +75,9 @@ describe('public route parser coverage', () => {
   )
 
   test('covers the documented public surface', () => {
-    // 33 original public/top-level routes + the new public `/gym` fixture (34).
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(34)
+    // 33 original public/top-level routes + the public `/gym` fixture (34) +
+    // the authenticated `/pro` operator console top-level route (35).
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(35)
   })
 
   // The registry-driven parser derives its `oneOf` list from a single ordered

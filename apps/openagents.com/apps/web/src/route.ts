@@ -81,6 +81,7 @@ export const KhalaRoute = r('Khala')
 export const PylonRoute = r('Pylon')
 export const DownloadRoute = r('Download')
 export const DashboardRoute = r('Dashboard')
+export const ProRoute = r('Pro')
 export const BillingRoute = r('Billing')
 export const UsageRoute = r('Usage')
 export const StatsRoute = r('Stats')
@@ -175,6 +176,7 @@ export type KhalaRoute = typeof KhalaRoute.Type
 export type PylonRoute = typeof PylonRoute.Type
 export type DownloadRoute = typeof DownloadRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
+export type ProRoute = typeof ProRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
 export type StatsRoute = typeof StatsRoute.Type
@@ -289,6 +291,7 @@ export const LoggedInRoute = S.Union([
   BlogPostRoute,
   PublicAgentRoute,
   DashboardRoute,
+  ProRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -358,6 +361,7 @@ export const AppRoute = S.Union([
   PylonRoute,
   DownloadRoute,
   DashboardRoute,
+  ProRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -625,6 +629,7 @@ export const downloadRouter = pipe(
   literal('download'),
   Route.mapTo(DownloadRoute),
 )
+export const proRouter = pipe(literal('pro'), Route.mapTo(ProRoute))
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
@@ -1186,6 +1191,18 @@ export const routeRegistry = {
     inLoggedInUnion: true,
     render: 'loggedInOnly',
   },
+  // The /pro operator/power-user console (issue 6179). Open to ANY signed-in
+  // user (not admin/operator-gated): `loggedInGate: 'open'` +
+  // `requiresAuthBootstrap: true`. It lives only in the LoggedInRoute union, so
+  // a logged-out visitor resolves through the same auth-gated startup path as
+  // the other logged-in surfaces (Order/Billing/Admin), not a bespoke bounce.
+  Pro: {
+    requiresAuthBootstrap: true,
+    loggedInGate: 'open',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
   Billing: {
     requiresAuthBootstrap: true,
     loggedInGate: 'workroom',
@@ -1444,6 +1461,7 @@ const orderedParserRouters = [
   docsRouter,
   forumRouter,
   blogRouter,
+  proRouter,
   billingRouter,
   usageRouter,
   publicStatsArchiveRouter,
