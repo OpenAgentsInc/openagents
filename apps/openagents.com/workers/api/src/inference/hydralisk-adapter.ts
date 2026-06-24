@@ -50,6 +50,14 @@ const classifyStatus = (
   if (status >= 500) {
     return { kind: 'upstream_error', retryable: true }
   }
+  // Lane-level auth/routing failures (401 unauthorized, 403 forbidden, 404 not
+  // found) mean THIS serving lane is unavailable or misconfigured — not that the
+  // request itself is bad. Treat them as retryable so `dispatchWithOverflow`
+  // overflows to the next lane (e.g. the Khala Vertex Gemini fallback) instead of
+  // failing the whole request. Genuine client errors (400/422) stay non-retryable.
+  if (status === 401 || status === 403 || status === 404) {
+    return { kind: 'lane_unavailable', retryable: true }
+  }
   return { kind: 'request_rejected', retryable: false }
 }
 

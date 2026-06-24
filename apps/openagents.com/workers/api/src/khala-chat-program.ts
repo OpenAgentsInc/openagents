@@ -34,7 +34,7 @@ import { KHALA_IDENTITY_SYSTEM_PROMPT } from './inference/khala-identity'
 
 // The live public Khala model for the generic chat demo (same model id the
 // onboarding program uses; the cheapest-viable router lane).
-export const KHALA_CHAT_MODEL = 'openagents/khala-mini'
+export const KHALA_CHAT_MODEL = 'khala'
 
 // Bounds: a single message body and the whole running conversation are capped so
 // a public, unauthenticated demo cannot push an unbounded prompt through the

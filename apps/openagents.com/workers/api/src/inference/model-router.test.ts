@@ -141,12 +141,13 @@ describe('model classification', () => {
     }
   })
 
-  test('routes the single Khala model through Hydralisk, using either internal slug or external id', () => {
+  test('routes the single Khala model through Hydralisk, then degrades to Vertex Gemini on full outage', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       expect(classifyModel(model)).toBe('open')
       expect(selectAdapterPlan(model)).toEqual([
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
       ])
     }
   })

@@ -248,7 +248,19 @@ const LANE_PLAN_BY_CLASS: Readonly<
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
   if (normalizedModel === KHALA_MODEL_ID) {
-    return [HYDRALISK_GPT_OSS_120B_ADAPTER_ID, HYDRALISK_ADAPTER_ID]
+    // Khala-first: the Hydralisk GPT-OSS lanes (120B, then 20B) serve the
+    // collapsed public Khala model. Vertex Gemini is the FINAL graceful-
+    // degradation overflow so a full Hydralisk outage degrades to Gemini
+    // instead of failing the whole product with `inference_unavailable`
+    // (the vertex-gemini adapter is registered at module load and reads
+    // VERTEX_SA_KEY via the shared adapter env). Explicit `hydralisk-gpt-oss-*`
+    // model ids below keep NO Gemini fallback — they are deliberate GPT-OSS
+    // requests, not the generic Khala lane.
+    return [
+      HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      HYDRALISK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ]
   }
   if (normalizedModel === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]
