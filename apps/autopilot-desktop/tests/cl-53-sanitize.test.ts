@@ -397,9 +397,9 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "sidebar")).toBe(false)
   })
 
-  // #6046: StyleX is gone — the desktop shell/pane chrome now renders through the
+  // #6046: the old compile-plugin style path is gone — the desktop shell/pane chrome now renders through the
   // plain literal class names (styled by styles.css), not the old `oa-desktop-*`
-  // StyleX fallback classes.
+  // generated fallback classes.
   test("desktop shell and managed panes render through the plain chrome classes", () => {
     const document = view({
       ...initialModel,
@@ -415,7 +415,7 @@ describe("CL-53 sanitizeTree", () => {
       paneLayer: {
         panes: [
           {
-            id: "pane-stylex-fixture",
+            id: "pane-class-fixture",
             kind: "sessions",
             rect: { x: 24, y: 24, w: 360, h: 260 },
             z: 1,
@@ -433,7 +433,7 @@ describe("CL-53 sanitizeTree", () => {
     expect(treeContainsClass(document.body, "pane-layer")).toBe(true)
     expect(treeContainsClass(document.body, "pane-window")).toBe(true)
     expect(treeContainsClass(document.body, "pane-window-resize-bottomright")).toBe(true)
-    // The old `oa-desktop-*` StyleX fallback classes must be gone.
+    // The old `oa-desktop-*` generated fallback classes must be gone.
     expect(treeContainsClass(document.body, "oa-desktop-root-shell-shell")).toBe(false)
     expect(treeContainsClass(document.body, "oa-desktop-shell-pane")).toBe(false)
     expect(treeContainsClass(document.body, "oa-desktop-pane-window")).toBe(false)

@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -24,11 +24,11 @@ const onlineLabel = (online: boolean): "online" | "offline" => (online ? "online
 export const NodeStatusBadge = (node: NodeStatus): Html =>
   h.div(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.inlinePanel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.inlinePanel),
       h.DataAttribute("autopilot-node-ref", node.nodeRef),
     ],
     [
-      h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [node.nodeRef]),
+      h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [node.nodeRef]),
       statusChip({
         label: onlineLabel(node.online),
         tone: node.online ? "success" : "danger",
@@ -37,7 +37,7 @@ export const NodeStatusBadge = (node: NodeStatus): Html =>
       ...(node.lastHeartbeatAt === undefined
         ? []
         : [
-            h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+            h.time(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
               node.lastHeartbeatAt,
             ]),
           ]),
@@ -47,17 +47,17 @@ export const NodeStatusBadge = (node: NodeStatus): Html =>
 export const ProviderStatusList = (input: { providers: ReadonlyArray<ProviderHealth> }): Html =>
   h.ul(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.list),
       h.DataAttribute("autopilot-provider-status-list", ""),
     ],
     input.providers.map((provider) =>
       h.li(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.providerRow),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.providerRow),
           h.DataAttribute("autopilot-provider", provider.provider),
         ],
         [
-          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+          h.code(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             provider.provider,
           ]),
           statusChip({
@@ -65,7 +65,7 @@ export const ProviderStatusList = (input: { providers: ReadonlyArray<ProviderHea
             tone: provider.online ? "success" : "danger",
             attrs: [h.DataAttribute("autopilot-provider-status", onlineLabel(provider.online))],
           }),
-          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
+          h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
             provider.detailRef ?? "none",
           ]),
         ],

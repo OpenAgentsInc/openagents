@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -37,12 +37,12 @@ const shellQuote = (part: string): string =>
 export const VerifyStatus = (input: VerifyState): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-verify-status", input.status),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
-        h.h3(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.h3(classAttrs<AutopilotUiMessage>(domainStyles.title), [
           "verify",
         ]),
         statusChip({
@@ -53,24 +53,24 @@ export const VerifyStatus = (input: VerifyState): Html =>
       ]),
       h.code(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.commandBlock),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.commandBlock),
           h.DataAttribute("autopilot-verify-command", ""),
         ],
         [input.command.map(shellQuote).join(" ")],
       ),
       h.ul(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.list),
           h.DataAttribute("autopilot-required-artifacts", ""),
         ],
         input.requiredArtifacts.map((artifact) =>
           h.li(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.twoColumnRow),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.twoColumnRow),
               h.DataAttribute("autopilot-artifact-ref", artifact.ref),
             ],
             [
-              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
+              h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 artifact.ref,
               ]),
               statusChip({

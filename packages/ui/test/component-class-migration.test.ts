@@ -65,13 +65,13 @@ const renderHtml = (html: Html): string => {
   return `<${tag}${attrsToString(html)}>${text}${children}</${tag}>`
 }
 
-describe('StyleX migration coverage', () => {
-  test('renders shared button and heading primitives through the StyleX adapter', () => {
+describe('component class migration coverage', () => {
+  test('renders shared button and heading primitives through the class helper', () => {
     const rendered = renderHtml(
       headingBlock({
-        eyebrow: 'StyleX',
+        eyebrow: 'Classes',
         title: 'Primitive surface',
-        body: 'Compiled styles, same Foldkit API.',
+        body: 'Token-backed styles, same Foldkit API.',
         level: 1,
       }),
     )
@@ -94,7 +94,7 @@ describe('StyleX migration coverage', () => {
     expect(secondary).toContain('oa-ui-button-secondary')
   })
 
-  test('renders first form controls through the StyleX adapter', () => {
+  test('renders first form controls through the class helper', () => {
     const rendered = renderHtml(
       inputGroup({
         id: 'email',
@@ -120,7 +120,7 @@ describe('StyleX migration coverage', () => {
     expect(textarea).toContain('oa-ui-form-textarea')
   })
 
-  test('renders prompt-input AI Elements through the StyleX adapter', () => {
+  test('renders prompt-input AI Elements through the class helper', () => {
     const rendered = renderHtml(
       AiElements.promptInput({
         props: {
@@ -140,13 +140,13 @@ describe('StyleX migration coverage', () => {
     expect(rendered).toContain('oa-ai-prompt-input-submit')
   })
 
-  test('renders workroom timeline surfaces through StyleX instead of app CSS', () => {
+  test('renders workroom timeline surfaces through shared component classes', () => {
     const rendered = renderHtml(
       workroomChatRoute(
         workroomTimeline({
           messages: [
             {
-              id: 'message-stylex-user',
+              id: 'message-class-user',
               author: 'user',
               label: 'Operator',
               time: 'now',
@@ -154,7 +154,7 @@ describe('StyleX migration coverage', () => {
               parts: [{ kind: 'text', body: ['Ship the migration.'] }],
             },
             {
-              id: 'message-stylex-agent',
+              id: 'message-class-agent',
               author: 'assistant',
               label: 'Autopilot',
               time: 'now',

@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in domain-styles.ts — theme-preserving. */
+/* #6046: Autopilot domain component classes backed by central --oa-* tokens. */
 
 .oa-autopilot-domain-list {
   display: grid;

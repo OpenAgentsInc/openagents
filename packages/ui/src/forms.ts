@@ -5,22 +5,22 @@ import { html } from 'foldkit/html'
 import { eyebrowClass, kitFamily, metaClass, titleClass } from './primitives'
 import type { FormOption, ValidationState } from './primitives'
 import {
-  stylexAttrs,
-  stylexFallback,
-} from './stylex-foldkit'
+  classAttrs,
+  componentClass,
+} from './class-foldkit'
 
 const formStyles = {
-  compactButton: stylexFallback('oa-ui-form-compact-button'),
-  compactButtonStrong: stylexFallback('oa-ui-form-compact-button-strong'),
-  group: stylexFallback('oa-ui-form-group'),
-  validationGroup: stylexFallback('oa-ui-form-validation-group'),
-  validationHeader: stylexFallback('oa-ui-form-validation-header'),
-  validationLabel: stylexFallback('oa-ui-form-validation-label'),
-  input: stylexFallback('oa-ui-form-input'),
-  textarea: stylexFallback('oa-ui-form-textarea'),
-  indicatorInfo: stylexFallback('oa-ui-form-indicator-info'),
-  indicatorSuccess: stylexFallback('oa-ui-form-indicator-success'),
-  error: stylexFallback('oa-ui-form-error'),
+  compactButton: componentClass('oa-ui-form-compact-button'),
+  compactButtonStrong: componentClass('oa-ui-form-compact-button-strong'),
+  group: componentClass('oa-ui-form-group'),
+  validationGroup: componentClass('oa-ui-form-validation-group'),
+  validationHeader: componentClass('oa-ui-form-validation-header'),
+  validationLabel: componentClass('oa-ui-form-validation-label'),
+  input: componentClass('oa-ui-form-input'),
+  textarea: componentClass('oa-ui-form-textarea'),
+  indicatorInfo: componentClass('oa-ui-form-indicator-info'),
+  indicatorSuccess: componentClass('oa-ui-form-indicator-success'),
+  error: componentClass('oa-ui-form-error'),
 }
 
 export const compactButton = <Message>(input: {
@@ -34,7 +34,7 @@ export const compactButton = <Message>(input: {
     [
       ...(input.attrs ?? []),
       h.Type('button'),
-      ...stylexAttrs<Message>(
+      ...classAttrs<Message>(
         formStyles.compactButton,
         input.variant === 'strong' ? formStyles.compactButtonStrong : null,
       ),
@@ -69,7 +69,7 @@ export const inputGroup = <Message>(input: {
     [
       kitFamily<Message>('forms/input-groups'),
       h.For(input.id),
-      ...stylexAttrs<Message>(formStyles.group),
+      ...classAttrs<Message>(formStyles.group),
     ],
     [
       h.span([h.Class(clsx(eyebrowClass, input.labelClassName))], [
@@ -84,7 +84,7 @@ export const inputGroup = <Message>(input: {
         ...(input.placeholder === undefined
           ? []
           : [h.Placeholder(input.placeholder)]),
-        ...stylexAttrs<Message>(formStyles.input),
+        ...classAttrs<Message>(formStyles.input),
         ...(input.className === undefined ? [] : [h.Class(input.className)]),
       ]),
       input.help === undefined
@@ -108,11 +108,11 @@ const validationIndicator = <Message>(state: ValidationState): Html => {
   const h = html<Message>()
 
   if (state === 'validating') {
-    return h.span(stylexAttrs<Message>(formStyles.indicatorInfo), ['...'])
+    return h.span(classAttrs<Message>(formStyles.indicatorInfo), ['...'])
   }
 
   if (state === 'valid') {
-    return h.span(stylexAttrs<Message>(formStyles.indicatorSuccess), ['✓'])
+    return h.span(classAttrs<Message>(formStyles.indicatorSuccess), ['✓'])
   }
 
   return h.empty
@@ -134,16 +134,16 @@ export const validatedInputGroup = <Message>(input: {
   return h.div(
     [
       kitFamily<Message>('forms/input-groups'),
-      ...stylexAttrs<Message>(formStyles.validationGroup),
+      ...classAttrs<Message>(formStyles.validationGroup),
     ],
     [
       h.div(
-        stylexAttrs<Message>(formStyles.validationHeader),
+        classAttrs<Message>(formStyles.validationHeader),
         [
           h.label(
             [
               h.For(input.id),
-              ...stylexAttrs<Message>(formStyles.validationLabel),
+              ...classAttrs<Message>(formStyles.validationLabel),
             ],
             [input.label],
           ),
@@ -164,7 +164,7 @@ export const validatedInputGroup = <Message>(input: {
       }),
       input.error === undefined
         ? null
-        : h.div(stylexAttrs<Message>(formStyles.error), [input.error]),
+        : h.div(classAttrs<Message>(formStyles.error), [input.error]),
     ],
   )
 }
@@ -186,7 +186,7 @@ export const textareaGroup = <Message>(input: {
     [
       kitFamily<Message>('forms/textareas'),
       h.For(input.id),
-      ...stylexAttrs<Message>(formStyles.group),
+      ...classAttrs<Message>(formStyles.group),
     ],
     [
       h.span([h.Class(clsx(eyebrowClass, input.labelClassName))], [
@@ -201,7 +201,7 @@ export const textareaGroup = <Message>(input: {
             ? []
             : [h.Placeholder(input.placeholder)]),
           ...(input.rows === undefined ? [] : [h.Rows(input.rows)]),
-          ...stylexAttrs<Message>(formStyles.input, formStyles.textarea),
+          ...classAttrs<Message>(formStyles.input, formStyles.textarea),
           ...(input.className === undefined ? [] : [h.Class(input.className)]),
         ],
         [input.value ?? ''],
@@ -222,7 +222,7 @@ export const selectMenu = <Message>(input: {
     [
       kitFamily<Message>('forms/select-menus'),
       h.For(input.id),
-      ...stylexAttrs<Message>(formStyles.group),
+      ...classAttrs<Message>(formStyles.group),
     ],
     [
       h.span([h.Class(eyebrowClass)], [input.label]),
@@ -230,7 +230,7 @@ export const selectMenu = <Message>(input: {
         [
           h.Id(input.id),
           h.Name(input.name),
-          ...stylexAttrs<Message>(formStyles.input),
+          ...classAttrs<Message>(formStyles.input),
         ],
         input.options.map(option =>
           h.option(

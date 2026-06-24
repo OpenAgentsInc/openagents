@@ -56,7 +56,7 @@ import { html } from "foldkit/html"
 // #5467: the Autonomous loop view's own pane module (Supervise group).
 import { autonomousLoopPane } from "./autonomous-loop-pane.js"
 // #6046: desktop shell/pane chrome is now plain CSS in styles.css keyed by the
-// literal class names below (the StyleX module desktop-stylex.ts was deleted).
+// literal class names below (the old desktop-stylex.ts module was deleted).
 // HUD H7 (#5504): the live status/meters HUD overlay (three-effect H2 kit).
 import { statusHudView } from "./hud-status-element.js"
 import {
@@ -8090,7 +8090,7 @@ const shellStreamParts = (text: string): ReadonlyArray<ShellStreamPart> | null =
   return sawStreamPart && parts.length > 0 ? parts : null
 }
 
-// #6046: the per-kind StyleX style helpers are gone — the kind variant is
+// #6046: the per-kind generated style helpers are gone — the kind variant is
 // already encoded in the `shell-stream-part shell-stream-part-${kind}` class
 // the view emits, and styles.css keys the variant CSS off that class.
 
@@ -8484,7 +8484,7 @@ const PANE_KIND_LABELS: ReadonlyMap<PaneId, string> = (() => {
 const paneKindLabel = (kind: PaneId): string =>
   PANE_KIND_LABELS.get(kind) ?? kind
 
-// #6046: per-handle StyleX style arrays are gone — the edge/corner variant is
+// #6046: per-handle generated style arrays are gone — the edge/corner variant is
 // in the `pane-window-resize-${handle}` class and styles.css owns the geometry.
 
 // One resize handle: a small grab target on an edge/corner. Pointer-down starts a

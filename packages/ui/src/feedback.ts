@@ -10,13 +10,13 @@ import {
 } from './primitives'
 import type { Tone } from './primitives'
 import {
-  stylexAttrs,
-  stylexFallback,
-} from './stylex-foldkit'
+  classAttrs,
+  componentClass,
+} from './class-foldkit'
 
 const emptyStateStyles = {
-  root: stylexFallback('oa-ui-empty-state-root'),
-  body: stylexFallback('oa-ui-empty-state-body'),
+  root: componentClass('oa-ui-empty-state-root'),
+  body: componentClass('oa-ui-empty-state-body'),
 }
 
 export const alert = <Message>(input: {
@@ -66,10 +66,10 @@ export const emptyState = <Message>(input: {
   const h = html<Message>()
 
   return h.div(
-    stylexAttrs<Message>(emptyStateStyles.root),
+    classAttrs<Message>(emptyStateStyles.root),
     [
       h.div(
-        stylexAttrs<Message>(emptyStateStyles.body),
+        classAttrs<Message>(emptyStateStyles.body),
         [
           h.p([h.Class(eyebrowClass)], ['Empty']),
           h.h3([h.Class(titleClass)], [input.title]),

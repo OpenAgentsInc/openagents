@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in forms.ts — theme-preserving. */
+/* #6046: form component classes backed by central --oa-* tokens. */
 
 .oa-ui-form-compact-button {
   min-height: 32px;

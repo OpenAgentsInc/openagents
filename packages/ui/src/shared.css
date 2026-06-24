@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in shared.ts — theme-preserving. */
+/* #6046: shared component classes backed by central --oa-* tokens. */
 
 .oa-ui-heading-root {
   min-width: 0;

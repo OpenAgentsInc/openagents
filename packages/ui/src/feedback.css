@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in feedback.ts — theme-preserving. */
+/* #6046: feedback component classes backed by central --oa-* tokens. */
 
 .oa-ui-empty-state-root {
   display: grid;

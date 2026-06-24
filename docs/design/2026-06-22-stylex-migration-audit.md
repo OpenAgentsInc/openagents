@@ -13,6 +13,16 @@ are complete. The pushed commits are `2783a48d29`, `ee277e04b3`,
 `27a83805d5`, `83a7ec4a0b`, `5142eb9166`, and `0a06e89828`. Mobile remains
 intentionally out of scope for this sequence.
 
+## 2026-06-24 Supersession Note
+
+#6046 has removed the StyleX-facing component helper from the shared UI
+packages. `@openagentsinc/ui/class-foldkit` is now the neutral Foldkit bridge
+for stable component class names, and `@openagentsinc/design-tokens` is the
+single typed source for the `--oa-*` CSS variables consumed by shared component
+CSS. This audit remains historical context for why the compile-plugin path was
+tried, but it is no longer the active styling plan for `@openagentsinc/ui`,
+`@openagentsinc/autopilot-ui`, or Autopilot Desktop.
+
 ## Implementation progress
 
 2026-06-22 P0 web/desktop vertical slice, issue #5952:

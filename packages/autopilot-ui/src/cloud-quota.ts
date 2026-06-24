@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -35,18 +35,18 @@ const failoverLabel = (failover: CloudQuotaPanelInput["failover"]): string => {
 export const CloudQuotaPanel = (input: CloudQuotaPanelInput): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-cloud-quota-panel", ""),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stack), [
-          h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.label), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stack), [
+          h.span(classAttrs<AutopilotUiMessage>(domainStyles.label), [
             "Credit balance",
           ]),
           h.code(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.value),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.value),
               h.DataAttribute("autopilot-cloud-credit-balance", String(input.creditBalance)),
             ],
             [`${input.creditBalance} credits`],
@@ -65,14 +65,14 @@ export const CloudQuotaPanel = (input: CloudQuotaPanelInput): Html =>
       ]),
       h.div(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.subPanel),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.subPanel),
           h.DataAttribute("autopilot-cloud-compute-ref", input.compute.usedRef),
         ],
         [
-          h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.label), [
+          h.span(classAttrs<AutopilotUiMessage>(domainStyles.label), [
             input.compute.meterLabel,
           ]),
-          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+          h.code(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             input.compute.usedRef,
           ]),
         ],

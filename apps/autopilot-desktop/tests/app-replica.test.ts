@@ -4,9 +4,9 @@
 // Unlike the full-input-path harness (which reconstructs the input chain in
 // pure TS), this boots the SAME Model / view / update / subscriptions + the real
 // Foldkit `Runtime.run` mount the live app uses, in headless Chromium, with:
-//   • StyleX SOLVED — the entry is compiled with the same @stylexjs/unplugin Bun
-//     plugin `build:css` uses for the real `main.ts`, so `view.ts` mounts without
-//     throwing (the wall prior agents hit), with the real styles.out.css served.
+//   • Component styles SOLVED — the entry is served with the same generated
+//     styles.out.css as the packaged app, so `view.ts` mounts styled without the
+//     old style-runtime throw.
 //   • The Electrobun bridge STUBBED via the real `setRequest`/`pushInbound` seam
 //     (Effect Commands reach a scripted fake, not the network; the live
 //     `khalaToken` push is driven for streaming).
@@ -139,12 +139,12 @@ describeReplica("app-replica boots the REAL desktop renderer headless", () => {
     await replica?.close()
   })
 
-  // ── The replica actually mounts the real view (StyleX solved, no crash) ──────
+  // ── The replica actually mounts the real view (styles solved, no crash) ──────
 
-  slowTest("the real Verse view mounts with real CSS applied (StyleX compiled)", async () => {
+  slowTest("the real Verse view mounts with real CSS applied", async () => {
     // The real app-shell-verse container is present and laid out full-viewport —
     // proving the real `view.ts` (the same one the app runs) mounted without the
-    // StyleX `stylex.attrs` throw, with the real stylesheet applied.
+    // old style-runtime throw, with the real stylesheet applied.
     const shell = await replica.boundingBox(".app-shell-verse")
     expect(shell).not.toBeNull()
     expect(shell!.width).toBeGreaterThan(200)

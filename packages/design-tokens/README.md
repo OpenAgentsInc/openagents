@@ -1,8 +1,8 @@
 # OpenAgents Design Tokens
 
 `@openagentsinc/design-tokens` is the neutral token authority for shared
-OpenAgents UI packages. It intentionally has no Foldkit, StyleX, React, or app
-runtime dependency.
+OpenAgents UI packages. It intentionally has no Foldkit, style compiler, React,
+or app runtime dependency.
 
 Current scope:
 
@@ -14,8 +14,8 @@ Current scope:
 Out of scope for this first package:
 
 - Forum, public landing, marketing, and tenant theme palettes.
-- Mobile StyleX migration. The package exposes native-shaped tokens, but app
-  migration remains a later track.
+- Mobile/native theme adoption. The package exposes native-shaped tokens, but
+  app migration remains a later track.
 - Component-level sizing, spacing, typography, motion, and semantic surface
   tokens that do not yet have an agreed shared contract.
 

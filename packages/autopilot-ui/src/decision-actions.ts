@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -50,15 +50,15 @@ export const DecisionActions = (input: { decision: DecisionView; readOnly: boole
 
   return h.div(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.stackSmall),
       h.DataAttribute("autopilot-decision-actions", input.decision.requestId),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.wrap), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.wrap), [
         ...decisionVerbs.map((verb) =>
           h.button(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.actionButton),
               h.Type("button"),
               h.Disabled(!actions[verb].enabled),
               h.DataAttribute("autopilot-decision-action", verb),

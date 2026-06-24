@@ -1,4 +1,4 @@
-/* #6046: aggregated component stylesheet — ports of the deleted StyleX create() blocks. */
+/* #6046: aggregated component stylesheet backed by central --oa-* tokens. */
 @import './shared.css';
 @import './forms.css';
 @import './feedback.css';

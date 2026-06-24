@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in view.ts — theme-preserving. */
+/* #6046: Autopilot session component classes backed by central --oa-* tokens. */
 
 .oa-autopilot-session-list {
   display: grid;

@@ -5,14 +5,11 @@
 // headless Chromium, WITHOUT the Electrobun native shell. Two things that
 // historically made this impossible are solved here:
 //
-//   1. StyleX. `view.ts` calls `stylex.attrs(...)` over `stylex.create(...)`
-//      objects. Bundled with a plain `bun build`, those objects are NOT compiled,
-//      so `stylex.attrs` throws and the view never mounts. We fix this at the
-//      BUILD layer: `src/testing/app-replica.ts` compiles THIS entry with the
-//      same `@stylexjs/unplugin` plugin `scripts/build-css.ts` uses for the real
-//      `main.ts`, so the StyleX here is real compiled StyleX and the same
-//      generated component CSS is served alongside the page. No runtime shim, no
-//      throw — the real styled view mounts.
+//   1. Component styles. The old compile-plugin style path was removed; the
+//      replica serves the same generated stylesheet as the packaged app,
+//      including the central `--oa-*` token block and shared component classes.
+//      No runtime shim, no compile-time style plugin, no throw — the real styled
+//      view mounts.
 //
 //   2. The Electrobun bridge. The live app talks to the Bun main process over the
 //      typed RPC (`window.bun` / `getRequest()` / `rpc`). In a plain browser that
@@ -327,7 +324,7 @@ window.__OA_REPLICA__ = {
 }
 
 // Crash overlay: render a `data-replica-crash` <pre> with the error + stack so a
-// view/update throw (e.g. an unsolved StyleX/bridge issue) is VISIBLE to the
+// view/update throw (e.g. an unsolved style/bridge issue) is VISIBLE to the
 // driver instead of a silent blank screen. The harness fails hard if this exists.
 const ch = html<never>()
 const crashView = (error: Error): Document => ({

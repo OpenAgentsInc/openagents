@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in workroom-styles.ts — theme-preserving. */
+/* #6046: workroom component classes backed by central --oa-* tokens. */
 
 .oa-ui-workroom-chat-surface {
   --font-family-mono: var(--font-family-chat-mono);

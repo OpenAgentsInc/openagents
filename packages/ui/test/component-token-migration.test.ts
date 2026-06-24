@@ -1,11 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import { themeCssVars } from '@openagentsinc/design-tokens'
 
-// #6046 part 2: the component stylesheets (ports of the deleted StyleX
-// create() blocks) must reference the central --oa-* tokens, and every
+// #6046 part 2: the component stylesheets must reference the central --oa-* tokens, and every
 // var(--oa-*, FALLBACK) fallback must EQUAL the token's canonical value so the
 // migration is theme-preserving. We also assert NO raw hex colors remain.
 
@@ -75,6 +74,27 @@ describe('component CSS is migrated onto the central --oa-* tokens', () => {
         file,
         hasOaToken: true,
       })
+    }
+  })
+
+  test('legacy style adapter module is absent from the component layer', () => {
+    const legacyName = ['style', 'x'].join('')
+    const legacyModule = `${legacyName}-foldkit`
+    const scannedFiles = [
+      here('../src/index.ts'),
+      here('../src/shared.ts'),
+      here('../src/forms.ts'),
+      here('../src/feedback.ts'),
+      here('../src/workroom.ts'),
+      here('../src/workroom-styles.ts'),
+      here('../src/ai-elements/prompt-input.ts'),
+      here('../../autopilot-ui/src/view.ts'),
+      here('../../autopilot-ui/src/domain-styles.ts'),
+    ]
+
+    expect(existsSync(here(`../src/${legacyModule}.ts`))).toBe(false)
+    for (const file of scannedFiles) {
+      expect(read(file).includes(legacyModule)).toBe(false)
     }
   })
 })

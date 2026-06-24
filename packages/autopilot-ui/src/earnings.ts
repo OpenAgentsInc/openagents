@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -21,16 +21,16 @@ const satsLabel = (amountSats: number): string => `${amountSats} sats`
 export const EarningsPanel = (input: EarningsSummary): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-earnings-panel", ""),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
-          h.h2(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.h2(classAttrs<AutopilotUiMessage>(domainStyles.title), [
             "Earnings",
           ]),
-          h.p(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+          h.p(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
             "Read-only balance",
           ]),
         ]),
@@ -42,29 +42,29 @@ export const EarningsPanel = (input: EarningsSummary): Html =>
       ]),
       h.ol(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.list),
           h.DataAttribute("autopilot-earnings-entries", ""),
         ],
         input.entries.length === 0
           ? [
-              h.li(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
+              h.li(classAttrs<AutopilotUiMessage>(domainStyles.empty), [
                 "No earnings yet",
               ]),
             ]
           : input.entries.map((entry) =>
               h.li(
                 [
-                  ...stylexAttrs<AutopilotUiMessage>(domainStyles.earningsRow),
+                  ...classAttrs<AutopilotUiMessage>(domainStyles.earningsRow),
                   h.DataAttribute("autopilot-earnings-ref", entry.ref),
                 ],
                 [
-                  h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+                  h.code(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
                     entry.ref,
                   ]),
-                  h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.successValue), [
+                  h.span(classAttrs<AutopilotUiMessage>(domainStyles.successValue), [
                     satsLabel(entry.amountSats),
                   ]),
-                  h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+                  h.time(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
                     entry.at,
                   ]),
                 ],

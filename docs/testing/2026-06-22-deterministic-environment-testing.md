@@ -220,15 +220,12 @@ await replica.close()
 Two things historically made "mount the real Electrobun app and press a key"
 impossible. Both are solved here:
 
-1. **StyleX.** `view.ts` runs `stylex.attrs(...)` over `stylex.create(...)`
-   objects. Bundled with a plain `bun build` those objects are NOT compiled, so
-   `stylex.attrs` throws and the view never mounts (the wall prior agents hit).
-   The replica compiles its entry (`scripts/app-replica-entry.ts`) with the
-   **same `@stylexjs/unplugin` Bun plugin** `scripts/build-css.ts` uses for the
-   real `main.ts`, and serves the **same `src/ui/styles.out.css`** (`bun run
-   build:css` must have run). So the StyleX is real compiled StyleX and the real,
-   styled view mounts — no runtime shim, no throw. (`getComputedStyle(...)`
-   confirms the real CSS is applied, e.g. `.app-shell` is `position: fixed`.)
+1. **Component styles.** The old StyleX compile-plugin path was removed by
+   #6046. The replica serves the same generated `src/ui/styles.out.css` as the
+   packaged app, including the central `--oa-*` token block and shared component
+   classes. The real, styled view mounts with no runtime shim and no style
+   compiler. (`getComputedStyle(...)` confirms the real CSS is applied, e.g.
+   `.app-shell` is `position: fixed`.)
 2. **The Electrobun bridge.** `window.bun` / `getRequest()` (which `khalaTurn`,
    `shellTurn`, token resolution, etc. call) is absent in a plain browser. The
    entry installs a **test-controlled stub through the same `setRequest`/

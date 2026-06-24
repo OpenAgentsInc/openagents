@@ -5,9 +5,9 @@ import type {
   SessionSummary,
 } from "@openagentsinc/autopilot-control-protocol"
 import {
-  stylexAttrs,
-  stylexFallback,
-} from "@openagentsinc/ui/stylex-foldkit"
+  classAttrs,
+  componentClass,
+} from "@openagentsinc/ui/class-foldkit"
 import type { Attribute, Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -35,12 +35,12 @@ const h = html<AutopilotUiMessage>()
 const className = (value: string): Attribute<AutopilotUiMessage> => h.Class(value)
 
 const sessionStyles = {
-  list: stylexFallback("oa-autopilot-session-list"),
-  row: stylexFallback("oa-autopilot-session-row"),
-  sessionRef: stylexFallback("oa-autopilot-session-ref"),
-  adapter: stylexFallback("oa-autopilot-session-adapter"),
-  progressRef: stylexFallback("oa-autopilot-session-progress-ref"),
-  empty: stylexFallback("oa-autopilot-session-empty"),
+  list: componentClass("oa-autopilot-session-list"),
+  row: componentClass("oa-autopilot-session-row"),
+  sessionRef: componentClass("oa-autopilot-session-ref"),
+  adapter: componentClass("oa-autopilot-session-adapter"),
+  progressRef: componentClass("oa-autopilot-session-progress-ref"),
+  empty: componentClass("oa-autopilot-session-empty"),
 } as const
 
 const chipToneStyles = {
@@ -73,7 +73,7 @@ export const statusChip = (input: {
   h.span(
     [
       ...(input.attrs ?? []),
-      ...stylexAttrs<AutopilotUiMessage>(
+      ...classAttrs<AutopilotUiMessage>(
         domainStyles.chip,
         chipToneStyles[input.tone ?? "neutral"],
       ),
@@ -112,15 +112,15 @@ export const SessionRow = (session: SessionSummary): Html => {
 
   return h.article(
     [
-      ...stylexAttrs<AutopilotUiMessage>(sessionStyles.row),
+      ...classAttrs<AutopilotUiMessage>(sessionStyles.row),
       className("session-row"),
       h.DataAttribute("autopilot-session-ref", session.sessionRef),
     ],
     [
-      h.code(stylexAttrs<AutopilotUiMessage>(sessionStyles.sessionRef), [session.sessionRef]),
-      h.span(stylexAttrs<AutopilotUiMessage>(sessionStyles.adapter), [session.adapter]),
+      h.code(classAttrs<AutopilotUiMessage>(sessionStyles.sessionRef), [session.sessionRef]),
+      h.span(classAttrs<AutopilotUiMessage>(sessionStyles.adapter), [session.adapter]),
       sessionStateChip(session.state),
-      h.code(stylexAttrs<AutopilotUiMessage>(sessionStyles.progressRef), [lastProgressRef]),
+      h.code(classAttrs<AutopilotUiMessage>(sessionStyles.progressRef), [lastProgressRef]),
     ],
   )
 }
@@ -131,12 +131,12 @@ export const SessionList = (input: {
 }): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(sessionStyles.list),
+      ...classAttrs<AutopilotUiMessage>(sessionStyles.list),
       h.DataAttribute("autopilot-session-list", ""),
     ],
     input.sessions.length === 0
       ? [
-          h.p(stylexAttrs<AutopilotUiMessage>(sessionStyles.empty), [
+          h.p(classAttrs<AutopilotUiMessage>(sessionStyles.empty), [
             input.emptyLabel ?? "No sessions",
           ]),
         ]
@@ -171,16 +171,16 @@ export const DecisionCard = (input: {
 
   return h.article(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-decision-id", input.decision.requestId),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stack), [
-          h.h3(stylexAttrs<AutopilotUiMessage>(domainStyles.title), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stack), [
+          h.h3(classAttrs<AutopilotUiMessage>(domainStyles.title), [
             input.decision.actionRef,
           ]),
-          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
+          h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
             input.decision.requestId,
           ]),
         ]),
@@ -190,23 +190,23 @@ export const DecisionCard = (input: {
           attrs: [h.DataAttribute("autopilot-decision-state", input.decision.state)],
         }),
       ]),
-      h.dl(stylexAttrs<AutopilotUiMessage>(domainStyles.metadataGrid), [
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
-          h.dt(stylexAttrs<AutopilotUiMessage>(domainStyles.label), ["Resolved"]),
-          h.dd(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [resolved]),
+      h.dl(classAttrs<AutopilotUiMessage>(domainStyles.metadataGrid), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.dt(classAttrs<AutopilotUiMessage>(domainStyles.label), ["Resolved"]),
+          h.dd(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [resolved]),
         ]),
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
-          h.dt(stylexAttrs<AutopilotUiMessage>(domainStyles.label), ["Expires"]),
-          h.dd(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stackSmall), [
+          h.dt(classAttrs<AutopilotUiMessage>(domainStyles.label), ["Expires"]),
+          h.dd(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             String(input.decision.expiresAtMs),
           ]),
         ]),
       ]),
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.wrap), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.wrap), [
         ...actions.map((action) =>
           h.button(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.actionButton),
               h.Type("button"),
               h.Disabled(disabled || action.disabled === true),
               h.DataAttribute("autopilot-decision-action", action.verb),
@@ -242,30 +242,30 @@ export const EventTimeline = (input: {
 }): Html =>
   h.ol(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.list),
       h.DataAttribute("autopilot-event-timeline", ""),
     ],
     input.events.length === 0
       ? [
-          h.li(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
+          h.li(classAttrs<AutopilotUiMessage>(domainStyles.empty), [
             input.emptyLabel ?? "No events",
           ]),
         ]
       : input.events.map((event) =>
           h.li(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.eventRow),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.eventRow),
               h.DataAttribute("autopilot-event-id", event.eventId),
             ],
             [
-              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
+              h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 `#${event.sequence}`,
               ]),
               statusChip({ label: event.phase, tone: eventTone(event) }),
-              h.time(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+              h.time(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
                 event.observedAt,
               ]),
-              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
+              h.code(classAttrs<AutopilotUiMessage>(domainStyles.codeMuted), [
                 event.detailRef ?? event.sessionRef,
               ]),
             ],

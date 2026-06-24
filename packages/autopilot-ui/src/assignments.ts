@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -33,12 +33,12 @@ export const AssignmentList = (input: {
 }): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.list),
       h.DataAttribute("autopilot-assignment-list", ""),
     ],
     input.assignments.length === 0
       ? [
-          h.p(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
+          h.p(classAttrs<AutopilotUiMessage>(domainStyles.empty), [
             "No assignments",
           ]),
         ]
@@ -48,11 +48,11 @@ export const AssignmentList = (input: {
 
           return h.article(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.assignmentRow),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.assignmentRow),
               h.DataAttribute("autopilot-assignment-ref", assignment.ref),
             ],
             [
-              h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+              h.code(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
                 assignment.ref,
               ]),
               statusChip({
@@ -60,20 +60,20 @@ export const AssignmentList = (input: {
                 tone: assignmentStateTone(assignment.state),
                 attrs: [h.DataAttribute("autopilot-assignment-state", assignment.state)],
               }),
-              h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.progressStack), [
+              h.div(classAttrs<AutopilotUiMessage>(domainStyles.progressStack), [
                 h.div(
                   [
-                    ...stylexAttrs<AutopilotUiMessage>(domainStyles.progressTrack),
+                    ...classAttrs<AutopilotUiMessage>(domainStyles.progressTrack),
                     h.DataAttribute("autopilot-assignment-progress", String(progress)),
                   ],
                   [
                     h.div([
-                      ...stylexAttrs<AutopilotUiMessage>(domainStyles.progressBar),
+                      ...classAttrs<AutopilotUiMessage>(domainStyles.progressBar),
                       h.Style({ width: `${progress}%` }),
                     ], []),
                   ],
                 ),
-                h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+                h.span(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
                   progressLabel(progress),
                 ]),
               ]),
@@ -81,7 +81,7 @@ export const AssignmentList = (input: {
                 ? [
                     h.button(
                       [
-                        ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
+                        ...classAttrs<AutopilotUiMessage>(domainStyles.actionButton),
                         h.Type("button"),
                         h.DataAttribute("autopilot-assignment-action", "accept"),
                       ],

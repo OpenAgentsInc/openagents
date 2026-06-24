@@ -1,4 +1,4 @@
-/* #6046: ported from the deleted StyleX create() block in ai-elements/prompt-input.ts — theme-preserving. */
+/* #6046: prompt-input component classes backed by central --oa-* tokens. */
 
 .oa-ai-prompt-input {
   display: grid;

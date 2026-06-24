@@ -14,39 +14,39 @@ import type {
   NavItem,
 } from './primitives'
 import {
-  stylexAttrs,
-  stylexFallback,
-} from './stylex-foldkit'
+  classAttrs,
+  componentClass,
+} from './class-foldkit'
 
 const sharedStyles = {
-  headingRoot: stylexFallback('oa-ui-heading-root'),
-  headingTitle: stylexFallback('oa-ui-heading-title'),
-  headingTitleLevel1: stylexFallback('oa-ui-heading-title-level-1'),
-  headingTitleLevel2: stylexFallback('oa-ui-heading-title-level-2'),
-  headingTitleLevel3: stylexFallback('oa-ui-heading-title-level-3'),
-  headingBody: stylexFallback('oa-ui-heading-body'),
-  button: stylexFallback('oa-ui-button'),
-  buttonSm: stylexFallback('oa-ui-button-sm'),
-  buttonMd: stylexFallback('oa-ui-button-md'),
-  buttonBlock: stylexFallback('oa-ui-button-block'),
-  buttonPrimary: stylexFallback('oa-ui-button-primary'),
-  buttonSecondary: stylexFallback('oa-ui-button-secondary'),
-  buttonGhost: stylexFallback('oa-ui-button-ghost'),
-  buttonDanger: stylexFallback('oa-ui-button-danger'),
-  textLink: stylexFallback('oa-ui-text-link'),
-  avatarImage: stylexFallback('oa-ui-avatar-image'),
-  avatarFallback: stylexFallback('oa-ui-avatar-fallback'),
-  avatarSm: stylexFallback('oa-ui-avatar-sm'),
-  avatarMd: stylexFallback('oa-ui-avatar-md'),
-  avatarLg: stylexFallback('oa-ui-avatar-lg'),
-  avatarGroup: stylexFallback('oa-ui-avatar-group'),
-  buttonGroup: stylexFallback('oa-ui-button-group'),
-  dropdown: stylexFallback('oa-ui-dropdown'),
-  dropdownButton: stylexFallback('oa-ui-dropdown-button'),
-  dropdownList: stylexFallback('oa-ui-dropdown-list'),
-  dropdownItem: stylexFallback('oa-ui-dropdown-item'),
-  dropdownItemActive: stylexFallback('oa-ui-dropdown-item-active'),
-  dropdownLabel: stylexFallback('oa-ui-dropdown-label'),
+  headingRoot: componentClass('oa-ui-heading-root'),
+  headingTitle: componentClass('oa-ui-heading-title'),
+  headingTitleLevel1: componentClass('oa-ui-heading-title-level-1'),
+  headingTitleLevel2: componentClass('oa-ui-heading-title-level-2'),
+  headingTitleLevel3: componentClass('oa-ui-heading-title-level-3'),
+  headingBody: componentClass('oa-ui-heading-body'),
+  button: componentClass('oa-ui-button'),
+  buttonSm: componentClass('oa-ui-button-sm'),
+  buttonMd: componentClass('oa-ui-button-md'),
+  buttonBlock: componentClass('oa-ui-button-block'),
+  buttonPrimary: componentClass('oa-ui-button-primary'),
+  buttonSecondary: componentClass('oa-ui-button-secondary'),
+  buttonGhost: componentClass('oa-ui-button-ghost'),
+  buttonDanger: componentClass('oa-ui-button-danger'),
+  textLink: componentClass('oa-ui-text-link'),
+  avatarImage: componentClass('oa-ui-avatar-image'),
+  avatarFallback: componentClass('oa-ui-avatar-fallback'),
+  avatarSm: componentClass('oa-ui-avatar-sm'),
+  avatarMd: componentClass('oa-ui-avatar-md'),
+  avatarLg: componentClass('oa-ui-avatar-lg'),
+  avatarGroup: componentClass('oa-ui-avatar-group'),
+  buttonGroup: componentClass('oa-ui-button-group'),
+  dropdown: componentClass('oa-ui-dropdown'),
+  dropdownButton: componentClass('oa-ui-dropdown-button'),
+  dropdownList: componentClass('oa-ui-dropdown-list'),
+  dropdownItem: componentClass('oa-ui-dropdown-item'),
+  dropdownItemActive: componentClass('oa-ui-dropdown-item-active'),
+  dropdownLabel: componentClass('oa-ui-dropdown-label'),
 }
 
 const buttonStyles = (
@@ -78,10 +78,10 @@ export const className = <Message>(value: string): Attribute<Message> =>
 
 const mergeAttrs = <Message>(
   attrs: ReadonlyArray<Attribute<Message>> | undefined,
-  styles: ReadonlyArray<ReturnType<typeof stylexFallback> | null>,
+  styles: ReadonlyArray<ReturnType<typeof componentClass> | null>,
 ): ReadonlyArray<Attribute<Message>> => [
   ...(attrs ?? []),
-  ...stylexAttrs<Message>(...styles),
+  ...classAttrs<Message>(...styles),
 ]
 
 export const headingBlock = <Message>(input: {
@@ -92,7 +92,7 @@ export const headingBlock = <Message>(input: {
   className?: string
 }): Html => {
   const h = html<Message>()
-  const titleAttrs = stylexAttrs<Message>(
+  const titleAttrs = classAttrs<Message>(
     sharedStyles.headingTitle,
     input.level === 1
       ? sharedStyles.headingTitleLevel1
@@ -109,7 +109,7 @@ export const headingBlock = <Message>(input: {
 
   return h.div(
     [
-      ...stylexAttrs<Message>(sharedStyles.headingRoot),
+      ...classAttrs<Message>(sharedStyles.headingRoot),
       ...(input.className === undefined ? [] : [h.Class(input.className)]),
     ],
     [
@@ -119,7 +119,7 @@ export const headingBlock = <Message>(input: {
       title,
       input.body === undefined
         ? null
-        : h.p(stylexAttrs<Message>(sharedStyles.headingBody), [input.body]),
+        : h.p(classAttrs<Message>(sharedStyles.headingBody), [input.body]),
     ],
   )
 }
@@ -136,7 +136,7 @@ export const button = <Message>(input: {
   return h.button(
     [
       ...(input.attrs ?? []),
-      ...stylexAttrs<Message>(
+      ...classAttrs<Message>(
         ...buttonStyles(
           input.variant ?? 'primary',
           input.size ?? 'md',
@@ -162,7 +162,7 @@ export const linkButton = <Message>(input: {
     [
       ...(input.attrs ?? []),
       h.Href(input.href),
-      ...stylexAttrs<Message>(
+      ...classAttrs<Message>(
         ...buttonStyles(
           input.variant ?? 'primary',
           input.size ?? 'md',
@@ -185,7 +185,7 @@ export const textLink = <Message>(input: {
     [
       ...(input.attrs ?? []),
       h.Href(input.href),
-      ...stylexAttrs<Message>(sharedStyles.textLink),
+      ...classAttrs<Message>(sharedStyles.textLink),
       kitFamily<Message>('elements/buttons'),
     ],
     [input.label],
@@ -211,7 +211,7 @@ export const avatar = <Message>(input: {
       kitFamily<Message>('elements/avatars'),
       h.Src(input.imageUrl),
       h.Alt(''),
-      ...stylexAttrs<Message>(
+      ...classAttrs<Message>(
         sharedStyles.avatarImage,
         avatarSizeStyle(input.size),
       ),
@@ -221,7 +221,7 @@ export const avatar = <Message>(input: {
   return h.div(
     [
       kitFamily<Message>('elements/avatars'),
-      ...stylexAttrs<Message>(
+      ...classAttrs<Message>(
         sharedStyles.avatarFallback,
         avatarSizeStyle(input.size),
       ),
@@ -239,7 +239,7 @@ export const avatarGroup = <Message>(
   return h.div(
     [
       kitFamily<Message>('elements/avatars'),
-      ...stylexAttrs<Message>(sharedStyles.avatarGroup),
+      ...classAttrs<Message>(sharedStyles.avatarGroup),
     ],
     people.slice(0, 6).map(person =>
       avatar<Message>({
@@ -263,7 +263,7 @@ export const buttonGroup = <Message>(
     [
       ...attrs,
       kitFamily<Message>('elements/button-groups'),
-      ...stylexAttrs<Message>(sharedStyles.buttonGroup),
+      ...classAttrs<Message>(sharedStyles.buttonGroup),
     ],
     actions,
   )
@@ -286,14 +286,14 @@ export const dropdownMenu = <Message>(input: {
         [
           kitFamily<Message>('elements/dropdowns'),
           h.Type('button'),
-          ...stylexAttrs<Message>(sharedStyles.dropdownButton),
+          ...classAttrs<Message>(sharedStyles.dropdownButton),
         ],
         [h.span([], [input.label]), h.span([h.AriaHidden(true)], ['v'])],
       ),
       h.ul(
         [
           h.Role('list'),
-          ...stylexAttrs<Message>(sharedStyles.dropdownList),
+          ...classAttrs<Message>(sharedStyles.dropdownList),
         ],
         input.items.map(item =>
           h.li(
@@ -302,7 +302,7 @@ export const dropdownMenu = <Message>(input: {
               h.a(
                 [
                   h.Href(item.href),
-                  ...stylexAttrs<Message>(
+                  ...classAttrs<Message>(
                     sharedStyles.dropdownItem,
                     item.active === true
                       ? sharedStyles.dropdownItemActive
@@ -311,7 +311,7 @@ export const dropdownMenu = <Message>(input: {
                 ],
                 [
                   h.span(
-                    stylexAttrs<Message>(sharedStyles.dropdownLabel),
+                    classAttrs<Message>(sharedStyles.dropdownLabel),
                     [item.label],
                   ),
                   item.meta === undefined

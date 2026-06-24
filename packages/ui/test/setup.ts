@@ -5,12 +5,10 @@
 // there is no DOM, so importing any kit module (transitively `foldkit/html`)
 // throws `ReferenceError: window is not defined` before any test body runs.
 //
-// The UI kit tests here only assert on plain data (v4 family lists, the icon
-// catalog) and never render to a real DOM, so a tiny global shim is enough.
-// The web app keeps a full happy-dom environment via Vitest for render tests.
+// The UI kit tests here only assert on plain data or Foldkit virtual nodes and
+// never render to a real DOM, so a tiny global shim is enough. The web app keeps
+// a full happy-dom environment via Vitest for render tests.
 const globalScope = globalThis as Record<string, unknown>
-
-Bun.env.OA_STYLEX_RUNTIME_FALLBACK = '1'
 
 if (typeof globalScope.window === 'undefined') {
   const raf = (cb: (time: number) => void): number => {

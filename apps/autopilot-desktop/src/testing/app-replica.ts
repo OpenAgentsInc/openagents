@@ -9,13 +9,11 @@
 //
 // THE TWO HISTORICAL BLOCKERS, SOLVED:
 //
-//   1. StyleX. `view.ts` runs `stylex.attrs(...)` over `stylex.create(...)`
-//      objects. A plain `bun build` leaves those UNCOMPILED, so `stylex.attrs`
-//      throws and the view never mounts (the wall prior agents hit). We compile
-//      the replica entry with the SAME `@stylexjs/unplugin` Bun plugin
-//      `scripts/build-css.ts` uses for the real `main.ts`, and serve the SAME
-//      generated `styles.out.css`. So the StyleX is real compiled StyleX and the
-//      real, styled view mounts — no runtime shim, no throw.
+//   1. Component styles. The old compile-plugin styling path was removed; the
+//      desktop now serves the SAME generated `styles.out.css` as the packaged
+//      app, including the central `--oa-*` token block and shared component
+//      classes. The real, styled view mounts headlessly with no runtime shim and
+//      no compile-time style plugin.
 //
 //   2. The Electrobun bridge. `window.bun` / the RPC transport `getRequest()`
 //      (which `khalaTurn`, `shellTurn`, token resolution, etc. call) is absent in
@@ -373,7 +371,7 @@ export const launchAppReplica = async (
   }
 
   try {
-    // StyleX was removed from the app (the typed-token system in
+    // The old compile-plugin style layer was removed from the app (the typed-token system in
     // `@openagentsinc/design-tokens` replaced it, #6046/#6050), so the entry no
     // longer needs a compile plugin — a plain browser bundle mounts view.ts. CSS
     // comes from the served styles.out.css.
@@ -463,7 +461,7 @@ export const launchAppReplica = async (
     }
 
     // Wait for the replica to signal ready (real Foldkit program mounted), and
-    // hard-fail if the view crashed (StyleX/bridge unsolved).
+    // hard-fail if the view crashed (style layer/bridge unsolved).
     const mounted = await evaluate<{ ready: boolean; crash: string | null }>(`
       (async () => {
         for (let i = 0; i < 300; i += 1) {

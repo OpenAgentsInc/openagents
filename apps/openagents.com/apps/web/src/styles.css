@@ -7,9 +7,9 @@
  * The ONE typed token source is `@openagentsinc/design-tokens` (re-exported via
  * `@openagentsinc/ui/tokens`). `theme.css` is its generated `:root { --oa-*: … }`
  * projection — importing it makes every `--oa-*` token resolvable here. The two
- * component barrels below are the ports of the deleted StyleX `create()` blocks
- * (the `oa-ui-*` / `oa-ai-*` / `oa-autopilot-*` classes); they now reference the
- * `--oa-*` tokens, so importing them styles the components from the central
+ * component barrels below expose the `oa-ui-*` / `oa-ai-*` /
+ * `oa-autopilot-*` classes. They reference the `--oa-*` tokens, so importing
+ * them styles the components from the central
  * theme instead of leaving them unstyled.
  */
 @import '@openagentsinc/design-tokens/theme.css';
@@ -230,7 +230,7 @@
  *
  * These classes are still exported by @openagentsinc/ui primitives and used by
  * both web routes and Worker-rendered public/share surfaces. Keep this section
- * global until those primitive motion hooks move to StyleX together.
+ * global until those primitive motion hooks move to shared token-backed classes.
  */
 @layer components {
   .oa-status-morph {
@@ -344,9 +344,10 @@
 /*
  * Workroom v4 chat coexistence.
  *
- * The workroom timeline moved to StyleX in @openagentsinc/ui. The active
- * user-message article remains here until v4ChatMessage can merge caller
- * classes with its base class without losing either side.
+ * The workroom timeline moved to shared token-backed classes in
+ * @openagentsinc/ui. The active user-message article remains here until
+ * v4ChatMessage can merge caller classes with its base class without losing
+ * either side.
  */
 @layer components {
   [data-component='user-message'] {

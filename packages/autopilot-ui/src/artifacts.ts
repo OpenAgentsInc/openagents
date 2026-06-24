@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -39,28 +39,28 @@ const receiptStatusTone = (status: Receipt["status"]): ChipTone => {
 export const ArtifactList = (input: { artifacts: ReadonlyArray<Artifact> }): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.list),
       h.DataAttribute("autopilot-artifact-list", ""),
     ],
     input.artifacts.length === 0
       ? [
-          h.p(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
+          h.p(classAttrs<AutopilotUiMessage>(domainStyles.empty), [
             "No artifacts",
           ]),
         ]
       : input.artifacts.map((artifact) =>
           h.article(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.artifactRow),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.artifactRow),
               h.DataAttribute("autopilot-artifact-ref", artifact.digestRef),
             ],
             [
-              h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+              h.span(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
                 artifact.name,
               ]),
               h.code(
                 [
-                  ...stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted),
+                  ...classAttrs<AutopilotUiMessage>(domainStyles.codeMuted),
                   h.Title(artifact.digestRef),
                 ],
                 [truncateDigestRef(artifact.digestRef)],
@@ -77,26 +77,26 @@ export const ArtifactList = (input: { artifacts: ReadonlyArray<Artifact> }): Htm
 export const ReceiptList = (input: { receipts: ReadonlyArray<Receipt> }): Html =>
   h.section(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.list),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.list),
       h.DataAttribute("autopilot-receipt-list", ""),
     ],
     input.receipts.length === 0
       ? [
-          h.p(stylexAttrs<AutopilotUiMessage>(domainStyles.empty), [
+          h.p(classAttrs<AutopilotUiMessage>(domainStyles.empty), [
             "No receipts",
           ]),
         ]
       : input.receipts.map((receipt) =>
           h.article(
             [
-              ...stylexAttrs<AutopilotUiMessage>(domainStyles.receiptRow),
+              ...classAttrs<AutopilotUiMessage>(domainStyles.receiptRow),
               h.DataAttribute("autopilot-receipt-ref", receipt.digestRef),
             ],
             [
-              h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [receipt.kind]),
+              h.span(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [receipt.kind]),
               h.code(
                 [
-                  ...stylexAttrs<AutopilotUiMessage>(domainStyles.codeMuted),
+                  ...classAttrs<AutopilotUiMessage>(domainStyles.codeMuted),
                   h.Title(receipt.digestRef),
                 ],
                 [truncateDigestRef(receipt.digestRef)],

@@ -1,4 +1,4 @@
-import { stylexAttrs } from "@openagentsinc/ui/stylex-foldkit"
+import { classAttrs } from "@openagentsinc/ui/class-foldkit"
 import type { Html } from "foldkit/html"
 import { html } from "foldkit/html"
 import { domainStyles } from "./domain-styles.js"
@@ -40,16 +40,16 @@ export const SessionDetail = (
 ): Html =>
   h.article(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.panel),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.panel),
       h.DataAttribute("autopilot-session-ref", session.sessionRef),
     ],
     [
-      h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.header), [
-        h.div(stylexAttrs<AutopilotUiMessage>(domainStyles.stack), [
-          h.code(stylexAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
+      h.div(classAttrs<AutopilotUiMessage>(domainStyles.header), [
+        h.div(classAttrs<AutopilotUiMessage>(domainStyles.stack), [
+          h.code(classAttrs<AutopilotUiMessage>(domainStyles.codePrimary), [
             session.sessionRef,
           ]),
-          h.span(stylexAttrs<AutopilotUiMessage>(domainStyles.muted), [
+          h.span(classAttrs<AutopilotUiMessage>(domainStyles.muted), [
             session.adapter,
           ]),
         ]),
@@ -79,13 +79,13 @@ export const SessionActions = (input: {
 
   return h.div(
     [
-      ...stylexAttrs<AutopilotUiMessage>(domainStyles.wrap),
+      ...classAttrs<AutopilotUiMessage>(domainStyles.wrap),
       h.DataAttribute("autopilot-session-actions", input.session.sessionRef),
     ],
     [
       h.button(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.actionButton),
           h.Type("button"),
           h.Disabled(input.readOnly || terminal),
           h.DataAttribute("autopilot-action", "spawn"),
@@ -94,7 +94,7 @@ export const SessionActions = (input: {
       ),
       h.button(
         [
-          ...stylexAttrs<AutopilotUiMessage>(domainStyles.actionButton),
+          ...classAttrs<AutopilotUiMessage>(domainStyles.actionButton),
           h.Type("button"),
           h.Disabled(input.readOnly || terminal),
           h.DataAttribute("autopilot-action", "cancel"),

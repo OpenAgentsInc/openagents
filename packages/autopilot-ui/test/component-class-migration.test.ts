@@ -66,8 +66,8 @@ const renderHtml = (html: Html): string => {
   return `<${tag}${attrsToString(html)}>${text}${children}</${tag}>`
 }
 
-describe("Autopilot UI StyleX migration coverage", () => {
-  test("selected domain components route through shared StyleX fallback classes", () => {
+describe("Autopilot UI component class migration coverage", () => {
+  test("selected domain components route through shared token-backed classes", () => {
     const session = {
       sessionRef: "session.token.fixture",
       adapter: "codex",

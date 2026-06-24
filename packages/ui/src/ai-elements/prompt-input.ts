@@ -3,9 +3,9 @@ import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import {
-  stylexAttrs,
-  stylexFallback,
-} from '../stylex-foldkit'
+  classAttrs,
+  componentClass,
+} from '../class-foldkit'
 import { aiElementBase } from './base'
 
 const MODULE_ID = 'prompt-input'
@@ -27,13 +27,13 @@ export const promptInputSubmitClass =
   'inline-flex min-h-8 cursor-pointer items-center gap-2 border border-[#f1efe8] bg-[#f1efe8] px-3 text-[0.8125rem] font-medium text-[#000] hover:border-[#ffb400] disabled:cursor-not-allowed disabled:opacity-45'
 
 const promptInputStyles = {
-  root: stylexFallback('oa-ai-prompt-input'),
-  body: stylexFallback('oa-ai-prompt-input-body'),
-  textarea: stylexFallback('oa-ai-prompt-input-textarea'),
-  footer: stylexFallback('oa-ai-prompt-input-footer'),
-  tools: stylexFallback('oa-ai-prompt-input-tools'),
-  button: stylexFallback('oa-ai-prompt-input-button'),
-  submit: stylexFallback('oa-ai-prompt-input-submit'),
+  root: componentClass('oa-ai-prompt-input'),
+  body: componentClass('oa-ai-prompt-input-body'),
+  textarea: componentClass('oa-ai-prompt-input-textarea'),
+  footer: componentClass('oa-ai-prompt-input-footer'),
+  tools: componentClass('oa-ai-prompt-input-tools'),
+  button: componentClass('oa-ai-prompt-input-button'),
+  submit: componentClass('oa-ai-prompt-input-submit'),
 }
 
 export const PromptInputStatus = Schema.Literals([
@@ -79,7 +79,7 @@ export const promptInputButton = <Message>(input: {
       aiElementBase<Message>(MODULE_ID, 'PromptInputButton'),
       h.Type('button'),
       ...(input.disabled === true ? [h.Disabled(true)] : []),
-      ...stylexAttrs<Message>(promptInputStyles.button),
+      ...classAttrs<Message>(promptInputStyles.button),
     ],
     [input.label],
   )
@@ -100,7 +100,7 @@ export const promptInputSubmit = <Message>(input: {
       aiElementBase<Message>(MODULE_ID, 'PromptInputSubmit'),
       h.Type('submit'),
       ...(input.disabled === true ? [h.Disabled(true)] : []),
-      ...stylexAttrs<Message>(promptInputStyles.submit),
+      ...classAttrs<Message>(promptInputStyles.submit),
     ],
     [label],
   )
@@ -123,13 +123,13 @@ export const promptInput = <Message>(input: {
     [
       ...(input.formAttrs ?? []),
       aiElementBase<Message>(MODULE_ID, 'PromptInput'),
-      ...stylexAttrs<Message>(promptInputStyles.root),
+      ...classAttrs<Message>(promptInputStyles.root),
     ],
     [
       h.div(
         [
           aiElementBase<Message>(MODULE_ID, 'PromptInputBody'),
-          ...stylexAttrs<Message>(promptInputStyles.body),
+          ...classAttrs<Message>(promptInputStyles.body),
         ],
         [
           h.textarea(
@@ -141,7 +141,7 @@ export const promptInput = <Message>(input: {
                 ? []
                 : [h.Placeholder(props.placeholder)]),
               ...(props.rows === undefined ? [] : [h.Rows(props.rows)]),
-              ...stylexAttrs<Message>(promptInputStyles.textarea),
+              ...classAttrs<Message>(promptInputStyles.textarea),
             ],
             [props.value ?? ''],
           ),
@@ -150,13 +150,13 @@ export const promptInput = <Message>(input: {
       h.div(
         [
           aiElementBase<Message>(MODULE_ID, 'PromptInputFooter'),
-          ...stylexAttrs<Message>(promptInputStyles.footer),
+          ...classAttrs<Message>(promptInputStyles.footer),
         ],
         [
           h.div(
             [
               aiElementBase<Message>(MODULE_ID, 'PromptInputTools'),
-              ...stylexAttrs<Message>(promptInputStyles.tools),
+              ...classAttrs<Message>(promptInputStyles.tools),
             ],
             input.tools ?? [],
           ),
