@@ -57,6 +57,7 @@ export class LightningInvoiceError extends Error {
 // wires the real sidecar-backed implementation; tests inject a fake.
 export type MintLightningInvoice = (
   input: Readonly<{
+    abortSignal?: AbortSignal | undefined
     amountSats: number
     description: string
     // A public-safe correlation ref (the model + a request nonce) for the

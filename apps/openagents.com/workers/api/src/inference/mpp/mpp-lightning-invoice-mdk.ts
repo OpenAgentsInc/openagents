@@ -39,6 +39,7 @@ export const MDK_LIGHTNING_MINT_TIMEOUT_MS = 2_000
 // hosted MDK route client uses for the `self_hosted_mdkd_sidecar` route kind.
 export type MdkRoutePost = (
   body: Readonly<Record<string, unknown>>,
+  options?: Readonly<{ signal?: AbortSignal | undefined }>,
 ) => Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>>
 
 // The self-hosted MDK sidecar exposes exactly `/api/mdk`; its internal bridge
@@ -135,19 +136,31 @@ export const makeMdkLightningInvoiceIssuer = (
 ): MintLightningInvoice => input =>
   Effect.gen(function* () {
     const amountSats = Math.max(1, Math.trunc(input.amountSats))
+    const abortController = new AbortController()
+    const relayInputAbort = () => abortController.abort()
+    if (input.abortSignal?.aborted === true) {
+      abortController.abort()
+    } else {
+      input.abortSignal?.addEventListener('abort', relayInputAbort, {
+        once: true,
+      })
+    }
     const result = yield* Effect.tryPromise({
       catch: () => new LightningInvoiceError('provider_unavailable'),
       try: () =>
-        post({
-          handler: 'create_checkout',
-          params: {
-            amount: amountSats,
-            currency: 'SAT',
-            metadata: { correlation_ref: input.correlationRef },
-            title: 'openagents_khala_mpp_lightning',
-            type: 'AMOUNT',
+        post(
+          {
+            handler: 'create_checkout',
+            params: {
+              amount: amountSats,
+              currency: 'SAT',
+              metadata: { correlation_ref: input.correlationRef },
+              title: 'openagents_khala_mpp_lightning',
+              type: 'AMOUNT',
+            },
           },
-        }),
+          { signal: abortController.signal },
+        ),
     }).pipe(
       // Bounded mint: a cold/slow MDK sidecar container can block for seconds.
       // `Effect.tryPromise` catches throws, NOT a hang — so we cap the wall-clock
@@ -157,8 +170,17 @@ export const makeMdkLightningInvoiceIssuer = (
       Effect.timeoutOrElse({
         duration: Duration.millis(timeoutMs),
         orElse: () =>
-          Effect.fail(new LightningInvoiceError('provider_unavailable')),
+          Effect.sync(() => abortController.abort()).pipe(
+            Effect.andThen(
+              Effect.fail(new LightningInvoiceError('provider_unavailable')),
+            ),
+          ),
       }),
+      Effect.ensuring(
+        Effect.sync(() =>
+          input.abortSignal?.removeEventListener('abort', relayInputAbort),
+        ),
+      ),
     )
     if (!result.ok) {
       return yield* Effect.fail(

@@ -6732,6 +6732,7 @@ const mdkLightningInvoiceIssuerForEnv = (
 
   const post = async (
     body: Readonly<Record<string, unknown>>,
+    options?: Readonly<{ signal?: AbortSignal | undefined }>,
   ): Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>> => {
     const request = new Request(routeUrl, {
       body: JSON.stringify(body),
@@ -6740,6 +6741,7 @@ const mdkLightningInvoiceIssuerForEnv = (
         'x-moneydevkit-webhook-secret': routeSecret,
       },
       method: 'POST',
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
     })
     const response = isSidecar
       ? await fetchMdkSidecarRequest(request, env)

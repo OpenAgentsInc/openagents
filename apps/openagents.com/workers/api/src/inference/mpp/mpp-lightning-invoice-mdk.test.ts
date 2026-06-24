@@ -40,8 +40,10 @@ describe('normalizeMdkLightningRouteUrl', () => {
 describe('makeMdkLightningInvoiceIssuer', () => {
   test('posts a SAT create_checkout and reads the raw bolt11 + paymentHash', async () => {
     let seen: Record<string, unknown> | undefined
-    const post: MdkRoutePost = async body => {
+    let seenSignal: AbortSignal | undefined
+    const post: MdkRoutePost = async (body, options) => {
       seen = body
+      seenSignal = options?.signal
       return {
         ok: true,
         payload: {
@@ -73,6 +75,8 @@ describe('makeMdkLightningInvoiceIssuer', () => {
     expect(params.currency).toBe('SAT')
     expect(params.amount).toBe(42)
     expect(params.type).toBe('AMOUNT')
+    expect(seenSignal).toBeInstanceOf(AbortSignal)
+    expect(seenSignal?.aborted).toBe(false)
   })
 
   test('maps a 5xx route status to provider_unavailable', async () => {
@@ -131,8 +135,10 @@ describe('makeMdkLightningInvoiceIssuer', () => {
   // NEVER resolves; advancing past the timeout must produce the typed failure.
   test('a HUNG post is bounded by the mint timeout => provider_unavailable (no hang)', async () => {
     let postStarted = false
-    const post: MdkRoutePost = () => {
+    let seenSignal: AbortSignal | undefined
+    const post: MdkRoutePost = (_body, options) => {
       postStarted = true
+      seenSignal = options?.signal
       // Never resolves — models a cold/blocked container boot.
       return new Promise(() => {})
     }
@@ -153,6 +159,7 @@ describe('makeMdkLightningInvoiceIssuer', () => {
       }).pipe(Effect.provide(TestClock.layer())),
     )
     expect(postStarted).toBe(true)
+    expect(seenSignal?.aborted).toBe(true)
     expect(result).toBe('provider_unavailable')
   })
 })
