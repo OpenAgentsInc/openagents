@@ -437,7 +437,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
 
 ---
 
-## P2-12 — Provider-Backed DeepSeek Behind Khala — DONE, deployed `67a6648f`
+## P2-12 — Provider-Backed DeepSeek Behind Khala — DONE, deployed `8cdf26af`
 
 - **Notes ref:** `khala-investigation-notes.md` §P1/P2 provider matrix,
   multi-cloud routing, and receipt-first honesty; the DeepSeek V4 Flash provider
@@ -465,6 +465,23 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
 - **Verification bar:** focused chat/router/pricing tests passed (153 tests);
   Khala/GPT-OSS production-smoke unit tests passed (7 tests); Worker typecheck
   passed; full pre-push `check:deploy` passed before the metadata fix was pushed.
+- **Receipt dereference continuation:** commit
+  `98c1a6c69223079b1fa45af3b4831293ec303550` deployed Worker version
+  `8cdf26af-1ce5-4b18-8ceb-79beec429964`. The Khala production smoke now follows
+  both non-streaming and streaming `openagents` telemetry detail refs to the
+  public receipt endpoint and proves `schemaVersion:
+  openagents.inference.receipt.v1`, `ledgerState: paid`, usage presence, and
+  public-safe `modelEvidence` (`requested_model: openagents/khala`,
+  `served_model: deepseek-v4-flash`, `supply_lane: fireworks`, `worker:
+  fireworks`). The live receipt refs were
+  `receipt.inference.charge.chatcmpl_b19c2bf5b1f747a48225783976c60ac5` and
+  `receipt.inference.charge.chatcmpl_7ae95e81c354411aa2639b4ee1c55fce`; both
+  passed the redaction guard for secrets, raw prompts, provider-private payloads,
+  and raw token material.
+- **Receipt-proof verification bar:** Khala/GPT-OSS production-smoke unit tests
+  passed (10 tests); public receipt + metering route tests passed (120 tests);
+  Worker typecheck passed; `git diff --check` passed; full pre-push
+  `check:deploy` passed before pushing the receipt-proof implementation.
 - **Honest scope:** this is a provider-backed production lane, not Google
   self-hosting. The provider inventory still points stock DeepSeek V4 Flash at
   vLLM 0.20+ / DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Google

@@ -4,17 +4,23 @@ Date: 2026-06-23
 
 Update 2026-06-24: DeepSeek V4 Flash is live behind the single public Khala
 model (`openagents/khala`) through the operator-selected Fireworks backing lane.
-The production proof is issue #6201, Worker version
-`67a6648f-36a2-4824-8486-b274b2f83056`, and commit
-`da347df50256027d75237d8153a568dcfa2d9c49`; `/v1/models` exposes only
-`openagents/khala`, while authenticated non-streaming and streaming smokes both
+The production proof is issues #6201 and #6202, Worker versions
+`67a6648f-36a2-4824-8486-b274b2f83056` and
+`8cdf26af-1ce5-4b18-8ceb-79beec429964`, and commits
+`da347df50256027d75237d8153a568dcfa2d9c49` and
+`98c1a6c69223079b1fa45af3b4831293ec303550`; `/v1/models` exposes only
+`openagents/khala`, while authenticated non-streaming and streaming smokes
 reported `served_model: accounts/fireworks/models/deepseek-v4-flash`,
-`supply_lane: fireworks`, and `worker: fireworks`. This does not prove Google
-self-hosting for DeepSeek V4 Flash: the provider notes still point at stock vLLM
-0.20+ with DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Treat the
-Google G4/L4 inventory here as useful for smaller/owned probes, while the
-immediate DeepSeek V4 Flash product path is the provider-backed Khala lane
-documented in
+`supply_lane: fireworks`, and `worker: fireworks`. The follow-up receipt proof
+dereferenced both public paid receipts and verified public-safe `modelEvidence`
+with `requested_model: openagents/khala`, `served_model: deepseek-v4-flash`,
+`supply_lane: fireworks`, `worker: fireworks`, and measured usage without
+secrets, raw prompts, provider-private payloads, or raw token material. This
+does not prove Google self-hosting for DeepSeek V4 Flash: the provider notes
+still point at stock vLLM 0.20+ with DeepGEMM on 8x H100/H200/B200-class
+high-memory hardware. Treat the Google G4/L4 inventory here as useful for
+smaller/owned probes, while the immediate DeepSeek V4 Flash product path is the
+provider-backed Khala lane documented in
 [`2026-06-24-khala-deepseek-v4-flash-provider-backing.md`](./2026-06-24-khala-deepseek-v4-flash-provider-backing.md).
 
 Update 2026-06-24: Hydralisk GPT-OSS 20B is now running on a fresh

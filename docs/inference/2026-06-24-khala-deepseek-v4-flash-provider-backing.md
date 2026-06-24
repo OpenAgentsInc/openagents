@@ -1,7 +1,8 @@
 # Khala DeepSeek V4 Flash Provider Backing
 
 Date: 2026-06-24
-Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201
+Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201,
+OpenAgentsInc/openagents#6202
 
 ## Production Activation
 
@@ -16,11 +17,15 @@ Production commits:
 - `da347df50256027d75237d8153a568dcfa2d9c49`: receipt metadata fix so
   Fireworks-backed Khala reports the concrete supply lane as `fireworks`, not
   the requested-model fallback lane.
+- `98c1a6c69223079b1fa45af3b4831293ec303550`: public receipt dereference proof
+  for Khala-backed DeepSeek charges.
 
 Worker deploy:
 
 - Cloudflare Worker version:
   `67a6648f-36a2-4824-8486-b274b2f83056`
+- Receipt-proof Cloudflare Worker version:
+  `8cdf26af-1ce5-4b18-8ceb-79beec429964`
 - Deploy command shape:
   `bun run build:web`, then `bunx wrangler deploy --assets ../../apps/web/dist --containers-rollout none`
 - Env evidence from deploy output:
@@ -49,6 +54,21 @@ Production smoke:
   - served model: `accounts/fireworks/models/deepseek-v4-flash`
   - supply lane: `fireworks`
   - worker: `fireworks`
+- Receipt dereference proof after Worker version
+  `8cdf26af-1ce5-4b18-8ceb-79beec429964`:
+  - non-streaming receipt:
+    `https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_b19c2bf5b1f747a48225783976c60ac5`
+  - streaming receipt:
+    `https://openagents.com/api/public/inference/receipts/receipt.inference.charge.chatcmpl_7ae95e81c354411aa2639b4ee1c55fce`
+  - both returned `schemaVersion: openagents.inference.receipt.v1`
+  - both returned `ledgerState: paid`
+  - both returned public-safe `modelEvidence` with
+    `requested_model: openagents/khala`, `served_model: deepseek-v4-flash`,
+    `supply_lane: fireworks`, `worker: fireworks`, and a measured total-token
+    count
+  - both passed the receipt redaction guard: no bearer tokens, OpenAgents agent
+    tokens, provider API keys, raw prompts, provider-private payloads, or raw
+    token material appeared in the public receipt projection
 
 The result is the intended production shape: external users see only
 `openagents/khala`, while internal receipt metadata is precise enough to prove
@@ -167,14 +187,24 @@ Production validation on 2026-06-24:
 - Production authenticated non-streaming and streaming smoke passed, with
   `openagents/khala` public model preservation and Fireworks DeepSeek backing
   disclosure.
+- Receipt-proof production deploy `8cdf26af-1ce5-4b18-8ceb-79beec429964`
+  passed home/asset checks, readiness-only smoke, and authenticated live spend
+  smoke with both non-streaming and streaming receipt dereference assertions.
+  The updated smoke followed the `openagents` telemetry detail refs, fetched
+  the public receipt endpoints, verified `modelEvidence`, usage presence, and
+  redaction safety.
+- Receipt-proof local verification: Khala/GPT-OSS production-smoke unit tests
+  passed (10 tests); public inference receipt and metering route tests passed
+  (120 tests); Worker typecheck passed; `git diff --check` passed; full
+  pre-push `check:deploy` passed before pushing
+  `98c1a6c69223079b1fa45af3b4831293ec303550`.
 
 ## Remaining Work
 
-The live serving path is done. The next production-hardening step is receipt
-dereference proof: the smoke should follow the `openagents` telemetry receipt
-URL/detail ref and assert that the public-safe receipt itself carries the same
-requested model, served model, worker, supply lane, usage, and pricing evidence
-without raw prompts, secrets, or provider-private payloads.
+The live serving path and public receipt dereference proof are done. The
+remaining production hardening is continuous monitoring: run a no-spend
+readiness/catalog guard frequently, and run the paid receipt-dereference smoke
+only under an explicit operator budget/approval window.
 
 The self-hosted Google path remains a separate Hydralisk/Psionic effort. Reserve
 or obtain an 8x high-memory H100/H200/B200-class host, validate vLLM 0.20+
