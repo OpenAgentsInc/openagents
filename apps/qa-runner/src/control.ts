@@ -498,6 +498,13 @@ export class QaControl {
       publishRunDir({ runDir, sessionId: id, ...this.publishCommon() }),
     );
     this.recordTraceResult(id, result);
+    // UPGRADE the run receipt's execution-trace evidence (#6216): on a published
+    // trace, point `traceRef` at the published `/trace/{uuid}` uuid. When the
+    // publish was an honest no-op, the receipt keeps its honest local
+    // trajectory_id fallback (written by writeReceiptForRun above). Idempotent.
+    if (result.published) {
+      writeReceiptForRun(runDir, { traceRef: result.uuid });
+    }
   }
 
   /**

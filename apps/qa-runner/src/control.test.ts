@@ -147,6 +147,9 @@ describe("#6210 trace publishing", () => {
     expect(posts.length).toBe(1);
     expect(posts[0]!.headers.authorization).toBe(`Bearer ${armedPublish.token}`);
     expect(posts[0]!.headers["idempotency-key"]).toBeTruthy();
+    // #6216: the run receipt's execution-trace evidence (`traceRef`) is upgraded
+    // to the PUBLISHED uuid so the settlement receipt points at the shareable trace.
+    expect(art.receipt!["traceRef"]).toBe("00000000-0000-4000-8000-000000000000");
   });
 
   test("an EVAL publishes per-variant traces; the comparison links /trace/{uuid}", async () => {
@@ -187,6 +190,9 @@ describe("#6210 trace publishing", () => {
       expect(art.traceNote).toBeTruthy();
       // the run itself still succeeded + is dereferenceable
       expect(art.result!["status"]).toBe("pass");
+      // #6216: even UNARMED, the receipt carries HONEST execution-trace evidence —
+      // the run's local ATIF trajectory_id (never a fabricated uuid).
+      expect(art.receipt!["traceRef"]).toBe(`${job.id}-trajectory`);
     } finally {
       for (const [k, v] of saved) {
         if (v === undefined) delete process.env[k];

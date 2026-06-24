@@ -11,6 +11,7 @@ import {
   attachReceipt,
   buildQaRunReceipt,
   decodeQaRunResultWithReceipt,
+  deriveLocalTraceRef,
   QA_RUN_RECEIPT_SCHEMA_VERSION,
   writeReceiptForRun,
 } from "./receipt";
@@ -111,5 +112,75 @@ describe("writeReceiptForRun (the post-run path this lane owns)", () => {
     expect(second).toEqual(first);
     const afterSecond = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
     expect(afterSecond.receipt).toEqual(afterFirst.receipt);
+  });
+});
+
+describe("traceRef — execution-trace evidence (issue #6216)", () => {
+  test("buildQaRunReceipt omits traceRef by default (honest: no fabricated value)", () => {
+    expect(buildQaRunReceipt(passResult()).traceRef).toBeUndefined();
+    expect("traceRef" in buildQaRunReceipt(passResult())).toBe(false);
+  });
+
+  test("buildQaRunReceipt carries a supplied traceRef (the published uuid)", () => {
+    const uuid = "3f2a1b6c-0000-4000-8000-000000000abc";
+    const receipt = buildQaRunReceipt(passResult(), { traceRef: uuid });
+    expect(receipt.traceRef).toBe(uuid);
+  });
+
+  test("a blank/whitespace traceRef is dropped (never fabricated/empty)", () => {
+    expect(buildQaRunReceipt(passResult(), { traceRef: "" }).traceRef).toBeUndefined();
+    expect(buildQaRunReceipt(passResult(), { traceRef: "   " }).traceRef).toBeUndefined();
+  });
+
+  test("traceRef does NOT change the digest or receiptRef (stable upgrade)", () => {
+    const base = buildQaRunReceipt(passResult());
+    const withTrace = buildQaRunReceipt(passResult(), { traceRef: "uuid-xyz" });
+    expect(withTrace.resultDigest).toBe(base.resultDigest);
+    expect(withTrace.receiptRef).toBe(base.receiptRef);
+  });
+
+  test("the supplied traceRef survives the public-safety tripwire and decodes", () => {
+    const augmented = attachReceipt(passResult(), { traceRef: "uuid-xyz" });
+    expect(decodeQaRunResultWithReceipt(augmented)).toEqual(augmented);
+    expect(augmented.receipt.traceRef).toBe("uuid-xyz");
+  });
+
+  test("deriveLocalTraceRef returns the run's local ATIF trajectory_id", () => {
+    const dir = mkdtempSync(join(tmpdir(), "qa-run-trace-"));
+    writeFileSync(join(dir, "result.json"), `${JSON.stringify(passResult(), null, 2)}\n`);
+    // The publisher assigns `${basename(runDir)}-trajectory` when no override.
+    expect(deriveLocalTraceRef(dir)).toBe(`${dir.split("/").pop()}-trajectory`);
+  });
+
+  test("deriveLocalTraceRef is undefined (honest) when no result.json exists", () => {
+    const dir = mkdtempSync(join(tmpdir(), "qa-no-result-"));
+    expect(deriveLocalTraceRef(dir)).toBeUndefined();
+  });
+
+  test("writeReceiptForRun falls back to the honest local trajectory_id when unarmed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "qa-receipt-local-"));
+    writeFileSync(join(dir, "result.json"), `${JSON.stringify(passResult(), null, 2)}\n`);
+    const receipt = writeReceiptForRun(dir);
+    expect(receipt.traceRef).toBe(`${dir.split("/").pop()}-trajectory`);
+    const onDisk = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+    expect(onDisk.receipt.traceRef).toBe(receipt.traceRef);
+  });
+
+  test("writeReceiptForRun upgrades traceRef to the published uuid when supplied", () => {
+    const dir = mkdtempSync(join(tmpdir(), "qa-receipt-upgrade-"));
+    writeFileSync(join(dir, "result.json"), `${JSON.stringify(passResult(), null, 2)}\n`);
+
+    // first the honest local fallback
+    const local = writeReceiptForRun(dir);
+    expect(local.traceRef).toBe(`${dir.split("/").pop()}-trajectory`);
+
+    // then the published-uuid upgrade — same digest/receiptRef, new traceRef
+    const uuid = "3f2a1b6c-0000-4000-8000-000000000abc";
+    const upgraded = writeReceiptForRun(dir, { traceRef: uuid });
+    expect(upgraded.traceRef).toBe(uuid);
+    expect(upgraded.resultDigest).toBe(local.resultDigest);
+    expect(upgraded.receiptRef).toBe(local.receiptRef);
+    const onDisk = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+    expect(onDisk.receipt.traceRef).toBe(uuid);
   });
 });
