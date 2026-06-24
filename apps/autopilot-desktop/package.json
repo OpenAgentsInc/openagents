@@ -14,6 +14,8 @@
     "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
     "scene:verse-arc": "bun scripts/run-isolated-scene.ts verse-arc",
     "scene:pylon-network": "bun scripts/run-isolated-scene.ts pylon-network",
+    "capture-scene-headless": "bun scripts/capture-scene-headless.ts",
+    "capture-scene:verse-arc": "bun scripts/capture-scene-headless.ts verse-arc tests/headless/verse-arc.capture.png",
     "smoke:verse-launch": "bun scripts/verse-launch-smoke.ts",
     "smoke:forum-tipping-multiplayer": "bun test tests/forum-tipping-multiplayer-integration.test.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",

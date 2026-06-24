@@ -117,3 +117,14 @@ The `three-effect` package is consumed here as the pinned
 `@openagentsinc/three-effect` dependency, so the runner lives beside the current
 desktop Verse scene owners rather than modifying the external dependency in this
 monorepo pass.
+
+Issue #6034 now has a generic headless capture CLI:
+
+- `bun run capture-scene-headless -- <scene-name|url> <out.png>` captures either
+  a registered isolated scene or an already-served scene URL.
+- `bun run capture-scene:verse-arc` writes a crackling-arc PNG proof target for
+  the registered `verse-arc` scene.
+- Registered-scene captures reuse the deterministic
+  `src/testing/headless-pixel.ts` frame driver so CI and agents can capture the
+  same fixed frame sequence without wall-clock animation drift.
+- URL captures remain available for manually served `scene:<name>` pages.
