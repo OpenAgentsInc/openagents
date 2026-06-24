@@ -73,9 +73,13 @@ export type OnboardingViewActions<Message> = Readonly<{
   updatedComposer: (value: string) => Message
   submittedTurn: () => Message
   clickedCreditKickoff: () => Message
+  clickedStartOver: () => Message
 }>
 
 const HUD_HEADING = 'Autopilot'
+
+// The "start over" affordance: data attribute so tests/captures can locate it.
+export const HUD_START_OVER_ATTR = 'autopilot-onboarding-start-over'
 
 const introForVertical = (vertical: string | null): string =>
   vertical === 'legal'
@@ -507,6 +511,39 @@ const composerView = <Message>(
   )
 }
 
+// START OVER --------------------------------------------------------------
+
+// A quiet "Start over" control. Present only once a conversation exists (a
+// session, transcript, or in-flight stream), so the first paint stays clean. It
+// drops the persisted/restored session and begins fresh.
+const startOverControl = <Message>(
+  model: FlowModel,
+  actions: OnboardingViewActions<Message>,
+): Html => {
+  const h = html<Message>()
+
+  const hasConversation =
+    model.sessionId !== null ||
+    model.transcript.length > 0 ||
+    model.streamingReply !== null
+
+  if (!hasConversation) {
+    return h.empty
+  }
+
+  return h.button(
+    [
+      h.Type('button'),
+      h.DataAttribute(HUD_START_OVER_ATTR, ''),
+      h.OnClick(actions.clickedStartOver()),
+      Ui.className<Message>(
+        'shrink-0 border border-[#222] px-2.5 py-1 text-[0.6875rem] text-white/55 transition-colors hover:border-[#3a7bff]/40 hover:text-white/80',
+      ),
+    ],
+    ['Start over'],
+  )
+}
+
 // OVERLAY -----------------------------------------------------------------
 
 // The HUD overlay: an operational command pane floating over the dimmed scene.
@@ -555,26 +592,38 @@ export const overlayView = <Message>(
         [
           // ONE intro treatment (problem #5): the HUD header. The first-message
           // duplicate is gone; the thread starts empty with a calm starter line.
+          // A quiet "Start over" control appears once a conversation exists so a
+          // visitor can drop the restored/persisted session and begin fresh.
           h.div(
-            [Ui.className<Message>('grid gap-1.5')],
             [
-              h.span([Ui.className<Message>(eyebrowClass)], [HUD_HEADING]),
-              h.h1(
+              Ui.className<Message>(
+                'flex items-start justify-between gap-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('grid gap-1.5')],
                 [
-                  Ui.className<Message>(
-                    'm-0 text-balance font-medium text-[#f1efe8] text-2xl sm:text-3xl',
+                  h.span([Ui.className<Message>(eyebrowClass)], [HUD_HEADING]),
+                  h.h1(
+                    [
+                      Ui.className<Message>(
+                        'm-0 text-balance font-medium text-[#f1efe8] text-2xl sm:text-3xl',
+                      ),
+                    ],
+                    ['Put an AI workforce to work'],
+                  ),
+                  h.p(
+                    [
+                      Ui.className<Message>(
+                        'm-0 max-w-[60ch] text-[0.8125rem] leading-[1.5] text-white/60',
+                      ),
+                    ],
+                    [introForVertical(model.vertical)],
                   ),
                 ],
-                ['Put an AI workforce to work'],
               ),
-              h.p(
-                [
-                  Ui.className<Message>(
-                    'm-0 max-w-[60ch] text-[0.8125rem] leading-[1.5] text-white/60',
-                  ),
-                ],
-                [introForVertical(model.vertical)],
-              ),
+              startOverControl<Message>(model, actions),
             ],
           ),
           legalOverlaySection<Message>(model),

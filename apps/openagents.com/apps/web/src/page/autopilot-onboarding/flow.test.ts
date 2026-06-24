@@ -33,6 +33,7 @@ import {
   HUD_LEGAL_VSL_ATTR,
   HUD_REGISTER_ATTR,
   HUD_ROOT_ATTR,
+  HUD_START_OVER_ATTR,
   HUD_THREAD_END_ATTR,
   LEGAL_VERIFIED_STATS,
   overlayView,
@@ -100,6 +101,7 @@ const stubActions = {
   updatedComposer: (value: string) => ({ _tag: 'stub', value }),
   submittedTurn: () => ({ _tag: 'stub' }),
   clickedCreditKickoff: () => ({ _tag: 'stub' }),
+  clickedStartOver: () => ({ _tag: 'stub' }),
 }
 
 // A stubbed program turn response (the Khala program is not invoked in the unit
@@ -204,6 +206,19 @@ describe('autopilot onboarding — page overlay rendering', () => {
     expect(markup).toContain(`data-${HUD_THREAD_END_ATTR}="true"`)
     // No credit kickoff before quote-ready.
     expect(markup).not.toContain('Kick off the work')
+    // No "Start over" affordance on a clean first paint (no conversation yet).
+    expect(markup).not.toContain(`data-${HUD_START_OVER_ATTR}`)
+  })
+
+  test('renders the "Start over" affordance once a conversation exists', () => {
+    const model: FlowModel = {
+      ...initFlowModel(Option.none()),
+      sessionId: 'ob_started',
+      transcript: [{ role: 'user', content: 'I run a bakery' }],
+    }
+    const markup = renderHtml(overlayView(model, stubActions))
+    expect(markup).toContain(`data-${HUD_START_OVER_ATTR}`)
+    expect(markup).toContain('Start over')
   })
 
   test('renders a clickable credit_kickoff once quote-ready', () => {
@@ -285,6 +300,9 @@ describe('autopilot onboarding — turn loop (via the loggedOut update)', () => 
     expect(pending?.userText).toBe('I run a bakery')
     expect(commands.map(command => command.name)).toEqual([
       'ScrollAutopilotOnboardingThreadToEnd',
+      // The user turn is also persisted to localStorage so a reload before the
+      // reply lands still shows it (#6154 tier 4 browser resume).
+      'PersistAutopilotOnboarding',
     ])
   })
 

@@ -24,6 +24,7 @@ import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
+  ClickedAutopilotOnboardingStartOver,
   Message,
   SubmittedAutopilotOnboardingTurn,
   UpdatedAutopilotOnboardingComposer,
@@ -91,6 +92,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
           submittedTurn: () => SubmittedAutopilotOnboardingTurn(),
           clickedCreditKickoff: () =>
             ClickedAutopilotOnboardingCreditKickoff(),
+          clickedStartOver: () => ClickedAutopilotOnboardingStartOver(),
         }),
       ),
     ])

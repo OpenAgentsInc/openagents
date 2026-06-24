@@ -4,6 +4,10 @@ import { m } from 'foldkit/message'
 
 import { OnboardingTurnResponse } from '../autopilot-onboarding/flow'
 import {
+  OnboardingSessionResponse,
+  StoredOnboardingSession,
+} from '../autopilot-onboarding/persistence'
+import {
   OnboardingStep,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
@@ -226,6 +230,64 @@ export const CompletedScrollAutopilotOnboardingThread = m(
   'CompletedScrollAutopilotOnboardingThread',
 )
 
+// /autopilot onboarding — browser persistence + durable resume (#6154 tier 4).
+// The live-stream handshake frame (`event: stream`) carries the durable cursor
+// so a reload can resume the in-flight turn from the durable log.
+export const ReceivedAutopilotOnboardingStreamHandshake = m(
+  'ReceivedAutopilotOnboardingStreamHandshake',
+  {
+    turnId: S.String,
+    streamId: S.String,
+    sessionId: S.String,
+    turnIndex: S.Int,
+  },
+)
+// Rehydrate from localStorage on mount: restore the saved transcript/spec/cursor
+// immediately (no blank flash) before reconciling with the server.
+export const LoadedStoredAutopilotOnboarding = m(
+  'LoadedStoredAutopilotOnboarding',
+  { session: StoredOnboardingSession },
+)
+// Reconcile with the authoritative server session (covers a turn that completed
+// while the tab was gone). 404 => expired/unknown => clear + fresh start.
+export const SucceededReconcileAutopilotOnboardingSession = m(
+  'SucceededReconcileAutopilotOnboardingSession',
+  { response: OnboardingSessionResponse },
+)
+export const FailedReconcileAutopilotOnboardingSession = m(
+  'FailedReconcileAutopilotOnboardingSession',
+  { status: S.Int },
+)
+// Resume read (durable replay) of an in-flight turn on reload. Deltas REPLACE
+// the bubble (the replay re-streams the whole turn from the offset), advancing
+// the persisted offset from the `stream-next-offset` header.
+export const ReceivedAutopilotOnboardingResumeReply = m(
+  'ReceivedAutopilotOnboardingResumeReply',
+  { turnIndex: S.Int, reply: S.String, nextOffset: S.NullOr(S.String) },
+)
+export const SucceededResumeAutopilotOnboardingTurn = m(
+  'SucceededResumeAutopilotOnboardingTurn',
+  { response: OnboardingTurnResponse },
+)
+export const ClosedAutopilotOnboardingResumeStream = m(
+  'ClosedAutopilotOnboardingResumeStream',
+  { turnIndex: S.Int },
+)
+// The resume read is unavailable (durable log gone / TTL expired / 404): fall
+// back to the reconciled transcript without leaving a stuck half-bubble.
+export const FailedAutopilotOnboardingResume = m(
+  'FailedAutopilotOnboardingResume',
+  { turnIndex: S.Int },
+)
+// The "start over" affordance: drop the in-memory flow + the stored session.
+export const ClickedAutopilotOnboardingStartOver = m(
+  'ClickedAutopilotOnboardingStartOver',
+)
+// Fire-and-forget completion of a localStorage persist/clear side effect.
+export const CompletedPersistAutopilotOnboarding = m(
+  'CompletedPersistAutopilotOnboarding',
+)
+
 export const Message = S.Union([
   ClickedCopyShareLink,
   ClickedEnterKhala,
@@ -279,5 +341,15 @@ export const Message = S.Union([
   ClickedAutopilotOnboardingCreditKickoff,
   CompletedAutopilotOnboardingCreditKickoff,
   CompletedScrollAutopilotOnboardingThread,
+  ReceivedAutopilotOnboardingStreamHandshake,
+  LoadedStoredAutopilotOnboarding,
+  SucceededReconcileAutopilotOnboardingSession,
+  FailedReconcileAutopilotOnboardingSession,
+  ReceivedAutopilotOnboardingResumeReply,
+  SucceededResumeAutopilotOnboardingTurn,
+  ClosedAutopilotOnboardingResumeStream,
+  FailedAutopilotOnboardingResume,
+  ClickedAutopilotOnboardingStartOver,
+  CompletedPersistAutopilotOnboarding,
 ])
 export type Message = typeof Message.Type

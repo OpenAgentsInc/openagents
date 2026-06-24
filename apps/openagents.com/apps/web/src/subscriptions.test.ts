@@ -6,6 +6,7 @@ import {
 } from './domain/session'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import {
+  LoadedStoredAutopilotOnboarding,
   SubmittedAutopilotOnboardingTurn,
   UpdatedAutopilotOnboardingComposer,
 } from './page/loggedOut/message'
@@ -31,6 +32,7 @@ import {
   demoClockDependenciesForModel,
   demoKeyboardDependenciesForModel,
   demoPlaybackDependenciesForModel,
+  onboardingResumeDependenciesForModel,
   onboardingStreamDependenciesForModel,
   syncMessageFromPayload,
   syncStreamDependenciesForModel,
@@ -538,5 +540,74 @@ describe('autopilot onboarding stream subscription', () => {
     const deps = onboardingStreamDependenciesForModel(submitted)
     expect(deps.isActive).toBe(true)
     expect(deps.vertical).toBe('legal')
+  })
+})
+
+describe('autopilot onboarding resume subscription', () => {
+  const loggedOutBase = () => LoggedOut.init(AutopilotRoute())
+
+  test('is inactive when no in-flight turn was restored', () => {
+    expect(onboardingResumeDependenciesForModel(loggedOutBase())).toEqual({
+      isActive: false,
+      sessionId: '',
+      turnIndex: 0,
+      offset: '',
+    })
+  })
+
+  test('activates for a restored in-flight turn, defaulting the offset to 0', () => {
+    const [restored] = loggedOutUpdate(
+      loggedOutBase(),
+      LoadedStoredAutopilotOnboarding({
+        session: {
+          sessionId: 'ob_resume_sub',
+          vertical: null,
+          status: 'interviewing',
+          transcript: [{ role: 'user', content: 'hi' }],
+          outputSpec: {},
+          inFlight: {
+            streamId: 'onboarding:ob_resume_sub:0',
+            turnIndex: 0,
+            replySoFar: '',
+            lastOffset: null,
+          },
+          updatedAt: 1_700_000_000_000,
+        },
+      }),
+    )
+
+    const deps = onboardingResumeDependenciesForModel(restored)
+    expect(deps).toEqual({
+      isActive: true,
+      sessionId: 'ob_resume_sub',
+      turnIndex: 0,
+      // No tracked offset => resume from 0 (the durable replay re-streams the
+      // whole in-flight turn from the start and continues to EOF).
+      offset: '0',
+    })
+  })
+
+  test('carries a tracked offset so a second reload resumes further along', () => {
+    const [restored] = loggedOutUpdate(
+      loggedOutBase(),
+      LoadedStoredAutopilotOnboarding({
+        session: {
+          sessionId: 'ob_resume_sub',
+          vertical: null,
+          status: 'interviewing',
+          transcript: [{ role: 'user', content: 'hi' }],
+          outputSpec: {},
+          inFlight: {
+            streamId: 'onboarding:ob_resume_sub:0',
+            turnIndex: 0,
+            replySoFar: 'partial',
+            lastOffset: '128',
+          },
+          updatedAt: 1_700_000_000_000,
+        },
+      }),
+    )
+
+    expect(onboardingResumeDependenciesForModel(restored).offset).toBe('128')
   })
 })
