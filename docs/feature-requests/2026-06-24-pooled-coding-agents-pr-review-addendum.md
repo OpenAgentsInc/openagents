@@ -33,6 +33,24 @@ Customer pays once  ──>  OpenAgents (the network)
 This is the same machine as the Khala buildout — **OpenAgents deploys Autopilot agents,
 powered by Khala** — with **autonomous QA / PR review** as the demand that justifies the pool.
 
+## The engine — a thin coordination layer over commodity infrastructure
+
+The deeper point: we don't own the hard infrastructure, and we don't need to. Cloudflare (and
+peers) already give us the primitives — **Workers** (compute), **Browser Rendering** (real
+Chrome), **Containers / Sandbox** (isolated terminals), **R2** (artifacts), **D1 / Durable
+Objects / Queues / Workflows** (state, coordination, lifecycle) — plus the world's coding agents
+and models. OpenAgents is the **thin economic + coordination layer on top** that:
+
+- **pools** these commodity resources (compute, browsers, agents, models, edge nodes) into one
+  fungible firepower pool,
+- **coordinates** them (Khala routes / shards / composes / verifies the work),
+- and **pays for verified work in Bitcoin** (the settlement rail), so the pool self-sustains.
+
+That's the whole engine: *pool the world's resources, coordinate them, settle in Bitcoin,
+capture the synergy.* Deliberately simple — we add the **market + the orchestration + the proof**
+(verified traces), not the silicon. The moat is the coordination layer, the verified-outcome
+proof, and the Bitcoin settlement network — not owning datacenters.
+
 ## 1. Autopilot desktop ↔ trace ↔ Verse loop
 
 When an Autopilot agent runs in **super-code mode** (the computer-use QA/coding flow), the
@@ -122,6 +140,45 @@ dependency** direction (heavy artifacts on *our* surface). Options:
 
 So: **GitHub App for trigger + identity + a thin comment; OpenAgents.com for the review,
 traces, video, and the paid pool.** GitHub is the doorway; the product is ours.
+
+## Sales process — what we're actually selling (hiring Autopilot)
+
+Customers don't buy "an agent network" or "Khala" — they **hire Autopilot to do a job**:
+coding, QA, PR review, audits. The sale is *firepower-on-demand for work they can't staff*.
+
+- **Wedge: QA / PR review.** Every team has infinite PRs and finite reviewers. "Add OpenAgents
+  QA to your repo → every PR gets a verified review + trace, on demand, at scale." Cheap
+  marginal review, parallel, leaves proof. This is the land.
+- **Discovery:** the GitHub App ("OpenAgents QA") on a repo; public `/trace/{uuid}` links (each
+  trace is an ad); the agent-discovery surfaces (`/llms.txt`, `/openapi.json`) for agent buyers;
+  seeded reviews on public PRs.
+- **Buy:** one purchase of OpenAgents capacity (credits; MPP card/crypto in). No model/worker
+  selection — *pay once for massive firepower*.
+- **Hire:** submit a job (a PR, a repo, a release) → Khala fans it out across the pool →
+  verified traces back. Scale up: "review my whole backlog," "QA every RC," "audit across 5
+  lenses."
+- **Expand:** once a team trusts the verified-trace review, upsell more QA, more coding, and new
+  task types as the registry grows (below).
+
+The pitch is concrete and ROI-legible: *pay once, we throw an army of verified coding agents at
+your PRs, and you get proof — not vibes.*
+
+## The registry flywheel — Khala grows over time
+
+Khala's value compounds as the pool + the capability/plugin registry grow:
+
+- **More workers** join the pool (Pylon edge + hosted) → more parallel firepower → bigger jobs,
+  faster turnaround. Workers are paid in Bitcoin per verified outcome, so supply self-recruits.
+- **More plugins / tools / task types** in the registry → Autopilot does more kinds of work
+  (beyond QA/PR review: migrations, audits, refactors, doc generation, ...). Each new
+  verified-outcome type is a new product on the same rails.
+- **More verified-outcome classes** → more work becomes machine-checkable (the verification
+  framework grows), widening what can be sold as "proof, not trust."
+
+The flywheel: more workers → more firepower → more customers → more demand → more worker income
+→ more workers + more plugins. OpenAgents captures the spread + the coordination value at the
+center. **The registry growing IS the product getting better — without us hand-building each
+capability.**
 
 ## 5. How it composes with what's shipped
 
