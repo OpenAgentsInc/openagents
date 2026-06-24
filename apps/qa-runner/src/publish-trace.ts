@@ -30,7 +30,7 @@
 //     of the same run does not create a duplicate trace.
 
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Effect } from "effect";
 
@@ -74,6 +74,43 @@ export type FetchLike = (
   readonly status: number;
   readonly text: () => Promise<string>;
 }>;
+
+/**
+ * A minimal binary-upload fetch shape for the media-blob bytes (#6223). Separate
+ * from `FetchLike` (which posts a JSON string) so tests can inject a fake R2-
+ * backed receiver with no network. The body is the raw bytes.
+ */
+export type BlobFetchLike = (
+  url: string,
+  init: {
+    readonly method: string;
+    readonly headers: Record<string, string>;
+    readonly body: Uint8Array;
+  },
+) => Promise<{
+  readonly ok: boolean;
+  readonly status: number;
+  readonly text: () => Promise<string>;
+}>;
+
+/**
+ * Resolve the raw bytes for one blobRef's `r2Key`. Returns `undefined` when the
+ * file is absent (an honest skip — we never claim an upload that did not happen).
+ */
+export type BlobByteSource = (
+  r2Key: string,
+) => { readonly bytes: Uint8Array; readonly contentType?: string } | undefined;
+
+// Per-blob upload cap mirrors the worker's R2-backed media cap (#6223).
+const MAX_BLOB_UPLOAD_BYTES = 32 * 1024 * 1024;
+
+/** Outcome of uploading the media blob bytes after a trace is stored (#6223). */
+export interface BlobUploadReport {
+  /** r2Keys whose bytes were uploaded successfully. */
+  readonly uploaded: ReadonlyArray<string>;
+  /** r2Keys skipped because the source file was absent/too large/unreadable. */
+  readonly skipped: ReadonlyArray<{ readonly r2Key: string; readonly reason: string }>;
+}
 
 // ---------------------------------------------------------------------------
 // Config (env-armed)
@@ -261,6 +298,16 @@ export interface PublishTraceInput {
   readonly idempotencyKey?: string;
   /** Injectable fetch (defaults to global fetch). Tests pass a fake local ingest. */
   readonly fetch?: FetchLike;
+  /**
+   * Resolve the raw bytes for a blobRef's `r2Key` (#6223). When provided AND the
+   * publish succeeds, each blobRef's bytes are uploaded to
+   * `POST /api/traces/{uuid}/blob/{r2Key}` (agent-bearer auth) so `/trace/{uuid}`
+   * serves its own media. Honest: a blobRef whose file is absent is SKIPPED, not
+   * faked. When omitted, no bytes are uploaded (only the refs are recorded).
+   */
+  readonly blobSource?: BlobByteSource;
+  /** Injectable binary upload fetch (defaults to global fetch). Tests inject a fake. */
+  readonly blobFetch?: BlobFetchLike;
   /** Base URL used to render the absolute shareable URL. Default https://openagents.com. */
   readonly shareBaseUrl?: string;
   /** Logger sink (defaults to console.log) for the honest no-op / status line. */
@@ -280,6 +327,12 @@ export interface PublishTraceSuccess {
   readonly replay: boolean;
   /** The redaction report for the posted body (proof redaction ran). */
   readonly redaction: RedactionReport;
+  /**
+   * Media-blob upload outcome (#6223). Present only when a `blobSource` was
+   * supplied. Honest: lists exactly which blobRefs' bytes were uploaded and
+   * which were skipped (and why). Absent => no upload was attempted.
+   */
+  readonly blobUpload?: BlobUploadReport;
 }
 
 /** An honest no-op or failure: never carries a fabricated uuid/url. */
@@ -414,9 +467,32 @@ function doPublish(
     const visibility =
       normalizeVisibility(parsed.visibility) ?? config.visibility ?? "unlisted";
     const url = `${shareBaseUrl}/trace/${uuid}`;
+
+    // 5. UPLOAD the media-blob bytes (#6223) so `/trace/{uuid}` serves its own
+    //    recording + screenshots (never a GitHub attachment). Only when a
+    //    blobSource was supplied. Honest: a blobRef whose file is absent is
+    //    skipped, not faked. Never throws the publish away on a blob failure —
+    //    the trace itself is already stored.
+    const blobUpload =
+      input.blobSource !== undefined
+        ? yield* uploadBlobBytes({
+            uuid,
+            ingestUrl: config.url,
+            token: config.token,
+            blobRefs,
+            blobSource: input.blobSource,
+            ...(input.blobFetch ? { blobFetch: input.blobFetch } : {}),
+            log,
+          })
+        : undefined;
+
     log(
       `[publish-trace] published ${url} (visibility=${visibility}, ` +
-        `redactions=${report.total}, replay=${parsed.replay === true})`,
+        `redactions=${report.total}, replay=${parsed.replay === true}` +
+        (blobUpload !== undefined
+          ? `, blobs=${blobUpload.uploaded.length}/${blobUpload.uploaded.length + blobUpload.skipped.length}`
+          : "") +
+        `)`,
     );
     return {
       published: true,
@@ -425,6 +501,7 @@ function doPublish(
       visibility,
       replay: parsed.replay === true,
       redaction: report,
+      ...(blobUpload !== undefined ? { blobUpload } : {}),
     } satisfies PublishTraceSuccess;
   }).pipe(
     Effect.catch((error: unknown) => {
@@ -437,6 +514,99 @@ function doPublish(
       } satisfies PublishTraceNoop);
     }),
   );
+}
+
+/**
+ * Build the visibility-gated blob URL for one r2Key. `ingestUrl` is the
+ * `.../api/traces` endpoint; the blob route is `.../api/traces/{uuid}/blob/{r2Key}`
+ * with each r2Key path segment URI-encoded (matches the worker's route + the
+ * page's `traceBlobUrl`).
+ */
+function blobUploadUrl(ingestUrl: string, uuid: string, r2Key: string): string {
+  const base = ingestUrl.replace(/\/+$/, "");
+  const encodedKey = r2Key.split("/").map(encodeURIComponent).join("/");
+  return `${base}/${encodeURIComponent(uuid)}/blob/${encodedKey}`;
+}
+
+/**
+ * Upload each blobRef's actual bytes to the trace's media blob route (#6223).
+ * Honest + bounded: a blobRef whose source file is absent or too large is
+ * SKIPPED (recorded in the report), never faked; a per-blob HTTP failure is
+ * recorded as a skip and does not fail the whole publish (the trace is already
+ * stored). Effect-returning; never throws.
+ */
+function uploadBlobBytes(args: {
+  readonly uuid: string;
+  readonly ingestUrl: string;
+  readonly token: string;
+  readonly blobRefs: ReadonlyArray<TraceBlobRef>;
+  readonly blobSource: BlobByteSource;
+  readonly blobFetch?: BlobFetchLike;
+  readonly log: (message: string) => void;
+}): Effect.Effect<BlobUploadReport> {
+  return Effect.gen(function* () {
+    const doFetch =
+      args.blobFetch ?? (globalThis.fetch as unknown as BlobFetchLike);
+    const uploaded: string[] = [];
+    const skipped: { r2Key: string; reason: string }[] = [];
+
+    for (const ref of args.blobRefs) {
+      const resolved = args.blobSource(ref.r2Key);
+      if (resolved === undefined) {
+        skipped.push({ r2Key: ref.r2Key, reason: "source file absent" });
+        continue;
+      }
+      if (resolved.bytes.byteLength === 0) {
+        skipped.push({ r2Key: ref.r2Key, reason: "source file empty" });
+        continue;
+      }
+      if (resolved.bytes.byteLength > MAX_BLOB_UPLOAD_BYTES) {
+        skipped.push({
+          r2Key: ref.r2Key,
+          reason: `exceeds ${MAX_BLOB_UPLOAD_BYTES}-byte cap (${resolved.bytes.byteLength} bytes)`,
+        });
+        continue;
+      }
+
+      const contentType = ref.contentType ?? resolved.contentType;
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          doFetch(blobUploadUrl(args.ingestUrl, args.uuid, ref.r2Key), {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${args.token}`,
+              ...(contentType ? { "content-type": contentType } : {}),
+            },
+            body: resolved.bytes,
+          }),
+        catch: (error) =>
+          new PublishTransportError(
+            error instanceof Error ? error.message : String(error),
+          ),
+      }).pipe(Effect.catch(() => Effect.succeed(undefined)));
+
+      if (response === undefined) {
+        skipped.push({ r2Key: ref.r2Key, reason: "upload transport error" });
+        continue;
+      }
+      if (!response.ok) {
+        skipped.push({
+          r2Key: ref.r2Key,
+          reason: `upload returned HTTP ${response.status}`,
+        });
+        continue;
+      }
+      uploaded.push(ref.r2Key);
+    }
+
+    if (skipped.length > 0) {
+      args.log(
+        `[publish-trace] blob upload: ${uploaded.length} uploaded, ${skipped.length} skipped ` +
+          `(${skipped.map((s) => `${s.r2Key}: ${s.reason}`).join("; ")})`,
+      );
+    }
+    return { uploaded, skipped };
+  });
 }
 
 /** A transport/HTTP failure during publish. Mapped to an honest no-op. */
@@ -458,9 +628,48 @@ export interface PublishRunDirInput
   readonly sessionId?: string;
 }
 
+/** Best-effort content type for a media artifact path by extension. */
+function contentTypeForArtifact(r2Key: string): string | undefined {
+  if (r2Key.endsWith(".mp4")) return "video/mp4";
+  if (r2Key.endsWith(".webm")) return "video/webm";
+  if (r2Key.endsWith(".png")) return "image/png";
+  if (r2Key.endsWith(".jpg") || r2Key.endsWith(".jpeg")) return "image/jpeg";
+  if (r2Key.endsWith(".webp")) return "image/webp";
+  if (r2Key.endsWith(".gif")) return "image/gif";
+  return undefined;
+}
+
+/**
+ * A `BlobByteSource` that reads a blobRef's bytes from a run directory (#6223).
+ * The r2Key is the public-safe RELATIVE artifact path (e.g. `session.mp4`,
+ * `shots/00-login.png`) — resolved against the run dir. Honest: a missing or
+ * unreadable file resolves to `undefined` (a skip), never fabricated bytes.
+ * Path-safe: a key that escapes the run dir (absolute or `..`) is refused.
+ */
+export function runDirBlobSource(runDir: string): BlobByteSource {
+  return (r2Key) => {
+    if (r2Key.startsWith("/") || r2Key.split("/").includes("..")) {
+      return undefined;
+    }
+    const filePath = join(runDir, r2Key);
+    try {
+      if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+        return undefined;
+      }
+      const bytes = new Uint8Array(readFileSync(filePath));
+      const contentType = contentTypeForArtifact(r2Key);
+      return contentType === undefined ? { bytes } : { bytes, contentType };
+    } catch {
+      return undefined;
+    }
+  };
+}
+
 /**
  * Build a trajectory from a run dir and publish it. The same env-armed / honest
- * no-op rules apply.
+ * no-op rules apply. By default the media-blob bytes are read from the run dir
+ * and uploaded after publish (#6223) so `/trace/{uuid}` serves its own
+ * recording + screenshots; pass an explicit `blobSource` to override.
  */
 export function publishRunDir(
   input: PublishRunDirInput,
@@ -469,11 +678,14 @@ export function publishRunDir(
     const trajectory = buildTrajectoryFromRunDir(input.runDir, {
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
     });
+    const blobSource = input.blobSource ?? runDirBlobSource(input.runDir);
     return yield* publishTrace({
       trajectory,
+      blobSource,
       ...(input.config ? { config: input.config } : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
       ...(input.fetch ? { fetch: input.fetch } : {}),
+      ...(input.blobFetch ? { blobFetch: input.blobFetch } : {}),
       ...(input.shareBaseUrl ? { shareBaseUrl: input.shareBaseUrl } : {}),
       ...(input.log ? { log: input.log } : {}),
     });

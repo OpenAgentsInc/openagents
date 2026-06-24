@@ -9,6 +9,8 @@ import { ATIF_PINNED_SCHEMA_VERSION } from './atif-trace-schema'
 import { makeTraceStoreRoutes } from './trace-store-routes'
 import type {
   CreateTraceInput,
+  TraceMediaBlobObject,
+  TraceMediaBlobStore,
   TraceRecord,
   TraceStore,
   TraceTrajectoryBlobStore,
@@ -136,6 +138,40 @@ const makeMemoryBlobStore = (): TraceTrajectoryBlobStore & {
   }
 }
 
+// In-memory media blob store double (R2 stand-in for the #6223 media path).
+const makeMemoryMediaStore = (): TraceMediaBlobStore & {
+  objects: Map<string, { bytes: Uint8Array; contentType: string | undefined }>
+} => {
+  const objects = new Map<
+    string,
+    { bytes: Uint8Array; contentType: string | undefined }
+  >()
+  const keyFor = (uuid: string, r2Key: string) => `trace-blobs/${uuid}/${r2Key}`
+  return {
+    objects,
+    putBlob: (uuid, r2Key, bytes, contentType) => {
+      const key = keyFor(uuid, r2Key)
+      const buf =
+        bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+      objects.set(key, { bytes: buf, contentType })
+      return Promise.resolve(key)
+    },
+    getBlob: (uuid, r2Key) => {
+      const stored = objects.get(keyFor(uuid, r2Key))
+      if (stored === undefined) {
+        return Promise.resolve(null)
+      }
+      const object: TraceMediaBlobObject = {
+        body: new Response(stored.bytes.buffer as ArrayBuffer).body as ReadableStream,
+        size: stored.bytes.byteLength,
+        contentType: stored.contentType,
+        httpEtag: `"etag-${r2Key}"`,
+      }
+      return Promise.resolve(object)
+    },
+  }
+}
+
 let idCounter = 0
 
 const makeDeps = (options: {
@@ -146,6 +182,7 @@ const makeDeps = (options: {
   rewardArmed?: boolean
   uniqueIds?: boolean
   blobStore?: TraceTrajectoryBlobStore
+  mediaStore?: TraceMediaBlobStore
 }) =>
   makeTraceStoreRoutes<Bindings, Session>({
     agentStore: () => makeAgentStore(options.agentUserId),
@@ -162,6 +199,9 @@ const makeDeps = (options: {
     ...(options.blobStore === undefined
       ? {}
       : { trajectoryBlobStore: () => options.blobStore }),
+    ...(options.mediaStore === undefined
+      ? {}
+      : { mediaBlobStore: () => options.mediaStore }),
   })
 
 const cleanTrajectory = () => ({
@@ -873,5 +913,310 @@ describe('GET /api/traces owner list', () => {
       ),
     )
     expect(response.status).toBe(401)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Trace media blobs (#6223): self-hosted recording + screenshots.
+// ---------------------------------------------------------------------------
+
+const seedTraceWithBlobs = async (
+  store: TraceStore,
+  visibility: 'public' | 'unlisted' | 'owner_only',
+  blobRefs: TraceRecord['blobRefs'],
+  ownerUserId = 'agent-1',
+): Promise<string> => {
+  const result = await store.createTrace({
+    traceUuid: `uuid-blob-${visibility}`,
+    ownerUserId,
+    agentRef: `agent:${ownerUserId}`,
+    schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+    trajectoryId: 'traj-1',
+    sessionId: null,
+    visibility,
+    stepCount: 2,
+    trajectory: cleanTrajectory(),
+    trajectoryR2Key: null,
+    blobRefs,
+    idempotencyKey: null,
+    trainingConsent: true,
+    license: null,
+    contentDigest: `digest-blob-${visibility}-${ownerUserId}`,
+    rewardEligible: false,
+    rewardAmountSats: null,
+    uploadSource: 'agent',
+    nowIso: NOW,
+  })
+  return result.record.traceUuid
+}
+
+const blobServeRequest = (uuid: string, r2Key: string): Request =>
+  new Request(`https://openagents.com/api/traces/${uuid}/blob/${r2Key}`)
+
+const blobUploadRequest = (
+  uuid: string,
+  r2Key: string,
+  bytes: Uint8Array,
+  headers: Record<string, string> = { authorization: 'Bearer oa_agent_test' },
+): Request =>
+  new Request(`https://openagents.com/api/traces/${uuid}/blob/${r2Key}`, {
+    method: 'POST',
+    headers,
+    body: bytes.buffer as ArrayBuffer,
+  })
+
+describe('GET /api/traces/{uuid}/blob/{r2Key} serve (#6223)', () => {
+  it('streams the bytes for a public trace with the right Content-Type (no auth)', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const bytes = new Uint8Array([0, 1, 2, 3, 4])
+    await media.putBlob(uuid, 'session.mp4', bytes, 'video/mp4')
+    const routes = makeDeps({ store, mediaStore: media })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('video/mp4')
+    expect(response.headers.get('accept-ranges')).toBe('bytes')
+    expect(response.headers.get('cache-control')).toContain('immutable')
+    const served = new Uint8Array(await response.arrayBuffer())
+    expect([...served]).toEqual([...bytes])
+  })
+
+  it('prefers the stored blobRef Content-Type over the R2 object metadata', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.webm', contentType: 'video/webm' },
+    ])
+    // R2 object has a different content type; the blobRef wins.
+    await media.putBlob(uuid, 'session.webm', new Uint8Array([9]), 'application/octet-stream')
+    const routes = makeDeps({ store, mediaStore: media })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.webm'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('video/webm')
+  })
+
+  it('serves a screenshot whose r2Key has a slash path segment', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'screenshot', r2Key: 'shots/00-login.png', contentType: 'image/png' },
+    ])
+    await media.putBlob(uuid, 'shots/00-login.png', new Uint8Array([7, 7]), 'image/png')
+    const routes = makeDeps({ store, mediaStore: media })
+    const response = await run(
+      routes.routeTraceRequest(
+        blobServeRequest(uuid, 'shots/00-login.png'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('image/png')
+  })
+
+  it('404s when the blob bytes are missing (trace exists, no R2 object)', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    // never uploaded the bytes
+    const routes = makeDeps({ store, mediaStore: media })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('404s when the trace does not exist', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const routes = makeDeps({ store, mediaStore: media })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest('nope', 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('is visibility-gated: 404s an owner_only blob for an anonymous caller', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'owner_only', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    await media.putBlob(uuid, 'session.mp4', new Uint8Array([1]), 'video/mp4')
+    const routes = makeDeps({ store, mediaStore: media, browserSession: undefined })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('is visibility-gated: 404s an owner_only blob for a non-owner session', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'owner_only', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    await media.putBlob(uuid, 'session.mp4', new Uint8Array([1]), 'video/mp4')
+    const routes = makeDeps({
+      store,
+      mediaStore: media,
+      browserSession: { user: { userId: 'someone-else' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('is visibility-gated: serves an owner_only blob to its owner (private cache)', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'owner_only', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    await media.putBlob(uuid, 'session.mp4', new Uint8Array([1, 2]), 'video/mp4')
+    const routes = makeDeps({
+      store,
+      mediaStore: media,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toContain('private')
+  })
+
+  it('404s when no media store is configured', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store }) // no mediaStore
+    const response = await run(
+      routes.routeTraceRequest(blobServeRequest(uuid, 'session.mp4'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+})
+
+describe('POST /api/traces/{uuid}/blob/{r2Key} upload (#6223)', () => {
+  it('stores the bytes for a declared blobRef by the owner', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store, mediaStore: media, agentUserId: 'agent-1' })
+    const bytes = new Uint8Array([5, 6, 7, 8])
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'session.mp4', bytes),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(201)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.bytes).toBe(4)
+    expect(json.r2Key).toBe('session.mp4')
+    const stored = media.objects.get(`trace-blobs/${uuid}/session.mp4`)
+    expect(stored).toBeDefined()
+    expect([...(stored?.bytes ?? [])]).toEqual([...bytes])
+  })
+
+  it('rejects an r2Key not declared on the trace blobRefs with 400', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store, mediaStore: media, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'evil.sh', new Uint8Array([1])),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(media.objects.size).toBe(0)
+  })
+
+  it('404s an upload from a non-owner', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ], 'agent-1')
+    const routes = makeDeps({ store, mediaStore: media, agentUserId: 'agent-2' })
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'session.mp4', new Uint8Array([1])),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(404)
+    expect(media.objects.size).toBe(0)
+  })
+
+  it('rejects an unauthenticated upload with 401', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store, mediaStore: media, agentUserId: undefined })
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'session.mp4', new Uint8Array([1]), {}),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('rejects an empty upload body with 400', async () => {
+    const store = makeMemoryStore()
+    const media = makeMemoryMediaStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store, mediaStore: media, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'session.mp4', new Uint8Array([])),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(400)
+  })
+
+  it('501s an upload when no media store is configured', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTraceWithBlobs(store, 'public', [
+      { kind: 'video', r2Key: 'session.mp4', contentType: 'video/mp4' },
+    ])
+    const routes = makeDeps({ store, agentUserId: 'agent-1' }) // no mediaStore
+    const response = await run(
+      routes.routeTraceRequest(
+        blobUploadRequest(uuid, 'session.mp4', new Uint8Array([1])),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(501)
   })
 })

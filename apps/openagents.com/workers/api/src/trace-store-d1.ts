@@ -417,3 +417,84 @@ export const makeR2TraceTrajectoryBlobStore = (
     }
   },
 })
+
+/**
+ * R2-backed store for a trace's playable MEDIA blobs (#6223): the recording
+ * (`session.mp4`/`session.webm`) and screenshots referenced from the trace's
+ * `blobRefs[]`. The bytes live under `trace-blobs/{uuid}/{r2Key}` so the
+ * visibility-gated serve route (`GET /api/traces/{uuid}/blob/{r2Key}`) can
+ * stream them. This makes `/trace/{uuid}` self-hosted — it never depends on a
+ * GitHub attachment.
+ *
+ * PUBLIC-SAFE by construction: a blob here is the video/screenshots of a PUBLIC
+ * QA session — no secrets. The trajectory TEXT is separately tripwired on
+ * ingest; media bytes carry no token/PII surface to scan.
+ */
+export type TraceMediaBlobObject = Readonly<{
+  /** The streamable body. */
+  body: ReadableStream
+  /** Byte size of the object, when known. */
+  size: number
+  /** The stored content type (R2 httpMetadata), when present. */
+  contentType: string | undefined
+  /** The R2 entity tag, when present (used for caching/conditional reads). */
+  httpEtag: string | undefined
+}>
+
+export type TraceMediaBlobStore = Readonly<{
+  /**
+   * Persist one media blob for a trace; returns the full R2 key it was stored
+   * at. `r2Key` is the public-safe RELATIVE artifact path from the trace's
+   * blobRef (e.g. `session.mp4`, `shots/00-login.png`).
+   */
+  putBlob: (
+    traceUuid: string,
+    r2Key: string,
+    bytes: ArrayBuffer | Uint8Array,
+    contentType: string | undefined,
+  ) => Promise<string>
+  /** Read back one media blob (null if missing). */
+  getBlob: (
+    traceUuid: string,
+    r2Key: string,
+  ) => Promise<TraceMediaBlobObject | null>
+}>
+
+/** The canonical R2 key for one of a trace's media blobs. */
+export const traceMediaBlobR2Key = (traceUuid: string, r2Key: string): string =>
+  // Strip any leading slashes / `..` traversal from the relative artifact path;
+  // the trace uuid namespaces the object so different traces never collide.
+  `trace-blobs/${traceUuid}/${r2Key.replace(/^\/+/, '').replace(/\.\.(?=\/|$)/g, '')}`
+
+export const makeR2TraceMediaBlobStore = (
+  bucket: R2Bucket,
+): TraceMediaBlobStore => ({
+  putBlob: async (traceUuid, r2Key, bytes, contentType) => {
+    const key = traceMediaBlobR2Key(traceUuid, r2Key)
+    try {
+      await bucket.put(key, bytes, {
+        httpMetadata: contentType === undefined ? {} : { contentType },
+      })
+    } catch (error) {
+      throw traceStoreErrorFromUnknown(error)
+    }
+    return key
+  },
+  getBlob: async (traceUuid, r2Key) => {
+    const key = traceMediaBlobR2Key(traceUuid, r2Key)
+    try {
+      const object = await bucket.get(key)
+      if (object === null) {
+        return null
+      }
+      return {
+        body: object.body,
+        size: object.size,
+        contentType: object.httpMetadata?.contentType,
+        httpEtag: object.httpEtag,
+      }
+    } catch (error) {
+      throw traceStoreErrorFromUnknown(error)
+    }
+  },
+})

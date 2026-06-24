@@ -742,6 +742,7 @@ import {
 } from './inference/khala-chat-trace-emitter'
 import {
   makeD1TraceStore,
+  makeR2TraceMediaBlobStore,
   makeR2TraceTrajectoryBlobStore,
 } from './trace-store-d1'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
@@ -6670,6 +6671,10 @@ const traceStoreRoutes = makeTraceStoreRoutes({
   // D1's ~1MB value cap, so the public-safe trajectory JSON is stored in the
   // shared ARTIFACTS bucket with only a pointer kept in D1.
   trajectoryBlobStore: env => makeR2TraceTrajectoryBlobStore(env.ARTIFACTS),
+  // Media blobs (#6223): the trace's playable recording + screenshots live in
+  // the same ARTIFACTS bucket under `trace-blobs/{uuid}/{r2Key}` so the
+  // `/trace/{uuid}` page serves its own media (never a GitHub attachment).
+  mediaBlobStore: env => makeR2TraceMediaBlobStore(env.ARTIFACTS),
   requireBrowserSession,
 })
 

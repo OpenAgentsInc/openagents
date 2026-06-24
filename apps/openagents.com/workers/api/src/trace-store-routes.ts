@@ -28,6 +28,7 @@ import {
 } from './runtime-primitives'
 import {
   type TraceBlobRef,
+  type TraceMediaBlobStore,
   type TraceRecord,
   type TraceStore,
   TraceStoreError,
@@ -81,6 +82,11 @@ const OWNER_LIST_LIMIT = 100
 // ~1MB; we keep a conservative inline ceiling and offload anything larger to R2.
 const MAX_INLINE_TRAJECTORY_BYTES = 768 * 1024
 
+// Per-blob media upload cap (#6223). A QA recording is a few MB; the screenshots
+// are small. The cap bounds a single blob's bytes (R2-backed, like the
+// trajectory offload). Public-safe media only — no secrets to scan.
+const MAX_MEDIA_BLOB_BYTES = 32 * 1024 * 1024
+
 // Per-user upload rate limit (anti-abuse, #6221): at most this many stored
 // traces per owner within the rolling window.
 const UPLOAD_RATE_WINDOW_MS = 60 * 60 * 1000
@@ -129,6 +135,16 @@ type TraceStoreRouteDependencies<Bindings, Session extends TraceBrowserSession> 
      * only a pointer is kept in D1.
      */
     trajectoryBlobStore?: (env: Bindings) => TraceTrajectoryBlobStore | undefined
+    /**
+     * R2 store for a trace's playable media blobs (#6223): the recording +
+     * screenshots referenced from `blobRefs[]`. Optional: when absent, blob
+     * upload (`POST /api/traces/{uuid}/blob/{r2Key}`) and serve
+     * (`GET /api/traces/{uuid}/blob/{r2Key}`) report the media store as
+     * unconfigured (404 on serve, 501 on upload) instead of guessing. When
+     * present, the bytes are stored under `trace-blobs/{uuid}/{r2Key}` so the
+     * `/trace/{uuid}` page plays them without any GitHub attachment.
+     */
+    mediaBlobStore?: (env: Bindings) => TraceMediaBlobStore | undefined
     requireBrowserSession: (
       request: Request,
       env: Bindings,
@@ -194,6 +210,11 @@ class TracePayloadTooLarge extends S.TaggedErrorClass<TracePayloadTooLarge>()(
   { reason: S.String },
 ) {}
 
+class TraceMediaUnavailable extends S.TaggedErrorClass<TraceMediaUnavailable>()(
+  'TraceMediaUnavailable',
+  {},
+) {}
+
 type TraceRouteError =
   | TraceUnauthorized
   | TraceValidationError
@@ -203,6 +224,7 @@ type TraceRouteError =
   | TraceRateLimited
   | TraceDuplicate
   | TracePayloadTooLarge
+  | TraceMediaUnavailable
   | TraceStoreError
 
 const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
@@ -240,6 +262,15 @@ const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
         noStoreJsonResponse(
           { error: 'trace_payload_too_large', reason: error.reason },
           { status: 413 },
+        ),
+      TraceMediaUnavailable: () =>
+        noStoreJsonResponse(
+          {
+            error: 'trace_media_store_unconfigured',
+            message:
+              'Trace media blob storage is not configured on this deployment.',
+          },
+          { status: 501 },
         ),
       TraceValidationError: error =>
         noStoreJsonResponse(
@@ -745,6 +776,233 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
   })
 
 // ---------------------------------------------------------------------------
+// Trace media blobs (#6223): self-hosted recording + screenshots.
+//
+//   POST /api/traces/{uuid}/blob/{r2Key}  (agent/uploader auth, size-capped)
+//   GET  /api/traces/{uuid}/blob/{r2Key}  (visibility-gated EXACTLY like read)
+//
+// These make `/trace/{uuid}` play its own media so the page never depends on a
+// GitHub attachment. The bytes are PUBLIC-SAFE (video/screenshots of a public
+// QA session); the trajectory TEXT is separately tripwired on ingest.
+// ---------------------------------------------------------------------------
+
+/**
+ * Visibility-gate a trace exactly like the JSON read (`routeRead`): public and
+ * unlisted are readable by anyone with the link (no auth); owner_only requires
+ * the owning browser session (or an admin) and otherwise 404s (never reveals
+ * existence). Returns the record (caller streams the blob) on success.
+ */
+const authorizeTraceForBlobRead = <
+  Bindings,
+  Session extends TraceBrowserSession,
+>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  traceRef: string,
+): Effect.Effect<TraceRecord, TraceRouteError> =>
+  Effect.gen(function* () {
+    const record = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => dependencies.makeStore(env).readTraceByUuid(traceRef),
+    })
+
+    if (record === undefined) {
+      return yield* new TraceNotFound({})
+    }
+
+    if (record.visibility !== 'owner_only') {
+      return record
+    }
+
+    const session = yield* Effect.tryPromise({
+      catch: () => new TraceForbidden({}),
+      try: () => dependencies.requireBrowserSession(request, env, ctx),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+    if (session === undefined) {
+      // Do not reveal existence of an owner_only trace to anonymous callers.
+      return yield* new TraceNotFound({})
+    }
+
+    const isOwner = session.user.userId === record.ownerUserId
+    const isAdmin =
+      session.user.email !== undefined &&
+      dependencies.isAdminEmail(session.user.email)
+
+    if (!isOwner && !isAdmin) {
+      return yield* new TraceNotFound({})
+    }
+
+    return record
+  })
+
+/** The content type to serve a blob with: the stored blobRef wins, else R2. */
+const blobContentType = (
+  record: TraceRecord,
+  r2Key: string,
+  storedContentType: string | undefined,
+): string => {
+  const ref = record.blobRefs.find(blob => blob.r2Key === r2Key)
+  return ref?.contentType ?? storedContentType ?? 'application/octet-stream'
+}
+
+/**
+ * POST /api/traces/{uuid}/blob/{r2Key} — upload one media blob's bytes for a
+ * trace. Restricted to the UPLOADER of the trace (the owning agent bearer or
+ * user session): only the owner of a trace can attach its recording. The
+ * `r2Key` must be one declared on the trace's `blobRefs[]` (we never accept an
+ * arbitrary key). Size-capped; env-armed (501 when no media store configured).
+ */
+const routeBlobUpload = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  traceRef: string,
+  r2Key: string,
+): Effect.Effect<HttpResponse, TraceRouteError> =>
+  Effect.gen(function* () {
+    const uploader = yield* requireUploader(dependencies, request, env, ctx)
+
+    const mediaStore = dependencies.mediaBlobStore?.(env)
+    if (mediaStore === undefined) {
+      return yield* new TraceMediaUnavailable({})
+    }
+
+    const record = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => dependencies.makeStore(env).readTraceByUuid(traceRef),
+    })
+    if (record === undefined) {
+      return yield* new TraceNotFound({})
+    }
+
+    // Only the trace owner may attach its media.
+    if (record.ownerUserId !== uploader.ownerUserId) {
+      return yield* new TraceNotFound({})
+    }
+
+    // The key must be one the trace already declared (no arbitrary writes).
+    const declaredRef = record.blobRefs.find(blob => blob.r2Key === r2Key)
+    if (declaredRef === undefined) {
+      return yield* new TraceValidationError({
+        reason: `r2Key "${r2Key}" is not declared on this trace's blobRefs.`,
+      })
+    }
+
+    const bytes = yield* Effect.tryPromise({
+      catch: () =>
+        new TraceValidationError({ reason: 'Blob body could not be read.' }),
+      try: () => request.arrayBuffer(),
+    })
+    if (bytes.byteLength === 0) {
+      return yield* new TraceValidationError({ reason: 'Blob body was empty.' })
+    }
+    if (bytes.byteLength > MAX_MEDIA_BLOB_BYTES) {
+      return yield* new TracePayloadTooLarge({
+        reason: `Blob is ${bytes.byteLength} bytes; the per-blob media limit is ${MAX_MEDIA_BLOB_BYTES} bytes.`,
+      })
+    }
+
+    const contentType =
+      declaredRef.contentType ??
+      request.headers.get('content-type') ??
+      undefined
+
+    const storedKey = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => mediaStore.putBlob(record.traceUuid, r2Key, bytes, contentType),
+    })
+
+    return noStoreJsonResponse(
+      {
+        uuid: record.traceUuid,
+        r2Key,
+        storedKey,
+        bytes: bytes.byteLength,
+        ...(contentType === undefined ? {} : { contentType }),
+        url: `/api/traces/${record.traceUuid}/blob/${r2Key}`,
+      },
+      { status: 201 },
+    )
+  })
+
+/**
+ * GET /api/traces/{uuid}/blob/{r2Key} — stream a trace's media blob from R2.
+ * Visibility-gated EXACTLY like the JSON read. Streams the R2 object with the
+ * stored content type (blobRef wins), a cache-control header, and a strong
+ * ETag. 404 when the trace or the blob does not exist. Accept-Ranges is
+ * advertised so the recording can seek (R2 honors a ranged `get`).
+ */
+const routeBlobServe = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  traceRef: string,
+  r2Key: string,
+): Effect.Effect<HttpResponse, TraceRouteError> =>
+  Effect.gen(function* () {
+    const record = yield* authorizeTraceForBlobRead(
+      dependencies,
+      request,
+      env,
+      ctx,
+      traceRef,
+    )
+
+    const mediaStore = dependencies.mediaBlobStore?.(env)
+    if (mediaStore === undefined) {
+      return yield* new TraceNotFound({})
+    }
+
+    const object = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => mediaStore.getBlob(record.traceUuid, r2Key),
+    })
+    if (object === null) {
+      return yield* new TraceNotFound({})
+    }
+
+    const headers = new Headers()
+    headers.set(
+      'content-type',
+      blobContentType(record, r2Key, object.contentType),
+    )
+    // public/unlisted media is link-shareable and immutable per uuid+key.
+    headers.set(
+      'cache-control',
+      record.visibility === 'owner_only'
+        ? 'private, max-age=60'
+        : 'public, max-age=31536000, immutable',
+    )
+    if (object.httpEtag !== undefined) {
+      headers.set('etag', object.httpEtag)
+    }
+    headers.set('accept-ranges', 'bytes')
+    if (Number.isFinite(object.size)) {
+      headers.set('content-length', String(object.size))
+    }
+
+    const response = new Response(object.body, { headers })
+
+    // owner_only blobs refresh the session cookies (mirrors routeRead's owner
+    // path); public/unlisted are anonymous and need none.
+    if (record.visibility !== 'owner_only') {
+      return response
+    }
+    const session = yield* Effect.tryPromise({
+      catch: () => new TraceForbidden({}),
+      try: () => dependencies.requireBrowserSession(request, env, ctx),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    return session === undefined
+      ? response
+      : dependencies.appendRefreshedSessionCookies(response, session)
+  })
+
+// ---------------------------------------------------------------------------
 // GET /api/traces — owner-scoped list (requireBrowserSession)
 // ---------------------------------------------------------------------------
 
@@ -826,6 +1084,46 @@ export const makeTraceStoreRoutes = <
           Effect.succeed(withAgentRateLimitHeaders(routeErrorResponse(error))),
         ),
       )
+    }
+
+    // Media blob: POST upload + GET serve. The `r2Key` may contain slashes
+    // (e.g. `shots/00-login.png`), so it captures the rest of the path. Matched
+    // BEFORE the single-segment read route below.
+    const blobMatch = /^\/api\/traces\/([^/]+)\/blob\/(.+)$/.exec(url.pathname)
+    if (blobMatch !== null) {
+      const traceUuid = decodeURIComponent(blobMatch[1] ?? '')
+      const r2Key = (blobMatch[2] ?? '')
+        .split('/')
+        .map(decodeURIComponent)
+        .join('/')
+      if (request.method === 'GET') {
+        return routeBlobServe(
+          dependencies,
+          request,
+          env,
+          ctx,
+          traceUuid,
+          r2Key,
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      }
+      if (request.method === 'POST') {
+        return routeBlobUpload(
+          dependencies,
+          request,
+          env,
+          ctx,
+          traceUuid,
+          r2Key,
+        ).pipe(
+          Effect.map(withAgentRateLimitHeaders),
+          Effect.catch(error =>
+            Effect.succeed(
+              withAgentRateLimitHeaders(routeErrorResponse(error)),
+            ),
+          ),
+        )
+      }
+      return Effect.succeed(methodNotAllowed(['GET', 'POST']))
     }
 
     const readMatch = /^\/api\/traces\/([^/]+)$/.exec(url.pathname)
