@@ -61,6 +61,7 @@ export const BusinessRoute = r('Business')
 export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
 export const RunRoute = r('Run')
+export const GymOssRoute = r('GymOss')
 export const TassadarRoute = r('Tassadar')
 export const TassadarReplayRoute = r('TassadarReplay', {
   replaySlug: S.String,
@@ -155,6 +156,7 @@ export type BusinessRoute = typeof BusinessRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
 export type RunRoute = typeof RunRoute.Type
+export type GymOssRoute = typeof GymOssRoute.Type
 export type TassadarRoute = typeof TassadarRoute.Type
 export type TassadarReplayRoute = typeof TassadarReplayRoute.Type
 export type LoginRoute = typeof LoginRoute.Type
@@ -276,6 +278,7 @@ export const LoggedInRoute = S.Union([
   AnimationsRoute,
   ActivityRoute,
   RunRoute,
+  GymOssRoute,
   TassadarRoute,
   TassadarReplayRoute,
   LoginRoute,
@@ -334,6 +337,7 @@ export const AppRoute = S.Union([
   AnimationsRoute,
   ActivityRoute,
   RunRoute,
+  GymOssRoute,
   TassadarRoute,
   TassadarReplayRoute,
   LoginRoute,
@@ -564,6 +568,11 @@ export const activityRouter = pipe(
   Route.mapTo(ActivityRoute),
 )
 export const runRouter = pipe(literal('run'), Route.mapTo(RunRoute))
+export const gymOssRouter = pipe(
+  literal('gym'),
+  slash(literal('oss')),
+  Route.mapTo(GymOssRoute),
+)
 export const tassadarRouter = pipe(
   literal('tassadar'),
   Route.mapTo(TassadarRoute),
@@ -736,6 +745,7 @@ const routeParser = Route.oneOf(
   activityRouter,
   tassadarReplayRouter,
   tassadarRouter,
+  gymOssRouter,
   runRouter,
   forumReceiptRouter,
   forumTopicRouter,

@@ -23,6 +23,7 @@ import {
   ForumReceiptRoute,
   ForumRoute,
   ForumTopicRoute,
+  GymOssRoute,
   ImagesRoute,
   KhalaRoute,
   LandingRoute,
@@ -154,6 +155,10 @@ describe('app route parser', () => {
 
   test('accepts the public Khala inference route', () => {
     expect(urlToAppRoute(appUrl('/khala'))).toEqual(KhalaRoute())
+  })
+
+  test('accepts the owner-gated GPT-OSS Gym latency playground route', () => {
+    expect(urlToAppRoute(appUrl('/gym/oss'))).toEqual(GymOssRoute())
   })
 
   test('accepts the public live Tassadar run route', () => {

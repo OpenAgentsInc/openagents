@@ -28,6 +28,7 @@ import {
   forumReceiptRouter,
   forumRouter,
   forumTopicRouter,
+  gymOssRouter,
   imagesRouter,
   inviteRouter,
   loginRouter,
@@ -73,6 +74,7 @@ import * as Dashboard from './page/dashboard'
 import * as Decisions from './page/decisions'
 import * as Files from './page/files'
 import * as Forge from './page/forge'
+import * as GymOss from './page/gymOss'
 import * as Images from './page/images'
 import * as Invite from './page/invite'
 import * as Onboarding from './page/onboarding'
@@ -124,6 +126,7 @@ const currentHref = (model: Model): string =>
       Activity: () => activityRouter(),
       DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
+      GymOss: () => gymOssRouter(),
       Tassadar: () => tassadarRouter(),
       TassadarReplay: ({ replaySlug }) => tassadarReplayRouter({ replaySlug }),
       Login: () => loginRouter(),
@@ -186,6 +189,7 @@ const routeKey = (model: Model): string =>
       Activity: () => 'Activity',
       DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
+      GymOss: () => 'GymOss',
       Tassadar: () => 'Tassadar',
       TassadarReplay: ({ replaySlug }) => `TassadarReplay:${replaySlug}`,
       Login: () => 'Login',
@@ -557,6 +561,8 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/run', chatRouter(), 'Go to Chat'),
             ]),
+          GymOss: () =>
+            Ui.workroomScrollableRoute<Message>([GymOss.view(model)]),
           Tassadar: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/tassadar', chatRouter(), 'Go to Chat'),

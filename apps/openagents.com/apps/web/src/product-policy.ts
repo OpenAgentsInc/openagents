@@ -255,6 +255,7 @@ export const browserRouteProductIntents = {
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',
   Run: 'public.tassadar.run',
+  GymOss: 'gym.oss.playground',
   Tassadar: 'public.tassadar.run',
   TassadarReplay: 'public.tassadar.replay',
   Share: 'share.projection',

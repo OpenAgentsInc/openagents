@@ -27,6 +27,7 @@ import {
   AdminRoute,
   ChatRoute,
   ForgeRoute,
+  GymOssRoute,
   ImagesRoute,
   type LoggedInRoute,
   MulletRoute,
@@ -1763,6 +1764,20 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.text('Provider')).toExist(),
       Scene.expect(Scene.text('Model')).toExist(),
       Scene.expect(Scene.role('button', { name: 'Generate' })).toExist(),
+    )
+  })
+
+  test('renders the owner-gated GPT-OSS Gym latency playground surface', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedIn.init(GymOssRoute(), auth)),
+      Scene.expect(
+        Scene.role('heading', { name: 'GPT-OSS latency playground' }),
+      ).toExist(),
+      // The interactive surface is mounted via a self-contained custom element.
+      // (The neutral lane label + honest-number assertions are covered in
+      // gymOss.test.ts; here we only assert the page+element render.)
+      Scene.expect(Scene.selector('oa-gym-oss-controller')).toExist(),
     )
   })
 
