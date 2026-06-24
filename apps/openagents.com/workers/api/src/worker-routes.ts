@@ -140,6 +140,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/files(?:\/[^/]+)?$/,
   /^\/forge$/,
   /^\/forum(?:\/.*)?$/,
+  /^\/gym\/oss$/,
   /^\/images$/,
   /^\/landing$/,
   /^\/khala$/,

@@ -133,6 +133,12 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the GPT-OSS Gym document route in the app shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/gym/oss'), '/gym/oss'),
+    ).toBe(false)
+  })
+
   test('keeps the Pylon document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/pylons'), '/pylons'),
