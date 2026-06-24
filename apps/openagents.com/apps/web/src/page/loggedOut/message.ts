@@ -20,7 +20,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { Trajectory as AtifTrajectory } from '../trace/atif'
+import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import {
   GymCoordinatorCandidateRef,
   GymFanoutMode,
@@ -222,6 +222,8 @@ export const CompletedCopyShareLink = m('CompletedCopyShareLink', {
 export const SucceededLoadTrace = m('SucceededLoadTrace', {
   uuid: S.String,
   trajectory: AtifTrajectory,
+  // Public-safe envelope blob refs (#6223) for the trace's R2 media.
+  blobRefs: S.optionalKey(S.Array(AtifBlobRef)),
 })
 export const FailedLoadTrace = m('FailedLoadTrace', {
   uuid: S.String,

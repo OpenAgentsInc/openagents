@@ -215,7 +215,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               // shared canvas), so the route union here no longer includes them.
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
-              Trace: route => Trace.view(route, { _tag: 'LoggedOut' }),
+              Trace: route =>
+                Trace.view(route, { _tag: 'LoggedOut' }, model.trace),
               TraceCompare: route =>
                 TraceCompare.view(route, { _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),

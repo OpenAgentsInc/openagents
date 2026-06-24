@@ -1,3 +1,4 @@
+import { AiElements } from '@openagentsinc/ui'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -5,6 +6,7 @@ import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 import {
+  type BlobRef,
   type Step,
   type ToolCall,
   type Trajectory,
@@ -15,9 +17,11 @@ import {
   shortId,
   traceDurationMs,
   traceGoal,
+  traceScreenshotBlobSrcs,
   traceTarget,
   traceVerdict,
-  traceVideoSrc,
+  traceVideoBlobSrc,
+  trajectoryToMarkdown,
   verdictLabel,
   verdictTone,
   type VerdictTone,
@@ -189,11 +193,174 @@ const clampId = (text: string): string => {
   return hash.toString(36)
 }
 
-// A header meta cell: stacked label over value, in a strip (no cards).
+// ---------------------------------------------------------------------------
+// Markdown prose rendering.
+// ---------------------------------------------------------------------------
+
+// Agent narration (`message`), the user `goal`, model `reasoning_content`, and
+// prose observations (agent sub-reports) all carry real Markdown — `**bold**`,
+// `## headings`, `-` lists, `` `code` ``, fenced blocks. Render them through the
+// shared `@openagentsinc/ui` AI Elements `response` renderer, the exact same
+// streaming-tolerant, dark-only, no-innerHTML Markdown renderer every chat
+// surface (Khala, Autopilot onboarding) uses. This keeps one Markdown
+// implementation for the whole product and inherits its safe-href guard +
+// auto-escaping (a malformed model reply can only ever produce text nodes).
+//
+// Tool-call args + file paths + tool stdout are deliberately NOT routed here:
+// they are code/commands, kept as monospace `<pre>` (see `clampedPre`).
+const prose = <Message>(markdown: string, extraClass = ''): Html => {
+  const h = html<Message>()
+  // The response renderer ships its own `responseClass` (grid gap, off-white
+  // ink, overflow-wrap). Wrap it so callers can add timeline spacing without
+  // re-styling the renderer internals.
+  return h.div(
+    [Ui.className<Message>(extraClass)],
+    [AiElements.response<Message>({ markdown })],
+  )
+}
+
+// A heuristic: does this observation result read as agent prose (a sub-report
+// to render as Markdown), or as raw tool stdout (a file listing, grep output,
+// git output — render verbatim in a monospace `<pre>`)? Prose tends to use
+// Markdown structure (headings, bold, bullet prose); stdout tends to be many
+// short lines, tab/colon-delimited rows, or path-like tokens. We bias toward
+// `<pre>` (the safe, faithful default for machine output) and only treat content
+// as prose when it shows clear Markdown structure AND reads like sentences.
+const looksLikeProse = (content: string): boolean => {
+  const trimmed = content.trim()
+  if (trimmed === '') return false
+  // Strong Markdown structure signals (a heading, or bold emphasis in running
+  // text) that tool stdout effectively never emits.
+  const hasHeading = /^#{1,6}\s+\S/m.test(trimmed)
+  const hasBold = /\*\*[^*\n]+\*\*/.test(trimmed)
+  if (!hasHeading && !hasBold) return false
+  // Guard against stdout that merely contains a `#` or `*`: require some prose
+  // line length (a real sentence) somewhere, not just short tokens/paths.
+  const lines = trimmed.split('\n')
+  const hasSentence = lines.some(
+    line => line.trim().length > 60 && /[.:!?]\s|\S\s\S+\s\S+\s\S+/.test(line),
+  )
+  return hasSentence
+}
+
+// A stateless monospace "show more / show less" clamp for long verbatim text:
+// tool-call arg values (commands, prompts, diffs) and tool stdout. Same
+// checkbox-hack as `clampedText` (zero client state, keyboard-focusable,
+// reduced-motion aware), but the content is a real `<pre>` so newlines,
+// indentation, and code formatting are preserved exactly. Short content renders
+// as a plain inline `<pre>` with no toggle.
+export const PRE_CLAMP_THRESHOLD = 200
+
+export const clampedPre = <Message>(
+  text: string,
+  preClass: string,
+  clampClass = 'max-h-32',
+): Html => {
+  const h = html<Message>()
+
+  const preBase = `m-0 overflow-x-auto whitespace-pre-wrap break-words ${preClass}`
+
+  if (text.length <= PRE_CLAMP_THRESHOLD) {
+    return h.pre([Ui.className<Message>(preBase)], [text])
+  }
+
+  const id = `clamp-${clampId(text)}`
+  return h.div(
+    [
+      Ui.className<Message>('grid gap-1.5'),
+      h.DataAttribute('component', 'trace-clamp'),
+    ],
+    [
+      h.input([
+        h.Type('checkbox'),
+        Ui.className<Message>('peer sr-only'),
+        h.Id(id),
+      ]),
+      // The clamped `<pre>`: a max-height window + a soft fade hint at the
+      // bottom edge (a linear-gradient mask) so the truncation reads as "more
+      // below", not a hard cut. `peer-checked` lifts both the height cap and the
+      // fade. The mask is purely cosmetic and degrades gracefully.
+      h.pre(
+        [
+          Ui.className<Message>(
+            `${preBase} ${clampClass} overflow-y-hidden [mask-image:linear-gradient(to_bottom,#000_60%,transparent)] peer-checked:max-h-none peer-checked:overflow-y-auto peer-checked:[mask-image:none]`,
+          ),
+        ],
+        [text],
+      ),
+      h.label(
+        [
+          h.Attribute('for', id),
+          Ui.className<Message>(
+            'inline-flex w-fit cursor-pointer select-none items-center text-[0.7rem] font-semibold uppercase leading-none tracking-wide text-white/45 transition hover:text-[#f1efe8] peer-focus-visible:text-[#f1efe8] peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#ffb400] peer-checked:[&>.trace-clamp-more]:hidden [&>.trace-clamp-less]:hidden peer-checked:[&>.trace-clamp-less]:inline',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('trace-clamp-more')], ['Show more']),
+          h.span([Ui.className<Message>('trace-clamp-less')], ['Show less']),
+        ],
+      ),
+    ],
+  )
+}
+
+// Markdown prose, collapsed by default past a few lines with the same stateless
+// show-more toggle, for long prose observations (agent sub-reports). Short prose
+// renders inline. The clamp uses a `max-h` window (Markdown renders to varied
+// block elements, so a line-clamp on a single element does not apply); the
+// checkbox-hack lifts the cap. Mirrors `clampedPre`'s affordance for visual
+// consistency across the timeline.
+const clampedProse = <Message>(markdown: string): Html => {
+  const h = html<Message>()
+
+  if (markdown.length <= CLAMP_THRESHOLD) {
+    return prose<Message>(markdown)
+  }
+
+  const id = `clamp-${clampId(markdown)}`
+  return h.div(
+    [
+      Ui.className<Message>('grid gap-1.5'),
+      h.DataAttribute('component', 'trace-clamp'),
+    ],
+    [
+      h.input([
+        h.Type('checkbox'),
+        Ui.className<Message>('peer sr-only'),
+        h.Id(id),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'relative max-h-48 overflow-hidden [mask-image:linear-gradient(to_bottom,#000_70%,transparent)] peer-checked:max-h-none peer-checked:overflow-visible peer-checked:[mask-image:none]',
+          ),
+        ],
+        [AiElements.response<Message>({ markdown })],
+      ),
+      h.label(
+        [
+          h.Attribute('for', id),
+          Ui.className<Message>(
+            'inline-flex w-fit cursor-pointer select-none items-center text-[0.7rem] font-semibold uppercase leading-none tracking-wide text-white/45 transition hover:text-[#f1efe8] peer-focus-visible:text-[#f1efe8] peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#ffb400] peer-checked:[&>.trace-clamp-more]:hidden [&>.trace-clamp-less]:hidden peer-checked:[&>.trace-clamp-less]:inline',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('trace-clamp-more')], ['Show more']),
+          h.span([Ui.className<Message>('trace-clamp-less')], ['Show less']),
+        ],
+      ),
+    ],
+  )
+}
+
+// A header meta cell: stacked label over value, in a full-width strip (no
+// cards). `flex-1` + a min width lets the cells share the row and use the
+// available width (#6223); `basis-0` keeps the share even regardless of value
+// length.
 const metaCell = <Message>(label: string, value: Html): Html => {
   const h = html<Message>()
   return h.div(
-    [Ui.className<Message>('grid gap-1.5')],
+    [Ui.className<Message>('grid flex-1 basis-28 content-start gap-1.5')],
     [metaLabel<Message>(label), value],
   )
 }
@@ -284,7 +451,10 @@ const header = <Message>(trajectory: Trajectory, uuid: string): Html => {
             ],
             [`trace · ${shortId(uuid)}`],
           ),
-          verdictBadge,
+          h.div(
+            [Ui.className<Message>('flex items-center gap-2')],
+            [copyMarkdownButton<Message>(trajectory), verdictBadge],
+          ),
         ],
       ),
       h.h1(
@@ -296,14 +466,77 @@ const header = <Message>(trajectory: Trajectory, uuid: string): Html => {
         ],
         ['Agent session trace'],
       ),
+      // Full-width meta strip (#6223): a single horizontal row of cells that
+      // uses the available width, divided by hairline borders, instead of a
+      // narrow stacked column. `flex-1` lets each cell share the row evenly; it
+      // wraps to a second line only when the viewport is genuinely too narrow.
       h.div(
         [
           Ui.className<Message>(
-            'grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3 md:grid-cols-5',
+            'flex flex-wrap items-stretch gap-x-8 gap-y-5 border-t border-[#1d1d1d] pt-5',
           ),
+          h.DataAttribute('component', 'trace-meta'),
         ],
         metaCells,
       ),
+    ],
+  )
+}
+
+// The "Copy all as Markdown" button (#6223): serializes the WHOLE trajectory to
+// clean Markdown and copies it to the clipboard. Stateless inline `onclick` (the
+// same no-framework affordance pattern as the per-step copy-link button), with
+// the serialized Markdown embedded as a data attribute so no client state or
+// fetch is needed. The label swaps to "Copied" for a beat on success.
+const copyMarkdownButton = <Message>(trajectory: Trajectory): Html => {
+  const h = html<Message>()
+  const markdown = trajectoryToMarkdown(trajectory)
+  return h.button(
+    [
+      h.Type('button'),
+      h.AriaLabel('Copy the whole trace as Markdown'),
+      h.Title('Copy the whole trace as Markdown'),
+      h.DataAttribute('component', 'trace-copy-markdown'),
+      h.DataAttribute('markdown', markdown),
+      Ui.className<Message>(
+        `inline-flex items-center gap-1.5 border border-[#222] px-3 py-1.5 text-[0.7rem] font-semibold uppercase leading-none tracking-wide text-white/55 transition hover:border-[#333] hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ffb400] ${mono}`,
+      ),
+      h.Attribute(
+        'onclick',
+        `(function(b){var m=b.getAttribute('data-markdown')||'';try{navigator.clipboard.writeText(m);}catch(e){}var l=b.querySelector('[data-copy-label]');if(l){var t=l.textContent;l.textContent='Copied';setTimeout(function(){l.textContent=t;},1400);}})(this)`,
+      ),
+    ],
+    [
+      h.svg(
+        [
+          h.AriaHidden(true),
+          Ui.className<Message>('size-3.5'),
+          h.Xmlns('http://www.w3.org/2000/svg'),
+          h.ViewBox('0 0 24 24'),
+          h.Fill('none'),
+          h.Attribute('stroke', 'currentColor'),
+          h.Attribute('stroke-width', '2'),
+          h.Attribute('stroke-linecap', 'round'),
+          h.Attribute('stroke-linejoin', 'round'),
+        ],
+        [
+          h.rect(
+            [
+              h.Attribute('x', '9'),
+              h.Attribute('y', '9'),
+              h.Attribute('width', '13'),
+              h.Attribute('height', '13'),
+              h.Attribute('rx', '2'),
+            ],
+            [],
+          ),
+          h.path(
+            [h.D('M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1')],
+            [],
+          ),
+        ],
+      ),
+      h.span([h.DataAttribute('copy-label', '')], ['Copy Markdown']),
     ],
   )
 }
@@ -458,12 +691,7 @@ const goalNode = <Message>(goal: string): Html => {
         ),
       ],
     ),
-    body: [
-      h.p(
-        [Ui.className<Message>('mt-2 text-base/7 text-white/85')],
-        [goal],
-      ),
-    ],
+    body: [prose<Message>(goal, 'mt-2 text-white/85')],
   })
 }
 
@@ -473,20 +701,36 @@ const toolCallBlock = <Message>(call: ToolCall): Html => {
   const h = html<Message>()
   const args = Object.entries(call.arguments)
 
+  // Arg values are code/commands (a multi-line Bash `command`, a giant Agent()
+  // `prompt`, a diff `old_string`/`new_string`, a file path) — kept monospace,
+  // NEVER Markdown. A short single-line value renders inline next to its key; a
+  // long or multi-line value collapses by default in a clamped `<pre>` so one
+  // giant arg can't dump full-height and swamp the timeline.
   const argRows = args.map(([key, value]) => {
     const rendered =
       typeof value === 'string' ? value : stringifyJson(value)
+    const isLong =
+      rendered.length > PRE_CLAMP_THRESHOLD || rendered.includes('\n')
+
+    if (!isLong) {
+      return h.div(
+        [Ui.className<Message>('grid grid-cols-[auto_1fr] gap-x-3')],
+        [
+          h.span([Ui.className<Message>(`text-white/40 ${mono}`)], [`${key}`]),
+          h.span(
+            [Ui.className<Message>(`break-words text-[#f1efe8] ${mono}`)],
+            [rendered],
+          ),
+        ],
+      )
+    }
+
+    // Long value: key on its own line, then a collapsible monospace block.
     return h.div(
-      [Ui.className<Message>('grid grid-cols-[auto_1fr] gap-x-3')],
+      [Ui.className<Message>('grid gap-1')],
       [
-        h.span(
-          [Ui.className<Message>(`text-white/40 ${mono}`)],
-          [`${key}`],
-        ),
-        h.span(
-          [Ui.className<Message>(`break-words text-[#f1efe8] ${mono}`)],
-          [rendered],
-        ),
+        h.span([Ui.className<Message>(`text-white/40 ${mono}`)], [`${key}`]),
+        clampedPre<Message>(rendered, `text-[#f1efe8] ${mono} text-xs leading-5`),
       ],
     )
   })
@@ -543,25 +787,35 @@ const observationBlock = <Message>(
   const rows = results.map(result => {
     const content = result.content ?? ''
     const failed = content.startsWith('FAILED')
-    // Long observation dumps (e.g. a verbose FAILED result) clamp to a few
-    // lines with a stateless "show more" toggle so one noisy step can't swamp
-    // the timeline; short results render inline unchanged.
+
+    // An observation result is EITHER an agent sub-report (prose Markdown — an
+    // Agent() tool returning a written summary) OR raw tool stdout (a file
+    // listing, grep output, git output). Prose renders through the shared
+    // Markdown renderer, collapsed past a few lines; stdout renders verbatim in
+    // a clamped monospace `<pre>` so newlines and columns stay aligned and the
+    // (sometimes huge) dump can't swamp the timeline. A failed result is always
+    // shown verbatim in the negative tone.
+    const bodyNode =
+      !failed && looksLikeProse(content)
+        ? clampedProse<Message>(content)
+        : clampedPre<Message>(
+            content,
+            `text-sm leading-6 ${failed ? 'text-[#d32f2f]' : 'text-white/75'} ${mono}`,
+          )
+
     return h.div(
-      [Ui.className<Message>('grid gap-1')],
+      [Ui.className<Message>('grid gap-1.5')],
       [
-        clampedText<Message>(
-          content,
-          `break-words whitespace-pre-wrap text-sm leading-6 ${failed ? 'text-[#d32f2f]' : 'text-white/75'} ${mono}`,
-        ),
+        bodyNode,
         ...(result.source_call_id !== undefined
           ? [
               h.span(
                 [
                   Ui.className<Message>(
-                    `text-[0.625rem] leading-none text-white/30 ${mono}`,
+                    `text-[0.625rem] leading-none text-white/25 ${mono}`,
                   ),
                 ],
-                [`← ${result.source_call_id}`],
+                [`↳ ${result.source_call_id}`],
               ),
             ]
           : []),
@@ -571,9 +825,7 @@ const observationBlock = <Message>(
 
   return h.div(
     [
-      Ui.className<Message>(
-        'mt-3 border-l-0 border-t border-[#222] pt-3',
-      ),
+      Ui.className<Message>('mt-3 border-t border-[#222] pt-3'),
       h.DataAttribute('component', 'trace-observation'),
     ],
     [
@@ -585,7 +837,7 @@ const observationBlock = <Message>(
         ],
         ['Observation'],
       ),
-      h.div([Ui.className<Message>('mt-2 grid gap-2')], rows),
+      h.div([Ui.className<Message>('mt-2.5 grid gap-3')], rows),
     ],
   )
 }
@@ -612,9 +864,11 @@ const reasoningBlock = <Message>(
         ],
         ['Reasoning'],
       ),
+      // Reasoning is model prose — Markdown, collapsed past a few lines with the
+      // same stateless show-more toggle the rest of the timeline uses.
       h.div(
-        [Ui.className<Message>('mt-2.5')],
-        [clampedText<Message>(reasoning, 'm-0 text-sm/6 text-white/65')],
+        [Ui.className<Message>('mt-2.5 text-white/65')],
+        [clampedProse<Message>(reasoning)],
       ),
     ],
   )
@@ -668,13 +922,12 @@ const stepNode = <Message>(
             : []),
         ],
       ),
-      h.p(
-        [
-          Ui.className<Message>(
-            'm-0 break-words text-base font-medium leading-6 text-[#f1efe8]',
-          ),
-        ],
-        [step.message],
+      // The agent narration carries Markdown (`**bold**`, `##`, lists, code) on
+      // real steps — render it as prose, not raw monospace. The `text-[#f1efe8]`
+      // + medium weight keeps narration the visually-dominant line of the step.
+      prose<Message>(
+        step.message,
+        'break-words text-[#f1efe8] [&_p]:font-medium [&_p]:leading-6',
       ),
       ...(tokenBits.length > 0
         ? [
@@ -892,9 +1145,15 @@ const hashScrollScript = <Message>(): Html => {
 const traceArticle = <Message>(
   trajectory: Trajectory,
   uuid: string,
+  blobRefs?: ReadonlyArray<BlobRef>,
 ): Html => {
   const h = html<Message>()
-  const videoSrc = traceVideoSrc(trajectory)
+  // #6223: prefer the envelope blobRefs for the recording (a real ingested
+  // trace), falling back to the committed sample's bundled clip. Screenshots
+  // come only from blobRefs. The recording renders INLINE near the top (right
+  // after the header) so the visual evidence leads, not trails, the timeline.
+  const videoSrc = traceVideoBlobSrc(uuid, blobRefs, trajectory)
+  const screenshots = traceScreenshotBlobSrcs(uuid, blobRefs)
 
   return h.article(
     [
@@ -903,10 +1162,62 @@ const traceArticle = <Message>(
     ],
     [
       header<Message>(trajectory, uuid),
-      timeline<Message>(trajectory),
       ...(videoSrc !== undefined ? [videoSection<Message>(videoSrc)] : []),
+      ...(screenshots.length > 0
+        ? [screenshotsSection<Message>(screenshots)]
+        : []),
+      timeline<Message>(trajectory),
       finalMetricsSection<Message>(trajectory),
       hashScrollScript<Message>(),
+    ],
+  )
+}
+
+// Inline screenshot evidence (#6223). Renders each blob-served image in a
+// compact framed strip. Lazy-loaded; a broken/absent endpoint degrades to an
+// empty frame rather than failing the page.
+const screenshotsSection = <Message>(
+  shots: ReadonlyArray<{ src: string; caption: string | undefined }>,
+): Html => {
+  const h = html<Message>()
+  return h.section(
+    [Ui.className<Message>('mt-12'), h.DataAttribute('component', 'trace-screenshots')],
+    [
+      sectionHeading<Message>('Screenshots'),
+      h.div(
+        [
+          Ui.className<Message>(
+            'mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2',
+          ),
+        ],
+        shots.map(shot =>
+          h.figure(
+            [Ui.className<Message>('m-0 grid gap-2')],
+            [
+              h.img([
+                h.Src(shot.src),
+                h.Attribute('loading', 'lazy'),
+                h.Alt(shot.caption ?? 'Trace screenshot'),
+                Ui.className<Message>(
+                  'w-full border border-[#222] bg-[#010102]',
+                ),
+              ]),
+              ...(shot.caption !== undefined
+                ? [
+                    h.figcaption(
+                      [
+                        Ui.className<Message>(
+                          `m-0 text-[0.7rem] leading-5 text-white/40 ${mono}`,
+                        ),
+                      ],
+                      [shot.caption],
+                    ),
+                  ]
+                : []),
+            ],
+          ),
+        ),
+      ),
     ],
   )
 }
@@ -1004,7 +1315,15 @@ export type TraceRouteLike = Readonly<{ _tag: 'Trace'; uuid: string }>
 export type TraceLoadState =
   | Readonly<{ _tag: 'TraceIdle' }>
   | Readonly<{ _tag: 'TraceLoading'; uuid: string }>
-  | Readonly<{ _tag: 'TraceLoaded'; uuid: string; trajectory: Trajectory }>
+  | Readonly<{
+      _tag: 'TraceLoaded'
+      uuid: string
+      trajectory: Trajectory
+      // Public-safe envelope blob refs (#6223): the trace's recording +
+      // screenshots in R2. Optional so a stale/older load state without them
+      // still renders (the video section just omits).
+      blobRefs?: ReadonlyArray<BlobRef>
+    }>
   | Readonly<{ _tag: 'TraceNotFound'; uuid: string }>
   | Readonly<{ _tag: 'TraceFailed'; uuid: string; error: string }>
 
@@ -1031,7 +1350,11 @@ const traceBody = <Message>(
       case 'TraceLoading':
         return skeletonArticle<Message>()
       case 'TraceLoaded':
-        return traceArticle<Message>(loadState.trajectory, route.uuid)
+        return traceArticle<Message>(
+          loadState.trajectory,
+          route.uuid,
+          loadState.blobRefs,
+        )
       case 'TraceNotFound':
       case 'TraceFailed':
         return notFoundArticle<Message>(route.uuid)

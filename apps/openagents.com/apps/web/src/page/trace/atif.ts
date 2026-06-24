@@ -199,6 +199,58 @@ export const traceVideoSrc = (trajectory: Trajectory): string | undefined => {
 
 export const SAMPLE_VIDEO_SRC = '/pro-assets/sample-session.webm'
 
+// ---------------------------------------------------------------------------
+// Blob refs (#6223). A trace's recording + screenshots live in R2; the read API
+// returns their public-safe keys on the envelope as `trace.blobRefs[]` (NOT in
+// the ATIF trajectory). The page resolves each ref to a blob-serving URL
+// `/api/traces/{uuid}/blob/{r2Key}` (a visibility-gated worker endpoint). This
+// is the envelope projection shape, mirroring the worker's `TraceBlobRefSchema`
+// — it is separate from the pinned ATIF `Trajectory` contract above.
+// ---------------------------------------------------------------------------
+
+export const BlobRef = S.Struct({
+  kind: S.Literals(['video', 'screenshot', 'image']),
+  r2Key: S.String,
+  contentType: S.optionalKey(S.String),
+  caption: S.optionalKey(S.String),
+})
+export type BlobRef = typeof BlobRef.Type
+
+// The visibility-gated blob-serving URL for one R2 key of a trace. The worker
+// streams the object (and enforces the trace's visibility) at this path.
+export const traceBlobUrl = (uuid: string, r2Key: string): string =>
+  `/api/traces/${encodeURIComponent(uuid)}/blob/${r2Key
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`
+
+// The video src for a trace, preferring the envelope blobRefs (a real ingested
+// trace) and falling back to the committed sample's bundled recording (the
+// sample trajectory carries `extra.artifacts.video` but no blobRefs). Returns
+// undefined when there is no video to show, so the page omits the section.
+export const traceVideoBlobSrc = (
+  uuid: string,
+  blobRefs: ReadonlyArray<BlobRef> | undefined,
+  trajectory: Trajectory,
+): string | undefined => {
+  const videoRef = (blobRefs ?? []).find(ref => ref.kind === 'video')
+  if (videoRef !== undefined) return traceBlobUrl(uuid, videoRef.r2Key)
+  return traceVideoSrc(trajectory)
+}
+
+// The screenshot blob srcs for a trace (envelope blobRefs only). Empty when
+// none, so the page renders nothing.
+export const traceScreenshotBlobSrcs = (
+  uuid: string,
+  blobRefs: ReadonlyArray<BlobRef> | undefined,
+): ReadonlyArray<{ src: string; caption: string | undefined }> =>
+  (blobRefs ?? [])
+    .filter(ref => ref.kind === 'screenshot' || ref.kind === 'image')
+    .map(ref => ({
+      src: traceBlobUrl(uuid, ref.r2Key),
+      caption: ref.caption,
+    }))
+
 // The first `source: "user"` step is the goal; fall back to none.
 export const traceGoal = (trajectory: Trajectory): string | undefined =>
   trajectory.steps.find(step => step.source === 'user')?.message
@@ -206,6 +258,86 @@ export const traceGoal = (trajectory: Trajectory): string | undefined =>
 // Steps rendered as agent timeline nodes (everything after the user goal).
 export const agentSteps = (trajectory: Trajectory): ReadonlyArray<Step> =>
   trajectory.steps.filter(step => step.source !== 'user')
+
+// ---------------------------------------------------------------------------
+// Markdown serialization (#6223, "Copy all as Markdown").
+// ---------------------------------------------------------------------------
+
+// Serialize a whole trajectory to clean, pasteable Markdown: the goal, then each
+// agent step (heading, narration, fenced tool calls, quoted observations). Pure;
+// no I/O. Used by the "Copy all as Markdown" button so a reader can paste a
+// readable transcript anywhere.
+export const trajectoryToMarkdown = (trajectory: Trajectory): string => {
+  const lines: string[] = []
+  const verdict = verdictLabel(traceVerdict(trajectory))
+  const target = traceTarget(trajectory)
+  const model =
+    trajectory.agent.model_name ?? trajectory.steps[1]?.model_name ?? 'unknown'
+
+  lines.push(`# Agent session trace`)
+  lines.push('')
+  const headerBits = [
+    `Agent: ${trajectory.agent.name}`,
+    `Model: ${model}`,
+    ...(target !== undefined ? [`Target: ${target.name}`] : []),
+    `Verdict: ${verdict}`,
+  ]
+  lines.push(headerBits.join(' · '))
+  lines.push('')
+
+  const goal = traceGoal(trajectory)
+  if (goal !== undefined) {
+    lines.push('## Goal')
+    lines.push('')
+    lines.push(goal.trim())
+    lines.push('')
+  }
+
+  for (const step of agentSteps(trajectory)) {
+    lines.push(`## Step ${step.step_id}`)
+    lines.push('')
+    if (step.message.trim() !== '') {
+      lines.push(step.message.trim())
+      lines.push('')
+    }
+    for (const call of step.tool_calls ?? []) {
+      const args = Object.entries(call.arguments)
+        .map(([key, value]) => {
+          const rendered =
+            typeof value === 'string' ? value : JSON.stringify(value)
+          return `${key}: ${rendered}`
+        })
+        .join('\n')
+      lines.push('```')
+      lines.push(`${call.function_name}(`)
+      if (args !== '') lines.push(args)
+      lines.push(')')
+      lines.push('```')
+      lines.push('')
+    }
+    const results = step.observation?.results ?? []
+    if (results.length > 0) {
+      lines.push('Observation:')
+      lines.push('')
+      for (const result of results) {
+        const content = (result.content ?? '').trim()
+        if (content === '') continue
+        // Quote each observation line so the transcript reads as evidence.
+        for (const line of content.split('\n')) lines.push(`> ${line}`)
+        lines.push('')
+      }
+    }
+    if (step.reasoning_content !== undefined && step.reasoning_content.trim() !== '') {
+      lines.push('Reasoning:')
+      lines.push('')
+      lines.push(step.reasoning_content.trim())
+      lines.push('')
+    }
+  }
+
+  // Collapse any trailing blank lines into a single newline.
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`
+}
 
 // ---------------------------------------------------------------------------
 // Number formatting (compact, honest).
