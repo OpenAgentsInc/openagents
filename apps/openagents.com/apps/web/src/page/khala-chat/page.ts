@@ -362,6 +362,124 @@ const infoPopup = <Message>(
   )
 }
 
+// INSTRUCTIONS PAGE (the /khala overlay) ---------------------------------
+//
+// /khala renders a concise API-instructions panel over the dimmed scene. The
+// generic chat box is intentionally NOT shown here yet (not ready); this is the
+// AGENTS.md "Run inference" basics — base URL, single model, the free self-serve
+// token, a copy-paste curl — so a visitor can start calling Khala immediately.
+export const KHALA_INSTRUCTIONS_ATTR = 'khala-instructions'
+
+const instructionsCurl =
+  'KEY=$(curl -s -X POST https://openagents.com/api/keys/free | jq -r .credential.token)\n\n' +
+  'curl https://openagents.com/api/v1/chat/completions \\\n' +
+  '  -H "Authorization: Bearer $KEY" \\\n' +
+  '  -H "Content-Type: application/json" \\\n' +
+  '  -d \'{"model":"openagents/khala","messages":[{"role":"user","content":"hello"}]}\''
+
+export const instructionsView = <Message>(): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      h.DataAttribute(KHALA_INSTRUCTIONS_ATTR, ''),
+      Ui.className<Message>(
+        'pointer-events-auto absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-6 sm:items-center',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid w-full max-w-xl gap-5 rounded-xl border border-[#1d2733] ' +
+              'bg-[#04070c]/90 p-7 shadow-2xl backdrop-blur-md',
+          ),
+        ],
+        [
+          h.div([Ui.className<Message>(eyebrowClass)], ['Research preview']),
+          h.h1(
+            [
+              Ui.className<Message>(
+                'm-0 font-semibold text-white text-3xl tracking-tight',
+              ),
+            ],
+            [KHALA_HEADING],
+          ),
+          infoRow<Message>('Khala', [
+            'We are Khala — one OpenAI-compatible endpoint over a network of agents. ' +
+              'You call a single API; underneath, requests are routed and orchestrated across a pool ' +
+              'of models, tools, and validators, with receipt-backed disclosure about what happened.',
+          ]),
+          infoRow<Message>('Model', [
+            'One public model id: ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala']),
+            '. The orchestrator picks the backing lane; you buy the outcome.',
+          ]),
+          infoRow<Message>('API', [
+            'OpenAI-compatible. Point any OpenAI client at the base URL ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['https://openagents.com/api/v1']),
+            ' and call ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['/chat/completions']),
+            '. Streaming works over standard Server-Sent Events (set ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['"stream": true']),
+            ').',
+          ]),
+          infoRow<Message>('Free token', [
+            'Free to use, no signup. Mint a key with ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['POST /api/keys/free']),
+            ' (use the returned ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['credential.token']),
+            '), then send it as ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
+            '. Free quota: 200 requests/day, 200,000 tokens/day.',
+          ]),
+          h.div(
+            [Ui.className<Message>('grid gap-1.5')],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[#8fb6ff]',
+                  ),
+                ],
+                ['Try it'],
+              ),
+              h.pre(
+                [
+                  Ui.className<Message>(
+                    'm-0 overflow-x-auto rounded bg-[#101926] p-3 font-mono text-[0.72rem] ' +
+                      'leading-[1.5] text-[#cfe0ff] ring-1 ring-inset ring-[#3a7bff]/15',
+                  ),
+                ],
+                [instructionsCurl],
+              ),
+            ],
+          ),
+          h.p(
+            [
+              Ui.className<Message>(
+                'm-0 border-t border-[#1d2733] pt-4 font-mono text-[0.75rem] leading-[1.5] text-[#7e8a98]',
+              ),
+            ],
+            [
+              'Full details for agents live at ',
+              h.a(
+                [
+                  h.Href('https://openagents.com/AGENTS.md'),
+                  Ui.className<Message>(
+                    'text-[#7fc4ff] underline decoration-[#3a7bff]/50 underline-offset-2 hover:text-[#4fd0ff]',
+                  ),
+                ],
+                ['AGENTS.md'],
+              ),
+              '.',
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 // OVERLAY -----------------------------------------------------------------
 
 // The chat overlay: the chat box floating over the dimmed scene, plus the small

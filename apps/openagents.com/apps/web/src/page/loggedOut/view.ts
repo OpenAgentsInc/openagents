@@ -31,14 +31,10 @@ import * as TraceCompare from '../trace-compare'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
   ClickedAutopilotOnboardingStartOver,
-  ClosedKhalaChatInfo,
   Message,
-  OpenedKhalaChatInfo,
   RequestedLandingLogout,
   SubmittedAutopilotOnboardingTurn,
-  SubmittedKhalaChatTurn,
   UpdatedAutopilotOnboardingComposer,
-  UpdatedKhalaChatComposer,
 } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
@@ -135,22 +131,18 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
-  // /khala: the generic Khala chat box mounts as the overlay of the SAME
-  // persistent scene at the `khala` pose (no second scene). The page renders ONLY
-  // the chat box + the "What is Khala?" info popup over the dimmed scene; the
-  // long-form explainer is gone (condensed into the popup).
+  // /khala: a concise API-instructions panel mounts as the overlay of the SAME
+  // persistent scene at the `khala` pose (no second scene). The generic chat box
+  // is intentionally NOT shown yet (not ready) — the page renders the AGENTS.md
+  // "Run inference" basics (base URL, single model, free self-serve token, curl)
+  // over the dimmed scene so a visitor can start calling Khala immediately.
   if (model.route._tag === 'Khala') {
     return Ui.pageShell<Message>([
       PersistentScene.view(
         'Khala',
         model.copiedAgentInstructions,
         undefined,
-        KhalaChatPage.overlayView<Message>(model.khalaChat, {
-          updatedComposer: value => UpdatedKhalaChatComposer({ value }),
-          submittedTurn: () => SubmittedKhalaChatTurn(),
-          openedInfo: () => OpenedKhalaChatInfo(),
-          closedInfo: () => ClosedKhalaChatInfo(),
-        }),
+        KhalaChatPage.instructionsView<Message>(),
       ),
     ])
   }

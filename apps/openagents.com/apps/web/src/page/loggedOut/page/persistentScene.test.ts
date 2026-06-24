@@ -249,45 +249,20 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
-  test('renders the Khala chat box over the same persistent scene surface', () => {
+  test('renders the Khala API-instructions panel over the same persistent scene', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(KhalaRoute())),
       Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
-      // The chat box (composer + thread) and the info trigger mount over the
-      // dimmed scene; the long-form explainer is gone (condensed into the popup).
-      Scene.expect(Scene.selector('[data-khala-chat]')).toExist(),
-      Scene.expect(Scene.selector('[data-khala-chat-composer]')).toExist(),
-      Scene.expect(Scene.selector('[data-khala-chat-transcript]')).toExist(),
-      Scene.expect(Scene.selector('[data-khala-chat-info-trigger]')).toExist(),
-      Scene.expect(Scene.text('Ask Khala what it can do.')).toExist(),
-      // The removed explainer sections (e.g. "01 What is Khala") are no longer
-      // rendered inline on the page.
-      Scene.expect(Scene.text('What is Khala')).not.toExist(),
-      Scene.expect(
-        Scene.text('The public Khala catalog uses two model ids'),
-      ).not.toExist(),
-    )
-  })
-
-  test('opens and closes the "What is Khala?" info popup', () => {
-    Scene.scene(
-      { update, view },
-      Scene.with(LoggedOut.init(KhalaRoute())),
-      // The info popup is closed on first paint.
-      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),
-      // Clicking the info trigger opens the popup.
-      Scene.click(Scene.selector('[data-khala-chat-info-trigger]')),
-      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).toExist(),
-      Scene.expect(Scene.text('What is Khala?')).toExist(),
-      // The popup carries the condensed, truthful Khala basics.
+      // The instructions panel mounts over the dimmed scene. The generic chat box
+      // is intentionally NOT shown yet (not ready).
+      Scene.expect(Scene.selector('[data-khala-instructions]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat]')).not.toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-composer]')).not.toExist(),
+      // The panel carries the API basics: single model + base URL + free token.
       Scene.expect(Scene.text('openagents/khala')).toExist(),
       Scene.expect(Scene.text('https://openagents.com/api/v1')).toExist(),
-      // ...and the free self-serve key flow.
       Scene.expect(Scene.text('POST /api/keys/free')).toExist(),
-      // Clicking Close dismisses it.
-      Scene.click(Scene.selector('[aria-label="Close"]')),
-      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),
     )
   })
 
