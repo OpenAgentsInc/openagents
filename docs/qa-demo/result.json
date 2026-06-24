@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "openagents.qa_runner.result.v1",
+  "status": "pass",
+  "target": {
+    "name": "openagents.com",
+    "baseUrl": "https://openagents.com"
+  },
+  "brain": "khala",
+  "backend": "local",
+  "startedAt": "2026-06-24T07:22:47.806Z",
+  "endedAt": "2026-06-24T07:23:04.894Z",
+  "durationMs": 17088,
+  "steps": [
+    {
+      "index": 0,
+      "kind": "navigate",
+      "label": "navigate to /login",
+      "status": "ok"
+    },
+    {
+      "index": 1,
+      "kind": "readText",
+      "label": "read text ",
+      "status": "ok"
+    },
+    {
+      "index": 2,
+      "kind": "assert",
+      "label": "Login page contains 'Log in to OpenAgents'",
+      "status": "ok"
+    },
+    {
+      "index": 3,
+      "kind": "assert",
+      "label": "URL still includes /login",
+      "status": "ok"
+    },
+    {
+      "index": 4,
+      "kind": "screenshot",
+      "label": "screenshot login_page",
+      "status": "ok"
+    }
+  ],
+  "artifacts": {
+    "video": "session.mp4",
+    "videoFormat": "mp4",
+    "trace": "trace.zip",
+    "screenshots": [
+      "00-login-page.png"
+    ]
+  }
+}
