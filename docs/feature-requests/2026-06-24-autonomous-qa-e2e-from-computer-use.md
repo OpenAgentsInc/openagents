@@ -45,6 +45,12 @@ video.*
 5. **Open source + local.** Must be OSS and runnable locally.
 6. **Video output.** Emit videos that play back the run so a reviewer can watch
    what happened.
+7. **"Chill evals" — compare agent performance across changes.** *(Added after
+   the requester's follow-up, §5a.)* A first-class, low-ceremony way to answer
+   *"I want to see how agents perform with these MCP changes"* — run the same
+   scenario(s) across variants (a config/MCP-set/model change, before vs after)
+   and see the comparison (pass-rate, latency, behavior deltas) with the videos.
+   Evals, but exploratory and watchable — not a formal benchmark rig.
 
 Monetization he'd accept: a **hosted product** with VMs to run tests on; and/or
 **GitHub Sponsors** (he is "so desperate for a good version of this" he'd sponsor
@@ -172,6 +178,50 @@ So the build is: **keep executor's elegant Target / capabilities / artifact mode
 add the Khala-driven computer-use agent + session→scenario distiller, and run it
 on OpenAgents Cloud VMs with each run wrapped as a verified receipt.**
 
+## 5a. The requester's candid assessment — where the "last 10%" is
+
+Asked directly *"what's wrong with your implementation?"*, the requester was
+refreshingly honest, and his answer sharpens exactly where OpenAgents adds value:
+
+> "Mainly that it's **messy and I haven't actually reviewed the test setup that
+> much**. It also doesn't cleanly handle things like *'I want to see how agents
+> perform with these MCP changes'* (sorta evals but in a chill way). My setup is
+> **decent but the last 10% would go so far** on this."
+
+Three takeaways, each a concrete target:
+
+1. **Messy / under-reviewed harness → a clean, opinionated, *reviewed* harness is
+   the product.** His substrate is decent but he hasn't hardened or audited the
+   test setup itself. The OpenAgents version's job is the **last 10%**: a typed
+   (Effect) harness whose own test setup is reviewed and trustworthy, with the
+   ergonomics that make the good ideas usable — not a from-scratch reinvention.
+   This is why we *adopt* his Target/capabilities/artifact model (§4) rather than
+   rebuild it, and spend our effort on the finishing: the autonomous Khala driver,
+   the distiller, the receipt/verification wrapper, and the eval mode below.
+2. **"Chill evals" is a missing first-class mode (new requirement #7).** *"See how
+   agents perform with these MCP changes"* is a **comparison across variants**, not
+   a single pass/fail run: hold the scenario fixed, vary the agent's config — an
+   MCP-server set, a tool policy, a model/brain, a before/after of a change — and
+   show the delta (pass-rate, latency, behavior) with the videos side by side.
+   Crucially it's *chill*: exploratory and watchable, not a formal benchmark with
+   ceremony. This maps cleanly onto what we already have: the `qa-runner`'s
+   brain × backend × **target** already varies the run; add a **variant axis**
+   (MCP/tool/config/model) and a comparison report, and reuse the benchmark
+   harness's percentile/aggregate math (`inference/benchmark/report.ts`) for the
+   numbers. It is the executor multi-target idea generalized — vary the *agent*,
+   not just the deployment — and it is the daily-driver loop an MCP author (his
+   actual job — `executor` is an MCP tool catalog) wants.
+3. **"The last 10% would go so far" = the opportunity is finishing, not founding.**
+   The high-leverage work is precisely the parts he hasn't built: the autonomous
+   develop→distill loop, a reviewed harness, and the chill-eval comparison. That
+   is the brief.
+
+Implications folded into the rest of this doc: requirement #7 above; a **variant
+axis + comparison report** added to the build plan (§7) and architecture (§6, the
+runner already has the brain/backend/target seams to hang it on); and an explicit
+"reviewed, typed harness" quality bar as a first-class deliverable, not an
+afterthought.
+
 ## 6. Proposed architecture (how OpenAgents could build it)
 
 OpenAgents already owns most of the hard parts; the request is largely a
@@ -242,6 +292,13 @@ OpenAgents already owns most of the hard parts; the request is largely a
 - **Phase 2 — the distiller.** Turn a recorded session into a committed black-box
   scenario against `Target`, meeting the executor quality bar. The deliverable of
   an agent task becomes *(scenario + video + green run)*.
+- **Phase 2.5 — "chill evals" (variant comparison, requirement #7 / §5a).** Add a
+  *variant axis* to the runner (MCP-set / tool-policy / model-brain / before-after
+  of a change) and a comparison report: same scenario(s), N variants, side-by-side
+  pass-rate + latency + behavior deltas with the videos. Reuse the benchmark
+  harness aggregates (`inference/benchmark/report.ts`); keep it low-ceremony and
+  watchable. This is the daily-driver loop for an MCP author ("how do agents do
+  with these MCP changes?").
 - **Phase 3 — multi-OS + speed.** macOS (tart) and Windows (ephemeral) runners;
   parallel sharding; fast attach-to-running-instance loop.
 - **Phase 4 — hosted runners + sponsors.** Managed VM pool for runs (the
