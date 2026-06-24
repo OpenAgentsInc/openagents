@@ -6639,6 +6639,14 @@ const agentSiteRoutes = makeAgentSiteRoutes({
 const traceStoreRoutes = makeTraceStoreRoutes({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   appendRefreshedSessionCookies,
+  // Data-market revshare stub (#6221): INERT and owner-gated. Default OFF —
+  // even when armed, the recorded marker is eligible-only with a TBD amount and
+  // moves no money. Arm via TRACE_DATA_MARKET_REWARD_ENABLED.
+  dataMarketRewardArmed: env =>
+    isInferenceGatewayEnabled(
+      (env as { TRACE_DATA_MARKET_REWARD_ENABLED?: string })
+        .TRACE_DATA_MARKET_REWARD_ENABLED,
+    ),
   isAdminEmail: isOpenAgentsAdminEmail,
   makeStore: env => makeD1TraceStore(openAgentsDatabase(env)),
   requireBrowserSession,

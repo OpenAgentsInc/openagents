@@ -274,9 +274,11 @@ This is the invariant ledger for `openagents`.
   dereference real runs (#6208/#6212, epic #6206). Large blobs
   (video/screenshots) live in R2 and are referenced from the trajectory by
   public-safe R2 key only; the blob bytes are never stored in D1.
-- Ingest (`POST /api/traces`) is registered-agent-bearer authenticated and
-  requires an `Idempotency-Key`. The payload is schema-decoded against the
-  pinned `ATIF-v1.7` subset (`workers/api/src/atif-trace-schema.ts`),
+- Ingest (`POST /api/traces`, alias `POST /api/traces/upload`) is authenticated
+  by EITHER a registered-agent bearer token OR an authenticated user web
+  session (#6221) and requires an `Idempotency-Key`. A signed-in human owns the
+  upload (`ownerUserId` from the session). The payload is schema-decoded against
+  the pinned `ATIF-v1.7` subset (`workers/api/src/atif-trace-schema.ts`),
   structurally validated (sequential `step_id` from 1; observation
   `source_call_id` references a `tool_call`; agent-only fields only on agent
   steps), and then tripwired BEFORE persistence. The tripwire rejects (it does
@@ -301,6 +303,38 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/atif-trace-schema.test.ts` and
   `workers/api/src/trace-store-routes.test.ts`.
+
+## Trace Upload Data Market
+
+- The trace upload data market (#6221, epic #6206; migration
+  `0229_agent_trace_data_market.sql`) extends the Agent Trace Store so a
+  signed-in user (web session) or a registered agent (bearer) can upload a
+  trace they OWN. It reuses the same ingest validation, tripwire, visibility,
+  size/step/blob caps, and idempotency as #6208. It must not weaken any of those.
+- `training_consent` is the uploader's EXPLICIT grant to use the trace as
+  training/eval data for Khala. It DEFAULTS TO WITHHELD (`false`/`0`): consent
+  is never assumed, only captured at upload. `license` is an optional public-safe
+  label (bounded, max 120 chars). Both are surfaced public-safe in the read
+  projection (`dataMarket` block) and owner list.
+- The revshare reward marker (`reward_eligible`, `reward_amount_sats`) is INERT.
+  `reward_amount_sats` is always `null` ("reward TBD"). Eligibility is recorded
+  only when the data-market reward flag is ARMED
+  (`TRACE_DATA_MARKET_REWARD_ENABLED`, default OFF) AND consent was granted AND
+  the upload is not a duplicate. The marker grants NO payout, settlement, spend,
+  or accepted-work authority and moves NO money. No code path may turn this
+  marker into a real payment without an explicit owner-gated arming change and
+  its own settlement invariants.
+- Anti-abuse, in addition to #6208's caps: a per-user upload rate limit (a
+  bounded number of stored traces per owner per rolling window) returning 429,
+  and a per-owner content-digest dedup (a SHA-256 over the canonical public-safe
+  payload) returning 409 on a duplicate — a duplicate is never stored again and
+  never earns a second reward. The content digest is a dedup key only; it is not
+  a settlement or replay digest.
+- Redaction is the uploader/CLI's job (#6219). The ingest tripwire is still the
+  hard backstop: a payload carrying secrets/tokens/wallet/PII/local-paths/raw
+  provider model ids is REJECTED (422), never silently redacted or stored.
+- Regression coverage lives in `workers/api/src/trace-store-routes.test.ts`
+  (data market block).
 
 ## Pack A Autopilot Runtime Supervision
 

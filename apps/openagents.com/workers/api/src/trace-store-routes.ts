@@ -5,6 +5,7 @@ import {
   type AgentRegistrationStore,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
+  sha256Hex,
 } from './agent-registration'
 import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import {
@@ -20,25 +21,39 @@ import {
   unauthorized,
 } from './http/responses'
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 import {
   type TraceBlobRef,
   type TraceRecord,
   type TraceStore,
   TraceStoreError,
+  type TraceUploadSource,
   traceStoreErrorFromUnknown,
 } from './trace-store-d1'
 
 type HttpResponse = globalThis.Response
 
 /**
- * Trace store + ingest/read API (openagents #6208, epic #6206). Serves the
- * shareable `/trace/{uuid}` surface.
+ * Trace store + ingest/read API (openagents #6208, #6221, epic #6206). Serves
+ * the shareable `/trace/{uuid}` surface and the trace upload data market.
  *
- * - POST /api/traces (requireAgent + Idempotency-Key): validates, structurally
+ * - POST /api/traces (authenticated + Idempotency-Key): validates, structurally
  *   checks, and TRIPWIRES the public-safe ATIF trajectory, then stores it and
- *   returns `{ uuid }`. Rejects leaky payloads (secrets/tokens/wallet/PII/raw
- *   provider model ids) before persistence; rejects unauthenticated callers.
+ *   returns `{ uuid }`. Accepts EITHER a registered-agent bearer token OR an
+ *   authenticated user web session (#6221) — a signed-in human owns the upload
+ *   (`ownerUserId` from the session). Rejects leaky payloads
+ *   (secrets/tokens/wallet/PII/raw provider model ids) before persistence;
+ *   rejects unauthenticated callers.
+ * - Data market (#6221): the uploader can grant `trainingConsent` (default
+ *   WITHHELD) to use the trace as training/eval data for Khala, with an optional
+ *   public-safe `license` label. A per-trace revshare reward marker is recorded
+ *   INERT — eligible-only, amount TBD, flag-gated default-OFF, no money path.
+ *   Anti-abuse: per-user upload rate limiting + per-owner content-digest dedup
+ *   (a duplicate upload is rejected and never earns a second reward).
  * - GET /api/traces/{traceRef} (visibility-gated): public/unlisted need no auth;
  *   owner_only requires the owning browser session (or an admin). Returns the
  *   public-safe projection the page renders.
@@ -46,8 +61,8 @@ type HttpResponse = globalThis.Response
  *   own traces.
  *
  * A trace is evidence only. These routes grant no accepted-work, payout,
- * settlement, or public-claim authority (#6208/#6212, INVARIANTS "Agent Trace
- * Store").
+ * settlement, or public-claim authority (#6208/#6212/#6221, INVARIANTS "Agent
+ * Trace Store" + "Trace Upload Data Market"). The revshare marker is INERT.
  */
 
 // Bounded ingest size + per-trajectory step cap (abuse controls, #6212).
@@ -55,6 +70,11 @@ const MAX_INGEST_BODY_BYTES = 512 * 1024
 const MAX_STEPS = 2_000
 const MAX_BLOB_REFS = 200
 const OWNER_LIST_LIMIT = 100
+
+// Per-user upload rate limit (anti-abuse, #6221): at most this many stored
+// traces per owner within the rolling window.
+const UPLOAD_RATE_WINDOW_MS = 60 * 60 * 1000
+const UPLOAD_RATE_MAX_PER_WINDOW = 120
 
 // A trajectory model_name is verified by the tripwire; only `openagents/...`.
 const TraceBlobRefSchema = S.Struct({
@@ -64,6 +84,9 @@ const TraceBlobRefSchema = S.Struct({
   caption: S.optionalKey(S.String),
 })
 
+// A public-safe license label. Bounded; the tripwire still scans it for leaks.
+const LicenseSchema = S.String.check(S.isMaxLength(120))
+
 class IngestTraceRequest extends S.Class<IngestTraceRequest>(
   'IngestTraceRequest',
 )({
@@ -72,6 +95,10 @@ class IngestTraceRequest extends S.Class<IngestTraceRequest>(
     S.Literals(['public', 'unlisted', 'owner_only']),
   ),
   blobRefs: S.optionalKey(S.Array(TraceBlobRefSchema)),
+  // Data market (#6221): the uploader's explicit grant to use this trace as
+  // training/eval data for Khala. Omitted => WITHHELD (never assumed).
+  trainingConsent: S.optionalKey(S.Boolean),
+  license: S.optionalKey(LicenseSchema),
 }) {}
 
 type TraceBrowserSession = Readonly<{
@@ -97,6 +124,13 @@ type TraceStoreRouteDependencies<Bindings, Session extends TraceBrowserSession> 
     isAdminEmail: (email: string) => boolean
     makeId?: () => string
     nowIso?: () => string
+    /**
+     * Owner-gated arming of the INERT data-market revshare stub (#6221).
+     * Default OFF: when not armed, no reward-eligibility marker is recorded.
+     * Even when armed, the marker is eligible-only with a TBD amount — it moves
+     * no money and grants no payout/settlement/spend authority.
+     */
+    dataMarketRewardArmed?: (env: Bindings) => boolean
   }>
 
 // ---------------------------------------------------------------------------
@@ -128,12 +162,24 @@ class TraceForbidden extends S.TaggedErrorClass<TraceForbidden>()(
   {},
 ) {}
 
+class TraceRateLimited extends S.TaggedErrorClass<TraceRateLimited>()(
+  'TraceRateLimited',
+  {},
+) {}
+
+class TraceDuplicate extends S.TaggedErrorClass<TraceDuplicate>()(
+  'TraceDuplicate',
+  { uuid: S.String },
+) {}
+
 type TraceRouteError =
   | TraceUnauthorized
   | TraceValidationError
   | TraceTripwireRejected
   | TraceNotFound
   | TraceForbidden
+  | TraceRateLimited
+  | TraceDuplicate
   | TraceStoreError
 
 const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
@@ -142,6 +188,29 @@ const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
       TraceUnauthorized: () => unauthorized(),
       TraceForbidden: () =>
         noStoreJsonResponse({ error: 'forbidden' }, { status: 403 }),
+      TraceRateLimited: () =>
+        noStoreJsonResponse(
+          {
+            error: 'trace_rate_limited',
+            message:
+              'Trace upload rate limit reached for this account. Try again later.',
+          },
+          { status: 429 },
+        ),
+      TraceDuplicate: error =>
+        // Dedup (#6221): the same owner already uploaded this exact payload. We
+        // return the existing uuid (idempotent-ish) but never a second reward.
+        noStoreJsonResponse(
+          {
+            error: 'trace_duplicate',
+            message:
+              'An identical trace was already uploaded by this account; it was not stored again.',
+            uuid: error.uuid,
+            url: `/trace/${error.uuid}`,
+            duplicate: true,
+          },
+          { status: 409 },
+        ),
       TraceNotFound: () =>
         noStoreJsonResponse({ error: 'trace_not_found' }, { status: 404 }),
       TraceValidationError: error =>
@@ -234,6 +303,54 @@ const requireAgent = <Bindings, Session extends TraceBrowserSession>(
   )
 }
 
+/**
+ * A resolved upload identity (#6221). Either a registered agent (bearer) or an
+ * authenticated user web session. The uploader OWNS the resulting trace.
+ */
+type TraceUploader = Readonly<{
+  ownerUserId: string
+  agentRef: string
+  uploadSource: TraceUploadSource
+}>
+
+/**
+ * Resolve the uploader from EITHER a registered-agent bearer token OR an
+ * authenticated user web session. The agent-bearer path takes precedence when a
+ * bearer is present so existing agent ingest is unchanged; otherwise we fall
+ * back to the signed-in browser session so a human can upload + own a trace.
+ */
+const requireUploader = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+): Effect.Effect<TraceUploader, TraceUnauthorized> =>
+  Effect.gen(function* () {
+    if (bearerTokenFromRequest(request) !== undefined) {
+      const session = yield* requireAgent(dependencies, request, env)
+      return {
+        ownerUserId: session.user.id,
+        agentRef: `agent:${session.user.id}`,
+        uploadSource: 'agent' as const,
+      }
+    }
+
+    const session = yield* Effect.tryPromise({
+      catch: () => new TraceUnauthorized({}),
+      try: () => dependencies.requireBrowserSession(request, env, ctx),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+    if (session === undefined) {
+      return yield* new TraceUnauthorized({})
+    }
+
+    return {
+      ownerUserId: session.user.userId,
+      agentRef: `user:${session.user.userId}`,
+      uploadSource: 'user_session' as const,
+    }
+  })
+
 const publicTraceProjection = (record: TraceRecord) => ({
   uuid: record.traceUuid,
   schemaVersion: record.schemaVersion,
@@ -245,6 +362,18 @@ const publicTraceProjection = (record: TraceRecord) => ({
   trajectory: record.trajectory,
   blobRefs: record.blobRefs,
   createdAt: record.createdAt,
+  // Data market (#6221), public-safe. The reward marker is INERT: eligibility
+  // only, amount TBD; it moves no money and grants no payout authority.
+  dataMarket: {
+    trainingConsent: record.trainingConsent,
+    ...(record.license === null ? {} : { license: record.license }),
+    uploadSource: record.uploadSource,
+    reward: {
+      eligible: record.rewardEligible,
+      amountSats: record.rewardAmountSats,
+      status: 'tbd' as const,
+    },
+  },
   authority: {
     acceptedWorkAuthority: false,
     payoutAuthority: false,
@@ -259,6 +388,10 @@ const ownerTraceSummary = (record: TraceRecord) => ({
   agentRef: record.agentRef,
   stepCount: record.stepCount,
   createdAt: record.createdAt,
+  trainingConsent: record.trainingConsent,
+  ...(record.license === null ? {} : { license: record.license }),
+  uploadSource: record.uploadSource,
+  rewardEligible: record.rewardEligible,
 })
 
 // ---------------------------------------------------------------------------
@@ -269,9 +402,11 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
   dependencies: TraceStoreRouteDependencies<Bindings, Session>,
   request: Request,
   env: Bindings,
+  ctx: ExecutionContext,
 ): Effect.Effect<HttpResponse, TraceRouteError> =>
   Effect.gen(function* () {
-    const session = yield* requireAgent(dependencies, request, env)
+    const uploader = yield* requireUploader(dependencies, request, env, ctx)
+    const store = dependencies.makeStore(env)
 
     const idempotencyKey = idempotencyKeyFromRequest(request)
     if (idempotencyKey === undefined) {
@@ -349,7 +484,6 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
     const visibility: TraceVisibility =
       body.visibility ?? trajectory.visibility ?? 'unlisted'
 
-    const traceUuid = routeMakeId(dependencies)
     const nowIso = routeNowIso(dependencies)
     const blobRefs: ReadonlyArray<TraceBlobRef> = (body.blobRefs ?? []).map(
       ref => ({
@@ -362,13 +496,69 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
       }),
     )
 
+    // Per-user upload rate limit (anti-abuse, #6221). An idempotent replay of an
+    // already-stored trace is exempt — the create path returns it unchanged.
+    const sinceIso = isoTimestampAfterIso(nowIso, -UPLOAD_RATE_WINDOW_MS)
+    const recentCount = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => store.countTracesForOwnerSince(uploader.ownerUserId, sinceIso),
+    })
+    if (recentCount >= UPLOAD_RATE_MAX_PER_WINDOW) {
+      const replayExempt =
+        idempotencyKey !== undefined &&
+        (yield* Effect.tryPromise({
+          catch: traceStoreErrorFromUnknown,
+          try: () => store.readTraceByUuid(idempotencyKey),
+        }).pipe(Effect.catch(() => Effect.succeed(undefined)))) !== undefined
+      if (!replayExempt) {
+        return yield* new TraceRateLimited({})
+      }
+    }
+
+    // Content-digest dedup (#6221): a SHA-256 over the canonical public-safe
+    // payload. A duplicate upload from the same owner is rejected (no double
+    // reward). We dedup on the trajectory + blob refs, independent of the
+    // Idempotency-Key (a different key with identical content still dedups).
+    const contentDigest = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () =>
+        sha256Hex(
+          JSON.stringify({
+            ownerUserId: uploader.ownerUserId,
+            trajectory,
+            blobRefs,
+          }),
+        ),
+    })
+    const duplicate = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () =>
+        store.findTraceByOwnerDigest(uploader.ownerUserId, contentDigest),
+    })
+    if (duplicate !== undefined && duplicate.idempotencyKey !== idempotencyKey) {
+      return yield* new TraceDuplicate({ uuid: duplicate.traceUuid })
+    }
+
+    // Consent: WITHHELD unless explicitly granted (#6221). Never assumed.
+    const trainingConsent = body.trainingConsent === true
+    const license = body.license ?? null
+
+    // INERT revshare stub (#6221): a reward-eligibility marker, owner-gated by
+    // the data-market arming flag (default OFF) and only when consent is granted
+    // and this is a fresh (non-duplicate) upload. The amount stays null
+    // ("reward TBD"); NO money moves and NO payout authority is granted.
+    const rewardArmed = dependencies.dataMarketRewardArmed?.(env) ?? false
+    const rewardEligible = rewardArmed && trainingConsent
+    const rewardAmountSats = null
+
+    const traceUuid = routeMakeId(dependencies)
     const stored = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
       try: () =>
-        dependencies.makeStore(env).createTrace({
+        store.createTrace({
           traceUuid,
-          ownerUserId: session.user.id,
-          agentRef: `agent:${session.user.id}`,
+          ownerUserId: uploader.ownerUserId,
+          agentRef: uploader.agentRef,
           schemaVersion: trajectory.schema_version,
           trajectoryId: trajectory.trajectory_id,
           sessionId: trajectory.session_id ?? null,
@@ -377,6 +567,12 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
           trajectory,
           blobRefs,
           idempotencyKey,
+          trainingConsent,
+          license,
+          contentDigest,
+          rewardEligible,
+          rewardAmountSats,
+          uploadSource: uploader.uploadSource,
           nowIso,
         }),
     })
@@ -388,6 +584,18 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
         url: `/trace/${stored.record.traceUuid}`,
         visibility: stored.record.visibility,
         replay: !stored.created,
+        dataMarket: {
+          trainingConsent: stored.record.trainingConsent,
+          ...(stored.record.license === null
+            ? {}
+            : { license: stored.record.license }),
+          uploadSource: stored.record.uploadSource,
+          reward: {
+            eligible: stored.record.rewardEligible,
+            amountSats: stored.record.rewardAmountSats,
+            status: 'tbd' as const,
+          },
+        },
       },
       { status: stored.created ? 201 : 200 },
     )
@@ -498,7 +706,7 @@ export const makeTraceStoreRoutes = <
 
     if (url.pathname === '/api/traces') {
       if (request.method === 'POST') {
-        return routeIngest(dependencies, request, env).pipe(
+        return routeIngest(dependencies, request, env, ctx).pipe(
           Effect.map(withAgentRateLimitHeaders),
           Effect.catch(error =>
             Effect.succeed(
@@ -513,6 +721,20 @@ export const makeTraceStoreRoutes = <
         )
       }
       return Effect.succeed(methodNotAllowed(['GET', 'POST']))
+    }
+
+    // POST /api/traces/upload — explicit user-upload alias (#6221). Same ingest
+    // path (agent bearer OR user web session); friendlier for human uploads.
+    if (url.pathname === '/api/traces/upload') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+      return routeIngest(dependencies, request, env, ctx).pipe(
+        Effect.map(withAgentRateLimitHeaders),
+        Effect.catch(error =>
+          Effect.succeed(withAgentRateLimitHeaders(routeErrorResponse(error))),
+        ),
+      )
     }
 
     const readMatch = /^\/api\/traces\/([^/]+)$/.exec(url.pathname)

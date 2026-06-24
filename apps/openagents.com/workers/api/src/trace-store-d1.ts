@@ -37,6 +37,9 @@ export type TraceBlobRef = Readonly<{
   caption?: string
 }>
 
+/** How an upload authenticated (#6221). */
+export type TraceUploadSource = 'agent' | 'user_session'
+
 export type TraceRecord = Readonly<{
   traceUuid: string
   ownerUserId: string
@@ -50,6 +53,28 @@ export type TraceRecord = Readonly<{
   trajectory: unknown
   blobRefs: ReadonlyArray<TraceBlobRef>
   idempotencyKey: string | null
+  /**
+   * Data market (#6221). The uploader's explicit grant to use this trace as
+   * training/eval data for Khala. Defaults WITHHELD: consent is never assumed.
+   */
+  trainingConsent: boolean
+  /** Optional public-safe license label the uploader attached. */
+  license: string | null
+  /**
+   * SHA-256 hex digest over the canonical public-safe payload, used ONLY to
+   * dedup per-owner uploads (no double reward). Not a settlement digest.
+   */
+  contentDigest: string | null
+  /**
+   * INERT revshare stub (#6221). `rewardEligible` may be set when the
+   * data-market reward flag is armed, consent was granted, and the upload is
+   * not a duplicate; `rewardAmountSats` stays null ("reward TBD"). Grants no
+   * payout, settlement, spend, or accepted-work authority. No money moves.
+   */
+  rewardEligible: boolean
+  rewardAmountSats: number | null
+  /** Whether the upload arrived via agent bearer or a user web session. */
+  uploadSource: TraceUploadSource
   createdAt: string
   updatedAt: string
 }>
@@ -66,6 +91,12 @@ export type CreateTraceInput = Readonly<{
   trajectory: unknown
   blobRefs: ReadonlyArray<TraceBlobRef>
   idempotencyKey: string | null
+  trainingConsent: boolean
+  license: string | null
+  contentDigest: string | null
+  rewardEligible: boolean
+  rewardAmountSats: number | null
+  uploadSource: TraceUploadSource
   nowIso: string
 }>
 
@@ -87,6 +118,22 @@ export type TraceStore = Readonly<{
     ownerUserId: string,
     limit: number,
   ) => Promise<ReadonlyArray<TraceRecord>>
+  /**
+   * Dedup lookup (#6221): the existing trace for `(ownerUserId, contentDigest)`,
+   * if any. Used to reject duplicate uploads (no double reward).
+   */
+  findTraceByOwnerDigest: (
+    ownerUserId: string,
+    contentDigest: string,
+  ) => Promise<TraceRecord | undefined>
+  /**
+   * Per-user rate limiting (#6221): how many traces the owner has stored at or
+   * after `sinceIso`. Bounded; abuse control only.
+   */
+  countTracesForOwnerSince: (
+    ownerUserId: string,
+    sinceIso: string,
+  ) => Promise<number>
 }>
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
@@ -94,6 +141,14 @@ const nullableStr = (value: unknown): string | null =>
   typeof value === 'string' ? value : null
 const num = (value: unknown): number =>
   typeof value === 'number' ? value : Number(value ?? 0)
+const nullableNum = (value: unknown): number | null =>
+  value === null || value === undefined ? null : Number(value)
+// D1 stores booleans as 0/1 integers.
+const bool = (value: unknown): boolean =>
+  value === 1 || value === '1' || value === true
+
+const uploadSourceFromRow = (value: unknown): TraceUploadSource =>
+  value === 'user_session' ? 'user_session' : 'agent'
 
 const visibilityFromRow = (value: unknown): TraceVisibility =>
   value === 'public' || value === 'owner_only' ? value : 'unlisted'
@@ -121,9 +176,24 @@ const recordFromRow = (row: Record<string, unknown>): TraceRecord => ({
   trajectory: jsonParseOr<unknown>(row.trajectory_json, {}),
   blobRefs: jsonParseOr<ReadonlyArray<TraceBlobRef>>(row.blob_refs_json, []),
   idempotencyKey: nullableStr(row.idempotency_key),
+  trainingConsent: bool(row.training_consent),
+  license: nullableStr(row.license),
+  contentDigest: nullableStr(row.content_digest),
+  rewardEligible: bool(row.reward_eligible),
+  rewardAmountSats: nullableNum(row.reward_amount_sats),
+  uploadSource: uploadSourceFromRow(row.upload_source),
   createdAt: str(row.created_at),
   updatedAt: str(row.updated_at),
 })
+
+// Shared public-safe column projection. Extended by #6221 with the data-market
+// consent/license/digest/reward/upload-source columns (migration 0229).
+const TRACE_COLUMNS = `trace_uuid, owner_user_id, agent_ref, schema_version,
+                  trajectory_id, session_id, visibility, step_count,
+                  trajectory_json, blob_refs_json, idempotency_key,
+                  training_consent, license, content_digest,
+                  reward_eligible, reward_amount_sats, upload_source,
+                  created_at, updated_at`
 
 export const makeD1TraceStore = (db: D1Database): TraceStore => {
   const readByUuid = async (
@@ -132,10 +202,7 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
     try {
       const row = await db
         .prepare(
-          `SELECT trace_uuid, owner_user_id, agent_ref, schema_version,
-                  trajectory_id, session_id, visibility, step_count,
-                  trajectory_json, blob_refs_json, idempotency_key,
-                  created_at, updated_at
+          `SELECT ${TRACE_COLUMNS}
              FROM agent_traces
             WHERE trace_uuid = ?1`,
         )
@@ -155,10 +222,7 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
     try {
       const row = await db
         .prepare(
-          `SELECT trace_uuid, owner_user_id, agent_ref, schema_version,
-                  trajectory_id, session_id, visibility, step_count,
-                  trajectory_json, blob_refs_json, idempotency_key,
-                  created_at, updated_at
+          `SELECT ${TRACE_COLUMNS}
              FROM agent_traces
             WHERE owner_user_id = ?1 AND idempotency_key = ?2`,
         )
@@ -190,8 +254,11 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
                (trace_uuid, owner_user_id, agent_ref, schema_version,
                 trajectory_id, session_id, visibility, step_count,
                 trajectory_json, blob_refs_json, idempotency_key,
+                training_consent, license, content_digest,
+                reward_eligible, reward_amount_sats, upload_source,
                 created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`,
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                     ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`,
           )
           .bind(
             input.traceUuid,
@@ -205,6 +272,12 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
             JSON.stringify(input.trajectory),
             JSON.stringify(input.blobRefs),
             input.idempotencyKey,
+            input.trainingConsent ? 1 : 0,
+            input.license,
+            input.contentDigest,
+            input.rewardEligible ? 1 : 0,
+            input.rewardAmountSats,
+            input.uploadSource,
             input.nowIso,
             input.nowIso,
           )
@@ -238,10 +311,7 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
       try {
         const result = await db
           .prepare(
-            `SELECT trace_uuid, owner_user_id, agent_ref, schema_version,
-                    trajectory_id, session_id, visibility, step_count,
-                    trajectory_json, blob_refs_json, idempotency_key,
-                    created_at, updated_at
+            `SELECT ${TRACE_COLUMNS}
                FROM agent_traces
               WHERE owner_user_id = ?1
               ORDER BY created_at DESC
@@ -251,6 +321,38 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
           .all<Record<string, unknown>>()
 
         return (result.results ?? []).map(recordFromRow)
+      } catch (error) {
+        throw traceStoreErrorFromUnknown(error)
+      }
+    },
+    findTraceByOwnerDigest: async (ownerUserId, contentDigest) => {
+      try {
+        const row = await db
+          .prepare(
+            `SELECT ${TRACE_COLUMNS}
+               FROM agent_traces
+              WHERE owner_user_id = ?1 AND content_digest = ?2`,
+          )
+          .bind(ownerUserId, contentDigest)
+          .first<Record<string, unknown>>()
+
+        return row === null ? undefined : recordFromRow(row)
+      } catch (error) {
+        throw traceStoreErrorFromUnknown(error)
+      }
+    },
+    countTracesForOwnerSince: async (ownerUserId, sinceIso) => {
+      try {
+        const row = await db
+          .prepare(
+            `SELECT COUNT(*) AS n
+               FROM agent_traces
+              WHERE owner_user_id = ?1 AND created_at >= ?2`,
+          )
+          .bind(ownerUserId, sinceIso)
+          .first<Record<string, unknown>>()
+
+        return row === null ? 0 : num(row.n)
       } catch (error) {
         throw traceStoreErrorFromUnknown(error)
       }

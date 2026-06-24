@@ -64,6 +64,12 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
     trajectory: input.trajectory,
     blobRefs: input.blobRefs,
     idempotencyKey: input.idempotencyKey,
+    trainingConsent: input.trainingConsent,
+    license: input.license,
+    contentDigest: input.contentDigest,
+    rewardEligible: input.rewardEligible,
+    rewardAmountSats: input.rewardAmountSats,
+    uploadSource: input.uploadSource,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
   })
@@ -93,23 +99,45 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, limit),
       ),
+    findTraceByOwnerDigest: (ownerUserId, contentDigest) =>
+      Promise.resolve(
+        [...rows.values()].find(
+          row =>
+            row.ownerUserId === ownerUserId &&
+            row.contentDigest === contentDigest,
+        ),
+      ),
+    countTracesForOwnerSince: (ownerUserId, sinceIso) =>
+      Promise.resolve(
+        [...rows.values()].filter(
+          row => row.ownerUserId === ownerUserId && row.createdAt >= sinceIso,
+        ).length,
+      ),
   }
 }
 
 type Session = Readonly<{ user: { email?: string; userId: string } }>
+
+let idCounter = 0
 
 const makeDeps = (options: {
   store: TraceStore
   agentUserId?: string | undefined
   browserSession?: Session | undefined
   adminEmails?: ReadonlyArray<string>
+  rewardArmed?: boolean
+  uniqueIds?: boolean
 }) =>
   makeTraceStoreRoutes<Bindings, Session>({
     agentStore: () => makeAgentStore(options.agentUserId),
     appendRefreshedSessionCookies: response => response,
+    dataMarketRewardArmed: () => options.rewardArmed ?? false,
     isAdminEmail: email => (options.adminEmails ?? []).includes(email),
     makeStore: () => options.store,
-    makeId: () => 'trace-uuid-fixed',
+    makeId: () =>
+      options.uniqueIds === true
+        ? `trace-uuid-${(idCounter += 1)}`
+        : 'trace-uuid-fixed',
     nowIso: () => NOW,
     requireBrowserSession: () => Promise.resolve(options.browserSession),
   })
@@ -147,6 +175,22 @@ const ingestRequest = (
       'content-type': 'application/json',
       'idempotency-key': 'idem-1',
       ...headers,
+    },
+    body: JSON.stringify(body),
+  })
+
+// A user web-session upload: NO agent bearer header (auth is the browser
+// session), at `/api/traces/upload` (#6221 variant) or `/api/traces`.
+const userUploadRequest = (
+  body: unknown,
+  options: { path?: string; headers?: Record<string, string> } = {},
+): Request =>
+  new Request(`https://openagents.com${options.path ?? '/api/traces'}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': 'user-idem-1',
+      ...(options.headers ?? {}),
     },
     body: JSON.stringify(body),
   })
@@ -294,6 +338,236 @@ describe('POST /api/traces ingest', () => {
   })
 })
 
+const dataMarketBlock = (
+  json: Record<string, unknown>,
+): Record<string, unknown> => json.dataMarket as Record<string, unknown>
+
+describe('trace data market (#6221)', () => {
+  it('lets an authenticated user web session upload a trace they own', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      // no agent bearer: a human web session
+      browserSession: { user: { userId: 'user-7', email: 'u@x.com' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        userUploadRequest(
+          { trajectory: cleanTrajectory(), trainingConsent: true },
+          { path: '/api/traces/upload' },
+        ),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(201)
+    const stored = store.rows.get('trace-uuid-fixed')
+    expect(stored?.ownerUserId).toBe('user-7')
+    expect(stored?.uploadSource).toBe('user_session')
+    expect(stored?.agentRef).toBe('user:user-7')
+  })
+
+  it('rejects an unauthenticated user upload with 401', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({ store, browserSession: undefined })
+    const response = await run(
+      routes.routeTraceRequest(
+        userUploadRequest({ trajectory: cleanTrajectory() }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(401)
+    expect(store.rows.size).toBe(0)
+  })
+
+  it('round-trips training_consent + license through store and read', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'user-7' } },
+    })
+    const upload = await run(
+      routes.routeTraceRequest(
+        userUploadRequest({
+          trajectory: cleanTrajectory(),
+          visibility: 'public',
+          trainingConsent: true,
+          license: 'CC-BY-4.0',
+        }),
+        ENV,
+        CTX,
+      ),
+    )
+    const uploadJson = (await upload.json()) as Record<string, unknown>
+    expect(dataMarketBlock(uploadJson).trainingConsent).toBe(true)
+    expect(dataMarketBlock(uploadJson).license).toBe('CC-BY-4.0')
+
+    const read = await run(
+      routes.routeTraceRequest(readRequest('trace-uuid-fixed'), ENV, CTX),
+    )
+    const readJson = (await read.json()) as { trace: Record<string, unknown> }
+    const market = readJson.trace.dataMarket as Record<string, unknown>
+    expect(market.trainingConsent).toBe(true)
+    expect(market.license).toBe('CC-BY-4.0')
+    expect(market.uploadSource).toBe('user_session')
+  })
+
+  it('defaults training_consent to withheld when not granted', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({ store, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: cleanTrajectory() }),
+        ENV,
+        CTX,
+      ),
+    )
+    const json = (await response.json()) as Record<string, unknown>
+    expect(dataMarketBlock(json).trainingConsent).toBe(false)
+    expect(store.rows.get('trace-uuid-fixed')?.trainingConsent).toBe(false)
+  })
+
+  it('records the revshare reward marker INERT (eligible-only, amount TBD, no money)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      rewardArmed: true,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: cleanTrajectory(), trainingConsent: true }),
+        ENV,
+        CTX,
+      ),
+    )
+    const json = (await response.json()) as Record<string, unknown>
+    const reward = dataMarketBlock(json).reward as Record<string, unknown>
+    expect(reward.eligible).toBe(true)
+    // INERT: amount is always null ("reward TBD"); no money path.
+    expect(reward.amountSats).toBeNull()
+    expect(reward.status).toBe('tbd')
+    expect(store.rows.get('trace-uuid-fixed')?.rewardEligible).toBe(true)
+    expect(store.rows.get('trace-uuid-fixed')?.rewardAmountSats).toBeNull()
+  })
+
+  it('keeps reward ineligible when the data-market flag is not armed', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      rewardArmed: false,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: cleanTrajectory(), trainingConsent: true }),
+        ENV,
+        CTX,
+      ),
+    )
+    const json = (await response.json()) as Record<string, unknown>
+    const reward = dataMarketBlock(json).reward as Record<string, unknown>
+    expect(reward.eligible).toBe(false)
+  })
+
+  it('keeps reward ineligible when consent is withheld even if armed', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      rewardArmed: true,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: cleanTrajectory(), trainingConsent: false }),
+        ENV,
+        CTX,
+      ),
+    )
+    const json = (await response.json()) as Record<string, unknown>
+    const reward = dataMarketBlock(json).reward as Record<string, unknown>
+    expect(reward.eligible).toBe(false)
+  })
+
+  it('dedups a duplicate content digest with 409 (no double store, no double reward)', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      uniqueIds: true,
+    })
+    const first = await run(
+      routes.routeTraceRequest(
+        ingestRequest(
+          { trajectory: cleanTrajectory() },
+          { 'idempotency-key': 'k-1' },
+        ),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(first.status).toBe(201)
+    // Same payload, DIFFERENT idempotency key -> content dedup rejects it.
+    const second = await run(
+      routes.routeTraceRequest(
+        ingestRequest(
+          { trajectory: cleanTrajectory() },
+          { 'idempotency-key': 'k-2' },
+        ),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(second.status).toBe(409)
+    const json = (await second.json()) as Record<string, unknown>
+    expect(json.error).toBe('trace_duplicate')
+    expect(json.duplicate).toBe(true)
+    expect(store.rows.size).toBe(1)
+  })
+
+  it('rate-limits per-user uploads with 429', async () => {
+    const store = makeMemoryStore()
+    // Pre-seed the owner to/above the rolling-window cap.
+    for (let index = 0; index < 120; index += 1) {
+      await store.createTrace({
+        traceUuid: `seed-${index}`,
+        ownerUserId: 'agent-1',
+        agentRef: 'agent:agent-1',
+        schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+        trajectoryId: `t-${index}`,
+        sessionId: null,
+        visibility: 'unlisted',
+        stepCount: 1,
+        trajectory: {},
+        blobRefs: [],
+        idempotencyKey: null,
+        trainingConsent: false,
+        license: null,
+        contentDigest: `seed-digest-${index}`,
+        rewardEligible: false,
+        rewardAmountSats: null,
+        uploadSource: 'agent',
+        nowIso: NOW,
+      })
+    }
+    const routes = makeDeps({ store, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest(
+          { trajectory: cleanTrajectory() },
+          { 'idempotency-key': 'fresh' },
+        ),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(429)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.error).toBe('trace_rate_limited')
+  })
+})
+
 const seedTrace = async (
   store: TraceStore,
   visibility: 'public' | 'unlisted' | 'owner_only',
@@ -311,6 +585,12 @@ const seedTrace = async (
     trajectory: cleanTrajectory(),
     blobRefs: [{ kind: 'video', r2Key: 'traces/uuid/video.mp4' }],
     idempotencyKey: null,
+    trainingConsent: true,
+    license: 'CC-BY-4.0',
+    contentDigest: `digest-${visibility}-${ownerUserId}`,
+    rewardEligible: false,
+    rewardAmountSats: null,
+    uploadSource: 'agent',
     nowIso: NOW,
   })
   return result.record.traceUuid
@@ -426,6 +706,12 @@ describe('GET /api/traces owner list', () => {
       trajectory: {},
       blobRefs: [],
       idempotencyKey: null,
+      trainingConsent: false,
+      license: null,
+      contentDigest: 'digest-other',
+      rewardEligible: false,
+      rewardAmountSats: null,
+      uploadSource: 'agent',
       nowIso: NOW,
     })
     const routes = makeDeps({

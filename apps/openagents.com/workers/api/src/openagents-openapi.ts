@@ -1424,13 +1424,13 @@ const satsInteger = (description: string, minimum = 0): JsonSchema => ({
 
 const schemaComponents = (): JsonSchema => ({
   AtifTraceIngestEnvelope: objectSummary(
-    'Result of a trace ingest (#6208): the stored trace uuid, its public `/trace/{uuid}` url, the resolved visibility tier, and a replay flag (true when an Idempotency-Key matched an already-stored trace). Contains refs only.',
+    'Result of a trace ingest (#6208, #6221): the stored trace uuid, its public `/trace/{uuid}` url, the resolved visibility tier, a replay flag (true when an Idempotency-Key matched an already-stored trace), and a public-safe dataMarket block { trainingConsent, license?, uploadSource ("agent"|"user_session"), reward { eligible, amountSats (always null), status ("tbd") } }. The reward marker is INERT (eligible-only, amount TBD); it moves no money. Contains refs only.',
   ),
   AtifTraceReadEnvelope: objectSummary(
-    'Public-safe ATIF trace projection the `/trace/{uuid}` page renders: { trace: { uuid, schemaVersion, trajectoryId, sessionId?, visibility, agentRef, stepCount, trajectory, blobRefs, createdAt, authority } }. public/unlisted reads need no auth; owner_only reads require the owning browser session. The trajectory is the public-safe ATIF projection; authority flags are always false (a trace is evidence only).',
+    'Public-safe ATIF trace projection the `/trace/{uuid}` page renders: { trace: { uuid, schemaVersion, trajectoryId, sessionId?, visibility, agentRef, stepCount, trajectory, blobRefs, createdAt, dataMarket { trainingConsent, license?, uploadSource, reward { eligible, amountSats (null), status ("tbd") } }, authority } }. public/unlisted reads need no auth; owner_only reads require the owning browser session. The trajectory is the public-safe ATIF projection; the dataMarket reward marker is INERT; authority flags are always false (a trace is evidence only).',
   ),
   OwnerTraceListEnvelope: objectSummary(
-    'Owner-scoped list of the signed-in user\'s own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt }] }. Summaries only, newest first.',
+    'Owner-scoped list of the signed-in user\'s own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt, trainingConsent, license?, uploadSource, rewardEligible }] }. Summaries only, newest first. The rewardEligible marker is INERT.',
   ),
   ErrorResponse: {
     type: 'object',
@@ -3969,7 +3969,7 @@ const requestSchemas = (): JsonSchema => ({
     'Public-safe worker/validator trace contribution envelope with contribution refs, lease/run/window refs, workload family, contribution state, and optional verification challenge projection. It contains refs and verdict metadata only, never raw traces, prompts, private paths, wallet material, or payout targets.',
   ),
   AtifTraceIngestRequest: objectSummary(
-    'Registered-agent ingest of a PUBLIC-SAFE ATIF-v1.7 agent trajectory (#6208). Fields: trajectory (schema_version="ATIF-v1.7", trajectory_id, optional session_id, agent{name,version,model_name?}, steps[], optional final_metrics), optional visibility ("public"|"unlisted"|"owner_only"), and optional blobRefs (public-safe R2 keys for video/screenshots). The payload is structurally validated and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected before persistence (only openagents/khala-class public ids allowed). Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
+    'Authenticated ingest of a PUBLIC-SAFE ATIF-v1.7 agent trajectory (#6208, #6221 trace upload data market). Accepts EITHER a registered-agent bearer token OR an authenticated user web session (a signed-in human owns the upload). Fields: trajectory (schema_version="ATIF-v1.7", trajectory_id, optional session_id, agent{name,version,model_name?}, steps[], optional final_metrics), optional visibility ("public"|"unlisted"|"owner_only"), optional blobRefs (public-safe R2 keys for video/screenshots), optional trainingConsent (boolean; the uploader explicitly grants use as training/eval data for Khala — DEFAULTS WITHHELD, never assumed), and optional license (public-safe label, max 120 chars). The payload is structurally validated and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected before persistence (only openagents/khala-class public ids allowed). Anti-abuse: a per-user upload rate limit and a per-owner content-digest dedup (a duplicate upload is rejected). Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority. Any reward marker is INERT (eligible-only, amount TBD).',
   ),
   TrainingWindowBootstrapGrantRequest: objectSummary(
     'Joiner request for a bootstrap grant pinned to the last durable seal of a training run. Request fields are joinerRef and optional public-safe receiptRefs.',
@@ -7218,14 +7218,14 @@ const paths = (): JsonSchema => ({
   '/api/traces': {
     post: operation({
       operationId: 'ingestAgentTrace',
-      summary: 'Ingest a public-safe ATIF agent trace',
+      summary: 'Upload a public-safe ATIF agent trace',
       description:
-        'Registered-agent ingest of a public-safe ATIF-v1.7 agent trajectory (#6208, epic #6206). Requires an Idempotency-Key. The payload is structurally validated (sequential step_ids, observation/tool-call refs, agent-only fields on agent steps) and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected (only openagents/khala-class public ids allowed). On success returns the stored { uuid, url, visibility, replay }. Large blobs (video/screenshots) live in R2 and are referenced by public-safe key. Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
+        'Authenticated upload of a public-safe ATIF-v1.7 agent trajectory (#6208, #6221 trace upload data market, epic #6206). Accepts EITHER a registered-agent bearer token OR an authenticated user web session — a signed-in human owns the upload (ownerUserId from the session). Requires an Idempotency-Key. The payload is structurally validated (sequential step_ids, observation/tool-call refs, agent-only fields on agent steps) and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected (only openagents/khala-class public ids allowed). The uploader may grant trainingConsent (default WITHHELD) to use the trace as training/eval data for Khala, with an optional license label. Anti-abuse: a per-user upload rate limit (429) and a per-owner content-digest dedup (409 on a duplicate upload — no double store, no double reward). On success returns the stored { uuid, url, visibility, replay, dataMarket }. The dataMarket reward marker is INERT (eligible-only, amount TBD, owner-gated, default OFF) and moves no money. Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
       tags: ['Traces'],
-      security: agentBearer,
+      security: browserSessionOrAgentBearer,
       parameters: [
         requiredIdempotencyHeader(
-          'Idempotency key. At most one trace is stored per (agent, key); a repeat returns the already-stored uuid with replay=true.',
+          'Idempotency key. At most one trace is stored per (owner, key); a repeat returns the already-stored uuid with replay=true.',
         ),
       ],
       requestBody: jsonContent('#/components/schemas/AtifTraceIngestRequest'),
@@ -7238,9 +7238,19 @@ const paths = (): JsonSchema => ({
           'Idempotent replay of an already-stored trace.',
           '#/components/schemas/AtifTraceIngestEnvelope',
         ),
+        '409': {
+          description:
+            'Duplicate content digest: this owner already uploaded an identical trace. The existing uuid is returned; it is not stored again and earns no second reward.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
         '422': {
           description:
             'Public-safety tripwire rejected the payload (secrets, tokens, wallet/payment material, PII, local paths, or raw provider model ids). Finding codes are returned; offending values are never echoed back.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '429': {
+          description:
+            'Per-user upload rate limit reached for this account. Try again later.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         ...errorResponses(),
@@ -7258,6 +7268,47 @@ const paths = (): JsonSchema => ({
           'Owner-scoped trace summaries.',
           '#/components/schemas/OwnerTraceListEnvelope',
         ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/traces/upload': {
+    post: operation({
+      operationId: 'uploadAgentTrace',
+      summary: 'Upload a trace (user web session or agent bearer) — data market',
+      description:
+        'Explicit user-upload alias for the trace upload data market (#6221). Same ingest path as POST /api/traces: accepts EITHER an authenticated user web session OR a registered-agent bearer token, requires an Idempotency-Key, validates + tripwires the public-safe ATIF payload, captures the uploader\'s training-use consent (default WITHHELD) and optional license, applies the per-user rate limit and per-owner content-digest dedup, and records an INERT (owner-gated, default-OFF, amount-TBD) revshare reward marker. Returns { uuid, url, visibility, replay, dataMarket }. Stores evidence only; moves no money.',
+      tags: ['Traces'],
+      security: browserSessionOrAgentBearer,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Idempotency key. At most one trace is stored per (owner, key).',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/AtifTraceIngestRequest'),
+      responses: {
+        '201': okJson(
+          'Stored a new trace.',
+          '#/components/schemas/AtifTraceIngestEnvelope',
+        ),
+        '200': okJson(
+          'Idempotent replay of an already-stored trace.',
+          '#/components/schemas/AtifTraceIngestEnvelope',
+        ),
+        '409': {
+          description:
+            'Duplicate content digest: this owner already uploaded an identical trace.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '422': {
+          description:
+            'Public-safety tripwire rejected the payload. Finding codes are returned; offending values are never echoed back.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '429': {
+          description: 'Per-user upload rate limit reached for this account.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
         ...errorResponses(),
       },
     }),
