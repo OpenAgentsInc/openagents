@@ -41,7 +41,9 @@
     "./distiller": "./src/distiller.ts",
     "./result": "./src/result.ts",
     "./container-backend": "./src/container-backend.ts",
-    "./container-runtime": "./src/container-runtime.ts"
+    "./container-runtime": "./src/container-runtime.ts",
+    "./native-desktop-backend": "./src/native-desktop-backend.ts",
+    "./native-desktop-runtime": "./src/native-desktop-runtime.ts"
   },
   "files": [
     "dist",
@@ -70,7 +72,7 @@
     "compose": "bun run src/compose/cli.ts",
     "evals": "bun run src/evals-run.ts",
     "pr-comment": "bun run src/pr-comment-run.ts",
-    "test": "bun test src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/container-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts",
+    "test": "bun test src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "playwright:install": "playwright install --with-deps chromium"
   },

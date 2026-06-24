@@ -16,6 +16,10 @@ import {
   type AcquiredBrowser,
   type PlaywrightArtifacts,
 } from "@openagentsinc/probe-runtime";
+import type {
+  NativeAppTarget,
+  NativeDesktopRuntime,
+} from "./native-desktop-runtime";
 import type { Target } from "./target";
 
 export interface BackendSession {
@@ -218,7 +222,43 @@ export class NativeDesktopDriverNotImplementedError extends Error {
  * SPEC-ONLY stub. Throws `NativeDesktopDriverNotImplementedError`. Present so
  * the seam + error are typed and testable; do NOT mistake this for a working
  * native driver.
+ *
+ * The REAL driver landed in #6199: `nativeDesktopDriverFromRuntime` (below)
+ * adapts a `NativeDesktopRuntime` (real macOS osascript/screencapture, or an
+ * injected fake) to this `NativeDesktopDriver` contract, and
+ * `runNativeDesktopScenario` (native-desktop-backend.ts) drives it end-to-end.
+ * This stub is kept so the original spec error stays typed + testable.
  */
 export function nativeDesktopDriver(_os: NativeDesktopOs): NativeDesktopDriver {
   throw new NativeDesktopDriverNotImplementedError();
+}
+
+// ── Native-desktop driver — REAL ADAPTER (#6199) ─────────────────────────────
+//
+// `nativeDesktopDriverFromRuntime` wires a `NativeDesktopRuntime` (the injectable
+// seam in native-desktop-runtime.ts) into the `NativeDesktopDriver` contract
+// above, so the runner stays driver-agnostic. `accessibilityTree()` returns the
+// runtime's serializable AX snapshot (typed `unknown` per the spec contract);
+// `screenshot()` / `click()` / `type()` / `teardown()` delegate to the runtime
+// bound to one app. This is additive: the spec-only `nativeDesktopDriver` stub
+// above is unchanged.
+
+/**
+ * Adapt a `NativeDesktopRuntime` (real macOS or injected fake) bound to one app
+ * into the spec's `NativeDesktopDriver`. The driver is honest: it does NOT probe
+ * `available()` here (the backend owns the armed/available gate before building a
+ * driver); methods surface the runtime's typed errors as-is.
+ */
+export function nativeDesktopDriverFromRuntime(
+  runtime: NativeDesktopRuntime,
+  target: NativeAppTarget,
+): NativeDesktopDriver {
+  return {
+    os: runtime.os,
+    accessibilityTree: () => runtime.accessibilityTree(target),
+    screenshot: (path) => runtime.screenshot(target, path),
+    click: (selector) => runtime.click(target, selector),
+    type: (text) => runtime.type(target, text),
+    teardown: () => runtime.teardown(target),
+  };
 }
