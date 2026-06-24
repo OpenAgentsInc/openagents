@@ -41,6 +41,30 @@ export type MdkRoutePost = (
   body: Readonly<Record<string, unknown>>,
 ) => Promise<Readonly<{ ok: boolean; status: number; payload: unknown }>>
 
+// The self-hosted MDK sidecar exposes exactly `/api/mdk`; its internal bridge
+// also rewrites forwarded requests to `/api/mdk` before calling MoneyDevKit.
+// Normalize the configured URL before handing it to the sidecar so a stale or
+// doubled config such as `/api/mdk/api/mdk` cannot become a real container
+// request path and 404 the fallback issuer (#6049).
+export const normalizeMdkLightningRouteUrl = (
+  routeUrl: string,
+  input: Readonly<{ sidecar: boolean }>,
+): string => {
+  if (!input.sidecar) {
+    return routeUrl
+  }
+
+  try {
+    const url = new URL(routeUrl)
+    url.pathname = '/api/mdk'
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return routeUrl
+  }
+}
+
 // Pull the provider checkout object out of the (possibly nested) route payload.
 // Mirrors `providerCheckoutFromPayload` in hosted-mdk-client.ts.
 const providerCheckout = (

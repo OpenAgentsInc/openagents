@@ -22,7 +22,7 @@
 
 import { Duration, Effect } from 'effect'
 
-import { isRecord, optionalString } from '../../json-boundary'
+import { isRecord, nestedUnknown, optionalString } from '../../json-boundary'
 import {
   type LightningInvoice,
   type MintLightningInvoice,
@@ -64,12 +64,18 @@ export type SparkTreasuryFundingInvoicePost = (
 
 // Read the raw BOLT11 invoice string from the Spark funding-invoice payload.
 const rawBolt11 = (payload: Record<string, unknown>): unknown =>
-  payload.bolt11Invoice ?? payload.bolt11 ?? payload.invoice
+  payload.bolt11Invoice ??
+  payload.bolt11 ??
+  payload.invoice ??
+  payload.paymentRequest ??
+  nestedUnknown(payload, ['payment', 'request'])
 
 // Read the raw payment hash (lowercase hex) from the Spark funding-invoice
 // payload. The container decodes it from the minted bolt11 `p` field.
 const rawPaymentHash = (payload: Record<string, unknown>): unknown =>
-  payload.paymentHash ?? payload.payment_hash
+  payload.paymentHash ??
+  payload.payment_hash ??
+  nestedUnknown(payload, ['payment', 'details', 'htlcDetails', 'paymentHash'])
 
 // Build a `MintLightningInvoice` from a `/spark/funding-invoice` POST transport.
 // The invoice is minted for the requested sats; the issuer reads the RAW bolt11 +

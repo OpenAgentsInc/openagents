@@ -118,8 +118,11 @@ that raw-id sale path: repeat payments must use `openagents/khala`.
 2. **Badge** appears in the directory (we're watching — external Stripe crawl).
    Optionally register on broader MPP registries (MPPScan, mpp.dev/services) to widen
    agent discovery.
-3. **Trivial cleanup:** the MDK *fallback* sidecar builds a doubled `/api/mdk/api/mdk`
-   path — harmless because the Spark primary works, but tracked for cleanup.
+3. ✅ Done — the MDK fallback sidecar route now normalizes stale/doubled
+   `/api/mdk/api/mdk` configs back to exactly `/api/mdk`, and the Spark issuer
+   accepts both the normalized treasury response (`bolt11Invoice`/`paymentHash`)
+   and Spark SDK-style response fields (`paymentRequest` +
+   nested `payment.details.htlcDetails.paymentHash`).
 4. **Optimization:** a **pre-minted Spark invoice pool** for zero-latency 402s (removes
    the cold-mint first-hit cost). Tracked on #6049.
 5. Later: prove the card rail end-to-end, and reuse this for other paid

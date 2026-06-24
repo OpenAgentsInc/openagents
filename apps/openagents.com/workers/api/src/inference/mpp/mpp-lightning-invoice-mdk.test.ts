@@ -7,6 +7,7 @@ import {
   type MdkRoutePost,
   MDK_LIGHTNING_MINT_TIMEOUT_MS,
   makeMdkLightningInvoiceIssuer,
+  normalizeMdkLightningRouteUrl,
 } from './mpp-lightning-invoice-mdk'
 
 const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
@@ -15,6 +16,26 @@ const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
 const HASH =
   '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff'
 const INVOICE = `lnbc100n1p${'a'.repeat(40)}`
+
+describe('normalizeMdkLightningRouteUrl', () => {
+  test('normalizes self-hosted sidecar route URLs to exactly /api/mdk', () => {
+    expect(
+      normalizeMdkLightningRouteUrl(
+        'https://openagents.com/api/mdk/api/mdk?x=1#frag',
+        { sidecar: true },
+      ),
+    ).toBe('https://openagents.com/api/mdk')
+  })
+
+  test('leaves non-sidecar route URLs unchanged', () => {
+    expect(
+      normalizeMdkLightningRouteUrl(
+        'https://payments.example.test/custom/mdk?x=1',
+        { sidecar: false },
+      ),
+    ).toBe('https://payments.example.test/custom/mdk?x=1')
+  })
+})
 
 describe('makeMdkLightningInvoiceIssuer', () => {
   test('posts a SAT create_checkout and reads the raw bolt11 + paymentHash', async () => {

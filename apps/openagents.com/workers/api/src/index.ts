@@ -352,6 +352,7 @@ import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightnin
 import {
   makeMdkLightningInvoiceIssuer,
   MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
+  normalizeMdkLightningRouteUrl,
 } from './inference/mpp/mpp-lightning-invoice-mdk'
 import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import {
@@ -6719,8 +6720,10 @@ const mdkLightningInvoiceIssuerForEnv = (
     return undefined
   }
 
-  const routeUrl = checkout.routeUrl
   const isSidecar = checkout.routeKind === 'self_hosted_mdkd_sidecar'
+  const routeUrl = normalizeMdkLightningRouteUrl(checkout.routeUrl, {
+    sidecar: isSidecar,
+  })
 
   const post = async (
     body: Readonly<Record<string, unknown>>,

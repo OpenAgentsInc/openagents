@@ -1165,6 +1165,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // owner-armed dispatch of one accrued inference referral payout through the
   // shared RL-2 rail. Operator surface; intentionally undocumented in OpenAPI.
   '/api/operator/inference/referral/payout/{param}/dispatch',
+  '/api/operator/inference/pylon-fabric/smoke',
   '/api/operator/partners/payout-ledger/{param}',
   '/api/operator/partners/payout-ledger/{param}/transitions',
   '/api/operator/sites/orchestration/{param}',
@@ -1291,6 +1292,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/autopilot/goals/{param}/resume',
   '/api/autopilot/goals/{param}/visibility',
   '/api/autopilot/missions',
+  '/api/autopilot/onboarding/{param}',
   '/api/autopilot/onboarding/{param}/turn',
   '/api/autopilot/token-leaderboards',
   '/api/billing/auto-top-up-policy',

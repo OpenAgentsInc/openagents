@@ -61,6 +61,30 @@ describe('makeSparkLightningInvoiceIssuer', () => {
     expect(seen?.description).toBe('desc')
   })
 
+  test('accepts a raw Spark SDK-style paymentRequest + nested paymentHash payload', async () => {
+    const post: SparkTreasuryFundingInvoicePost = async () => ({
+      ok: true,
+      payload: {
+        payment: {
+          details: {
+            htlcDetails: {
+              paymentHash: HASH.toUpperCase(),
+            },
+          },
+        },
+        paymentRequest: INVOICE,
+      },
+      status: 200,
+    })
+    const issuer = makeSparkLightningInvoiceIssuer(post)
+    const invoice = await run(
+      issuer({ amountSats: 7, correlationRef: 'ref', description: 'desc' }),
+    )
+    expect(invoice.bolt11).toBe(INVOICE)
+    expect(invoice.paymentHash).toBe(HASH)
+    expect(invoice.network).toBe('mainnet')
+  })
+
   test('maps a 5xx route status to provider_unavailable', async () => {
     const post: SparkTreasuryFundingInvoicePost = async () => ({
       ok: false,

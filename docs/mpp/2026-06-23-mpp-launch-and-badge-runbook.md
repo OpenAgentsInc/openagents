@@ -201,9 +201,11 @@ Dashboard agentic-commerce/directory area for any submit.
 
 1. **The badge** — purely external; waiting on Stripe's async crawler indexing
    `/openapi.json` (≤~24h). A 30-min watch loop is running. Our side is complete.
-2. **Trivial tracked bug** — the MDK *fallback* sidecar builds a doubled
-   `/api/mdk/api/mdk` path. Harmless in practice because the Spark primary issuer
-   works; tracked for cleanup.
+2. ✅ **Trivial fallback cleanup shipped** — the MDK fallback sidecar route now
+   normalizes stale/doubled `/api/mdk/api/mdk` configs back to exactly
+   `/api/mdk`, and the Spark invoice parser accepts both the normalized treasury
+   payload (`bolt11Invoice`/`paymentHash`) and direct Spark SDK-shaped fields
+   (`paymentRequest` + nested `payment.details.htlcDetails.paymentHash`).
 3. **Future optimization** — a **pre-minted Spark invoice pool** for zero-latency
    402s (eliminates the cold-mint first-hit cost). Tracked on
    [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049).

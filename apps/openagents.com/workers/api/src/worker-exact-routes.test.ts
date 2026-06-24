@@ -145,6 +145,7 @@ const approvedExactRoutePaths = [
   '/v1/models',
   '/v1/quote',
   '/v1/gateway/readiness',
+  '/api/operator/inference/pylon-fabric/smoke',
   '/v1/fine_tuning/jobs',
   '/v1/sandboxes',
 ] as const
