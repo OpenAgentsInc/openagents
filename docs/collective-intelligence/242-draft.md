@@ -199,3 +199,48 @@ one Tassadar executor PoC + one independent worker↔validator Lightning closeou
 dashed = direction (learned coordinator, paid QA pool + GitHub App, broad Pylon
 serving + MPP settlement, the Verse fan-out viz, the open marketplace). If it's
 dashed, the speaker says "direction" out loud.
+
+---
+
+### Board 2 — REVISED CENTER (draw this version; the generic mesh of identical circles is not enough)
+
+The first-draft board drew the center as ~7 identical circles ("mesh of specialists").
+That doesn't show *what* the specialists are, *who* feeds the network, or *what you're
+buying*. Redraw the center as a **left-to-right value pipeline that illustrates the
+thesis: many contributors put inputs in → Khala coordinates specialists → an ACCEPTED
+OUTCOME comes out → Bitcoin flows back, split to the contributors.**
+
+1. **INPUTS (left of Khala) — multiple contributors, four input types.** Label each
+   and draw 2–3 small *distinct* contributor figures/nodes per type so it reads "many
+   people, not one": **COMPUTE** (Pylon / contributor GPUs), **DATA** (uploaded traces
+   — the Data Market), **LABOR** (coding agents + humans), **VERIFICATION** (validators
+   / replay-checkers). Arrows flow *into* Khala. Caption: *"compute · data · labor ·
+   verification — anyone can contribute."*
+2. **KHALA (center) — the coordinator,** fed by the `/api` endpoint arrow. Draw the
+   mesh as **differentiated, *labeled* specialists, NOT identical circles** — e.g.
+   `browser-driver`, `verifier`, `distiller`, `router`, `coder` (or "specialist
+   plugin" tags). A few connecting lines keep the mesh read, but each node is clearly a
+   *different* program. Note: *"plugins / programs (DSPy / Blueprint signatures)."*
+3. **OUTPUT (right) — the punchline: a bold ✅ "ACCEPTED OUTCOME" box,** Khala → it →
+   the buyer. Annotate big: **"This is what you pay for — accepted outcomes, not
+   effort."** (This is the whole illustration's point.)
+4. **MONEY (accent return arc) — buyer → "₿ / sats" → split revshare back to the
+   COMPUTE / DATA / LABOR / VERIFICATION contributors.** Caption: *"verified work →
+   receipt → paid."* Revshare arc **dashed = direction**; inputs→Khala→accepted-outcome
+   solid.
+5. **Data-Market loop (small) — the trace flows both ways:** a contributor *uploads*
+   data → trains Khala → gets paid back. One line: *"the trace is both the receipt and
+   the product."*
+
+### Board 3 — TIGHTENED "lab vs economy" (strictly parallel, one accent word each)
+
+| **SAKANA** (engineered) | **KHALA** (grown) |
+|---|---|
+| built **in a lab** | grown as an **ecology** |
+| **designed** & searched | **emergent** from a market |
+| graded on **its own benchmarks** | selected by **Bitcoin-paid verified value** |
+| **closed** pool | **open** pool |
+
+Underline-accent the two headers. Optional line above the tagline: *"you can't design
+an ecology — you grow it."* Bottom line stays: **"The lab builds a collective. The
+economy grows one."**
