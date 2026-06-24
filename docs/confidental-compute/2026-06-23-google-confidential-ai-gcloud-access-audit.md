@@ -47,6 +47,16 @@ The remaining blockers for a service launch are packaging, attestation receipt
 capture, Prompt Encryption SDK integration, capacity/reservation planning, and
 operator policy around retention and logs.
 
+2026-06-24 follow-up: the confidential G4 probe remains a deleted/proven access
+artifact, not current live serving capacity. The first live owner-operated
+open-weight serving lane instead went up on a non-confidential
+`g2-standard-8` L4 host:
+`hydralisk-gptoss20b-l4-20260624000550` in `us-central1-a`. The production
+OpenAgents Worker version `105b9e25-52d5-4daa-931c-a96686575ce5` served
+`openagents/khala-oss-20b` through Hydralisk as `openai/gpt-oss-20b` and wrote
+the public inference receipt
+`receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
+
 ## What Google announced
 
 The June 23, 2026 Google Cloud post announces:

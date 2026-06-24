@@ -75,6 +75,25 @@ The public-safe receipts observed on the host:
 - `hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`: streaming,
   195 total tokens, 77 ms TTFT, 2050 ms wall time.
 
+The OpenAgents production path was deployed after the host smoke:
+
+- Worker: `openagents-autopilot`
+- Worker version: `105b9e25-52d5-4daa-931c-a96686575ce5`
+- Smoke script: `apps/openagents.com/scripts/khala-gateway-readiness-smoke.mjs`
+- Smoke model: `openagents/khala-oss-20b`
+- Served model: `openai/gpt-oss-20b`
+- Worker disclosure: `hydralisk-vllm`
+- Supply-lane disclosure: `hydralisk`
+- Completion response id: `chatcmpl_c99f7842b2bb4336868e7a226300fb85`
+- Public receipt:
+  `receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`
+
+The production smoke passed readiness, model-catalog, authenticated completion,
+OpenAgents disclosure-block, requested-model echo, dereferenceable receipt ref,
+and receipt endpoint checks. It also separately confirmed that an unfunded agent
+token receives `402 insufficient_credits` before provider dispatch, so the
+balance gate remains active while the Hydralisk lane is armed.
+
 Hydralisk repo follow-up `31e8b40` records the live promotion and the real
 fresh-host fixes: current DLVM image family
 `common-cu129-ubuntu-2204-nvidia-580`, `build-essential`/`ninja-build` for

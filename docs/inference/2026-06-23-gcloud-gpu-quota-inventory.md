@@ -8,6 +8,11 @@ Update 2026-06-24: Hydralisk GPT-OSS 20B is now running on a fresh
 the two Psion `gswarm508-clean2-20260325044551-*` L4 hosts plus the new
 Hydralisk inference host. Public-safe Hydralisk evidence refs are recorded in
 [`2026-06-23-hydralisk-python-nvidia-inference-stack.md`](./2026-06-23-hydralisk-python-nvidia-inference-stack.md).
+The OpenAgents production Worker version
+`105b9e25-52d5-4daa-931c-a96686575ce5` served
+`openagents/khala-oss-20b` through the Hydralisk L4 host as
+`openai/gpt-oss-20b`; the dereferenceable public receipt is
+`receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
 
 Update later on 2026-06-23: a follow-up `gcloud compute instances list
 --filter='guestAccelerators:*'` refresh for the GLM-5.2 feasibility pass no
