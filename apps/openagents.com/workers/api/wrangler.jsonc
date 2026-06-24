@@ -38,6 +38,7 @@
   "vars": {
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
+    "INFERENCE_FREE_TIER_ENABLED": "true",
     // Owner-controlled inference balance-gate exemption (#6180). Arms the gate
     // ONLY; it is a no-op until a verified owner key is granted into
     // `inference_operator_exemption`. Own-infra/non-premium lanes only; exempt
@@ -290,6 +291,7 @@
       "vars": {
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
         "INFERENCE_GATEWAY_ENABLED": "true",
+        "INFERENCE_FREE_TIER_ENABLED": "true",
         // Durable-stream Rank-1 resumable inference (#6058) — LIVE on staging too
         // (the DO binding + migration are added to this env below).
         "INFERENCE_DURABLE_STREAM_ENABLED": "true",
