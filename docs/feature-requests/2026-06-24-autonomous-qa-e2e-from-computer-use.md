@@ -33,6 +33,12 @@ session is viewable as a trace at
 one-click **hosted** demo and hardening — see **Current status** and **Path to
 production-ready** below.
 
+**We dogfood it.** A real qa-runner run against **prod** (`bun run src/demo-login.ts
+--url https://openagents.com`) drives a live Chrome, verifies `/login` + `/gym/oss`, and on
+2026-06-24 returned **all PASS** → published trace
+<https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (11 steps, `openagents/khala`,
+with video). How to run it: [`apps/qa-runner/RUNBOOK.md`](../../apps/qa-runner/RUNBOOK.md).
+
 > Everything past this point is the detailed delivery audit — the requirement-by-requirement
 > mapping, prior-art comparisons (executor, Factory `droid-control`), architecture, and the
 > phased build plan are in **§1–§9**.
