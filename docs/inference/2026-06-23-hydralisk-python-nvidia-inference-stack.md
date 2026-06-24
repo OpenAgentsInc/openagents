@@ -94,6 +94,18 @@ and receipt endpoint checks. It also separately confirmed that an unfunded agent
 token receives `402 insufficient_credits` before provider dispatch, so the
 balance gate remains active while the Hydralisk lane is armed.
 
+Visible-content follow-up smokes:
+
+- Non-streaming with `max_tokens: 128` returned `NONSTREAM READY`, stopped
+  cleanly, and wrote
+  `receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`.
+- Streaming with `max_tokens: 512` returned `STREAM READY`, stopped cleanly, and
+  wrote `receipt.inference.charge.chatcmpl_dcd97345b3f14699b672544138597c3d`.
+
+The higher streaming cap matters because GPT-OSS emits reasoning tokens before
+visible content. Very small token caps can be correctly charged and receipted
+while still stopping before assistant text appears.
+
 Hydralisk repo follow-up `31e8b40` records the live promotion and the real
 fresh-host fixes: current DLVM image family
 `common-cu129-ubuntu-2204-nvidia-580`, `build-essential`/`ninja-build` for

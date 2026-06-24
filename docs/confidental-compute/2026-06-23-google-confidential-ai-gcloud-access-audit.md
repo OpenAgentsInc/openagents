@@ -56,6 +56,11 @@ OpenAgents Worker version `105b9e25-52d5-4daa-931c-a96686575ce5` served
 `openagents/khala-oss-20b` through Hydralisk as `openai/gpt-oss-20b` and wrote
 the public inference receipt
 `receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
+Visible-content follow-up receipts:
+`receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`
+for non-streaming and
+`receipt.inference.charge.chatcmpl_dcd97345b3f14699b672544138597c3d`
+for streaming.
 
 ## What Google announced
 

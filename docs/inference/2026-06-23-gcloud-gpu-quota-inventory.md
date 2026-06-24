@@ -13,6 +13,11 @@ The OpenAgents production Worker version
 `openagents/khala-oss-20b` through the Hydralisk L4 host as
 `openai/gpt-oss-20b`; the dereferenceable public receipt is
 `receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
+Visible-content follow-up receipts are
+`receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`
+for non-streaming and
+`receipt.inference.charge.chatcmpl_dcd97345b3f14699b672544138597c3d`
+for streaming.
 
 Update later on 2026-06-23: a follow-up `gcloud compute instances list
 --filter='guestAccelerators:*'` refresh for the GLM-5.2 feasibility pass no
