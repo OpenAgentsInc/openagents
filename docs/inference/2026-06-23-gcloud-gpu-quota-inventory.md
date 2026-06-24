@@ -9,9 +9,12 @@ the two Psion `gswarm508-clean2-20260325044551-*` L4 hosts plus the new
 Hydralisk inference host. Public-safe Hydralisk evidence refs are recorded in
 [`2026-06-23-hydralisk-python-nvidia-inference-stack.md`](./2026-06-23-hydralisk-python-nvidia-inference-stack.md).
 The OpenAgents production Worker version
-`105b9e25-52d5-4daa-931c-a96686575ce5` served GPT-OSS 20B through the
-Hydralisk L4 host as `openai/gpt-oss-20b`; the dereferenceable public receipt is
-`receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
+`b5c74b67-32a9-4865-a28e-83a878d0b81b`, from commit `009924bac5`, served
+GPT-OSS 20B through the Hydralisk L4 host as `openai/gpt-oss-20b`; the
+dereferenceable public receipt is
+`receipt.inference.charge.chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`. A live
+catalog check showed `openai/gpt-oss-20b` present and
+`openagents/khala-oss-20b` absent.
 Visible-content follow-up receipts are
 `receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`
 for non-streaming and

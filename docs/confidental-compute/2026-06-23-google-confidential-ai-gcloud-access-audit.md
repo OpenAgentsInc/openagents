@@ -52,10 +52,12 @@ artifact, not current live serving capacity. The first live owner-operated
 open-weight serving lane instead went up on a non-confidential
 `g2-standard-8` L4 host:
 `hydralisk-gptoss20b-l4-20260624000550` in `us-central1-a`. The production
-OpenAgents Worker version `105b9e25-52d5-4daa-931c-a96686575ce5` served
-GPT-OSS 20B through Hydralisk as `openai/gpt-oss-20b` and wrote the public
-inference receipt
-`receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
+OpenAgents Worker version `b5c74b67-32a9-4865-a28e-83a878d0b81b`, from commit
+`009924bac5`, served GPT-OSS 20B through Hydralisk as `openai/gpt-oss-20b` and
+wrote the public inference receipt
+`receipt.inference.charge.chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`. A live
+catalog check showed `openai/gpt-oss-20b` present and
+`openagents/khala-oss-20b` absent.
 Visible-content follow-up receipts:
 `receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`
 for non-streaming and

@@ -75,24 +75,29 @@ The public-safe receipts observed on the host:
 - `hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`: streaming,
   195 total tokens, 77 ms TTFT, 2050 ms wall time.
 
-The OpenAgents production path was deployed after the host smoke:
+The current OpenAgents production path was deployed after the host smoke and
+the 2026-06-24 model-id correction:
 
 - Worker: `openagents-autopilot`
-- Worker version: `105b9e25-52d5-4daa-931c-a96686575ce5`
+- OpenAgents commit: `009924bac5`
+- Worker version: `b5c74b67-32a9-4865-a28e-83a878d0b81b`
 - Smoke script: `apps/openagents.com/scripts/gpt-oss20b-production-smoke.mjs`
 - Smoke model: `openai/gpt-oss-20b`
 - Served model: `openai/gpt-oss-20b`
 - Worker disclosure: `hydralisk-vllm`
 - Supply-lane disclosure: `hydralisk`
-- Completion response id: `chatcmpl_c99f7842b2bb4336868e7a226300fb85`
+- Completion response id: `chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`
 - Public receipt:
-  `receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`
+  `receipt.inference.charge.chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`
 
-The production smoke passed readiness, model-catalog, authenticated completion,
-OpenAgents disclosure-block, requested-model echo, dereferenceable receipt ref,
-and receipt endpoint checks. It also separately confirmed that an unfunded agent
-token receives `402 insufficient_credits` before provider dispatch, so the
-balance gate remains active while the Hydralisk lane is armed.
+The production smoke passed readiness, model-catalog, authenticated
+non-streaming completion, streaming completion, usage/disclosure blocks, and the
+infrastructure-leak guard. A live `/v1/models` check confirmed
+`openai/gpt-oss-20b` is advertised and `openagents/khala-oss-20b` is not. The
+public receipt endpoint dereferenced the receipt above. The earlier promotion
+also separately confirmed that an unfunded agent token receives
+`402 insufficient_credits` before provider dispatch, so the balance gate remains
+active while the Hydralisk lane is armed.
 
 Visible-content follow-up smokes:
 
