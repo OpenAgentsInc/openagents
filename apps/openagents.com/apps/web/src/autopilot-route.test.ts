@@ -19,6 +19,7 @@ const onboardingActions = {
   updatedComposer: (value: string) => ({ _tag: 'stub-composer', value }),
   submittedTurn: () => ({ _tag: 'stub-submit' }),
   clickedCreditKickoff: () => ({ _tag: 'stub-kickoff' }),
+  clickedStartOver: () => ({ _tag: 'stub-start-over' }),
 }
 
 const appUrl = (pathname: string) => ({
@@ -192,9 +193,11 @@ describe('autopilot onboarding route', () => {
     expect(bare).toContain(`data-${AutopilotOnboardingPage.HUD_ROOT_ATTR}`)
     // The command composer is present (text now, voice deferred).
     expect(bare).toContain(`data-${AutopilotOnboardingPage.HUD_COMPOSER_ATTR}`)
-    // The intake_progress register surfaces from the first render (a complete,
-    // readable surface, not a class-gated blank).
-    expect(bare).toContain('Onboarding progress')
+    // The intake register surfaces from the first render (a compact sidebar
+    // register, not a class-gated blank). It was renamed from the old
+    // "Onboarding progress" box to the slim "Intake" register.
+    expect(bare).toContain(`data-${AutopilotOnboardingPage.HUD_REGISTER_ATTR}`)
+    expect(bare).toContain('Intake')
     // No credit_kickoff before the flow is quote-ready.
     expect(bare).not.toContain('Kick off the work')
   })

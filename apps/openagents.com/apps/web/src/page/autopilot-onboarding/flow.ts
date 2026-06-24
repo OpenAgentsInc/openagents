@@ -84,6 +84,22 @@ export const FlowPendingTurn = S.Struct({
 })
 export type FlowPendingTurn = typeof FlowPendingTurn.Type
 
+// The durable cursor for the in-flight streaming turn (resume on reload). Set
+// from the server `event: stream` handshake frame (`streamId` + `turnIndex`),
+// then advanced as deltas land / resume reads report `stream-next-offset`. Held
+// in the model so a reload can persist it and reopen the resume read from the
+// last byte offset. `resuming` is true while a restored turn is being replayed
+// from the durable log (vs. a live turn driven by `pendingTurn`); the resume
+// subscription keys off `inFlight` when `resuming` is set. `null` when no stream
+// is in flight.
+export const FlowInFlight = S.Struct({
+  streamId: S.String,
+  turnIndex: S.Int,
+  lastOffset: S.NullOr(S.String),
+  resuming: S.Boolean,
+})
+export type FlowInFlight = typeof FlowInFlight.Type
+
 export const FlowModel = ts('AutopilotOnboardingFlow', {
   vertical: S.NullOr(S.String),
   sessionId: S.NullOr(S.String),
@@ -99,6 +115,12 @@ export const FlowModel = ts('AutopilotOnboardingFlow', {
   // The turn the streaming subscription should drive, or null when none is in
   // flight. Carries the per-turn id so the SSE stream opens exactly once.
   pendingTurn: S.NullOr(FlowPendingTurn),
+  // The durable cursor for the in-flight streaming turn, so a reload can persist
+  // it and resume from the durable log. Set from the `event: stream` handshake;
+  // cleared on `done`/failure. When `resuming` is set on it, the resume
+  // subscription reopens the durable read for that turn/offset. `null` when no
+  // stream is in flight.
+  inFlight: S.NullOr(FlowInFlight),
   outputSpec: FlowOutputSpec,
   turnCount: S.Int,
 })
@@ -128,11 +150,25 @@ export type OnboardingTurnResponse = typeof OnboardingTurnResponse.Type
 // One parsed SSE event from the stream, normalized for the subscription. The
 // subscription maps these to the streaming messages.
 export type OnboardingStreamEvent =
+  | Readonly<{
+      kind: 'stream'
+      streamId: string
+      sessionId: string
+      turnIndex: number
+    }>
   | Readonly<{ kind: 'delta'; text: string }>
   | Readonly<{ kind: 'done'; response: OnboardingTurnResponse }>
   | Readonly<{ kind: 'error'; reason: string }>
 
 const DeltaPayload = S.Struct({ text: S.String })
+
+// The `event: stream` handshake payload, emitted FIRST (before any delta) so the
+// browser can persist the durable cursor and resume the turn on reload.
+const StreamHandshakePayload = S.Struct({
+  streamId: S.String,
+  sessionId: S.String,
+  turnIndex: S.Int,
+})
 
 // Parse one decoded SSE block (its `event` name + JSON `data` payload) into a
 // typed stream event. Unknown events / malformed payloads yield `undefined` so
@@ -141,6 +177,19 @@ export const parseOnboardingStreamEvent = (
   event: string,
   data: unknown,
 ): OnboardingStreamEvent | undefined => {
+  if (event === 'stream') {
+    return S.decodeUnknownOption(StreamHandshakePayload)(data).pipe(
+      Option.match({
+        onNone: () => undefined,
+        onSome: ({ streamId, sessionId, turnIndex }) => ({
+          kind: 'stream' as const,
+          streamId,
+          sessionId,
+          turnIndex,
+        }),
+      }),
+    )
+  }
   if (event === 'delta') {
     return S.decodeUnknownOption(DeltaPayload)(data).pipe(
       Option.match({
@@ -173,6 +222,7 @@ export const initFlowModel = (vertical: Option.Option<string>): FlowModel =>
     transcript: [],
     streamingReply: null,
     pendingTurn: null,
+    inFlight: null,
     outputSpec: {},
     turnCount: 0,
   })

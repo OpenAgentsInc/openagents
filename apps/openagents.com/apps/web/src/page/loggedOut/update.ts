@@ -1,4 +1,4 @@
-import { Effect, Match as M, Schema as S } from 'effect'
+import { Clock, Effect, Match as M, Option, Schema as S } from 'effect'
 import { Command, Dom } from 'foldkit'
 import { load, pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
@@ -10,7 +10,11 @@ import {
   CompletedNavigateToLanding,
   CompletedNavigateToTassadar,
   CompletedAutopilotOnboardingCreditKickoff,
+  CompletedPersistAutopilotOnboarding,
   CompletedScrollAutopilotOnboardingThread,
+  FailedReconcileAutopilotOnboardingSession,
+  LoadedStoredAutopilotOnboarding,
+  SucceededReconcileAutopilotOnboardingSession,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -71,6 +75,16 @@ import {
 } from './model'
 import { HUD_THREAD_END_SELECTOR } from '../autopilot-onboarding/page'
 import { onboardingVerticalForSegment } from '../autopilot-onboarding/vertical-overlay'
+import {
+  OnboardingSessionResponse,
+  type StoredInFlight,
+  type StoredOnboardingSession,
+  clearStoredSession,
+  readStoredSession,
+  storedSessionFromParts,
+  writeStoredSession,
+} from '../autopilot-onboarding/persistence'
+import { FlowModel } from '../autopilot-onboarding/flow'
 import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
@@ -792,6 +806,182 @@ export const OpenAutopilotCreditKickoff = Command.define(
   ),
 )
 
+// BROWSER PERSISTENCE + DURABLE RESUME (#6154 tier 4) --------------------------
+
+// Derive the stored localStorage record from the live flow model. Only the
+// conversation/spec the user entered plus the resume cursor is persisted; the
+// transcript is capped inside the persistence helper. Returns `null` when there
+// is nothing worth persisting yet (no session id minted).
+const storedSessionFromFlow = (
+  flow: FlowModel,
+  updatedAt: number,
+): StoredOnboardingSession | null => {
+  if (flow.sessionId === null) {
+    return null
+  }
+
+  const inFlight: StoredInFlight | null =
+    flow.inFlight === null
+      ? null
+      : {
+          streamId: flow.inFlight.streamId,
+          turnIndex: flow.inFlight.turnIndex,
+          replySoFar: flow.streamingReply ?? '',
+          lastOffset: flow.inFlight.lastOffset,
+        }
+
+  const status =
+    flow.status === 'idle' && flow.turnCount > 0
+      ? ('interviewing' as const)
+      : null
+
+  return storedSessionFromParts({
+    sessionId: flow.sessionId,
+    vertical: flow.vertical,
+    status,
+    transcript: flow.transcript,
+    outputSpec: flow.outputSpec,
+    inFlight,
+    updatedAt,
+  })
+}
+
+// Stop resuming an in-flight turn and fall back to the reconciled transcript
+// (no stuck half-bubble), persisting the cleared cursor. Shared by the resume
+// stream's terminal-without-done (closed) and 404 (failed) outcomes — both end
+// the resume the same way. Ignores a turn that is no longer the resuming one.
+const endResume = (
+  model: Model,
+  turnIndex: number,
+): UpdateReturn => {
+  const flow = model.autopilotOnboarding
+  if (
+    flow.inFlight === null ||
+    !flow.inFlight.resuming ||
+    flow.inFlight.turnIndex !== turnIndex
+  ) {
+    return [model, []]
+  }
+  const nextModel = evo(model, {
+    autopilotOnboarding: current =>
+      evo(current, {
+        status: () => 'idle',
+        streamingReply: () => null,
+        inFlight: () => null,
+      }),
+  })
+  return [
+    nextModel,
+    [PersistAutopilotOnboarding({ flow: nextModel.autopilotOnboarding })],
+  ]
+}
+
+// Persist the current flow to localStorage (fire-and-forget). Reads the clock
+// through Effect's `Clock` (no `Date.now`) for the `updatedAt` stamp; the write
+// itself is the safe, guarded helper.
+export const PersistAutopilotOnboarding = Command.define(
+  'PersistAutopilotOnboarding',
+  { flow: FlowModel },
+  CompletedPersistAutopilotOnboarding,
+)(({ flow }) =>
+  Clock.currentTimeMillis.pipe(
+    Effect.map(now => storedSessionFromFlow(flow, now)),
+    Effect.tap(session =>
+      Effect.sync(() => {
+        if (session !== null) {
+          writeStoredSession(session)
+        }
+      }),
+    ),
+    Effect.as(CompletedPersistAutopilotOnboarding()),
+  ),
+)
+
+// Clear the stored onboarding session (start over / expired / 404).
+export const ClearAutopilotOnboardingStorage = Command.define(
+  'ClearAutopilotOnboardingStorage',
+  CompletedPersistAutopilotOnboarding,
+)(
+  Effect.sync(() => {
+    clearStoredSession()
+  }).pipe(Effect.as(CompletedPersistAutopilotOnboarding())),
+)
+
+// On mount of `/autopilot` (and `/autopilot/{vertical}`), read the stored
+// session. If present, dispatch it so the page restores the transcript
+// immediately (no blank flash) and then reconciles with the server. Absent =>
+// a benign completion (clean fresh start). The localStorage read is the safe,
+// guarded helper; a corrupt blob is treated as absent.
+export const RehydrateAutopilotOnboarding = Command.define(
+  'RehydrateAutopilotOnboarding',
+  LoadedStoredAutopilotOnboarding,
+  CompletedPersistAutopilotOnboarding,
+)(
+  Effect.sync(() => readStoredSession()).pipe(
+    Effect.map(maybeSession =>
+      Option.match(maybeSession, {
+        onNone: () => CompletedPersistAutopilotOnboarding(),
+        onSome: session => LoadedStoredAutopilotOnboarding({ session }),
+      }),
+    ),
+  ),
+)
+
+class OnboardingSessionReconcileError extends S.TaggedErrorClass<OnboardingSessionReconcileError>()(
+  'OnboardingSessionReconcileError',
+  { error: S.Defect, status: S.Int },
+) {}
+
+// Reconcile the rehydrated session with the authoritative server record. A 200
+// adopts the server transcript/status/outputSpec (covers a turn that completed
+// while the tab was gone); a 404 clears localStorage and starts fresh. A
+// transient network error reports status 0 (the page keeps the local transcript
+// and does not clear).
+export const ReconcileAutopilotOnboardingSession = Command.define(
+  'ReconcileAutopilotOnboardingSession',
+  { sessionId: S.String },
+  SucceededReconcileAutopilotOnboardingSession,
+  FailedReconcileAutopilotOnboardingSession,
+)(({ sessionId }) =>
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`/api/autopilot/onboarding/${encodeURIComponent(sessionId)}`, {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new OnboardingSessionReconcileError({ error, status: 0 }),
+    })
+
+    if (!response.ok) {
+      return yield* new OnboardingSessionReconcileError({
+        error: `Onboarding session returned HTTP ${response.status}.`,
+        status: response.status,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new OnboardingSessionReconcileError({ error, status: 0 }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(OnboardingSessionResponse)(payload)
+
+    return SucceededReconcileAutopilotOnboardingSession({ response: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedReconcileAutopilotOnboardingSession({
+          status:
+            error instanceof OnboardingSessionReconcileError
+              ? error.status
+              : 0,
+        }),
+      ),
+    ),
+  ),
+)
+
 const publicAgentIdForRef = (agentRef: string): string => {
   const knownAgentIds: Readonly<Record<string, string>> = {
     adjutant: 'agent_adjutant',
@@ -804,7 +994,9 @@ const publicAgentIdForRef = (agentRef: string): string => {
 export const initialCommands = (
   model: Model,
 ): ReadonlyArray<Command.Command<Message>> =>
-  model.route._tag === 'Share'
+  model.route._tag === 'Autopilot' || model.route._tag === 'AutopilotVertical'
+    ? [RehydrateAutopilotOnboarding()]
+    : model.route._tag === 'Share'
     ? [LoadShareProjection({ shareId: model.route.shareId })]
     : model.route._tag === 'Home' ||
         model.route._tag === 'Stats' ||
@@ -1124,31 +1316,41 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         // Math.random; deterministic for captures/tests).
         const turnId = `${flow.sessionId ?? 'new'}:${flow.transcript.length + 1}`
 
-        return [
-          evo(model, {
-            autopilotOnboarding: current =>
-              evo(current, {
-                status: () => 'submitting',
-                errorReason: () => null,
-                composerDraft: () => '',
-                streamingReply: () => null,
-                transcript: transcript => [
-                  ...transcript,
-                  { role: 'user', content: userText },
-                ],
-                // Thread only the bounded vertical selector; the server owns
-                // all prompt guidance for the selected vertical.
-                pendingTurn: () => ({
-                  id: turnId,
-                  sessionId: current.sessionId,
-                  userText,
-                  vertical: onboardingVerticalForSegment(current.vertical),
-                }),
+        // The user's session id may still be null (minted at the stream
+        // boundary for the first turn); persist on the handshake once it lands.
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              status: () => 'submitting',
+              errorReason: () => null,
+              composerDraft: () => '',
+              streamingReply: () => null,
+              transcript: transcript => [
+                ...transcript,
+                { role: 'user', content: userText },
+              ],
+              // Thread only the bounded vertical selector; the server owns
+              // all prompt guidance for the selected vertical.
+              pendingTurn: () => ({
+                id: turnId,
+                sessionId: current.sessionId,
+                userText,
+                vertical: onboardingVerticalForSegment(current.vertical),
               }),
-          }),
+            }),
+        })
+
+        return [
+          nextModel,
           // Jump the thread to the just-sent message; the subscription opens the
-          // stream and deltas land into the streaming bubble.
-          [ScrollAutopilotOnboardingThreadToEnd()],
+          // stream and deltas land into the streaming bubble. Persist the user
+          // turn so a reload before the reply lands still shows it.
+          [
+            ScrollAutopilotOnboardingThreadToEnd(),
+            PersistAutopilotOnboarding({
+              flow: nextModel.autopilotOnboarding,
+            }),
+          ],
         ]
       },
       OpenedAutopilotOnboardingStream: ({ turnId }) => {
@@ -1169,27 +1371,66 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           [],
         ]
       },
+      ReceivedAutopilotOnboardingStreamHandshake: ({
+        turnId,
+        streamId,
+        sessionId,
+        turnIndex,
+      }) => {
+        const flow = model.autopilotOnboarding
+        if (flow.pendingTurn === null || flow.pendingTurn.id !== turnId) {
+          return [model, []]
+        }
+        // The first turn mints its session id at the stream boundary; adopt the
+        // handshake's session id so persistence keys the right session and a
+        // mid-stream reload can resume even on the very first turn. The handshake
+        // also fixes the durable cursor.
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              sessionId: () => sessionId,
+              status: () => 'streaming',
+              inFlight: () => ({
+                streamId,
+                turnIndex,
+                lastOffset: null,
+                resuming: false,
+              }),
+            }),
+        })
+        return [
+          nextModel,
+          [PersistAutopilotOnboarding({ flow: nextModel.autopilotOnboarding })],
+        ]
+      },
       ReceivedAutopilotOnboardingDelta: ({ turnId, text }) => {
         const flow = model.autopilotOnboarding
         if (flow.pendingTurn === null || flow.pendingTurn.id !== turnId) {
           return [model, []]
         }
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              status: () => 'streaming',
+              streamingReply: reply => (reply ?? '') + text,
+            }),
+        })
         return [
-          evo(model, {
-            autopilotOnboarding: current =>
-              evo(current, {
-                status: () => 'streaming',
-                streamingReply: reply => (reply ?? '') + text,
-              }),
-          }),
+          nextModel,
           // Keep the newest tokens in view as they land (native scroll anchoring
           // only pins when already at the bottom, so this never fights a user who
-          // scrolled up).
-          [ScrollAutopilotOnboardingThreadToEnd()],
+          // scrolled up). Persist the partial reply so a mid-stream reload
+          // resumes from where it left off.
+          [
+            ScrollAutopilotOnboardingThreadToEnd(),
+            PersistAutopilotOnboarding({
+              flow: nextModel.autopilotOnboarding,
+            }),
+          ],
         ]
       },
-      SucceededAutopilotOnboardingTurn: ({ response }) => [
-        evo(model, {
+      SucceededAutopilotOnboardingTurn: ({ response }) => {
+        const nextModel = evo(model, {
           autopilotOnboarding: flow =>
             evo(flow, {
               sessionId: () => response.sessionId,
@@ -1199,26 +1440,244 @@ export const update = (model: Model, message: Message): UpdateReturn =>
               outputSpec: () => response.outputSpec,
               streamingReply: () => null,
               pendingTurn: () => null,
+              inFlight: () => null,
               transcript: transcript => [
                 ...transcript,
                 { role: 'assistant', content: response.reply },
               ],
             }),
-        }),
-        [ScrollAutopilotOnboardingThreadToEnd()],
-      ],
-      FailedAutopilotOnboardingTurn: ({ reason }) => [
-        evo(model, {
+        })
+        return [
+          nextModel,
+          [
+            ScrollAutopilotOnboardingThreadToEnd(),
+            PersistAutopilotOnboarding({
+              flow: nextModel.autopilotOnboarding,
+            }),
+          ],
+        ]
+      },
+      FailedAutopilotOnboardingTurn: ({ reason }) => {
+        const nextModel = evo(model, {
           autopilotOnboarding: flow =>
             evo(flow, {
               status: () => 'error',
               errorReason: () => (reason === '' ? null : reason),
               streamingReply: () => null,
               pendingTurn: () => null,
+              inFlight: () => null,
             }),
-        }),
-        [],
-      ],
+        })
+        // Persist with the cleared inFlight so a reload does not phantom-resume a
+        // turn that already failed.
+        return [
+          nextModel,
+          [PersistAutopilotOnboarding({ flow: nextModel.autopilotOnboarding })],
+        ]
+      },
+      LoadedStoredAutopilotOnboarding: ({ session }) => {
+        // Restore the saved transcript/spec/cursor IMMEDIATELY (no blank flash),
+        // then reconcile with the server. If a turn was mid-stream, prime the
+        // resume bubble + cursor (with `resuming` set) so the resume subscription
+        // reopens the durable read.
+        const wasInFlight = session.inFlight ?? null
+        const nextModel = evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, {
+              sessionId: () => session.sessionId,
+              vertical: () => session.vertical ?? flow.vertical,
+              status: () => (wasInFlight === null ? 'idle' : 'streaming'),
+              errorReason: () => null,
+              transcript: () => session.transcript,
+              outputSpec: () => session.outputSpec ?? {},
+              streamingReply: () =>
+                wasInFlight === null ? null : wasInFlight.replySoFar,
+              pendingTurn: () => null,
+              inFlight: () =>
+                wasInFlight === null
+                  ? null
+                  : {
+                      streamId: wasInFlight.streamId,
+                      turnIndex: wasInFlight.turnIndex,
+                      lastOffset: wasInFlight.lastOffset ?? null,
+                      resuming: true,
+                    },
+            }),
+        })
+        return [
+          nextModel,
+          [
+            ReconcileAutopilotOnboardingSession({
+              sessionId: session.sessionId,
+            }),
+            ScrollAutopilotOnboardingThreadToEnd(),
+          ],
+        ]
+      },
+      SucceededReconcileAutopilotOnboardingSession: ({ response }) => {
+        const flow = model.autopilotOnboarding
+        // Only adopt the reconcile for the session we are showing.
+        if (flow.sessionId !== response.sessionId) {
+          return [model, []]
+        }
+        // Adopt the authoritative transcript/status/outputSpec/turnCount. If a
+        // resume is in flight, keep the streaming bubble + resume cursor intact
+        // (the resume read owns the in-flight tail); otherwise the server
+        // transcript is the full truth.
+        const resuming = flow.inFlight !== null && flow.inFlight.resuming
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              transcript: () => response.transcript,
+              outputSpec: () => response.outputSpec,
+              turnCount: () => response.turnCount,
+              status: existing =>
+                resuming ? existing : existing === 'error' ? existing : 'idle',
+            }),
+        })
+        return [
+          nextModel,
+          resuming
+            ? []
+            : [
+                PersistAutopilotOnboarding({
+                  flow: nextModel.autopilotOnboarding,
+                }),
+              ],
+        ]
+      },
+      FailedReconcileAutopilotOnboardingSession: ({ status }) => {
+        // 404 => the session expired or is unknown server-side: clear the stored
+        // record and start fresh (preserve the route's vertical). A transient
+        // network error (status 0) keeps the locally restored transcript.
+        if (status !== 404) {
+          return [model, []]
+        }
+        const nextModel = evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, {
+              sessionId: () => null,
+              status: () => 'idle',
+              errorReason: () => null,
+              transcript: () => [],
+              outputSpec: () => ({}),
+              streamingReply: () => null,
+              pendingTurn: () => null,
+              inFlight: () => null,
+              turnCount: () => 0,
+            }),
+        })
+        return [nextModel, [ClearAutopilotOnboardingStorage()]]
+      },
+      ReceivedAutopilotOnboardingResumeReply: ({
+        turnIndex,
+        reply,
+        nextOffset,
+      }) => {
+        const flow = model.autopilotOnboarding
+        if (
+          flow.inFlight === null ||
+          !flow.inFlight.resuming ||
+          flow.inFlight.turnIndex !== turnIndex
+        ) {
+          return [model, []]
+        }
+        // REPLACE the bubble with the accumulated reply (the replay re-streams
+        // the whole turn from the offset; never append-duplicate). Advance the
+        // persisted offset from the `stream-next-offset` header so a second
+        // reload resumes further along.
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              status: () => 'streaming',
+              streamingReply: () => reply,
+              inFlight: held =>
+                held === null ? held : { ...held, lastOffset: nextOffset },
+            }),
+        })
+        return [
+          nextModel,
+          [
+            ScrollAutopilotOnboardingThreadToEnd(),
+            PersistAutopilotOnboarding({
+              flow: nextModel.autopilotOnboarding,
+            }),
+          ],
+        ]
+      },
+      SucceededResumeAutopilotOnboardingTurn: ({ response }) => {
+        const flow = model.autopilotOnboarding
+        if (flow.sessionId !== response.sessionId) {
+          return [model, []]
+        }
+        // The resumed turn completed: commit the final assistant message and
+        // clear the resume/in-flight state. The transcript already holds the
+        // user turn (from the reconcile / restore); append the assistant reply
+        // only if the last turn is not already this assistant reply (the
+        // reconcile may have adopted a completed transcript).
+        const lastTurn = flow.transcript[flow.transcript.length - 1]
+        const alreadyCommitted =
+          lastTurn !== undefined &&
+          lastTurn.role === 'assistant' &&
+          lastTurn.content === response.reply
+        const nextModel = evo(model, {
+          autopilotOnboarding: current =>
+            evo(current, {
+              status: () => 'idle',
+              errorReason: () => null,
+              turnCount: () => response.turnCount,
+              outputSpec: () => response.outputSpec,
+              streamingReply: () => null,
+              inFlight: () => null,
+              transcript: transcript =>
+                alreadyCommitted
+                  ? transcript
+                  : [
+                      ...transcript,
+                      { role: 'assistant', content: response.reply },
+                    ],
+            }),
+        })
+        return [
+          nextModel,
+          [
+            ScrollAutopilotOnboardingThreadToEnd(),
+            PersistAutopilotOnboarding({
+              flow: nextModel.autopilotOnboarding,
+            }),
+          ],
+        ]
+      },
+      ClosedAutopilotOnboardingResumeStream: ({ turnIndex }) =>
+        // The durable log ended without a `done` frame. Stop resuming and fall
+        // back to the reconciled transcript (which the reconcile already
+        // adopted) so no stuck half-bubble remains.
+        endResume(model, turnIndex),
+      FailedAutopilotOnboardingResume: ({ turnIndex }) =>
+        // The resume read 404'd (durable log gone / TTL expired): fall back to
+        // the reconciled transcript without leaving a stuck half-bubble.
+        endResume(model, turnIndex),
+      ClickedAutopilotOnboardingStartOver: () => {
+        // Drop the in-memory flow + the stored session (preserve the route's
+        // vertical so the page stays on the same onboarding lane).
+        const nextModel = evo(model, {
+          autopilotOnboarding: flow =>
+            evo(flow, {
+              sessionId: () => null,
+              composerDraft: () => '',
+              status: () => 'idle',
+              errorReason: () => null,
+              transcript: () => [],
+              outputSpec: () => ({}),
+              streamingReply: () => null,
+              pendingTurn: () => null,
+              inFlight: () => null,
+              turnCount: () => 0,
+            }),
+        })
+        return [nextModel, [ClearAutopilotOnboardingStorage()]]
+      },
+      CompletedPersistAutopilotOnboarding: () => [model, []],
       ClickedAutopilotOnboardingCreditKickoff: () => [
         model,
         [OpenAutopilotCreditKickoff()],

@@ -21,18 +21,26 @@ import {
   RequestedPollAutopilotRun,
 } from './page/loggedIn/message'
 import {
+  ClosedAutopilotOnboardingResumeStream,
   ClosedSettledFeedStream,
+  FailedAutopilotOnboardingResume,
   FailedAutopilotOnboardingTurn,
   FailedSettledFeedStream,
   OpenedAutopilotOnboardingStream,
   OpenedSettledFeedStream,
   ReceivedAutopilotOnboardingDelta,
+  ReceivedAutopilotOnboardingResumeReply,
+  ReceivedAutopilotOnboardingStreamHandshake,
   ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
   SucceededAutopilotOnboardingTurn,
+  SucceededResumeAutopilotOnboardingTurn,
 } from './page/loggedOut/message'
 import type { Message as LoggedOutMessage } from './page/loggedOut/message'
-import { parseOnboardingStreamEvent } from './page/autopilot-onboarding/flow'
+import {
+  type OnboardingStreamEvent,
+  parseOnboardingStreamEvent,
+} from './page/autopilot-onboarding/flow'
 import { newOnboardingSessionId } from './page/loggedOut/update'
 import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import {
@@ -481,11 +489,68 @@ export const onboardingStreamDependenciesForModel = (
   }
 }
 
-// Read a fetch SSE body to completion, parsing `event:`/`data:` blocks and
-// offering one message per parsed event into the subscription queue. The wire is
-// the narrow onboarding stream (`event: delta|done|error`). Mirrors the
-// settled-feed `Stream.callback` + acquireRelease lifecycle so an unmount aborts
-// the in-flight request cleanly.
+// Read a fetch SSE body to completion, parsing each `event:`/`data:` block into
+// a typed `OnboardingStreamEvent` and invoking `onEvent` for each. Shared by the
+// live turn stream and the durable resume read, which differ only in how they
+// map parsed events to messages (the live stream also emits a handshake +
+// failure; the resume read accumulates + closes). The block-splitting +
+// trailing-flush wire is identical, so it lives here once.
+const readOnboardingSseEvents = async (
+  body: NonNullable<Response['body']>,
+  onEvent: (event: OnboardingStreamEvent) => void,
+): Promise<void> => {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+
+  const drainBlock = (block: string): void => {
+    const lines = block.split(/\r?\n/)
+    const eventLine = lines.find(line => line.startsWith('event:'))
+    const dataLines = lines
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice('data:'.length).replace(/^ /, ''))
+
+    if (dataLines.length === 0) {
+      return
+    }
+
+    const eventName =
+      eventLine === undefined
+        ? 'message'
+        : eventLine.slice('event:'.length).replace(/^ /, '').trim()
+    const parsed = parseOnboardingStreamEvent(
+      eventName,
+      parseJsonRecord(dataLines.join('\n')),
+    )
+
+    if (parsed !== undefined) {
+      onEvent(parsed)
+    }
+  }
+
+  // Read frames; SSE events are separated by a blank line.
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    buffer += value
+    let separator = buffer.search(/\r?\n\r?\n/)
+    while (separator !== -1) {
+      const block = buffer.slice(0, separator)
+      buffer = buffer.slice(separator).replace(/^\r?\n\r?\n/, '')
+      drainBlock(block)
+      separator = buffer.search(/\r?\n\r?\n/)
+    }
+  }
+  // Flush any trailing block without a terminating blank line.
+  if (buffer.trim() !== '') {
+    drainBlock(buffer)
+  }
+}
+
+// Live `/autopilot` onboarding turn stream. Opens the SSE POST and maps each
+// parsed event to a message. Mirrors the settled-feed `Stream.callback` +
+// acquireRelease lifecycle so an unmount aborts the in-flight request cleanly.
 const onboardingStream = (
   dependencies: OnboardingStreamDependencies,
 ): Stream.Stream<Message> => {
@@ -540,72 +605,170 @@ const onboardingStream = (
 
           offer(OpenedAutopilotOnboardingStream({ turnId }))
 
-          const reader = response.body
-            .pipeThrough(new TextDecoderStream())
-            .getReader()
-          let buffer = ''
-
-          const drainBlock = (block: string): void => {
-            const lines = block.split(/\r?\n/)
-            const eventLine = lines.find(line => line.startsWith('event:'))
-            const dataLines = lines
-              .filter(line => line.startsWith('data:'))
-              .map(line => line.slice('data:'.length).replace(/^ /, ''))
-
-            if (dataLines.length === 0) {
-              return
-            }
-
-            const eventName =
-              eventLine === undefined
-                ? 'message'
-                : eventLine.slice('event:'.length).replace(/^ /, '').trim()
-            const data = parseJsonRecord(dataLines.join('\n'))
-            const parsed = parseOnboardingStreamEvent(eventName, data)
-
-            if (parsed === undefined) {
-              return
-            }
-
-            if (parsed.kind === 'delta') {
+          await readOnboardingSseEvents(response.body, event => {
+            if (event.kind === 'stream') {
+              // The handshake frame carries the durable cursor; persist it so a
+              // reload can resume this turn from the durable log.
               offer(
-                ReceivedAutopilotOnboardingDelta({
+                ReceivedAutopilotOnboardingStreamHandshake({
                   turnId,
-                  text: parsed.text,
+                  streamId: event.streamId,
+                  sessionId: event.sessionId,
+                  turnIndex: event.turnIndex,
                 }),
               )
-            } else if (parsed.kind === 'done') {
-              offer(SucceededAutopilotOnboardingTurn({ response: parsed.response }))
+            } else if (event.kind === 'delta') {
+              offer(ReceivedAutopilotOnboardingDelta({ turnId, text: event.text }))
+            } else if (event.kind === 'done') {
+              offer(SucceededAutopilotOnboardingTurn({ response: event.response }))
             } else {
               fail()
             }
-          }
-
-          // Read frames; SSE events are separated by a blank line.
-          for (;;) {
-            const { done, value } = await reader.read()
-            if (done) {
-              break
-            }
-            buffer += value
-            let separator = buffer.search(/\r?\n\r?\n/)
-            while (separator !== -1) {
-              const block = buffer.slice(0, separator)
-              buffer = buffer.slice(separator).replace(/^\r?\n\r?\n/, '')
-              drainBlock(block)
-              separator = buffer.search(/\r?\n\r?\n/)
-            }
-          }
-          // Flush any trailing block without a terminating blank line.
-          if (buffer.trim() !== '') {
-            drainBlock(buffer)
-          }
+          })
         }
 
         run().catch(() => {
           if (!resource.aborted) {
             fail()
           }
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.aborted = true
+          resource.controller.abort()
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
+// Resume read of an in-flight onboarding turn after reload (#6154 tier 4). When
+// the rehydrated model carries a `resumeTurn` (a turn was mid-stream when the
+// tab went away), open the durable resume read
+// (`GET /api/autopilot/onboarding/{sessionId}/turn/{turnIndex}/stream?offset=`),
+// which replays the SAME `delta`/`done` wire from the durable log starting at
+// `offset`. The replay re-streams the WHOLE in-flight turn from that offset, so
+// deltas accumulate into a fresh reply (the update REPLACES the bubble, never
+// double-appends a re-replayed prefix). The `stream-next-offset` header advances
+// the persisted offset so a second reload resumes further along. A 404 (durable
+// log gone / TTL expired) yields a typed failure so the page falls back to the
+// reconciled transcript without a stuck half-bubble.
+const inactiveOnboardingResume: {
+  readonly isActive: boolean
+  readonly sessionId: string
+  readonly turnIndex: number
+  readonly offset: string
+} = {
+  isActive: false,
+  sessionId: '',
+  turnIndex: 0,
+  offset: '',
+}
+
+type OnboardingResumeDependencies = typeof inactiveOnboardingResume
+
+export const onboardingResumeDependenciesForModel = (
+  model: Model,
+): OnboardingResumeDependencies => {
+  if (model._tag !== 'LoggedOut') {
+    return inactiveOnboardingResume
+  }
+
+  const flow = model.autopilotOnboarding
+  const inFlight = flow.inFlight
+  if (inFlight === null || !inFlight.resuming || flow.sessionId === null) {
+    return inactiveOnboardingResume
+  }
+
+  return {
+    isActive: true,
+    sessionId: flow.sessionId,
+    turnIndex: inFlight.turnIndex,
+    offset: inFlight.lastOffset ?? '0',
+  }
+}
+
+const onboardingResumeStream = (
+  dependencies: OnboardingResumeDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { sessionId, turnIndex, offset } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const controller = new AbortController()
+        const resource = { aborted: false, controller }
+
+        const offer = (message: LoggedOutMessage): void => {
+          if (!resource.aborted) {
+            Queue.offerUnsafe(queue, GotLoggedOutMessage({ message }))
+          }
+        }
+
+        const run = async (): Promise<void> => {
+          const response = await fetch(
+            `/api/autopilot/onboarding/${encodeURIComponent(sessionId)}/turn/${turnIndex}/stream?offset=${encodeURIComponent(offset)}`,
+            {
+              method: 'GET',
+              cache: 'no-store',
+              signal: controller.signal,
+              headers: { accept: 'text/event-stream' },
+            },
+          )
+
+          // 404 / non-OK => durable log gone or unwired: fall back to the
+          // reconciled transcript (the completed reply may already be there).
+          if (!response.ok || response.body === null) {
+            offer(FailedAutopilotOnboardingResume({ turnIndex }))
+            return
+          }
+
+          const nextOffset = response.headers.get('stream-next-offset')
+
+          // The replay re-streams the whole turn from `offset`; accumulate fresh
+          // and REPLACE the bubble so a re-replayed prefix never double-counts.
+          let accumulated = ''
+          let sawDone = false
+
+          await readOnboardingSseEvents(response.body, event => {
+            if (event.kind === 'delta') {
+              accumulated += event.text
+              offer(
+                ReceivedAutopilotOnboardingResumeReply({
+                  turnIndex,
+                  reply: accumulated,
+                  nextOffset,
+                }),
+              )
+            } else if (event.kind === 'done') {
+              sawDone = true
+              offer(
+                SucceededResumeAutopilotOnboardingTurn({
+                  response: event.response,
+                }),
+              )
+            }
+            // A `stream` handshake or `error` frame in the replay is ignored:
+            // the close handler below resolves the terminal state.
+          })
+
+          // EOF without a `done` frame: the durable log ended mid-turn (the live
+          // producer is still writing, or the turn was abandoned). Mark the
+          // resume stream closed so the page stops resuming without losing what
+          // streamed; a later load re-checks via reconcile/resume.
+          if (!sawDone) {
+            offer(ClosedAutopilotOnboardingResumeStream({ turnIndex }))
+          }
+        }
+
+        run().catch(() => {
+          offer(FailedAutopilotOnboardingResume({ turnIndex }))
         })
 
         return resource
@@ -753,6 +916,25 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.turnId === right.turnId,
       dependenciesToStream: onboardingStream,
+    },
+  ),
+  autopilotOnboardingResumeStream: entry(
+    {
+      isActive: S.Boolean,
+      sessionId: S.String,
+      turnIndex: S.Int,
+      offset: S.String,
+    },
+    {
+      modelToDependencies: onboardingResumeDependenciesForModel,
+      // Hold the resume read stable for one (turnIndex, offset) attempt; a new
+      // offset (a second reload resuming further along) reopens the read.
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive &&
+        left.sessionId === right.sessionId &&
+        left.turnIndex === right.turnIndex &&
+        left.offset === right.offset,
+      dependenciesToStream: onboardingResumeStream,
     },
   ),
   demoPlayback: entry(
