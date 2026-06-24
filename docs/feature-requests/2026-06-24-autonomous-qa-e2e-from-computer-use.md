@@ -323,6 +323,32 @@ chill-evals, and the `/pro` console — while adopting droid-control's
 commitments→verify contract, multi-driver/cross-OS breadth, and Remotion-grade
 compose layer.
 
+## 5c. Tooling to adopt: `gh-attach` (the "post evidence to the PR" glue)
+
+The Factory engineer also pointed at **`gh-attach`** (`ain3sh/gh-attach`, Go; local
+clone `projects/repos/gh-attach`) — "a neat lil tool that will help with any of
+these PR QA pipelines." It is small and exactly fills a gap we have.
+
+**What it does:** uploads the same attachment kinds GitHub's web UI supports for
+issues/PRs/discussions — **images, video, PDFs/code/archives** — and returns the
+embeddable result (`--md` markdown links, `--auto` `![](url)` for images, `--url`
+raw, `--json`). One command: `gh-attach clip.mp4 report.png --repo owner/repo --json`.
+Installable as a `gh` CLI extension (`gh attach …`).
+
+**Why it matters for us:** GitHub's REST API does **not** natively support
+attaching media to issue/PR comments — gh-attach drives the web upload path that
+does. Our `qa-runner` already produces a `session.mp4`, screenshots, and a
+`result.json`; the missing step is **posting that evidence into a PR/issue comment**
+the way Factory's Automated QA and droid-control do (inline screenshots/video in the
+report). `gh-attach` is that glue: distill → run → `gh-attach` the video+shots →
+post the report comment with the media embedded + the link to the committed e2e
+test. It also serves the same role inside the `/pro` console's run-sharing.
+
+**Adopt-not-vendor:** it's a tiny standalone Go binary (MIT-class), runtime-agnostic
+(no Factory/`droid` coupling, unlike droid-control), so we can use it directly in
+the QA CI step / `qa-runner` reporting without taking on a dependency on anyone's
+agent. Add it to the Phase 2.5/CI reporting step.
+
 ## 6. Proposed architecture (how OpenAgents could build it)
 
 OpenAgents already owns most of the hard parts; the request is largely a
