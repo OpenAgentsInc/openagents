@@ -266,6 +266,42 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/agent-runtime-kernel.test.ts`.
 
+## Agent Trace Store (shareable ATIF traces)
+
+- The trace store (`workers/api/src/trace-store-d1.ts`, migration
+  `0228_agent_traces.sql`) persists only the PUBLIC-SAFE projection of an
+  ATIF-v1.7 agent trajectory, keyed by a uuid, so `/trace/{uuid}` can
+  dereference real runs (#6208/#6212, epic #6206). Large blobs
+  (video/screenshots) live in R2 and are referenced from the trajectory by
+  public-safe R2 key only; the blob bytes are never stored in D1.
+- Ingest (`POST /api/traces`) is registered-agent-bearer authenticated and
+  requires an `Idempotency-Key`. The payload is schema-decoded against the
+  pinned `ATIF-v1.7` subset (`workers/api/src/atif-trace-schema.ts`),
+  structurally validated (sequential `step_id` from 1; observation
+  `source_call_id` references a `tool_call`; agent-only fields only on agent
+  steps), and then tripwired BEFORE persistence. The tripwire rejects (it does
+  not silently redact) secrets, tokens, wallet/payment material, PII, local
+  filesystem paths, and raw/split provider model ids — only
+  `openagents/khala`-class public model ids may be stored. A rejected ingest
+  returns finding CODES only and never echoes the offending values back.
+- Per-trace `visibility` is `public` | `unlisted` | `owner_only` and is
+  enforced on read. `public` and `unlisted` reads need no auth (anyone with the
+  link); `owner_only` reads require the owning browser session (or an admin) and
+  otherwise return 404 so an owner-only trace's existence is not revealed.
+- Ingest has bounded abuse controls: a body-size cap, a max step count, and a
+  max blob-ref count. The owner-scoped list is bounded and returns summaries
+  only.
+- A stored trace is evidence only. The store, ingest, and read paths grant no
+  accepted-work, payout, settlement, provider-account, spend, or public-claim
+  authority by themselves; read projections always carry the explicit
+  all-false `authority` block.
+- The in-repo ATIF schema mirrors the public-safe contract agreed with the
+  qa-runner producer and the `/trace` page consumer; the shared package (#6207)
+  will canonicalize it later and the swap must keep this exact subset.
+- Regression coverage for this policy lives in
+  `workers/api/src/atif-trace-schema.test.ts` and
+  `workers/api/src/trace-store-routes.test.ts`.
+
 ## Pack A Autopilot Runtime Supervision
 
 - Pack A task and schedule supervision events must schema-decode

@@ -95,6 +95,7 @@ type WorkerRouteDependencies = Readonly<{
   routeHygieneLaneSettlementRequest: OptionalEffectRoute
   routeFirmupLaneSettlementRequest: OptionalEffectRoute
   routeTassadarTraceContributionRequest: OptionalEffectRoute
+  routeTraceRequest: OptionalEffectRoute
   routeTeamChatRequest: OptionalEffectRoute
   routeThreadFileRequest: OptionalEffectRoute
   routeTrainingRunWindowRequest: OptionalEffectRoute
@@ -519,6 +520,12 @@ export const makeWorkerRouteRequest =
 
       if (tassadarTraceContributionResponse !== undefined) {
         return yield* tassadarTraceContributionResponse
+      }
+
+      const traceResponse = dependencies.routeTraceRequest(request, env, ctx)
+
+      if (traceResponse !== undefined) {
+        return yield* traceResponse
       }
 
       const trainingRunWindowResponse =

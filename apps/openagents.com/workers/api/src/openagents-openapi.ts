@@ -1423,6 +1423,15 @@ const satsInteger = (description: string, minimum = 0): JsonSchema => ({
 })
 
 const schemaComponents = (): JsonSchema => ({
+  AtifTraceIngestEnvelope: objectSummary(
+    'Result of a trace ingest (#6208): the stored trace uuid, its public `/trace/{uuid}` url, the resolved visibility tier, and a replay flag (true when an Idempotency-Key matched an already-stored trace). Contains refs only.',
+  ),
+  AtifTraceReadEnvelope: objectSummary(
+    'Public-safe ATIF trace projection the `/trace/{uuid}` page renders: { trace: { uuid, schemaVersion, trajectoryId, sessionId?, visibility, agentRef, stepCount, trajectory, blobRefs, createdAt, authority } }. public/unlisted reads need no auth; owner_only reads require the owning browser session. The trajectory is the public-safe ATIF projection; authority flags are always false (a trace is evidence only).',
+  ),
+  OwnerTraceListEnvelope: objectSummary(
+    'Owner-scoped list of the signed-in user\'s own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt }] }. Summaries only, newest first.',
+  ),
   ErrorResponse: {
     type: 'object',
     additionalProperties: false,
@@ -3958,6 +3967,9 @@ const requestSchemas = (): JsonSchema => ({
   ),
   TrainingTraceContributionEnvelope: objectSummary(
     'Public-safe worker/validator trace contribution envelope with contribution refs, lease/run/window refs, workload family, contribution state, and optional verification challenge projection. It contains refs and verdict metadata only, never raw traces, prompts, private paths, wallet material, or payout targets.',
+  ),
+  AtifTraceIngestRequest: objectSummary(
+    'Registered-agent ingest of a PUBLIC-SAFE ATIF-v1.7 agent trajectory (#6208). Fields: trajectory (schema_version="ATIF-v1.7", trajectory_id, optional session_id, agent{name,version,model_name?}, steps[], optional final_metrics), optional visibility ("public"|"unlisted"|"owner_only"), and optional blobRefs (public-safe R2 keys for video/screenshots). The payload is structurally validated and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected before persistence (only openagents/khala-class public ids allowed). Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
   ),
   TrainingWindowBootstrapGrantRequest: objectSummary(
     'Joiner request for a bootstrap grant pinned to the last durable seal of a training run. Request fields are joinerRef and optional public-safe receiptRefs.',
@@ -7198,6 +7210,71 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Training window lease projection.',
           '#/components/schemas/TrainingWindowLeaseEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/traces': {
+    post: operation({
+      operationId: 'ingestAgentTrace',
+      summary: 'Ingest a public-safe ATIF agent trace',
+      description:
+        'Registered-agent ingest of a public-safe ATIF-v1.7 agent trajectory (#6208, epic #6206). Requires an Idempotency-Key. The payload is structurally validated (sequential step_ids, observation/tool-call refs, agent-only fields on agent steps) and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected (only openagents/khala-class public ids allowed). On success returns the stored { uuid, url, visibility, replay }. Large blobs (video/screenshots) live in R2 and are referenced by public-safe key. Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
+      tags: ['Traces'],
+      security: agentBearer,
+      parameters: [
+        requiredIdempotencyHeader(
+          'Idempotency key. At most one trace is stored per (agent, key); a repeat returns the already-stored uuid with replay=true.',
+        ),
+      ],
+      requestBody: jsonContent('#/components/schemas/AtifTraceIngestRequest'),
+      responses: {
+        '201': okJson(
+          'Stored a new trace.',
+          '#/components/schemas/AtifTraceIngestEnvelope',
+        ),
+        '200': okJson(
+          'Idempotent replay of an already-stored trace.',
+          '#/components/schemas/AtifTraceIngestEnvelope',
+        ),
+        '422': {
+          description:
+            'Public-safety tripwire rejected the payload (secrets, tokens, wallet/payment material, PII, local paths, or raw provider model ids). Finding codes are returned; offending values are never echoed back.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        ...errorResponses(),
+      },
+    }),
+    get: operation({
+      operationId: 'listOwnAgentTraces',
+      summary: 'List the signed-in user\'s own traces',
+      description:
+        'Owner-scoped list of the signed-in browser user\'s own traces (#6208), newest first. Returns public-safe summaries only.',
+      tags: ['Traces'],
+      security: [{ browserSession: [] }],
+      responses: {
+        '200': okJson(
+          'Owner-scoped trace summaries.',
+          '#/components/schemas/OwnerTraceListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/traces/{traceRef}': {
+    get: operation({
+      operationId: 'getAgentTrace',
+      summary: 'Read a public-safe agent trace by uuid',
+      description:
+        'Read the public-safe ATIF trace projection the `/trace/{uuid}` page renders (#6208/#6212). Visibility is enforced on read: public and unlisted traces are readable by anyone with the link (no auth); owner_only traces require the owning browser session (or an admin) and otherwise return 404 so their existence is not revealed.',
+      tags: ['Traces'],
+      security: optionalAgentBearer,
+      parameters: [pathParam('traceRef', 'Trace uuid.')],
+      responses: {
+        '200': okJson(
+          'Public-safe ATIF trace projection.',
+          '#/components/schemas/AtifTraceReadEnvelope',
         ),
         ...errorResponses(),
       },

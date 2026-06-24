@@ -382,6 +382,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeHygieneLaneSettlementRequest: noRoute,
       routeFirmupLaneSettlementRequest: noRoute,
       routeTassadarTraceContributionRequest: noRoute,
+      routeTraceRequest: noRoute,
       routeTeamChatRequest: noRoute,
       routeThreadFileRequest: noRoute,
       routeTrainingRunWindowRequest: noRoute,

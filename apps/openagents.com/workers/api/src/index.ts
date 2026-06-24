@@ -732,6 +732,8 @@ import {
 } from './tassadar-settled-feed-sync'
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
+import { makeTraceStoreRoutes } from './trace-store-routes'
+import { makeD1TraceStore } from './trace-store-d1'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
   type TeamChatMessage,
@@ -6632,6 +6634,16 @@ const agentSiteRoutes = makeAgentSiteRoutes({
   requireBrowserSession,
 })
 
+// Trace store + ingest/read API (openagents #6208/#6212, epic #6206): the
+// shareable `/trace/{uuid}` surface. Agent-bearer ingest, visibility-gated read.
+const traceStoreRoutes = makeTraceStoreRoutes({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  appendRefreshedSessionCookies,
+  isAdminEmail: isOpenAgentsAdminEmail,
+  makeStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+  requireBrowserSession,
+})
+
 const hostedMdkClientForEnv = (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
@@ -11186,6 +11198,7 @@ const routeRequest = makeWorkerRouteRequest({
     ),
   routeTassadarTraceContributionRequest:
     tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
+  routeTraceRequest: traceStoreRoutes.routeTraceRequest,
   routeTrainingRunWindowRequest:
     trainingRunWindowRoutes.routeTrainingRunWindowRequest,
   routeTrainingVerificationRequest:
