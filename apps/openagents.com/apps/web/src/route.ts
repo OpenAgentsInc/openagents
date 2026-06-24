@@ -72,6 +72,9 @@ export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
 export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
 export const ShareRoute = r('Share', { shareId: S.String })
+// Public, shareable ATIF trace render at `/trace/{uuid}` (issue #6209). No auth
+// to view a shared trace; the uuid is the stable shareable id.
+export const TraceRoute = r('Trace', { uuid: S.String })
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
 export const LandingRoute = r('Landing')
@@ -174,6 +177,7 @@ export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
+export type TraceRoute = typeof TraceRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
 export type Moksha2Route = typeof Moksha2Route.Type
 export type LandingRoute = typeof LandingRoute.Type
@@ -246,6 +250,7 @@ export const LoggedOutRoute = S.Union([
   BlogPostRoute,
   PublicAgentRoute,
   ShareRoute,
+  TraceRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -301,6 +306,7 @@ export const LoggedInRoute = S.Union([
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
+  TraceRoute,
   DashboardRoute,
   ProRoute,
   ProRunsRoute,
@@ -367,6 +373,7 @@ export const AppRoute = S.Union([
   BlogPostRoute,
   PublicAgentRoute,
   ShareRoute,
+  TraceRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -627,6 +634,11 @@ export const shareRouter = pipe(
   literal('share'),
   slash(string('shareId')),
   Route.mapTo(ShareRoute),
+)
+export const traceRouter = pipe(
+  literal('trace'),
+  slash(string('uuid')),
+  Route.mapTo(TraceRoute),
 )
 export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
 export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
@@ -1164,6 +1176,18 @@ export const routeRegistry = {
     inLoggedInUnion: false,
     render: 'submodel',
   },
+  // Public, shareable ATIF trace render at `/trace/{uuid}` (issue #6209). No
+  // auth bootstrap and `loggedInGate: 'open'` — anyone with the link can view a
+  // shared trace. It is a member of BOTH unions so a logged-in visitor resolves
+  // it as a public route too (same posture as Terms/Privacy/PublicAgent). It
+  // renders through the stateless public-header shell (`page/trace.ts`).
+  Trace: {
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
   Moksha: {
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
@@ -1499,6 +1523,7 @@ const orderedParserRouters = [
   blogPostRouter,
   publicAgentRouter,
   shareRouter,
+  traceRouter,
   moksha2Router,
   mokshaRouter,
   landingAliasRouter,

@@ -30,6 +30,7 @@ import * as Privacy from './page/privacy'
 import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
+import * as Trace from './page/trace'
 import * as Ui from './ui'
 
 const githubLoginHref = '/login/github'
@@ -405,6 +406,8 @@ const title = (model: Model): string => {
       return `${model.route.agentRef} - OpenAgents`
     case 'Share':
       return 'Shared Workroom - OpenAgents'
+    case 'Trace':
+      return Trace.title(model.route)
     default:
       return 'OpenAgents'
   }
@@ -570,7 +573,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'DemoLegal' &&
       model.route._tag !== 'Run' &&
       model.route._tag !== 'Tassadar' &&
-      model.route._tag !== 'TassadarReplay'
+      model.route._tag !== 'TassadarReplay' &&
+      model.route._tag !== 'Trace'
     ) {
       return undefined
     }
@@ -602,6 +606,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Privacy') {
     return Privacy.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'Trace') {
+    return Trace.view<Message>(model.route, authState)
   }
 
   if (model.route._tag === 'Animations') {

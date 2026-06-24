@@ -40,6 +40,9 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/moksha2', 'Moksha2'],
   ['/clients-preview', 'ClientsPreview'],
   ['/gym/oss', 'GymOss'],
+  // The public shareable ATIF trace render (#6209). Parses regardless of
+  // session; it is public-safe with no auth to view a shared trace.
+  ['/trace/0e08d2db-2026-4624-9a39-f1efe8000001', 'Trace'],
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
@@ -78,10 +81,24 @@ describe('public route parser coverage', () => {
   )
 
   test('covers the documented public surface', () => {
-    // 33 original public/top-level routes + the authenticated `/pro` operator
-    // console top-level route (34) + the four /pro subpages (runs index/detail,
-    // evals index/detail) for the operator console build-out (38).
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(38)
+
+    // Public/top-level routes incl. the authenticated `/pro` operator console
+    // top-level route + its four subpages (runs index/detail, evals index/detail),
+    // now plus the public shareable `/trace/{uuid}` render (#6209) = 39.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
+  })
+
+  // The public shareable trace render (#6209) must capture the uuid param so the
+  // page can look up the right trajectory; a missing/dropped router would fall
+  // through to NotFound (the bug this file guards against).
+  test('parses /trace/{uuid} and captures the uuid', () => {
+    const route = urlToAppRoute(
+      appUrl('/trace/0e08d2db-2026-4624-9a39-f1efe8000001'),
+    )
+    expect(route._tag).toBe('Trace')
+    if (route._tag === 'Trace') {
+      expect(route.uuid).toBe('0e08d2db-2026-4624-9a39-f1efe8000001')
+    }
   })
 
   // The specific-before-generic parser ordering must resolve the parameterized

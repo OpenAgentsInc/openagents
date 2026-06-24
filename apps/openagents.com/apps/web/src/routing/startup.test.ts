@@ -54,6 +54,7 @@ import {
   TeamChatRoute,
   TeamProjectChatRoute,
   TermsRoute,
+  TraceRoute,
 } from '../route'
 import { routeRegistry } from '../route'
 import {
@@ -170,6 +171,39 @@ describe('startup route policy', () => {
       redirect: Option.none(),
       route: shareRoute,
     })
+  })
+
+  test('keeps the public /trace/{uuid} render public for every auth state', () => {
+    // #6209: a shared trace is viewable with no auth. It must resolve in place
+    // (no home/onboarding/order redirect) whether the visitor is logged out,
+    // logged in + onboarded, or mid-onboarding.
+    const traceRoute = TraceRoute({
+      uuid: '0e08d2db-2026-4624-9a39-f1efe8000001',
+    })
+
+    expect(startupRouteForLoggedOut(traceRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: traceRoute,
+    })
+    expect(startupRouteForLoggedIn(traceRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: traceRoute,
+    })
+    expect(startupRouteForLoggedIn(traceRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: traceRoute,
+    })
+  })
+
+  test('classifies /trace as a no-auth-bootstrap public route', () => {
+    // The registry-derived startup helpers must treat /trace like the other
+    // public surfaces: no auth bootstrap required, and a 'public' complete
+    // disposition (resolved as a logged-out public route, not gated/redirected).
+    expect(routeRequiresAuthBootstrap(TraceRoute({ uuid: 'x' }))).toBe(false)
+    expect(startupCompleteDisposition.Trace).toBe('public')
   })
 
   test('keeps Moksha public for every auth state', () => {

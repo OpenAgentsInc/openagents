@@ -204,6 +204,7 @@ export const browserRouteProductIntents = {
   Tassadar: 'public.tassadar.run',
   TassadarReplay: 'public.tassadar.replay',
   Share: 'share.projection',
+  Trace: 'trace.public.render',
   SiteCheckoutDemo: 'public.sites.demo-checkout',
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',
   Settings: 'account.settings',

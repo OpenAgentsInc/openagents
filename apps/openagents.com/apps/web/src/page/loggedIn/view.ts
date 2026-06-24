@@ -43,6 +43,7 @@ import {
   proRunRouter,
   proRunsRouter,
   publicAgentRouter,
+  traceRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
   runRouter,
@@ -141,6 +142,7 @@ const currentHref = (model: Model): string =>
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
+      Trace: ({ uuid }) => traceRouter({ uuid }),
       PublicTrainingRuns: () => publicTrainingRunsRouter(),
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
@@ -209,6 +211,7 @@ const routeKey = (model: Model): string =>
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
+      Trace: ({ uuid }) => `Trace:${uuid}`,
       PublicTrainingRuns: () => 'PublicTrainingRuns',
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
@@ -612,6 +615,13 @@ const routeView = (model: Model): Html => {
                 chatRouter(),
                 'Go to Chat',
               ),
+            ]),
+          // /trace/{uuid} is a public route resolved by the top-level
+          // `publicRouteBody` in view.ts before the logged-in submodel; this
+          // branch is unreachable but kept exhaustive (matches PublicAgent).
+          Trace: ({ uuid }) =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(traceRouter({ uuid }), chatRouter(), 'Go to Chat'),
             ]),
           PublicTrainingRuns: () =>
             Ui.workroomScrollableRoute<Message>([

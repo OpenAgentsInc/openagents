@@ -23,6 +23,7 @@ import * as Privacy from '../privacy'
 import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
+import * as Trace from '../trace'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
   ClickedAutopilotOnboardingStartOver,
@@ -196,6 +197,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               // shared canvas), so the route union here no longer includes them.
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
+              Trace: route => Trace.view(route, { _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
