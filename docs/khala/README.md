@@ -10,6 +10,10 @@ agents. This folder collects the Khala-specific design, brain, and buildout docs
   — how to build Khala's *brain*: fix the bad refusal posture, then run turns as
   typed Blueprint programs, with the capability/skills/Bitcoin-rev-share economy.
   **The current direction doc.**
+- [2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md](2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md)
+  — **the Khala marketplace**: Khala as the demand/execution side of the Tassadar
+  capability marketplace, fused into Blueprint (companion to the supply-side
+  [Tassadar marketplace audit](../tassadar/2026-06-11-tassadar-plugin-marketplace-audit.md)).
 - [2026-06-23-khala-blueprint-program-and-plugin-extensibility.md](2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
   — Khala on the Blueprint/DSPy program system + Tassadar plugin extensibility.
 
