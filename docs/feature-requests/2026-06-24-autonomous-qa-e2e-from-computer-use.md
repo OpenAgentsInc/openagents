@@ -64,6 +64,42 @@ The corollary that makes it agent-native: the agent earns trust by producing the
 same artifact a human reviewer would demand, not by self-attesting. Computer-use
 is how it explores; the distilled test is how it *proves*.
 
+### What it looks like in practice — demo video play-by-play
+
+The requester sent a ~18s screen recording (`dLqy5DZJ-OP4D5_D.mp4`, 3266×2160
+retina, no audio) of **two merged GitHub PRs on `RhysSullivan/executor`, each
+reviewed purely by watching the e2e recording embedded in the PR.** His words:
+
+> "Here's what this looks like in practice — two PRs that were opened using my
+> testing framework. The first one runs the real OpenCode flow, opens the auth
+> URL in the browser, and returns. The second one is a recording of the web UI —
+> once you experience it you realize how good it is."
+
+This is the §3 thesis, live: the **PR body + embedded video are the review
+artifact.** Frame-by-frame:
+
+| ~t | What's on screen |
+|---|---|
+| 0–1s | **PR #1002** — "Self-host MCP OAuth: connect-card path, approval screen, real-agent e2e + framework dwells" (Merged, **+879 −19**, 20 files, 16 checks). Body "**The flow, recorded**": *"The real OpenCode binary connecting to a self-hosted instance over MCP OAuth — it asks to connect, you approve on the consent screen, it's connected. One spliced recording of the agent terminal and the browser (paced by the new `E2E_FILM` dwells)."* The embedded film opens in a **terminal**: `$ opencode mcp auth executor` → `MCP OAuth Authentication` → `Starting OAuth flow.` |
+| 2–3s | Film cuts to the **browser**: a **"Connect OpenCode?"** consent screen — *REQUESTING CLIENT: OpenCode; will be able to: confirm identity, read basic profile, read email, stay connected (refresh without re-approving)*; an MCP-server note; **Deny / Allow** (Allow highlighted green). |
+| 4–5s | Browser shows **"Authorization Successful — You can close this window and return to OpenCode."** (the real OAuth round-trip completed). |
+| 6–7s | The film loops back to the terminal (connected) — proving the *real* OpenCode binary + *real* MCP OAuth + *real* browser approval, end to end, not a mock. |
+| 8–10s | Recording scrolls to **PR #996** — "Adds a browser e2e scenario covering the tool **policy UI** end to end, and fixes a bug it surfaced in the tool-detail policy badge" (Merged, **+286 −14**, 4 files, 16 checks). The embedded **web-UI film** shows the executor console (BETA): left nav Integrations / **Policies** / Organization / Billing; the **Policies** page (*Override default approval behavior… Add policy*; Active policies: `…records.create` → **Block**, `…records.*` → **Require approval**). |
+| ~13s | Film drives the **Records API** tools tree (Accounts / Tools tabs; `records` → `create` / `list`; a **List records** detail with Schema / TypeScript / **Run**, Parameters / Response) — the per-tool and category policy surfaces. |
+| ~16s | Brief console **skeleton/loading** state; PR section heading **"The bug it caught"** is visible (the scenario surfaced a real tool-detail policy-badge bug, fixed in the same PR). |
+| ~17–18s | Film shows the **Accounts** tab with **two connected workspace accounts** (`alphab…`, `betab…` keys, *Add connection*) — the scenario "connects two accounts and asserts the rules govern both," persisted server-side. |
+
+**Why it lands (and what we adopt):** (1) the entire review is *watch the film +
+read the PR* — no clone/install/click; (2) the films are real binaries / real
+OAuth / real UI, not stubs; (3) the **`E2E_FILM` "dwells"** deliberately slow
+machine-speed actions so a human can actually watch them — a small but decisive
+UX detail; (4) one scenario both *demonstrates* a feature and *catches a real
+bug* in the same PR. An OpenAgents build should produce exactly this artifact —
+with **Khala** as the agent driving the recorded session and an OpenAgents Cloud
+VM as the stage (frames extracted to
+`scratchpad/vidframes/` during this analysis; the source mp4 is on the
+requester's Desktop, not committed).
+
 ## 4. Audit of `executor/e2e` (the folder he linked)
 
 The thing to study is `projects/repos/executor/e2e` (he linked
