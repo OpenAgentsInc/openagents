@@ -64,6 +64,13 @@
     "HYDRALISK_GPT_OSS_120B_ENABLED": "ready",
     "HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_120b.h100.20260624T022946Z",
     "HYDRALISK_GPT_OSS_120B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_120b.h100.hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11",
+    // Khala DeepSeek V4 Flash provider backing (#6198). Operator-only,
+    // non-secret routing knob: customers still see/request ONLY
+    // `openagents/khala`; this selects Fireworks
+    // `accounts/fireworks/models/deepseek-v4-flash` as the primary backing lane
+    // while retaining Hydralisk/Gemini overflow in code. Requires the
+    // FIREWORKS_API_KEY Worker secret to actually arm the lane.
+    "KHALA_BACKING_MODEL": "deepseek-v4-flash",
     // OpenAgents/Pylon serving-fabric lane (#6089). The proxy route URL and
     // bearer are Worker secrets; these committed vars only arm the route after
     // the admitted GCloud L4 Pylon's durable HTTPS canary returned public-safe

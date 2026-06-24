@@ -243,6 +243,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
   // actually dispatched by routing (#5482).
   FIREWORKS_API_KEY?: string | undefined
+  // Operator-only backing selector for the single public Khala model. This is a
+  // non-secret routing knob, not a public model selector; supported values are
+  // bounded in model-serving-policy.ts. Absent defaults to Hydralisk GPT-OSS.
+  KHALA_BACKING_MODEL?: string | undefined
   // Hydralisk GPT-OSS 20B lane (#6155). The Worker registers this owned
   // OpenAI-compatible vLLM adapter only when HYDRALISK_GPT_OSS_20B_ENABLED is
   // exactly "ready", HYDRALISK_BASE_URL and HYDRALISK_BEARER_TOKEN are present,

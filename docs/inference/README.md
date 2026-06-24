@@ -145,6 +145,12 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     run, skeleton-vs-expert repacking, just-in-time MoE prefetch, UMA versus
     PCIe implications, and the fit against our L4/H100/A100/G4 Google lanes.
 
+18. **[`2026-06-24-khala-deepseek-v4-flash-provider-backing.md`](./2026-06-24-khala-deepseek-v4-flash-provider-backing.md)**
+    — issue #6198 implementation note: keep the public surface as one
+    `openagents/khala` model while allowing an operator-selected Fireworks
+    DeepSeek V4 Flash backing lane, with catalog, quote, MPP pricing, router,
+    adapter, and receipt-metering alignment.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

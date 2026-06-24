@@ -9,8 +9,8 @@ import {
   routeModelRetrieveRequest,
 } from './models-routes'
 import {
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MODEL_ID,
   KHALA_PYLON_MINI_MODEL_ID,
@@ -318,6 +318,53 @@ describe('provider serving policy (laneArming)', () => {
     const body = (await response.json()) as { id: string; oa_lane: string }
     expect(body.id).toBe(KHALA_MODEL_ID)
     expect(body.oa_lane).toBe('hydralisk')
+  })
+
+  it('lists and retrieves only Khala while projecting the Fireworks DeepSeek backing price', async () => {
+    const laneArming = resolveSupplyLaneArming({
+      FIREWORKS_API_KEY: 'fw',
+      KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+    })
+    const list = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      { enabled: true, laneArming },
+    )
+    expect(list.status).toBe(200)
+    const listBody = (await list.json()) as {
+      data: ReadonlyArray<{
+        id: string
+        oa_lane: string
+        owned_by: string
+        oa_price: { inputUsdPerMtok: number }
+      }>
+    }
+    expect(listBody.data).toEqual([
+      expect.objectContaining({
+        id: KHALA_MODEL_ID,
+        oa_lane: 'fireworks',
+        owned_by: 'openagents/fireworks',
+      }),
+    ])
+    expect(listBody.data.map(model => model.id)).not.toContain(
+      'deepseek-v4-flash',
+    )
+
+    const retrieved = await runRetrieve(
+      new Request(`https://x/v1/models/${KHALA_MODEL_ID}`, { method: 'GET' }),
+      KHALA_MODEL_ID,
+      { enabled: true, laneArming },
+    )
+    expect(retrieved.status).toBe(200)
+    const body = (await retrieved.json()) as {
+      id: string
+      oa_lane: string
+      owned_by: string
+      oa_price: { inputUsdPerMtok: number }
+    }
+    expect(body.id).toBe(KHALA_MODEL_ID)
+    expect(body.oa_lane).toBe('fireworks')
+    expect(body.owned_by).toBe('openagents/fireworks')
+    expect(body.oa_price.inputUsdPerMtok).toBe(0.196)
   })
 
   it('does not retrieve the old Khala code split model', async () => {

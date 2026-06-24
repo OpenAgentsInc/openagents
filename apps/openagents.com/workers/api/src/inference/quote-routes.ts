@@ -20,18 +20,18 @@
 // the response carries `isEstimate: true`; the real charge is still metered
 // receipt-first from the provider's actual `usage` object. PURE apart from the
 // estimator it delegates to.
-
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { type BudgetEstimate, estimateBudgetCapacity } from './budget-estimate'
 import { type CostEstimate, estimateRequestCost } from './cost-estimate'
 import {
-  isPublicModelId,
-  resolveNamedModelServability,
   type SupplyLaneArming,
+  isPublicModelId,
+  khalaBackingPriceModel,
+  resolveNamedModelServability,
 } from './model-serving-policy'
-import { normalizeKhalaModelId } from './pricing'
+import { KHALA_MODEL_ID, normalizeKhalaModelId } from './pricing'
 
 export type QuoteDeps = Readonly<{
   // Whether the gateway is enabled. The Worker passes
@@ -73,7 +73,9 @@ const QuoteRequestBody = S.Struct({
   budgetCredits: S.optionalKey(S.Number),
 })
 
-const decodeBody = (value: unknown): typeof QuoteRequestBody.Type | undefined => {
+const decodeBody = (
+  value: unknown,
+): typeof QuoteRequestBody.Type | undefined => {
   try {
     return S.decodeUnknownSync(QuoteRequestBody)(value)
   } catch {
@@ -97,7 +99,10 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
     }
 
     if (request.method !== 'POST') {
-      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
     }
 
     const rawBody = yield* Effect.promise(async () => {
@@ -142,10 +147,15 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
 
     // Shared knobs for both modes. Spread the optionals only when set so
     // `exactOptionalPropertyTypes` never sees an explicit `undefined`.
+    const priceModel =
+      deps.laneArming !== undefined && quotedModel === KHALA_MODEL_ID
+        ? khalaBackingPriceModel(deps.laneArming)
+        : undefined
     const shared = {
       completionTokens: body.completionTokens,
       fundingKind: body.fundingKind ?? 'card',
       model: quotedModel,
+      ...(priceModel === undefined ? {} : { priceModel }),
       promptTokens: body.promptTokens,
       ...(body.cachedPromptTokens !== undefined
         ? { cachedPromptTokens: body.cachedPromptTokens }

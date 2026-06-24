@@ -13,12 +13,7 @@
 // So the flat quote is an UP-FRONT credit purchase sized to comfortably cover a
 // typical call, not a per-token charge — the per-token charge still happens, out
 // of the minted credit, exactly as for any other Khala request.
-
-import {
-  type FundingKind,
-  DEFAULT_MARGIN,
-  priceRequest,
-} from '../pricing'
+import { DEFAULT_MARGIN, type FundingKind, priceRequest } from '../pricing'
 import { usdToSatsCeil } from '../usd-msat-conversion'
 
 // MPP / Stripe microtransaction floor: individual charges can be as low as
@@ -69,6 +64,7 @@ const toCentsCeil = (usd: number): number =>
 export const quoteMppCall = (
   input: Readonly<{
     model: string
+    priceModel?: string
     rail: MppRail
     // Margin override (defaults to the published DEFAULT_MARGIN). Pure knob.
     margin?: number
@@ -85,7 +81,7 @@ export const quoteMppCall = (
   const priced = priceRequest({
     fundingKind,
     margin: input.margin ?? DEFAULT_MARGIN,
-    model: input.model,
+    model: input.priceModel ?? input.model,
     usage: {
       completionTokens:
         input.completionTokens ?? REPRESENTATIVE_COMPLETION_TOKENS,
@@ -101,7 +97,10 @@ export const quoteMppCall = (
 
   return {
     amountCents: toCentsCeil(priceUsd),
-    model: priced.model,
+    model:
+      input.priceModel === undefined
+        ? priced.model
+        : input.model.trim().toLowerCase(),
     priceUsd,
     rail: input.rail,
   }
@@ -127,6 +126,7 @@ export type MppLightningQuote = Readonly<{
 export const quoteMppLightningCall = (
   input: Readonly<{
     model: string
+    priceModel?: string
     margin?: number
     promptTokens?: number
     completionTokens?: number
@@ -135,7 +135,7 @@ export const quoteMppLightningCall = (
   const priced = priceRequest({
     fundingKind: 'bitcoin' as FundingKind,
     margin: input.margin ?? DEFAULT_MARGIN,
-    model: input.model,
+    model: input.priceModel ?? input.model,
     usage: {
       completionTokens:
         input.completionTokens ?? REPRESENTATIVE_COMPLETION_TOKENS,
@@ -153,7 +153,10 @@ export const quoteMppLightningCall = (
 
   return {
     amountSats,
-    model: priced.model,
+    model:
+      input.priceModel === undefined
+        ? priced.model
+        : input.model.trim().toLowerCase(),
     priceUsd: priced.chargeUsd,
   }
 }

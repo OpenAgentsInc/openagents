@@ -20,7 +20,6 @@
 // margin (`costUsd`) so the estimate never leaks unit economics — it exposes
 // only the customer-facing charge, already implied by the published catalog
 // price. PURE: no D1, no clock, no network, no secrets.
-
 import { isFreeEligibleModel } from './inference-free-allowance'
 import { type FundingKind, priceRequest } from './pricing'
 import { usdToMsatCeil } from './usd-msat-conversion'
@@ -37,6 +36,11 @@ export type CostEstimateInput = Readonly<{
   // the same pricing table the gateway bills from). Unknown models estimate at
   // the conservative unknown-model fallback rate, flagged via `isUnknownModel`.
   model: string
+  // Optional internal pricing alias for virtual public models. Used when the
+  // customer-facing model stays `openagents/khala` but the operator-selected
+  // backing lane has a different cost row (for example Fireworks DeepSeek V4
+  // Flash). The response still reports `model`, never this hidden alias.
+  priceModel?: string
   // Estimated prompt (input) tokens the customer expects to send.
   promptTokens: number
   // Estimated completion (output) tokens the customer expects back.
@@ -117,7 +121,7 @@ export const estimateRequestCost = (input: CostEstimateInput): CostEstimate => {
   // never sees an explicit `undefined`.
   const priced = priceRequest({
     fundingKind: input.fundingKind,
-    model: input.model,
+    model: input.priceModel ?? input.model,
     usage,
     ...(input.batch !== undefined ? { batch: input.batch } : {}),
     ...(input.margin !== undefined ? { margin: input.margin } : {}),
@@ -128,6 +132,10 @@ export const estimateRequestCost = (input: CostEstimateInput): CostEstimate => {
   // the gross charge before any funding discount.
   const cardCharge = priced.grossChargeUsd
   const fundingDiscountUsd = cardCharge - priced.chargeUsd
+  const outputModel =
+    input.priceModel === undefined
+      ? priced.model
+      : input.model.trim().toLowerCase()
 
   return {
     cachedPromptTokens,
@@ -135,12 +143,12 @@ export const estimateRequestCost = (input: CostEstimateInput): CostEstimate => {
     estimatedChargeMsat: usdToMsatCeil(priced.chargeUsd),
     estimatedChargeUsd: round(priced.chargeUsd, 6),
     estimatedCredits: round(priced.credits, 4),
-    freeTierEligible: isFreeEligibleModel(priced.model),
+    freeTierEligible: isFreeEligibleModel(outputModel),
     fundingDiscountUsd: round(fundingDiscountUsd, 6),
     fundingKind: input.fundingKind,
     isEstimate: true,
     isUnknownModel: priced.isUnknownModel,
-    model: priced.model,
+    model: outputModel,
     promptTokens,
   }
 }

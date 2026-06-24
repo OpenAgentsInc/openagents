@@ -14,7 +14,6 @@
 // (published prices only, no prompts/credentials/balances) and discovery is a
 // pre-purchase step, mirroring how OpenAI serves `/v1/models` cheaply. The
 // handler is pure apart from the injected clock for the OpenAI `created` field.
-
 import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
@@ -26,11 +25,12 @@ import {
   toOpenAiModelsResponse,
 } from './model-catalog'
 import {
+  type SupplyLaneArming,
   filterPublicCatalog,
   filterServableCatalog,
   isModelServable,
   isPublicModelId,
-  type SupplyLaneArming,
+  projectKhalaCatalogForArming,
 } from './model-serving-policy'
 
 export type ModelsListDeps = Readonly<{
@@ -70,13 +70,13 @@ export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
     }
 
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
-    const fullCatalog = filterPublicCatalog(buildModelCatalog(deps.margin))
+    const fullCatalog = buildModelCatalog(deps.margin)
     // PROVIDER POLICY: when the worker supplies lane arming, advertise only the
     // models whose supply lane is actually servable right now; otherwise list
     // the full catalog (prior behaviour).
     const catalog =
       deps.laneArming === undefined
-        ? fullCatalog
+        ? filterPublicCatalog(fullCatalog)
         : filterServableCatalog(fullCatalog, deps.laneArming)
     return noStoreJsonResponse(toOpenAiModelsResponse(catalog, now))
   })
@@ -109,7 +109,17 @@ export const handleModelRetrieve = (
       )
     }
 
-    const entry = findModelCatalogEntry(modelId, deps.margin)
+    const catalog =
+      deps.laneArming === undefined
+        ? buildModelCatalog(deps.margin)
+        : projectKhalaCatalogForArming(
+            buildModelCatalog(deps.margin),
+            deps.laneArming,
+          )
+    const entry =
+      deps.laneArming === undefined
+        ? findModelCatalogEntry(modelId, deps.margin)
+        : catalog.find(model => model.id === modelId)
     // PROVIDER POLICY: when lane arming is supplied, a model whose lane is not
     // servable right now is reported `model_not_found` (same as an unknown id),
     // so the retrieve surface never confirms a model the gateway cannot serve.

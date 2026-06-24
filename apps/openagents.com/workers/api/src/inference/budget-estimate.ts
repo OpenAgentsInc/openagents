@@ -22,7 +22,6 @@
 // `isEstimate: true`. PUBLIC-SAFE: it embeds the per-request `CostEstimate`,
 // which already OMITS our cost basis / margin, so no unit economics leak. PURE:
 // no D1, no clock, no network, no secrets.
-
 import { type CostEstimate, estimateRequestCost } from './cost-estimate'
 import { type FundingKind } from './pricing'
 import { usdCentsToMsatFloor } from './usd-msat-conversion'
@@ -43,6 +42,9 @@ export type BudgetEstimateInput = Readonly<{
   // Model the budget is being sized against (case-insensitive; matched against
   // the same pricing table the gateway bills from).
   model: string
+  // Optional internal pricing alias for virtual public models. Threaded to the
+  // forward estimator so budget mode and per-request mode stay identical.
+  priceModel?: string
   // The budget to size, in the legible credit unit (1 credit = $0.01 = 1 cent).
   budgetCredits: number
   // The customer's REPRESENTATIVE request shape — the per-call token mix the
@@ -112,6 +114,7 @@ export const estimateBudgetCapacity = (
     completionTokens: input.completionTokens,
     fundingKind: input.fundingKind,
     model: input.model,
+    ...(input.priceModel !== undefined ? { priceModel: input.priceModel } : {}),
     promptTokens: input.promptTokens,
     ...(input.cachedPromptTokens !== undefined
       ? { cachedPromptTokens: input.cachedPromptTokens }
@@ -152,7 +155,9 @@ export const estimateBudgetCapacity = (
   // Only whole requests are billable, so floor the quotient (with a tiny dust
   // tolerance so a budget of exactly N×cost is not pushed to N−1 by binary
   // representation error).
-  const affordableRequests = Math.floor(budgetCredits / perRequestCredits + 1e-9)
+  const affordableRequests = Math.floor(
+    budgetCredits / perRequestCredits + 1e-9,
+  )
   const spentCredits = round(affordableRequests * perRequestCredits, 4)
 
   return {

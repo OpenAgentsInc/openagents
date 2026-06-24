@@ -28,7 +28,6 @@
 // signing secret (KHALA_MPP_SIGNING_SECRET) it returns a clean "not configured"
 // 503 and NEVER constructs a charge or issues a challenge. A missing `profile_`
 // id only disables the CARD rail; the crypto rail still works.
-
 import { Cause, Duration, Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../../http/responses'
@@ -44,15 +43,16 @@ import {
   resolveRequestedModel,
 } from '../chat-completions-routes'
 import {
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  type SupplyLaneArming,
+  khalaBackingPriceModel,
+  resolveNamedModelServability,
+} from '../model-serving-policy'
+import {
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
   KHALA_MODEL_SLUG,
 } from '../pricing'
-import {
-  resolveNamedModelServability,
-  type SupplyLaneArming,
-} from '../model-serving-policy'
 import {
   type MppCreditGrantOutcome,
   mintLightningCredits,
@@ -64,6 +64,11 @@ import { type MintLightningInvoice } from './mpp-lightning-invoice'
 import { claimLightningPaymentHash } from './mpp-lightning-replay'
 import { readPreimage, verifyLightningPreimage } from './mpp-lightning-verify'
 import {
+  type MppRail,
+  quoteMppCall,
+  quoteMppLightningCall,
+} from './mpp-pricing'
+import {
   type MppChallenge,
   type MppOpaque,
   type ParsedPaymentCredential,
@@ -74,7 +79,6 @@ import {
   parsePaymentCredential,
   verifyCredential,
 } from './mpp-protocol'
-import { type MppRail, quoteMppCall, quoteMppLightningCall } from './mpp-pricing'
 import { claimSpt, recordSptPaymentIntent } from './mpp-spt-replay'
 import {
   type StripeFetch,
@@ -187,10 +191,7 @@ export type MppChatCompletionsDeps = Readonly<{
 // The inert "not configured" response. 503: the endpoint exists but is not
 // turned on. Carries NO challenge, so no client ever tries to pay.
 const notConfigured = (reason: string): Response =>
-  noStoreJsonResponse(
-    { error: 'mpp_not_configured', reason },
-    { status: 503 },
-  )
+  noStoreJsonResponse({ error: 'mpp_not_configured', reason }, { status: 503 })
 
 export const isMppSellableModel = (model: string): boolean => {
   const normalized = model.trim().toLowerCase()
@@ -211,6 +212,14 @@ const modelDescription = (model: string): string =>
 const mppProductForModel = (_model: string | undefined): string =>
   'openagents_khala_mpp'
 
+const priceModelForMppModel = (
+  model: string,
+  laneArming: SupplyLaneArming | undefined,
+): string | undefined =>
+  laneArming !== undefined && model === KHALA_MODEL_ID
+    ? khalaBackingPriceModel(laneArming)
+    : undefined
+
 type MppModelResolution =
   | Readonly<{ ok: true; model: string }>
   | Readonly<{ ok: false; response: Response }>
@@ -222,7 +231,8 @@ const resolveMppModel = (
   rawBody: Record<string, unknown> | undefined,
   laneArming?: SupplyLaneArming | undefined,
 ): MppModelResolution => {
-  const rawModel = typeof rawBody?.model === 'string' ? rawBody.model : undefined
+  const rawModel =
+    typeof rawBody?.model === 'string' ? rawBody.model : undefined
   const trimmed = rawModel?.trim()
   const model =
     trimmed === undefined || trimmed === ''
@@ -459,14 +469,24 @@ const buildLightningChallengeForQuote = (
   deps: MppChatCompletionsDeps,
   signingSecret: string,
   mint: MintLightningInvoice,
-  input: Readonly<{ model: string; newId: () => string; challengeExpiresAt: string }>,
+  input: Readonly<{
+    model: string
+    priceModel?: string
+    newId: () => string
+    challengeExpiresAt: string
+  }>,
 ): Effect.Effect<MppChallenge | undefined, never> =>
   Effect.gen(function* () {
     const abortController = new AbortController()
     const nowMs = deps.nowMs ?? currentEpochMillis
     const legStartMs = nowMs()
     return yield* Effect.gen(function* () {
-      const lightningQuote = quoteMppLightningCall({ model: input.model })
+      const lightningQuote = quoteMppLightningCall({
+        model: input.model,
+        ...(input.priceModel === undefined
+          ? {}
+          : { priceModel: input.priceModel }),
+      })
       const invoice = yield* mint({
         abortSignal: abortController.signal,
         amountSats: lightningQuote.amountSats,
@@ -549,9 +569,23 @@ const issueChallenge = (
       return resolution.response
     }
     const model = resolution.model
-    const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
-    const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
-    const challengeExpiresAt = epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS)
+    const priceModel = priceModelForMppModel(
+      model,
+      deps.completionDeps.laneArming,
+    )
+    const cryptoQuote = quoteMppCall({
+      model,
+      ...(priceModel === undefined ? {} : { priceModel }),
+      rail: 'crypto' as MppRail,
+    })
+    const cardQuote = quoteMppCall({
+      model,
+      ...(priceModel === undefined ? {} : { priceModel }),
+      rail: 'card' as MppRail,
+    })
+    const challengeExpiresAt = epochMillisToIsoTimestamp(
+      nowMs + CHALLENGE_TTL_MS,
+    )
 
     // PER-RAIL ISOLATION: the Lightning leg ("Bitcoin-first" in PRESENTATION
     // order) and the crypto deposit creation run CONCURRENTLY, so a slow/cold
@@ -569,6 +603,7 @@ const issueChallenge = (
               challengeExpiresAt,
               model,
               newId,
+              ...(priceModel === undefined ? {} : { priceModel }),
             }),
         createCryptoDepositPaymentIntent(stripeDeps, {
           amountCents: cryptoQuote.amountCents,
@@ -776,17 +811,12 @@ const settleAndServe = (
   request: Request,
   deps: MppChatCompletionsDeps,
   stripeDeps: Parameters<typeof retrievePaymentIntent>[0],
-  verified: Extract<
-    Awaited<ReturnType<typeof verifyCredential>>,
-    { ok: true }
-  >,
+  verified: Extract<Awaited<ReturnType<typeof verifyCredential>>, { ok: true }>,
   credential: ParsedPaymentCredential,
 ) =>
   Effect.gen(function* () {
     // Resolve the settled PaymentIntent for the rail.
-    let settledPi:
-      | Readonly<{ id: string; amountCents: number }>
-      | undefined
+    let settledPi: Readonly<{ id: string; amountCents: number }> | undefined
 
     if (verified.method === 'stripe') {
       // ---- card/SPT rail ----
@@ -861,14 +891,20 @@ const settleAndServe = (
         paymentIntentId: charged.intent.id,
         spt,
       }).pipe(Effect.catch(() => Effect.void))
-      settledPi = { amountCents: charged.intent.amountCents, id: charged.intent.id }
+      settledPi = {
+        amountCents: charged.intent.amountCents,
+        id: charged.intent.id,
+      }
     } else {
       // ---- crypto rail ----
       // Recover our deposit PaymentIntent id from the bound `opaque`.
       const paymentIntentId = verified.opaque?.pi
       if (paymentIntentId === undefined || paymentIntentId.trim() === '') {
         return noStoreJsonResponse(
-          { error: 'payment_verification_failed', reason: 'missing_correlation' },
+          {
+            error: 'payment_verification_failed',
+            reason: 'missing_correlation',
+          },
           { status: 402 },
         )
       }
@@ -954,10 +990,7 @@ export const handleMppChatCompletions = (
     }
     // FAIL-SAFE GATE 3: no signing secret => inert. Cannot bind/verify a
     // challenge, so we never issue one or accept a credential.
-    if (
-      deps.signingSecret === undefined ||
-      deps.signingSecret.trim() === ''
-    ) {
+    if (deps.signingSecret === undefined || deps.signingSecret.trim() === '') {
       return notConfigured('signing secret not configured')
     }
     const signingSecret = deps.signingSecret
@@ -1011,10 +1044,25 @@ export const handleMppChatCompletions = (
       return resolution.response
     }
     const model = resolution.model
-    const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
-    const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
+    const priceModel = priceModelForMppModel(
+      model,
+      deps.completionDeps.laneArming,
+    )
+    const cryptoQuote = quoteMppCall({
+      model,
+      ...(priceModel === undefined ? {} : { priceModel }),
+      rail: 'crypto' as MppRail,
+    })
+    const cardQuote = quoteMppCall({
+      model,
+      ...(priceModel === undefined ? {} : { priceModel }),
+      rail: 'card' as MppRail,
+    })
     const lightningActive = lightningRailActive(deps) !== undefined
-    const lightningQuote = quoteMppLightningCall({ model })
+    const lightningQuote = quoteMppLightningCall({
+      model,
+      ...(priceModel === undefined ? {} : { priceModel }),
+    })
     // Lightning is offered FIRST when armed (Bitcoin-first). Verification only
     // ACCEPTS a method we actually offered, so a `lightning` credential is
     // refused unless the rail is armed.

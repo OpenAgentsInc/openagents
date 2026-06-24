@@ -20,10 +20,10 @@
 // a 503 ("Service Overloaded") both surface as a typed InferenceAdapterError
 // carrying `retryable: true` plus the http status / kind, so the router can back
 // off and overflow to another supply lane rather than failing the request.
-
 import { Effect } from 'effect'
 
 import { parseJsonRecord, recordFromUnknown } from '../json-boundary'
+import { KHALA_CODE_MODEL_ID, KHALA_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -34,7 +34,6 @@ import {
   type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
-import { KHALA_CODE_MODEL_ID } from './pricing'
 
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 
@@ -47,9 +46,13 @@ export const FIREWORKS_DEFAULT_BASE_URL =
 // bare open-model alias (e.g. "deepseek-v4-pro") reaches the provider.
 const FIREWORKS_MODEL_PREFIX = 'accounts/fireworks/models/'
 const KHALA_CODE_BACKING_MODEL_ID = `${FIREWORKS_MODEL_PREFIX}kimi-k2p7-code`
+export const KHALA_FIREWORKS_BACKING_MODEL_ID = `${FIREWORKS_MODEL_PREFIX}deepseek-v4-flash`
 
 const toFireworksModelId = (model: string): string => {
   const id = model.trim()
+  if (id.toLowerCase() === KHALA_MODEL_ID) {
+    return KHALA_FIREWORKS_BACKING_MODEL_ID
+  }
   if (id.toLowerCase() === KHALA_CODE_MODEL_ID) {
     return KHALA_CODE_BACKING_MODEL_ID
   }
@@ -140,9 +143,7 @@ const toRequestBody = (request: InferenceRequest): Record<string, unknown> => {
     // normal streamed completion carry its real usage, so streaming meters
     // exactly like non-streaming. A stray client copy in passthroughParams is
     // overridden here (load-bearing field wins). Only set on streaming requests.
-    ...(request.stream
-      ? { stream_options: { include_usage: true } }
-      : {}),
+    ...(request.stream ? { stream_options: { include_usage: true } } : {}),
   }
 }
 

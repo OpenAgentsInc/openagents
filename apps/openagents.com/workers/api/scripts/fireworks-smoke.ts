@@ -3,7 +3,8 @@
 // This is NOT part of the unit suite — it makes a real network call to
 // Fireworks and is GATED on a key being present, so `bun run test` /
 // `check:deploy` never require it. It exercises the same adapter the Worker
-// registers, against `deepseek-v4-pro` (verified working 2026-06-19), and
+// registers, against the public `openagents/khala` model alias mapped internally
+// to Fireworks DeepSeek V4 Flash, and
 // prints only the receipt-first `usage` object + a short content preview. It
 // NEVER prints the key.
 //
@@ -15,17 +16,16 @@
 //   2. ~/work/.secrets/fireworks.env (gitignored; chmod 600)
 //
 // When no key is found the script exits 0 with a skip notice.
-
+import { Effect } from 'effect'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-
-import { Effect } from 'effect'
 
 import {
   FIREWORKS_ADAPTER_ID,
   makeFireworksAdapter,
 } from '../src/inference/fireworks-adapter'
+import { KHALA_MODEL_ID } from '../src/inference/pricing'
 import { type InferenceRequest } from '../src/inference/provider-adapter'
 
 const loadKeyFromSecretsFile = (): string | undefined => {
@@ -33,7 +33,9 @@ const loadKeyFromSecretsFile = (): string | undefined => {
   try {
     const contents = readFileSync(path, 'utf8')
     for (const line of contents.split('\n')) {
-      const match = line.match(/^\s*(?:export\s+)?FIREWORKS_API_KEY\s*=\s*(.+)$/)
+      const match = line.match(
+        /^\s*(?:export\s+)?FIREWORKS_API_KEY\s*=\s*(.+)$/,
+      )
       if (match) {
         return match[1].trim().replace(/^["']|["']$/g, '')
       }
@@ -52,7 +54,7 @@ const resolveKey = (): string | undefined => {
   return loadKeyFromSecretsFile()
 }
 
-const MODEL = 'deepseek-v4-pro'
+const MODEL = process.env.FIREWORKS_SMOKE_MODEL?.trim() || KHALA_MODEL_ID
 
 const main = async (): Promise<void> => {
   const apiKey = resolveKey()
@@ -66,14 +68,19 @@ const main = async (): Promise<void> => {
   const adapter = makeFireworksAdapter({ getApiKey: () => apiKey })
   const request: InferenceRequest = {
     messages: [
-      { content: 'Reply with exactly: OPENAGENTS FIREWORKS SMOKE OK', role: 'user' },
+      {
+        content: 'Reply with exactly: OPENAGENTS FIREWORKS SMOKE OK',
+        role: 'user',
+      },
     ],
     model: MODEL,
     passthroughParams: { max_tokens: 64, temperature: 0 },
     stream: false,
   }
 
-  console.log(`[fireworks-smoke] adapter=${FIREWORKS_ADAPTER_ID} model=${MODEL}`)
+  console.log(
+    `[fireworks-smoke] adapter=${FIREWORKS_ADAPTER_ID} model=${MODEL}`,
+  )
 
   const outcome = await Effect.runPromise(
     Effect.result(adapter.complete(request)),

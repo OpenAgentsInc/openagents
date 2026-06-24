@@ -456,12 +456,23 @@ const MODEL_INDEX: ReadonlyMap<string, ModelPricingEntry> = new Map(
   MODEL_PRICING_TABLE.map(e => [e.model, e]),
 )
 
+// Normalize provider-native ids back onto our canonical pricing aliases.
+// Fireworks returns `accounts/fireworks/models/<id>` in receipts; billing must
+// still price the exact served provider model against the table row we publish
+// for `<id>`, not fall through to the conservative unknown-model bucket.
+export const normalizePricingModelId = (model: string): string =>
+  model
+    .trim()
+    .toLowerCase()
+    .replace(/^accounts\/fireworks\/models\//u, '')
+    .replace(/^fireworks\//u, '')
+
 // Resolve a model alias to its pricing entry (case-insensitive). Returns
 // undefined when the model is not in the table (caller uses the unknown
-// fallback). Substring matching is intentionally NOT done here — the gateway
-// resolves provider-native aliases upstream; pricing keys on the canonical id.
+// fallback). Normalization is limited to bounded provider id prefixes we emit in
+// receipts; no substring matching or free-form routing happens here.
 export const lookupModel = (model: string): ModelPricingEntry | undefined =>
-  MODEL_INDEX.get(model.trim().toLowerCase())
+  MODEL_INDEX.get(normalizePricingModelId(model))
 
 // ----------------------------------------------------------------------------
 // Core pricing computation
@@ -492,7 +503,7 @@ export const priceRequest = (input: PriceInput): PriceResult => {
   const matched = lookupModel(input.model)
   const isUnknownModel = matched === undefined
   const cost = matched?.cost ?? UNKNOWN_MODEL_COST
-  const canonicalModel = matched?.model ?? input.model.trim().toLowerCase()
+  const canonicalModel = matched?.model ?? normalizePricingModelId(input.model)
 
   const promptTokens = nonNeg(input.usage.promptTokens)
   const completionTokens = nonNeg(input.usage.completionTokens)

@@ -399,7 +399,7 @@ import {
   dispatchWithOverflow,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-  selectAdapterPlan,
+  makeKhalaBackedAdapterPlan,
 } from './inference/model-router'
 import { resolveSupplyLaneArming } from './inference/model-serving-policy'
 import {
@@ -8690,9 +8690,10 @@ const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
+  const laneArming = resolveSupplyLaneArming(env)
   return {
     dispatch: {
-      plan: selectAdapterPlan,
+      plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
       registry: inferenceProviderRegistry,
     },
     meteringHook: makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
@@ -8722,11 +8723,15 @@ const makeOnboardingInferenceClient = (
   registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
+  const laneArming = resolveSupplyLaneArming(env)
   return (request: InferenceRequest) =>
     dispatchWithOverflow<InferenceResult>(
       request,
       (adapter, req) => adapter.complete(req),
-      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+      {
+        plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+        registry: inferenceProviderRegistry,
+      },
     ).pipe(
       Effect.map(result => result.content),
       Effect.mapError(
@@ -8758,11 +8763,15 @@ const makeOnboardingStreamClient = (
   registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
+  const laneArming = resolveSupplyLaneArming(env)
   return (request: InferenceRequest) =>
     dispatchWithOverflow<OnboardingStreamSource>(
       request,
       dispatchOnboardingStreamSource,
-      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+      {
+        plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+        registry: inferenceProviderRegistry,
+      },
     ).pipe(
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
@@ -8784,11 +8793,15 @@ const makeKhalaChatStreamClient = (
   registerHydraliskAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
+  const laneArming = resolveSupplyLaneArming(env)
   return (request: InferenceRequest) =>
     dispatchWithOverflow<OnboardingStreamSource>(
       request,
       dispatchOnboardingStreamSource,
-      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+      {
+        plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+        registry: inferenceProviderRegistry,
+      },
     ).pipe(
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
@@ -10388,6 +10401,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const operatorExemptionEnabled = isOperatorExemptionEnabled(
         env.INFERENCE_OPERATOR_EXEMPTION_ENABLED,
       )
+      const laneArming = resolveSupplyLaneArming(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -10473,7 +10487,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // model with bounded-backoff overflow to the next viable lane on a
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
-        lanePlan: selectAdapterPlan,
+        lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
         // Provider serving policy (public_paid_model_gateway_missing on
         // api.hosted_gemini.v1): the SAME presence-derived lane arming the
         // public catalog (/v1/models) and the pre-purchase quote (/v1/quote)
@@ -10482,7 +10496,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // with a clean model_unavailable before dispatch, so the LIVE gateway
         // serves exactly what it advertises and quotes. INERT regardless — the
         // gateway is gated by INFERENCE_GATEWAY_ENABLED above.
-        laneArming: resolveSupplyLaneArming(env),
+        laneArming,
         // Abuse / fair-share / spend-cap gates (#5486): the route exposes
         // `checkFairShare` and `checkSpendCap` seams whose pure deciders live in
         // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`).
@@ -10612,6 +10626,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const mintLightningInvoice = lightningEnabled
         ? lightningInvoiceIssuerForEnv(env)
         : undefined
+      const laneArming = resolveSupplyLaneArming(env)
       return handleMppChatCompletions(request, {
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
@@ -10636,8 +10651,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ),
             { db: openAgentsDatabase(env), resolveOwnerIdentity },
           ),
-          lanePlan: selectAdapterPlan,
-          laneArming: resolveSupplyLaneArming(env),
+          lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+          laneArming,
           checkPremiumAccess: makePremiumAccessGate({
             db: openAgentsDatabase(env),
             resolveOwnerIdentity,

@@ -19,11 +19,10 @@
 // handles nor can leak a credential. PURE: no D1, no clock, no network. It moves
 // no money and changes no promise state — it only narrows what the public
 // catalog advertises to what is genuinely servable.
-
 import type { ModelCatalogEntry } from './model-catalog'
 import {
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
   lookupModel,
   normalizeKhalaModelId,
@@ -40,8 +39,22 @@ export type HydraliskModelArming = Readonly<
   Record<HydraliskGptOssModelId, boolean>
 >
 
+export const KHALA_BACKING_HYDRALISK_GPT_OSS = 'hydralisk-gpt-oss'
+export const KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH =
+  'fireworks-deepseek-v4-flash'
+
+export type KhalaBackingModel =
+  | typeof KHALA_BACKING_HYDRALISK_GPT_OSS
+  | typeof KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
+
+export const KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL = 'deepseek-v4-flash'
+
 export type SupplyLaneArming = Readonly<
   Record<SupplyLane, boolean> & {
+    // Which internal supply policy backs the single public Khala model.
+    // Undefined is treated as the historical Hydralisk GPT-OSS policy for
+    // backward-compatible tests and callers that only know lane booleans.
+    khalaBacking?: KhalaBackingModel | undefined
     // Optional for backward-compatible tests/callers that still model arming by
     // lane only. Real Worker env arming supplies this map so one Hydralisk
     // model cannot accidentally advertise another.
@@ -58,6 +71,7 @@ export const ALL_LANES_UNARMED: SupplyLaneArming = {
     [HYDRALISK_GPT_OSS_20B_MODEL_ID]: false,
   },
   hydralisk: false,
+  khalaBacking: KHALA_BACKING_HYDRALISK_GPT_OSS,
   'openagents-network': false,
   'vertex-anthropic': false,
   'vertex-gemini': false,
@@ -84,6 +98,9 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
+  // Operator-only backing selector for the single public Khala model. Supported
+  // values are bounded below; raw customer model selection remains closed.
+  KHALA_BACKING_MODEL?: string | undefined
   // Hydralisk GPT-OSS 20B lane. The URL/token are secret-backed transport
   // presence only; the public-safe preflight/receipt refs are the evidence that
   // the owned L4/vLLM route is ready for Khala traffic.
@@ -158,6 +175,33 @@ const isPublicSafeRef = (value: string | undefined): value is string => {
   )
 }
 
+export const resolveKhalaBackingModel = (
+  value: string | undefined,
+): KhalaBackingModel => {
+  const normalized = value?.trim().toLowerCase()
+  switch (normalized) {
+    case 'deepseek-v4-flash':
+    case 'fireworks/deepseek-v4-flash':
+    case 'accounts/fireworks/models/deepseek-v4-flash':
+      return KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
+    default:
+      return KHALA_BACKING_HYDRALISK_GPT_OSS
+  }
+}
+
+const khalaBackingFor = (arming: SupplyLaneArming): KhalaBackingModel =>
+  arming.khalaBacking ?? KHALA_BACKING_HYDRALISK_GPT_OSS
+
+export const khalaBackingSupplyLane = (arming: SupplyLaneArming): SupplyLane =>
+  khalaBackingFor(arming) === KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
+    ? 'fireworks'
+    : 'hydralisk'
+
+export const khalaBackingPriceModel = (arming: SupplyLaneArming): string =>
+  khalaBackingFor(arming) === KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
+    ? KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL
+    : KHALA_MODEL_ID
+
 export const resolveOpenAgentsNetworkGatewayArming = (
   env: SupplyLaneCredentialEnv,
 ): OpenAgentsNetworkGatewayArming => {
@@ -195,7 +239,9 @@ export const resolveOpenAgentsNetworkGatewayArming = (
     blockerRefs.push('blocker.openagents_network_gateway.transport_url_missing')
   }
   if (!isPresent(env.OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN)) {
-    blockerRefs.push('blocker.openagents_network_gateway.transport_bearer_missing')
+    blockerRefs.push(
+      'blocker.openagents_network_gateway.transport_bearer_missing',
+    )
   }
 
   const evidenceRefs: Array<string> = []
@@ -262,14 +308,8 @@ const resolveHydraliskGptOssModelArming = (
   }
 
   const evidence: Array<[string, string | undefined]> = [
-    [
-      `${input.blockerPrefix}.preflight_ref_missing`,
-      input.preflightRef,
-    ],
-    [
-      `${input.blockerPrefix}.receipt_ref_missing`,
-      input.receiptRef,
-    ],
+    [`${input.blockerPrefix}.preflight_ref_missing`, input.preflightRef],
+    [`${input.blockerPrefix}.receipt_ref_missing`, input.receiptRef],
   ]
 
   const evidenceRefs: Array<string> = []
@@ -297,6 +337,7 @@ export const resolveSupplyLaneArming = (
   env: SupplyLaneCredentialEnv,
 ): SupplyLaneArming => {
   const vertex = isPresent(env.VERTEX_SA_KEY)
+  const khalaBacking = resolveKhalaBackingModel(env.KHALA_BACKING_MODEL)
   const openAgentsNetwork = resolveOpenAgentsNetworkGatewayArming(env)
   const hydralisk20b = resolveHydraliskGptOss20bArming(env)
   const hydralisk120b = resolveHydraliskGptOss120bArming(env)
@@ -310,6 +351,7 @@ export const resolveSupplyLaneArming = (
       hydraliskModels[HYDRALISK_GPT_OSS_20B_MODEL_ID] ||
       hydraliskModels[HYDRALISK_GPT_OSS_120B_MODEL_ID],
     hydraliskModels,
+    khalaBacking,
     'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,
@@ -342,6 +384,39 @@ const hydraliskModelArmed = (
   return arming.hydralisk
 }
 
+export const isKhalaBackingArmed = (arming: SupplyLaneArming): boolean =>
+  khalaBackingSupplyLane(arming) === 'fireworks'
+    ? arming.fireworks
+    : arming.hydralisk
+
+export const projectKhalaCatalogForArming = (
+  catalog: ReadonlyArray<ModelCatalogEntry>,
+  arming: SupplyLaneArming,
+): ReadonlyArray<ModelCatalogEntry> => {
+  if (khalaBackingFor(arming) !== KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH) {
+    return catalog
+  }
+  const backing = catalog.find(
+    entry => entry.id === KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL,
+  )
+  if (backing === undefined) {
+    return catalog
+  }
+  return catalog.map(entry =>
+    entry.id === KHALA_MODEL_ID
+      ? {
+          ...entry,
+          costBasis: backing.costBasis,
+          freeTierEligible: backing.freeTierEligible,
+          lane: backing.lane,
+          multiplier: backing.multiplier,
+          ownedBy: backing.ownedBy,
+          price: backing.price,
+        }
+      : entry,
+  )
+}
+
 // Is a single catalog model servable under the given arming?
 export const isModelServable = (
   entry: ModelCatalogEntry,
@@ -349,6 +424,9 @@ export const isModelServable = (
 ): boolean => {
   if (!isPublicModelId(entry.id)) {
     return false
+  }
+  if (normalizeKhalaModelId(entry.id) === KHALA_MODEL_ID) {
+    return isKhalaBackingArmed(arming)
   }
   return entry.lane === 'hydralisk'
     ? hydraliskModelArmed(arming, entry.id)
@@ -379,6 +457,9 @@ export const resolveNamedModelServability = (
   if (entry === undefined) {
     return false
   }
+  if (normalized === KHALA_MODEL_ID) {
+    return isKhalaBackingArmed(arming)
+  }
   return entry.lane === 'hydralisk'
     ? hydraliskModelArmed(arming, entry.model)
     : isLaneArmed(arming, entry.lane)
@@ -396,4 +477,6 @@ export const filterServableCatalog = (
   catalog: ReadonlyArray<ModelCatalogEntry>,
   arming: SupplyLaneArming,
 ): ReadonlyArray<ModelCatalogEntry> =>
-  catalog.filter(entry => isModelServable(entry, arming))
+  projectKhalaCatalogForArming(catalog, arming).filter(entry =>
+    isModelServable(entry, arming),
+  )

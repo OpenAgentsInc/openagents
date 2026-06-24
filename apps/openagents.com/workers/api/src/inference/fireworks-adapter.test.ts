@@ -6,13 +6,14 @@ import {
   FIREWORKS_DEFAULT_BASE_URL,
   type FetchLike,
   type FireworksAdapterConfig,
+  KHALA_FIREWORKS_BACKING_MODEL_ID,
   makeFireworksAdapter,
 } from './fireworks-adapter'
+import { KHALA_CODE_MODEL_ID, KHALA_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
   type InferenceRequest,
 } from './provider-adapter'
-import { KHALA_CODE_MODEL_ID } from './pricing'
 
 // --- test plumbing -------------------------------------------------------
 
@@ -49,9 +50,8 @@ const errorResponse = (status: number, body = 'rate limited'): Response =>
 
 const sseResponse = (frames: ReadonlyArray<unknown>): Response => {
   const text =
-    frames
-      .map(frame => `data: ${JSON.stringify(frame)}\n\n`)
-      .join('') + 'data: [DONE]\n\n'
+    frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`).join('') +
+    'data: [DONE]\n\n'
   return new Response(text, {
     headers: { 'content-type': 'text/event-stream' },
     status: 200,
@@ -106,15 +106,11 @@ describe('fireworks adapter request mapping', () => {
 
     expect(adapter.id).toBe(FIREWORKS_ADAPTER_ID)
     expect(calls).toHaveLength(1)
-    expect(calls[0]?.url).toBe(
-      `${FIREWORKS_DEFAULT_BASE_URL}/chat/completions`,
-    )
+    expect(calls[0]?.url).toBe(`${FIREWORKS_DEFAULT_BASE_URL}/chat/completions`)
     expect(calls[0]?.init.method).toBe('POST')
     const body = JSON.parse(calls[0]?.init.body ?? '{}')
     expect(body.model).toBe('accounts/fireworks/models/deepseek-v4-pro')
-    expect(body.messages).toEqual([
-      { content: 'hello world', role: 'user' },
-    ])
+    expect(body.messages).toEqual([{ content: 'hello world', role: 'user' }])
     expect(body.stream).toBe(false)
   })
 
@@ -168,9 +164,7 @@ describe('fireworks adapter request mapping', () => {
     const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
 
     await runResult(
-      adapter.complete(
-        request({ model: 'accounts/fireworks/models/glm-5p2' }),
-      ),
+      adapter.complete(request({ model: 'accounts/fireworks/models/glm-5p2' })),
     )
 
     const body = JSON.parse(calls[0]?.init.body ?? '{}')
@@ -185,6 +179,16 @@ describe('fireworks adapter request mapping', () => {
 
     const body = JSON.parse(calls[0]?.init.body ?? '{}')
     expect(body.model).toBe('accounts/fireworks/models/kimi-k2p7-code')
+  })
+
+  test('maps the single public Khala model to DeepSeek V4 Flash on Fireworks', async () => {
+    const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(adapter.complete(request({ model: KHALA_MODEL_ID })))
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.model).toBe(KHALA_FIREWORKS_BACKING_MODEL_ID)
   })
 
   test('respects a custom base URL', async () => {
@@ -339,7 +343,9 @@ describe('fireworks adapter typed errors', () => {
   })
 
   test('a missing key fails non-retryable without leaking key material', async () => {
-    const adapter = makeFireworksAdapter(baseConfig({ getApiKey: () => undefined }))
+    const adapter = makeFireworksAdapter(
+      baseConfig({ getApiKey: () => undefined }),
+    )
 
     const result = await runResult(adapter.complete(request()))
 
@@ -385,9 +391,7 @@ describe('fireworks adapter streaming', () => {
     expect(result._tag).toBe('Success')
     if (result._tag === 'Success') {
       const chunks = result.success
-      const content = chunks
-        .map(chunk => chunk.contentDelta)
-        .join('')
+      const content = chunks.map(chunk => chunk.contentDelta).join('')
       expect(content).toBe('Hello')
       const terminal = chunks[chunks.length - 1]
       expect(terminal?.finishReason).toBe('stop')
@@ -504,9 +508,7 @@ describe('fireworks adapter streaming', () => {
 // Build an SSE Response over a ReadableStream that emits each frame in its own
 // chunk, so the test exercises the adapter's incremental parsing (partial lines
 // across reads) rather than a single buffered blob.
-const chunkedSseResponse = (
-  frames: ReadonlyArray<unknown>,
-): Response => {
+const chunkedSseResponse = (frames: ReadonlyArray<unknown>): Response => {
   const encoder = new TextEncoder()
   const lines = [
     ...frames.map(frame => `data: ${JSON.stringify(frame)}\n\n`),
@@ -589,7 +591,9 @@ describe('fireworks adapter incremental pass-through stream', () => {
       promptTokens: 7,
       totalTokens: 9,
     })
-    expect(terminal.servedModel).toBe('accounts/fireworks/models/kimi-k2p7-code')
+    expect(terminal.servedModel).toBe(
+      'accounts/fireworks/models/kimi-k2p7-code',
+    )
   })
 
   // The missing-terminal-frame case for the pass-through path: the source still
@@ -617,7 +621,9 @@ describe('fireworks adapter incremental pass-through stream', () => {
     const { fetchImpl } = recordingFetch(errorResponse(429))
     const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
 
-    const result = await runResult(adapter.streamSse!(request({ stream: true })))
+    const result = await runResult(
+      adapter.streamSse!(request({ stream: true })),
+    )
 
     expect(result._tag).toBe('Failure')
     if (result._tag === 'Failure') {

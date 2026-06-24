@@ -38,11 +38,12 @@ const CANONICAL_FILES = new Set(
 )
 
 const SKIP_DIR = /(^|\/)(node_modules|\.git|\.claude|\.pylon-local|\.worktrees|dist|build|target|\.wrangler|\.turbo|coverage|\.next)(\/|$)/
+const isSkippedPath = path => SKIP_DIR.test(relative(repoRoot, path))
 
 const listFiles = dir =>
   readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
     const path = join(dir, entry.name)
-    if (SKIP_DIR.test(path)) return []
+    if (isSkippedPath(path)) return []
     if (entry.isDirectory()) return listFiles(path)
     return /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) ? [path] : []
   })

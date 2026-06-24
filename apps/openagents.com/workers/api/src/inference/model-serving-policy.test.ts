@@ -3,19 +3,26 @@ import { describe, expect, it } from 'vitest'
 import { buildModelCatalog } from './model-catalog'
 import {
   ALL_LANES_UNARMED,
+  KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
+  KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL,
+  type SupplyLaneArming,
   filterServableCatalog,
+  isKhalaBackingArmed,
   isLaneArmed,
   isModelServable,
-  resolveHydraliskGptOss120bArming,
+  khalaBackingPriceModel,
+  khalaBackingSupplyLane,
+  projectKhalaCatalogForArming,
   resolveHydraliskGptOss20bArming,
-  resolveOpenAgentsNetworkGatewayArming,
+  resolveHydraliskGptOss120bArming,
+  resolveKhalaBackingModel,
   resolveNamedModelServability,
+  resolveOpenAgentsNetworkGatewayArming,
   resolveSupplyLaneArming,
-  type SupplyLaneArming,
 } from './model-serving-policy'
 import {
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
   type SupplyLane,
 } from './pricing'
@@ -32,14 +39,14 @@ const HYDRALISK_READY_ENV = {
   HYDRALISK_BASE_URL: 'https://hydralisk-gpt-oss-20b.example.test',
   HYDRALISK_BEARER_TOKEN: 'secret-hydralisk-token',
   HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
-  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
-    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
 } as const
 
 const HYDRALISK_120B_READY_ENV = {
-  HYDRALISK_GPT_OSS_120B_BASE_URL: 'https://hydralisk-gpt-oss-120b.example.test',
+  HYDRALISK_GPT_OSS_120B_BASE_URL:
+    'https://hydralisk-gpt-oss-120b.example.test',
   HYDRALISK_GPT_OSS_120B_BEARER_TOKEN: 'secret-hydralisk-120b-token',
   HYDRALISK_GPT_OSS_120B_ENABLED: 'ready',
   HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF:
@@ -81,6 +88,22 @@ describe('resolveSupplyLaneArming', () => {
     expect(arming.fireworks).toBe(true)
     expect(arming['vertex-gemini']).toBe(false)
     expect(arming['vertex-anthropic']).toBe(false)
+  })
+
+  it('selects Fireworks DeepSeek V4 Flash as the Khala backing only from the explicit operator value', () => {
+    const arming = resolveSupplyLaneArming({
+      FIREWORKS_API_KEY: 'fw-secret',
+      KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+    })
+    expect(arming.khalaBacking).toBe(KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH)
+    expect(
+      resolveKhalaBackingModel('accounts/fireworks/models/deepseek-v4-flash'),
+    ).toBe(KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH)
+    expect(khalaBackingSupplyLane(arming)).toBe('fireworks')
+    expect(khalaBackingPriceModel(arming)).toBe(
+      KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL,
+    )
+    expect(isKhalaBackingArmed(arming)).toBe(true)
   })
 
   it('arms Hydralisk only from ready flag, transport presence, and public-safe refs', () => {
@@ -307,7 +330,10 @@ describe('isLaneArmed / isModelServable', () => {
       isModelServable(gemini, resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' })),
     ).toBe(false)
     expect(
-      isModelServable(gemini, resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' })),
+      isModelServable(
+        gemini,
+        resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' }),
+      ),
     ).toBe(false)
   })
 
@@ -327,9 +353,9 @@ describe('filterServableCatalog', () => {
   const catalog = buildModelCatalog()
 
   it('keeps only the single public model when every backing lane is armed', () => {
-    expect(filterServableCatalog(catalog, ALL_ARMED).map(entry => entry.id)).toEqual([
-      KHALA_MODEL_ID,
-    ])
+    expect(
+      filterServableCatalog(catalog, ALL_ARMED).map(entry => entry.id),
+    ).toEqual([KHALA_MODEL_ID])
   })
 
   it('is empty when no lane is armed', () => {
@@ -348,6 +374,30 @@ describe('filterServableCatalog', () => {
     expect(filtered).toEqual([])
   })
 
+  it('projects the single Khala public model onto the Fireworks DeepSeek backing when explicitly armed', () => {
+    const armed = resolveSupplyLaneArming({
+      FIREWORKS_API_KEY: 'fw',
+      KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+    })
+    const filtered = filterServableCatalog(catalog, armed)
+    expect(filtered).toEqual([
+      expect.objectContaining({
+        id: KHALA_MODEL_ID,
+        lane: 'fireworks',
+        ownedBy: 'openagents/fireworks',
+      }),
+    ])
+    expect(
+      projectKhalaCatalogForArming(catalog, armed).find(
+        entry => entry.id === KHALA_MODEL_ID,
+      )?.price,
+    ).toEqual(
+      catalog.find(
+        entry => entry.id === KHALA_FIREWORKS_DEEPSEEK_V4_FLASH_PRICE_MODEL,
+      )?.price,
+    )
+  })
+
   it('preserves public catalog order', () => {
     const filtered = filterServableCatalog(catalog, ALL_ARMED)
     expect(filtered.map(e => e.id)).toEqual([KHALA_MODEL_ID])
@@ -356,9 +406,7 @@ describe('filterServableCatalog', () => {
 
 describe('resolveNamedModelServability', () => {
   it('returns true for the public Khala model on an armed backing lane', () => {
-    expect(resolveNamedModelServability(KHALA_MODEL_ID, ALL_ARMED)).toBe(
-      true,
-    )
+    expect(resolveNamedModelServability(KHALA_MODEL_ID, ALL_ARMED)).toBe(true)
   })
 
   it('returns false for the public Khala model on an unarmed backing lane', () => {
@@ -368,9 +416,9 @@ describe('resolveNamedModelServability', () => {
   })
 
   it('returns false for an unknown model id (no public model selection)', () => {
-    expect(
-      resolveNamedModelServability('not-a-real-model', ALL_ARMED),
-    ).toBe(false)
+    expect(resolveNamedModelServability('not-a-real-model', ALL_ARMED)).toBe(
+      false,
+    )
   })
 
   it('resolves the public id case-insensitively', () => {

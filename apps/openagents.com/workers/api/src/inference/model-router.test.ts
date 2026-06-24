@@ -14,19 +14,22 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  makeKhalaBackedAdapterPlan,
   openModelsByCost,
   selectAdapterPlan,
+  selectAdapterPlanForKhalaBacking,
   selectPrimaryAdapterId,
 } from './model-router'
+import { KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH } from './model-serving-policy'
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
   KHALA_MODEL_ID,
   KHALA_MODEL_SLUG,
-  KHALA_MINI_MODEL_ID,
   KHALA_PYLON_MINI_MODEL_ID,
 } from './pricing'
 import {
@@ -150,6 +153,28 @@ describe('model classification', () => {
         VERTEX_GEMINI_ADAPTER_ID,
       ])
     }
+  })
+
+  test('can route the single Khala model through Fireworks DeepSeek V4 Flash by operator backing policy', () => {
+    for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
+      expect(
+        selectAdapterPlanForKhalaBacking(
+          model,
+          KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
+        ),
+      ).toEqual([
+        FIREWORKS_ADAPTER_ID,
+        HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+        HYDRALISK_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
+      ])
+    }
+    expect(
+      makeKhalaBackedAdapterPlan(KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH)(
+        KHALA_MODEL_ID,
+      )[0],
+    ).toBe(FIREWORKS_ADAPTER_ID)
+    expect(selectAdapterPlan('deepseek-v4-flash')[0]).toBe(FIREWORKS_ADAPTER_ID)
   })
 
   test('does not treat old Khala split ids as the public Khala route', () => {

@@ -1,23 +1,24 @@
 import { describe, expect, test } from 'vitest'
 
-import { type InferenceUsage } from './provider-adapter'
 import {
   BASE_CREDIT_USD,
   BATCH_DISCOUNT,
   BITCOIN_DISCOUNT,
   CACHED_INPUT_FRACTION,
   DEFAULT_MARGIN,
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   MODEL_PRICING_TABLE,
   UNKNOWN_MODEL_COST,
   VERTEX_COST_IS_LIST_TODO,
   blendedCostPerMtok,
   costProportionalMultiplier,
   lookupModel,
+  normalizePricingModelId,
   priceRequest,
   sellPricePerMtok,
 } from './pricing'
+import { type InferenceUsage } from './provider-adapter'
 
 // Tolerant float compare for USD/credit math.
 const closeTo = (actual: number, expected: number, digits = 9): void =>
@@ -120,6 +121,26 @@ describe('multiplier table', () => {
     for (const e of MODEL_PRICING_TABLE) {
       expect(lookupModel(e.model)).toBe(e)
     }
+  })
+
+  test('Fireworks provider-native receipt ids normalize to canonical pricing rows', () => {
+    expect(
+      normalizePricingModelId('accounts/fireworks/models/deepseek-v4-flash'),
+    ).toBe('deepseek-v4-flash')
+    expect(lookupModel('fireworks/deepseek-v4-flash')!.model).toBe(
+      'deepseek-v4-flash',
+    )
+    const providerNative = priceRequest({
+      fundingKind: 'card',
+      model: 'accounts/fireworks/models/deepseek-v4-flash',
+      usage: usage(1_000_000, 1_000_000),
+    })
+    const canonical = priceRequest({
+      fundingKind: 'card',
+      model: 'deepseek-v4-flash',
+      usage: usage(1_000_000, 1_000_000),
+    })
+    expect(providerNative).toEqual(canonical)
   })
 })
 
@@ -300,7 +321,10 @@ describe('unknown + edge cases', () => {
     expect(r.isUnknownModel).toBe(true)
     expect(r.model).toBe('some-model-we-do-not-carry')
     // Cost: 1*1.0 + 1*4.0 = 5.0
-    closeTo(r.costUsd, UNKNOWN_MODEL_COST.inputUsdPerMtok + UNKNOWN_MODEL_COST.outputUsdPerMtok)
+    closeTo(
+      r.costUsd,
+      UNKNOWN_MODEL_COST.inputUsdPerMtok + UNKNOWN_MODEL_COST.outputUsdPerMtok,
+    )
   })
 
   test('zero usage => zero charge, not unknown error', () => {

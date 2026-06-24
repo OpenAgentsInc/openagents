@@ -38,15 +38,20 @@
 import { Effect } from 'effect'
 
 import {
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
+  KHALA_BACKING_HYDRALISK_GPT_OSS,
+  type KhalaBackingModel,
+} from './model-serving-policy'
+import {
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
-  blendedCostPerMtok,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
   KHALA_PYLON_MINI_MODEL_ID,
-  lookupModel,
   MODEL_PRICING_TABLE,
-  normalizeKhalaModelId,
   type SupplyLane,
+  blendedCostPerMtok,
+  lookupModel,
+  normalizeKhalaModelId,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -65,8 +70,7 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
-export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID =
-  'hydralisk-vllm-gpt-oss-120b'
+export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID = 'hydralisk-vllm-gpt-oss-120b'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
 // The OpenAgents serving-fabric lane (#5483). Maps to the network adapter id.
@@ -243,6 +247,38 @@ const LANE_PLAN_BY_CLASS: Readonly<
   unknown: ['passthrough'],
 }
 
+const KHALA_HYDRALISK_ADAPTER_PLAN: ReadonlyArray<string> = [
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+]
+
+const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
+  FIREWORKS_ADAPTER_ID,
+  ...KHALA_HYDRALISK_ADAPTER_PLAN,
+]
+
+export const selectAdapterPlanForKhalaBacking = (
+  model: string,
+  khalaBacking: KhalaBackingModel = KHALA_BACKING_HYDRALISK_GPT_OSS,
+): ReadonlyArray<string> => {
+  const normalizedModel = normalizeKhalaModelId(model)
+  if (normalizedModel === KHALA_MODEL_ID) {
+    return khalaBacking === KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
+      ? KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN
+      : KHALA_HYDRALISK_ADAPTER_PLAN
+  }
+  return selectAdapterPlan(model)
+}
+
+export const makeKhalaBackedAdapterPlan =
+  (khalaBacking: KhalaBackingModel | undefined) =>
+  (model: string): ReadonlyArray<string> =>
+    selectAdapterPlanForKhalaBacking(
+      model,
+      khalaBacking ?? KHALA_BACKING_HYDRALISK_GPT_OSS,
+    )
+
 // Resolve a requested model to its ORDERED list of candidate adapter ids
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
@@ -256,11 +292,7 @@ export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
     // VERTEX_SA_KEY via the shared adapter env). Explicit `hydralisk-gpt-oss-*`
     // model ids below keep NO Gemini fallback — they are deliberate GPT-OSS
     // requests, not the generic Khala lane.
-    return [
-      HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-      HYDRALISK_ADAPTER_ID,
-      VERTEX_GEMINI_ADAPTER_ID,
-    ]
+    return KHALA_HYDRALISK_ADAPTER_PLAN
   }
   if (normalizedModel === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]

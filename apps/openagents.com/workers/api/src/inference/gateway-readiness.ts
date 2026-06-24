@@ -20,13 +20,13 @@
 // It moves no money, changes no promise state, and reveals no prompts,
 // completions, or credentials -- it only summarizes which PUBLIC catalog models
 // are servable under the current arming.
-
-import { buildModelCatalog, type ModelCatalogEntry } from './model-catalog'
+import { type ModelCatalogEntry, buildModelCatalog } from './model-catalog'
 import {
+  type SupplyLaneArming,
   filterPublicCatalog,
   isLaneArmed,
   isModelServable,
-  type SupplyLaneArming,
+  projectKhalaCatalogForArming,
 } from './model-serving-policy'
 import type { SupplyLane } from './pricing'
 
@@ -103,7 +103,9 @@ export const projectGatewayReadiness = (
   arming: SupplyLaneArming,
   catalog: ReadonlyArray<ModelCatalogEntry> = buildModelCatalog(),
 ): GatewayReadiness => {
-  const publicCatalog = filterPublicCatalog(catalog)
+  const publicCatalog = filterPublicCatalog(
+    projectKhalaCatalogForArming(catalog, arming),
+  )
   const lanes = LANE_ORDER.map((lane): GatewayLaneReadiness => {
     const armed = isLaneArmed(arming, lane)
     const onLane = publicCatalog.filter(entry => entry.lane === lane)

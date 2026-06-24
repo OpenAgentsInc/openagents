@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { KHALA_MODEL_ID } from '../pricing'
+import { KHALA_MODEL_ID, priceRequest } from '../pricing'
 import {
   LIGHTNING_MIN_SATS,
   MPP_MIN_USDC,
@@ -55,6 +55,27 @@ describe('mpp per-call pricing', () => {
       rail: 'crypto',
     })
     expect(large.priceUsd).toBeGreaterThan(small.priceUsd)
+  })
+
+  test('a hidden price model keeps the MPP product as Khala while sizing against backing cost', () => {
+    const quote = quoteMppCall({
+      completionTokens: 1_000_000,
+      model: KHALA_MODEL_ID,
+      priceModel: 'deepseek-v4-flash',
+      promptTokens: 1_000_000,
+      rail: 'crypto',
+    })
+    const priced = priceRequest({
+      fundingKind: 'card',
+      model: 'deepseek-v4-flash',
+      usage: {
+        completionTokens: 1_000_000,
+        promptTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      },
+    })
+    expect(quote.model).toBe(KHALA_MODEL_ID)
+    expect(quote.priceUsd).toBe(priced.chargeUsd)
   })
 
   test('the Lightning rail quotes a positive integer SAT amount at/above the floor', () => {

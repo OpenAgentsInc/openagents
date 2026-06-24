@@ -6,6 +6,7 @@ import { estimateRequestCost } from './cost-estimate'
 import {
   ALL_LANES_UNARMED,
   type SupplyLaneArming,
+  resolveSupplyLaneArming,
 } from './model-serving-policy'
 import { KHALA_MODEL_ID } from './pricing'
 import { handleQuote } from './quote-routes'
@@ -29,7 +30,9 @@ describe('handleQuote', () => {
       { enabled: false },
     )
     expect(response.status).toBe(404)
-    expect(await response.json()).toEqual({ error: 'inference_gateway_disabled' })
+    expect(await response.json()).toEqual({
+      error: 'inference_gateway_disabled',
+    })
   })
 
   it('405s on non-POST methods', async () => {
@@ -192,6 +195,29 @@ describe('handleQuote provider serving policy gate', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { isEstimate: boolean }
     expect(body.isEstimate).toBe(true)
+  })
+
+  it('quotes Khala against the Fireworks DeepSeek backing when that lane is selected', async () => {
+    const laneArming = resolveSupplyLaneArming({
+      FIREWORKS_API_KEY: 'fw',
+      KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+    })
+    const input = {
+      completionTokens: 1_000_000,
+      fundingKind: 'card' as const,
+      model: KHALA_MODEL_ID,
+      promptTokens: 1_000_000,
+    }
+    const response = await run(post(input), { enabled: true, laneArming })
+    expect(response.status).toBe(200)
+    const body = await response.json()
+    expect(body).toEqual(
+      estimateRequestCost({
+        ...input,
+        priceModel: 'deepseek-v4-flash',
+      }),
+    )
+    expect((body as { model: string }).model).toBe(KHALA_MODEL_ID)
   })
 
   it('refuses a KNOWN model whose lane is NOT armed (404 model_unavailable)', async () => {
