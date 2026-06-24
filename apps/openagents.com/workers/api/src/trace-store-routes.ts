@@ -66,7 +66,7 @@ type HttpResponse = globalThis.Response
  */
 
 // Bounded ingest size + per-trajectory step cap (abuse controls, #6212).
-const MAX_INGEST_BODY_BYTES = 512 * 1024
+const MAX_INGEST_BODY_BYTES = 8 * 1024 * 1024
 const MAX_STEPS = 2_000
 const MAX_BLOB_REFS = 200
 const OWNER_LIST_LIMIT = 100
