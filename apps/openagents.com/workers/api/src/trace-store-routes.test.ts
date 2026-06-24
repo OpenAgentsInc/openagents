@@ -271,21 +271,25 @@ describe('POST /api/traces ingest', () => {
     expect(store.rows.size).toBe(0)
   })
 
-  it('tripwires a leaky payload (raw provider model id) with 422 and stores nothing', async () => {
+  it('ACCEPTS a model id (content, not a leak) and stores the trace', async () => {
+    // The model that ran is trace content (a user-uploaded Claude Code session's
+    // model IS claude-*). The openagents/khala-only rule is a Khala GATEWAY
+    // invariant, not a trace one — the tripwire only rejects real value-leaks.
     const store = makeMemoryStore()
     const routes = makeDeps({ store, agentUserId: 'agent-1' })
-    const leaky = {
+    const withModelId = {
       ...cleanTrajectory(),
       agent: { name: 'a', version: '1', model_name: 'claude-opus-4' },
     }
     const response = await run(
-      routes.routeTraceRequest(ingestRequest({ trajectory: leaky }), ENV, CTX),
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: withModelId }),
+        ENV,
+        CTX,
+      ),
     )
-    expect(response.status).toBe(422)
-    const json = (await response.json()) as Record<string, unknown>
-    expect(json.error).toBe('trace_public_safety_rejected')
-    expect(json.findings).toContain('raw_provider_model_id')
-    expect(store.rows.size).toBe(0)
+    expect(response.status).toBe(201)
+    expect(store.rows.size).toBe(1)
   })
 
   it('tripwires a secret in a message with 422', async () => {

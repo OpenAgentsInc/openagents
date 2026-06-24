@@ -281,11 +281,17 @@ This is the invariant ledger for `openagents`.
   the pinned `ATIF-v1.7` subset (`workers/api/src/atif-trace-schema.ts`),
   structurally validated (sequential `step_id` from 1; observation
   `source_call_id` references a `tool_call`; agent-only fields only on agent
-  steps), and then tripwired BEFORE persistence. The tripwire rejects (it does
-  not silently redact) secrets, tokens, wallet/payment material, PII, local
-  filesystem paths, and raw/split provider model ids — only
-  `openagents/khala`-class public model ids may be stored. A rejected ingest
-  returns finding CODES only and never echoes the offending values back.
+  steps), and then tripwired BEFORE persistence. The tripwire is VALUE-based: it
+  rejects (it does not silently redact) actual secret/token VALUES, wallet/payment
+  VALUES, PII (emails), and local filesystem paths. It does NOT reject model ids
+  or generic secret-discussion words ("api key", "password", "mnemonic"): a
+  shareable trace — especially a user-uploaded Claude Code / Codex session — is
+  content-rich and legitimately names the model it ran on and discusses secrets
+  generically; that is trace CONTENT, not a leak. The `openagents/khala`-only
+  model-id rule is a Khala GATEWAY-projection invariant (a different surface), not
+  a trace one. The redaction service (#6219) is the primary scrubber; this tripwire
+  is the value-based backstop. A rejected ingest returns finding CODES only and
+  never echoes the offending values back.
 - Per-trace `visibility` is `public` | `unlisted` | `owner_only` and is
   enforced on read. `public` and `unlisted` reads need no auth (anyone with the
   link); `owner_only` reads require the owning browser session (or an admin) and
@@ -341,8 +347,10 @@ This is the invariant ledger for `openagents`.
   never earns a second reward. The content digest is a dedup key only; it is not
   a settlement or replay digest.
 - Redaction is the uploader/CLI's job (#6219). The ingest tripwire is still the
-  hard backstop: a payload carrying secrets/tokens/wallet/PII/local-paths/raw
-  provider model ids is REJECTED (422), never silently redacted or stored.
+  hard value-based backstop: a payload carrying actual secret/token VALUES,
+  wallet/payment VALUES, PII (emails), or local filesystem paths is REJECTED
+  (422), never silently redacted or stored. Model ids and generic
+  secret-discussion words are trace content, not leaks, and are allowed.
 - Regression coverage lives in `workers/api/src/trace-store-routes.test.ts`
   (data market block).
 
