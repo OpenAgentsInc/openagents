@@ -27,6 +27,7 @@ import {
   ImagesRoute,
   KhalaRoute,
   LandingRoute,
+  LoginRoute,
   Moksha2Route,
   MulletRoute,
   NotFoundRoute,
@@ -96,10 +97,8 @@ describe('app route parser', () => {
     )
   })
 
-  test('does not accept the deleted login page route', () => {
-    expect(urlToAppRoute(appUrl('/login'))).toEqual(
-      NotFoundRoute({ path: '/login' }),
-    )
+  test('accepts the login page route', () => {
+    expect(urlToAppRoute(appUrl('/login'))).toEqual(LoginRoute())
   })
 
   test('accepts the short public Artanis campaign route', () => {

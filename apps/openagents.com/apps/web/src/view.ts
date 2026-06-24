@@ -501,6 +501,17 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  if (model._tag === 'LoggedOut' && model.route._tag === 'Login') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-login',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (model._tag === 'LoggedOut' && model.route._tag === 'Workspace') {
     const h = html<Message>()
 

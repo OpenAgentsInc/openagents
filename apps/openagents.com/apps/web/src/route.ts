@@ -746,6 +746,7 @@ const routeParser = Route.oneOf(
   tassadarReplayRouter,
   tassadarRouter,
   gymOssRouter,
+  loginRouter,
   runRouter,
   forumReceiptRouter,
   forumTopicRouter,
