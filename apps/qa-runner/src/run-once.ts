@@ -12,7 +12,7 @@
 // By default it runs the same /login regression scenario the demo uses, so
 // `run-once` against the live site is a quick honest smoke.
 
-import { Effect } from "effect";
+import { Effect, Fiber } from "effect";
 import { localBackend } from "./backend";
 import { scriptedBrain } from "./brain";
 import { loginRegressionSteps } from "./scenarios";
@@ -44,7 +44,11 @@ async function main(): Promise<void> {
       : resolveTarget();
   const artifactDir = typeof args.out === "string" ? args.out : "./runs/run-once";
 
-  const outcome = await Effect.runPromise(
+  // Fork the run so a SIGINT (Ctrl-C) INTERRUPTS the fiber rather than killing
+  // the process outright. Interruption runs the runner's `ensuring` finalizer,
+  // which flushes video/trace/screenshots + result.json (#6193) — so a cancelled
+  // real run still leaves dereferenceable artifacts behind.
+  const fiber = Effect.runFork(
     runQaSession({
       target,
       brain: scriptedBrain(loginRegressionSteps()),
@@ -53,6 +57,21 @@ async function main(): Promise<void> {
       ...(args.headed ? { headed: true } : {}),
     }),
   );
+  const onSignal = () => {
+    Effect.runFork(Fiber.interrupt(fiber));
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+
+  const exit = await Effect.runPromise(Fiber.await(fiber));
+  process.off("SIGINT", onSignal);
+  process.off("SIGTERM", onSignal);
+  if (exit._tag === "Failure") {
+    console.error("=== QA RUN (run-once) — interrupted/failed; artifacts flushed ===");
+    console.error("artifactDir:", artifactDir);
+    process.exit(1);
+  }
+  const outcome = exit.value;
 
   console.log("=== QA RUN (run-once) ===");
   console.log("status:", outcome.result.status);
