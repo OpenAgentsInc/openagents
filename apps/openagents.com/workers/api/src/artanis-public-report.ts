@@ -604,6 +604,31 @@ const currentArtanisHealthSnapshot = (input: {
       state: 'available' as const,
       subjectUpdatedAtIso: nowIso,
     }),
+    healthSignal({
+      blockerRefs: [],
+      caveatRefs: [
+        'authority.public.khala_readiness.credentialless_read_only',
+        'authority.public.khala_readiness.no_chat_call',
+        'authority.public.khala_readiness.no_mutation',
+        'authority.public.khala_readiness.no_paid_call',
+        'caveat.public.khala_public_catalog_single_model',
+      ],
+      count: 0,
+      kind: 'khala_readiness',
+      label: 'Khala no-spend readiness is clean',
+      observedAtIso: nowIso,
+      operatorDetailRefs: ['health.operator.artanis.khala_readiness'],
+      publicRecoveryActionRefs: [],
+      publicStatusRefs: ['health.public.artanis.khala_ready'],
+      signalRefSuffix: 'khala_readiness',
+      sourceRefs: [
+        'gateway.public.openagents.models',
+        'gateway.public.openagents.readiness',
+        'model.public.openagents.khala',
+      ],
+      state: 'available' as const,
+      subjectUpdatedAtIso: nowIso,
+    }),
   ]
   const attentionSignals = signals.filter(signal =>
     [
