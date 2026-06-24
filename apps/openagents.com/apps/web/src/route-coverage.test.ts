@@ -45,6 +45,10 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
   ['/pro', 'Pro'],
+  ['/pro/runs', 'ProRuns'],
+  ['/pro/runs/login-regression-prod', 'ProRun'],
+  ['/pro/evals', 'ProEvals'],
+  ['/pro/evals/login-mcp-compare', 'ProEval'],
   ['/billing', 'Billing'],
   ['/usage', 'Usage'],
   ['/images', 'Images'],
@@ -76,8 +80,23 @@ describe('public route parser coverage', () => {
 
   test('covers the documented public surface', () => {
     // 33 original public/top-level routes + the public `/gym` fixture (34) +
-    // the authenticated `/pro` operator console top-level route (35).
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(35)
+    // the authenticated `/pro` operator console top-level route (35) + the four
+    // /pro subpages (runs index/detail, evals index/detail) for the operator
+    // console build-out (39).
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
+  })
+
+  // The specific-before-generic parser ordering must resolve the parameterized
+  // /pro subpaths to their detail routes, not the index routes.
+  test('parses /pro subpaths with the correct specificity', () => {
+    expect(urlToAppRoute(appUrl('/pro/runs'))._tag).toBe('ProRuns')
+    expect(urlToAppRoute(appUrl('/pro/evals'))._tag).toBe('ProEvals')
+    const runDetail = urlToAppRoute(appUrl('/pro/runs/abc'))
+    expect(runDetail._tag).toBe('ProRun')
+    if (runDetail._tag === 'ProRun') expect(runDetail.runId).toBe('abc')
+    const evalDetail = urlToAppRoute(appUrl('/pro/evals/xyz'))
+    expect(evalDetail._tag).toBe('ProEval')
+    if (evalDetail._tag === 'ProEval') expect(evalDetail.evalId).toBe('xyz')
   })
 
   // The registry-driven parser derives its `oneOf` list from a single ordered

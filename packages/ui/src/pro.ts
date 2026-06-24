@@ -338,3 +338,487 @@ export const proMainPane = <Message>(children: ReadonlyArray<Html>): Html => {
     children,
   )
 }
+
+// ---------------------------------------------------------------------------
+// Runs + evals surfaces (issue 6184)
+// ---------------------------------------------------------------------------
+//
+// Command surfaces — strips, tables, a video pane — for the /pro runs and evals
+// pages. Mono-first, dark, no cards, no hero. Semantic accents carry STATE only
+// (pass = positive, fail = negative). `not_measured` renders literally, never a
+// fabricated 0, mirroring the qa-runner honesty contract.
+
+// A pass/fail status pill. Tiny, mono, uppercase; accent reserved for state.
+export const proStatusPill = <Message>(status: 'pass' | 'fail'): Html => {
+  const h = html<Message>()
+  const pass = status === 'pass'
+  return h.span(
+    [
+      h.DataAttribute('component', 'pro-status-pill'),
+      h.DataAttribute('status', status),
+      h.Class(
+        clsx(
+          'inline-flex items-center border px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.1em]',
+          pass
+            ? 'border-[#00c853]/40 text-[#00c853]'
+            : 'border-[#d32f2f]/50 text-[#d32f2f]',
+        ),
+      ),
+    ],
+    [pass ? 'pass' : 'fail'],
+  )
+}
+
+// A back link to the parent /pro section (e.g. "← Runs"). Quiet, no underline.
+export const proBackLink = <Message>(input: {
+  href: string
+  label: string
+}): Html => {
+  const h = html<Message>()
+  return h.a(
+    [
+      h.Href(input.href),
+      h.DataAttribute('component', 'pro-back-link'),
+      h.Class(
+        'inline-flex items-center gap-1.5 text-xs text-white/45 no-underline transition-colors duration-150 hover:text-[#f1efe8] focus-visible:text-[#f1efe8] focus-visible:outline-none motion-reduce:transition-none',
+      ),
+    ],
+    [iconView<Message>('ArrowLeft', 'size-3.5'), h.span([], [input.label])],
+  )
+}
+
+// A page header: a back link, a title, and a thin meta strip (key/value pairs).
+// No card; a single subtle bottom border frames it.
+export const proPageHeader = <Message>(input: {
+  back?: { href: string; label: string }
+  title: string
+  status?: 'pass' | 'fail'
+  meta: ReadonlyArray<{ label: string; value: string }>
+  // An optional honest note (e.g. illustrative-only) shown under the meta.
+  note?: string
+}): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      h.DataAttribute('component', 'pro-page-header'),
+      h.Class('grid gap-3 border-b border-[#222] pb-4'),
+    ],
+    [
+      ...(input.back !== undefined ? [proBackLink<Message>(input.back)] : []),
+      h.div(
+        [h.Class('flex flex-wrap items-center gap-3')],
+        [
+          h.h1(
+            [
+              h.Class(
+                'm-0 text-base font-semibold tracking-[0.01em] text-[#f1efe8]',
+              ),
+            ],
+            [input.title],
+          ),
+          ...(input.status !== undefined
+            ? [proStatusPill<Message>(input.status)]
+            : []),
+        ],
+      ),
+      h.dl(
+        [
+          h.Class(
+            'm-0 flex flex-wrap gap-x-6 gap-y-1 text-xs text-white/45',
+          ),
+        ],
+        input.meta.flatMap(item => [
+          h.div(
+            [h.Class('flex items-baseline gap-1.5')],
+            [
+              h.dt([h.Class('text-white/30')], [item.label]),
+              h.dd([h.Class('m-0 text-white/60')], [item.value]),
+            ],
+          ),
+        ]),
+      ),
+      ...(input.note !== undefined
+        ? [
+            h.p(
+              [h.Class('m-0 text-xs leading-[1.5] text-[#ffb400]/80')],
+              [input.note],
+            ),
+          ]
+        : []),
+    ],
+  )
+}
+
+// A vertical stack with consistent rhythm for a page body. No card.
+export const proConsoleStack = <Message>(
+  children: ReadonlyArray<Html>,
+): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      h.DataAttribute('component', 'pro-console-stack'),
+      h.Class(clsx('mx-auto grid max-w-4xl gap-6', motionPaneOpenClass)),
+    ],
+    children,
+  )
+}
+
+// A labelled sub-section: a heading + its content, separated by rhythm only.
+export const proConsoleSection2 = <Message>(
+  label: string,
+  children: ReadonlyArray<Html>,
+): Html => {
+  const h = html<Message>()
+  return h.section(
+    [
+      h.DataAttribute('component', 'pro-console-section'),
+      h.Class('grid gap-2.5'),
+    ],
+    [proSectionHeading<Message>(label), ...children],
+  )
+}
+
+// A monospace reference to a committed path/file (e.g. a distilled test).
+export const proCodeRef = <Message>(path: string): Html => {
+  const h = html<Message>()
+  return h.code(
+    [
+      h.DataAttribute('component', 'pro-code-ref'),
+      h.Class(
+        'inline-block break-all border border-[#222] bg-[#010102] px-2 py-1 text-xs text-white/70',
+      ),
+    ],
+    [path],
+  )
+}
+
+// A heading for a sub-section within a page (e.g. "Steps", "Variants").
+export const proSectionHeading = <Message>(label: string): Html => {
+  const h = html<Message>()
+  return h.h2(
+    [
+      h.DataAttribute('component', 'pro-section-heading'),
+      h.Class(
+        'm-0 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-white/35',
+      ),
+    ],
+    [label],
+  )
+}
+
+// A list/index of links to runs or evals. Each row is a thin strip (no card):
+// a status pill, a title, and a muted meta line. Empty -> honest empty strip.
+export type ProIndexRow = Readonly<{
+  href: string
+  title: string
+  status?: 'pass' | 'fail'
+  meta: string
+}>
+
+export const proIndexList = <Message>(input: {
+  rows: ReadonlyArray<ProIndexRow>
+  emptyLabel: string
+}): Html => {
+  const h = html<Message>()
+  if (input.rows.length === 0) {
+    return h.div(
+      [
+        h.DataAttribute('component', 'pro-index-empty'),
+        h.Class(
+          'border border-[#222] bg-[#010102] px-3 py-6 text-center text-sm text-white/35',
+        ),
+      ],
+      [input.emptyLabel],
+    )
+  }
+  return h.ul(
+    [
+      h.DataAttribute('component', 'pro-index-list'),
+      h.Class('m-0 grid list-none gap-1 p-0'),
+    ],
+    input.rows.map(row =>
+      h.li(
+        [h.Class('contents')],
+        [
+          h.a(
+            [
+              h.Href(row.href),
+              h.Class(
+                'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border border-[#222] bg-[#010102] px-3 py-2 no-underline transition-[border-color,background-color] duration-150 hover:border-[#333] hover:bg-[#080808] focus-visible:border-[#333] focus-visible:outline-none motion-reduce:transition-none',
+              ),
+            ],
+            [
+              row.status !== undefined
+                ? proStatusPill<Message>(row.status)
+                : h.span([h.Class('w-10')], []),
+              h.span(
+                [h.Class('truncate text-sm text-[#f1efe8]')],
+                [row.title],
+              ),
+              h.span(
+                [h.Class('shrink-0 text-xs text-white/35')],
+                [row.meta],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  )
+}
+
+// A playable video pane. A real <video controls> with the public-safe source.
+// `prefers-reduced-motion` is respected by NOT autoplaying (it never autoplays).
+export const proVideoPane = <Message>(input: {
+  src: string
+  format: 'mp4' | 'webm'
+  label?: string
+}): Html => {
+  const h = html<Message>()
+  return h.figure(
+    [
+      h.DataAttribute('component', 'pro-video-pane'),
+      h.Class('m-0 grid gap-1.5'),
+    ],
+    [
+      h.video(
+        [
+          h.Attribute('controls', 'controls'),
+          h.Attribute('preload', 'metadata'),
+          h.Attribute('playsinline', 'playsinline'),
+          h.Class('w-full max-w-2xl border border-[#222] bg-black'),
+        ],
+        [
+          h.source([
+            h.Src(input.src),
+            h.Attribute(
+              'type',
+              input.format === 'mp4' ? 'video/mp4' : 'video/webm',
+            ),
+          ]),
+        ],
+      ),
+      ...(input.label !== undefined
+        ? [
+            h.figcaption(
+              [h.Class('text-xs text-white/35')],
+              [input.label],
+            ),
+          ]
+        : []),
+    ],
+  )
+}
+
+// A run STEP table: index, kind, label, status. Mono, dense, no card.
+export type ProStepRow = Readonly<{
+  index: number
+  kind: string
+  label: string
+  status: 'ok' | 'failed'
+}>
+
+export const proRunStepTable = <Message>(
+  steps: ReadonlyArray<ProStepRow>,
+): Html => {
+  const h = html<Message>()
+  const headCell = (label: string): Html =>
+    h.th(
+      [
+        h.Class(
+          'border-b border-[#222] px-2 py-1.5 text-left text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/30',
+        ),
+      ],
+      [label],
+    )
+  return h.table(
+    [
+      h.DataAttribute('component', 'pro-step-table'),
+      h.Class('w-full border-collapse text-sm'),
+    ],
+    [
+      h.thead(
+        [],
+        [
+          h.tr(
+            [],
+            [headCell('#'), headCell('kind'), headCell('step'), headCell('status')],
+          ),
+        ],
+      ),
+      h.tbody(
+        [],
+        steps.map(step =>
+          h.tr(
+            [h.Class('border-b border-[#141414]')],
+            [
+              h.td([h.Class('px-2 py-1.5 text-white/35')], [String(step.index)]),
+              h.td(
+                [h.Class('px-2 py-1.5 text-white/45')],
+                [step.kind],
+              ),
+              h.td([h.Class('px-2 py-1.5 text-[#f1efe8]')], [step.label]),
+              h.td(
+                [
+                  h.Class(
+                    clsx(
+                      'px-2 py-1.5 font-semibold',
+                      step.status === 'ok'
+                        ? 'text-[#00c853]'
+                        : 'text-[#d32f2f]',
+                    ),
+                  ),
+                ],
+                [step.status],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
+// The EVAL variant COMPARISON table: the headline artifact. Per-variant
+// pass-rate, p50/p90 latency, and deltas vs the baseline, side by side. The
+// baseline row is marked; deltas are signed; `not_measured` is literal.
+export type ProComparisonRow = Readonly<{
+  label: string
+  note?: string
+  baseline: boolean
+  passRate: number // 0..1
+  passCount: number
+  runCount: number
+  latencyP50: string // already-formatted ("2140ms" | "not_measured")
+  latencyP90: string
+  deltaPass: string // signed ("+50%" | "0%" | "—")
+  deltaP50: string // signed ("-160ms" | "not_measured" | "—")
+}>
+
+export const proEvalComparisonTable = <Message>(
+  rows: ReadonlyArray<ProComparisonRow>,
+): Html => {
+  const h = html<Message>()
+  const headCell = (label: string, alignRight = false): Html =>
+    h.th(
+      [
+        h.Class(
+          clsx(
+            'border-b border-[#222] px-2.5 py-2 text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/30',
+            alignRight ? 'text-right' : 'text-left',
+          ),
+        ),
+      ],
+      [label],
+    )
+  const num = (value: string, accent?: 'pos' | 'neg'): Html =>
+    h.td(
+      [
+        h.Class(
+          clsx(
+            'px-2.5 py-2 text-right tabular-nums',
+            accent === 'pos'
+              ? 'text-[#00c853]'
+              : accent === 'neg'
+                ? 'text-[#d32f2f]'
+                : 'text-white/60',
+          ),
+        ),
+      ],
+      [value],
+    )
+  const deltaAccent = (value: string): 'pos' | 'neg' | undefined => {
+    if (value.startsWith('+')) return 'pos'
+    if (value.startsWith('-')) return 'neg'
+    return undefined
+  }
+  return h.table(
+    [
+      h.DataAttribute('component', 'pro-eval-comparison'),
+      h.Class('w-full border-collapse text-sm'),
+    ],
+    [
+      h.thead(
+        [],
+        [
+          h.tr(
+            [],
+            [
+              headCell('variant'),
+              headCell('pass-rate', true),
+              headCell('p50', true),
+              headCell('p90', true),
+              headCell('Δ pass', true),
+              headCell('Δ p50', true),
+            ],
+          ),
+        ],
+      ),
+      h.tbody(
+        [],
+        rows.map(row =>
+          h.tr(
+            [
+              h.DataAttribute('baseline', row.baseline ? 'true' : 'false'),
+              h.Class(
+                clsx(
+                  'border-b border-[#141414]',
+                  row.baseline ? 'bg-[#080808]' : '',
+                ),
+              ),
+            ],
+            [
+              h.td(
+                [h.Class('px-2.5 py-2')],
+                [
+                  h.div(
+                    [h.Class('grid gap-0.5')],
+                    [
+                      h.div(
+                        [h.Class('flex items-center gap-2')],
+                        [
+                          h.span(
+                            [h.Class('text-[#f1efe8]')],
+                            [row.label],
+                          ),
+                          ...(row.baseline
+                            ? [
+                                h.span(
+                                  [
+                                    h.Class(
+                                      'text-[0.5625rem] uppercase tracking-[0.1em] text-white/30',
+                                    ),
+                                  ],
+                                  ['baseline'],
+                                ),
+                              ]
+                            : []),
+                        ],
+                      ),
+                      ...(row.note !== undefined
+                        ? [
+                            h.span(
+                              [h.Class('text-xs text-white/30')],
+                              [row.note],
+                            ),
+                          ]
+                        : []),
+                    ],
+                  ),
+                ],
+              ),
+              num(
+                `${Math.round(row.passRate * 100)}% (${row.passCount}/${row.runCount})`,
+                row.passRate === 1 ? 'pos' : row.passRate === 0 ? 'neg' : undefined,
+              ),
+              num(row.latencyP50),
+              num(row.latencyP90),
+              num(row.deltaPass, deltaAccent(row.deltaPass)),
+              num(row.deltaP50, deltaAccent(row.deltaP50)),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}

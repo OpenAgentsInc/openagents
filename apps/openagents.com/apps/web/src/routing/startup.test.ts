@@ -38,6 +38,10 @@ import {
   OrderRoute,
   PrivacyRoute,
   ProRoute,
+  ProRunsRoute,
+  ProRunRoute,
+  ProEvalsRoute,
+  ProEvalRoute,
   PublicAgentRoute,
   PublicStatsArchiveRoute,
   PylonRoute,
@@ -544,6 +548,22 @@ describe('startup route policy', () => {
 
   test('fetches the auth bootstrap for /pro', () => {
     expect(routeRequiresAuthBootstrap(ProRoute())).toBe(true)
+  })
+
+  test('fetches the auth bootstrap for the /pro subpages', () => {
+    expect(routeRequiresAuthBootstrap(ProRunsRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(ProRunRoute({ runId: 'x' }))).toBe(true)
+    expect(routeRequiresAuthBootstrap(ProEvalsRoute())).toBe(true)
+    expect(routeRequiresAuthBootstrap(ProEvalRoute({ evalId: 'x' }))).toBe(true)
+  })
+
+  test('gates the /pro subpages for a logged-out visitor (same as /pro)', () => {
+    expect(startupRouteForLoggedOut(ProRunsRoute())).toMatchObject(
+      startupRouteForLoggedOut(ProRoute()),
+    )
+    expect(startupRouteForLoggedOut(ProEvalsRoute())).toMatchObject(
+      startupRouteForLoggedOut(ProRoute()),
+    )
   })
 
   test('routes incomplete authenticated users through onboarding', () => {

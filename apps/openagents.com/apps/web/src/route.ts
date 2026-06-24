@@ -82,6 +82,13 @@ export const PylonRoute = r('Pylon')
 export const DownloadRoute = r('Download')
 export const DashboardRoute = r('Dashboard')
 export const ProRoute = r('Pro')
+// /pro operator-console subpages (issue 6184). Same auth posture as /pro
+// (logged-in-open). Each carries a stable id so the URL is shareable and the
+// PR-evidence loop (#6185) can link straight to a live run/eval comparison.
+export const ProRunsRoute = r('ProRuns')
+export const ProRunRoute = r('ProRun', { runId: S.String })
+export const ProEvalsRoute = r('ProEvals')
+export const ProEvalRoute = r('ProEval', { evalId: S.String })
 export const BillingRoute = r('Billing')
 export const UsageRoute = r('Usage')
 export const StatsRoute = r('Stats')
@@ -177,6 +184,10 @@ export type PylonRoute = typeof PylonRoute.Type
 export type DownloadRoute = typeof DownloadRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
 export type ProRoute = typeof ProRoute.Type
+export type ProRunsRoute = typeof ProRunsRoute.Type
+export type ProRunRoute = typeof ProRunRoute.Type
+export type ProEvalsRoute = typeof ProEvalsRoute.Type
+export type ProEvalRoute = typeof ProEvalRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
 export type StatsRoute = typeof StatsRoute.Type
@@ -292,6 +303,10 @@ export const LoggedInRoute = S.Union([
   PublicAgentRoute,
   DashboardRoute,
   ProRoute,
+  ProRunsRoute,
+  ProRunRoute,
+  ProEvalsRoute,
+  ProEvalRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -362,6 +377,10 @@ export const AppRoute = S.Union([
   DownloadRoute,
   DashboardRoute,
   ProRoute,
+  ProRunsRoute,
+  ProRunRoute,
+  ProEvalsRoute,
+  ProEvalRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -630,6 +649,28 @@ export const downloadRouter = pipe(
   Route.mapTo(DownloadRoute),
 )
 export const proRouter = pipe(literal('pro'), Route.mapTo(ProRoute))
+export const proRunsRouter = pipe(
+  literal('pro'),
+  slash(literal('runs')),
+  Route.mapTo(ProRunsRoute),
+)
+export const proRunRouter = pipe(
+  literal('pro'),
+  slash(literal('runs')),
+  slash(string('runId')),
+  Route.mapTo(ProRunRoute),
+)
+export const proEvalsRouter = pipe(
+  literal('pro'),
+  slash(literal('evals')),
+  Route.mapTo(ProEvalsRoute),
+)
+export const proEvalRouter = pipe(
+  literal('pro'),
+  slash(literal('evals')),
+  slash(string('evalId')),
+  Route.mapTo(ProEvalRoute),
+)
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
@@ -1203,6 +1244,39 @@ export const routeRegistry = {
     inLoggedInUnion: true,
     render: 'loggedInOnly',
   },
+  // /pro subpages (issue 6184): the runs index, a run detail, the evals index,
+  // and an eval comparison detail. Same logged-in-open posture as /pro; they
+  // resolve through the same auth-gated startup path. Each renders as a
+  // top-level Pro console page (its own shell), so the disposition is
+  // `loggedInOnly` like /pro.
+  ProRuns: {
+    requiresAuthBootstrap: true,
+    loggedInGate: 'open',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
+  ProRun: {
+    requiresAuthBootstrap: true,
+    loggedInGate: 'open',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
+  ProEvals: {
+    requiresAuthBootstrap: true,
+    loggedInGate: 'open',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
+  ProEval: {
+    requiresAuthBootstrap: true,
+    loggedInGate: 'open',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
   Billing: {
     requiresAuthBootstrap: true,
     loggedInGate: 'workroom',
@@ -1461,6 +1535,10 @@ const orderedParserRouters = [
   docsRouter,
   forumRouter,
   blogRouter,
+  proEvalRouter,
+  proEvalsRouter,
+  proRunRouter,
+  proRunsRouter,
   proRouter,
   billingRouter,
   usageRouter,
