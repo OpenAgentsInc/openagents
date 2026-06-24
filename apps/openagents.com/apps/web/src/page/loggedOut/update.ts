@@ -107,7 +107,7 @@ import {
   toggleGymLane,
   toggleGymSequenceShape,
 } from './gym/flow'
-import { Trajectory as AtifTrajectory } from '../trace/atif'
+import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
@@ -759,7 +759,18 @@ export const LoadTrace = Command.define(
       traceRecord.trajectory,
     )
 
-    return SucceededLoadTrace({ uuid, trajectory })
+    // #6223: the envelope also carries public-safe blob refs (R2 keys for the
+    // recording + screenshots). Decode leniently — a trace with none, or an
+    // older envelope without the field, still loads (the page omits the media).
+    const blobRefs = yield* S.decodeUnknownEffect(S.Array(AtifBlobRef))(
+      traceRecord.blobRefs ?? [],
+    ).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<AtifBlobRef>))
+
+    return SucceededLoadTrace(
+      blobRefs.length === 0
+        ? { uuid, trajectory }
+        : { uuid, trajectory, blobRefs },
+    )
   }).pipe(
     Effect.catch(error =>
       Effect.succeed(
@@ -1433,9 +1444,17 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ],
       // Live `/trace/{uuid}` read (issue #6209). Ignore a response whose uuid no
       // longer matches the current route (the visitor navigated away mid-flight).
-      SucceededLoadTrace: ({ uuid, trajectory }) =>
+      SucceededLoadTrace: ({ uuid, trajectory, blobRefs }) =>
         model.route._tag === 'Trace' && model.route.uuid === uuid
-          ? [evo(model, { trace: () => LoadedTrace({ uuid, trajectory }) }), []]
+          ? [
+              evo(model, {
+                trace: () =>
+                  blobRefs === undefined
+                    ? LoadedTrace({ uuid, trajectory })
+                    : LoadedTrace({ uuid, trajectory, blobRefs }),
+              }),
+              [],
+            ]
           : [model, []],
       FailedLoadTrace: ({ uuid, error, status }) =>
         model.route._tag === 'Trace' && model.route.uuid === uuid

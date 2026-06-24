@@ -6,7 +6,7 @@ import { LoggedOutRoute } from '../../route'
 import { Session } from '../../domain/session'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
-import { Trajectory as AtifTrajectory } from '../trace/atif'
+import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { GymModel, initGymModel } from './gym/flow'
 
@@ -1168,6 +1168,10 @@ export const LoadingTrace = ts('TraceLoading', {
 export const LoadedTrace = ts('TraceLoaded', {
   uuid: S.String,
   trajectory: AtifTrajectory,
+  // Public-safe envelope blob refs (#6223): the trace's R2 recording +
+  // screenshots, resolved to blob-serving URLs at the render edge. Optional so a
+  // trace with no media still loads.
+  blobRefs: S.optionalKey(S.Array(AtifBlobRef)),
 })
 // The API returned 404 (or owner_only to an anonymous viewer, which the worker
 // reports as 404 by design so it never reveals a private trace's existence).

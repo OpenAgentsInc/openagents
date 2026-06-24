@@ -15,6 +15,7 @@ import {
   decodeTrajectory,
   formatCost,
   formatDuration,
+  trajectoryToMarkdown,
   traceVerdict,
 } from './trace/atif'
 import { SAMPLE_TRACE_UUID, sampleTrajectory } from './trace/sample'
@@ -184,6 +185,89 @@ describe('trace render (sample trajectory)', () => {
     expect(Trace.title(sampleRoute)).toBe(
       'Trace: openagents.com (Verified) - OpenAgents',
     )
+  })
+
+  test('renders a "Copy Markdown" button carrying the serialized transcript (#6223)', () => {
+    const rendered = renderSample()
+    expect(rendered).toContain('data-component="trace-copy-markdown"')
+    expect(rendered).toContain('Copy Markdown')
+    // The serialized markdown is embedded as a data attribute (no fetch/state).
+    expect(rendered).toContain('data-markdown=')
+    expect(rendered).toContain('# Agent session trace')
+  })
+
+  test('lays the header meta out as a full-width strip (#6223)', () => {
+    const rendered = renderSample()
+    expect(rendered).toContain('data-component="trace-meta"')
+    // A flex strip (full-width row), not the old narrow stacked grid column.
+    expect(rendered).toContain('flex flex-wrap items-stretch')
+  })
+})
+
+describe('trajectory markdown serialization (#6223)', () => {
+  test('serializes goal, steps, tool calls, and observations to clean Markdown', () => {
+    const md = trajectoryToMarkdown(sampleTrajectory)
+    expect(md).toContain('# Agent session trace')
+    expect(md).toContain('## Goal')
+    expect(md).toContain('Verify the login page works on this site')
+    expect(md).toContain('## Step 2')
+    // Tool calls render as fenced function(args) blocks.
+    expect(md).toContain('```')
+    expect(md).toContain('navigate(')
+    expect(md).toContain('target: /login')
+    // Observations render as quoted evidence.
+    expect(md).toContain('> ok: navigate to /login')
+    // No raw object dumps for string args.
+    expect(md).not.toContain('[object Object]')
+  })
+})
+
+describe('trace media via envelope blobRefs (#6223)', () => {
+  const realRoute = TraceRoute({ uuid: '24c6fea6-b271-46c6-a9a9-bc614440e9ef' })
+
+  test('renders the recording from a blobRef at the gated blob URL', () => {
+    const rendered = renderHtml(
+      Trace.view(realRoute, { _tag: 'LoggedOut' }, {
+        _tag: 'TraceLoaded',
+        uuid: realRoute.uuid,
+        trajectory: sampleTrajectory,
+        blobRefs: [{ kind: 'video', r2Key: 'session.mp4' }],
+      }),
+    )
+    expect(rendered).toContain('data-component="pro-video-pane"')
+    expect(rendered).toContain(
+      `/api/traces/${realRoute.uuid}/blob/session.mp4`,
+    )
+  })
+
+  test('renders screenshots inline from blobRefs', () => {
+    const rendered = renderHtml(
+      Trace.view(realRoute, { _tag: 'LoggedOut' }, {
+        _tag: 'TraceLoaded',
+        uuid: realRoute.uuid,
+        trajectory: sampleTrajectory,
+        blobRefs: [
+          { kind: 'screenshot', r2Key: 'shots/00-login.png', caption: 'login' },
+        ],
+      }),
+    )
+    expect(rendered).toContain('data-component="trace-screenshots"')
+    expect(rendered).toContain(
+      `/api/traces/${realRoute.uuid}/blob/shots/00-login.png`,
+    )
+    expect(rendered).toContain('login')
+  })
+
+  test('omits the screenshots section when there are no image blobRefs', () => {
+    const rendered = renderHtml(
+      Trace.view(realRoute, { _tag: 'LoggedOut' }, {
+        _tag: 'TraceLoaded',
+        uuid: realRoute.uuid,
+        trajectory: sampleTrajectory,
+        blobRefs: [{ kind: 'video', r2Key: 'session.mp4' }],
+      }),
+    )
+    expect(rendered).not.toContain('data-component="trace-screenshots"')
   })
 })
 
