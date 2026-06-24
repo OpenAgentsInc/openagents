@@ -65,7 +65,7 @@ HYDRALISK_GPT_OSS_20B_ENABLED=ready
 HYDRALISK_BASE_URL=<worker secret>
 HYDRALISK_BEARER_TOKEN=<worker secret>
 HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z
-HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527
+HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-48adcddbb0ff47e097685da23f17cea6
 ```
 
 The public-safe receipts observed on the host:
