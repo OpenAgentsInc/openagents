@@ -32,6 +32,11 @@ import {
 } from "./scenarios";
 import { makeTarget } from "./target";
 import { verifyCommitments, type VerifyReport } from "./verify";
+import {
+  learnFromRun,
+  type FailureLearningStrategy,
+  type FailureSuggestion,
+} from "./failure-learning";
 
 function parseArgs(argv: ReadonlyArray<string>) {
   const args: Record<string, string | boolean> = {};
@@ -148,6 +153,31 @@ async function main(): Promise<void> {
         })
       : undefined;
 
+  // Failure learning (#6195): when the verify run was REFUTED/failed, capture a
+  // public-safe failure pattern + a fix/scenario-update suggestion. The strategy
+  // is config-selectable via --fl-strategy (default suggest_in_report); the
+  // mutating strategies additionally require --fl-arm-mutations (default OFF), so
+  // the CI default can never silently commit/PR. Honest: no failure -> no
+  // suggestion (never fabricated).
+  const flStrategy: FailureLearningStrategy | undefined =
+    args["fl-strategy"] === "auto_commit"
+      ? "auto_commit"
+      : args["fl-strategy"] === "open_pr"
+        ? "open_pr"
+        : args["fl-strategy"] === "suggest_in_report"
+          ? "suggest_in_report"
+          : undefined;
+  const learned = learnFromRun(verifyOutcome.result, {
+    ...(flStrategy !== undefined ? { strategy: flStrategy } : {}),
+    armMutations: args["fl-arm-mutations"] === true,
+  });
+  const failureSuggestion: FailureSuggestion | undefined = learned?.suggestion;
+  if (failureSuggestion !== undefined) {
+    console.log(
+      `[pr-comment] captured failure pattern ${learned!.pattern.patternRef} (strategy: ${failureSuggestion.resolved.strategy})`,
+    );
+  }
+
   // gh-attach is OPTIONAL: in CI without browser cookies it will fail and we
   // fall back to the relative video ref (honest, no broken embed).
   const ghAttach = makeProcessRunner(async (cmd, cmdArgs) => {
@@ -171,6 +201,7 @@ async function main(): Promise<void> {
     proBaseUrl,
     variantVideoPaths,
     ...(verify !== undefined ? { verify } : {}),
+    ...(failureSuggestion !== undefined ? { failureSuggestion } : {}),
     // Only attempt gh-attach when explicitly armed (cookies present); otherwise
     // skip the upload and fall back to relative refs.
     ...(args["gh-attach"] === true ? { ghAttach } : {}),

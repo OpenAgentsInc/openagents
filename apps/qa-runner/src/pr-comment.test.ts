@@ -28,6 +28,8 @@ import {
 import { loginRegressionSteps, loginRegressionStepsWrong } from "./scenarios";
 import { makeTarget } from "./target";
 import { verifyCommitments } from "./verify";
+import { captureFailurePattern, suggestFromPattern } from "./failure-learning";
+import type { QaRunResult } from "./result";
 
 let dir: string;
 beforeEach(() => {
@@ -249,5 +251,90 @@ describe("composePrComment", () => {
       proBaseUrl: "https://openagents.com",
     });
     expect(body).not.toContain("Verify verdict");
+  });
+
+  // -------------------------------------------------------------------------
+  // #6195: failure-learning suggestion section (default suggest-only).
+  // -------------------------------------------------------------------------
+
+  const refutedRunResult = (): QaRunResult => ({
+    schemaVersion: "openagents.qa_runner.result.v1",
+    status: "fail",
+    target: { name: "openagents.com", baseUrl: "https://example.test" },
+    brain: "scripted",
+    backend: "local",
+    startedAt: "2026-06-24T00:00:00.000Z",
+    endedAt: "2026-06-24T00:00:01.000Z",
+    durationMs: 1000,
+    steps: [
+      { index: 0, kind: "assert", label: "redirects away from /login (intentionally wrong)", status: "failed" },
+    ],
+    artifacts: { screenshots: [] },
+    failure: "assertion failed",
+    verify: {
+      verdict: "REFUTED",
+      observed: true,
+      findings: [
+        {
+          id: "claims-redirect",
+          claim: "/login redirects away (FALSE claim)",
+          verdict: "REFUTED",
+          evidenceSummary: 'observed step "redirects away from /login" = failed',
+        },
+      ],
+    },
+  });
+
+  test("#6195: a captured failure pattern renders the default suggest-only section", async () => {
+    const outcome = await runSampleEval();
+    const pattern = captureFailurePattern(refutedRunResult())!;
+    const suggestion = suggestFromPattern(pattern);
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      failureSuggestion: suggestion,
+    });
+    expect(body).toContain("Failure learning (#6195)");
+    expect(body).toContain("Strategy: `suggest_in_report` (default");
+    expect(body).toContain("Captured failure pattern + suggested fix");
+    expect(body).toContain("claims-redirect");
+    // suggest-only: no planned mutation surfaced
+    expect(body).not.toContain("Planned mutation");
+  });
+
+  test("#6195: an armed open_pr surfaces a PLAN-ONLY mutation (never executed)", async () => {
+    const outcome = await runSampleEval();
+    const pattern = captureFailurePattern(refutedRunResult())!;
+    const suggestion = suggestFromPattern(pattern, { strategy: "open_pr", armMutations: true });
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      failureSuggestion: suggestion,
+    });
+    expect(body).toContain("Strategy: `open_pr` (PLAN ONLY");
+    expect(body).toContain("Planned mutation (`open_pr`, executed=false)");
+  });
+
+  test("#6195: a downgraded auto_commit states the downgrade honestly", async () => {
+    const outcome = await runSampleEval();
+    const pattern = captureFailurePattern(refutedRunResult())!;
+    // requested auto_commit but NOT armed -> downgraded to suggest-only
+    const suggestion = suggestFromPattern(pattern, { strategy: "auto_commit" });
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      failureSuggestion: suggestion,
+    });
+    expect(body).toContain("downgraded from `auto_commit`");
+    expect(body).not.toContain("Planned mutation");
+  });
+
+  test("#6195: no failure suggestion -> no failure-learning section (additive)", async () => {
+    const outcome = await runSampleEval();
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+    });
+    expect(body).not.toContain("Failure learning (#6195)");
   });
 });

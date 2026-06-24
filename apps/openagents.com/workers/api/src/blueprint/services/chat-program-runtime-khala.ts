@@ -41,6 +41,13 @@ import {
   type BlueprintChatProgramTurnInput,
   type BlueprintChatProgramTurnResult,
 } from './chat-program-runtime'
+import {
+  emitGepaCandidateFeedback,
+  type GepaCandidateFeedback,
+  type GepaCandidateFeedbackError,
+  type ProgramFailureFinding,
+  type ProgramFailureVerdict,
+} from './chat-program-failure-gepa'
 
 // One model, no variants (the workspace invariant).
 export const KHALA_PROGRAM_MODEL = 'openagents/khala'
@@ -191,3 +198,38 @@ export const khalaTurnToProgramRunRecord = (
   input: KhalaTurnToProgramInput,
 ): Effect.Effect<BlueprintProgramRunRecord, BlueprintChatProgramTurnError> =>
   executeKhalaProgramTurn(input).pipe(Effect.map(result => result.programRun))
+
+/**
+ * QA failure learning (#6195) — the Blueprint/GEPA wiring on the Khala surface.
+ *
+ * Run ONE Khala turn through the Blueprint program runtime and, given an honest
+ * failure verdict + the contradicted findings (from the qa-runner verify stage),
+ * emit the claim-level, EVIDENCE-ONLY GEPA candidate-feedback signal the
+ * optimizer may consume. The program-run record is emitted by the runtime
+ * (evidence-only by construction) and the feedback derives ONLY from that
+ * record's public-safe refs — so the failure becomes governed optimizer signal
+ * without any write authority, self-promotion, or live behavior change.
+ *
+ * This is reachable from the worker's Khala Blueprint surface; the report-side
+ * strategies (suggest/auto_commit/open_pr) live in apps/qa-runner.
+ */
+export const khalaFailureTurnToGepaCandidateFeedback = (
+  input: KhalaTurnToProgramInput & {
+    readonly trigger: ProgramFailureVerdict
+    readonly findings: ReadonlyArray<ProgramFailureFinding>
+    readonly optimizerKind?: GepaCandidateFeedback['optimizerKind']
+  },
+): Effect.Effect<
+  GepaCandidateFeedback,
+  BlueprintChatProgramTurnError | GepaCandidateFeedbackError
+> =>
+  khalaTurnToProgramRunRecord(input).pipe(
+    Effect.flatMap(programRun =>
+      emitGepaCandidateFeedback({
+        programRun,
+        trigger: input.trigger,
+        findings: input.findings,
+        ...(input.optimizerKind === undefined ? {} : { optimizerKind: input.optimizerKind }),
+      }),
+    ),
+  )

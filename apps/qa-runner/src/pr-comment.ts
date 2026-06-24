@@ -18,6 +18,7 @@
 
 import type { EvalResult } from "./evals";
 import { renderEvalMarkdown } from "./evals-report";
+import type { FailureSuggestion } from "./failure-learning";
 import {
   ghAttachVariantVideos,
   type GhAttachOptions,
@@ -47,7 +48,50 @@ export interface ComposePrCommentInput {
    * REFUTED verdict is shown as REFUTED, with the contradicting evidence inline.
    */
   readonly verify?: VerifyReport;
+  /**
+   * Optional failure-learning suggestion (#6195). When a failed/REFUTED run (or
+   * a low eval) produced a captured failure pattern, this renders the captured
+   * pattern + the copy-paste fix/scenario-update snippet as a section. Honest: it
+   * exists BECAUSE the run did not pass; a downgraded/inert mutating strategy is
+   * stated plainly (no silent repo mutation, no fake green).
+   */
+  readonly failureSuggestion?: FailureSuggestion;
 }
+
+// Render the failure-learning suggestion block (#6195): the captured pattern +
+// the copy-paste fix snippet, plus the honest strategy line. Pure; returns ""
+// when there is no suggestion (a clean pass produces none).
+const renderFailureLearningBlock = (
+  suggestion: FailureSuggestion | undefined,
+): string => {
+  if (suggestion === undefined) return "";
+  const lines: string[] = [];
+  lines.push("### Failure learning (#6195)");
+  lines.push("");
+  // The honest strategy line: which strategy ran, and whether a mutating
+  // strategy was downgraded (default suggest-only) or is plan-only (armed).
+  const r = suggestion.resolved;
+  if ("downgradedFrom" in r) {
+    lines.push(`> Strategy: \`suggest_in_report\` (downgraded from \`${r.downgradedFrom}\` — ${r.downgradeReason}).`);
+  } else if (r.strategy === "auto_commit" || r.strategy === "open_pr") {
+    lines.push(`> Strategy: \`${r.strategy}\` (PLAN ONLY — no repo mutation is executed here; the executor is owner-gated).`);
+  } else {
+    lines.push("> Strategy: `suggest_in_report` (default — manual review).");
+  }
+  lines.push("");
+  lines.push("<details><summary>Captured failure pattern + suggested fix</summary>");
+  lines.push("");
+  lines.push(suggestion.snippet);
+  if (suggestion.mutationPlan !== undefined) {
+    lines.push("");
+    lines.push(`Planned mutation (\`${suggestion.mutationPlan.kind}\`, executed=${suggestion.mutationPlan.executed}):`);
+    lines.push(`- ${suggestion.mutationPlan.description}`);
+  }
+  lines.push("");
+  lines.push("</details>");
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+};
 
 // Render the verify verdict block: a headline verdict line + a collapsed
 // evidence list. Pure; returns "" when there is no report.
@@ -90,7 +134,9 @@ export const composePrComment = async (
   });
 
   // The verify verdict (when present) leads the comment — verdict first, then
-  // the comparison. Prepend the stable marker so the CI loop can upsert this.
+  // the comparison, then (when a failure was captured) the failure-learning
+  // suggestion. Prepend the stable marker so the CI loop can upsert this.
   const verifyBlock = renderVerifyBlock(input.verify);
-  return `${PR_COMMENT_MARKER}\n${verifyBlock}${body}\n`;
+  const failureBlock = renderFailureLearningBlock(input.failureSuggestion);
+  return `${PR_COMMENT_MARKER}\n${verifyBlock}${body}\n${failureBlock}`;
 };
