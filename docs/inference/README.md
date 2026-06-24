@@ -139,6 +139,12 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     while narrowing the next owned step to a Hydralisk SGLang high-memory
     admission/profile preflight rather than a public Khala model claim.
 
+17. **[`2026-06-24-deepseek-v4-flash-jit-expert-prefetching.md`](./2026-06-24-deepseek-v4-flash-jit-expert-prefetching.md)**
+    — summary of the Ex0byt/Tensorbend AI DeepSeek-V4-Flash expert-prefetching
+    thread and `watttt.jpeg`: the reported DGX Spark 11 tok/s full-expert-set
+    run, skeleton-vs-expert repacking, just-in-time MoE prefetch, UMA versus
+    PCIe implications, and the fit against our L4/H100/A100/G4 Google lanes.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
