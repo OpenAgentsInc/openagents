@@ -51,6 +51,19 @@
     "HYDRALISK_GPT_OSS_20B_ENABLED": "ready",
     "HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z",
     "HYDRALISK_GPT_OSS_20B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-48adcddbb0ff47e097685da23f17cea6",
+    // OpenAgents/Pylon serving-fabric lane (#6089). The proxy route URL and
+    // bearer are Worker secrets; these committed vars only arm the route after
+    // the admitted GCloud L4 Pylon's durable HTTPS canary returned public-safe
+    // parity/canary/replay evidence.
+    "OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY": "ready",
+    "OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF": "approval.owner.khala.6089.gateway_route.2026_06_24",
+    "OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF": "preflight.pylon.real_serving.ready.v0_1",
+    "OPENAGENTS_NETWORK_SERVING_RECEIPT_REF": "serve.pylon.gateway_proxy.cAR4xZXQagyw7yBsjeO6IG",
+    "OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF": "challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s",
+    "OPENAGENTS_NETWORK_ADMITTED_PYLON_REF": "gcloud.gswarm508-clean2-20260325044551-contrib",
+    "OPENAGENTS_NETWORK_PYLON_SERVING_CAPABILITY_REF": "pylon.capability.serving.whole_small_model.v0.6",
+    "OPENAGENTS_NETWORK_PYLON_SERVING_LANE_REF": "lane.openagents.pylon.vllm.whole_small_model.v1",
+    "OPENAGENTS_NETWORK_SPARK_PAYOUT_TARGET_REF": "payout.spark.aab6617b16f096dfe02fc6b4",
     "OPENAUTH_CLIENT_ID": "openagents-web",
     "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
     "OPENAGENTS_APP_URL": "https://openagents.com",

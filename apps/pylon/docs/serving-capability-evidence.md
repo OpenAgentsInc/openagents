@@ -188,6 +188,22 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   `OPENAGENTS_NETWORK_FABRIC_SERVE_URL` / bearer secrets, claim a public
   gateway route, or retire the temporary tunnel until an owner supplies DNS
   write authority or creates the required CNAME to this tunnel target.
+- Durable HTTPS route-around follow-up on 2026-06-24 attached a reserved GCloud
+  external IP to the admitted L4 host, opened host-level HTTP/HTTPS only to the
+  `pylon-hosted` tag, and placed Caddy in front of the bearer-protected local
+  proxy. The public route canary returned HTTP 200 with `content: "OK"`,
+  `parityVerified: true`, `canaryPassed: true`, `replayPassed: true`, and
+  `payoutEligible: true`. Public-safe refs:
+  `serve.pylon.gateway_proxy.cAR4xZXQagyw7yBsjeO6IG`,
+  `challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s`, and
+  `approval.owner.khala.6089.gateway_route.2026_06_24`. This proves a durable
+  route without requiring Cloudflare DNS write authority. Endpoint URL and
+  bearer values remain deploy-time Worker secrets, not committed config.
+- Current Worker admission wiring still uses a deploy-time Pylon serving
+  snapshot for heartbeat freshness. For production smokes, refresh
+  `OPENAGENTS_NETWORK_PYLON_HEARTBEAT_AT` immediately before the route test.
+  A follow-up hardening should replace that static snapshot with a live
+  Pylon-store registration lookup before broad, unattended paid routing.
 
 ## Where this plugs in next (not in this change)
 
@@ -207,9 +223,9 @@ route/evidence refs:
 
 ```bash
 OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY=ready
-OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF=approval.owner.khala.6089.gateway_route.2026_06_23
+OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF=approval.owner.khala.6089.gateway_route.2026_06_24
 OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF=preflight.pylon.real_serving.ready.v0_1
-OPENAGENTS_NETWORK_SERVING_RECEIPT_REF=receipt.pylon.serving.OWtQlHDIdRmCvGpoOUt8
+OPENAGENTS_NETWORK_SERVING_RECEIPT_REF=serve.pylon.gateway_proxy.cAR4xZXQagyw7yBsjeO6IG
 OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF=challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s
 OPENAGENTS_NETWORK_ADMITTED_PYLON_REF=gcloud.gswarm508-clean2-20260325044551-contrib
 ```
