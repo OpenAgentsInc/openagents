@@ -185,28 +185,23 @@ export type AtifTripwireFinding = Readonly<{
   message: string
 }>
 
-// Allowed public model id family. Only `openagents/...`-class ids (e.g.
-// `openagents/khala`) may appear in agent/step `model_name`. Anything that looks
-// like a raw/split provider model id (gpt-*, claude-*, gemini-*, llama-*,
-// anthropic/*, openai/*, accounts/fireworks/*, etc.) is rejected.
-const ALLOWED_MODEL_ID_PREFIX = 'openagents/'
-
-const RAW_PROVIDER_MODEL_ID =
-  /\b(?:gpt-[0-9o]|o[1-4]-(?:mini|preview)|claude-[0-9]|claude-(?:opus|sonnet|haiku)|gemini-[0-9]|gemini-(?:pro|flash)|llama-?[0-9]|mistral-|mixtral-|qwen[0-9.]|deepseek-|grok-[0-9])/i
-
-const PROVIDER_NAMESPACED_MODEL_ID =
-  /\b(?:anthropic|openai|google|vertex_ai|vertex|bedrock|fireworks|together|groq|azure|accounts\/fireworks|meta-llama)\//i
+// (Model-id allow-listing intentionally removed from the TRACE tripwire: a
+// trace's model id is session content, not a leak. See atifTraceTripwire.)
 
 const SECRET_MATERIAL =
   /\b(?:sk-[a-z0-9]{8,}|sk_live_|sk_test_|rk_live_|xox[baprs]-|gh[pousr]_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{20,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,})\b/
 
-const SECRET_KEYWORDS =
-  /\b(?:api[_-]?key|secret[_-]?key|bearer\s+[A-Za-z0-9._-]{12,}|private[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passphrase|mnemonic|seed\s?phrase)\b/i
+// Only an ACTUAL bearer-token VALUE — NOT the discussion words "api key",
+// "password", "mnemonic", etc., which legitimately appear in trace CONTENT (an
+// agent session about auth/wallets will say them). Real secret VALUES are caught
+// by SECRET_MATERIAL / WALLET_OR_PAYMENT_MATERIAL above; the redaction service
+// (#6219) is the primary scrubber, this tripwire is the value-based backstop.
+const SECRET_KEYWORDS = /\bbearer\s+[A-Za-z0-9._-]{16,}\b/i
 
 // Wallet / payment material: BOLT11/BOLT12, on-chain addresses, payment hashes,
 // preimages, xpubs.
 const WALLET_OR_PAYMENT_MATERIAL =
-  /\b(?:lnbc[0-9][a-z0-9]{20,}|lntb[0-9][a-z0-9]{20,}|lno1[a-z0-9]{20,}|bc1[a-z0-9]{20,}|(?:xpub|ypub|zpub|tpub)[1-9A-HJ-NP-Za-km-z]{20,}|preimage|payment[_-]?hash)\b/i
+  /\b(?:lnbc[0-9][a-z0-9]{20,}|lntb[0-9][a-z0-9]{20,}|lno1[a-z0-9]{20,}|bc1[a-z0-9]{20,}|(?:xpub|ypub|zpub|tpub)[1-9A-HJ-NP-Za-km-z]{20,})\b/i
 
 const LOCAL_PATH = /(?:\/Users\/|\/home\/|[A-Za-z]:\\\\|file:\/\/)/
 
@@ -226,36 +221,14 @@ export const atifTraceTripwire = (
 ): ReadonlyArray<AtifTripwireFinding> => {
   const findings: Array<AtifTripwireFinding> = []
 
-  const modelIds: Array<string> = []
-  if (trajectory.agent.model_name !== undefined) {
-    modelIds.push(trajectory.agent.model_name)
-  }
-  for (const step of trajectory.steps) {
-    if (step.model_name !== undefined) {
-      modelIds.push(step.model_name)
-    }
-  }
-  for (const modelId of modelIds) {
-    if (!modelId.startsWith(ALLOWED_MODEL_ID_PREFIX)) {
-      findings.push({
-        code: 'raw_provider_model_id',
-        message: `model_name "${modelId}" is not an allowed public model id; only "${ALLOWED_MODEL_ID_PREFIX}*" ids may be stored.`,
-      })
-    }
-  }
-
+  // Model ids are NOT rejected in a trace. A shareable agent trace records a
+  // session that legitimately RAN on some model — a user-uploaded Claude Code /
+  // Codex session's model IS claude-*/gpt-*, and any agent session names models
+  // in its content. That is trace CONTENT, not a leak. The "openagents/khala
+  // only" rule is a Khala GATEWAY-projection invariant (a different surface) and
+  // does not apply to traces. We still reject the real harms below: secrets,
+  // wallet/payment material, local paths, and PII.
   const serialized = JSON.stringify(trajectory)
-
-  if (
-    RAW_PROVIDER_MODEL_ID.test(serialized) ||
-    PROVIDER_NAMESPACED_MODEL_ID.test(serialized)
-  ) {
-    findings.push({
-      code: 'raw_provider_model_id',
-      message:
-        'Trajectory contains a raw or split provider model id; only openagents/khala-class public ids are allowed.',
-    })
-  }
 
   if (SECRET_MATERIAL.test(serialized) || SECRET_KEYWORDS.test(serialized)) {
     findings.push({

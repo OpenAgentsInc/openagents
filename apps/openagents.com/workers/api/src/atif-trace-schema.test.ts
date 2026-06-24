@@ -127,15 +127,18 @@ describe('ATIF public-safety tripwire', () => {
     expect(atifTraceTripwire(cleanTrajectory())).toEqual([])
   })
 
-  it('rejects a raw provider model id on the agent', () => {
+  it('ALLOWS a model id on the agent (a trace records the model that ran)', () => {
+    // A shareable trace — esp. a user-uploaded Claude Code / Codex session — runs
+    // on a real model; its id is session content, not a leak. The
+    // "openagents/khala only" rule is a Khala GATEWAY invariant, not a trace one.
     const findings = atifTraceTripwire({
       ...cleanTrajectory(),
       agent: { name: 'a', version: '1', model_name: 'claude-opus-4' },
     })
-    expect(findings.map(f => f.code)).toContain('raw_provider_model_id')
+    expect(findings).toEqual([])
   })
 
-  it('rejects a provider-namespaced model id in the body', () => {
+  it('ALLOWS a provider-namespaced model id in the body (content, not a leak)', () => {
     const t = cleanTrajectory()
     const findings = atifTraceTripwire({
       ...t,
@@ -147,7 +150,7 @@ describe('ATIF public-safety tripwire', () => {
         },
       ],
     })
-    expect(findings.map(f => f.code)).toContain('raw_provider_model_id')
+    expect(findings).toEqual([])
   })
 
   it('rejects an API key / bearer secret', () => {
