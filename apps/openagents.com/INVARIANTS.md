@@ -1665,18 +1665,28 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Regression coverage for this policy lives in
   `workers/api/src/qwen-remote-pylon-finetune-gate.test.ts`.
 
-## Product Naming — Autopilot Is The Surface, Khala Powers It
+## Product Naming — OpenAgents Deploys Autopilot, Powered By Khala
 
-- **Autopilot** is the product surface: it is the thing that *does* the work
-  (develops, runs QA, drives Chrome/terminal, chats, ships). **Khala** is the
-  agentic model orchestrator that *powers* Autopilot — it is an engine, not an
-  actor.
+- The product hierarchy is three tiers, in this order:
+  - **OpenAgents** is the **agent network** — the platform and brand users
+    interact with. When a user chats, they are **chatting with OpenAgents**.
+    OpenAgents **deploys Autopilot** agents.
+  - **Autopilot** is an **agent type that OpenAgents deploys** — the thing that
+    *does* the work (develops, runs QA, drives Chrome/terminal, ships) wherever
+    OpenAgents deploys it (web, terminal, Forum, workroom, API). It is not the
+    top-level product on its own; it is an agent type OpenAgents deploys.
+  - **Khala** is the **agentic model orchestrator** that *powers* Autopilot (the
+    inference / model-orchestration layer). Khala is an engine, not an actor.
+  - The chain is: **OpenAgents (network) → deploys Autopilot (agent type) →
+    powered by Khala (agentic model orchestrator).**
 - Public-, agent-, and operator-facing copy (AGENTS text, manifests, OpenAPI
   descriptions, Forum seed text, Artanis summaries, pages, dashboards, docs,
   product-promise records) MUST NOT attribute product actions to Khala. Do not
   write "Khala does X", "Khala drives X", "Khala runs the QA", "Khala develops".
   Write "Autopilot does X" and, where the engine is relevant, "**powered by
-  Khala**".
+  Khala**". Do not frame Autopilot or Khala as the top-level product/network;
+  frame product and chat interactions as **with OpenAgents**, which deploys
+  Autopilot.
 - Correct engine-level uses of "Khala" remain allowed: "powered by Khala", "the
   Khala gateway / `/v1/chat/completions`", the `openagents/khala` model id, and
   "trains Khala" / "Khala training data" (Khala is the model being trained).

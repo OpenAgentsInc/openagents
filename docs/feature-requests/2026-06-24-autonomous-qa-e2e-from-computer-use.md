@@ -4,14 +4,16 @@
 
 ## Overview
 
-OpenAgents' **autonomous-QA example flow**: **Autopilot** (the product surface,
-powered by the **Khala** agentic model orchestrator) drives real developer tools
+**OpenAgents** (the agent network) deploys this **autonomous-QA example flow** as
+**Autopilot** — the agent type that *does the work*, powered by the **Khala**
+agentic model orchestrator. Autopilot drives real developer tools
 (headless Chrome, a terminal) against a product, develops a fix or check, then
 **distills the session into a committed, re-runnable `*.e2e.test.ts`** whose passing
 run — with video — is the review artifact. The thesis: a reviewer verifies an
 agent's work **without running anything locally** — just by reading the committed
-test, its verdict, and a shareable trace. It is a flagship showcase of
-Autopilot-as-agent-platform — powered by Khala — over OpenAgents/Cloudflare primitives, not a one-off tool.
+test, its verdict, and a shareable trace. It is a flagship showcase of OpenAgents
+deploying Autopilot — powered by Khala — over OpenAgents/Cloudflare primitives, not
+a one-off tool.
 
 A second, now-central output fell out of this flow: a **generic shareable agent
 trace** — any agent session (an Autopilot run, or an imported Claude Code / Codex
