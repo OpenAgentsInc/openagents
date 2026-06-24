@@ -149,11 +149,42 @@ describe('autopilot onboarding — reconcile with the server', () => {
     expect(commandNames(commands)).toContain('PersistAutopilotOnboarding')
   })
 
-  test('a 404 reconcile clears storage and starts fresh', () => {
+  test('a 404 reconcile KEEPS a restored transcript (does not wipe the conversation)', () => {
+    // A 404 means the server has no PERSISTED row yet — which happens MID-FIRST-
+    // TURN, before the turn finalizes. Clearing here used to silently destroy
+    // the user's real, resumable conversation on reload (the live bug). A 404
+    // with a non-empty restored transcript must KEEP it; the durable resume
+    // read / a later reconcile is the authority for the in-flight tail.
     const base = init(AutopilotRoute())
     const [restored] = update(
       base,
       LoadedStoredAutopilotOnboarding({ session: storedSession() }),
+    )
+
+    const [kept, commands] = update(
+      restored,
+      FailedReconcileAutopilotOnboardingSession({ status: 404 }),
+    )
+
+    const flow = flowOf(kept)
+    expect(flow.sessionId).toBe('ob_resume_1')
+    expect(flow.transcript).toEqual([
+      { role: 'user', content: 'I run a law office' },
+      { role: 'assistant', content: 'Got it — what do you need first?' },
+    ])
+    // No clear — the conversation survives.
+    expect(commandNames(commands)).not.toContain('ClearAutopilotOnboardingStorage')
+  })
+
+  test('a 404 reconcile clears ONLY a genuinely empty/no-in-flight session', () => {
+    // The only safe clear: a 404 with NOTHING in flight and an EMPTY transcript
+    // (a truly dead/expired pointer).
+    const base = init(AutopilotRoute())
+    const [restored] = update(
+      base,
+      LoadedStoredAutopilotOnboarding({
+        session: storedSession({ transcript: [], inFlight: null }),
+      }),
     )
 
     const [cleared, commands] = update(

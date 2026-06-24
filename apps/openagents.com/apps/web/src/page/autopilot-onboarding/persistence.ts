@@ -103,7 +103,23 @@ export const decodeStoredSession = (
 ): Option.Option<StoredOnboardingSession> =>
   S.decodeUnknownOption(StoredOnboardingSessionFromJson)(raw)
 
-// SAFE LOCALSTORAGE WRAPPER ----------------------------------------------
+// STORAGE PORT ------------------------------------------------------------
+
+// A narrow key/value port over the durable browser store. Injectable so the
+// full client↔server resume handshake is exercisable headlessly (an in-memory
+// port stands in for `window.localStorage` in tests), and so the production
+// store can be swapped without rewriting the read/write/clear logic. Every
+// method is total: an implementation MUST swallow its own quota/private-mode/
+// SSR failures and degrade to "absent" rather than throw, so the callers below
+// stay branch-free and a storage fault can never crash the page.
+export type OnboardingStoragePort = Readonly<{
+  // The raw stored string for the key, or `null` when absent/unavailable.
+  get: (key: string) => string | null
+  // Persist the value (best effort).
+  set: (key: string, value: string) => void
+  // Remove the value (best effort).
+  remove: (key: string) => void
+}>
 
 // Feature-detect a usable `localStorage`. Returns the store or `undefined` in
 // SSR/headless/private-mode contexts where access throws or is absent. Probing
@@ -128,65 +144,121 @@ const maybeLocalStorage = (): Storage | undefined => {
   }
 }
 
+// The production port: `window.localStorage`, with every touch guarded so a
+// quota/disabled/SSR failure degrades to "absent" instead of throwing.
+export const localStorageOnboardingStoragePort: OnboardingStoragePort = {
+  get: key => {
+    const store = maybeLocalStorage()
+    if (store === undefined) {
+      return null
+    }
+    try {
+      return store.getItem(key)
+    } catch {
+      return null
+    }
+  },
+  set: (key, value) => {
+    const store = maybeLocalStorage()
+    if (store === undefined) {
+      return
+    }
+    try {
+      store.setItem(key, value)
+    } catch {
+      // ignore — best effort
+    }
+  },
+  remove: key => {
+    const store = maybeLocalStorage()
+    if (store === undefined) {
+      return
+    }
+    try {
+      store.removeItem(key)
+    } catch {
+      // ignore — best effort
+    }
+  },
+}
+
+// A simple in-memory port over a `Map`, for headless tests (and any non-browser
+// caller). Lets the full resume handshake — persist on stream, reload, restore,
+// reconcile, resume — run with no DOM. Construct one per simulated browser.
+export const makeMemoryOnboardingStoragePort = (
+  backing: Map<string, string> = new Map(),
+): OnboardingStoragePort => ({
+  get: key => backing.get(key) ?? null,
+  set: (key, value) => {
+    backing.set(key, value)
+  },
+  remove: key => {
+    backing.delete(key)
+  },
+})
+
+// The active port. Defaults to `window.localStorage`; a test (or a future
+// non-browser host) swaps it via `setOnboardingStoragePort`. The read/write/
+// clear helpers below resolve the port lazily on each call, so a swap installed
+// before the Foldkit command runs takes effect (the commands are plain
+// `Effect.sync` over these helpers — they do not capture the port at define
+// time).
+let activeOnboardingStoragePort: OnboardingStoragePort =
+  localStorageOnboardingStoragePort
+
+// Install the active storage port. Returns a restore function that reinstates
+// the previous port, so a test can scope the swap and leave the global clean.
+export const setOnboardingStoragePort = (
+  port: OnboardingStoragePort,
+): (() => void) => {
+  const previous = activeOnboardingStoragePort
+  activeOnboardingStoragePort = port
+  return () => {
+    activeOnboardingStoragePort = previous
+  }
+}
+
 // READ/WRITE/CLEAR --------------------------------------------------------
 
 // Read + decode the stored session, defensively. Absent storage, a missing
 // record, or a corrupt/drifted blob all yield `none` (clean fresh start). On a
-// corrupt blob the bad value is cleared so it cannot wedge future loads.
-export const readStoredSession = (): Option.Option<StoredOnboardingSession> => {
-  const store = maybeLocalStorage()
-  if (store === undefined) {
+// corrupt blob the bad value is cleared so it cannot wedge future loads. Reads
+// through the active port (overridable for headless tests).
+export const readStoredSession = (
+  port: OnboardingStoragePort = activeOnboardingStoragePort,
+): Option.Option<StoredOnboardingSession> => {
+  const raw = port.get(ONBOARDING_STORAGE_KEY)
+  if (raw === null) {
     return Option.none()
   }
-  try {
-    const raw = store.getItem(ONBOARDING_STORAGE_KEY)
-    if (raw === null) {
-      return Option.none()
-    }
-    return decodeStoredSession(raw).pipe(
-      Option.match({
-        onNone: () => {
-          // Corrupt/drifted: clear it so it does not wedge the next load.
-          try {
-            store.removeItem(ONBOARDING_STORAGE_KEY)
-          } catch {
-            // ignore — best effort
-          }
-          return Option.none<StoredOnboardingSession>()
-        },
-        onSome: session => Option.some(session),
-      }),
-    )
-  } catch {
-    return Option.none()
-  }
+  return decodeStoredSession(raw).pipe(
+    Option.match({
+      onNone: () => {
+        // Corrupt/drifted: clear it so it does not wedge the next load.
+        port.remove(ONBOARDING_STORAGE_KEY)
+        return Option.none<StoredOnboardingSession>()
+      },
+      onSome: session => Option.some(session),
+    }),
+  )
 }
 
 // Persist a stored session, defensively. A quota/disabled-storage failure is
-// swallowed (persistence is best-effort; the server remains the authority).
-export const writeStoredSession = (session: StoredOnboardingSession): void => {
-  const store = maybeLocalStorage()
-  if (store === undefined) {
-    return
-  }
-  try {
-    store.setItem(ONBOARDING_STORAGE_KEY, encodeStoredSession(session))
-  } catch {
-    // ignore — best effort
-  }
+// swallowed by the port (persistence is best-effort; the server remains the
+// authority). Writes through the active port (overridable for headless tests).
+export const writeStoredSession = (
+  session: StoredOnboardingSession,
+  port: OnboardingStoragePort = activeOnboardingStoragePort,
+): void => {
+  port.set(ONBOARDING_STORAGE_KEY, encodeStoredSession(session))
 }
 
-// Clear the stored session (start over / expired / unknown). Defensive.
-export const clearStoredSession = (): void => {
-  const store = maybeLocalStorage()
-  if (store === undefined) {
-    return
-  }
-  try {
-    store.removeItem(ONBOARDING_STORAGE_KEY)
-  } catch {
-    // ignore — best effort
-  }
+// Clear the stored session (start over / expired / unknown). Defensive. Clears
+// through the active port (overridable for headless tests).
+export const clearStoredSession = (
+  port: OnboardingStoragePort = activeOnboardingStoragePort,
+): void => {
+  port.remove(ONBOARDING_STORAGE_KEY)
 }
 
 // GET-SESSION DECODE ------------------------------------------------------
