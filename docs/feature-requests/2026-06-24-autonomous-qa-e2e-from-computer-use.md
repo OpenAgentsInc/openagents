@@ -1,112 +1,59 @@
 # Autonomous QA as a Khala example flow — computer-use agent that writes & runs e2e tests
 
-> **Status: TRACE PRIMITIVE SHIPPED — 2026-06-24 PM (one render-wire pending).**
-> The shareable result surface — the biggest not-done in the morning — is built and
-> deployed: a generic shareable **agent trace** at `https://openagents.com/trace/{uuid}`
-> in **ATIF**, with ingest/read API, redaction, converters, comparison view, and an
-> authed data-market upload path. **This build session is uploaded + public on prod**
-> (`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793 ATIF steps,
-> redacted). **Honest gap:** the `/trace/{uuid}` *render page* still fetches committed
-> samples (the #6209 live-fetch was deferred), so the page shows not-found for a real
-> uuid until that wire lands — **in flight now**. URL once wired:
-> <https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>. The runner,
-> drivers, distilled tests, OSS bundle, and docs landed earlier. Remaining: cross-app
-> emission (#6214, laning), npm publish (#6217, owner-gated), live-CF execution
-> binding run (#6205, deploy-gated), and the single-route-table unification (#6222,
-> laning — surfaced by a real `/trace` 302 bug). See **the 2026-06-24 PM update**
-> below + **§0**. Not a product promise or public-claim copy.
->
-> _(original status line:)_ design exploration + planned **Khala example flow**, 2026-06-24.
-> Not a product promise or public-claim copy. The intent: build this as a
-> **flagship example of what Khala can do** — Khala driving real developer tools
-> (Chrome, a terminal) inside **OpenAgents Cloud VMs/infra**, developing against a
-> product, then distilling the session into committed e2e tests whose passing run
-> (with video) is the review artifact. It is a showcase of Khala-as-agent-platform
-> over Cloud primitives (VM isolation, compute, artifacts), not a one-off tool.
->
-> **Origin:** the shape comes from an external request by the author of
-> [`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) (local
-> clone: `projects/repos/executor`) — he wants an OpenDevin-style *autonomous QA*
-> agent, offered to be the **first customer** / **GitHub Sponsor**, and to get on
-> a call. We are NOT opening a PR to his repo; `executor` is studied here as
-> **prior art** for the substrate, and he is a natural **design partner / first
-> customer** for the hosted tier. The build target is an owned Khala example flow.
+> Internal design + delivery audit. **Not a product promise or public-claim copy.**
 
-## 0. STATUS — honest delivery map (done / partial / NOT done)
+## Overview
 
-A lot landed on `main` overnight 2026-06-24 (epics #6174 + #6181, all child issues
-closed) — **but "issues closed" is not "shipped and finished."** Several pieces are
-partial, placeholder, or deploy-pending. Read this as the honest breakdown, not as
-"all done." Legend: ✅ done + verified · 🟡 partial/placeholder · ❌ not done yet.
+OpenAgents' **autonomous-QA example flow**: Khala drives real developer tools
+(headless Chrome, a terminal) against a product, develops a fix or check, then
+**distills the session into a committed, re-runnable `*.e2e.test.ts`** whose passing
+run — with video — is the review artifact. The thesis: a reviewer verifies an
+agent's work **without running anything locally** — just by reading the committed
+test, its verdict, and a shareable trace. It is a flagship showcase of
+Khala-as-agent-platform over OpenAgents/Cloudflare primitives, not a one-off tool.
 
-**The biggest not-done in the morning — the shareable result URL — is now DONE
-(2026-06-24 PM).** See the dedicated update section immediately below. The morning
-framing ("chill-eval" at `/pro/evals/<id>`) was wrong three ways and has been
-replaced: (a) it rendered **fixture data**, not real runs; (b) wrong name — this is
-an **agent trace** (a session record), not an "eval"; (c) wrong URL — a *shareable*
-artifact must not live under the `/pro/` operator console. The shipped redesign is a
-generic shareable **agent trace** at `https://openagents.com/trace/{uuid}` in
-**ATIF** — spec `docs/traces/README.md` — now built, deployed, and proven on prod.
+A second, now-central output fell out of this flow: a **generic shareable agent
+trace** — any agent session (a Khala run, or an imported Claude Code / Codex
+session) rendered at a stable public URL `https://openagents.com/trace/{uuid}` in
+**ATIF** (Agent Trajectory Interchange Format), with redaction, side-by-side
+comparison, and an authenticated upload "data market" that can feed Khala training.
 
-Live + real today: the live trace below ·
-<https://openagents.com/docs/autonomous-qa> ·
-<https://openagents.com/QA-RUNNER.md> · the flow on PR #6197.
+**Origin.** The shape comes from an external request by the author of
+[`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) (local clone
+`projects/repos/executor`) — he wants an OpenDevin-style autonomous-QA agent,
+offered to be the **first customer / GitHub Sponsor**, and to get on a call. We are
+not opening a PR to his repo; `executor` is studied as **prior art**, and he is a
+natural design partner / first customer for the hosted tier.
 
----
+> The full ask, thesis, prior-art audits (executor, Factory `droid-control`),
+> tooling (`gh-attach`), proposed architecture, and phased build plan are in
+> **§1–§9** below. This top section is the living **status / path-to-production /
+> changelog**.
 
-## Update — 2026-06-24 PM: the shareable agent-trace primitive shipped + is live
+## Current status (2026-06-24)
 
-The `/trace/{uuid}` primitive is built end-to-end, deployed, and proven on prod.
+The **shareable agent-trace primitive is built and deployed**; the autonomous-QA
+runner / distiller / OSS bundle landed earlier. The data path is proven on prod —
+this build session itself is uploaded, redacted, and public
+(`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793 ATIF steps). The
+remaining gaps to a clean end-to-end hosted demo and production are in
+**Path to production-ready** below.
 
-**This entire build session, converted to a redacted public trace** — uploaded +
-public on prod (`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793
-ATIF steps, `agent: claude-code`, `model: openagents/khala`, `visibility: public`).
-**Honest gap:** the render page (`/trace/{uuid}`) still reads committed samples
-(#6209 deferred the live fetch), so it shows not-found for a real uuid until the
-live-fetch wire lands — **in flight now**. URL once wired:
-<https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>.
-
-### What shipped (all on `main`, deployed)
-
-| Piece | Status | Issue / commit |
+| Capability | State | Where |
 |---|---|---|
-| ATIF-v1.7 emitter from Khala runs (+ one beautiful render) | ✅ live | `0e08d2dbaf` |
-| Trace store + ingest/read API (D1 + R2 offload for >1MB, `POST /api/traces`) | ✅ live | #6208, #6221 |
-| Public `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ✅ live | #6209, #6215 |
-| Comparison view `/trace/compare/{ids}` ("chill-evals" done right) | ✅ live | #6211 |
+| ATIF-v1.7 emitter from Khala runs | ✅ live | `0e08d2dbaf` |
+| Trace store + ingest/read API (D1 + R2 offload, `POST`/`GET /api/traces`) | ✅ live | #6208, #6221 |
+| `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ⚠️ deployed but reads **samples** — live-fetch wire **in flight** | #6209, #6215 |
+| `/trace/compare/{ids}` comparison ("chill-evals", done right) | ✅ deployed (samples) | #6211 |
 | Redaction Effect service (`TraceRedactor`) | ✅ live | #6219 |
 | Claude Code + Codex → ATIF converters | ✅ live | #6220 |
 | `qa trace import` CLI (convert → redact → publish → URL) | ✅ landed | #6220 |
-| Publish runs → real `/trace/{uuid}` (replaces `/pro/evals` links) | ✅ landed | #6210 |
-| Data-market upload: authed upload + training-consent + INERT revshare stub | ✅ live | #6221 |
-| Receipts reference the trace uuid as evidence | ✅ landed | #6216 |
-| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4 video) | ✅ code landed | #6205, #6213 |
-
-### Public-safety: 4 real tripwire bugs fixed (not papered over)
-
-Publishing this real session exposed that the ingest tripwire was **content-blind** —
-it false-rejected legitimate agent conversations. Fixed to **value-based** detection
-(reject actual secret/wallet **values**, emails, paths; allow model-ids + secret
-discussion *words* as content), `INVARIANTS.md` updated:
-1. model ids (`claude-`, `openai/`) are trace content, not leaks — `5abd84e9d0`;
-2. secret-discussion *words* (`mnemonic`, `api_key`) are content — `5abd84e9d0`;
-3. wallet *words* (`preimage`, `payment_hash`) vs actual values — `5abd84e9d0`;
-4. `LOCAL_PATH` Windows-drive branch matched JSON escapes (`key:\n`) — `fe59199b21`/`c24862688c`.
-The redaction service additionally scrubbed 843 residual filesystem paths from the
-demo trace; final pre-flight = **0 findings** across every detector.
-
-### Remaining / honest gaps
-
-- **#6214** cross-app trace emission (Khala chat → trace) — **laning now** (worker).
-- **#6217** publish `@openagentsinc/qa-runner` to npm — **owner-gated** (no auto-publish).
-- **#6205** live CF-execution *binding* run — code landed + tested vs fakes; a real run
-  on deployed CF bindings is deploy/runtime-gated.
-- **#6222** single route table — opened + **laning**; surfaced by a real prod bug
-  (`/trace/{uuid}` 302'd to `/` because the server document-allowlist in
-  `worker-routes.ts` was a *second* route list the client registry didn't update;
-  hot-fixed in `10954667ce`).
-- **#6206** epic stays open until #6214 + #6222 land.
-- Separately ongoing (NOT this work): the Khala-program epics #6049/#6017/#6016/#6015/#6014.
+| qa-runner publishes runs → `/trace/{uuid}` | ✅ landed | #6210 |
+| Data-market upload (authed + training-consent + INERT revshare) | ✅ live | #6221 |
+| Receipts reference the trace uuid as evidence | ✅ done (pending land) | #6216 |
+| Khala chat session → ATIF trace (gateway projection, flag-gated) | ✅ done (pending land) | #6214 |
+| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4) | ✅ code landed; live-binding run pending | #6205, #6213 |
+| Value-based ingest tripwire (4 content-blind false-positives fixed) | ✅ live | see Changelog |
 
 ### His requirements → status (honest)
 
@@ -123,52 +70,68 @@ demo trace; final pre-flight = **0 findings** across every detector.
 | candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | #6193 |
 | money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Khala driver on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | #6180, #6196, #6184, #6176/#6200 |
 
-### Extras we added beyond the ask
-- **gh-attach inline PR videos**, repeatable in CI (every PR auto-embeds a Khala-QA video) — #6185.
-- **OpenRouter** Effect provider so the driver is reliable + model-agnostic (`openrouter/free` $0 test) — #6182.
-- **Failure-learning** (report strategies + evidence-only Blueprint/GEPA candidate-feedback) — #6195.
-- **Run = verified receipt** → governed skill candidate → Blueprint run-record → INERT settlement seam — #6188.
-- Anti-fabrication verify discipline; honest pass/fail everywhere; public docs.
+## Path to production-ready
 
-### NOT done yet — be clear about this
-- ❌ **Shareable trace surface.** The `/trace/{uuid}` page + ATIF store + `POST
-  /api/traces` ingest is **unbuilt**; `/pro/evals` is fixtures. This is the
-  headline gap. Spec: [`docs/traces/README.md`](../traces/README.md). In progress:
-  the QA process emitting one real ATIF trace + a beautiful render.
-- ❌ **"Eval"/comparison view** (compare N traces) — depends on the trace surface.
-- 🔁 **Cloud execution substrate — corrected, was over-engineered.** The original
-  plan (firecracker/sek8s provisioner needing a Linux **KVM host**, #6200/CND-056)
-  was the wrong assumption: we run on **Cloudflare Workers**, which has native,
-  GA, no-host-to-stand-up primitives — **Browser Rendering** (managed Chrome via
-  `env.BROWSER` + Playwright/Puppeteer/CDP) for the browser, and **Sandbox SDK /
-  Containers** (`@cloudflare/sandbox` / `@cloudflare/containers`, DO-bound, up to
-  4GB+vCPU) for terminal/isolation. Verified against Cloudflare's full docs.
-  The firecracker direction (#6200) is **superseded**; the real substrate is
-  tracked in **#6205**. A local Docker container backend (#6186) covers it for now.
-- 🟡 **npm publish** — `@openagentsinc/qa-runner` is publish-ready but **not on
-  npm**; external install is clone-build / local-tarball until an owner runs the
-  one publish command.
+**"Production-ready" for this flow =** a real Khala QA run, executed on **hosted
+infrastructure**, produces a **redacted ATIF trace a third party can open at
+`/trace/{uuid}`**, compare against another, and (optionally) upload their own — with
+**no manual steps and nothing leaking**. The sequenced gaps between here and that:
 
-### The plan to finish it — EPIC #6206
+1. **[BLOCKING] Render page must fetch the live trace.** `/trace/{uuid}` still reads
+   committed samples (#6209 deferred the API fetch), so a real uuid 404s on the page
+   even though `GET /api/traces/{uuid}` returns it. → wire the live fetch into the
+   page (loading skeleton / trace / 404). **In flight.**
+2. **[BLOCKING] Single route table (#6222).** Routes live in ≥4 unsynced places
+   (client registry, coverage guard, navigation-policy, the server `worker-routes`
+   allowlist). The split already caused a prod **302** (the `/trace` page →
+   homepage, hot-fixed `10954667ce`) and the sample-vs-live confusion. One table,
+   one file, public/authed flag, derives client **and** server. **In flight.**
+3. **Live CF execution (#6205).** The Browser-Rendering + Sandbox backends are coded
+   and tested against fakes; a real run on **deployed** CF bindings — the hosted
+   substrate Rhys would pay for — has not been executed. → deploy bindings + run one
+   real QA on them.
+4. **End-to-end hosted demo.** With 1–3 done: one real Khala QA run on hosted infra
+   → a published `/trace/{uuid}` + a committed green `*.e2e.test.ts` + the comparison
+   view, linked from a PR. This is the customer-facing proof for the first customer.
+5. **npm publish (#6217, owner-gated).** `@openagentsinc/qa-runner` is publish-ready;
+   an owner runs the one publish command so external users can `npx` it.
+6. **Hardening.** Trace retention/expiry (the open bullet of #6212); data-market
+   abuse limits at scale; cross-app emitters beyond the Khala-chat slice (Autopilot
+   work orders, Pylon sessions — #6214 follow-ups).
 
-The not-done above is consolidated into one plan: **shareable agent traces (ATIF)
-+ Cloudflare-native execution** — spec [`docs/traces/README.md`](../traces/README.md),
-tracked in **EPIC #6206**:
+Out of scope here: the Khala-program epics (#6049 / #6017 / #6016 / #6015 / #6014)
+are separate ongoing work, not this flow.
 
-- #6207 ATIF trace schema + validator (in-repo, public-safe, pinned)
-- #6208 trace store + ingest API (D1 + R2 + `POST /api/traces`)
-- #6209 `/trace/{uuid}` public render page (the shareable surface; not `/pro/`)
-- #6210 qa-runner emits + publishes traces → `/trace/{uuid}` (replaces `/pro/evals` links)
-- #6211 trace comparison view (compare N traces — the real "chill-evals")
-- #6212 visibility / sharing / retention model
-- #6205 execution on **Cloudflare Browser Rendering + Sandbox/Containers** (supersedes firecracker #6200)
-- #6213 Browser-Rendering video (CDP screencast → video)
-- #6214 cross-app trace emission (Khala chat, Autopilot, Pylon)
-- #6215 retire/redirect `/pro/evals` + `/pro/runs` fixtures → `/trace`
-- #6216 receipts reference the trace uuid · #6217 publish `@openagentsinc/qa-runner` to npm
+## Changelog
 
-> droid-control / executor comparison and the requirement-by-requirement scorecard
-> that motivated the build are in §5a–§5c below.
+- **2026-06-24 PM — render-fetch + route-table in flight.** Found `/trace/{uuid}`
+  renders committed samples only (#6209 deferred the live fetch) → wiring the
+  `GET /api/traces/{uuid}` fetch into the page. Opened **#6222** (single route
+  table) after a real `/trace` **302 → homepage** bug (the server allowlist in
+  `worker-routes.ts` was a second, unsynced route list; hot-fix `10954667ce`).
+  Landed **#6214** (Khala chat → ATIF trace) and **#6216** (receipts → traceRef)
+  [pending coordinator land].
+- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** EPIC #6206
+  delivered end-to-end: ATIF store/ingest/read (#6208; R2 offload + 8MB cap #6221),
+  `/trace` render (#6209), comparison (#6211), redaction service (#6219), Claude
+  Code/Codex converters + import CLI (#6220), publish-from-runner (#6210),
+  data-market upload (#6221). This session uploaded as a redacted public trace
+  (793 steps). Hardened the ingest tripwire from **content-blind** to
+  **value-based** (it was rejecting legitimate traces): (1) model ids are content,
+  not leaks; (2) secret-discussion *words* (`mnemonic`, `api_key`) are content;
+  (3) wallet *words* vs actual values; (4) `LOCAL_PATH` Windows-drive branch matched
+  JSON escapes (`key:\n`) — `5abd84e9d0`, `fe59199b21`, `c24862688c`;
+  `INVARIANTS.md` updated. Also fixed a real prod bug found along the way: the
+  Artanis public health report was throwing (a #6204 miss) — `452a048d8e`.
+- **2026-06-24 AM — autonomous-QA flow landed.** EPICs #6174 + #6181: computer-use
+  drivers (Chrome / terminal / container / native-desktop), the session →
+  `*.e2e.test.ts` distiller, multi-target registry, parallel sharding + crash-safe
+  harness, MIT `@openagentsinc/qa-runner` bundle, ffmpeg video compose, OpenRouter
+  Effect provider, failure-learning, hosted Khala-at-$0 (operator-credit exemption),
+  QA control API, public docs. The shareable surface shipped here was mis-framed as
+  `/pro/evals` fixtures — corrected to the `/trace` primitive (above).
+
+---
 
 ## 1. The ask, in his words
 
