@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  type AppRoute,
   AutopilotRoute,
   AutopilotWorkDetailRoute,
   AutopilotWorkRoute,
@@ -41,6 +42,7 @@ import {
   PublicTrainingRunsRoute,
   PylonRoute,
   RunRoute,
+  type RouteSpec,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -49,6 +51,8 @@ import {
   TassadarRoute,
   TermsRoute,
   WorkspaceRoute,
+  routeRegistry,
+  unregisteredParserRouters,
   urlToAppRoute,
 } from './route'
 
@@ -299,5 +303,149 @@ describe('app route parser', () => {
         fileId: 'file_pylon_release_plan',
       }),
     )
+  })
+})
+
+// Behavior-preservation snapshot of the FULL canonical URL -> route-tag mapping.
+// This is the registry-refactor's before/after evidence: every path resolves to
+// exactly the same route tag as before the registry was introduced. A change in
+// parser ordering (e.g. a more-generic router shadowing a more-specific one)
+// would flip one of these and fail loudly.
+const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
+  ['/', 'Landing'],
+  ['/landing', 'Landing'],
+  ['/invite', 'Invite'],
+  ['/onboarding', 'Onboarding'],
+  ['/order', 'Order'],
+  ['/orders/software_order_1', 'OrderDetail'],
+  ['/autopilot', 'Autopilot'],
+  ['/autopilot/legal', 'AutopilotVertical'],
+  ['/autopilot/work', 'AutopilotWork'],
+  ['/autopilot/work/wo_1', 'AutopilotWorkDetail'],
+  ['/forge', 'Forge'],
+  ['/decisions', 'Decisions'],
+  ['/workspaces/ws_1', 'Workspace'],
+  ['/workrooms/wr_1', 'Workroom'],
+  ['/workrooms/wr_1/files', 'WorkroomTab'],
+  ['/chat', 'NotFound'],
+  ['/teams/t1/chat', 'TeamChat'],
+  ['/teams/t1/projects/p1/chat', 'TeamProjectChat'],
+  ['/teams/t1/files', 'TeamFiles'],
+  ['/teams/t1/files/f1', 'TeamFile'],
+  ['/files/f1', 'PersonalFile'],
+  ['/t/th1', 'Thread'],
+  ['/docs', 'Docs'],
+  ['/docs/getting-started', 'DocsPage'],
+  ['/promises', 'ProductPromises'],
+  ['/training/runs', 'PublicTrainingRuns'],
+  ['/training/runs/r1', 'PublicTrainingRun'],
+  ['/forum', 'Forum'],
+  ['/forum/f/void', 'ForumForum'],
+  ['/forum/t/topic1', 'ForumTopic'],
+  ['/forum/receipts/rcpt1', 'ForumReceipt'],
+  ['/sites/demo-checkout', 'SiteCheckoutDemo'],
+  ['/sites/demo-checkout/success', 'SiteCheckoutDemoReturn'],
+  ['/clients-preview', 'ClientsPreview'],
+  ['/components', 'Components'],
+  ['/components/buttons', 'ComponentsFamily'],
+  ['/business', 'Business'],
+  ['/animations', 'Animations'],
+  ['/activity', 'Activity'],
+  ['/run', 'Run'],
+  ['/gym', 'Gym'],
+  ['/gym/oss', 'GymOss'],
+  ['/tassadar', 'Tassadar'],
+  ['/tassadar/replay/s1', 'TassadarReplay'],
+  ['/login', 'Login'],
+  ['/blog', 'Blog'],
+  ['/blog/post-1', 'BlogPost'],
+  ['/agents/artanis', 'PublicAgent'],
+  ['/share/s1', 'Share'],
+  ['/moksha', 'Moksha'],
+  ['/moksha2', 'Moksha2'],
+  ['/terms', 'Terms'],
+  ['/privacy', 'Privacy'],
+  ['/khala', 'Khala'],
+  ['/pylons', 'Pylon'],
+  ['/download', 'Download'],
+  ['/billing', 'Billing'],
+  ['/usage', 'Usage'],
+  ['/stats', 'Stats'],
+  ['/stats-old', 'PublicStatsArchive'],
+  ['/admin', 'Admin'],
+  ['/mullet', 'Mullet'],
+  ['/images', 'Images'],
+  ['/settings', 'Settings'],
+  ['/settings/profile', 'SettingsSection'],
+  ['/demo', 'Demo'],
+  ['/demo/legal', 'DemoLegal'],
+  ['/demo/order', 'DemoOrder'],
+  ['/demo/t/d1', 'DemoThread'],
+  ['/demo/teams/t1/projects/p1/chat', 'DemoTeamProjectChat'],
+  ['/demo/teams/t1/files', 'DemoTeamFiles'],
+  ['/demo/teams/t1/files/f1', 'DemoTeamFile'],
+  ['/demo2', 'Demo2'],
+  ['/demo2/order', 'Demo2Order'],
+  ['/demo2/t/d1', 'Demo2Thread'],
+  ['/demo2/teams/t1/projects/p1/chat', 'Demo2TeamProjectChat'],
+  ['/demo2/teams/t1/files', 'Demo2TeamFiles'],
+  ['/demo2/teams/t1/files/f1', 'Demo2TeamFile'],
+  ['/artanis', 'PublicAgent'],
+  ['/adjutant', 'PublicAgent'],
+  ['/pylon', 'NotFound'],
+  ['/live', 'NotFound'],
+  ['/totally-unknown-path', 'NotFound'],
+]
+
+describe('registry-driven route parser (behavior preservation)', () => {
+  test.each(CANONICAL_URL_TO_TAG)(
+    '%s resolves to the expected route tag',
+    (path, expectedTag) => {
+      expect(urlToAppRoute(appUrl(path))._tag).toBe(expectedTag)
+    },
+  )
+
+  test('registry is keyed by exactly the AppRoute tag union', () => {
+    // The compile-time `satisfies Record<AppRoute['_tag'], RouteSpec>` guard in
+    // route.ts is the primary guarantee; this asserts it at runtime too.
+    const tags = Object.keys(routeRegistry)
+    expect(new Set(tags).size).toBe(tags.length)
+    // Every canonical resolved tag (minus aliases) is present in the registry.
+    for (const [, tag] of CANONICAL_URL_TO_TAG) {
+      expect(routeRegistry).toHaveProperty(tag)
+    }
+  })
+
+  test('every registry spec has well-formed fields', () => {
+    const gates = new Set(['open', 'workroom', 'admin', 'mullet'])
+    const renders = new Set([
+      'submodel',
+      'statelessShell',
+      'loggedInOnly',
+      'demo',
+      'special',
+      'maintenance',
+    ])
+    for (const spec of Object.values(routeRegistry) as ReadonlyArray<RouteSpec>) {
+      expect(typeof spec.requiresAuthBootstrap).toBe('boolean')
+      expect(gates.has(spec.loggedInGate)).toBe(true)
+      expect(typeof spec.inLoggedOutUnion).toBe('boolean')
+      expect(typeof spec.inLoggedInUnion).toBe('boolean')
+      expect(renders.has(spec.render)).toBe(true)
+    }
+  })
+
+  test('keeps deprecated/duplicate routers OUT of the parser', () => {
+    // chatRouter and landingRouter must stay unregistered (their paths are
+    // covered by other routers / the root): /chat -> NotFound, / -> Landing.
+    expect(unregisteredParserRouters.length).toBe(2)
+    expect(urlToAppRoute(appUrl('/chat'))).toEqual(
+      NotFoundRoute({ path: '/chat' }),
+    )
+  })
+
+  test('NotFound carries the original path', () => {
+    const route: AppRoute = urlToAppRoute(appUrl('/totally-unknown-path'))
+    expect(route).toEqual(NotFoundRoute({ path: '/totally-unknown-path' }))
   })
 })

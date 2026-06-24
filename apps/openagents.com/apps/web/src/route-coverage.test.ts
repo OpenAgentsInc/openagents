@@ -1,7 +1,7 @@
 import { Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { urlToAppRoute } from './route'
+import { unregisteredParserRouters, urlToAppRoute } from './route'
 
 // Guard against the "router defined but never registered in the parser" bug
 // (e.g. `/login` once parsed to NotFound because `loginRouter` was missing from
@@ -39,6 +39,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/moksha', 'Moksha'],
   ['/moksha2', 'Moksha2'],
   ['/clients-preview', 'ClientsPreview'],
+  ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
@@ -71,4 +72,16 @@ describe('public route parser coverage', () => {
       expect(route._tag).toBe(expectedTag)
     },
   )
+
+  test('covers the documented public surface', () => {
+    // 33 original public/top-level routes + the new public `/gym` fixture (34).
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(34)
+  })
+
+  // The registry-driven parser derives its `oneOf` list from a single ordered
+  // source; the deprecated/duplicate routers stay explicitly excluded.
+  test('keeps deprecated/duplicate routers out of the parser', () => {
+    expect(unregisteredParserRouters.length).toBe(2)
+    expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('NotFound')
+  })
 })

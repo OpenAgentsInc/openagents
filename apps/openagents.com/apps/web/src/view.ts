@@ -9,6 +9,11 @@ import {
 } from './message'
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
+import {
+  type AppRoute,
+  type RouteRenderDisposition,
+  routeRegistry,
+} from './route'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
 import * as Blog from './page/blog'
@@ -654,6 +659,39 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
   }
 
   return Blog.view<Message>(model.route, authState)
+}
+
+// ---------------------------------------------------------------------------
+// Render-disposition exhaustiveness guard
+// ---------------------------------------------------------------------------
+//
+// Full table-driving of rendering is out of scope (rendering here is genuinely
+// heterogeneous: stateful submodels, stateless public shells, logged-in-only
+// surfaces, the demo submodel, and bespoke branches). What we DO guarantee is
+// that every route tag has a KNOWN render disposition in the central registry,
+// so a newly added route can never silently fall through to `maintenanceBody`
+// again (the original failure mode). The registry's `satisfies
+// Record<AppRoute['_tag'], RouteSpec>` already forces every tag to carry a
+// `render` field; this guard additionally proves the value is one of the
+// recognised dispositions via an exhaustive switch.
+export const routeRenderDisposition = (
+  route: AppRoute,
+): RouteRenderDisposition => {
+  const disposition = routeRegistry[route._tag].render
+
+  switch (disposition) {
+    case 'submodel':
+    case 'statelessShell':
+    case 'loggedInOnly':
+    case 'demo':
+    case 'special':
+    // 'maintenance' is an honestly-recorded disposition for a route that is not
+    // yet wired into the render branches above and currently falls to
+    // `maintenanceBody` (e.g. `/gym`). It is a KNOWN disposition, so a route in
+    // this state is visible/intentional rather than a silent fall-through.
+    case 'maintenance':
+      return disposition
+  }
 }
 
 export const view = (model: Model): Document => {

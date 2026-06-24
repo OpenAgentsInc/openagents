@@ -2,7 +2,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
-import { authBootstrapFromSession } from './domain/session'
+import {
+  authBootstrapFromSession,
+  completedOnboardingStatus,
+} from './domain/session'
 import {
   browserCommandProductIntents,
   browserFeatureFlags,
@@ -14,18 +17,25 @@ import {
   loggedInPermissionGate,
   loggedInWorkroomAllowed,
   projectMissionVisible,
+  routeAllowedForLoggedInAuth,
   routeRequiresAuthBootstrap,
 } from './product-policy'
 import {
+  AdminRoute,
+  type AppRoute,
+  ChatRoute,
+  GymOssRoute,
   GymRoute,
   KhalaRoute,
   MulletRoute,
+  OrderRoute,
   PrivacyRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
   TassadarRoute,
   TeamProjectChatRoute,
   TermsRoute,
+  routeRegistry,
 } from './route'
 
 const sourceRoot = join(process.cwd(), 'src')
@@ -231,5 +241,49 @@ describe('browser product policy', () => {
     expect(browserRouteGate(PrivacyRoute())._tag).toBe('BrowserRouteAllowed')
     expect(browserRouteProductIntent(TermsRoute())).toBe('public.terms')
     expect(browserRouteProductIntent(PrivacyRoute())).toBe('public.privacy')
+  })
+
+  test('routeRequiresAuthBootstrap is derived from the registry for every tag', () => {
+    // `routeRequiresAuthBootstrap` must return exactly the registry's
+    // `requiresAuthBootstrap` flag for every route tag (no hand list drift).
+    for (const [tag, spec] of Object.entries(routeRegistry)) {
+      const route = { _tag: tag } as unknown as AppRoute
+      expect(routeRequiresAuthBootstrap(route)).toBe(spec.requiresAuthBootstrap)
+    }
+  })
+
+  test('routeAllowedForLoggedInAuth follows the registry loggedInGate', () => {
+    const customer = authBootstrapFromSession({
+      email: 'visitor@example.com',
+      name: 'Visitor',
+      userId: 'github:visitor',
+    })
+    const adminChris = {
+      ...authBootstrapFromSession({
+        email: 'chris@openagents.com',
+        name: 'Christopher David',
+        userId: 'github:chris',
+      }),
+      isAdmin: true,
+      onboarding: completedOnboardingStatus(),
+    }
+
+    // 'open' -> always allowed
+    expect(routeAllowedForLoggedInAuth(OrderRoute(), customer)).toBe(true)
+    // 'workroom' -> needs Core Team + onboarding; a plain customer is denied
+    expect(routeAllowedForLoggedInAuth(ChatRoute(), customer)).toBe(false)
+    // 'admin' -> needs admin flag + onboarding
+    expect(routeAllowedForLoggedInAuth(AdminRoute(), customer)).toBe(false)
+    expect(routeAllowedForLoggedInAuth(AdminRoute(), adminChris)).toBe(true)
+    expect(routeAllowedForLoggedInAuth(GymOssRoute(), adminChris)).toBe(true)
+    // 'mullet' -> needs admin + onboarding + owner email
+    expect(routeAllowedForLoggedInAuth(MulletRoute(), adminChris)).toBe(true)
+  })
+
+  test('every registry loggedInGate is one of the four known gates', () => {
+    const gates = new Set(['open', 'workroom', 'admin', 'mullet'])
+    for (const spec of Object.values(routeRegistry)) {
+      expect(gates.has(spec.loggedInGate)).toBe(true)
+    }
   })
 })

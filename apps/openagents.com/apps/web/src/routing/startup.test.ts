@@ -50,8 +50,10 @@ import {
   TeamProjectChatRoute,
   TermsRoute,
 } from '../route'
+import { routeRegistry } from '../route'
 import {
   routeRequiresAuthBootstrap,
+  startupCompleteDisposition,
   startupRouteForLoggedIn,
   startupRouteForLoggedOut,
 } from './startup'
@@ -733,5 +735,63 @@ describe('startup route policy', () => {
       route: ChatRoute(),
       redirect: Option.none(),
     })
+  })
+})
+
+describe('startup exhaustiveness guard', () => {
+  test('startupCompleteDisposition covers exactly the registry tag set', () => {
+    const dispositionTags = Object.keys(startupCompleteDisposition).sort()
+    const registryTags = Object.keys(routeRegistry).sort()
+    expect(dispositionTags).toEqual(registryTags)
+  })
+
+  test('disposition values are all recognised', () => {
+    const known = new Set([
+      'home',
+      'onboarding',
+      'autopilot',
+      'public',
+      'gated',
+      'redirectDefault',
+    ])
+    for (const value of Object.values(startupCompleteDisposition)) {
+      expect(known.has(value)).toBe(true)
+    }
+  })
+
+  // Lock the disposition map to ACTUAL behavior for a representative route per
+  // disposition. This is what prevents the map from silently drifting from
+  // `startupRouteForCompleteOnboarding`.
+  test('disposition map matches actual startup behavior per class', () => {
+    // 'home' -> resolves to default Order route, no redirect
+    expect(startupCompleteDisposition.Home).toBe('home')
+    expect(startupRouteForLoggedIn(HomeRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      route: OrderRoute(),
+      redirect: Option.none(),
+    })
+
+    // 'public' -> resolved as a logged-out public route
+    expect(startupCompleteDisposition.Khala).toBe('public')
+    expect(startupRouteForLoggedIn(KhalaRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      route: KhalaRoute(),
+      redirect: Option.none(),
+    })
+
+    // 'gated' (admin) -> GymOss is the route the original bug missed. For a
+    // complete-onboarding admin it resolves in place (LoggedIn, no redirect).
+    expect(startupCompleteDisposition.GymOss).toBe('gated')
+    expect(startupRouteForLoggedIn(GymOssRoute(), completeAdminAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      route: GymOssRoute(),
+      redirect: Option.none(),
+    })
+
+    // 'redirectDefault' -> Demo falls to the default-route redirect (orElse)
+    expect(startupCompleteDisposition.Demo).toBe('redirectDefault')
+    const demoResult = startupRouteForLoggedIn(DemoRoute(), completeAuth)
+    expect(demoResult._tag).toBe('LoggedInStartupRoute')
+    expect(Option.isSome(demoResult.redirect)).toBe(true)
   })
 })

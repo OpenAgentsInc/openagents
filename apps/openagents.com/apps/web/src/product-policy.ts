@@ -11,6 +11,7 @@ import {
   OrderRoute,
   chatRouter,
   orderRouter,
+  routeRegistry,
 } from './route'
 
 export type BrowserFeatureName = 'projectWorkrooms'
@@ -78,44 +79,23 @@ export const defaultLoggedInRouteForAuth = (_auth: AuthBootstrap): OrderRoute =>
 export const defaultLoggedInHrefForAuth = (_auth: AuthBootstrap): string =>
   orderRouter()
 
+// Derived from the central route registry's `loggedInGate` field (route.ts).
+// Each gate maps to the same predicate the previous hand-maintained branch
+// chain used, so the boolean for every logged-in route is unchanged.
 export const routeAllowedForLoggedInAuth = (
   route: LoggedInRoute,
   auth: AuthBootstrap,
 ): boolean => {
-  if (
-    route._tag === 'Chat' ||
-    route._tag === 'TeamChat' ||
-    route._tag === 'TeamProjectChat' ||
-    route._tag === 'TeamFiles' ||
-    route._tag === 'TeamFile' ||
-    route._tag === 'PersonalFile' ||
-    route._tag === 'Thread' ||
-    route._tag === 'Billing' ||
-    route._tag === 'Usage' ||
-    route._tag === 'Images' ||
-    route._tag === 'Settings' ||
-    route._tag === 'SettingsSection'
-  ) {
-    return loggedInWorkroomAllowed(auth)
+  switch (routeRegistry[route._tag].loggedInGate) {
+    case 'workroom':
+      return loggedInWorkroomAllowed(auth)
+    case 'admin':
+      return loggedInAdminAccessAllowed(auth)
+    case 'mullet':
+      return loggedInMulletAccessAllowed(auth)
+    case 'open':
+      return true
   }
-
-  if (route._tag === 'Admin') {
-    return loggedInAdminAccessAllowed(auth)
-  }
-
-  if (route._tag === 'Stats') {
-    return loggedInAdminAccessAllowed(auth)
-  }
-
-  if (route._tag === 'Mullet') {
-    return loggedInMulletAccessAllowed(auth)
-  }
-
-  if (route._tag === 'GymOss') {
-    return loggedInAdminAccessAllowed(auth)
-  }
-
-  return true
 }
 
 export type BrowserRouteGate =
@@ -145,58 +125,12 @@ export const browserRouteIsEnabled = (
   flags: BrowserFeatureFlags = browserFeatureFlags,
 ): boolean => browserRouteGate(route, flags)._tag === 'BrowserRouteAllowed'
 
+// Derived from the central route registry's `requiresAuthBootstrap` field
+// (route.ts). The registry is the single source of truth for which routes need
+// the auth bootstrap fetched before resolving; the boolean for every route is
+// unchanged from the prior hand-maintained negation list.
 export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
-  route._tag !== 'Docs' &&
-  route._tag !== 'DocsPage' &&
-  route._tag !== 'Forum' &&
-  route._tag !== 'ForumForum' &&
-  route._tag !== 'ForumTopic' &&
-  route._tag !== 'ForumReceipt' &&
-  route._tag !== 'SiteCheckoutDemo' &&
-  route._tag !== 'SiteCheckoutDemoReturn' &&
-  route._tag !== 'ClientsPreview' &&
-  route._tag !== 'Components' &&
-  route._tag !== 'ComponentsFamily' &&
-  route._tag !== 'Business' &&
-  route._tag !== 'Animations' &&
-  route._tag !== 'Activity' &&
-  route._tag !== 'DemoLegal' &&
-  route._tag !== 'Gym' &&
-  route._tag !== 'Run' &&
-  route._tag !== 'Tassadar' &&
-  route._tag !== 'TassadarReplay' &&
-  route._tag !== 'Login' &&
-  route._tag !== 'Blog' &&
-  route._tag !== 'BlogPost' &&
-  route._tag !== 'PublicAgent' &&
-  route._tag !== 'PublicTrainingRuns' &&
-  route._tag !== 'PublicTrainingRun' &&
-  route._tag !== 'PublicStatsArchive' &&
-  route._tag !== 'Share' &&
-  route._tag !== 'Moksha' &&
-  route._tag !== 'Moksha2' &&
-  route._tag !== 'Landing' &&
-  route._tag !== 'Terms' &&
-  route._tag !== 'Privacy' &&
-  route._tag !== 'Khala' &&
-  route._tag !== 'Pylon' &&
-  route._tag !== 'Download' &&
-  route._tag !== 'Demo' &&
-  route._tag !== 'DemoOrder' &&
-  route._tag !== 'DemoThread' &&
-  route._tag !== 'DemoTeamProjectChat' &&
-  route._tag !== 'DemoTeamFiles' &&
-  route._tag !== 'DemoTeamFile' &&
-  route._tag !== 'Demo2' &&
-  route._tag !== 'Demo2Order' &&
-  route._tag !== 'Demo2Thread' &&
-  route._tag !== 'Demo2TeamProjectChat' &&
-  route._tag !== 'Demo2TeamFiles' &&
-  route._tag !== 'Demo2TeamFile' &&
-  route._tag !== 'NotFound' &&
-  route._tag !== 'Home'
-    ? true
-    : route._tag === 'Home'
+  routeRegistry[route._tag].requiresAuthBootstrap
 
 export const browserRouteProductIntents = {
   Admin: 'admin.overview',
