@@ -734,6 +734,10 @@ import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribut
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { makeTraceStoreRoutes } from './trace-store-routes'
 import {
+  emitKhalaChatTrace,
+  isKhalaChatTraceEmitEnabled,
+} from './inference/khala-chat-trace-emitter'
+import {
   makeD1TraceStore,
   makeR2TraceTrajectoryBlobStore,
 } from './trace-store-d1'
@@ -10612,6 +10616,48 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           enabled: isComponentChannelEnabled(
             env.KHALA_COMPONENT_CHANNEL_ENABLED,
           ),
+        },
+        // CROSS-APP TRACE EMISSION (#6214, epic #6206). Flag-gated INERT by
+        // default: with KHALA_CHAT_TRACE_EMIT_ENABLED off, a completed Khala chat
+        // session is NEVER emitted and `/v1/chat/completions` is byte-for-byte
+        // today's behaviour. When the flag is on, a session is emitted as a
+        // shareable `/trace/{uuid}` ONLY for a request that explicitly opts in
+        // (`x-oa-emit-trace` header / `oa_emit_trace` body field). The emitter
+        // persists through the SAME D1 trace store the `POST /api/traces` ingest
+        // uses and reuses its validator + public-safety tripwire (never bypassed).
+        // The owner is the requesting agent (`agent:<id>` from the bearer); the
+        // emitted model id is the gateway projection `openagents/khala`, never a
+        // raw backend. Autopilot/Pylon emission are explicit follow-ups (#6214).
+        traceEmit: {
+          enabled: isKhalaChatTraceEmitEnabled(
+            env.KHALA_CHAT_TRACE_EMIT_ENABLED,
+          ),
+          emit: async input => {
+            // The accountRef is `agent:<id>`; the trace owner is that agent.
+            const ownerUserId = input.accountRef.startsWith('agent:')
+              ? input.accountRef.slice('agent:'.length)
+              : input.accountRef
+            await emitKhalaChatTrace(
+              {
+                requestedModel: input.requestedModel,
+                requestMessages: input.requestMessages,
+                result: input.result,
+                responseId: input.responseId,
+              },
+              {
+                enabled: isKhalaChatTraceEmitEnabled(
+                  env.KHALA_CHAT_TRACE_EMIT_ENABLED,
+                ),
+                optedIn: input.optedIn,
+                store: makeD1TraceStore(openAgentsDatabase(env)),
+                owner: {
+                  ownerUserId,
+                  agentRef: input.accountRef,
+                  uploadSource: 'agent',
+                },
+              },
+            )
+          },
         },
         registry: inferenceProviderRegistry,
       })

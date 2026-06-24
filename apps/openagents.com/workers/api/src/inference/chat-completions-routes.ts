@@ -151,6 +151,7 @@ import {
   type InferenceStreamSource,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
+import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. Public model selection has
@@ -459,6 +460,33 @@ export type ChatCompletionsDeps = Readonly<{
     storeArtifact?: (
       input: Readonly<{ requestId: string; html: string }>,
     ) => Promise<string>
+  }>
+  // CROSS-APP TRACE EMISSION (openagents #6214, epic #6206). When wired AND
+  // enabled AND the request opts in, a COMPLETED non-streaming Khala chat session
+  // is mapped to a public-safe ATIF trajectory and persisted via the shared trace
+  // store, so the session becomes a shareable `/trace/{uuid}`. DEFAULT OFF +
+  // UNWIRED: with `traceEmit` absent or `enabled: false`, NOTHING is emitted and
+  // `/v1/chat/completions` is byte-for-byte today's behaviour. The emit is
+  // fire-and-forget over the already-delivered completion (it never blocks, fails,
+  // or alters the response). The emitted model id is the gateway projection
+  // (`openagents/khala`), never a raw backend; the emitter reuses the SAME ingest
+  // validation + public-safety tripwire (never bypassed). Autopilot/Pylon
+  // emission are explicit follow-ups (#6214), not built on this path.
+  traceEmit?: Readonly<{
+    enabled: boolean
+    // Persist a completed Khala chat session as an ATIF trace. The Worker wires
+    // this to `emitKhalaChatTrace` against the shared trace store + the resolved
+    // owner. Absent => no-op. Returns void; the call site logs nothing sensitive.
+    emit: (
+      input: Readonly<{
+        accountRef: string
+        requestedModel: string
+        requestMessages: ReadonlyArray<InferenceMessage>
+        result: InferenceResult
+        responseId: string
+        optedIn: boolean
+      }>,
+    ) => Promise<void>
   }>
 }>
 
@@ -1707,6 +1735,11 @@ export const handleChatCompletions = (
       requestedModel,
     })
 
+    // CROSS-APP TRACE EMISSION opt-in (#6214). Deterministic parse of an explicit
+    // caller switch (header / body). Only consulted on the non-streaming path
+    // below, and only when `deps.traceEmit` is wired + enabled.
+    const traceEmitOptIn = resolveKhalaChatTraceOptIn({ rawBody, request })
+
     const inferenceRequest = toInferenceRequest(
       body,
       rawBody,
@@ -2213,6 +2246,30 @@ export const handleChatCompletions = (
       responseId,
       result: guardedResult,
     })
+
+    // CROSS-APP TRACE EMISSION (#6214): map this completed Khala chat session to a
+    // public-safe ATIF trajectory and (opt-in, flag-gated) persist it as a
+    // shareable `/trace/{uuid}`. Fire-and-forget over the already-priced
+    // completion: it never blocks, fails, or alters the response. INERT unless
+    // `deps.traceEmit` is wired AND enabled AND this request opted in; the emitter
+    // itself re-checks every gate. We pass the GUARDED result so the trace records
+    // the same identity-safe content the client received, and the ORIGINAL client
+    // messages (gateway-injected scaffolding is dropped inside the emitter).
+    if (deps.traceEmit !== undefined && deps.traceEmit.enabled && traceEmitOptIn) {
+      yield* Effect.promise(() =>
+        deps.traceEmit!.emit({
+          accountRef: session.accountRef,
+          optedIn: traceEmitOptIn,
+          requestMessages: body.messages.map(message => ({
+            content: message.content,
+            role: message.role,
+          })),
+          requestedModel,
+          responseId,
+          result: guardedResult,
+        }),
+      )
+    }
 
     return noStoreJsonResponse(
       openAiResponse({

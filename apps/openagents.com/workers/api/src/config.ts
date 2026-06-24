@@ -125,6 +125,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Schema (one bounded repair turn, then drop) and the provider-identity
   // backstop is honored on the structured channel.
   KHALA_COMPONENT_CHANNEL_ENABLED?: string | undefined
+  // Cross-app trace emission feature flag (openagents #6214, epic #6206).
+  // Default OFF: a completed Khala chat-completions session is NEVER emitted as
+  // an ATIF trace. Set "true"/"1"/"on" to ARM emission; even then a session is
+  // emitted as a shareable `/trace/{uuid}` ONLY for a request that explicitly
+  // opts in (the `x-oa-emit-trace: on` header or an `oa_emit_trace: true` body
+  // field). The emitter persists through the SAME D1 trace store as the
+  // `POST /api/traces` ingest and reuses its validator + public-safety tripwire
+  // (never bypassed); the emitted model id is the gateway projection
+  // `openagents/khala`, never a raw backend.
+  KHALA_CHAT_TRACE_EMIT_ENABLED?: string | undefined
   // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
   // OFF: the queue handler does NOT route batch-job messages to the consumer
   // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the
