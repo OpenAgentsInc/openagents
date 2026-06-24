@@ -3,6 +3,16 @@ import { Route } from 'foldkit'
 import { ParseError, literal, param, r, slash, string } from 'foldkit/route'
 import type { Url } from 'foldkit/url'
 
+import {
+  knownDocumentPathPatterns,
+  publicAgentAliasDocumentPatterns,
+  type RouteLoggedInGate,
+  type RouteRenderDisposition,
+  type RouteSurface,
+  type RouteTableTag,
+  routeTable,
+} from './route-table'
+
 export const HomeRoute = r('Home')
 export const InviteRoute = r('Invite')
 export const OnboardingRoute = r('Onboarding')
@@ -762,47 +772,45 @@ export const demo2TeamFileRouter = pipe(
 )
 
 // ---------------------------------------------------------------------------
-// Single-source-of-truth route registry
+// Single-source-of-truth route registry — DERIVED from the route table
 // ---------------------------------------------------------------------------
 //
-// Historically a route had to be wired in four disconnected places (the parser
-// `oneOf` list here, the startup membership lists, the view render case, and the
-// product-policy auth lists). Missing any one silently broke the route. The
-// registry below is the ONE typed source of truth: it is keyed exhaustively by
-// the `AppRoute` tag union, so TypeScript errors if a route tag is added,
-// removed, or renamed without being fully classified. The downstream lists are
-// derived from (or exhaustively checked against) this registry.
+// The ONE declarative route table now lives in `./route-table.ts` (issue
+// #6222): one file carrying every route's path pattern, public/authed
+// visibility, and serving surface. It is dependency-free (no foldkit) so the
+// Cloudflare Worker can import it to derive its document allowlist too.
+//
+// `routeRegistry` below is the typed, `AppRoute`-keyed projection of the table's
+// policy fields that the rest of the client app consumes (product-policy auth
+// gating, startup membership guards, view.ts render exhaustiveness). It is
+// PROJECTED from `routeTable`, not re-authored, so the client policy and the
+// server document allowlist can never disagree about a route. Adding a route is
+// a single edit in `route-table.ts`.
+//
+// The Foldkit parsers stay below (they need foldkit, which the Worker lacks);
+// `client-server-route-agreement.test.ts` (both client and Worker halves)
+// cross-checks that every table example parses client-side to its tag AND is
+// admitted/rejected server-side as the table declares.
 
-// Auth gate applied to a logged-in user for routes that are part of
-// `LoggedInRoute`. Drives `routeAllowedForLoggedInAuth` in product-policy.
-//   - 'open'     : allowed for any logged-in (post-gate) user
-//   - 'workroom' : requires Core Team membership + completed onboarding
-//   - 'admin'    : requires admin flag + completed onboarding
-//   - 'mullet'   : requires admin flag + completed onboarding + owner email
-export type RouteLoggedInGate = 'open' | 'workroom' | 'admin' | 'mullet'
+// Re-export the table + policy vocabulary (imported at the top of the file) so
+// existing importers (`product-policy.ts`, `view.ts`, `routing/startup.ts`, the
+// Worker, tests) keep working against `./route`.
+export {
+  knownDocumentPathPatterns,
+  publicAgentAliasDocumentPatterns,
+  routeTable,
+}
+export type {
+  RouteLoggedInGate,
+  RouteRenderDisposition,
+  RouteSurface,
+  RouteTableTag,
+}
 
-// Render disposition for view.ts exhaustiveness (rendering itself stays in
-// view.ts; this only guarantees every route has a KNOWN render path so a route
-// can never silently fall through to the maintenance body again).
-//   - 'submodel'       : rendered through a LoggedOut/LoggedIn/Demo submodel
-//   - 'statelessShell' : rendered through a stateless public-header page view
-//   - 'loggedInOnly'   : rendered only inside the logged-in submodel
-//   - 'demo'           : rendered through the demo submodel
-//   - 'special'        : has a bespoke render branch (e.g. Onboarding)
-//   - 'maintenance'    : NOT wired in view.ts; currently falls to the shared
-//                        maintenance body. This is an HONEST classification of
-//                        an existing route whose page has not (yet) been wired
-//                        into `view.ts`. It is recorded explicitly rather than
-//                        hidden so the latent "renders maintenance body" state
-//                        is visible and intentional, not silent.
-export type RouteRenderDisposition =
-  | 'submodel'
-  | 'statelessShell'
-  | 'loggedInOnly'
-  | 'demo'
-  | 'special'
-  | 'maintenance'
-
+// The registry shape the client app consumes. It is exactly the table's policy
+// fields (the table additionally carries `surface`/`serverDocument`/
+// `examplePaths` for server derivation and agreement testing, which the client
+// registry does not need).
 export type RouteSpec = Readonly<{
   // Whether this route requires the auth bootstrap to be fetched before
   // resolving. Drives `routeRequiresAuthBootstrap` in product-policy.
@@ -818,620 +826,38 @@ export type RouteSpec = Readonly<{
   render: RouteRenderDisposition
 }>
 
-export const routeRegistry = {
-  Home: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Invite: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Onboarding: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'special',
-  },
-  Order: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  OrderDetail: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Autopilot: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  AutopilotVertical: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  AutopilotWork: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  AutopilotWorkDetail: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Forge: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Decisions: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Workspace: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  Workroom: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  WorkroomTab: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Chat: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  TeamChat: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  TeamProjectChat: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  TeamFiles: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  TeamFile: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  PersonalFile: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Thread: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Docs: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  DocsPage: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ProductPromises: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  PublicTrainingRuns: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  PublicTrainingRun: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Forum: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ForumForum: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ForumTopic: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ForumReceipt: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  SiteCheckoutDemo: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  SiteCheckoutDemoReturn: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ClientsPreview: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Components: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  ComponentsFamily: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Business: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Animations: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Activity: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Run: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  // Retained model surface for the local Gym fixture, but intentionally not
-  // registered in the URL parser: the only public Gym document is `/gym/oss`.
-  Gym: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'maintenance',
-  },
-  GymOss: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'admin',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Tassadar: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  TassadarReplay: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Login: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  Blog: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  BlogPost: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  PublicAgent: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  Share: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  // Public, shareable ATIF trace render at `/trace/{uuid}` (issue #6209). No
-  // auth bootstrap and `loggedInGate: 'open'` — anyone with the link can view a
-  // shared trace. It is a member of BOTH unions so a logged-in visitor resolves
-  // it as a public route too (same posture as Terms/Privacy/PublicAgent). It
-  // renders through the stateless public-header shell (`page/trace.ts`).
-  Trace: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  // Public, shareable comparison of N traces at `/trace/compare/{ids}` (issue
-  // #6211). Identical posture to `/trace`: no auth bootstrap, open gate, in both
-  // unions, rendered through the stateless public-header shell
-  // (`page/trace-compare.ts`).
-  TraceCompare: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  Moksha: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Moksha2: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Landing: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Terms: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'statelessShell',
-  },
-  Privacy: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'statelessShell',
-  },
-  Khala: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Pylon: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Download: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Dashboard: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  // The /pro operator/power-user console (issue 6179). Open to ANY signed-in
-  // user (not admin/operator-gated): `loggedInGate: 'open'` +
-  // `requiresAuthBootstrap: true`. It lives only in the LoggedInRoute union, so
-  // a logged-out visitor resolves through the same auth-gated startup path as
-  // the other logged-in surfaces (Order/Billing/Admin), not a bespoke bounce.
-  Pro: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  // The former `/pro` fixture subpages (ProRuns/ProRun/ProEvals/ProEval, issue
-  // 6184) were retired in #6215 in favor of the public `/trace` surfaces.
-  Billing: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Usage: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Stats: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'admin',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'submodel',
-  },
-  PublicStatsArchive: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: false,
-    render: 'submodel',
-  },
-  Admin: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'admin',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Mullet: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'mullet',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Images: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Settings: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  SettingsSection: {
-    requiresAuthBootstrap: true,
-    loggedInGate: 'workroom',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-  Demo: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  DemoLegal: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'statelessShell',
-  },
-  DemoOrder: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  DemoThread: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  DemoTeamProjectChat: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  DemoTeamFiles: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  DemoTeamFile: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2Order: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2Thread: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2TeamProjectChat: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2TeamFiles: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  Demo2TeamFile: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: false,
-    inLoggedInUnion: false,
-    render: 'demo',
-  },
-  NotFound: {
-    requiresAuthBootstrap: false,
-    loggedInGate: 'open',
-    inLoggedOutUnion: true,
-    inLoggedInUnion: true,
-    render: 'loggedInOnly',
-  },
-} as const satisfies Record<AppRoute['_tag'], RouteSpec>
+// CORE COMPILE-TIME GUARD. These only typecheck if the route table's keys are
+// EXACTLY the `AppRoute` tag union (no missing, no extra). A route added to
+// `AppRoute` without a table entry — or a table entry whose tag is not in
+// `AppRoute` — fails the build here.
+type _TableCoversEveryTag = AppRoute['_tag'] extends RouteTableTag ? true : never
+type _TableHasNoExtraTag = RouteTableTag extends AppRoute['_tag'] ? true : never
+const _tableCoversEveryTag: _TableCoversEveryTag = true
+const _tableHasNoExtraTag: _TableHasNoExtraTag = true
+void _tableCoversEveryTag
+void _tableHasNoExtraTag
 
-export type RouteTag = keyof typeof routeRegistry
+// `routeRegistry` is the typed, `AppRoute`-keyed PROJECTION of the table's
+// policy fields. It is derived from `routeTable`, not re-authored, so the client
+// policy and the server document allowlist can never disagree about a route.
+export const routeRegistry: Record<RouteTableTag, RouteSpec> = Object.entries(
+  routeTable,
+).reduce(
+  (acc, [tag, entry]) => {
+    acc[tag as RouteTableTag] = {
+      requiresAuthBootstrap: entry.requiresAuthBootstrap,
+      loggedInGate: entry.loggedInGate,
+      inLoggedOutUnion: entry.inLoggedOutUnion,
+      inLoggedInUnion: entry.inLoggedInUnion,
+      render: entry.render,
+    }
+    return acc
+  },
+  {} as Record<RouteTableTag, RouteSpec>,
+)
 
-// CORE COMPILE-TIME GUARD. These two assignments only typecheck if the registry
-// keys are EXACTLY the `AppRoute` tag union (no missing, no extra). A new route
-// added to `AppRoute` without a registry entry, or a registry entry whose tag is
-// not in `AppRoute`, fails the build here.
-type _RegistryCoversEveryTag = AppRoute['_tag'] extends RouteTag ? true : never
-type _RegistryHasNoExtraTag = RouteTag extends AppRoute['_tag'] ? true : never
-const _registryCoversEveryTag: _RegistryCoversEveryTag = true
-const _registryHasNoExtraTag: _RegistryHasNoExtraTag = true
-void _registryCoversEveryTag
-void _registryHasNoExtraTag
+// `RouteTag` is the registry/table key type (= `AppRoute['_tag']`).
+export type RouteTag = RouteTableTag
 
 export const routeSpec = (tag: RouteTag): RouteSpec => routeRegistry[tag]
 

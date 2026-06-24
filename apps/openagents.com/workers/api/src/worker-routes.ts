@@ -1,6 +1,17 @@
 import { notFound } from '@openagentsinc/sync-worker'
 import { Effect } from 'effect'
 
+// The SERVER document allowlist is DERIVED from the single route table
+// (`apps/web/src/route-table.ts`, issue #6222), the same dependency-free table
+// the client router/policy is built from. This replaces the hand-maintained
+// `knownDocumentPathPatterns` regex list that previously lived here and silently
+// desynced from the client (the `/trace/{uuid}` prod 302 bug on 2026-06-24).
+// Adding a `spaDocument` route to the table now admits it server-side
+// automatically; the client⇄server agreement test
+// (`client-server-route-agreement.test.ts`) makes a desync structurally
+// impossible. The table is foldkit-free, so importing it here does not pull the
+// web app's UI dependencies into the Worker bundle.
+import { knownDocumentPathPatterns } from '../../../apps/web/src/route-table'
 import { redirectResponse } from './http/responses'
 import { type RouteEffect, routeEffectOrResponse } from './http/route-effects'
 import { type ExactRoute, routeExact } from './http/router'
@@ -122,59 +133,10 @@ export const gatewayLegacyPathname = (
     ? pathname.slice('/api'.length)
     : undefined
 
-const gymDocumentPathPattern = /^\/gym\/oss$/
-
-const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
-  /^\/$/,
-  /^\/adjutant$/,
-  /^\/admin$/,
-  /^\/agents\/[^/]+$/,
-  /^\/artanis$/,
-  /^\/autopilot(?:\/(?:legal|work))?$/,
-  /^\/billing$/,
-  /^\/blog(?:\/[^/]+)?$/,
-  /^\/business$/,
-  /^\/components(?:\/[^/]+)?$/,
-  /^\/animations$/,
-  /^\/run$/,
-  /^\/login$/,
-  /^\/demo(?:\/.*)?$/,
-  /^\/dashboard$/,
-  /^\/docs(?:\/[^/]+)?$/,
-  /^\/files(?:\/[^/]+)?$/,
-  /^\/forge$/,
-  /^\/forum(?:\/.*)?$/,
-  gymDocumentPathPattern,
-  /^\/images$/,
-  /^\/landing$/,
-  /^\/khala$/,
-  /^\/moksha$/,
-  /^\/moksha2$/,
-  /^\/mullet$/,
-  /^\/pylons$/,
-  /^\/onboarding$/,
-  /^\/order$/,
-  /^\/orders\/[^/]+$/,
-  /^\/privacy$/,
-  /^\/promises$/,
-  /^\/settings(?:\/[^/]+)?$/,
-  /^\/share\/[^/]+$/,
-  /^\/sites\/demo-checkout(?:\/[^/]+)?$/,
-  /^\/stats$/,
-  /^\/stats-old$/,
-  /^\/tassadar$/,
-  /^\/terms$/,
-  // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
-  // NOTE: duplicated from the client route registry — see the single-route-table
-  // unification issue. This server-side allowlist must admit it or the SPA route
-  // 302s to "/".
-  /^\/trace(?:\/.*)?$/,
-  /^\/tassadar\/replay\/[^/]+$/,
-  /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/,
-  /^\/t\/[^/]+$/,
-  /^\/training\/runs(?:\/[^/]+)?$/,
-  /^\/usage$/,
-]
+// `knownDocumentPathPatterns` is imported above, DERIVED from the single route
+// table. Re-export it so existing importers and tests can read the derived
+// allowlist from this module exactly as before.
+export { knownDocumentPathPatterns }
 
 const safeDecodeTopicSegment = (value: string): string | undefined => {
   try {
