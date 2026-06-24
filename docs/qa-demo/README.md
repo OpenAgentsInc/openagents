@@ -29,7 +29,7 @@ committed, shareable forms of those.
 
 ```bash
 cd apps/qa-runner
-bun test generated/verify-the-login-page-works-on-this-site-open-login-confirm-.e2e.test.ts
+bun test generated/login-verify-2026-06-24.e2e.test.ts
 # -> 1 pass  (runs the distilled test against production)
 ```
 
