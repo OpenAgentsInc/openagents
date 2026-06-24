@@ -132,6 +132,13 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     ids remain internal Hydralisk supply; external clients see only
     `openagents/khala`.
 
+16. **[`2026-06-24-baseten-glm-52-production-inference-notes.md`](./2026-06-24-baseten-glm-52-production-inference-notes.md)**
+    — Baseten GLM-5.2 production-inference article notes and OpenAgents
+    translation: preserve the Blackwell/NVFP4, Dynamo KV-aware routing,
+    prefill/decode disaggregation, MTP speculation, and model-profile lessons
+    while narrowing the next owned step to a Hydralisk SGLang high-memory
+    admission/profile preflight rather than a public Khala model claim.
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)
