@@ -36,6 +36,7 @@ import {
 } from './message'
 import { Model } from './model'
 import * as Home from './page/home'
+import * as Gym from './page/gym'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
@@ -199,6 +200,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
+              Gym: () => Gym.view(model.gym),
               Run: () => Run.view({ _tag: 'LoggedOut' }),
               TassadarReplay: route =>
                 Run.view({ _tag: 'LoggedOut' }, route.replaySlug),

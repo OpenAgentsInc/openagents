@@ -17,6 +17,7 @@ import {
   routeRequiresAuthBootstrap,
 } from './product-policy'
 import {
+  GymRoute,
   KhalaRoute,
   MulletRoute,
   PrivacyRoute,
@@ -193,6 +194,12 @@ describe('browser product policy', () => {
 
   test('keeps the public Khala route bootstrap-free', () => {
     expect(routeRequiresAuthBootstrap(KhalaRoute())).toBe(false)
+  })
+
+  test('keeps the public Gym route bootstrap-free', () => {
+    expect(browserRouteProductIntent(GymRoute())).toBe('public.gym.fixture')
+    expect(routeRequiresAuthBootstrap(GymRoute())).toBe(false)
+    expect(browserRouteGate(GymRoute())._tag).toBe('BrowserRouteAllowed')
   })
 
   test('classifies the public Tassadar route like Khala (public, no bootstrap)', () => {

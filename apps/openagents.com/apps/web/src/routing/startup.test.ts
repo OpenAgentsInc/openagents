@@ -24,6 +24,7 @@ import {
   DemoThreadRoute,
   ForumForumRoute,
   ForumReceiptRoute,
+  GymRoute,
   GymOssRoute,
   HomeRoute,
   InviteRoute,
@@ -224,8 +225,13 @@ describe('startup route policy', () => {
     })
   })
 
-  test('keeps Khala and legal pages public for every auth state', () => {
-    for (const publicRoute of [KhalaRoute(), TermsRoute(), PrivacyRoute()]) {
+  test('keeps Khala, Gym, and legal pages public for every auth state', () => {
+    for (const publicRoute of [
+      KhalaRoute(),
+      GymRoute(),
+      TermsRoute(),
+      PrivacyRoute(),
+    ]) {
       expect(startupRouteForLoggedOut(publicRoute)).toEqual({
         _tag: 'LoggedOutStartupRoute',
         redirect: Option.none(),

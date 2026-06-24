@@ -100,6 +100,7 @@ export const startupRouteForLoggedOut = (
       'Animations',
       'Activity',
       'DemoLegal',
+      'Gym',
       'Run',
       'Tassadar',
       'TassadarReplay',
@@ -168,6 +169,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Download',
       'Activity',
       'Workspace',
+      'Gym',
       route =>
         route._tag === 'Workspace'
           ? LoggedInStartupRoute({
@@ -288,6 +290,7 @@ const startupRouteForCompleteOnboarding = (
       'Pylon',
       'Download',
       'Activity',
+      'Gym',
       route =>
         LoggedOutStartupRoute({
           route,

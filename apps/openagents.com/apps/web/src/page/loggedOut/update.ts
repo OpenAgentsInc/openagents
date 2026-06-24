@@ -87,6 +87,21 @@ import {
   writeStoredSession,
 } from '../autopilot-onboarding/persistence'
 import { FlowModel } from '../autopilot-onboarding/flow'
+import {
+  runGymFixture,
+  setGymConcurrency,
+  setGymFanoutMode,
+  setGymMaxTokens,
+  setGymModuleComposition,
+  setGymReasoningEffort,
+  setGymSamplesPerCell,
+  setGymTemperature,
+  setGymToolSet,
+  setGymTransport,
+  toggleGymCoordinator,
+  toggleGymLane,
+  toggleGymSequenceShape,
+} from './gym/flow'
 import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
@@ -1139,6 +1154,60 @@ export const update = (model: Model, message: Message): UpdateReturn =>
               step: () => 'funding',
             }),
         }),
+        [],
+      ],
+      ToggledGymLane: ({ lane }) => [
+        evo(model, { gym: gym => toggleGymLane(gym, lane) }),
+        [],
+      ],
+      UpdatedGymFanoutMode: ({ mode }) => [
+        evo(model, { gym: gym => setGymFanoutMode(gym, mode) }),
+        [],
+      ],
+      UpdatedGymConcurrency: ({ value }) => [
+        evo(model, { gym: gym => setGymConcurrency(gym, value) }),
+        [],
+      ],
+      UpdatedGymToolSet: ({ tools }) => [
+        evo(model, { gym: gym => setGymToolSet(gym, tools) }),
+        [],
+      ],
+      UpdatedGymModuleComposition: ({ mode }) => [
+        evo(model, { gym: gym => setGymModuleComposition(gym, mode) }),
+        [],
+      ],
+      ToggledGymCoordinator: ({ candidate }) => [
+        evo(model, { gym: gym => toggleGymCoordinator(gym, candidate) }),
+        [],
+      ],
+      UpdatedGymTemperature: ({ value }) => [
+        evo(model, { gym: gym => setGymTemperature(gym, value) }),
+        [],
+      ],
+      UpdatedGymReasoningEffort: ({ reasoningEffort }) => [
+        evo(model, {
+          gym: gym => setGymReasoningEffort(gym, reasoningEffort),
+        }),
+        [],
+      ],
+      UpdatedGymMaxTokens: ({ value }) => [
+        evo(model, { gym: gym => setGymMaxTokens(gym, value) }),
+        [],
+      ],
+      UpdatedGymTransport: ({ transport }) => [
+        evo(model, { gym: gym => setGymTransport(gym, transport) }),
+        [],
+      ],
+      ToggledGymSequenceShape: ({ shape }) => [
+        evo(model, { gym: gym => toggleGymSequenceShape(gym, shape) }),
+        [],
+      ],
+      UpdatedGymSamplesPerCell: ({ value }) => [
+        evo(model, { gym: gym => setGymSamplesPerCell(gym, value) }),
+        [],
+      ],
+      ClickedRunGymFixture: () => [
+        evo(model, { gym: gym => runGymFixture(gym) }),
         [],
       ],
       SucceededLoadPublicAgentGoal: ({ agentRef, response }) => [

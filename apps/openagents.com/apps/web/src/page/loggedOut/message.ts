@@ -20,6 +20,16 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
+import {
+  GymCoordinatorCandidateRef,
+  GymFanoutMode,
+  GymLaneRef,
+  GymModuleCompositionMode,
+  GymReasoningEffort,
+  GymSequenceShapeRef,
+  GymToolSetRef,
+  GymTransport,
+} from './gym/flow'
 
 // MESSAGE
 
@@ -53,6 +63,46 @@ export const ToggledOnboardingCoupon = m('ToggledOnboardingCoupon')
 export const UpdatedOnboardingCouponCode = m('UpdatedOnboardingCouponCode', {
   value: S.String,
 })
+export const ToggledGymLane = m('ToggledGymLane', {
+  lane: GymLaneRef,
+})
+export const UpdatedGymFanoutMode = m('UpdatedGymFanoutMode', {
+  mode: GymFanoutMode,
+})
+export const UpdatedGymConcurrency = m('UpdatedGymConcurrency', {
+  value: S.String,
+})
+export const UpdatedGymToolSet = m('UpdatedGymToolSet', {
+  tools: GymToolSetRef,
+})
+export const UpdatedGymModuleComposition = m(
+  'UpdatedGymModuleComposition',
+  {
+    mode: GymModuleCompositionMode,
+  },
+)
+export const ToggledGymCoordinator = m('ToggledGymCoordinator', {
+  candidate: GymCoordinatorCandidateRef,
+})
+export const UpdatedGymTemperature = m('UpdatedGymTemperature', {
+  value: S.String,
+})
+export const UpdatedGymReasoningEffort = m('UpdatedGymReasoningEffort', {
+  reasoningEffort: GymReasoningEffort,
+})
+export const UpdatedGymMaxTokens = m('UpdatedGymMaxTokens', {
+  value: S.String,
+})
+export const UpdatedGymTransport = m('UpdatedGymTransport', {
+  transport: GymTransport,
+})
+export const ToggledGymSequenceShape = m('ToggledGymSequenceShape', {
+  shape: GymSequenceShapeRef,
+})
+export const UpdatedGymSamplesPerCell = m('UpdatedGymSamplesPerCell', {
+  value: S.String,
+})
+export const ClickedRunGymFixture = m('ClickedRunGymFixture')
 export const SucceededLoadPublicAgentGoal = m('SucceededLoadPublicAgentGoal', {
   agentRef: S.String,
   response: PublicAgentGoalResponse,
@@ -329,6 +379,19 @@ export const Message = S.Union([
   UpdatedOnboardingFundingAmount,
   ToggledOnboardingCoupon,
   UpdatedOnboardingCouponCode,
+  ToggledGymLane,
+  UpdatedGymFanoutMode,
+  UpdatedGymConcurrency,
+  UpdatedGymToolSet,
+  UpdatedGymModuleComposition,
+  ToggledGymCoordinator,
+  UpdatedGymTemperature,
+  UpdatedGymReasoningEffort,
+  UpdatedGymMaxTokens,
+  UpdatedGymTransport,
+  ToggledGymSequenceShape,
+  UpdatedGymSamplesPerCell,
+  ClickedRunGymFixture,
   SucceededLoadPublicAgentGoal,
   FailedLoadPublicAgentGoal,
   SucceededLoadPublicArtanisReport,

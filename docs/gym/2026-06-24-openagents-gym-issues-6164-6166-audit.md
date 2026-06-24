@@ -11,7 +11,7 @@ report viewer, and safety boundaries are all in place.
 | Issue | Status | Main commit(s) | Notes |
 | --- | --- | --- | --- |
 | #6164 | Landed | `a6e95a944b`, `bd2c853502` | Added the fixture-only `GymExperiment` schema/compiler/run path and widened the desktop Chrome CDP startup wait used by the deploy smoke gate. |
-| #6165 | Pending | n/a | Next: add the public `/gym` route with typed knobs/dials and a no-spend fixture run trigger. |
+| #6165 | Landed | #6165 landing commit | Added the public `/gym` route, logged-out Foldkit page, typed fixture controls, locked economics panel, and no-spend fixture result trigger. |
 | #6166 | Pending | n/a | Next after #6165: add the public-safe report viewer and visual result summaries. |
 
 ## #6164 Verification
@@ -21,6 +21,14 @@ report viewer, and safety boundaries are all in place.
 - `bun run --cwd apps/autopilot-desktop smoke:training-scene`
 - `bun run --cwd apps/autopilot-desktop smoke:verse-launch`
 - Full pre-push `bun run check:deploy` passed before pushing `bd2c853502` to `main`.
+
+## #6165 Verification
+
+- `bun run --cwd apps/openagents.com/apps/web test -- src/route.test.ts src/routing/startup.test.ts src/product-policy.test.ts src/page/loggedOut/update.test.ts src/page/loggedOut/page/gym.test.ts`
+- `bun run --cwd apps/openagents.com/apps/web typecheck`
+- `bun run --cwd apps/openagents.com check:architecture`
+- `bun run --cwd apps/openagents.com check:effect-topology`
+- Full pre-push `bun run check:deploy` passed before the #6165 landing commit.
 
 ## Notes For Continuation
 

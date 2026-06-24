@@ -1,10 +1,14 @@
 # OpenAgents Gym — Spec & Roadmap
 
-> **Status:** Phase 0 backend core landed for the fixture lane (#6164):
-> `GymExperiment`, `compileGymExperiment`, and `runGymFixtureExperiment` live in
+> **Status:** Phase 0 backend core and public fixture UI landed (#6164,
+> #6165). `GymExperiment`, `compileGymExperiment`, and
+> `runGymFixtureExperiment` live in
 > `apps/openagents.com/workers/api/src/inference/gym/` and compile into the
-> existing Khala benchmark matrix/runner/report path without real spend.
-> The remaining Phase 0 UI and visualization work is tracked separately.
+> existing Khala benchmark matrix/runner/report path without real spend. The
+> public `/gym` route lives in
+> `apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` with typed
+> fixture knobs and a locked no-spend economics panel. The remaining Phase 0
+> visualization/report-viewer work is tracked separately.
 > The Gym is the interactive experimentation surface and **eval+reward factory**
 > that sits *on top of the
 > already-landed Khala benchmark harness*
@@ -83,12 +87,13 @@ an owner-armed real seam ran over **realistic** traffic.
 
 ## 3. The `/gym` web surface
 
-A new logged-out **explainer + fixture demo** route and a logged-in **paid-run**
-surface, registered the same way `/khala` is (`KhalaRoute()` in
-`apps/openagents.com/apps/web/src/route.ts`; page at
-`apps/openagents.com/apps/web/src/page/loggedOut/page/khala.ts`). The Gym adds
-`GymRoute()` and `apps/.../page/loggedOut/page/gym.ts` for the public explainer,
-plus a logged-in run surface gated by auth + balance.
+A new logged-out **explainer + fixture demo** route, registered the same way
+`/khala` is (`KhalaRoute()` in `apps/openagents.com/apps/web/src/route.ts`).
+Phase 0 adds `GymRoute()` and
+`apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` for the public
+fixture surface. It has no auth requirement, no provider calls, and no spend.
+The logged-in paid-run surface remains future work gated by auth, balance, and
+owner approval.
 
 **UI stack (owner mandate).** Structure in **Foldkit**; visualization in
 **`@openagentsinc/three-effect`** first (the same stack `khala-in-the-world.md`

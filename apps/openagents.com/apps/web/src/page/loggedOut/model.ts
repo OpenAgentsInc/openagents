@@ -5,6 +5,7 @@ import { ts } from 'foldkit/schema'
 import { LoggedOutRoute } from '../../route'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
+import { GymModel, initGymModel } from './gym/flow'
 
 // MODEL
 
@@ -1208,6 +1209,7 @@ export const Model = ts('LoggedOut', {
   // concierge intake). Holds the transcript, composer draft, request status,
   // in-flight streaming reply, and the info-popup open flag.
   khalaChat: KhalaChatModel,
+  gym: GymModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1238,6 +1240,7 @@ export const init = (route: LoggedOutRoute): Model =>
         : Option.none(),
     ),
     khalaChat: initKhalaChatModel(),
+    gym: initGymModel(),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

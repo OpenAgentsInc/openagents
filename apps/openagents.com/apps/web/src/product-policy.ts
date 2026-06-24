@@ -161,6 +161,7 @@ export const routeRequiresAuthBootstrap = (route: AppRoute): boolean =>
   route._tag !== 'Animations' &&
   route._tag !== 'Activity' &&
   route._tag !== 'DemoLegal' &&
+  route._tag !== 'Gym' &&
   route._tag !== 'Run' &&
   route._tag !== 'Tassadar' &&
   route._tag !== 'TassadarReplay' &&
@@ -258,6 +259,7 @@ export const browserRouteProductIntents = {
   PublicStatsArchive: 'public.stats.archive',
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',
+  Gym: 'public.gym.fixture',
   Run: 'public.tassadar.run',
   GymOss: 'gym.oss.playground',
   Tassadar: 'public.tassadar.run',

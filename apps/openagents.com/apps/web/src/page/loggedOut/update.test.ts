@@ -2,11 +2,14 @@ import { describe, expect, test } from 'vitest'
 
 import { LandingRoute } from '../../route'
 import {
+  ClickedRunGymFixture,
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
   ClickedEnterTassadar,
   ClickedExitKhala,
   CompletedCopyAgentInstructions,
+  ToggledGymLane,
+  UpdatedGymSamplesPerCell,
 } from './message'
 import { init } from './model'
 import { TASSADAR_AGENT_INSTRUCTIONS, update } from './update'
@@ -45,6 +48,47 @@ describe('logged-out nav + copy update', () => {
     const [next, commands] = update(model, CompletedCopyAgentInstructions())
     expect(next.copiedAgentInstructions).toBe(true)
     expect(commands).toEqual([])
+  })
+
+  test('ClickedRunGymFixture materializes a no-spend report payload', () => {
+    const [next, commands] = update(model, ClickedRunGymFixture())
+
+    expect(commands).toEqual([])
+    expect(next.gym.result).toMatchObject({
+      viewerSchema: 'openagents.gym.fixture_report.v1',
+      expectedCellCount: 90,
+      metrics: { meanCostUsd: 0 },
+    })
+  })
+
+  test('Gym lane toggles keep at least one provider lane selected', () => {
+    const onlyLane = {
+      ...model,
+      gym: {
+        ...model.gym,
+        experiment: {
+          ...model.gym.experiment,
+          fanout: {
+            ...model.gym.experiment.fanout,
+            lanes: ['provider-baseline' as const],
+          },
+        },
+      },
+    }
+
+    const [next] = update(
+      onlyLane,
+      ToggledGymLane({ lane: 'provider-baseline' }),
+    )
+
+    expect(next.gym.experiment.fanout.lanes).toEqual(['provider-baseline'])
+  })
+
+  test('Gym samples per cell clamps public fixture input', () => {
+    const [next] = update(model, UpdatedGymSamplesPerCell({ value: '9000' }))
+
+    expect(next.gym.experiment.samplesPerCell).toBe(25)
+    expect(next.gym.result).toBeNull()
   })
 
   test('the copied agent instructions are grounded in AGENTS.md', () => {
