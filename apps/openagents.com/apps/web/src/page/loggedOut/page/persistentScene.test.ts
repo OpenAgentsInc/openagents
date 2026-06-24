@@ -1,3 +1,4 @@
+import { Option } from 'effect'
 import { Scene } from 'foldkit'
 import { describe, expect, test } from 'vitest'
 
@@ -8,6 +9,19 @@ import {
   LoginRoute,
   TassadarRoute,
 } from '../../../route'
+
+const githubViewerSession = Option.some({
+  userId: 'github:1',
+  email: 'viewer@example.com',
+  name: 'Octo Viewer',
+  avatarUrl: 'https://avatars.githubusercontent.com/u/1?v=4',
+})
+
+const monogramViewerSession = Option.some({
+  userId: 'github:2',
+  email: 'mono@example.com',
+  name: 'Mono Gram',
+})
 import { update } from '../../../update'
 import { view } from '../../../view'
 import {
@@ -317,6 +331,73 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-tassadar-copy="agent-instructions"]'),
       ).toExist(),
       Scene.expect(Scene.text('Copy Agent Instructions')).toExist(),
+    )
+  })
+
+  // Floating signed-in avatar on the chrome-less homepage hero.
+  test('keeps the homepage hero clean for a logged-out viewer (no floating avatar)', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LandingRoute())),
+      // The hero (wordmark + Tassadar CTA) renders, but nothing floats over it.
+      Scene.expect(
+        Scene.selector('[data-landing-wordmark="openagents"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-landing-floating-avatar="viewer"]'),
+      ).not.toExist(),
+      Scene.expect(
+        Scene.selector('[data-account-menu-trigger]'),
+      ).not.toExist(),
+    )
+  })
+
+  test('floats the shared avatar menu top-right when signed in, with the same Log out wire', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LandingRoute(), githubViewerSession)),
+      // The floating control mounts over the hero (no header bar / nav).
+      Scene.expect(
+        Scene.selector('[data-landing-floating-avatar="viewer"]'),
+      ).toExist(),
+      Scene.expect(Scene.selector('[data-account-menu-trigger]')).toExist(),
+      // No header bar / global nav on the chrome-less hero.
+      Scene.expect(Scene.role('link', { name: 'Homepage' })).not.toExist(),
+      // The native <details> dropdown carries the same menu the header has:
+      // identity, the same links, and the same Log out menuitem.
+      Scene.expect(Scene.selector('[data-account-menu]')).toExist(),
+      Scene.expect(Scene.text('Octo Viewer')).toExist(),
+      Scene.expect(Scene.text('viewer@example.com')).toExist(),
+      Scene.expect(Scene.role('menuitem', { name: 'Workroom' })).toExist(),
+      Scene.expect(Scene.role('menuitem', { name: 'Settings' })).toExist(),
+      Scene.expect(
+        Scene.selector('[data-account-menu-logout]'),
+      ).toExist(),
+      Scene.expect(Scene.role('menuitem', { name: 'Log out' })).toExist(),
+    )
+  })
+
+  test('uses the GitHub avatar image when the signed-in viewer has one', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LandingRoute(), githubViewerSession)),
+      Scene.expect(
+        Scene.selector(
+          '[src="https://avatars.githubusercontent.com/u/1?v=4"]',
+        ),
+      ).toExist(),
+    )
+  })
+
+  test('falls back to the monogram when the signed-in viewer has no avatar', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LandingRoute(), monogramViewerSession)),
+      Scene.expect(
+        Scene.selector('[data-landing-floating-avatar="viewer"]'),
+      ).toExist(),
+      // No avatar image; the monogram initials stand in (Mono Gram -> MG).
+      Scene.expect(Scene.text('MG')).toExist(),
     )
   })
 

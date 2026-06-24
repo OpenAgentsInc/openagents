@@ -24,12 +24,16 @@ import {
   SucceededSkipOnboardingBilling,
   UpdatedInviteCode,
 } from './page/loggedIn/message'
-import { ClickedOnboardingStep } from './page/loggedOut/message'
+import {
+  ClickedOnboardingStep,
+  RequestedLandingLogout,
+} from './page/loggedOut/message'
 import {
   ChatRoute,
   DocsRoute,
   HomeRoute,
   InviteRoute,
+  LandingRoute,
   OnboardingRoute,
   OrderRoute,
 } from './route'
@@ -515,5 +519,21 @@ describe('app link routing', () => {
       'LoadExternal',
     ])
     expect(commands[1]?.args).toEqual({ href: '/auth/logout' })
+  })
+
+  test('logging out from the homepage hero floating avatar reuses the same logout (clear session + /auth/logout)', () => {
+    const [model, commands] = update(
+      LoggedOut.init(
+        LandingRoute(),
+        Option.some(authWithTeam.session),
+      ),
+      GotLoggedOutMessage({ message: RequestedLandingLogout() }),
+    )
+
+    // Stays on the public LoggedOut model and fires the single logout command,
+    // which itself clears the cached session then full-page navigates to
+    // /auth/logout (the same endpoint the header logout uses).
+    expect(model._tag).toBe('LoggedOut')
+    expect(commands.map(command => command.name)).toEqual(['LogoutFromLanding'])
   })
 })

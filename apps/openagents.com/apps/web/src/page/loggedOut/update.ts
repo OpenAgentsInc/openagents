@@ -6,6 +6,7 @@ import { evo } from 'foldkit/struct'
 import {
   CompletedCopyAgentInstructions,
   CompletedCopyShareLink,
+  CompletedLandingLogout,
   CompletedNavigateToKhala,
   CompletedNavigateToLanding,
   CompletedNavigateToTassadar,
@@ -110,6 +111,10 @@ import {
 import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
+import {
+  clearSessionFromStore,
+  sessionStoreLayer,
+} from '../../commands/session-store'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
   SETTLED_FEED_SCOPE,
@@ -859,6 +864,27 @@ export const NavigateToLanding = Command.define(
   // /tassadar pushes the root and flies the camera home.
 )(pushUrl(homeRouter()).pipe(Effect.as(CompletedNavigateToLanding())))
 
+// The single logout endpoint, identical to the public header's wire
+// (src/update.ts RequestedLoggedOutLogout -> LoadExternal '/auth/logout').
+const LOGOUT_HREF = '/auth/logout'
+
+// Log out from the homepage hero's floating avatar menu. Reuses the SAME logout
+// behavior the public header uses: clear the cached session, then full-page
+// navigate to `/auth/logout` (the server route that clears the cookie). `load`
+// is a full-page navigation, so the completion message is effectively never
+// observed — it exists only to type the command.
+export const LogoutFromLanding = Command.define(
+  'LogoutFromLanding',
+  CompletedLandingLogout,
+)(
+  clearSessionFromStore.pipe(
+    Effect.provide(sessionStoreLayer),
+    Effect.catch(() => Effect.void),
+    Effect.andThen(load(LOGOUT_HREF)),
+    Effect.as(CompletedLandingLogout()),
+  ),
+)
+
 // Generate a session id for a new onboarding conversation. Uses secure browser
 // randomness (the same primitive the checkout idempotency key uses); no
 // Math.random. Exported so the streaming subscription mints the first-turn
@@ -1200,6 +1226,8 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [],
       ],
       CompletedNavigateToLanding: () => [model, []],
+      RequestedLandingLogout: () => [model, [LogoutFromLanding()]],
+      CompletedLandingLogout: () => [model, []],
       ClickedOnboardingStep: ({ step }) => [
         evo(model, {
           onboarding: onboarding => evo(onboarding, { step: () => step }),

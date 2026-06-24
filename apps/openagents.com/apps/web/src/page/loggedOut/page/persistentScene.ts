@@ -63,7 +63,38 @@ const landingButtonClass =
   'transition-all duration-300 ease-out hover:border-[#4fd0ff]/85 hover:text-white ' +
   'hover:khala-glow-strong cursor-pointer motion-reduce:transition-none'
 
-const landingOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+// A floating circular avatar pinned to the top-right of the chrome-less hero,
+// shown only when the viewer is signed in. It sits above the scene canvas (z-10)
+// and the readability scrim (z-5) on the same `dropdown`-tier the public header
+// menu uses; `pointer-events-auto` re-enables interaction inside the
+// otherwise pass-through overlay. `landingFloatingMenu` is the shared
+// `viewerAvatarMenu` built by the loggedOut view from the signed-in session, so
+// the avatar, identity, links, and Log out wire match the header exactly. When
+// logged out it is `undefined` and nothing renders — the hero stays clean.
+const landingFloatingAvatar = (
+  h: ReturnType<typeof html<Message>>,
+  landingFloatingMenu: Html,
+): Html =>
+  h.div(
+    [
+      h.DataAttribute('landing-floating-avatar', 'viewer'),
+      // Pin top-right, above the canvas (z-0) and scrim (z-5) on the same
+      // dropdown z-tier the public header menu uses. `pointer-events-auto`
+      // re-enables interaction inside the pass-through overlay. The shared
+      // avatar component is square in the header; the floating hero instance is
+      // rounded to a circle here (scoped to this wrapper, header unchanged).
+      Ui.className<Message>(
+        'pointer-events-auto fixed right-4 top-4 z-50 sm:right-6 sm:top-6 ' +
+          '[&_.oa-ui-avatar-image]:rounded-full [&_.oa-ui-avatar-fallback]:rounded-full',
+      ),
+    ],
+    [landingFloatingMenu],
+  )
+
+const landingOverlay = (
+  h: ReturnType<typeof html<Message>>,
+  landingFloatingMenu: Html | undefined,
+): Html =>
   h.div(
     [
       h.DataAttribute('landing-wordmark', 'openagents'),
@@ -72,6 +103,9 @@ const landingOverlay = (h: ReturnType<typeof html<Message>>): Html =>
       ),
     ],
     [
+      ...(landingFloatingMenu !== undefined
+        ? [landingFloatingAvatar(h, landingFloatingMenu)]
+        : []),
       h.div(
         [
           Ui.className<Message>(
@@ -214,9 +248,10 @@ const overlayForRoute = (
   autopilotOverlay: Html | undefined,
   khalaOverlay: Html | undefined,
   loginOverlay: Html | undefined,
+  landingFloatingMenu: Html | undefined,
 ): Html =>
   route === 'Landing'
-    ? landingOverlay(h)
+    ? landingOverlay(h, landingFloatingMenu)
     : route === 'Tassadar'
       ? tassadarOverlay(h, copiedAgentInstructions)
       : route === 'Autopilot'
@@ -228,15 +263,17 @@ const overlayForRoute = (
 // `autopilotOverlay` is the real /autopilot onboarding HUD (#6129),
 // `khalaOverlay` is the real /khala chat HUD, and `loginOverlay` is the real
 // /login card + flush header — all supplied by the loggedOut view. Each is only
-// consulted on its own route; other routes ignore it. Keeping them parameters
-// (rather than importing the pages here) avoids a model/message import cycle
-// through the scene module.
+// consulted on its own route; other routes ignore it. `landingFloatingMenu` is
+// the shared signed-in avatar menu, consulted only on the Landing route (the
+// chrome-less hero). Keeping them parameters (rather than importing the pages
+// here) avoids a model/message import cycle through the scene module.
 export const view = (
   route: PersistentSceneRoute,
   copiedAgentInstructions = false,
   autopilotOverlay?: Html,
   khalaOverlay?: Html,
   loginOverlay?: Html,
+  landingFloatingMenu?: Html,
 ): Html => {
   const h = html<Message>()
 
@@ -275,6 +312,7 @@ export const view = (
             autopilotOverlay,
             khalaOverlay,
             loginOverlay,
+            landingFloatingMenu,
           ),
         ],
       ),

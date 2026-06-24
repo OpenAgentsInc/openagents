@@ -186,12 +186,21 @@ const loggedOutLoginPopover = <Message>(
   )
 }
 
-const loggedInAccountMenu = <Message>(
-  viewer: PublicHeaderViewer,
-  onLogout: Message,
-  menuLinkClass: string,
-): Html => {
+// The reusable signed-in avatar + dropdown. The public header renders it in its
+// nav bar; the chrome-less homepage hero renders the SAME component as a floating
+// control (see loggedOut/page/persistentScene.ts). One implementation: GitHub
+// `avatarUrl` when present, monogram fallback, identity + Workroom + Settings +
+// the same Log out wire. `menuAlign` lets the floating placement open the menu
+// flush to the avatar's right edge without forking the markup.
+export const viewerAvatarMenu = <Message>(input: {
+  readonly viewer: PublicHeaderViewer
+  readonly onLogout: Message
+  readonly menuLinkClass?: string
+}): Html => {
   const h = html<Message>()
+  const viewer = input.viewer
+  const onLogout = input.onLogout
+  const menuLinkClass = input.menuLinkClass ?? accountMenuItemClass
 
   return h.details(
     [h.DataAttribute('account-menu-popover', ''), Ui.className<Message>('relative')],
@@ -321,11 +330,11 @@ export const view = <Message>(
               ...(isForum ? [forumThemeSelector<Message>()] : []),
               ...(authState._tag === 'LoggedIn'
                 ? [
-                    loggedInAccountMenu<Message>(
-                      authState.viewer,
-                      authState.onLogout,
-                      accountMenuItemClass,
-                    ),
+                    viewerAvatarMenu<Message>({
+                      viewer: authState.viewer,
+                      onLogout: authState.onLogout,
+                      menuLinkClass: accountMenuItemClass,
+                    }),
                   ]
                 : [loggedOutLoginPopover(loginHref, linkClass)]),
             ],

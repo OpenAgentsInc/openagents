@@ -49,6 +49,12 @@ export const CompletedCopyAgentInstructions = m(
   'CompletedCopyAgentInstructions',
 )
 export const CompletedNavigateToLanding = m('CompletedNavigateToLanding')
+// Log out from the chrome-less homepage hero's floating avatar menu. Reuses the
+// exact same logout behavior as the public header: clear the cached session,
+// then full-page navigate to `/auth/logout`. `CompletedLandingLogout` is a
+// benign no-op completion that the full-page navigation effectively preempts.
+export const RequestedLandingLogout = m('RequestedLandingLogout')
+export const CompletedLandingLogout = m('CompletedLandingLogout')
 export const ClickedOnboardingStep = m('ClickedOnboardingStep', {
   step: OnboardingStep,
 })
@@ -388,6 +394,8 @@ export const Message = S.Union([
   ClickedCopyAgentInstructions,
   CompletedCopyAgentInstructions,
   CompletedNavigateToLanding,
+  RequestedLandingLogout,
+  CompletedLandingLogout,
   ClickedOnboardingStep,
   SelectedOnboardingRepository,
   SkippedOnboardingRepository,

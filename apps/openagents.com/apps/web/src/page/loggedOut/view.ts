@@ -1,11 +1,14 @@
-import { Match as M } from 'effect'
+import { Match as M, Option } from 'effect'
 import { Submodel } from 'foldkit'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
+import type { Session } from '../../domain/session'
 import * as Ui from '../../ui'
+import type { PublicHeaderViewer } from '../publicHeader'
+import { viewerAvatarMenu } from '../publicHeader'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as KhalaChatPage from '../khala-chat/page'
 import * as Activity from '../activity'
@@ -31,6 +34,7 @@ import {
   ClosedKhalaChatInfo,
   Message,
   OpenedKhalaChatInfo,
+  RequestedLandingLogout,
   SubmittedAutopilotOnboardingTurn,
   SubmittedKhalaChatTurn,
   UpdatedAutopilotOnboardingComposer,
@@ -50,6 +54,33 @@ import * as Share from './page/share'
 import * as Stats from './page/stats'
 import * as TrainingRuns from './page/trainingRuns'
 import * as WorkspaceInvite from './page/workspaceInvite'
+
+// Map the signed-in session to the public-header viewer shape (GitHub avatar
+// when present, monogram fallback handled by Ui.avatar). Mirrors the top-level
+// shell's `viewerFromSession` so the homepage avatar matches the header.
+const viewerFromSession = (session: Session): PublicHeaderViewer => ({
+  displayName: session.name,
+  email: session.email,
+  ...(session.avatarUrl !== undefined && session.avatarUrl !== ''
+    ? { avatarUrl: session.avatarUrl }
+    : {}),
+})
+
+// The shared signed-in avatar menu for the chrome-less homepage hero, or
+// `undefined` when the viewer is logged out (then nothing floats over the hero).
+// Reuses the SAME `viewerAvatarMenu` and the SAME logout wire as the public
+// header — here the logout dispatches the loggedOut submodel's
+// `RequestedLandingLogout`, which clears the cached session and full-page
+// navigates to `/auth/logout`, identical to the header's behavior.
+const landingFloatingMenu = (model: Model): Html | undefined =>
+  Option.match(model.viewerSession, {
+    onNone: () => undefined,
+    onSome: session =>
+      viewerAvatarMenu<Message>({
+        viewer: viewerFromSession(session),
+        onLogout: RequestedLandingLogout(),
+      }),
+  })
 
 export const view = Submodel.defineView<Model, Message>((model): Html => {
   const h = html<Message>()
@@ -74,7 +105,16 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
 
   if (model.route._tag === 'Landing' || model.route._tag === 'Tassadar') {
     return Ui.pageShell<Message>([
-      PersistentScene.view(model.route._tag, model.copiedAgentInstructions),
+      PersistentScene.view(
+        model.route._tag,
+        model.copiedAgentInstructions,
+        undefined,
+        undefined,
+        undefined,
+        // Only the Landing overlay consults this floating avatar menu; the
+        // scene ignores it on the Tassadar pose.
+        landingFloatingMenu(model),
+      ),
     ])
   }
 
