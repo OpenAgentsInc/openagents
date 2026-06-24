@@ -83,6 +83,10 @@ Two supporting pieces make us *discoverable*:
 lists **lightning first**. The primary advisory model is now
 `openai/gpt-oss-20b`; Khala model ids remain sellable only when the request wants
 Khala-specific behavior. Only the Stripe badge is still pending (external crawl).
+Production deploy `e66a59cd-7ad4-48bf-801e-1230064a467f` also has a live paid
+proof: a 1-sat Lightning MPP request for `openai/gpt-oss-20b` returned `200`,
+an OpenAI-compatible `chat.completion`, and a successful `Payment-Receipt` on
+2026-06-24T01:51:12Z.
 
 - ✅ **Live: Lightning — and it leads.** It mints a real mainnet BOLT11 via **Spark**
   (`@breeztech/breez-sdk-spark`, **primary**) through the existing **`MDK_TREASURY`

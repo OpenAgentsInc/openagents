@@ -33,6 +33,15 @@ first** (`x-service-info categories:["ai"]`). Profile `@openagents` is live (Net
 under the raw upstream model id. `openagents/khala-*` ids stay supported only for
 Khala-specific behavior such as Blueprint/coordinator/verifier/Pylon surfaces.
 
+**Production paid proof (#6169):** deploy
+`e66a59cd-7ad4-48bf-801e-1230064a467f` completed a live 1-sat Lightning MPP
+payment for `openai/gpt-oss-20b` on 2026-06-24T01:51:12Z. The flow was
+`402 Payment` (Lightning mainnet, amount `1 sat`) -> MDK wallet payment ->
+`Authorization: Payment ...` retry -> `200` OpenAI-compatible
+`chat.completion` with `Payment-Receipt` method `lightning`, status `success`.
+The Base USDC and Stripe SPT rails also remain advertised live; USDC test-helper
+settlement is sandbox-only because prod issues live-mode Stripe PaymentIntents.
+
 ## 2. Architecture (Worker-native, no Node sidecar)
 
 - **Endpoint:** `POST /mpp/v1/chat/completions`. Method-agnostic HMAC challenge
@@ -110,6 +119,10 @@ Always deploy from a clean `origin/main` worktree.
   settlement — no simulate**.
   Default model: `openai/gpt-oss-20b`. Override with
   `KHALA_MPP_PAYLOOP_MODEL=<model>` only when testing a Khala-specific model.
+- **Full Lightning pay-loop** (prod/mainnet, tiny live payment): request
+  `openai/gpt-oss-20b` without a credential, pay the returned BOLT11 with the
+  MDK agent wallet, then retry with the preimage credential. This was proven on
+  2026-06-24T01:51:12Z for 1 sat and returned `200` + `Payment-Receipt`.
 
 ## 6. Lightning (LIVE on Spark, leads the 402 — 2026-06-23)
 

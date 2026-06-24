@@ -4,9 +4,10 @@ Date: 2026-06-23
 
 Issue: OpenAgentsInc/openagents#6108
 
-> **Current status (2026-06-23, later same day): MPP is now ARMED and LIVE on
+> **Current status (2026-06-23/24): MPP is now ARMED and LIVE on
 > production.** This gate doc was written for the not-yet-armed state. All three rails
-> are now live on `openagents-autopilot` (deploy version `271a3720`): **⚡ Lightning**
+> are now live on `openagents-autopilot` (current proven deploy version
+> `e66a59cd-7ad4-48bf-801e-1230064a467f`): **⚡ Lightning**
 > (real mainnet BOLT11 via **Spark** PRIMARY through the `MDK_TREASURY` container, MDK
 > fallback — leads the 402), **USDC/crypto** (full pay-loop proven on staging), and
 > **card/SPT**. Prod secrets `KHALA_MPP_ENABLED`, `STRIPE_API_KEY` (rk_live),
@@ -15,6 +16,11 @@ Issue: OpenAgentsInc/openagents#6108
 > still holds when the flags are removed (rollback). Only the Stripe Directory **badge**
 > remains pending (external async crawl). Current status & ops:
 > [`docs/mpp/README.md`](../../../../docs/mpp/README.md).
+>
+> **Direct GPT-OSS sale proof (#6169):** `openai/gpt-oss-20b` is the default direct-sale
+> MPP model. A live 1-sat Lightning payment on 2026-06-24T01:51:12Z completed
+> `402 Payment` -> MDK wallet payment -> `Authorization: Payment ...` retry -> `200`
+> `chat.completion` with `Payment-Receipt` method `lightning`, status `success`.
 
 ## Scope
 
