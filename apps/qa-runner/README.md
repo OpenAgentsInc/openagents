@@ -22,10 +22,13 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 >   --base-url https://api.openai.com/v1 --api-key "$OPENAI_API_KEY" --out ./runs/my-app
 > ```
 >
-> The `@openagentsinc/probe-runtime` (computer-use) dependency is not yet
-> independently published; today the runnable-OSS path is "clone the monorepo and
-> run `qa`". The path to a bare `bunx @openagentsinc/qa-runner` is documented
-> honestly in the quick-start (§5).
+> **Genuinely standalone.** The shipped `qa` CLI is a single self-contained
+> bundle (`dist/qa.js`) built by `bun run build` — `@openagentsinc/probe-runtime`
+> and `effect` are inlined, so a standalone install needs **no workspace and no
+> login** (only `playwright` stays external). Install the packed tarball in any
+> clean dir (`npm install ./openagentsinc-qa-runner-0.1.0.tgz` →
+> `qa run --fake-model ...`), or `bunx @openagentsinc/qa-runner` once published.
+> Mechanics + proof in the quick-start (§1, §5).
 
 It executes a **computer-use session** (via the Probe computer-use tools, #6175)
 against a **Target** (dev or prod), inside an **isolation backend**, and emits a
@@ -81,6 +84,11 @@ variants. (`openagents/khala-oss-20b` is a separate served alias.)
 ```sh
 # Unit tests — fakes-in-CI, NO chromium, NO network (the default gate)
 bun run --cwd apps/qa-runner test
+
+# Build the self-contained standalone CLI bundle (dist/qa.js; inlines workspace deps)
+bun run --cwd apps/qa-runner build
+# Verify the publish-ready tarball contents (includes a freshly-built dist/qa.js via prepack)
+cd apps/qa-runner && bun pm pack --dry-run
 
 # Install chromium for the real-browser paths below
 bun run --cwd apps/qa-runner playwright:install   # or: bunx playwright install chromium

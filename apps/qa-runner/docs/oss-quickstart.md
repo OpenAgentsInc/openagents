@@ -38,21 +38,51 @@ exact code path a real run takes; only the model/browser are swapped for fakes.
 
 ## 1. Install
 
-This package currently lives inside the OpenAgents monorepo. It runs on
-[Bun](https://bun.sh).
+The shipped `qa` CLI is a **single self-contained bundle** (`dist/qa.js`) — the
+workspace deps (`@openagentsinc/probe-runtime` + `effect`) are inlined at build
+time, so a standalone install needs **no monorepo, no workspace, and no
+OpenAgents login**. The only runtime dependency that stays external is
+`playwright` (it downloads its own browser).
+
+### Standalone (no monorepo) — the real OSS path
 
 ```sh
-git clone https://github.com/OpenAgentsInc/openagents
-cd openagents
-bun install
+# from the published registry once this is on npm (see §5):
+npx  @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
+bunx @openagentsinc/qa-runner run --fake-model --url https://example.test --out ./runs/qa
+
 # one-time, for the real-browser path (the fake path above needs none of this):
-bun run --cwd apps/qa-runner playwright:install   # installs chromium
+npx playwright install chromium
 ```
 
-> When this package is published to npm (see "Publishing & the probe-runtime
-> caveat" below) the install will become `bunx @openagentsinc/qa-runner` /
-> `npx @openagentsinc/qa-runner`. Today, run it from the monorepo via the `qa`
-> script.
+It runs on plain Node (`node dist/qa.js …`) or Bun — the bundle targets Node and
+keeps a `#!/usr/bin/env node` shebang.
+
+### From a local tarball (works today, before npm publish)
+
+```sh
+git clone https://github.com/OpenAgentsInc/openagents && cd openagents && bun install
+bun run --cwd apps/qa-runner build          # produces apps/qa-runner/dist/qa.js
+cd apps/qa-runner && bun pm pack            # -> openagentsinc-qa-runner-0.1.0.tgz (runs prepack -> build)
+
+# now, in ANY clean dir OUTSIDE the monorepo, with no workspace:
+mkdir /tmp/my-ci && cd /tmp/my-ci && npm init -y
+npm install /path/to/openagentsinc-qa-runner-0.1.0.tgz
+./node_modules/.bin/qa run --fake-model --url https://example.test --out ./runs/qa
+npx playwright install chromium             # one-time, only for the real-browser path
+```
+
+This is genuinely standalone: the install pulls only `effect` + `playwright`
+(NOT `@openagentsinc/probe-runtime`, which is inlined), and the run needs no
+OpenAgents account.
+
+### Dev (inside the monorepo, against source)
+
+```sh
+git clone https://github.com/OpenAgentsInc/openagents && cd openagents && bun install
+bun run --cwd apps/qa-runner playwright:install     # one-time, real-browser path
+bun run --cwd apps/qa-runner qa run --url http://localhost:3000 ...
+```
 
 ---
 
@@ -140,32 +170,62 @@ non-zero exit (never a fake green). So the CI check goes red on a real failure.
 
 ---
 
-## 5. Honesty: the `@openagentsinc/probe-runtime` dependency
+## 5. How standalone works: the bundled CLI (and publishing)
 
 The QA core uses the computer-use surface (Playwright `BrowserSurface`,
 `withBrowserSurface`, `acquirePlaywrightBrowser`) from
-`@openagentsinc/probe-runtime`. **Right now that package is not independently
-published**: in this monorepo it is `private: true`, `version 0.0.0`, and pulls
-in further workspace packages (`@openagentsinc/blueprint-contracts`,
-`@openagentsinc/provider-account-schema`). So today the genuinely-runnable OSS
-path is **"clone the monorepo and run `qa`"** — which fully satisfies "OSS +
-runnable locally with no login" — but a bare `npm i @openagentsinc/qa-runner`
-will not yet resolve the runtime from the public registry.
+`@openagentsinc/probe-runtime`. That package is `private: true` / `version 0.0.0`
+and pulls in further workspace packages, so it is **not** independently published
+— a naive `npm i @openagentsinc/qa-runner` could never resolve it from source.
 
-Path to a fully-standalone npm package (tracked as a follow-up to #6191):
+We fix that by **bundling**, not by waiting on an extraction:
 
-1. The QA core only needs a thin **computer-use port** — `BrowserSurface`,
-   `WaitForCondition`, `TerminalCondition`, `withBrowserSurface`,
-   `acquirePlaywrightBrowser`, and the Playwright artifact types. Extract just
-   those into a small, dependency-light published package (e.g.
-   `@openagentsinc/computer-use`) that depends only on `playwright` + `effect`,
-   **without** the Blueprint/provider-account workspace coupling.
-2. Repoint qa-runner's `import "@openagentsinc/probe-runtime"` sites
-   (`brain.ts`, `backend.ts`, `runner.ts`, `khala-session.ts`,
-   `terminal-backend.ts`, `terminal-scenario.ts`) at that port.
-3. Publish qa-runner with that port as its only `@openagentsinc/*` dependency,
-   then `bunx @openagentsinc/qa-runner` works against the public registry.
+- `bun run build` (`scripts/build.ts`) runs `Bun.build` on the BYO CLI
+  (`src/byo.ts`). It aliases `@openagentsinc/probe-runtime` to that package's
+  `computer-use` entry (the only surface the BYO path reaches) and **inlines**
+  it together with `effect` into a single self-contained `dist/qa.js`. Only
+  `playwright` is kept external (it is a real, published runtime dep that
+  downloads its own browser).
+- Because the heavy, unrelated probe-runtime modules (terminal `@opentui/core`
+  native binaries, model backends, benchmark harnesses) are never reached by the
+  BYO path, the bundle stays small and **needs no workspace packages at run
+  time**.
+- `package.json` points `bin.qa` and the `./qa` export at `dist/qa.js`,
+  `@openagentsinc/probe-runtime` is a **devDependency** (inlined, not required by
+  consumers), and a `prepack` hook rebuilds `dist/qa.js` fresh at pack time so
+  the npm tarball always ships the current bundle. `dist/` is git-ignored.
 
-Until then, the OSS guarantee is honest and concrete: MIT-licensed source, a
-local-first run with no OpenAgents login, and a published `package.json` that is
-publishable in shape — see `bun pm pack --dry-run` in the README.
+Bundling happens at the JS/module-graph level, so the pre-existing
+`packages/probe` **typecheck** errors do not block it — `bun build` does not
+typecheck.
+
+### Proof (standalone, no workspace, no login)
+
+```sh
+bun run --cwd apps/qa-runner build
+cd apps/qa-runner && bun pm pack
+cd /tmp && mkdir clean && cd clean && npm init -y
+npm install --ignore-scripts /path/to/openagentsinc-qa-runner-0.1.0.tgz
+# scrubbed env, no OPENAGENTS_*/OPENAI_*/QA_*, no workspace:
+env -i PATH="$PATH" HOME="$HOME" ./node_modules/.bin/qa \
+  run --fake-model --url https://example.test --out ./runs/proof
+# -> verdict: pass, emits a video + a committed e2e test, exit 0.
+# node_modules/@openagentsinc/ contains qa-runner only — NO probe-runtime.
+```
+
+### Publishing (do not run unless releasing)
+
+The package is publish-ready and intentionally NOT published here. Per
+`apps/pylon/docs/npm-publishing-runbook.md`, `bun publish` is broken against
+npmjs — pack first, then publish the tarball with npm (scope `@openagentsinc/`,
+token in workspace `.secrets/npm-publish.env`):
+
+```sh
+bun run --cwd apps/qa-runner build
+cd apps/qa-runner && bun pm pack
+npm publish ./openagentsinc-qa-runner-0.1.0.tgz --access public
+```
+
+CDN propagation can make a fresh publish look 404 to bun for minutes; the runbook
+covers that. Until then the local-tarball path in §1 is the genuine, runnable
+standalone OSS install.

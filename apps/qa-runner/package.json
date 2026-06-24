@@ -27,10 +27,11 @@
     "url": "https://github.com/OpenAgentsInc/openagents/issues"
   },
   "bin": {
-    "qa": "src/byo.ts"
+    "qa": "./dist/qa.js"
   },
   "exports": {
     ".": "./src/index.ts",
+    "./qa": "./dist/qa.js",
     "./byo": "./src/byo.ts",
     "./byo-model": "./src/byo-model.ts",
     "./target": "./src/target.ts",
@@ -43,7 +44,9 @@
     "./container-runtime": "./src/container-runtime.ts"
   },
   "files": [
+    "dist",
     "src",
+    "scripts/build.ts",
     "README.md",
     "LICENSE",
     "docs/oss-quickstart.md"
@@ -52,7 +55,10 @@
     "access": "public"
   },
   "scripts": {
+    "build": "bun run scripts/build.ts",
+    "prepack": "bun run scripts/build.ts",
     "qa": "bun run src/byo.ts",
+    "qa:dist": "node dist/qa.js",
     "serve": "bun run src/daemon.ts",
     "api": "bun run src/daemon.ts --api",
     "run-once": "bun run src/run-once.ts",
@@ -69,11 +75,11 @@
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
-    "@openagentsinc/probe-runtime": "workspace:*",
     "effect": "catalog:",
     "playwright": "^1.61.0"
   },
   "devDependencies": {
+    "@openagentsinc/probe-runtime": "workspace:*",
     "bun-types": "^1.3.14",
     "typescript": "catalog:"
   }
