@@ -1,7 +1,12 @@
 # OpenAgents Gym — Spec & Roadmap
 
-> **Status:** initial design spec, honest-scope. The Gym is the interactive
-> experimentation surface and **eval+reward factory** that sits *on top of the
+> **Status:** Phase 0 backend core landed for the fixture lane (#6164):
+> `GymExperiment`, `compileGymExperiment`, and `runGymFixtureExperiment` live in
+> `apps/openagents.com/workers/api/src/inference/gym/` and compile into the
+> existing Khala benchmark matrix/runner/report path without real spend.
+> The remaining Phase 0 UI and visualization work is tracked separately.
+> The Gym is the interactive experimentation surface and **eval+reward factory**
+> that sits *on top of the
 > already-landed Khala benchmark harness*
 > (`apps/openagents.com/workers/api/src/inference/benchmark/`, book P1-5 / #6088),
 > the coordinator/`ModelRouter` seam (#5482), the provider-adapter registry
