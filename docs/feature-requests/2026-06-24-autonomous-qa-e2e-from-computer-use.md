@@ -1,13 +1,20 @@
-# Feature request: Autonomous QA — computer-use agent that writes & runs e2e tests
+# Autonomous QA as a Khala example flow — computer-use agent that writes & runs e2e tests
 
-> **Status:** external feature request + design exploration, 2026-06-24. Not a
-> product promise, a committed roadmap item, or public-claim copy. It captures a
-> request from the author of [`RhysSullivan/executor`](https://github.com/RhysSullivan/executor)
-> (local clone: `projects/repos/executor`), his stated requirements, an analysis
-> of his prior art, and how OpenAgents could build the missing piece. The
-> requester has offered to be the **first customer**, to support it via **GitHub
-> Sponsors**, and to **get on a call** to spec it in detail — and asked that if
-> we've already built it, we open a **PR to his repo** with it.
+> **Status:** design exploration + planned **Khala example flow**, 2026-06-24.
+> Not a product promise or public-claim copy. The intent: build this as a
+> **flagship example of what Khala can do** — Khala driving real developer tools
+> (Chrome, a terminal) inside **OpenAgents Cloud VMs/infra**, developing against a
+> product, then distilling the session into committed e2e tests whose passing run
+> (with video) is the review artifact. It is a showcase of Khala-as-agent-platform
+> over Cloud primitives (VM isolation, compute, artifacts), not a one-off tool.
+>
+> **Origin:** the shape comes from an external request by the author of
+> [`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) (local
+> clone: `projects/repos/executor`) — he wants an OpenDevin-style *autonomous QA*
+> agent, offered to be the **first customer** / **GitHub Sponsor**, and to get on
+> a call. We are NOT opening a PR to his repo; `executor` is studied here as
+> **prior art** for the substrate, and he is a natural **design partner / first
+> customer** for the hosted tier. The build target is an owned Khala example flow.
 
 ## 1. The ask, in his words
 
@@ -133,12 +140,14 @@ OpenAgents already owns most of the hard parts; the request is largely a
                  (the review artifact)                (the playable receipt)
 ```
 
-- **The agent = Probe runtime driving computer-use tools.** Probe already owns
-  session lifecycle, tool execution, approvals, and transcripts. Give it the
+- **The agent = Khala driving the Probe runtime + computer-use tools.** The model
+  is **Khala** (`openagents/khala` — one model, no variants) end-to-end; Probe
+  owns session lifecycle, tool execution, approvals, and transcripts. Give it the
   *same* tools a developer uses: a real Chrome over CDP/Playwright, a real PTY
   terminal, filesystem, and MCP. This is "Codex computer-use, but the session
-  becomes a test." The model is **Khala** (`openagents/khala-code`), so the QA
-  agent rides the verified-work + receipt machinery natively.
+  becomes a test" — and because Khala is the driver, the QA agent rides the
+  verified-work + receipt machinery natively. **This is the example flow: Khala
+  exercising OpenAgents Cloud VM/infra primitives to do real work and prove it.**
 - **Develop → distill.** The exploration session is captured as a typed timeline
   (actions, selectors-as-intent, terminal commands, network/console). A
   **distiller** lowers that timeline into a black-box `scenario(...)` written
@@ -165,9 +174,9 @@ OpenAgents already owns most of the hard parts; the request is largely a
 | Concern | Owner |
 |---|---|
 | Agent runtime + computer-use tools + approvals | `probe` / `packages/probe` |
-| Model driving the agent (verified-work lane) | Khala (`openagents/khala-code`) |
+| Model driving the agent (verified-work lane) | Khala (`openagents/khala` — single model) |
 | Run isolation (microVM/confidential), artifact custody | `cloud` + `firecracker`/`sek8s` references |
-| Target/VM/scenario/artifact substrate | extend `executor` (upstream) |
+| Target/VM/scenario/artifact substrate | study `executor` as prior art (no upstream PR) |
 | Verification framing (run = receipt) | Tassadar verification-class + revenue-loop receipts |
 
 ## 7. Build plan (phased, honest-scope)
@@ -203,17 +212,25 @@ OpenAgents already owns most of the hard parts; the request is largely a
 - Trust: should a generated scenario require human acceptance before it counts as
   a guarantee, or is "green on target + video" sufficient (the §3 question)?
 
-## 9. The offer + next steps
+## 9. Next steps (build it as a Khala example flow)
 
-- The requester will be the **first customer**, would **sponsor** it, and offered
-  a **call** to spec it in detail.
-- He asked: if we've **already built** a version, **open a PR to
-  `RhysSullivan/executor`** with it so he can look. If we build toward this, the
-  natural collaboration is to extend executor's `e2e` substrate upstream (Target,
-  VM, viewer) and contribute the autonomous agent + distiller.
-- **Recommended OpenAgents next step:** decide whether to (a) prototype Phase 1
-  against `openagents.com` using executor as a dependency, then (b) open a PR to
-  upstream executor with the computer-use→distiller loop, and (c) take the call.
+The decision is made: **build this as an owned Khala example flow** demonstrating
+Khala using OpenAgents Cloud VMs/infra. No PR to `executor`.
+
+- **Headline demo (the example flow):** Khala (`openagents/khala`), running in an
+  OpenAgents Cloud VM with real Chrome + a terminal, performs a real task against
+  `openagents.com` (e.g. *log in and run a `/gym/oss` benchmark*, or *verify
+  `/login` works*), then distills the session into a committed black-box e2e
+  scenario — and the playable **video + green run** is the receipt. This single
+  flow showcases Khala-as-agent-platform + Cloud VM isolation + infra + the
+  verified-work/receipt model in one artifact.
+- **Sequencing:** stand up the owned substrate (Target/VM/artifacts, modeled on
+  `executor` as prior art) → give Khala the computer-use toolset in Probe → run
+  the headline demo in a Cloud VM with video → add the session→scenario distiller
+  → multi-OS + hosted runners.
+- **Design partner:** keep the `executor` author in the loop as first
+  customer / potential GitHub Sponsor and take the call when useful, but the
+  deliverable is the owned Khala flow, not an upstream contribution.
 
 ## References
 
