@@ -128,3 +128,13 @@ Issue #6034 now has a generic headless capture CLI:
   `src/testing/headless-pixel.ts` frame driver so CI and agents can capture the
   same fixed frame sequence without wall-clock animation drift.
 - URL captures remain available for manually served `scene:<name>` pages.
+
+Issue #6047 now has a reusable render-liveness gate:
+
+- Each registered scene declares a `renderSignature` next to its capture target.
+- `capture-scene-headless` runs `assertSceneRendered(...)` before reporting
+  success, so a mounted-but-blank scene exits non-zero instead of producing a
+  meaningless green PNG.
+- The pure gate is covered by a deliberate blank-frame rejection test plus a
+  bright-footprint acceptance test in
+  `apps/autopilot-desktop/tests/isolated-scene-render-gate.test.ts`.

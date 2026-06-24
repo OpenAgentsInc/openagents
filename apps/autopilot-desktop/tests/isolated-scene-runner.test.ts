@@ -21,7 +21,10 @@ describe("isolated scene runner registry", () => {
 
     expect(arc?.issueRefs).toContain("github:OpenAgentsInc/openagents#6033")
     expect(pylon?.issueRefs).toContain("github:OpenAgentsInc/openagents#6033")
+    expect(arc?.issueRefs).toContain("github:OpenAgentsInc/openagents#6047")
+    expect(pylon?.issueRefs).toContain("github:OpenAgentsInc/openagents#6047")
     expect(arc?.defaultFrameSteps).toBeGreaterThan(pylon?.defaultFrameSteps ?? 0)
     expect(pylon?.defaultWidth).toBe(960)
+    expect(arc?.renderSignature.minBrightPixels).toBeGreaterThan(0)
   })
 })

@@ -1,6 +1,8 @@
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import type { SceneRenderSignature } from "./render-gate.js"
+
 export type IsolatedSceneName = "verse-arc" | "pylon-network"
 
 export type IsolatedSceneDefinition = Readonly<{
@@ -12,6 +14,7 @@ export type IsolatedSceneDefinition = Readonly<{
   defaultHeight: number
   defaultFrameSteps: number
   defaultFrameDeltaMs: number
+  renderSignature: SceneRenderSignature
   issueRefs: ReadonlyArray<string>
 }>
 
@@ -29,7 +32,16 @@ export const isolatedSceneDefinitions: ReadonlyArray<IsolatedSceneDefinition> = 
     defaultHeight: 540,
     defaultFrameSteps: 120,
     defaultFrameDeltaMs: 16,
-    issueRefs: ["github:OpenAgentsInc/openagents#6033"],
+    renderSignature: {
+      label: "Verse crackling arc bright center-left band",
+      minBrightPixels: 300,
+      minDistinctLumaBuckets: 3,
+      region: { x0: 0.28, y0: 0.22, x1: 0.62, y1: 0.58 },
+    },
+    issueRefs: [
+      "github:OpenAgentsInc/openagents#6033",
+      "github:OpenAgentsInc/openagents#6047",
+    ],
   },
   {
     name: "pylon-network",
@@ -41,7 +53,16 @@ export const isolatedSceneDefinitions: ReadonlyArray<IsolatedSceneDefinition> = 
     defaultHeight: 540,
     defaultFrameSteps: 90,
     defaultFrameDeltaMs: 16,
-    issueRefs: ["github:OpenAgentsInc/openagents#6033"],
+    renderSignature: {
+      label: "Pylon network central station band",
+      minBrightPixels: 500,
+      minDistinctLumaBuckets: 4,
+      region: { x0: 0.18, y0: 0.18, x1: 0.82, y1: 0.82 },
+    },
+    issueRefs: [
+      "github:OpenAgentsInc/openagents#6033",
+      "github:OpenAgentsInc/openagents#6047",
+    ],
   },
 ]
 

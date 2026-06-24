@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import { chromium } from "playwright"
 
 import {
+  decodePng,
   renderVisualizationAndProbe,
   resolveChromePathOrNull,
 } from "../src/testing/headless-pixel.js"
@@ -12,6 +13,10 @@ import {
   parseSceneCaptureArgs,
   type SceneCaptureTarget,
 } from "./isolated-scenes/capture-target.js"
+import {
+  assertSceneRendered,
+  defaultSceneRenderSignature,
+} from "./isolated-scenes/render-gate.js"
 
 const parsed = parseSceneCaptureArgs(process.argv.slice(2))
 if (!parsed.ok) {
@@ -39,6 +44,7 @@ const captureRegisteredScene = async (
     frameDeltaMs: target.scene.defaultFrameDeltaMs,
     ...(target.pageQuery === undefined ? {} : { pageQuery: target.pageQuery }),
   })
+  const renderGate = assertSceneRendered(result.image, target.scene.renderSignature)
   writeFileSync(target.outputPath, Buffer.from(result.screenshotBase64, "base64"))
   return {
     ok: true,
@@ -47,6 +53,7 @@ const captureRegisteredScene = async (
     outputPath: target.outputPath,
     canvas: { width: result.canvasWidth, height: result.canvasHeight },
     framesAdvanced: result.framesAdvanced,
+    renderGate,
   }
 }
 
@@ -64,13 +71,19 @@ const captureUrl = async (
     })
     const waitMs = Number(process.env.OA_SCENE_CAPTURE_WAIT_MS ?? "1800")
     if (Number.isFinite(waitMs) && waitMs > 0) await page.waitForTimeout(waitMs)
-    await page.screenshot({ path: target.outputPath })
+    const screenshot = await page.screenshot()
+    const renderGate = assertSceneRendered(
+      decodePng(Buffer.from(screenshot)),
+      defaultSceneRenderSignature,
+    )
+    writeFileSync(target.outputPath, screenshot)
     return {
       ok: true,
       kind: target.kind,
       url: target.url,
       outputPath: target.outputPath,
       waitMs,
+      renderGate,
     }
   } finally {
     await browser.close()
@@ -83,3 +96,4 @@ const summary =
     : await captureUrl(parsed.target)
 
 console.log(JSON.stringify(summary, null, 2))
+process.exit(0)
