@@ -12,9 +12,11 @@ how-to detail.*
 
 ## The one-sentence version
 
-We let AI agents **pay our Khala inference API per request — no signup, no API
-key** — by answering an unpaid request with an HTTP `402 Payment Required`, taking
-the payment, and then returning the completion.
+We let AI agents **pay our inference API per request — no signup, no API key** —
+by answering an unpaid request with an HTTP `402 Payment Required`, taking the
+payment, and then returning the requested completion. The default direct-sale MPP
+model is `openai/gpt-oss-20b`; `openagents/khala-*` names are reserved for
+OpenAgents-specific Khala capabilities.
 
 ## Why we're doing this
 
@@ -42,7 +44,7 @@ the payment, and then returning the completion.
    here's how to pay (one option per supported rail).
 3. The agent's wallet pays and **retries** the request, attaching proof of
    payment.
-4. We **verify** the proof, run the Khala completion, and return it plus a
+4. We **verify** the proof, run the requested completion, and return it plus a
    **receipt**.
 
 There are three ways to pay (**rails**):
@@ -76,10 +78,11 @@ Two supporting pieces make us *discoverable*:
 
 ## Where it stands right now (2026-06-23)
 
-**Status: all three rails are LIVE on production** (`openagents-autopilot`, latest
-deploy version `271a3720`). The 402 ordering is **lightning → base/usdc → stripe/card**,
-and `/openapi.json` lists **lightning first**. Only the Stripe badge is still pending
-(external crawl).
+**Status: all three rails are LIVE on production** (`openagents-autopilot`). The
+402 ordering is **lightning → base/usdc → stripe/card**, and `/openapi.json`
+lists **lightning first**. The primary advisory model is now
+`openai/gpt-oss-20b`; Khala model ids remain sellable only when the request wants
+Khala-specific behavior. Only the Stripe badge is still pending (external crawl).
 
 - ✅ **Live: Lightning — and it leads.** It mints a real mainnet BOLT11 via **Spark**
   (`@breeztech/breez-sdk-spark`, **primary**) through the existing **`MDK_TREASURY`
@@ -93,7 +96,8 @@ and `/openapi.json` lists **lightning first**. Only the Stripe badge is still pe
 - ✅ **Live in production:** the USDC (crypto) and card rails. An unpaid request
   gets a real `402` with a deposit address; `/openapi.json` advertises the offers.
   The full crypto pay loop (pay → verify → completion → receipt → credit) was
-  proven end-to-end on staging.
+  proven end-to-end on staging, and the default pay-loop smoke now targets
+  `openai/gpt-oss-20b`.
 - ⏳ **The badge:** everything on our side is done; it now depends on Stripe's
   crawler indexing `/openapi.json`, which is **asynchronous (up to ~24h)**. A
   background watch re-checks the directory every 30 min and will announce the

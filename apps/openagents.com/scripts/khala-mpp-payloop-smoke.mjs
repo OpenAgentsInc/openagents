@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-// Khala MPP crypto pay-loop END-TO-END smoke (EPIC #6049).
+// OpenAgents MPP crypto pay-loop END-TO-END smoke (EPIC #6049 / #6169).
 //
 // This is the FULL pay-loop proof, distinct from the inert/402-only
 // `khala-billing-mpp-proof-smoke.mjs`: it actually drives a payment to
-// settlement and asserts a served Khala completion. It is the proof we run
+// settlement and asserts a served OpenAI-compatible completion. It is the proof we run
 // against an ARMED staging endpoint with a TEST Stripe key BEFORE we trust the
 // MPP endpoint with real money.
 //
@@ -254,7 +254,7 @@ export const parseArgs = argv => {
   const options = {
     baseUrl: DEFAULT_BASE,
     stripeTestKey: process.env.KHALA_MPP_PAYLOOP_STRIPE_TEST_KEY || '',
-    model: process.env.KHALA_MPP_PAYLOOP_MODEL || 'openagents/khala-mini',
+    model: process.env.KHALA_MPP_PAYLOOP_MODEL || 'openai/gpt-oss-20b',
     settleTimeoutMs: Number(
       process.env.KHALA_MPP_PAYLOOP_SETTLE_TIMEOUT_MS || 60000,
     ),
@@ -282,10 +282,10 @@ export const parseArgs = argv => {
   return options
 }
 
-const HELP = `Khala MPP crypto pay-loop end-to-end smoke
+const HELP = `OpenAgents MPP crypto pay-loop end-to-end smoke
 
-Proves the ARMED MPP endpoint settles a crypto payment and serves a Khala
-completion. Run against STAGING with a TEST Stripe key. Never deploys, never
+Proves the ARMED MPP endpoint settles a crypto payment and serves an
+OpenAI-compatible completion. Run against STAGING with a TEST Stripe key. Never deploys, never
 arms, never sets secrets.
 
 Usage:
@@ -301,7 +301,7 @@ Usage:
 Options:
   --base-url <url>            staging gateway base URL (REQUIRED)
   --stripe-test-key <sk_...>  TEST Stripe secret key for the deposit simulator (REQUIRED)
-  --model <id>                Khala model to quote (default openagents/khala-mini)
+  --model <id>                model to quote (default openai/gpt-oss-20b)
   --settle-timeout-ms <n>     max wait for the simulated deposit to settle (default 60000)
   --json                      print final JSON report
   --help                      show this help
@@ -594,7 +594,7 @@ const runSmoke = async options => {
   }
 
   // STEP 4 — construct the echoed-challenge credential + retry; assert 200 +
-  // Payment-Receipt + a real Khala completion body.
+  // Payment-Receipt + a real OpenAI-compatible completion body.
   const authorization = buildPaymentCredential({
     challenge: crypto.challenge,
     payload: {
@@ -669,7 +669,7 @@ const main = async () => {
       console.log(`${check.status} ${check.name} ${redact(check.details)}`)
     }
     console.log(
-      `${report.ok ? 'PASS' : 'FAIL'} khala MPP crypto pay-loop smoke (${report.summary.failed} failed, ${report.summary.skipped} skipped)`,
+      `${report.ok ? 'PASS' : 'FAIL'} OpenAgents MPP crypto pay-loop smoke (${report.summary.failed} failed, ${report.summary.skipped} skipped)`,
     )
   }
   if (!report.ok) {

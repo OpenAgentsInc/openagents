@@ -145,6 +145,8 @@ describe('MPP discovery document (EPIC #6049 — /openapi.json)', () => {
     }
     const schema = body.content['application/json'].schema
     expect(schema.required).toEqual(['model', 'messages'])
+    const properties = schema.properties as Record<string, Record<string, unknown>>
+    expect(properties.model?.examples).toContain('openai/gpt-oss-20b')
   })
 
   test('HONESTY GATE: armed crypto-only => crypto offers present, NO card offer', () => {
@@ -211,6 +213,7 @@ describe('MPP discovery document (EPIC #6049 — /openapi.json)', () => {
     // 0.01 USDC floor => 10000 base units (6 decimals).
     expect(offers[0]?.amount).toBe('10000')
     expect(/^(0|[1-9][0-9]*)$/.test(offers[0]?.amount as string)).toBe(true)
+    expect(offers[0]?.description).toContain('openai/gpt-oss-20b')
   })
 
   test('serves GET with application/json + public, max-age=300 cache + CORS', async () => {

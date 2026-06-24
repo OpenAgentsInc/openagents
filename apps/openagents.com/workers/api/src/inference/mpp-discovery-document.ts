@@ -1,4 +1,4 @@
-// MPP service-discovery document for Khala (EPIC #6049).
+// MPP service-discovery document for OpenAgents inference (EPIC #6049 / #6169).
 //
 // Serves the OpenAPI 3.1 discovery document the Machine Payments Protocol
 // registries (MPPScan, mpp.dev/services) crawl at `GET /openapi.json` to light
@@ -25,7 +25,13 @@
 
 import { Effect } from 'effect'
 
-import { isKhalaModel } from './pricing'
+import {
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
+} from './pricing'
 import {
   type MppRail,
   quoteMppCall,
@@ -38,10 +44,18 @@ const ORIGIN = 'https://openagents.com'
 // The paid MPP path (mirrors the route registered in index.ts).
 const MPP_PATH = '/mpp/v1/chat/completions'
 
-// The general pay-per-call tier the discovery offers quote against (same default
+// The primary direct-sale tier the discovery offers quote against (same default
 // as the MPP route's DEFAULT_MPP_MODEL). The runtime 402 challenge re-quotes for
 // the requested model and remains authoritative; discovery is advisory.
-const DISCOVERY_MODEL = 'openagents/khala-mini'
+const DISCOVERY_MODEL = HYDRALISK_GPT_OSS_20B_MODEL_ID
+
+const SUPPORTED_MODEL_EXAMPLES: ReadonlyArray<string> = [
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+]
 
 // The crypto networks the MPP route advertises (USDC on each). Mirrors
 // CRYPTO_NETWORKS in the route. Discovery emits one `charge` offer per network.
@@ -89,10 +103,7 @@ export type MppDiscoveryFlags = Readonly<{
 const buildOffers = (
   flags: MppDiscoveryFlags,
 ): ReadonlyArray<PaymentOffer> => {
-  // The discovery model is a known Khala tier; fall back to the default if not.
-  const model = isKhalaModel(DISCOVERY_MODEL)
-    ? DISCOVERY_MODEL
-    : 'openagents/khala-mini'
+  const model = DISCOVERY_MODEL
   const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
   const cryptoAmount = usdcBaseUnits(cryptoQuote.priceUsd)
 
@@ -104,7 +115,7 @@ const buildOffers = (
         {
           amount: String(quoteMppLightningCall({ model }).amountSats),
           currency: 'sat',
-          description: `Pay-per-call Khala chat completion over Lightning (BOLT11; real Bitcoin). Advisory quote for ${model}; the runtime 402 challenge re-quotes the requested model and is authoritative.`,
+          description: `Pay-per-call OpenAI-compatible chat completion over Lightning (BOLT11; real Bitcoin). Advisory quote for ${model}; the runtime 402 challenge re-quotes the requested model and is authoritative.`,
           intent: 'charge' as const,
           method: 'lightning',
         },
@@ -115,7 +126,7 @@ const buildOffers = (
     network => ({
       amount: cryptoAmount,
       currency: 'usdc',
-      description: `Pay-per-call Khala chat completion in USDC on ${network} (x402/MPP). Advisory quote for ${model}; the runtime 402 challenge re-quotes the requested model and is authoritative.`,
+      description: `Pay-per-call OpenAI-compatible chat completion in USDC on ${network} (x402/MPP). Advisory quote for ${model}; the runtime 402 challenge re-quotes the requested model and is authoritative.`,
       intent: 'charge' as const,
       method: network,
     }),
@@ -130,7 +141,7 @@ const buildOffers = (
     // Card/SPT amount in USD cents (smallest denomination of USD).
     amount: String(cardQuote.amountCents),
     currency: 'usd',
-    description: `Pay-per-call Khala chat completion via card (Stripe Shared Payment Token). Advisory quote for ${model}; the runtime 402 challenge is authoritative.`,
+    description: `Pay-per-call OpenAI-compatible chat completion via card (Stripe Shared Payment Token). Advisory quote for ${model}; the runtime 402 challenge is authoritative.`,
     intent: 'charge' as const,
     method: 'stripe',
   }
@@ -146,7 +157,8 @@ const CHAT_COMPLETIONS_REQUEST_SCHEMA = {
     model: {
       type: 'string',
       description:
-        'A Khala model id, e.g. "openagents/khala-mini" or "openagents/khala-code".',
+        'A supported model id. Use "openai/gpt-oss-20b" for raw GPT-OSS 20B; use "openagents/khala-*" only for Khala-specific capabilities.',
+      examples: SUPPORTED_MODEL_EXAMPLES,
     },
     messages: {
       type: 'array',
@@ -167,7 +179,7 @@ const CHAT_COMPLETIONS_REQUEST_SCHEMA = {
 // the mandatory `402` response. Only built when the endpoint is armed.
 const buildPaidPath = (flags: MppDiscoveryFlags) => ({
   post: {
-    summary: 'Khala chat completions (pay-per-call via Machine Payments)',
+    summary: 'OpenAgents chat completions (pay-per-call via Machine Payments)',
     description:
       'OpenAI-compatible Chat Completions, paid per request via the Machine Payments Protocol (MPP) / x402. A request with no payment credential returns 402 with a payment challenge; a verified credential runs the completion and returns it with a usage receipt.',
     operationId: 'mppChatCompletions',
@@ -202,12 +214,12 @@ export const buildMppDiscoveryDocument = (
   flags: MppDiscoveryFlags,
 ): Record<string, unknown> => {
   const paths: Record<string, unknown> = {
-    // The free, keyed Khala endpoint is always described (no payment offers, no
+    // The free, keyed inference endpoint is always described (no payment offers, no
     // 402 advertised — it is keyed/credit-metered, not MPP-payable). This lets a
     // registry see the service surface even before the paid rail is armed.
     '/v1/chat/completions': {
       post: {
-        summary: 'Khala chat completions (keyed / credit-metered)',
+        summary: 'OpenAgents chat completions (keyed / credit-metered)',
         description:
           'OpenAI-compatible Chat Completions. Authenticated with an OpenAgents agent key and metered receipt-first against the account balance. For pay-per-call machine payments without a key, see the MPP endpoint when armed.',
         operationId: 'chatCompletions',
@@ -238,7 +250,7 @@ export const buildMppDiscoveryDocument = (
   return {
     openapi: '3.1.0',
     info: {
-      title: 'OpenAgents Khala Inference API',
+      title: 'OpenAgents Inference API',
       version: '1.0.0',
       description:
         'OpenAI-compatible LLM inference, pay-per-call. Machine-payable (MPP / x402) when the paid endpoint is armed.',

@@ -43,7 +43,14 @@ import {
   handleChatCompletions,
   resolveRequestedModel,
 } from '../chat-completions-routes'
-import { isKhalaModel } from '../pricing'
+import {
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
+  isKhalaModel,
+} from '../pricing'
 import {
   type MppCreditGrantOutcome,
   mintLightningCredits,
@@ -74,9 +81,18 @@ import {
   retrievePaymentIntent,
 } from './stripe-mpp-client'
 
-// Default model + crypto networks the endpoint quotes for. khala-mini is the
-// general pay-per-call tier.
-const DEFAULT_MPP_MODEL = 'openagents/khala-mini'
+// Default model + crypto networks the endpoint quotes for. GPT-OSS is the raw
+// model sale: Khala names are reserved for OpenAgents-specific capabilities
+// (Blueprint/coordinator/verifier/Pylon), not merely because Khala uses the
+// model.
+const DEFAULT_MPP_MODEL = HYDRALISK_GPT_OSS_20B_MODEL_ID
+export const SUPPORTED_MPP_MODEL_EXAMPLES: ReadonlyArray<string> = [
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+]
 // x402 (Base) + MPP (Solana, Tempo) — all USDC. We advertise all three crypto
 // networks; the agent picks one.
 const CRYPTO_NETWORKS: ReadonlyArray<string> = ['base', 'solana', 'tempo']
@@ -180,14 +196,57 @@ const notConfigured = (reason: string): Response =>
     { status: 503 },
   )
 
-// Resolve the requested model from the body, defaulting to khala-mini, and
-// constrained to Khala models (the MPP endpoint sells Khala). A non-Khala model
-// is coerced to the default so the paywall always quotes a Khala price.
-const resolveMppModel = (rawBody: Record<string, unknown> | undefined): string => {
-  const requested = resolveRequestedModel(
-    typeof rawBody?.model === 'string' ? rawBody.model : undefined,
+export const isMppSellableModel = (model: string): boolean => {
+  const normalized = model.trim().toLowerCase()
+  return (
+    normalized === HYDRALISK_GPT_OSS_20B_MODEL_ID ||
+    isKhalaModel(normalized)
   )
-  return isKhalaModel(requested) ? requested : DEFAULT_MPP_MODEL
+}
+
+const modelDescription = (model: string): string =>
+  model.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID
+    ? `OpenAgents ${HYDRALISK_GPT_OSS_20B_MODEL_ID} pay-per-call`
+    : `OpenAgents Khala ${model} pay-per-call`
+
+const mppProductForModel = (model: string | undefined): string =>
+  model?.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID
+    ? 'openagents_gpt_oss_20b_mpp'
+    : 'openagents_khala_mpp'
+
+type MppModelResolution =
+  | Readonly<{ ok: true; model: string }>
+  | Readonly<{ ok: false; response: Response }>
+
+// Resolve the requested model from the body, defaulting to GPT-OSS, and reject
+// explicit unsupported model ids BEFORE issuing a payment challenge. This avoids
+// silently charging for a different model than the buyer requested.
+const resolveMppModel = (
+  rawBody: Record<string, unknown> | undefined,
+): MppModelResolution => {
+  const rawModel = typeof rawBody?.model === 'string' ? rawBody.model : undefined
+  const trimmed = rawModel?.trim()
+  const model =
+    trimmed === undefined || trimmed === ''
+      ? DEFAULT_MPP_MODEL
+      : resolveRequestedModel(trimmed).trim().toLowerCase()
+
+  if (isMppSellableModel(model)) {
+    return { model, ok: true }
+  }
+
+  return {
+    ok: false,
+    response: noStoreJsonResponse(
+      {
+        error: 'mpp_model_not_supported',
+        model,
+        supported_models: SUPPORTED_MPP_MODEL_EXAMPLES,
+        supported_model_pattern: 'openagents/khala-*',
+      },
+      { status: 400 },
+    ),
+  }
 }
 
 // Build a Lightning charge challenge (draft-lightning-charge-00). amount is in
@@ -230,7 +289,7 @@ const buildLightningChallenge = (
       request: {
         amount: String(input.amountSats),
         currency: 'sat',
-        description: `OpenAgents Khala ${input.model} pay-per-call`,
+        description: modelDescription(input.model),
         methodDetails: {
           invoice: input.bolt11,
           network: input.network,
@@ -294,7 +353,7 @@ const buildChallenges = (
         request: {
           amount: String(input.cryptoAmountCents),
           currency: 'usdc',
-          description: `OpenAgents Khala ${input.model} pay-per-call`,
+          description: modelDescription(input.model),
           network: cryptoNetwork,
           recipient: input.cryptoDeposit?.address,
         },
@@ -309,11 +368,16 @@ const buildChallenges = (
           currency: 'usd',
           expires: input.expires,
           method: 'stripe',
+          opaque: {
+            amount: String(input.cardAmountCents),
+            model: input.model,
+            network: 'stripe',
+          },
           realm: MPP_REALM,
           request: {
             amount: String(input.cardAmountCents),
             currency: 'usd',
-            description: `OpenAgents Khala ${input.model} pay-per-call`,
+            description: modelDescription(input.model),
             methodDetails: {
               networkId: input.cardNetworkProfileId,
               paymentMethodTypes: ['card', 'link'],
@@ -361,7 +425,7 @@ const buildLightningChallengeForQuote = (
     const invoice = yield* mint({
       amountSats: lightningQuote.amountSats,
       correlationRef: `mpp:lightning:${input.model}:${input.newId()}`,
-      description: `OpenAgents Khala ${input.model} pay-per-call`,
+      description: modelDescription(input.model),
     }).pipe(
       // DIAGNOSTIC (#6049): observe WHY a Lightning leg drops in prod tail. The
       // mint cause is the actual drop reason (typed `provider_unavailable` /
@@ -433,7 +497,11 @@ const issueChallenge = (
   Effect.gen(function* () {
     const newId = deps.newId ?? randomUuid
     const nowMs = (deps.nowMs ?? currentEpochMillis)()
-    const model = resolveMppModel(rawBody)
+    const resolution = resolveMppModel(rawBody)
+    if (!resolution.ok) {
+      return resolution.response
+    }
+    const model = resolution.model
     const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
     const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
     const challengeExpiresAt = epochMillisToIsoTimestamp(nowMs + CHALLENGE_TTL_MS)
@@ -458,7 +526,7 @@ const issueChallenge = (
         createCryptoDepositPaymentIntent(stripeDeps, {
           amountCents: cryptoQuote.amountCents,
           idempotencyKey: `mpp:quote:${newId()}`,
-          metadata: { model, product: 'openagents_khala_mpp' },
+          metadata: { model, product: mppProductForModel(model) },
           networks: CRYPTO_NETWORKS,
         }).pipe(
           Effect.map(intent => ({ ok: true as const, intent })),
@@ -714,7 +782,10 @@ const settleAndServe = (
       const charged = yield* createSptChargePaymentIntent(stripeDeps, {
         amountCents: Number(verified.request.amount),
         challengeId: credential.challenge.id,
-        metadata: { model: verified.opaque?.model ?? '', product: 'openagents_khala_mpp' },
+        metadata: {
+          model: verified.opaque?.model ?? '',
+          product: mppProductForModel(verified.opaque?.model),
+        },
         networkProfileId: profileId,
         spt,
       }).pipe(
@@ -888,7 +959,11 @@ export const handleMppChatCompletions = (
     }
 
     // ---- CREDENTIAL PRESENT: verify the HMAC binding FAIL-CLOSED ----
-    const model = resolveMppModel(rawBody)
+    const resolution = resolveMppModel(rawBody)
+    if (!resolution.ok) {
+      return resolution.response
+    }
+    const model = resolution.model
     const cryptoQuote = quoteMppCall({ model, rail: 'crypto' as MppRail })
     const cardQuote = quoteMppCall({ model, rail: 'card' as MppRail })
     const lightningActive = lightningRailActive(deps) !== undefined
@@ -928,6 +1003,22 @@ export const handleMppChatCompletions = (
       // Verification failed => fresh 402 (never serve). Re-issue a challenge so a
       // well-behaved client can retry with a correctly-bound credential.
       const detail = `Payment credential rejected (${verified.reason}). Retry against a fresh challenge.`
+      return yield* issueChallenge(
+        deps,
+        signingSecret,
+        stripeDeps,
+        cardEnabled,
+        rawBody,
+        detail,
+      )
+    }
+
+    if (
+      verified.opaque?.model !== undefined &&
+      verified.opaque.model.trim().toLowerCase() !== model
+    ) {
+      const detail =
+        'Payment credential was issued for a different model. Retry against a fresh challenge.'
       return yield* issueChallenge(
         deps,
         signingSecret,

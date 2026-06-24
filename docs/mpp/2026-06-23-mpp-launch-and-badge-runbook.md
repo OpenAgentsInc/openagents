@@ -1,10 +1,10 @@
-# Khala Machine Payments (MPP) — Launch & Operations Runbook
+# OpenAgents Machine Payments (MPP) — Launch & Operations Runbook
 
 **Date:** 2026-06-23 · **Epic:** [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049)
 
-How the OpenAgents Khala inference API accepts per-call machine payments (MPP /
-x402), how it's armed/rolled back, how to prove it, and how to watch for the
-Stripe Directory **Machine Payments** badge.
+How the OpenAgents inference API accepts per-call machine payments (MPP / x402),
+how it's armed/rolled back, how to prove it, and how to watch for the Stripe
+Directory **Machine Payments** badge.
 
 > Authoritative protocol spec is the local mirror at `docs/reference/mpp/`
 > (paymentauth specs + mpp.dev SDK). The runtime 402 challenge is always
@@ -21,12 +21,17 @@ Stripe Directory **Machine Payments** badge.
 | **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ **LIVE on prod** (unit-tested + fail-closed; no live SPT round-trip yet) |
 | **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` (≤~24h) — our side is complete |
 
-Prod worker: `openagents-autopilot`, **latest deploy version `271a3720`**.
+Prod worker: `openagents-autopilot` (verify current deploy version with
+`npx wrangler deployments list` after each release).
 `POST /api/mpp/v1/chat/completions` (legacy `/mpp/v1/chat/completions` aliases it) →
 `402` with a real BOLT11 + deposit address. **402 offer ordering: lightning → base/usdc
 → stripe/card.** `GET /openapi.json` is live and advertises the offers with **lightning
 first** (`x-service-info categories:["ai"]`). Profile `@openagents` is live (Network ID
 `profile_61Uug9…`); crypto payins enabled (live + test).
+
+**Primary sale model (#6169):** the MPP default is `openai/gpt-oss-20b`, served
+under the raw upstream model id. `openagents/khala-*` ids stay supported only for
+Khala-specific behavior such as Blueprint/coordinator/verifier/Pylon surfaces.
 
 ## 2. Architecture (Worker-native, no Node sidecar)
 
@@ -73,8 +78,7 @@ Set from `apps/openagents.com/workers/api` (prod = no `--env`; staging =
 | `STRIPE_MPP_NETWORK_PROFILE_ID` | var (`profile_…`) | card/SPT networkId; presence enables the card offer |
 | `KHALA_MPP_LIGHTNING_ENABLED` | secret/flag | Lightning rail (Spark mint via the `MDK_TREASURY` container) — set on prod |
 
-All five are **set on prod** (`openagents-autopilot`, latest deploy version
-`271a3720`) — all three rails are LIVE.
+All five are **set on prod** (`openagents-autopilot`) — all three rails are LIVE.
 
 Triple-gate: with `KHALA_MPP_ENABLED` OR `STRIPE_API_KEY` OR
 `KHALA_MPP_SIGNING_SECRET` absent → `503 mpp_not_configured`, never a charge.
@@ -104,6 +108,8 @@ Always deploy from a clean `origin/main` worktree.
   `network`, `token_currency=usdc`, `buyer_wallet`). Testnets aren't auto-detected,
   so the simulate helper is required in sandbox; **prod/mainnet uses real on-chain
   settlement — no simulate**.
+  Default model: `openai/gpt-oss-20b`. Override with
+  `KHALA_MPP_PAYLOOP_MODEL=<model>` only when testing a Khala-specific model.
 
 ## 6. Lightning (LIVE on Spark, leads the 402 — 2026-06-23)
 

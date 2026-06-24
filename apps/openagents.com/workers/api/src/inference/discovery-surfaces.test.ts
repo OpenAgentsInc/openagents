@@ -27,16 +27,17 @@ describe('discovery surfaces (EPIC #6049 Phase 1 — agent discovery)', () => {
     }
   })
 
-  test('llms.txt describes Khala honestly: OpenAI-compatible, pay-per-call, the models', async () => {
+  test('llms.txt describes OpenAgents inference honestly: OpenAI-compatible, pay-per-call, the models', async () => {
     const response = await run(renderDiscoverySurface(get('/llms.txt'), '/llms.txt'))
     const body = await response.text()
     expect(body).toContain('OpenAI-compatible')
     expect(body).toContain('pay-per-call')
+    expect(body).toContain('openai/gpt-oss-20b')
     expect(body).toContain('openagents/khala-mini')
     expect(body).toContain('openagents/khala-code')
     expect(body).toContain('/v1/chat/completions')
-    // Forward-references the MPP endpoint without claiming it is live.
     expect(body).toContain('/mpp/v1/chat/completions')
+    expect(body).toContain('Lightning')
     expect(body.toLowerCase()).toContain('contributor payout')
   })
 

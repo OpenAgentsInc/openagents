@@ -6,7 +6,7 @@ const smoke = await import('./khala-mpp-payloop-smoke.mjs')
 // the decode helpers are exercised against real wire shapes. No network here.
 const b64url = obj => smoke.base64UrlEncode(JSON.stringify(obj))
 
-describe('Khala MPP pay-loop smoke helpers (pure, no network)', () => {
+describe('OpenAgents MPP pay-loop smoke helpers (pure, no network)', () => {
   test('redact scrubs agent, bearer, payment, and Stripe secret-shaped values', () => {
     const cleaned = smoke.redact({
       agent: 'oa_agent_super_secret',
@@ -39,7 +39,7 @@ describe('Khala MPP pay-loop smoke helpers (pure, no network)', () => {
   test('decodeOpaquePaymentIntentId recovers the bound PaymentIntent id', () => {
     const opaque = b64url({
       amount: '1',
-      model: 'openagents/khala-mini',
+      model: 'openai/gpt-oss-20b',
       network: 'base',
       pi: 'pi_3Test123',
     })
@@ -159,6 +159,11 @@ describe('Khala MPP pay-loop smoke helpers (pure, no network)', () => {
     expect(options.settleTimeoutMs).toBe(30000)
     expect(options.json).toBe(true)
     expect(() => smoke.parseArgs(['--wat'])).toThrowError(/Unknown argument/)
+  })
+
+  test('parseArgs defaults the pay-loop model to raw GPT-OSS 20B', () => {
+    const options = smoke.parseArgs([])
+    expect(options.model).toBe('openai/gpt-oss-20b')
   })
 
   test('buildSummary is complete only without failures or skips; ok ignores skips', () => {
