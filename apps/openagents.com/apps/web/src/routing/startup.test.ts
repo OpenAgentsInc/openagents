@@ -698,7 +698,6 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(SiteCheckoutDemoRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
-    expect(routeRequiresAuthBootstrap(LandingRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
     expect(
@@ -716,6 +715,9 @@ describe('startup route policy', () => {
 
   test('fetches auth bootstrap for product routes', () => {
     expect(routeRequiresAuthBootstrap(HomeRoute())).toBe(true)
+    // `/` parses client-side to `Landing`, so the homepage must fetch the
+    // auth bootstrap to reflect a signed-in session in the public header.
+    expect(routeRequiresAuthBootstrap(LandingRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(ChatRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(InviteRoute())).toBe(true)
     expect(routeRequiresAuthBootstrap(OnboardingRoute())).toBe(true)

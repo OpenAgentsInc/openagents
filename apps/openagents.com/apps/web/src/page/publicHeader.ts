@@ -9,8 +9,15 @@ import {
   downloadRouter,
   forumRouter,
   homeRouter,
+  settingsRouter,
 } from '../route'
 import * as Ui from '../ui'
+
+export type PublicHeaderViewer = {
+  readonly displayName: string
+  readonly email: string
+  readonly avatarUrl?: string
+}
 
 export type PublicHeaderAuthState<Message> =
   | {
@@ -18,6 +25,7 @@ export type PublicHeaderAuthState<Message> =
     }
   | {
       readonly _tag: 'LoggedIn'
+      readonly viewer: PublicHeaderViewer
       readonly onLogout: Message
     }
 
@@ -44,6 +52,9 @@ const loginPanelLinkClass =
 
 const loginPanelSecondaryLinkClass =
   'rounded text-base/6 font-semibold text-white/70 hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm/6'
+
+const accountMenuItemClass =
+  'rounded px-2 py-1.5 text-base text-[#f1efe8] transition hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] sm:text-sm'
 
 export type PublicHeaderVariant = 'dark' | 'forum'
 
@@ -175,6 +186,88 @@ const loggedOutLoginPopover = <Message>(
   )
 }
 
+const loggedInAccountMenu = <Message>(
+  viewer: PublicHeaderViewer,
+  onLogout: Message,
+  menuLinkClass: string,
+): Html => {
+  const h = html<Message>()
+
+  return h.details(
+    [h.DataAttribute('account-menu-popover', ''), Ui.className<Message>('relative')],
+    [
+      h.summary(
+        [
+          h.DataAttribute('account-menu-trigger', ''),
+          h.AriaLabel('Account menu'),
+          Ui.className<Message>(
+            'flex cursor-pointer list-none select-none items-center rounded-full focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ffb400] [&::-webkit-details-marker]:hidden',
+          ),
+        ],
+        [
+          Ui.avatar<Message>({
+            name: viewer.displayName || viewer.email,
+            ...(viewer.avatarUrl ? { imageUrl: viewer.avatarUrl } : {}),
+          }),
+        ],
+      ),
+      h.div(
+        [
+          h.DataAttribute('account-menu', ''),
+          h.Role('menu'),
+          Ui.className<Message>(
+            'absolute right-0 z-50 mt-2 grid w-56 max-w-[calc(100vw-2rem)] gap-1 rounded-md border border-white/10 bg-[#010102] p-2 text-left font-mono shadow-xl shadow-black/40',
+          ),
+        ],
+        [
+          h.div(
+            [
+              h.DataAttribute('account-menu-identity', ''),
+              Ui.className<Message>('grid gap-0.5 px-2 py-1.5'),
+            ],
+            [
+              h.p(
+                [Ui.className<Message>('m-0 truncate text-sm text-[#f1efe8]')],
+                [viewer.displayName],
+              ),
+              h.p(
+                [Ui.className<Message>('m-0 truncate text-xs text-white/55')],
+                [viewer.email],
+              ),
+            ],
+          ),
+          h.a(
+            [
+              h.Href(chatRouter()),
+              h.Role('menuitem'),
+              Ui.className<Message>(menuLinkClass),
+            ],
+            ['Workroom'],
+          ),
+          h.a(
+            [
+              h.Href(settingsRouter()),
+              h.Role('menuitem'),
+              Ui.className<Message>(menuLinkClass),
+            ],
+            ['Settings'],
+          ),
+          h.button(
+            [
+              h.Type('button'),
+              h.OnClick(onLogout),
+              h.Role('menuitem'),
+              h.DataAttribute('account-menu-logout', ''),
+              Ui.className<Message>(menuLinkClass),
+            ],
+            ['Log out'],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
   variant: PublicHeaderVariant = 'dark',
@@ -228,17 +321,10 @@ export const view = <Message>(
               ...(isForum ? [forumThemeSelector<Message>()] : []),
               ...(authState._tag === 'LoggedIn'
                 ? [
-                    h.a(
-                      [h.Href(chatRouter()), Ui.className<Message>(linkClass)],
-                      ['Workroom'],
-                    ),
-                    h.button(
-                      [
-                        h.Type('button'),
-                        h.OnClick(authState.onLogout),
-                        Ui.className<Message>(linkClass),
-                      ],
-                      ['Log out'],
+                    loggedInAccountMenu<Message>(
+                      authState.viewer,
+                      authState.onLogout,
+                      accountMenuItemClass,
                     ),
                   ]
                 : [loggedOutLoginPopover(loginHref, linkClass)]),

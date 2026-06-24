@@ -77,14 +77,22 @@ describe('auth bootstrap flags', () => {
     window.history.replaceState({}, '', '/')
   })
 
-  test('does not request the auth session on the root Landing route', async () => {
+  test('requests the auth session on the root Landing route', async () => {
+    // `/` parses client-side to `Landing`; the homepage must fetch the auth
+    // bootstrap so a signed-in session is reflected in the public header.
     window.history.replaceState({}, '', '/')
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
 
     const loadedFlags = await Effect.runPromise(flags)
 
     expect(loadedFlags.maybeAuth).toEqual(Option.none())
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(fetchSpy).toHaveBeenCalledWith('/api/auth/session', {
+      cache: 'no-store',
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    })
   })
 
   test('does not request the auth session on unknown public paths', async () => {

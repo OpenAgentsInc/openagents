@@ -16,6 +16,7 @@ export const LoadedSession = m('LoadedSession', {
 })
 export const SucceededClearSession = m('SucceededClearSession')
 export const FailedClearSession = m('FailedClearSession', { error: S.String })
+export const RequestedLoggedOutLogout = m('RequestedLoggedOutLogout')
 export const GotLoggedOutMessage = m('GotLoggedOutMessage', {
   message: LoggedOut.Message,
 })
@@ -35,6 +36,7 @@ export const Message = S.Union([
   LoadedSession,
   SucceededClearSession,
   FailedClearSession,
+  RequestedLoggedOutLogout,
   GotLoggedOutMessage,
   GotLoggedInMessage,
   GotDemoMessage,

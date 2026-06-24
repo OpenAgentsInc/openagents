@@ -6,6 +6,7 @@ import {
   GotLoggedInMessage,
   GotLoggedOutMessage,
   Message,
+  RequestedLoggedOutLogout,
 } from './message'
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
@@ -22,6 +23,11 @@ import * as Components from './page/components'
 import * as DemoLegal from './page/demoLegal'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
+import type {
+  PublicHeaderAuthState,
+  PublicHeaderViewer,
+} from './page/publicHeader'
+import { Session } from './domain/session'
 import type {
   PublicPylonStats,
   PublicPylonStatsModel,
@@ -587,13 +593,30 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     }
   }
 
-  const authState =
+  const viewerFromSession = (
+    session: Session,
+  ): PublicHeaderViewer => ({
+    displayName: session.name,
+    email: session.email,
+    ...(session.avatarUrl !== undefined && session.avatarUrl !== ''
+      ? { avatarUrl: session.avatarUrl }
+      : {}),
+  })
+
+  const authState: PublicHeaderAuthState<Message> =
     model._tag === 'LoggedIn'
       ? {
           _tag: 'LoggedIn' as const,
+          viewer: viewerFromSession(model.session),
           onLogout: GotLoggedInMessage({ message: LoggedIn.ClickedLogout() }),
         }
-      : { _tag: 'LoggedOut' as const }
+      : model._tag === 'LoggedOut' && Option.isSome(model.viewerSession)
+        ? {
+            _tag: 'LoggedIn' as const,
+            viewer: viewerFromSession(model.viewerSession.value),
+            onLogout: RequestedLoggedOutLogout(),
+          }
+        : { _tag: 'LoggedOut' as const }
 
   if (model.route._tag === 'Docs' || model.route._tag === 'DocsPage') {
     return Docs.view<Message>(model.route, authState)

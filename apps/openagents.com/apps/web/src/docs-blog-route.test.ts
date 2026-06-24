@@ -285,7 +285,10 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).toExist(),
-      Scene.expect(Scene.role('button', { name: 'Log out' })).toExist(),
+      Scene.expect(
+        Scene.selector('[data-account-menu-trigger]'),
+      ).toExist(),
+      Scene.expect(Scene.role('menuitem', { name: 'Log out' })).toExist(),
       Scene.expect(
         Scene.role('navigation', { name: 'OpenAgents navigation' }),
       ).toBeAbsent(),

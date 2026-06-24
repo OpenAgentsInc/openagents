@@ -14,9 +14,11 @@ import {
   GotLoggedInMessage,
   GotLoggedOutMessage,
   LoadedSession,
+  RequestedLoggedOutLogout,
 } from './message'
 import { LoggedIn, LoggedOut } from './model'
 import {
+  ClickedLogout,
   ClickedNewChat,
   SubmittedInviteCode,
   SucceededSkipOnboardingBilling,
@@ -486,5 +488,32 @@ describe('app link routing', () => {
       'FocusChatComposer',
       'RedirectToChat',
     ])
+  })
+  test('logging out from the LoggedOut (public) context clears the session and loads /auth/logout', () => {
+    const [model, commands] = update(
+      LoggedOut.init(HomeRoute(), Option.some(authWithTeam.session)),
+      RequestedLoggedOutLogout(),
+    )
+
+    // Same model, and the SAME reused logout pair the LoggedIn path uses.
+    expect(model._tag).toBe('LoggedOut')
+    expect(commands.map(command => command.name)).toEqual([
+      'ClearSession',
+      'LoadExternal',
+    ])
+    expect(commands[1]?.args).toEqual({ href: '/auth/logout' })
+  })
+
+  test('logging out from the LoggedIn context still fires the ClearSession + /auth/logout pair', () => {
+    const [, commands] = update(
+      LoggedIn.init(ChatRoute(), authWithTeam),
+      GotLoggedInMessage({ message: ClickedLogout() }),
+    )
+
+    expect(commands.map(command => command.name)).toEqual([
+      'ClearSession',
+      'LoadExternal',
+    ])
+    expect(commands[1]?.args).toEqual({ href: '/auth/logout' })
   })
 })

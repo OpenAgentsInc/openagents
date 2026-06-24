@@ -219,7 +219,10 @@ export const init: Runtime.RoutingProgramInit<Model, Message, Flags> = (
         withInitReturn,
         M.tagsExhaustive({
           LoggedOutStartupRoute: resolution => {
-            const model = LoggedOut.init(resolution.route)
+            const model = LoggedOut.init(
+              resolution.route,
+              Option.some(auth.session),
+            )
 
             return [
               model,

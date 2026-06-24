@@ -720,7 +720,11 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: /^\/landing$/,
     examplePaths: ['/landing'],
-    requiresAuthBootstrap: false,
+    // `/` parses client-side to `Landing`, so this drives whether the SPA
+    // fetches `/api/auth/session` on the homepage. Keep `true` so a signed-in
+    // user is reflected in the public header on the landing scene (and any
+    // public route that parses to Landing).
+    requiresAuthBootstrap: true,
     loggedInGate: 'open',
     inLoggedOutUnion: true,
     inLoggedInUnion: false,

@@ -380,6 +380,11 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [LogError({ entries: ['Failed to clear session:', error] })],
       ],
 
+      RequestedLoggedOutLogout: () => [
+        model,
+        [ClearSession(), LoadExternal({ href: '/auth/logout' })],
+      ],
+
       GotLoggedOutMessage: ({ message }) =>
         handleGotLoggedOutMessage(model, message),
 

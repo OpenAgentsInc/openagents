@@ -66,6 +66,7 @@ import * as ClientsPreview from '../clientsPreview'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import { ClickedLogout, ClickedNewChat, Message } from './message'
+import type { PublicHeaderViewer } from '../publicHeader'
 import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
 import { notificationsPanel } from './notifications/view'
@@ -410,6 +411,24 @@ const mobileSidebarView = (model: Model): Html => {
   })
 }
 
+const loggedInPublicHeaderAuthState = (
+  model: Model,
+): {
+  readonly _tag: 'LoggedIn'
+  readonly viewer: PublicHeaderViewer
+  readonly onLogout: ReturnType<typeof ClickedLogout>
+} => ({
+  _tag: 'LoggedIn',
+  viewer: {
+    displayName: model.session.name,
+    email: model.session.email,
+    ...(model.session.avatarUrl !== undefined && model.session.avatarUrl !== ''
+      ? { avatarUrl: model.session.avatarUrl }
+      : {}),
+  },
+  onLogout: ClickedLogout(),
+})
+
 const routeView = (model: Model): Html => {
   return Ui.workroomRouteMain<Message>({
     key: routeKey(model),
@@ -498,45 +517,27 @@ const routeView = (model: Model): Html => {
             ]),
           Forum: route =>
             Ui.workroomScrollableRoute<Message>([
-              Forum.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              Forum.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           ForumForum: route =>
             Ui.workroomScrollableRoute<Message>([
-              Forum.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              Forum.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           ForumTopic: route =>
             Ui.workroomScrollableRoute<Message>([
-              Forum.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              Forum.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           ForumReceipt: route =>
             Ui.workroomScrollableRoute<Message>([
-              Forum.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              Forum.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           SiteCheckoutDemo: route =>
             Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              SiteCheckoutDemo.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           SiteCheckoutDemoReturn: route =>
             Ui.workroomScrollableRoute<Message>([
-              SiteCheckoutDemo.view(route, {
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              SiteCheckoutDemo.view(route, loggedInPublicHeaderAuthState(model)),
             ]),
           ClientsPreview: () =>
             Ui.workroomScrollableRoute<Message>([ClientsPreview.view()]),
@@ -558,10 +559,7 @@ const routeView = (model: Model): Html => {
             ]),
           Activity: () =>
             Ui.workroomScrollableRoute<Message>([
-              Activity.view({
-                _tag: 'LoggedIn',
-                onLogout: ClickedLogout(),
-              }),
+              Activity.view(loggedInPublicHeaderAuthState(model)),
             ]),
           DemoLegal: () =>
             Ui.workroomScrollableRoute<Message>([

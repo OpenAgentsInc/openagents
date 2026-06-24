@@ -3,6 +3,7 @@ import { Option, Schema as S } from 'effect'
 import { ts } from 'foldkit/schema'
 
 import { LoggedOutRoute } from '../../route'
+import { Session } from '../../domain/session'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
 import { Trajectory as AtifTrajectory } from '../trace/atif'
@@ -1261,6 +1262,10 @@ export const Model = ts('LoggedOut', {
   settledFeed: SettledFeedModel,
   shareProjection: ShareProjectionModel,
   trace: TraceModel,
+  // The signed-in viewer (when present) so PUBLIC pages — where a logged-in
+  // user is intentionally kept in the LoggedOut model rather than the LoggedIn
+  // workroom shell — can still reflect the session in the public header.
+  viewerSession: S.Option(Session),
   // True once the Tassadar "Copy Agent Instructions" button has written to the
   // clipboard, so the button can show a "Copied" affirmation.
   copiedAgentInstructions: S.Boolean,
@@ -1270,7 +1275,10 @@ export type Model = typeof Model.Type
 
 // INIT
 
-export const init = (route: LoggedOutRoute): Model =>
+export const init = (
+  route: LoggedOutRoute,
+  viewerSession: Option.Option<Session> = Option.none(),
+): Model =>
   Model({
     route,
     onboarding: initOnboardingModel(),
@@ -1338,6 +1346,7 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'Trace' && route.uuid !== SAMPLE_TRACE_UUID
         ? LoadingTrace({ uuid: route.uuid })
         : IdleTrace(),
+    viewerSession,
     copiedAgentInstructions: false,
   })
 
