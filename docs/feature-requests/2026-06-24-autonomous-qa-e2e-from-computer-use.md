@@ -1,9 +1,11 @@
 # Autonomous QA as a Khala example flow — computer-use agent that writes & runs e2e tests
 
-> **Status:** ✅ **BUILT & SHIPPED — 2026-06-24.** What began as the design
-> exploration below is now live on `main`; every requirement maps to shipped code,
-> a closed issue, and (where user-facing) a live URL — see **§0 — Delivery map**
-> immediately below. The original planning content is preserved unchanged after it.
+> **Status: PARTIALLY BUILT — 2026-06-24. Not done.** A lot landed on `main`
+> (the runner, drivers, distilled tests, OSS bundle, docs), but key pieces are
+> partial, placeholder, or deploy-pending — most importantly the **shareable
+> result surface**, which is being redesigned as an **agent trace** at
+> `/trace/{uuid}` (ATIF) and is **not built**. See **§0** for the honest
+> done / partial / not-done breakdown. Not a product promise or public-claim copy.
 >
 > _(original status line:)_ design exploration + planned **Khala example flow**, 2026-06-24.
 > Not a product promise or public-claim copy. The intent: build this as a
@@ -21,18 +23,27 @@
 > **prior art** for the substrate, and he is a natural **design partner / first
 > customer** for the hosted tier. The build target is an owned Khala example flow.
 
-## 0. STATUS — Delivery map (what we built vs what he asked)
+## 0. STATUS — honest delivery map (done / partial / NOT done)
 
-Built overnight 2026-06-24, all on `main`. Two epics: the original **#6174**
-(Khala autonomous-QA example flow — all children + "Later" items closed) and the
-productization **#6181** (out-ship Factory — all 14 children closed). Live for
-external use:
+A lot landed on `main` overnight 2026-06-24 (epics #6174 + #6181, all child issues
+closed) — **but "issues closed" is not "shipped and finished."** Several pieces are
+partial, placeholder, or deploy-pending. Read this as the honest breakdown, not as
+"all done." Legend: ✅ done + verified · 🟡 partial/placeholder · ❌ not done yet.
 
-- **Webpage:** <https://openagents.com/docs/autonomous-qa>
-- **Copy-paste quickstart:** <https://openagents.com/QA-RUNNER.md>
-- **The flow on a real PR (inline video + committed test):** PR #6197
+**The biggest not-done — the shareable result URL.** What shipped was framed as a
+"chill-eval" at `/pro/evals/<id>`, and that's wrong three ways: (a) the page renders
+committed **fixture data**, not real runs; (b) wrong name — this is an **agent
+trace** (a session record), not an "eval" (a scored benchmark); (c) wrong URL —
+a *shareable* artifact must not live under the `/pro/` operator console. The
+redesign: a generic shareable **agent trace** at
+`https://openagents.com/trace/{uuid}` in **ATIF** format —
+spec'd in [`docs/traces/README.md`](../traces/README.md), **not built yet**. The
+QA process emitting one real ATIF trace + a beautiful render is the current build.
 
-### His requirements → what shipped
+Live + real today: <https://openagents.com/docs/autonomous-qa> ·
+<https://openagents.com/QA-RUNNER.md> · the flow on PR #6197.
+
+### His requirements → status (honest)
 
 | # | He asked for | Delivered | Where |
 |---|---|---|---|
@@ -43,7 +54,7 @@ external use:
 | 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness; terminal/container/native-desktop/firecracker backends across OSes | #6193, #6186, #6199, #6200 |
 | 5 | **OSS + local** | MIT `@openagentsinc/qa-runner` — self-contained bundle, **bring-your-own model, no OpenAgents login** | #6191 |
 | 6 | Video output | Playwright `recordVideo` + a data-driven ffmpeg **compose** layer (title/verdict cards) | #6187 |
-| 7 | "Chill evals" — compare agents across MCP/config changes | Variant-comparison runner → `/pro/evals/<id>` page → PR-linkable URL | #6183, #6184 |
+| 7 | "Chill evals" — compare agents across MCP/config changes | 🟡 the comparison **runner** computes real results — but the **shareable surface is NOT done**: `/pro/evals` renders fixtures, and it's being redesigned as a shareable **agent trace** at `/trace/{uuid}` (ATIF), see [`docs/traces`](../traces/README.md) | #6183 runner ✅ / trace surface ❌ |
 | candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | #6193 |
 | money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Khala driver on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | #6180, #6196, #6184, #6176/#6200 |
 
@@ -54,14 +65,19 @@ external use:
 - **Run = verified receipt** → governed skill candidate → Blueprint run-record → INERT settlement seam — #6188.
 - Anti-fabrication verify discipline; honest pass/fail everywhere; public docs.
 
-### Honest remainder (one operational deploy step, not code)
-The **production firecracker boot** needs a Linux **KVM host** — the provisioner is
-code-complete + contract-tested in the `cloud` repo (`cloud@7c2610d`), with the
-live boot tracked as a deploy step (cloud runbook **CND-056**). A real Docker
-**container** exec backend provides VM-class isolation today (#6186). And
-`@openagentsinc/qa-runner` is **publish-ready but not yet on npm** — install is
-clone-build / local-tarball until an owner runs the one publish command (the docs
-say so honestly).
+### NOT done yet — be clear about this
+- ❌ **Shareable trace surface.** The `/trace/{uuid}` page + ATIF store + `POST
+  /api/traces` ingest is **unbuilt**; `/pro/evals` is fixtures. This is the
+  headline gap. Spec: [`docs/traces/README.md`](../traces/README.md). In progress:
+  the QA process emitting one real ATIF trace + a beautiful render.
+- ❌ **"Eval"/comparison view** (compare N traces) — depends on the trace surface.
+- 🟡 **Production firecracker boot** — provisioner code is complete + contract-
+  tested (`cloud@7c2610d`), but the live boot needs a Linux **KVM host** (deploy
+  step, cloud runbook **CND-056**). A Docker **container** exec backend gives
+  VM-class isolation today (#6186).
+- 🟡 **npm publish** — `@openagentsinc/qa-runner` is publish-ready but **not on
+  npm**; external install is clone-build / local-tarball until an owner runs the
+  one publish command.
 
 > droid-control / executor comparison and the requirement-by-requirement scorecard
 > that motivated the build are in §5a–§5c below.
