@@ -240,6 +240,91 @@ describe('POST /v1/chat/completions', () => {
     expect(calls).toBe(0)
   })
 
+  // OWNER BALANCE-GATE EXEMPTION (issue #6180). These exercise the route's
+  // `checkOperatorExemption` seam against a real OWN-INFRA Khala request (the
+  // public route only serves Khala). A registered Khala-serving adapter + armed
+  // 120B lane makes the request servable so it reaches the balance gate.
+  const khalaExemptionDeps = (
+    overrides: Partial<ChatCompletionsDeps> = {},
+  ): ChatCompletionsDeps => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'OK',
+          finishReason: 'stop',
+          servedModel: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+          usage: { completionTokens: 2, promptTokens: 9, totalTokens: 11 },
+        })),
+      id: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    return baseDeps({
+      laneArming: hydralisk120bReadyArming,
+      lanePlan: selectAdapterPlan,
+      registry,
+      ...overrides,
+    })
+  }
+  const khalaBody = {
+    messages: [{ content: 'hello world', role: 'user' }],
+    model: KHALA_MODEL_ID,
+  }
+
+  test('zero-balance + operator-exemption => NOT 402 (owner bypass, issue #6180)', async () => {
+    // An EXEMPT owner key on our OWN non-premium lane must reach dispatch with a
+    // zero balance; the operator_credit metering wrapper records the zero-debit
+    // receipt after that. The route only consults the seam BEFORE the 402.
+    const seen: Array<{ accountRef: string; model: string }> = []
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(khalaBody),
+        khalaExemptionDeps({
+          checkOperatorExemption: async (accountRef, model) => {
+            seen.push({ accountRef, model })
+            return { exempt: true }
+          },
+          readAvailableMsat: emptyBalance,
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.model).toBe(KHALA_MODEL_ID)
+  })
+
+  test('zero-balance + NOT exempt => still 402 (paid Khala intact, issue #6180)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(khalaBody),
+        khalaExemptionDeps({
+          checkOperatorExemption: async () => ({ exempt: false }),
+          readAvailableMsat: emptyBalance,
+        }),
+      ),
+    )
+    expect(response.status).toBe(402)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('insufficient_credits')
+  })
+
+  test('funded balance never calls the operator-exemption seam (issue #6180)', async () => {
+    let calls = 0
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(khalaBody),
+        khalaExemptionDeps({
+          checkOperatorExemption: async () => {
+            calls += 1
+            return { exempt: true }
+          },
+        }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(calls).toBe(0)
+  })
+
   test('rejects a malformed body with 400', async () => {
     const response = await run(
       handleChatCompletions(

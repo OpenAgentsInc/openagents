@@ -326,6 +326,24 @@ export type ChatCompletionsDeps = Readonly<{
     accountRef: string,
     model: string,
   ) => Promise<{ readonly eligible: boolean }>
+  // OWNER BALANCE-GATE EXEMPTION (issue #6180). Read-only seam the balance gate
+  // calls BEFORE the 402: if the (account, model) resolves to an EXEMPT verified
+  // owner AND the model is non-premium / own-infra, the zero-balance request is
+  // allowed through (the `withOperatorCredit` metering wrapper then records it as
+  // `operator_credit` — zero credit debit + receipt, no referral). Lets
+  // approved/internal keys test our OWN lanes (e.g. `openagents/khala` on the
+  // hourly Hydralisk box) WITHOUT funding while Khala stays paid for the public.
+  // HARD GUARDRAIL: a PREMIUM model (`claude`/`unknown`) is NEVER exempt — it
+  // still hits the normal balance + premium gates. Default undefined => the gate
+  // is unchanged (a zero-balance account is rejected). Resolution errors return
+  // not-exempt, so the balance gate stands. Wired by the Worker to
+  // `makeOperatorExemptionGate` ONLY when INFERENCE_OPERATOR_EXEMPTION_ENABLED is
+  // on, against the SAME owner-identity resolver the metering wrapper uses so the
+  // bypass and the zero-debit record agree.
+  checkOperatorExemption?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<{ readonly exempt: boolean }>
   // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
   // (no-op), so the inert/flag-off path and the unconfigured-account path are
   // byte-for-byte unchanged. The decisions are computed by the pure deciders in
@@ -1547,7 +1565,21 @@ export const handleChatCompletions = (
           : (yield* Effect.promise(() =>
               deps.checkFreeAllowance!(session.accountRef, requestedModel),
             )).eligible
-      if (!freeAllowed) {
+      // OWNER BALANCE-GATE EXEMPTION (issue #6180). A zero/insufficient-balance
+      // account is ALSO not rejected when the request resolves to an EXEMPT
+      // verified owner on a NON-premium / own-infra model — that request is
+      // recorded by `withOperatorCredit` after dispatch as `operator_credit`
+      // (zero credit debit + receipt, no referral). Lets approved/internal keys
+      // test our OWN lanes (e.g. `openagents/khala` on the hourly Hydralisk box)
+      // WITHOUT funding while Khala stays paid for the public. The seam itself
+      // refuses premium models + unclaimed accounts, so the 402 stands for them.
+      const operatorExempt =
+        deps.checkOperatorExemption === undefined
+          ? false
+          : (yield* Effect.promise(() =>
+              deps.checkOperatorExemption!(session.accountRef, requestedModel),
+            )).exempt
+      if (!freeAllowed && !operatorExempt) {
         return noStoreJsonResponse(
           {
             error: 'insufficient_credits',

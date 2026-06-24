@@ -385,6 +385,11 @@ import {
   checkFreeAllowancePreflight,
   withFreeAllowance,
 } from './inference/inference-free-allowance'
+import {
+  isOperatorExemptionEnabled,
+  makeOperatorExemptionGate,
+  withOperatorCredit,
+} from './inference/inference-operator-exemption'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
@@ -10370,6 +10375,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const resolveOwnerIdentity = makeVerifiedOwnerIdentityResolver(
         ownerClaimStore.readVerifiedPublicIdentityForAgentUserId,
       )
+      // OWNER BALANCE-GATE EXEMPTION (issue #6180). Armed ONLY when
+      // INFERENCE_OPERATOR_EXEMPTION_ENABLED is on (fail-closed, default OFF). When
+      // armed, an EXEMPT verified owner (the `inference_operator_exemption` store)
+      // may call our OWN non-premium lanes (e.g. `openagents/khala`) with a zero
+      // balance: the balance-gate seam admits it and `withOperatorCredit` records
+      // it as `operator_credit` (zero debit + receipt, no referral). A PREMIUM
+      // model is NEVER exempt; Khala stays paid for the public (non-exempt keys
+      // still 402). Inert with the flag off — both seams are simply not wired.
+      const operatorExemptionEnabled = isOperatorExemptionEnabled(
+        env.INFERENCE_OPERATOR_EXEMPTION_ENABLED,
+      )
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -10408,12 +10424,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // it falls through to the normal referral+ledger path. INERT on the
         // flag-off path (the route never reaches the hook) and idempotent per
         // request.
-        meteringHook: withFreeAllowance(
-          withReferralAccrual(
-            makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-            { db: openAgentsDatabase(env) },
+        // OWNER OPERATOR-CREDIT WRAPPER (issue #6180) is the OUTERMOST metering
+        // wrapper, ONLY when armed. For an EXEMPT verified owner on a non-premium
+        // model it records `operator_credit` (zero debit, receipt, no referral)
+        // and short-circuits BEFORE the free-allowance/referral/ledger inner
+        // hooks. Premium served models + non-exempt owners always fall through to
+        // the normal path. Inert (identity) when the flag is off.
+        meteringHook: (
+          baseHook =>
+            operatorExemptionEnabled
+              ? withOperatorCredit(baseHook, {
+                  db: openAgentsDatabase(env),
+                  resolveOwnerIdentity,
+                })
+              : baseHook
+        )(
+          withFreeAllowance(
+            withReferralAccrual(
+              makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+              { db: openAgentsDatabase(env) },
+            ),
+            { db: openAgentsDatabase(env), resolveOwnerIdentity },
           ),
-          { db: openAgentsDatabase(env), resolveOwnerIdentity },
         ),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
@@ -10470,6 +10502,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           db: openAgentsDatabase(env),
           resolveOwnerIdentity,
         }),
+        // OWNER BALANCE-GATE EXEMPTION SEAM (issue #6180). Wired ONLY when armed
+        // (INFERENCE_OPERATOR_EXEMPTION_ENABLED). Lets an EXEMPT verified owner on
+        // a non-premium / own-infra model bypass the 402 with a zero balance; the
+        // `withOperatorCredit` wrapper above then records the request as
+        // `operator_credit`. The gate refuses premium models + unclaimed accounts,
+        // so the 402 stands for them and Khala stays paid for the public. Left
+        // UNWIRED (=> the gate is closed, normal 402) when the flag is off.
+        ...(operatorExemptionEnabled
+          ? {
+              checkOperatorExemption: makeOperatorExemptionGate({
+                db: openAgentsDatabase(env),
+                resolveOwnerIdentity,
+              }),
+            }
+          : {}),
         // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produces an executable
         // artifact, enqueue an out-of-Worker verification job (a node-side runner —
         // Pylon / sandbox / Cloud Run — runs the headless suite and posts the verdict

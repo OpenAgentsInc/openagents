@@ -94,6 +94,17 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // `/v1/chat/completions` route is inert on the live Worker until the
   // inference build lands. Set "true"/"1"/"on" to enable.
   INFERENCE_GATEWAY_ENABLED?: string | undefined
+  // Owner balance-gate EXEMPTION feature flag (issue #6180). Default OFF: the
+  // `/v1/chat/completions` balance gate is unchanged (a zero-balance key 402s),
+  // so Khala stays a paid product for the public. Set "true"/"1"/"on" to ARM the
+  // exemption: an EXEMPT verified owner (the owner/admin-granted
+  // `inference_operator_exemption` store) may then call our OWN non-premium /
+  // own-infra lanes (e.g. `openagents/khala` on the hourly Hydralisk box) with a
+  // zero balance, recorded as `operator_credit` (zero credit debit + receipt, no
+  // referral). A PREMIUM model (`claude`/`unknown`) is NEVER exempt; non-exempt
+  // keys still 402. Granting is an owner/admin action; no owner id/token is ever
+  // logged.
+  INFERENCE_OPERATOR_EXEMPTION_ENABLED?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
   // #6058, EPIC #6056). Default OFF: a streaming completion is NOT persisted into
   // a durable offset log, so the `/v1/chat/completions` stream behaves as today's
