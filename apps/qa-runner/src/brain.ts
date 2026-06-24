@@ -3,10 +3,17 @@
 // Modeled on executor's brains (scripted vs live-inference). Two implementations:
 //   - `scriptedBrain`: a deterministic list of steps. Runs NOW; used by the demo
 //     and by tests. No inference.
-//   - `khalaBrain`: a seam that would drive the session via `openagents/khala`
-//     inference. It is OWNER/FLAG-GATED and INERT by default — it throws "not
-//     armed" unless an injected driver is supplied, so CI never makes a live
-//     inference call. The real driver (Probe runtime + Khala) is wired later.
+//   - `khalaBrain`: the BrainStep-shaped seam for `runQaSession`. It is INERT by
+//     default (throws "not armed" unless an injected driver is supplied) so the
+//     fixed-step pump never makes a live inference call without one.
+//
+// The REAL autonomous Khala driver does NOT use the BrainStep pump: the live
+// ReAct/JSON-action loop needs to feed observations back to the model each turn,
+// which the `next(context) => BrainStep` shape cannot express. That live loop is
+// `runKhalaSession` (see `khala-session.ts` + `khala-driver.ts`): Khala chooses
+// one JSON action per turn, the runner executes it against the #6175
+// computer-use surface, appends the observation, and repeats. `khalaBrain` stays
+// as the simpler injectable seam; `scriptedBrain` stays for deterministic CI.
 //
 // A Brain is just `next(context) => BrainStep | null`. The runner pumps it until
 // it returns null (done), executing each step against the browser surface and
