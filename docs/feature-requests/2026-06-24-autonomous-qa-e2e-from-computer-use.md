@@ -1,11 +1,14 @@
 # Autonomous QA as a Khala example flow — computer-use agent that writes & runs e2e tests
 
-> **Status: TRACE PRIMITIVE SHIPPED + LIVE — 2026-06-24 PM.** The shareable
-> result surface — the biggest not-done in the morning — is now **built, deployed,
-> and proven on prod**: a generic shareable **agent trace** at
-> `https://openagents.com/trace/{uuid}` in **ATIF** format, with ingest/read API,
-> redaction, converters, comparison view, and an authed data-market upload path.
-> **Live demo (this very build session, redacted):**
+> **Status: TRACE PRIMITIVE SHIPPED — 2026-06-24 PM (one render-wire pending).**
+> The shareable result surface — the biggest not-done in the morning — is built and
+> deployed: a generic shareable **agent trace** at `https://openagents.com/trace/{uuid}`
+> in **ATIF**, with ingest/read API, redaction, converters, comparison view, and an
+> authed data-market upload path. **This build session is uploaded + public on prod**
+> (`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793 ATIF steps,
+> redacted). **Honest gap:** the `/trace/{uuid}` *render page* still fetches committed
+> samples (the #6209 live-fetch was deferred), so the page shows not-found for a real
+> uuid until that wire lands — **in flight now**. URL once wired:
 > <https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>. The runner,
 > drivers, distilled tests, OSS bundle, and docs landed earlier. Remaining: cross-app
 > emission (#6214, laning), npm publish (#6217, owner-gated), live-CF execution
@@ -55,9 +58,13 @@ Live + real today: the live trace below ·
 
 The `/trace/{uuid}` primitive is built end-to-end, deployed, and proven on prod.
 
-**Live demo — this entire build session, converted to a redacted public trace:**
-**<https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>** — 793 ATIF
-steps, `agent: claude-code`, `model: openagents/khala`, `visibility: public`.
+**This entire build session, converted to a redacted public trace** — uploaded +
+public on prod (`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793
+ATIF steps, `agent: claude-code`, `model: openagents/khala`, `visibility: public`).
+**Honest gap:** the render page (`/trace/{uuid}`) still reads committed samples
+(#6209 deferred the live fetch), so it shows not-found for a real uuid until the
+live-fetch wire lands — **in flight now**. URL once wired:
+<https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>.
 
 ### What shipped (all on `main`, deployed)
 
