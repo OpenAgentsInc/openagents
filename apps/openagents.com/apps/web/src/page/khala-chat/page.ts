@@ -164,6 +164,15 @@ const composerView = <Message>(
           h.Value(model.composerDraft),
           h.OnInput(value => actions.updatedComposer(value)),
           h.AriaLabel('Message Khala'),
+          // Enter submits the turn; Shift+Enter inserts a newline.
+          h.OnKeyDownPreventDefault((key, modifiers) =>
+            key === 'Enter' &&
+            !modifiers.shiftKey &&
+            !inFlight &&
+            model.composerDraft.trim() !== ''
+              ? Option.some(actions.submittedTurn())
+              : Option.none(),
+          ),
         ],
         submitAttrs,
       }),
