@@ -7220,7 +7220,7 @@ const paths = (): JsonSchema => ({
       operationId: 'ingestAgentTrace',
       summary: 'Upload a public-safe ATIF agent trace',
       description:
-        'Authenticated upload of a public-safe ATIF-v1.7 agent trajectory (#6208, #6221 trace upload data market, epic #6206). Accepts EITHER a registered-agent bearer token OR an authenticated user web session — a signed-in human owns the upload (ownerUserId from the session). Requires an Idempotency-Key. The payload is structurally validated (sequential step_ids, observation/tool-call refs, agent-only fields on agent steps) and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected (only openagents/khala-class public ids allowed). The uploader may grant trainingConsent (default WITHHELD) to use the trace as training/eval data for Khala, with an optional license label. Anti-abuse: a per-user upload rate limit (429) and a per-owner content-digest dedup (409 on a duplicate upload — no double store, no double reward). On success returns the stored { uuid, url, visibility, replay, dataMarket }. The dataMarket reward marker is INERT (eligible-only, amount TBD, owner-gated, default OFF) and moves no money. Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
+        'Authenticated upload of a public-safe ATIF-v1.7 agent trajectory (#6208, #6221 trace upload data market, epic #6206). Accepts EITHER a registered-agent bearer token OR an authenticated user web session — a signed-in human owns the upload (ownerUserId from the session). Requires an Idempotency-Key. The payload is structurally validated (sequential step_ids, observation/tool-call refs, agent-only fields on agent steps) and tripwired: secrets, tokens, wallet/payment material, PII, local paths, and raw/split provider model ids are rejected (only openagents/khala-class public ids allowed). The uploader may grant trainingConsent (default WITHHELD) to use the trace as training/eval data for Khala, with an optional license label. Anti-abuse: a per-user upload rate limit (429) and a per-owner content-digest dedup (409 on a duplicate upload — no double store, no double reward). Size: the request body cap is 8MB and the step cap is 2000; a real full agent session (e.g. a ~793-step Claude Code session ≈ 2.5MB redacted ATIF) uploads cleanly. A trajectory too large to inline in a single D1 value (~1MB) is transparently offloaded to R2 with only a pointer kept in D1, and is rehydrated on read; the read projection is identical. On success returns the stored { uuid, url, visibility, replay, dataMarket }. The dataMarket reward marker is INERT (eligible-only, amount TBD, owner-gated, default OFF) and moves no money. Stores evidence only; grants no payout, settlement, acceptance, or public-claim authority.',
       tags: ['Traces'],
       security: browserSessionOrAgentBearer,
       parameters: [
@@ -7241,6 +7241,11 @@ const paths = (): JsonSchema => ({
         '409': {
           description:
             'Duplicate content digest: this owner already uploaded an identical trace. The existing uuid is returned; it is not stored again and earns no second reward.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '413': {
+          description:
+            'Trajectory exceeds the inline store limit and no large-trace (R2) store is configured. In production large trajectories are offloaded to R2; this is returned only when that path is unavailable.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         '422': {
@@ -7277,7 +7282,7 @@ const paths = (): JsonSchema => ({
       operationId: 'uploadAgentTrace',
       summary: 'Upload a trace (user web session or agent bearer) — data market',
       description:
-        'Explicit user-upload alias for the trace upload data market (#6221). Same ingest path as POST /api/traces: accepts EITHER an authenticated user web session OR a registered-agent bearer token, requires an Idempotency-Key, validates + tripwires the public-safe ATIF payload, captures the uploader\'s training-use consent (default WITHHELD) and optional license, applies the per-user rate limit and per-owner content-digest dedup, and records an INERT (owner-gated, default-OFF, amount-TBD) revshare reward marker. Returns { uuid, url, visibility, replay, dataMarket }. Stores evidence only; moves no money.',
+        'Explicit user-upload alias for the trace upload data market (#6221). Same ingest path as POST /api/traces: accepts EITHER an authenticated user web session OR a registered-agent bearer token, requires an Idempotency-Key, validates + tripwires the public-safe ATIF payload, captures the uploader\'s training-use consent (default WITHHELD) and optional license, applies the per-user rate limit and per-owner content-digest dedup, and records an INERT (owner-gated, default-OFF, amount-TBD) revshare reward marker. The body cap is 8MB; a multi-MB real session trajectory is offloaded to R2 (pointer kept in D1) and rehydrated on read. Returns { uuid, url, visibility, replay, dataMarket }. Stores evidence only; moves no money.',
       tags: ['Traces'],
       security: browserSessionOrAgentBearer,
       parameters: [
@@ -7298,6 +7303,11 @@ const paths = (): JsonSchema => ({
         '409': {
           description:
             'Duplicate content digest: this owner already uploaded an identical trace.',
+          ...jsonContent('#/components/schemas/ErrorResponse'),
+        },
+        '413': {
+          description:
+            'Trajectory exceeds the inline store limit and no large-trace (R2) store is configured.',
           ...jsonContent('#/components/schemas/ErrorResponse'),
         },
         '422': {

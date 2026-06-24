@@ -306,11 +306,21 @@ This is the invariant ledger for `openagents`.
 
 ## Trace Upload Data Market
 
-- The trace upload data market (#6221, epic #6206; migration
-  `0229_agent_trace_data_market.sql`) extends the Agent Trace Store so a
-  signed-in user (web session) or a registered agent (bearer) can upload a
-  trace they OWN. It reuses the same ingest validation, tripwire, visibility,
-  size/step/blob caps, and idempotency as #6208. It must not weaken any of those.
+- The trace upload data market (#6221, epic #6206; migrations
+  `0229_agent_trace_data_market.sql` and `0230_agent_trace_trajectory_r2.sql`)
+  extends the Agent Trace Store so a signed-in user (web session) or a
+  registered agent (bearer) can upload a trace they OWN. It reuses the same
+  ingest validation, tripwire, visibility, step/blob caps, and idempotency as
+  #6208. It must not weaken any of those.
+- A real full agent session is legitimately a few MB, so the ingest body cap is
+  8MB (the step cap stays 2000). A trajectory whose serialized public-safe JSON
+  exceeds the inline D1 ceiling (~768KB, under D1's ~1MB value cap) is offloaded
+  to R2 (`trajectory_r2_key`, the shared ARTIFACTS bucket) and only a pointer +
+  placeholder `{}` is kept in D1; the read path rehydrates it transparently so
+  the public-safe read projection is identical to an inline trace. R2 stores
+  ONLY the same already-tripwired public-safe projection D1 would have held. If
+  no R2 store is configured, an over-inline-ceiling trajectory is REJECTED (413)
+  rather than truncated.
 - `training_consent` is the uploader's EXPLICIT grant to use the trace as
   training/eval data for Khala. It DEFAULTS TO WITHHELD (`false`/`0`): consent
   is never assumed, only captured at upload. `license` is an optional public-safe

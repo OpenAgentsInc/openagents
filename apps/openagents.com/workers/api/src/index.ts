@@ -733,7 +733,10 @@ import {
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
 import { makeTraceStoreRoutes } from './trace-store-routes'
-import { makeD1TraceStore } from './trace-store-d1'
+import {
+  makeD1TraceStore,
+  makeR2TraceTrajectoryBlobStore,
+} from './trace-store-d1'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
   type TeamChatMessage,
@@ -6649,6 +6652,10 @@ const traceStoreRoutes = makeTraceStoreRoutes({
     ),
   isAdminEmail: isOpenAgentsAdminEmail,
   makeStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+  // Large-trajectory R2 offload (#6221): a multi-MB real agent session exceeds
+  // D1's ~1MB value cap, so the public-safe trajectory JSON is stored in the
+  // shared ARTIFACTS bucket with only a pointer kept in D1.
+  trajectoryBlobStore: env => makeR2TraceTrajectoryBlobStore(env.ARTIFACTS),
   requireBrowserSession,
 })
 

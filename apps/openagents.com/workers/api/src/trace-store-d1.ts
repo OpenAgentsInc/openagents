@@ -49,8 +49,17 @@ export type TraceRecord = Readonly<{
   sessionId: string | null
   visibility: TraceVisibility
   stepCount: number
-  /** The public-safe ATIF trajectory projection (already tripwired). */
+  /**
+   * The public-safe ATIF trajectory projection (already tripwired). For large
+   * trajectories this is the placeholder `{}` and the full JSON lives in R2 at
+   * `trajectoryR2Key` (#6221); the route layer rehydrates it on read.
+   */
   trajectory: unknown
+  /**
+   * R2 key for the full public-safe trajectory JSON when it is too large to
+   * inline in a single D1 value (~1MB cap). Null when stored inline (#6221).
+   */
+  trajectoryR2Key: string | null
   blobRefs: ReadonlyArray<TraceBlobRef>
   idempotencyKey: string | null
   /**
@@ -89,6 +98,7 @@ export type CreateTraceInput = Readonly<{
   visibility: TraceVisibility
   stepCount: number
   trajectory: unknown
+  trajectoryR2Key: string | null
   blobRefs: ReadonlyArray<TraceBlobRef>
   idempotencyKey: string | null
   trainingConsent: boolean
@@ -174,6 +184,7 @@ const recordFromRow = (row: Record<string, unknown>): TraceRecord => ({
   visibility: visibilityFromRow(row.visibility),
   stepCount: num(row.step_count),
   trajectory: jsonParseOr<unknown>(row.trajectory_json, {}),
+  trajectoryR2Key: nullableStr(row.trajectory_r2_key),
   blobRefs: jsonParseOr<ReadonlyArray<TraceBlobRef>>(row.blob_refs_json, []),
   idempotencyKey: nullableStr(row.idempotency_key),
   trainingConsent: bool(row.training_consent),
@@ -187,10 +198,12 @@ const recordFromRow = (row: Record<string, unknown>): TraceRecord => ({
 })
 
 // Shared public-safe column projection. Extended by #6221 with the data-market
-// consent/license/digest/reward/upload-source columns (migration 0229).
+// consent/license/digest/reward/upload-source columns (migration 0229) and the
+// large-trajectory R2 pointer (migration 0230).
 const TRACE_COLUMNS = `trace_uuid, owner_user_id, agent_ref, schema_version,
                   trajectory_id, session_id, visibility, step_count,
-                  trajectory_json, blob_refs_json, idempotency_key,
+                  trajectory_json, trajectory_r2_key, blob_refs_json,
+                  idempotency_key,
                   training_consent, license, content_digest,
                   reward_eligible, reward_amount_sats, upload_source,
                   created_at, updated_at`
@@ -253,12 +266,13 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
             `INSERT INTO agent_traces
                (trace_uuid, owner_user_id, agent_ref, schema_version,
                 trajectory_id, session_id, visibility, step_count,
-                trajectory_json, blob_refs_json, idempotency_key,
+                trajectory_json, trajectory_r2_key, blob_refs_json,
+                idempotency_key,
                 training_consent, license, content_digest,
                 reward_eligible, reward_amount_sats, upload_source,
                 created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-                     ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)`,
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)`,
           )
           .bind(
             input.traceUuid,
@@ -270,6 +284,7 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
             input.visibility,
             input.stepCount,
             JSON.stringify(input.trajectory),
+            input.trajectoryR2Key,
             JSON.stringify(input.blobRefs),
             input.idempotencyKey,
             input.trainingConsent ? 1 : 0,
@@ -359,3 +374,46 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
     },
   }
 }
+
+/**
+ * R2-backed store for large public-safe trajectory JSON (#6221). A real agent
+ * session can be a few MB of redacted ATIF, which exceeds D1's ~1MB-per-value
+ * limit, so the trajectory JSON goes to R2 and only a pointer lives in D1.
+ *
+ * R2 holds ONLY the same public-safe, already-tripwired projection D1 would
+ * have stored — never raw prompts, logs, provider payloads, secrets, or PII.
+ */
+export type TraceTrajectoryBlobStore = Readonly<{
+  /** Persist the public-safe trajectory JSON for a trace; returns the R2 key. */
+  putTrajectory: (traceUuid: string, trajectoryJson: string) => Promise<string>
+  /** Read back the trajectory JSON for a stored R2 key (null if missing). */
+  getTrajectory: (r2Key: string) => Promise<string | null>
+}>
+
+/** The canonical R2 key for a trace's offloaded trajectory JSON. */
+export const traceTrajectoryR2Key = (traceUuid: string): string =>
+  `traces/${traceUuid}/trajectory.json`
+
+export const makeR2TraceTrajectoryBlobStore = (
+  bucket: R2Bucket,
+): TraceTrajectoryBlobStore => ({
+  putTrajectory: async (traceUuid, trajectoryJson) => {
+    const key = traceTrajectoryR2Key(traceUuid)
+    try {
+      await bucket.put(key, trajectoryJson, {
+        httpMetadata: { contentType: 'application/json; charset=utf-8' },
+      })
+    } catch (error) {
+      throw traceStoreErrorFromUnknown(error)
+    }
+    return key
+  },
+  getTrajectory: async r2Key => {
+    try {
+      const object = await bucket.get(r2Key)
+      return object === null ? null : await object.text()
+    } catch (error) {
+      throw traceStoreErrorFromUnknown(error)
+    }
+  },
+})

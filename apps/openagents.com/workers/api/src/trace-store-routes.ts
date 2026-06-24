@@ -31,6 +31,7 @@ import {
   type TraceRecord,
   type TraceStore,
   TraceStoreError,
+  type TraceTrajectoryBlobStore,
   type TraceUploadSource,
   traceStoreErrorFromUnknown,
 } from './trace-store-d1'
@@ -65,11 +66,20 @@ type HttpResponse = globalThis.Response
  * Trace Store" + "Trace Upload Data Market"). The revshare marker is INERT.
  */
 
-// Bounded ingest size + per-trajectory step cap (abuse controls, #6212).
+
+// Bounded ingest size + per-trajectory step cap (abuse controls, #6212/#6221).
+// A real full agent session (e.g. a ~793-step Claude Code session ≈ 2.5MB
+// redacted ATIF) is legitimately a few MB, so the body cap is 8MB. The step cap
+// stays the real abuse bound. A trajectory too large to inline in a single D1
+// value (~1MB) is offloaded to R2 with only a pointer kept in D1 (#6221).
 const MAX_INGEST_BODY_BYTES = 8 * 1024 * 1024
 const MAX_STEPS = 2_000
 const MAX_BLOB_REFS = 200
 const OWNER_LIST_LIMIT = 100
+
+// Inline-vs-R2 threshold for the trajectory JSON. D1 caps a single value at
+// ~1MB; we keep a conservative inline ceiling and offload anything larger to R2.
+const MAX_INLINE_TRAJECTORY_BYTES = 768 * 1024
 
 // Per-user upload rate limit (anti-abuse, #6221): at most this many stored
 // traces per owner within the rolling window.
@@ -112,6 +122,13 @@ type TraceStoreRouteDependencies<Bindings, Session extends TraceBrowserSession> 
   Readonly<{
     agentStore: (env: Bindings) => AgentRegistrationStore
     makeStore: (env: Bindings) => TraceStore
+    /**
+     * R2 store for large trajectory JSON (#6221). Optional: when absent, a
+     * trajectory larger than the inline D1 ceiling is rejected (413) instead of
+     * being truncated. When present, large trajectories are offloaded to R2 and
+     * only a pointer is kept in D1.
+     */
+    trajectoryBlobStore?: (env: Bindings) => TraceTrajectoryBlobStore | undefined
     requireBrowserSession: (
       request: Request,
       env: Bindings,
@@ -172,6 +189,11 @@ class TraceDuplicate extends S.TaggedErrorClass<TraceDuplicate>()(
   { uuid: S.String },
 ) {}
 
+class TracePayloadTooLarge extends S.TaggedErrorClass<TracePayloadTooLarge>()(
+  'TracePayloadTooLarge',
+  { reason: S.String },
+) {}
+
 type TraceRouteError =
   | TraceUnauthorized
   | TraceValidationError
@@ -180,6 +202,7 @@ type TraceRouteError =
   | TraceForbidden
   | TraceRateLimited
   | TraceDuplicate
+  | TracePayloadTooLarge
   | TraceStoreError
 
 const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
@@ -213,6 +236,11 @@ const routeErrorResponse = (error: TraceRouteError): HttpResponse =>
         ),
       TraceNotFound: () =>
         noStoreJsonResponse({ error: 'trace_not_found' }, { status: 404 }),
+      TracePayloadTooLarge: error =>
+        noStoreJsonResponse(
+          { error: 'trace_payload_too_large', reason: error.reason },
+          { status: 413 },
+        ),
       TraceValidationError: error =>
         noStoreJsonResponse(
           { error: 'invalid_trace', reason: error.reason },
@@ -552,6 +580,32 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
     const rewardAmountSats = null
 
     const traceUuid = routeMakeId(dependencies)
+
+    // Large-trajectory R2 offload (#6221). D1 caps a single value at ~1MB; a
+    // real full agent session can be a few MB. When the serialized public-safe
+    // trajectory exceeds the inline ceiling, store the JSON in R2 and keep only
+    // a pointer (+ placeholder `{}`) in D1. The trajectory was already tripwired
+    // above, so R2 holds nothing more sensitive than D1 would have.
+    const trajectoryJson = JSON.stringify(trajectory)
+    const trajectoryBytes = new TextEncoder().encode(trajectoryJson).length
+    const blobStore = dependencies.trajectoryBlobStore?.(env)
+
+    let inlineTrajectory: unknown = trajectory
+    let trajectoryR2Key: string | null = null
+    if (trajectoryBytes > MAX_INLINE_TRAJECTORY_BYTES) {
+      if (blobStore === undefined) {
+        return yield* new TracePayloadTooLarge({
+          reason: `Trajectory is ${trajectoryBytes} bytes; the inline store limit is ${MAX_INLINE_TRAJECTORY_BYTES} bytes and no large-trace store is configured.`,
+        })
+      }
+      trajectoryR2Key = yield* Effect.tryPromise({
+        catch: traceStoreErrorFromUnknown,
+        try: () => blobStore.putTrajectory(traceUuid, trajectoryJson),
+      })
+      // D1 keeps a placeholder; the real JSON is rehydrated from R2 on read.
+      inlineTrajectory = {}
+    }
+
     const stored = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
       try: () =>
@@ -564,7 +618,8 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
           sessionId: trajectory.session_id ?? null,
           visibility,
           stepCount: trajectory.steps.length,
-          trajectory,
+          trajectory: inlineTrajectory,
+          trajectoryR2Key,
           blobRefs,
           idempotencyKey,
           trainingConsent,
@@ -605,6 +660,38 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
 // GET /api/traces/{traceRef} — read (visibility-gated)
 // ---------------------------------------------------------------------------
 
+/**
+ * Rehydrate a record's full trajectory from R2 when it was offloaded (#6221).
+ * For inline traces this is a no-op. The public-safe read projection is
+ * identical whether the trajectory lived inline in D1 or in R2.
+ */
+const rehydrateTrajectory = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  env: Bindings,
+  record: TraceRecord,
+): Effect.Effect<TraceRecord, TraceRouteError> =>
+  Effect.gen(function* () {
+    if (record.trajectoryR2Key === null) {
+      return record
+    }
+    const blobStore = dependencies.trajectoryBlobStore?.(env)
+    if (blobStore === undefined) {
+      return record
+    }
+    const json = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => blobStore.getTrajectory(record.trajectoryR2Key as string),
+    })
+    if (json === null || json.trim() === '') {
+      return record
+    }
+    const trajectory = yield* Effect.try({
+      catch: () => new TraceNotFound({}),
+      try: () => parseJsonUnknown(json),
+    }).pipe(Effect.catch(() => Effect.succeed(record.trajectory)))
+    return { ...record, trajectory }
+  })
+
 const routeRead = <Bindings, Session extends TraceBrowserSession>(
   dependencies: TraceStoreRouteDependencies<Bindings, Session>,
   request: Request,
@@ -613,20 +700,23 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
   traceRef: string,
 ): Effect.Effect<HttpResponse, TraceRouteError> =>
   Effect.gen(function* () {
-    const record = yield* Effect.tryPromise({
+    const storedRecord = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
       try: () => dependencies.makeStore(env).readTraceByUuid(traceRef),
     })
 
-    if (record === undefined) {
+    if (storedRecord === undefined) {
       return yield* new TraceNotFound({})
     }
 
     // public + unlisted are readable by anyone with the link (no auth). Only
     // owner_only requires the owning browser session (or an admin).
-    if (record.visibility !== 'owner_only') {
+    if (storedRecord.visibility !== 'owner_only') {
+      const record = yield* rehydrateTrajectory(dependencies, env, storedRecord)
       return noStoreJsonResponse({ trace: publicTraceProjection(record) })
     }
+
+    const record = storedRecord
 
     const session = yield* Effect.tryPromise({
       catch: () => new TraceForbidden({}),
@@ -647,8 +737,9 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
       return yield* new TraceNotFound({})
     }
 
+    const rehydrated = yield* rehydrateTrajectory(dependencies, env, record)
     return dependencies.appendRefreshedSessionCookies(
-      noStoreJsonResponse({ trace: publicTraceProjection(record) }),
+      noStoreJsonResponse({ trace: publicTraceProjection(rehydrated) }),
       session,
     )
   })

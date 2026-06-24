@@ -11,6 +11,7 @@ import type {
   CreateTraceInput,
   TraceRecord,
   TraceStore,
+  TraceTrajectoryBlobStore,
 } from './trace-store-d1'
 
 type Bindings = Record<string, never>
@@ -62,6 +63,7 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
     visibility: input.visibility,
     stepCount: input.stepCount,
     trajectory: input.trajectory,
+    trajectoryR2Key: input.trajectoryR2Key,
     blobRefs: input.blobRefs,
     idempotencyKey: input.idempotencyKey,
     trainingConsent: input.trainingConsent,
@@ -118,6 +120,22 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
 
 type Session = Readonly<{ user: { email?: string; userId: string } }>
 
+// In-memory trajectory blob store double (R2 stand-in for the large-trace path).
+const makeMemoryBlobStore = (): TraceTrajectoryBlobStore & {
+  objects: Map<string, string>
+} => {
+  const objects = new Map<string, string>()
+  return {
+    objects,
+    putTrajectory: (traceUuid, json) => {
+      const key = `traces/${traceUuid}/trajectory.json`
+      objects.set(key, json)
+      return Promise.resolve(key)
+    },
+    getTrajectory: key => Promise.resolve(objects.get(key) ?? null),
+  }
+}
+
 let idCounter = 0
 
 const makeDeps = (options: {
@@ -127,6 +145,7 @@ const makeDeps = (options: {
   adminEmails?: ReadonlyArray<string>
   rewardArmed?: boolean
   uniqueIds?: boolean
+  blobStore?: TraceTrajectoryBlobStore
 }) =>
   makeTraceStoreRoutes<Bindings, Session>({
     agentStore: () => makeAgentStore(options.agentUserId),
@@ -140,6 +159,9 @@ const makeDeps = (options: {
         : 'trace-uuid-fixed',
     nowIso: () => NOW,
     requireBrowserSession: () => Promise.resolve(options.browserSession),
+    ...(options.blobStore === undefined
+      ? {}
+      : { trajectoryBlobStore: () => options.blobStore }),
   })
 
 const cleanTrajectory = () => ({
@@ -540,6 +562,7 @@ describe('trace data market (#6221)', () => {
         visibility: 'unlisted',
         stepCount: 1,
         trajectory: {},
+        trajectoryR2Key: null,
         blobRefs: [],
         idempotencyKey: null,
         trainingConsent: false,
@@ -568,6 +591,109 @@ describe('trace data market (#6221)', () => {
   })
 })
 
+// A public-safe trajectory whose serialized JSON exceeds the ~768KB inline
+// ceiling (a real full agent session is a few MB). Benign repeated prose only,
+// so the tripwire does not fire. Stays under MAX_STEPS (2000).
+const largeTrajectory = () => {
+  const chunk = 'the agent reviewed the code and continued the task. '.repeat(40)
+  const steps = Array.from({ length: 1500 }, (_value, index) => ({
+    step_id: index + 1,
+    source: index % 2 === 0 ? ('user' as const) : ('agent' as const),
+    message: `step ${index + 1}: ${chunk}`,
+  }))
+  return {
+    schema_version: ATIF_PINNED_SCHEMA_VERSION,
+    trajectory_id: 'traj-large',
+    agent: { name: 'Raynor', version: '1.0.0', model_name: 'openagents/khala' },
+    steps,
+  }
+}
+
+describe('large trajectory R2 offload (#6221)', () => {
+  it('offloads a >768KB trajectory to R2 and keeps a pointer + placeholder in D1', async () => {
+    const store = makeMemoryStore()
+    const blobStore = makeMemoryBlobStore()
+    const trajectory = largeTrajectory()
+    const bytes = new TextEncoder().encode(JSON.stringify(trajectory)).length
+    expect(bytes).toBeGreaterThan(768 * 1024)
+
+    const routes = makeDeps({ store, agentUserId: 'agent-1', blobStore })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory, visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(201)
+    const stored = store.rows.get('trace-uuid-fixed')
+    // D1 holds only a pointer + placeholder; R2 holds the real JSON.
+    expect(stored?.trajectoryR2Key).toBe(
+      'traces/trace-uuid-fixed/trajectory.json',
+    )
+    expect(stored?.trajectory).toEqual({})
+    expect(blobStore.objects.has('traces/trace-uuid-fixed/trajectory.json')).toBe(
+      true,
+    )
+  })
+
+  it('rehydrates the full trajectory from R2 on read', async () => {
+    const store = makeMemoryStore()
+    const blobStore = makeMemoryBlobStore()
+    const trajectory = largeTrajectory()
+    const routes = makeDeps({ store, agentUserId: 'agent-1', blobStore })
+    await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory, visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    const read = await run(
+      routes.routeTraceRequest(readRequest('trace-uuid-fixed'), ENV, CTX),
+    )
+    expect(read.status).toBe(200)
+    const json = (await read.json()) as {
+      trace: { trajectory: { steps: ReadonlyArray<unknown> } }
+    }
+    // The read projection is identical to an inline trace: full trajectory back.
+    expect(json.trace.trajectory.steps).toHaveLength(1500)
+  })
+
+  it('413s a too-large trajectory when no R2 store is configured', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({ store, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: largeTrajectory() }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(413)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.error).toBe('trace_payload_too_large')
+    expect(store.rows.size).toBe(0)
+  })
+
+  it('stores a small trajectory inline (no R2 pointer) even when R2 is available', async () => {
+    const store = makeMemoryStore()
+    const blobStore = makeMemoryBlobStore()
+    const routes = makeDeps({ store, agentUserId: 'agent-1', blobStore })
+    const response = await run(
+      routes.routeTraceRequest(
+        ingestRequest({ trajectory: cleanTrajectory() }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(201)
+    const stored = store.rows.get('trace-uuid-fixed')
+    expect(stored?.trajectoryR2Key).toBeNull()
+    expect(blobStore.objects.size).toBe(0)
+  })
+})
+
 const seedTrace = async (
   store: TraceStore,
   visibility: 'public' | 'unlisted' | 'owner_only',
@@ -583,6 +709,7 @@ const seedTrace = async (
     visibility,
     stepCount: 2,
     trajectory: cleanTrajectory(),
+    trajectoryR2Key: null,
     blobRefs: [{ kind: 'video', r2Key: 'traces/uuid/video.mp4' }],
     idempotencyKey: null,
     trainingConsent: true,
@@ -704,6 +831,7 @@ describe('GET /api/traces owner list', () => {
       visibility: 'public',
       stepCount: 1,
       trajectory: {},
+      trajectoryR2Key: null,
       blobRefs: [],
       idempotencyKey: null,
       trainingConsent: false,
