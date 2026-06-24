@@ -98,6 +98,29 @@ trace) are being built now as the first concrete artifact.
 - A pinned public-safe ATIF subset + a TS/Effect-Schema validator in-repo.
 - Visibility/sharing model + retention.
 
+## Data market — upload traces for revshare (trains Khala)
+
+Traces aren't just shareable — they're **sellable training data**. This is the
+OpenAgents **Data Market** direction (Episode 215, `../transcripts/215.md`; plan
+`../transcripts/147.md`): developers have valuable Claude Code / Codex conversations
+on their machines; let them **upload to OpenAgents, get paid (revshare TBD), and the
+corpus trains Khala** (our coding agent). "We pay you more Bitcoin than anybody else."
+
+- **Authenticated upload API** (#6221): a signed-in user / API key uploads a trace
+  (ATIF, or a raw Claude Code/Codex trace converted via #6220), it's **redacted**
+  (#6219), stored + **associated with their user** (#6208), and viewable at
+  `/trace/{uuid}` (#6209) + under their account.
+- **Consent + revshare:** an explicit training-use/licensing flag on upload; revshare/
+  payment stubbed + owner-gated (economics TBD) — no money moves until armed.
+- **Open protocol:** align with **NIP-DS** on Nostr (kind 30404 dataset listing, kind
+  30406 offer, canonical digest, DVM/NIP-90 delivery; see `../nips/README.md`) so
+  traces trade without an OpenAgents product too. The OpenAgents API is near-term;
+  NIP-DS is the open path.
+- Anti-abuse + quality gating (dedup, redaction-verified, spam filter).
+
+Issues: #6221 (upload API + revshare), #6220 (Claude Code/Codex import + converters),
+#6219 (redaction). Part of EPIC #6206.
+
 ## Open questions
 
 - Pin a specific ATIF version + a public-safe required subset; in-repo Effect
