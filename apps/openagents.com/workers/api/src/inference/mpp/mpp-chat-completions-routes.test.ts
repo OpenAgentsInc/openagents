@@ -37,6 +37,7 @@ import {
   type LightningInvoice,
   type MintLightningInvoice,
   LightningInvoiceError,
+  makeFallbackLightningInvoiceIssuer,
 } from './mpp-lightning-invoice'
 import { sha256Hex } from './mpp-lightning-verify'
 import { buildChallenge, type MppChallenge } from './mpp-protocol'
@@ -1592,5 +1593,50 @@ describe('MPP endpoint — Lightning rail (Bitcoin-first)', () => {
     expect(problem.challenges.some(c => c.method === 'lightning')).toBe(false)
     expect(problem.challenges.some(c => c.method === 'base')).toBe(true)
     expect(problem.challenges.some(c => c.method === 'stripe')).toBe(true)
+  })
+
+  test('OUTER GUARD aborts the caller signal when MDK fallback starts after a slow primary', async () => {
+    const db = makeDb()
+    let fallbackSignal: AbortSignal | undefined
+    const primary: MintLightningInvoice = () =>
+      Effect.sleep(Duration.millis(6_000)).pipe(
+        Effect.andThen(
+          Effect.fail(new LightningInvoiceError('provider_unavailable')),
+        ),
+      )
+    const fallback: MintLightningInvoice = input => {
+      fallbackSignal = input.abortSignal
+      return Effect.never
+    }
+    const response = await run(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(
+          handleMppChatCompletions(mppRequest(), {
+            completionDeps: completionDeps(db),
+            db,
+            enabled: true,
+            fetch: lightningQuoteFetch(),
+            lightningEnabled: true,
+            mintLightningInvoice: makeFallbackLightningInvoiceIssuer(
+              primary,
+              fallback,
+            ),
+            newId: () => 'fixed',
+            signingSecret: SIGNING_SECRET,
+            stripeNetworkProfileId: 'profile_test',
+            stripeSecretKey: 'sk_test_x',
+          }),
+        )
+        yield* TestClock.adjust(7_000)
+        return yield* Fiber.join(fiber)
+      }).pipe(Effect.provide(TestClock.layer())),
+    )
+    expect(response.status).toBe(402)
+    expect(fallbackSignal).toBeInstanceOf(AbortSignal)
+    expect(fallbackSignal?.aborted).toBe(true)
+    const wwwAuth = response.headers.get('www-authenticate') ?? ''
+    expect(wwwAuth).not.toContain('method="lightning"')
+    expect(wwwAuth).toContain('method="base"')
+    expect(wwwAuth).toContain('method="stripe"')
   })
 })

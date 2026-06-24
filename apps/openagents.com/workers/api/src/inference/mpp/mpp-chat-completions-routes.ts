@@ -462,51 +462,55 @@ const buildLightningChallengeForQuote = (
   input: Readonly<{ model: string; newId: () => string; challengeExpiresAt: string }>,
 ): Effect.Effect<MppChallenge | undefined, never> =>
   Effect.gen(function* () {
+    const abortController = new AbortController()
     const nowMs = deps.nowMs ?? currentEpochMillis
     const legStartMs = nowMs()
-    const lightningQuote = quoteMppLightningCall({ model: input.model })
-    const invoice = yield* mint({
-      amountSats: lightningQuote.amountSats,
-      correlationRef: `mpp:lightning:${input.model}:${input.newId()}`,
-      description: modelDescription(input.model),
-    }).pipe(
-      // DIAGNOSTIC (#6049): observe WHY a Lightning leg drops in prod tail. The
-      // mint cause is the actual drop reason (typed `provider_unavailable` /
-      // `provider_rejected` / `malformed_invoice`, an interrupt, or the inner
-      // mint timeout). Logged with elapsed ms; carries NO invoice/secret content.
-      Effect.tapCause((cause: Cause.Cause<unknown>) =>
-        Effect.logWarning('mpp_lightning_leg_dropped', {
-          elapsedMs: nowMs() - legStartMs,
-          model: input.model,
-          reason: Cause.pretty(cause).slice(0, 240),
-        }),
-      ),
-    )
-    // Effective expiry = earlier of challenge TTL and invoice BOLT11 expiry
-    // (spec §"Challenge Expiry and Invoice Expiry"). The challenge `expires`
-    // auth-param MUST NOT be later than the invoice expiry.
-    const challengeExpires =
-      invoice.invoiceExpiresAt !== undefined &&
-      Date.parse(invoice.invoiceExpiresAt) <
-        Date.parse(input.challengeExpiresAt)
-        ? invoice.invoiceExpiresAt
-        : input.challengeExpiresAt
-    const challenge = yield* buildLightningChallenge(signingSecret, {
-      amountSats: lightningQuote.amountSats,
-      bolt11: invoice.bolt11,
-      expires: challengeExpires,
-      invoiceExpiresAt: invoice.invoiceExpiresAt,
-      model: input.model,
-      network: invoice.network,
-      paymentHash: invoice.paymentHash,
-    })
-    // DIAGNOSTIC (#6049): a Lightning leg that actually minted + surfaced, with
-    // elapsed ms. NO invoice/secret content.
-    yield* Effect.logInfo('mpp_lightning_leg_surfaced', {
-      elapsedMs: nowMs() - legStartMs,
-      model: input.model,
-    })
-    return challenge
+    return yield* Effect.gen(function* () {
+      const lightningQuote = quoteMppLightningCall({ model: input.model })
+      const invoice = yield* mint({
+        abortSignal: abortController.signal,
+        amountSats: lightningQuote.amountSats,
+        correlationRef: `mpp:lightning:${input.model}:${input.newId()}`,
+        description: modelDescription(input.model),
+      }).pipe(
+        // DIAGNOSTIC (#6049): observe WHY a Lightning leg drops in prod tail. The
+        // mint cause is the actual drop reason (typed `provider_unavailable` /
+        // `provider_rejected` / `malformed_invoice`, an interrupt, or the inner
+        // mint timeout). Logged with elapsed ms; carries NO invoice/secret content.
+        Effect.tapCause((cause: Cause.Cause<unknown>) =>
+          Effect.logWarning('mpp_lightning_leg_dropped', {
+            elapsedMs: nowMs() - legStartMs,
+            model: input.model,
+            reason: Cause.pretty(cause).slice(0, 240),
+          }),
+        ),
+      )
+      // Effective expiry = earlier of challenge TTL and invoice BOLT11 expiry
+      // (spec §"Challenge Expiry and Invoice Expiry"). The challenge `expires`
+      // auth-param MUST NOT be later than the invoice expiry.
+      const challengeExpires =
+        invoice.invoiceExpiresAt !== undefined &&
+        Date.parse(invoice.invoiceExpiresAt) <
+          Date.parse(input.challengeExpiresAt)
+          ? invoice.invoiceExpiresAt
+          : input.challengeExpiresAt
+      const challenge = yield* buildLightningChallenge(signingSecret, {
+        amountSats: lightningQuote.amountSats,
+        bolt11: invoice.bolt11,
+        expires: challengeExpires,
+        invoiceExpiresAt: invoice.invoiceExpiresAt,
+        model: input.model,
+        network: invoice.network,
+        paymentHash: invoice.paymentHash,
+      })
+      // DIAGNOSTIC (#6049): a Lightning leg that actually minted + surfaced, with
+      // elapsed ms. NO invoice/secret content.
+      yield* Effect.logInfo('mpp_lightning_leg_surfaced', {
+        elapsedMs: nowMs() - legStartMs,
+        model: input.model,
+      })
+      return challenge
+    }).pipe(Effect.ensuring(Effect.sync(() => abortController.abort())))
   }).pipe(
     // Outer per-rail safety net: bound the WHOLE leg, then swallow ANY cause
     // (typed error, the timeout's `TimeoutException`, or an interrupt/defect)
