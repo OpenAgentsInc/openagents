@@ -50,6 +50,8 @@ function describeCondition(condition: WaitForCondition): string {
   switch (condition.kind) {
     case "url-includes":
       return `url includes ${condition.value}`;
+    case "url-not-includes":
+      return `url does not include ${condition.value}`;
     case "text-visible":
       return `text visible "${condition.value}"`;
     case "selector-visible":

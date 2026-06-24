@@ -10,6 +10,7 @@
 
 export type WaitForCondition =
   | { readonly kind: "url-includes"; readonly value: string }
+  | { readonly kind: "url-not-includes"; readonly value: string }
   | { readonly kind: "text-visible"; readonly value: string }
   | { readonly kind: "selector-visible"; readonly selector: string };
 

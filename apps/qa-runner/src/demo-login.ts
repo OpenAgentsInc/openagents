@@ -54,8 +54,18 @@ function parseArgs(argv: ReadonlyArray<string>) {
 function demoSteps(): ReadonlyArray<BrainStep> {
   return [
     ...loginRegressionSteps(),
-    // Second step: /gym/oss must redirect to "/" when logged out.
+    // Second step: /gym/oss must redirect to "/" when logged out. The redirect
+    // is client-side (the SPA boots at /gym/oss then navigates away once the
+    // logged-out admin gate resolves), so WAIT on the URL leaving /gym/oss
+    // before asserting — never assert on the transient pre-redirect URL, and
+    // screenshot only after it settles so the frame shows the result, not a
+    // blank mid-redirect page.
     { kind: "navigate", url: "/gym/oss", label: "open /gym/oss (logged out)" },
+    {
+      kind: "wait-for",
+      condition: { kind: "url-not-includes", value: "/gym/oss" },
+      label: "wait for /gym/oss admin-gate redirect to settle",
+    },
     { kind: "screenshot", label: "gym-oss-redirect" },
     {
       kind: "assert",

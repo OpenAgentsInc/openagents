@@ -93,6 +93,9 @@ export async function acquirePlaywrightBrowser(
           case "url-includes":
             await pwPage.waitForURL((u) => u.toString().includes(condition.value), { timeout });
             return true;
+          case "url-not-includes":
+            await pwPage.waitForURL((u) => !u.toString().includes(condition.value), { timeout });
+            return true;
           case "text-visible":
             await pwPage.getByText(condition.value).first().waitFor({ state: "visible", timeout });
             return true;
