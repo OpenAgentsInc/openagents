@@ -34,6 +34,8 @@ const resolveChromePath = (): string => {
 const wait = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms))
 
+const cdpPageTargetTimeoutMs = 30_000
+
 const getFreePort = (): Promise<number> =>
   new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -122,7 +124,7 @@ const connectCdp = (webSocketUrl: string): Promise<CdpClient> =>
 const waitForPageWebSocket = async (
   debugPort: number,
 ): Promise<string> => {
-  const deadline = Date.now() + 10_000
+  const deadline = Date.now() + cdpPageTargetTimeoutMs
   let lastError: unknown = null
   while (Date.now() < deadline) {
     try {
