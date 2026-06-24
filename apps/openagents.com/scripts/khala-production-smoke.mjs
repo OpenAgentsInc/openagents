@@ -1,0 +1,469 @@
+#!/usr/bin/env node
+
+const defaultBaseUrl = 'https://openagents.com'
+const defaultModel = 'openagents/khala'
+const defaultPrompt =
+  'OpenAgents Khala production smoke: answer with exactly READY and no other words.'
+const defaultExpectedSupplyLane = 'fireworks'
+const defaultExpectedWorker = 'fireworks'
+const defaultExpectedServedModelContains = 'deepseek-v4-flash'
+const forbiddenInfrastructureTerms = [
+  'deepseek',
+  'fireworks',
+  'gpt-oss',
+  'hydralisk',
+  'provider',
+  'vllm',
+]
+const defaultForbiddenPublicModelIds = [
+  'accounts/fireworks/models/deepseek-v4-flash',
+  'deepseek-ai/deepseek-v4-flash',
+  'deepseek-v4-flash',
+  'fireworks/deepseek-v4-flash',
+  'gpt-oss-120b',
+  'gpt-oss-20b',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'openagents/khala-code',
+  'openagents/khala-mini',
+  'openagents/khala-oss-20b',
+]
+
+const trimBaseUrl = baseUrl =>
+  String(baseUrl || defaultBaseUrl).replace(/\/+$/, '')
+
+const absoluteUrl = (baseUrl, pathOrUrl) =>
+  new URL(String(pathOrUrl || ''), baseUrl).toString()
+
+const truthy = value =>
+  ['1', 'true', 'yes', 'on'].includes(
+    String(value || '')
+      .trim()
+      .toLowerCase(),
+  )
+
+const assert = (condition, message) => {
+  if (!condition) {
+    throw new Error(message)
+  }
+}
+
+const okStatus = response => response.status >= 200 && response.status < 300
+
+const readJson = async response => {
+  const text = await response.text()
+  try {
+    return text.length === 0 ? null : JSON.parse(text)
+  } catch {
+    return { rawText: text }
+  }
+}
+
+const requestJson = async (fetchImpl, baseUrl, path, init = {}) => {
+  const response = await fetchImpl(absoluteUrl(baseUrl, path), {
+    ...init,
+    headers: {
+      accept: 'application/json',
+      ...(init.headers || {}),
+    },
+  })
+  return { body: await readJson(response), response }
+}
+
+const redact = value => {
+  if (typeof value !== 'string') {
+    return value
+  }
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gu, 'Bearer <redacted>')
+    .replace(/oa_agent_[A-Za-z0-9._~+/=-]+/gu, 'oa_agent_<redacted>')
+    .replace(/sk-[A-Za-z0-9]{8,}/gu, 'sk-<redacted>')
+}
+
+const csv = value =>
+  String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+
+const modelIdsFrom = body =>
+  Array.isArray(body?.data)
+    ? body.data.map(model => model?.id).filter(id => typeof id === 'string')
+    : []
+
+const normalize = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const includesInsensitive = (value, needle) =>
+  normalize(value).includes(normalize(needle))
+
+const forbiddenCatalogIdsFrom = (modelIds, forbiddenIds) => {
+  const forbidden = new Set(forbiddenIds.map(normalize))
+  return modelIds.filter(modelId => forbidden.has(normalize(modelId)))
+}
+
+const parseSseFrames = text =>
+  String(text)
+    .split(/\n\n/u)
+    .flatMap(chunk =>
+      chunk
+        .split(/\n/u)
+        .filter(line => line.startsWith('data: '))
+        .map(line => line.slice('data: '.length).trim()),
+    )
+    .filter(data => data.length > 0 && data !== '[DONE]')
+    .map(data => JSON.parse(data))
+
+const contentFromCompletion = body =>
+  body?.choices?.[0]?.message?.content === undefined
+    ? ''
+    : String(body.choices[0].message.content)
+
+const contentFromSseFrames = frames =>
+  frames
+    .map(frame => frame?.choices?.[0]?.delta?.content)
+    .filter(value => typeof value === 'string')
+    .join('')
+
+const infrastructureLeaks = text => {
+  const lower = String(text || '').toLowerCase()
+  return forbiddenInfrastructureTerms.filter(term => lower.includes(term))
+}
+
+const terminalOpenAgentsFrom = frames => {
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    if (typeof frames[index]?.openagents === 'object') {
+      return frames[index].openagents
+    }
+  }
+  return null
+}
+
+const summarizeOpenAgents = openagents => ({
+  lane: openagents?.lane,
+  receipt: openagents?.receipt,
+  receipt_url: openagents?.receipt_url,
+  requested_model: openagents?.requested_model,
+  served_model: openagents?.served_model,
+  supply_lane: openagents?.supply_lane,
+  worker: openagents?.worker,
+})
+
+const backingMatches = (
+  openagents,
+  {
+    expectedServedModelContains = defaultExpectedServedModelContains,
+    expectedSupplyLane = defaultExpectedSupplyLane,
+    expectedWorker = defaultExpectedWorker,
+    model = defaultModel,
+  } = {},
+) => {
+  if (openagents?.requested_model !== model) {
+    return false
+  }
+  if (expectedSupplyLane && openagents?.supply_lane !== expectedSupplyLane) {
+    return false
+  }
+  if (expectedWorker && openagents?.worker !== expectedWorker) {
+    return false
+  }
+  if (
+    expectedServedModelContains &&
+    !includesInsensitive(openagents?.served_model, expectedServedModelContains)
+  ) {
+    return false
+  }
+  return true
+}
+
+export const parseArgs = (argv, env = process.env) => {
+  const options = {
+    approveLiveSpend:
+      truthy(env.OPENAGENTS_KHALA_SMOKE_APPROVE_LIVE_SPEND) ||
+      truthy(env.KHALA_SMOKE_APPROVE_LIVE_SPEND),
+    baseUrl: env.OPENAGENTS_BASE_URL || defaultBaseUrl,
+    expectedServedModelContains:
+      env.OPENAGENTS_KHALA_EXPECTED_SERVED_MODEL_CONTAINS ||
+      defaultExpectedServedModelContains,
+    expectedSupplyLane:
+      env.OPENAGENTS_KHALA_EXPECTED_SUPPLY_LANE || defaultExpectedSupplyLane,
+    expectedWorker: env.OPENAGENTS_KHALA_EXPECTED_WORKER || defaultExpectedWorker,
+    forbiddenPublicModelIds: [
+      ...defaultForbiddenPublicModelIds,
+      ...csv(env.OPENAGENTS_KHALA_FORBIDDEN_PUBLIC_MODEL_IDS),
+    ],
+    model: env.OPENAGENTS_KHALA_SMOKE_MODEL || defaultModel,
+    prompt: env.OPENAGENTS_KHALA_SMOKE_PROMPT || defaultPrompt,
+    readinessOnly: false,
+    token: env.OPENAGENTS_AGENT_TOKEN || '',
+  }
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index]
+    if (value === '--base-url' || value === '--baseUrl') {
+      options.baseUrl = argv[++index] || options.baseUrl
+    } else if (value === '--model') {
+      options.model = argv[++index] || options.model
+    } else if (value === '--prompt') {
+      options.prompt = argv[++index] || options.prompt
+    } else if (value === '--token') {
+      options.token = argv[++index] || options.token
+    } else if (value === '--expected-supply-lane') {
+      options.expectedSupplyLane = argv[++index] || options.expectedSupplyLane
+    } else if (value === '--expected-worker') {
+      options.expectedWorker = argv[++index] || options.expectedWorker
+    } else if (value === '--expected-served-model-contains') {
+      options.expectedServedModelContains =
+        argv[++index] || options.expectedServedModelContains
+    } else if (value === '--forbid-public-model') {
+      const forbidden = argv[++index]
+      if (forbidden) {
+        options.forbiddenPublicModelIds.push(forbidden)
+      }
+    } else if (value === '--approve-live-spend') {
+      options.approveLiveSpend = true
+    } else if (value === '--readiness-only') {
+      options.readinessOnly = true
+    } else if (value === '--help' || value === '-h') {
+      options.help = true
+    } else {
+      throw new Error(`Unknown argument: ${value}`)
+    }
+  }
+
+  return options
+}
+
+export const usage = () => `Usage:
+  OPENAGENTS_AGENT_TOKEN=oa_agent_... \\
+    node scripts/khala-production-smoke.mjs --approve-live-spend
+
+Options:
+  --base-url <url>                         OpenAgents origin. Defaults to https://openagents.com.
+  --model <model>                          Defaults to openagents/khala.
+  --prompt <text>                          Prompt used for both nonstreaming and streaming calls.
+  --token <token>                          Agent bearer token. Defaults to OPENAGENTS_AGENT_TOKEN.
+  --expected-supply-lane <lane>            Defaults to fireworks.
+  --expected-worker <worker>               Defaults to fireworks.
+  --expected-served-model-contains <text>  Defaults to deepseek-v4-flash.
+  --forbid-public-model <model>            Add a model id that must not appear in /v1/models.
+  --approve-live-spend                     Required before authenticated completion calls.
+  --readiness-only                         Check readiness + public model catalog without spending.
+
+This smoke verifies /v1/gateway/readiness, /v1/models, nonstreaming chat,
+streaming chat, public model stability, usage, receipt/backing evidence, and
+a simple infrastructure-leak guard. It never prints bearer tokens or raw
+completion text.
+`
+
+export const runKhalaProductionSmoke = async ({
+  approveLiveSpend = false,
+  baseUrl = defaultBaseUrl,
+  expectedServedModelContains = defaultExpectedServedModelContains,
+  expectedSupplyLane = defaultExpectedSupplyLane,
+  expectedWorker = defaultExpectedWorker,
+  fetchImpl = globalThis.fetch,
+  forbiddenPublicModelIds = defaultForbiddenPublicModelIds,
+  model = defaultModel,
+  prompt = defaultPrompt,
+  readinessOnly = false,
+  token = '',
+} = {}) => {
+  assert(typeof fetchImpl === 'function', 'A fetch implementation is required.')
+
+  const origin = trimBaseUrl(baseUrl)
+  const checks = []
+  const check = (name, passed, details = {}) => {
+    checks.push({ details, name, passed: Boolean(passed) })
+    assert(passed, `${name} failed`)
+  }
+
+  const readiness = await requestJson(
+    fetchImpl,
+    origin,
+    '/v1/gateway/readiness',
+  )
+  check('readiness_endpoint_200', okStatus(readiness.response), {
+    status: readiness.response.status,
+  })
+  check(
+    'readiness_has_servable_model',
+    Number(readiness.body?.servableModelCount || 0) > 0,
+    {
+      servableModelCount: readiness.body?.servableModelCount,
+      status: readiness.body?.status,
+    },
+  )
+
+  const models = await requestJson(fetchImpl, origin, '/v1/models')
+  const modelIds = modelIdsFrom(models.body)
+  const forbiddenPublicIds = forbiddenCatalogIdsFrom(
+    modelIds,
+    forbiddenPublicModelIds,
+  )
+  check('models_endpoint_200', okStatus(models.response), {
+    status: models.response.status,
+  })
+  check('models_lists_public_khala', modelIds.includes(model), {
+    model,
+    modelCount: modelIds.length,
+  })
+  check('models_public_surface_closed', forbiddenPublicIds.length === 0, {
+    forbiddenPublicIds,
+  })
+
+  if (readinessOnly) {
+    return {
+      checks,
+      model,
+      ok: true,
+      readiness: {
+        servableModelCount: readiness.body?.servableModelCount,
+        status: readiness.body?.status,
+      },
+    }
+  }
+
+  assert(
+    token.trim() !== '',
+    'Missing OPENAGENTS_AGENT_TOKEN or --token for authenticated smoke.',
+  )
+  assert(
+    approveLiveSpend,
+    'Refusing authenticated completion smoke without --approve-live-spend.',
+  )
+
+  const authHeaders = {
+    authorization: `Bearer ${token}`,
+    'content-type': 'application/json',
+  }
+  const backingExpectation = {
+    expectedServedModelContains,
+    expectedSupplyLane,
+    expectedWorker,
+    model,
+  }
+  const chatBody = {
+    messages: [{ content: prompt, role: 'user' }],
+    model,
+  }
+
+  const completion = await requestJson(
+    fetchImpl,
+    origin,
+    '/v1/chat/completions',
+    {
+      body: JSON.stringify({ ...chatBody, stream: false }),
+      headers: authHeaders,
+      method: 'POST',
+    },
+  )
+  check('nonstream_completion_200', okStatus(completion.response), {
+    status: completion.response.status,
+  })
+  check('nonstream_public_model_preserved', completion.body?.model === model, {
+    responseModel: completion.body?.model,
+  })
+  const completionContent = contentFromCompletion(completion.body)
+  check(
+    'nonstream_infrastructure_guard_clean',
+    infrastructureLeaks(completionContent).length === 0,
+  )
+  check(
+    'nonstream_usage_present',
+    Number(completion.body?.usage?.total_tokens || 0) > 0,
+    {
+      totalTokens: completion.body?.usage?.total_tokens,
+    },
+  )
+  check(
+    'nonstream_backing_disclosure_present',
+    backingMatches(completion.body?.openagents, backingExpectation),
+    summarizeOpenAgents(completion.body?.openagents),
+  )
+
+  const streamResponse = await fetchImpl(
+    absoluteUrl(origin, '/v1/chat/completions'),
+    {
+      body: JSON.stringify({ ...chatBody, stream: true }),
+      headers: {
+        accept: 'text/event-stream',
+        ...authHeaders,
+      },
+      method: 'POST',
+    },
+  )
+  const streamText = await streamResponse.text()
+  check('stream_completion_200', okStatus(streamResponse), {
+    status: streamResponse.status,
+  })
+  check('stream_done_seen', streamText.trimEnd().endsWith('data: [DONE]'))
+  const frames = parseSseFrames(streamText)
+  const streamedContent = contentFromSseFrames(frames)
+  const terminalOpenAgents = terminalOpenAgentsFrom(frames)
+  check('stream_frames_present', frames.length > 0, { frames: frames.length })
+  check(
+    'stream_public_model_preserved',
+    terminalOpenAgents?.requested_model === model,
+    summarizeOpenAgents(terminalOpenAgents),
+  )
+  check(
+    'stream_infrastructure_guard_clean',
+    infrastructureLeaks(streamedContent).length === 0,
+  )
+  check(
+    'stream_backing_disclosure_present',
+    backingMatches(terminalOpenAgents, backingExpectation),
+    summarizeOpenAgents(terminalOpenAgents),
+  )
+
+  return {
+    checks,
+    model,
+    nonstream: {
+      openagents: summarizeOpenAgents(completion.body?.openagents),
+      responseId: completion.body?.id,
+      totalTokens: completion.body?.usage?.total_tokens,
+    },
+    ok: true,
+    readiness: {
+      servableModelCount: readiness.body?.servableModelCount,
+      status: readiness.body?.status,
+    },
+    stream: {
+      frameCount: frames.length,
+      openagents: summarizeOpenAgents(terminalOpenAgents),
+    },
+  }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const options = parseArgs(process.argv.slice(2))
+  if (options.help) {
+    console.log(usage())
+  } else {
+    runKhalaProductionSmoke(options)
+      .then(output => {
+        console.log(
+          JSON.stringify(
+            output,
+            (key, value) => {
+              if (key.toLowerCase().includes('token')) {
+                return '<redacted>'
+              }
+              return redact(value)
+            },
+            2,
+          ),
+        )
+      })
+      .catch(error => {
+        console.error(
+          redact(error instanceof Error ? error.message : String(error)),
+        )
+        process.exitCode = 1
+      })
+  }
+}
