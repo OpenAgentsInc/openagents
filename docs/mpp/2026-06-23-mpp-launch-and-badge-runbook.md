@@ -18,7 +18,7 @@ Stripe Directory **Machine Payments** badge.
 |---|---|
 | **Crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **ARMED on prod**, full pay-loop proven on staging |
 | **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ armed on prod (unit-tested + fail-closed; no live SPT round-trip yet) |
-| **⚡ Lightning** (BOLT11, local preimage verify) | ❌ **not live** — must run on **Spark**, not MDK (see §6); MDK-based attempt disarmed |
+| **⚡ Lightning** (BOLT11 via Spark, local preimage verify) | ✅ **LIVE** — Spark primary / MDK fallback; the 402 **leads** with a real mainnet BOLT11 (see §6) |
 | **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` |
 
 Prod worker: `openagents-autopilot`. `POST /mpp/v1/chat/completions` → `402` with
@@ -95,25 +95,34 @@ Always deploy from a clean `origin/main` worktree.
   so the simulate helper is required in sandbox; **prod/mainnet uses real on-chain
   settlement — no simulate**.
 
-## 6. Lightning blocker (as of 2026-06-23)
+## 6. Lightning (LIVE on Spark, leads the 402 — 2026-06-23)
 
-Arming `KHALA_MPP_LIGHTNING_ENABLED` on prod **hung the entire 402 handler**. The
-Lightning leg mints a BOLT11 synchronously via the MDK sidecar `create_checkout`
-(SAT/AMOUNT) with **no client-side timeout** (`Effect.tryPromise` catches throws,
-not hangs) and runs **first** in `issueChallenge`, so a slow/cold sidecar blocks
-crypto+card too. Disarmed → prod recovered. Migrations `0225`/`0226` left applied
-(inert). **Before re-arm:** (1) bounded mint timeout → fail-fast; (2) per-rail
-isolation so one rail can't block others; (3) verify the MDK `create_checkout`/SAT
-mint actually returns a BOLT11 on prod (Forum L402 uses a *different* local-HMAC
-path, so its health does NOT prove this). After (1)+(2), re-arming is safe by
-construction (worst case Lightning is silently suppressed by the honesty gate).
+Lightning is armed on prod and **leads the 402** with a real mainnet BOLT11.
+- **Issuer:** Spark (`@breeztech/breez-sdk-spark`) is primary — the rail mints via the
+  existing **`MDK_TREASURY` container's `/spark/funding-invoice`** (Breez `receivePayment`
+  BOLT11; #6152 added the returned `paymentHash` + a `/spark/received/:hash` confirm). The
+  **MDK sidecar** is the explicit *fallback* issuer only. Verify is local
+  (`sha256(preimage)==paymentHash`). Bounded per-leg timeouts + per-rail isolation (#6149)
+  guarantee a slow/failed Lightning leg only drops Lightning — never hangs the endpoint.
+- **Latency:** ~0.9–2.4s warm (cold first mint after container idle ~5.6s).
+- **Arm:** `KHALA_MPP_LIGHTNING_ENABLED=1` (set on prod) + `KHALA_MPP_ENABLED` + the Stripe
+  key + `KHALA_MPP_SIGNING_SECRET`.
 
-**Rail correction (hard invariant, 2026-06-23):** the timeout + per-rail isolation
-fix landed (PR #6149), so arming can no longer hang. BUT a hard owner invariant
-now requires **Spark (`@breeztech/breez-sdk-spark`) for all agent/MPP payments;
-MDK is checkouts-only** (no offline receives). The current MDK-based Lightning
-issuer therefore stays **disarmed** and must be **rebuilt on Spark** before the
-rail is armed. See `apps/openagents.com/INVARIANTS.md` › Payment Rail Separation.
+> **DEPLOY GOTCHA (this caused a multi-hour saga).** The Spark mint code lives in the
+> `MDK_TREASURY` **container**. Prod deploys default to `--containers-rollout=none` because
+> **the container image build needs Docker Desktop running locally** — if Docker is down,
+> the container can't rebuild, so the running container stays an OLD image (its
+> `/spark/funding-invoice` lacked `paymentHash` → the Spark issuer fail-closed → Lightning
+> silently dropped). **Fix:** start Docker Desktop, then deploy **without**
+> `--containers-rollout=none` (`wrangler deploy --assets ../../apps/web/dist`) so the
+> `MdkTreasuryContainer` image rolls. The wallet derives from `MDK_TREASURY_MNEMONIC` and
+> re-syncs across the rollout — verify treasury balance/health via
+> `GET /api/operator/treasury/status` before and after (custody check). Rolled out at prod
+> version `271a3720`; treasury balance unchanged.
+
+Per the rail invariant (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation):
+Spark is the primary agent/MPP rail (offline receives); MDK is checkouts-only + the
+fallback issuer only.
 
 ## 7. Watching for the Stripe Directory badge
 
