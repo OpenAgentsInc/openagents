@@ -222,6 +222,107 @@ runner already has the brain/backend/target seams to hang it on); and an explici
 "reviewed, typed harness" quality bar as a first-class deliverable, not an
 afterthought.
 
+## 5b. Prior art #2 — Factory `droid-control` + Automated QA (and where we differ)
+
+After the executor exchange, someone from Factory pointed Rhys at **`droid-control`**
+("droid-control is fully OSS"). It is the closest thing to this concept shipped by
+a serious team, so it's worth a hard look. Local clone:
+`projects/repos/factory-plugins/plugins/droid-control` (Factory-AI/factory-plugins).
+There are two related Factory pieces:
+
+- **`droid-control`** (OSS plugin): terminal/browser/desktop automation with three
+  commands — **`/demo`** (polished before/after Remotion videos), **`/verify`** (test
+  a claim as an *investigator* → CONFIRMED/REFUTED/INCONCLUSIVE), **`/qa-test`**
+  (drive a flow → step-level pass/fail table). Architecture: a thin command parses
+  args into **commitments**, an orchestrator routes by *target × stage × artifact*
+  to small **atom skills**, and every workflow flows **capture → compose → verify**.
+  Four drivers: `tuistory` (virtual PTY), `true-input` (real terminal emulator via
+  Wayland/KVM/QEMU), `agent-browser` (Playwright+CDP, web/Electron), `desktop-control`
+  (native via `trycua/cua`). Video via **Remotion** (23 components, 6 presets).
+  Per-OS platform subdocs (linux/macos/windows).
+- **Automated QA** (Factory built-in `/install-qa` + `/qa`, NOT in the OSS repo):
+  generates a `config.yaml` (environments, personas, `path_patterns`→apps,
+  `production: read-only` restrictions), runs diff-scoped per-app sub-skills, posts a
+  PR-comment report, and has **failure learning** (suggest / auto-commit / open-PR).
+
+### What we should LEARN from it (adopt these)
+1. **Commitments → capture→compose→verify, with `verify` checking the artifact
+   against the original commitments.** A command starts as a checklist it must
+   satisfy, not "make something impressive" — an explicit anti-drift guardrail. Our
+   qa-runner should adopt "commitments verified at the end of the run."
+2. **The `/verify` investigator + anti-fabrication framing** ("if the claim is
+   false, that's a valid finding; never stage evidence to match the expected
+   outcome"). This is *exactly* our "verified, not trusted / no fake green / honest
+   FAIL" discipline — independent validation of our thesis. Worth codifying a named
+   `verify` verdict (CONFIRMED/REFUTED/INCONCLUSIVE) in the runner.
+3. **Driver breadth + platform isolation.** Four drivers across web/Electron, PTY,
+   real-terminal, and **native desktop**, with per-OS subdocs — broader surface and
+   OS coverage than our current Chrome+PTY. Generalize our backend abstraction this
+   way (req #4); native-desktop (`trycua/cua`) is the notable add.
+4. **Remotion-grade polished video.** Data-driven props (the droid never writes
+   JSX), before/after side-by-side, title cards, keystroke overlays, presets. Our
+   videos are raw Playwright `recordVideo` (evidence-grade); theirs are demo-grade.
+   A **compose/polish layer** (data-driven, not hand-written) is worth stealing for
+   shareable demos — directly serves requirement #6 and the "send to Rhys" use case.
+5. **Diff-scoped runs + `config.yaml` single source of truth + `production:
+   read-only` restriction + failure learning.** Map the git diff to affected
+   apps/scenarios; treat prod as read-only by policy; feed new failures back. All
+   good ergonomics for our runner and the `/pro` console.
+6. **"UX for droids" context discipline** — load only the atom relevant to the
+   current step (temporal relevance), not one giant prompt. A clean principle for
+   our skills/tools.
+
+### Does it EXACTLY fit what Rhys wants? (scorecard vs §2)
+| Req | droid-control | Note |
+|---|---|---|
+| 1. Real dev tools | ✅ | terminal/browser/desktop drivers |
+| 2. Develop → **distill into committed tests** | ❌ | produces **videos + pass/fail reports**, *not* a checked-in, re-runnable test file. `/qa-test` reports a table; nothing lands in the repo as a regression asset. (Automated QA generates markdown sub-skills — prose flows, still not executable committed tests.) |
+| 3. Pluggable targets (dev/prod) | ✅ | `config.yaml` environments |
+| 4. Cross-OS | ✅✅ | stronger than us — native desktop + real terminal + 3 OSes |
+| 5. OSS + local | ⚠️ | **see caveats below** |
+| 6. Video | ✅✅ | Remotion, polished — stronger than us |
+| 7. **"Chill evals" — compare agents across MCP changes** | ❌ | no variant-comparison/eval mode. `/demo` does before/after of two **branches** (a code change), never before/after of an **MCP/agent config**. Rhys's actual job (MCP-tool author) is exactly this — uncovered. |
+
+**The "OSS + local" caveats (req #5, ⚠️):** the plugin source is public, but
+(a) there is **no LICENSE file** in the repo — "fully OSS" is asserted, not
+licensed; (b) it is **coupled to Factory's `droid` runtime** — the commands are
+`droid` slash-commands and the architecture states "the agent operating the tool
+is also the runtime," so you run it *inside Factory's agent*, not as a standalone
+library; (c) **`agent-browser` is Factory's own CLI** (docs.factory.ai), not a
+public OSS tool; (d) **Remotion requires a paid company license** for orgs >3
+employees. So it's "OSS-ish plugin source, Factory-runtime-locked" — not a
+framework Rhys can drop into his own CI without adopting Factory's agent.
+
+### Where OUR approach has extra benefits (beyond droid-control)
+1. **Distill → a committed, re-runnable e2e test** (req #2, the thing droid-control
+   does NOT do). We emit a video *and* a checked-in executor-style `Target` test
+   that runs in CI forever. Evidence becomes a **regression asset**, not an
+   ephemeral artifact. This is the core differentiator.
+2. **Run = a verified, dereferenceable receipt** tied to the Tassadar verification
+   floor and (later) Bitcoin settlement — runs become an economy (pay-per-run,
+   hosted VMs, author rev-share), not just files. droid-control's evidence is
+   ephemeral.
+3. **Khala as the driver — model- and runtime-agnostic, on our own infra.** Driven
+   by our own model on our own hourly hardware (zero per-token cost; the
+   balance-gate exemption), OpenAI-compatible, not locked to a vendor agent. A real
+   LICENSE, runnable locally or on OpenAgents Cloud VMs without a Factory dependency.
+4. **The "chill evals" / variant-comparison mode** (req #7) — vary the MCP set /
+   tool policy / model and compare. The exact thing droid-control lacks and Rhys
+   most wants.
+5. **The `/pro` hosted operator console** — a product surface to watch runs, review
+   distilled tests, and (later) the capability marketplace; not just a CLI plugin.
+
+### Net
+droid-control **validates the thesis** (evidence-first, investigator/anti-
+fabrication, capture→compose→verify) and is **ahead of us on surface/OS breadth and
+video polish** — we should learn both. But it is **not** what Rhys ultimately wants:
+it doesn't distill into committed tests, has no agent/MCP-change comparison eval,
+and is Factory-runtime-coupled with license caveats. Our edge is committed-test
+distillation, run-as-receipt+settlement, a model/runtime-agnostic own-infra driver,
+chill-evals, and the `/pro` console — while adopting droid-control's
+commitments→verify contract, multi-driver/cross-OS breadth, and Remotion-grade
+compose layer.
+
 ## 6. Proposed architecture (how OpenAgents could build it)
 
 OpenAgents already owns most of the hard parts; the request is largely a
