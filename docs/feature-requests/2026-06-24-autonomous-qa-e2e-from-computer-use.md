@@ -84,6 +84,24 @@ Live + real today: <https://openagents.com/docs/autonomous-qa> ·
   npm**; external install is clone-build / local-tarball until an owner runs the
   one publish command.
 
+### The plan to finish it — EPIC #6206
+
+The not-done above is consolidated into one plan: **shareable agent traces (ATIF)
++ Cloudflare-native execution** — spec [`docs/traces/README.md`](../traces/README.md),
+tracked in **EPIC #6206**:
+
+- #6207 ATIF trace schema + validator (in-repo, public-safe, pinned)
+- #6208 trace store + ingest API (D1 + R2 + `POST /api/traces`)
+- #6209 `/trace/{uuid}` public render page (the shareable surface; not `/pro/`)
+- #6210 qa-runner emits + publishes traces → `/trace/{uuid}` (replaces `/pro/evals` links)
+- #6211 trace comparison view (compare N traces — the real "chill-evals")
+- #6212 visibility / sharing / retention model
+- #6205 execution on **Cloudflare Browser Rendering + Sandbox/Containers** (supersedes firecracker #6200)
+- #6213 Browser-Rendering video (CDP screencast → video)
+- #6214 cross-app trace emission (Khala chat, Autopilot, Pylon)
+- #6215 retire/redirect `/pro/evals` + `/pro/runs` fixtures → `/trace`
+- #6216 receipts reference the trace uuid · #6217 publish `@openagentsinc/qa-runner` to npm
+
 > droid-control / executor comparison and the requirement-by-requirement scorecard
 > that motivated the build are in §5a–§5c below.
 
