@@ -23,7 +23,9 @@ hosted.
 [`executor`](https://github.com/RhysSullivan/executor)) asked for exactly this — an
 OpenDevin-style autonomous-QA agent — and offered to be the first customer / sponsor. We
 built it as an owned example of what Autopilot + Khala can do, studying `executor` as prior
-art (we are not opening a PR on his repo).
+art. **Update (2026-06-24): he has since said the best way to win him as a customer is a PR
+against his repo *showing the product working* — so a demo PR on `executor` is now the
+recommended sales motion (see §1 "Requester clarifications").**
 
 **Status (2026-06-24): shipped + live.** The runner, the real-tool drivers (Chrome /
 terminal / container / native desktop), the test distiller, video output, the OSS package
@@ -152,6 +154,32 @@ Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgent
 > session can be turned into e2e tests as well). You should be able to verify an
 > agent's work **without running anything locally**, purely by looking at the
 > e2e test and its output."
+
+### Requester clarifications (2026-06-24 Q&A)
+
+From a public Q&A with Rhys, three answers that sharpen the spec:
+
+- **The video is just Playwright's webm + terminal control, and the agent auto-attaches it
+  to the PR — not manual.** *"yeah webm of playwright + terminal control, agent auto
+  attaches."* → so the artifact bar is: raw Playwright webm (browser) **plus** the terminal
+  session, **automatically** attached to the PR by the agent. (We have the auto-attach glue
+  via `gh-attach` (#6185); we also compose an mp4 with verdict cards — a superset, but the
+  baseline he expects is the auto-attached webm + terminal.)
+- **You don't have to "trust" the agent — the verification setup makes trust unnecessary.**
+  Asked whether agents are finally good enough for QA: *"with the right verification setup
+  (having them use your real tools) you don't need to trust them since if it looks right it
+  is right (with some caveats obviously but that's what you need to build into the
+  framework)."* → this is exactly our **verified-not-vibes** thesis: real tools + a
+  machine-checkable rubric/replay mean the **artifact is the proof**; "if it looks right it
+  is right" is the framework's job to guarantee, not the reviewer's to assume.
+- **He explicitly wants a PR against his repo — it's the evaluation/sales path.** Asked why
+  anyone would PR against his repo: *"because i'm wanting to evaluate a product to do this so
+  i can pay them and the best way to make me believe in your product is to show it working."*
+  → **This reverses our earlier "we are not opening a PR" stance.** A demo PR on
+  [`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) that runs our
+  autonomous-QA flow against his code and **auto-attaches the webm + terminal video + the
+  distilled e2e test + the verdict/trace** is now the **recommended sales motion** — it's
+  literally how he says he decides whom to pay.
 
 This is **not** "another background coding agent." It is a QA substrate: an agent
 that operates the product the way a developer does — a real browser, a real
