@@ -33,30 +33,33 @@ natural design partner / first customer for the hosted tier.
 > **§1–§9** below. This top section is the living **status / path-to-production /
 > changelog**.
 
-## Current status (2026-06-24)
+## Current status — SHIPPED + LIVE (2026-06-24)
 
-The **shareable agent-trace primitive is built and deployed**; the autonomous-QA
-runner / distiller / OSS bundle landed earlier. The data path is proven on prod —
-this build session itself is uploaded, redacted, and public
-(`GET /api/traces/24c6fea6-b271-46c6-a9a9-bc614440e9ef` → 200, 793 ATIF steps). The
-remaining gaps to a clean end-to-end hosted demo and production are in
-**Path to production-ready** below.
+**EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) is fully closed — every child shipped.** The shareable agent-trace
+primitive is live end-to-end on prod and **this build session renders at its public
+URL** (headless-verified): <https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>
+(793 ATIF steps, redacted). The OSS package is **published to npm**. The only work left
+is a hosted live-CF demo (a one-click owner smoke + one real run) and hardening — see
+**Path to production-ready**.
 
 | Capability | State | Where |
 |---|---|---|
 | ATIF-v1.7 emitter from Autopilot runs (powered by Khala) | ✅ live | [`0e08d2dbaf`](https://github.com/OpenAgentsInc/openagents/commit/0e08d2dbaf) |
 | Trace store + ingest/read API (D1 + R2 offload, `POST`/`GET /api/traces`) | ✅ live | [#6208](https://github.com/OpenAgentsInc/openagents/issues/6208), [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221) |
-| `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ⚠️ deployed but reads **samples** — live-fetch wire **in flight** | [#6209](https://github.com/OpenAgentsInc/openagents/issues/6209), [#6215](https://github.com/OpenAgentsInc/openagents/issues/6215) |
-| `/trace/compare/{ids}` comparison ("chill-evals", done right) | ✅ deployed (samples) | [#6211](https://github.com/OpenAgentsInc/openagents/issues/6211) |
+| `/trace/{uuid}` render page — **fetches the real stored trace** (loading/404, non-sticky, deep links, clamp) | ✅ live | [#6209](https://github.com/OpenAgentsInc/openagents/issues/6209), [#6215](https://github.com/OpenAgentsInc/openagents/issues/6215) |
+| `/trace/compare/{ids}` comparison ("chill-evals", done right) | ✅ live | [#6211](https://github.com/OpenAgentsInc/openagents/issues/6211) |
 | Redaction Effect service (`TraceRedactor`) | ✅ live | [#6219](https://github.com/OpenAgentsInc/openagents/issues/6219) |
 | Claude Code + Codex → ATIF converters | ✅ live | [#6220](https://github.com/OpenAgentsInc/openagents/issues/6220) |
-| `qa trace import` CLI (convert → redact → publish → URL) | ✅ landed | [#6220](https://github.com/OpenAgentsInc/openagents/issues/6220) |
-| qa-runner publishes runs → `/trace/{uuid}` | ✅ landed | [#6210](https://github.com/OpenAgentsInc/openagents/issues/6210) |
+| `qa trace import` CLI (convert → redact → publish → URL) | ✅ live | [#6220](https://github.com/OpenAgentsInc/openagents/issues/6220) |
+| qa-runner publishes runs → `/trace/{uuid}` | ✅ live | [#6210](https://github.com/OpenAgentsInc/openagents/issues/6210) |
 | Data-market upload (authed + training-consent + INERT revshare) | ✅ live | [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221) |
-| Receipts reference the trace uuid as evidence | ✅ done (pending land) | [#6216](https://github.com/OpenAgentsInc/openagents/issues/6216) |
-| Chat session on the Khala gateway → ATIF trace (gateway projection, flag-gated) | ✅ done (pending land) | [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) |
-| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4) | ✅ code landed; live-binding run pending | [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205), [#6213](https://github.com/OpenAgentsInc/openagents/issues/6213) |
+| Receipts reference the trace uuid as evidence | ✅ live | [#6216](https://github.com/OpenAgentsInc/openagents/issues/6216) |
+| Chat session on the Khala gateway → ATIF trace (flag-gated) | ✅ live | [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) |
+| One canonical in-repo ATIF schema/validator/tripwire package (`@openagentsinc/atif`) | ✅ live | [#6207](https://github.com/OpenAgentsInc/openagents/issues/6207) |
+| Single route table — `route-table.ts` derives client router + server allowlist; agreement test | ✅ live | [#6222](https://github.com/OpenAgentsInc/openagents/issues/6222) |
 | Value-based ingest tripwire (4 content-blind false-positives fixed) | ✅ live | see Changelog |
+| CF Browser-Rendering `env.BROWSER` binding + Sandbox backends + screencast→mp4 | ✅ deployed; live managed-Chrome smoke = owner one-click (`NEEDS_OWNER.md`) | [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205), [#6213](https://github.com/OpenAgentsInc/openagents/issues/6213) |
+| OSS on npm: `@openagentsinc/atif@0.1.0` + `@openagentsinc/qa-runner@0.1.0` | ✅ published | [#6217](https://github.com/OpenAgentsInc/openagents/issues/6217), [#6191](https://github.com/OpenAgentsInc/openagents/issues/6191) |
 
 ### His requirements → status (honest)
 
@@ -75,64 +78,59 @@ remaining gaps to a clean end-to-end hosted demo and production are in
 
 ## Path to production-ready
 
-**"Production-ready" for this flow =** a real Autopilot QA run (powered by Khala), executed on **hosted
-infrastructure**, produces a **redacted ATIF trace a third party can open at
-`/trace/{uuid}`**, compare against another, and (optionally) upload their own — with
-**no manual steps and nothing leaking**. The sequenced gaps between here and that:
+**"Production-ready" for this flow =** a real Autopilot QA run (powered by Khala),
+executed on **hosted infrastructure**, produces a **redacted ATIF trace a third party
+can open at `/trace/{uuid}`**, compare against another, and (optionally) upload their
+own — with **no manual steps and nothing leaking**. Status of the gaps:
 
-1. **[BLOCKING] Render page must fetch the live trace.** `/trace/{uuid}` still reads
-   committed samples ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) deferred the API fetch), so a real uuid 404s on the page
-   even though `GET /api/traces/{uuid}` returns it. → wire the live fetch into the
-   page (loading skeleton / trace / 404). **In flight.**
-2. **[BLOCKING] Single route table ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)).** Routes live in ≥4 unsynced places
-   (client registry, coverage guard, navigation-policy, the server `worker-routes`
-   allowlist). The split already caused a prod **302** (the `/trace` page →
-   homepage, hot-fixed [`10954667ce`](https://github.com/OpenAgentsInc/openagents/commit/10954667ce)) and the sample-vs-live confusion. One table,
-   one file, public/authed flag, derives client **and** server. **In flight.**
-3. **Live CF execution ([#6205](https://github.com/OpenAgentsInc/openagents/issues/6205)).** The Browser-Rendering + Sandbox backends are coded
-   and tested against fakes; a real run on **deployed** CF bindings — the hosted
-   substrate Rhys would pay for — has not been executed. → deploy bindings + run one
-   real QA on them.
-4. **End-to-end hosted demo.** With 1–3 done: one real Autopilot QA run (powered by Khala) on hosted infra
-   → a published `/trace/{uuid}` + a committed green `*.e2e.test.ts` + the comparison
-   view, linked from a PR. This is the customer-facing proof for the first customer.
-5. **npm publish ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217), owner-gated).** `@openagentsinc/qa-runner` is publish-ready;
-   an owner runs the one publish command so external users can `npx` it.
-6. **Hardening.** Trace retention/expiry (the open bullet of [#6212](https://github.com/OpenAgentsInc/openagents/issues/6212)); data-market
-   abuse limits at scale; cross-app emitters beyond the Khala-chat slice (Autopilot
-   work orders, Pylon sessions — [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) follow-ups).
+1. ✅ **DONE — render page fetches the live trace.** `/trace/{uuid}` now fetches
+   `GET /api/traces/{uuid}` (loading / trace / 404); a real uuid renders. This session is live at the URL above.
+2. ✅ **DONE — single route table ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)).** One `route-table.ts` derives the client
+   router AND the server document allowlist; an agreement test makes the `/trace` 302 /
+   sample-desync class **structurally impossible**.
+3. ✅ **DONE — OSS published ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217)).** `@openagentsinc/atif` + `@openagentsinc/qa-runner`
+   are on npm; external users can `npm i` / `npx` it (BYO model, no OpenAgents login).
+4. 🟡 **Live CF execution ([#6205](https://github.com/OpenAgentsInc/openagents/issues/6205)).** The `env.BROWSER` binding + admin smoke route are
+   DEPLOYED; the live managed-Chrome confirmation is a **one-click owner smoke**
+   (`GET /api/admin/cf-browser-smoke`, in `NEEDS_OWNER.md`). Then run one real QA on the
+   deployed CF bindings. (The scoped CF token can deploy but not manage bindings/secrets/D1 —
+   owner OAuth or a fuller token is needed.)
+5. 🟡 **End-to-end hosted demo.** One real Autopilot QA run (powered by Khala) on hosted infra
+   → a published `/trace/{uuid}` + a committed green `*.e2e.test.ts` + the comparison view,
+   linked from a PR — the customer-facing proof for the first customer.
+6. 🟡 **Hardening.** Trace retention/expiry (residual bullet of [#6212](https://github.com/OpenAgentsInc/openagents/issues/6212)); data-market abuse
+   limits at scale; cross-app emitters beyond the Khala-chat slice (Autopilot work orders,
+   Pylon sessions — [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) follow-ups).
 
-Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgentsInc/openagents/issues/6049) / [#6017](https://github.com/OpenAgentsInc/openagents/issues/6017) / [#6016](https://github.com/OpenAgentsInc/openagents/issues/6016) / [#6015](https://github.com/OpenAgentsInc/openagents/issues/6015) / [#6014](https://github.com/OpenAgentsInc/openagents/issues/6014))
-are separate ongoing work, not this flow.
+Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgentsInc/openagents/issues/6049) / [#6017](https://github.com/OpenAgentsInc/openagents/issues/6017) / [#6016](https://github.com/OpenAgentsInc/openagents/issues/6016) / [#6015](https://github.com/OpenAgentsInc/openagents/issues/6015) /
+[#6014](https://github.com/OpenAgentsInc/openagents/issues/6014)) are separate ongoing work, not this flow.
 
 ## Changelog
 
-- **2026-06-24 PM — render-fetch + route-table in flight.** Found `/trace/{uuid}`
-  renders committed samples only ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) deferred the live fetch) → wiring the
-  `GET /api/traces/{uuid}` fetch into the page. Opened **[#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)** (single route
-  table) after a real `/trace` **302 → homepage** bug (the server allowlist in
-  `worker-routes.ts` was a second, unsynced route list; hot-fix [`10954667ce`](https://github.com/OpenAgentsInc/openagents/commit/10954667ce)).
-  Landed **[#6214](https://github.com/OpenAgentsInc/openagents/issues/6214)** (chat on the Khala gateway → ATIF trace) and **[#6216](https://github.com/OpenAgentsInc/openagents/issues/6216)** (receipts → traceRef)
-  [pending coordinator land].
-- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206)
-  delivered end-to-end: ATIF store/ingest/read ([#6208](https://github.com/OpenAgentsInc/openagents/issues/6208); R2 offload + 8MB cap [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)),
-  `/trace` render ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209)), comparison ([#6211](https://github.com/OpenAgentsInc/openagents/issues/6211)), redaction service ([#6219](https://github.com/OpenAgentsInc/openagents/issues/6219)), Claude
-  Code/Codex converters + import CLI ([#6220](https://github.com/OpenAgentsInc/openagents/issues/6220)), publish-from-runner ([#6210](https://github.com/OpenAgentsInc/openagents/issues/6210)),
-  data-market upload ([#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)). This session uploaded as a redacted public trace
-  (793 steps). Hardened the ingest tripwire from **content-blind** to
-  **value-based** (it was rejecting legitimate traces): (1) model ids are content,
-  not leaks; (2) secret-discussion *words* (`mnemonic`, `api_key`) are content;
-  (3) wallet *words* vs actual values; (4) `LOCAL_PATH` Windows-drive branch matched
-  JSON escapes (`key:\n`) — [`5abd84e9d0`](https://github.com/OpenAgentsInc/openagents/commit/5abd84e9d0), [`fe59199b21`](https://github.com/OpenAgentsInc/openagents/commit/fe59199b21), [`c24862688c`](https://github.com/OpenAgentsInc/openagents/commit/c24862688c);
-  `INVARIANTS.md` updated. Also fixed a real prod bug found along the way: the
-  Artanis public health report was throwing (a [#6204](https://github.com/OpenAgentsInc/openagents/issues/6204) miss) — [`452a048d8e`](https://github.com/OpenAgentsInc/openagents/commit/452a048d8e).
-- **2026-06-24 AM — autonomous-QA flow landed.** EPICs [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) + [#6181](https://github.com/OpenAgentsInc/openagents/issues/6181): computer-use
-  drivers (Chrome / terminal / container / native-desktop), the session →
-  `*.e2e.test.ts` distiller, multi-target registry, parallel sharding + crash-safe
-  harness, MIT `@openagentsinc/qa-runner` bundle, ffmpeg video compose, OpenRouter
-  Effect provider, failure-learning, hosted Khala-at-$0 (operator-credit exemption),
-  QA control API, public docs. The shareable surface shipped here was mis-framed as
-  `/pro/evals` fixtures — corrected to the `/trace` primitive (above).
+- **2026-06-24 evening — EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) fully closed; OSS on npm.** Wired the
+  `/trace/{uuid}` **live API fetch** ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) had shipped sample-only) → the page now renders
+  the real stored trace (this session, headless-verified, at the URL above). Landed the
+  **single route table** ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)) — `route-table.ts` derives client + server, agreement test
+  makes the 302/sample-desync structurally impossible — after a real `/trace` **302 → homepage**
+  prod bug (hot-fix [`10954667ce`](https://github.com/OpenAgentsInc/openagents/commit/10954667ce)). Landed [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) (Khala-gateway chat → ATIF), [#6216](https://github.com/OpenAgentsInc/openagents/issues/6216)
+  (receipts → traceRef), and [#6207](https://github.com/OpenAgentsInc/openagents/issues/6207) (one canonical `@openagentsinc/atif` schema package).
+  [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205) CF Browser-Rendering `env.BROWSER` binding + admin smoke **deployed**. **Published
+  `@openagentsinc/atif@0.1.0` + `@openagentsinc/qa-runner@0.1.0` to npm** ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217)) via
+  automation token. **All EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) children CLOSED.**
+- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** ATIF store/ingest/read
+  ([#6208](https://github.com/OpenAgentsInc/openagents/issues/6208); R2 offload + 8MB cap [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)), `/trace` render ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209)), comparison ([#6211](https://github.com/OpenAgentsInc/openagents/issues/6211)),
+  redaction service ([#6219](https://github.com/OpenAgentsInc/openagents/issues/6219)), converters + import CLI ([#6220](https://github.com/OpenAgentsInc/openagents/issues/6220)), publish-from-runner ([#6210](https://github.com/OpenAgentsInc/openagents/issues/6210)),
+  data-market upload ([#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)). Hardened the ingest tripwire from **content-blind** to
+  **value-based** (model ids + secret-discussion words + JSON escapes like `key:\n` are content,
+  not leaks; only real secret/wallet VALUES, emails, paths rejected) — [`5abd84e9d0`](https://github.com/OpenAgentsInc/openagents/commit/5abd84e9d0), [`fe59199b21`](https://github.com/OpenAgentsInc/openagents/commit/fe59199b21),
+  [`c24862688c`](https://github.com/OpenAgentsInc/openagents/commit/c24862688c); `INVARIANTS.md` updated. Also fixed a prod bug found along the way: the Artanis
+  public health report was throwing (a [#6204](https://github.com/OpenAgentsInc/openagents/issues/6204) miss) — [`452a048d8e`](https://github.com/OpenAgentsInc/openagents/commit/452a048d8e).
+- **2026-06-24 AM — autonomous-QA flow landed.** EPICs [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) + [#6181](https://github.com/OpenAgentsInc/openagents/issues/6181): computer-use drivers
+  (Chrome / terminal / container / native-desktop), the session → `*.e2e.test.ts` distiller,
+  multi-target registry, parallel sharding + crash-safe harness, MIT `@openagentsinc/qa-runner`
+  bundle, ffmpeg video compose, OpenRouter Effect provider, failure-learning, hosted
+  Autopilot-at-$0 (operator-credit exemption), QA control API, public docs. The shareable surface
+  shipped here was mis-framed as `/pro/evals` fixtures — corrected to the `/trace` primitive.
 
 ---
 
