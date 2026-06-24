@@ -91,7 +91,7 @@ export const FREE_TIER_MAX_TOKENS_PER_DAY = 200_000 as const
 
 // Per-IP-hash, per-UTC-day self-serve MINT ceiling so anonymous minting is
 // bounded (no unbounded key minting). !! TUNABLE: issue #6228.
-export const FREE_KEY_MAX_MINTS_PER_IP_PER_DAY = 5 as const
+export const FREE_KEY_MAX_MINTS_PER_IP_PER_DAY = 25 as const
 
 export type FreeTierQuota = Readonly<{
   maxRequestsPerDay: number

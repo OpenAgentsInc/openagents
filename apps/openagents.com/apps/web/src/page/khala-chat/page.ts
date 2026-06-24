@@ -395,8 +395,6 @@ export const instructionsView = <Message>(counter?: Html): Html => {
           ),
         ],
         [
-          // Live "Khala Tokens Served" counter (#6227), when supplied.
-          ...(counter !== undefined ? [counter] : []),
           h.div([Ui.className<Message>(eyebrowClass)], ['Research preview']),
           h.h1(
             [
@@ -476,6 +474,8 @@ export const instructionsView = <Message>(counter?: Html): Html => {
               '.',
             ],
           ),
+          // Live "Khala Tokens Served" counter (#6227) — pinned at the bottom.
+          ...(counter !== undefined ? [counter] : []),
         ],
       ),
     ],

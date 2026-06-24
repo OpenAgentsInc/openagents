@@ -8,6 +8,7 @@ import {
   type AgentRegistrationStore,
 } from './agent-registration'
 import { type Env, handleFreeKeyMint } from './index'
+import { FREE_KEY_MAX_MINTS_PER_IP_PER_DAY } from './inference/inference-free-tier-key'
 
 // In-memory agent registration store so minting reuses the real registration
 // path (createProgrammaticAgentRegistration) WITHOUT a full users/credentials D1.
@@ -178,9 +179,10 @@ describe('POST /api/keys/free (issue #6228)', () => {
     const db = makeDb()
     const store = new MemoryAgentRegistrationStore()
     const env = makeEnv(db, 'true')
+    const cap = FREE_KEY_MAX_MINTS_PER_IP_PER_DAY
     const statuses: Array<number> = []
-    // The default per-IP daily cap is 5; the 6th mint from the same IP is 429.
-    for (let i = 0; i < 6; i += 1) {
+    // The first `cap` mints from one IP succeed; the next one is 429.
+    for (let i = 0; i < cap + 1; i += 1) {
       const response = await handleFreeKeyMint(
         mintRequest({ ip: '198.51.100.7' }),
         env,
@@ -188,8 +190,8 @@ describe('POST /api/keys/free (issue #6228)', () => {
       )
       statuses.push(response.status)
     }
-    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201])
-    expect(statuses[5]).toBe(429)
+    expect(statuses.slice(0, cap).every(status => status === 201)).toBe(true)
+    expect(statuses[cap]).toBe(429)
   })
 
   test('public-safety: the response never echoes the raw client IP', async () => {
