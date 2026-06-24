@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { buildModelCatalog } from './model-catalog'
+import { DEFAULT_FREE_TIER_QUOTA } from './inference-free-tier-key'
 import { resolveSupplyLaneArming } from './model-serving-policy'
 import {
   handleModelRetrieve,
@@ -54,13 +55,59 @@ describe('handleModelsList', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     const body = (await response.json()) as {
       object: string
-      data: ReadonlyArray<{ id: string; created: number; object: string }>
+      data: ReadonlyArray<{
+        id: string
+        created: number
+        object: string
+        oa_free_tier_eligible: boolean
+        oa_free_tier: { eligible: boolean; maxRequestsPerDay: number | null }
+      }>
     }
     expect(body.object).toBe('list')
     expect(body.data.length).toBe(1)
     expect(body.data.every(m => m.object === 'model')).toBe(true)
     expect(body.data.every(m => m.created === 1_700_000_000)).toBe(true)
     expect(body.data.map(m => m.id)).toEqual([KHALA_MODEL_ID])
+    expect(body.data[0]!.oa_free_tier_eligible).toBe(false)
+    expect(body.data[0]!.oa_free_tier.eligible).toBe(false)
+    expect(body.data[0]!.oa_free_tier.maxRequestsPerDay).toBeNull()
+  })
+
+  it('advertises the Khala free-key quota when free API mode is armed', async () => {
+    const response = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      {
+        enabled: true,
+        freeTierEnabled: true,
+        nowEpochSeconds: () => 1_700_000_000,
+      },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      data: ReadonlyArray<{
+        id: string
+        oa_free_tier_eligible: boolean
+        oa_free_tier: {
+          eligible: boolean
+          maxRequestsPerDay: number
+          maxTokensPerDay: number
+          window: string
+        }
+      }>
+    }
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: KHALA_MODEL_ID,
+        oa_free_tier_eligible: true,
+        oa_free_tier: {
+          eligible: true,
+          maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+          maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+          reasonRef: 'reason.inference_free_tier.eligible',
+          window: 'utc_day',
+        },
+      }),
+    ])
   })
 })
 
@@ -100,12 +147,48 @@ describe('handleModelRetrieve', () => {
       id: string
       object: string
       created: number
+      oa_free_tier_eligible: boolean
+      oa_free_tier: { eligible: boolean }
       oa_price: { inputUsdPerMtok: number }
     }
     expect(body.id).toBe(servedModelId)
     expect(body.object).toBe('model')
     expect(body.created).toBe(1_700_000_000)
+    expect(body.oa_free_tier_eligible).toBe(false)
+    expect(body.oa_free_tier.eligible).toBe(false)
     expect(typeof body.oa_price.inputUsdPerMtok).toBe('number')
+  })
+
+  it('retrieves Khala with free-key quota when free API mode is armed', async () => {
+    const response = await runRetrieve(
+      new Request(`https://x/v1/models/${servedModelId}`, { method: 'GET' }),
+      servedModelId,
+      {
+        enabled: true,
+        freeTierEnabled: true,
+        nowEpochSeconds: () => 1_700_000_000,
+      },
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      id: string
+      oa_free_tier_eligible: boolean
+      oa_free_tier: {
+        eligible: boolean
+        maxRequestsPerDay: number
+        maxTokensPerDay: number
+        window: string
+      }
+    }
+    expect(body.id).toBe(servedModelId)
+    expect(body.oa_free_tier_eligible).toBe(true)
+    expect(body.oa_free_tier).toEqual({
+      eligible: true,
+      maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+      maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+      reasonRef: 'reason.inference_free_tier.eligible',
+      window: 'utc_day',
+    })
   })
 
   it('404s with the OpenAI model_not_found shape for an unknown model', async () => {
@@ -327,13 +410,15 @@ describe('provider serving policy (laneArming)', () => {
     })
     const list = await run(
       new Request('https://x/v1/models', { method: 'GET' }),
-      { enabled: true, laneArming },
+      { enabled: true, freeTierEnabled: true, laneArming },
     )
     expect(list.status).toBe(200)
     const listBody = (await list.json()) as {
       data: ReadonlyArray<{
         id: string
         oa_lane: string
+        oa_free_tier_eligible: boolean
+        oa_free_tier: { eligible: boolean; maxRequestsPerDay: number }
         owned_by: string
         oa_price: { inputUsdPerMtok: number }
       }>
@@ -342,6 +427,11 @@ describe('provider serving policy (laneArming)', () => {
       expect.objectContaining({
         id: KHALA_MODEL_ID,
         oa_lane: 'fireworks',
+        oa_free_tier_eligible: true,
+        oa_free_tier: expect.objectContaining({
+          eligible: true,
+          maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+        }),
         owned_by: 'openagents/fireworks',
       }),
     ])
@@ -352,17 +442,23 @@ describe('provider serving policy (laneArming)', () => {
     const retrieved = await runRetrieve(
       new Request(`https://x/v1/models/${KHALA_MODEL_ID}`, { method: 'GET' }),
       KHALA_MODEL_ID,
-      { enabled: true, laneArming },
+      { enabled: true, freeTierEnabled: true, laneArming },
     )
     expect(retrieved.status).toBe(200)
     const body = (await retrieved.json()) as {
       id: string
       oa_lane: string
+      oa_free_tier_eligible: boolean
+      oa_free_tier: { eligible: boolean; maxRequestsPerDay: number }
       owned_by: string
       oa_price: { inputUsdPerMtok: number }
     }
     expect(body.id).toBe(KHALA_MODEL_ID)
     expect(body.oa_lane).toBe('fireworks')
+    expect(body.oa_free_tier_eligible).toBe(true)
+    expect(body.oa_free_tier.maxRequestsPerDay).toBe(
+      DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+    )
     expect(body.owned_by).toBe('openagents/fireworks')
     expect(body.oa_price.inputUsdPerMtok).toBe(0.196)
   })

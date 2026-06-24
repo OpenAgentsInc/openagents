@@ -13,10 +13,10 @@
 //
 // PURE: no D1, no clock, no network, no secrets. It exposes ONLY public-safe
 // facts already implied by the pricing table (model id, supply lane, published
-// sell price per 1M tokens, free-tier eligibility, cost-basis provenance). It
-// moves no money and reveals no prompts, completions, or credentials. The route
-// handler (`handleModelsList`, models-routes.ts) injects the `created` timestamp
-// and serves this as the OpenAI `/v1/models` payload.
+// sell price per 1M tokens, current free-key catalog policy, cost-basis
+// provenance). It moves no money and reveals no prompts, completions, or
+// credentials. The route handler (`handleModelsList`, models-routes.ts) injects
+// the `created` timestamp and serves this as the OpenAI `/v1/models` payload.
 
 import {
   BASE_CREDIT_USD,
@@ -25,7 +25,10 @@ import {
   MODEL_PRICING_TABLE,
   type SupplyLane,
 } from './pricing'
-import { isFreeEligibleModel } from './inference-free-allowance'
+import {
+  DEFAULT_FREE_TIER_QUOTA,
+  decideFreeTierLane,
+} from './inference-free-tier-key'
 
 // Human-legible provider label for each supply lane (the OpenAI `owned_by`
 // field). All lanes are served THROUGH OpenAgents, so the label names the
@@ -59,6 +62,22 @@ export type PublishedModelPrice = Readonly<{
   outputCreditsPerMtok: number
 }>
 
+// Public free-key policy for one model. This is the self-serve per-key free
+// tier from `inference-free-tier-key.ts`, not the older owner-keyed Gemini
+// allowance. The `eligible` boolean is false unless the Worker has explicitly
+// armed INFERENCE_FREE_TIER_ENABLED.
+export type PublishedModelFreeTier = Readonly<{
+  eligible: boolean
+  maxRequestsPerDay: number | null
+  maxTokensPerDay: number | null
+  window: 'utc_day' | null
+  reasonRef: string
+}>
+
+export type ModelCatalogPolicy = Readonly<{
+  freeTierEnabled?: boolean
+}>
+
 // One public catalog entry for a model the gateway serves.
 export type ModelCatalogEntry = Readonly<{
   // Canonical model id (the `model` a client sends to /v1/chat/completions).
@@ -67,10 +86,11 @@ export type ModelCatalogEntry = Readonly<{
   lane: SupplyLane
   // Legible provider label (OpenAI `owned_by`).
   ownedBy: string
-  // True when this model class is free-tier eligible (Gemini Flash today): under
-  // the owner's Sybil-resistant free pool such requests cost no credits. Every
-  // other model is PAID from the first token.
+  // True when the public self-serve free-key tier is live for this model.
+  // Backward-compatible shorthand for `freeTier.eligible`.
   freeTierEligible: boolean
+  // Public self-serve free-key policy for this model.
+  freeTier: PublishedModelFreeTier
   // Published per-model multiplier relative to the Sonnet baseline (1.0x).
   multiplier: number
   // Cost-basis provenance of the published price.
@@ -86,12 +106,42 @@ const round = (value: number, decimals: number): number => {
   return Math.round(value * factor) / factor
 }
 
-// Is this model class free-tier eligible? Single source of truth is the
-// free-allowance policy (`FREE_ELIGIBLE_MODEL_CLASSES`); the catalog reuses it
-// so the published free-tier flag can never disagree with what actually gets
-// eaten under allowance.
-const isFreeTierEligible = (model: string): boolean =>
-  isFreeEligibleModel(model)
+const FREE_TIER_DISABLED_REASON =
+  'reason.inference_free_tier.disabled' as const
+
+const disabledFreeTier = (): PublishedModelFreeTier => ({
+  eligible: false,
+  maxRequestsPerDay: null,
+  maxTokensPerDay: null,
+  reasonRef: FREE_TIER_DISABLED_REASON,
+  window: null,
+})
+
+const freeTierForModel = (
+  model: string,
+  policy: ModelCatalogPolicy,
+): PublishedModelFreeTier => {
+  if (policy.freeTierEnabled !== true) {
+    return disabledFreeTier()
+  }
+  const lane = decideFreeTierLane(model)
+  if (!lane.freeLane) {
+    return {
+      eligible: false,
+      maxRequestsPerDay: null,
+      maxTokensPerDay: null,
+      reasonRef: lane.reasonRef,
+      window: null,
+    }
+  }
+  return {
+    eligible: true,
+    maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+    maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+    reasonRef: lane.reasonRef,
+    window: 'utc_day',
+  }
+}
 
 // Build the public model catalog from the pricing table at `margin`
 // (defaults to the launch margin). Deterministic + pure: the same table in
@@ -99,6 +149,7 @@ const isFreeTierEligible = (model: string): boolean =>
 // when the cost table is tuned.
 export const buildModelCatalog = (
   margin: number = DEFAULT_MARGIN,
+  policy: ModelCatalogPolicy = {},
 ): ReadonlyArray<ModelCatalogEntry> =>
   MODEL_PRICING_TABLE.map(entry => {
     const { cost } = entry
@@ -110,12 +161,14 @@ export const buildModelCatalog = (
     const inputUsd = sell(cost.inputUsdPerMtok)
     const cachedUsd = sell(cachedCostUsdPerMtok)
     const outputUsd = sell(cost.outputUsdPerMtok)
+    const freeTier = freeTierForModel(entry.model, policy)
 
     return {
       costBasis: entry.costIsListPlaceholder
         ? ('list_placeholder' as const)
         : ('verified' as const),
-      freeTierEligible: isFreeTierEligible(entry.model),
+      freeTier,
+      freeTierEligible: freeTier.eligible,
       id: entry.model,
       lane: entry.lane,
       multiplier: entry.multiplier,
@@ -146,6 +199,7 @@ export type OpenAiModelObject = Readonly<{
   owned_by: string
   oa_lane: SupplyLane
   oa_free_tier_eligible: boolean
+  oa_free_tier: PublishedModelFreeTier
   oa_multiplier: number
   oa_cost_basis: ModelCostBasis
   oa_price: PublishedModelPrice
@@ -168,6 +222,7 @@ export const toOpenAiModelObject = (
   created: createdEpochSeconds,
   id: model.id,
   oa_cost_basis: model.costBasis,
+  oa_free_tier: model.freeTier,
   oa_free_tier_eligible: model.freeTierEligible,
   oa_lane: model.lane,
   oa_multiplier: model.multiplier,
@@ -197,9 +252,10 @@ export const toOpenAiModelsResponse = (
 export const findModelCatalogEntry = (
   modelId: string,
   margin: number = DEFAULT_MARGIN,
+  policy: ModelCatalogPolicy = {},
 ): ModelCatalogEntry | undefined => {
   if (modelId.trim() === '') {
     return undefined
   }
-  return buildModelCatalog(margin).find(entry => entry.id === modelId)
+  return buildModelCatalog(margin, policy).find(entry => entry.id === modelId)
 }

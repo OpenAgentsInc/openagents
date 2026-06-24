@@ -19,6 +19,13 @@ const ALL_ARMED: SupplyLaneArming = {
 
 const entry = (id: string, lane: SupplyLane): ModelCatalogEntry => ({
   costBasis: 'verified',
+  freeTier: {
+    eligible: false,
+    maxRequestsPerDay: null,
+    maxTokensPerDay: null,
+    reasonRef: 'reason.inference_free_tier.disabled',
+    window: null,
+  },
   freeTierEligible: false,
   id,
   lane,

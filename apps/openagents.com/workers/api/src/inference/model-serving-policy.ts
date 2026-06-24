@@ -407,7 +407,6 @@ export const projectKhalaCatalogForArming = (
       ? {
           ...entry,
           costBasis: backing.costBasis,
-          freeTierEligible: backing.freeTierEligible,
           lane: backing.lane,
           multiplier: backing.multiplier,
           ownedBy: backing.ownedBy,

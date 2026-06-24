@@ -115,7 +115,7 @@ OpenAI SDKs: pass `stream=True` / `{ stream: true }` as usual.
 | Method & path | What it does | Auth |
 |---|---|---|
 | `POST /api/keys/free` | Mint a free-tier API key | none |
-| `GET  /api/v1/models` | List models (one: `openagents/khala`) + pricing | Bearer |
+| `GET  /api/v1/models` | List models (one: `openagents/khala`) + pricing/free-tier policy | none |
 | `POST /api/v1/chat/completions` | Chat completion (streaming + non-streaming) | Bearer |
 
 (`https://openagents.com/v1/...` is a non-breaking alias for `https://openagents.com/api/v1/...`.)
@@ -134,7 +134,8 @@ OpenAI SDKs: pass `stream=True` / `{ stream: true }` as usual.
 - **Free** within the quota above — real inference, no payment, on `openagents/khala`.
 - **Beyond the free quota** (or for higher throughput), it's the same key + credits/budget
   on your account; per-token pricing is published in `GET /api/v1/models`
-  (`oa_price`, in both USD and credits per million tokens).
+  (`oa_price`, in both USD and credits per million tokens; `oa_free_tier_eligible`
+  and `oa_free_tier` publish the current free-tier status and quota).
 - **One public model** — `openagents/khala`. The orchestrator picks the backing lane; you
   buy the outcome. (There is no `khala-mini`/`khala-pro`/`khala-code` — just `openagents/khala`.)
 
