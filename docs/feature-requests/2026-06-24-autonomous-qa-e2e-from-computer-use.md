@@ -64,62 +64,77 @@ The corollary that makes it agent-native: the agent earns trust by producing the
 same artifact a human reviewer would demand, not by self-attesting. Computer-use
 is how it explores; the distilled test is how it *proves*.
 
-## 4. Prior art: `executor/e2e` (what's already strong)
+## 4. Audit of `executor/e2e` (the folder he linked)
 
-The requester's own `executor` e2e suite (`projects/repos/executor/e2e`,
-`e2e/AGENTS.md`) is further along than a prototype and is the right substrate to
-extend. What it already nails — and what an OpenAgents build should adopt rather
-than reinvent:
+The thing to study is `projects/repos/executor/e2e` (he linked
+[`/tree/main/e2e`](https://github.com/RhysSullivan/executor/tree/main/e2e)). It is
+not a toy — it is a well-factored cross-target QA harness. Folder-level map of
+what's actually there:
 
-- **The `Target` interface** (`e2e/src/target.ts`): one deployed shape of the
-  product seen purely from the outside — `baseUrl`, `mcpUrl`, `capabilities`
-  (`api` | `browser` | `mcp-oauth` | `billing`), `newIdentity()` (fresh isolated
-  user+org — isolation via fresh identity, *no resets*), optional `restart()` and
-  `setAccessTokenTtl()`. **Scenarios are written once against this interface and
-  run on every target** — directly satisfying requirement #3.
-- **A target registry** (`e2e/targets/`: `cloud`, `selfhost`, `selfhost-docker`,
-  `cli`, `desktop`, `cloudflare`, `local`) selected by `E2E_TARGET`; attach to a
-  live instance with `E2E_<TARGET>_URL`.
-- **Cross-OS VM substrate** (`e2e/src/vm/`, `VmOs = macos | linux | windows`):
-  `tart` for macOS+Linux on Apple Silicon, `ec2` for ephemeral Windows; a
-  `VmHandle` can `ssh`, `push`, **`reboot` for real**, and `tunnel` — so
-  restart-persistence and boot-time auto-start are tested honestly. This already
-  reaches requirement #4 (macOS/Windows/Linux), incl. the macOS GUI-session
-  gotchas in `e2e/notes/testing-on-mac.md`.
-- **Video + trace + screenshots.** Browser scenarios record `session.mp4`, a
-  Playwright trace, and per-step screenshots (`failure.png` on failure). **The
-  Desk** (`e2e/desk/run.sh`) films a scenario on one virtual Linux desktop — the
-  chat renderer in a visible xterm, the browser as a real headed window, one
-  `ffmpeg x11grab` — replacing `session.mp4` with a single film. A `viewer/`
-  plays the scenario × target matrix and links traces into Playwright's viewer.
-  This satisfies requirement #6.
-- **Black-box discipline + review-by-reading** (`e2e/AGENTS.md`): drive only
-  public surfaces (typed API, web UI, MCP, CLI); never import app internals or
-  poke the DB; named `step(label, fn)` groups read as user actions; scenario
-  names read as product guarantees ("Billing · the free plan stops org creation
-  after 3"). This is the thesis in §3, already codified.
-- **Deterministic, parallel-safe**: no sleeps (wait on conditions); per-checkout
-  port locking (`e2e/src/ports.ts`) so concurrent worktrees never collide.
-- **Recording tiers** for product-as-used films: chat-theater (real MCP calls,
-  no inference), replay-brain (scripted LLM wire, real third-party client), and
-  real-inference evals.
+| Path | What it is |
+|---|---|
+| `src/scenario.ts` | The ONE way a test is written. A scenario body is an Effect; **its requirements ARE its capability declaration** — it yields services (`Api`/`Browser`/`Cli`/`Mcp`/`Telemetry`/`Billing`/`Restart`/`TtlControl`/`OpenCode`) and *nothing else*. Yielding a service the target lacks surfaces as Effect's missing-service defect, which the runner **classifies into a vitest skip with the missing service named in the matrix**. Per run it writes a small `result.json` + whatever artifacts the surfaces produced. "Correctness lives in the test code and its vitest assertions — there is no recording layer." |
+| `src/target.ts` | The `Target` interface (deployment seen from outside): `baseUrl`, `mcpUrl`, `capabilities` (`api`/`browser`/`mcp-oauth`/`billing`), `newIdentity()` (fresh isolated user+org — isolation via fresh identity, *no resets*), optional `mcpConsent`, `setAccessTokenTtl`, `restart`. |
+| `src/services.ts` + `src/surfaces/{api,browser,cli,mcp,telemetry}.ts` | The capability services and their wire implementations. `browser.ts` = Playwright over the real web UI, dark mode, with **mp4 video + Playwright trace + per-step screenshots + `failure.png`**, wrapped in `acquireUseRelease` so a vitest timeout still flushes the video/trace instead of leaking Chromium. `telemetry.ts` boots a motel OTLP store and points the target's real exporter at it, so a scenario can assert on **spans the server actually exported** (catches "observability silently went dark"). |
+| `src/vm/{types,tart,ec2,build-binary}.ts` | Cross-OS VM substrate. `VmOs = macos\|linux\|windows`; `tart` (macOS+Linux on Apple Silicon), `ec2` (ephemeral Windows). A `VmHandle` can `ssh`, `push`, **`reboot` for real**, and `tunnel` — so restart-persistence / boot-time auto-start are tested honestly, not faked. |
+| `src/clients/{chat-theater,replay-brain,opencode,agent-chat-tui}.ts` | The "product-as-used" renderers for watchable recordings: chat-theater (real MCP calls, no inference), replay-brain (scripted LLM wire + real third-party client), opencode integration. |
+| `src/{timeline,trace-harvest,ports}.ts`, `src/viewer/manifest.ts` | Timeline beats, trace harvesting, per-checkout **port locking** (concurrent worktrees can't collide), and the viewer manifest. |
+| `targets/{registry,cloud,selfhost,selfhost-docker,cli,desktop,cloudflare,local}.ts` | The multi-target registry; pick with `E2E_TARGET`, attach to a live instance with `E2E_<TARGET>_URL`. |
+| `scenarios/*.test.ts` (28) + `cloud/`, `selfhost/`, `local/` | Cross-target product journeys (api-tools, auth-methods, oauth-*, policies, mcp-execute, restart-persistence, …); the `cloud/`/`selfhost/`/`local/` dirs hold target-specific ones. |
+| `setup/*.globalsetup.ts` + `*.boot.ts` | Per-target (and per-OS) boot: each app boots its OWN dev server or attaches to a running one. |
+| `vitest.config.ts` | **One vitest project per target** (`cloud`, `selfhost`, `selfhost-docker`, `cloudflare`, `desktop`, `desktop-packaged`, `local`, `cli-{macos,linux,windows}`); `fileParallelism:false` for shared-instance targets; 180s–360s timeouts. |
+| `desk/`, `viewer/`, `scripts/{film,pr-media,record-*,serve,summary}.ts` | The Desk (virtual Linux desktop: chat in xterm + headed browser + one `ffmpeg x11grab`), the matrix viewer with Playwright-trace links, and shareable PR-media generation. |
 
-## 5. The gap (his "so much more potential")
+**What it already nails (adopt, don't reinvent):** the `Target` abstraction +
+project-per-target ("write once, run on dev/prod/selfhost" — requirement #3); the
+**capabilities-as-Effect-requirements → auto-skip + matrix** design (elegant — no
+hand-maintained `needs` list to drift); the artifact set (mp4 + trace +
+screenshots + `result.json`) with flush-on-timeout (requirement #6); the cross-OS
+real-reboot VM layer (requirement #4); black-box + review-by-reading discipline;
+port-locking for parallel runs; recording tiers.
 
-What executor does NOT yet close is the **autonomous loop** — and that is the
-whole request:
+> Audit catch (doc drift): `e2e/AGENTS.md` still documents the old
+> `scenario("...", { needs: ["api"] }, ...)` signature, but `src/scenario.ts`
+> moved to requirements-as-capabilities (no `needs`). Minor, but it's exactly the
+> single-source-of-truth lesson we just applied to OpenAgents routing — keep the
+> contract and its doc coupled.
 
-- Today, scenarios are authored by humans (or scripted), and the Desk *films*
-  them. The missing piece is the **agent that drives the real tools itself** to
-  develop/explore, **then distills that session into a committed scenario.**
-- "Verify without running anything locally" needs the distilled test to be the
-  *default deliverable of agent work*, with the video and trace attached — not a
-  thing a human writes afterward.
-- Faster runs, broader/cheaper OS coverage, and a hosted runner are scaling work,
-  not architecture.
+## 5. Where it stops, and how OpenAgents improves on it
 
-So the build is: **wrap executor's Target/VM/artifact substrate with an
-autonomous computer-use agent and a session→scenario distiller.**
+What executor does **not** close — and where an OpenAgents build adds value:
+
+1. **No autonomous loop (the core ask).** Scenarios are human/scripted-authored;
+   the Desk *films* them. Missing: **an agent that drives the real tools itself to
+   develop/explore.** → OpenAgents adds **Khala** as the driver (Probe runtime +
+   computer-use tools), so exploration is autonomous.
+2. **No session→test distiller.** Recordings are films, not lowered into committed
+   scenarios. → Add a **distiller** that turns a Khala session timeline into a
+   black-box `Target` scenario meeting the executor quality bar — making the
+   *committed test the default deliverable of agent work*, not a human afterthought.
+3. **Runs aren't receipts (no verification/economic layer).** A green run + video
+   is trusted by reading; there's no independent verifier, tamper-evidence, or
+   metering. → OpenAgents wraps each run in the **Tassadar verification-class +
+   revenue-loop receipt** model: a run becomes a *dereferenceable, optionally
+   independently-verified receipt* — which also unlocks the **hosted-VM
+   monetization** natively (metered run → settled receipt).
+4. **VM substrate is bespoke + heavy** (tart/ec2; macOS needs a real VNC GUI
+   session per `notes/testing-on-mac.md`; cost/perf-per-PR unaddressed). →
+   OpenAgents makes per-run isolation a **Cloud primitive**: `cloud` (`oa-node` /
+   `oa-workroomd`) over `firecracker` microVMs / `sek8s` confidential runners, so
+   cross-OS and scale come from infra we already own — this is the literal "use
+   VMs and infra from OpenAgents Cloud" the example flow demonstrates.
+5. **Target-adapter onboarding is undocumented for arbitrary apps.** `Target`
+   assumes the product can mint a fresh isolated identity (+ optional restart). →
+   Define the **minimal adapter** a third-party app must provide (auth,
+   fresh-identity, optional restart) so any product can be a target.
+6. **Computer-use is browser-centric.** Beyond Chrome it's only the Electron
+   `desktop` target. → "the same tools you develop with" may need a broader
+   computer-use surface (arbitrary GUI in the VM), which the Cloud-VM substrate
+   makes natural.
+
+So the build is: **keep executor's elegant Target / capabilities / artifact model,
+add the Khala-driven computer-use agent + session→scenario distiller, and run it
+on OpenAgents Cloud VMs with each run wrapped as a verified receipt.**
 
 ## 6. Proposed architecture (how OpenAgents could build it)
 
@@ -237,11 +252,14 @@ Khala using OpenAgents Cloud VMs/infra. No PR to `executor`.
 - Requester repo: <https://github.com/RhysSullivan/executor> · e2e dir:
   <https://github.com/RhysSullivan/executor/tree/main/e2e> · local clone:
   `projects/repos/executor`.
-- `projects/repos/executor/e2e/AGENTS.md` — scenario/target/recording contract.
+- `projects/repos/executor/e2e/AGENTS.md` — scenario/target/recording contract (note: doc-drift on the `needs` signature, see §4).
+- `projects/repos/executor/e2e/src/scenario.ts` — the test harness (capabilities-as-Effect-requirements → auto-skip + matrix; `result.json` + artifacts).
 - `projects/repos/executor/e2e/src/target.ts` — the `Target`/`Identity`/`Capability` interface.
-- `projects/repos/executor/e2e/targets/` — the multi-target registry.
+- `projects/repos/executor/e2e/src/services.ts` + `src/surfaces/{api,browser,cli,mcp,telemetry}.ts` — capability services; `browser.ts` = Playwright + mp4/trace/screenshots with flush-on-timeout.
+- `projects/repos/executor/e2e/targets/` — the multi-target registry; `vitest.config.ts` — one project per target.
 - `projects/repos/executor/e2e/src/vm/` (`types.ts`, `tart.ts`, `ec2.ts`) — cross-OS VM substrate.
-- `projects/repos/executor/e2e/desk/` + `viewer/` — virtual-desktop filming + run viewer.
+- `projects/repos/executor/e2e/scenarios/` (28 cross-target journeys) + `cloud/` / `selfhost/` / `local/`.
+- `projects/repos/executor/e2e/desk/` + `viewer/` + `scripts/{film,pr-media}.ts` — virtual-desktop filming, run viewer, shareable media.
 - `projects/repos/executor/e2e/notes/testing-on-mac.md` — macOS GUI-session realities.
 - OpenAgents: `docs/inference/khala.md` (verified-work/receipt framing),
   `packages/probe` (agent runtime), `cloud/` (managed run isolation),
