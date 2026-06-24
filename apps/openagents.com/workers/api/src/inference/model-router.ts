@@ -35,15 +35,14 @@
 // for an adapter by id and runs the adapter's own Effect. It is pure config +
 // Effect orchestration; the live env is plumbed into the env-dependent adapters
 // by index.ts (`setInferenceAdapterEnv`) before dispatch, not here.
-
 import { Effect } from 'effect'
 
 import {
-  blendedCostPerMtok,
-  KHALA_OSS_20B_MODEL_ID,
-  lookupModel,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
   type SupplyLane,
+  blendedCostPerMtok,
+  lookupModel,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -140,7 +139,10 @@ const isGeminiModel = (model: string): boolean => {
 // `vertex/` provider-prefixed forms. This is a bounded model-id classifier, not
 // an intent parser.
 const isClaudeModel = (model: string): boolean => {
-  const id = model.trim().toLowerCase().replace(/^(?:vertex|anthropic)\//u, '')
+  const id = model
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:vertex|anthropic)\//u, '')
   if (id.startsWith('claude-') || id.startsWith('claude.')) {
     return true
   }
@@ -162,7 +164,10 @@ const OPEN_MODEL_PREFIXES: ReadonlyArray<string> = [
 ]
 
 const isOpenModel = (model: string): boolean => {
-  const id = model.trim().toLowerCase().replace(/^fireworks\//u, '')
+  const id = model
+    .trim()
+    .toLowerCase()
+    .replace(/^fireworks\//u, '')
   // A model priced on the Fireworks lane is open by definition.
   if (lookupModel(id)?.lane === 'fireworks') {
     return true
@@ -192,12 +197,14 @@ export const classifyModel = (model: string): ModelClass => {
 // callers/tests that want the cheapest open model id; the dispatch path routes
 // the whole open class to the single Fireworks adapter, then overflows to
 // passthrough.
-export const openModelsByCost: ReadonlyArray<string> = MODEL_PRICING_TABLE.filter(
-  entry => entry.lane === 'fireworks',
-)
-  .map(entry => ({ cost: blendedCostPerMtok(entry.cost), model: entry.model }))
-  .sort((a, b) => a.cost - b.cost)
-  .map(entry => entry.model)
+export const openModelsByCost: ReadonlyArray<string> =
+  MODEL_PRICING_TABLE.filter(entry => entry.lane === 'fireworks')
+    .map(entry => ({
+      cost: blendedCostPerMtok(entry.cost),
+      model: entry.model,
+    }))
+    .sort((a, b) => a.cost - b.cost)
+    .map(entry => entry.model)
 
 // The ordered lane plan for a model class. Cheapest viable owned lane first,
 // then overflow lanes (gateway business doc §4: "our Vertex quota first (best
@@ -232,7 +239,7 @@ const LANE_PLAN_BY_CLASS: Readonly<
 // Resolve a requested model to its ORDERED list of candidate adapter ids
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
-  if (model.trim().toLowerCase() === KHALA_OSS_20B_MODEL_ID) {
+  if (model.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]
   }
   const plan = LANE_PLAN_BY_CLASS[classifyModel(model)]
@@ -394,7 +401,9 @@ export const dispatchWithOverflowWithMetadata = <A>(
             fallbackReason,
             primaryAdapterId,
             servedAdapterId: adapter.id,
-            ...(providerHealthScore === undefined ? {} : { providerHealthScore }),
+            ...(providerHealthScore === undefined
+              ? {}
+              : { providerHealthScore }),
             ...(region === undefined ? {} : { region }),
           },
           value: outcome.value,

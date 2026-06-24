@@ -59,15 +59,15 @@ import {
   decideCacheAwareRouting,
 } from './cache-aware-routing'
 import {
+  type DurableStreamNamespace,
+  teeUpstreamToDurableDO,
+} from './durable-inference-do-transport'
+import {
   type DurableInferenceStreamStore,
   type StreamStore,
   durableInferenceReadUrl,
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
-import {
-  type DurableStreamNamespace,
-  teeUpstreamToDurableDO,
-} from './durable-inference-do-transport'
 import {
   type FairShareDecision,
   type SpendCapDecision,
@@ -121,9 +121,9 @@ import {
 import {
   type FundingKind,
   KHALA_CODE_MODEL_ID,
+  type SupplyLane,
   isKhalaModel,
   lookupModel,
-  type SupplyLane,
 } from './pricing'
 import {
   type StableBlockKind,
@@ -638,21 +638,19 @@ const resolveCacheAffinity = (
 
 const defaultId = () => compactRandomId('chatcmpl')
 
-// The OpenAgents disclosure block attached to a Khala response (M0 / #6008). A
-// Khala model id is one endpoint over a pool; this NON-BREAKING `openagents`
-// field discloses which concrete model/worker actually served the request so a
-// Khala completion is auditable rather than opaque. `verification` is `none` in
-// M0 (no verifier pass yet — that is a later milestone); the field exists so the
-// receipt shape is stable as verification classes land. No prompts, credentials,
-// or chain-of-thought are exposed.
+// The public OpenAgents disclosure block (M0 / #6008). Khala virtual models use
+// it to show which concrete model/worker served one endpoint; Hydralisk raw
+// model ids use it to disclose owned infrastructure without pretending to be a
+// Khala-specific coordinator. No prompts, credentials, or chain-of-thought are
+// exposed.
 type OpenAgentsReceipt = Readonly<{
   requested_model: string
   served_model: string
   worker: string
   lane: string
   // Concrete priced supply lane, distinct from the legacy `lane` model class
-  // (`open` / `gemini` / `claude`). Additive and public-safe; lets Khala expose
-  // day-zero Hydralisk routing without changing older receipt readers.
+  // (`open` / `gemini` / `claude`). Additive and public-safe; lets OpenAgents
+  // expose day-zero Hydralisk routing without changing older receipt readers.
   supply_lane?: SupplyLane | undefined
   routing?:
     | Readonly<{
@@ -762,7 +760,7 @@ const telemetryExecutedVerdict = (
 const telemetryRequestClass = (streamed: boolean): KhalaRequestClass =>
   streamed ? 'interactive_stream' : 'async_job'
 
-const khalaReceiptForResult = (
+const openAgentsReceiptForResult = (
   input: Readonly<{
     adapterId: string
     metering: MeteringOutcome
@@ -786,11 +784,12 @@ const khalaReceiptForResult = (
     cacheAffinityKeyRaw?: string | undefined
   }>,
 ): OpenAgentsReceipt | undefined => {
-  if (!isKhalaModel(input.requestedModel)) {
+  const supplyLane = lookupModel(input.requestedModel)?.lane
+  const isKhala = isKhalaModel(input.requestedModel)
+  if (!isKhala && supplyLane !== 'hydralisk') {
     return undefined
   }
 
-  const supplyLane = lookupModel(input.requestedModel)?.lane
   const base = {
     lane: classifyModel(input.requestedModel),
     requested_model: input.requestedModel,
@@ -804,6 +803,14 @@ const khalaReceiptForResult = (
       input.routeMetadata?.providerHealthScore ?? NOT_MEASURED,
     region: input.routeMetadata?.region ?? NOT_MEASURED,
   } satisfies NonNullable<OpenAgentsReceipt['routing']>
+
+  if (!isKhala) {
+    return {
+      ...base,
+      routing,
+      verification: 'none' as const,
+    }
+  }
 
   // Shared telemetry inputs measurable for EVERY Khala request (tokens from the
   // provider usage, latency from the gateway edge). The cache-affinity key (book
@@ -1094,7 +1101,7 @@ const sseFrame = (payload: unknown): string =>
 // source to the client frame-by-frame (the khala-code 524 fix). Each content
 // delta is emitted AS IT ARRIVES — bytes flow continuously so the Cloudflare
 // edge idle-timer resets and a multi-minute generation never 524s. The terminal
-// `openagents` disclosure block (built by the SAME `khalaReceiptForResult` the
+// `openagents` disclosure block (built by the SAME `openAgentsReceiptForResult` the
 // non-streaming + buffered paths use) and metering settlement happen AFTER the
 // upstream closes, attached to the final `chat.completion.chunk` before
 // `data: [DONE]`. Metering settles receipt-first from the terminal usage frame.
@@ -1253,7 +1260,7 @@ const makePassThroughResponseStream = (
                   ),
                 }),
           }
-    const openagents = khalaReceiptForResult({
+    const openagents = openAgentsReceiptForResult({
       adapterId: input.adapterId,
       ...(input.cacheAffinityKeyRaw === undefined
         ? {}
@@ -1857,10 +1864,10 @@ export const handleChatCompletions = (
 
       // OPENAGENTS DISCLOSURE (M0 / #6008 follow-up). Streaming carries the SAME
       // non-breaking `openagents` block the non-streaming path emits, built by the
-      // SAME `khalaReceiptForResult(...)` (non-Khala => undefined). Reconstruct an
-      // `InferenceResult` from the served chunks — content concatenated, the
-      // terminal finishReason/usage, and the terminal served model when the
-      // adapter reports one — then attach the block to the FINAL
+      // SAME `openAgentsReceiptForResult(...)` (non-disclosed lanes => undefined).
+      // Reconstruct an `InferenceResult` from the served chunks — content
+      // concatenated, the terminal finishReason/usage, and the terminal served
+      // model when the adapter reports one — then attach the block to the FINAL
       // `chat.completion.chunk` frame only, before `data: [DONE]`.
       const assembledContent = servedChunks
         .map(chunk => chunk.contentDelta)
@@ -1916,10 +1923,10 @@ export const handleChatCompletions = (
           totalTokens: 0,
         },
       }
-      const streamOpenagents = khalaReceiptForResult({
+      const streamOpenagents = openAgentsReceiptForResult({
         adapterId: chunks.served.value.adapterId,
         ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
-        // `khalaReceiptForResult` requires a MeteringOutcome; when no terminal
+        // `openAgentsReceiptForResult` requires a MeteringOutcome; when no terminal
         // usage frame was served (so no metering ran) fall back to the stub
         // outcome shape so a Khala stream without usage still discloses.
         metering: streamMetering ?? { metered: false, receiptRef: null },
@@ -2142,12 +2149,12 @@ export const handleChatCompletions = (
         created,
         id: responseId,
         model: requestedModel,
-        // Khala requests carry the disclosure block (which concrete model/worker
-        // served this one endpoint). `khala-code` additionally runs the
-        // deterministic verifier and attaches the test verdict; non-Khala
-        // responses are byte-identical to before. Streaming carries the same
-        // disclosure in a later slice.
-        openagents: khalaReceiptForResult({
+        // Disclosed lanes carry the public block showing which concrete
+        // model/worker served the request. `khala-code` additionally runs the
+        // deterministic verifier and attaches the test verdict; ordinary
+        // non-disclosed responses remain byte-identical to before. Streaming
+        // carries the same disclosure in a later slice.
+        openagents: openAgentsReceiptForResult({
           adapterId: servedAdapterId,
           ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
           metering,

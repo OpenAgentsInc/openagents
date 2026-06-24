@@ -42,25 +42,25 @@ The practical path is:
 4. Do not expose raw chain-of-thought. The harmony format includes analysis,
    commentary, and final channels; Khala should preserve the internal semantics
    needed for tool calls while filtering/summarizing user-visible reasoning.
-5. Promote neither model to a production Khala alias until the benchmark
-   harness has measured TTFT, inter-token latency, throughput, total wall time,
-   cost per accepted outcome, cache behavior, GPU memory, and eval results on
-   realistic traffic.
+5. Promote neither model to a production Khala-specific alias until the
+   benchmark harness has measured TTFT, inter-token latency, throughput, total
+   wall time, cost per accepted outcome, cache behavior, GPU memory, and eval
+   results on realistic traffic.
 
 ## Model card facts that matter for serving
 
-| Fact | `gpt-oss-20b` | `gpt-oss-120b` | Serving implication |
-| --- | ---: | ---: | --- |
-| Total parameters | 20.91B | 116.83B | These are large open-weight models, but both are MoE, not dense at full size. |
-| Active parameters per token | 3.61B | 5.13B | Per-token compute is closer than the total parameter names imply. |
-| Layers | 24 | 36 | 120B has a deeper runtime path and larger KV/cache footprint. |
-| Experts | 32 | 128 | Top-4 expert routing per token; runtime support for MoE matters. |
-| Checkpoint size | 12.8 GiB | 60.8 GiB | 20B fits L4 memory; 120B needs high-memory single GPU or tensor parallelism. |
-| Quantization | MXFP4 MoE weights | MXFP4 MoE weights | Engines must understand MXFP4; generic open-model loaders may not work. |
-| Context length | 131,072 tokens | 131,072 tokens | Weight fit is not enough; KV cache can dominate long-context/batch planning. |
-| Minimum fit claim | As little as 16 GB memory | Single 80 GB GPU | Good match for our L4 and H100/H200/B200/G4 lanes respectively. |
-| API format | Harmony / Responses-style | Harmony / Responses-style | The adapter must render system/developer/user/tool messages correctly. |
-| License | Apache 2.0 release | Apache 2.0 release | Good for self-hosted product experiments, with separate usage-policy/safety review. |
+| Fact                        |             `gpt-oss-20b` |            `gpt-oss-120b` | Serving implication                                                                 |
+| --------------------------- | ------------------------: | ------------------------: | ----------------------------------------------------------------------------------- |
+| Total parameters            |                    20.91B |                   116.83B | These are large open-weight models, but both are MoE, not dense at full size.       |
+| Active parameters per token |                     3.61B |                     5.13B | Per-token compute is closer than the total parameter names imply.                   |
+| Layers                      |                        24 |                        36 | 120B has a deeper runtime path and larger KV/cache footprint.                       |
+| Experts                     |                        32 |                       128 | Top-4 expert routing per token; runtime support for MoE matters.                    |
+| Checkpoint size             |                  12.8 GiB |                  60.8 GiB | 20B fits L4 memory; 120B needs high-memory single GPU or tensor parallelism.        |
+| Quantization                |         MXFP4 MoE weights |         MXFP4 MoE weights | Engines must understand MXFP4; generic open-model loaders may not work.             |
+| Context length              |            131,072 tokens |            131,072 tokens | Weight fit is not enough; KV cache can dominate long-context/batch planning.        |
+| Minimum fit claim           | As little as 16 GB memory |          Single 80 GB GPU | Good match for our L4 and H100/H200/B200/G4 lanes respectively.                     |
+| API format                  | Harmony / Responses-style | Harmony / Responses-style | The adapter must render system/developer/user/tool messages correctly.              |
+| License                     |        Apache 2.0 release |        Apache 2.0 release | Good for self-hosted product experiments, with separate usage-policy/safety review. |
 
 The model card also matters operationally because these are reasoning models.
 Reasoning effort can be configured low/medium/high and higher effort increases
@@ -81,23 +81,23 @@ Current `gcloud` context from the inventory refresh:
 
 Current live GPU instances:
 
-| Instance | Zone | Shape | GPU | Status | Scheduling |
-| --- | --- | --- | --- | --- | --- |
-| `gswarm508-clean2-20260325044551-contrib` | `us-central1-b` | `g2-standard-8` | 1 x L4 | `RUNNING` | standard |
-| `gswarm508-clean2-20260325044551-coord` | `us-central1-a` | `g2-standard-8` | 1 x L4 | `TERMINATED` | standard |
+| Instance                                  | Zone            | Shape           | GPU    | Status       | Scheduling |
+| ----------------------------------------- | --------------- | --------------- | ------ | ------------ | ---------- |
+| `gswarm508-clean2-20260325044551-contrib` | `us-central1-b` | `g2-standard-8` | 1 x L4 | `RUNNING`    | standard   |
+| `gswarm508-clean2-20260325044551-coord`   | `us-central1-a` | `g2-standard-8` | 1 x L4 | `TERMINATED` | standard   |
 
 Current `us-central1` quota signals relevant to gpt-oss:
 
-| GPU family | Quota signal | Current usage | `gpt-oss-20b` | `gpt-oss-120b` |
-| --- | ---: | ---: | --- | --- |
-| L4 24GB | 16 on-demand, 16 Spot | 1 running | Yes: smoke, low-QPS, benchmark lane. | No: not enough VRAM for the 60.8 GiB checkpoint plus KV/runtime. |
-| RTX PRO 6000 96GB | 16 Spot non-VWS, 16 on-demand VWS, 16 Spot VWS | 0 live | Yes, overpowered for 20B. | Plausible single-GPU lane if G4 allocation and MXFP4 engine support are proven. |
-| A100 40GB | 16 on-demand, 64 Spot | 0 | Yes, good fallback. | Not as a single GPU; possible multi-GPU/tensor-parallel probe, but not first choice. |
-| A100 80GB | 0/0 in older Compute quota | 0 | Yes, but unavailable by quota. | Would fit the model-card target, but current quota says do not plan on it. |
-| H100 80GB / H100 Mega | 64 Spot/preemptible | 0 | Yes, overpowered. | Intended single-GPU minimum lane; watch KV headroom, batch size, and Spot reliability. |
-| H200 141GB | 64 Spot/preemptible | 0 | Yes, overpowered. | Better production canary because memory headroom helps context and batch. |
-| B200 180GB | 64 Spot/preemptible | 0 | Yes, overpowered. | Best high-headroom modern lane if capacity allocates. |
-| GB200 192GB | Accelerator type visible | 0 | Yes, overpowered. | Visible accelerator type, but no explicit usable quota row was found. |
+| GPU family            |                                   Quota signal | Current usage | `gpt-oss-20b`                        | `gpt-oss-120b`                                                                         |
+| --------------------- | ---------------------------------------------: | ------------: | ------------------------------------ | -------------------------------------------------------------------------------------- |
+| L4 24GB               |                          16 on-demand, 16 Spot |     1 running | Yes: smoke, low-QPS, benchmark lane. | No: not enough VRAM for the 60.8 GiB checkpoint plus KV/runtime.                       |
+| RTX PRO 6000 96GB     | 16 Spot non-VWS, 16 on-demand VWS, 16 Spot VWS |        0 live | Yes, overpowered for 20B.            | Plausible single-GPU lane if G4 allocation and MXFP4 engine support are proven.        |
+| A100 40GB             |                          16 on-demand, 64 Spot |             0 | Yes, good fallback.                  | Not as a single GPU; possible multi-GPU/tensor-parallel probe, but not first choice.   |
+| A100 80GB             |                     0/0 in older Compute quota |             0 | Yes, but unavailable by quota.       | Would fit the model-card target, but current quota says do not plan on it.             |
+| H100 80GB / H100 Mega |                            64 Spot/preemptible |             0 | Yes, overpowered.                    | Intended single-GPU minimum lane; watch KV headroom, batch size, and Spot reliability. |
+| H200 141GB            |                            64 Spot/preemptible |             0 | Yes, overpowered.                    | Better production canary because memory headroom helps context and batch.              |
+| B200 180GB            |                            64 Spot/preemptible |             0 | Yes, overpowered.                    | Best high-headroom modern lane if capacity allocates.                                  |
+| GB200 192GB           |                       Accelerator type visible |             0 | Yes, overpowered.                    | Visible accelerator type, but no explicit usable quota row was found.                  |
 
 This means the Google path is not blocked by model size in the same way GLM-5.2
 is. The blocker is proving actual allocation and standing up the serving stack.
@@ -202,15 +202,18 @@ For `gpt-oss-120b`:
 ### Phase 1: Khala integration
 
 1. Add model catalog entries:
-   - `openagents/gpt-oss-20b`
-   - `openagents/gpt-oss-120b`
+   - `openai/gpt-oss-20b`
+   - `openai/gpt-oss-120b`
 2. Route them through a self-hosted provider adapter that exposes OpenAI-compatible
    chat/responses semantics while using harmony under the hood.
-3. Preserve internal reasoning/tool-call semantics, but return only final
+3. Reserve `openagents/khala-*` ids for models or coordinators with
+   Khala-specific behavior, such as Blueprint-backed orchestration or identity
+   semantics.
+4. Preserve internal reasoning/tool-call semantics, but return only final
    user-visible content and safe reasoning summaries where product UI needs them.
-4. Add receipt fields for model revision, engine, engine version, GPU,
+5. Add receipt fields for model revision, engine, engine version, GPU,
    quantization (`mxfp4`), reasoning effort, and warm/cold state.
-5. Add feature flags so the lane can be enabled for owner/internal traffic
+6. Add feature flags so the lane can be enabled for owner/internal traffic
    before public customers.
 
 ### Phase 2: Decision-grade benchmark
@@ -262,13 +265,13 @@ shape justifies the operational complexity.
 
 ## Go/no-go
 
-| Question | Answer |
-| --- | --- |
-| Can we run `gpt-oss-20b` today? | Yes. The live L4 lane should be enough for smoke and low-QPS service after vLLM/runtime setup. |
-| Can we run `gpt-oss-120b` today on a live VM? | No. The only live GPU is L4, which is too small. |
-| Can we run `gpt-oss-120b` today if GCP allocates our visible quota? | Probably yes. H100 80GB is the model-card target; H200/B200/RTX PRO 6000 give better headroom. |
-| Is 120B production-ready for OpenAgents today? | Not yet. We still need allocation proof, runtime pinning, harmony adapter work, evals, safety policy, and telemetry. |
-| Is this easier than self-hosted GLM-5.2? | Yes, by a lot. GPT-OSS 120B is a single-high-memory-GPU target; GLM-5.2 is a multi-GPU frontier-serving research lane for us. |
+| Question                                                            | Answer                                                                                                                        |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Can we run `gpt-oss-20b` today?                                     | Yes. The live L4 lane should be enough for smoke and low-QPS service after vLLM/runtime setup.                                |
+| Can we run `gpt-oss-120b` today on a live VM?                       | No. The only live GPU is L4, which is too small.                                                                              |
+| Can we run `gpt-oss-120b` today if GCP allocates our visible quota? | Probably yes. H100 80GB is the model-card target; H200/B200/RTX PRO 6000 give better headroom.                                |
+| Is 120B production-ready for OpenAgents today?                      | Not yet. We still need allocation proof, runtime pinning, harmony adapter work, evals, safety policy, and telemetry.          |
+| Is this easier than self-hosted GLM-5.2?                            | Yes, by a lot. GPT-OSS 120B is a single-high-memory-GPU target; GLM-5.2 is a multi-GPU frontier-serving research lane for us. |
 
 ## Recommended immediate commands/work items
 

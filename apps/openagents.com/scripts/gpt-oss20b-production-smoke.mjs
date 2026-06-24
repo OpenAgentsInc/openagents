@@ -1,16 +1,10 @@
 #!/usr/bin/env node
 
 const defaultBaseUrl = 'https://openagents.com'
-const defaultModel = 'openagents/khala-oss-20b'
+const defaultModel = 'openai/gpt-oss-20b'
 const defaultPrompt =
   'OpenAgents production smoke: answer with exactly READY and no other words.'
-const forbiddenIdentityTerms = [
-  'openai',
-  'gpt',
-  'hydralisk',
-  'vllm',
-  'provider',
-]
+const forbiddenInfrastructureTerms = ['hydralisk', 'vllm', 'provider']
 
 const trimBaseUrl = baseUrl =>
   String(baseUrl || defaultBaseUrl).replace(/\/+$/, '')
@@ -91,9 +85,9 @@ const contentFromSseFrames = frames =>
     .filter(value => typeof value === 'string')
     .join('')
 
-const identityLeaks = text => {
+const infrastructureLeaks = text => {
   const lower = String(text || '').toLowerCase()
-  return forbiddenIdentityTerms.filter(term => lower.includes(term))
+  return forbiddenInfrastructureTerms.filter(term => lower.includes(term))
 }
 
 const terminalOpenAgentsFrom = frames => {
@@ -115,10 +109,10 @@ const summarizeOpenAgents = openagents => ({
 
 export const parseArgs = (argv, env = process.env) => {
   const options = {
-    approveLiveSpend: truthy(env.KHALA_OSS20B_SMOKE_APPROVE_LIVE_SPEND),
+    approveLiveSpend: truthy(env.GPT_OSS20B_SMOKE_APPROVE_LIVE_SPEND),
     baseUrl: env.OPENAGENTS_BASE_URL || defaultBaseUrl,
-    model: env.OPENAGENTS_KHALA_OSS20B_SMOKE_MODEL || defaultModel,
-    prompt: env.OPENAGENTS_KHALA_OSS20B_SMOKE_PROMPT || defaultPrompt,
+    model: env.OPENAGENTS_GPT_OSS20B_SMOKE_MODEL || defaultModel,
+    prompt: env.OPENAGENTS_GPT_OSS20B_SMOKE_PROMPT || defaultPrompt,
     readinessOnly: false,
     token: env.OPENAGENTS_AGENT_TOKEN || '',
   }
@@ -149,22 +143,22 @@ export const parseArgs = (argv, env = process.env) => {
 
 export const usage = () => `Usage:
   OPENAGENTS_AGENT_TOKEN=oa_agent_... \\
-    node scripts/khala-oss20b-production-smoke.mjs --approve-live-spend
+    node scripts/gpt-oss20b-production-smoke.mjs --approve-live-spend
 
 Options:
   --base-url <url>           OpenAgents origin. Defaults to https://openagents.com.
-  --model <model>            Defaults to openagents/khala-oss-20b.
+  --model <model>            Defaults to openai/gpt-oss-20b.
   --prompt <text>            Prompt used for both nonstreaming and streaming calls.
   --token <token>            Agent bearer token. Defaults to OPENAGENTS_AGENT_TOKEN.
   --approve-live-spend       Required before authenticated completion calls.
   --readiness-only           Check readiness + model catalog without spending.
 
 This smoke verifies /v1/gateway/readiness, /v1/models, nonstreaming chat,
-streaming chat, usage/disclosure blocks, and a simple identity guard. It never
-prints bearer tokens or raw completion text.
+streaming chat, usage/disclosure blocks, and a simple infrastructure-leak guard.
+It never prints bearer tokens or raw completion text.
 `
 
-export const runKhalaOss20bProductionSmoke = async ({
+export const runGptOss20bProductionSmoke = async ({
   approveLiveSpend = false,
   baseUrl = defaultBaseUrl,
   fetchImpl = globalThis.fetch,
@@ -182,7 +176,11 @@ export const runKhalaOss20bProductionSmoke = async ({
     assert(passed, `${name} failed`)
   }
 
-  const readiness = await requestJson(fetchImpl, origin, '/v1/gateway/readiness')
+  const readiness = await requestJson(
+    fetchImpl,
+    origin,
+    '/v1/gateway/readiness',
+  )
   check('readiness_endpoint_200', okStatus(readiness.response), {
     status: readiness.response.status,
   })
@@ -200,7 +198,7 @@ export const runKhalaOss20bProductionSmoke = async ({
   check('models_endpoint_200', okStatus(models.response), {
     status: models.response.status,
   })
-  check('models_lists_khala_oss20b', modelIds.includes(model), {
+  check('models_lists_gpt_oss20b', modelIds.includes(model), {
     model,
     modelCount: modelIds.length,
   })
@@ -235,19 +233,31 @@ export const runKhalaOss20bProductionSmoke = async ({
     model,
   }
 
-  const completion = await requestJson(fetchImpl, origin, '/v1/chat/completions', {
-    body: JSON.stringify({ ...chatBody, stream: false }),
-    headers: authHeaders,
-    method: 'POST',
-  })
+  const completion = await requestJson(
+    fetchImpl,
+    origin,
+    '/v1/chat/completions',
+    {
+      body: JSON.stringify({ ...chatBody, stream: false }),
+      headers: authHeaders,
+      method: 'POST',
+    },
+  )
   check('nonstream_completion_200', okStatus(completion.response), {
     status: completion.response.status,
   })
   const completionContent = contentFromCompletion(completion.body)
-  check('nonstream_identity_guard_clean', identityLeaks(completionContent).length === 0)
-  check('nonstream_usage_present', Number(completion.body?.usage?.total_tokens || 0) > 0, {
-    totalTokens: completion.body?.usage?.total_tokens,
-  })
+  check(
+    'nonstream_infrastructure_guard_clean',
+    infrastructureLeaks(completionContent).length === 0,
+  )
+  check(
+    'nonstream_usage_present',
+    Number(completion.body?.usage?.total_tokens || 0) > 0,
+    {
+      totalTokens: completion.body?.usage?.total_tokens,
+    },
+  )
   check(
     'nonstream_hydralisk_disclosure_present',
     completion.body?.openagents?.requested_model === model &&
@@ -255,14 +265,17 @@ export const runKhalaOss20bProductionSmoke = async ({
     summarizeOpenAgents(completion.body?.openagents),
   )
 
-  const streamResponse = await fetchImpl(absoluteUrl(origin, '/v1/chat/completions'), {
-    body: JSON.stringify({ ...chatBody, stream: true }),
-    headers: {
-      accept: 'text/event-stream',
-      ...authHeaders,
+  const streamResponse = await fetchImpl(
+    absoluteUrl(origin, '/v1/chat/completions'),
+    {
+      body: JSON.stringify({ ...chatBody, stream: true }),
+      headers: {
+        accept: 'text/event-stream',
+        ...authHeaders,
+      },
+      method: 'POST',
     },
-    method: 'POST',
-  })
+  )
   const streamText = await streamResponse.text()
   check('stream_completion_200', okStatus(streamResponse), {
     status: streamResponse.status,
@@ -272,7 +285,10 @@ export const runKhalaOss20bProductionSmoke = async ({
   const streamedContent = contentFromSseFrames(frames)
   const terminalOpenAgents = terminalOpenAgentsFrom(frames)
   check('stream_frames_present', frames.length > 0, { frames: frames.length })
-  check('stream_identity_guard_clean', identityLeaks(streamedContent).length === 0)
+  check(
+    'stream_infrastructure_guard_clean',
+    infrastructureLeaks(streamedContent).length === 0,
+  )
   check(
     'stream_hydralisk_disclosure_present',
     terminalOpenAgents?.requested_model === model &&
@@ -305,7 +321,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (options.help) {
     console.log(usage())
   } else {
-    runKhalaOss20bProductionSmoke(options)
+    runGptOss20bProductionSmoke(options)
       .then(output => {
         console.log(
           JSON.stringify(

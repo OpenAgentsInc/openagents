@@ -10,9 +10,9 @@ import {
 } from './models-routes'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
-  KHALA_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
 } from './pricing'
 
@@ -257,7 +257,9 @@ describe('provider serving policy (laneArming)', () => {
     expect(body.data.some(m => m.id === geminiId)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_MINI_MODEL_ID)).toBe(true)
     expect(body.data.some(m => m.id === KHALA_CODE_MODEL_ID)).toBe(false)
-    expect(body.data.some(m => m.id === KHALA_OSS_20B_MODEL_ID)).toBe(false)
+    expect(body.data.some(m => m.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe(
+      false,
+    )
     expect(body.data.some(m => m.id === fireworksId)).toBe(false)
     expect(body.data.every(m => m.oa_lane.startsWith('vertex-'))).toBe(true)
   })
@@ -319,7 +321,7 @@ describe('provider serving policy (laneArming)', () => {
     expect(body.oa_lane).toBe('fireworks')
   })
 
-  it('lists and retrieves the Khala GPT-OSS alias only when Hydralisk is armed', async () => {
+  it('lists and retrieves the OpenAI GPT-OSS model id only when Hydralisk is armed', async () => {
     const hydraliskEnv = {
       HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
       HYDRALISK_BEARER_TOKEN: 'secret-route-token',
@@ -341,16 +343,16 @@ describe('provider serving policy (laneArming)', () => {
     }
     expect(listBody.data).toEqual([
       expect.objectContaining({
-        id: KHALA_OSS_20B_MODEL_ID,
+        id: HYDRALISK_GPT_OSS_20B_MODEL_ID,
         oa_lane: 'hydralisk',
       }),
     ])
 
     const retrieved = await runRetrieve(
-      new Request(`https://x/v1/models/${KHALA_OSS_20B_MODEL_ID}`, {
+      new Request(`https://x/v1/models/${HYDRALISK_GPT_OSS_20B_MODEL_ID}`, {
         method: 'GET',
       }),
-      KHALA_OSS_20B_MODEL_ID,
+      HYDRALISK_GPT_OSS_20B_MODEL_ID,
       {
         enabled: true,
         laneArming: resolveSupplyLaneArming(hydraliskEnv),
@@ -361,7 +363,7 @@ describe('provider serving policy (laneArming)', () => {
       id: string
       oa_lane: string
     }
-    expect(retrieveBody.id).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(retrieveBody.id).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
     expect(retrieveBody.oa_lane).toBe('hydralisk')
   })
 

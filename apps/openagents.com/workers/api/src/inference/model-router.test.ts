@@ -20,9 +20,9 @@ import {
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
-  KHALA_OSS_20B_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -160,9 +160,9 @@ describe('model classification', () => {
     ])
   })
 
-  test('routes the Khala GPT-OSS alias only to the Hydralisk lane', () => {
-    expect(classifyModel(KHALA_OSS_20B_MODEL_ID)).toBe('open')
-    expect(selectAdapterPlan(KHALA_OSS_20B_MODEL_ID)).toEqual([
+  test('routes the OpenAI GPT-OSS 20B model id only to the Hydralisk lane', () => {
+    expect(classifyModel(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe('open')
+    expect(selectAdapterPlan(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toEqual([
       HYDRALISK_ADAPTER_ID,
     ])
   })

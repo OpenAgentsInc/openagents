@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest'
 
 import { makeHydraliskVllmAdapter } from './hydralisk-adapter'
 import { HYDRALISK_ADAPTER_ID } from './model-router'
-import { KHALA_OSS_20B_MODEL_ID } from './pricing'
+import { HYDRALISK_GPT_OSS_20B_MODEL_ID } from './pricing'
 import type { InferenceRequest } from './provider-adapter'
 
 const request = (
   overrides: Partial<InferenceRequest> = {},
 ): InferenceRequest => ({
   messages: [{ content: 'Say READY.', role: 'user' }],
-  model: KHALA_OSS_20B_MODEL_ID,
+  model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
   passthroughParams: { max_tokens: 8 },
   stream: false,
   ...overrides,
@@ -38,9 +38,13 @@ const RETRYABLE_STATUS_CASES = [
 ] as const
 
 describe('hydralisk vLLM adapter', () => {
-  it('maps the Khala alias to the Hydralisk OpenAI-compatible endpoint', async () => {
+  it('maps the GPT-OSS model id to the Hydralisk OpenAI-compatible endpoint', async () => {
     let captured:
-      | Readonly<{ input: string; init: RequestInit; body: Record<string, unknown> }>
+      | Readonly<{
+          input: string
+          init: RequestInit
+          body: Record<string, unknown>
+        }>
       | undefined
 
     const adapter = makeHydraliskVllmAdapter({
@@ -69,11 +73,11 @@ describe('hydralisk vLLM adapter', () => {
     expect(captured?.input).toBe(
       'https://hydralisk.example.test/v1/chat/completions',
     )
-    expect(captured?.body.model).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(captured?.body.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
     expect(captured?.body.stream).toBe(false)
-    expect((captured?.init.headers as Record<string, string>).authorization).toBe(
-      'Bearer hydralisk-token',
-    )
+    expect(
+      (captured?.init.headers as Record<string, string>).authorization,
+    ).toBe('Bearer hydralisk-token')
   })
 
   it('fails closed when terminal usage is absent', async () => {

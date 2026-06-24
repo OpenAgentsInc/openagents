@@ -53,8 +53,8 @@ open-weight serving lane instead went up on a non-confidential
 `g2-standard-8` L4 host:
 `hydralisk-gptoss20b-l4-20260624000550` in `us-central1-a`. The production
 OpenAgents Worker version `105b9e25-52d5-4daa-931c-a96686575ce5` served
-`openagents/khala-oss-20b` through Hydralisk as `openai/gpt-oss-20b` and wrote
-the public inference receipt
+GPT-OSS 20B through Hydralisk as `openai/gpt-oss-20b` and wrote the public
+inference receipt
 `receipt.inference.charge.chatcmpl_c99f7842b2bb4336868e7a226300fb85`.
 Visible-content follow-up receipts:
 `receipt.inference.charge.chatcmpl_550afe2c0e894dec8c3624b664331353`
@@ -192,13 +192,13 @@ curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
 
 Relevant `us-central1` quota results:
 
-| Quota | Limit shown | Meaning for probe |
-| --- | ---: | --- |
-| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-GPUS-per-project-region` | 16 | Enough quota for a one-GPU `g4-standard-48` Spot probe, subject to preview entitlement and capacity. |
-| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region` | 16 | Virtual Workstation variant quota exists, but this is not the primary inference probe shape. |
-| `NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region` | 16 | On-demand VWS quota exists, but normal non-VWS on-demand RTX PRO 6000 quota did not appear in the quota-info result. |
-| `PREEMPTIBLE-NVIDIA-H100-GPUS-per-project-region` | 64 | Enough quota for a one-GPU A3 High Spot/Confidential Space-style H100 probe, subject to capacity. |
-| `COMMITTED-NVIDIA-H100-GPUS-per-project-region` | `-1` | Commitment quota is effectively not the constraint for an ad hoc probe. |
+| Quota                                                         | Limit shown | Meaning for probe                                                                                                    |
+| ------------------------------------------------------------- | ----------: | -------------------------------------------------------------------------------------------------------------------- |
+| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-GPUS-per-project-region`     |          16 | Enough quota for a one-GPU `g4-standard-48` Spot probe, subject to preview entitlement and capacity.                 |
+| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region` |          16 | Virtual Workstation variant quota exists, but this is not the primary inference probe shape.                         |
+| `NVIDIA-RTX-PRO-6000-VWS-GPUS-per-project-region`             |          16 | On-demand VWS quota exists, but normal non-VWS on-demand RTX PRO 6000 quota did not appear in the quota-info result. |
+| `PREEMPTIBLE-NVIDIA-H100-GPUS-per-project-region`             |          64 | Enough quota for a one-GPU A3 High Spot/Confidential Space-style H100 probe, subject to capacity.                    |
+| `COMMITTED-NVIDIA-H100-GPUS-per-project-region`               |        `-1` | Commitment quota is effectively not the constraint for an ad hoc probe.                                              |
 
 Quota preference requests:
 
@@ -226,12 +226,12 @@ curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
 
 `g4-standard-48` in Iowa / `us-central1`:
 
-| Component | On-demand | Spot/preemptible | DWS defined duration |
-| --- | ---: | ---: | ---: |
-| G4 vCPU | `$0.04891` per vCPU-hour | `$0.01027` per vCPU-hour | `$0.024455` per vCPU-hour |
-| G4 RAM | `$0.00587` per GiB-hour | `$0.001235` per GiB-hour | `$0.002935` per GiB-hour |
-| RTX 6000 96GB GPU | `$1.09565` per GPU-hour | `$0.20810` per GPU-hour | `$0.54783` per GPU-hour |
-| Estimated `g4-standard-48` total | `$4.49993/hr` | `$0.92336/hr` | `$2.24997/hr` |
+| Component                        |                On-demand |         Spot/preemptible |      DWS defined duration |
+| -------------------------------- | -----------------------: | -----------------------: | ------------------------: |
+| G4 vCPU                          | `$0.04891` per vCPU-hour | `$0.01027` per vCPU-hour | `$0.024455` per vCPU-hour |
+| G4 RAM                           |  `$0.00587` per GiB-hour | `$0.001235` per GiB-hour |  `$0.002935` per GiB-hour |
+| RTX 6000 96GB GPU                |  `$1.09565` per GPU-hour |  `$0.20810` per GPU-hour |   `$0.54783` per GPU-hour |
+| Estimated `g4-standard-48` total |            `$4.49993/hr` |            `$0.92336/hr` |             `$2.24997/hr` |
 
 `g4-standard-48` total math: 48 vCPU + 180 GiB RAM + 1 RTX 6000 96GB GPU.
 Google's public Confidential VM pricing page says additional Confidential
@@ -243,20 +243,20 @@ Confidential Computing license fee per RTX PRO 6000 GPU.
 Estimated G4 Confidential VM probe cost while Preview surcharge/license are
 waived:
 
-| Runtime | Spot estimate | On-demand estimate |
-| --- | ---: | ---: |
-| 10 minutes | `$0.15389` | `$0.74999` |
-| 1 hour | `$0.92336` | `$4.49993` |
-| 24 hours | `$22.16064` | `$107.99832` |
+| Runtime    | Spot estimate | On-demand estimate |
+| ---------- | ------------: | -----------------: |
+| 10 minutes |    `$0.15389` |         `$0.74999` |
+| 1 hour     |    `$0.92336` |         `$4.49993` |
+| 24 hours   |   `$22.16064` |       `$107.99832` |
 
 `a3-highgpu-1g` in Americas / `us-central1`:
 
-| Component | On-demand | Spot/preemptible | DWS defined duration |
-| --- | ---: | ---: | ---: |
-| A3 vCPU | `$0.025498003` per vCPU-hour | `$0.01263` per vCPU-hour | `$0.010934` per vCPU-hour |
-| A3 RAM | `$0.00222034` per GiB-hour | `$0.00110` per GiB-hour | `$0.000952` per GiB-hour |
-| H100 80GB GPU | `$9.796550569` per GPU-hour | `$4.85340` per GPU-hour | `$4.200761` per GPU-hour |
-| Estimated `a3-highgpu-1g` total | `$10.97906/hr` | `$5.43918/hr` | `$4.70781/hr` |
+| Component                       |                    On-demand |         Spot/preemptible |      DWS defined duration |
+| ------------------------------- | ---------------------------: | -----------------------: | ------------------------: |
+| A3 vCPU                         | `$0.025498003` per vCPU-hour | `$0.01263` per vCPU-hour | `$0.010934` per vCPU-hour |
+| A3 RAM                          |   `$0.00222034` per GiB-hour |  `$0.00110` per GiB-hour |  `$0.000952` per GiB-hour |
+| H100 80GB GPU                   |  `$9.796550569` per GPU-hour |  `$4.85340` per GPU-hour |  `$4.200761` per GPU-hour |
+| Estimated `a3-highgpu-1g` total |               `$10.97906/hr` |            `$5.43918/hr` |             `$4.70781/hr` |
 
 `a3-highgpu-1g` total math: 26 vCPU + 234 GiB RAM + 1 H100 80GB GPU. Google's
 Confidential VM GPU creation docs say A3 High Confidential GPU VMs support Spot
@@ -267,11 +267,11 @@ lists additional Confidential Computing adders for A3 as `N/A` on-demand,
 Estimated A3 High Confidential VM probe cost including the Confidential
 Computing adders:
 
-| Runtime | Spot estimate | DWS defined-duration estimate |
-| --- | ---: | ---: |
-| 10 minutes | `$0.97972` | `$0.87000` |
-| 1 hour | `$5.87834` | `$5.21999` |
-| 24 hours | `$141.08014` | `$125.27961` |
+| Runtime    | Spot estimate | DWS defined-duration estimate |
+| ---------- | ------------: | ----------------------------: |
+| 10 minutes |    `$0.97972` |                    `$0.87000` |
+| 1 hour     |    `$5.87834` |                    `$5.21999` |
+| 24 hours   |  `$141.08014` |                  `$125.27961` |
 
 Practical cost read:
 

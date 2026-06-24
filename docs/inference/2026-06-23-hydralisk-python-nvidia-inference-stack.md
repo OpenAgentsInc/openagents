@@ -4,9 +4,9 @@ Date: 2026-06-23
 
 Status: live day-zero serving lane. Hydralisk now has a standalone repo, a live
 GCE L4/vLLM host for GPT-OSS 20B, public-safe capabilities/receipts, and
-OpenAgents Worker routing/config hooks for `openagents/khala-oss-20b`. This is
-still an internal Khala dogfood lane, not a broad product promise for every
-GPT-OSS workload.
+OpenAgents Worker routing/config hooks for `openai/gpt-oss-20b`. This is still
+an internal dogfood lane for Khala traffic, not a broad product promise for
+every GPT-OSS workload.
 
 Scope: define **Hydralisk** as the Python/NVIDIA inference lane for OpenAgents:
 the stack we use when the right move is to stay in conventional Python ML
@@ -79,8 +79,8 @@ The OpenAgents production path was deployed after the host smoke:
 
 - Worker: `openagents-autopilot`
 - Worker version: `105b9e25-52d5-4daa-931c-a96686575ce5`
-- Smoke script: `apps/openagents.com/scripts/khala-gateway-readiness-smoke.mjs`
-- Smoke model: `openagents/khala-oss-20b`
+- Smoke script: `apps/openagents.com/scripts/gpt-oss20b-production-smoke.mjs`
+- Smoke model: `openai/gpt-oss-20b`
 - Served model: `openai/gpt-oss-20b`
 - Worker disclosure: `hydralisk-vllm`
 - Supply-lane disclosure: `hydralisk`
@@ -128,7 +128,7 @@ OpenAgents Worker work now defines the product-facing lane:
 
 - adapter id: `hydralisk-vllm`
 - supply lane: `hydralisk`
-- Khala alias: `openagents/khala-oss-20b`
+- public model id: `openai/gpt-oss-20b`
 - upstream model: `openai/gpt-oss-20b`
 - direct `gpt-oss-20b`: still Fireworks-first for day zero
 
@@ -142,12 +142,17 @@ HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=<public-safe preflight ref>
 HYDRALISK_GPT_OSS_20B_RECEIPT_REF=<public-safe receipt ref>
 ```
 
-When unarmed, `/v1/models` hides `openagents/khala-oss-20b` and
-`/v1/chat/completions` returns `model_unavailable` for the alias before
+When unarmed, `/v1/models` hides `openai/gpt-oss-20b` and
+`/v1/chat/completions` returns `model_unavailable` for the requested model before
 balance, premium, or provider dispatch. When armed, the route discloses
 `openagents.worker: hydralisk-vllm` and the additive
 `openagents.supply_lane: hydralisk`; the legacy `openagents.lane` remains the
 model class (`open`) for backward compatibility.
+
+2026-06-24 slug correction: the live GPT-OSS 20B lane is exposed as the raw
+upstream model id, `openai/gpt-oss-20b`. `openagents/khala-*` ids are reserved
+for models or coordinators that actually add Khala-specific behavior, such as
+Blueprint-backed orchestration or identity semantics.
 
 The previous blocker was live host promotion. It is now cleared by the
 2026-06-24 L4 deployment above; the Psion L4 hosts were not reclaimed.
@@ -184,15 +189,15 @@ Hydralisk lets us pursue two truths at once:
 
 ## Ownership boundary
 
-| Layer | Psionic | Hydralisk | OpenAgents / Khala |
-| --- | --- | --- | --- |
-| Runtime identity | Rust-native ML framework | Python/NVIDIA serving stack | Product gateway and business surface |
-| Default engines | Psionic backends, owned Rust serving, reference-compatible kernels | vLLM, SGLang, TensorRT-LLM, Triton, NIM where useful | Provider adapters and model routing |
-| Scheduler and KV research | Owned implementation target | Use vLLM/SGLang/Dynamo now, measure hard | Decide when a lane is product-eligible |
-| Receipts | Psionic execution receipts and parity evidence | Hydralisk run receipts and engine evidence | Accepted-outcome receipts, metering, settlement |
-| Money authority | None | None | Credits, pricing, payouts, referral |
-| Public promises | Only after hardware validation rows | Only after benchmark/eval/capacity gates | Product-facing claims and docs |
-| Private data | No raw secrets or prompts in receipts | Same | Same |
+| Layer                     | Psionic                                                            | Hydralisk                                            | OpenAgents / Khala                              |
+| ------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------- | ----------------------------------------------- |
+| Runtime identity          | Rust-native ML framework                                           | Python/NVIDIA serving stack                          | Product gateway and business surface            |
+| Default engines           | Psionic backends, owned Rust serving, reference-compatible kernels | vLLM, SGLang, TensorRT-LLM, Triton, NIM where useful | Provider adapters and model routing             |
+| Scheduler and KV research | Owned implementation target                                        | Use vLLM/SGLang/Dynamo now, measure hard             | Decide when a lane is product-eligible          |
+| Receipts                  | Psionic execution receipts and parity evidence                     | Hydralisk run receipts and engine evidence           | Accepted-outcome receipts, metering, settlement |
+| Money authority           | None                                                               | None                                                 | Credits, pricing, payouts, referral             |
+| Public promises           | Only after hardware validation rows                                | Only after benchmark/eval/capacity gates             | Product-facing claims and docs                  |
+| Private data              | No raw secrets or prompts in receipts                              | Same                                                 | Same                                            |
 
 Hydralisk should never blur into Psionic's identity. A Hydralisk win can become
 a Psionic port candidate only after it produces enough evidence to define the
@@ -222,14 +227,14 @@ Recommended baseline:
 
 Engine selection:
 
-| Engine | Hydralisk role |
-| --- | --- |
-| vLLM | Default first engine for gpt-oss and broad OpenAI-compatible serving. Use for the first L4 and high-memory GPU lanes. |
-| SGLang | Primary GLM/MoE/long-context/structured-generation lane. Use where model-specific parsers, MTP, HiCache, DSA, and agent/tool behavior matter. |
-| TensorRT-LLM | Promotion path for stable, high-volume model/hardware pairs where engine build cost is justified. |
-| Triton Inference Server | Packaging and deployment layer for TensorRT-LLM or other stable model services when it simplifies operations. |
-| NVIDIA NIM | Use packaged NIMs when the target model exists and the packaging wins; do not wait on NIM for GLM if SGLang is the supported path. |
-| NVIDIA Dynamo | Routing, KV-aware scheduling, KV offload, NIXL transfer, and prefill/decode disaggregation around vLLM/SGLang/TensorRT-LLM when the workload justifies it. |
+| Engine                  | Hydralisk role                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| vLLM                    | Default first engine for gpt-oss and broad OpenAI-compatible serving. Use for the first L4 and high-memory GPU lanes.                                      |
+| SGLang                  | Primary GLM/MoE/long-context/structured-generation lane. Use where model-specific parsers, MTP, HiCache, DSA, and agent/tool behavior matter.              |
+| TensorRT-LLM            | Promotion path for stable, high-volume model/hardware pairs where engine build cost is justified.                                                          |
+| Triton Inference Server | Packaging and deployment layer for TensorRT-LLM or other stable model services when it simplifies operations.                                              |
+| NVIDIA NIM              | Use packaged NIMs when the target model exists and the packaging wins; do not wait on NIM for GLM if SGLang is the supported path.                         |
+| NVIDIA Dynamo           | Routing, KV-aware scheduling, KV offload, NIXL transfer, and prefill/decode disaggregation around vLLM/SGLang/TensorRT-LLM when the workload justifies it. |
 
 This stack is intentionally different from the Khala MVP note on Dynamo. Khala
 should not depend on disaggregation before traffic proves the need. Hydralisk
@@ -366,15 +371,15 @@ Hydralisk profile than to a clean Psionic-native first implementation.
 Use the quota inventory and model-fit docs as the current local truth. The
 Hydralisk planning read is:
 
-| Hardware lane | Hydralisk use |
-| --- | --- |
-| L4 | GPT-OSS 20B smoke, small/medium model serving, cheap dogfood, eval harness. |
-| A100 40GB | Fallback for older CUDA paths, smaller quantized models, compatibility probes. |
-| RTX PRO 6000 Blackwell | Strong candidate for Blackwell/NVFP4-style experiments if allocation is proven again. |
-| H100 80GB | GPT-OSS 120B single-GPU or multi-GPU path; GLM probe only with more GPUs and memory planning. |
-| H200 141GB | Better high-memory lane for GPT-OSS 120B and GLM FP8 SGLang probes. |
-| B200 180GB | Most relevant visible lane for Baseten-style Blackwell/FP4/GLM experiments. |
-| GB200 | Visible accelerator type, but not yet a quota-proven lane in our inventory. |
+| Hardware lane          | Hydralisk use                                                                                 |
+| ---------------------- | --------------------------------------------------------------------------------------------- |
+| L4                     | GPT-OSS 20B smoke, small/medium model serving, cheap dogfood, eval harness.                   |
+| A100 40GB              | Fallback for older CUDA paths, smaller quantized models, compatibility probes.                |
+| RTX PRO 6000 Blackwell | Strong candidate for Blackwell/NVFP4-style experiments if allocation is proven again.         |
+| H100 80GB              | GPT-OSS 120B single-GPU or multi-GPU path; GLM probe only with more GPUs and memory planning. |
+| H200 141GB             | Better high-memory lane for GPT-OSS 120B and GLM FP8 SGLang probes.                           |
+| B200 180GB             | Most relevant visible lane for Baseten-style Blackwell/FP4/GLM experiments.                   |
+| GB200                  | Visible accelerator type, but not yet a quota-proven lane in our inventory.                   |
 
 Spot quota is useful for experiments and benchmark sweeps. Public production
 serving should either use non-preemptible capacity or have a typed fallback and
@@ -621,17 +626,17 @@ the model was actually served.
 
 ## Milestones
 
-| Milestone | Result |
-| --- | --- |
-| M0 | Hydralisk spec, repo decision, receipt schema draft, local benchmark fixtures. |
-| M1 | GPT-OSS 20B on L4 with vLLM, internal-only endpoint, receipts, and smoke evals. |
-| M2 | Khala provider adapter for Hydralisk behind a feature flag. |
-| M3 | GPT-OSS 120B high-memory vLLM proof, cost and quality comparison. |
-| M4 | GLM-5.2 hosted baseline with workload capture and eval profile. |
-| M5 | GLM-5.2 FP8 SGLang monolithic self-host probe on high-memory GPUs. |
-| M6 | Dynamo KV-aware routing canary for GLM traffic. |
-| M7 | GLM prefill/decode disaggregation lab and A/B benchmark. |
-| M8 | Bounded product canary or explicit refusal if cost/capacity/quality fail. |
+| Milestone | Result                                                                          |
+| --------- | ------------------------------------------------------------------------------- |
+| M0        | Hydralisk spec, repo decision, receipt schema draft, local benchmark fixtures.  |
+| M1        | GPT-OSS 20B on L4 with vLLM, internal-only endpoint, receipts, and smoke evals. |
+| M2        | Khala provider adapter for Hydralisk behind a feature flag.                     |
+| M3        | GPT-OSS 120B high-memory vLLM proof, cost and quality comparison.               |
+| M4        | GLM-5.2 hosted baseline with workload capture and eval profile.                 |
+| M5        | GLM-5.2 FP8 SGLang monolithic self-host probe on high-memory GPUs.              |
+| M6        | Dynamo KV-aware routing canary for GLM traffic.                                 |
+| M7        | GLM prefill/decode disaggregation lab and A/B benchmark.                        |
+| M8        | Bounded product canary or explicit refusal if cost/capacity/quality fail.       |
 
 ## Refusal conditions
 

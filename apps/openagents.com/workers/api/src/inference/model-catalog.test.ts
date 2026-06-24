@@ -8,7 +8,7 @@ import {
 } from './model-catalog'
 import {
   DEFAULT_MARGIN,
-  KHALA_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
   sellPricePerMtok,
 } from './pricing'
@@ -87,9 +87,9 @@ describe('buildModelCatalog', () => {
     expect(catalog.find(m => m.id === 'glm-5p2')?.ownedBy).toBe(
       'openagents/fireworks',
     )
-    expect(catalog.find(m => m.id === KHALA_OSS_20B_MODEL_ID)?.ownedBy).toBe(
-      'openagents/hydralisk',
-    )
+    expect(
+      catalog.find(m => m.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)?.ownedBy,
+    ).toBe('openagents/hydralisk')
   })
 
   it('uses the launch margin by default', () => {
@@ -168,8 +168,10 @@ describe('toOpenAiModelObject', () => {
   it('projects a single model object matching the list projection', () => {
     const entry = findModelCatalogEntry('gemini-3.5-flash')!
     const single = toOpenAiModelObject(entry, 1_700_000_000)
-    const fromList = toOpenAiModelsResponse(buildModelCatalog(), 1_700_000_000)
-      .data.find(m => m.id === 'gemini-3.5-flash')!
+    const fromList = toOpenAiModelsResponse(
+      buildModelCatalog(),
+      1_700_000_000,
+    ).data.find(m => m.id === 'gemini-3.5-flash')!
     expect(single).toEqual(fromList)
   })
 })

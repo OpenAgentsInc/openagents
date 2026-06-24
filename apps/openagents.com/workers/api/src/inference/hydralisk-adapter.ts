@@ -2,11 +2,10 @@
 //
 // Hydralisk is the OpenAgents-owned Python/NVIDIA lane. It exposes an
 // OpenAI-compatible API, but it is not a generic partner passthrough: the
-// gateway routes only the bounded Khala GPT-OSS alias to this adapter and arms
-// it only when public-safe preflight + receipt refs are configured. This adapter
+// gateway routes only the bounded GPT-OSS model id to this adapter and arms it
+// only when public-safe preflight + receipt refs are configured. This adapter
 // keeps the existing provider seam receipt-first by requiring terminal usage on
 // non-streaming responses and by parsing terminal usage from streaming SSE.
-
 import { Effect, Redacted } from 'effect'
 
 import { parseJsonRecord, recordFromUnknown } from '../json-boundary'
@@ -400,9 +399,7 @@ const streamChunks = (
     const frames = body
       .split('\n')
       .map(parseSseData)
-      .filter(
-        (frame): frame is Record<string, unknown> => frame !== undefined,
-      )
+      .filter((frame): frame is Record<string, unknown> => frame !== undefined)
 
     const contentChunks: Array<InferenceStreamChunk> = []
     let finishReason: string | undefined

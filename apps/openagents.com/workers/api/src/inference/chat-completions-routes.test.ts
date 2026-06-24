@@ -49,9 +49,9 @@ import {
 } from './model-serving-policy'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
-  KHALA_OSS_20B_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -108,8 +108,7 @@ const hydraliskReadyArming = resolveSupplyLaneArming({
   HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
   HYDRALISK_BEARER_TOKEN: 'secret-route-token',
   HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
-  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
-    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
 })
@@ -770,7 +769,7 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
-  test('a Khala GPT-OSS request routes through Hydralisk when armed', async () => {
+  test('a raw GPT-OSS request routes through Hydralisk when armed', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register({
       complete: () =>
@@ -794,7 +793,7 @@ describe('POST /v1/chat/completions', () => {
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'Say READY.', role: 'user' }],
-          model: KHALA_OSS_20B_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
         }),
         baseDeps({
           laneArming: hydraliskReadyArming,
@@ -823,7 +822,7 @@ describe('POST /v1/chat/completions', () => {
         total_tokens: number
       }
     }
-    expect(body.model).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(body.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
     expect(body.choices[0]?.message.content).toBe('READY')
     expect(body.usage).toEqual({
       completion_tokens: 1,
@@ -832,19 +831,19 @@ describe('POST /v1/chat/completions', () => {
     })
     expect(body.openagents).toMatchObject({
       lane: 'open',
-      requested_model: KHALA_OSS_20B_MODEL_ID,
+      requested_model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
       served_model: 'openai/gpt-oss-20b',
       supply_lane: 'hydralisk',
       worker: HYDRALISK_ADAPTER_ID,
     })
     expect(captured).toHaveLength(1)
     expect(captured[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
-    expect(captured[0]?.requestedModel).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(captured[0]?.requestedModel).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
     expect(captured[0]?.servedModel).toBe('openai/gpt-oss-20b')
     expect(captured[0]?.usage.totalTokens).toBe(8)
   })
 
-  test('a streaming Khala GPT-OSS request carries Hydralisk disclosure and usage', async () => {
+  test('a streaming raw GPT-OSS request carries Hydralisk disclosure and usage', async () => {
     const usage: InferenceUsage = {
       completionTokens: 1,
       promptTokens: 7,
@@ -885,7 +884,7 @@ describe('POST /v1/chat/completions', () => {
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'Say READY.', role: 'user' }],
-          model: KHALA_OSS_20B_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
           stream: true,
         }),
         baseDeps({
@@ -914,7 +913,7 @@ describe('POST /v1/chat/completions', () => {
     }>
     expect(frames[frames.length - 1]?.openagents).toMatchObject({
       lane: 'open',
-      requested_model: KHALA_OSS_20B_MODEL_ID,
+      requested_model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
       served_model: 'openai/gpt-oss-20b',
       supply_lane: 'hydralisk',
       worker: HYDRALISK_ADAPTER_ID,
@@ -926,7 +925,7 @@ describe('POST /v1/chat/completions', () => {
   })
 
   test.each(HYDRALISK_RETRYABLE_STATUS_CASES)(
-    'surfaces Hydralisk upstream %s as a provider_error on the Khala GPT-OSS route',
+    'surfaces Hydralisk upstream %s as a provider_error on the raw GPT-OSS route',
     async (status, kind) => {
       const registry = new InferenceProviderRegistry()
       registry.register({
@@ -948,7 +947,7 @@ describe('POST /v1/chat/completions', () => {
         handleChatCompletions(
           chatRequest({
             messages: [{ content: 'Say READY.', role: 'user' }],
-            model: KHALA_OSS_20B_MODEL_ID,
+            model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
           }),
           baseDeps({
             laneArming: hydraliskReadyArming,
@@ -1140,12 +1139,12 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
     expect(body.model).toBe('gemini-3.5-flash')
   })
 
-  test('rejects the Khala GPT-OSS alias when Hydralisk is unarmed', async () => {
+  test('rejects the raw GPT-OSS model id when Hydralisk is unarmed', async () => {
     const response = await run(
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'Say READY.', role: 'user' }],
-          model: KHALA_OSS_20B_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
         }),
         baseDeps({
           laneArming: ALL_LANES_UNARMED,
@@ -1157,7 +1156,7 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
     expect(response.status).toBe(400)
     const body = (await response.json()) as { error: string; model: string }
     expect(body.error).toBe('model_unavailable')
-    expect(body.model).toBe(KHALA_OSS_20B_MODEL_ID)
+    expect(body.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
   })
 
   test('serves a KNOWN model when its lane IS armed', async () => {
@@ -2192,7 +2191,7 @@ describe('Khala identity guard', () => {
     expect(content.toLowerCase()).not.toContain('google')
   })
 
-  test('catches GPT/OpenAI identity leakage on the Khala GPT-OSS Hydralisk alias', async () => {
+  test('does not apply Khala identity correction to the raw GPT-OSS model id', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register(
       leakingThenCleanAdapter(
@@ -2205,7 +2204,7 @@ describe('Khala identity guard', () => {
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'what model are you?', role: 'user' }],
-          model: KHALA_OSS_20B_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
         }),
         baseDeps({
           laneArming: hydraliskReadyArming,
@@ -2216,10 +2215,7 @@ describe('Khala identity guard', () => {
     )
     expect(response.status).toBe(200)
     const { content } = await readReply(response)
-    expect(content.toLowerCase()).toContain('khala')
-    expect(content.toLowerCase()).not.toContain('gpt')
-    expect(content.toLowerCase()).not.toContain('openai')
-    expect(content.toLowerCase()).not.toContain('vllm')
+    expect(content).toBe('I am GPT-OSS, an OpenAI model served by vLLM.')
   })
 
   test('fail-closed backstop: a persistent leak is deterministically redacted to the Khala identity', async () => {
