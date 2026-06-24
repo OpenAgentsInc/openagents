@@ -20,10 +20,17 @@ implementation differs.
 
 - [`242-draft.md`](242-draft.md) — **draft script for Episode 242, "Khala,
   Collective Intelligence."** The payoff to Episode 241's Sakana Fugu review:
-  introduces Khala (the open, inspectable orchestrator) with a live demo — the
+  introduces Khala (the open, inspectable orchestrator) with live demos — the
   `/khala` chat, the OpenAI-compatible `/api/v1` streaming + receipts, durable
-  resume — and the economy-not-a-lab thesis. Honesty rule baked in: show only
-  what's live, label direction as direction.
+  resume, and **autonomous QA as the first real use case** (an agent does real
+  browser work and leaves a green VERIFIED `/trace/{uuid}` with inline video + a
+  distilled e2e test) — plus the economy-not-a-lab thesis, the **mesh-of-
+  specialists** external validation (Ryan Walker/Tembo + our "put it behind an
+  OpenAI-compatible API and pay Bitcoin revshare" reply), and **whiteboard build
+  guidance** for the recording (collective-intelligence basics; the
+  API + Blueprint/DSPy architecture; where the money flows). Single model id
+  `openagents/khala`. Honesty rule baked in: show only what's live, label
+  direction as direction.
 
 ## Primary source
 
