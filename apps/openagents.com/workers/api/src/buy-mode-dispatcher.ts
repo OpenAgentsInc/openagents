@@ -375,7 +375,16 @@ export const dispatchBuyModeJob = async (
   })
 
   if (!relayReceipt.accepted) {
-    return { kind: 'blocked', reasonRef: 'blocker.buy_mode.relay_rejected' }
+    const relayReason = relayReceipt.relayRef.match(
+      /^relay\.public\.([a-z0-9_]+)\./,
+    )?.[1]
+
+    return {
+      kind: 'blocked',
+      reasonRef: relayReason === undefined
+        ? 'blocker.buy_mode.relay_rejected'
+        : `blocker.buy_mode.${relayReason}`,
+    }
   }
 
   const job: BuyModeJobRecord = {

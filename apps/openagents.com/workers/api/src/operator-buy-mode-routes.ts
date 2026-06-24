@@ -48,7 +48,16 @@ type BuyModeEvalJob = Readonly<{
 
 type BuyModeEvalResult = Readonly<{
   settledMsats: number
+  settlement?: BuyModeEvalSettlement
   verdict: VerificationClassVerdict
+}>
+
+type BuyModeEvalSettlement = Readonly<{
+  amountMsats: number
+  bolt11: string
+  content: string
+  providerPubkey: string
+  resultEventId: string
 }>
 
 export type BuyModeEvalBridge = Readonly<{
@@ -56,6 +65,7 @@ export type BuyModeEvalBridge = Readonly<{
     input: Readonly<{
       job: BuyModeEvalJob
       dispatchedJob: BuyModeJobRecord
+      relayUrl: string
       requestEventId: string
     }>,
   ) => Promise<BuyModeEvalResult>
@@ -64,8 +74,8 @@ export type BuyModeEvalBridge = Readonly<{
 export type OperatorBuyModeRouteDependencies<Bindings> = Readonly<{
   currentIsoTimestamp?: () => string
   makeEvalBridge?: (env: Bindings) => BuyModeEvalBridge | undefined
-  makePaymentBridge?: (env: Bindings) => BuyModePaymentBridge
-  makeRelayPublisher?: (env: Bindings) => BuyModeRelayPublisher
+  makePaymentBridge?: (env: Bindings) => BuyModePaymentBridge | undefined
+  makeRelayPublisher?: (env: Bindings) => BuyModeRelayPublisher | undefined
   makeStore: (env: Bindings) => BuyModeDispatcherStore
   makeUuid?: () => string
   requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
@@ -342,7 +352,7 @@ const dispatchResponse = async <Bindings>(
 
   const result = await dispatchBuyModeJob(
     dependencies.makeStore(env),
-    (dependencies.makeRelayPublisher ?? defaultRelayPublisher)(env),
+    dependencies.makeRelayPublisher?.(env) ?? defaultRelayPublisher(env),
     {
       amountMsats,
       campaignId: optionalString(body.campaignId),
@@ -390,7 +400,7 @@ const evalResponse = async <Bindings>(
   const idempotencyKey = await psionicEvalIdempotencyKey(parsedJob)
   const dispatchResult = await dispatchBuyModeJob(
     dependencies.makeStore(env),
-    (dependencies.makeRelayPublisher ?? defaultRelayPublisher)(env),
+    dependencies.makeRelayPublisher?.(env) ?? defaultRelayPublisher(env),
     {
       amountMsats: parsedJob.amountMsats,
       content: psionicEvalContent(parsedJob),
@@ -413,11 +423,52 @@ const evalResponse = async <Bindings>(
     return psionicBlockedResponse('blocker.buy_mode.eval_bridge_unconfigured')
   }
 
+  const dispatchedCampaign = await dependencies.makeStore(env).readCampaign(
+    dispatchedJob.campaignId,
+  )
+
+  if (dispatchedCampaign === null) {
+    return psionicBlockedResponse('blocker.buy_mode.campaign_missing')
+  }
+
   const evalResult = await evalBridge.dispatchEval({
     dispatchedJob,
     job: parsedJob,
+    relayUrl: dispatchedCampaign.relayUrl,
     requestEventId: dispatchedJob.requestEventId,
   })
+
+  if (evalResult.settlement !== undefined) {
+    const paymentBridge = dependencies.makePaymentBridge?.(env)
+
+    if (paymentBridge === undefined) {
+      return psionicBlockedResponse('blocker.buy_mode.payment_bridge_unconfigured')
+    }
+
+    const settleResult = await settleBuyModeResult(
+      dependencies.makeStore(env),
+      paymentBridge,
+      {
+        amountMsats: evalResult.settlement.amountMsats,
+        bolt11: evalResult.settlement.bolt11,
+        content: evalResult.settlement.content,
+        idempotencyKeyHash: await agentSha256Hex(
+          `psionic.eval.settle.${evalResult.settlement.resultEventId}`,
+        ),
+        nowIso: (dependencies.currentIsoTimestamp ?? currentIsoTimestamp)(),
+        providerPubkey: evalResult.settlement.providerPubkey,
+        requestEventId: dispatchedJob.requestEventId,
+        resultEventId: evalResult.settlement.resultEventId,
+      },
+    )
+
+    if (
+      settleResult.kind !== 'settled' &&
+      settleResult.kind !== 'idempotent_replay'
+    ) {
+      return resultResponse(settleResult, 409)
+    }
+  }
 
   return psionicEvalResponse(evalResult)
 }

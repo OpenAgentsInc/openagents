@@ -119,7 +119,7 @@ class FakeRelay implements ProviderRelayTransport {
 }
 
 const walletRunner: WalletCommandRunner = async (args) => {
-  expect(args).toEqual(["receive", "1"])
+  expect(args).toEqual(["receive", "2"])
   return {
     exitCode: 0,
     stdout: JSON.stringify({ invoice: "lnbc10n1providerinvoice" }),
@@ -571,7 +571,7 @@ describe("Pylon NIP-90 provider loop", () => {
       })
 
       expect(result.status).toBe("completed")
-      expect(result.earning?.amountMsats).toBe(1_000)
+      expect(result.earning?.amountMsats).toBe(2_000)
       expect(relay.published.map((event) => event.kind)).toEqual([
         KIND_JOB_FEEDBACK,
         KIND_JOB_FEEDBACK,
@@ -581,7 +581,7 @@ describe("Pylon NIP-90 provider loop", () => {
 
       const payment = parseJobFeedbackEvent(relay.published[0])
       expect(payment.status).toBe("payment-required")
-      expect(payment.amount).toBe(1_000)
+      expect(payment.amount).toBe(2_000)
       expect(payment.bolt11).toBe("lnbc10n1providerinvoice")
 
       const processing = parseJobFeedbackEvent(relay.published[1])
@@ -589,7 +589,7 @@ describe("Pylon NIP-90 provider loop", () => {
 
       const jobResult = parseJobResultEvent(relay.published[2])
       expect(jobResult.content).toBe("public inference result")
-      expect(jobResult.amount).toBe(1_000)
+      expect(jobResult.amount).toBe(2_000)
       expect(jobResult.bolt11).toBe("lnbc10n1providerinvoice")
 
       const success = parseJobFeedbackEvent(relay.published[3])

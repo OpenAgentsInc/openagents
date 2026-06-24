@@ -275,17 +275,33 @@ export type LedgerEvent = {
   data: Record<string, unknown>
 }
 
+const DEFAULT_MDK_WALLET_COMMAND_TIMEOUT_MS = 30_000
+
+export function agentWalletCommandTimeoutMs(env: NodeJS.ProcessEnv = process.env) {
+  const parsed = Number(env.MDK_WALLET_COMMAND_TIMEOUT_MS)
+  return Number.isInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_MDK_WALLET_COMMAND_TIMEOUT_MS
+}
+
+export function agentWalletArgs(args: string[], env: NodeJS.ProcessEnv = process.env) {
+  const port = env.MDK_WALLET_PORT?.trim()
+  if (!port || args.includes("--port")) return args
+  return [...args, "--port", port]
+}
+
 export const defaultWalletCommandRunner: WalletCommandRunner = async (args) => {
   await reclaimStaleMdkDaemonPidfile()
-  const proc = Bun.spawn(["npx", "--yes", "@moneydevkit/agent-wallet@latest", ...args], {
+  const proc = Bun.spawn(["npx", "--yes", "@moneydevkit/agent-wallet@latest", ...agentWalletArgs(args)], {
     stdout: "pipe",
     stderr: "pipe",
   })
+  const timeoutMs = agentWalletCommandTimeoutMs()
   const timeout = new Promise<never>((_, reject) =>
     setTimeout(() => {
       proc.kill()
       reject(new Error("MDK agent-wallet command timed out"))
-    }, 3000),
+    }, timeoutMs),
   )
   const [stdout, stderr, exitCode] = await Promise.race([
     Promise.all([

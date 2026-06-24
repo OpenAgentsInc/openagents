@@ -596,7 +596,7 @@ export function evaluateProviderAdmission(input: {
   if (counts.buyer >= policy.perBuyerMaxInflight) {
     return { admitted: false, action: "defer", reasonRef: "buyer_limit" }
   }
-  return { admitted: true, amountMsats: policy.priceMsats > 0 ? policy.priceMsats : input.entry.bidMsats ?? 0 }
+  return { admitted: true, amountMsats: input.entry.bidMsats ?? policy.priceMsats }
 }
 
 export async function evaluateLaborAdmission(input: {

@@ -203,6 +203,9 @@ import {
 } from './blueprint/repositories/program-runs'
 import { handleBusinessSignupApi } from './business-signup-routes'
 import { makeD1BuyModeDispatcherStore } from './buy-mode-dispatcher'
+import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
+import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
+import { buyModeRelayPublisherForEnv } from './buy-mode-live-publisher'
 import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
@@ -7592,6 +7595,9 @@ const operatorBillingHandlers = makeOperatorBillingHandlers({
 })
 
 const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
+  makeEvalBridge: env => buyModeEvalBridgeForEnv(env),
+  makePaymentBridge: env => buyModePaymentBridgeForEnv(env),
+  makeRelayPublisher: env => buyModeRelayPublisherForEnv(env),
   makeStore: env => makeD1BuyModeDispatcherStore(openAgentsDatabase(env)),
   requireAdminApiToken,
 })

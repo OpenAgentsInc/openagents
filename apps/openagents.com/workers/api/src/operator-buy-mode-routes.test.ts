@@ -121,13 +121,21 @@ class FakePaymentBridge implements BuyModePaymentBridge {
 class FakeEvalBridge implements BuyModeEvalBridge {
   readonly requests: Parameters<BuyModeEvalBridge['dispatchEval']>[0][] = []
 
+  constructor(
+    readonly settlementFor?: (
+      input: Parameters<BuyModeEvalBridge['dispatchEval']>[0],
+    ) => Awaited<ReturnType<BuyModeEvalBridge['dispatchEval']>>['settlement'],
+  ) {}
+
   dispatchEval = async (
     input: Parameters<BuyModeEvalBridge['dispatchEval']>[0],
   ) => {
     this.requests.push(input)
+    const settlement = this.settlementFor?.(input)
 
     return {
       settledMsats: input.job.amountMsats,
+      ...(settlement === undefined ? {} : { settlement }),
       verdict: {
         class: 'exact_trace_replay' as const,
         passed: true,
@@ -272,9 +280,15 @@ describe('operator buy-mode routes', () => {
     expect(relay.requests).toHaveLength(0)
   })
 
-  test('exposes Psionic-compatible eval endpoint behind existing dispatch admission', async () => {
+  test('settles Psionic eval bridge results through buy-mode accounting', async () => {
     const store = new MemoryBuyModeStore()
-    const evalBridge = new FakeEvalBridge()
+    const evalBridge = new FakeEvalBridge(input => ({
+      amountMsats: input.job.amountMsats,
+      bolt11: 'lnbc1250n1testinvoice',
+      content: 'valid psionic eval result',
+      providerPubkey: input.job.workerId,
+      resultEventId: 'result.event.psionic.eval',
+    }))
     const { relay, routes } = makeRoutes(
       store,
       new FakeRelayPublisher(),
@@ -317,7 +331,12 @@ describe('operator buy-mode routes', () => {
       sampleId: 'sample.http',
       workerId: '11'.repeat(32),
     })
+    expect((await store.latestCampaign())?.spentTodayMsats).toBe(1_250)
+    expect((await store.readSettlementByResultEventId(
+      'result.event.psionic.eval',
+    ))?.state).toBe('settled')
     expect(JSON.stringify(relay.requests[0])).not.toContain('Bearer')
+    expect(JSON.stringify(body)).not.toContain('lnbc1250n1testinvoice')
   })
 
   test('blocks Psionic eval when live eval bridge is not configured', async () => {
