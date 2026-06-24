@@ -9,7 +9,7 @@
     "run-once": "bun run src/run-once.ts",
     "demo:login": "bun run src/demo-login.ts",
     "demo:khala": "bun run src/demo-khala.ts",
-    "test": "bun test src/runner.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/session-trace.test.ts src/distiller.test.ts src/khala-session.test.ts",
+    "test": "bun test src/runner.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/khala-session.test.ts",
     "playwright:install": "playwright install --with-deps chromium"
   },
   "dependencies": {

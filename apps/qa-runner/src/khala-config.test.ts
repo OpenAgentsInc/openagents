@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { resolveKhalaConfig } from "./khala-config";
+import { makeOpenRouterClientMock } from "@openagentsinc/probe-runtime";
+import { makeKhalaChatClient, resolveKhalaConfig } from "./khala-config";
 
 let secretsDir: string;
 beforeEach(() => {
@@ -67,5 +68,36 @@ describe("resolveKhalaConfig", () => {
     expect(() =>
       resolveKhalaConfig({ env: { PROBE_OPENAI_API_KEY: "sk-x" }, secretsDir, allowFallback: false }),
     ).toThrow(/no Khala credential/);
+  });
+});
+
+describe("makeKhalaChatClient backend routing (no network)", () => {
+  test("routes to the gpt-oss fetch lane by default (OpenRouter not armed)", () => {
+    const { selection, chat } = makeKhalaChatClient({
+      env: { OPENAGENTS_API_KEY: "oa-key" },
+      secretsDir,
+    });
+    expect(selection.backend).toBe("gpt-oss");
+    expect(typeof chat.complete).toBe("function");
+  });
+
+  test("routes to the OpenRouter lane when armed; uses the injected mock layer (no spend)", async () => {
+    const layer = makeOpenRouterClientMock({ replies: [{ content: "or-mock-ok" }] });
+    const { selection, chat } = makeKhalaChatClient({
+      env: { KHALA_DRIVER_BACKEND: "openrouter" },
+      secretsDir,
+      openrouter: { layer },
+    });
+    expect(selection.backend).toBe("openrouter");
+    expect(await chat.complete([{ role: "user", content: "go" }])).toBe("or-mock-ok");
+  });
+
+  test("the OpenRouter lane does not require a Khala credential to be present", () => {
+    // No OPENAGENTS_API_KEY / no fallback: gpt-oss would throw, but OpenRouter
+    // routing must succeed (it has its own credential path, mocked here).
+    const layer = makeOpenRouterClientMock({ replies: [{ content: "ok" }] });
+    expect(() =>
+      makeKhalaChatClient({ env: { OPENROUTER_LIVE: "1" }, secretsDir, openrouter: { layer } }),
+    ).not.toThrow();
   });
 });

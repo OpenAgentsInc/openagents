@@ -17,6 +17,12 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ChatClient, ChatMessage } from "./khala-driver";
+import {
+  makeOpenRouterChatClient,
+  selectKhalaBackend,
+  type KhalaBackendSelection,
+  type OpenRouterChatClientOptions,
+} from "./khala-openrouter";
 
 export interface KhalaEndpointConfig {
   readonly baseUrl: string;
@@ -153,4 +159,68 @@ export function makeFetchChatClient(
       }
     },
   };
+}
+
+// ----------------------------------------------------------------------------
+// Backend selection (openagents #6182). The Khala driver loop runs over a
+// `ChatClient`. The default lane is the fetch-based gpt-oss / OpenAI-compatible
+// client above; the RELIABLE lane is OpenRouter (a strong, or capable-free,
+// tool-caller), selected when armed. This keeps backend choice in one place so a
+// caller (demo/coordinator) does not re-implement the policy.
+//
+// Spend discipline: OpenRouter is built ONLY when armed (`OPENROUTER_LIVE` /
+// `KHALA_DRIVER_BACKEND=openrouter`); the underlying client defaults to the mock
+// (no network, no spend) unless `OPENROUTER_LIVE` is truthy, and the default
+// model is `openrouter/free` (cost=0). The API key is read from
+// `OPENROUTER_API_KEY` only and never printed.
+// ----------------------------------------------------------------------------
+
+export interface MakeKhalaChatClientOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /** Per-request timeout for the gpt-oss fetch lane (ms). */
+  readonly timeoutMs?: number;
+  /** Per-request max_tokens for the gpt-oss fetch lane. */
+  readonly maxTokens?: number;
+  /** Allow the OpenAI-compatible fallback for the gpt-oss lane (default true). */
+  readonly allowFallback?: boolean;
+  /** Override the secrets dir (tests). */
+  readonly secretsDir?: string;
+  /** Extra OpenRouter client options (tests inject a mock layer/fixtures here). */
+  readonly openrouter?: OpenRouterChatClientOptions;
+  /** Optional key-free log sink. */
+  readonly log?: (line: string) => void;
+}
+
+export interface KhalaChatClientResult {
+  readonly chat: ChatClient;
+  readonly selection: KhalaBackendSelection;
+}
+
+/**
+ * Build the Khala driver `ChatClient` for the selected backend. When OpenRouter
+ * is armed it returns the OpenRouter-backed client (reliable JSON-action lane);
+ * otherwise it resolves the gpt-oss / OpenAI-compatible config and returns the
+ * fetch client. Returns the (key-free) selection so the caller can log which
+ * backend drove the loop.
+ */
+export function makeKhalaChatClient(options: MakeKhalaChatClientOptions = {}): KhalaChatClientResult {
+  const env = options.env ?? process.env;
+  const selection = selectKhalaBackend({ env });
+  const log = options.log;
+
+  if (selection.backend === "openrouter") {
+    const chat = makeOpenRouterChatClient({ env, ...(log ? { log } : {}), ...options.openrouter });
+    return { chat, selection };
+  }
+
+  const config = resolveKhalaConfig({
+    env,
+    ...(options.allowFallback === undefined ? {} : { allowFallback: options.allowFallback }),
+    ...(options.secretsDir === undefined ? {} : { secretsDir: options.secretsDir }),
+  });
+  const chat = makeFetchChatClient(config, {
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    ...(options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens }),
+  });
+  return { chat, selection };
 }

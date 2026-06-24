@@ -16,6 +16,7 @@
   "dependencies": {
     "@openagentsinc/blueprint-contracts": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
+    "@openrouter/sdk": "^0.13.7",
     "@opentui/core": "0.3.4",
     "diff": "^9.0.0",
     "effect": "catalog:",
