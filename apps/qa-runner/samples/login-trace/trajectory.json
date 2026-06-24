@@ -1,0 +1,226 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "login-trace",
+  "trajectory_id": "login-trace-trajectory",
+  "agent": {
+    "name": "openagents-qa-runner",
+    "version": "0.1.0",
+    "model_name": "openagents/khala",
+    "extra": {
+      "driver": "khala-computer-use",
+      "target": "openagents.com"
+    }
+  },
+  "notes": "Emitted by the OpenAgents qa-runner ATIF mapper from a real Khala computer-use run (result.json + session-trace.json). Token counts are withheld for public safety; own-infra cost is $0.",
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "user",
+      "message": "Verify the login page works on this site: open /login, confirm the sign-in form renders (the page shows \"Log in to OpenAgents\"), and confirm it does NOT redirect to the homepage (the URL still includes /login). Assert each of these, screenshot the login page, then finish."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "navigate to /login",
+      "reasoning_content": "Chose action \"navigate\" against /login; outcome ok.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_2",
+          "function_name": "navigate",
+          "arguments": {
+            "action": "navigate",
+            "target": "/login",
+            "narration": "navigate to /login"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_2",
+            "content": "ok: navigate to /login"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "wait for {\"kind\":\"text-visible\",\"value\":\"Log in to OpenAgents\"}",
+      "reasoning_content": "Chose action \"waitFor\" against text-visible:Log in to OpenAgents; outcome ok.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_3",
+          "function_name": "waitFor",
+          "arguments": {
+            "action": "wait",
+            "target": "text-visible:Log in to OpenAgents",
+            "narration": "wait for {\"kind\":\"text-visible\",\"value\":\"Log in to OpenAgents\"}"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_3",
+            "content": "ok: wait for {\"kind\":\"text-visible\",\"value\":\"Log in to OpenAgents\"}"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "Login page shows 'Log in to OpenAgents'",
+      "reasoning_content": "Chose action \"assert\" against Login page shows 'Log in to OpenAgents'; outcome ok.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_4",
+          "function_name": "assert",
+          "arguments": {
+            "action": "assert",
+            "target": "Login page shows 'Log in to OpenAgents'",
+            "narration": "Login page shows 'Log in to OpenAgents'"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_4",
+            "content": "ok: Login page shows 'Log in to OpenAgents'"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "URL still includes /login",
+      "reasoning_content": "Chose action \"assert\" against URL still includes /login; outcome ok.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_5",
+          "function_name": "assert",
+          "arguments": {
+            "action": "assert",
+            "target": "URL still includes /login",
+            "narration": "URL still includes /login"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_5",
+            "content": "ok: URL still includes /login"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-06-24T14:39:44.732Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "screenshot login-page",
+      "reasoning_content": "Chose action \"screenshot\" against login-page; outcome ok.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_6",
+          "function_name": "screenshot",
+          "arguments": {
+            "action": "screenshot",
+            "target": "login-page",
+            "narration": "screenshot login-page"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_6",
+            "content": "ok: screenshot login-page"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-06-24T14:39:56.191Z",
+      "source": "agent",
+      "model_name": "openagents/khala",
+      "message": "Goal verified. Marking the session complete.",
+      "reasoning_content": "Final verdict PASS after 5 action(s).",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_7",
+          "function_name": "done",
+          "arguments": {
+            "verdict": "PASS",
+            "summary": "Verified openagents.com (5 actions)."
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_7",
+            "content": "verification_class=test_passed"
+          }
+        ]
+      },
+      "metrics": {
+        "cost_usd": 0
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_cached_tokens": 0,
+    "total_cost_usd": 0,
+    "total_steps": 7,
+    "extra": {
+      "verdict": "PASS",
+      "duration_ms": 11459,
+      "trace_digest": "84953e17b368f7e05288c0001c60cafb6b1ca92419f223219cbd7a5d63629fa2"
+    }
+  },
+  "extra": {
+    "target": {
+      "name": "openagents.com",
+      "baseUrl": "https://openagents.com"
+    },
+    "artifacts": {
+      "video": "session.mp4",
+      "screenshots": [
+        "00-login-page.png"
+      ]
+    }
+  }
+}
