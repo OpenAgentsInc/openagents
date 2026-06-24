@@ -13,10 +13,6 @@
 //   (default)   -> bloom ON: HDR pylon stations + fat glowing connections +
 //                  HDR gateway/arc emitters + active-pylon spark accents.
 
-import {
-  registerTrainingRunElement,
-  trainingRunTagName,
-} from "@openagentsinc/three-effect/foldkit"
 import type { TrainingRunVisualizationOptions } from "@openagentsinc/three-effect/core"
 
 import { pylonNetworkVisualizationOptions } from "../src/ui/pylon-network-visualization.js"
@@ -24,8 +20,7 @@ import type {
   PylonNetworkNode,
   PylonNetworkScene,
 } from "../src/shared/pylon-network-scene.js"
-
-registerTrainingRunElement()
+import { mountTrainingRunIsolatedScene } from "./isolated-scenes/mount-training-run-scene.js"
 
 // A deterministic, representative live network: a busy mix so every tier of the
 // emissive hierarchy is exercised (working -> active+spark, online -> steady,
@@ -81,13 +76,4 @@ const visualization: TrainingRunVisualizationOptions = noBloom
   ? { ...base, bloom: { enabled: false } }
   : base
 
-const host = document.createElement(trainingRunTagName) as HTMLElement & {
-  visualization: TrainingRunVisualizationOptions
-}
-host.id = "pylon-network-scene"
-host.style.display = "block"
-host.style.width = "960px"
-host.style.height = "540px"
-host.style.minHeight = "540px"
-host.visualization = visualization
-document.getElementById("scene")?.append(host)
+mountTrainingRunIsolatedScene("pylon-network", visualization)

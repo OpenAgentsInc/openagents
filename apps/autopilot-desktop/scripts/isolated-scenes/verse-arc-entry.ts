@@ -1,16 +1,4 @@
-// Headless render entry: the SPAWNED crackling arc, through the REAL render path.
-//
-// This mounts the real `oa-training-run` three-effect element with the
-// visualization produced by the REAL `withVerseSpawnedSceneLayer` mapper (the
-// same function `verseSceneVisualization` uses for a spawned scene). It is built
-// into a browser bundle and loaded by the headless-pixel harness, which then
-// advances deterministic frames and screenshots.
-//
-// A query param `?broken=1` produces the Mode-2 failure: the beam is STILL in
-// the model, but its evidence `sourceRefs` are stripped. The renderer's
-// `evidence: "required"` gate then suppresses the arc, so it renders NOTHING —
-// exactly the "model says it's there, screen shows nothing" bug. The regression
-// asserts the fixed variant lights up bright pixels and the broken one does not.
+// Isolated scene entry for #6033: the evidence-bound Khala crackling arc.
 
 import {
   trainingRunVisualizationOptionsFromSnapshot,
@@ -18,15 +6,12 @@ import {
 } from "@openagentsinc/three-effect/core"
 
 import {
-  withVerseSpawnedSceneLayer,
   DEFAULT_SPAWNABLE_SCENE_ID,
-} from "../src/shared/verse-spawned-scene.js"
+  withVerseSpawnedSceneLayer,
+} from "../../src/shared/verse-spawned-scene.js"
 
-import { mountTrainingRunIsolatedScene } from "./isolated-scenes/mount-training-run-scene.js"
+import { mountTrainingRunIsolatedScene } from "./mount-training-run-scene.js"
 
-// A minimal, deterministic base world (mirrors the training-scene smoke seed,
-// trimmed). The arc is positioned at the fixed scene station and aimed at the
-// camera-facing band so it lights the upper-mid region of the frame.
 const baseVisualization: TrainingRunVisualizationOptions =
   trainingRunVisualizationOptionsFromSnapshot({
     activeWindowCount: 0,
@@ -65,10 +50,6 @@ const baseVisualization: TrainingRunVisualizationOptions =
     verifiedWorkCount: 0,
   })
 
-// Render in the REAL perspective_walk / third-person frame (the frame the live
-// Verse uses), with an avatar pose, so the spawned-scene layer's scene-world →
-// root-local conversion is exercised exactly as it is in the app. (The avatar is
-// the controller's default spawn; the layer drops the arc in front of it.)
 const avatar = { x: 0, y: 0, z: 4.4, yaw: 0 } as const
 const walkableBase: TrainingRunVisualizationOptions = {
   ...baseVisualization,
@@ -80,8 +61,6 @@ const walkableBase: TrainingRunVisualizationOptions = {
   },
 }
 
-// The REAL spawned-scene render path: a crackling_arc beam evidence-bound to its
-// synthetic source ref, with motionPolicy.evidence = "required".
 const spawned = withVerseSpawnedSceneLayer(walkableBase, [
   {
     sceneId: DEFAULT_SPAWNABLE_SCENE_ID,
@@ -90,12 +69,8 @@ const spawned = withVerseSpawnedSceneLayer(walkableBase, [
   },
 ])
 
-const broken = new URLSearchParams(globalThis.location?.search ?? "").get(
-  "broken",
-)
+const broken = new URLSearchParams(globalThis.location?.search ?? "").get("broken")
 
-// Broken variant: strip the beams' evidence refs so the renderer's
-// evidence:required gate suppresses them. The beam is STILL in the model.
 const visualization: TrainingRunVisualizationOptions =
   broken === "1"
     ? {

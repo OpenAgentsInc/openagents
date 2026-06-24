@@ -12,6 +12,8 @@
     "build:stable": "bun run build:css && bun run build:pylon-node && electrobun build --env=stable",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
     "smoke:training-scene": "bun scripts/training-scene-canvas-smoke.ts",
+    "scene:verse-arc": "bun scripts/run-isolated-scene.ts verse-arc",
+    "scene:pylon-network": "bun scripts/run-isolated-scene.ts pylon-network",
     "smoke:verse-launch": "bun scripts/verse-launch-smoke.ts",
     "smoke:forum-tipping-multiplayer": "bun test tests/forum-tipping-multiplayer-integration.test.ts",
     "smoke:apple-fm-local": "bun scripts/apple-fm-live-smoke.ts",

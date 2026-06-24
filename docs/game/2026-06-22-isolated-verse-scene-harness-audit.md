@@ -96,3 +96,24 @@ that want to exercise the real read-model → scene path without a backend.
 The primitives + an examples pattern already exist; what's missing is a
 `bun run scene:<name>` runner, a stub world feed, and headless capture — start with
 the crackling-energy scene so we can see one effect in isolation immediately.
+
+## 2026-06-24 implementation update
+
+Issue #6033 now has the first reusable in-repo scene-runner convention in
+`apps/autopilot-desktop`:
+
+- `apps/autopilot-desktop/scripts/isolated-scenes/registry.ts` defines named
+  isolated scenes and their entry modules.
+- `bun run scene:verse-arc` serves the evidence-bound Khala crackling-arc scene.
+- `bun run scene:pylon-network` serves a second synthetic pylon-network scene
+  through the same runner helper.
+- Both scene entries mount through
+  `scripts/isolated-scenes/mount-training-run-scene.ts`, so the per-scene files
+  only build `TrainingRunVisualizationOptions`.
+- The `packages/world-client` stub transport and read-model fixture helpers
+  already exist and are covered by `packages/world-client/src/index.test.ts`.
+
+The `three-effect` package is consumed here as the pinned
+`@openagentsinc/three-effect` dependency, so the runner lives beside the current
+desktop Verse scene owners rather than modifying the external dependency in this
+monorepo pass.
