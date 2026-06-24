@@ -41,6 +41,12 @@ import {
   loginRegressionStepsWrong,
 } from "./scenarios";
 import { runQaSession } from "./runner";
+import {
+  type FetchLike,
+  type PublishTraceConfig,
+  type PublishTraceResult,
+  publishRunDir,
+} from "./publish-trace";
 import { makeTarget, type Target } from "./target";
 import { TARGET_REGISTRY, isTargetName } from "./target-registry";
 
@@ -101,6 +107,21 @@ export interface Job {
   readonly receipt: JobReceipt;
   /** Relative artifact dir under the store root (filled once the run starts). */
   readonly artifactDir?: string;
+  /**
+   * The shareable `https://openagents.com/trace/{uuid}` URL, set once the run's
+   * trace is PUBLISHED to the ingest API (#6210). Absent when trace publishing is
+   * not armed (honest no-op — no fabricated uuid). This supersedes the old
+   * `/pro/runs|evals/<id>` link as the shareable artifact.
+   */
+  readonly traceUrl?: string;
+  /** Why a trace was not published (honest no-op / failure reason), when absent. */
+  readonly traceNote?: string;
+  /**
+   * For an EVAL: the published `/trace/{uuid}` per variant id (the comparison is
+   * a view over these trace uuids — the sibling web lane owns that view). Absent
+   * when publishing is not armed.
+   */
+  readonly variantTraceUrls?: Readonly<Record<string, string>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +212,16 @@ export interface ControlOptions {
   readonly genId?: (kind: JobKind) => string;
   /** Injectable clock (deterministic timestamps in tests). */
   readonly now?: () => Date;
+  /**
+   * Trace publishing (#6210). When set, a completed job's ATIF trace is REDACTED
+   * and published to the ingest API, and the resulting `/trace/{uuid}` becomes
+   * the job's shareable link. When omitted, publishing falls back to the
+   * environment (`QA_TRACE_PUBLISH_URL` + an agent token); honest no-op when
+   * unarmed (no fabricated uuid). Injectable for deterministic, no-network tests.
+   */
+  readonly publishTrace?: PublishTraceConfig;
+  /** Injectable fetch for the trace publish call (deterministic fake in tests). */
+  readonly publishFetch?: FetchLike;
 }
 
 let counter = 0;
@@ -278,6 +309,8 @@ export class QaControl {
         );
         // Attach the additive receipt the post-run helper owns (idempotent).
         writeReceiptForRun(artifactDir);
+        // Publish the run's trace -> /trace/{uuid} (env-armed; honest no-op).
+        await this.publishTraceForJob(id, artifactDir);
       }),
     );
     return this.get(id);
@@ -362,6 +395,14 @@ export class QaControl {
             ...(this.options.now ? { now: this.options.now } : {}),
           }),
         );
+        // Publish each variant's representative trace -> /trace/{uuid}. The
+        // comparison is a view over these uuids (env-armed; honest no-op).
+        await this.publishTracesForEvalJob(
+          id,
+          artifactDir,
+          variants.map((v) => v.id),
+          variants[0]!.id,
+        );
       }),
     );
     return this.get(id);
@@ -377,7 +418,11 @@ export class QaControl {
   /**
    * Fetch a finished RUN's artifacts: video ref/url, the committed e2e test ref
    * (if the distiller produced one — read-only), result.json (incl. the additive
-   * `verify` verdict + `receipt` fields if present), and the /pro/runs/:id link.
+   * `verify` verdict + `receipt` fields if present), and the SHAREABLE
+   * `/trace/{uuid}` link (#6210). The `/pro/runs/:id` operator-console deep link
+   * is retained for the logged-in console, but the link a reviewer SHARES is now
+   * the published `/trace/{uuid}` (`traceUrl`); it is `null` with a `traceNote`
+   * when trace publishing is not armed (honest no-op — no fabricated uuid).
    */
   runArtifacts(id: string): RunArtifactsResponse {
     const job = this.get(id);
@@ -387,13 +432,23 @@ export class QaControl {
     return {
       jobId: id,
       status: job.status,
+      // The SHAREABLE link is the published /trace/{uuid} (null when unarmed).
+      traceUrl: job.traceUrl ?? null,
+      ...(job.traceNote !== undefined ? { traceNote: job.traceNote } : {}),
+      // Retained operator-console deep link (/pro stays the logged-in console).
       proUrl: `${this.proBaseUrl}/pro/runs/${id}`,
       jobReceipt: job.receipt,
       ...artifacts,
     };
   }
 
-  /** Fetch a finished EVAL's comparison (the eval.json the engine wrote) + /pro link. */
+  /**
+   * Fetch a finished EVAL's comparison (the eval.json the engine wrote) + the
+   * SHAREABLE `/trace/{uuid}` links (#6210). The comparison is a view over the
+   * per-variant trace uuids (`variantTraceUrls`); `traceUrl` is the baseline
+   * variant's trace. Both are absent/`null` with a `traceNote` when publishing is
+   * not armed. The `/pro/evals/:id` operator-console deep link is retained.
+   */
   evalComparison(id: string): EvalComparisonResponse {
     const job = this.get(id);
     if (job.kind !== "eval") throw new BadRequestError(`job ${id} is not an eval`);
@@ -402,6 +457,9 @@ export class QaControl {
     return {
       jobId: id,
       status: job.status,
+      traceUrl: job.traceUrl ?? null,
+      ...(job.variantTraceUrls !== undefined ? { variantTraceUrls: job.variantTraceUrls } : {}),
+      ...(job.traceNote !== undefined ? { traceNote: job.traceNote } : {}),
       proUrl: `${this.proBaseUrl}/pro/evals/${id}`,
       jobReceipt: job.receipt,
       comparison,
@@ -416,6 +474,83 @@ export class QaControl {
   }
 
   // ── internals ─────────────────────────────────────────────────────────────
+
+  /** Common publish input wiring (env/config + injectable fetch). */
+  private publishCommon(): {
+    config?: PublishTraceConfig;
+    fetch?: FetchLike;
+    shareBaseUrl: string;
+  } {
+    return {
+      ...(this.options.publishTrace ? { config: this.options.publishTrace } : {}),
+      ...(this.options.publishFetch ? { fetch: this.options.publishFetch } : {}),
+      shareBaseUrl: this.proBaseUrl,
+    };
+  }
+
+  /**
+   * Publish a finished RUN's trace -> /trace/{uuid} and record it on the job. The
+   * publish module is env-armed; an unarmed/failed publish is an HONEST NO-OP:
+   * `traceUrl` stays unset and the job carries a `traceNote` (never a fake uuid).
+   */
+  private async publishTraceForJob(id: string, runDir: string): Promise<void> {
+    const result = await Effect.runPromise(
+      publishRunDir({ runDir, sessionId: id, ...this.publishCommon() }),
+    );
+    this.recordTraceResult(id, result);
+  }
+
+  /**
+   * Publish each EVAL variant's representative run (`<variantId>.0`) as a trace.
+   * The comparison view (sibling web lane) reads these uuids. The baseline
+   * variant's trace becomes the eval's primary `traceUrl`. Honest no-op when
+   * unarmed.
+   */
+  private async publishTracesForEvalJob(
+    id: string,
+    evalDir: string,
+    variantIds: ReadonlyArray<string>,
+    baselineId: string,
+  ): Promise<void> {
+    const variantTraceUrls: Record<string, string> = {};
+    let baselineResult: PublishTraceResult | undefined;
+    let lastNote: string | undefined;
+
+    for (const variantId of variantIds) {
+      const runDir = join(evalDir, `${variantId}.0`);
+      const result = await Effect.runPromise(
+        publishRunDir({
+          runDir,
+          sessionId: `${id}-${variantId}`,
+          ...this.publishCommon(),
+        }),
+      );
+      if (result.published) {
+        variantTraceUrls[variantId] = result.url;
+      } else {
+        lastNote = result.reason;
+      }
+      if (variantId === baselineId) baselineResult = result;
+    }
+
+    if (Object.keys(variantTraceUrls).length > 0) {
+      this.set(id, { variantTraceUrls });
+    }
+    if (baselineResult !== undefined) {
+      this.recordTraceResult(id, baselineResult);
+    } else if (lastNote !== undefined) {
+      this.set(id, { traceNote: lastNote });
+    }
+  }
+
+  /** Record a publish result onto a job: the trace URL on success, else a note. */
+  private recordTraceResult(id: string, result: PublishTraceResult): void {
+    if (result.published) {
+      this.set(id, { traceUrl: result.url });
+    } else {
+      this.set(id, { traceNote: result.reason });
+    }
+  }
 
   private mockChromium(scenario: ControlScenario) {
     // A deterministic fixture page so the scripted login scenario passes (and the
@@ -465,7 +600,15 @@ export class QaControl {
 export interface RunArtifactsResponse extends RunArtifacts {
   readonly jobId: string;
   readonly status: JobStatus;
-  /** The shareable /pro/runs/:id link a reviewer opens. */
+  /**
+   * The SHAREABLE link a reviewer opens: the published `/trace/{uuid}` (#6210).
+   * `null` when trace publishing is not armed (see `traceNote`) — never a fake
+   * uuid. This supersedes `/pro/runs/:id` as the shareable artifact.
+   */
+  readonly traceUrl: string | null;
+  /** Why a trace was not published (honest no-op / failure reason), when `traceUrl` is null. */
+  readonly traceNote?: string;
+  /** The operator-console deep link (the logged-in `/pro` console; not shared). */
   readonly proUrl: string;
   /**
    * The control plane's honest job receipt (mode/spend/budget). Distinct from
@@ -478,6 +621,17 @@ export interface RunArtifactsResponse extends RunArtifacts {
 export interface EvalComparisonResponse {
   readonly jobId: string;
   readonly status: JobStatus;
+  /**
+   * The SHAREABLE link: the baseline variant's published `/trace/{uuid}` (#6210).
+   * `null` when publishing is not armed. The comparison is a view over
+   * `variantTraceUrls`. Supersedes `/pro/evals/:id` as the shareable artifact.
+   */
+  readonly traceUrl: string | null;
+  /** Per-variant published `/trace/{uuid}` links (the comparison's trace set). */
+  readonly variantTraceUrls?: Readonly<Record<string, string>>;
+  /** Why traces were not published (honest no-op / failure reason), when unarmed. */
+  readonly traceNote?: string;
+  /** The operator-console deep link (the logged-in `/pro` console; not shared). */
   readonly proUrl: string;
   readonly jobReceipt: JobReceipt;
   /** The eval.json comparison the engine wrote (null until it lands). */

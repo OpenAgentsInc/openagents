@@ -17,6 +17,7 @@
 //     [--pro-base-url https://openagents.com] [--repo OpenAgentsInc/openagents]
 
 import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { Effect } from "effect";
 import { localBackend } from "./backend";
 import { scriptedBrain } from "./brain";
@@ -24,6 +25,7 @@ import { type EvalVariant, runEval } from "./evals";
 import { makeFakeChromium } from "./fake-chromium";
 import { makeProcessRunner } from "./gh-attach";
 import { composePrComment } from "./pr-comment";
+import { publishRunDir } from "./publish-trace";
 import { runQaSession } from "./runner";
 import {
   loginRedirectClaimCommitments,
@@ -196,9 +198,29 @@ async function main(): Promise<void> {
     })
     .filter((x): x is { variantId: string; filePath: string } => x !== undefined);
 
+  // #6210: publish the baseline variant's representative trace -> /trace/{uuid}
+  // and use it as the comment's shareable link. ENV-ARMED (QA_TRACE_PUBLISH_URL +
+  // an agent token); HONEST NO-OP otherwise (the comment falls back to the
+  // operator-console deep link — never a fabricated uuid).
+  const baselineRunDir = join(out, `${outcome.result.baselineVariantId}.0`);
+  const publishResult = await Effect.runPromise(
+    publishRunDir({
+      runDir: baselineRunDir,
+      sessionId: `${outcome.result.id}-${outcome.result.baselineVariantId}`,
+      shareBaseUrl: proBaseUrl,
+    }),
+  );
+  const traceUrl = publishResult.published ? publishResult.url : undefined;
+  if (publishResult.published) {
+    console.log(`[pr-comment] published shareable trace ${publishResult.url}`);
+  } else {
+    console.log(`[pr-comment] trace not published (${publishResult.reason})`);
+  }
+
   const body = await composePrComment({
     result: outcome.result,
     proBaseUrl,
+    ...(traceUrl !== undefined ? { traceUrl } : {}),
     variantVideoPaths,
     ...(verify !== undefined ? { verify } : {}),
     ...(failureSuggestion !== undefined ? { failureSuggestion } : {}),

@@ -186,6 +186,34 @@ describe("composePrComment", () => {
     expect(body).toContain("/pro/evals/login-mcp-compare");
   });
 
+  // -------------------------------------------------------------------------
+  // #6210: the shareable link is the published /trace/{uuid}, not /pro/evals.
+  // -------------------------------------------------------------------------
+
+  test("#6210: when a traceUrl is provided, the Live comparison link is /trace/{uuid} (not /pro/evals)", async () => {
+    const outcome = await runSampleEval();
+    const traceUrl =
+      "https://openagents.com/trace/00000000-0000-4000-8000-000000000abc";
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      traceUrl,
+    });
+    expect(body).toContain(`▶ **Live comparison:** ${traceUrl}`);
+    // the old /pro/evals link is replaced by the shareable trace link
+    expect(body).not.toContain("/pro/evals/login-mcp-compare");
+  });
+
+  test("#6210: with no traceUrl (publishing unarmed) it falls back to the operator-console link (no fake uuid)", async () => {
+    const outcome = await runSampleEval();
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+    });
+    expect(body).toContain("/pro/evals/login-mcp-compare");
+    expect(body).not.toContain("/trace/");
+  });
+
   test("#6192: a REFUTED verify verdict is surfaced (no fake pass), with inline evidence", async () => {
     const outcome = await runSampleEval();
     // a FALSE claim: the run says /login redirects away (it does not) -> REFUTED

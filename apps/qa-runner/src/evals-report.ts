@@ -94,12 +94,19 @@ export const renderEvalConsole = (result: EvalResult): string => {
 // ---------------------------------------------------------------------------
 
 export interface EvalMarkdownOptions {
-  /** Base URL for the shareable /pro link, e.g. "https://openagents.com". */
+  /** Base URL for the operator-console deep link, e.g. "https://openagents.com". */
   readonly proBaseUrl: string;
   /** Optional gh-attach'd video markdown per variant id (uploaded video URL
    *  rendered as an embeddable link/img). When absent, the row shows the
    *  in-eval relative video path so the artifact is still dereferenceable. */
   readonly variantVideoMarkdown?: Readonly<Record<string, string>>;
+  /**
+   * The SHAREABLE published `/trace/{uuid}` URL (#6210). When present, it is
+   * rendered as the headline "Live comparison" link IN PLACE of the old
+   * `/pro/evals/<id>` link. Absent when trace publishing is not armed (honest
+   * no-op): the comment then falls back to the operator-console deep link.
+   */
+  readonly traceUrl?: string;
 }
 
 const variantRow = (
@@ -123,7 +130,10 @@ export const renderEvalMarkdown = (
   options: EvalMarkdownOptions,
 ): string => {
   const lines: string[] = [];
-  const proLink = `${options.proBaseUrl.replace(/\/$/, "")}/pro/evals/${result.id}`;
+  // The SHAREABLE link is the published /trace/{uuid} when armed (#6210); else
+  // fall back to the operator-console deep link.
+  const shareLink =
+    options.traceUrl ?? `${options.proBaseUrl.replace(/\/$/, "")}/pro/evals/${result.id}`;
 
   // Headline: an honest pass/fail summary across variants (no fake green).
   const allPass = result.variants.every((v) => v.passRate === 1);
@@ -180,6 +190,6 @@ export const renderEvalMarkdown = (
     lines.push("");
   }
 
-  lines.push(`▶ **Live comparison:** ${proLink}`);
+  lines.push(`▶ **Live comparison:** ${shareLink}`);
   return lines.join("\n");
 };

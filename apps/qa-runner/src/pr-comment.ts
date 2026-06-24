@@ -32,8 +32,15 @@ import {
 
 export interface ComposePrCommentInput {
   readonly result: EvalResult;
-  /** Base URL for the shareable /pro link. */
+  /** Base URL for the operator-console deep link. */
   readonly proBaseUrl: string;
+  /**
+   * The SHAREABLE published `/trace/{uuid}` URL (#6210). When present, the
+   * comment's headline "Live comparison" link is the `/trace/{uuid}` IN PLACE of
+   * the old `/pro/evals/<id>` link. When absent (trace publishing not armed), the
+   * comment falls back to the operator-console deep link — never a fake uuid.
+   */
+  readonly traceUrl?: string;
   /** Absolute/relative path on disk to each variant's video, for gh-attach. */
   readonly variantVideoPaths?: ReadonlyArray<{
     variantId: string;
@@ -130,6 +137,7 @@ export const composePrComment = async (
 
   const body = renderEvalMarkdown(input.result, {
     proBaseUrl: input.proBaseUrl,
+    ...(input.traceUrl !== undefined ? { traceUrl: input.traceUrl } : {}),
     ...(variantVideoMarkdown !== undefined ? { variantVideoMarkdown } : {}),
   });
 

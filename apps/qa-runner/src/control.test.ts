@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NotArmedError, BadRequestError, NotFoundError, QaControl } from "./control";
+import type { FetchLike } from "./publish-trace";
 
 let dir: string;
 beforeEach(() => {
@@ -103,5 +104,94 @@ describe("submitEval (mock path)", () => {
   test("rejects < 2 variants", () => {
     const control = mkControl();
     expect(() => control.submitEval({ variants: [{ id: "only" }] })).toThrow(BadRequestError);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #6210: trace publishing -> /trace/{uuid} as the shareable link. A FAKE local
+// ingest (no network) returns a deterministic uuid per Idempotency-Key.
+// ---------------------------------------------------------------------------
+
+const fakeIngestControl = () => {
+  const posts: Array<{ headers: Record<string, string>; body: string }> = [];
+  let n = 0;
+  const fetch: FetchLike = async (_url, init) => {
+    posts.push({ headers: init.headers, body: init.body });
+    const uuid = `00000000-0000-4000-8000-00000000000${(n++).toString(16)}`;
+    return {
+      ok: true,
+      status: 201,
+      text: async () => JSON.stringify({ uuid, url: `/trace/${uuid}`, visibility: "unlisted" }),
+    };
+  };
+  return { fetch, posts };
+};
+
+const armedPublish = { url: "https://openagents.com/api/traces", token: "oa_agent_TEST123456789" };
+
+describe("#6210 trace publishing", () => {
+  test("a RUN publishes a trace and runArtifacts links /trace/{uuid} (not /pro/evals)", async () => {
+    const { fetch, posts } = fakeIngestControl();
+    const control = mkControl({ publishTrace: armedPublish, publishFetch: fetch });
+    const job = control.submitRun({ scenario: "login-regression" });
+    await control.wait(job.id);
+
+    const art = control.runArtifacts(job.id);
+    expect(art.traceUrl).toBe(
+      "https://openagents.com/trace/00000000-0000-4000-8000-000000000000",
+    );
+    expect(art.traceUrl).not.toContain("/pro/evals");
+    // the operator-console deep link is retained but is NOT the shareable link
+    expect(art.proUrl).toBe(`https://openagents.com/pro/runs/${job.id}`);
+    // it really POSTed with the agent bearer + idempotency key
+    expect(posts.length).toBe(1);
+    expect(posts[0]!.headers.authorization).toBe(`Bearer ${armedPublish.token}`);
+    expect(posts[0]!.headers["idempotency-key"]).toBeTruthy();
+  });
+
+  test("an EVAL publishes per-variant traces; the comparison links /trace/{uuid}", async () => {
+    const { fetch } = fakeIngestControl();
+    const control = mkControl({ publishTrace: armedPublish, publishFetch: fetch });
+    const job = control.submitEval({
+      title: "baseline vs candidate",
+      variants: [
+        { id: "baseline", scenario: "login-regression" },
+        { id: "candidate", scenario: "login-regression-wrong" },
+      ],
+    });
+    await control.wait(job.id);
+
+    const res = control.evalComparison(job.id);
+    expect(res.traceUrl).toContain("https://openagents.com/trace/");
+    expect(res.traceUrl).not.toContain("/pro/evals");
+    expect(Object.keys(res.variantTraceUrls ?? {}).sort()).toEqual(["baseline", "candidate"]);
+    expect(res.variantTraceUrls!.baseline).toContain("/trace/");
+  });
+
+  test("UNARMED (no publish config): honest no-op — traceUrl null, with a note", async () => {
+    // No publishTrace config + a fetch that throws if ever called.
+    const control = mkControl({
+      publishFetch: (async () => {
+        throw new Error("must not publish when unarmed");
+      }) as unknown as FetchLike,
+    });
+    // Force unarmed regardless of CI env by clearing the env keys.
+    const keys = ["QA_TRACE_PUBLISH_URL", "QA_TRACE_PUBLISH_TOKEN", "OPENAGENTS_AGENT_TOKEN", "OPENAGENTS_AGENT_PENDING_TOKEN"];
+    const saved = keys.map((k) => [k, process.env[k]] as const);
+    for (const k of keys) delete process.env[k];
+    try {
+      const job = control.submitRun({ scenario: "login-regression" });
+      await control.wait(job.id);
+      const art = control.runArtifacts(job.id);
+      expect(art.traceUrl).toBeNull();
+      expect(art.traceNote).toBeTruthy();
+      // the run itself still succeeded + is dereferenceable
+      expect(art.result!["status"]).toBe("pass");
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
   });
 });
