@@ -369,6 +369,89 @@ export const proStatusPill = <Message>(status: 'pass' | 'fail'): Html => {
   )
 }
 
+// The VERIFY VERDICT pill (#6192): the investigator verdict on a run/eval.
+// CONFIRMED = positive (green), REFUTED = negative (red), INCONCLUSIVE = caution
+// (amber). Slightly louder than the pass/fail pill (it carries the headline
+// judgement) but still mono, uppercase, accent-for-state-only — no card, no
+// gradient (apps/openagents.com/DESIGN.md). Never inflate: the amber INCONCLUSIVE
+// is its own honest state, distinct from CONFIRMED.
+export type ProVerdict = 'CONFIRMED' | 'REFUTED' | 'INCONCLUSIVE'
+
+export const proVerdictPill = <Message>(verdict: ProVerdict): Html => {
+  const h = html<Message>()
+  const tone =
+    verdict === 'CONFIRMED'
+      ? 'border-[#00c853]/50 bg-[#00c853]/10 text-[#00c853]'
+      : verdict === 'REFUTED'
+        ? 'border-[#d32f2f]/60 bg-[#d32f2f]/10 text-[#d32f2f]'
+        : 'border-[#ffb400]/50 bg-[#ffb400]/10 text-[#ffb400]'
+  return h.span(
+    [
+      h.DataAttribute('component', 'pro-verdict-pill'),
+      h.DataAttribute('verdict', verdict),
+      h.Title('Verify verdict (commitments checked against observed evidence).'),
+      h.Class(
+        clsx(
+          'inline-flex items-center gap-1 border px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em]',
+          tone,
+        ),
+      ),
+    ],
+    [
+      h.span(
+        [h.AriaHidden(true), h.Class('text-[0.6875rem] leading-none')],
+        [verdict === 'CONFIRMED' ? '✓' : verdict === 'REFUTED' ? '✕' : '?'],
+      ),
+      h.span([], [verdict]),
+    ],
+  )
+}
+
+// A verify EVIDENCE list: per-commitment findings (the claim + the observed
+// evidence summary), each prefixed by its own verdict pill. This is the
+// "verify the output before you post" detail — a reviewer sees WHY the verdict
+// landed without re-running anything. No card; thin rows.
+export type ProVerdictFinding = Readonly<{
+  id: string
+  claim: string
+  verdict: ProVerdict
+  evidenceSummary: string
+}>
+
+export const proVerdictEvidence = <Message>(
+  findings: ReadonlyArray<ProVerdictFinding>,
+): Html => {
+  const h = html<Message>()
+  return h.ul(
+    [
+      h.DataAttribute('component', 'pro-verdict-evidence'),
+      h.Class('m-0 grid list-none gap-1.5 p-0'),
+    ],
+    findings.map(f =>
+      h.li(
+        [
+          h.Class(
+            'grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5 border border-[#222] bg-[#010102] px-3 py-2',
+          ),
+        ],
+        [
+          proVerdictPill<Message>(f.verdict),
+          h.div(
+            [h.Class('grid min-w-0 gap-0.5')],
+            [
+              h.span([h.Class('text-sm text-[#f1efe8]')], [f.claim]),
+              h.span(
+                [h.Class('text-xs text-white/40')],
+                [f.evidenceSummary],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  )
+}
+
 // A back link to the parent /pro section (e.g. "← Runs"). Quiet, no underline.
 export const proBackLink = <Message>(input: {
   href: string
@@ -393,6 +476,8 @@ export const proPageHeader = <Message>(input: {
   back?: { href: string; label: string }
   title: string
   status?: 'pass' | 'fail'
+  // The verify investigator verdict (#6192), shown alongside the status pill.
+  verdict?: ProVerdict
   meta: ReadonlyArray<{ label: string; value: string }>
   // An optional honest note (e.g. illustrative-only) shown under the meta.
   note?: string
@@ -418,6 +503,9 @@ export const proPageHeader = <Message>(input: {
           ),
           ...(input.status !== undefined
             ? [proStatusPill<Message>(input.status)]
+            : []),
+          ...(input.verdict !== undefined
+            ? [proVerdictPill<Message>(input.verdict)]
             : []),
         ],
       ),

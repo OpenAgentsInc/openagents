@@ -75,7 +75,7 @@ const runsIndexBody = (): Html => {
         href: proRunRouter({ runId: run.id }),
         title: run.title,
         status: run.status,
-        meta: `${run.targetName} · ${run.brain} · ${ms(run.durationMs)}`,
+        meta: `${run.targetName} · ${run.brain} · ${ms(run.durationMs)}${run.verify !== undefined ? ` · ${run.verify.verdict}` : ''}`,
       })),
       emptyLabel: 'No runs yet. A qa-runner run will appear here once recorded.',
     }),
@@ -107,6 +107,7 @@ const runDetailBody = (runId: string): Html => {
       back: { href: proRunsRouter(), label: 'Runs' },
       title: run.title,
       status: run.status,
+      ...(run.verify !== undefined ? { verdict: run.verify.verdict } : {}),
       meta: [
         { label: 'target', value: run.targetName },
         { label: 'brain', value: run.brain },
@@ -116,6 +117,15 @@ const runDetailBody = (runId: string): Html => {
       ],
       ...(run.failure !== undefined ? { note: run.failure } : {}),
     }),
+    // The verify verdict (#6192): the investigator finding(s) with the observed
+    // evidence inline, so a reviewer confirms the verdict with no local run.
+    ...(run.verify !== undefined
+      ? [
+          Ui.proConsoleSection2<Message>('Verify verdict', [
+            Ui.proVerdictEvidence<Message>(run.verify.findings),
+          ]),
+        ]
+      : []),
     ...(run.video !== undefined
       ? [
           Ui.proConsoleSection2<Message>('Video', [

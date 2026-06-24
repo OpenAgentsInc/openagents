@@ -144,6 +144,7 @@ const evalDetailBody = (evalId: string): Html => {
     Ui.proPageHeader<Message>({
       back: { href: EVALS_HREF, label: 'Evals' },
       title: ev.title,
+      ...(ev.verify !== undefined ? { verdict: ev.verify.verdict } : {}),
       meta: [
         { label: 'scenario', value: ev.scenarioLabel },
         { label: 'target', value: ev.targetName },
@@ -156,6 +157,15 @@ const evalDetailBody = (evalId: string): Html => {
             note: 'Illustrative run (fixtures / no spend). Numbers prove the harness, not the lanes.',
           }),
     }),
+    // The verify verdict (#6192): the candidate scenario's commitment finding(s)
+    // with observed evidence inline. A REFUTED candidate shows as REFUTED.
+    ...(ev.verify !== undefined
+      ? [
+          Ui.proConsoleSection2<Message>('Verify verdict', [
+            Ui.proVerdictEvidence<Message>(ev.verify.findings),
+          ]),
+        ]
+      : []),
     Ui.proConsoleSection2<Message>('Comparison', [
       Ui.proEvalComparisonTable<Message>(comparisonRows),
     ]),

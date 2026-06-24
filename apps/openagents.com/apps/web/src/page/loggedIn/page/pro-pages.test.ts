@@ -60,6 +60,14 @@ describe('/pro/evals comparison', () => {
     expect(out).toContain('/pro-assets/sample-session.webm')
   })
 
+  test('#6192: eval detail surfaces the REFUTED verify verdict + evidence', () => {
+    const ev = listProEvals()[0]!
+    const out = renderHtml(evalDetailView(session(), ev.id))
+    expect(out).toContain('pro-verdict-pill')
+    expect(out).toContain('REFUTED')
+    expect(out).toContain('pro-verdict-evidence')
+  })
+
   test('eval detail shows an honest not-found state for an unknown id', () => {
     const out = renderHtml(evalDetailView(session(), 'does-not-exist'))
     expect(out).toContain('Eval not found')
@@ -89,6 +97,24 @@ describe('/pro/runs', () => {
     expect(out).toContain('apps/qa-runner/generated/login-verify.e2e.test.ts')
     // pass status pill
     expect(out).toContain('pro-status-pill')
+  })
+
+  test('#6192: a CONFIRMED run renders the verdict pill + evidence', () => {
+    const out = renderHtml(runDetailView(session(), 'login-regression-prod'))
+    expect(out).toContain('pro-verdict-pill')
+    expect(out).toContain('CONFIRMED')
+    expect(out).toContain('pro-verdict-evidence')
+    // the observed evidence is inline (no local run needed to confirm)
+    expect(out).toContain('stays at /login')
+  })
+
+  test('#6192: a FALSE claim renders REFUTED (not a fake pass) with contradicting evidence', () => {
+    const out = renderHtml(runDetailView(session(), 'login-redirect-claim-refuted'))
+    expect(out).toContain('pro-verdict-pill')
+    expect(out).toContain('REFUTED')
+    expect(out).toContain('contradicting evidence')
+    // never inflate a refuted run to confirmed
+    expect(out).not.toContain('>CONFIRMED<')
   })
 
   test('run detail shows an honest not-found for an unknown id', () => {

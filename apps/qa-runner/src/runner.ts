@@ -20,6 +20,7 @@ import type { Backend } from "./backend";
 import type { Brain, BrainStep } from "./brain";
 import { assertPublicSafeResult, type QaRunResult, type QaRunStep } from "./result";
 import type { Target } from "./target";
+import { type Commitment, verifyCommitments } from "./verify";
 
 export interface RunInput {
   readonly target: Target;
@@ -33,6 +34,14 @@ export interface RunInput {
   readonly maxSteps?: number;
   /** Injectable clock (for deterministic result timestamps in tests). */
   readonly now?: () => Date;
+  /**
+   * Optional COMMITMENTS (#6192): what this run must PROVE + the evidence type.
+   * Declared up front; checked at the END by the verify stage, which emits an
+   * additive `verify` investigator verdict (CONFIRMED/REFUTED/INCONCLUSIVE) on
+   * the result. Anti-fabrication: a false claim yields REFUTED (a valid finding,
+   * never a fake pass); an unobserved outcome is INCONCLUSIVE, never CONFIRMED.
+   */
+  readonly commitments?: ReadonlyArray<Commitment>;
 }
 
 export interface RunOutcome {
@@ -193,6 +202,22 @@ export function runQaSession(input: RunInput): Effect.Effect<RunOutcome, Error> 
       .sort();
 
     const status: "pass" | "fail" = driveResult.failure === undefined ? "pass" : "fail";
+
+    // Verify stage (#6192): if the run declared commitments, check the PRODUCED
+    // steps/status against them and emit the investigator verdict. Anti-
+    // fabrication lives in `verifyCommitments`: it can only CONFIRM observed
+    // evidence; a contradiction is REFUTED; an unobserved outcome is
+    // INCONCLUSIVE. This runs on whatever the session actually produced — it
+    // never restages evidence to match an expected outcome.
+    const verify =
+      input.commitments !== undefined && input.commitments.length > 0
+        ? verifyCommitments({
+            commitments: input.commitments,
+            steps: driveResult.steps,
+            runStatus: status,
+          })
+        : undefined;
+
     const result: QaRunResult = {
       schemaVersion: "openagents.qa_runner.result.v1",
       status,
@@ -210,6 +235,20 @@ export function runQaSession(input: RunInput): Effect.Effect<RunOutcome, Error> 
         screenshots,
       },
       ...(driveResult.failure ? { failure: driveResult.failure } : {}),
+      ...(verify !== undefined
+        ? {
+            verify: {
+              verdict: verify.verdict,
+              findings: verify.findings.map((f) => ({
+                id: f.id,
+                claim: f.claim,
+                verdict: f.verdict,
+                evidenceSummary: f.evidenceSummary,
+              })),
+              observed: verify.observed,
+            },
+          }
+        : {}),
     };
 
     // Tripwire: never write a result that leaks a forbidden field.

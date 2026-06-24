@@ -91,12 +91,39 @@ A run writes, into the artifact dir:
   `result.json.artifacts.videoFormat`)
 - `trace.zip` (Playwright trace — open with `npx playwright show-trace`)
 - `NN-step.png` per-step screenshots
-- `result.json` — `{ status, target, brain, backend, steps, artifacts, failure? }`
+- `result.json` — `{ status, target, brain, backend, steps, artifacts, failure?, verify? }`
 - `session-trace.json` (Khala runs) — the deterministic, public-safe
   `KhalaSessionTrace` (`openagents.khala.session_trace.v1`): ordered beats
   (chat_turn/tool_call/browser/terminal/verdict) with raw text/secrets withheld
   (refs/hashes only), inferred typed inputs/outputs, receipts, and a content
   digest. This is the distiller's input.
+
+### Verify verdict (commitments → CONFIRMED / REFUTED / INCONCLUSIVE, #6192)
+
+A run may declare **commitments** (`RunInput.commitments`) — what it must PROVE,
+and the evidence type. After the run, the **verify stage** (`src/verify.ts`)
+checks the produced steps/status against them and writes an **additive**
+`result.json.verify` field:
+
+```jsonc
+"verify": {
+  "verdict": "REFUTED",            // CONFIRMED | REFUTED | INCONCLUSIVE
+  "observed": true,
+  "findings": [
+    { "id": "claims-redirect", "claim": "...", "verdict": "REFUTED",
+      "evidenceSummary": "observed step \"...\" = failed (contradicting evidence)" }
+  ]
+}
+```
+
+It is an **investigator** verdict with strict **anti-fabrication**: a false
+claim is a valid **REFUTED** finding (never a fake pass); an
+unobserved/expected-but-unran outcome is **INCONCLUSIVE**, never CONFIRMED; only
+OBSERVED ok evidence yields CONFIRMED. The verdict is surfaced on the `/pro`
+run + eval pages (a CONFIRMED-green / REFUTED-red / INCONCLUSIVE-amber pill +
+the evidence) and led at the top of the PR-evidence comment (`pr-comment.ts`).
+`verify` is **additive** and namespaced — it does not rename/remove existing
+fields and is independent of the separate additive `receipt` field.
 
 `result.json` and all artifact metadata are **public-safe**: a tripwire
 (`assertPublicSafeResult`) rejects any forbidden field

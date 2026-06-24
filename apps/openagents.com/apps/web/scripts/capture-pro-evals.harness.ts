@@ -20,7 +20,7 @@ import {
 } from '../src/page/loggedIn/page/pro-readmodel'
 import { runDetailView } from '../src/page/loggedIn/page/pro-runs'
 
-const Model = S.Struct({ which: S.Literals(['eval', 'run']) })
+const Model = S.Struct({ which: S.Literals(['eval', 'run', 'run-refuted']) })
 type Model = typeof Model.Type
 type Message = Readonly<{ _tag: 'Noop' }>
 
@@ -31,16 +31,34 @@ const session: Session = {
 }
 
 const params = new URLSearchParams(window.location.search)
-const which: 'eval' | 'run' = params.get('view') === 'run' ? 'run' : 'eval'
+const requested = params.get('view')
+// #6192: `run-refuted` renders the REFUTED fixture run so the capture can prove
+// a false claim renders as a refuted verdict (not a fake pass) on /pro.
+const which: 'eval' | 'run' | 'run-refuted' =
+  requested === 'run'
+    ? 'run'
+    : requested === 'run-refuted'
+      ? 'run-refuted'
+      : 'eval'
+
+// The REFUTED run fixture id (the FALSE redirect claim).
+const REFUTED_RUN_ID = 'login-redirect-claim-refuted'
 
 const view = (model: Model): Document => {
   const h = html<Message>()
   const body =
     model.which === 'run'
       ? runDetailView(session, listProRuns()[0]!.id)
-      : evalDetailView(session, listProEvals()[0]!.id)
+      : model.which === 'run-refuted'
+        ? runDetailView(session, REFUTED_RUN_ID)
+        : evalDetailView(session, listProEvals()[0]!.id)
   return {
-    title: model.which === 'run' ? 'Pro run' : 'Pro eval',
+    title:
+      model.which === 'eval'
+        ? 'Pro eval'
+        : model.which === 'run-refuted'
+          ? 'Pro run (refuted)'
+          : 'Pro run',
     body: h.div([h.Id('pro-capture-root')], [body]),
   }
 }

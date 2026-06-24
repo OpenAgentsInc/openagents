@@ -7,6 +7,7 @@
 // assertion is recorded and the failure is visible at the end of the video).
 
 import type { BrainStep } from "./brain";
+import type { Commitment } from "./verify";
 
 /**
  * Verify `/login`:
@@ -36,5 +37,58 @@ export function loginRegressionStepsWrong(): ReadonlyArray<BrainStep> {
     { kind: "screenshot", label: "login-page" },
     // WRONG on purpose: the page does NOT redirect to home, so this fails.
     { kind: "assert", label: "redirects away from /login (intentionally wrong)", check: { kind: "url-not-includes", value: "/login" } },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Commitments (#6192): what the /login scenario must PROVE, declared up front.
+// ---------------------------------------------------------------------------
+//
+// The verify stage checks these against the run's produced steps and emits the
+// investigator verdict. A TRUE run satisfies them all -> CONFIRMED. The FALSE
+// variant below makes the same claims while running the deliberately-wrong
+// steps, so its `redirect` commitment is REFUTED by observed evidence — proving
+// a false claim is a finding, not a fake pass.
+
+/**
+ * Commitments the HONEST /login scenario proves: the page stays at /login and
+ * renders the sign-in copy. Matched against the assert step labels above, so a
+ * CONFIRMED verdict rests on OBSERVED ok assertions.
+ */
+export function loginRegressionCommitments(): ReadonlyArray<Commitment> {
+  return [
+    {
+      id: "no-redirect",
+      claim: "/login does NOT redirect to home when logged out",
+      evidence: "step-pass",
+      match: "stays at /login",
+      kind: "assert",
+    },
+    {
+      id: "renders-signin",
+      claim: '/login renders "Log in to OpenAgents"',
+      evidence: "step-pass",
+      match: 'body contains "Log in to OpenAgents"',
+      kind: "assert",
+    },
+  ];
+}
+
+/**
+ * Commitments for the FALSE-claim proof: the run CLAIMS the login page redirects
+ * away from /login (it must not). The verify stage matches this against the
+ * deliberately-wrong assert step (which the runner records as FAILED), so the
+ * verdict is REFUTED with the contradicting evidence inline — never a fake
+ * CONFIRMED. This is the acceptance proof for #6192.
+ */
+export function loginRedirectClaimCommitments(): ReadonlyArray<Commitment> {
+  return [
+    {
+      id: "claims-redirect",
+      claim: "/login redirects away from /login (FALSE claim under test)",
+      evidence: "step-pass",
+      match: "redirects away from /login",
+      kind: "assert",
+    },
   ];
 }

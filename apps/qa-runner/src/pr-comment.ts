@@ -9,6 +9,12 @@
 // HONEST: real-model runs are flag-gated + capped upstream (the CI workflow);
 // this composer reports whatever the eval actually produced — a failing variant
 // shows as failing (no fake green).
+//
+// #6192: when the run declared COMMITMENTS, the composer surfaces the verify
+// investigator VERDICT (CONFIRMED/REFUTED/INCONCLUSIVE) at the TOP of the
+// comment with the contradicting/observed evidence inline — so a reviewer sees
+// the verdict before the table. A REFUTED verdict is shown as REFUTED (never a
+// fake pass), satisfying "verify the output before you post."
 
 import type { EvalResult } from "./evals";
 import { renderEvalMarkdown } from "./evals-report";
@@ -17,6 +23,11 @@ import {
   type GhAttachOptions,
   type GhAttachRunner,
 } from "./gh-attach";
+import {
+  renderVerdictEvidence,
+  renderVerdictLine,
+  type VerifyReport,
+} from "./verify";
 
 export interface ComposePrCommentInput {
   readonly result: EvalResult;
@@ -30,7 +41,27 @@ export interface ComposePrCommentInput {
   /** gh-attach runner; when omitted, no upload is attempted (relative refs). */
   readonly ghAttach?: GhAttachRunner;
   readonly ghAttachOptions?: GhAttachOptions;
+  /**
+   * Optional verify-stage report (#6192). When present, its verdict line +
+   * per-commitment evidence are rendered at the top of the comment. Honest: a
+   * REFUTED verdict is shown as REFUTED, with the contradicting evidence inline.
+   */
+  readonly verify?: VerifyReport;
 }
+
+// Render the verify verdict block: a headline verdict line + a collapsed
+// evidence list. Pure; returns "" when there is no report.
+const renderVerifyBlock = (verify: VerifyReport | undefined): string => {
+  if (verify === undefined) return "";
+  const lines: string[] = [renderVerdictLine(verify), ""];
+  const evidence = renderVerdictEvidence(verify);
+  if (evidence.length > 0) {
+    lines.push("<details><summary>Commitment evidence</summary>", "");
+    lines.push(...evidence);
+    lines.push("", "</details>", "");
+  }
+  return `${lines.join("\n")}\n`;
+};
 
 // A stable marker so the CI loop can find-and-update its own prior comment
 // instead of stacking duplicates (the workflow uses this with `gh pr comment`).
@@ -58,6 +89,8 @@ export const composePrComment = async (
     ...(variantVideoMarkdown !== undefined ? { variantVideoMarkdown } : {}),
   });
 
-  // Prepend the stable marker so the CI loop can upsert this comment.
-  return `${PR_COMMENT_MARKER}\n${body}\n`;
+  // The verify verdict (when present) leads the comment — verdict first, then
+  // the comparison. Prepend the stable marker so the CI loop can upsert this.
+  const verifyBlock = renderVerifyBlock(input.verify);
+  return `${PR_COMMENT_MARKER}\n${verifyBlock}${body}\n`;
 };

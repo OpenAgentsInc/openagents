@@ -24,8 +24,14 @@ import { type EvalVariant, runEval } from "./evals";
 import { makeFakeChromium } from "./fake-chromium";
 import { makeProcessRunner } from "./gh-attach";
 import { composePrComment } from "./pr-comment";
-import { loginRegressionSteps, loginRegressionStepsWrong } from "./scenarios";
+import { runQaSession } from "./runner";
+import {
+  loginRedirectClaimCommitments,
+  loginRegressionSteps,
+  loginRegressionStepsWrong,
+} from "./scenarios";
 import { makeTarget } from "./target";
+import { verifyCommitments, type VerifyReport } from "./verify";
 
 function parseArgs(argv: ReadonlyArray<string>) {
   const args: Record<string, string | boolean> = {};
@@ -118,6 +124,30 @@ async function main(): Promise<void> {
     }),
   );
 
+  // Verify stage (#6192): run the candidate scenario WITH its commitments so the
+  // PR comment leads with a real investigator verdict. The candidate CLAIMS
+  // /login redirects away (it does not), so this is the acceptance proof: a
+  // FALSE claim yields REFUTED, not a fake pass — surfaced before the table.
+  const verifyOutcome = await Effect.runPromise(
+    runQaSession({
+      target: makeTarget({ name: "ci-fixtures", baseUrl: "https://example.test" }),
+      brain: scriptedBrain(loginRegressionStepsWrong()),
+      backend: backend(),
+      artifactDir: `${out}/verify`,
+      commitments: loginRedirectClaimCommitments(),
+    }),
+  );
+  // Reconstruct the VerifyReport from the persisted additive `verify` field so
+  // the composer renders the verdict + the inline contradicting evidence.
+  const verify: VerifyReport | undefined =
+    verifyOutcome.result.verify !== undefined
+      ? verifyCommitments({
+          commitments: loginRedirectClaimCommitments(),
+          steps: verifyOutcome.result.steps,
+          runStatus: verifyOutcome.result.status,
+        })
+      : undefined;
+
   // gh-attach is OPTIONAL: in CI without browser cookies it will fail and we
   // fall back to the relative video ref (honest, no broken embed).
   const ghAttach = makeProcessRunner(async (cmd, cmdArgs) => {
@@ -140,6 +170,7 @@ async function main(): Promise<void> {
     result: outcome.result,
     proBaseUrl,
     variantVideoPaths,
+    ...(verify !== undefined ? { verify } : {}),
     // Only attempt gh-attach when explicitly armed (cookies present); otherwise
     // skip the upload and fall back to relative refs.
     ...(args["gh-attach"] === true ? { ghAttach } : {}),

@@ -61,7 +61,7 @@ const main = async (): Promise<void> => {
   const errors: string[] = []
   try {
     const capture = async (
-      viewName: 'eval' | 'run',
+      viewName: 'eval' | 'run' | 'run-refuted',
       file: string,
       assertions: (out: string) => void,
     ): Promise<void> => {
@@ -102,6 +102,9 @@ const main = async (): Promise<void> => {
         '-100%',
         'pro-video-pane',
         'Illustrative',
+        // #6192: the verify verdict renders on the eval page (REFUTED candidate)
+        'pro-verdict-pill',
+        'REFUTED',
       ]
       for (const token of must) {
         if (!out.includes(token)) {
@@ -111,10 +114,29 @@ const main = async (): Promise<void> => {
     })
 
     await capture('run', 'pro-run-screenshot.png', out => {
-      const must = ['pro-step-table', 'pro-video-pane', 'pro-status-pill']
+      const must = [
+        'pro-step-table',
+        'pro-video-pane',
+        'pro-status-pill',
+        // #6192: the verify verdict renders on the run page (CONFIRMED)
+        'pro-verdict-pill',
+        'CONFIRMED',
+        'pro-verdict-evidence',
+      ]
       for (const token of must) {
         if (!out.includes(token)) {
           throw new Error(`/pro/runs render missing "${token}"`)
+        }
+      }
+    })
+
+    // #6192: also capture the REFUTED run page — proof a false claim renders as
+    // a refuted verdict (not a fake pass) on /pro.
+    await capture('run-refuted', 'pro-run-refuted-screenshot.png', out => {
+      const must = ['pro-verdict-pill', 'REFUTED', 'contradicting evidence']
+      for (const token of must) {
+        if (!out.includes(token)) {
+          throw new Error(`/pro/runs refuted render missing "${token}"`)
         }
       }
     })

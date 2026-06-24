@@ -41,6 +41,26 @@ export type ProRunVideo = Readonly<{
   format: 'mp4' | 'webm'
 }>
 
+// The verify investigator verdict (#6192), projected from the run's additive
+// `verify` field. CONFIRMED/REFUTED/INCONCLUSIVE, with per-commitment findings
+// carrying the OBSERVED evidence summary so a reviewer sees WHY the verdict
+// landed — never inflated (uncertain stays INCONCLUSIVE; a false claim is
+// REFUTED, never a fake CONFIRMED).
+export type ProVerdict = 'CONFIRMED' | 'REFUTED' | 'INCONCLUSIVE'
+
+export type ProVerifyFinding = Readonly<{
+  id: string
+  claim: string
+  verdict: ProVerdict
+  evidenceSummary: string
+}>
+
+export type ProVerify = Readonly<{
+  verdict: ProVerdict
+  findings: ReadonlyArray<ProVerifyFinding>
+  observed: boolean
+}>
+
 export type ProRun = Readonly<{
   id: string
   title: string
@@ -56,6 +76,8 @@ export type ProRun = Readonly<{
   // The committed distilled-test reference (path in the repo), if any.
   distilledTestPath?: string
   failure?: string
+  // The verify investigator verdict (#6192), when the run declared commitments.
+  verify?: ProVerify
 }>
 
 // ---------------------------------------------------------------------------
@@ -87,6 +109,9 @@ export type ProEval = Readonly<{
   baselineVariantId: string
   decisionGrade: boolean
   variants: ReadonlyArray<ProEvalVariant>
+  // The verify investigator verdict for the comparison's candidate scenario
+  // (#6192), when commitments were declared. Surfaced on the eval detail page.
+  verify?: ProVerify
 }>
 
 // ---------------------------------------------------------------------------
@@ -136,6 +161,69 @@ const FIXTURE_RUNS: ReadonlyArray<ProRun> = [
     ],
     video: SAMPLE_VIDEO,
     distilledTestPath: 'apps/qa-runner/generated/login-verify.e2e.test.ts',
+    // #6192: the run declared commitments; every one is backed by an observed
+    // ok step -> CONFIRMED (not inflated — each finding cites the observed step).
+    verify: {
+      verdict: 'CONFIRMED',
+      observed: true,
+      findings: [
+        {
+          id: 'no-redirect',
+          claim: '/login does NOT redirect to home when logged out',
+          verdict: 'CONFIRMED',
+          evidenceSummary:
+            'observed step "stays at /login (no redirect to home)" = ok',
+        },
+        {
+          id: 'renders-signin',
+          claim: '/login renders "Log in to OpenAgents"',
+          verdict: 'CONFIRMED',
+          evidenceSummary:
+            'observed step "body contains \\"Log in to OpenAgents\\"" = ok',
+        },
+      ],
+    },
+  },
+  {
+    // A REFUTED run: the agent CLAIMED /login redirects away (it does not). The
+    // claim is FALSE, so the verdict is REFUTED with the contradicting evidence
+    // inline — a false claim is a valid finding, never a fake pass (#6192).
+    id: 'login-redirect-claim-refuted',
+    title: '/login redirect claim (FALSE) — refuted',
+    status: 'fail',
+    targetName: 'openagents.com-prod',
+    targetBaseUrl: 'https://openagents.com',
+    brain: 'scripted',
+    backend: 'local',
+    startedAt: '2026-06-24T00:05:00.000Z',
+    durationMs: 1980,
+    steps: [
+      { index: 0, kind: 'navigate', label: 'open /login', status: 'ok' },
+      { index: 1, kind: 'wait-for', label: 'sign-in form renders', status: 'ok' },
+      { index: 2, kind: 'screenshot', label: 'screenshot login-page', status: 'ok' },
+      {
+        index: 3,
+        kind: 'assert',
+        label: 'redirects away from /login (intentionally wrong)',
+        status: 'failed',
+      },
+    ],
+    video: SAMPLE_VIDEO,
+    failure:
+      'redirects away from /login (intentionally wrong): expected url NOT to include "/login"',
+    verify: {
+      verdict: 'REFUTED',
+      observed: true,
+      findings: [
+        {
+          id: 'claims-redirect',
+          claim: '/login redirects away from /login (FALSE claim under test)',
+          verdict: 'REFUTED',
+          evidenceSummary:
+            'observed step "redirects away from /login (intentionally wrong)" = failed (contradicting evidence)',
+        },
+      ],
+    },
   },
 ]
 
@@ -177,6 +265,21 @@ const FIXTURE_EVALS: ReadonlyArray<ProEval> = [
         latencyP50DeltaMs: -160,
       },
     ],
+    // #6192: the candidate (MCP off) regressed on the redirect assertion. Its
+    // commitment is REFUTED by observed evidence — surfaced on the eval page.
+    verify: {
+      verdict: 'REFUTED',
+      observed: true,
+      findings: [
+        {
+          id: 'no-redirect',
+          claim: '/login does NOT redirect to home when logged out',
+          verdict: 'REFUTED',
+          evidenceSummary:
+            'observed step "stays at /login (no redirect to home)" = failed (contradicting evidence)',
+        },
+      ],
+    },
   },
 ]
 

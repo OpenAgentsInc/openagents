@@ -27,6 +27,7 @@ import {
 } from "./pr-comment";
 import { loginRegressionSteps, loginRegressionStepsWrong } from "./scenarios";
 import { makeTarget } from "./target";
+import { verifyCommitments } from "./verify";
 
 let dir: string;
 beforeEach(() => {
@@ -181,5 +182,72 @@ describe("composePrComment", () => {
     expect(body).toContain(PR_COMMENT_MARKER);
     expect(body).toContain("Chill-eval");
     expect(body).toContain("/pro/evals/login-mcp-compare");
+  });
+
+  test("#6192: a REFUTED verify verdict is surfaced (no fake pass), with inline evidence", async () => {
+    const outcome = await runSampleEval();
+    // a FALSE claim: the run says /login redirects away (it does not) -> REFUTED
+    const verify = verifyCommitments({
+      commitments: [
+        {
+          id: "claims-redirect",
+          claim: "/login redirects away (FALSE claim)",
+          evidence: "step-pass",
+          match: "redirects away from /login",
+        },
+      ],
+      steps: [
+        { index: 0, kind: "assert", label: "redirects away from /login (intentionally wrong)", status: "failed" },
+      ],
+      runStatus: "fail",
+    });
+    expect(verify.verdict).toBe("REFUTED");
+
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      verify,
+    });
+    // the verdict leads the comment
+    expect(body).toContain("Verify verdict: REFUTED");
+    // the contradicting evidence is inline
+    expect(body).toContain("claims-redirect");
+    expect(body).toContain("Commitment evidence");
+    // never a fake green for a refuted claim
+    expect(body).not.toContain("Verify verdict: CONFIRMED");
+  });
+
+  test("#6192: a CONFIRMED verdict renders when commitments are observed-ok", async () => {
+    const outcome = await runSampleEval();
+    const verify = verifyCommitments({
+      commitments: [
+        {
+          id: "renders",
+          claim: "renders sign-in copy",
+          evidence: "step-pass",
+          match: 'body contains "Log in to OpenAgents"',
+        },
+      ],
+      steps: [
+        { index: 0, kind: "assert", label: 'body contains "Log in to OpenAgents"', status: "ok" },
+      ],
+      runStatus: "pass",
+    });
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+      verify,
+    });
+    expect(body).toContain("Verify verdict: CONFIRMED");
+    expect(body).toContain("1/1 confirmed");
+  });
+
+  test("#6192: no verify report -> no verdict block (additive)", async () => {
+    const outcome = await runSampleEval();
+    const body = await composePrComment({
+      result: outcome.result,
+      proBaseUrl: "https://openagents.com",
+    });
+    expect(body).not.toContain("Verify verdict");
   });
 });

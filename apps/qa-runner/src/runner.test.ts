@@ -12,7 +12,12 @@ import { localBackend, cloudVmBackend } from "./backend";
 import { scriptedBrain } from "./brain";
 import { makeFakeChromium } from "./fake-chromium";
 import { decodeQaRunResult } from "./result";
-import { loginRegressionSteps, loginRegressionStepsWrong } from "./scenarios";
+import {
+  loginRedirectClaimCommitments,
+  loginRegressionCommitments,
+  loginRegressionSteps,
+  loginRegressionStepsWrong,
+} from "./scenarios";
 import { runQaSession } from "./runner";
 import { makeTarget } from "./target";
 
@@ -109,6 +114,69 @@ describe("runQaSession (fake chromium)", () => {
       }),
     );
     expect(outcome.result.status).toBe("fail");
+  });
+});
+
+describe("verify stage (#6192): commitments -> verdict in result.json", () => {
+  test("an honest run that satisfies its commitments -> CONFIRMED", async () => {
+    const outcome = await Effect.runPromise(
+      runQaSession({
+        target: target(),
+        brain: scriptedBrain(loginRegressionSteps()),
+        backend: localBackend({ chromium: passingChromium() }),
+        artifactDir: dir,
+        commitments: loginRegressionCommitments(),
+      }),
+    );
+    expect(outcome.result.status).toBe("pass");
+    expect(outcome.result.verify).toBeDefined();
+    expect(outcome.result.verify!.verdict).toBe("CONFIRMED");
+    expect(outcome.result.verify!.observed).toBe(true);
+
+    // it persisted into result.json and round-trips through the schema
+    const parsed = decodeQaRunResult(JSON.parse(readFileSync(outcome.resultPath, "utf8")));
+    expect(parsed.verify!.verdict).toBe("CONFIRMED");
+    expect(parsed.verify!.findings.length).toBe(2);
+  });
+
+  test("a run whose CLAIM is FALSE -> REFUTED (NOT a fake pass), with contradicting evidence", async () => {
+    const outcome = await Effect.runPromise(
+      runQaSession({
+        target: target(),
+        brain: scriptedBrain(loginRegressionStepsWrong()),
+        backend: localBackend({ chromium: passingChromium() }),
+        artifactDir: dir,
+        // the run CLAIMS /login redirects away — it does not.
+        commitments: loginRedirectClaimCommitments(),
+      }),
+    );
+    // honest red run
+    expect(outcome.result.status).toBe("fail");
+    // and the verdict is REFUTED, not CONFIRMED
+    expect(outcome.result.verify!.verdict).toBe("REFUTED");
+    const finding = outcome.result.verify!.findings[0]!;
+    expect(finding.verdict).toBe("REFUTED");
+    expect(finding.evidenceSummary).toContain("contradicting evidence");
+
+    // result.json carries the refuted verdict + the inline contradiction
+    const raw = readFileSync(outcome.resultPath, "utf8");
+    expect(raw).toContain("REFUTED");
+    expect(raw).not.toContain('"verdict": "CONFIRMED"');
+  });
+
+  test("no commitments -> no verify field (additive, opt-in)", async () => {
+    const outcome = await Effect.runPromise(
+      runQaSession({
+        target: target(),
+        brain: scriptedBrain(loginRegressionSteps()),
+        backend: localBackend({ chromium: passingChromium() }),
+        artifactDir: dir,
+      }),
+    );
+    expect(outcome.result.verify).toBeUndefined();
+    // existing fields are untouched
+    expect(outcome.result.status).toBe("pass");
+    expect(outcome.result.steps.length).toBeGreaterThan(0);
   });
 });
 

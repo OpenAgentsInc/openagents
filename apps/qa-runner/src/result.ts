@@ -20,6 +20,39 @@ export const QaRunStep = S.Struct({
 });
 export type QaRunStep = typeof QaRunStep.Type;
 
+// ---------------------------------------------------------------------------
+// Verify stage (#6192): the investigator verdict, an ADDITIVE field.
+// ---------------------------------------------------------------------------
+//
+// `verify` is an ADDITIVE, namespaced field on the result. It does NOT rename or
+// remove any existing field. A separate lane is adding a distinct additive
+// `receipt` field; keeping `verify` self-contained makes that merge trivial.
+//
+// The verdict mirrors the Tassadar verification-class vocabulary
+// (CONFIRMED/REFUTED/INCONCLUSIVE). Per-commitment findings carry the OBSERVED
+// evidence summary so a reviewer sees WHY a verdict landed with no local run.
+// Public-safe: only labels/claims/evidence summaries (no prompts/tokens) — the
+// tripwire below also re-checks it on write.
+
+export const QaVerifyVerdict = S.Literals(["CONFIRMED", "REFUTED", "INCONCLUSIVE"]);
+export type QaVerifyVerdict = typeof QaVerifyVerdict.Type;
+
+export const QaVerifyFinding = S.Struct({
+  id: S.String,
+  claim: S.String,
+  verdict: QaVerifyVerdict,
+  evidenceSummary: S.String,
+});
+export type QaVerifyFinding = typeof QaVerifyFinding.Type;
+
+export const QaVerify = S.Struct({
+  verdict: QaVerifyVerdict,
+  findings: S.Array(QaVerifyFinding),
+  /** True only when every finding rests on observed evidence (anti-fabrication). */
+  observed: S.Boolean,
+});
+export type QaVerify = typeof QaVerify.Type;
+
 export const QaRunArtifacts = S.Struct({
   /** Relative path to the playable video (mp4 or webm). */
   video: S.optional(S.String),
@@ -44,6 +77,10 @@ export const QaRunResult = S.Struct({
   artifacts: QaRunArtifacts,
   /** Honest failure summary when status is "fail". */
   failure: S.optional(S.String),
+  /** ADDITIVE (#6192): the verify-stage investigator verdict, when a run
+   *  declared commitments. Namespaced + self-contained so it does not collide
+   *  with the separate additive `receipt` field another lane is adding. */
+  verify: S.optional(QaVerify),
 });
 export type QaRunResult = typeof QaRunResult.Type;
 
