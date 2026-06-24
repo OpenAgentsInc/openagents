@@ -1,6 +1,7 @@
-import { describe, expect, test } from 'vitest'
+import { Effect } from 'effect'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LandingRoute } from '../../route'
+import { LandingRoute, TraceRoute } from '../../route'
 import {
   ClickedRunGymFixture,
   ClickedCopyAgentInstructions,
@@ -8,11 +9,19 @@ import {
   ClickedEnterTassadar,
   ClickedExitKhala,
   CompletedCopyAgentInstructions,
+  FailedLoadTrace,
+  SucceededLoadTrace,
   ToggledGymLane,
   UpdatedGymSamplesPerCell,
 } from './message'
 import { init } from './model'
-import { TASSADAR_AGENT_INSTRUCTIONS, update } from './update'
+import {
+  LoadTrace,
+  TASSADAR_AGENT_INSTRUCTIONS,
+  initialCommands,
+  update,
+} from './update'
+import { sampleTrajectory, SAMPLE_TRACE_UUID } from '../trace/sample'
 
 const model = init(LandingRoute())
 
@@ -106,5 +115,133 @@ describe('logged-out nav + copy update', () => {
       'POST https://openagents.com/api/agents/register',
     )
     expect(TASSADAR_AGENT_INSTRUCTIONS).toContain('npx @openagentsinc/pylon')
+  })
+})
+
+// Live `/trace/{uuid}` read wiring (issue #6209): on entering a real Trace route
+// the page enters the loading state and fetches the read API; the committed
+// sample uuid stays a clean local fallback with no network round-trip.
+const REAL_TRACE_UUID = '24c6fea6-b271-46c6-a9a9-bc614440e9ef'
+
+const traceApiResponse = (body: unknown, init?: ResponseInit): Response =>
+  new Response(JSON.stringify(body), {
+    headers: { 'content-type': 'application/json' },
+    ...init,
+  })
+
+describe('trace route load wiring', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  test('a real Trace uuid enters loading and dispatches LoadTrace', () => {
+    const traceModel = init(TraceRoute({ uuid: REAL_TRACE_UUID }))
+    expect(traceModel.trace).toEqual({
+      _tag: 'TraceLoading',
+      uuid: REAL_TRACE_UUID,
+    })
+    const commands = initialCommands(traceModel)
+    expect(commandNames(commands)).toEqual(['LoadTrace'])
+  })
+
+  test('the committed sample uuid stays Idle with no network fetch', () => {
+    const traceModel = init(TraceRoute({ uuid: SAMPLE_TRACE_UUID }))
+    expect(traceModel.trace._tag).toBe('TraceIdle')
+    expect(initialCommands(traceModel)).toEqual([])
+  })
+
+  test('LoadTrace decodes the { trace: { trajectory } } shape on 200', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      traceApiResponse({
+        trace: {
+          uuid: REAL_TRACE_UUID,
+          visibility: 'public',
+          stepCount: sampleTrajectory.steps.length,
+          trajectory: JSON.parse(JSON.stringify(sampleTrajectory)),
+        },
+      }),
+    )
+
+    const message = await Effect.runPromise(
+      LoadTrace({ uuid: REAL_TRACE_UUID }).effect,
+    )
+
+    expect(message._tag).toBe('SucceededLoadTrace')
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `/api/traces/${REAL_TRACE_UUID}`,
+      expect.objectContaining({ credentials: 'include' }),
+    )
+    if (message._tag === 'SucceededLoadTrace') {
+      expect(message.uuid).toBe(REAL_TRACE_UUID)
+      expect(message.trajectory.steps.length).toBe(sampleTrajectory.steps.length)
+    }
+  })
+
+  test('LoadTrace surfaces a 404 with status 404', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      traceApiResponse({ error: 'trace_not_found' }, { status: 404 }),
+    )
+
+    const message = await Effect.runPromise(
+      LoadTrace({ uuid: REAL_TRACE_UUID }).effect,
+    )
+
+    expect(message._tag).toBe('FailedLoadTrace')
+    if (message._tag === 'FailedLoadTrace') {
+      expect(message.status).toBe(404)
+    }
+  })
+
+  test('SucceededLoadTrace loads the trajectory into the model for the active uuid', () => {
+    const loading = init(TraceRoute({ uuid: REAL_TRACE_UUID }))
+    const [next] = update(
+      loading,
+      SucceededLoadTrace({
+        uuid: REAL_TRACE_UUID,
+        trajectory: sampleTrajectory,
+      }),
+    )
+    expect(next.trace._tag).toBe('TraceLoaded')
+    if (next.trace._tag === 'TraceLoaded') {
+      expect(next.trace.uuid).toBe(REAL_TRACE_UUID)
+    }
+  })
+
+  test('a stale SucceededLoadTrace for a different uuid is ignored', () => {
+    const loading = init(TraceRoute({ uuid: REAL_TRACE_UUID }))
+    const [next] = update(
+      loading,
+      SucceededLoadTrace({
+        uuid: 'some-other-uuid',
+        trajectory: sampleTrajectory,
+      }),
+    )
+    expect(next.trace).toEqual(loading.trace)
+  })
+
+  test('FailedLoadTrace with status 404 yields the not-found state', () => {
+    const loading = init(TraceRoute({ uuid: REAL_TRACE_UUID }))
+    const [next] = update(
+      loading,
+      FailedLoadTrace({
+        uuid: REAL_TRACE_UUID,
+        error: 'Trace returned HTTP 404.',
+        status: 404,
+      }),
+    )
+    expect(next.trace._tag).toBe('TraceNotFound')
+  })
+
+  test('FailedLoadTrace with a non-404 status yields the failed state', () => {
+    const loading = init(TraceRoute({ uuid: REAL_TRACE_UUID }))
+    const [next] = update(
+      loading,
+      FailedLoadTrace({
+        uuid: REAL_TRACE_UUID,
+        error: 'network down',
+        status: 0,
+      }),
+    )
+    expect(next.trace._tag).toBe('TraceFailed')
   })
 })

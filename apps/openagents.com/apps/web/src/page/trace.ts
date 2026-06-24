@@ -22,7 +22,7 @@ import {
   verdictTone,
   type VerdictTone,
 } from './trace/atif'
-import { lookupTrajectory } from './trace/sample'
+import { SAMPLE_TRACE_UUID, lookupTrajectory } from './trace/sample'
 
 // Public, shareable render of an ATIF trace at `/trace/{uuid}` (issue #6209).
 //
@@ -995,32 +995,114 @@ export const skeletonArticle = <Message>(): Html => {
 
 export type TraceRouteLike = Readonly<{ _tag: 'Trace'; uuid: string }>
 
-// The page view. Public, no auth. Renders the committed sample for the known
-// uuid; an honest not-found body otherwise. When the worker read API lands,
-// `lookupTrajectory` becomes an async fetch + decode and the loading state uses
-// `skeletonArticle`; this render branch is unchanged.
+// The live read-state the page renders from (issue #6209). Mirrors the
+// `loggedOut` model's `TraceModel` union structurally so this leaf page does not
+// import the model (which would create an import cycle: the model already imports
+// `./trace/atif` + `./trace/sample`). The page reads only the discriminant + the
+// decoded trajectory; states it does not recognise fall back to the committed
+// sample lookup, so the page is robust to model evolution.
+export type TraceLoadState =
+  | Readonly<{ _tag: 'TraceIdle' }>
+  | Readonly<{ _tag: 'TraceLoading'; uuid: string }>
+  | Readonly<{ _tag: 'TraceLoaded'; uuid: string; trajectory: Trajectory }>
+  | Readonly<{ _tag: 'TraceNotFound'; uuid: string }>
+  | Readonly<{ _tag: 'TraceFailed'; uuid: string; error: string }>
+
+// Resolve the body to render for a given route + optional live load state.
+// Precedence: the committed sample uuid always renders the committed sample (a
+// clean, network-free fallback for its one known uuid). Otherwise the live load
+// state drives the render — loading → skeleton, loaded → article, not-found /
+// failed → the honest not-found body. With no load state (e.g. the pure-render
+// test harness, or a stale model), fall back to the committed sample lookup so a
+// real uuid that has no live state yet still 404s honestly.
+const traceBody = <Message>(
+  route: TraceRouteLike,
+  loadState: TraceLoadState | undefined,
+): Html => {
+  if (route.uuid === SAMPLE_TRACE_UUID) {
+    const sample = lookupTrajectory(route.uuid)
+    return sample !== undefined
+      ? traceArticle<Message>(sample, route.uuid)
+      : notFoundArticle<Message>(route.uuid)
+  }
+
+  if (loadState !== undefined && stateMatchesUuid(loadState, route.uuid)) {
+    switch (loadState._tag) {
+      case 'TraceLoading':
+        return skeletonArticle<Message>()
+      case 'TraceLoaded':
+        return traceArticle<Message>(loadState.trajectory, route.uuid)
+      case 'TraceNotFound':
+      case 'TraceFailed':
+        return notFoundArticle<Message>(route.uuid)
+      case 'TraceIdle':
+        break
+    }
+  }
+
+  // No usable live state for this uuid: fall back to the committed sample lookup
+  // (only the sample uuid matches; every other uuid 404s honestly).
+  const trajectory = lookupTrajectory(route.uuid)
+  return trajectory !== undefined
+    ? traceArticle<Message>(trajectory, route.uuid)
+    : notFoundArticle<Message>(route.uuid)
+}
+
+// A load state is only authoritative for the route it was loaded for. A state
+// carrying a different uuid is stale (fast navigation) and is ignored.
+const stateMatchesUuid = (
+  loadState: TraceLoadState,
+  uuid: string,
+): boolean =>
+  loadState._tag === 'TraceIdle' ? true : loadState.uuid === uuid
+
+// The page view. Public, no auth. The committed sample uuid renders the
+// committed sample; every real uuid renders from the live read state fetched
+// from `GET /api/traces/{uuid}` (loading → skeleton, loaded → article,
+// 404/not-public/error → the honest not-found body).
 export const view = <Message>(
   route: TraceRouteLike,
   authState: PublicHeaderAuthState<Message>,
+  loadState?: TraceLoadState,
 ): Html => {
   const h = html<Message>()
-  const trajectory = lookupTrajectory(route.uuid)
-
-  const body =
-    trajectory !== undefined
-      ? traceArticle<Message>(trajectory, route.uuid)
-      : notFoundArticle<Message>(route.uuid)
-
   return h.div(
     [Ui.className<Message>(pageShellClass)],
-    [PublicHeader.view(authState), body],
+    [PublicHeader.view(authState), traceBody<Message>(route, loadState)],
   )
 }
 
 // The document title for a trace, used by view.ts. Keep it shareable-friendly.
-export const title = (route: TraceRouteLike): string => {
-  const trajectory = lookupTrajectory(route.uuid)
-  if (trajectory === undefined) return 'Trace not found - OpenAgents'
+// The committed sample resolves synchronously; a live-loaded trajectory resolves
+// from the load state; anything else (loading, not-found, no state) uses the
+// generic title so the tab never claims a verdict it cannot yet prove.
+export const title = (
+  route: TraceRouteLike,
+  loadState?: TraceLoadState,
+): string => {
+  const trajectory =
+    route.uuid === SAMPLE_TRACE_UUID
+      ? lookupTrajectory(route.uuid)
+      : loadState !== undefined &&
+          loadState._tag === 'TraceLoaded' &&
+          loadState.uuid === route.uuid
+        ? loadState.trajectory
+        : undefined
+
+  if (trajectory === undefined) {
+    if (
+      loadState !== undefined &&
+      (loadState._tag === 'TraceNotFound' || loadState._tag === 'TraceFailed') &&
+      loadState.uuid === route.uuid
+    ) {
+      return 'Trace not found - OpenAgents'
+    }
+    // Loading or unknown: a neutral, honest title.
+    return route.uuid === SAMPLE_TRACE_UUID
+      ? 'Trace not found - OpenAgents'
+      : 'Trace - OpenAgents'
+  }
+
   const verdict = verdictLabel(traceVerdict(trajectory))
   const target = traceTarget(trajectory)
   return target !== undefined

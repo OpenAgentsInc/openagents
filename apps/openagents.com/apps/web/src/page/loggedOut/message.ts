@@ -20,6 +20,7 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
+import { Trajectory as AtifTrajectory } from '../trace/atif'
 import {
   GymCoordinatorCandidateRef,
   GymFanoutMode,
@@ -214,6 +215,18 @@ export const FailedLoadShareProjection = m('FailedLoadShareProjection', {
 })
 export const CompletedCopyShareLink = m('CompletedCopyShareLink', {
   url: S.String,
+})
+// Live `/trace/{uuid}` read (issue #6209). The success carries the decoded
+// public-safe ATIF trajectory; the failure carries the HTTP `status` so a clean
+// 404 (not found / not public) is distinguished from a transport/decode error.
+export const SucceededLoadTrace = m('SucceededLoadTrace', {
+  uuid: S.String,
+  trajectory: AtifTrajectory,
+})
+export const FailedLoadTrace = m('FailedLoadTrace', {
+  uuid: S.String,
+  error: S.String,
+  status: S.Int,
 })
 // Live settled feed stream (openagents #5311).
 export const SucceededLoadSettledFeedSnapshot = m(
@@ -412,6 +425,8 @@ export const Message = S.Union([
   FailedLoadPublicTrainingRuns,
   SucceededLoadShareProjection,
   FailedLoadShareProjection,
+  SucceededLoadTrace,
+  FailedLoadTrace,
   CompletedCopyShareLink,
   SucceededLoadSettledFeedSnapshot,
   FailedLoadSettledFeedSnapshot,

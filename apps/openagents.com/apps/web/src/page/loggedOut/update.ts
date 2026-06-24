@@ -27,6 +27,7 @@ import {
   FailedLoadPublicTrainingRuns,
   FailedLoadSettledFeedSnapshot,
   FailedLoadShareProjection,
+  FailedLoadTrace,
   Message,
   SucceededLoadPublicAdjutantActivity,
   SucceededLoadPublicAgentGoal,
@@ -39,6 +40,7 @@ import {
   SucceededLoadPublicTrainingRuns,
   SucceededLoadSettledFeedSnapshot,
   SucceededLoadShareProjection,
+  SucceededLoadTrace,
 } from './message'
 import {
   FailedPublicAdjutantActivity,
@@ -61,7 +63,10 @@ import {
   LoadedPublicPylonStats,
   LoadedPublicTrainingRuns,
   LoadedShareProjection,
+  LoadedTrace,
   Model,
+  NotFoundTrace,
+  FailedTrace,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
   PublicArtanisReport,
@@ -102,6 +107,8 @@ import {
   toggleGymLane,
   toggleGymSequenceShape,
 } from './gym/flow'
+import { Trajectory as AtifTrajectory } from '../trace/atif'
+import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
 import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
 import {
@@ -164,6 +171,14 @@ class PublicAdjutantActivityLoadError extends S.TaggedErrorClass<PublicAdjutantA
 
 class ShareProjectionLoadError extends S.TaggedErrorClass<ShareProjectionLoadError>()(
   'ShareProjectionLoadError',
+  {
+    error: S.Defect,
+    status: S.Int,
+  },
+) {}
+
+class TraceLoadError extends S.TaggedErrorClass<TraceLoadError>()(
+  'TraceLoadError',
   {
     error: S.Defect,
     status: S.Int,
@@ -691,6 +706,78 @@ export const LoadShareProjection = Command.define(
   ),
 )
 
+// Live `/trace/{uuid}` read (issue #6209). Fetches the visibility-gated read API
+// and decodes the response's public-safe ATIF projection at `.trace.trajectory`
+// — the exact `AtifTrajectory` shape the page already renders. A clean 404
+// (trace not found, or owner_only to an anonymous viewer, which the worker
+// reports as 404 by design) surfaces with `status: 404` so the page shows the
+// honest not-found body; any other failure (network, 5xx, decode) surfaces with
+// its status (or 0) and renders the same not-found body.
+export const LoadTrace = Command.define(
+  'LoadTrace',
+  { uuid: S.String },
+  SucceededLoadTrace,
+  FailedLoadTrace,
+)(({ uuid }) =>
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`/api/traces/${encodeURIComponent(uuid)}`, {
+          cache: 'no-store',
+          credentials: 'include',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new TraceLoadError({ error, status: 0 }),
+    })
+
+    if (!response.ok) {
+      return yield* new TraceLoadError({
+        error: `Trace returned HTTP ${response.status}.`,
+        status: response.status,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new TraceLoadError({ error, status: 0 }),
+    })
+    // The read API wraps the public-safe projection as `{ trace: { ... } }`; the
+    // page renders the decoded ATIF trajectory at `.trace.trajectory`.
+    const record = recordFromUnknown(payload)
+    const traceField =
+      record !== undefined && typeof record.trace === 'object'
+        ? record.trace
+        : undefined
+    const traceRecord = recordFromUnknown(traceField)
+    if (traceRecord === undefined) {
+      return yield* new TraceLoadError({
+        error: 'Trace response missing the trace projection.',
+        status: 0,
+      })
+    }
+    const trajectory = yield* S.decodeUnknownEffect(AtifTrajectory)(
+      traceRecord.trajectory,
+    )
+
+    return SucceededLoadTrace({ uuid, trajectory })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadTrace({
+          uuid,
+          error:
+            error instanceof TraceLoadError
+              ? String(error.error)
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          status: error instanceof TraceLoadError ? error.status : 0,
+        }),
+      ),
+    ),
+  ),
+)
+
 export const CopyShareLink = Command.define(
   'CopyShareLink',
   { url: S.String },
@@ -1029,6 +1116,9 @@ export const initialCommands = (
     ? [RehydrateAutopilotOnboarding()]
     : model.route._tag === 'Share'
     ? [LoadShareProjection({ shareId: model.route.shareId })]
+    : model.route._tag === 'Trace' &&
+        model.route.uuid !== SAMPLE_TRACE_UUID
+      ? [LoadTrace({ uuid: model.route.uuid })]
     : model.route._tag === 'Home' ||
         model.route._tag === 'Stats' ||
         model.route._tag === 'PublicStatsArchive'
@@ -1341,6 +1431,27 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      // Live `/trace/{uuid}` read (issue #6209). Ignore a response whose uuid no
+      // longer matches the current route (the visitor navigated away mid-flight).
+      SucceededLoadTrace: ({ uuid, trajectory }) =>
+        model.route._tag === 'Trace' && model.route.uuid === uuid
+          ? [evo(model, { trace: () => LoadedTrace({ uuid, trajectory }) }), []]
+          : [model, []],
+      FailedLoadTrace: ({ uuid, error, status }) =>
+        model.route._tag === 'Trace' && model.route.uuid === uuid
+          ? [
+              evo(model, {
+                // A clean 404 (not found / not public) is the honest not-found
+                // state; any other failure is a distinct error state that
+                // renders the same not-found body.
+                trace: () =>
+                  status === 404
+                    ? NotFoundTrace({ uuid })
+                    : FailedTrace({ uuid, error }),
+              }),
+              [],
+            ]
+          : [model, []],
       CompletedCopyShareLink: () => [model, []],
       SucceededLoadSettledFeedSnapshot: ({ cursor, summary }) => [
         evo(model, {

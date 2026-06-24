@@ -5,6 +5,8 @@ import { ts } from 'foldkit/schema'
 import { LoggedOutRoute } from '../../route'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
+import { Trajectory as AtifTrajectory } from '../trace/atif'
+import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { GymModel, initGymModel } from './gym/flow'
 
 // MODEL
@@ -1150,6 +1152,43 @@ export const ShareProjectionModel = S.Union([
 ])
 export type ShareProjectionModel = typeof ShareProjectionModel.Type
 
+// Live `/trace/{uuid}` read state (issue #6209). The page no longer renders only
+// the committed sample: on entering a `Trace` route it fetches
+// `GET /api/traces/{uuid}` and decodes the response's public-safe ATIF
+// `.trace.trajectory` (the same `AtifTrajectory` shape the page already renders).
+// `uuid` is carried on each state so a stale response for a previous uuid (after
+// fast navigation) can be ignored at the render edge. The committed sample uuid
+// remains a clean fallback, handled in the page view, but every real uuid hits
+// the read API.
+export const IdleTrace = ts('TraceIdle', {})
+export const LoadingTrace = ts('TraceLoading', {
+  uuid: S.String,
+})
+export const LoadedTrace = ts('TraceLoaded', {
+  uuid: S.String,
+  trajectory: AtifTrajectory,
+})
+// The API returned 404 (or owner_only to an anonymous viewer, which the worker
+// reports as 404 by design so it never reveals a private trace's existence).
+export const NotFoundTrace = ts('TraceNotFound', {
+  uuid: S.String,
+})
+// A non-404 failure (network, decode, 5xx). Rendered as the same honest
+// not-found body — there is nothing to show — but kept distinct from a clean 404
+// so the state is inspectable and testable.
+export const FailedTrace = ts('TraceFailed', {
+  uuid: S.String,
+  error: S.String,
+})
+export const TraceModel = S.Union([
+  IdleTrace,
+  LoadingTrace,
+  LoadedTrace,
+  NotFoundTrace,
+  FailedTrace,
+])
+export type TraceModel = typeof TraceModel.Type
+
 // Live settled feed (openagents #5311): public-safe settlement events streamed
 // over the OpenAgents sync engine so the homepage updates in real-time as real
 // Bitcoin settlements stream. Public-safe fields only — refs + integer amounts.
@@ -1221,6 +1260,7 @@ export const Model = ts('LoggedOut', {
   publicTrainingRuns: PublicTrainingRunsModel,
   settledFeed: SettledFeedModel,
   shareProjection: ShareProjectionModel,
+  trace: TraceModel,
   // True once the Tassadar "Copy Agent Instructions" button has written to the
   // clipboard, so the button can show a "Copied" affirmation.
   copiedAgentInstructions: S.Boolean,
@@ -1291,6 +1331,13 @@ export const init = (route: LoggedOutRoute): Model =>
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })
         : IdleShareProjection(),
+    // A real `/trace/{uuid}` enters in the loading state and fetches the read
+    // API (see initialCommands). The committed sample uuid stays Idle so the
+    // page renders the committed sample directly with no network round-trip.
+    trace:
+      route._tag === 'Trace' && route.uuid !== SAMPLE_TRACE_UUID
+        ? LoadingTrace({ uuid: route.uuid })
+        : IdleTrace(),
     copiedAgentInstructions: false,
   })
 

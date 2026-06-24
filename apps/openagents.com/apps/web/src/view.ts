@@ -408,7 +408,10 @@ const title = (model: Model): string => {
     case 'Share':
       return 'Shared Workroom - OpenAgents'
     case 'Trace':
-      return Trace.title(model.route)
+      return Trace.title(
+        model.route,
+        model._tag === 'LoggedOut' ? model.trace : undefined,
+      )
     case 'TraceCompare':
       return TraceCompare.title(model.route)
     default:
@@ -613,7 +616,11 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
   }
 
   if (model.route._tag === 'Trace') {
-    return Trace.view<Message>(model.route, authState)
+    return Trace.view<Message>(
+      model.route,
+      authState,
+      model._tag === 'LoggedOut' ? model.trace : undefined,
+    )
   }
 
   if (model.route._tag === 'TraceCompare') {

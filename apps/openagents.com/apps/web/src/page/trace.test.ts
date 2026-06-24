@@ -187,10 +187,10 @@ describe('trace render (sample trajectory)', () => {
   })
 })
 
-describe('trace render (unknown uuid)', () => {
+describe('trace render (unknown uuid, no live state)', () => {
   const unknownRoute = TraceRoute({ uuid: 'does-not-exist-0000' })
 
-  test('renders an honest not-found body (404 state)', () => {
+  test('falls back to the committed sample lookup (only the sample matches) → not-found body', () => {
     const rendered = renderHtml(
       Trace.view(unknownRoute, { _tag: 'LoggedOut' }),
     )
@@ -199,8 +199,97 @@ describe('trace render (unknown uuid)', () => {
     expect(rendered).not.toContain('data-component="trace-timeline"')
   })
 
-  test('uses a not-found document title', () => {
-    expect(Trace.title(unknownRoute)).toBe('Trace not found - OpenAgents')
+  test('a real uuid with no live state yet gets the neutral title (it may still be loading)', () => {
+    expect(Trace.title(unknownRoute)).toBe('Trace - OpenAgents')
+  })
+})
+
+describe('trace render (live read-API load state)', () => {
+  const realRoute = TraceRoute({ uuid: '24c6fea6-b271-46c6-a9a9-bc614440e9ef' })
+  const render = (loadState: Trace.TraceLoadState): string =>
+    renderHtml(Trace.view(realRoute, { _tag: 'LoggedOut' }, loadState))
+
+  test('loading state renders the bounded skeleton (not the not-found body)', () => {
+    const rendered = render({
+      _tag: 'TraceLoading',
+      uuid: realRoute.uuid,
+    })
+    expect(rendered).toContain('data-component="trace-skeleton"')
+    expect(rendered).toContain('aria-busy="true"')
+    expect(rendered).not.toContain('data-component="trace-not-found"')
+    expect(rendered).not.toContain('data-component="trace-timeline"')
+  })
+
+  test('a loaded trajectory renders the full timeline (not the not-found body)', () => {
+    const rendered = render({
+      _tag: 'TraceLoaded',
+      uuid: realRoute.uuid,
+      trajectory: sampleTrajectory,
+    })
+    expect(rendered).toContain('data-component="trace-page"')
+    expect(rendered).toContain('data-component="trace-timeline"')
+    expect(rendered).toContain('Step 2')
+    expect(rendered).toContain('Verify the login page works on this site')
+    expect(rendered).not.toContain('data-component="trace-not-found"')
+  })
+
+  test('a 404 not-found state renders the honest not-found body', () => {
+    const rendered = render({
+      _tag: 'TraceNotFound',
+      uuid: realRoute.uuid,
+    })
+    expect(rendered).toContain('data-component="trace-not-found"')
+    expect(rendered).toContain('No trace at this link')
+    expect(rendered).not.toContain('data-component="trace-timeline"')
+  })
+
+  test('a non-404 failure renders the same honest not-found body', () => {
+    const rendered = render({
+      _tag: 'TraceFailed',
+      uuid: realRoute.uuid,
+      error: 'network down',
+    })
+    expect(rendered).toContain('data-component="trace-not-found"')
+    expect(rendered).not.toContain('data-component="trace-timeline"')
+  })
+
+  test('a stale load state for a different uuid is ignored (falls back to sample lookup → not-found)', () => {
+    const rendered = renderHtml(
+      Trace.view(realRoute, { _tag: 'LoggedOut' }, {
+        _tag: 'TraceLoaded',
+        uuid: 'a-different-uuid',
+        trajectory: sampleTrajectory,
+      }),
+    )
+    expect(rendered).toContain('data-component="trace-not-found"')
+    expect(rendered).not.toContain('data-component="trace-timeline"')
+  })
+
+  test('a loaded trajectory drives a shareable, honest document title', () => {
+    expect(
+      Trace.title(realRoute, {
+        _tag: 'TraceLoaded',
+        uuid: realRoute.uuid,
+        trajectory: sampleTrajectory,
+      }),
+    ).toBe('Trace: openagents.com (Verified) - OpenAgents')
+  })
+
+  test('a not-found load state drives the not-found document title', () => {
+    expect(
+      Trace.title(realRoute, { _tag: 'TraceNotFound', uuid: realRoute.uuid }),
+    ).toBe('Trace not found - OpenAgents')
+  })
+
+  test('the committed sample uuid always renders the sample, ignoring any load state', () => {
+    const rendered = renderHtml(
+      Trace.view(sampleRoute, { _tag: 'LoggedOut' }, {
+        _tag: 'TraceNotFound',
+        uuid: SAMPLE_TRACE_UUID,
+      }),
+    )
+    expect(rendered).toContain('data-component="trace-timeline"')
+    expect(rendered).not.toContain('data-component="trace-not-found"')
   })
 })
 
