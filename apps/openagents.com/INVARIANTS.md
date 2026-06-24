@@ -1665,6 +1665,24 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Regression coverage for this policy lives in
   `workers/api/src/qwen-remote-pylon-finetune-gate.test.ts`.
 
+## Product Naming — Autopilot Is The Surface, Khala Powers It
+
+- **Autopilot** is the product surface: it is the thing that *does* the work
+  (develops, runs QA, drives Chrome/terminal, chats, ships). **Khala** is the
+  agentic model orchestrator that *powers* Autopilot — it is an engine, not an
+  actor.
+- Public-, agent-, and operator-facing copy (AGENTS text, manifests, OpenAPI
+  descriptions, Forum seed text, Artanis summaries, pages, dashboards, docs,
+  product-promise records) MUST NOT attribute product actions to Khala. Do not
+  write "Khala does X", "Khala drives X", "Khala runs the QA", "Khala develops".
+  Write "Autopilot does X" and, where the engine is relevant, "**powered by
+  Khala**".
+- Correct engine-level uses of "Khala" remain allowed: "powered by Khala", "the
+  Khala gateway / `/v1/chat/completions`", the `openagents/khala` model id, and
+  "trains Khala" / "Khala training data" (Khala is the model being trained).
+- A trace, receipt, or proof produced by the flow is an **Autopilot** artifact
+  (powered by Khala), not a "Khala" artifact.
+
 ## Public Launch Copy Claim Gate
 
 - Public launch copy in AGENTS text, manifests, OpenAPI descriptions, Forum seed

@@ -4,16 +4,17 @@
 
 ## Overview
 
-OpenAgents' **autonomous-QA example flow**: Khala drives real developer tools
+OpenAgents' **autonomous-QA example flow**: **Autopilot** (the product surface,
+powered by the **Khala** agentic model orchestrator) drives real developer tools
 (headless Chrome, a terminal) against a product, develops a fix or check, then
 **distills the session into a committed, re-runnable `*.e2e.test.ts`** whose passing
 run — with video — is the review artifact. The thesis: a reviewer verifies an
 agent's work **without running anything locally** — just by reading the committed
 test, its verdict, and a shareable trace. It is a flagship showcase of
-Khala-as-agent-platform over OpenAgents/Cloudflare primitives, not a one-off tool.
+Autopilot-as-agent-platform — powered by Khala — over OpenAgents/Cloudflare primitives, not a one-off tool.
 
 A second, now-central output fell out of this flow: a **generic shareable agent
-trace** — any agent session (a Khala run, or an imported Claude Code / Codex
+trace** — any agent session (an Autopilot run, or an imported Claude Code / Codex
 session) rendered at a stable public URL `https://openagents.com/trace/{uuid}` in
 **ATIF** (Agent Trajectory Interchange Format), with redaction, side-by-side
 comparison, and an authenticated upload "data market" that can feed Khala training.
@@ -41,89 +42,89 @@ remaining gaps to a clean end-to-end hosted demo and production are in
 
 | Capability | State | Where |
 |---|---|---|
-| ATIF-v1.7 emitter from Khala runs | ✅ live | `0e08d2dbaf` |
-| Trace store + ingest/read API (D1 + R2 offload, `POST`/`GET /api/traces`) | ✅ live | #6208, #6221 |
-| `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ⚠️ deployed but reads **samples** — live-fetch wire **in flight** | #6209, #6215 |
-| `/trace/compare/{ids}` comparison ("chill-evals", done right) | ✅ deployed (samples) | #6211 |
-| Redaction Effect service (`TraceRedactor`) | ✅ live | #6219 |
-| Claude Code + Codex → ATIF converters | ✅ live | #6220 |
-| `qa trace import` CLI (convert → redact → publish → URL) | ✅ landed | #6220 |
-| qa-runner publishes runs → `/trace/{uuid}` | ✅ landed | #6210 |
-| Data-market upload (authed + training-consent + INERT revshare) | ✅ live | #6221 |
-| Receipts reference the trace uuid as evidence | ✅ done (pending land) | #6216 |
-| Khala chat session → ATIF trace (gateway projection, flag-gated) | ✅ done (pending land) | #6214 |
-| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4) | ✅ code landed; live-binding run pending | #6205, #6213 |
+| ATIF-v1.7 emitter from Autopilot runs (powered by Khala) | ✅ live | [`0e08d2dbaf`](https://github.com/OpenAgentsInc/openagents/commit/0e08d2dbaf) |
+| Trace store + ingest/read API (D1 + R2 offload, `POST`/`GET /api/traces`) | ✅ live | [#6208](https://github.com/OpenAgentsInc/openagents/issues/6208), [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221) |
+| `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ⚠️ deployed but reads **samples** — live-fetch wire **in flight** | [#6209](https://github.com/OpenAgentsInc/openagents/issues/6209), [#6215](https://github.com/OpenAgentsInc/openagents/issues/6215) |
+| `/trace/compare/{ids}` comparison ("chill-evals", done right) | ✅ deployed (samples) | [#6211](https://github.com/OpenAgentsInc/openagents/issues/6211) |
+| Redaction Effect service (`TraceRedactor`) | ✅ live | [#6219](https://github.com/OpenAgentsInc/openagents/issues/6219) |
+| Claude Code + Codex → ATIF converters | ✅ live | [#6220](https://github.com/OpenAgentsInc/openagents/issues/6220) |
+| `qa trace import` CLI (convert → redact → publish → URL) | ✅ landed | [#6220](https://github.com/OpenAgentsInc/openagents/issues/6220) |
+| qa-runner publishes runs → `/trace/{uuid}` | ✅ landed | [#6210](https://github.com/OpenAgentsInc/openagents/issues/6210) |
+| Data-market upload (authed + training-consent + INERT revshare) | ✅ live | [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221) |
+| Receipts reference the trace uuid as evidence | ✅ done (pending land) | [#6216](https://github.com/OpenAgentsInc/openagents/issues/6216) |
+| Chat session on the Khala gateway → ATIF trace (gateway projection, flag-gated) | ✅ done (pending land) | [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) |
+| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4) | ✅ code landed; live-binding run pending | [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205), [#6213](https://github.com/OpenAgentsInc/openagents/issues/6213) |
 | Value-based ingest tripwire (4 content-blind false-positives fixed) | ✅ live | see Changelog |
 
 ### His requirements → status (honest)
 
 | # | He asked for | Delivered | Where |
 |---|---|---|---|
-| Thesis | "verify an agent's work **without running anything locally** — just read the e2e test + its output" | Commitments → **verify verdict** (CONFIRMED/REFUTED/INCONCLUSIVE) + a committed e2e test that's green vs prod; reviewer confirms from the PR artifacts | #6192, PR #6197 |
-| 1 | Real dev tools (Chrome, terminal) | Computer-use: real Chrome (CDP/Playwright) + PTY terminal + container + native-desktop (macOS AX) drivers | #6175, #6186, #6199 |
-| 2 | Develop, then **distill into committed tests** | Session → a committed, re-runnable `*.e2e.test.ts` (the differentiator vs videos-only) | #6174 distiller |
-| 3 | Pluggable targets (dev/prod, same test) | Multi-target registry (dev/staging/prod/selfhost, prod read-only) | #6190 |
-| 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness; terminal/container/native-desktop/firecracker backends across OSes | #6193, #6186, #6199, #6200 |
-| 5 | **OSS + local** | MIT `@openagentsinc/qa-runner` — self-contained bundle, **bring-your-own model, no OpenAgents login** | #6191 |
-| 6 | Video output | Playwright `recordVideo` + a data-driven ffmpeg **compose** layer (title/verdict cards) | #6187 |
-| 7 | "Chill evals" — compare agents across MCP/config changes | ✅ **done + live**: the comparison **runner** computes real results (#6183) AND the shareable surface shipped as a public **agent trace** — `/trace/{uuid}` render + `/trace/compare/{ids}` side-by-side comparison (verdict/latency/steps/cost deltas). The `/pro/evals` fixture page was retired. | #6183, #6209, #6211, #6215 |
-| candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | #6193 |
-| money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Khala driver on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | #6180, #6196, #6184, #6176/#6200 |
+| Thesis | "verify an agent's work **without running anything locally** — just read the e2e test + its output" | Commitments → **verify verdict** (CONFIRMED/REFUTED/INCONCLUSIVE) + a committed e2e test that's green vs prod; reviewer confirms from the PR artifacts | [#6192](https://github.com/OpenAgentsInc/openagents/issues/6192), PR [#6197](https://github.com/OpenAgentsInc/openagents/issues/6197) |
+| 1 | Real dev tools (Chrome, terminal) | Computer-use: real Chrome (CDP/Playwright) + PTY terminal + container + native-desktop (macOS AX) drivers | [#6175](https://github.com/OpenAgentsInc/openagents/issues/6175), [#6186](https://github.com/OpenAgentsInc/openagents/issues/6186), [#6199](https://github.com/OpenAgentsInc/openagents/issues/6199) |
+| 2 | Develop, then **distill into committed tests** | Session → a committed, re-runnable `*.e2e.test.ts` (the differentiator vs videos-only) | [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) distiller |
+| 3 | Pluggable targets (dev/prod, same test) | Multi-target registry (dev/staging/prod/selfhost, prod read-only) | [#6190](https://github.com/OpenAgentsInc/openagents/issues/6190) |
+| 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness; terminal/container/native-desktop/firecracker backends across OSes | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193), [#6186](https://github.com/OpenAgentsInc/openagents/issues/6186), [#6199](https://github.com/OpenAgentsInc/openagents/issues/6199), [#6200](https://github.com/OpenAgentsInc/openagents/issues/6200) |
+| 5 | **OSS + local** | MIT `@openagentsinc/qa-runner` — self-contained bundle, **bring-your-own model, no OpenAgents login** | [#6191](https://github.com/OpenAgentsInc/openagents/issues/6191) |
+| 6 | Video output | Playwright `recordVideo` + a data-driven ffmpeg **compose** layer (title/verdict cards) | [#6187](https://github.com/OpenAgentsInc/openagents/issues/6187) |
+| 7 | "Chill evals" — compare agents across MCP/config changes | ✅ **done + live**: the comparison **runner** computes real results ([#6183](https://github.com/OpenAgentsInc/openagents/issues/6183)) AND the shareable surface shipped as a public **agent trace** — `/trace/{uuid}` render + `/trace/compare/{ids}` side-by-side comparison (verdict/latency/steps/cost deltas). The `/pro/evals` fixture page was retired. | [#6183](https://github.com/OpenAgentsInc/openagents/issues/6183), [#6209](https://github.com/OpenAgentsInc/openagents/issues/6209), [#6211](https://github.com/OpenAgentsInc/openagents/issues/6211), [#6215](https://github.com/OpenAgentsInc/openagents/issues/6215) |
+| candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193) |
+| money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Autopilot (Khala-powered) on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | [#6180](https://github.com/OpenAgentsInc/openagents/issues/6180), [#6196](https://github.com/OpenAgentsInc/openagents/issues/6196), [#6184](https://github.com/OpenAgentsInc/openagents/issues/6184), [#6176](https://github.com/OpenAgentsInc/openagents/issues/6176)/[#6200](https://github.com/OpenAgentsInc/openagents/issues/6200) |
 
 ## Path to production-ready
 
-**"Production-ready" for this flow =** a real Khala QA run, executed on **hosted
+**"Production-ready" for this flow =** a real Autopilot QA run (powered by Khala), executed on **hosted
 infrastructure**, produces a **redacted ATIF trace a third party can open at
 `/trace/{uuid}`**, compare against another, and (optionally) upload their own — with
 **no manual steps and nothing leaking**. The sequenced gaps between here and that:
 
 1. **[BLOCKING] Render page must fetch the live trace.** `/trace/{uuid}` still reads
-   committed samples (#6209 deferred the API fetch), so a real uuid 404s on the page
+   committed samples ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) deferred the API fetch), so a real uuid 404s on the page
    even though `GET /api/traces/{uuid}` returns it. → wire the live fetch into the
    page (loading skeleton / trace / 404). **In flight.**
-2. **[BLOCKING] Single route table (#6222).** Routes live in ≥4 unsynced places
+2. **[BLOCKING] Single route table ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)).** Routes live in ≥4 unsynced places
    (client registry, coverage guard, navigation-policy, the server `worker-routes`
    allowlist). The split already caused a prod **302** (the `/trace` page →
-   homepage, hot-fixed `10954667ce`) and the sample-vs-live confusion. One table,
+   homepage, hot-fixed [`10954667ce`](https://github.com/OpenAgentsInc/openagents/commit/10954667ce)) and the sample-vs-live confusion. One table,
    one file, public/authed flag, derives client **and** server. **In flight.**
-3. **Live CF execution (#6205).** The Browser-Rendering + Sandbox backends are coded
+3. **Live CF execution ([#6205](https://github.com/OpenAgentsInc/openagents/issues/6205)).** The Browser-Rendering + Sandbox backends are coded
    and tested against fakes; a real run on **deployed** CF bindings — the hosted
    substrate Rhys would pay for — has not been executed. → deploy bindings + run one
    real QA on them.
-4. **End-to-end hosted demo.** With 1–3 done: one real Khala QA run on hosted infra
+4. **End-to-end hosted demo.** With 1–3 done: one real Autopilot QA run (powered by Khala) on hosted infra
    → a published `/trace/{uuid}` + a committed green `*.e2e.test.ts` + the comparison
    view, linked from a PR. This is the customer-facing proof for the first customer.
-5. **npm publish (#6217, owner-gated).** `@openagentsinc/qa-runner` is publish-ready;
+5. **npm publish ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217), owner-gated).** `@openagentsinc/qa-runner` is publish-ready;
    an owner runs the one publish command so external users can `npx` it.
-6. **Hardening.** Trace retention/expiry (the open bullet of #6212); data-market
+6. **Hardening.** Trace retention/expiry (the open bullet of [#6212](https://github.com/OpenAgentsInc/openagents/issues/6212)); data-market
    abuse limits at scale; cross-app emitters beyond the Khala-chat slice (Autopilot
-   work orders, Pylon sessions — #6214 follow-ups).
+   work orders, Pylon sessions — [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) follow-ups).
 
-Out of scope here: the Khala-program epics (#6049 / #6017 / #6016 / #6015 / #6014)
+Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgentsInc/openagents/issues/6049) / [#6017](https://github.com/OpenAgentsInc/openagents/issues/6017) / [#6016](https://github.com/OpenAgentsInc/openagents/issues/6016) / [#6015](https://github.com/OpenAgentsInc/openagents/issues/6015) / [#6014](https://github.com/OpenAgentsInc/openagents/issues/6014))
 are separate ongoing work, not this flow.
 
 ## Changelog
 
 - **2026-06-24 PM — render-fetch + route-table in flight.** Found `/trace/{uuid}`
-  renders committed samples only (#6209 deferred the live fetch) → wiring the
-  `GET /api/traces/{uuid}` fetch into the page. Opened **#6222** (single route
+  renders committed samples only ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) deferred the live fetch) → wiring the
+  `GET /api/traces/{uuid}` fetch into the page. Opened **[#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)** (single route
   table) after a real `/trace` **302 → homepage** bug (the server allowlist in
-  `worker-routes.ts` was a second, unsynced route list; hot-fix `10954667ce`).
-  Landed **#6214** (Khala chat → ATIF trace) and **#6216** (receipts → traceRef)
+  `worker-routes.ts` was a second, unsynced route list; hot-fix [`10954667ce`](https://github.com/OpenAgentsInc/openagents/commit/10954667ce)).
+  Landed **[#6214](https://github.com/OpenAgentsInc/openagents/issues/6214)** (chat on the Khala gateway → ATIF trace) and **[#6216](https://github.com/OpenAgentsInc/openagents/issues/6216)** (receipts → traceRef)
   [pending coordinator land].
-- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** EPIC #6206
-  delivered end-to-end: ATIF store/ingest/read (#6208; R2 offload + 8MB cap #6221),
-  `/trace` render (#6209), comparison (#6211), redaction service (#6219), Claude
-  Code/Codex converters + import CLI (#6220), publish-from-runner (#6210),
-  data-market upload (#6221). This session uploaded as a redacted public trace
+- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206)
+  delivered end-to-end: ATIF store/ingest/read ([#6208](https://github.com/OpenAgentsInc/openagents/issues/6208); R2 offload + 8MB cap [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)),
+  `/trace` render ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209)), comparison ([#6211](https://github.com/OpenAgentsInc/openagents/issues/6211)), redaction service ([#6219](https://github.com/OpenAgentsInc/openagents/issues/6219)), Claude
+  Code/Codex converters + import CLI ([#6220](https://github.com/OpenAgentsInc/openagents/issues/6220)), publish-from-runner ([#6210](https://github.com/OpenAgentsInc/openagents/issues/6210)),
+  data-market upload ([#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)). This session uploaded as a redacted public trace
   (793 steps). Hardened the ingest tripwire from **content-blind** to
   **value-based** (it was rejecting legitimate traces): (1) model ids are content,
   not leaks; (2) secret-discussion *words* (`mnemonic`, `api_key`) are content;
   (3) wallet *words* vs actual values; (4) `LOCAL_PATH` Windows-drive branch matched
-  JSON escapes (`key:\n`) — `5abd84e9d0`, `fe59199b21`, `c24862688c`;
+  JSON escapes (`key:\n`) — [`5abd84e9d0`](https://github.com/OpenAgentsInc/openagents/commit/5abd84e9d0), [`fe59199b21`](https://github.com/OpenAgentsInc/openagents/commit/fe59199b21), [`c24862688c`](https://github.com/OpenAgentsInc/openagents/commit/c24862688c);
   `INVARIANTS.md` updated. Also fixed a real prod bug found along the way: the
-  Artanis public health report was throwing (a #6204 miss) — `452a048d8e`.
-- **2026-06-24 AM — autonomous-QA flow landed.** EPICs #6174 + #6181: computer-use
+  Artanis public health report was throwing (a [#6204](https://github.com/OpenAgentsInc/openagents/issues/6204) miss) — [`452a048d8e`](https://github.com/OpenAgentsInc/openagents/commit/452a048d8e).
+- **2026-06-24 AM — autonomous-QA flow landed.** EPICs [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) + [#6181](https://github.com/OpenAgentsInc/openagents/issues/6181): computer-use
   drivers (Chrome / terminal / container / native-desktop), the session →
   `*.e2e.test.ts` distiller, multi-target registry, parallel sharding + crash-safe
   harness, MIT `@openagentsinc/qa-runner` bundle, ffmpeg video compose, OpenRouter
@@ -203,7 +204,7 @@ artifact.** Frame-by-frame:
 
 | ~t | What's on screen |
 |---|---|
-| 0–1s | **PR #1002** — "Self-host MCP OAuth: connect-card path, approval screen, real-agent e2e + framework dwells" (Merged, **+879 −19**, 20 files, 16 checks). Body "**The flow, recorded**": *"The real OpenCode binary connecting to a self-hosted instance over MCP OAuth — it asks to connect, you approve on the consent screen, it's connected. One spliced recording of the agent terminal and the browser (paced by the new `E2E_FILM` dwells)."* The embedded film opens in a **terminal**: `$ opencode mcp auth executor` → `MCP OAuth Authentication` → `Starting OAuth flow.` |
+| 0–1s | **PR [#1002](https://github.com/OpenAgentsInc/openagents/issues/1002)** — "Self-host MCP OAuth: connect-card path, approval screen, real-agent e2e + framework dwells" (Merged, **+879 −19**, 20 files, 16 checks). Body "**The flow, recorded**": *"The real OpenCode binary connecting to a self-hosted instance over MCP OAuth — it asks to connect, you approve on the consent screen, it's connected. One spliced recording of the agent terminal and the browser (paced by the new `E2E_FILM` dwells)."* The embedded film opens in a **terminal**: `$ opencode mcp auth executor` → `MCP OAuth Authentication` → `Starting OAuth flow.` |
 | 2–3s | Film cuts to the **browser**: a **"Connect OpenCode?"** consent screen — *REQUESTING CLIENT: OpenCode; will be able to: confirm identity, read basic profile, read email, stay connected (refresh without re-approving)*; an MCP-server note; **Deny / Allow** (Allow highlighted green). |
 | 4–5s | Browser shows **"Authorization Successful — You can close this window and return to OpenCode."** (the real OAuth round-trip completed). |
 | 6–7s | The film loops back to the terminal (connected) — proving the *real* OpenCode binary + *real* MCP OAuth + *real* browser approval, end to end, not a mock. |
@@ -313,7 +314,7 @@ Three takeaways, each a concrete target:
    (Effect) harness whose own test setup is reviewed and trustworthy, with the
    ergonomics that make the good ideas usable — not a from-scratch reinvention.
    This is why we *adopt* his Target/capabilities/artifact model (§4) rather than
-   rebuild it, and spend our effort on the finishing: the autonomous Khala driver,
+   rebuild it, and spend our effort on the finishing: the autonomous Autopilot driver (Khala-powered),
    the distiller, the receipt/verification wrapper, and the eval mode below.
 2. **"Chill evals" is a missing first-class mode (new requirement #7).** *"See how
    agents perform with these MCP changes"* is a **comparison across variants**, not
@@ -485,7 +486,7 @@ OpenAgents already owns most of the hard parts; the request is largely a
                  (the review artifact)                (the playable receipt)
 ```
 
-- **The agent = Khala driving the Probe runtime + computer-use tools.** The model
+- **The agent = Autopilot driving the Probe runtime + computer-use tools, powered by Khala.** The model
   is **Khala** (`openagents/khala` — one model, no variants) end-to-end; Probe
   owns session lifecycle, tool execution, approvals, and transcripts. Give it the
   *same* tools a developer uses: a real Chrome over CDP/Playwright, a real PTY
@@ -530,7 +531,7 @@ OpenAgents already owns most of the hard parts; the request is largely a
   viewer against an OpenAgents surface (e.g. the `openagents.com` web app) as a
   consumer; prove "write once, run on dev + prod" with video artifacts. No new
   agent yet.
-- **Phase 1 — computer-use agent.** Probe runtime + Khala drives real Chrome +
+- **Phase 1 — computer-use agent.** Probe runtime + Autopilot drives real Chrome (powered by Khala) +
   PTY inside one Linux microVM; it can *develop/explore* a task and produce a
   recorded session (video + timeline). Review the film.
 - **Phase 2 — the distiller.** Turn a recorded session into a committed black-box

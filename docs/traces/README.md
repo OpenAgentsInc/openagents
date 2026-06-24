@@ -74,7 +74,7 @@ secrets, tokens, wallet material, PII, or raw/split provider model ids — only
 
 ## How existing work maps
 
-- A **QA / Khala run** is a trace: the qa-runner emits an ATIF trajectory + video,
+- A **QA / Autopilot run** (powered by Khala) is a trace: the qa-runner emits an ATIF trajectory + video,
   which becomes `/trace/{uuid}`. (The ATIF emitter + a sample beautiful render are
   the first build.)
 - **"Compare agents across MCP changes"** = a comparison view over several trace
