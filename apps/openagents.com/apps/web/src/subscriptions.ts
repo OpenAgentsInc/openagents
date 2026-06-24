@@ -282,7 +282,8 @@ type KhalaTokensServedPollDependencies = typeof inactiveKhalaTokensServedPoll
 export const khalaTokensServedPollDependenciesForModel = (
   model: Model,
 ): KhalaTokensServedPollDependencies =>
-  model._tag === 'LoggedOut' && settledFeedRouteIsLive(model)
+  model._tag === 'LoggedOut' &&
+  (settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 

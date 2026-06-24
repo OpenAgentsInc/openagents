@@ -868,7 +868,7 @@ const khalaTokensServedFromModel = (
     ? model.served.tokensServed
     : null
 
-const khalaTokensServedCounter = (
+export const khalaTokensServedCounter = (
   model: PublicKhalaTokensServedModel,
 ): Html => {
   const h = html<Message>()

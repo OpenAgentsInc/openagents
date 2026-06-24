@@ -377,7 +377,7 @@ const instructionsCurl =
   '  -H "Content-Type: application/json" \\\n' +
   '  -d \'{"model":"openagents/khala","messages":[{"role":"user","content":"hello"}]}\''
 
-export const instructionsView = <Message>(): Html => {
+export const instructionsView = <Message>(counter?: Html): Html => {
   const h = html<Message>()
   return h.div(
     [
@@ -395,6 +395,8 @@ export const instructionsView = <Message>(): Html => {
           ),
         ],
         [
+          // Live "Khala Tokens Served" counter (#6227), when supplied.
+          ...(counter !== undefined ? [counter] : []),
           h.div([Ui.className<Message>(eyebrowClass)], ['Research preview']),
           h.h1(
             [

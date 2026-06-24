@@ -263,6 +263,11 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(Scene.text('openagents/khala')).toExist(),
       Scene.expect(Scene.text('https://openagents.com/api/v1')).toExist(),
       Scene.expect(Scene.text('POST /api/keys/free')).toExist(),
+      // ...and the live "Khala Tokens Served" counter (#6227).
+      Scene.expect(
+        Scene.selector('[data-counter="khala-tokens-served"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
     )
   })
 

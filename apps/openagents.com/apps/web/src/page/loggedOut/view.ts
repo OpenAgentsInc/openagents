@@ -142,7 +142,9 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         'Khala',
         model.copiedAgentInstructions,
         undefined,
-        KhalaChatPage.instructionsView<Message>(),
+        KhalaChatPage.instructionsView<Message>(
+          Home.khalaTokensServedCounter(model.publicKhalaTokensServed),
+        ),
       ),
     ])
   }
