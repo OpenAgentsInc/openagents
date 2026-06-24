@@ -310,6 +310,15 @@ describe("nativeDesktopDriverFromRuntime (real-driver adapter)", () => {
 // ── REAL macOS proof — runs ONLY if Accessibility permission is granted ───────
 describe("runNativeDesktopScenario (real macOS, one proof)", () => {
   test("focuses Finder, reads its AX tree, screenshots, asserts a window", async () => {
+    // OPT-IN only: this drives a live Finder window via the macOS Accessibility
+    // API, which needs a real GUI session + granted Accessibility permission.
+    // It is NOT reliable in headless / CI / subagent contexts, so it is skipped
+    // unless explicitly enabled — otherwise it is a false red on every qa-runner
+    // `bun run test`. Run it with QA_NATIVE_DESKTOP_LIVE=1 on a permissioned Mac.
+    if (process.env.QA_NATIVE_DESKTOP_LIVE !== "1") {
+      console.log("[skip-live] set QA_NATIVE_DESKTOP_LIVE=1 (permissioned macOS GUI) to run the real native-desktop AX proof");
+      return;
+    }
     if (process.platform !== "darwin") {
       console.log("[skip-live] not macOS; the real native-desktop proof is macOS-only");
       return;
