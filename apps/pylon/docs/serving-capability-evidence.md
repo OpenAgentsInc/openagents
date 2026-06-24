@@ -199,6 +199,12 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   `approval.owner.khala.6089.gateway_route.2026_06_24`. This proves a durable
   route without requiring Cloudflare DNS write authority. Endpoint URL and
   bearer values remain deploy-time Worker secrets, not committed config.
+- The public canary model for this lane is `openagents/khala-pylon-mini`. It is
+  priced in the catalog as `openagents-network` and routes directly to the
+  admitted Pylon adapter so production smokes do not accidentally prove the
+  Fireworks open-model lane first. The backing proxy still serves the disclosed
+  Pylon model alias from the receipt; the customer-facing id is the bounded
+  Khala Pylon canary id.
 - Current Worker admission wiring still uses a deploy-time Pylon serving
   snapshot for heartbeat freshness. For production smokes, refresh
   `OPENAGENTS_NETWORK_PYLON_HEARTBEAT_AT` immediately before the route test.

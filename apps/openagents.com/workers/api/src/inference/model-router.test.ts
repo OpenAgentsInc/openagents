@@ -23,6 +23,7 @@ import {
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -164,6 +165,13 @@ describe('model classification', () => {
     expect(classifyModel(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe('open')
     expect(selectAdapterPlan(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toEqual([
       HYDRALISK_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the Khala Pylon canary alias only to the serving fabric lane', () => {
+    expect(classifyModel(KHALA_PYLON_MINI_MODEL_ID)).toBe('open')
+    expect(selectAdapterPlan(KHALA_PYLON_MINI_MODEL_ID)).toEqual([
+      OPENAGENTS_NETWORK_ADAPTER_ID,
     ])
   })
 

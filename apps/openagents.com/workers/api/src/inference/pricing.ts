@@ -260,6 +260,7 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
 export const HYDRALISK_GPT_OSS_20B_MODEL_ID = 'openai/gpt-oss-20b'
+export const KHALA_PYLON_MINI_MODEL_ID = 'openagents/khala-pylon-mini'
 export const AUTOPILOT_CONCIERGE_MODEL_ID = 'openagents/autopilot-concierge'
 
 // True when the requested id is an OpenAgents Khala virtual model. The
@@ -379,6 +380,17 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     HYDRALISK_GPT_OSS_20B_MODEL_ID,
     'hydralisk',
     FIREWORKS_OPEN_COST['gpt-oss-20b']!,
+    false,
+  ),
+  // Khala Pylon canary lane (#6089). This model id routes directly to the
+  // admitted OpenAgents serving-fabric adapter, not through Fireworks overflow,
+  // so production smokes can prove the real Pylon route rather than another
+  // open-model provider. Cost basis is conservative until the Pylon run exports
+  // measured amortized cost.
+  entry(
+    KHALA_PYLON_MINI_MODEL_ID,
+    'openagents-network',
+    FIREWORKS_OPEN_COST['qwen-3p7-plus']!,
     false,
   ),
   // Fireworks open-model lane — REAL cost (verified 2026-06-19).

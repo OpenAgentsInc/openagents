@@ -39,10 +39,11 @@ import { Effect } from 'effect'
 
 import {
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  blendedCostPerMtok,
+  KHALA_PYLON_MINI_MODEL_ID,
+  lookupModel,
   MODEL_PRICING_TABLE,
   type SupplyLane,
-  blendedCostPerMtok,
-  lookupModel,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -241,6 +242,9 @@ const LANE_PLAN_BY_CLASS: Readonly<
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   if (model.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]
+  }
+  if (model.trim().toLowerCase() === KHALA_PYLON_MINI_MODEL_ID) {
+    return [OPENAGENTS_NETWORK_ADAPTER_ID]
   }
   const plan = LANE_PLAN_BY_CLASS[classifyModel(model)]
   return plan.flatMap(lane => LANE_ADAPTER_IDS[lane])

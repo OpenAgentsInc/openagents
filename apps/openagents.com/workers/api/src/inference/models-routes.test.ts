@@ -13,6 +13,7 @@ import {
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MINI_MODEL_ID,
+  KHALA_PYLON_MINI_MODEL_ID,
   MODEL_PRICING_TABLE,
 } from './pricing'
 
@@ -231,6 +232,21 @@ describe('provider serving policy (laneArming)', () => {
   const catalog = buildModelCatalog()
   const geminiId = catalog.find(e => e.lane === 'vertex-gemini')!.id
   const fireworksId = catalog.find(e => e.lane === 'fireworks')!.id
+  const pylonEnv = {
+    OPENAGENTS_NETWORK_ADMITTED_PYLON_REF:
+      'gcloud.gswarm508-clean2-20260325044551-contrib',
+    OPENAGENTS_NETWORK_FABRIC_SERVE_BEARER_TOKEN: 'secret-route-token',
+    OPENAGENTS_NETWORK_FABRIC_SERVE_URL: 'https://pylon-route.example.test',
+    OPENAGENTS_NETWORK_GATEWAY_APPROVAL_REF:
+      'approval.owner.khala.6089.gateway_route.2026_06_24',
+    OPENAGENTS_NETWORK_GATEWAY_ROUTE_READY: 'ready',
+    OPENAGENTS_NETWORK_REPLAY_CHALLENGE_REF:
+      'challenge.pylon.serving.GuUBPkgNgLRtTCgkkO-s',
+    OPENAGENTS_NETWORK_SERVING_PREFLIGHT_REF:
+      'preflight.pylon.real_serving.ready.v0_1',
+    OPENAGENTS_NETWORK_SERVING_RECEIPT_REF:
+      'serve.pylon.gateway_proxy.cAR4xZXQagyw7yBsjeO6IG',
+  }
 
   it('lists every model when laneArming is omitted (prior behaviour)', async () => {
     const response = await run(
@@ -260,6 +276,7 @@ describe('provider serving policy (laneArming)', () => {
     expect(body.data.some(m => m.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe(
       false,
     )
+    expect(body.data.some(m => m.id === KHALA_PYLON_MINI_MODEL_ID)).toBe(false)
     expect(body.data.some(m => m.id === fireworksId)).toBe(false)
     expect(body.data.every(m => m.oa_lane.startsWith('vertex-'))).toBe(true)
   })
@@ -365,6 +382,43 @@ describe('provider serving policy (laneArming)', () => {
     }
     expect(retrieveBody.id).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
     expect(retrieveBody.oa_lane).toBe('hydralisk')
+  })
+
+  it('lists and retrieves the Khala Pylon canary alias only when the serving fabric is armed', async () => {
+    const list = await run(
+      new Request('https://x/v1/models', { method: 'GET' }),
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming(pylonEnv),
+      },
+    )
+    const listBody = (await list.json()) as {
+      data: ReadonlyArray<{ id: string; oa_lane: string }>
+    }
+    expect(listBody.data).toEqual([
+      expect.objectContaining({
+        id: KHALA_PYLON_MINI_MODEL_ID,
+        oa_lane: 'openagents-network',
+      }),
+    ])
+
+    const retrieved = await runRetrieve(
+      new Request(`https://x/v1/models/${KHALA_PYLON_MINI_MODEL_ID}`, {
+        method: 'GET',
+      }),
+      KHALA_PYLON_MINI_MODEL_ID,
+      {
+        enabled: true,
+        laneArming: resolveSupplyLaneArming(pylonEnv),
+      },
+    )
+    expect(retrieved.status).toBe(200)
+    const retrieveBody = (await retrieved.json()) as {
+      id: string
+      oa_lane: string
+    }
+    expect(retrieveBody.id).toBe(KHALA_PYLON_MINI_MODEL_ID)
+    expect(retrieveBody.oa_lane).toBe('openagents-network')
   })
 
   it('reports model_not_found for a known model on an UNARMED lane', async () => {
