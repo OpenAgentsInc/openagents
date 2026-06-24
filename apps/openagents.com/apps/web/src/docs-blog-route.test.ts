@@ -113,9 +113,36 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.role('link', { name: 'Autopilot Basics' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Autopilot Sites' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Software Handoff' })).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Autonomous QA' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Get Paid to Code' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'The Forum' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Developer API' })).toExist(),
+    )
+  })
+
+  test('renders the Autonomous QA docs page', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'autonomous-qa' }))),
+      Scene.expect(
+        Scene.role('heading', { name: 'Autonomous QA' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.text(
+          'The core path is free, local-first, and runtime-agnostic. You run it on your own machine, against your own server, driven by any OpenAI-compatible model you bring — OpenAI, OpenRouter, a local llama.cpp / vLLM / Ollama server, or openagents/khala if you want it. No OpenAgents account, login, or key is required.',
+        ),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', {
+          name: 'Standalone Install — No OpenAgents Codebase, No Login',
+        }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Optional Hosted Path' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'QA runner quickstart' }),
+      ).toHaveAttr('href', '/QA-RUNNER.md'),
     )
   })
 

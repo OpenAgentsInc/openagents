@@ -14,6 +14,7 @@ export const DocSlug = S.Literals([
   'autopilot-basics',
   'autopilot-sites',
   'software-handoff',
+  'autonomous-qa',
   'product-promises',
   'forum',
   'api',
@@ -103,6 +104,69 @@ const docsPages: ReadonlyArray<DocPage> = [
       'Customers can add more than one follow-up comment. Those comments stay attached to the order and should be treated as input for the next revision, not as a destructive replacement for the current Site.',
       'The order page should always show the current revision, whether work is active, what changed most recently, and the next action available to the customer.',
       'A finished handoff is not just a URL. It is a reviewable artifact, a concise change summary, and a clear path for acceptance or another revision.',
+    ],
+  },
+  {
+    slug: 'autonomous-qa',
+    title: 'Autonomous QA',
+    summary:
+      'An agent drives a real browser, records a video, and distills a committed end-to-end test you can re-run in CI forever. Verify an agent’s work by reading the test and watching its output.',
+    description: [
+      'Autonomous QA is an open-source runner that gives a model the same tools a developer uses — a real browser over Playwright, and a terminal — to exercise a running app, then turns that session into a checked-in test.',
+      'A run produces three things: a playable video of what happened, a Playwright trace plus per-step screenshots, and a generated end-to-end test file you commit to your repo. The committed test is the point. Videos and reports are evidence; the test is the regression asset that keeps running after the agent is gone.',
+      'This is the verification contract applied to product QA: when an agent claims it built or fixed something, the reviewer should not have to clone, install, boot, and click. They read a black-box test that reads like a product guarantee, watch the recorded run, and see it pass against the named target. A passing run with video is the receipt.',
+      'The core path is free, local-first, and runtime-agnostic. You run it on your own machine, against your own server, driven by any OpenAI-compatible model you bring — OpenAI, OpenRouter, a local llama.cpp / vLLM / Ollama server, or openagents/khala if you want it. No OpenAgents account, login, or key is required.',
+      'The verdict is honest by design. The CLI exits zero only on a clean pass with an admissible distilled test; a failed assertion, an unreachable conclusion, or a config error is a non-zero exit, never a fake green. The CI check goes red on a real regression and only on a real regression.',
+    ],
+    sections: [
+      {
+        heading: 'What You Get From A Run',
+        items: [
+          'A playable session video (session.mp4, or session.webm when ffmpeg is unavailable) recording the whole run, so a reviewer can watch what the agent did.',
+          'A Playwright trace (trace.zip, open with npx playwright show-trace) and per-step screenshots for step-level inspection.',
+          'A public-safe result.json describing status, target, steps, and artifacts. Tokens, secrets, prompts, and credentials are withheld at the source by a tripwire before the file is written.',
+          'A committed end-to-end test at generated/<slug>.e2e.test.ts — a real, runnable check you drop into your repo and run in CI against any target.',
+        ],
+      },
+      {
+        heading: 'Standalone Install — No OpenAgents Codebase, No Login',
+        items: [
+          'The runner ships as the MIT-licensed package @openagentsinc/qa-runner. The shipped CLI is a single self-contained bundle: the workspace dependencies are inlined at build time, so a standalone install needs no monorepo, no workspace, and no OpenAgents account. Only Playwright stays external, and it downloads its own browser.',
+          'The full copy-paste quickstart — install, a keyless ten-second proof that needs no model and no network, and a real run against your dev server with your model — is published at https://openagents.com/QA-RUNNER.md.',
+          'Bring your own model with --model, --base-url, and an API key via flag or the standard OPENAI_* / QA_* environment variables. The credential value is never printed, only its source label. Point --base-url at a local keyless server with --allow-keyless.',
+          'The package is publish-ready but is not yet on the public npm registry. Until it is published, install from the packaged tarball or clone and build the runner. The QA-RUNNER.md quickstart shows both the local-tarball path that works today and the npm path for once it is published.',
+        ],
+      },
+      {
+        heading: 'Targets And CI',
+        items: [
+          'A target is a deployment seen from outside: a name and a base URL. Swap the base URL to point the same scenario at dev, staging, or production without rewriting it.',
+          'In CI, run the scenario on a pull request, post the run video and result into the PR comment, and gate the check on real regressions only. The distilled test then lives in the repo and runs on every subsequent change.',
+          'A chill-eval mode holds a scenario fixed and runs it across variants — a model, a tool policy, an MCP set, or a before-and-after of a change — and reports per-variant pass-rate, latency, and behavior deltas with each run’s video, so you can see how agents perform across changes.',
+        ],
+      },
+      {
+        heading: 'Optional Hosted Path',
+        items: [
+          'The free standalone runner is complete on its own. OpenAgents also offers an optional managed path that is clearly separate from it and never a requirement for the core run.',
+          'On the hosted path, runs are driven by openagents/khala on OpenAgents infrastructure, drivable end to end over the QA control API, and reviewable in the /pro dashboard. The hosted tier is more and faster runners, not a lock-in for the open-source core.',
+        ],
+      },
+    ],
+    links: [
+      { href: '/QA-RUNNER.md', label: 'QA runner quickstart' },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/tree/main/apps/qa-runner',
+        label: 'qa-runner source',
+      },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/qa-runner/docs/oss-quickstart.md',
+        label: 'OSS quick-start',
+      },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/qa-runner/LICENSE',
+        label: 'MIT license',
+      },
     ],
   },
   {
