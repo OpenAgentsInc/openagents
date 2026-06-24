@@ -1,11 +1,17 @@
 # Autonomous QA as a Khala example flow — computer-use agent that writes & runs e2e tests
 
-> **Status: PARTIALLY BUILT — 2026-06-24. Not done.** A lot landed on `main`
-> (the runner, drivers, distilled tests, OSS bundle, docs), but key pieces are
-> partial, placeholder, or deploy-pending — most importantly the **shareable
-> result surface**, which is being redesigned as an **agent trace** at
-> `/trace/{uuid}` (ATIF) and is **not built**. See **§0** for the honest
-> done / partial / not-done breakdown. Not a product promise or public-claim copy.
+> **Status: TRACE PRIMITIVE SHIPPED + LIVE — 2026-06-24 PM.** The shareable
+> result surface — the biggest not-done in the morning — is now **built, deployed,
+> and proven on prod**: a generic shareable **agent trace** at
+> `https://openagents.com/trace/{uuid}` in **ATIF** format, with ingest/read API,
+> redaction, converters, comparison view, and an authed data-market upload path.
+> **Live demo (this very build session, redacted):**
+> <https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>. The runner,
+> drivers, distilled tests, OSS bundle, and docs landed earlier. Remaining: cross-app
+> emission (#6214, laning), npm publish (#6217, owner-gated), live-CF execution
+> binding run (#6205, deploy-gated), and the single-route-table unification (#6222,
+> laning — surfaced by a real `/trace` 302 bug). See **the 2026-06-24 PM update**
+> below + **§0**. Not a product promise or public-claim copy.
 >
 > _(original status line:)_ design exploration + planned **Khala example flow**, 2026-06-24.
 > Not a product promise or public-claim copy. The intent: build this as a
@@ -30,18 +36,70 @@ closed) — **but "issues closed" is not "shipped and finished."** Several piece
 partial, placeholder, or deploy-pending. Read this as the honest breakdown, not as
 "all done." Legend: ✅ done + verified · 🟡 partial/placeholder · ❌ not done yet.
 
-**The biggest not-done — the shareable result URL.** What shipped was framed as a
-"chill-eval" at `/pro/evals/<id>`, and that's wrong three ways: (a) the page renders
-committed **fixture data**, not real runs; (b) wrong name — this is an **agent
-trace** (a session record), not an "eval" (a scored benchmark); (c) wrong URL —
-a *shareable* artifact must not live under the `/pro/` operator console. The
-redesign: a generic shareable **agent trace** at
-`https://openagents.com/trace/{uuid}` in **ATIF** format —
-spec'd in [`docs/traces/README.md`](../traces/README.md), **not built yet**. The
-QA process emitting one real ATIF trace + a beautiful render is the current build.
+**The biggest not-done in the morning — the shareable result URL — is now DONE
+(2026-06-24 PM).** See the dedicated update section immediately below. The morning
+framing ("chill-eval" at `/pro/evals/<id>`) was wrong three ways and has been
+replaced: (a) it rendered **fixture data**, not real runs; (b) wrong name — this is
+an **agent trace** (a session record), not an "eval"; (c) wrong URL — a *shareable*
+artifact must not live under the `/pro/` operator console. The shipped redesign is a
+generic shareable **agent trace** at `https://openagents.com/trace/{uuid}` in
+**ATIF** — spec `docs/traces/README.md` — now built, deployed, and proven on prod.
 
-Live + real today: <https://openagents.com/docs/autonomous-qa> ·
+Live + real today: the live trace below ·
+<https://openagents.com/docs/autonomous-qa> ·
 <https://openagents.com/QA-RUNNER.md> · the flow on PR #6197.
+
+---
+
+## Update — 2026-06-24 PM: the shareable agent-trace primitive shipped + is live
+
+The `/trace/{uuid}` primitive is built end-to-end, deployed, and proven on prod.
+
+**Live demo — this entire build session, converted to a redacted public trace:**
+**<https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>** — 793 ATIF
+steps, `agent: claude-code`, `model: openagents/khala`, `visibility: public`.
+
+### What shipped (all on `main`, deployed)
+
+| Piece | Status | Issue / commit |
+|---|---|---|
+| ATIF-v1.7 emitter from Khala runs (+ one beautiful render) | ✅ live | `0e08d2dbaf` |
+| Trace store + ingest/read API (D1 + R2 offload for >1MB, `POST /api/traces`) | ✅ live | #6208, #6221 |
+| Public `/trace/{uuid}` render page (non-sticky, deep links, clamp) | ✅ live | #6209, #6215 |
+| Comparison view `/trace/compare/{ids}` ("chill-evals" done right) | ✅ live | #6211 |
+| Redaction Effect service (`TraceRedactor`) | ✅ live | #6219 |
+| Claude Code + Codex → ATIF converters | ✅ live | #6220 |
+| `qa trace import` CLI (convert → redact → publish → URL) | ✅ landed | #6220 |
+| Publish runs → real `/trace/{uuid}` (replaces `/pro/evals` links) | ✅ landed | #6210 |
+| Data-market upload: authed upload + training-consent + INERT revshare stub | ✅ live | #6221 |
+| Receipts reference the trace uuid as evidence | ✅ landed | #6216 |
+| CF Browser-Rendering + Sandbox execution backends (+ screencast→mp4 video) | ✅ code landed | #6205, #6213 |
+
+### Public-safety: 4 real tripwire bugs fixed (not papered over)
+
+Publishing this real session exposed that the ingest tripwire was **content-blind** —
+it false-rejected legitimate agent conversations. Fixed to **value-based** detection
+(reject actual secret/wallet **values**, emails, paths; allow model-ids + secret
+discussion *words* as content), `INVARIANTS.md` updated:
+1. model ids (`claude-`, `openai/`) are trace content, not leaks — `5abd84e9d0`;
+2. secret-discussion *words* (`mnemonic`, `api_key`) are content — `5abd84e9d0`;
+3. wallet *words* (`preimage`, `payment_hash`) vs actual values — `5abd84e9d0`;
+4. `LOCAL_PATH` Windows-drive branch matched JSON escapes (`key:\n`) — `fe59199b21`/`c24862688c`.
+The redaction service additionally scrubbed 843 residual filesystem paths from the
+demo trace; final pre-flight = **0 findings** across every detector.
+
+### Remaining / honest gaps
+
+- **#6214** cross-app trace emission (Khala chat → trace) — **laning now** (worker).
+- **#6217** publish `@openagentsinc/qa-runner` to npm — **owner-gated** (no auto-publish).
+- **#6205** live CF-execution *binding* run — code landed + tested vs fakes; a real run
+  on deployed CF bindings is deploy/runtime-gated.
+- **#6222** single route table — opened + **laning**; surfaced by a real prod bug
+  (`/trace/{uuid}` 302'd to `/` because the server document-allowlist in
+  `worker-routes.ts` was a *second* route list the client registry didn't update;
+  hot-fixed in `10954667ce`).
+- **#6206** epic stays open until #6214 + #6222 land.
+- Separately ongoing (NOT this work): the Khala-program epics #6049/#6017/#6016/#6015/#6014.
 
 ### His requirements → status (honest)
 
@@ -54,7 +112,7 @@ Live + real today: <https://openagents.com/docs/autonomous-qa> ·
 | 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness; terminal/container/native-desktop/firecracker backends across OSes | #6193, #6186, #6199, #6200 |
 | 5 | **OSS + local** | MIT `@openagentsinc/qa-runner` — self-contained bundle, **bring-your-own model, no OpenAgents login** | #6191 |
 | 6 | Video output | Playwright `recordVideo` + a data-driven ffmpeg **compose** layer (title/verdict cards) | #6187 |
-| 7 | "Chill evals" — compare agents across MCP/config changes | 🟡 the comparison **runner** computes real results — but the **shareable surface is NOT done**: `/pro/evals` renders fixtures, and it's being redesigned as a shareable **agent trace** at `/trace/{uuid}` (ATIF), see [`docs/traces`](../traces/README.md) | #6183 runner ✅ / trace surface ❌ |
+| 7 | "Chill evals" — compare agents across MCP/config changes | ✅ **done + live**: the comparison **runner** computes real results (#6183) AND the shareable surface shipped as a public **agent trace** — `/trace/{uuid}` render + `/trace/compare/{ids}` side-by-side comparison (verdict/latency/steps/cost deltas). The `/pro/evals` fixture page was retired. | #6183, #6209, #6211, #6215 |
 | candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | #6193 |
 | money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Khala driver on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | #6180, #6196, #6184, #6176/#6200 |
 
