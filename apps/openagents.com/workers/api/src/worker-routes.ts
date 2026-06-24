@@ -41,6 +41,7 @@ type WorkerRouteDependencies = Readonly<{
   routeCloudCodingSessionRequest: OptionalEffectRoute
   routeAgentGoalRequest: OptionalEffectRoute
   routeAutopilotOnboardingTurnRequest: OptionalEffectRoute
+  routeKhalaChatRequest: OptionalEffectRoute
   routeAgentOwnerClaimRequest: OptionalEffectRoute
   routeCheckoutPageRequest: OptionalEffectRoute
   routeTreasuryPageRequest: OptionalEffectRoute
@@ -381,6 +382,16 @@ export const makeWorkerRouteRequest =
 
       if (autopilotOnboardingTurnResponse !== undefined) {
         return yield* autopilotOnboardingTurnResponse
+      }
+
+      const khalaChatResponse = dependencies.routeKhalaChatRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (khalaChatResponse !== undefined) {
+        return yield* khalaChatResponse
       }
 
       const agentOwnerClaimResponse = dependencies.routeAgentOwnerClaimRequest(

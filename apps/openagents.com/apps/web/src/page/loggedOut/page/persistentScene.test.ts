@@ -12,7 +12,6 @@ import {
   poseForRoute,
   view as persistentSceneView,
 } from './persistentScene'
-import { view as khalaView } from './khala'
 
 type SnabbVNode = {
   readonly sel?: string
@@ -60,13 +59,6 @@ const allKeys = (root: SnabbVNode): ReadonlyArray<string> => {
   return keys
 }
 
-const textContent = (node: SnabbVNode | string): string => {
-  if (typeof node === 'string') {
-    return node
-  }
-
-  return node.text ?? (node.children ?? []).map(textContent).join('')
-}
 
 describe('persistent landing and Khala scene', () => {
   test('keeps the canvas wrapper key stable across landing and Khala', () => {
@@ -209,15 +201,43 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
-  test('renders Khala over the same persistent scene surface', () => {
+  test('renders the Khala chat box over the same persistent scene surface', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(KhalaRoute())),
       Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      // The chat box (composer + thread) and the info trigger mount over the
+      // dimmed scene; the long-form explainer is gone (condensed into the popup).
+      Scene.expect(Scene.selector('[data-khala-chat]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-composer]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-transcript]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-info-trigger]')).toExist(),
+      Scene.expect(Scene.text('Ask Khala what it can do.')).toExist(),
+      // The removed explainer sections (e.g. "01 What is Khala") are no longer
+      // rendered inline on the page.
+      Scene.expect(Scene.text('What is Khala')).not.toExist(),
       Scene.expect(
-        Scene.selector('[data-persistent-scene-overlay="khala"]'),
-      ).toExist(),
-      Scene.expect(Scene.selector('[data-route="khala"]')).toExist(),
+        Scene.text('The public Khala catalog uses two model ids'),
+      ).not.toExist(),
+    )
+  })
+
+  test('opens and closes the "What is Khala?" info popup', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaRoute())),
+      // The info popup is closed on first paint.
+      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),
+      // Clicking the info trigger opens the popup.
+      Scene.click(Scene.selector('[data-khala-chat-info-trigger]')),
+      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).toExist(),
+      Scene.expect(Scene.text('What is Khala?')).toExist(),
+      // The popup carries the condensed, truthful Khala basics.
+      Scene.expect(Scene.text('openagents/khala-mini')).toExist(),
+      Scene.expect(Scene.text('https://openagents.com/api/v1')).toExist(),
+      // Clicking Close dismisses it.
+      Scene.click(Scene.selector('[aria-label="Close"]')),
+      Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),
     )
   })
 
@@ -241,25 +261,4 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
-  test('keeps public Khala copy inside the promise gate', () => {
-    const rendered = textContent(khalaView() as SnabbVNode)
-
-    expect(rendered).toContain('The public Khala catalog uses two model ids')
-    expect(rendered).toContain(
-      'gateway only serves models whose underlying lane is armed and ready',
-    )
-    expect(rendered).toContain(
-      'verified:true is reserved for an executed acceptance verdict',
-    )
-    expect(rendered).toContain(
-      'Broad self-serve card, Bitcoin, and MPP funding stay behind receipt proof and owner activation',
-    )
-    expect(rendered).toContain(
-      'the receipt records whether executable acceptance actually ran, failed, or remains unverified',
-    )
-    expect(rendered).not.toContain('Two models are live today')
-    expect(rendered).not.toContain('Fund your account with a card')
-    expect(rendered).not.toContain('Bitcoin carries a small discount')
-    expect(rendered).not.toContain('for example, that tests passed')
-  })
 })

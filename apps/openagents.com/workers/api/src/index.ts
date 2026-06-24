@@ -37,6 +37,8 @@ import {
 } from './agent-balance-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
 import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
+import { makeKhalaChatRoutes } from './khala-chat-routes'
+import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
@@ -3391,12 +3393,6 @@ const handleAppShellPage = async (
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  // /khala temporarily redirects to the homepage until Khala is fully live.
-  // Remove this block (and re-link the CTA) to restore the /khala scene page.
-  if (new URL(request.url).pathname === '/khala') {
-    return Response.redirect(new URL('/', request.url).toString(), 302)
-  }
-
   const cookies = parseCookies(request)
   const hadSessionCookie =
     cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE)
@@ -8748,6 +8744,37 @@ const makeOnboardingStreamClient = (
     )
 }
 
+// GENERIC PUBLIC KHALA CHAT stream client (the `/khala` chat demo). Identical
+// wiring to `makeOnboardingStreamClient`: the SAME provider-adapter registry +
+// overflow dispatch + incremental `dispatchOnboardingStreamSource` bridge the
+// gateway and the onboarding route use (no auth/credit gate, no external HTTP
+// hop). The difference is the caller (the generic stateless `/api/khala/chat`
+// route) and the system prompt (Khala identity + generic chat instruction,
+// assembled in `khala-chat-program.ts`) — NOT the concierge intake program.
+const makeKhalaChatStreamClient = (
+  env: OnboardingInferenceEnv,
+): KhalaChatStreamClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerFabricServeAdapter(inferenceProviderRegistry, env)
+  setInferenceAdapterEnv(env)
+  return (request: InferenceRequest) =>
+    dispatchWithOverflow<OnboardingStreamSource>(
+      request,
+      dispatchOnboardingStreamSource,
+      { plan: selectAdapterPlan, registry: inferenceProviderRegistry },
+    ).pipe(
+      Effect.mapError(
+        error => new OnboardingInferenceError({ reason: error.reason }),
+      ),
+    )
+}
+
+const khalaChatRoutes = makeKhalaChatRoutes({
+  makeStreamClient: env =>
+    makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
+})
+
 // PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC
 // #6017). Returns an `enqueueBatchJob` that sends the executable
 // `BatchJobQueueMessage` onto the batch-job queue so the consumer (the `queue`
@@ -10792,6 +10819,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAutopilotOnboardingTurnRequest: (request, env) =>
     autopilotOnboardingRoutes.routeOnboardingTurnRequest(request, env),
+  routeKhalaChatRequest: (request, env) =>
+    khalaChatRoutes.routeKhalaChatRequest(request, env),
   routeAgentOwnerClaimRequest:
     agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
   routeCheckoutPageRequest: (request, env) =>

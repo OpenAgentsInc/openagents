@@ -288,6 +288,31 @@ export const CompletedPersistAutopilotOnboarding = m(
   'CompletedPersistAutopilotOnboarding',
 )
 
+// GENERIC /khala CHAT (a minimal stateless streaming chat — NOT the concierge
+// intake). The composer + turn lifecycle mirror the onboarding stream messages,
+// minus the persistence/resume/output-spec machinery. The info-popup toggle is
+// its own pair.
+export const UpdatedKhalaChatComposer = m('UpdatedKhalaChatComposer', {
+  value: S.String,
+})
+export const SubmittedKhalaChatTurn = m('SubmittedKhalaChatTurn')
+export const OpenedKhalaChatStream = m('OpenedKhalaChatStream', {
+  turnId: S.String,
+})
+export const ReceivedKhalaChatDelta = m('ReceivedKhalaChatDelta', {
+  turnId: S.String,
+  text: S.String,
+})
+export const SucceededKhalaChatTurn = m('SucceededKhalaChatTurn', {
+  turnId: S.String,
+})
+export const FailedKhalaChatTurn = m('FailedKhalaChatTurn', {
+  reason: S.String,
+})
+export const CompletedScrollKhalaChatThread = m('CompletedScrollKhalaChatThread')
+export const OpenedKhalaChatInfo = m('OpenedKhalaChatInfo')
+export const ClosedKhalaChatInfo = m('ClosedKhalaChatInfo')
+
 export const Message = S.Union([
   ClickedCopyShareLink,
   ClickedEnterKhala,
@@ -351,5 +376,14 @@ export const Message = S.Union([
   FailedAutopilotOnboardingResume,
   ClickedAutopilotOnboardingStartOver,
   CompletedPersistAutopilotOnboarding,
+  UpdatedKhalaChatComposer,
+  SubmittedKhalaChatTurn,
+  OpenedKhalaChatStream,
+  ReceivedKhalaChatDelta,
+  SucceededKhalaChatTurn,
+  FailedKhalaChatTurn,
+  CompletedScrollKhalaChatThread,
+  OpenedKhalaChatInfo,
+  ClosedKhalaChatInfo,
 ])
 export type Message = typeof Message.Type
