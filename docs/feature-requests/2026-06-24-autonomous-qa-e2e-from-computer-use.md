@@ -297,6 +297,6 @@ Khala using OpenAgents Cloud VMs/infra. No PR to `executor`.
 - `projects/repos/executor/e2e/scenarios/` (28 cross-target journeys) + `cloud/` / `selfhost/` / `local/`.
 - `projects/repos/executor/e2e/desk/` + `viewer/` + `scripts/{film,pr-media}.ts` — virtual-desktop filming, run viewer, shareable media.
 - `projects/repos/executor/e2e/notes/testing-on-mac.md` — macOS GUI-session realities.
-- OpenAgents: `docs/inference/khala.md` (verified-work/receipt framing),
+- OpenAgents: `docs/khala/khala.md` (verified-work/receipt framing),
   `packages/probe` (agent runtime), `cloud/` (managed run isolation),
   `projects/repos/firecracker` + `projects/repos/sek8s` (microVM / confidential runners).

@@ -206,7 +206,7 @@ app:
 `docs/transcripts/README.md` (Episode 240) describes "a visual walkthrough of
 the **walkable 3D Tassadar run board** and **multiplayer/Verse direction**."
 
-`docs/inference/khala.md` ties the world metaphor to the inference network:
+`docs/khala/khala.md` ties the world metaphor to the inference network:
 "the **Khala is the psionic link that joins many minds into one** ... settling
 verified work in Bitcoin."
 
@@ -506,6 +506,6 @@ Concretely:
   user-facing-copy rules; `docs/promises/` copy gate.
 - `docs/game/*` — the world-building program (spatial HUD/MMO direction, avatar
   proximity, asset catalog, per-account Verse presence, Cloudflare world authority).
-- `docs/inference/khala.md` — Khala as the psionic link / world metaphor.
+- `docs/khala/khala.md` — Khala as the psionic link / world metaphor.
 - `docs/transcripts/README.md` — Episode 240 walkable 3D / multiplayer Verse
   direction.

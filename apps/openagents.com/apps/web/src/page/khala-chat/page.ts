@@ -194,7 +194,7 @@ const infoInlineCodeClass =
   'ring-1 ring-inset ring-[#3a7bff]/15'
 
 // One condensed info row: a label + a body. Bodies are truthful per
-// docs/inference/khala.md (first-person "We are Khala", never a provider).
+// docs/khala/khala.md (first-person "We are Khala", never a provider).
 const infoRow = <Message>(label: string, body: ReadonlyArray<Html | string>): Html => {
   const h = html<Message>()
   return h.div(

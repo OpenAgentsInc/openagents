@@ -25,7 +25,7 @@
 > the coordinator/`ModelRouter` seam (#5482), the provider-adapter registry
 > (#5479/#5480/#5481 + Pylon + Tassadar), the verification-class registry, the
 > Blueprint/program + plugin layer
-> ([`../inference/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../inference/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)),
+> ([`../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)),
 > and the merged telemetry schema (`openagents.khala.telemetry.v1`). It specifies
 > what the Gym *is*, the `/gym` web surface, its typed config, its economics, and
 > a phased roadmap keyed to those existing seams. **It claims nothing is shipped
@@ -120,13 +120,13 @@ and the `scene/` elements already use — `pylonBezierNetworkElement.ts`,
 live run is a `three-effect` scene reusing the Verse visual language — **fan-out
 energy arcs from the Gym nexus to each selected provider/worker, verdict beams
 back on `test_passed`, a cost meter filling in msat** — so a Gym run *looks like*
-a Khala request in the world ([`../inference/khala-in-the-world.md`](../inference/khala-in-the-world.md)).
+a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-in-the-world.md)).
 
 ### The knobs and dials (each maps to one typed config field)
 
 1. **Environment picker** — choose the benchmark/task env: `terminal-bench`,
    `khala-code` (crossy-road rubric / artifact-gen), `long-context-codebase-qa`,
-   the **M8 head-to-head** demo ([`../inference/2026-06-23-khala-head-to-head-m8-status.md`](../inference/2026-06-23-khala-head-to-head-m8-status.md)),
+   the **M8 head-to-head** demo ([`../khala/2026-06-23-khala-head-to-head-m8-status.md`](../khala/2026-06-23-khala-head-to-head-m8-status.md)),
    or a custom registered env. Picking an env fixes its verifier + acceptance
    contract — you cannot run an env without its grader.
 2. **Provider fan-out** — multi-select the lanes (`vertex-anthropic`,
@@ -145,7 +145,7 @@ a Khala request in the world ([`../inference/khala-in-the-world.md`](../inferenc
    discovered **semantically** via the signature lookup — never string-matched.
    **Boundary (in force):** this is *not* a public plugin marketplace and not
    arbitrary external admission; the
-   [extensibility doc's](../inference/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
+   [extensibility doc's](../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
    no-marketplace boundary holds.
 5. **Coordinator / policy** — pick the candidate under test: `heuristic-v0`
    (`ModelRouter`), `trinity-v1` (logit router), `conductor-v2` (NL planner), or

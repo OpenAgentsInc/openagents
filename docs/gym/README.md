@@ -1,7 +1,7 @@
 # OpenAgents Gym — docs
 
 The **Gym** is the interactive experimentation surface and eval+reward factory
-that trains [Khala](../inference/khala.md). Like OpenAI's original Gym (standard
+that trains [Khala](../khala/khala.md). Like OpenAI's original Gym (standard
 environments + one interface so policies can be compared), it lets you configure a
 Khala **policy** — coordinator candidate × provider fan-out × tool set ×
 plugin/module composition × sampling × quantization/speculation — run it against a
@@ -34,17 +34,17 @@ provider-adapter registry, verification-class registry, and the
 
 ## Related (in this repo)
 
-- [`../inference/khala.md`](../inference/khala.md) — the Khala model the Gym trains.
-- [`../inference/2026-06-23-khala-benchmark-harness-book-p1-5.md`](../inference/2026-06-23-khala-benchmark-harness-book-p1-5.md)
+- [`../khala/khala.md`](../khala/khala.md) — the Khala model the Gym trains.
+- [`../khala/2026-06-23-khala-benchmark-harness-book-p1-5.md`](../khala/2026-06-23-khala-benchmark-harness-book-p1-5.md)
   — the typed benchmark matrix/runner/report the Gym compiles to (book P1-5 / #6088).
-- [`../inference/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../inference/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
+- [`../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
   — typed programs + the plugin/marketplace layer the Gym composes (and its
   no-public-marketplace boundary).
-- [`../inference/khala-in-the-world.md`](../inference/khala-in-the-world.md) — the
+- [`../khala/khala-in-the-world.md`](../khala/khala-in-the-world.md) — the
   Verse fan-out/verdict/cost visual language the Gym run scene reuses.
-- [`../inference/2026-06-23-khala-head-to-head-m8-status.md`](../inference/2026-06-23-khala-head-to-head-m8-status.md)
+- [`../khala/2026-06-23-khala-head-to-head-m8-status.md`](../khala/2026-06-23-khala-head-to-head-m8-status.md)
   — the M8 head-to-head, a first Gym environment.
-- [`../inference/khala-buildout-roadmap.md`](../inference/khala-buildout-roadmap.md)
+- [`../khala/khala-buildout-roadmap.md`](../khala/khala-buildout-roadmap.md)
   — the M0–M8 buildout the coordinator candidates come from.
 
 > Status: implementation-linked spec, honest-scope. Not a product promise,

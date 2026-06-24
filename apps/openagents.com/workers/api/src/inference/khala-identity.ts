@@ -4,7 +4,7 @@
 // ---------------
 // Khala is one OpenAI-compatible endpoint over a pool of underlying models
 // (Vertex/Gemini for `khala-mini`, Fireworks for `khala-code`, later Claude /
-// passthrough / Pylon workers). The brand promise (docs/inference/khala.md §2)
+// passthrough / Pylon workers). The brand promise (docs/khala/khala.md §2)
 // is "one endpoint outside, many agents inside" — so Khala must present as
 // *Khala, by OpenAgents*, and must NEVER reveal, name, claim, or imply the
 // concrete underlying model or provider.

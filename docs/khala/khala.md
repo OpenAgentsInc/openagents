@@ -49,9 +49,9 @@ coordinator, and add the verification + receipt + settlement metadata. The
 request surface, auth, balance gate, and adapter registry already exist.
 
 Related context: the credits business and supply pillars
-([`README`](README.md), [`2026-06-19-inference-gateway-business.md`](2026-06-19-inference-gateway-business.md)),
-pricing ([`2026-06-19-pricing-model.md`](2026-06-19-pricing-model.md)),
-decentralized serving ([`2026-06-19-decentralized-serving-shard-wan.md`](2026-06-19-decentralized-serving-shard-wan.md)),
+([`README`](../inference/README.md), [`2026-06-19-inference-gateway-business.md`](../inference/2026-06-19-inference-gateway-business.md)),
+pricing ([`2026-06-19-pricing-model.md`](../inference/2026-06-19-pricing-model.md)),
+decentralized serving ([`2026-06-19-decentralized-serving-shard-wan.md`](../inference/2026-06-19-decentralized-serving-shard-wan.md)),
 the coordinator design (`docs/sakana/`), the verification recipe lessons
 (`docs/research/tmax/`), and the Verse visualization of inference serving
 ([`khala-in-the-world.md`](khala-in-the-world.md)).
@@ -281,7 +281,7 @@ settlement (revenue-loop spine, EPIC #5457).
 Long synchronous inference through the Cloudflare edge is the wrong shape: the
 edge gives up on an origin that produces no bytes for ~100s and returns a `524`
 (the local 524 postmortem,
-[`2026-06-22-long-running-inference-response-strategies.md`](2026-06-22-long-running-inference-response-strategies.md),
+[`2026-06-22-long-running-inference-response-strategies.md`](../inference/2026-06-22-long-running-inference-response-strategies.md),
 independently rediscovered the book's Ch.7 production lesson). The request lane is
 therefore chosen by the request *shape*, and the chosen lane is recorded as the
 telemetry `requestClass`:
@@ -464,7 +464,7 @@ operable by Artanis under bounded authority.
 
 ### OpenAgents Cloud — Khala is one of eight primitives
 
-Per [`2026-06-19-agent-cloud-revshare-everywhere.md`](2026-06-19-agent-cloud-revshare-everywhere.md),
+Per [`2026-06-19-agent-cloud-revshare-everywhere.md`](../inference/2026-06-19-agent-cloud-revshare-everywhere.md),
 OpenAgents Cloud is the one-stop "Agent Cloud" spanning **inference, fine-tuning,
 training, sandboxes, agentic compute, tasks, data** (and future primitives) on
 **one credit balance (USD or Bitcoin), one referral relationship, revshare

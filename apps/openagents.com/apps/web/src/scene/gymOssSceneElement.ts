@@ -5,7 +5,7 @@
 // rate is proportional to its perceived tokens/sec, plus an aggregate-throughput
 // meter (sum of tokens/sec across in-flight requests). It reuses the
 // fan-out-arcs / cost-meter visual language from `scene/*` and
-// `docs/inference/khala-in-the-world.md`, rendered to a 2D canvas (the issue
+// `docs/khala/khala-in-the-world.md`, rendered to a 2D canvas (the issue
 // allows `three-effect` OR canvas; canvas keeps the live meter deterministic and
 // testable, and degrades cleanly where no 2D context exists, e.g. headless DOM).
 //

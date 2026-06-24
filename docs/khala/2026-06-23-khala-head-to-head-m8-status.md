@@ -79,7 +79,7 @@ manifest, and we do **not** re-run the paid endpoint to regenerate it.
 The original `test_passed` / `verified:true` / `scalar_reward:1` verdict came from
 the M2 verifier **as it existed on 2026-06-22**, a **static regex pre-screen over
 the HTML source — it never executed the artifact**. A same-day finding
-([`docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md`](2026-06-22-verified-work-must-execute-the-artifact.md))
+([`docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md`](../inference/2026-06-22-verified-work-must-execute-the-artifact.md))
 showed a `verified:true` crossy-road game with four real defects (crash on load,
 PLAY did nothing, camera flew ~100×/hop, world stopped generating).
 
@@ -381,10 +381,10 @@ Verse/energy fields are still to be captured per the "fully publish" list.
 - Roadmap: [`docs/inference/khala-buildout-roadmap.md`](khala-buildout-roadmap.md).
 - Runbook / evidence contract:
   [`docs/inference/khala-head-to-head-demo.md`](khala-head-to-head-demo.md).
-- 524 fix: [`docs/inference/2026-06-22-long-running-inference-response-strategies.md`](2026-06-22-long-running-inference-response-strategies.md)
+- 524 fix: [`docs/inference/2026-06-22-long-running-inference-response-strategies.md`](../inference/2026-06-22-long-running-inference-response-strategies.md)
   (PR #6031).
 - Verifier-must-execute finding:
-  [`docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md`](2026-06-22-verified-work-must-execute-the-artifact.md).
+  [`docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md`](../inference/2026-06-22-verified-work-must-execute-the-artifact.md).
 - Executed acceptance runner (driven, not edited, by this lane):
   `apps/openagents.com/workers/api/src/inference/acceptance-runner/`
   (`runner.ts`, `cli.ts`, `verdict.ts`) +

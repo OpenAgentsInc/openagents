@@ -1,6 +1,6 @@
 // Khala loop integration — verified-serve (M4) -> Bitcoin/Spark payout (M3).
 // (EPIC #6017; M3 #6011 / M4 #6012; Lane B↔Lane E seam; design:
-// docs/inference/khala-buildout-roadmap.md "Next-wave delegation" +
+// docs/khala/khala-buildout-roadmap.md "Next-wave delegation" +
 // "Payments: Bitcoin-only, and pay the guinea-pig Pylon first".)
 //
 // PAYMENTS DIRECTION (owner, 2026-06-22): Bitcoin-only, SPARK as the PRIMARY

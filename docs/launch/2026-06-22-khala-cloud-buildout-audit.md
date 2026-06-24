@@ -3,9 +3,9 @@
 *Audit — 2026-06-22. Where the Khala inference-model buildout (EPIC #6017, the
 M0–M8 ladder) actually stands after the first wave of parallel-agent work, and
 what must happen next to fully implement it through to the head-to-head demo.
-Source of record: [`docs/inference/khala-buildout-roadmap.md`](../inference/khala-buildout-roadmap.md).*
+Source of record: [`docs/khala/khala-buildout-roadmap.md`](../khala/khala-buildout-roadmap.md).*
 
-> Scope note: "Khala" here = the **inference model/gateway** (`docs/inference/khala.md`).
+> Scope note: "Khala" here = the **inference model/gateway** (`docs/khala/khala.md`).
 > The closed `KHALA-001…027` / `OA-SPACETIME-*` issues are the **deprecated**
 > websocket sync engine and are unrelated.
 
@@ -73,7 +73,7 @@ not exist. Everything upstream runs on the heuristic router until M6.
 | #6013 | **M5** Verse serving view | **CLOSED — LIVE-PROVEN** | world-contract gateway projection + bridge + commands; `three-effect` `createCracklingArc`+`createGatewayPortal`; desktop projects Khala inference into Verse; public timeline emits receipt-backed `khala_inference_served`; world poller + cursor + D1 snapshot hydration. **Live proof:** real owner-enabled request `chatcmpl_5577d36f…` → paid charge receipt → public event + cursor → D1 `gateway_station`/`world_event` rows → live region snapshot → desktop render `gatewayLinkOk:true` → inspector. `openagents-world` `5778bf03` | — (richer real-Pylon worker avatars resolve once M4 lands) |
 | #6014 | **M6** learned coordinator (TRINITY) | **OPEN — not started** | — | **Largest pure-eng gap**: Psionic primitives P1–P5 (hidden-state extraction, sep-CMA-ES, SVF, reward adapter) do not exist; then a training run |
 | #6015 | **M7** Conductor lane | **OPEN — not started** | — | GRPO NL planner; depends on M6 + real training compute |
-| #6016 | **M8** head-to-head demo | **OPEN — scaffold (honestly blocked)** | `#6016-A…E` structure: metric **reducer** + **closure audit**, **publication renderer**, fixture manifest, and a **live-promotion audit** that blocks fake-live manifests carrying leftover `fixture.*` refs; runbook (`docs/inference/khala-head-to-head-demo.md`); 6 focused tests + check:deploy green | A real measured run — reducer returns `closureAudit.canClose:false` on fixture evidence by design. Blockers: live Khala + frontier runs, M7 conductor evidence, settlement receipts, Verse/artifact playback refs, measured energy telemetry, final publication refs |
+| #6016 | **M8** head-to-head demo | **OPEN — scaffold (honestly blocked)** | `#6016-A…E` structure: metric **reducer** + **closure audit**, **publication renderer**, fixture manifest, and a **live-promotion audit** that blocks fake-live manifests carrying leftover `fixture.*` refs; runbook (`docs/khala/khala-head-to-head-demo.md`); 6 focused tests + check:deploy green | A real measured run — reducer returns `closureAudit.canClose:false` on fixture evidence by design. Blockers: live Khala + frontier runs, M7 conductor evidence, settlement receipts, Verse/artifact playback refs, measured energy telemetry, final publication refs |
 | #6017 | **EPIC** | OPEN | checklist not yet ticking M2 | reconcile checklist |
 
 ## What is actually LIVE vs INERT (honest line)

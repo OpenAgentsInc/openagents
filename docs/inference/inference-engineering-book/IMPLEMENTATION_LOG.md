@@ -29,8 +29,8 @@ Conventions:
   distinct products. Nothing is fabricated.
 - **Where:** `apps/openagents.com/workers/api/src/inference/khala-telemetry.ts`
   (schema + builders) + the `chat-completions-routes.ts` build sites; doc
-  cross-reference `docs/inference/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
-  and `docs/inference/khala.md` §3.
+  cross-reference `docs/khala/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
+  and `docs/khala/khala.md` §3.
 - **Merge / deploy:** PR #6085 (merge `f350c3bec5`), deployed `9b0c9b56`.
 - **Left honestly `not_measured` for follow-on:** the provider/gateway/verifier/
   settlement time split, queue/batch wait, region, and (at P0-1) the
@@ -75,7 +75,7 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
   (+ `.test.ts`), `cache-aware-routing.ts` (+ `.test.ts`), the
   `chat-completions-routes.ts` integration (+ `.test.ts`), and
   `khala-telemetry.ts` (new `cachedInputTokens` on the block + `unaccountedTokens`
-  reconciliation field on the record). Docs: `docs/inference/khala.md` §3
+  reconciliation field on the record). Docs: `docs/khala/khala.md` §3
   prefix-caching subsection.
 - **Verification bar (green):** the inference test suites (698 tests),
   `typecheck`, `check:architecture`, `check:effect-topology`, and
@@ -138,14 +138,14 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
      multi-subscriber); DO + hibernatable-WebSocket multi-subscriber transport is
      reserved for the live Verse world (`apps/openagents-world`). Plain
      request/response inference spins up no DO/WebSocket. Documented in
-     `docs/inference/khala.md` §4 "Streaming / async split".
+     `docs/khala/khala.md` §4 "Streaming / async split".
 - **Where:** `apps/openagents.com/workers/api/migrations/0223_inference_batch_jobs_wait_timing.sql`,
   `src/inference/batch-job-store.ts` (timing columns), `batch-job-consumer.ts`
   (`enqueuedAtIso` on the message, `nowIso` clock, `started_at` stamp),
   `batch-job-closeout-receipts.ts` (terminal telemetry record + `computeBatchWaitMs`),
   `batch-job-routes.ts` (submit stamps enqueue time; receipt + status read populate
   the telemetry/wait), minimal `index.ts` consumer-deps clock wiring. Docs:
-  `docs/inference/khala.md` (§3 telemetry table + §4 streaming/async split).
+  `docs/khala/khala.md` (§3 telemetry table + §4 streaming/async split).
 - **Verification bar (green):** the inference test suites (703 tests),
   `typecheck`, `check:architecture`, `check:effect-topology`,
   `check:public-projection-freshness`, and the exact-route manifest test
@@ -211,7 +211,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   `index.ts` + `*.test.ts`). `fixtures.ts` ships `SAMPLE_DECISION_SUITE_CONFIG`
   (the Q5 minimum decision suite: Fireworks vs Vertex on chat/code/verifier/
   long-context + the two future lanes). Doc:
-  `docs/inference/2026-06-23-khala-benchmark-harness-book-p1-5.md`.
+  `docs/khala/2026-06-23-khala-benchmark-harness-book-p1-5.md`.
 - **Verification bar (green):** the inference test suites (742 tests, 39 new),
   `typecheck`, `check:architecture`, `check:effect-topology`,
   `check:public-projection-freshness`. Tests cover: the matrix expands to the
@@ -275,7 +275,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
      cost-per-accepted-outcome improvement; FAILS a drop beyond bound, a drop
      without a cost win, an aggressive (KV-cache/attention) scope without owner
      ack, no baseline accepted outcomes, or no samples.
-  4. **Policy doc** (`docs/inference/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`):
+  4. **Policy doc** (`docs/khala/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`):
      weights-only / FP8 before aggressive KV/attention quant; disclosure required;
      Open Question Q6 alias-sharing policy resolved.
 - **Where:** `apps/openagents.com/workers/api/src/inference/`
@@ -331,7 +331,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   3. **Receipt-mode disclosure:** the speculation mode is a first-class field on
      the canonical `openagents.khala.telemetry.v1` record (ties to the shard-WAN
      speculative/direct-return/async receipt-mode idea).
-  4. **Policy doc** (`docs/inference/2026-06-23-khala-speculation-telemetry-book-p1-8.md`):
+  4. **Policy doc** (`docs/khala/2026-06-23-khala-speculation-telemetry-book-p1-8.md`):
      n-gram/lookahead fit for code repetition; EAGLE flagged as a later
      learned/Psionic lane needing target hidden-state data + training.
 - **Fixture decode trace:** `benchmark/speculation-lane.ts` derives a
@@ -373,7 +373,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   Dynamo Patterns") + Open Question Q7; book Ch.5 (parallelism /
   disaggregation) and Ch.7 (serving-system pressure).
 - **What shipped:** the short design-spike doc
-  `docs/inference/2026-06-23-khala-disaggregation-dynamo-study.md`. It records
+  `docs/khala/2026-06-23-khala-disaggregation-dynamo-study.md`. It records
   the measured traffic/context trigger for reopening prefill/decode
   disaggregation, the prefill-queue and KV-pressure metrics that must exist
   first, and the Dynamo decision.
@@ -402,7 +402,7 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   fields.
 - **Where:** `apps/openagents.com/workers/api/src/inference/model-router.ts`,
   `chat-completions-routes.ts`, `khala-telemetry.ts`, and the focused tests;
-  doc `docs/inference/2026-06-23-khala-multi-cloud-geo-routing.md`.
+  doc `docs/khala/2026-06-23-khala-multi-cloud-geo-routing.md`.
 - **Verification bar:** focused router, chat-completion, and Khala telemetry
   tests cover provider-health-scored overflow metadata, public Khala receipt
   routing fields, and honest `not_measured` telemetry blockers when no score is
@@ -419,10 +419,10 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
 
 - **Notes ref:** `khala-investigation-notes.md` §P2 item 11
   ("Modality-Specific Cloud Primitives"); book Ch.6 (modalities);
-  `docs/inference/khala.md` (Khala as one Agent Cloud primitive);
+  `docs/khala/khala.md` (Khala as one Agent Cloud primitive);
   `docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md`.
 - **What shipped:** the per-modality contract doc
-  `docs/inference/2026-06-23-khala-modality-cloud-primitive-contracts.md`.
+  `docs/khala/2026-06-23-khala-modality-cloud-primitive-contracts.md`.
   It defines request shape, receipt/metric fields, scaling lane, and
   product-promise gating for embeddings/bulk documents, live voice, and
   image/video primitives.

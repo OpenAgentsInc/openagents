@@ -18,7 +18,7 @@
 //     plausible-looking number. "We did not measure this" is a first-class,
 //     typed value (`NOT_MEASURED`), not a missing key and not a fake `0`.
 //   - This mirrors the M8 metric table discipline
-//     (`docs/inference/2026-06-23-khala-head-to-head-m8-status.md`): a `0` means
+//     (`docs/khala/2026-06-23-khala-head-to-head-m8-status.md`): a `0` means
 //     "measured zero", `not_measured` means "no measurement exists". They are
 //     different products.
 //

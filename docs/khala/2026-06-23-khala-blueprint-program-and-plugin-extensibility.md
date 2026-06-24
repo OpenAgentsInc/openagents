@@ -25,7 +25,7 @@ and (FUTURE) paid in Bitcoin with a revenue split to the component authors —
 so Khala grows capabilities without core changes. This aligns with the
 inference-engineering-book read that "Khala should be treated as an inference
 platform and control plane, not just as a model alias"
-([`inference-engineering-book/README.md`](inference-engineering-book/README.md)).
+([`inference-engineering-book/README.md`](../inference/inference-engineering-book/README.md)).
 
 ## 1. Khala on Blueprint/DSPy: inference as typed, optimizable programs
 
@@ -102,11 +102,11 @@ The thesis: a Khala request is (FUTURE, fully) a **typed Blueprint program
 call** — a signature selects a composed module (plan/write/verify), GEPA tunes
 its prompts/policies offline, the learned coordinator picks the composition,
 and the terminal reward is the *executed* acceptance receipt
-([`2026-06-22-verified-work-must-execute-the-artifact.md`](2026-06-22-verified-work-must-execute-the-artifact.md)).
+([`2026-06-22-verified-work-must-execute-the-artifact.md`](../inference/2026-06-22-verified-work-must-execute-the-artifact.md)).
 Quality and cost then improve by **optimization against executed evals + paid
 acceptance**, which is exactly the lever the inference-engineering-book notes
 say matters most for Khala
-([`inference-engineering-book/khala-investigation-notes.md`](inference-engineering-book/khala-investigation-notes.md)):
+([`inference-engineering-book/khala-investigation-notes.md`](../inference/inference-engineering-book/khala-investigation-notes.md)):
 the learned coordinator needs reward inputs that reflect accepted outcome per
 sat and per second. The **M7 Conductor** is the composition layer where this
 becomes "compose to win the benchmark" rather than "route to one model."
@@ -180,8 +180,8 @@ Submission, approval, receipts).
 - [`khala-buildout-roadmap.md`](khala-buildout-roadmap.md) — the sequenced
   M0–M8 buildout; M6 (learned coordinator) and M7 (Conductor) are the
   composition layer this direction depends on.
-- [`inference-engineering-book/khala-investigation-notes.md`](inference-engineering-book/khala-investigation-notes.md)
-  and [`inference-engineering-book/README.md`](inference-engineering-book/README.md)
+- [`inference-engineering-book/khala-investigation-notes.md`](../inference/inference-engineering-book/khala-investigation-notes.md)
+  and [`inference-engineering-book/README.md`](../inference/inference-engineering-book/README.md)
   — "Khala is an inference platform + control plane"; reward inputs must
   reflect accepted outcome per sat and per second.
 - [`../sakana/psionic-coordinator-roadmap.md`](../sakana/psionic-coordinator-roadmap.md),

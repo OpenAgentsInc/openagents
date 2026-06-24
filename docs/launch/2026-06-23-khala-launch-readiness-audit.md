@@ -48,15 +48,15 @@ market a broad paid production launch until the P0 critical path below is green.
 
 Primary docs:
 
-- `docs/inference/khala.md`
-- `docs/inference/khala-buildout-roadmap.md`
+- `docs/khala/khala.md`
+- `docs/khala/khala-buildout-roadmap.md`
 - `docs/inference/inference-engineering-book/IMPLEMENTATION_LOG.md`
 - `docs/inference/inference-engineering-book/khala-investigation-notes.md`
-- `docs/inference/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
-- `docs/inference/2026-06-23-khala-benchmark-harness-book-p1-5.md`
-- `docs/inference/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`
-- `docs/inference/2026-06-23-khala-speculation-telemetry-book-p1-8.md`
-- `docs/inference/2026-06-23-khala-head-to-head-m8-status.md`
+- `docs/khala/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
+- `docs/khala/2026-06-23-khala-benchmark-harness-book-p1-5.md`
+- `docs/khala/2026-06-23-khala-quantization-eval-gate-book-p1-7.md`
+- `docs/khala/2026-06-23-khala-speculation-telemetry-book-p1-8.md`
+- `docs/khala/2026-06-23-khala-head-to-head-m8-status.md`
 - `docs/game/2026-06-22-talk-to-khala-from-verse-audit.md`
 
 Primary code surfaces:
@@ -154,7 +154,7 @@ Relevant files:
 - `apps/openagents.com/workers/api/src/inference/khala-telemetry.ts`
 - `apps/openagents.com/workers/api/src/inference/chat-completions-routes.ts`
 - `apps/openagents.com/workers/api/src/inference/batch-job-closeout-receipts.ts`
-- `docs/inference/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
+- `docs/khala/2026-06-23-khala-telemetry-scorecard-book-p0-1.md`
 
 Done:
 
@@ -178,7 +178,7 @@ Relevant files/docs:
 
 - `apps/openagents.com/workers/api/src/inference/acceptance-runner`
 - `apps/openagents.com/workers/api/src/inference/khala-code-verifier.ts`
-- `docs/inference/2026-06-23-khala-head-to-head-m8-status.md`
+- `docs/khala/2026-06-23-khala-head-to-head-m8-status.md`
 - `scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html`
 
 Done:
@@ -345,7 +345,7 @@ Scope:
 
 - `apps/openagents.com/workers/api/src/inference/khala-code-verifier.ts`
 - `apps/openagents.com/workers/api/src/inference/acceptance-runner`
-- `docs/inference/2026-06-23-khala-head-to-head-m8-status.md`
+- `docs/khala/2026-06-23-khala-head-to-head-m8-status.md`
 
 Acceptance:
 
@@ -406,7 +406,7 @@ Owner: benchmark/inference agent.
 Scope:
 
 - `apps/openagents.com/workers/api/src/inference/benchmark`
-- `docs/inference/2026-06-23-khala-benchmark-harness-book-p1-5.md`
+- `docs/khala/2026-06-23-khala-benchmark-harness-book-p1-5.md`
 
 Acceptance:
 
