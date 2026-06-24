@@ -234,6 +234,7 @@
         "@liquid-js/qrcode-generator": "1.1.6",
         "@moneydevkit/api-contract": "0.1.36",
         "@openagentsinc/agent-runtime-schema": "workspace:*",
+        "@openagentsinc/atif": "workspace:*",
         "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/durable-stream": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
@@ -317,6 +318,7 @@
         "qa": "./dist/qa.js",
       },
       "dependencies": {
+        "@openagentsinc/atif": "workspace:*",
         "effect": "catalog:",
         "playwright": "^1.61.0",
       },
@@ -356,6 +358,17 @@
     },
     "packages/agent-runtime-schema": {
       "name": "@openagentsinc/agent-runtime-schema",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/atif": {
+      "name": "@openagentsinc/atif",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -1124,6 +1137,8 @@
     "@openagentsinc/agent-runtime-schema": ["@openagentsinc/agent-runtime-schema@workspace:packages/agent-runtime-schema"],
 
     "@openagentsinc/api-worker": ["@openagentsinc/api-worker@workspace:apps/openagents.com/workers/api"],
+
+    "@openagentsinc/atif": ["@openagentsinc/atif@workspace:packages/atif"],
 
     "@openagentsinc/autopilot-control-protocol": ["@openagentsinc/autopilot-control-protocol@workspace:packages/autopilot-control-protocol"],
 

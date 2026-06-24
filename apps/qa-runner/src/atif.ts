@@ -1,6 +1,12 @@
 // ATIF emitter (epic #6174): map a completed Khala QA run into a valid
 // ATIF-v1.7 Agent Trajectory Interchange Format `Trajectory`.
 //
+// The ATIF `Trajectory` TYPES are now defined ONCE in the shared in-repo package
+// `@openagentsinc/atif` (subpath `/emit`) (#6207) and re-exported here so existing
+// `./atif` imports keep working. This module keeps the qa-runner-specific MAPPER
+// (`mapKhalaRunToAtif` + helpers) and the ATIF-aware key-based public-safety
+// assertion, which depend on qa-runner internals (`./result`, `./session-trace`).
+//
 // Source of truth: harbor `rfcs/0001-trajectory-format.md` (ATIF-v1.7) and the
 // golden examples in `tests/golden/terminus_2/*.trajectory.json`.
 //
@@ -30,10 +36,39 @@
 // redacted at the source (the `type` action's text is never recorded by the
 // runner, and we re-assert the result tripwire over the emitted trajectory).
 
+import {
+  ATIF_SCHEMA_VERSION,
+  type AtifAgent,
+  type AtifFinalMetrics,
+  type AtifMetrics,
+  type AtifObservation,
+  type AtifObservationResult,
+  type AtifStep,
+  type AtifToolCall,
+  type AtifTrajectory,
+  type AtifVerdict,
+  type Json,
+  serializeTrajectory,
+} from "@openagentsinc/atif/emit";
 import { PublicSafetyViolation, type QaRunResult, type QaRunStep } from "./result";
 import type { KhalaSessionTrace, SessionBeat } from "./session-trace";
 
-export const ATIF_SCHEMA_VERSION = "ATIF-v1.7";
+// Re-export the canonical ATIF emitter surface so existing `./atif` imports are
+// unchanged (the types/constants now live in `@openagentsinc/atif/emit`).
+export {
+  ATIF_SCHEMA_VERSION,
+  type AtifAgent,
+  type AtifFinalMetrics,
+  type AtifMetrics,
+  type AtifObservation,
+  type AtifObservationResult,
+  type AtifStep,
+  type AtifToolCall,
+  type AtifTrajectory,
+  type AtifVerdict,
+  type Json,
+  serializeTrajectory,
+};
 
 // The result tripwire forbids any KEY matching /prompt/i, /token/i, etc. — it
 // protects result.json, where such a key would mean a leaked prompt/secret. But
@@ -91,72 +126,6 @@ export function assertAtifPublicSafe(value: unknown, path = "$"): void {
     assertAtifPublicSafe(v, `${path}.${key}`);
   }
 }
-
-/** ATIF tool_call argument values — JSON-safe scalars/objects, never secrets. */
-export type Json = string | number | boolean | null | { [k: string]: Json } | Json[];
-
-export interface AtifToolCall {
-  readonly tool_call_id: string;
-  readonly function_name: string;
-  readonly arguments: Record<string, Json>;
-}
-
-export interface AtifObservationResult {
-  readonly source_call_id?: string;
-  readonly content?: string;
-}
-
-export interface AtifObservation {
-  readonly results: ReadonlyArray<AtifObservationResult>;
-}
-
-export interface AtifMetrics {
-  readonly prompt_tokens?: number;
-  readonly completion_tokens?: number;
-  readonly cost_usd?: number;
-}
-
-export interface AtifStep {
-  readonly step_id: number;
-  readonly timestamp?: string;
-  readonly source: "user" | "agent" | "system";
-  readonly model_name?: string;
-  readonly message: string;
-  readonly reasoning_content?: string;
-  readonly tool_calls?: ReadonlyArray<AtifToolCall>;
-  readonly observation?: AtifObservation;
-  readonly metrics?: AtifMetrics;
-}
-
-export interface AtifAgent {
-  readonly name: string;
-  readonly version: string;
-  readonly model_name?: string;
-  readonly extra?: Record<string, Json>;
-}
-
-export interface AtifFinalMetrics {
-  readonly total_prompt_tokens?: number;
-  readonly total_completion_tokens?: number;
-  readonly total_cached_tokens?: number;
-  readonly total_cost_usd?: number;
-  readonly total_steps?: number;
-  readonly extra?: Record<string, Json>;
-}
-
-export interface AtifTrajectory {
-  readonly schema_version: string;
-  readonly session_id?: string;
-  readonly trajectory_id?: string;
-  readonly agent: AtifAgent;
-  readonly notes?: string;
-  readonly steps: ReadonlyArray<AtifStep>;
-  readonly final_metrics?: AtifFinalMetrics;
-  readonly extra?: Record<string, Json>;
-}
-
-/** The QA-side verdict surfaced into the trajectory header (own vocabulary). */
-export type AtifVerdict = "PASS" | "REFUTED" | "INCONCLUSIVE";
 
 export interface MapKhalaRunInput {
   readonly result: QaRunResult;
@@ -363,5 +332,3 @@ export function mapKhalaRunToAtif(input: MapKhalaRunInput): AtifTrajectory {
   assertAtifPublicSafe(trajectory);
   return trajectory;
 }
-
-export const serializeTrajectory = (t: AtifTrajectory): string => `${JSON.stringify(t, null, 2)}\n`;

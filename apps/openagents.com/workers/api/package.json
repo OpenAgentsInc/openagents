@@ -35,6 +35,7 @@
     "@effect/sql-sqlite-do": "4.0.0-beta.70",
     "@liquid-js/qrcode-generator": "1.1.6",
     "@moneydevkit/api-contract": "0.1.36",
+    "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/durable-stream": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",

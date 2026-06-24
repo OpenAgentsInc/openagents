@@ -89,6 +89,7 @@
     "codex:to-atif": "bun run src/codex-to-atif.ts"
   },
   "dependencies": {
+    "@openagentsinc/atif": "workspace:*",
     "effect": "catalog:",
     "playwright": "^1.61.0"
   },
