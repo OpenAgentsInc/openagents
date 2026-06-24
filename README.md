@@ -18,16 +18,12 @@ reply but a **reviewable piece of work**.
 > gap. The full thesis, the project's history since 2023, and the two-engine growth
 > model are in **[`docs/ABOUT.md`](docs/ABOUT.md)**.
 
-## Download Autopilot Desktop
+## Status: work in progress
 
-**Download here:** [Autopilot Desktop v1.0.0-rc.2 for macOS Apple Silicon](https://storage.googleapis.com/openagentsgemini-oa-updates/desktop/AutopilotDesktop-1.0.0-rc.2-macos-arm64.dmg).
-
-The macOS build is signed with the OpenAgents Apple Developer ID and notarized by
-Apple. The matching GitHub release is
-[autopilot-desktop-v1.0.0-rc.2](https://github.com/OpenAgentsInc/openagents/releases/tag/autopilot-desktop-v1.0.0-rc.2).
-Intel macOS and Linux desktop installers are not published yet; Pylon headless
-builds are available through the per-platform feeds in
-[INSTALL.md](apps/openagents.com/apps/web/public/INSTALL.md).
+Everything here is early and in active development. Surfaces come up behind
+explicit gates and honest product-promise states; most are not yet generally
+usable. We'd rather show an honest red than a hopeful green — so read the sections
+below as where the work is and where it's heading, not as finished products.
 
 ## What's Here Now
 
