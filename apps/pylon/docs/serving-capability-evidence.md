@@ -199,12 +199,16 @@ bun apps/pylon/scripts/real-serving-preflight.ts
   `approval.owner.khala.6089.gateway_route.2026_06_24`. This proves a durable
   route without requiring Cloudflare DNS write authority. Endpoint URL and
   bearer values remain deploy-time Worker secrets, not committed config.
-- The public canary model for this lane is `openagents/khala-pylon-mini`. It is
-  priced in the catalog as `openagents-network` and routes directly to the
-  admitted Pylon adapter so production smokes do not accidentally prove the
-  Fireworks open-model lane first. The backing proxy still serves the disclosed
-  Pylon model alias from the receipt; the customer-facing id is the bounded
-  Khala Pylon canary id.
+- The public model surface remains collapsed to the single customer-facing
+  `openagents/khala` id. The internal `openagents/khala-pylon-mini` canary id
+  stays out of `/v1/models`, `/v1/quote`, MPP discovery, and the public
+  `/v1/chat/completions` model gate. Operators prove the Pylon route with the
+  admin-token-gated
+  `POST /api/operator/inference/pylon-fabric/smoke` route instead; it runs one
+  fixed known-answer prompt through the secret-backed admitted Pylon adapter and
+  returns only public-safe status fields. That route exists so production smokes
+  can prove the real Pylon route rather than another open-model provider without
+  widening public model selection or creating a public load generator.
 - Current Worker admission wiring still uses a deploy-time Pylon serving
   snapshot for heartbeat freshness. For production smokes, refresh
   `OPENAGENTS_NETWORK_PYLON_HEARTBEAT_AT` immediately before the route test.
@@ -256,11 +260,35 @@ are never returned from public routes. The actual dispatch path posts a Psionic
 serve request to the proxy with `Authorization: Bearer ...`, consumes the
 Psionic serve response, then runs the admitted Pylon gate and full
 parity/canary/replay/payout-eligibility receipt gate before returning success.
-This lets `/v1/models`, `/v1/quote`, `/v1/chat/completions`, and
-`/v1/gateway/readiness` expose the Pylon lane only after the operator has a real
-gateway route plus the serving preflight, serving receipt, replay challenge, and
-admitted-Pylon refs. It still does not deploy the route, expose the private
-GCloud endpoint, move sats, or green a product promise by itself.
+This lets `/v1/gateway/readiness` expose the Pylon lane arming state only after
+the operator has a real gateway route plus the serving preflight, serving
+receipt, replay challenge, and admitted-Pylon refs. Public `/v1/models`,
+`/v1/quote`, and `/v1/chat/completions` still expose/accept only
+`openagents/khala`; the operator smoke route is the direct Pylon adapter proof.
+It still does not expose the private GCloud endpoint, move sats, or green a
+product promise by itself.
+
+Run the Worker smoke after refreshing the heartbeat snapshot and setting the
+Worker URL/token secrets:
+
+```bash
+curl -fsS https://openagents.com/api/operator/inference/pylon-fabric/smoke \
+  -H "Authorization: Bearer $OPENAGENTS_ADMIN_API_TOKEN" \
+  -X POST
+```
+
+Expected public-safe success shape:
+
+```json
+{
+  "status": "ok",
+  "routeRef": "route.operator.inference.pylon_fabric_smoke.v0_1",
+  "model": "openagents/khala-pylon-mini",
+  "servedModel": "model.psionic.qwen35.0_8b.q8_0",
+  "canaryPassed": true,
+  "content": "OK"
+}
+```
 
 Run the local proxy on the Pylon host:
 

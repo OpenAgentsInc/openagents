@@ -7,7 +7,7 @@ import {
   ALL_LANES_UNARMED,
   type SupplyLaneArming,
 } from './model-serving-policy'
-import type { SupplyLane } from './pricing'
+import { KHALA_MODEL_ID, type SupplyLane } from './pricing'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
@@ -35,8 +35,8 @@ const entry = (id: string, lane: SupplyLane): ModelCatalogEntry => ({
 })
 
 const FIXTURE_CATALOG: ReadonlyArray<ModelCatalogEntry> = [
+  entry(KHALA_MODEL_ID, 'hydralisk'),
   entry('gemini-flash', 'vertex-gemini'),
-  entry('gemini-pro', 'vertex-gemini'),
   entry('claude-sonnet', 'vertex-anthropic'),
 ]
 
@@ -80,7 +80,7 @@ describe('handleGatewayReadiness', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     const body = (await response.json()) as Record<string, unknown>
     expect(body.status).toBe('ready')
-    expect(body.servableModelCount).toBe(3)
+    expect(body.servableModelCount).toBe(1)
     expect(body.hiddenModelCount).toBe(0)
   })
 
@@ -101,7 +101,7 @@ describe('handleGatewayReadiness', () => {
     )
   })
 
-  it('reports degraded and names the unarmed lane when arming is mixed', async () => {
+  it('reports unavailable and names the unarmed public backing lane when Khala is hidden', async () => {
     const response = await Effect.runPromise(
       handleGatewayReadiness(get(), {
         enabled: true,
@@ -113,9 +113,9 @@ describe('handleGatewayReadiness', () => {
       status: string
       reasonRefs: ReadonlyArray<string>
     }
-    expect(body.status).toBe('degraded')
+    expect(body.status).toBe('unavailable')
     expect(body.reasonRefs).toContain(
-      'gateway.readiness.lane_unarmed.vertex-anthropic',
+      'gateway.readiness.lane_unarmed.hydralisk',
     )
   })
 

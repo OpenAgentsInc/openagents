@@ -421,6 +421,7 @@ import {
   pylonFabricHttpTransportConfigFromEnv,
   pylonGatewayAdmissionFromEnv,
 } from './inference/pylon-fabric-http-transport'
+import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
 import { dispatchPsionicServe } from './inference/psionic-fabric-serve'
 import { handleQuote } from './inference/quote-routes'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
@@ -8630,6 +8631,21 @@ const registerFabricServeAdapter = (
   )
 }
 
+const makeConfiguredFabricServeAdapter = (env: FabricServeEnv) => {
+  if (!resolveSupplyLaneArming(env)['openagents-network']) {
+    return undefined
+  }
+  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env)
+  if (transportConfig === undefined) {
+    return undefined
+  }
+  const transport = makePylonFabricHttpTransport(transportConfig)
+  return makeAdmittedOpenAgentsNetworkAdapter({
+    admission: () => pylonGatewayAdmissionFromEnv(env, currentEpochMillis()),
+    dispatch: dispatchPsionicServe({ transport }),
+  })
+}
+
 // Per-request env holder for env-dependent inference adapters. A Cloudflare
 // Worker has no env at module scope, so the module-level adapter registry reads
 // the live env (set by the /v1/chat/completions handler before dispatch) when
@@ -10705,6 +10721,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleGatewayReadiness(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         laneArming: resolveSupplyLaneArming(env),
+      }),
+  },
+  {
+    // Operator-only Pylon fabric canary (#6089). This is deliberately separate
+    // from /v1/chat/completions so the public model catalog stays collapsed to
+    // `openagents/khala`; the route runs one fixed known-answer prompt through
+    // the secret-backed admitted Pylon adapter and returns public-safe status
+    // only. It never reads customer input, debits credits, or exposes endpoint
+    // URLs / bearer material.
+    path: '/api/operator/inference/pylon-fabric/smoke',
+    handler: (request, env) =>
+      handlePylonFabricSmoke(request, {
+        adapter: makeConfiguredFabricServeAdapter(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+        requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
   {
