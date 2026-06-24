@@ -2,6 +2,16 @@
 
 Date: 2026-06-23
 
+Update 2026-06-24: DeepSeek V4 Flash is now wired as an operator-selected
+Fireworks backing lane for the single public Khala model (`openagents/khala`) in
+OpenAgents issue #6198 / commit `84dbe64c93`. This does not prove Google
+self-hosting for DeepSeek V4 Flash: the provider notes still point at stock
+vLLM 0.20+ with DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Treat
+the Google G4/L4 inventory here as useful for smaller/owned probes, while the
+immediate DeepSeek V4 Flash product path is the provider-backed Khala lane
+documented in
+[`2026-06-24-khala-deepseek-v4-flash-provider-backing.md`](./2026-06-24-khala-deepseek-v4-flash-provider-backing.md).
+
 Update 2026-06-24: Hydralisk GPT-OSS 20B is now running on a fresh
 `g2-standard-8` L4 VM, `hydralisk-gptoss20b-l4-20260624000550`, in
 `us-central1-a`. Current `us-central1` on-demand L4 usage is 3 of 16:
