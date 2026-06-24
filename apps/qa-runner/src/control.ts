@@ -42,6 +42,21 @@ import {
 } from "./scenarios";
 import { runQaSession } from "./runner";
 import { makeTarget, type Target } from "./target";
+import { TARGET_REGISTRY, isTargetName } from "./target-registry";
+
+// Resolve a control-API `target` field to a base URL: a registry NAME
+// (dev/staging/prod/selfhost) -> its baseUrl; a full http(s) URL -> as-is;
+// otherwise default to prod. Without this a named target like "prod" reached
+// the runner as a bare baseUrl and produced an invalid relative navigate.
+const resolveControlBaseUrl = (target?: string): string => {
+  if (!target) return "https://openagents.com";
+  if (/^https?:\/\//i.test(target)) return target;
+  if (isTargetName(target)) {
+    const baseUrl = TARGET_REGISTRY[target].baseUrl;
+    if (baseUrl) return baseUrl;
+  }
+  return "https://openagents.com";
+};
 
 // ---------------------------------------------------------------------------
 // Public-safe job model (what GET /runs/:id and GET /evals/:id project)
@@ -240,7 +255,7 @@ export class QaControl {
     const target: Target = real
       ? makeTarget({
           name: targetName,
-          baseUrl: input.target ?? "https://openagents.com",
+          baseUrl: resolveControlBaseUrl(input.target),
         })
       : makeTarget({ name: "fixtures", baseUrl: "https://example.test" });
 
