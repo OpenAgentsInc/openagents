@@ -9415,10 +9415,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: () =>
       Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
   },
-  {
-    path: '/login',
-    handler: () => Effect.succeed(redirectResponse('/')),
-  },
+  // NOTE: `/login` is intentionally NOT an exact route. It is a served document
+  // route (see `knownDocumentPathPatterns` in worker-routes.ts) so the SPA renders
+  // the real login page (`apps/web/src/page/login.ts`). A prior exact-route entry
+  // here hard-redirected `/login` -> `/`, which dead-ended sign-in. The query-
+  // string cleanup for post-OAuth `/login?...` still lives in
+  // `cleanProductRouteRedirectLocation`.
   {
     path: '/login/email',
     handler: (request, env) =>
