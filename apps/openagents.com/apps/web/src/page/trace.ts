@@ -42,7 +42,14 @@ import { lookupTrajectory } from './trace/sample'
 // primitive: link straight to the exact step). Reasoning is a native
 // `<details>` so it is collapsible without client state.
 
-const pageShellClass = 'min-h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
+// `h-dvh overflow-auto` (NOT `min-h-dvh`): the global reset pins
+// `html, body, #root` to `height: 100%; overflow: hidden` (see styles.css), so
+// a `min-h-dvh` shell would grow past the clipped body and the page could never
+// scroll — leaving the header stuck at the top with the content below the fold
+// unreachable. A fixed `h-dvh` shell is the real scroll container, so the
+// (non-sticky) header scrolls off normally. Matches docs.ts / blog.ts /
+// download.ts.
+const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 const mono =
   "font-['Commit_Mono',_'Berkeley_Mono',_ui-monospace,_monospace]"
@@ -116,6 +123,70 @@ const metaValue = <Message>(text: string, extra = ''): Html => {
     [Ui.className<Message>(`text-sm leading-none text-[#f1efe8] ${extra}`)],
     [text],
   )
+}
+
+// A stateless "show more / show less" clamp for long text (long reasoning
+// paragraphs, long observation results). Uses the checkbox-hack so it works with
+// zero client state on a server-rendered public page: a visually-hidden `peer`
+// checkbox toggles `line-clamp` off and swaps the toggle label, all in CSS. The
+// toggle is only emitted when the content is actually long enough to clamp
+// (`CLAMP_THRESHOLD` chars) so short content never shows a pointless affordance.
+export const CLAMP_THRESHOLD = 280
+
+export const clampedText = <Message>(
+  text: string,
+  textClass: string,
+  clampClass = 'line-clamp-4',
+): Html => {
+  const h = html<Message>()
+
+  if (text.length <= CLAMP_THRESHOLD) {
+    return h.p([Ui.className<Message>(textClass)], [text])
+  }
+
+  return h.div(
+    [Ui.className<Message>('grid gap-1.5'), h.DataAttribute('component', 'trace-clamp')],
+    [
+      h.input([
+        h.Type('checkbox'),
+        // The peer toggle. `sr-only` keeps it reachable by keyboard (the label
+        // is its accessible control) without taking visual space.
+        Ui.className<Message>('peer sr-only'),
+        h.Id(`clamp-${clampId(text)}`),
+      ]),
+      h.p(
+        [Ui.className<Message>(`${textClass} ${clampClass} peer-checked:line-clamp-none`)],
+        [text],
+      ),
+      h.label(
+        [
+          h.Attribute('for', `clamp-${clampId(text)}`),
+          // The peer-checked variants target the nested label spans via the
+          // arbitrary-child selector, so the label text swaps with the peer
+          // checkbox state (peer applies to this sibling label).
+          // `peer-focus-visible:*` surfaces a keyboard-focus ring on the label
+          // because the actual control is the `sr-only` checkbox.
+          Ui.className<Message>(
+            'inline-flex w-fit cursor-pointer select-none items-center text-[0.7rem] font-semibold uppercase leading-none tracking-wide text-white/45 transition hover:text-[#f1efe8] peer-focus-visible:text-[#f1efe8] peer-focus-visible:outline peer-focus-visible:outline-1 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#ffb400] peer-checked:[&>.trace-clamp-more]:hidden [&>.trace-clamp-less]:hidden peer-checked:[&>.trace-clamp-less]:inline',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('trace-clamp-more')], ['Show more']),
+          h.span([Ui.className<Message>('trace-clamp-less')], ['Show less']),
+        ],
+      ),
+    ],
+  )
+}
+
+// A short, stable, collision-resistant id from the clamped text, so the
+// checkbox + its label `for` agree without client state. Deterministic hash.
+const clampId = (text: string): string => {
+  let hash = 5381
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) >>> 0
+  }
+  return hash.toString(36)
 }
 
 // A header meta cell: stacked label over value, in a strip (no cards).
@@ -472,16 +543,15 @@ const observationBlock = <Message>(
   const rows = results.map(result => {
     const content = result.content ?? ''
     const failed = content.startsWith('FAILED')
+    // Long observation dumps (e.g. a verbose FAILED result) clamp to a few
+    // lines with a stateless "show more" toggle so one noisy step can't swamp
+    // the timeline; short results render inline unchanged.
     return h.div(
       [Ui.className<Message>('grid gap-1')],
       [
-        h.span(
-          [
-            Ui.className<Message>(
-              `break-words text-sm leading-6 ${failed ? 'text-[#d32f2f]' : 'text-white/75'} ${mono}`,
-            ),
-          ],
-          [content],
+        clampedText<Message>(
+          content,
+          `break-words whitespace-pre-wrap text-sm leading-6 ${failed ? 'text-[#d32f2f]' : 'text-white/75'} ${mono}`,
         ),
         ...(result.source_call_id !== undefined
           ? [
@@ -542,9 +612,9 @@ const reasoningBlock = <Message>(
         ],
         ['Reasoning'],
       ),
-      h.p(
-        [Ui.className<Message>('mt-2.5 text-sm/6 text-white/65')],
-        [reasoning],
+      h.div(
+        [Ui.className<Message>('mt-2.5')],
+        [clampedText<Message>(reasoning, 'm-0 text-sm/6 text-white/65')],
       ),
     ],
   )

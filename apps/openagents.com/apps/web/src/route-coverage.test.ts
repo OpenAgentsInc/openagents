@@ -51,10 +51,9 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
   ['/pro', 'Pro'],
-  ['/pro/runs', 'ProRuns'],
-  ['/pro/runs/login-regression-prod', 'ProRun'],
-  ['/pro/evals', 'ProEvals'],
-  ['/pro/evals/login-mcp-compare', 'ProEval'],
+  // The `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215
+  // (superseded by the public `/trace` surfaces); they now fall through to
+  // NotFound. See the dedicated retirement test below.
   ['/billing', 'Billing'],
   ['/usage', 'Usage'],
   ['/images', 'Images'],
@@ -87,10 +86,11 @@ describe('public route parser coverage', () => {
   test('covers the documented public surface', () => {
 
     // Public/top-level routes incl. the authenticated `/pro` operator console
-    // top-level route + its four subpages (runs index/detail, evals index/detail),
-    // the public shareable `/trace/{uuid}` render (#6209), and the public
-    // shareable `/trace/compare/{ids}` comparison (#6211) = 40.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(40)
+    // top-level route, the public shareable `/trace/{uuid}` render (#6209), and
+    // the public shareable `/trace/compare/{ids}` comparison (#6211). The four
+    // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
+    // covered count dropped from 40 to 36.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(36)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
@@ -119,17 +119,16 @@ describe('public route parser coverage', () => {
     expect(urlToAppRoute(appUrl('/trace/compare'))._tag).toBe('Trace')
   })
 
-  // The specific-before-generic parser ordering must resolve the parameterized
-  // /pro subpaths to their detail routes, not the index routes.
-  test('parses /pro subpaths with the correct specificity', () => {
-    expect(urlToAppRoute(appUrl('/pro/runs'))._tag).toBe('ProRuns')
-    expect(urlToAppRoute(appUrl('/pro/evals'))._tag).toBe('ProEvals')
-    const runDetail = urlToAppRoute(appUrl('/pro/runs/abc'))
-    expect(runDetail._tag).toBe('ProRun')
-    if (runDetail._tag === 'ProRun') expect(runDetail.runId).toBe('abc')
-    const evalDetail = urlToAppRoute(appUrl('/pro/evals/xyz'))
-    expect(evalDetail._tag).toBe('ProEval')
-    if (evalDetail._tag === 'ProEval') expect(evalDetail.evalId).toBe('xyz')
+  // #6215: the `/pro/runs` + `/pro/evals` fixture subpages (and their detail
+  // variants) were retired in favor of the public `/trace/{uuid}` +
+  // `/trace/compare/{ids}` surfaces. They no longer parse to a Pro route; they
+  // fall through to NotFound. `/pro` itself stays the operator console.
+  test('retires the /pro/runs + /pro/evals fixture subpaths to NotFound', () => {
+    expect(urlToAppRoute(appUrl('/pro'))._tag).toBe('Pro')
+    expect(urlToAppRoute(appUrl('/pro/runs'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/pro/runs/abc'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/pro/evals'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/pro/evals/xyz'))._tag).toBe('NotFound')
   })
 
   // The registry-driven parser derives its `oneOf` list from a single ordered

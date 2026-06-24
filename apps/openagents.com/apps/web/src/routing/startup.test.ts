@@ -38,10 +38,6 @@ import {
   OrderRoute,
   PrivacyRoute,
   ProRoute,
-  ProRunsRoute,
-  ProRunRoute,
-  ProEvalsRoute,
-  ProEvalRoute,
   PublicAgentRoute,
   PublicStatsArchiveRoute,
   PylonRoute,
@@ -614,21 +610,9 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(ProRoute())).toBe(true)
   })
 
-  test('fetches the auth bootstrap for the /pro subpages', () => {
-    expect(routeRequiresAuthBootstrap(ProRunsRoute())).toBe(true)
-    expect(routeRequiresAuthBootstrap(ProRunRoute({ runId: 'x' }))).toBe(true)
-    expect(routeRequiresAuthBootstrap(ProEvalsRoute())).toBe(true)
-    expect(routeRequiresAuthBootstrap(ProEvalRoute({ evalId: 'x' }))).toBe(true)
-  })
-
-  test('gates the /pro subpages for a logged-out visitor (same as /pro)', () => {
-    expect(startupRouteForLoggedOut(ProRunsRoute())).toMatchObject(
-      startupRouteForLoggedOut(ProRoute()),
-    )
-    expect(startupRouteForLoggedOut(ProEvalsRoute())).toMatchObject(
-      startupRouteForLoggedOut(ProRoute()),
-    )
-  })
+  // The `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215
+  // (superseded by the public `/trace` surfaces), so there is no longer a
+  // subpage auth-bootstrap / gating posture to assert here.
 
   test('routes incomplete authenticated users through onboarding', () => {
     expect(startupRouteForLoggedIn(HomeRoute(), incompleteAuth)).toEqual({

@@ -213,6 +213,46 @@ describe('trace loading skeleton', () => {
   })
 })
 
+describe('clamped text (long reasoning / observations)', () => {
+  test('short content renders inline with no show-more affordance', () => {
+    const short = 'ok: navigate to /login'
+    const rendered = renderHtml(
+      Trace.clampedText<unknown>(short, 'text-sm text-white/75'),
+    )
+    expect(rendered).toContain(short)
+    expect(rendered).not.toContain('Show more')
+    expect(rendered).not.toContain('data-component="trace-clamp"')
+  })
+
+  test('long content clamps with a stateless show-more / show-less toggle', () => {
+    const long = 'FAILED '.padEnd(Trace.CLAMP_THRESHOLD + 50, 'x')
+    const rendered = renderHtml(
+      Trace.clampedText<unknown>(long, 'text-sm text-[#d32f2f]'),
+    )
+    // The full content is still present (clamp is visual, not truncation).
+    expect(rendered).toContain(long)
+    expect(rendered).toContain('data-component="trace-clamp"')
+    // The checkbox-hack toggle: a peer checkbox + line-clamp + both labels.
+    expect(rendered).toContain('type="checkbox"')
+    expect(rendered).toContain('line-clamp-4')
+    expect(rendered).toContain('peer-checked:line-clamp-none')
+    expect(rendered).toContain('Show more')
+    expect(rendered).toContain('Show less')
+  })
+
+  test('the toggle label is wired to the checkbox by a stable id', () => {
+    const long = 'reasoning '.padEnd(Trace.CLAMP_THRESHOLD + 80, 'y')
+    const rendered = renderHtml(
+      Trace.clampedText<unknown>(long, 'text-sm text-white/65'),
+    )
+    const idMatch = /id="(clamp-[a-z0-9]+)"/.exec(rendered)
+    expect(idMatch).not.toBeNull()
+    if (idMatch !== null) {
+      expect(rendered).toContain(`for="${idMatch[1]}"`)
+    }
+  })
+})
+
 describe('atif contract + committed sample', () => {
   test('the committed sample decodes against the pinned Trajectory contract', () => {
     expect(sampleTrajectory.schema_version).toBe('ATIF-v1.7')

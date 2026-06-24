@@ -37,11 +37,7 @@ import {
   orderDetailRouter,
   orderRouter,
   personalFileRouter,
-  proEvalRouter,
-  proEvalsRouter,
   proRouter,
-  proRunRouter,
-  proRunsRouter,
   publicAgentRouter,
   traceRouter,
   traceCompareRouter,
@@ -87,8 +83,6 @@ import * as Invite from './page/invite'
 import * as Onboarding from './page/onboarding'
 import * as Order from './page/order'
 import * as Pro from './page/pro'
-import * as ProEvals from './page/pro-evals'
-import * as ProRuns from './page/pro-runs'
 import * as Settings from './page/settings'
 import * as Stats from './page/stats'
 import * as Usage from './page/usage'
@@ -149,10 +143,6 @@ const currentHref = (model: Model): string =>
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
       Pro: () => proRouter(),
-      ProRuns: () => proRunsRouter(),
-      ProRun: ({ runId }) => proRunRouter({ runId }),
-      ProEvals: () => proEvalsRouter(),
-      ProEval: ({ evalId }) => proEvalRouter({ evalId }),
       Billing: () => billingRouter(),
       Usage: () => usageRouter(),
       Stats: () => statsRouter(),
@@ -219,10 +209,6 @@ const routeKey = (model: Model): string =>
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
       Pro: () => 'Pro',
-      ProRuns: () => 'ProRuns',
-      ProRun: ({ runId }) => `ProRun:${runId}`,
-      ProEvals: () => 'ProEvals',
-      ProEval: ({ evalId }) => `ProEval:${evalId}`,
       Billing: () => 'Billing',
       Usage: () => 'Usage',
       Stats: () => 'Stats',
@@ -661,25 +647,6 @@ const routeView = (model: Model): Html => {
           // is a defensive fallback only and never normally reached.
           Pro: () =>
             Ui.workroomScrollableRoute<Message>([Pro.view(model.session)]),
-          // /pro/runs + /pro/evals render as top-level Pro console pages in the
-          // `view` function below (their own shell), so these workroom-shell
-          // cases are defensive fallbacks only and never normally reached.
-          ProRuns: () =>
-            Ui.workroomScrollableRoute<Message>([
-              ProRuns.runsView(model.session),
-            ]),
-          ProRun: ({ runId }) =>
-            Ui.workroomScrollableRoute<Message>([
-              ProRuns.runDetailView(model.session, runId),
-            ]),
-          ProEvals: () =>
-            Ui.workroomScrollableRoute<Message>([
-              ProEvals.evalsView(model.session),
-            ]),
-          ProEval: ({ evalId }) =>
-            Ui.workroomScrollableRoute<Message>([
-              ProEvals.evalDetailView(model.session, evalId),
-            ]),
           Billing: () =>
             Ui.workroomScrollableRoute<Message>([Billing.view(model)]),
           Usage: () => Ui.workroomScrollableRoute<Message>([Usage.view(model)]),
@@ -731,48 +698,6 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
       [
         h.Key('logged-in-pro-shell'),
         h.DataAttribute('component', 'logged-in-pro-shell'),
-      ],
-    )
-  }
-
-  // /pro subpages render as top-level Pro console pages (their own shell), so
-  // the URLs are stable + shareable (the PR-evidence loop links to them).
-  if (model.route._tag === 'ProRuns') {
-    return Ui.pageShell<Message>(
-      [ProRuns.runsView(model.session)],
-      [
-        h.Key('logged-in-pro-runs-shell'),
-        h.DataAttribute('component', 'logged-in-pro-runs-shell'),
-      ],
-    )
-  }
-
-  if (model.route._tag === 'ProRun') {
-    return Ui.pageShell<Message>(
-      [ProRuns.runDetailView(model.session, model.route.runId)],
-      [
-        h.Key('logged-in-pro-run-shell'),
-        h.DataAttribute('component', 'logged-in-pro-run-shell'),
-      ],
-    )
-  }
-
-  if (model.route._tag === 'ProEvals') {
-    return Ui.pageShell<Message>(
-      [ProEvals.evalsView(model.session)],
-      [
-        h.Key('logged-in-pro-evals-shell'),
-        h.DataAttribute('component', 'logged-in-pro-evals-shell'),
-      ],
-    )
-  }
-
-  if (model.route._tag === 'ProEval') {
-    return Ui.pageShell<Message>(
-      [ProEvals.evalDetailView(model.session, model.route.evalId)],
-      [
-        h.Key('logged-in-pro-eval-shell'),
-        h.DataAttribute('component', 'logged-in-pro-eval-shell'),
       ],
     )
   }

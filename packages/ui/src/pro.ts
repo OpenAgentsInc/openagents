@@ -183,6 +183,45 @@ export const proComingAffordance = <Message>(input: {
   })
 }
 
+// A LIVE forward affordance: a real navigable link styled like the secondary
+// console buttons, with a decorative aria-hidden arrow that nudges on hover. The
+// label is the only text node, so the accessible name is exactly `label`. Used
+// by the /pro console to link out to the public shareable `/trace` surfaces.
+export const proLinkAffordance = <Message>(input: {
+  label: string
+  href: string
+}): Html => {
+  const h = html<Message>()
+
+  return h.a(
+    [
+      h.Href(input.href),
+      h.DataAttribute('component', 'pro-link-affordance'),
+      h.Class(
+        'group inline-flex min-h-8 items-center justify-center gap-1.5 border border-[#333] bg-[#080808] px-3 text-sm text-[#f1efe8] no-underline transition-[border-color,background-color,color] duration-150 hover:border-[#555] hover:bg-[#141414] focus-visible:border-[#555] focus-visible:outline-none motion-reduce:transition-none',
+      ),
+    ],
+    [
+      input.label,
+      h.svg(
+        [
+          h.AriaHidden(true),
+          h.Class(
+            'size-3.5 text-white/45 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none',
+          ),
+          h.ViewBox('0 0 24 24'),
+          h.Fill('none'),
+          h.Attribute('stroke', 'currentColor'),
+          h.Attribute('stroke-width', '2'),
+          h.Attribute('stroke-linecap', 'round'),
+          h.Attribute('stroke-linejoin', 'round'),
+        ],
+        [h.path([h.D('M5 12h14M13 6l6 6-6 6')], [])],
+      ),
+    ],
+  )
+}
+
 // The Overview EMPTY STATE that teaches: one line on what Pro is, plus the
 // forward affordances (passed in) shown honestly. No hero, no cards.
 export const proTeachingEmptyState = <Message>(input: {

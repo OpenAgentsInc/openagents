@@ -1809,10 +1809,15 @@ describe('logged-in workroom sidebar', () => {
           name: 'Pro is a power-user operator console',
         }),
       ).toExist(),
-      // Forward affordances are present but disabled (honest placeholders).
+      // #6215: sharing lives at /trace, so the console links out to the public
+      // shareable trace surfaces as LIVE affordances.
       Scene.expect(
-        Scene.role('button', { name: 'Add credits' }),
-      ).toBeDisabled(),
+        Scene.role('link', { name: 'View a shared trace' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Compare traces' }),
+      ).toExist(),
+      // The remaining forward affordance stays an honest disabled placeholder.
       Scene.expect(
         Scene.role('button', { name: 'Connect a coding agent' }),
       ).toBeDisabled(),

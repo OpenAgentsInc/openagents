@@ -43,7 +43,13 @@ import {
 // marker, never a fake 0. An unknown uuid renders an explicit "unknown id"
 // column rather than inventing a trace.
 
-const pageShellClass = 'min-h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
+// `h-dvh overflow-auto` (NOT `min-h-dvh`): the global reset pins
+// `html, body, #root` to `height: 100%; overflow: hidden` (see styles.css), so
+// a `min-h-dvh` shell would grow past the clipped body and the page could never
+// scroll — leaving the header stuck at the top with the content below the fold
+// unreachable. A fixed `h-dvh` shell is the real scroll container, so the
+// (non-sticky) header scrolls off normally. Matches the sibling `/trace` page.
+const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 
 const mono = "font-['Commit_Mono',_'Berkeley_Mono',_ui-monospace,_monospace]"
 
