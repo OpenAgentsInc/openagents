@@ -12,7 +12,7 @@ report viewer, and safety boundaries are all in place.
 | --- | --- | --- | --- |
 | #6164 | Landed | `a6e95a944b`, `bd2c853502`, `ac211893a0` | Added the fixture-only `GymExperiment` schema/compiler/run path, widened the desktop Chrome CDP startup wait used by the deploy smoke gate, and created this issue-run audit. |
 | #6165 | Landed | `e74a63a0c8` | Added the public `/gym` route, logged-out Foldkit page, typed fixture controls, locked economics panel, and no-spend fixture result trigger. |
-| #6166 | Landed | #6166 landing commit | Added the deterministic Three.js fixture run scene, public-safe report viewer metrics, illustrative banner, skipped-lane rendering, and null cost-per-accepted-outcome finding. |
+| #6166 | Landed | `48848bd8c6` | Added the deterministic Three.js fixture run scene, public-safe report viewer metrics, illustrative banner, skipped-lane rendering, and null cost-per-accepted-outcome finding. |
 
 ## #6164 Verification
 
