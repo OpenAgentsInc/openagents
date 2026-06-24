@@ -88,6 +88,59 @@ export const PublicGymExperiment = S.Struct({
 })
 export type PublicGymExperiment = typeof PublicGymExperiment.Type
 
+export const PublicGymMetricSummary = S.Struct({
+  label: S.String,
+  mean: S.Number,
+  p50: S.Number,
+  p90: S.Number,
+  p99: S.Number,
+  measuredSampleCount: S.Number,
+  notMeasuredDropped: S.Number,
+})
+export type PublicGymMetricSummary = typeof PublicGymMetricSummary.Type
+
+export const PublicGymReportViewer = S.Struct({
+  decisionGrade: S.Literal(false),
+  illustrativeNotice: S.String,
+  latency: S.Array(PublicGymMetricSummary),
+  verificationRate: S.Number,
+  cacheHitRate: S.Number,
+  costPerAcceptedOutcomeUsd: S.NullOr(S.Number),
+  nullCostFinding: S.String,
+  zeroAcceptedFinding: S.Struct({
+    group: S.String,
+    costPerAcceptedOutcomeUsd: S.NullOr(S.Number),
+    finding: S.Literal('money spent, nothing accepted'),
+  }),
+})
+export type PublicGymReportViewer = typeof PublicGymReportViewer.Type
+
+export const PublicGymSceneLaneStatus = S.Literals([
+  'test_passed',
+  'skipped_unavailable',
+])
+export type PublicGymSceneLaneStatus = typeof PublicGymSceneLaneStatus.Type
+
+export const PublicGymSceneLane = S.Struct({
+  lane: GymLaneRef,
+  label: S.String,
+  status: PublicGymSceneLaneStatus,
+  attemptedCells: S.Number,
+  acceptedCells: S.Number,
+  skippedCells: S.Number,
+  verdictBeam: S.Boolean,
+})
+export type PublicGymSceneLane = typeof PublicGymSceneLane.Type
+
+export const PublicGymScene = S.Struct({
+  schema: S.Literal('openagents.gym.fixture_scene.v1'),
+  durationMs: S.Number,
+  simulatedCostMsat: S.Number,
+  billedCostMsat: S.Literal(0),
+  lanes: S.Array(PublicGymSceneLane),
+})
+export type PublicGymScene = typeof PublicGymScene.Type
+
 export const PublicGymFixtureResult = S.Struct({
   reportRef: S.String,
   viewerSchema: S.Literal('openagents.gym.fixture_report.v1'),
@@ -101,6 +154,8 @@ export const PublicGymFixtureResult = S.Struct({
     meanCostUsd: S.Number,
     p50WallMs: S.Number,
   }),
+  reportViewer: PublicGymReportViewer,
+  scene: PublicGymScene,
 })
 export type PublicGymFixtureResult = typeof PublicGymFixtureResult.Type
 
@@ -136,6 +191,9 @@ export const sequenceShapeOptions: ReadonlyArray<{
   { label: 'Short multi-turn', value: 'short-multi-turn' },
   { label: 'Long context', value: 'long-context' },
 ]
+
+export const gymLaneLabel = (lane: GymLaneRef): string =>
+  laneOptions.find(option => option.value === lane)?.label ?? lane
 
 export const initGymModel = (): GymModel =>
   GymModel({
@@ -373,24 +431,97 @@ export const setGymSamplesPerCell = (
 export const buildGymFixtureResult = (
   experiment: PublicGymExperiment,
 ): PublicGymFixtureResult => {
+  const lanes = Array.dedupe(experiment.fanout.lanes)
+  const coordinators = Array.dedupe(experiment.coordinators)
+  const shapes = Array.dedupe(experiment.shapes)
+  const cellsPerLane =
+    coordinators.length * shapes.length * experiment.samplesPerCell
+  const unavailableLane: GymLaneRef = 'psionic-shard-wan'
   const expectedCellCount =
-    Array.dedupe(experiment.fanout.lanes).length *
-    Array.dedupe(experiment.coordinators).length *
-    Array.dedupe(experiment.shapes).length *
-    experiment.samplesPerCell
+    lanes.length * coordinators.length * shapes.length * experiment.samplesPerCell
+  const skippedCellCount = lanes.includes(unavailableLane) ? cellsPerLane : 0
+  const executedCellCount = expectedCellCount - skippedCellCount
+  const acceptedOutcomeRate =
+    executedCellCount === 0 ? 0 : Math.min(1, executedCellCount / expectedCellCount)
+  const simulatedCostMsat = executedCellCount * 21
+
+  const latency = (
+    label: string,
+    mean: number,
+    p50: number,
+    p90: number,
+    p99: number,
+  ): PublicGymMetricSummary => ({
+    label,
+    mean,
+    p50,
+    p90,
+    p99,
+    measuredSampleCount: executedCellCount,
+    notMeasuredDropped: skippedCellCount,
+  })
 
   return {
     reportRef: 'gym.fixture.decision-suite.phase0',
     viewerSchema: 'openagents.gym.fixture_report.v1',
     generatedAt: '2026-06-24T00:00:00.000Z',
     expectedCellCount,
-    executedCellCount: expectedCellCount,
-    skippedCellCount: 0,
+    executedCellCount,
+    skippedCellCount,
     publicSafety: 'passed',
     metrics: {
-      acceptedOutcomeRate: 1,
+      acceptedOutcomeRate,
       meanCostUsd: 0,
       p50WallMs: 184,
+    },
+    reportViewer: {
+      decisionGrade: false,
+      illustrativeNotice:
+        'Fixture report only: synthetic public-safe aggregates, no provider accounts, no billing, not decision-grade.',
+      latency: [
+        latency('TTFT', 142, 128, 176, 211),
+        latency('Wall clock', 184, 174, 231, 284),
+        latency('Perceived TPS', 44.2, 42, 52, 57),
+        latency('Inter-token latency', 22.6, 21, 28, 34),
+      ],
+      verificationRate: acceptedOutcomeRate,
+      cacheHitRate: 0.37,
+      costPerAcceptedOutcomeUsd: null,
+      nullCostFinding:
+        'Fixture seam has zero billed spend, so cost-per-accepted-outcome is not a real dollar figure.',
+      zeroAcceptedFinding: {
+        group: 'fixture.zero-accepted-edge',
+        costPerAcceptedOutcomeUsd: null,
+        finding: 'money spent, nothing accepted',
+      },
+    },
+    scene: {
+      schema: 'openagents.gym.fixture_scene.v1',
+      durationMs: 2400,
+      simulatedCostMsat,
+      billedCostMsat: 0,
+      lanes: lanes.map(
+        (lane): PublicGymSceneLane =>
+          lane === unavailableLane
+            ? {
+                lane,
+                label: gymLaneLabel(lane),
+                status: 'skipped_unavailable',
+                attemptedCells: cellsPerLane,
+                acceptedCells: 0,
+                skippedCells: cellsPerLane,
+                verdictBeam: false,
+              }
+            : {
+                lane,
+                label: gymLaneLabel(lane),
+                status: 'test_passed',
+                attemptedCells: cellsPerLane,
+                acceptedCells: cellsPerLane,
+                skippedCells: 0,
+                verdictBeam: true,
+              },
+      ),
     },
   }
 }

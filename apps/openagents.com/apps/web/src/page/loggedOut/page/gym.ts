@@ -1,6 +1,7 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import { gymFixtureRunSceneView } from '../../../scene/gymFixtureRunSceneElement'
 import * as Ui from '../../../ui'
 import {
   ClickedRunGymFixture,
@@ -22,6 +23,7 @@ import {
   type GymFanoutMode,
   type GymModuleCompositionMode,
   type GymModel,
+  type PublicGymMetricSummary,
   type GymReasoningEffort,
   type GymToolSetRef,
   type GymTransport,
@@ -72,6 +74,44 @@ const stat = (label: string, value: string): Html => {
         [Ui.className<Message>('text-[1rem] font-semibold text-white')],
         [value],
       ),
+    ],
+  )
+}
+
+const formatMetric = (value: number, suffix: string): string =>
+  `${Number.isInteger(value) ? String(value) : value.toFixed(1)}${suffix}`
+
+const latencyMetric = (metric: PublicGymMetricSummary): Html => {
+  const h = html<Message>()
+  const suffix = metric.label === 'Perceived TPS' ? ' t/s' : ' ms'
+  const compactMetric = (label: string, value: number): Html =>
+    h.div([Ui.className<Message>('grid gap-0.5')], [
+      h.span([Ui.className<Message>('text-white/40')], [label]),
+      h.span([Ui.className<Message>('font-semibold text-white/85')], [
+        formatMetric(value, suffix),
+      ]),
+    ])
+
+  return h.div(
+    [Ui.className<Message>('grid gap-2 border border-white/10 bg-black p-3')],
+    [
+      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
+        h.span([Ui.className<Message>('text-[0.78rem] font-semibold text-white')], [
+          metric.label,
+        ]),
+        h.span([Ui.className<Message>('text-[0.7rem] text-white/45')], [
+          `${metric.measuredSampleCount} measured`,
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid grid-cols-4 gap-2 text-[0.72rem]')], [
+        compactMetric('P50', metric.p50),
+        compactMetric('P90', metric.p90),
+        compactMetric('P99', metric.p99),
+        compactMetric('Mean', metric.mean),
+      ]),
+      h.p([Ui.className<Message>('m-0 text-[0.72rem] text-white/45')], [
+        `${metric.notMeasuredDropped} not measured samples dropped`,
+      ]),
     ],
   )
 }
@@ -166,11 +206,11 @@ const resultPanel = (model: GymModel): Html => {
         Ui.className<Message>(panelClass),
       ],
       [
-        h.p([Ui.className<Message>(sectionTitleClass)], ['Report viewer']),
+        h.p([Ui.className<Message>(sectionTitleClass)], ['Fixture scene']),
         h.p(
           [Ui.className<Message>('m-0 max-w-[58ch] text-sm text-white/60')],
           [
-            'Run the fixture to prepare the typed report payload. Phase 0 renders the summary here; the richer report viewer lands next.',
+            'Run the fixture to prepare the deterministic scene and typed public report payload.',
           ],
         ),
       ],
@@ -192,11 +232,112 @@ const resultPanel = (model: GymModel): Html => {
           [result.viewerSchema],
         ),
       ]),
+      h.div(
+        [
+          h.DataAttribute('gym-illustrative-notice', ''),
+          Ui.className<Message>(
+            'border border-[#ffcf6a]/30 bg-[#211a05] px-3 py-2 text-[0.78rem] font-medium text-[#ffe0a3]',
+          ),
+        ],
+        [
+          `decisionGrade: false - ${result.reportViewer.illustrativeNotice}`,
+        ],
+      ),
       h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-4')], [
         stat('Cells', String(result.expectedCellCount)),
         stat('Executed', String(result.executedCellCount)),
         stat('Skipped', String(result.skippedCellCount)),
-        stat('Mean cost', `$${result.metrics.meanCostUsd.toFixed(2)}`),
+        stat('Billed cost', `$${result.metrics.meanCostUsd.toFixed(2)}`),
+      ]),
+      h.section([Ui.className<Message>('grid gap-3')], [
+        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], [
+            'Live fixture scene',
+          ]),
+          h.span(
+            [
+              h.DataAttribute('gym-scene-cost-meter', ''),
+              Ui.className<Message>(
+                'border border-[#7cf0ff]/30 bg-[#061620] px-2 py-1 text-[0.72rem] text-[#bdf6ff]',
+              ),
+            ],
+            [
+              `${result.scene.simulatedCostMsat} msat simulated meter / ${result.scene.billedCostMsat} msat billed`,
+            ],
+          ),
+        ]),
+        gymFixtureRunSceneView<Message>(result.scene, [
+          h.DataAttribute('gym-fixture-scene', ''),
+        ]),
+        h.div([Ui.className<Message>('grid gap-2 sm:grid-cols-3')], [
+          ...result.scene.lanes.map(lane =>
+            h.div(
+              [
+                h.DataAttribute('gym-scene-lane', lane.lane),
+                Ui.className<Message>(
+                  'grid gap-1 border border-white/10 bg-black p-3 text-[0.78rem]',
+                ),
+              ],
+              [
+                h.span([Ui.className<Message>('font-semibold text-white')], [
+                  lane.label,
+                ]),
+                h.span(
+                  [
+                    h.DataAttribute('gym-scene-lane-status', lane.status),
+                    Ui.className<Message>(
+                      lane.status === 'test_passed'
+                        ? 'text-[#9bf59b]'
+                        : 'text-white/45',
+                    ),
+                  ],
+                  [
+                    lane.status === 'test_passed'
+                      ? 'test_passed verdict beam'
+                      : 'skipped_unavailable arc',
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ]),
+      ]),
+      h.section([Ui.className<Message>('grid gap-3')], [
+        h.p([Ui.className<Message>(sectionTitleClass)], ['Report viewer']),
+        h.div(
+          [
+            h.DataAttribute('gym-report-viewer', ''),
+            Ui.className<Message>('grid gap-3 lg:grid-cols-2'),
+          ],
+          result.reportViewer.latency.map(latencyMetric),
+        ),
+        h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-3')], [
+          stat(
+            'Verification rate',
+            `${Math.round(result.reportViewer.verificationRate * 100)}%`,
+          ),
+          stat(
+            'Cache hit rate',
+            `${Math.round(result.reportViewer.cacheHitRate * 100)}%`,
+          ),
+          stat(
+            'Cost per accepted outcome',
+            result.reportViewer.costPerAcceptedOutcomeUsd === null
+              ? 'null'
+              : `$${result.reportViewer.costPerAcceptedOutcomeUsd.toFixed(4)}`,
+          ),
+        ]),
+        h.div(
+          [
+            h.DataAttribute('gym-null-cost-finding', ''),
+            Ui.className<Message>(
+              'border border-white/10 bg-black px-3 py-2 text-sm text-white/65',
+            ),
+          ],
+          [
+            `${result.reportViewer.nullCostFinding} Zero-accepted edge: ${result.reportViewer.zeroAcceptedFinding.finding}.`,
+          ],
+        ),
       ]),
       h.p([Ui.className<Message>('m-0 text-sm text-white/60')], [
         `Public safety ${result.publicSafety}; ${Math.round(

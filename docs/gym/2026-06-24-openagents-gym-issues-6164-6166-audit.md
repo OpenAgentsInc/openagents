@@ -10,9 +10,9 @@ report viewer, and safety boundaries are all in place.
 
 | Issue | Status | Main commit(s) | Notes |
 | --- | --- | --- | --- |
-| #6164 | Landed | `a6e95a944b`, `bd2c853502` | Added the fixture-only `GymExperiment` schema/compiler/run path and widened the desktop Chrome CDP startup wait used by the deploy smoke gate. |
-| #6165 | Landed | #6165 landing commit | Added the public `/gym` route, logged-out Foldkit page, typed fixture controls, locked economics panel, and no-spend fixture result trigger. |
-| #6166 | Pending | n/a | Next after #6165: add the public-safe report viewer and visual result summaries. |
+| #6164 | Landed | `a6e95a944b`, `bd2c853502`, `ac211893a0` | Added the fixture-only `GymExperiment` schema/compiler/run path, widened the desktop Chrome CDP startup wait used by the deploy smoke gate, and created this issue-run audit. |
+| #6165 | Landed | `e74a63a0c8` | Added the public `/gym` route, logged-out Foldkit page, typed fixture controls, locked economics panel, and no-spend fixture result trigger. |
+| #6166 | Landed | #6166 landing commit | Added the deterministic Three.js fixture run scene, public-safe report viewer metrics, illustrative banner, skipped-lane rendering, and null cost-per-accepted-outcome finding. |
 
 ## #6164 Verification
 
@@ -30,11 +30,18 @@ report viewer, and safety boundaries are all in place.
 - `bun run --cwd apps/openagents.com check:effect-topology`
 - Full pre-push `bun run check:deploy` passed before the #6165 landing commit.
 
+## #6166 Verification
+
+- `bun run --cwd apps/openagents.com/apps/web test -- src/page/loggedOut/page/gym.test.ts src/page/loggedOut/update.test.ts src/scene/gymFixtureRunSceneElement.test.ts`
+- `bun run --cwd apps/openagents.com/apps/web typecheck`
+- `bun run check:deploy`
+
 ## Notes For Continuation
 
 - Keep Phase 0 fixture-only. `budget.seam: "real"` must remain rejected until a
   future issue explicitly adds real spend, wallet, and quota controls.
-- Use the existing benchmark matrix, runner, report, and public-safety checker
-  rather than creating a parallel Gym report format.
+- The public `/gym` viewer consumes a public-safe report projection. The
+  backend `buildBenchmarkReport` remains the canonical decision-grade report
+  path for future real-seam work.
 - The `/gym` UI should make skipped/unavailable lanes visible instead of
   implying that all coordinator/provider combinations are live.

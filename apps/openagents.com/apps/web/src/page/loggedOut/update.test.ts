@@ -57,7 +57,14 @@ describe('logged-out nav + copy update', () => {
     expect(next.gym.result).toMatchObject({
       viewerSchema: 'openagents.gym.fixture_report.v1',
       expectedCellCount: 90,
+      executedCellCount: 60,
+      skippedCellCount: 30,
       metrics: { meanCostUsd: 0 },
+      reportViewer: {
+        decisionGrade: false,
+        costPerAcceptedOutcomeUsd: null,
+        zeroAcceptedFinding: { finding: 'money spent, nothing accepted' },
+      },
     })
   })
 

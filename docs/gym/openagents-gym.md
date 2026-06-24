@@ -1,14 +1,17 @@
 # OpenAgents Gym — Spec & Roadmap
 
-> **Status:** Phase 0 backend core and public fixture UI landed (#6164,
-> #6165). `GymExperiment`, `compileGymExperiment`, and
+> **Status:** Phase 0 backend core, public fixture UI, and illustrative
+> report/scene viewer landed (#6164, #6165, #6166). `GymExperiment`,
+> `compileGymExperiment`, and
 > `runGymFixtureExperiment` live in
 > `apps/openagents.com/workers/api/src/inference/gym/` and compile into the
 > existing Khala benchmark matrix/runner/report path without real spend. The
 > public `/gym` route lives in
 > `apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` with typed
-> fixture knobs and a locked no-spend economics panel. The remaining Phase 0
-> visualization/report-viewer work is tracked separately.
+> fixture knobs, a locked no-spend economics panel, a deterministic Three.js
+> fixture scene, and a public-safe report viewer that keeps `decisionGrade:
+> false`, drops `not_measured` samples from metric math, and renders null
+> cost-per-accepted-outcome as an explicit finding.
 > The Gym is the interactive experimentation surface and **eval+reward factory**
 > that sits *on top of the
 > already-landed Khala benchmark harness*
