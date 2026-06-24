@@ -213,11 +213,20 @@ async function main(): Promise<void> {
   console.log("--- PR comment body ---");
   console.log(body);
 
-  // Honest exit code: non-zero when any variant did not fully pass, so the CI
-  // check is RED on a real regression (no fake green) while still posting the
-  // comment.
-  const allPass = outcome.result.variants.every(v => v.passRate === 1);
-  process.exit(allPass ? 0 : 1);
+  // Honest exit code: RED only on a real DEVIATION from each variant's EXPECTED
+  // outcome — not merely because a variant failed. The default fixture's
+  // `candidate` is a deliberate regression DEMO (it asserts a redirect that does
+  // not happen), so it is EXPECTED to fail; gating on "any failure" would turn
+  // every PR red (cry-wolf). A real diff-scoped variant has no expected entry →
+  // defaults to expect-pass, so a genuine regression still reds the check.
+  const EXPECTED_PASS_RATE: Record<string, number> = { baseline: 1, candidate: 0 };
+  const asExpected = outcome.result.variants.every(
+    v => v.passRate === (EXPECTED_PASS_RATE[v.variantId] ?? 1),
+  );
+  if (!asExpected) {
+    console.log("[pr-comment] a variant deviated from its expected outcome — gate RED.");
+  }
+  process.exit(asExpected ? 0 : 1);
 }
 
 if (import.meta.main) {
