@@ -65,6 +65,12 @@
 *On-screen: direction slate, clearly labeled "DIRECTION, not yet live" — the Verse 3D board showing one PR fanning out to many QA agents in parallel (correctness, regressions, security, "does it run"), each returning a verified trace, a Lightning closeout animating back to each worker; an "OpenAgents QA" GitHub App badge on a repo.*
 **Speaker:** And here's where it goes — honestly labeled. *Live today:* one agent does the QA and leaves a verified trace with a real recording, on our own surface. *Direction:* fan that out across a **paid pool** — pay once for an army of coding agents, point them at *any* pull request, and get back a fan-out of verified reviews, with each contributor paid in Bitcoin for verified work. That's the killer recurring job: every team has infinite PRs and finite reviewers. The orchestrator coordinates it; the receipts make it trustworthy; the pool makes it cheap. We will not fake the pool on this channel. When it settles real sats to real contributors at scale, we'll show the receipt.
 
+## Demo 5 — the same trace is also a market: upload yours, get paid (direction)
+
+**04:45**
+*On-screen: direction slate, clearly labeled "DIRECTION, revshare not yet armed" — a developer's machine full of Claude Code / Codex sessions; an "Upload to OpenAgents" flow; a redaction pass; a Bitcoin revshare arrow back to the developer; the corpus feeding a "trains Khala" box. Small: a Nostr NIP-DS dataset-listing card.*
+**Speaker:** And notice what that QA run actually produced: a **trace** — a clean, redacted, replayable record of an agent doing real work. That artifact isn't only proof. It's *data*. So the same primitive opens a second market. You've got thousands of valuable coding-agent sessions sitting on your machine right now — Claude Code, Codex, whatever. Direction we're building: **upload them to OpenAgents, get paid in Bitcoin revshare, and the corpus trains Khala** — our coding agent. The pitch is blunt: *we'll pay you more Bitcoin than anybody else for your traces.* You consent to the training use, it's redacted before it's stored, and — because we don't want it locked to us — it rides an **open protocol**, NIP-DS on Nostr, so traces can trade even without an OpenAgents product. I'll be honest: the upload + redaction path is real; the revshare is stubbed and owner-gated, no money moves until it's armed. But the shape is the point — *the trace is both the receipt and the product.* The collective gets smarter because the data that trains it is itself a paid, verifiable market.
+
 ## The thesis — collective intelligence as an economy, not a lab
 
 **05:00**
@@ -162,6 +168,12 @@ Draw it top-to-bottom as a stack; the worked example flows down the right side.
   video + a committed e2e test** → receipt → (direction:) Bitcoin revshare to the
   contributors. This makes the whole diagram concrete with something we can show
   live on screen.
+- **Second money flow — the Data Market (dashed):** show the **trace flowing the
+  other way too** — developers *upload* their Claude Code/Codex traces → redaction →
+  the corpus **trains Khala** → **Bitcoin revshare back to the uploader** (rides
+  NIP-DS on Nostr as the open path). Caption: *"the trace is both the receipt and
+  the product"* — the same primitive proves work AND is sellable training data. Mark
+  the upload/redaction solid-ish, the revshare dashed (stubbed, owner-gated).
 
 **Board 3 — "lab vs economy" (the thesis payoff).** Two columns:
 - **Sakana / lab:** designed · QD-maintained diversity · graded on chosen benchmarks
