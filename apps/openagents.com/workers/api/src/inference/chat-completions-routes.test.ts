@@ -958,6 +958,68 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.usage.totalTokens).toBe(8)
   })
 
+  test('a Fireworks-backed Khala request discloses the concrete Fireworks supply lane', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'READY',
+          finishReason: 'stop',
+          servedModel: 'accounts/fireworks/models/deepseek-v4-flash',
+          usage: { completionTokens: 1, promptTokens: 7, totalTokens: 8 },
+        })),
+      id: FIREWORKS_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'receipt.fireworks.route.test' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: resolveSupplyLaneArming({
+            FIREWORKS_API_KEY: 'fw-secret',
+            KHALA_BACKING_MODEL: 'deepseek-v4-flash',
+          }),
+          lanePlan: () => [FIREWORKS_ADAPTER_ID],
+          meteringHook,
+          newId: () => 'chatcmpl-fireworks-khala',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      model: string
+      openagents?: {
+        requested_model: string
+        served_model: string
+        supply_lane: string
+        worker: string
+      }
+    }
+    expect(body.model).toBe(KHALA_MODEL_ID)
+    expect(body.openagents).toMatchObject({
+      requested_model: KHALA_MODEL_ID,
+      served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+      supply_lane: 'fireworks',
+      worker: FIREWORKS_ADAPTER_ID,
+    })
+    expect(captured[0]?.adapterId).toBe(FIREWORKS_ADAPTER_ID)
+    expect(captured[0]?.servedModel).toBe(
+      'accounts/fireworks/models/deepseek-v4-flash',
+    )
+  })
+
   test('a Khala request can route through the high-memory GPT-OSS 120B Hydralisk adapter when armed', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register({

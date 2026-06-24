@@ -108,8 +108,14 @@ import {
   stubMeteringHook,
 } from './metering-hook'
 import {
+  FIREWORKS_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENAGENTS_NETWORK_ADAPTER_ID,
   type DispatchDeps,
   type DispatchRouteMetadata,
+  VERTEX_ANTHROPIC_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
@@ -742,6 +748,24 @@ type OpenAgentsReceipt = Readonly<{
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
   `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
 
+const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
+  switch (adapterId) {
+    case FIREWORKS_ADAPTER_ID:
+      return 'fireworks'
+    case HYDRALISK_ADAPTER_ID:
+    case HYDRALISK_GPT_OSS_120B_ADAPTER_ID:
+      return 'hydralisk'
+    case OPENAGENTS_NETWORK_ADAPTER_ID:
+      return 'openagents-network'
+    case VERTEX_ANTHROPIC_ADAPTER_ID:
+      return 'vertex-anthropic'
+    case VERTEX_GEMINI_ADAPTER_ID:
+      return 'vertex-gemini'
+    default:
+      return undefined
+  }
+}
+
 // What the gateway can MEASURE about this request's lifecycle on the hot path
 // today (book P0-1). All optional: an unmeasured value becomes the honest
 // `not_measured` sentinel in the telemetry builder — never a fabricated number.
@@ -807,7 +831,10 @@ const openAgentsReceiptForResult = (
     cacheAffinityKeyRaw?: string | undefined
   }>,
 ): OpenAgentsReceipt | undefined => {
-  const supplyLane = lookupModel(input.requestedModel)?.lane
+  const supplyLane =
+    lookupModel(input.result.servedModel)?.lane ??
+    supplyLaneForAdapterId(input.adapterId) ??
+    lookupModel(input.requestedModel)?.lane
   const isKhala = isKhalaModel(input.requestedModel)
   if (!isKhala && supplyLane !== 'hydralisk') {
     return undefined
