@@ -24,6 +24,7 @@ import {
   DemoThreadRoute,
   ForumForumRoute,
   ForumReceiptRoute,
+  GymOssRoute,
   HomeRoute,
   InviteRoute,
   KhalaRoute,
@@ -468,6 +469,36 @@ describe('startup route policy', () => {
       _tag: 'LoggedInStartupRoute',
       redirect: Option.none(),
       route: { _tag: 'Mullet' },
+    })
+  })
+
+  test('keeps logged-out visitors away from the GPT-OSS Gym route', () => {
+    expect(startupRouteForLoggedOut(GymOssRoute())).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: {
+        _tag: 'Some',
+        value: { _tag: 'StartupRedirectToHome', href: '/' },
+      },
+      route: { _tag: 'Landing' },
+    })
+  })
+
+  test('redirects non-admin users away from the GPT-OSS Gym route', () => {
+    expect(startupRouteForLoggedIn(GymOssRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.some({
+        _tag: 'StartupRedirectToOrder',
+        href: '/order',
+      }),
+      route: { _tag: 'Order' },
+    })
+  })
+
+  test('allows an admin to stay on the GPT-OSS Gym route', () => {
+    expect(startupRouteForLoggedIn(GymOssRoute(), completeAdminAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      redirect: Option.none(),
+      route: { _tag: 'GymOss' },
     })
   })
 

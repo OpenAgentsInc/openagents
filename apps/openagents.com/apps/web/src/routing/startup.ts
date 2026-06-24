@@ -327,6 +327,7 @@ const startupRouteForCompleteOnboarding = (
       'BlogPost',
       'Admin',
       'Mullet',
+      'GymOss',
       'Billing',
       'Usage',
       'Images',

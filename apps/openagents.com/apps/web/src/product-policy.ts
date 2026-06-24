@@ -111,6 +111,10 @@ export const routeAllowedForLoggedInAuth = (
     return loggedInMulletAccessAllowed(auth)
   }
 
+  if (route._tag === 'GymOss') {
+    return loggedInAdminAccessAllowed(auth)
+  }
+
   return true
 }
 
