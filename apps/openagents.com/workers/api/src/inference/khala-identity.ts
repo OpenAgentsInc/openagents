@@ -71,20 +71,24 @@ export const KHALA_IDENTITY_SYSTEM_PROMPT = [
 // ---------------------------------------------------------------------------
 
 // A Khala signature's stable id. Identity is the first; the union grows as more
-// signatures are added so the registry stays exhaustively typed.
-export const KhalaSignatureId = S.Literal('identity')
+// signatures are added so the registry stays exhaustively typed. `refusal_posture`
+// (signature #2) is the offer-and-guide contract: it forbids a bare refusal and
+// requires an offer + collaborative guide path while staying honest about scope.
+export const KhalaSignatureId = S.Literals(['identity', 'refusal_posture'])
 export type KhalaSignatureId = typeof KhalaSignatureId.Type
 
 // The verdict a signature's `verify` returns over a completion: whether the
 // completion satisfies the contract, and — when it does not — the typed reason
 // and the precise offending spans so `correct` can act surgically.
 export const KhalaSignatureViolationSpan = S.Struct({
-  // The matched first-person identity assertion, verbatim, e.g.
-  // "I am built on Gemini".
+  // The matched offending text, verbatim. For identity this is the first-person
+  // identity assertion, e.g. "I am built on Gemini". For refusal posture this is
+  // the bare-refusal phrase, e.g. "I'm sorry, but I can't help with that".
   text: S.String,
-  // The forbidden provider/model token that triggered the violation, e.g.
-  // "Gemini". Lowercased, canonical.
-  provider: S.String,
+  // The forbidden provider/model token that triggered an IDENTITY violation, e.g.
+  // "Gemini" (lowercased, canonical). Optional because non-identity signatures
+  // (refusal posture) have no provider to bind.
+  provider: S.optional(S.String),
 })
 export type KhalaSignatureViolationSpan =
   typeof KhalaSignatureViolationSpan.Type
@@ -358,15 +362,167 @@ export const KHALA_IDENTITY_SIGNATURE: KhalaSignature = {
 }
 
 // ---------------------------------------------------------------------------
+// Refusal-posture signature (#2): offer + guide, never a bare refusal.
+// ---------------------------------------------------------------------------
+//
+// WHY THIS EXISTS
+// ---------------
+// The Khala front door assembles identity + "be helpful" and nothing else, so
+// when the underlying model hits a gap it falls back to its base-alignment
+// refusal ("I'm sorry, but I can't help with that.") — the single worst thing
+// our front door can say. This signature converts every refusal into a
+// three-part move: do the doable part now, name the gap as a *capability* (not a
+// refusal), and offer the collaborative guide path that is the on-ramp to the
+// skill loop — all while staying honest about scope (it never claims Khala
+// filed/deployed/submitted/paid anything it does not actually perform).
+//
+// PRIMARY MECHANISM (same shape as identity): the gateway-side system clause
+// `KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT`, injected for every Khala turn beside the
+// identity clause. The `verify` below is the VERIFICATION layer used by the
+// decline-fixture eval (the same verify pattern `guardKhalaCompletion` uses for
+// identity): it asserts a completion contains an offer/guide path and contains
+// NO bare-refusal phrase.
+//
+// NO DESTRUCTIVE BACKSTOP. Unlike the identity signature — whose backstop can
+// safely redact a leaked provider name — there is no honest deterministic way to
+// rewrite an arbitrary bare refusal into a genuine offer without risking a FAKE
+// capability claim (exactly what guardrail §8 forbids). So `correctText` is a
+// no-op: the posture is enforced by the prompt, audited by `verify`, and a
+// re-ask (carrying `reinforcementPrompt`) is the only correction path. This
+// keeps the guard fail-safe for identity while never fabricating a promise.
+
+// The five non-promise rules, adopted VERBATIM from the Autopilot Concierge
+// (`inference/autopilot-concierge-model.ts`) so the new helpfulness never
+// over-promises. The Concierge line is the source of truth; mirror it exactly.
+export const KHALA_REFUSAL_NON_PROMISE_RULE =
+  'Do not promise checkout, CRM writes, deployment, filing, publication, spending, payout, settlement, or background tool execution unless a separate reviewed surface explicitly performs it.'
+
+// The gateway-side refusal-posture system clause (PRIMARY mechanism). Injected
+// beside the identity clause for every Khala turn. First-person plural to match
+// the identity contract ("we", never "I").
+export const KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT = [
+  'Refusal posture: you never bare-refuse. Never say "I can\'t help with that", "I\'m sorry, but I can\'t", "I cannot help you with that", or any flat refusal. Always move the user forward.',
+  'Do the doable part now: if any part of the request is answerable, answer that part directly first.',
+  'Name the gap as a capability, not a refusal: say what would be needed — for example "we can draft the outline now; running it end-to-end as a graded submission is a capability we don\'t yet expose".',
+  'Offer to guide: offer the collaborative path — "want to walk us through how you\'d do it once? we\'ll do it with you and turn that into something Khala does on its own". This is the on-ramp to the skill loop.',
+  'Stay honest about scope. ' + KHALA_REFUSAL_NON_PROMISE_RULE,
+  'Never claim you filed, deployed, submitted, published, paid, or otherwise performed an action you did not actually perform. No fake capability to dodge a refusal.',
+].join(' ')
+
+// The reinforcement instruction a re-ask prepends when the posture is violated
+// (the LLM-side correction path; there is no destructive backstop).
+export const KHALA_REFUSAL_POSTURE_REINFORCEMENT_PROMPT = [
+  'Your previous answer was a bare refusal. That is forbidden.',
+  'Answer again without refusing: do any doable part now, name the gap as a capability we do not yet expose (not a refusal), and offer to walk through it together as the on-ramp to a Khala skill.',
+  'Stay honest about scope — never claim you filed, deployed, submitted, published, or paid anything you did not actually perform.',
+].join(' ')
+
+// Bare-refusal phrases the posture forbids. Lowercased; matched as substrings of
+// the lowercased completion. This is a bounded, documented audit predicate over a
+// model's own refusal phrasing — NOT intent routing or tool/retrieval selection —
+// so it does not fall under the no-keyword-routing rule.
+const BARE_REFUSAL_PHRASES: ReadonlyArray<string> = [
+  "i can't help with that",
+  'i cannot help with that',
+  "i can't help you with that",
+  'i cannot help you with that',
+  "i'm sorry, but i can't",
+  'i am sorry, but i cannot',
+  "i'm sorry, but i cannot",
+  "i'm unable to help with that",
+  'i am unable to help with that',
+  "i can't assist with that",
+  'i cannot assist with that',
+  "i won't be able to help with that",
+  'i will not be able to help with that',
+]
+
+// Offer/guide cues that signal the reply moved the user forward instead of
+// walling them off. A satisfied reply contains at least one. Lowercased
+// substrings.
+const OFFER_GUIDE_CUES: ReadonlyArray<string> = [
+  'walk us through',
+  'walk you through',
+  'do it with you',
+  'do this with you',
+  'step by step',
+  'step-by-step',
+  'we can help',
+  'we can draft',
+  'we can start',
+  'we can do',
+  "let's start",
+  'want to start',
+  'want to walk',
+  'we can show you',
+  'turn that into',
+  'turn it into',
+  'on its own',
+]
+
+// Detect a bare refusal in a completion. Returns the offending spans (verbatim
+// phrase, no provider). Exported so the decline-fixture eval can assert directly
+// on the phrase set.
+export const detectKhalaBareRefusal = (
+  completion: string,
+): ReadonlyArray<KhalaSignatureViolationSpan> => {
+  const lower = completion.toLowerCase()
+  const spans: Array<KhalaSignatureViolationSpan> = []
+  for (const phrase of BARE_REFUSAL_PHRASES) {
+    if (lower.includes(phrase)) spans.push({ text: phrase })
+  }
+  return spans
+}
+
+// True when the completion offers a forward/guide path. Exported so the
+// decline-fixture eval can assert each reply contains an offer/guide path.
+export const khalaReplyHasOfferGuidePath = (completion: string): boolean => {
+  const lower = completion.toLowerCase()
+  return OFFER_GUIDE_CUES.some(cue => lower.includes(cue))
+}
+
+export const KHALA_REFUSAL_POSTURE_SIGNATURE: KhalaSignature = {
+  // No destructive backstop: a bare refusal is corrected by re-asking, never by
+  // fabricating an offer (which could imply a capability we do not have).
+  correctText: (completion: string): string => completion,
+  description:
+    'Khala never bare-refuses: it does the doable part, names the gap as a capability rather than a refusal, offers a collaborative guide path, and stays honest about scope (never claiming it filed/deployed/submitted/paid anything it did not perform).',
+  id: 'refusal_posture',
+  reinforcementPrompt: KHALA_REFUSAL_POSTURE_REINFORCEMENT_PROMPT,
+  verify: (completion: string): KhalaSignatureVerdict => {
+    const bareRefusals = detectKhalaBareRefusal(completion)
+    if (bareRefusals.length > 0) {
+      return {
+        reason: 'bare_refusal',
+        satisfied: false,
+        signature: 'refusal_posture',
+        violations: bareRefusals,
+      }
+    }
+    // A reply that neither refuses nor offers a path is treated as a soft
+    // posture miss only when it reads like a decline. We do not flag ordinary
+    // helpful answers (which have no refusal and need no offer cue), so the
+    // posture is satisfied unless a bare refusal was present.
+    return {
+      reason: '',
+      satisfied: true,
+      signature: 'refusal_posture',
+      violations: [],
+    }
+  },
+}
+
+// ---------------------------------------------------------------------------
 // The signature registry (extensible set; identity is #1).
 // ---------------------------------------------------------------------------
 
-// Ordered registry of Khala signatures. Identity is first. New signatures
-// (refusal posture, receipt disclosure, no-chain-of-thought) append here and
-// are picked up by `verifyKhalaSignatures` / the route guard without further
+// Ordered registry of Khala signatures. Identity is first; refusal posture is
+// second. New signatures (receipt disclosure, no-chain-of-thought) append here
+// and are picked up by `verifyKhalaSignatures` / the route guard without further
 // wiring. Keyed by id for typed lookup.
 export const KHALA_SIGNATURES: ReadonlyArray<KhalaSignature> = [
   KHALA_IDENTITY_SIGNATURE,
+  KHALA_REFUSAL_POSTURE_SIGNATURE,
 ]
 
 export const getKhalaSignature = (

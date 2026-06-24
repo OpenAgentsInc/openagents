@@ -30,7 +30,10 @@ import {
   type InferenceMessage,
   type InferenceRequest,
 } from './inference/provider-adapter'
-import { KHALA_IDENTITY_SYSTEM_PROMPT } from './inference/khala-identity'
+import {
+  KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
+} from './inference/khala-identity'
 
 // The live public Khala model for the generic chat demo (same model id the
 // onboarding program uses; the cheapest-viable router lane).
@@ -163,18 +166,20 @@ export const validateKhalaChatRequest = (
 
 // MESSAGE ASSEMBLY --------------------------------------------------------
 
-// Build the inference message list for a turn: the Khala identity contract +
-// the generic chat instruction as a leading system message, then the running
-// user/assistant conversation. The identity prompt is FIRST so the identity
-// contract binds the whole turn (the gateway guard backstops it regardless).
-// The client never supplies the system message, so the identity contract can
-// never be overridden by a crafted conversation.
+// Build the inference message list for a turn: the Khala identity contract + the
+// refusal-posture contract + the generic chat instruction as a leading system
+// message, then the running user/assistant conversation. The identity prompt is
+// FIRST so the identity contract binds the whole turn (the gateway guard
+// backstops it regardless); the refusal-posture clause rides the same leading
+// system message so every gap turns into an offer + guide path instead of a bare
+// refusal. The client never supplies the system message, so neither contract can
+// be overridden by a crafted conversation.
 export const buildKhalaChatMessages = (
   messages: ReadonlyArray<KhalaChatMessage>,
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
   },
   ...messages.map(message => ({ role: message.role, content: message.content })),
 ]
