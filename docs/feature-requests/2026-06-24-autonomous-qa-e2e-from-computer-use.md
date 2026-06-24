@@ -71,10 +71,15 @@ Live + real today: <https://openagents.com/docs/autonomous-qa> ·
   headline gap. Spec: [`docs/traces/README.md`](../traces/README.md). In progress:
   the QA process emitting one real ATIF trace + a beautiful render.
 - ❌ **"Eval"/comparison view** (compare N traces) — depends on the trace surface.
-- 🟡 **Production firecracker boot** — provisioner code is complete + contract-
-  tested (`cloud@7c2610d`), but the live boot needs a Linux **KVM host** (deploy
-  step, cloud runbook **CND-056**). A Docker **container** exec backend gives
-  VM-class isolation today (#6186).
+- 🔁 **Cloud execution substrate — corrected, was over-engineered.** The original
+  plan (firecracker/sek8s provisioner needing a Linux **KVM host**, #6200/CND-056)
+  was the wrong assumption: we run on **Cloudflare Workers**, which has native,
+  GA, no-host-to-stand-up primitives — **Browser Rendering** (managed Chrome via
+  `env.BROWSER` + Playwright/Puppeteer/CDP) for the browser, and **Sandbox SDK /
+  Containers** (`@cloudflare/sandbox` / `@cloudflare/containers`, DO-bound, up to
+  4GB+vCPU) for terminal/isolation. Verified against Cloudflare's full docs.
+  The firecracker direction (#6200) is **superseded**; the real substrate is
+  tracked in **#6205**. A local Docker container backend (#6186) covers it for now.
 - 🟡 **npm publish** — `@openagentsinc/qa-runner` is publish-ready but **not on
   npm**; external install is clone-build / local-tarball until an owner runs the
   one publish command.
