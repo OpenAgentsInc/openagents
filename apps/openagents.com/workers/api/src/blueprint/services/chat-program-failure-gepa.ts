@@ -151,18 +151,14 @@ export const emitGepaCandidateFeedback = (
   Effect.gen(function* () {
     // Fail closed: never derive feedback from a record with write authority.
     if (!blueprintProgramRunIsEvidenceOnly(input.programRun)) {
-      return yield* Effect.fail(
-        new GepaCandidateFeedbackError({
+      return yield* new GepaCandidateFeedbackError({
           reason: 'source program-run record is not evidence-only',
-        }),
-      )
+        })
     }
     if (input.findings.length === 0) {
-      return yield* Effect.fail(
-        new GepaCandidateFeedbackError({
+      return yield* new GepaCandidateFeedbackError({
           reason: 'no contradicted findings — failure learning never fabricates feedback',
-        }),
-      )
+        })
     }
 
     const items = input.findings.map(f => ({
