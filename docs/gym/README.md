@@ -6,15 +6,27 @@ environments + one interface so policies can be compared), it lets you configure
 Khala **policy** — coordinator candidate × provider fan-out × tool set ×
 plugin/module composition × sampling × quantization/speculation — run it against a
 registered **environment** (Terminal-Bench, `khala-code`, long-context QA, the M8
-head-to-head, …), and score it on the **executed verification verdict +
-cost-per-accepted-outcome**. The `/gym` web route is the knobs-and-dials surface
-in Foldkit + `@openagentsinc/three-effect`; paid runs ride the existing
-metering/settlement spine so people can pay to run benchmarks.
+head-to-head, ...), and score it on the **executed verification verdict +
+cost-per-accepted-outcome**. The public `/gym` web route is the Phase 0
+fixture-only knobs-and-dials surface in Foldkit + `@openagentsinc/three-effect`;
+the owner-gated `/gym/oss` surface is the GPT-OSS 20B latency playground for
+hammering the hourly Hydralisk L4 lane without exposing a public load generator.
+Future paid runs ride the existing metering/settlement spine so people can pay to
+run decision-grade benchmarks.
 
 It is **not** a new inference engine or metric vocabulary — it compiles down to
 the already-landed Khala benchmark harness, coordinator/`ModelRouter`,
 provider-adapter registry, verification-class registry, and the
 `openagents.khala.telemetry.v1` schema.
+
+## Status
+
+- Phase 0 public fixture Gym is landed and intentionally spend-free:
+  `#6164`, `#6165`, `#6166`, and the closeout epic `#6163`.
+- GPT-OSS owner/internal latency playground is landed at `/gym/oss`:
+  `#6167`. It is auth/owner-gated, capped at eight in-flight requests, streams
+  against `openagents/khala-oss-20b`, and keeps `not_measured` distinct from
+  fabricated zeroes.
 
 ## Contents
 
@@ -35,5 +47,5 @@ provider-adapter registry, verification-class registry, and the
 - [`../inference/khala-buildout-roadmap.md`](../inference/khala-buildout-roadmap.md)
   — the M0–M8 buildout the coordinator candidates come from.
 
-> Status: initial design spec, honest-scope. Not a product promise, served
-> capability, or public-claim copy.
+> Status: implementation-linked spec, honest-scope. Not a product promise,
+> served public capability, or public-claim copy.

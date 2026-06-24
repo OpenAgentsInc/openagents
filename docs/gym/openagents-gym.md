@@ -1,7 +1,8 @@
 # OpenAgents Gym — Spec & Roadmap
 
 > **Status:** Phase 0 backend core, public fixture UI, and illustrative
-> report/scene viewer landed (#6164, #6165, #6166). `GymExperiment`,
+> report/scene viewer landed and closed (#6163, #6164, #6165, #6166).
+> `GymExperiment`,
 > `compileGymExperiment`, and
 > `runGymFixtureExperiment` live in
 > `apps/openagents.com/workers/api/src/inference/gym/` and compile into the
@@ -12,6 +13,11 @@
 > fixture scene, and a public-safe report viewer that keeps `decisionGrade:
 > false`, drops `not_measured` samples from metric math, and renders null
 > cost-per-accepted-outcome as an explicit finding.
+> The owner/internal `/gym/oss` route is also landed (#6167) as the GPT-OSS 20B
+> latency playground: it is logged-in owner-gated, capped at eight in-flight
+> requests, streams against the neutral `openagents/khala-oss-20b` lane, reads
+> `openagents.khala.telemetry.v1`, and charts TTFT/TPS/ITL/wall-clock without a
+> per-call balance gate because that Hydralisk L4 lane is billed hourly.
 > The Gym is the interactive experimentation surface and **eval+reward factory**
 > that sits *on top of the
 > already-landed Khala benchmark harness*
@@ -95,8 +101,17 @@ A new logged-out **explainer + fixture demo** route, registered the same way
 Phase 0 adds `GymRoute()` and
 `apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` for the public
 fixture surface. It has no auth requirement, no provider calls, and no spend.
-The logged-in paid-run surface remains future work gated by auth, balance, and
-owner approval.
+The logged-in paid-run benchmark surface remains future work gated by auth,
+balance, and owner approval.
+
+The sibling `/gym/oss` route is a narrower owner/internal surface for the live
+GPT-OSS 20B hourly lane. It is not the Phase 0 public fixture demo and it is not
+a paid-lane benchmark runner. It exists to run real streaming samples against
+`openagents/khala-oss-20b`, reconcile server telemetry with client timing, and
+show P50/P90/P99/mean TTFT, perceived TPS, inter-token latency, wall-clock,
+completion tokens, aggregate throughput, and the 1->2->4->8 concurrency ramp.
+It stays auth/owner-gated and hard-capped at eight in-flight requests so the
+hourly lane can be exercised without exposing an unauthenticated load generator.
 
 **UI stack (owner mandate).** Structure in **Foldkit**; visualization in
 **`@openagentsinc/three-effect`** first (the same stack `khala-in-the-world.md`
@@ -271,7 +286,15 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   `compileGymExperiment` over the existing fixture lane seam. Output: a live
   fixture run scene + an illustrative report. *Success:* a visitor configures
   knobs, runs the bundled decision suite through the fixture seam, and reads a
-  labeled non-decision-grade report — entirely in-CI, no spend.
+  labeled non-decision-grade report — entirely in-CI, no spend. **Landed and
+  closed:** #6163, #6164, #6165, #6166.
+- **Owner/internal GPT-OSS latency playground.** `/gym/oss` is the focused
+  Hydralisk GPT-OSS 20B load/latency surface requested in #6167: prompt presets
+  plus custom prompt, sample count, concurrency dial, optional ramp, live
+  streaming execution, owner gate, hard in-flight cap, telemetry reconciliation,
+  `three-effect` throughput scene, result cards, aggregate table, and ramp chart.
+  This is not a public no-spend fixture route; it is an owner-gated operational
+  surface for the hourly lane. **Landed and closed:** #6167.
 - **Phase 1 — environments + policy matrix.** Register the first environments
   (Terminal-Bench adapter, `khala-code`, long-context QA, M8) with their verifiers
   and acceptance contracts; wire the full policy axis (provider fan-out modes,
