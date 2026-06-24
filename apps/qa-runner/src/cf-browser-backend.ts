@@ -29,12 +29,20 @@
 //   provision -> drive -> screenshot -> artifact-shape -> teardown lifecycle
 //   deterministically, with NO network and NO spend.
 //
-// NO NATIVE VIDEO (#6213 is the video-compose follow-up):
-//   Browser Rendering has no native video recording. The artifact BASIS here is
-//   per-step SCREENSHOTS (PNG) written into the run dir, plus result.json. A
-//   reviewer confirms the run from the screenshots + result; composing those
-//   frames into a playable video is the separate #6213 lane. `artifacts()` thus
-//   reports NO `videoPath` here — honestly, not a fake mp4.
+// NO NATIVE VIDEO -> SCREENCAST COMPOSE (#6213, implemented here):
+//   Browser Rendering has no native video recording. Instead this backend
+//   captures a SCREENCAST during the run — a steady cadence of page screenshots
+//   (a frame after each driven action) written as a frame sequence into a
+//   `frames/` subdir — and at flush composes those frames into a playable
+//   `session.mp4` with ffmpeg's image2 demuxer (the same fully-OSS ffmpeg path as
+//   the compose layer #6187). A CF-executed run then yields the SAME `video`
+//   artifact a local run does: `artifacts()` reports a `videoPath`.
+//
+//   HONEST FALLBACK (no fake video): when frames can't be captured, or ffmpeg is
+//   absent / fails, NO `videoPath` is reported and the per-step SCREENSHOTS (PNG)
+//   remain the artifact basis. We never emit an empty or placeholder mp4. Video
+//   capture is armed-by-env consistent with the backend itself (default ON when
+//   the backend is armed; disable with `QA_CF_BROWSER_VIDEO=0`).
 //
 // LIMITS we respect (verified against Cloudflare's docs):
 //   - concurrent browsers/account: ~3 (free) / ~120 (paid). A managed browser is
@@ -51,6 +59,12 @@ import { join } from "node:path";
 import type { AcquiredBrowser } from "@openagentsinc/probe-runtime";
 import type { ComputerUsePage, PlaywrightArtifacts, WaitForCondition } from "@openagentsinc/probe-runtime";
 import type { Backend, BackendSession } from "./backend";
+import {
+  CF_FRAMES_DIRNAME,
+  CF_SESSION_VIDEO_NAME,
+  composeFramesToMp4,
+  startCfScreencast,
+} from "./cf-browser-video";
 
 /** Default keep-alive (ms) passed to `launch` so a managed browser is not closed
  *  by the ~60s idle window mid-run. Conservative; a long run can raise it. */
@@ -142,6 +156,23 @@ export interface CfBrowserBackendOptions {
   readonly keepAliveMs?: number;
   /** Default per-action deadline (ms). */
   readonly defaultTimeoutMs?: number;
+  /**
+   * Capture a screencast and compose it into `session.mp4` (#6213). Defaults to
+   * reading `QA_CF_BROWSER_VIDEO` from `env` (default ON when the backend is
+   * armed; set "0"/"false" to disable). When off, the backend behaves as before
+   * (screenshots-only, no `videoPath`).
+   */
+  readonly captureVideo?: boolean;
+  /** Screencast frame rate the composed mp4 is encoded at (default 4 fps). */
+  readonly videoFps?: number;
+  /**
+   * Optional steady-cadence interval (ms) for screencast frames between actions.
+   * Omitted by default (frames are taken after each driven action, which is
+   * deterministic); a live run can set e.g. 250ms for a smoother video.
+   */
+  readonly screencastIntervalMs?: number;
+  /** ffmpeg binary used to compose frames (default "ffmpeg"). Tests can override. */
+  readonly ffmpegBin?: string;
 }
 
 /** True when the env arms the CF Browser Rendering backend. */
@@ -150,6 +181,19 @@ export function isCfBrowserBackendArmed(
 ): boolean {
   const v = env.QA_CF_BROWSER_BACKEND;
   return v === "1" || v === "true";
+}
+
+/**
+ * Whether to capture a screencast and compose `session.mp4` (#6213). Default ON:
+ * the natural artifact of a CF run is the same video a local run produces. Only
+ * an explicit `QA_CF_BROWSER_VIDEO=0`/`false` disables it (screenshots-only).
+ * Honest either way — video is never faked when frames can't be captured.
+ */
+export function isCfBrowserVideoArmed(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): boolean {
+  const v = env.QA_CF_BROWSER_VIDEO;
+  return v !== "0" && v !== "false";
 }
 
 /** Dynamic import of the real `@cloudflare/playwright` `launch`. Only called when
@@ -227,6 +271,44 @@ function pageFromCfPage(cfPage: CfPlaywrightPage, defaultTimeoutMs: number): Com
 }
 
 /**
+ * Wrap a `ComputerUsePage` so each state-changing/visual action (`navigate`,
+ * `click`, `type`, `waitFor`, `screenshot`) ALSO captures a screencast frame
+ * afterward. Pure reads (`url`, `readText`, `readDom`) are passed through
+ * unwrapped — they change nothing visible, so they need no frame. A frame
+ * capture never throws into the run (the screencast swallows screenshot errors),
+ * so instrumentation cannot turn a green run red.
+ */
+function instrumentComputerUsePage(
+  page: ComputerUsePage,
+  screencast: { captureFrame: () => Promise<boolean> },
+): ComputerUsePage {
+  return {
+    ...page,
+    navigate: async (url) => {
+      await page.navigate(url);
+      await screencast.captureFrame();
+    },
+    click: async (selector) => {
+      await page.click(selector);
+      await screencast.captureFrame();
+    },
+    type: async (selector, text) => {
+      await page.type(selector, text);
+      await screencast.captureFrame();
+    },
+    waitFor: async (condition, opts) => {
+      const met = await page.waitFor(condition, opts);
+      await screencast.captureFrame();
+      return met;
+    },
+    screenshot: async (path) => {
+      await page.screenshot(path);
+      await screencast.captureFrame();
+    },
+  };
+}
+
+/**
  * The Cloudflare Browser Rendering backend. Wired through the existing `Backend`
  * abstraction so the runner drives a managed Chrome with NO runner changes.
  * Owner-gated (armed) + honest about the binding (absent in CI). Acquires exactly
@@ -234,9 +316,11 @@ function pageFromCfPage(cfPage: CfPlaywrightPage, defaultTimeoutMs: number): Com
  * error), so a run never leaks one of the scarce concurrent-browser slots.
  *
  * Artifacts: per-step SCREENSHOTS (the artifact basis — Browser Rendering has no
- * native video) + result.json. `artifacts()` reports the trace-path slot for the
- * shared `PlaywrightArtifacts` contract but NO `videoPath` (full video compose is
- * the separate #6213 lane).
+ * native video) + result.json, PLUS a composed `session.mp4` from a captured
+ * screencast when video is armed (#6213). `artifacts()` reports the trace-path
+ * slot and, when the screencast composed an mp4, a `videoPath` — the SAME `video`
+ * artifact a local run yields. When frames can't be captured (or ffmpeg is
+ * absent/fails) it honestly reports NO `videoPath` and the screenshots stand.
  */
 export function cfBrowserBackend(options: CfBrowserBackendOptions = {}): Backend {
   const env = options.env ?? process.env;
@@ -244,6 +328,7 @@ export function cfBrowserBackend(options: CfBrowserBackendOptions = {}): Backend
   const launch = options.launch ?? defaultCfLaunch;
   const keepAliveMs = options.keepAliveMs ?? DEFAULT_CF_BROWSER_KEEP_ALIVE_MS;
   const defaultTimeoutMs = options.defaultTimeoutMs ?? 15_000;
+  const captureVideo = options.captureVideo ?? isCfBrowserVideoArmed(env);
 
   return {
     name: "cf-browser",
@@ -264,23 +349,72 @@ export function cfBrowserBackend(options: CfBrowserBackendOptions = {}): Backend
           const cfPage = await browser.newPage();
           const page = pageFromCfPage(cfPage, defaultTimeoutMs);
 
+          // SCREENCAST (#6213): when video is armed, capture a frame after each
+          // driven action so the run is filmed as a frame sequence; compose those
+          // frames into session.mp4 at flush. Frames live in a `frames/` subdir so
+          // the per-step `*.png` screenshots in `artifactDir` stay the untouched
+          // artifact basis (and the screenshots-only fallback is honest).
+          const framesDir = join(artifactDir, CF_FRAMES_DIRNAME);
+          const screencast = captureVideo
+            ? startCfScreencast({
+                page: cfPage,
+                framesDir,
+                ...(options.screencastIntervalMs !== undefined
+                  ? { intervalMs: options.screencastIntervalMs }
+                  : {}),
+              })
+            : undefined;
+
+          // The runner drives `page` (a ComputerUsePage). Wrap its action methods
+          // so each completed action leaves a screencast frame. An initial frame
+          // captures the about:blank start state. A frame capture never throws
+          // into the run (startCfScreencast swallows screenshot failures).
+          let drivenPage = page;
+          if (screencast !== undefined) {
+            await screencast.captureFrame();
+            drivenPage = instrumentComputerUsePage(page, screencast);
+          }
+
+          let artifactsValue: PlaywrightArtifacts = {
+            tracePath: join(artifactDir, "trace.zip"),
+          };
+
           let flushed = false;
           const flush = async (): Promise<void> => {
             if (flushed) return;
             flushed = true;
+            if (screencast !== undefined) {
+              // One last frame on the final state, then compose. Compose returns
+              // null on no-frames / ffmpeg-absent / non-zero exit -> screenshots
+              // stand (honest, never a fake mp4).
+              await screencast.captureFrame();
+              await screencast.stop();
+              const composed = await composeFramesToMp4(
+                framesDir,
+                join(artifactDir, CF_SESSION_VIDEO_NAME),
+                {
+                  ...(options.videoFps !== undefined ? { fps: options.videoFps } : {}),
+                  ...(options.ffmpegBin !== undefined ? { ffmpegBin: options.ffmpegBin } : {}),
+                },
+              );
+              if (composed !== null) {
+                artifactsValue = {
+                  tracePath: join(artifactDir, "trace.zip"),
+                  videoPath: composed.videoPath,
+                  videoFormat: composed.videoFormat,
+                };
+              }
+            }
             // ALWAYS close the managed browser so the concurrent slot is freed.
             await browser.close().catch(() => undefined);
           };
 
-          // No native video; the trace slot is reported for contract shape but
-          // the file is not produced by Browser Rendering. Screenshots are the
-          // artifact basis and are written to `artifactDir` per step by the
-          // runner's screenshot action.
-          const artifacts = (): PlaywrightArtifacts => ({
-            tracePath: join(artifactDir, "trace.zip"),
-          });
+          // The trace slot is reported for contract shape but the file is not
+          // produced by Browser Rendering. `videoPath` is set above only when the
+          // screencast actually composed an mp4.
+          const artifacts = (): PlaywrightArtifacts => artifactsValue;
 
-          return { page, flush, artifacts };
+          return { page: drivenPage, flush, artifacts };
         },
         teardown: async () => undefined,
       };

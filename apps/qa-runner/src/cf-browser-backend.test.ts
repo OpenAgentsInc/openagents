@@ -144,6 +144,11 @@ describe("cfBrowserBackend run (fake env.BROWSER, deterministic)", () => {
     const backend = cfBrowserBackend({
       armed: true,
       browser: fakeBinding,
+      // This test pins the provision->drive->screenshot->teardown lifecycle and
+      // the screenshots artifact basis; the screencast->mp4 video path (#6213)
+      // is exercised by cf-browser-video.test.ts. Keep video OFF here so the
+      // assertion is deterministic regardless of whether ffmpeg is installed.
+      captureVideo: false,
       launch: makeFakeCfLaunch({
         text: { "/welcome": "Welcome to OpenAgents" },
         onLaunch: (b) => {
@@ -176,7 +181,7 @@ describe("cfBrowserBackend run (fake env.BROWSER, deterministic)", () => {
     const onDisk = decodeQaRunResult(JSON.parse(readFileSync(outcome.resultPath, "utf8")));
     expect(onDisk.status).toBe("pass");
     expect(onDisk.backend).toBe("cf-browser");
-    // No native video on Browser Rendering -> no video artifact (honest, #6213).
+    // Video capture is OFF for this lifecycle test -> no video artifact.
     expect(onDisk.artifacts.video).toBeUndefined();
 
     // Screenshots are the artifact basis: at least one PNG was written.
