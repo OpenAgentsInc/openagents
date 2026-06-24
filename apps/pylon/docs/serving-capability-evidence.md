@@ -374,3 +374,21 @@ The projection distinguishes:
 This is not the Conductor implementation or a training launcher. It does not run
 GRPO, serve a 7B model, dispatch workers, spend sats, or publish the benchmark
 claim.
+
+`apps/pylon/src/khala-m7-conductor-composition.ts` adds the companion public
+composition-proof projection `openagents.khala.m7.conductor_composition_proof.v0.1`.
+It replaces the old "bare composition ref" shape with a structural proof:
+
+- the planner evidence must name the executed GRPO/DPPO run, FP32 LM head, and
+  zero-std filtering recipe;
+- the topology must include the crossy-road plan -> implement -> verify -> refine
+  chain, worker ids, and access lists for the selected frontier, open Pylon,
+  verifier, and optional Tassadar/module workers;
+- the M2 crossy-road verdict must be accepted, the Verse fan-out must be visible,
+  and the composition cost must be lower than the single-model baseline at
+  comparable quality.
+
+When that proof is publishable, the M7 preflight can derive
+`compositionProofRef`, `crossyRoadCompositionRef`, and `verseFanoutRef` from the
+proof. If the proof is missing, unsafe, equal-or-higher cost, unverifiable, or
+topologically invalid, the preflight still fails closed.

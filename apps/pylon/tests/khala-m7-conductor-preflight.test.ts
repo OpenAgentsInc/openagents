@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { proveKhalaM7ConductorComposition } from "../src/khala-m7-conductor-composition"
 import { preflightKhalaM7Conductor } from "../src/khala-m7-conductor-preflight"
 import type { KhalaM6ShadowPreflightProjection } from "../src/khala-m6-shadow-preflight"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -86,6 +87,99 @@ describe("Khala M7 Conductor readiness preflight", () => {
     expect(preflight.blockerRefs).toEqual([])
     expect(preflight.evidenceRefs).toContain("run.psionic.m7.grpo.conductor.v1")
     expect(preflight.evidenceRefs).toContain("receipt.khala.m7.crossy_road_composition.v1")
+    assertPublicProjectionSafe(preflight)
+  })
+
+  test("can publish the M7 claim from a structured composition proof", () => {
+    const compositionProof = proveKhalaM7ConductorComposition({
+      observedAt,
+      compositionRunRef: "run.openagents.khala.m7.crossy_road.composition.v1",
+      policyBackendRef: "backend.psionic.m7.conductor_7b.fp32_head.v1",
+      trainingRunRef: "run.psionic.m7.grpo.conductor.crossy_road.v1",
+      trainingRunExecuted: true,
+      trainerConfigRef: "config.psionic.m7.tmax_table13.dppo_fp32_lm_head.v1",
+      plannerAlgorithm: "grpo_dppo",
+      fp32LmHead: true,
+      zeroStdFiltered: true,
+      workerPoolRefs: [
+        "worker.khala.m7.frontier_gateway.planner.v1",
+        "worker.pylon.open.khala_code_writer.v1",
+        "worker.khala.m2.crossy_road_verifier.v1",
+      ],
+      topology: [
+        {
+          stepRef: "step.khala.m7.crossy_road.plan.v1",
+          role: "plan",
+          workerId: "worker.khala.m7.frontier_gateway.planner.v1",
+          workerKind: "frontier_gateway",
+          dependsOn: [],
+          accessList: [
+            "worker.khala.m7.frontier_gateway.planner.v1",
+            "worker.pylon.open.khala_code_writer.v1",
+            "worker.khala.m2.crossy_road_verifier.v1",
+          ],
+        },
+        {
+          stepRef: "step.khala.m7.crossy_road.implement.v1",
+          role: "implement",
+          workerId: "worker.pylon.open.khala_code_writer.v1",
+          workerKind: "open_pylon",
+          dependsOn: ["step.khala.m7.crossy_road.plan.v1"],
+          accessList: ["worker.pylon.open.khala_code_writer.v1"],
+          artifactRef: "artifact.khala.m7.crossy_road.single_html.v1",
+        },
+        {
+          stepRef: "step.khala.m7.crossy_road.verify.v1",
+          role: "verify",
+          workerId: "worker.khala.m2.crossy_road_verifier.v1",
+          workerKind: "verifier",
+          dependsOn: ["step.khala.m7.crossy_road.implement.v1"],
+          accessList: ["worker.khala.m2.crossy_road_verifier.v1"],
+          verdictRef: "verdict.khala.m2.crossy_road.accepted.v1",
+        },
+        {
+          stepRef: "step.khala.m7.crossy_road.refine.v1",
+          role: "refine",
+          workerId: "worker.pylon.open.khala_code_writer.v1",
+          workerKind: "open_pylon",
+          dependsOn: ["step.khala.m7.crossy_road.verify.v1"],
+          accessList: ["worker.pylon.open.khala_code_writer.v1", "worker.khala.m2.crossy_road_verifier.v1"],
+          artifactRef: "artifact.khala.m7.crossy_road.refined_single_html.v1",
+        },
+      ],
+      verdictRef: "verdict.khala.m2.crossy_road.accepted.v1",
+      rubricRef: "rubric.khala.m2.crossy_road.v1",
+      verdictAccepted: true,
+      verseFanoutRef: "verse.khala.m7.crossy_road.multi_worker_fanout.v1",
+      fanoutVisible: true,
+      compositionCostMsats: 4_200,
+      singleModelBaselineCostMsats: 9_400,
+      qualityComparable: true,
+      publicationRef: "publication.khala.m7.conductor_crossy_road.v1",
+    })
+    const preflight = preflightKhalaM7Conductor({
+      observedAt,
+      ownerConfirmed: true,
+      ownerApprovalRef: "approval.owner.khala_m7.conductor_training.v1",
+      dailySpendCapMsats: 10_000_000,
+      plannedTrainingSpendMsats: 9_000_000,
+      m6ShadowPreflight: publishableM6Preflight(),
+      policyBackendRef: "backend.psionic.m7.conductor_7b.fp32_head.v1",
+      policyBackendWired: true,
+      trainingRunRef: "run.psionic.m7.grpo.conductor.crossy_road.v1",
+      trainingRunExecuted: true,
+      paidVerdictSourceRef: "verdict.khala.m7.paid_source.v1",
+      paidVerdictSourceArmed: true,
+      compositionProof,
+      publicationRef: "publication.khala.m7.conductor_crossy_road.v1",
+    })
+
+    expect(compositionProof.canPublishCompositionProof).toBe(true)
+    expect(preflight.canPublishM7Claim).toBe(true)
+    expect(preflight.blockerRefs).toEqual([])
+    expect(preflight.compositionProofRef).toBe(compositionProof.compositionProofRef)
+    expect(preflight.verseFanoutRef).toBe("verse.khala.m7.crossy_road.multi_worker_fanout.v1")
+    expect(preflight.crossyRoadCompositionRef).toBe(compositionProof.compositionProofRef)
     assertPublicProjectionSafe(preflight)
   })
 

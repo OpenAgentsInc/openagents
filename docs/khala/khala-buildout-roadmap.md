@@ -694,6 +694,16 @@ preflight is enough to start the owner-capped Conductor run; the public M7 claim
 still requires the executed GRPO run plus verified composition/publication
 evidence.
 
+Closeout proof shape: `apps/pylon/src/khala-m7-conductor-composition.ts` now
+defines `openagents.khala.m7.conductor_composition_proof.v0.1`, a public-safe
+structural proof for the crossy-road composition run. It checks the executed
+TMAX-style GRPO/DPPO planner recipe (FP32 LM head and zero-std filtering), the
+plan -> implement -> verify -> refine topology with worker ids and access lists,
+the accepted M2 rubric verdict, visible Verse fan-out, and lower composition
+cost than a single-model baseline at comparable quality. The M7 preflight can
+derive its composition and Verse refs from this proof, and otherwise fails
+closed.
+
 **M8 — The head-to-head demo (north-star).** _(all)_
 Run the crossy-road prompt through `openagents/khala` vs a frontier baseline,
 side by side: report tokens, $, time, **cost-per-accepted-outcome**,

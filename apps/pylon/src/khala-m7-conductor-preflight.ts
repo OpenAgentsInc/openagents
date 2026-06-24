@@ -1,4 +1,5 @@
 import { assertPublicProjectionSafe } from "./state.js"
+import type { KhalaM7ConductorCompositionProjection } from "./khala-m7-conductor-composition.js"
 import type { KhalaM6ShadowPreflightProjection } from "./khala-m6-shadow-preflight.js"
 
 export const KHALA_M7_CONDUCTOR_PREFLIGHT_SCHEMA =
@@ -36,6 +37,7 @@ export type KhalaM7ConductorPreflightProjection = {
   paidVerdictSourceRef: string | null
   verseFanoutRef: string | null
   crossyRoadCompositionRef: string | null
+  compositionProofRef: string | null
   publicationRef: string | null
   evidenceRefs: string[]
   blockerRefs: KhalaM7ConductorPreflightBlockerRef[]
@@ -69,6 +71,7 @@ export function preflightKhalaM7Conductor(input: {
   trainingRunExecuted?: boolean
   paidVerdictSourceRef?: string | null
   paidVerdictSourceArmed?: boolean
+  compositionProof?: KhalaM7ConductorCompositionProjection | null
   verseFanoutRef?: string | null
   crossyRoadCompositionRef?: string | null
   crossyRoadCompositionVerified?: boolean
@@ -89,10 +92,19 @@ export function preflightKhalaM7Conductor(input: {
     policyBackendRef,
     trainingRunRef,
     paidVerdictSourceRef,
-    verseFanoutRef,
-    crossyRoadCompositionRef,
+    inputVerseFanoutRef,
+    inputCrossyRoadCompositionRef,
     publicationRef,
   ] = rawRefs.map((ref) => (ref !== null && isSafeRef(ref) ? ref : null))
+  const compositionProof =
+    input.compositionProof?.canPublishCompositionProof === true ? input.compositionProof : null
+  const verseFanoutRef = inputVerseFanoutRef ?? compositionProof?.verseFanoutRef ?? null
+  const crossyRoadCompositionRef =
+    inputCrossyRoadCompositionRef ?? compositionProof?.compositionProofRef ?? null
+  const compositionProofRef = compositionProof?.compositionProofRef ?? null
+  const crossyRoadCompositionVerified =
+    input.crossyRoadCompositionVerified === true ||
+    input.compositionProof?.canPublishCompositionProof === true
   const dailySpendCapMsats =
     typeof input.dailySpendCapMsats === "number" && Number.isFinite(input.dailySpendCapMsats)
       ? Math.trunc(input.dailySpendCapMsats)
@@ -142,7 +154,7 @@ export function preflightKhalaM7Conductor(input: {
   if (verseFanoutRef === null) {
     blockerRefs.add("blocker.khala.m7.conductor_preflight.verse_fanout_missing")
   }
-  if (crossyRoadCompositionRef === null || input.crossyRoadCompositionVerified !== true) {
+  if (crossyRoadCompositionRef === null || crossyRoadCompositionVerified !== true) {
     blockerRefs.add("blocker.khala.m7.conductor_preflight.crossy_road_composition_missing")
   }
   if (publicationRef === null) {
@@ -158,8 +170,10 @@ export function preflightKhalaM7Conductor(input: {
     paidVerdictSourceRef,
     verseFanoutRef,
     crossyRoadCompositionRef,
+    compositionProofRef,
     publicationRef,
     ...(input.m6ShadowPreflight?.evidenceRefs ?? []),
+    ...(input.compositionProof?.evidenceRefs ?? []),
   ]
   if (
     rawRefs.some((ref) => ref !== null && !isSafeRef(ref)) ||
@@ -193,6 +207,7 @@ export function preflightKhalaM7Conductor(input: {
     paidVerdictSourceRef,
     verseFanoutRef,
     crossyRoadCompositionRef,
+    compositionProofRef,
     publicationRef,
     evidenceRefs: uniqueRefs(allRefs),
     blockerRefs: [...blockerRefs].sort(),
