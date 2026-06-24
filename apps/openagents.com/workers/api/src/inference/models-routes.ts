@@ -26,8 +26,10 @@ import {
   toOpenAiModelsResponse,
 } from './model-catalog'
 import {
+  filterPublicCatalog,
   filterServableCatalog,
   isModelServable,
+  isPublicModelId,
   type SupplyLaneArming,
 } from './model-serving-policy'
 
@@ -68,7 +70,7 @@ export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
     }
 
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
-    const fullCatalog = buildModelCatalog(deps.margin)
+    const fullCatalog = filterPublicCatalog(buildModelCatalog(deps.margin))
     // PROVIDER POLICY: when the worker supplies lane arming, advertise only the
     // models whose supply lane is actually servable right now; otherwise list
     // the full catalog (prior behaviour).
@@ -113,6 +115,7 @@ export const handleModelRetrieve = (
     // so the retrieve surface never confirms a model the gateway cannot serve.
     const servable =
       entry !== undefined &&
+      isPublicModelId(entry.id) &&
       (deps.laneArming === undefined || isModelServable(entry, deps.laneArming))
     if (entry === undefined || !servable) {
       // OpenAI's standard 404 retrieve error shape; clients key off
@@ -157,10 +160,13 @@ export const routeModelRetrieveRequest = (
   if (!pathname.startsWith(prefix)) {
     return undefined
   }
-  const modelId = decodeURIComponent(pathname.slice(prefix.length))
-  // A trailing-slash-only or nested path is not a valid model id.
-  if (modelId === '' || modelId.includes('/')) {
+  const encodedModelId = pathname.slice(prefix.length)
+  // A trailing-slash-only or real nested path is not a valid model id. Encoded
+  // slashes are allowed so namespaced OpenAI-compatible ids like
+  // `openagents/khala` work as `/v1/models/openagents%2Fkhala`.
+  if (encodedModelId === '' || encodedModelId.includes('/')) {
     return undefined
   }
+  const modelId = decodeURIComponent(encodedModelId)
   return handleModelRetrieve(request, modelId, deps)
 }

@@ -38,11 +38,14 @@
 import { Effect } from 'effect'
 
 import {
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   blendedCostPerMtok,
+  KHALA_MODEL_ID,
   KHALA_PYLON_MINI_MODEL_ID,
   lookupModel,
   MODEL_PRICING_TABLE,
+  normalizeKhalaModelId,
   type SupplyLane,
 } from './pricing'
 import {
@@ -62,6 +65,8 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
+export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID =
+  'hydralisk-vllm-gpt-oss-120b'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
 // The OpenAgents serving-fabric lane (#5483). Maps to the network adapter id.
@@ -177,16 +182,17 @@ const isOpenModel = (model: string): boolean => {
 }
 
 export const classifyModel = (model: string): ModelClass => {
-  if (isClaudeModel(model)) {
+  const normalizedModel = normalizeKhalaModelId(model)
+  if (isClaudeModel(normalizedModel)) {
     return 'claude'
   }
-  if (isGeminiModel(model)) {
+  if (isGeminiModel(normalizedModel)) {
     return 'gemini'
   }
-  if (isOpenModel(model)) {
+  if (isOpenModel(normalizedModel)) {
     return 'open'
   }
-  const priced = lookupModel(model)
+  const priced = lookupModel(normalizedModel)
   if (priced !== undefined) {
     return classForPricedLane(priced.lane)
   }
@@ -240,13 +246,20 @@ const LANE_PLAN_BY_CLASS: Readonly<
 // Resolve a requested model to its ORDERED list of candidate adapter ids
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
-  if (model.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
+  const normalizedModel = normalizeKhalaModelId(model)
+  if (normalizedModel === KHALA_MODEL_ID) {
+    return [HYDRALISK_GPT_OSS_120B_ADAPTER_ID, HYDRALISK_ADAPTER_ID]
+  }
+  if (normalizedModel === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]
   }
-  if (model.trim().toLowerCase() === KHALA_PYLON_MINI_MODEL_ID) {
+  if (normalizedModel === HYDRALISK_GPT_OSS_120B_MODEL_ID) {
+    return [HYDRALISK_GPT_OSS_120B_ADAPTER_ID]
+  }
+  if (normalizedModel === KHALA_PYLON_MINI_MODEL_ID) {
     return [OPENAGENTS_NETWORK_ADAPTER_ID]
   }
-  const plan = LANE_PLAN_BY_CLASS[classifyModel(model)]
+  const plan = LANE_PLAN_BY_CLASS[classifyModel(normalizedModel)]
   return plan.flatMap(lane => LANE_ADAPTER_IDS[lane])
 }
 

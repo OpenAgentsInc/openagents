@@ -4,9 +4,9 @@ Date: 2026-06-23
 
 Status: live day-zero serving lane. Hydralisk now has a standalone repo, a live
 GCE L4/vLLM host for GPT-OSS 20B, public-safe capabilities/receipts, and
-OpenAgents Worker routing/config hooks for `openai/gpt-oss-20b`. This is still
-an internal dogfood lane for Khala traffic, not a broad product promise for
-every GPT-OSS workload.
+OpenAgents Worker routing/config hooks for GPT-OSS supply behind Khala. This is
+still an internal dogfood lane for Khala traffic, not a broad product promise
+for every GPT-OSS workload or a public raw-model selector.
 
 Scope: define **Hydralisk** as the Python/NVIDIA inference lane for OpenAgents:
 the stack we use when the right move is to stay in conventional Python ML
@@ -75,27 +75,31 @@ The public-safe receipts observed on the host:
 - `hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`: streaming,
   195 total tokens, 77 ms TTFT, 2050 ms wall time.
 
-The current OpenAgents production path was deployed after the host smoke and
-the 2026-06-24 model-id correction:
+The current OpenAgents production path was first deployed after the host smoke
+and then corrected again by the 2026-06-24 Khala slug policy:
 
 - Worker: `openagents-autopilot`
 - OpenAgents commit: `009924bac5`
 - Worker version: `b5c74b67-32a9-4865-a28e-83a878d0b81b`
 - Smoke script: `apps/openagents.com/scripts/gpt-oss20b-production-smoke.mjs`
-- Smoke model: `openai/gpt-oss-20b`
-- Served model: `openai/gpt-oss-20b`
+- Historical smoke model: `openai/gpt-oss-20b`
+- Current external model: `openagents/khala`
+- Current internal ecosystem slug: `khala`
+- Hydralisk upstream model: `openai/gpt-oss-20b`
 - Worker disclosure: `hydralisk-vllm`
 - Supply-lane disclosure: `hydralisk`
 - Completion response id: `chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`
 - Public receipt:
   `receipt.inference.charge.chatcmpl_8434ec68f53249658d9f0d1f6bba1cba`
 
-The production smoke passed readiness, model-catalog, authenticated
+The original production smoke passed readiness, model-catalog, authenticated
 non-streaming completion, streaming completion, usage/disclosure blocks, and the
-infrastructure-leak guard. A live `/v1/models` check confirmed
-`openai/gpt-oss-20b` is advertised and `openagents/khala-oss-20b` is not. The
-public receipt endpoint dereferenced the receipt above. The earlier promotion
-also separately confirmed that an unfunded agent token receives
+infrastructure-leak guard. It proved the Hydralisk L4 lane could serve GPT-OSS
+20B through the Worker. The current public model policy supersedes the raw-id
+catalog behavior: `/v1/models` and MPP expose only `openagents/khala`, while
+the Worker sends `openai/gpt-oss-20b` only as the upstream model value to
+Hydralisk. The public receipt endpoint dereferenced the receipt above. The
+earlier promotion also separately confirmed that an unfunded agent token receives
 `402 insufficient_credits` before provider dispatch, so the balance gate remains
 active while the Hydralisk lane is armed.
 
@@ -133,9 +137,10 @@ OpenAgents Worker work now defines the product-facing lane:
 
 - adapter id: `hydralisk-vllm`
 - supply lane: `hydralisk`
-- public model id: `openai/gpt-oss-20b`
+- external model id: `openagents/khala`
+- internal ecosystem slug: `khala`
 - upstream model: `openai/gpt-oss-20b`
-- direct `gpt-oss-20b`: still Fireworks-first for day zero
+- raw `openai/gpt-oss-20b`: internal Hydralisk supply only, not public/Mpp-payable
 
 The Worker arms Hydralisk only when all of these are present:
 
@@ -147,17 +152,17 @@ HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=<public-safe preflight ref>
 HYDRALISK_GPT_OSS_20B_RECEIPT_REF=<public-safe receipt ref>
 ```
 
-When unarmed, `/v1/models` hides `openai/gpt-oss-20b` and
-`/v1/chat/completions` returns `model_unavailable` for the requested model before
-balance, premium, or provider dispatch. When armed, the route discloses
+When unarmed, `/v1/models` hides `openagents/khala` and
+`/v1/chat/completions` returns `model_unavailable` for the requested Khala model
+before balance, premium, or provider dispatch. When armed, the route discloses
 `openagents.worker: hydralisk-vllm` and the additive
 `openagents.supply_lane: hydralisk`; the legacy `openagents.lane` remains the
 model class (`open`) for backward compatibility.
 
-2026-06-24 slug correction: the live GPT-OSS 20B lane is exposed as the raw
-upstream model id, `openai/gpt-oss-20b`. `openagents/khala-*` ids are reserved
-for models or coordinators that actually add Khala-specific behavior, such as
-Blueprint-backed orchestration or identity semantics.
+2026-06-24 slug correction, final form: within the OpenAgents ecosystem the
+model slug is `khala`; externally it is `openagents/khala`. The live GPT-OSS 20B
+lane remains the Hydralisk upstream `openai/gpt-oss-20b`, but that raw id is no
+longer public, no longer listed, and no longer MPP-payable.
 
 The previous blocker was live host promotion. It is now cleared by the
 2026-06-24 L4 deployment above; the Psion L4 hosts were not reclaimed.
@@ -166,6 +171,55 @@ The important boundary is simple: Hydralisk can own Python serving mechanics and
 model/runtime evidence, but OpenAgents/Khala keeps pricing, credits, payout,
 referral, customer routing, and public product promises. Hydralisk receipts
 should be consumed by the product layer, not become a second product authority.
+
+## 2026-06-24 GPT-OSS 120B gate update
+
+OpenAgents Worker support for GPT-OSS 120B is now defined as a separate internal
+Hydralisk backing lane for Khala, and the first high-memory host smoke has
+passed. The route plan, model-catalog filtering, public quote gate, MPP raw-id
+refusal, and tests are in place. The live 20B/L4 host still cannot arm 120B;
+120B requires its own high-memory origin and evidence refs.
+
+The 120B lane uses a distinct adapter id and transport:
+
+- external model id: `openagents/khala`
+- internal ecosystem slug: `khala`
+- upstream model id: `openai/gpt-oss-120b`
+- adapter id: `hydralisk-vllm-gpt-oss-120b`
+- supply lane: `hydralisk`
+- required host class: H100/H200/B200/G4-class high-memory GPU, not the L4 host
+
+First host evidence, 2026-06-24:
+
+- project/zone: `openagentsgemini`, `us-central1-b`
+- instance: `hydralisk-gptoss120b-h100-probe-20260623210841`
+- machine/GPU: `a3-highgpu-1g`, one NVIDIA H100 80GB HBM3
+- engine: vLLM `0.23.0`, `openai/gpt-oss-120b`, MXFP4, `max_model_len=32768`
+- startup evidence: vLLM loaded the model in 64.67 GiB GPU memory, completed
+  torch compile, warmup, FlashInfer autotuning, and exposed `/v1/models`
+- Hydralisk smoke: bearer-protected `/v1/chat/completions` returned `200` with
+  visible content `READY_120B`
+- public-safe run ref: `hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11`
+
+The Worker arms 120B only when all of these are present:
+
+```text
+HYDRALISK_GPT_OSS_120B_ENABLED=ready
+HYDRALISK_GPT_OSS_120B_BASE_URL=<worker secret>
+HYDRALISK_GPT_OSS_120B_BEARER_TOKEN=<worker secret>
+HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF=<public-safe preflight ref>
+HYDRALISK_GPT_OSS_120B_RECEIPT_REF=<public-safe receipt ref>
+```
+
+This is model-specific arming, not lane-only arming. If only the 20B env is
+ready, `/v1/models` can still advertise `openagents/khala` backed by the 20B
+lane while the 120B adapter remains unavailable as an internal fallback. Public
+`/v1/chat/completions`, `/v1/quote`, and `/mpp/v1/chat/completions` reject raw
+`openai/gpt-oss-120b` before balance checks, payment challenges, or provider
+dispatch. That prevents the L4 dogfood lane from becoming an accidental product
+claim for a model it cannot fit. Once the Worker has the H100 host URL, token,
+and the evidence refs above, 120B can back `openagents/khala`; it still does not
+become a public raw-model id.
 
 ## Why Hydralisk exists
 

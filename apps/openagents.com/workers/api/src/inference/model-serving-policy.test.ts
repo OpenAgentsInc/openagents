@@ -6,13 +6,19 @@ import {
   filterServableCatalog,
   isLaneArmed,
   isModelServable,
+  resolveHydraliskGptOss120bArming,
   resolveHydraliskGptOss20bArming,
   resolveOpenAgentsNetworkGatewayArming,
   resolveNamedModelServability,
   resolveSupplyLaneArming,
   type SupplyLaneArming,
 } from './model-serving-policy'
-import type { SupplyLane } from './pricing'
+import {
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MODEL_ID,
+  type SupplyLane,
+} from './pricing'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
@@ -30,6 +36,16 @@ const HYDRALISK_READY_ENV = {
     'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+} as const
+
+const HYDRALISK_120B_READY_ENV = {
+  HYDRALISK_GPT_OSS_120B_BASE_URL: 'https://hydralisk-gpt-oss-120b.example.test',
+  HYDRALISK_GPT_OSS_120B_BEARER_TOKEN: 'secret-hydralisk-120b-token',
+  HYDRALISK_GPT_OSS_120B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_120b.h100.v1',
+  HYDRALISK_GPT_OSS_120B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_120b.h100.smoke.v1',
 } as const
 
 const OPENAGENTS_NETWORK_READY_ENV = {
@@ -70,8 +86,20 @@ describe('resolveSupplyLaneArming', () => {
   it('arms Hydralisk only from ready flag, transport presence, and public-safe refs', () => {
     const arming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
     expect(arming.hydralisk).toBe(true)
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID]).toBe(true)
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID]).toBe(
+      false,
+    )
     expect(arming.fireworks).toBe(false)
     expect(arming['openagents-network']).toBe(false)
+  })
+
+  it('arms GPT-OSS 120B Hydralisk independently from the 20B L4 lane', () => {
+    const arming = resolveSupplyLaneArming(HYDRALISK_120B_READY_ENV)
+    expect(arming.hydralisk).toBe(true)
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID]).toBe(true)
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID]).toBe(false)
+    expect(arming.fireworks).toBe(false)
   })
 
   it('treats a blank/whitespace credential as absent', () => {
@@ -227,6 +255,31 @@ describe('resolveHydraliskGptOss20bArming', () => {
   })
 })
 
+describe('resolveHydraliskGptOss120bArming', () => {
+  it('fails closed with typed blockers when high-memory route evidence is absent', () => {
+    const arming = resolveHydraliskGptOss120bArming({})
+    expect(arming.armed).toBe(false)
+    expect(arming.evidenceRefs).toEqual([])
+    expect(arming.blockerRefs).toEqual([
+      'blocker.hydralisk_gpt_oss_120b.route_not_ready',
+      'blocker.hydralisk_gpt_oss_120b.base_url_missing',
+      'blocker.hydralisk_gpt_oss_120b.bearer_missing',
+      'blocker.hydralisk_gpt_oss_120b.preflight_ref_missing',
+      'blocker.hydralisk_gpt_oss_120b.receipt_ref_missing',
+    ])
+  })
+
+  it('returns only public-safe refs when the high-memory lane evidence is complete', () => {
+    const arming = resolveHydraliskGptOss120bArming(HYDRALISK_120B_READY_ENV)
+    expect(arming.armed).toBe(true)
+    expect(arming.blockerRefs).toEqual([])
+    expect(arming.evidenceRefs).toEqual([
+      'preflight.hydralisk.gpt_oss_120b.h100.v1',
+      'receipt.hydralisk.gpt_oss_120b.h100.smoke.v1',
+    ])
+  })
+})
+
 describe('isLaneArmed / isModelServable', () => {
   const lanes: ReadonlyArray<SupplyLane> = [
     'fireworks',
@@ -243,83 +296,112 @@ describe('isLaneArmed / isModelServable', () => {
     }
   })
 
-  it('a model is servable iff its lane is armed', () => {
-    const gemini = buildModelCatalog().find(
-      e => e.lane === 'vertex-gemini',
-    )!
-    expect(isModelServable(gemini, ALL_ARMED)).toBe(true)
-    expect(isModelServable(gemini, ALL_LANES_UNARMED)).toBe(false)
+  it('only the single public Khala model is servable when its backing lane is armed', () => {
+    const catalog = buildModelCatalog()
+    const khala = catalog.find(e => e.id === KHALA_MODEL_ID)!
+    const gemini = catalog.find(e => e.id === 'gemini-3.5-flash')!
+    expect(isModelServable(khala, ALL_ARMED)).toBe(true)
+    expect(isModelServable(khala, ALL_LANES_UNARMED)).toBe(false)
+    expect(isModelServable(gemini, ALL_ARMED)).toBe(false)
     expect(
       isModelServable(gemini, resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' })),
-    ).toBe(true)
+    ).toBe(false)
     expect(
       isModelServable(gemini, resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' })),
     ).toBe(false)
+  })
+
+  it('does not publish raw Hydralisk model ids even when their lanes are armed', () => {
+    const catalog = buildModelCatalog()
+    const twentyB = catalog.find(e => e.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)!
+    const oneTwentyB = catalog.find(
+      e => e.id === HYDRALISK_GPT_OSS_120B_MODEL_ID,
+    )!
+    const twentyBArming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
+    expect(isModelServable(twentyB, twentyBArming)).toBe(false)
+    expect(isModelServable(oneTwentyB, twentyBArming)).toBe(false)
   })
 })
 
 describe('filterServableCatalog', () => {
   const catalog = buildModelCatalog()
 
-  it('is the identity filter when every lane is armed', () => {
-    expect(filterServableCatalog(catalog, ALL_ARMED)).toEqual(catalog)
+  it('keeps only the single public model when every backing lane is armed', () => {
+    expect(filterServableCatalog(catalog, ALL_ARMED).map(entry => entry.id)).toEqual([
+      KHALA_MODEL_ID,
+    ])
   })
 
   it('is empty when no lane is armed', () => {
     expect(filterServableCatalog(catalog, ALL_LANES_UNARMED)).toEqual([])
   })
 
-  it('keeps only Vertex models when only VERTEX_SA_KEY is present', () => {
+  it('keeps no public model when only VERTEX_SA_KEY is present', () => {
     const armed = resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' })
     const filtered = filterServableCatalog(catalog, armed)
-    expect(filtered.length).toBeGreaterThan(0)
-    expect(
-      filtered.every(
-        e => e.lane === 'vertex-gemini' || e.lane === 'vertex-anthropic',
-      ),
-    ).toBe(true)
-    // The Vertex Gemini lane (the api.hosted_gemini.v1 model) is published.
-    expect(filtered.some(e => e.lane === 'vertex-gemini')).toBe(true)
+    expect(filtered).toEqual([])
   })
 
-  it('keeps only Fireworks models when only FIREWORKS_API_KEY is present', () => {
+  it('keeps no public model when only FIREWORKS_API_KEY is present', () => {
     const armed = resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' })
     const filtered = filterServableCatalog(catalog, armed)
-    expect(filtered.length).toBeGreaterThan(0)
-    expect(filtered.every(e => e.lane === 'fireworks')).toBe(true)
+    expect(filtered).toEqual([])
   })
 
-  it('preserves catalog order', () => {
+  it('preserves public catalog order', () => {
     const filtered = filterServableCatalog(catalog, ALL_ARMED)
-    expect(filtered.map(e => e.id)).toEqual(catalog.map(e => e.id))
+    expect(filtered.map(e => e.id)).toEqual([KHALA_MODEL_ID])
   })
 })
 
 describe('resolveNamedModelServability', () => {
-  it('returns true for a known model on an armed lane', () => {
-    expect(resolveNamedModelServability('gemini-3.5-flash', ALL_ARMED)).toBe(
+  it('returns true for the public Khala model on an armed backing lane', () => {
+    expect(resolveNamedModelServability(KHALA_MODEL_ID, ALL_ARMED)).toBe(
       true,
     )
   })
 
-  it('returns false for a known model on an unarmed lane', () => {
+  it('returns false for the public Khala model on an unarmed backing lane', () => {
     expect(
-      resolveNamedModelServability('gemini-3.5-flash', ALL_LANES_UNARMED),
+      resolveNamedModelServability(KHALA_MODEL_ID, ALL_LANES_UNARMED),
     ).toBe(false)
   })
 
-  it('returns undefined for an unknown model id (not gated)', () => {
+  it('returns false for an unknown model id (no public model selection)', () => {
     expect(
       resolveNamedModelServability('not-a-real-model', ALL_ARMED),
-    ).toBeUndefined()
+    ).toBe(false)
   })
 
-  it('resolves case-insensitively (lookup keys on the canonical id)', () => {
-    expect(resolveNamedModelServability('GEMINI-3.5-FLASH', ALL_ARMED)).toBe(
+  it('resolves the public id case-insensitively', () => {
+    expect(resolveNamedModelServability('OPENAGENTS/KHALA', ALL_ARMED)).toBe(
       true,
     )
     expect(
-      resolveNamedModelServability('GEMINI-3.5-FLASH', ALL_LANES_UNARMED),
+      resolveNamedModelServability('OPENAGENTS/KHALA', ALL_LANES_UNARMED),
+    ).toBe(false)
+  })
+
+  it('rejects raw Hydralisk model ids even when their backing routes are armed', () => {
+    const twentyBArming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
+    const oneTwentyBArming = resolveSupplyLaneArming(HYDRALISK_120B_READY_ENV)
+    expect(
+      resolveNamedModelServability(
+        HYDRALISK_GPT_OSS_20B_MODEL_ID,
+        twentyBArming,
+      ),
+    ).toBe(false)
+    expect(
+      resolveNamedModelServability(
+        HYDRALISK_GPT_OSS_120B_MODEL_ID,
+        twentyBArming,
+      ),
+    ).toBe(false)
+    expect(
+      resolveNamedModelServability(
+        HYDRALISK_GPT_OSS_120B_MODEL_ID,
+        oneTwentyBArming,
+      ),
     ).toBe(false)
   })
 })

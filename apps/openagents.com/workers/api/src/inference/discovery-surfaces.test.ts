@@ -27,14 +27,17 @@ describe('discovery surfaces (EPIC #6049 Phase 1 — agent discovery)', () => {
     }
   })
 
-  test('llms.txt describes OpenAgents inference honestly: OpenAI-compatible, pay-per-call, the models', async () => {
+  test('llms.txt describes OpenAgents inference honestly: one public Khala model, no raw GPT-OSS sale', async () => {
     const response = await run(renderDiscoverySurface(get('/llms.txt'), '/llms.txt'))
     const body = await response.text()
     expect(body).toContain('OpenAI-compatible')
     expect(body).toContain('pay-per-call')
-    expect(body).toContain('openai/gpt-oss-20b')
-    expect(body).toContain('openagents/khala-mini')
-    expect(body).toContain('openagents/khala-code')
+    expect(body).toContain('openagents/khala')
+    expect(body).not.toContain('openagents/khala-mini')
+    expect(body).not.toContain('openagents/khala-code')
+    expect(body).not.toContain('openagents/autopilot-concierge')
+    expect(body).not.toContain('openai/gpt-oss-20b')
+    expect(body).not.toContain('openai/gpt-oss-120b')
     expect(body).toContain('/v1/chat/completions')
     expect(body).toContain('/mpp/v1/chat/completions')
     expect(body).toContain('Lightning')

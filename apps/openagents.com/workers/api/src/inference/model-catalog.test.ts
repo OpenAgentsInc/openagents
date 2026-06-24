@@ -8,6 +8,7 @@ import {
 } from './model-catalog'
 import {
   DEFAULT_MARGIN,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
   sellPricePerMtok,
@@ -89,6 +90,9 @@ describe('buildModelCatalog', () => {
     )
     expect(
       catalog.find(m => m.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)?.ownedBy,
+    ).toBe('openagents/hydralisk')
+    expect(
+      catalog.find(m => m.id === HYDRALISK_GPT_OSS_120B_MODEL_ID)?.ownedBy,
     ).toBe('openagents/hydralisk')
   })
 

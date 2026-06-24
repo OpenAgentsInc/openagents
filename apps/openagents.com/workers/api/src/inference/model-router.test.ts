@@ -5,6 +5,7 @@ import {
   DEFAULT_OVERFLOW_BACKOFF,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
   PASSTHROUGH_OPENAI_ADAPTER_ID,
@@ -20,8 +21,11 @@ import {
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
+  KHALA_MODEL_SLUG,
   KHALA_MINI_MODEL_ID,
   KHALA_PYLON_MINI_MODEL_ID,
 } from './pricing'
@@ -137,10 +141,21 @@ describe('model classification', () => {
     }
   })
 
-  test('routes the Khala mini virtual model to its priced backing lane', () => {
-    expect(classifyModel(KHALA_MINI_MODEL_ID)).toBe('gemini')
+  test('routes the single Khala model through Hydralisk, using either internal slug or external id', () => {
+    for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
+      expect(classifyModel(model)).toBe('open')
+      expect(selectAdapterPlan(model)).toEqual([
+        HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+        HYDRALISK_ADAPTER_ID,
+      ])
+    }
+  })
+
+  test('does not treat old Khala split ids as the public Khala route', () => {
+    expect(classifyModel(KHALA_MINI_MODEL_ID)).toBe('unknown')
     expect(selectAdapterPlan(KHALA_MINI_MODEL_ID)).toEqual([
-      VERTEX_GEMINI_ADAPTER_ID,
+      PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
+      PASSTHROUGH_OPENAI_ADAPTER_ID,
     ])
   })
 
@@ -165,6 +180,13 @@ describe('model classification', () => {
     expect(classifyModel(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe('open')
     expect(selectAdapterPlan(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toEqual([
       HYDRALISK_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the OpenAI GPT-OSS 120B model id only to its high-memory Hydralisk lane', () => {
+    expect(classifyModel(HYDRALISK_GPT_OSS_120B_MODEL_ID)).toBe('open')
+    expect(selectAdapterPlan(HYDRALISK_GPT_OSS_120B_MODEL_ID)).toEqual([
+      HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
     ])
   })
 

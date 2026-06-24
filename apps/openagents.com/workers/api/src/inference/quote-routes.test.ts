@@ -7,13 +7,13 @@ import {
   ALL_LANES_UNARMED,
   type SupplyLaneArming,
 } from './model-serving-policy'
-import { MODEL_PRICING_TABLE } from './pricing'
+import { KHALA_MODEL_ID } from './pricing'
 import { handleQuote } from './quote-routes'
 
 const run = (request: Request, deps: Parameters<typeof handleQuote>[1]) =>
   Effect.runPromise(handleQuote(request, deps))
 
-const servedModel = MODEL_PRICING_TABLE[0]!.model
+const servedModel = KHALA_MODEL_ID
 
 const post = (body: unknown): Request =>
   new Request('https://x/v1/quote', {
@@ -175,20 +175,19 @@ describe('handleQuote', () => {
 })
 
 describe('handleQuote provider serving policy gate', () => {
-  // Arming with ONLY the Vertex Gemini lane live (the hosted-Gemini lane).
-  const geminiArmed: SupplyLaneArming = {
+  const hydraliskArmed: SupplyLaneArming = {
     ...ALL_LANES_UNARMED,
-    'vertex-gemini': true,
+    hydralisk: true,
   }
 
-  it('quotes a KNOWN model whose lane IS armed (200)', async () => {
+  it('quotes Khala when its Hydralisk backing lane is armed (200)', async () => {
     const response = await run(
       post({
         completionTokens: 100,
-        model: 'gemini-3.5-flash',
+        model: KHALA_MODEL_ID,
         promptTokens: 100,
       }),
-      { enabled: true, laneArming: geminiArmed },
+      { enabled: true, laneArming: hydraliskArmed },
     )
     expect(response.status).toBe(200)
     const body = (await response.json()) as { isEstimate: boolean }
@@ -196,10 +195,9 @@ describe('handleQuote provider serving policy gate', () => {
   })
 
   it('refuses a KNOWN model whose lane is NOT armed (404 model_unavailable)', async () => {
-    // Fireworks lane is unarmed in geminiArmed, so gpt-oss-20b is unservable.
     const response = await run(
       post({ completionTokens: 100, model: 'gpt-oss-20b', promptTokens: 100 }),
-      { enabled: true, laneArming: geminiArmed },
+      { enabled: true, laneArming: hydraliskArmed },
     )
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({
@@ -211,16 +209,16 @@ describe('handleQuote provider serving policy gate', () => {
   it('refuses regardless of casing (gate cannot be bypassed by model-id case)', async () => {
     const response = await run(
       post({ completionTokens: 1, model: 'GPT-OSS-20B', promptTokens: 1 }),
-      { enabled: true, laneArming: geminiArmed },
+      { enabled: true, laneArming: hydraliskArmed },
     )
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({
       error: 'model_unavailable',
-      model: 'GPT-OSS-20B',
+      model: 'gpt-oss-20b',
     })
   })
 
-  it('does NOT gate an UNKNOWN model id (conservative fallback quote, 200)', async () => {
+  it('rejects an unknown model id instead of falling back to generic pricing', async () => {
     const response = await run(
       post({
         completionTokens: 100,
@@ -229,16 +227,28 @@ describe('handleQuote provider serving policy gate', () => {
       }),
       { enabled: true, laneArming: ALL_LANES_UNARMED },
     )
-    expect(response.status).toBe(200)
-    const body = (await response.json()) as { isUnknownModel: boolean }
-    expect(body.isUnknownModel).toBe(true)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      error: 'model_unavailable',
+      model: 'totally-made-up-model',
+    })
   })
 
-  it('omitting laneArming keeps every model quotable (backward compatible)', async () => {
+  it('omitting laneArming still refuses raw GPT-OSS', async () => {
     const response = await run(
       post({ completionTokens: 100, model: 'gpt-oss-20b', promptTokens: 100 }),
       { enabled: true },
     )
+    expect(response.status).toBe(404)
+  })
+
+  it('normalizes the internal khala slug to the external quote id', async () => {
+    const response = await run(
+      post({ completionTokens: 100, model: 'khala', promptTokens: 100 }),
+      { enabled: true },
+    )
     expect(response.status).toBe(200)
+    const body = (await response.json()) as { model: string }
+    expect(body.model).toBe(KHALA_MODEL_ID)
   })
 })

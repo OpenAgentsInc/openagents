@@ -29,18 +29,23 @@ Prod worker: `openagents-autopilot` (verify current deploy version with
 first** (`x-service-info categories:["ai"]`). Profile `@openagents` is live (Network ID
 `profile_61Uug9…`); crypto payins enabled (live + test).
 
-**Primary sale model (#6169):** the MPP default is `openai/gpt-oss-20b`, served
-under the raw upstream model id. `openagents/khala-*` ids stay supported only for
-Khala-specific behavior such as Blueprint/coordinator/verifier/Pylon surfaces.
+**Primary sale model (#6169 follow-up):** the MPP default and only external model
+id is `openagents/khala`. Inside OpenAgents-owned callers the model slug is
+`khala`; external/OpenAI-compatible clients and MPP discovery use
+`openagents/khala`. Raw GPT-OSS ids are internal Hydralisk supply only and are
+not public, not listed, and not MPP-payable.
 
 **Production paid proof (#6169):** deploy
 `e66a59cd-7ad4-48bf-801e-1230064a467f` completed a live 1-sat Lightning MPP
-payment for `openai/gpt-oss-20b` on 2026-06-24T01:51:12Z. The flow was
-`402 Payment` (Lightning mainnet, amount `1 sat`) -> MDK wallet payment ->
+payment for `openai/gpt-oss-20b` on 2026-06-24T01:51:12Z, before the public
+slug collapse. The flow was `402 Payment` (Lightning mainnet, amount `1 sat`) ->
+MDK wallet payment ->
 `Authorization: Payment ...` retry -> `200` OpenAI-compatible
 `chat.completion` with `Payment-Receipt` method `lightning`, status `success`.
 The Base USDC and Stripe SPT rails also remain advertised live; USDC test-helper
 settlement is sandbox-only because prod issues live-mode Stripe PaymentIntents.
+Current raw-id requests are expected to fail with `model_not_public` before a
+payment challenge; repeat paid smokes should use `openagents/khala`.
 
 ## 2. Architecture (Worker-native, no Node sidecar)
 
@@ -117,12 +122,14 @@ Always deploy from a clean `origin/main` worktree.
   `network`, `token_currency=usdc`, `buyer_wallet`). Testnets aren't auto-detected,
   so the simulate helper is required in sandbox; **prod/mainnet uses real on-chain
   settlement — no simulate**.
-  Default model: `openai/gpt-oss-20b`. Override with
-  `KHALA_MPP_PAYLOOP_MODEL=<model>` only when testing a Khala-specific model.
+  Default model: `openagents/khala`. Do not override to raw GPT-OSS model ids;
+  those are internal Hydralisk supply and the route must return
+  `model_not_public` before issuing a payment challenge.
 - **Full Lightning pay-loop** (prod/mainnet, tiny live payment): request
-  `openai/gpt-oss-20b` without a credential, pay the returned BOLT11 with the
+  `openagents/khala` without a credential, pay the returned BOLT11 with the
   MDK agent wallet, then retry with the preimage credential. This was proven on
-  2026-06-24T01:51:12Z for 1 sat and returned `200` + `Payment-Receipt`.
+  2026-06-24T01:51:12Z for 1 sat on the earlier raw-id path; the current smoke
+  target is `openagents/khala`.
 
 ## 6. Lightning (LIVE on Spark, leads the 402 — 2026-06-23)
 

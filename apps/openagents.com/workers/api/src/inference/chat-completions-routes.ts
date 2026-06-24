@@ -121,9 +121,11 @@ import {
 import {
   type FundingKind,
   KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
   type SupplyLane,
   isKhalaModel,
   lookupModel,
+  normalizeKhalaModelId,
 } from './pricing'
 import {
   type StableBlockKind,
@@ -145,10 +147,10 @@ import {
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 
 // DEFAULT MODEL ------------------------------------------------------------
-// The model served when a request omits `model`. The free-tier default is
-// Gemini 3.5 Flash (gateway free-tier enablement §2). Kept here as the single
-// route-level default so an unspecified request routes to the free lane.
-export const DEFAULT_CHAT_MODEL = 'gemini-3.5-flash'
+// The model served when a request omits `model`. Public model selection has
+// collapsed to Khala; internal callers may say `khala`, external OpenAI-style
+// clients should say `openagents/khala`.
+export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
 
 // AUTH SEAM ---------------------------------------------------------------
 // Resolves the per-account API key (the OpenAgents agent bearer token) to an
@@ -447,18 +449,21 @@ const ChatMessage = S.Struct({
 // fields are decoded here.
 const ChatCompletionsRequestBody = S.Struct({
   // `model` is OPTIONAL: an unspecified model defaults to DEFAULT_CHAT_MODEL
-  // (Gemini 3.5 Flash, the free lane) in `resolveRequestedModel` below.
+  // (`openagents/khala`) in `resolveRequestedModel` below.
   model: S.optionalKey(S.String),
   messages: S.Array(ChatMessage),
   stream: S.optionalKey(S.Boolean),
 })
 
-// Resolve the effective requested model: a present, non-blank `model` as given,
-// otherwise the free-tier default. Centralized so the default applies uniformly
-// to routing, premium gating, response echo, and metering.
+// Resolve the effective requested model: a present, non-blank `model` normalized
+// through the single Khala alias rule, otherwise the Khala default. Centralized
+// so the default applies uniformly to routing, premium gating, response echo,
+// and metering.
 export const resolveRequestedModel = (model: string | undefined): string => {
   const trimmed = model?.trim()
-  return trimmed === undefined || trimmed === '' ? DEFAULT_CHAT_MODEL : trimmed
+  return trimmed === undefined || trimmed === ''
+    ? DEFAULT_CHAT_MODEL
+    : normalizeKhalaModelId(trimmed)
 }
 
 const decodeBody = (value: unknown) => {
@@ -1460,8 +1465,8 @@ export const handleChatCompletions = (
     }
 
     // Resolve the effective model once: an unspecified/blank model defaults to
-    // the free-tier default (Gemini 3.5 Flash). Used for premium gating,
-    // routing, response echo, and metering.
+    // the single public Khala model. Used for premium gating, routing, response
+    // echo, and metering.
     const requestedModel = resolveRequestedModel(body.model)
     const autopilotConcierge = isAutopilotConciergeModel(requestedModel)
       ? resolveAutopilotConciergeConfig(rawBody)
@@ -1475,16 +1480,22 @@ export const handleChatCompletions = (
         { status: 400 },
       )
     }
+    if (!isKhalaModel(requestedModel)) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: requestedModel },
+        { status: 400 },
+      )
+    }
 
     // PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing). Reject a
-    // KNOWN model whose supply lane is NOT armed with the SAME clean
-    // `model_unavailable` the catalog hides and the quote 404s — keeping
+    // public Khala model whose backing supply lane is NOT armed with the SAME
+    // clean `model_unavailable` the catalog hides and the quote 404s — keeping
     // advertise == quote == serve. Checked BEFORE the account-state gates
     // (premium / balance / spend-cap) and before dispatch, because servability is
     // a property of the model + supply, independent of the account: an unservable
-    // model is never the customer's balance/allowlist problem. An UNKNOWN model id
-    // (servability `undefined`) falls through unchanged, as on `/v1/quote`. Open
-    // (no-op) when `laneArming` is omitted.
+    // model is never the customer's balance/allowlist problem. Open (no-op) when
+    // `laneArming` is omitted, after the public-model gate above has already
+    // rejected raw GPT-OSS and old split ids.
     if (
       deps.laneArming !== undefined &&
       resolveNamedModelServability(requestedModel, deps.laneArming) === false

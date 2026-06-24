@@ -7,6 +7,8 @@ import {
   BITCOIN_DISCOUNT,
   CACHED_INPUT_FRACTION,
   DEFAULT_MARGIN,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
   MODEL_PRICING_TABLE,
   UNKNOWN_MODEL_COST,
   VERTEX_COST_IS_LIST_TODO,
@@ -99,6 +101,17 @@ describe('multiplier table', () => {
     const glm = lookupModel('glm-5p2')!.cost
     expect(glm.inputUsdPerMtok).toBe(1.4)
     expect(glm.outputUsdPerMtok).toBe(4.4)
+  })
+
+  test('Hydralisk publishes raw OpenAI GPT-OSS model ids as owned serving lanes', () => {
+    expect(lookupModel(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toMatchObject({
+      lane: 'hydralisk',
+      model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
+    })
+    expect(lookupModel(HYDRALISK_GPT_OSS_120B_MODEL_ID)).toMatchObject({
+      lane: 'hydralisk',
+      model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+    })
   })
 
   test('lookup is case-insensitive and trims; every table entry resolves', () => {

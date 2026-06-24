@@ -243,6 +243,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   HYDRALISK_BEARER_TOKEN?: string | undefined
   HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF?: string | undefined
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF?: string | undefined
+  // Hydralisk GPT-OSS 120B high-memory lane. This is a separate adapter origin
+  // from the 20B/L4 lane because 120B needs an H100/H200/B200/G4-class host and
+  // its own public-safe preflight/receipt evidence before it can be advertised
+  // or sold.
+  HYDRALISK_GPT_OSS_120B_ENABLED?: string | undefined
+  HYDRALISK_GPT_OSS_120B_BASE_URL?: string | undefined
+  HYDRALISK_GPT_OSS_120B_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GPT_OSS_120B_RECEIPT_REF?: string | undefined
   // OpenAgents/Pylon serving-fabric HTTP transport (#6089). The URL points at a
   // secret-backed gateway/proxy for an admitted Pylon `psionic-serve` compatible
   // endpoint; the bearer token authenticates Worker->proxy calls. Both are

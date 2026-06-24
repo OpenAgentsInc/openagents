@@ -3,7 +3,8 @@
 //
 // This owns the SERVER-SIDE onboarding program that drives the productized
 // intake interview via the Khala inference orchestrator (the OpenAI-compatible
-// `/v1/chat/completions` gateway, model `openagents/khala-mini`). It is
+// `/v1/chat/completions` gateway, internal model slug `khala`; the public
+// OpenAI-compatible id is `openagents/khala`). It is
 // transport-agnostic: a turn is `{ sessionId, userText }` in and an assistant
 // reply + persisted session out. Text today; a voice layer (STT -> route -> TTS)
 // can wrap the SAME turn driver later (see `OnboardingTurnInput`).
@@ -33,7 +34,7 @@ import {
 } from './inference/autopilot-concierge-model'
 import { parseJsonUnknown, parseJsonWithSchema } from './json-boundary'
 
-export const KHALA_ONBOARDING_MODEL = 'openagents/khala-mini'
+export const KHALA_ONBOARDING_MODEL = 'khala'
 
 // MODEL -------------------------------------------------------------------
 

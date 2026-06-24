@@ -26,11 +26,7 @@
 import { Effect } from 'effect'
 
 import {
-  AUTOPILOT_CONCIERGE_MODEL_ID,
-  HYDRALISK_GPT_OSS_20B_MODEL_ID,
-  KHALA_CODE_MODEL_ID,
-  KHALA_MINI_MODEL_ID,
-  KHALA_PYLON_MINI_MODEL_ID,
+  KHALA_MODEL_ID,
 } from './pricing'
 import {
   type MppRail,
@@ -44,17 +40,13 @@ const ORIGIN = 'https://openagents.com'
 // The paid MPP path (mirrors the route registered in index.ts).
 const MPP_PATH = '/mpp/v1/chat/completions'
 
-// The primary direct-sale tier the discovery offers quote against (same default
-// as the MPP route's DEFAULT_MPP_MODEL). The runtime 402 challenge re-quotes for
+// The single public model id discovery offers quote against (same default as
+// the MPP route's DEFAULT_MPP_MODEL). The runtime 402 challenge re-quotes for
 // the requested model and remains authoritative; discovery is advisory.
-const DISCOVERY_MODEL = HYDRALISK_GPT_OSS_20B_MODEL_ID
+const DISCOVERY_MODEL = KHALA_MODEL_ID
 
 const SUPPORTED_MODEL_EXAMPLES: ReadonlyArray<string> = [
-  HYDRALISK_GPT_OSS_20B_MODEL_ID,
-  KHALA_MINI_MODEL_ID,
-  KHALA_CODE_MODEL_ID,
-  KHALA_PYLON_MINI_MODEL_ID,
-  AUTOPILOT_CONCIERGE_MODEL_ID,
+  KHALA_MODEL_ID,
 ]
 
 // The crypto networks the MPP route advertises (USDC on each). Mirrors
@@ -157,7 +149,7 @@ const CHAT_COMPLETIONS_REQUEST_SCHEMA = {
     model: {
       type: 'string',
       description:
-        'A supported model id. Use "openai/gpt-oss-20b" for raw GPT-OSS 20B; use "openagents/khala-*" only for Khala-specific capabilities.',
+        'The single supported public model id. Use "openagents/khala"; raw GPT-OSS ids are internal Hydralisk supply and are not public or MPP-payable.',
       examples: SUPPORTED_MODEL_EXAMPLES,
     },
     messages: {

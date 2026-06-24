@@ -253,25 +253,27 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
   },
 }
 
-// First Khala virtual model id (M0 / #6008). It is a public OpenAgents model
-// alias backed by the existing Gemini Flash lane until the full Khala
-// coordinator/worker fabric lands; adding it here keeps catalog, quote, and
-// receipt-first metering prices derived from the same source of truth.
+// Single public Khala virtual model id. Public model selection intentionally
+// collapses to this one id; mini/pro/code/pylon names are legacy/internal
+// implementation details and must not be exposed as public choices.
+export const KHALA_MODEL_SLUG = 'khala'
+export const KHALA_MODEL_ID = 'openagents/khala'
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
 export const HYDRALISK_GPT_OSS_20B_MODEL_ID = 'openai/gpt-oss-20b'
+export const HYDRALISK_GPT_OSS_120B_MODEL_ID = 'openai/gpt-oss-120b'
 export const KHALA_PYLON_MINI_MODEL_ID = 'openagents/khala-pylon-mini'
 export const AUTOPILOT_CONCIERGE_MODEL_ID = 'openagents/autopilot-concierge'
 
-// True when the requested id is an OpenAgents Khala virtual model. The
-// `openagents/khala-` prefix keeps future tiers (pro) recognized as Khala without
-// another edit; `openagents/autopilot-concierge` is the productized Concierge
-// virtual model whose prompts/components are gateway-owned. Used by the gateway
-// to attach the disclosure (`openagents`) block to the response so a Khala
-// request is auditable. Bounded id check, not an intent parser.
+// True when the requested id is the one public OpenAgents Khala virtual model.
+// Bounded id check, not an intent parser.
+export const normalizeKhalaModelId = (model: string): string => {
+  const normalized = model.trim().toLowerCase()
+  return normalized === KHALA_MODEL_SLUG ? KHALA_MODEL_ID : normalized
+}
+
 export const isKhalaModel = (model: string): boolean =>
-  model.trim().toLowerCase().startsWith('openagents/khala-') ||
-  model.trim().toLowerCase() === AUTOPILOT_CONCIERGE_MODEL_ID
+  normalizeKhalaModelId(model) === KHALA_MODEL_ID
 
 // Unknown-model fallback cost. Conservative: priced like a mid open model so an
 // un-tabled model is never under-charged below plausible cost (docs edge:
@@ -344,14 +346,15 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     VERTEX_GEMINI_COST['gemini-3.5-flash']!,
     true,
   ),
-  // Khala M0 virtual model alias. Uses the same current cost basis as the
-  // Gemini Flash backing lane; the richer Khala coordinator, worker fabric,
-  // verification, and settlement receipt fields remain separate milestones.
+  // Public Khala model alias. It is the only model id exposed to customers.
+  // Today it routes over owned Hydralisk/GPT-OSS supply under the hood; the
+  // public contract stays one model that can grow coordinator, verifier, and
+  // Blueprint behavior without a customer-facing split.
   entry(
-    KHALA_MINI_MODEL_ID,
-    'vertex-gemini',
-    VERTEX_GEMINI_COST['gemini-3.5-flash']!,
-    true,
+    KHALA_MODEL_ID,
+    'hydralisk',
+    FIREWORKS_OPEN_COST['gpt-oss-120b']!,
+    false,
   ),
   // Productized Autopilot Concierge virtual model (#6148). It uses the same
   // Gemini Flash cost basis as khala-mini today; the gateway-owned Concierge
@@ -380,6 +383,16 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     HYDRALISK_GPT_OSS_20B_MODEL_ID,
     'hydralisk',
     FIREWORKS_OPEN_COST['gpt-oss-20b']!,
+    false,
+  ),
+  // GPT-OSS 120B on the high-memory Hydralisk lane. It is deliberately distinct
+  // from the Fireworks `gpt-oss-120b` row below: this id only becomes public
+  // when a separate H100/H200/B200/G4-class Hydralisk host has its own readiness
+  // evidence refs.
+  entry(
+    HYDRALISK_GPT_OSS_120B_MODEL_ID,
+    'hydralisk',
+    FIREWORKS_OPEN_COST['gpt-oss-120b']!,
     false,
   ),
   // Khala Pylon canary lane (#6089). This model id routes directly to the

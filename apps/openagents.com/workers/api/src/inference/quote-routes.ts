@@ -27,9 +27,11 @@ import { noStoreJsonResponse } from '../http/responses'
 import { type BudgetEstimate, estimateBudgetCapacity } from './budget-estimate'
 import { type CostEstimate, estimateRequestCost } from './cost-estimate'
 import {
+  isPublicModelId,
   resolveNamedModelServability,
   type SupplyLaneArming,
 } from './model-serving-policy'
+import { normalizeKhalaModelId } from './pricing'
 
 export type QuoteDeps = Readonly<{
   // Whether the gateway is enabled. The Worker passes
@@ -113,6 +115,14 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
     if (body === undefined) {
       return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
     }
+    const quotedModel = normalizeKhalaModelId(body.model)
+
+    if (!isPublicModelId(quotedModel)) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: quotedModel },
+        { status: 404 },
+      )
+    }
 
     // PROVIDER POLICY GATE: when lane arming is supplied, refuse a quote for a
     // KNOWN model whose supply lane is not armed right now — such a request can
@@ -122,10 +132,10 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
     // quote unchanged. Omitting `laneArming` keeps every model quotable.
     if (
       deps.laneArming !== undefined &&
-      resolveNamedModelServability(body.model, deps.laneArming) === false
+      resolveNamedModelServability(quotedModel, deps.laneArming) === false
     ) {
       return noStoreJsonResponse(
-        { error: 'model_unavailable', model: body.model },
+        { error: 'model_unavailable', model: quotedModel },
         { status: 404 },
       )
     }
@@ -135,7 +145,7 @@ export const handleQuote = (request: Request, deps: QuoteDeps) =>
     const shared = {
       completionTokens: body.completionTokens,
       fundingKind: body.fundingKind ?? 'card',
-      model: body.model,
+      model: quotedModel,
       promptTokens: body.promptTokens,
       ...(body.cachedPromptTokens !== undefined
         ? { cachedPromptTokens: body.cachedPromptTokens }

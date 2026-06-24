@@ -12,10 +12,11 @@
 //
 // Mirrors the live PostalForm/Zinc directory pattern: `/llms.txt`, `/agents.md`,
 // `/ai.md`, `/skill.md`. Copy is intentionally honest and accurate to what the
-// gateway actually serves today (`/v1/chat/completions`, raw GPT-OSS 20B plus
-// Khala-specific models, receipt-first metering, the `openagents` disclosure
-// block). The MPP/x402 paid endpoint is live only when its production flags and
-// payment secrets are armed; its own route remains fail-safe inert otherwise.
+// gateway actually serves today (`/v1/chat/completions`, one public
+// `openagents/khala` model id, receipt-first metering, the `openagents`
+// disclosure block). The MPP/x402 paid endpoint is live only when its production
+// flags and payment secrets are armed; its own route remains fail-safe inert
+// otherwise.
 import { Effect } from 'effect'
 
 // The four discovery document paths, mirroring the PostalForm directory shape.
@@ -62,9 +63,8 @@ const MPP_ENDPOINT = `${ORIGIN}/api/mpp/v1/chat/completions`
 const llmsTxt = (): string => `# OpenAgents — inference API
 
 > OpenAgents is an OpenAI-compatible LLM inference API, pay-per-call. Point any
-> OpenAI client at the endpoint below, choose \`openai/gpt-oss-20b\` for the raw
-> GPT-OSS 20B model or an \`openagents/khala-*\` id for Khala-specific behavior,
-> and you get a completion plus a verifiable usage receipt. No subscription; you
+> OpenAI client at the endpoint below, choose \`openagents/khala\`, and you get
+> a completion plus a verifiable usage receipt. No subscription; you
 > pay per request for exactly the tokens you use.
 
 ## What this is
@@ -79,16 +79,11 @@ agent compute, sold per call.
 
 ## Models
 
-- \`openai/gpt-oss-20b\` — raw GPT-OSS 20B, served directly under its model id.
-- \`openagents/khala-mini\` — cheap, fast general chat/inference tier.
-- \`openagents/khala-code\` — coding tier. Coding completions are run through a
-  deterministic acceptance verifier; the response carries an \`openagents\`
-  disclosure block recording which concrete worker served it and the
-  verification verdict, so a coding outcome is auditable rather than opaque.
-- \`openagents/autopilot-concierge\` — productized onboarding concierge. It uses
-  server-owned vertical config and the closed \`oa.component\` catalog so a
-  standard \`/v1/chat/completions\` call can drive Autopilot intake without a
-  client-supplied system prompt.
+- \`openagents/khala\` — the one public model id. Khala routes over OpenAgents
+  owned supply, including Hydralisk/GPT-OSS under the hood, and returns a
+  standard OpenAI response plus the \`openagents\` receipt/disclosure block.
+  Raw \`openai/gpt-oss-*\` ids and old Khala tier names are not public products
+  and are not MPP-payable.
 
 ## Best fit
 
@@ -113,8 +108,9 @@ ${MPP_ENDPOINT} (Machine Payments Protocol / x402). An agent with a Lightning
 wallet, crypto wallet, or shared payment token can pay per request with no
 signup: the first request returns \`402 Payment Required\` with a payment
 challenge, the agent's payment tool pays and retries, and the verified request
-returns the completion. The default MPP model is \`openai/gpt-oss-20b\`; Khala
-ids are accepted only when the requested capability is actually Khala-specific.
+returns the completion. The default and only MPP model is
+\`openagents/khala\`; raw GPT-OSS ids are internal supply only and are rejected
+before any payment challenge is issued.
 The contributor payout rail stays Bitcoin/Spark.
 
 ## Agent surfaces
@@ -141,21 +137,19 @@ curl ${KHALA_ENDPOINT} \\
   -H "authorization: Bearer <your-openagents-agent-key>" \\
   -H "content-type: application/json" \\
   -d '{
-    "model": "openagents/khala-mini",
+    "model": "openagents/khala",
     "messages": [{"role": "user", "content": "Hello"}]
   }'
 \`\`\`
 
-Models: \`openagents/khala-mini\` (general), \`openagents/khala-code\` (coding,
-with a verified-outcome receipt), \`openagents/autopilot-concierge\`
-(Autopilot onboarding with server-owned vertical config), and
-\`openai/gpt-oss-20b\` (raw GPT-OSS 20B served under its upstream model id).
+Models: \`openagents/khala\` only. It is the single public Khala surface for
+general chat, coding, and OpenAgents-specific capabilities.
 Catalog:
 ${KHALA_MODELS_ENDPOINT}
 
 Every response is standard OpenAI shape plus a non-breaking \`openagents\`
-disclosure block (which concrete worker served the request; for \`khala-code\`,
-the verification verdict and a dereferenceable receipt ref).
+disclosure block (which concrete worker served the request, the supply lane, and
+a dereferenceable receipt ref when metered).
 
 ## Pay per call (no signup) — Machine Payments / x402
 
@@ -193,15 +187,14 @@ const aiMd = (): string => `# OpenAgents — AI instructions
 You can use OpenAgents Khala for OpenAI-compatible LLM inference, pay-per-call.
 
 - Endpoint: ${KHALA_ENDPOINT} (OpenAI Chat Completions shape)
-- Models: \`openai/gpt-oss-20b\`, \`openagents/khala-mini\`, \`openagents/khala-code\`,
-  \`openagents/autopilot-concierge\`
+- Models: \`openagents/khala\`
 - Auth today: \`Authorization: Bearer <openagents-agent-key>\`
 - Pay-per-call machine payments (MPP / x402):
   ${MPP_ENDPOINT}
 - Pricing: per-call, 1 credit = $0.01 USD basis. See ${PRICING_DOC}
 
 Responses are standard OpenAI shape plus an \`openagents\` disclosure block
-(served worker; for \`khala-code\`, the verification verdict + receipt).
+(served worker, supply lane, and receipt metadata).
 
 For the full workflow see ${ORIGIN}/agents.md and ${ORIGIN}/AGENTS.md.
 `
@@ -214,8 +207,7 @@ Add Khala as an OpenAI-compatible inference tool in your agent.
 - Base URL: ${ORIGIN}/api/v1 (legacy ${ORIGIN}/v1 still works as an alias)
 - Chat Completions: ${KHALA_ENDPOINT}
 - Models endpoint: ${KHALA_MODELS_ENDPOINT}
-- Models: \`openai/gpt-oss-20b\`, \`openagents/khala-mini\`, \`openagents/khala-code\`,
-  \`openagents/autopilot-concierge\`
+- Models: \`openagents/khala\`
 - Auth: \`Authorization: Bearer <openagents-agent-key>\`
 
 ## OpenAI client config
@@ -224,7 +216,7 @@ Add Khala as an OpenAI-compatible inference tool in your agent.
 {
   "baseURL": "${ORIGIN}/api/v1",
   "apiKey": "<your-openagents-agent-key>",
-  "model": "openagents/khala-mini"
+  "model": "openagents/khala"
 }
 \`\`\`
 
@@ -234,7 +226,7 @@ If your agent pays per request instead of holding a key, use the machine-payment
 endpoint (MPP / x402): ${MPP_ENDPOINT}. A request without a payment credential
 returns \`402 Payment Required\` with a payment challenge; your payment tool pays
 and retries. Accepted rails: Lightning, USDC, and card. The default MPP model is
-\`openai/gpt-oss-20b\`.
+\`openagents/khala\`.
 
 See ${ORIGIN}/agents.md for the full flow.
 `

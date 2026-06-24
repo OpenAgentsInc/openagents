@@ -4490,7 +4490,7 @@ const paths = (): JsonSchema => ({
       operationId: 'listInferenceModels',
       summary: 'List inference gateway models',
       description:
-        'OpenAI-compatible model catalog for the Khala inference gateway. Public, pre-purchase discovery (published per-1M-token price + policy only; no prompts, balances, or credentials). The served models include openagents/khala-mini (general chat), openagents/khala-code (coding with a verified-outcome receipt), and openagents/autopilot-concierge (the productized Autopilot onboarding concierge: a Khala-backed agent driven over POST /api/v1/chat/completions with a server-owned vertical enum, the closed oa.component typed-card channel, and a structured Output Spec on the openagents disclosure block). Canonical under the /api base; the legacy bare /v1/models path remains a non-breaking alias.',
+        'OpenAI-compatible model catalog for the Khala inference gateway. Public, pre-purchase discovery (published per-1M-token price + policy only; no prompts, balances, or credentials). The public catalog intentionally exposes one model: openagents/khala. Inside the OpenAgents ecosystem the slug is khala; external clients use openagents/khala. Raw GPT-OSS ids and old Khala split names are internal/legacy implementation details and are not public or MPP-payable. Canonical under the /api base; the legacy bare /v1/models path remains a non-breaking alias.',
       tags: ['Inference'],
       security: publicRead,
       responses: {
@@ -4502,7 +4502,7 @@ const paths = (): JsonSchema => ({
               schema: {
                 type: 'object',
                 description:
-                  'OpenAI /v1/models list response; data entries include openagents/autopilot-concierge.',
+                  'OpenAI /v1/models list response; data entries include only the public Khala model openagents/khala when its backing supply lane is armed.',
               },
             },
           },

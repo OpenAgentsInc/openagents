@@ -117,13 +117,20 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     — repeat of the model-fit analysis for OpenAI's `gpt-oss-20b` and
     `gpt-oss-120b` model card: 20B is an immediate L4/vLLM lane, 120B is a
     high-memory H100/H200/B200/G4 allocation and harmony/MXFP4 serving path, and
-    both need Khala eval, telemetry, and safety gates before production claims.
+    the first H100 Hydralisk smoke now proves single-GPU 120B service is viable
+    before broader Khala eval, telemetry, and safety gates. Current public
+    policy collapses both backing lanes behind one model surface:
+    `khala` internally and `openagents/khala` externally.
 
 15. **[`2026-06-23-hydralisk-python-nvidia-inference-stack.md`](./2026-06-23-hydralisk-python-nvidia-inference-stack.md)**
     — Hydralisk spec: the Python/NVIDIA inference lane beside Psionic's
     Rust-native ML framework. Defines vLLM/SGLang/TensorRT-LLM/Dynamo ownership,
     receipts, refusal gates, and a dogfood path through GPT-OSS 20B, GPT-OSS
-    120B, and GLM-5.2.
+    120B, and GLM-5.2. Current update: GPT-OSS 20B is live; GPT-OSS 120B has
+    passed a single-H100 Hydralisk smoke and is wired as a separate
+    model-specific backing lane pending production Worker arming. Raw GPT-OSS
+    ids remain internal Hydralisk supply; external clients see only
+    `openagents/khala`.
 
 ## The shape, in one line
 

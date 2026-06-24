@@ -14,9 +14,12 @@ how-to detail.*
 
 We let AI agents **pay our inference API per request — no signup, no API key** —
 by answering an unpaid request with an HTTP `402 Payment Required`, taking the
-payment, and then returning the requested completion. The default direct-sale MPP
-model is `openai/gpt-oss-20b`; `openagents/khala-*` names are reserved for
-OpenAgents-specific Khala capabilities.
+payment, and then returning the requested completion. The only external MPP
+model id is `openagents/khala`. Inside the OpenAgents ecosystem the same model
+is just `khala`. Raw GPT-OSS ids (`openai/gpt-oss-20b`,
+`openai/gpt-oss-120b`) are internal Hydralisk supply targets only: they are not
+public products, not sellable over MPP, and are rejected before any payment
+challenge is issued.
 
 ## Why we're doing this
 
@@ -80,13 +83,15 @@ Two supporting pieces make us *discoverable*:
 
 **Status: all three rails are LIVE on production** (`openagents-autopilot`). The
 402 ordering is **lightning → base/usdc → stripe/card**, and `/openapi.json`
-lists **lightning first**. The primary advisory model is now
-`openai/gpt-oss-20b`; Khala model ids remain sellable only when the request wants
-Khala-specific behavior. Only the Stripe badge is still pending (external crawl).
+lists **lightning first**. The primary and only advisory model is
+`openagents/khala`; Hydralisk GPT-OSS 20B/120B remains an internal backing lane
+for Khala, not a public/Mpp-payable model selector. Only the Stripe badge is
+still pending (external crawl).
 Production deploy `e66a59cd-7ad4-48bf-801e-1230064a467f` also has a live paid
-proof: a 1-sat Lightning MPP request for `openai/gpt-oss-20b` returned `200`,
-an OpenAI-compatible `chat.completion`, and a successful `Payment-Receipt` on
-2026-06-24T01:51:12Z.
+proof from before the slug collapse: a 1-sat Lightning MPP request for
+`openai/gpt-oss-20b` returned `200`, an OpenAI-compatible `chat.completion`, and
+a successful `Payment-Receipt` on 2026-06-24T01:51:12Z. Current policy supersedes
+that raw-id sale path: repeat payments must use `openagents/khala`.
 
 - ✅ **Live: Lightning — and it leads.** It mints a real mainnet BOLT11 via **Spark**
   (`@breeztech/breez-sdk-spark`, **primary**) through the existing **`MDK_TREASURY`
@@ -101,7 +106,7 @@ an OpenAI-compatible `chat.completion`, and a successful `Payment-Receipt` on
   gets a real `402` with a deposit address; `/openapi.json` advertises the offers.
   The full crypto pay loop (pay → verify → completion → receipt → credit) was
   proven end-to-end on staging, and the default pay-loop smoke now targets
-  `openai/gpt-oss-20b`.
+  `openagents/khala`.
 - ⏳ **The badge:** everything on our side is done; it now depends on Stripe's
   crawler indexing `/openapi.json`, which is **asynchronous (up to ~24h)**. A
   background watch re-checks the directory every 30 min and will announce the

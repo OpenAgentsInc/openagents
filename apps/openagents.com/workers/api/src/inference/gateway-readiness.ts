@@ -23,6 +23,7 @@
 
 import { buildModelCatalog, type ModelCatalogEntry } from './model-catalog'
 import {
+  filterPublicCatalog,
   isLaneArmed,
   isModelServable,
   type SupplyLaneArming,
@@ -55,7 +56,8 @@ export type GatewayLaneReadiness = Readonly<{
   armed: boolean
   // Published catalog models on this lane that are servable right now.
   servableModelCount: number
-  // Published catalog models on this lane hidden because the lane is unarmed.
+  // Published catalog models on this lane hidden by the serving policy. Most
+  // lanes are all-or-nothing; Hydralisk also has model-specific readiness.
   hiddenModelCount: number
 }>
 
@@ -101,9 +103,10 @@ export const projectGatewayReadiness = (
   arming: SupplyLaneArming,
   catalog: ReadonlyArray<ModelCatalogEntry> = buildModelCatalog(),
 ): GatewayReadiness => {
+  const publicCatalog = filterPublicCatalog(catalog)
   const lanes = LANE_ORDER.map((lane): GatewayLaneReadiness => {
     const armed = isLaneArmed(arming, lane)
-    const onLane = catalog.filter(entry => entry.lane === lane)
+    const onLane = publicCatalog.filter(entry => entry.lane === lane)
     const servable = onLane.filter(entry => isModelServable(entry, arming))
     return {
       armed,
@@ -113,8 +116,8 @@ export const projectGatewayReadiness = (
     }
   })
 
-  const totalModelCount = catalog.length
-  const servableModelCount = catalog.filter(entry =>
+  const totalModelCount = publicCatalog.length
+  const servableModelCount = publicCatalog.filter(entry =>
     isModelServable(entry, arming),
   ).length
   const hiddenModelCount = totalModelCount - servableModelCount

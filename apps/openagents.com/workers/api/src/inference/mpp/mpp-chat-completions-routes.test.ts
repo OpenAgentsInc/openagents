@@ -8,11 +8,15 @@ import { readAgentBalance } from '../../payments-ledger'
 import { makeLedgerMeteringHook, type MeteringContext } from '../metering-hook'
 import {
   HYDRALISK_ADAPTER_ID,
-  VERTEX_GEMINI_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   selectAdapterPlan,
 } from '../model-router'
 import { resolveSupplyLaneArming } from '../model-serving-policy'
-import { HYDRALISK_GPT_OSS_20B_MODEL_ID, KHALA_MINI_MODEL_ID } from '../pricing'
+import {
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MODEL_ID,
+} from '../pricing'
 import {
   type InferenceProviderAdapter,
   InferenceProviderRegistry,
@@ -164,13 +168,20 @@ const echoAdapter = (id: string): InferenceProviderAdapter => ({
 
 const khalaRegistry = (): InferenceProviderRegistry => {
   const registry = new InferenceProviderRegistry()
-  registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+  registry.register(echoAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID))
+  registry.register(echoAdapter(HYDRALISK_ADAPTER_ID))
   return registry
 }
 
 const hydraliskRegistry = (): InferenceProviderRegistry => {
   const registry = new InferenceProviderRegistry()
   registry.register(echoAdapter(HYDRALISK_ADAPTER_ID))
+  return registry
+}
+
+const hydralisk120bRegistry = (): InferenceProviderRegistry => {
+  const registry = new InferenceProviderRegistry()
+  registry.register(echoAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID))
   return registry
 }
 
@@ -181,6 +192,16 @@ const HYDRALISK_READY_ENV = {
   HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+}
+
+const HYDRALISK_120B_READY_ENV = {
+  HYDRALISK_GPT_OSS_120B_BASE_URL: 'https://hydralisk-120b.example.test',
+  HYDRALISK_GPT_OSS_120B_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GPT_OSS_120B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_120b.h100.v1',
+  HYDRALISK_GPT_OSS_120B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_120b.h100.smoke.v1',
 }
 
 const completionDeps = (
@@ -194,7 +215,7 @@ const completionDeps = (
   ...overrides,
 })
 
-const mppBody = (model = KHALA_MINI_MODEL_ID): unknown => ({
+const mppBody = (model = KHALA_MODEL_ID): unknown => ({
   messages: [{ content: 'hello', role: 'user' }],
   model,
 })
@@ -236,7 +257,7 @@ const firstChallengeOpaque = (response: Response): Record<string, unknown> | und
 const cryptoChallenge = (
   pi: string,
   amountCents = 100,
-  model = KHALA_MINI_MODEL_ID,
+  model = KHALA_MODEL_ID,
 ): Promise<MppChallenge> =>
   buildChallenge(SIGNING_SECRET, {
     amountCents,
@@ -352,7 +373,7 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
       { status: 200 },
     )
 
-  test('omitted model defaults to direct openai/gpt-oss-20b, not a Khala alias', async () => {
+  test('omitted model defaults to the external Khala id', async () => {
     const db = makeDb()
     const response = await run(
       handleMppChatCompletions(
@@ -365,7 +386,7 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
           completionDeps: completionDeps(db),
           db,
           enabled: true,
-          fetch: quoteFetch('pi_quote_gptoss_default'),
+          fetch: quoteFetch('pi_quote_khala_default'),
           newId: () => 'fixed',
           signingSecret: SIGNING_SECRET,
           stripeSecretKey: 'sk_test_x',
@@ -374,8 +395,8 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
     )
     expect(response.status).toBe(402)
     expect(firstChallengeOpaque(response)).toMatchObject({
-      model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
-      pi: 'pi_quote_gptoss_default',
+      model: KHALA_MODEL_ID,
+      pi: 'pi_quote_khala_default',
     })
   })
 
@@ -406,7 +427,40 @@ describe('MPP endpoint — 402 challenge (no payment credential)', () => {
       supported_models?: ReadonlyArray<string>
     }
     expect(body.error).toBe('mpp_model_not_supported')
-    expect(body.supported_models).toContain(HYDRALISK_GPT_OSS_20B_MODEL_ID)
+    expect(body.supported_models).toEqual([KHALA_MODEL_ID])
+    expect(quoteCalls).toBe(0)
+  })
+
+  test('explicit raw GPT-OSS 120B fails before a Stripe quote even when Hydralisk is armed', async () => {
+    const db = makeDb()
+    let quoteCalls = 0
+    const response = await run(
+      handleMppChatCompletions(
+        mppRequest({
+          body: JSON.stringify(mppBody(HYDRALISK_GPT_OSS_120B_MODEL_ID)),
+        }),
+        {
+          completionDeps: completionDeps(db, {
+            laneArming: resolveSupplyLaneArming(HYDRALISK_READY_ENV),
+          }),
+          db,
+          enabled: true,
+          fetch: async () => {
+            quoteCalls += 1
+            return new Response('{}', { status: 200 })
+          },
+          signingSecret: SIGNING_SECRET,
+          stripeSecretKey: 'sk_test_x',
+        },
+      ),
+    )
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({
+      error: 'model_not_public',
+      model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+      supported_models: [KHALA_MODEL_ID],
+    })
+    expect(response.headers.get('www-authenticate')).toBeNull()
     expect(quoteCalls).toBe(0)
   })
 
@@ -505,7 +559,7 @@ describe('MPP endpoint — credential verification + crypto settlement', () => {
           amount,
           currency: 'usd',
           id: pi,
-          metadata: { model: KHALA_MINI_MODEL_ID },
+          metadata: { model: KHALA_MODEL_ID },
           status: 'succeeded',
         }),
         { status: 200 },
@@ -584,33 +638,24 @@ describe('MPP endpoint — credential verification + crypto settlement', () => {
     expect(completion.openagents).toBeDefined()
 
     expect(metered.length).toBe(1)
-    expect(metered[0]?.requestedModel).toBe(KHALA_MINI_MODEL_ID)
+    expect(metered[0]?.requestedModel).toBe(KHALA_MODEL_ID)
 
     const balance = await readAgentBalance(db, 'agent:mpp:pi_paid_1')
     expect(balance).not.toBeNull()
     expect(balance!.usdCreditMsat).toBeGreaterThan(0)
   })
 
-  test('verifies a settled openai/gpt-oss-20b payment and serves through Hydralisk', async () => {
+  test('refuses a paid raw GPT-OSS 20B request before settlement or completion', async () => {
     const db = makeDb()
-    const metered: Array<MeteringContext> = []
     const challenge = await cryptoChallenge(
       'pi_gptoss_paid_1',
       100,
       HYDRALISK_GPT_OSS_20B_MODEL_ID,
     )
 
-    const ledger = makeLedgerMeteringHook({ db })
-    const spyMetering = (context: MeteringContext) =>
-      Effect.gen(function* () {
-        metered.push(context)
-        return yield* ledger(context)
-      })
-
     const deps: MppChatCompletionsDeps = {
       completionDeps: completionDeps(db, {
         laneArming: resolveSupplyLaneArming(HYDRALISK_READY_ENV),
-        meteringHook: spyMetering,
         registry: hydraliskRegistry(),
       }),
       db,
@@ -634,38 +679,60 @@ describe('MPP endpoint — credential verification + crypto settlement', () => {
       ),
     )
 
-    expect(response.status).toBe(200)
-    expect(response.headers.get('payment-receipt')).toBe(
-      jcsBase64Url({
-        method: 'base',
-        reference: 'pi_gptoss_paid_1',
-        status: 'success',
-        timestamp: '2026-06-22T12:00:00.000Z',
-      }),
+    expect(response.status).toBe(403)
+    expect(response.headers.get('payment-receipt')).toBeNull()
+    expect(await response.json()).toMatchObject({
+      error: 'model_not_public',
+      model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
+      supported_models: [KHALA_MODEL_ID],
+    })
+    const balance = await readAgentBalance(db, 'agent:mpp:pi_gptoss_paid_1')
+    expect(balance).toBeNull()
+  })
+
+  test('refuses a paid raw GPT-OSS 120B request before settlement or completion', async () => {
+    const db = makeDb()
+    const challenge = await cryptoChallenge(
+      'pi_gptoss_120b_paid_1',
+      100,
+      HYDRALISK_GPT_OSS_120B_MODEL_ID,
     )
 
-    const completion = (await response.json()) as {
-      choices: Array<{ message: { content: string } }>
-      model: string
-      openagents?: {
-        requested_model: string
-        served_model: string
-        supply_lane: string
-        worker: string
-      }
+    const deps: MppChatCompletionsDeps = {
+      completionDeps: completionDeps(db, {
+        laneArming: resolveSupplyLaneArming(HYDRALISK_120B_READY_ENV),
+        registry: hydralisk120bRegistry(),
+      }),
+      db,
+      enabled: true,
+      fetch: settledCryptoFetch('pi_gptoss_120b_paid_1', 100),
+      nowIso: () => '2026-06-22T12:00:00.000Z',
+      signingSecret: SIGNING_SECRET,
+      stripeSecretKey: 'sk_test_x',
     }
-    expect(completion.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
-    expect(completion.choices[0]?.message.content).toBe('hello')
-    expect(completion.openagents).toMatchObject({
-      requested_model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
-      served_model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
-      supply_lane: 'hydralisk',
-      worker: HYDRALISK_ADAPTER_ID,
-    })
 
-    expect(metered).toHaveLength(1)
-    expect(metered[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
-    expect(metered[0]?.requestedModel).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
+    const response = await run(
+      handleMppChatCompletions(
+        mppRequest({
+          body: JSON.stringify(mppBody(HYDRALISK_GPT_OSS_120B_MODEL_ID)),
+          headers: {
+            authorization: credentialHeader(challenge),
+            'content-type': 'application/json',
+          },
+        }),
+        deps,
+      ),
+    )
+
+    expect(response.status).toBe(403)
+    expect(response.headers.get('payment-receipt')).toBeNull()
+    expect(await response.json()).toMatchObject({
+      error: 'model_not_public',
+      model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+      supported_models: [KHALA_MODEL_ID],
+    })
+    const balance = await readAgentBalance(db, 'agent:mpp:pi_gptoss_120b_paid_1')
+    expect(balance).toBeNull()
   })
 
   test('credit mint is idempotent across two settled retries (one payment = one grant)', async () => {
@@ -729,7 +796,7 @@ describe('MPP endpoint — credential verification + crypto settlement', () => {
     expect(completionRan).toBe(false)
   })
 
-  test('a credential issued for one model cannot be replayed against another model', async () => {
+  test('a credential cannot be replayed into a raw GPT-OSS model request', async () => {
     const db = makeDb()
     let completionRan = false
     const challenge = await cryptoChallenge('pi_model_mismatch_1', 100)
@@ -754,8 +821,12 @@ describe('MPP endpoint — credential verification + crypto settlement', () => {
         },
       ),
     )
-    expect(response.status).toBe(402)
+    expect(response.status).toBe(403)
     expect(response.headers.get('payment-receipt')).toBeNull()
+    expect(await response.json()).toMatchObject({
+      error: 'model_not_public',
+      model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
+    })
     expect(completionRan).toBe(false)
   })
 

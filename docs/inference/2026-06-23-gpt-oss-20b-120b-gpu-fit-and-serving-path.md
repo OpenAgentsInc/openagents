@@ -32,7 +32,8 @@ H200 141GB, B200 180GB, or RTX PRO 6000 96GB.
 The practical path is:
 
 1. Put `gpt-oss-20b` behind Khala first on L4 as the low-cost self-hosted open
-   reasoning lane.
+   reasoning lane. The public model is `openagents/khala`; the internal
+   ecosystem slug is `khala`; raw GPT-OSS ids are Hydralisk supply only.
 2. Run a short high-memory allocation probe for `gpt-oss-120b`, preferably H200
    or B200 for headroom, H100 as the model-card minimum lane, and RTX PRO 6000
    G4 as the Blackwell-ish single-card probe if allocatable.
@@ -201,20 +202,31 @@ For `gpt-oss-120b`:
 
 ### Phase 1: Khala integration
 
-1. Add model catalog entries:
-   - `openai/gpt-oss-20b`
-   - `openai/gpt-oss-120b`
+1. Keep the model catalog collapsed to a single public id:
+   - external/OpenAI-compatible: `openagents/khala`
+   - internal OpenAgents ecosystem: `khala`
+   - Hydralisk upstream supply: `openai/gpt-oss-20b` or `openai/gpt-oss-120b`,
+     selected by the Worker adapter plan and evidence gates.
 2. Route them through a self-hosted provider adapter that exposes OpenAI-compatible
    chat/responses semantics while using harmony under the hood.
-3. Reserve `openagents/khala-*` ids for models or coordinators with
-   Khala-specific behavior, such as Blueprint-backed orchestration or identity
-   semantics.
+3. Do not expose `openagents/khala-*` split names or raw GPT-OSS ids as public
+   choices. Khala is one model surface that can use Blueprint, verifier,
+   Hydralisk, and future coordinator behavior under the hood.
 4. Preserve internal reasoning/tool-call semantics, but return only final
    user-visible content and safe reasoning summaries where product UI needs them.
 5. Add receipt fields for model revision, engine, engine version, GPU,
    quantization (`mxfp4`), reasoning effort, and warm/cold state.
 6. Add feature flags so the lane can be enabled for owner/internal traffic
    before public customers.
+
+2026-06-24 implementation note: the Worker now has the 120B gate and route plan
+(`hydralisk-vllm-gpt-oss-120b`) wired behind Khala, including catalog, quote,
+chat, and MPP pre-payment gating. A Spot `a3-highgpu-1g` H100 host in
+`us-central1-b` has loaded `openai/gpt-oss-120b` with vLLM `0.23.0`, MXFP4,
+`max_model_len=32768`, and returned `READY_120B` through the Hydralisk proxy.
+Public availability still depends on arming the production Worker with
+`HYDRALISK_GPT_OSS_120B_*` secrets/refs; until then 120B is not a Khala backing
+candidate. It remains hidden as a raw id either way.
 
 ### Phase 2: Decision-grade benchmark
 
@@ -268,22 +280,21 @@ shape justifies the operational complexity.
 | Question                                                            | Answer                                                                                                                        |
 | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Can we run `gpt-oss-20b` today?                                     | Yes. The live L4 lane should be enough for smoke and low-QPS service after vLLM/runtime setup.                                |
-| Can we run `gpt-oss-120b` today on a live VM?                       | No. The only live GPU is L4, which is too small.                                                                              |
-| Can we run `gpt-oss-120b` today if GCP allocates our visible quota? | Probably yes. H100 80GB is the model-card target; H200/B200/RTX PRO 6000 give better headroom.                                |
-| Is 120B production-ready for OpenAgents today?                      | Not yet. We still need allocation proof, runtime pinning, harmony adapter work, evals, safety policy, and telemetry.          |
+| Can we run `gpt-oss-120b` today on a live VM?                       | Yes. A Spot `a3-highgpu-1g` H100 80GB host in `us-central1-b` loaded the model and passed a Hydralisk chat smoke.             |
+| Can we run `gpt-oss-120b` today if GCP allocates our visible quota? | Yes for a one-GPU H100 smoke. H200/B200/RTX PRO 6000 remain better headroom and capacity-planning targets.                    |
+| Is 120B production-ready for OpenAgents today?                      | Close for MVP serving after Worker arming; still needs sustained load, evals, safety policy, TLS/DNS hardening, and telemetry. |
 | Is this easier than self-hosted GLM-5.2?                            | Yes, by a lot. GPT-OSS 120B is a single-high-memory-GPU target; GLM-5.2 is a multi-GPU frontier-serving research lane for us. |
 
 ## Recommended immediate commands/work items
 
-1. Cleanly allocate or reuse an L4 VM and run the official vLLM `gpt-oss-20b`
-   smoke.
-2. Owner-arm a one-hour high-memory create/delete probe: H200 first, B200 second,
-   H100 third, RTX PRO 6000 G4 fourth.
+1. Keep the L4 `gpt-oss-20b` lane live for low-cost dogfood traffic.
+2. Arm the production Worker with the H100 `HYDRALISK_GPT_OSS_120B_*` host,
+   token, preflight, and receipt refs after deploy.
 3. Save a public-safe evidence note with hardware, driver, engine, revision,
    quantization, memory high-water mark, TTFT, ITL/TPS, and the exact request
    class.
-4. Add a Khala model-router entry only after the adapter can render harmony and
-   suppress raw CoT.
+4. Keep the Khala model-router entry pointed at Hydralisk only after the adapter
+   can render harmony and suppress raw CoT.
 5. Run the benchmark harness over realistic OpenAgents traffic before calling
    either lane production.
 

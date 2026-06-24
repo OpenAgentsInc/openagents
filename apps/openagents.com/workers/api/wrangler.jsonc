@@ -51,6 +51,13 @@
     "HYDRALISK_GPT_OSS_20B_ENABLED": "ready",
     "HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z",
     "HYDRALISK_GPT_OSS_20B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-48adcddbb0ff47e097685da23f17cea6",
+    // Hydralisk GPT-OSS 120B high-memory lane. The transport URL and bearer are
+    // Worker secrets; these committed vars only arm the model-id route after the
+    // 2026-06-24 H100/vLLM smoke produced public-safe capability + receipt
+    // evidence.
+    "HYDRALISK_GPT_OSS_120B_ENABLED": "ready",
+    "HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_120b.h100.20260624T022946Z",
+    "HYDRALISK_GPT_OSS_120B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_120b.h100.hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11",
     // OpenAgents/Pylon serving-fabric lane (#6089). The proxy route URL and
     // bearer are Worker secrets; these committed vars only arm the route after
     // the admitted GCloud L4 Pylon's durable HTTPS canary returned public-safe

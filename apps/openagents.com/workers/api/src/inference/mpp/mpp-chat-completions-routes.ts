@@ -44,13 +44,15 @@ import {
   resolveRequestedModel,
 } from '../chat-completions-routes'
 import {
-  AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
-  KHALA_CODE_MODEL_ID,
-  KHALA_MINI_MODEL_ID,
-  KHALA_PYLON_MINI_MODEL_ID,
-  isKhalaModel,
+  KHALA_MODEL_ID,
+  KHALA_MODEL_SLUG,
 } from '../pricing'
+import {
+  resolveNamedModelServability,
+  type SupplyLaneArming,
+} from '../model-serving-policy'
 import {
   type MppCreditGrantOutcome,
   mintLightningCredits,
@@ -81,17 +83,11 @@ import {
   retrievePaymentIntent,
 } from './stripe-mpp-client'
 
-// Default model + crypto networks the endpoint quotes for. GPT-OSS is the raw
-// model sale: Khala names are reserved for OpenAgents-specific capabilities
-// (Blueprint/coordinator/verifier/Pylon), not merely because Khala uses the
-// model.
-const DEFAULT_MPP_MODEL = HYDRALISK_GPT_OSS_20B_MODEL_ID
+// Default model + crypto networks the endpoint quotes for. Public model
+// selection collapses to one Khala id; raw GPT-OSS is internal supply only.
+const DEFAULT_MPP_MODEL = KHALA_MODEL_ID
 export const SUPPORTED_MPP_MODEL_EXAMPLES: ReadonlyArray<string> = [
-  HYDRALISK_GPT_OSS_20B_MODEL_ID,
-  KHALA_MINI_MODEL_ID,
-  KHALA_CODE_MODEL_ID,
-  KHALA_PYLON_MINI_MODEL_ID,
-  AUTOPILOT_CONCIERGE_MODEL_ID,
+  KHALA_MODEL_ID,
 ]
 // x402 (Base) + MPP (Solana, Tempo) — all USDC. We advertise all three crypto
 // networks; the agent picks one.
@@ -198,31 +194,33 @@ const notConfigured = (reason: string): Response =>
 
 export const isMppSellableModel = (model: string): boolean => {
   const normalized = model.trim().toLowerCase()
+  return normalized === KHALA_MODEL_ID
+}
+
+const isDirectGptOssModel = (model: string): boolean => {
+  const normalized = model.trim().toLowerCase()
   return (
     normalized === HYDRALISK_GPT_OSS_20B_MODEL_ID ||
-    isKhalaModel(normalized)
+    normalized === HYDRALISK_GPT_OSS_120B_MODEL_ID
   )
 }
 
 const modelDescription = (model: string): string =>
-  model.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID
-    ? `OpenAgents ${HYDRALISK_GPT_OSS_20B_MODEL_ID} pay-per-call`
-    : `OpenAgents Khala ${model} pay-per-call`
+  `OpenAgents Khala ${model.trim().toLowerCase()} pay-per-call`
 
-const mppProductForModel = (model: string | undefined): string =>
-  model?.trim().toLowerCase() === HYDRALISK_GPT_OSS_20B_MODEL_ID
-    ? 'openagents_gpt_oss_20b_mpp'
-    : 'openagents_khala_mpp'
+const mppProductForModel = (_model: string | undefined): string =>
+  'openagents_khala_mpp'
 
 type MppModelResolution =
   | Readonly<{ ok: true; model: string }>
   | Readonly<{ ok: false; response: Response }>
 
-// Resolve the requested model from the body, defaulting to GPT-OSS, and reject
-// explicit unsupported model ids BEFORE issuing a payment challenge. This avoids
-// silently charging for a different model than the buyer requested.
+// Resolve the requested model from the body, defaulting to the single public
+// Khala model id, and reject unsupported ids BEFORE issuing a payment challenge.
+// This avoids silently charging for a different model than the buyer requested.
 const resolveMppModel = (
   rawBody: Record<string, unknown> | undefined,
+  laneArming?: SupplyLaneArming | undefined,
 ): MppModelResolution => {
   const rawModel = typeof rawBody?.model === 'string' ? rawBody.model : undefined
   const trimmed = rawModel?.trim()
@@ -231,7 +229,52 @@ const resolveMppModel = (
       ? DEFAULT_MPP_MODEL
       : resolveRequestedModel(trimmed).trim().toLowerCase()
 
+  if (trimmed?.trim().toLowerCase() === KHALA_MODEL_SLUG) {
+    return {
+      ok: false,
+      response: noStoreJsonResponse(
+        {
+          detail:
+            'Use the external OpenAI-compatible model id openagents/khala on MPP.',
+          error: 'mpp_model_not_supported',
+          model: KHALA_MODEL_SLUG,
+          supported_models: SUPPORTED_MPP_MODEL_EXAMPLES,
+          supported_model_pattern: KHALA_MODEL_ID,
+        },
+        { status: 400 },
+      ),
+    }
+  }
+
+  if (isDirectGptOssModel(model)) {
+    return {
+      ok: false,
+      response: noStoreJsonResponse(
+        {
+          detail:
+            'Raw GPT-OSS model ids are internal Hydralisk supply and are consumed only through openagents/khala.',
+          error: 'model_not_public',
+          model,
+          supported_models: SUPPORTED_MPP_MODEL_EXAMPLES,
+        },
+        { status: 403 },
+      ),
+    }
+  }
+
   if (isMppSellableModel(model)) {
+    if (
+      laneArming !== undefined &&
+      resolveNamedModelServability(model, laneArming) === false
+    ) {
+      return {
+        ok: false,
+        response: noStoreJsonResponse(
+          { error: 'model_unavailable', model },
+          { status: 400 },
+        ),
+      }
+    }
     return { model, ok: true }
   }
 
@@ -242,7 +285,7 @@ const resolveMppModel = (
         error: 'mpp_model_not_supported',
         model,
         supported_models: SUPPORTED_MPP_MODEL_EXAMPLES,
-        supported_model_pattern: 'openagents/khala-*',
+        supported_model_pattern: KHALA_MODEL_ID,
       },
       { status: 400 },
     ),
@@ -478,7 +521,7 @@ const buildLightningChallengeForQuote = (
         reason: Cause.pretty(cause).slice(0, 240),
       }),
     ),
-    Effect.catchCause(() => Effect.succeed(undefined)),
+    Effect.catchCause(() => Effect.as(Effect.void, undefined)),
   )
 
 // Issue a fresh 402 (no credential, or a credential we refused). Creates a
@@ -497,7 +540,7 @@ const issueChallenge = (
   Effect.gen(function* () {
     const newId = deps.newId ?? randomUuid
     const nowMs = (deps.nowMs ?? currentEpochMillis)()
-    const resolution = resolveMppModel(rawBody)
+    const resolution = resolveMppModel(rawBody, deps.completionDeps.laneArming)
     if (!resolution.ok) {
       return resolution.response
     }
@@ -517,7 +560,7 @@ const issueChallenge = (
     const [lightningChallenge, created] = yield* Effect.all(
       [
         mint === undefined
-          ? Effect.succeed(undefined)
+          ? Effect.as(Effect.void, undefined)
           : buildLightningChallengeForQuote(deps, signingSecret, mint, {
               challengeExpiresAt,
               model,
@@ -959,7 +1002,7 @@ export const handleMppChatCompletions = (
     }
 
     // ---- CREDENTIAL PRESENT: verify the HMAC binding FAIL-CLOSED ----
-    const resolution = resolveMppModel(rawBody)
+    const resolution = resolveMppModel(rawBody, deps.completionDeps.laneArming)
     if (!resolution.ok) {
       return resolution.response
     }

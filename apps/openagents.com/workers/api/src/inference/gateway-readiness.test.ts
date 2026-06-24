@@ -10,7 +10,7 @@ import {
   ALL_LANES_UNARMED,
   resolveSupplyLaneArming,
 } from './model-serving-policy'
-import type { SupplyLane } from './pricing'
+import { KHALA_MODEL_ID, type SupplyLane } from './pricing'
 import type { SupplyLaneArming } from './model-serving-policy'
 
 const ALL_ARMED: SupplyLaneArming = {
@@ -21,7 +21,18 @@ const ALL_ARMED: SupplyLaneArming = {
   'vertex-gemini': true,
 }
 
-// A tiny deterministic catalog spanning two lanes, so counts are unambiguous.
+const HYDRALISK_ARMED_ENV = {
+  HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
+  HYDRALISK_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+}
+
+// A tiny deterministic catalog with one public model and two internal rows. The
+// readiness projection counts only the public Khala row.
 const entry = (id: string, lane: SupplyLane): ModelCatalogEntry => ({
   costBasis: 'verified',
   freeTierEligible: false,
@@ -40,8 +51,8 @@ const entry = (id: string, lane: SupplyLane): ModelCatalogEntry => ({
 })
 
 const FIXTURE_CATALOG: ReadonlyArray<ModelCatalogEntry> = [
+  entry(KHALA_MODEL_ID, 'hydralisk'),
   entry('gemini-flash', 'vertex-gemini'),
-  entry('gemini-pro', 'vertex-gemini'),
   entry('claude-sonnet', 'vertex-anthropic'),
 ]
 
@@ -53,38 +64,38 @@ describe('projectGatewayReadiness', () => {
     )
     expect(readiness.status).toBe('unavailable')
     expect(readiness.servableModelCount).toBe(0)
-    expect(readiness.hiddenModelCount).toBe(3)
-    expect(readiness.totalModelCount).toBe(3)
+    expect(readiness.hiddenModelCount).toBe(1)
+    expect(readiness.totalModelCount).toBe(1)
     expect(readiness.reasonRefs).toContain(
       'gateway.readiness.unavailable.no_servable_models',
     )
   })
 
-  it('reports ready when every published model is servable', () => {
+  it('reports ready when the public Khala model is servable', () => {
     const readiness = projectGatewayReadiness(ALL_ARMED, FIXTURE_CATALOG)
     expect(readiness.status).toBe('ready')
-    expect(readiness.servableModelCount).toBe(3)
+    expect(readiness.servableModelCount).toBe(1)
     expect(readiness.hiddenModelCount).toBe(0)
     expect(readiness.reasonRefs).toEqual([
       'gateway.readiness.ready.all_models_servable',
     ])
   })
 
-  it('reports degraded when some lanes are armed and others are not', () => {
+  it('ignores armed internal lanes when Khala is not servable', () => {
     const arming: SupplyLaneArming = {
       ...ALL_LANES_UNARMED,
       'vertex-gemini': true,
     }
     const readiness = projectGatewayReadiness(arming, FIXTURE_CATALOG)
-    expect(readiness.status).toBe('degraded')
-    expect(readiness.servableModelCount).toBe(2)
+    expect(readiness.status).toBe('unavailable')
+    expect(readiness.servableModelCount).toBe(0)
     expect(readiness.hiddenModelCount).toBe(1)
     expect(readiness.reasonRefs).toContain(
-      'gateway.readiness.degraded.some_lanes_unarmed',
+      'gateway.readiness.unavailable.no_servable_models',
     )
-    // The unarmed lane that hides a published model is named in reason refs.
+    // The unarmed public Khala lane is named in reason refs.
     expect(readiness.reasonRefs).toContain(
-      'gateway.readiness.lane_unarmed.vertex-anthropic',
+      'gateway.readiness.lane_unarmed.hydralisk',
     )
     // The armed lane is not named as unarmed.
     expect(readiness.reasonRefs).not.toContain(
@@ -110,13 +121,13 @@ describe('projectGatewayReadiness', () => {
       armed: true,
       hiddenModelCount: 0,
       lane: 'vertex-gemini',
-      servableModelCount: 2,
+      servableModelCount: 0,
     })
-    const anthropic = readiness.lanes.find(l => l.lane === 'vertex-anthropic')
-    expect(anthropic).toEqual({
+    const hydralisk = readiness.lanes.find(l => l.lane === 'hydralisk')
+    expect(hydralisk).toEqual({
       armed: false,
       hiddenModelCount: 1,
-      lane: 'vertex-anthropic',
+      lane: 'hydralisk',
       servableModelCount: 0,
     })
   })
@@ -149,19 +160,19 @@ describe('projectGatewayReadiness', () => {
     expect(serialized).not.toMatch(/sk-[A-Za-z0-9]{16,}/u)
   })
 
-  it('works against the live published catalog with a Vertex-armed env', () => {
-    const arming = resolveSupplyLaneArming({ VERTEX_SA_KEY: '{"k":1}' })
+  it('works against the live published catalog with a Hydralisk-armed env', () => {
+    const arming = resolveSupplyLaneArming(HYDRALISK_ARMED_ENV)
     const readiness = projectGatewayReadiness(arming)
-    // The live catalog has both Vertex and non-Vertex lanes, so a Vertex-only
-    // env is servable-but-degraded (some published models are hidden).
-    expect(readiness.totalModelCount).toBeGreaterThan(0)
-    expect(readiness.servableModelCount).toBeGreaterThan(0)
-    expect(['degraded', 'ready']).toContain(readiness.status)
+    expect(readiness.totalModelCount).toBe(1)
+    expect(readiness.servableModelCount).toBe(1)
+    expect(readiness.status).toBe('ready')
     // Servable + hidden partition the whole catalog.
     expect(readiness.servableModelCount + readiness.hiddenModelCount).toBe(
       readiness.totalModelCount,
     )
-    // Consistent with the live catalog size.
-    expect(readiness.totalModelCount).toBe(buildModelCatalog().length)
+    // Consistent with the public subset of the live catalog.
+    expect(readiness.totalModelCount).toBe(
+      buildModelCatalog().filter(entry => entry.id === KHALA_MODEL_ID).length,
+    )
   })
 })

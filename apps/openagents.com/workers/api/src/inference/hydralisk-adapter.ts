@@ -32,6 +32,7 @@ export type HydraliskAdapterConfig = Readonly<{
   apiKey: Redacted.Redacted<string>
   baseUrl: string
   fetchImpl?: HydraliskFetch | undefined
+  upstreamModel?: string | undefined
 }>
 
 const requestUrl = (config: HydraliskAdapterConfig): string =>
@@ -76,7 +77,10 @@ const streamOptions = (
   include_usage: true,
 })
 
-const toRequestBody = (request: InferenceRequest): Record<string, unknown> => {
+const toRequestBody = (
+  config: HydraliskAdapterConfig,
+  request: InferenceRequest,
+): Record<string, unknown> => {
   const { 'x-session-affinity': _affinity, ...params } =
     request.passthroughParams
   return {
@@ -85,7 +89,7 @@ const toRequestBody = (request: InferenceRequest): Record<string, unknown> => {
       content: message.content,
       role: message.role,
     })),
-    model: request.model,
+    model: config.upstreamModel ?? request.model,
     stream: request.stream,
     ...(request.stream
       ? { stream_options: streamOptions(request.passthroughParams) }
@@ -118,7 +122,7 @@ const postChatCompletions = (
     try: () => {
       const fetcher = config.fetchImpl ?? globalThis.fetch
       return fetcher(requestUrl(config), {
-        body: JSON.stringify(toRequestBody(request)),
+      body: JSON.stringify(toRequestBody(config, request)),
         headers: headersFor(config, request),
         method: 'POST',
       })

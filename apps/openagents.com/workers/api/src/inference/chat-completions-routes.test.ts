@@ -40,6 +40,7 @@ import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
@@ -49,8 +50,10 @@ import {
 } from './model-serving-policy'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
   KHALA_MINI_MODEL_ID,
 } from './pricing'
 import {
@@ -111,6 +114,16 @@ const hydraliskReadyArming = resolveSupplyLaneArming({
   HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+})
+
+const hydralisk120bReadyArming = resolveSupplyLaneArming({
+  HYDRALISK_GPT_OSS_120B_BASE_URL: 'https://hydralisk-120b.example.test',
+  HYDRALISK_GPT_OSS_120B_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GPT_OSS_120B_ENABLED: 'ready',
+  HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF:
+    'preflight.hydralisk.gpt_oss_120b.h100.v1',
+  HYDRALISK_GPT_OSS_120B_RECEIPT_REF:
+    'receipt.hydralisk.gpt_oss_120b.h100.smoke.v1',
 })
 
 const HYDRALISK_RETRYABLE_STATUS_CASES = [
@@ -843,6 +856,66 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.usage.totalTokens).toBe(8)
   })
 
+  test('a Khala request can route through the high-memory GPT-OSS 120B Hydralisk adapter when armed', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'READY-120B',
+          finishReason: 'stop',
+          servedModel: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+          usage: { completionTokens: 2, promptTokens: 9, totalTokens: 11 },
+        })),
+      id: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'receipt.hydralisk.120b.route.test' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydralisk120bReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook,
+          newId: () => 'chatcmpl-hydralisk-120b',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      model: string
+      openagents?: {
+        requested_model: string
+        served_model: string
+        supply_lane: string
+        worker: string
+      }
+    }
+    expect(body.model).toBe(KHALA_MODEL_ID)
+    expect(body.choices[0]?.message.content).toBe('READY-120B')
+    expect(body.openagents).toMatchObject({
+      requested_model: KHALA_MODEL_ID,
+      served_model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+      supply_lane: 'hydralisk',
+      worker: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+    })
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.adapterId).toBe(HYDRALISK_GPT_OSS_120B_ADAPTER_ID)
+    expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
+  })
+
   test('a streaming raw GPT-OSS request carries Hydralisk disclosure and usage', async () => {
     const usage: InferenceUsage = {
       completionTokens: 1,
@@ -1157,6 +1230,26 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
     const body = (await response.json()) as { error: string; model: string }
     expect(body.error).toBe('model_unavailable')
     expect(body.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
+  })
+
+  test('rejects GPT-OSS 120B when only the 20B Hydralisk lane is armed', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskReadyArming,
+          lanePlan: selectAdapterPlan,
+          readAvailableMsat: emptyBalance,
+        }),
+      ),
+    )
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as { error: string; model: string }
+    expect(body.error).toBe('model_unavailable')
+    expect(body.model).toBe(HYDRALISK_GPT_OSS_120B_MODEL_ID)
   })
 
   test('serves a KNOWN model when its lane IS armed', async () => {

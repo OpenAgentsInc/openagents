@@ -5,7 +5,8 @@
 // Owns a persisted onboarding SESSION in D1 and advances the productized intake
 // interview one turn at a time over the Khala inference orchestrator (the
 // OpenAI-compatible `/v1/chat/completions` gateway, model
-// `openagents/khala-mini`). The handler is transport-agnostic: it decodes the
+// internal `khala` slug; public OpenAI-compatible calls use `openagents/khala`).
+// The handler is transport-agnostic: it decodes the
 // text turn from JSON today and hands a typed `OnboardingTurnInput` to the pure
 // driver; a voice front-end (STT -> this route -> TTS) can reuse the same driver
 // without changing it.

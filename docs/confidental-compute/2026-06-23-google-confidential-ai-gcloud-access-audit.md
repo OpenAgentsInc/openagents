@@ -64,6 +64,26 @@ for non-streaming and
 `receipt.inference.charge.chatcmpl_dcd97345b3f14699b672544138597c3d`
 for streaming.
 
+2026-06-24 slug-policy follow-up: that raw GPT-OSS public model exposure is now
+superseded. Within the OpenAgents ecosystem the model slug is `khala`; external
+OpenAI-compatible and MPP surfaces use `openagents/khala`. Hydralisk still sends
+raw upstream model ids such as `openai/gpt-oss-20b` and
+`openai/gpt-oss-120b` to vLLM, but those ids are no longer listed, quoted, or
+MPP-payable as public products.
+
+2026-06-24 H100 follow-up: the project also successfully allocated a non-
+confidential Spot `a3-highgpu-1g` H100 80GB VM in `us-central1-b`,
+`hydralisk-gptoss120b-h100-probe-20260623210841`. vLLM `0.23.0` loaded
+`openai/gpt-oss-120b` with MXFP4 weights at `max_model_len=32768`, reporting
+64.67 GiB GPU memory for model load before compile/warmup/autotune and about
+76 GiB resident after first smoke. The bearer-protected Hydralisk proxy returned
+HTTP 200 for a chat completion with visible content `READY_120B`; public-safe
+run ref: `hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11`. This proves the
+project can run GPT-OSS 120B on a live H100 host today. It does not change the
+confidential-compute conclusion: the H100 serving host is not a Confidential VM,
+and confidential H100/G4 serving still needs its own attestation-oriented
+bootstrap.
+
 ## What Google announced
 
 The June 23, 2026 Google Cloud post announces:

@@ -244,7 +244,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'OpenAI-compatible model catalog for the Khala inference gateway, with published per-1M-token price and policy. Served models include openagents/khala-mini, openagents/khala-code, and openagents/autopilot-concierge (the productized Autopilot onboarding concierge). Public pre-purchase discovery; no prompts, balances, or credentials.',
+          'OpenAI-compatible model catalog for the Khala inference gateway, with published per-1M-token price and policy. Public pre-purchase discovery exposes one model: openagents/khala. Inside OpenAgents-owned callers the slug is khala; raw GPT-OSS ids and old split names are internal/legacy implementation details, not public products.',
       },
       {
         id: 'agent_full_reference',
@@ -871,7 +871,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         auth: 'registered_agent_token',
         status: 'available',
         description:
-          'Call the Autopilot Concierge as an OpenAI-compatible Khala virtual model: POST with model "openagents/autopilot-concierge" runs the productized onboarding intake (registry-honesty contract + server-owned vertical enum, e.g. legal — never client-supplied system-prompt text). Inherits the gateway auth + credit/balance gate + receipt-first metering. Opt into the closed oa.component typed-card channel and read the structured 10-section Output Spec from the openagents disclosure block. A bounded tool set is declared but not yet executable from this surface. Canonical under the /api base; the legacy bare /v1/chat/completions path remains a non-breaking alias.',
+          'Call Khala through the OpenAI-compatible endpoint: POST with model "openagents/khala" for external clients, or "khala" inside OpenAgents-owned callers. Khala is the single model surface for onboarding, coding, and general inference behavior; specialized Concierge/Blueprint behavior is an internal capability of Khala rather than a separate public model selector. Inherits the gateway auth + credit/balance gate + receipt-first metering. Canonical under the /api base; the legacy bare /v1/chat/completions path remains a non-breaking alias.',
       },
       {
         id: 'register_agent',

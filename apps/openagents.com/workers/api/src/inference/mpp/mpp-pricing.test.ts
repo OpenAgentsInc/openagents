@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { KHALA_MINI_MODEL_ID } from '../pricing'
+import { KHALA_MODEL_ID } from '../pricing'
 import {
   LIGHTNING_MIN_SATS,
   MPP_MIN_USDC,
@@ -10,8 +10,8 @@ import {
 } from './mpp-pricing'
 
 describe('mpp per-call pricing', () => {
-  test('quotes a crypto call for khala-mini at or above the 0.01 USDC floor', () => {
-    const quote = quoteMppCall({ model: KHALA_MINI_MODEL_ID, rail: 'crypto' })
+  test('quotes a crypto call for Khala at or above the 0.01 USDC floor', () => {
+    const quote = quoteMppCall({ model: KHALA_MODEL_ID, rail: 'crypto' })
     expect(quote.rail).toBe('crypto')
     expect(quote.priceUsd).toBeGreaterThanOrEqual(MPP_MIN_USDC)
     // amountCents is whole cents, never below 1 (the 0.01 USDC floor).
@@ -20,7 +20,7 @@ describe('mpp per-call pricing', () => {
   })
 
   test('the card rail respects the 0.50 USD SPT minimum', () => {
-    const quote = quoteMppCall({ model: KHALA_MINI_MODEL_ID, rail: 'card' })
+    const quote = quoteMppCall({ model: KHALA_MODEL_ID, rail: 'card' })
     expect(quote.rail).toBe('card')
     expect(quote.priceUsd).toBeGreaterThanOrEqual(SPT_MIN_USD)
     expect(quote.amountCents).toBeGreaterThanOrEqual(50)
@@ -30,9 +30,9 @@ describe('mpp per-call pricing', () => {
     // A representative call on an expensive model should clear the floor with a
     // real cost-derived price.
     const quote = quoteMppCall({
-      completionTokens: 5000,
-      model: 'openagents/khala-code',
-      promptTokens: 5000,
+      completionTokens: 50_000,
+      model: KHALA_MODEL_ID,
+      promptTokens: 50_000,
       rail: 'crypto',
     })
     expect(quote.priceUsd).toBeGreaterThan(MPP_MIN_USDC)
@@ -44,13 +44,13 @@ describe('mpp per-call pricing', () => {
     // larger token budget costs strictly more (monotonic in usage).
     const small = quoteMppCall({
       completionTokens: 100,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 100,
       rail: 'crypto',
     })
     const large = quoteMppCall({
       completionTokens: 100_000,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 100_000,
       rail: 'crypto',
     })
@@ -58,7 +58,7 @@ describe('mpp per-call pricing', () => {
   })
 
   test('the Lightning rail quotes a positive integer SAT amount at/above the floor', () => {
-    const quote = quoteMppLightningCall({ model: KHALA_MINI_MODEL_ID })
+    const quote = quoteMppLightningCall({ model: KHALA_MODEL_ID })
     expect(quote.amountSats).toBeGreaterThanOrEqual(LIGHTNING_MIN_SATS)
     expect(Number.isInteger(quote.amountSats)).toBe(true)
     expect(quote.priceUsd).toBeGreaterThan(0)
@@ -71,12 +71,12 @@ describe('mpp per-call pricing', () => {
     // floors do not mask the discount.
     const lightning = quoteMppLightningCall({
       completionTokens: 5000,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 5000,
     })
     const card = quoteMppCall({
       completionTokens: 5000,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 5000,
       rail: 'card',
     })
@@ -86,12 +86,12 @@ describe('mpp per-call pricing', () => {
   test('a pricier model quotes more sats than a cheap one (monotonic in usage)', () => {
     const small = quoteMppLightningCall({
       completionTokens: 100,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 100,
     })
     const large = quoteMppLightningCall({
       completionTokens: 200_000,
-      model: 'openagents/khala-code',
+      model: KHALA_MODEL_ID,
       promptTokens: 200_000,
     })
     expect(large.amountSats).toBeGreaterThan(small.amountSats)

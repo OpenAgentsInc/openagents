@@ -21,22 +21,60 @@
 // catalog advertises to what is genuinely servable.
 
 import type { ModelCatalogEntry } from './model-catalog'
-import { lookupModel } from './pricing'
+import {
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MODEL_ID,
+  lookupModel,
+  normalizeKhalaModelId,
+} from './pricing'
 import type { SupplyLane } from './pricing'
 
 // Which supply lanes the gateway can ACTUALLY serve right now. A lane is "armed"
 // only when its upstream credential/binding is provisioned.
-export type SupplyLaneArming = Readonly<Record<SupplyLane, boolean>>
+export type HydraliskGptOssModelId =
+  | typeof HYDRALISK_GPT_OSS_20B_MODEL_ID
+  | typeof HYDRALISK_GPT_OSS_120B_MODEL_ID
+
+export type HydraliskModelArming = Readonly<
+  Record<HydraliskGptOssModelId, boolean>
+>
+
+export type SupplyLaneArming = Readonly<
+  Record<SupplyLane, boolean> & {
+    // Optional for backward-compatible tests/callers that still model arming by
+    // lane only. Real Worker env arming supplies this map so one Hydralisk
+    // model cannot accidentally advertise another.
+    hydraliskModels?: HydraliskModelArming
+  }
+>
 
 // Safe default: nothing servable. A gateway with no provisioned lane advertises
 // no paid models rather than advertising models it cannot serve.
 export const ALL_LANES_UNARMED: SupplyLaneArming = {
   fireworks: false,
+  hydraliskModels: {
+    [HYDRALISK_GPT_OSS_120B_MODEL_ID]: false,
+    [HYDRALISK_GPT_OSS_20B_MODEL_ID]: false,
+  },
   hydralisk: false,
   'openagents-network': false,
   'vertex-anthropic': false,
   'vertex-gemini': false,
 }
+
+const RAW_GPT_OSS_MODEL_IDS = new Set<string>([
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  'gpt-oss-20b',
+  'gpt-oss-120b',
+])
+
+export const isRawGptOssModelId = (modelId: string): boolean =>
+  RAW_GPT_OSS_MODEL_IDS.has(modelId.trim().toLowerCase())
+
+export const isPublicModelId = (modelId: string): boolean =>
+  normalizeKhalaModelId(modelId) === KHALA_MODEL_ID
 
 // The presence-only env shape the arming is derived from. Every field is the
 // SAME worker secret/flag name the corresponding adapter already reads; we only
@@ -54,6 +92,14 @@ export type SupplyLaneCredentialEnv = Readonly<{
   HYDRALISK_BEARER_TOKEN?: string | undefined
   HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF?: string | undefined
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF?: string | undefined
+  // Hydralisk GPT-OSS 120B high-memory lane. This intentionally requires its
+  // own URL/token and evidence refs so the live L4 20B host cannot arm 120B by
+  // accident.
+  HYDRALISK_GPT_OSS_120B_ENABLED?: string | undefined
+  HYDRALISK_GPT_OSS_120B_BASE_URL?: string | undefined
+  HYDRALISK_GPT_OSS_120B_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GPT_OSS_120B_RECEIPT_REF?: string | undefined
   // Explicit public-gateway route arming for the OpenAgents/Pylon serving
   // fabric. `ready` is the only accepted on-token; public-safe refs below carry
   // the evidence. No endpoint URL, API key, raw prompt, or private host appears
@@ -78,6 +124,12 @@ export type OpenAgentsNetworkGatewayArming = Readonly<{
 }>
 
 export type HydraliskGptOss20bArming = Readonly<{
+  armed: boolean
+  evidenceRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+}>
+
+export type HydraliskGptOss120bArming = Readonly<{
   armed: boolean
   evidenceRefs: ReadonlyArray<string>
   blockerRefs: ReadonlyArray<string>
@@ -165,28 +217,58 @@ export const resolveOpenAgentsNetworkGatewayArming = (
 export const resolveHydraliskGptOss20bArming = (
   env: SupplyLaneCredentialEnv,
 ): HydraliskGptOss20bArming => {
+  return resolveHydraliskGptOssModelArming({
+    baseUrl: env.HYDRALISK_BASE_URL,
+    bearerToken: env.HYDRALISK_BEARER_TOKEN,
+    blockerPrefix: 'blocker.hydralisk_gpt_oss_20b',
+    enabled: env.HYDRALISK_GPT_OSS_20B_ENABLED,
+    preflightRef: env.HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF,
+    receiptRef: env.HYDRALISK_GPT_OSS_20B_RECEIPT_REF,
+  })
+}
+
+export const resolveHydraliskGptOss120bArming = (
+  env: SupplyLaneCredentialEnv,
+): HydraliskGptOss120bArming => {
+  return resolveHydraliskGptOssModelArming({
+    baseUrl: env.HYDRALISK_GPT_OSS_120B_BASE_URL,
+    bearerToken: env.HYDRALISK_GPT_OSS_120B_BEARER_TOKEN,
+    blockerPrefix: 'blocker.hydralisk_gpt_oss_120b',
+    enabled: env.HYDRALISK_GPT_OSS_120B_ENABLED,
+    preflightRef: env.HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF,
+    receiptRef: env.HYDRALISK_GPT_OSS_120B_RECEIPT_REF,
+  })
+}
+
+const resolveHydraliskGptOssModelArming = (
+  input: Readonly<{
+    enabled?: string | undefined
+    baseUrl?: string | undefined
+    bearerToken?: string | undefined
+    preflightRef?: string | undefined
+    receiptRef?: string | undefined
+    blockerPrefix: string
+  }>,
+): HydraliskGptOss20bArming => {
   const blockerRefs: Array<string> = []
-  if (
-    env.HYDRALISK_GPT_OSS_20B_ENABLED?.trim() !==
-    HYDRALISK_ROUTE_READY_ON_TOKEN
-  ) {
-    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.route_not_ready')
+  if (input.enabled?.trim() !== HYDRALISK_ROUTE_READY_ON_TOKEN) {
+    blockerRefs.push(`${input.blockerPrefix}.route_not_ready`)
   }
-  if (!isPresent(env.HYDRALISK_BASE_URL)) {
-    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.base_url_missing')
+  if (!isPresent(input.baseUrl)) {
+    blockerRefs.push(`${input.blockerPrefix}.base_url_missing`)
   }
-  if (!isPresent(env.HYDRALISK_BEARER_TOKEN)) {
-    blockerRefs.push('blocker.hydralisk_gpt_oss_20b.bearer_missing')
+  if (!isPresent(input.bearerToken)) {
+    blockerRefs.push(`${input.blockerPrefix}.bearer_missing`)
   }
 
   const evidence: Array<[string, string | undefined]> = [
     [
-      'blocker.hydralisk_gpt_oss_20b.preflight_ref_missing',
-      env.HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF,
+      `${input.blockerPrefix}.preflight_ref_missing`,
+      input.preflightRef,
     ],
     [
-      'blocker.hydralisk_gpt_oss_20b.receipt_ref_missing',
-      env.HYDRALISK_GPT_OSS_20B_RECEIPT_REF,
+      `${input.blockerPrefix}.receipt_ref_missing`,
+      input.receiptRef,
     ],
   ]
 
@@ -216,10 +298,18 @@ export const resolveSupplyLaneArming = (
 ): SupplyLaneArming => {
   const vertex = isPresent(env.VERTEX_SA_KEY)
   const openAgentsNetwork = resolveOpenAgentsNetworkGatewayArming(env)
-  const hydralisk = resolveHydraliskGptOss20bArming(env)
+  const hydralisk20b = resolveHydraliskGptOss20bArming(env)
+  const hydralisk120b = resolveHydraliskGptOss120bArming(env)
+  const hydraliskModels = {
+    [HYDRALISK_GPT_OSS_120B_MODEL_ID]: hydralisk120b.armed,
+    [HYDRALISK_GPT_OSS_20B_MODEL_ID]: hydralisk20b.armed,
+  } as const
   return {
     fireworks: isPresent(env.FIREWORKS_API_KEY),
-    hydralisk: hydralisk.armed,
+    hydralisk:
+      hydraliskModels[HYDRALISK_GPT_OSS_20B_MODEL_ID] ||
+      hydraliskModels[HYDRALISK_GPT_OSS_120B_MODEL_ID],
+    hydraliskModels,
     'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,
@@ -232,35 +322,72 @@ export const isLaneArmed = (
   lane: SupplyLane,
 ): boolean => arming[lane]
 
-// Is a single catalog model servable under the given arming (its lane is armed)?
+const hydraliskModelArmed = (
+  arming: SupplyLaneArming,
+  modelId: string,
+): boolean => {
+  const normalized = modelId.trim().toLowerCase()
+  if (normalized === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
+    return (
+      arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] ??
+      arming.hydralisk
+    )
+  }
+  if (normalized === HYDRALISK_GPT_OSS_120B_MODEL_ID) {
+    return (
+      arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID] ??
+      arming.hydralisk
+    )
+  }
+  return arming.hydralisk
+}
+
+// Is a single catalog model servable under the given arming?
 export const isModelServable = (
   entry: ModelCatalogEntry,
   arming: SupplyLaneArming,
-): boolean => isLaneArmed(arming, entry.lane)
+): boolean => {
+  if (!isPublicModelId(entry.id)) {
+    return false
+  }
+  return entry.lane === 'hydralisk'
+    ? hydraliskModelArmed(arming, entry.id)
+    : isLaneArmed(arming, entry.lane)
+}
 
 // Servability for a model the customer NAMES by id (vs a catalog entry already
 // in hand). Resolves the id against the SAME pricing table the gateway bills
 // from (`lookupModel`, case-insensitive), so a named quote cannot disagree with
-// the catalog on which lane a model belongs to. Returns:
-//   - true       : the model is in the pricing table AND its lane is armed
-//                  (servable right now)
-//   - false      : the model is in the pricing table but its lane is NOT armed
-//                  (a quote would fund a balance toward a model that can only
-//                  fail `model_unavailable` at dispatch — the gap to gate)
-//   - undefined  : the model id is unknown to the pricing table. The gateway
-//                  intentionally prices unknown ids at a conservative fallback
-//                  rate (cost-estimate.ts), so an unknown id is NOT gated here;
-//                  the caller keeps its existing unknown-model behaviour.
+// the catalog on which lane a model belongs to. Public serveability now has a
+// second invariant: the only public named model is Khala. Raw GPT-OSS ids and
+// old split ids are internal supply/legacy names and always return false here.
+// Returns:
+//   - true      : `khala` / `openagents/khala` is in the pricing table AND its
+//                 backing lane is armed (servable right now)
+//   - false     : the id is non-public OR Khala's backing lane is not armed
+//   - undefined : retained only for the historical signature; current policy
+//                 does not intentionally expose unknown public models.
 export const resolveNamedModelServability = (
   modelId: string,
   arming: SupplyLaneArming,
 ): boolean | undefined => {
-  const entry = lookupModel(modelId)
-  if (entry === undefined) {
-    return undefined
+  const normalized = normalizeKhalaModelId(modelId)
+  if (!isPublicModelId(normalized)) {
+    return false
   }
-  return isLaneArmed(arming, entry.lane)
+  const entry = lookupModel(normalized)
+  if (entry === undefined) {
+    return false
+  }
+  return entry.lane === 'hydralisk'
+    ? hydraliskModelArmed(arming, entry.model)
+    : isLaneArmed(arming, entry.lane)
 }
+
+export const filterPublicCatalog = (
+  catalog: ReadonlyArray<ModelCatalogEntry>,
+): ReadonlyArray<ModelCatalogEntry> =>
+  catalog.filter(entry => isPublicModelId(entry.id))
 
 // Narrow a published catalog to only the models the gateway can actually serve
 // right now. Order is preserved. With every lane armed this is the identity

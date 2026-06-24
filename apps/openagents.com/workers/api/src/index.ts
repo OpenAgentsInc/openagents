@@ -390,6 +390,7 @@ import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   dispatchWithOverflow,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   selectAdapterPlan,
 } from './inference/model-router'
 import { resolveSupplyLaneArming } from './inference/model-serving-policy'
@@ -407,6 +408,10 @@ import {
   type InferenceResult,
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
+import {
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+} from './inference/pricing'
 import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
 import {
@@ -8532,26 +8537,24 @@ const registerPassthroughAdapters = (
   }
 }
 
-// Hydralisk GPT-OSS 20B lane (#6155). Registered only when the presence-derived
-// serving policy arms the lane, so catalog/quote/chat all agree: unarmed
-// Hydralisk is absent and known-model requests cleanly fail model_unavailable
-// before dispatch.
+// Hydralisk GPT-OSS lanes (#6155 + 120B follow-on). Registered only when the
+// presence-derived serving policy arms the specific model, so catalog/quote/chat
+// all agree: an armed 20B L4 host never accidentally advertises 120B.
 const hydraliskAdaptersRegistered = new WeakSet<object>()
 
 type HydraliskServeEnv = OpenAgentsWorkerConfigEnv
 
-const registerHydraliskAdapter = (
+const registerConfiguredHydraliskAdapter = (
   registry: InferenceProviderRegistry,
-  env: HydraliskServeEnv,
+  input: Readonly<{
+    adapterId: string
+    baseUrl: string | undefined
+    bearerToken: string | undefined
+    upstreamModel: string
+  }>,
 ): void => {
-  if (hydraliskAdaptersRegistered.has(env)) {
-    return
-  }
-  if (!resolveSupplyLaneArming(env).hydralisk) {
-    return
-  }
-  const bearerToken = env.HYDRALISK_BEARER_TOKEN?.trim()
-  const baseUrl = env.HYDRALISK_BASE_URL?.trim()
+  const bearerToken = input.bearerToken?.trim()
+  const baseUrl = input.baseUrl?.trim()
   if (
     bearerToken === undefined ||
     bearerToken === '' ||
@@ -8560,14 +8563,41 @@ const registerHydraliskAdapter = (
   ) {
     return
   }
-  hydraliskAdaptersRegistered.add(env)
   registry.register(
     makeHydraliskVllmAdapter({
       apiKey: Redacted.make(bearerToken),
       baseUrl,
-      id: HYDRALISK_ADAPTER_ID,
+      id: input.adapterId,
+      upstreamModel: input.upstreamModel,
     }),
   )
+}
+
+const registerHydraliskAdapter = (
+  registry: InferenceProviderRegistry,
+  env: HydraliskServeEnv,
+): void => {
+  if (hydraliskAdaptersRegistered.has(env)) {
+    return
+  }
+  hydraliskAdaptersRegistered.add(env)
+  const arming = resolveSupplyLaneArming(env)
+  if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] === true) {
+    registerConfiguredHydraliskAdapter(registry, {
+      adapterId: HYDRALISK_ADAPTER_ID,
+      baseUrl: env.HYDRALISK_BASE_URL,
+      bearerToken: env.HYDRALISK_BEARER_TOKEN,
+      upstreamModel: HYDRALISK_GPT_OSS_20B_MODEL_ID,
+    })
+  }
+  if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID] === true) {
+    registerConfiguredHydraliskAdapter(registry, {
+      adapterId: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      baseUrl: env.HYDRALISK_GPT_OSS_120B_BASE_URL,
+      bearerToken: env.HYDRALISK_GPT_OSS_120B_BEARER_TOKEN,
+      upstreamModel: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+    })
+  }
 }
 
 // OpenAgents serving-fabric lane (#5483 / Khala M4 #6012 / #6089) — the
