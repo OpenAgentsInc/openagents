@@ -20,7 +20,16 @@ import {
 } from '../src/page/loggedIn/page/pro-readmodel'
 import { runDetailView } from '../src/page/loggedIn/page/pro-runs'
 
-const Model = S.Struct({ which: S.Literals(['eval', 'run', 'run-refuted']) })
+const Model = S.Struct({
+  which: S.Literals([
+    'eval',
+    'run',
+    'run-refuted',
+    // #6190: the multi-target matrix run pages.
+    'run-multitarget',
+    'run-multitarget-block',
+  ]),
+})
 type Model = typeof Model.Type
 type Message = Readonly<{ _tag: 'Noop' }>
 
@@ -34,31 +43,56 @@ const params = new URLSearchParams(window.location.search)
 const requested = params.get('view')
 // #6192: `run-refuted` renders the REFUTED fixture run so the capture can prove
 // a false claim renders as a refuted verdict (not a fake pass) on /pro.
-const which: 'eval' | 'run' | 'run-refuted' =
+// #6190: `run-multitarget` / `run-multitarget-block` render the per-target matrix
+// run pages so the capture can prove per-target results show on /pro (incl. a
+// read-only target blocking a mutating step honestly).
+type Which =
+  | 'eval'
+  | 'run'
+  | 'run-refuted'
+  | 'run-multitarget'
+  | 'run-multitarget-block'
+const which: Which =
   requested === 'run'
     ? 'run'
     : requested === 'run-refuted'
       ? 'run-refuted'
-      : 'eval'
+      : requested === 'run-multitarget'
+        ? 'run-multitarget'
+        : requested === 'run-multitarget-block'
+          ? 'run-multitarget-block'
+          : 'eval'
 
 // The REFUTED run fixture id (the FALSE redirect claim).
 const REFUTED_RUN_ID = 'login-redirect-claim-refuted'
+// The multi-target fixture run ids (#6190).
+const MULTI_TARGET_RUN_ID = 'login-multi-target'
+const MULTI_TARGET_BLOCK_RUN_ID = 'submit-login-multi-target'
+
+const runIdFor = (w: Which): string | undefined => {
+  switch (w) {
+    case 'run':
+      return listProRuns()[0]!.id
+    case 'run-refuted':
+      return REFUTED_RUN_ID
+    case 'run-multitarget':
+      return MULTI_TARGET_RUN_ID
+    case 'run-multitarget-block':
+      return MULTI_TARGET_BLOCK_RUN_ID
+    default:
+      return undefined
+  }
+}
 
 const view = (model: Model): Document => {
   const h = html<Message>()
+  const runId = runIdFor(model.which)
   const body =
-    model.which === 'run'
-      ? runDetailView(session, listProRuns()[0]!.id)
-      : model.which === 'run-refuted'
-        ? runDetailView(session, REFUTED_RUN_ID)
-        : evalDetailView(session, listProEvals()[0]!.id)
+    runId !== undefined
+      ? runDetailView(session, runId)
+      : evalDetailView(session, listProEvals()[0]!.id)
   return {
-    title:
-      model.which === 'eval'
-        ? 'Pro eval'
-        : model.which === 'run-refuted'
-          ? 'Pro run (refuted)'
-          : 'Pro run',
+    title: model.which === 'eval' ? 'Pro eval' : `Pro ${model.which}`,
     body: h.div([h.Id('pro-capture-root')], [body]),
   }
 }

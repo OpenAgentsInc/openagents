@@ -61,6 +61,23 @@ export type ProVerify = Readonly<{
   observed: boolean
 }>
 
+// One target's row in a multi-target matrix (#6190): the SAME scenario run
+// against this target, with its own pass/fail + video + verdict. `readOnly`
+// flags a restricted target (prod by default); a read-only target that a
+// scenario tried to mutate fails HONESTLY with the reason in `failure` (never a
+// silent skip). Mirrors the qa-runner `openagents.qa_runner.target_matrix.v1`
+// per-target ref, reduced to the public-safe projection the page renders.
+export type ProTargetRun = Readonly<{
+  targetName: string
+  targetBaseUrl: string
+  readOnly: boolean
+  status: 'pass' | 'fail'
+  durationMs: number
+  video?: ProRunVideo
+  failure?: string
+  verdict?: ProVerdict
+}>
+
 export type ProRun = Readonly<{
   id: string
   title: string
@@ -78,6 +95,12 @@ export type ProRun = Readonly<{
   failure?: string
   // The verify investigator verdict (#6192), when the run declared commitments.
   verify?: ProVerify
+  // The per-target matrix (#6190): when this run is the SAME scenario run across
+  // N registry targets (dev/staging/prod/selfhost) from a single definition. The
+  // run-detail page renders a per-target table (status + video + restriction +
+  // verdict) so a reviewer sees "test the dev server / test production" results
+  // side by side with no rewrite.
+  targets?: ReadonlyArray<ProTargetRun>
 }>
 
 // ---------------------------------------------------------------------------
@@ -126,7 +149,10 @@ const SAMPLE_VIDEO: ProRunVideo = {
   format: 'webm',
 }
 
-const FIXTURE_RUNS: ReadonlyArray<ProRun> = [
+// Forward declarations for the multi-target fixture runs are defined below
+// (after FIXTURE_RUNS' simpler entries) and appended via FIXTURE_RUNS_ALL.
+
+const FIXTURE_RUNS_BASE: ReadonlyArray<ProRun> = [
   {
     id: 'login-regression-prod',
     title: '/login renders the sign-in form (prod)',
@@ -225,6 +251,114 @@ const FIXTURE_RUNS: ReadonlyArray<ProRun> = [
       ],
     },
   },
+]
+
+// ---------------------------------------------------------------------------
+// Multi-target fixture runs (#6190) — appended to FIXTURE_RUNS below.
+// ---------------------------------------------------------------------------
+
+// A MULTI-TARGET run (#6190): the SAME /login scenario run across dev + staging
+// + prod from a single definition (no rewrite). dev/staging are writable and
+// pass; prod is read-only — the scenario stays observe-only there and passes
+// too. The per-target matrix renders side by side on the run-detail page.
+const MULTI_TARGET_FIXTURE_RUN: ProRun = {
+  id: 'login-multi-target',
+  title: '/login renders the sign-in form (dev + staging + prod)',
+  status: 'pass',
+  targetName: 'dev, staging, prod',
+  targetBaseUrl: 'http://localhost:5173',
+  brain: 'scripted',
+  backend: 'local',
+  startedAt: '2026-06-24T00:10:00.000Z',
+  durationMs: 6300,
+  steps: [
+    { index: 0, kind: 'navigate', label: 'open /login', status: 'ok' },
+    { index: 1, kind: 'wait-for', label: 'sign-in form renders', status: 'ok' },
+    { index: 2, kind: 'screenshot', label: 'screenshot login-page', status: 'ok' },
+    { index: 3, kind: 'assert', label: 'stays at /login (no redirect to home)', status: 'ok' },
+    { index: 4, kind: 'assert', label: 'body contains "Log in to OpenAgents"', status: 'ok' },
+  ],
+  video: SAMPLE_VIDEO,
+  distilledTestPath: 'apps/qa-runner/generated/login-verify.e2e.test.ts',
+  // The same definition run against each registry target. prod is read-only
+  // (never create data) — the scenario is observe-only, so it passes there too.
+  targets: [
+    {
+      targetName: 'dev',
+      targetBaseUrl: 'http://localhost:5173',
+      readOnly: false,
+      status: 'pass',
+      durationMs: 2140,
+      video: SAMPLE_VIDEO,
+      verdict: 'CONFIRMED',
+    },
+    {
+      targetName: 'staging',
+      targetBaseUrl: 'https://staging.openagents.com',
+      readOnly: false,
+      status: 'pass',
+      durationMs: 2090,
+      video: SAMPLE_VIDEO,
+      verdict: 'CONFIRMED',
+    },
+    {
+      targetName: 'prod',
+      targetBaseUrl: 'https://openagents.com',
+      readOnly: true,
+      status: 'pass',
+      durationMs: 2070,
+      video: SAMPLE_VIDEO,
+      verdict: 'CONFIRMED',
+    },
+  ],
+}
+
+// A MULTI-TARGET run where a MUTATING scenario hits a read-only prod target
+// (#6190): dev (writable) passes the click; prod (read-only) REFUSES it with an
+// honest recorded reason — proof a read-only restriction blocks a mutating step
+// rather than silently creating data on prod (never a fake pass).
+const MULTI_TARGET_READONLY_BLOCK_RUN: ProRun = {
+  id: 'submit-login-multi-target',
+  title: 'submit the login form (mutating) — blocked on read-only prod',
+  status: 'fail',
+  targetName: 'dev, prod',
+  targetBaseUrl: 'http://localhost:5173',
+  brain: 'scripted',
+  backend: 'local',
+  startedAt: '2026-06-24T00:15:00.000Z',
+  durationMs: 3200,
+  steps: [
+    { index: 0, kind: 'navigate', label: 'open /login', status: 'ok' },
+    { index: 1, kind: 'click', label: 'submit the form (mutates)', status: 'ok' },
+  ],
+  failure:
+    'restriction violation: target "prod" is read-only (never create data) but step kind "click" mutates it',
+  targets: [
+    {
+      targetName: 'dev',
+      targetBaseUrl: 'http://localhost:5173',
+      readOnly: false,
+      status: 'pass',
+      durationMs: 1600,
+      video: SAMPLE_VIDEO,
+    },
+    {
+      targetName: 'prod',
+      targetBaseUrl: 'https://openagents.com',
+      readOnly: true,
+      status: 'fail',
+      durationMs: 1600,
+      failure:
+        'restriction violation: target "prod" is read-only (never create data) but step kind "click" mutates it',
+    },
+  ],
+}
+
+// The full run set: the base runs plus the multi-target matrices (#6190).
+const FIXTURE_RUNS: ReadonlyArray<ProRun> = [
+  ...FIXTURE_RUNS_BASE,
+  MULTI_TARGET_FIXTURE_RUN,
+  MULTI_TARGET_READONLY_BLOCK_RUN,
 ]
 
 const FIXTURE_EVALS: ReadonlyArray<ProEval> = [

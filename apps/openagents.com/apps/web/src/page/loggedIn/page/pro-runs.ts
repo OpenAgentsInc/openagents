@@ -75,7 +75,7 @@ const runsIndexBody = (): Html => {
         href: proRunRouter({ runId: run.id }),
         title: run.title,
         status: run.status,
-        meta: `${run.targetName} · ${run.brain} · ${ms(run.durationMs)}${run.verify !== undefined ? ` · ${run.verify.verdict}` : ''}`,
+        meta: `${run.targetName} · ${run.brain} · ${ms(run.durationMs)}${run.targets !== undefined && run.targets.length > 0 ? ` · ${run.targets.length} targets` : ''}${run.verify !== undefined ? ` · ${run.verify.verdict}` : ''}`,
       })),
       emptyLabel: 'No runs yet. A qa-runner run will appear here once recorded.',
     }),
@@ -123,6 +123,27 @@ const runDetailBody = (runId: string): Html => {
       ? [
           Ui.proConsoleSection2<Message>('Verify verdict', [
             Ui.proVerdictEvidence<Message>(run.verify.findings),
+          ]),
+        ]
+      : []),
+    // The per-target matrix (#6190): the SAME scenario run across N registry
+    // targets (dev/staging/prod/selfhost) from a single definition. Each target's
+    // pass/fail + policy + verdict side by side; a read-only target that a
+    // mutating scenario hit shows its honest failure reason inline.
+    ...(run.targets !== undefined && run.targets.length > 0
+      ? [
+          Ui.proConsoleSection2<Message>('Targets', [
+            Ui.proTargetMatrixTable<Message>(
+              run.targets.map(t => ({
+                targetName: t.targetName,
+                targetBaseUrl: t.targetBaseUrl,
+                readOnly: t.readOnly,
+                status: t.status,
+                durationMs: t.durationMs,
+                ...(t.verdict !== undefined ? { verdict: t.verdict } : {}),
+                ...(t.failure !== undefined ? { failure: t.failure } : {}),
+              })),
+            ),
           ]),
         ]
       : []),

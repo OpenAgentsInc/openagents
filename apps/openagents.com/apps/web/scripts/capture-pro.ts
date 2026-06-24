@@ -61,7 +61,12 @@ const main = async (): Promise<void> => {
   const errors: string[] = []
   try {
     const capture = async (
-      viewName: 'eval' | 'run' | 'run-refuted',
+      viewName:
+        | 'eval'
+        | 'run'
+        | 'run-refuted'
+        | 'run-multitarget'
+        | 'run-multitarget-block',
       file: string,
       assertions: (out: string) => void,
     ): Promise<void> => {
@@ -140,6 +145,51 @@ const main = async (): Promise<void> => {
         }
       }
     })
+
+    // #6190: the MULTI-TARGET run page — proof the SAME scenario's per-target
+    // results (dev/staging/prod) show side by side on /pro, with the per-target
+    // restriction policy (read-only on prod).
+    await capture('run-multitarget', 'pro-run-multitarget-screenshot.png', out => {
+      const must = [
+        'pro-target-matrix',
+        'dev',
+        'staging',
+        'prod',
+        'pro-restriction-badge',
+        'read-only',
+        'writable',
+        'pro-status-pill',
+      ]
+      for (const token of must) {
+        if (!out.includes(token)) {
+          throw new Error(`/pro/runs multi-target render missing "${token}"`)
+        }
+      }
+    })
+
+    // #6190: the read-only-BLOCK multi-target run page — proof a read-only target
+    // blocks a mutating step honestly (the failure reason renders, not a fake
+    // pass) on /pro.
+    await capture(
+      'run-multitarget-block',
+      'pro-run-multitarget-block-screenshot.png',
+      out => {
+        const must = [
+          'pro-target-matrix',
+          'pro-target-failure',
+          'restriction violation',
+          'read-only',
+          'never create data',
+        ]
+        for (const token of must) {
+          if (!out.includes(token)) {
+            throw new Error(
+              `/pro/runs read-only-block render missing "${token}"`,
+            )
+          }
+        }
+      },
+    )
 
     if (errors.length > 0) {
       throw new Error(`console errors during render:\n${errors.join('\n')}`)

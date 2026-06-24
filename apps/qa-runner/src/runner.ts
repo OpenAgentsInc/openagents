@@ -19,7 +19,7 @@ import { withBrowserSurface, type BrowserSurface } from "@openagentsinc/probe-ru
 import type { Backend } from "./backend";
 import type { Brain, BrainStep } from "./brain";
 import { assertPublicSafeResult, type QaRunResult, type QaRunStep } from "./result";
-import type { Target } from "./target";
+import { checkStepAllowed, type Target } from "./target";
 import { type Commitment, verifyCommitments } from "./verify";
 
 export interface RunInput {
@@ -92,6 +92,7 @@ async function driveSession(
   browser: BrowserSurface,
   brain: Brain,
   maxSteps: number,
+  target: Target,
 ): Promise<{ steps: QaRunStep[]; failure?: string }> {
   const steps: QaRunStep[] = [];
   let failure: string | undefined;
@@ -107,6 +108,17 @@ async function driveSession(
 
     const record = (status: "ok" | "failed", label: string, detail?: Record<string, string | number | boolean>) =>
       steps.push({ index, kind: step!.kind, label, status, ...(detail ? { detail } : {}) });
+
+    // Restriction enforcement (#6190): refuse a mutating step against a
+    // read-only target BEFORE touching the browser. Honest: the refusal is
+    // recorded as a failed step + a run failure (never a silent skip, never a
+    // fabricated pass), so a scenario that tries to mutate prod fails visibly.
+    const policy = checkStepAllowed(target, step.kind);
+    if (!policy.allowed) {
+      record("failed", step.label ?? step.kind, { restriction: "read-only", reason: policy.reason });
+      failure = policy.reason;
+      break;
+    }
 
     try {
       switch (step.kind) {
@@ -185,7 +197,7 @@ export function runQaSession(input: RunInput): Effect.Effect<RunOutcome, Error> 
         return acquired;
       },
       { artifactDir: input.artifactDir },
-      (browser) => Effect.promise(() => driveSession(browser, input.brain, maxSteps)),
+      (browser) => Effect.promise(() => driveSession(browser, input.brain, maxSteps, input.target)),
     );
 
     yield* Effect.ignore(

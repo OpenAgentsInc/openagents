@@ -910,3 +910,149 @@ export const proEvalComparisonTable = <Message>(
     ],
   )
 }
+
+// A small RESTRICTION badge (#6190): marks a target's policy. `read-only` is the
+// headline (prod — never create data); `writable` is the quiet neutral state.
+// Accent for the restricted state only (amber = caution), per DESIGN.md.
+export const proRestrictionBadge = <Message>(readOnly: boolean): Html => {
+  const h = html<Message>()
+  return h.span(
+    [
+      h.DataAttribute('component', 'pro-restriction-badge'),
+      h.DataAttribute('restriction', readOnly ? 'read-only' : 'writable'),
+      h.Title(
+        readOnly
+          ? 'Read-only target: the runner refuses mutating steps (never create data).'
+          : 'Writable target: mutating steps are allowed.',
+      ),
+      h.Class(
+        clsx(
+          'inline-flex items-center border px-1.5 py-0.5 text-[0.5625rem] font-semibold uppercase tracking-[0.1em]',
+          readOnly
+            ? 'border-[#ffb400]/50 text-[#ffb400]'
+            : 'border-[#222] text-white/35',
+        ),
+      ),
+    ],
+    [readOnly ? 'read-only' : 'writable'],
+  )
+}
+
+// The MULTI-TARGET MATRIX table (#6190): the SAME scenario run across N targets
+// (dev / staging / prod / selfhost), side by side. Per target: name + base URL,
+// the restriction badge, status pill, verify verdict, and duration. A read-only
+// target that a scenario tried to mutate shows `fail` with its failure reason
+// inline — honest, never a silent skip. Mono, dense, no card (DESIGN.md).
+export type ProTargetMatrixRow = Readonly<{
+  targetName: string
+  targetBaseUrl: string
+  readOnly: boolean
+  status: 'pass' | 'fail'
+  durationMs: number
+  verdict?: ProVerdict
+  failure?: string
+}>
+
+export const proTargetMatrixTable = <Message>(
+  rows: ReadonlyArray<ProTargetMatrixRow>,
+): Html => {
+  const h = html<Message>()
+  const headCell = (label: string, alignRight = false): Html =>
+    h.th(
+      [
+        h.Class(
+          clsx(
+            'border-b border-[#222] px-2.5 py-2 text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/30',
+            alignRight ? 'text-right' : 'text-left',
+          ),
+        ),
+      ],
+      [label],
+    )
+  return h.table(
+    [
+      h.DataAttribute('component', 'pro-target-matrix'),
+      h.Class('w-full border-collapse text-sm'),
+    ],
+    [
+      h.thead(
+        [],
+        [
+          h.tr(
+            [],
+            [
+              headCell('target'),
+              headCell('policy'),
+              headCell('status'),
+              headCell('verdict'),
+              headCell('duration', true),
+            ],
+          ),
+        ],
+      ),
+      h.tbody(
+        [],
+        rows.flatMap(row => {
+          const main = h.tr(
+            [
+              h.DataAttribute('target', row.targetName),
+              h.Class('border-b border-[#141414]'),
+            ],
+            [
+              h.td(
+                [h.Class('px-2.5 py-2')],
+                [
+                  h.div(
+                    [h.Class('grid gap-0.5')],
+                    [
+                      h.span([h.Class('text-[#f1efe8]')], [row.targetName]),
+                      h.span(
+                        [h.Class('break-all text-xs text-white/30')],
+                        [row.targetBaseUrl],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              h.td(
+                [h.Class('px-2.5 py-2')],
+                [proRestrictionBadge<Message>(row.readOnly)],
+              ),
+              h.td([h.Class('px-2.5 py-2')], [proStatusPill<Message>(row.status)]),
+              h.td(
+                [h.Class('px-2.5 py-2')],
+                row.verdict !== undefined
+                  ? [proVerdictPill<Message>(row.verdict)]
+                  : [h.span([h.Class('text-white/25')], ['—'])],
+              ),
+              h.td(
+                [h.Class('px-2.5 py-2 text-right tabular-nums text-white/60')],
+                [`${row.durationMs}ms`],
+              ),
+            ],
+          )
+          // An honest failure reason row directly under a failed target (e.g. the
+          // read-only restriction refusal). Spans the table so the reason is
+          // legible without truncation.
+          if (row.failure === undefined) return [main]
+          const reason = h.tr(
+            [
+              h.DataAttribute('component', 'pro-target-failure'),
+              h.Class('border-b border-[#141414]'),
+            ],
+            [
+              h.td(
+                [
+                  h.Attribute('colspan', '5'),
+                  h.Class('px-2.5 pb-2 text-xs leading-[1.5] text-[#d32f2f]/85'),
+                ],
+                [row.failure],
+              ),
+            ],
+          )
+          return [main, reason]
+        }),
+      ),
+    ],
+  )
+}

@@ -127,4 +127,33 @@ describe('/pro/runs', () => {
     expect(out).toContain('/login renders the sign-in form (prod)')
     expect(out).toContain('pro-index-list')
   })
+
+  test('#6190: a multi-target run renders the per-target matrix (dev/staging/prod) side by side', () => {
+    const out = renderHtml(runDetailView(session(), 'login-multi-target'))
+    // the per-target matrix table is present
+    expect(out).toContain('pro-target-matrix')
+    // every selected target appears
+    expect(out).toContain('dev')
+    expect(out).toContain('staging')
+    expect(out).toContain('prod')
+    // the restriction policy is surfaced per target (prod read-only, dev writable)
+    expect(out).toContain('pro-restriction-badge')
+    expect(out).toContain('read-only')
+    expect(out).toContain('writable')
+    // per-target status pills
+    expect(out).toContain('pro-status-pill')
+  })
+
+  test('#6190: a read-only target blocks a mutating step honestly (failure reason renders, not a fake pass)', () => {
+    const out = renderHtml(
+      runDetailView(session(), 'submit-login-multi-target'),
+    )
+    expect(out).toContain('pro-target-matrix')
+    // the honest refusal reason renders inline for the read-only target
+    expect(out).toContain('pro-target-failure')
+    expect(out).toContain('restriction violation')
+    expect(out).toContain('never create data')
+    // and the run is honestly red, never inflated to pass
+    expect(out).toContain('pro-status-pill')
+  })
 })
