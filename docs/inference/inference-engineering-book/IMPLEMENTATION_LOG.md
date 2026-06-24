@@ -487,3 +487,25 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   vLLM 0.20+ / DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Google
   L4/G4 remains useful for smaller owned probes; native DeepSeek V4 Flash on
   Google is a separate capacity and engine-validation problem.
+
+---
+
+## P2-13 — No-Spend Khala Production Readiness Monitor — DONE, live monitor passed
+
+- **Notes ref:** `../2026-06-24-khala-deepseek-v4-flash-provider-backing.md`
+  remaining production hardening; issue #6203.
+- **What shipped:** `apps/openagents.com/scripts/khala-production-readiness-monitor.mjs`,
+  a reusable no-spend guard for owned schedulers and manual checks. It reads only
+  `/v1/gateway/readiness` and `/v1/models`, asserts production readiness is
+  `ready`, verifies the public catalog is exactly `openagents/khala`, and fails
+  closed on raw/split/provider model leakage. It carries an explicit authority
+  block denying bearer-token use, chat completions, inference spend, and
+  mutation.
+- **Command:** `bun run monitor:khala:production-readiness` from
+  `apps/openagents.com`, or `node
+  apps/openagents.com/scripts/khala-production-readiness-monitor.mjs` from repo
+  root.
+- **Honest scope:** this monitor does not prove paid inference or receipt
+  dereference. The paid proof remains
+  `scripts/khala-production-smoke.mjs --approve-live-spend`, which is intentionally
+  separate so a frequent monitor cannot burn inference budget.

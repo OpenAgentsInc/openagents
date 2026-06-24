@@ -47,6 +47,7 @@
     "smoke:khala:billing-mpp-proof": "node scripts/khala-billing-mpp-proof-smoke.mjs",
     "smoke:khala:mpp-payloop": "node scripts/khala-mpp-payloop-smoke.mjs",
     "smoke:khala:gateway-readiness": "node scripts/khala-gateway-readiness-smoke.mjs",
+    "monitor:khala:production-readiness": "node scripts/khala-production-readiness-monitor.mjs",
     "smoke:khala:production": "node scripts/khala-production-smoke.mjs",
     "smoke:gpt-oss20b-production": "node scripts/gpt-oss20b-production-smoke.mjs",
     "smoke:visibility:browser": "node scripts/visibility-browser-smoke.mjs",

@@ -2,7 +2,7 @@
 
 Date: 2026-06-24
 Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201,
-OpenAgentsInc/openagents#6202
+OpenAgentsInc/openagents#6202, OpenAgentsInc/openagents#6203
 
 ## Production Activation
 
@@ -202,9 +202,43 @@ Production validation on 2026-06-24:
 ## Remaining Work
 
 The live serving path and public receipt dereference proof are done. The
-remaining production hardening is continuous monitoring: run a no-spend
-readiness/catalog guard frequently, and run the paid receipt-dereference smoke
-only under an explicit operator budget/approval window.
+remaining production hardening is operational monitoring and self-hosting work.
+
+## No-Spend Production Monitor
+
+Issue #6203 added a no-spend monitor for the exact public Khala surface:
+
+```bash
+bun run monitor:khala:production-readiness
+```
+
+or directly:
+
+```bash
+node apps/openagents.com/scripts/khala-production-readiness-monitor.mjs
+```
+
+The monitor performs only public reads:
+
+- `GET /v1/gateway/readiness`
+- `GET /v1/models`
+
+It asserts that readiness is `ready`, at least one model is servable, and the
+public model catalog is exactly one id: `openagents/khala`. It fails closed if
+raw/split/provider ids such as DeepSeek, Fireworks, GPT-OSS, Hydralisk,
+`khala-mini`, `khala-pro`, or `khala-code` appear. Its authority block is
+explicitly no-spend: no bearer token, no chat completion, no inference spend, no
+mutation.
+
+Use this command for frequent owned-infra monitoring. Keep the paid
+receipt-dereference proof on the explicit-spend smoke:
+
+```bash
+node apps/openagents.com/scripts/khala-production-smoke.mjs --approve-live-spend
+```
+
+That paid smoke remains the proof that a real completion bills and dereferences
+to public-safe DeepSeek/Fireworks receipt evidence.
 
 The self-hosted Google path remains a separate Hydralisk/Psionic effort. Reserve
 or obtain an 8x high-memory H100/H200/B200-class host, validate vLLM 0.20+
