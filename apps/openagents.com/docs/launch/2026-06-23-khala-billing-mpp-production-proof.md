@@ -4,6 +4,18 @@ Date: 2026-06-23
 
 Issue: OpenAgentsInc/openagents#6108
 
+> **Current status (2026-06-23, later same day): MPP is now ARMED and LIVE on
+> production.** This gate doc was written for the not-yet-armed state. All three rails
+> are now live on `openagents-autopilot` (deploy version `271a3720`): **⚡ Lightning**
+> (real mainnet BOLT11 via **Spark** PRIMARY through the `MDK_TREASURY` container, MDK
+> fallback — leads the 402), **USDC/crypto** (full pay-loop proven on staging), and
+> **card/SPT**. Prod secrets `KHALA_MPP_ENABLED`, `STRIPE_API_KEY` (rk_live),
+> `KHALA_MPP_SIGNING_SECRET`, and `KHALA_MPP_LIGHTNING_ENABLED` are set; profile
+> `@openagents` (`profile_61Uug9…`) is live. The fail-safe/inert behavior described below
+> still holds when the flags are removed (rollback). Only the Stripe Directory **badge**
+> remains pending (external async crawl). Current status & ops:
+> [`docs/mpp/README.md`](../../../../docs/mpp/README.md).
+
 ## Scope
 
 This is the launch gate for public money-in to Khala spend.

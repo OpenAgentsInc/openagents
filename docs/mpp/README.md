@@ -2,7 +2,11 @@
 
 *Plain-language orientation. If you're new (human or agent), read this first, then
 the [operations runbook](./2026-06-23-mpp-launch-and-badge-runbook.md) for the
-how-to detail. Status as of 2026-06-23.*
+how-to detail.*
+
+> **Status (2026-06-23): all three rails (⚡ Lightning, USDC, card) are LIVE on
+> production; only the Stripe Directory badge is pending** (an external, async Stripe
+> crawl, ≤~24h). Lightning leads the 402, minting a real mainnet BOLT11 via Spark.
 
 ---
 
@@ -72,16 +76,24 @@ Two supporting pieces make us *discoverable*:
 
 ## Where it stands right now (2026-06-23)
 
+**Status: all three rails are LIVE on production** (`openagents-autopilot`, latest
+deploy version `271a3720`). The 402 ordering is **lightning → base/usdc → stripe/card**,
+and `/openapi.json` lists **lightning first**. Only the Stripe badge is still pending
+(external crawl).
+
+- ✅ **Live: Lightning — and it leads.** It mints a real mainnet BOLT11 via **Spark**
+  (`@breeztech/breez-sdk-spark`, **primary**) through the existing **`MDK_TREASURY`
+  container** (`/spark/funding-invoice`), with the **MDK sidecar as the explicit
+  fallback** issuer only. It runs behind a bounded timeout + per-rail isolation so a
+  slow/failed Lightning leg only drops Lightning and can never hang the endpoint. Verify
+  is local (`sha256(preimage)==paymentHash`). Latency ~0.9–2.4s warm (cold first mint
+  ~5.6s). (Getting here was a saga: the Spark mint code lives in the `MDK_TREASURY`
+  container, and it was stuck on an old image because the container build needs Docker
+  running locally — see the runbook's deploy gotcha.)
 - ✅ **Live in production:** the USDC (crypto) and card rails. An unpaid request
   gets a real `402` with a deposit address; `/openapi.json` advertises the offers.
   The full crypto pay loop (pay → verify → completion → receipt → credit) was
   proven end-to-end on staging.
-- ✅ **Live: Lightning — and it leads.** It mints a real mainnet BOLT11 via **Spark**
-  (`@breeztech/breez-sdk-spark`, primary) with the **MDK sidecar as fallback**, behind a
-  bounded timeout + per-rail isolation so it can never hang. The 402 now leads with
-  ⚡ Lightning, then USDC, then card (~0.9–2.4s warm). (Getting here was a saga: the Spark
-  mint code lives in the `MDK_TREASURY` container, and it was stuck on an old image because
-  the container build needs Docker running locally — see the runbook's deploy gotcha.)
 - ⏳ **The badge:** everything on our side is done; it now depends on Stripe's
   crawler indexing `/openapi.json`, which is **asynchronous (up to ~24h)**. A
   background watch re-checks the directory every 30 min and will announce the
@@ -89,10 +101,15 @@ Two supporting pieces make us *discoverable*:
 
 ## What's next
 
-1. ✅ Done — Lightning is live on Spark and leads the 402.
-2. Badge appears in the directory (we're watching). Optionally register on broader
-   MPP registries (MPPScan, mpp.dev/services) to widen agent discovery.
-3. Later: prove the card rail end-to-end, and reuse this for other paid
+1. ✅ Done — all three rails (Lightning, USDC, card) are live; Lightning leads the 402.
+2. **Badge** appears in the directory (we're watching — external Stripe crawl).
+   Optionally register on broader MPP registries (MPPScan, mpp.dev/services) to widen
+   agent discovery.
+3. **Trivial cleanup:** the MDK *fallback* sidecar builds a doubled `/api/mdk/api/mdk`
+   path — harmless because the Spark primary works, but tracked for cleanup.
+4. **Optimization:** a **pre-minted Spark invoice pool** for zero-latency 402s (removes
+   the cold-mint first-hit cost). Tracked on #6049.
+5. Later: prove the card rail end-to-end, and reuse this for other paid
    primitives (sandboxes, fine-tuning).
 
 ## Where to look

@@ -6,6 +6,19 @@ Protocol (MPP) — and how that fits (and conflicts) with our Bitcoin-first stan
 Grounded in the live Stripe docs (read via the Stripe MCP) and the survey in
 [`2026-06-22-stripe-directory-mpp-khala.md`](./2026-06-22-stripe-directory-mpp-khala.md).*
 
+> **Current status (2026-06-23): SHIPPED.** All three rails are LIVE on production
+> (`openagents-autopilot`, deploy version `271a3720`): **⚡ Lightning** (real mainnet
+> BOLT11 via **Spark** as PRIMARY through the `MDK_TREASURY` container, MDK as fallback
+> issuer — and it **leads** the 402), **USDC/crypto**, and **card/SPT**. The Stripe
+> profile `@openagents` is live (`profile_61Uug9…`), crypto payins enabled, and
+> `/openapi.json` advertises the offers lightning-first. The **owner decision below was
+> made: accept MPP** (USDC/card settle to Stripe balance; Bitcoin/Spark stays the
+> contributor-payout rail). The only thing still pending is the Stripe Directory **badge**
+> (external async crawl). The plan/decisions below are preserved as the original
+> 2026-06-22 design context. Current status & ops:
+> [`docs/mpp/README.md`](../mpp/README.md) and
+> [`docs/mpp/2026-06-23-mpp-launch-and-badge-runbook.md`](../mpp/2026-06-23-mpp-launch-and-badge-runbook.md).
+
 ## Objective
 
 An agent searches `stripe directory search "llm inference api"` → finds **Khala** →
@@ -41,6 +54,15 @@ Machine payments let agents pay for individual HTTP requests. The mechanism is a
   "crypto payins" enabled; card/SPT needs a **US legal entity**.
 
 ## The rails decision (read this first — it's the real question)
+
+> **Correction (2026-06-23):** the premise below — that MPP is "NOT
+> Bitcoin/Lightning" and that Lightning is "our native rail, NOT an MPP option" —
+> turned out to be **wrong**. MPP's 402 challenge is rail-agnostic, so we mint a real
+> **BOLT11 Lightning invoice as a 402 challenge** and verify the preimage locally.
+> Lightning is now a first-class MPP rail and in fact **leads** the 402 (Spark PRIMARY
+> issuer via the `MDK_TREASURY` container; MDK fallback). The owner call to accept MPP
+> was made; USDC/card still settle to a Stripe balance, while Lightning is real Bitcoin
+> in. The original framing is kept below for design context.
 
 **MPP money is USDC or card → a Stripe balance → fiat. It is NOT Bitcoin/Lightning.**
 That directly meets the workspace's standing **"Bitcoin-only, no Stripe for the

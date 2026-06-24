@@ -6,6 +6,20 @@ Scope: OpenAgentsInc/openagents#6049 plus the payment, credit, Stripe, and MPP
 issues that affect whether Khala can accept Machine Payments Protocol (MPP)
 payments before Stripe Directory profile approval.
 
+> **Current status (2026-06-23, later same day): RESOLVED / SHIPPED — Lightning live on
+> Spark.** This audit was written before the rails went live. All three MPP rails are now
+> LIVE on production (`openagents-autopilot`, deploy version `271a3720`):
+> **⚡ Lightning** (real mainnet BOLT11 via **Spark** PRIMARY through the `MDK_TREASURY`
+> container, MDK fallback — and it **leads** the 402), **USDC/crypto** (full pay-loop
+> proven end-to-end on staging), and **card/SPT**. The public Stripe profile `@openagents`
+> is live (`profile_61Uug9…`), crypto payins enabled, and `/openapi.json` advertises the
+> offers lightning-first. The "Not Yet Proven" and "What Is Actually Blocked" items below
+> were the snapshot *before* arming and are largely **resolved**; the only remaining open
+> item is the Stripe Directory **badge** (external async crawl). The audit body is
+> preserved for historical context. Current status & ops:
+> [`docs/mpp/README.md`](../mpp/README.md) and
+> [`docs/mpp/2026-06-23-mpp-launch-and-badge-runbook.md`](../mpp/2026-06-23-mpp-launch-and-badge-runbook.md).
+
 ## Defect B Resolution (2026-06-23, Worker-native)
 
 Defect B — "the credential verify path expected a Stripe `payment_intent="…"`

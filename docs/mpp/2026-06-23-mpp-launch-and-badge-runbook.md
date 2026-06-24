@@ -12,17 +12,21 @@ Stripe Directory **Machine Payments** badge.
 
 ---
 
-## 1. Status (2026-06-23)
+## 1. Status (2026-06-23) — all three rails LIVE on prod; badge pending
 
 | Rail | State |
 |---|---|
-| **Crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **ARMED on prod**, full pay-loop proven on staging |
-| **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ armed on prod (unit-tested + fail-closed; no live SPT round-trip yet) |
-| **⚡ Lightning** (BOLT11 via Spark, local preimage verify) | ✅ **LIVE** — Spark primary / MDK fallback; the 402 **leads** with a real mainnet BOLT11 (see §6) |
-| **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` |
+| **⚡ Lightning** (BOLT11 via Spark, local preimage verify) | ✅ **LIVE — leads the 402.** Spark PRIMARY / MDK FALLBACK issuer; real mainnet BOLT11 (see §6). ~0.9–2.4s warm |
+| **USDC / crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **LIVE on prod**, full pay-loop proven end-to-end on staging |
+| **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ **LIVE on prod** (unit-tested + fail-closed; no live SPT round-trip yet) |
+| **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` (≤~24h) — our side is complete |
 
-Prod worker: `openagents-autopilot`. `POST /mpp/v1/chat/completions` → `402` with
-a real deposit address (~2.6s). `GET /openapi.json` advertises the offers.
+Prod worker: `openagents-autopilot`, **latest deploy version `271a3720`**.
+`POST /api/mpp/v1/chat/completions` (legacy `/mpp/v1/chat/completions` aliases it) →
+`402` with a real BOLT11 + deposit address. **402 offer ordering: lightning → base/usdc
+→ stripe/card.** `GET /openapi.json` is live and advertises the offers with **lightning
+first** (`x-service-info categories:["ai"]`). Profile `@openagents` is live (Network ID
+`profile_61Uug9…`); crypto payins enabled (live + test).
 
 ## 2. Architecture (Worker-native, no Node sidecar)
 
@@ -39,10 +43,13 @@ a real deposit address (~2.6s). `GET /openapi.json` advertises the offers.
   `profile_…` id is the `networkId`. Single-use SPT replay guard in D1.
 - **Lightning:** mint a BOLT11 invoice as the challenge, client returns the
   preimage, verify locally with `sha256(preimage) == paymentHash` (no node call).
-  The issuer **MUST be Spark** (`@breeztech/breez-sdk-spark`) per the rail
-  invariant — MDK is checkouts-only and lacks offline receives. The current
-  `mpp-lightning-invoice-mdk.ts` issuer violates this and is disarmed pending a
-  Spark rebuild (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation).
+  The issuer is **Spark** (`@breeztech/breez-sdk-spark`) — **PRIMARY** per the rail
+  invariant — minted through the existing **`MDK_TREASURY` container's
+  `/spark/funding-invoice`** endpoint (returns `paymentHash`; `/spark/received/:hash`
+  confirms the offline receipt). The **MDK sidecar is the explicit FALLBACK issuer
+  only**. Spark supports the offline receives that the agent/MPP rail needs; MDK is
+  checkouts-only (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation). See
+  §6 for the live status and the deploy gotcha.
 - **Credit semantics (RL-3):** USDC/card mint **USD-origin** credit
   (`agent_balances.usd_credit_msat`, inference-spendable, **NOT**
   Bitcoin-withdrawable). Lightning mints **Bitcoin-origin** `balance_msat`
@@ -64,7 +71,10 @@ Set from `apps/openagents.com/workers/api` (prod = no `--env`; staging =
 | `STRIPE_API_KEY` | secret (`rk_live` restricted, PaymentIntents:Write) | crypto + card settle |
 | `KHALA_MPP_SIGNING_SECRET` | secret (`openssl rand -hex 32`) | HMAC challenge binding |
 | `STRIPE_MPP_NETWORK_PROFILE_ID` | var (`profile_…`) | card/SPT networkId; presence enables the card offer |
-| `KHALA_MPP_LIGHTNING_ENABLED` | flag | Lightning rail (also needs a working MDK issuer) |
+| `KHALA_MPP_LIGHTNING_ENABLED` | secret/flag | Lightning rail (Spark mint via the `MDK_TREASURY` container) — set on prod |
+
+All five are **set on prod** (`openagents-autopilot`, latest deploy version
+`271a3720`) — all three rails are LIVE.
 
 Triple-gate: with `KHALA_MPP_ENABLED` OR `STRIPE_API_KEY` OR
 `KHALA_MPP_SIGNING_SECRET` absent → `503 mpp_not_configured`, never a charge.
@@ -118,7 +128,7 @@ Lightning is armed on prod and **leads the 402** with a real mainnet BOLT11.
 > `MdkTreasuryContainer` image rolls. The wallet derives from `MDK_TREASURY_MNEMONIC` and
 > re-syncs across the rollout — verify treasury balance/health via
 > `GET /api/operator/treasury/status` before and after (custody check). Rolled out at prod
-> version `271a3720`; treasury balance unchanged.
+> version `271a3720`; treasury balance was 15 sat and stayed unchanged across the rollout.
 
 Per the rail invariant (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation):
 Spark is the primary agent/MPP rail (offline receives); MDK is checkouts-only + the
@@ -156,12 +166,31 @@ Dashboard agentic-commerce/directory area for any submit.
   checkout. Don't chase a contract-drift-only red in a worktree.
 - Build outputs to `apps/openagents.com/apps/web/dist`; deploy `--assets
   ../../apps/web/dist` is **mandatory** or you ship stale UI / a 404 `/`.
+- The Spark mint code lives in the **`MDK_TREASURY` container**, not the Worker.
+  Prod deploys default to `--containers-rollout=none`, which leaves an OLD container
+  image — deploy WITHOUT that flag (Docker Desktop must be running locally) to roll
+  `MdkTreasuryContainer`. See §6.
+
+## 8a. Open items (2026-06-23)
+
+1. **The badge** — purely external; waiting on Stripe's async crawler indexing
+   `/openapi.json` (≤~24h). A 30-min watch loop is running. Our side is complete.
+2. **Trivial tracked bug** — the MDK *fallback* sidecar builds a doubled
+   `/api/mdk/api/mdk` path. Harmless in practice because the Spark primary issuer
+   works; tracked for cleanup.
+3. **Future optimization** — a **pre-minted Spark invoice pool** for zero-latency
+   402s (eliminates the cold-mint first-hit cost). Tracked on
+   [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049).
 
 ## 9. References
 
-- Epic [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049); PRs
-  #6131 (profile id), #6132 (deposit parser), #6138 (Worker-native verify),
-  #6139 (`/openapi.json`), #6141/#6144 (pay-loop smoke), #6146 (Lightning rail).
+- Epic [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049); PRs:
+  #6131 (profile id), #6132 (deposit-address parser), #6138 (Worker-native HMAC
+  verify), #6139 (`/openapi.json`), #6141/#6144 (pay-loop smoke), #6146 (initial
+  MDK Lightning — superseded), #6149 (mint timeout + per-rail isolation),
+  #6152 (**Spark primary + MDK fallback** + container `/spark/funding-invoice`
+  `paymentHash` + `/spark/received`), #6153/#6157 (mint budgets), #6159 (leg
+  diagnostics).
 - Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`; survey:
   `docs/stripe/2026-06-22-stripe-directory-mpp-khala.md`.
 - Protocol mirror: `docs/reference/mpp/`.

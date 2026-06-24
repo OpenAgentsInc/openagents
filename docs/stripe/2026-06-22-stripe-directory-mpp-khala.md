@@ -6,6 +6,15 @@ Payments Protocol, `mpp.dev`), so any agent searching for inference finds Khala
 and can pay programmatically — and possibly list other Agent Cloud primitives the
 same way.*
 
+> **Current status (2026-06-23): SHIPPED.** The "prerequisite gap" below is closed —
+> the public Stripe profile `@openagents` is live (Network ID `profile_61Uug9…`), crypto
+> payins enabled, and all three MPP rails (**⚡ Lightning** via Spark, **USDC**, **card**)
+> are LIVE on production with `/openapi.json` advertising them lightning-first. Lightning
+> is a first-class MPP rail (real BOLT11 in the 402 challenge), so the "MPP rides Stripe,
+> Bitcoin/Spark is separate" framing in the strategic note below is partly superseded.
+> Only the Stripe Directory **badge** is still pending (external async crawl). Current
+> status: [`docs/mpp/README.md`](../mpp/README.md).
+
 ## What we set up
 
 - Stripe CLI (`brew install stripe/stripe-cli/stripe`) + the `directory` plugin
