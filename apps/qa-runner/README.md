@@ -129,3 +129,61 @@ transcode. It is cheap enough to run on demand / per PR. The hosted tier is
 docker build -f apps/qa-runner/Dockerfile -t oa-qa-runner .
 docker run --rm oa-qa-runner   # runs demo:login against openagents.com
 ```
+
+## Chill-evals: compare agents across MCP/config changes (#6183)
+
+A **chill-eval** holds a scenario fixed and runs it across **N variants** (a
+variant = a brain / model / config / MCP-set / tool-policy, or a before/after of
+a change), then produces a **comparison**: per-variant pass-rate, latency
+p50/p90, and behavior deltas vs the baseline, each with its run artifact
+(video/result). It reuses the inference benchmark's percentile/mean math and
+persists a public-safe `openagents.qa_runner.eval.v1` result (tripwire-checked).
+
+```sh
+# Deterministic, no-network/no-spend comparison (fixtures), prints the PR markdown:
+bun run --cwd apps/qa-runner evals -- --fixtures --id login-mcp-compare --out ./runs/eval --md
+
+# Real chromium against a target:
+bun run --cwd apps/qa-runner evals -- --url https://openagents.com --out ./runs/eval
+```
+
+A variant supplies its own `brain` / `backend` factory, so "model A vs B" or
+"MCP-on vs MCP-off" is two variant entries — it does **not** edit
+`khala-config`/`openrouter` (a separate lane owns those). The default
+fixture/CI path is `decisionGrade: false` (illustrative — proves the harness,
+not the lanes); only an owner-armed real seam yields decision-grade numbers.
+`not_measured` is honest (never a fabricated `0`).
+
+The eval renders in `/pro` at a stable, shareable **`/pro/evals/<id>`** URL
+(variant comparison + per-variant video + deltas) — the link the PR loop posts.
+
+## PR-evidence + CI loop (gh-attach) (#6185)
+
+On a PR, `.github/workflows/chill-eval.yml` diff-scopes the changed paths to
+affected scenarios, runs the eval (**fixtures by default — no spend**), and posts
+a PR comment with the comparison table, the per-variant video, the distilled-test
+ref, and the **`/pro/evals/<id>` link**.
+
+```sh
+# Compose the PR comment locally (dry run; writes ./pr-comment.md):
+bun run --cwd apps/qa-runner pr-comment -- \
+  --changed "apps/openagents.com/...,apps/qa-runner/..." \
+  --out ./runs/pr-eval --comment-out ./pr-comment.md
+```
+
+Videos are uploaded with [`ain3sh/gh-attach`](https://github.com/ain3sh/gh-attach)
+— a Go binary that uses GitHub's **web** upload path the REST API lacks, and
+prints embeddable markdown. **Install in CI** (armed runs only; it builds from
+source so Go must be present):
+
+```sh
+curl -fsSL https://github.com/ain3sh/gh-attach/releases/latest/download/install.sh \
+  | sh -s -- --bin-dir "$HOME/.local/bin"
+```
+
+gh-attach authenticates from local browser cookies, which CI does not have; when
+the upload is unavailable/unauthenticated the comment falls back to the in-eval
+**relative video ref** — honest, never a broken or fake embed. The composer
+exits non-zero on a real regression, so the CI check is **RED on a failing
+variant** (no fake green). The real-model path is gated behind
+`vars.CHILL_EVAL_ARMED == 'true'` + a token cap and is OFF by default.
