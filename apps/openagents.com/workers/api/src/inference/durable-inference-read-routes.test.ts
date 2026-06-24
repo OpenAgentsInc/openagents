@@ -4,14 +4,26 @@
 // persisted suffix with the resume headers; and it NEVER meters (it has no
 // metering hook at all — it reads stored bytes only).
 
-import { MemoryStreamStore } from '@openagentsinc/durable-stream'
+import {
+  MemoryStreamStore,
+  type StreamStore,
+  handleRequest,
+  streamIdFromUrl,
+} from '@openagentsinc/durable-stream'
 import { describe, expect, test } from 'vitest'
 
+import {
+  type DurableStreamNamespace,
+  teeUpstreamToDurableDO,
+} from './durable-inference-do-transport'
 import {
   durableInferenceReadUrl,
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
-import { routeDurableInferenceReadRequest } from './durable-inference-read-routes'
+import {
+  routeDurableInferenceReadRequest,
+  routeDurableInferenceReadRequestDO,
+} from './durable-inference-read-routes'
 import {
   type InferenceStreamSource,
   type InferenceUsage,
@@ -151,6 +163,127 @@ describe('routeDurableInferenceReadRequest', () => {
         enabled: true,
         nowEpochMillis: () => NOW,
       },
+    )
+    expect(result?.status).toBe(400)
+  })
+})
+
+// In-process DO backend (one MemoryStreamStore per stream id via the package's
+// real handleRequest) — the same backend the DO runs internally.
+class StreamRegistry {
+  private readonly stores = new Map<string, StreamStore>()
+  private storeFor(streamId: string): StreamStore {
+    let s = this.stores.get(streamId)
+    if (s === undefined) {
+      s = new MemoryStreamStore()
+      this.stores.set(streamId, s)
+    }
+    return s
+  }
+  fetch(request: Request): Promise<Response> {
+    const streamId = streamIdFromUrl(request.url)
+    if (streamId === null) {
+      return Promise.resolve(new Response('nope', { status: 404 }))
+    }
+    return handleRequest(this.storeFor(streamId), request, { streamId })
+  }
+}
+
+const doNamespace = (
+  registry: StreamRegistry = new StreamRegistry(),
+): DurableStreamNamespace => ({
+  getByName: () => ({ fetch: (r: Request) => registry.fetch(r) }),
+})
+
+const seedDO = async (namespace: DurableStreamNamespace, requestId: string) => {
+  const src: InferenceStreamSource = {
+    frames: (async function* () {
+      yield { contentDelta: 'AAA' }
+      yield { contentDelta: 'BBB' }
+    })(),
+    terminal: () => ({ finishReason: 'stop', servedModel: 'm', usage }),
+  }
+  await teeUpstreamToDurableDO({
+    emit: () => {},
+    frameForDelta: delta => `data: ${delta}\n\n`,
+    namespace,
+    onEof: async () => 'data: [done]\n\n',
+    requestId,
+    source: src,
+  })
+}
+
+describe('routeDurableInferenceReadRequestDO (production DO-backed resume)', () => {
+  test('returns undefined for a non-durable URL (router falls through)', async () => {
+    const result = await routeDurableInferenceReadRequestDO(
+      req('/v1/chat/completions'),
+      { enabled: true, namespace: doNamespace() },
+    )
+    expect(result).toBeUndefined()
+  })
+
+  test('404 when the flag is off or the binding is absent', async () => {
+    const offFlag = await routeDurableInferenceReadRequestDO(
+      req(durableInferenceReadUrl('req-1')),
+      { enabled: false, namespace: doNamespace() },
+    )
+    expect(offFlag?.status).toBe(404)
+
+    const noBinding = await routeDurableInferenceReadRequestDO(
+      req(durableInferenceReadUrl('req-1')),
+      { enabled: true, namespace: undefined },
+    )
+    expect(noBinding?.status).toBe(404)
+  })
+
+  test('405 on a non-GET method', async () => {
+    const result = await routeDurableInferenceReadRequestDO(
+      req(durableInferenceReadUrl('req-1'), 'POST'),
+      { enabled: true, namespace: doNamespace() },
+    )
+    expect(result?.status).toBe(405)
+  })
+
+  test('404 for an unknown request id', async () => {
+    const result = await routeDurableInferenceReadRequestDO(
+      req(durableInferenceReadUrl('never')),
+      { enabled: true, namespace: doNamespace() },
+    )
+    expect(result?.status).toBe(404)
+  })
+
+  test('replays the persisted suffix from the DO with resume headers and never meters', async () => {
+    const namespace = doNamespace()
+    await seedDO(namespace, 'req-read')
+
+    const full = await routeDurableInferenceReadRequestDO(
+      req(`${durableInferenceReadUrl('req-read')}?offset=0`),
+      { enabled: true, namespace },
+    )
+    expect(full?.status).toBe(200)
+    expect(full?.headers.get('stream-closed')).toBe('true')
+    expect(full?.headers.get('stream-next-offset')).not.toBeNull()
+    const fullBody = await full!.text()
+    expect(fullBody).toContain('AAA')
+    expect(fullBody).toContain('BBB')
+
+    const firstFrameBytes = new TextEncoder().encode('data: AAA\n\n').length
+    const suffix = await routeDurableInferenceReadRequestDO(
+      req(`${durableInferenceReadUrl('req-read')}?offset=${firstFrameBytes}`),
+      { enabled: true, namespace },
+    )
+    expect(suffix?.status).toBe(200)
+    const suffixBody = await suffix!.text()
+    expect(suffixBody).not.toContain('AAA')
+    expect(suffixBody).toContain('BBB')
+  })
+
+  test('400 on a malformed offset', async () => {
+    const namespace = doNamespace()
+    await seedDO(namespace, 'req-bad')
+    const result = await routeDurableInferenceReadRequestDO(
+      req(`${durableInferenceReadUrl('req-bad')}?offset=nope!`),
+      { enabled: true, namespace },
     )
     expect(result?.status).toBe(400)
   })

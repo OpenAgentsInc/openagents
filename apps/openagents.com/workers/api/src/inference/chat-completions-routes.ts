@@ -65,6 +65,10 @@ import {
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
 import {
+  type DurableStreamNamespace,
+  teeUpstreamToDurableDO,
+} from './durable-inference-do-transport'
+import {
   type FairShareDecision,
   type SpendCapDecision,
 } from './inference-abuse-controls'
@@ -367,6 +371,15 @@ export type ChatCompletionsDeps = Readonly<{
   // resume/replay read (the resume route has no metering hook).
   durableStreamEnabled?: boolean | undefined
   durableStream?: DurableInferenceStreamStore | undefined
+  // PRODUCTION DURABLE SUBSTRATE (#6058). When present AND `durableStreamEnabled`
+  // is true, the streaming completion is teed into the per-request Durable Object
+  // (`DurableInferenceStreamObject`, keyed `getByName(responseId)`) over the
+  // `/v1/stream/{id}` HTTP contract — the DO is the single authoritative durable
+  // log a LATER GET resume reads. This is the live wiring; `durableStream` (the
+  // synchronous `StreamStore` factory) is the in-memory test/contract substrate.
+  // When both are present the DO namespace wins. Absent (e.g. the binding is
+  // unbound on an env) => fail-safe non-durable pass-through.
+  durableStreamNamespace?: DurableStreamNamespace | undefined
   // TYPED COMPONENT CHANNEL SEAM (EPIC #6123, issue #6127). The ADDITIVE,
   // OPT-IN `oa.component` SSE channel: a Khala turn may stream prose PLUS one or
   // more validated, versioned `oa.component` cards from the CLOSED v1 catalog
@@ -1130,6 +1143,12 @@ const makePassThroughResponseStream = (
     // `responseId` so a client disconnect mid-generation can be resumed by offset.
     // ABSENT => today's pure pass-through, byte-for-byte unchanged (fail-safe).
     durableStore?: StreamStore | undefined
+    // PRODUCTION DURABLE SUBSTRATE (#6058). When present, every upstream frame is
+    // teed into the per-request Durable Object (`getByName(responseId)`) over the
+    // `/v1/stream/{id}` HTTP contract — the authoritative durable log a later GET
+    // resume reads. Takes precedence over `durableStore` (the in-memory test
+    // substrate) when both are present. Absent => non-durable pass-through.
+    durableNamespace?: DurableStreamNamespace | undefined
     // Deterministic clock for the durable log (TTL/offset bookkeeping). Defaults
     // to a fixed epoch in tests; the route threads `currentEpochMillis`.
     durableNowMs?: number | undefined
@@ -1260,6 +1279,36 @@ const makePassThroughResponseStream = (
       // Telemetry: the first observed content delta (TTFT boundary). Captured on
       // BOTH the durable and non-durable drains so streaming TTFT is real.
       let firstTokenMs: number | undefined
+      // PRODUCTION DURABLE PATH (#6058). Tee each upstream frame into the
+      // per-request Durable Object over the `/v1/stream/{id}` HTTP contract AND
+      // to the client. The DO is the authoritative durable log a later GET
+      // resume reads. Metering settles EXACTLY ONCE in the `onEof` callback (the
+      // producer drain), never in the DO and never on replay. A DO-fetch fault
+      // degrades the durable mirror but never breaks the live completion.
+      if (input.durableNamespace !== undefined) {
+        await teeUpstreamToDurableDO({
+          emit: frame => {
+            if (firstTokenMs === undefined) {
+              firstTokenMs = telemetryNow()
+            }
+            controller.enqueue(encoder.encode(frame))
+          },
+          frameForDelta: delta => chunkFrame(delta, null),
+          namespace: input.durableNamespace,
+          onEof: (terminal, content) =>
+            buildTerminalFrame(terminal, content, {
+              eofMs: telemetryNow(),
+              firstTokenMs,
+            }),
+          requestId: input.responseId,
+          source: input.source,
+        })
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
+      // IN-MEMORY DURABLE PATH (test/contract substrate). Same guarantees against
+      // the synchronous `StreamStore` port the DO implements.
       if (input.durableStore !== undefined) {
         await teeUpstreamToDurable({
           emit: frame => {
@@ -1702,6 +1751,18 @@ export const handleChatCompletions = (
           deps.durableStreamEnabled === true && deps.durableStream !== undefined
             ? resolveDurableStore(deps.durableStream, responseId)
             : undefined
+        // PRODUCTION DURABLE SUBSTRATE (#6058): the per-request Durable Object,
+        // resolved only when the flag is on AND the binding is wired. Takes
+        // precedence over the in-memory `durableStore` test substrate.
+        const durableNamespace: DurableStreamNamespace | undefined =
+          deps.durableStreamEnabled === true &&
+          deps.durableStreamNamespace !== undefined
+            ? deps.durableStreamNamespace
+            : undefined
+        // The completion is being persisted (and is resumable) when EITHER durable
+        // substrate is active.
+        const durablePersisting =
+          durableNamespace !== undefined || durableStore !== undefined
         const responseStream = makePassThroughResponseStream({
           accountRef: session.accountRef,
           adapterId,
@@ -1709,6 +1770,7 @@ export const handleChatCompletions = (
           created,
           durableNowMs: nowEpochMillis(),
           durableStore,
+          ...(durableNamespace === undefined ? {} : { durableNamespace }),
           fundingKind,
           meteringHook,
           // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
@@ -1727,7 +1789,7 @@ export const handleChatCompletions = (
             // Advertise the resumable read URL only when the completion is being
             // persisted. The opaque request id carries no prompt/credential
             // material, so this header is safe (INVARIANTS: no leakage).
-            ...(durableStore !== undefined
+            ...(durablePersisting
               ? {
                   'openagents-durable-stream-url':
                     durableInferenceReadUrl(responseId),
