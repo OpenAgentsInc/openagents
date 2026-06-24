@@ -29,7 +29,9 @@ import {
   exampleArtanisForumPublicationQueue,
 } from './artanis-forum-publication'
 import {
+  type ArtanisHealthOverallState,
   ArtanisHealthSignalRecord,
+  type ArtanisHealthSignalState,
   ArtanisHealthSnapshotRecord,
   exampleArtanisHealthSnapshot,
 } from './artanis-health'
@@ -57,10 +59,18 @@ export type ArtanisScheduledRunnerContext = Readonly<{
   runnerBackendRefs: ReadonlyArray<string>
 }>
 
+export type ArtanisKhalaReadinessObservation = Readonly<{
+  leakCount?: number | undefined
+  publicModelIds: ReadonlyArray<string>
+  readinessStatus: string
+  servableModelCount: number
+}>
+
 export type ArtanisScheduledRunnerInput = Readonly<{
   context?: Partial<ArtanisScheduledRunnerContext> | undefined
   db: D1Database
   enabled: boolean
+  khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
   nowIso: string
   scheduleRef: string
   scopeRef?: string | undefined
@@ -163,6 +173,159 @@ const refSuffix = (value: string): string => {
     .slice(0, 96)
 
   return suffix === '' ? 'tick' : suffix
+}
+
+const KHALA_PUBLIC_MODEL_ID = 'openagents/khala'
+const KHALA_READINESS_AUTHORITY_REFS = [
+  'authority.public.khala_readiness.credentialless_read_only',
+  'authority.public.khala_readiness.no_chat_call',
+  'authority.public.khala_readiness.no_mutation',
+  'authority.public.khala_readiness.no_paid_call',
+]
+const KHALA_READINESS_SOURCE_REFS = [
+  'gateway.public.openagents.models',
+  'gateway.public.openagents.readiness',
+  'monitor.public.khala.no_spend_readiness',
+]
+
+const normalizedKhalaCatalog = (
+  modelIds: ReadonlyArray<string>,
+): ReadonlyArray<string> =>
+  uniqueRefs(modelIds.map(modelId => modelId.trim()).filter(Boolean))
+
+const nonNegativeInteger = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0
+
+const khalaReadinessSignalNeedsAttention = (
+  signal: ArtanisHealthSignalRecord,
+): boolean => signal.state !== 'available' && signal.state !== 'fresh'
+
+const scheduledKhalaReadinessSignal = (
+  input: ArtanisScheduledRunnerInput,
+): ArtanisHealthSignalRecord => {
+  const observation = input.khalaReadinessObservation
+
+  if (observation === undefined) {
+    return new ArtanisHealthSignalRecord({
+      blockerRefs: ['blocker.public.artanis.khala_readiness_not_observed'],
+      caveatRefs: [
+        ...KHALA_READINESS_AUTHORITY_REFS,
+        'caveat.public.khala_readiness.requires_no_spend_observation',
+      ],
+      count: 1,
+      kind: 'khala_readiness',
+      label: 'Khala no-spend readiness has not been observed',
+      observedAtIso: input.nowIso,
+      operatorDetailRefs: ['health.operator.artanis.khala_readiness'],
+      publicRecoveryActionRefs: [
+        'recovery.public.artanis.run_khala_no_spend_monitor',
+      ],
+      publicStatusRefs: ['health.public.artanis.khala_readiness_unknown'],
+      signalRef: 'health.public.artanis.khala_readiness',
+      sourceRefs: KHALA_READINESS_SOURCE_REFS,
+      state: 'unknown',
+      subjectUpdatedAtIso: input.nowIso,
+    })
+  }
+
+  const publicModelIds = normalizedKhalaCatalog(observation.publicModelIds)
+  const hasKhala = publicModelIds.includes(KHALA_PUBLIC_MODEL_ID)
+  const extraModelCount = publicModelIds.filter(
+    modelId => modelId !== KHALA_PUBLIC_MODEL_ID,
+  ).length
+  const catalogLeakCount = Math.max(
+    nonNegativeInteger(observation.leakCount ?? 0),
+    extraModelCount,
+  )
+  const readinessReady = observation.readinessStatus.trim().toLowerCase() ===
+    'ready'
+  const servableModelCount = nonNegativeInteger(observation.servableModelCount)
+  const catalogBlockerRefs = uniqueRefs([
+    ...(hasKhala ? [] : ['blocker.public.artanis.khala_public_catalog_missing']),
+    ...(publicModelIds.length === 1 && hasKhala
+      ? []
+      : ['blocker.public.artanis.khala_public_catalog_not_single_model']),
+    ...(catalogLeakCount > 0
+      ? ['blocker.public.artanis.khala_public_catalog_leak']
+      : []),
+  ])
+  const availabilityBlockerRefs = uniqueRefs([
+    ...(readinessReady
+      ? []
+      : ['blocker.public.artanis.khala_gateway_not_ready']),
+    ...(servableModelCount > 0
+      ? []
+      : ['blocker.public.artanis.khala_no_servable_model']),
+  ])
+  const blockerRefs = uniqueRefs([
+    ...catalogBlockerRefs,
+    ...availabilityBlockerRefs,
+  ])
+  const state: ArtanisHealthSignalState = blockerRefs.length === 0
+    ? 'available'
+    : catalogBlockerRefs.length > 0
+    ? 'blocked'
+    : 'unavailable'
+  const count = state === 'available'
+    ? 0
+    : Math.max(1, blockerRefs.length, catalogLeakCount)
+  const publicStatusRefs = state === 'available'
+    ? ['health.public.artanis.khala_ready']
+    : state === 'blocked'
+    ? ['health.public.artanis.khala_public_catalog_blocked']
+    : ['health.public.artanis.khala_readiness_unavailable']
+
+  return new ArtanisHealthSignalRecord({
+    blockerRefs,
+    caveatRefs: [
+      ...KHALA_READINESS_AUTHORITY_REFS,
+      'caveat.public.khala_public_catalog_single_model',
+    ],
+    count,
+    kind: 'khala_readiness',
+    label: state === 'available'
+      ? 'Khala no-spend readiness is clean'
+      : state === 'blocked'
+      ? 'Khala public catalog is blocked'
+      : 'Khala public readiness is unavailable',
+    observedAtIso: input.nowIso,
+    operatorDetailRefs: ['health.operator.artanis.khala_readiness'],
+    publicRecoveryActionRefs: state === 'available'
+      ? []
+      : [
+          'recovery.public.artanis.inspect_khala_gateway_catalog',
+          'recovery.public.artanis.run_khala_no_spend_monitor',
+        ],
+    publicStatusRefs,
+    signalRef: 'health.public.artanis.khala_readiness',
+    sourceRefs: uniqueRefs([
+      ...KHALA_READINESS_SOURCE_REFS,
+      ...(hasKhala ? ['model.public.openagents.khala'] : []),
+    ]),
+    state,
+    subjectUpdatedAtIso: input.nowIso,
+  })
+}
+
+const overallStateWithKhalaSignal = (
+  base: ArtanisHealthSnapshotRecord,
+  khalaState: ArtanisHealthSignalState,
+): ArtanisHealthOverallState => {
+  if (khalaState === 'blocked') {
+    return 'blocked'
+  }
+
+  if (base.overallState !== 'healthy') {
+    return base.overallState
+  }
+
+  if (khalaState === 'unavailable') {
+    return 'unavailable'
+  }
+
+  return khalaState === 'available' || khalaState === 'fresh'
+    ? 'healthy'
+    : 'degraded'
 }
 
 const nextTickIso = (nowIso: string): string =>
@@ -513,12 +676,39 @@ const scheduledHealthSnapshot = (
 ): ArtanisHealthSnapshotRecord => {
   const base = exampleArtanisHealthSnapshot
   const scheduleSuffix = refSuffix(input.scheduleRef)
+  const khalaSignal = scheduledKhalaReadinessSignal(input)
+  const khalaNeedsAttention = khalaReadinessSignalNeedsAttention(khalaSignal)
 
   return new ArtanisHealthSnapshotRecord({
     ...base,
+    blockerRefs: uniqueRefs([
+      ...base.blockerRefs,
+      ...khalaSignal.blockerRefs,
+    ]),
+    caveatRefs: uniqueRefs([
+      ...base.caveatRefs,
+      ...KHALA_READINESS_AUTHORITY_REFS,
+    ]),
     createdAtIso: input.nowIso,
     latestTickRef: tickRef,
     loopRef,
+    operatorRecoveryActionRefs: uniqueRefs([
+      ...base.operatorRecoveryActionRefs,
+      ...(khalaNeedsAttention
+        ? ['recovery.operator.artanis.inspect_khala_readiness']
+        : []),
+    ]),
+    overallState: overallStateWithKhalaSignal(base, khalaSignal.state),
+    overclaimBlockerRefs: uniqueRefs([
+      ...base.overclaimBlockerRefs,
+      ...(khalaNeedsAttention
+        ? ['overclaim.public.artanis.khala_readiness_attention']
+        : []),
+    ]),
+    publicStatusRefs: uniqueRefs([
+      ...base.publicStatusRefs,
+      ...khalaSignal.publicStatusRefs,
+    ]),
     signals: base.signals.map(signal =>
       signal.kind === 'last_tick'
         ? new ArtanisHealthSignalRecord({
@@ -527,10 +717,17 @@ const scheduledHealthSnapshot = (
             sourceRefs: [tickRef],
             subjectUpdatedAtIso: input.nowIso,
           })
+        : signal.kind === 'khala_readiness'
+        ? khalaSignal
         : signal,
     ),
     snapshotRef: `health.public.artanis.snapshot.${scheduleSuffix}`,
-    sourceRefs: uniqueRefs([...base.sourceRefs, loopRef, tickRef]),
+    sourceRefs: uniqueRefs([
+      ...base.sourceRefs,
+      ...khalaSignal.sourceRefs,
+      loopRef,
+      tickRef,
+    ]),
     updatedAtIso: input.nowIso,
   })
 }
@@ -676,6 +873,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
 export const runArtanisScheduledTickForWorker = (
   input: Readonly<{
     db: D1Database
+    khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
     scheduledRunnerEnabled: boolean
     scheduledTime: number
   }>,
@@ -685,6 +883,7 @@ export const runArtanisScheduledTickForWorker = (
   return runArtanisScheduledTick({
     db: input.db,
     enabled: input.scheduledRunnerEnabled,
+    khalaReadinessObservation: input.khalaReadinessObservation,
     nowIso,
     scheduleRef: `cron.public.artanis.${refSuffix(nowIso)}`,
   })

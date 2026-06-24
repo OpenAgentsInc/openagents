@@ -2,7 +2,8 @@
 
 Date: 2026-06-24
 Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201,
-OpenAgentsInc/openagents#6202, OpenAgentsInc/openagents#6203
+OpenAgentsInc/openagents#6202, OpenAgentsInc/openagents#6203,
+OpenAgentsInc/openagents#6204
 
 ## Production Activation
 
@@ -239,6 +240,31 @@ node apps/openagents.com/scripts/khala-production-smoke.mjs --approve-live-spend
 
 That paid smoke remains the proof that a real completion bills and dereferences
 to public-safe DeepSeek/Fireworks receipt evidence.
+
+## Artanis Scheduled Health Mapping
+
+Issue #6204 maps the no-spend monitor result into the owned Artanis scheduled
+health ledger as the `khala_readiness` signal.
+
+The signal is green only when the observation says:
+
+- gateway readiness is `ready`
+- at least one model is servable
+- the public catalog is exactly `openagents/khala`
+- the monitor reports zero raw/split/provider model leaks
+
+The persisted Artanis record is intentionally normalized. If `/v1/models` leaks
+`khala-mini`, GPT-OSS, DeepSeek, Fireworks, Hydralisk, or any other extra public
+model, the health signal records public-safe blockers such as
+`blocker.public.artanis.khala_public_catalog_leak` and
+`blocker.public.artanis.khala_public_catalog_not_single_model`; it does not copy
+the leaked slug into the public health projection.
+
+Authority is also explicit on the signal: the observation is credentialless,
+read-only, no paid call, no chat call, and no mutation. When cron runs without a
+fresh monitor observation, Artanis records `khala_readiness` as `unknown` with
+`blocker.public.artanis.khala_readiness_not_observed` rather than pretending the
+surface is healthy.
 
 The self-hosted Google path remains a separate Hydralisk/Psionic effort. Reserve
 or obtain an 8x high-memory H100/H200/B200-class host, validate vLLM 0.20+

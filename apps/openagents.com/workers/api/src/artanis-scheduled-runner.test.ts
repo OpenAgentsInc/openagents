@@ -15,6 +15,23 @@ import {
 const nowIso = '2026-06-07T05:20:00.000Z'
 const scheduledTime = Date.parse(nowIso)
 
+const persistedKhalaReadinessSignal = (
+  store: ArtanisPersistenceTestStore,
+): Record<string, unknown> => {
+  const projection = JSON.parse(
+    store.rows('artanis_health_snapshots')[0]!.public_projection_json,
+  ) as { signals: Array<Record<string, unknown>> }
+  const signal = projection.signals.find(item =>
+    item.kind === 'khala_readiness'
+  )
+
+  if (signal === undefined) {
+    throw new Error('Missing Khala readiness signal')
+  }
+
+  return signal
+}
+
 describe('Artanis scheduled runner', () => {
   test('stays disabled by default and records no rows', async () => {
     const store = new ArtanisPersistenceTestStore()
@@ -132,6 +149,20 @@ describe('Artanis scheduled runner', () => {
       ]),
     })
     expect(store.rows('artanis_forum_publication_intents')).toHaveLength(1)
+    expect(persistedKhalaReadinessSignal(store)).toMatchObject({
+      blockerRefs: ['blocker.public.artanis.khala_readiness_not_observed'],
+      caveatRefs: expect.arrayContaining([
+        'authority.public.khala_readiness.credentialless_read_only',
+        'authority.public.khala_readiness.no_chat_call',
+        'authority.public.khala_readiness.no_mutation',
+        'authority.public.khala_readiness.no_paid_call',
+      ]),
+      kind: 'khala_readiness',
+      publicRecoveryActionRefs: [
+        'recovery.public.artanis.run_khala_no_spend_monitor',
+      ],
+      state: 'unknown',
+    })
     const forumIntentProjection = JSON.parse(
       store.rows('artanis_forum_publication_intents')[0]!
         .public_projection_json,
@@ -149,6 +180,88 @@ describe('Artanis scheduled runner', () => {
     expect(
       store.rows('artanis_forum_publication_intents')[0]!.public_projection_json,
     ).not.toMatch(/context\.private|evidence\.private|receipt\.operator|wallet_secret|raw_log/i)
+  })
+
+  test('persists a green Khala no-spend readiness observation', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+
+    const result = await Effect.runPromise(
+      runArtanisScheduledTick({
+        db,
+        enabled: true,
+        khalaReadinessObservation: {
+          publicModelIds: ['openagents/khala'],
+          readinessStatus: 'ready',
+          servableModelCount: 1,
+        },
+        nowIso,
+        scheduleRef: 'cron.public.artanis.khala-ready',
+      }),
+    )
+
+    expect(result.state).toBe('completed')
+    expect(persistedKhalaReadinessSignal(store)).toMatchObject({
+      blockerRefs: [],
+      count: 0,
+      kind: 'khala_readiness',
+      publicRecoveryActionRefs: [],
+      publicStatusRefs: ['health.public.artanis.khala_ready'],
+      sourceRefs: expect.arrayContaining([
+        'gateway.public.openagents.models',
+        'gateway.public.openagents.readiness',
+        'model.public.openagents.khala',
+        'monitor.public.khala.no_spend_readiness',
+      ]),
+      state: 'available',
+    })
+  })
+
+  test('blocks Khala readiness on leaked public model ids without projecting them', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+
+    await Effect.runPromise(
+      runArtanisScheduledTick({
+        db,
+        enabled: true,
+        khalaReadinessObservation: {
+          leakCount: 2,
+          publicModelIds: [
+            'openagents/khala',
+            'openagents/khala-mini',
+            'accounts/fireworks/models/deepseek-v4-flash',
+          ],
+          readinessStatus: 'ready',
+          servableModelCount: 3,
+        },
+        nowIso,
+        scheduleRef: 'cron.public.artanis.khala-leak',
+      }),
+    )
+
+    const healthProjectionJson =
+      store.rows('artanis_health_snapshots')[0]!.public_projection_json
+
+    expect(persistedKhalaReadinessSignal(store)).toMatchObject({
+      blockerRefs: expect.arrayContaining([
+        'blocker.public.artanis.khala_public_catalog_leak',
+        'blocker.public.artanis.khala_public_catalog_not_single_model',
+      ]),
+      count: 2,
+      kind: 'khala_readiness',
+      publicRecoveryActionRefs: [
+        'recovery.public.artanis.inspect_khala_gateway_catalog',
+        'recovery.public.artanis.run_khala_no_spend_monitor',
+      ],
+      publicStatusRefs: [
+        'health.public.artanis.khala_public_catalog_blocked',
+      ],
+      state: 'blocked',
+    })
+    expect(healthProjectionJson).not.toContain('openagents/khala-mini')
+    expect(healthProjectionJson).not.toContain('accounts/fireworks')
+    expect(healthProjectionJson).not.toContain('deepseek-v4-flash')
   })
 
   test('keeps the executor-trace Forum intent pinned to the promise safeCopy', () => {

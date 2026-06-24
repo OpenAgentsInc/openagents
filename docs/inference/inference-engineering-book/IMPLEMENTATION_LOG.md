@@ -509,3 +509,26 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   dereference. The paid proof remains
   `scripts/khala-production-smoke.mjs --approve-live-spend`, which is intentionally
   separate so a frequent monitor cannot burn inference budget.
+
+---
+
+## P2-14 — Artanis Khala Readiness Health Signal — DONE
+
+- **Notes ref:** `../2026-06-24-khala-deepseek-v4-flash-provider-backing.md`
+  §Artanis Scheduled Health Mapping; issue #6204.
+- **What shipped:** Artanis scheduled health now has a required
+  `khala_readiness` signal. Scheduled ticks can accept a no-spend Khala monitor
+  observation and persist it into the existing `artanis_health_snapshots` record.
+  The signal is green only for readiness `ready`, positive servable model count,
+  a public catalog of exactly `openagents/khala`, and zero leak count.
+- **Public-safety behavior:** leaked or extra model ids turn the signal blocked
+  with public-safe blockers such as
+  `blocker.public.artanis.khala_public_catalog_leak` and
+  `blocker.public.artanis.khala_public_catalog_not_single_model`; raw leaked
+  slugs are not copied into the public projection. Missing observations persist
+  as `unknown` with `blocker.public.artanis.khala_readiness_not_observed`.
+- **Authority refs:** the signal carries explicit read-only authority refs for
+  credentialless observation, no paid call, no chat call, and no mutation.
+- **Verification bar:** focused Artanis health and scheduled-runner tests cover
+  the ready path, leak-blocked path, disabled runner, unknown observation state,
+  and public projection redaction.

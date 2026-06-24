@@ -12,6 +12,7 @@ export type ArtanisHealthAudience = typeof ArtanisHealthAudience.Type
 export const ArtanisHealthSignalKind = S.Literals([
   'blocker_reason',
   'forum_publication_lag',
+  'khala_readiness',
   'last_tick',
   'loop_freshness',
   'model_lab_report_freshness',
@@ -137,6 +138,7 @@ export const ARTANIS_HEALTH_SIGNAL_KINDS: ReadonlyArray<ArtanisHealthSignalKind>
   [
     'blocker_reason',
     'forum_publication_lag',
+    'khala_readiness',
     'last_tick',
     'loop_freshness',
     'model_lab_report_freshness',
@@ -708,6 +710,31 @@ export const exampleArtanisHealthSnapshot =
         sourceRefs: ['omega.public.pylon_api.registrations'],
         state: 'fresh',
         subjectUpdatedAtIso: '2026-06-07T03:07:00.000Z',
+      }),
+      signal({
+        blockerRefs: [],
+        caveatRefs: [
+          'authority.public.khala_readiness.credentialless_read_only',
+          'authority.public.khala_readiness.no_chat_call',
+          'authority.public.khala_readiness.no_mutation',
+          'authority.public.khala_readiness.no_paid_call',
+          'caveat.public.khala_public_catalog_single_model',
+        ],
+        count: 0,
+        kind: 'khala_readiness',
+        label: 'Khala no-spend readiness is clean',
+        observedAtIso: baseObservedAtIso,
+        operatorDetailRefs: ['health.operator.artanis.khala_readiness'],
+        publicRecoveryActionRefs: [],
+        publicStatusRefs: ['health.public.artanis.khala_ready'],
+        signalRefSuffix: 'khala_readiness',
+        sourceRefs: [
+          'gateway.public.openagents.models',
+          'gateway.public.openagents.readiness',
+          'model.public.openagents.khala',
+        ],
+        state: 'available',
+        subjectUpdatedAtIso: '2026-06-07T03:09:00.000Z',
       }),
       signal({
         blockerRefs: ['blocker.public.artanis.model_lab_report_stale'],
