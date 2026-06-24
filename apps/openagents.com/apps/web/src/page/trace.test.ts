@@ -437,6 +437,47 @@ describe('atif contract + committed sample', () => {
     expect(traceVerdict(sampleTrajectory)).toBe('PASS')
   })
 
+  test('falls back to the terminal done tool call when final_metrics.extra is stripped', () => {
+    // The ingest can drop `final_metrics.extra` on storage; the verdict still
+    // survives as the terminal `done` tool call's argument. The badge must read
+    // "Verified", not "In progress".
+    const stripped = decodeTrajectory(
+      JSON.parse(
+        JSON.stringify({
+          ...sampleTrajectory,
+          final_metrics: {
+            ...sampleTrajectory.final_metrics,
+            extra: {},
+          },
+          steps: [
+            ...sampleTrajectory.steps,
+            {
+              step_id: sampleTrajectory.steps.length + 1,
+              timestamp: '2026-06-24T20:18:21.285Z',
+              source: 'agent',
+              message: 'Goal verified. Marking the session complete.',
+              model_name: 'openagents/khala',
+              tool_calls: [
+                {
+                  tool_call_id: 'call_done',
+                  function_name: 'done',
+                  arguments: { verdict: 'PASS', summary: 'Verified (9 actions).' },
+                },
+              ],
+              observation: {
+                results: [
+                  { source_call_id: 'call_done', content: 'verification_class=test_passed' },
+                ],
+              },
+              metrics: { cost_usd: 0 },
+            },
+          ],
+        }),
+      ),
+    )
+    expect(traceVerdict(stripped)).toBe('PASS')
+  })
+
   test('re-decoding a serialized sample is stable (read-API parity)', () => {
     // A round-trip through JSON mirrors what the worker read API will serve:
     // the page consumes a decoded `Trajectory`, regardless of the source.

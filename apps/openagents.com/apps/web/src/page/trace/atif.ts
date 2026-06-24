@@ -139,11 +139,39 @@ const asNumber = (value: unknown): number | undefined =>
 const isRecord = (value: unknown): value is { [k: string]: unknown } =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-export const traceVerdict = (trajectory: Trajectory): TraceVerdict => {
-  const raw = asString(trajectory.final_metrics?.extra?.verdict)?.toUpperCase()
-  if (raw === 'PASS' || raw === 'PASSED') return 'PASS'
+const normalizeVerdict = (value: string | undefined): TraceVerdict | undefined => {
+  const raw = value?.toUpperCase()
+  if (raw === 'PASS' || raw === 'PASSED' || raw === 'TEST_PASSED') return 'PASS'
   if (raw === 'REFUTED' || raw === 'FAILED') return 'REFUTED'
   if (raw === 'INCONCLUSIVE') return 'INCONCLUSIVE'
+  return undefined
+}
+
+export const traceVerdict = (trajectory: Trajectory): TraceVerdict => {
+  // 1. Preferred: the emitter's `final_metrics.extra.verdict`. Note the ingest can
+  //    drop `final_metrics.extra` on storage, so this is not always present.
+  const fromMetrics = normalizeVerdict(
+    asString(trajectory.final_metrics?.extra?.verdict),
+  )
+  if (fromMetrics) return fromMetrics
+  // 2. Fallback (survives storage): the terminal `done` tool call carries the
+  //    verdict as a first-class, replayable trajectory event, and its observation
+  //    records the verification class. Scan from the end for the last one.
+  const steps = trajectory.steps ?? []
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]
+    for (const call of step?.tool_calls ?? []) {
+      if (call.function_name?.toLowerCase() === 'done') {
+        const fromDone = normalizeVerdict(asString(call.arguments?.['verdict']))
+        if (fromDone) return fromDone
+      }
+    }
+    for (const result of step?.observation?.results ?? []) {
+      const content = result.content ?? ''
+      if (content.includes('test_passed')) return 'PASS'
+      if (content.includes('verification_class=failed')) return 'REFUTED'
+    }
+  }
   return 'IN_PROGRESS'
 }
 
