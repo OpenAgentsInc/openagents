@@ -113,7 +113,10 @@ async function main(): Promise<void> {
   console.log("signature:         ", result.signatureCandidate.name);
   console.log("e2e assertions:    ", result.emitters.e2e.assertionCount);
   console.log("candidate admissible:", assessment.admissible, assessment.reasons.length ? assessment.reasons : "");
-  console.log("skill emitter:     ", result.emitters.skill?.status, `(${result.emitters.skill?.reason})`);
+  console.log(
+    "skill emitter:     ",
+    `${result.emitters.skill.moduleKind} (tier ${result.emitters.skill.ladderTier}, ${result.emitters.skill.governance.live ? "LIVE" : "candidate/gated"}, releaseGate=${result.emitters.skill.governance.releaseGateRef})`,
+  );
 
   // ".e2e.test.ts": executor-style ".e2e" marker + ".test" so `bun test` and CI
   // discover it without an explicit path.

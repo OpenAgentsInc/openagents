@@ -6,6 +6,11 @@
 import { describe, expect, test } from "bun:test";
 import { assessCandidate, distill, DistillError } from "./distiller";
 import { makeSessionTrace, type SessionBeat } from "./session-trace";
+import {
+  assertSkillCandidateGoverned,
+  evaluateReleaseGateWithoutApproval,
+  SkillCandidateGovernanceError,
+} from "./skill-candidate";
 
 /** A fixture login-verification session, as a Khala session would record it. */
 const loginBeats: SessionBeat[] = [
@@ -82,9 +87,52 @@ describe("distill (deterministic v1 reducer)", () => {
     expect(emitters.e2e.source).toContain(trace.digest);
   });
 
-  test("the skill emitter (E.1) is a deferred typed seam, not live", () => {
+  test("the skill emitter (E.1) emits a GOVERNED optimizer candidate (not live, gated, no self-promotion)", () => {
     const result = distill(loginTrace());
-    expect(result.emitters.skill?.status).toBe("deferred");
+    const skill = result.emitters.skill;
+    expect(skill.kind).toBe("blueprint_optimizer_skill_candidate");
+    expect(skill.moduleKind).toBe("optimizer_candidate");
+    // honest ladder tier: a deterministic exact replay is tier E
+    expect(skill.verificationClass).toBe("exact_trace_replay");
+    expect(skill.ladderTier).toBe("E");
+    // typed signature, no `any`
+    expect(skill.signature.inputs.every((f) => f.type.toLowerCase() !== "any")).toBe(true);
+    // GOVERNANCE: evidence-only, Release-Gate-gated, never self-promoted, not live
+    expect(skill.governance.authorityBoundary).toBe("evidence_only");
+    expect(skill.governance.requiresReleaseGate).toBe(true);
+    expect(skill.governance.selfPromotionAllowed).toBe(false);
+    expect(skill.governance.live).toBe(false);
+    expect(skill.governance.releaseGateRef.length).toBeGreaterThan(0);
+    // traceability: the candidate pins the source trace digest
+    expect(skill.sourceDigest).toBe(result.emitters.e2e.source.match(/source digest:\s+(\w+)/)?.[1] ?? "");
+  });
+
+  test("ONE capture distills into BOTH a committed e2e test AND a governed skill candidate (spec §E)", () => {
+    const result = distill(loginTrace());
+    // (a) a real, runnable committed e2e test
+    expect(result.emitters.e2e.source).toContain("runQaSession");
+    expect(result.emitters.e2e.assertionCount).toBeGreaterThanOrEqual(1);
+    // (b) a governed Blueprint optimizer skill candidate from the same trace
+    expect(result.emitters.skill.moduleKind).toBe("optimizer_candidate");
+    expect(result.emitters.skill.slug).toBe(result.emitters.e2e.slug);
+  });
+});
+
+describe("skill candidate governance (spec §D.3 / §D.4 — Release Gate, no self-promotion)", () => {
+  test("the Release Gate REJECTS an unapproved candidate (no self-promotion, ever)", () => {
+    const result = distill(loginTrace());
+    const decision = evaluateReleaseGateWithoutApproval(result.emitters.skill);
+    expect(decision.promoted).toBe(false);
+    expect(decision.reason).toContain("release_gate_rejected");
+  });
+
+  test("assertSkillCandidateGoverned throws when a candidate is tampered self-promotable", () => {
+    const result = distill(loginTrace());
+    const tampered = {
+      ...result.emitters.skill,
+      governance: { ...result.emitters.skill.governance, selfPromotionAllowed: true as unknown as false },
+    };
+    expect(() => assertSkillCandidateGoverned(tampered)).toThrow(SkillCandidateGovernanceError);
   });
 });
 

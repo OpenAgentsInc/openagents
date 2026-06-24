@@ -30,6 +30,9 @@ import {
   type SessionBeat,
   type TypedField,
 } from "./session-trace";
+import { emitSkillCandidate, type SkillCandidate } from "./skill-candidate";
+
+export type { SkillCandidate } from "./skill-candidate";
 
 /** The verification class the distilled candidate honestly carries. */
 export type VerificationClass = "none" | "seeded" | "test_passed" | "exact_trace_replay";
@@ -79,19 +82,19 @@ export interface E2eScenarioCandidate {
   readonly assertionCount: number;
 }
 
-/** (E.1) marketplace skill emitter — typed SEAM + TODO (FUTURE, owner-gated). */
-export interface SkillCandidate {
-  readonly status: "deferred";
-  readonly reason: string;
-}
-
 export interface DistillResult {
   readonly signatureCandidate: BlueprintProgramSignature;
   readonly moduleCandidate: BlueprintModuleVersionCandidate;
   readonly verificationClass: VerificationClass;
   readonly emitters: {
     readonly e2e: E2eScenarioCandidate;
-    readonly skill?: SkillCandidate;
+    /**
+     * (E.1) The governed Blueprint optimizer skill candidate. A candidate ONLY:
+     * evidence-only, Release-Gate-gated, never self-promoted (see
+     * `skill-candidate.ts`). It is emitted alongside the committed e2e test from
+     * the SAME capture — one pipeline, two artifacts.
+     */
+    readonly skill: SkillCandidate;
   };
 }
 
@@ -278,22 +281,17 @@ export function distill(trace: KhalaSessionTrace): DistillResult {
   const steps = reduceBeats(trace.beats);
   const verificationClass = honestVerificationClass(trace);
   const e2e = emitE2eScenario(trace, signatureCandidate, steps, verificationClass);
+  // (E.1) The governed optimizer skill candidate — emitted from the SAME capture
+  // as the e2e test. A candidate only: evidence-only, Release-Gate-gated, never
+  // self-promoted. (FUTURE marketplace listing + rev-share settlement stay
+  // INERT/OWNER-GATED in `run-settlement.ts`; this is committable evidence today.)
+  const skill = emitSkillCandidate({ trace, signature: signatureCandidate, verificationClass, slug: e2e.slug });
 
   return {
     signatureCandidate,
     moduleCandidate: { moduleKind: "deterministic_reducer", steps },
     verificationClass,
-    emitters: {
-      e2e,
-      // (E.1) skill emitter is deferred per spec phasing — typed seam + TODO.
-      skill: {
-        status: "deferred",
-        // TODO(spec E.1): emit a NIP-SKL skill candidate on a ladder tier behind
-        // the Blueprint optimizer_candidate -> GEPA -> Release Gate path. FUTURE,
-        // owner-gated; needs the marketplace floor + settlement (INERT today).
-        reason: "skill emitter (NIP-SKL marketplace candidate) is FUTURE/owner-gated; e2e emitter is the deliverable now",
-      },
-    },
+    emitters: { e2e, skill },
   };
 }
 
