@@ -38,6 +38,12 @@
   "vars": {
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
+    // Durable-stream Rank-1 resumable inference (#6058, EPIC #6056). LIVE: every
+    // streamed `/api/v1/chat/completions` completion is teed into the per-request
+    // `INFERENCE_DURABLE_STREAM` Durable Object so a client disconnect can resume
+    // by offset via `/v1/chat/completions/durable/{requestId}`. Metering still
+    // settles EXACTLY ONCE on the real upstream EOF and NEVER on a replay.
+    "INFERENCE_DURABLE_STREAM_ENABLED": "true",
     "OPENAUTH_CLIENT_ID": "openagents-web",
     "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
     "OPENAGENTS_APP_URL": "https://openagents.com",
@@ -237,6 +243,9 @@
       "vars": {
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
         "INFERENCE_GATEWAY_ENABLED": "true",
+        // Durable-stream Rank-1 resumable inference (#6058) — LIVE on staging too
+        // (the DO binding + migration are added to this env below).
+        "INFERENCE_DURABLE_STREAM_ENABLED": "true",
         // Ep239 "Let's Make Money" loop surfaces — armed on STAGING ONLY so
         // external agent-testers can exercise the inert/scaffold endpoints.
         // Production (the top-level config above) leaves these unset, so the
@@ -331,12 +340,23 @@
             "name": "SYNC_ROOM",
             "class_name": "SyncRoomDurableObject",
           },
+          // Durable-stream Rank-1 resumable inference (#6058). One SQLite-class DO
+          // per request id holds that completion's durable offset log. LIVE on
+          // staging (INFERENCE_DURABLE_STREAM_ENABLED above).
+          {
+            "name": "INFERENCE_DURABLE_STREAM",
+            "class_name": "DurableInferenceStreamObject",
+          },
         ],
       },
       "migrations": [
         {
           "tag": "v1",
           "new_sqlite_classes": ["SyncRoomDurableObject"],
+        },
+        {
+          "tag": "v2",
+          "new_sqlite_classes": ["DurableInferenceStreamObject"],
         },
       ],
     },

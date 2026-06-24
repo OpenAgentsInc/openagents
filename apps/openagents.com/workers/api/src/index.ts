@@ -330,7 +330,12 @@ import {
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
-import { routeDurableInferenceReadRequest } from './inference/durable-inference-read-routes'
+import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
+import {
+  matchDurableReadRequest,
+  routeDurableInferenceReadRequest,
+  routeDurableInferenceReadRequestDO,
+} from './inference/durable-inference-read-routes'
 import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
@@ -7121,6 +7126,21 @@ const agentGoalRoutes = makeAgentGoalRoutes({
 const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>({
   makeInferenceClient: env => makeOnboardingInferenceClient(env),
   makeStreamClient: env => makeOnboardingStreamClient(env),
+  // DURABLE ONBOARDING STREAM (#6154 item 4). The per-request Durable Object
+  // namespace, resolved only when the durable-stream flag is on AND the binding
+  // is wired; absent => the onboarding stream stays the non-durable SSE
+  // (fail-safe). Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so
+  // an unauthenticated browser can resume a dropped turn by offset.
+  resolveDurableStream: env => {
+    // `env` is the full Worker `Env` at call time; the route's generic narrows it
+    // to `WorkerBindings`, so read the config flag through the broader Env shape.
+    const fullEnv = env as Env
+    return isInferenceDurableStreamEnabled(
+      fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
+    ) && fullEnv.INFERENCE_DURABLE_STREAM !== undefined
+      ? (fullEnv.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+      : undefined
+  },
 })
 
 const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
@@ -10388,19 +10408,25 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           // here once a runner host exists. Until then the seam is inert.
           queue: undefined,
         },
-        // DURABLE-STREAM RANK-1 (#6058, EPIC #6056). Flag-gated INERT by default:
-        // with INFERENCE_DURABLE_STREAM_ENABLED off the streaming path is today's
-        // pure pass-through (no persistence/resume). The producer factory is left
-        // undefined here so the LIVE Worker stays inert even with the flag on —
-        // the DO class (`DurableInferenceStreamObject`) + binding
-        // (`INFERENCE_DURABLE_STREAM`) ship deployable, but the per-token producer
-        // write into the DO is wired in a follow-up. Metering still settles
-        // EXACTLY ONCE on the real upstream EOF and NEVER on a replay (proven by
-        // the in-memory durable-proxy tests, which use the SAME StreamStore port
-        // the DO implements).
-        // NEEDS-OWNER: wire the DO-fetch-backed producer factory + the read-route
-        // dispatcher's `durableStream` to `env.INFERENCE_DURABLE_STREAM` here.
+        // DURABLE-STREAM RANK-1 (#6058, EPIC #6056). LIVE when
+        // INFERENCE_DURABLE_STREAM_ENABLED is on AND the DO binding is wired:
+        // every streamed completion is teed into the per-request Durable Object
+        // (`DurableInferenceStreamObject`, keyed `getByName(responseId)`) over the
+        // `/v1/stream/{id}` HTTP contract, so a client disconnect mid-generation
+        // can be resumed by offset via the durable read route. The in-memory
+        // `durableStream` (synchronous `StreamStore`) factory stays undefined here
+        // — it is the test/contract substrate; production uses the DO namespace.
+        // Metering settles EXACTLY ONCE on the real upstream EOF and NEVER on a
+        // replay (the resume route has no metering hook). FAIL-SAFE: with the flag
+        // off OR the binding absent, `durableStreamNamespace` is undefined and the
+        // streaming path is byte-for-byte today's pure pass-through.
         durableStream: undefined,
+        durableStreamNamespace:
+          isInferenceDurableStreamEnabled(
+            env.INFERENCE_DURABLE_STREAM_ENABLED,
+          ) && env.INFERENCE_DURABLE_STREAM !== undefined
+            ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+            : undefined,
         durableStreamEnabled: isInferenceDurableStreamEnabled(
           env.INFERENCE_DURABLE_STREAM_ENABLED,
         ),
@@ -10811,16 +10837,47 @@ const routeRequest = makeWorkerRouteRequest({
     }),
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
   // (durable-stream Rank-1, #6058). Reads stored bytes only — NEVER meters.
-  // Shares the gateway flag AND the durable-stream flag; with the producer
-  // factory left undefined (see the chat route above) this returns 404, so the
-  // surface is honestly inert until the DO producer is wired. Synchronous
-  // Response wrapped into the Effect dispatcher shape.
+  // Shares the gateway flag AND the durable-stream flag. LIVE when both are on
+  // AND the DO binding is wired: resumes from the per-request Durable Object the
+  // chat route's producer teed into. FAIL-SAFE: with the flag off OR the binding
+  // absent, returns an honest 404 (the synchronous fallback path).
   routeDurableInferenceReadRequest: (request, env) => {
+    const enabled =
+      isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
+      isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED)
+    const namespace =
+      enabled && env.INFERENCE_DURABLE_STREAM !== undefined
+        ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+        : undefined
+    // Production DO-backed resume (async): when the binding is wired, a durable
+    // read URL resolves to an Effect that reads the per-request DO; a non-durable
+    // URL falls through (undefined). The URL match is synchronous, so the
+    // dispatcher contract (`Effect<Response> | undefined`) is honored: undefined
+    // only for a non-match.
+    if (namespace !== undefined) {
+      if (matchDurableReadRequest(request) === undefined) {
+        return undefined
+      }
+      return Effect.promise(() =>
+        routeDurableInferenceReadRequestDO(request, { enabled, namespace }).then(
+          // A matched durable URL with the namespace present always yields a
+          // Response; the `?? notFound` is a defensive total fallback.
+          response =>
+            response ??
+            new Response(JSON.stringify({ error: 'not_found' }), {
+              headers: {
+                'cache-control': 'no-store',
+                'content-type': 'application/json',
+              },
+              status: 404,
+            }),
+        ),
+      )
+    }
+    // Fail-safe synchronous path (binding absent / flag off): honest 404.
     const response = routeDurableInferenceReadRequest(request, {
       durableStream: undefined,
-      enabled:
-        isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
-        isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
+      enabled,
       nowEpochMillis: currentEpochMillis,
     })
     return response === undefined ? undefined : Effect.succeed(response)

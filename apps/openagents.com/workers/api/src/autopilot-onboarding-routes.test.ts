@@ -1,5 +1,11 @@
 import { DatabaseSync } from 'node:sqlite'
 
+import {
+  MemoryStreamStore,
+  type StreamStore,
+  handleRequest,
+  streamIdFromUrl,
+} from '@openagentsinc/durable-stream'
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -10,6 +16,7 @@ import {
   type OnboardingStreamSource,
 } from './autopilot-onboarding-program'
 import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
+import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
 
 type Row = Record<string, unknown>
 class Stmt {
@@ -390,5 +397,209 @@ describe('POST /api/autopilot/onboarding/{sessionId}/turn', () => {
     const body = (await response.json()) as { error: string; reason: string }
     expect(body.error).toBe('bad_request')
     expect(body.reason).toContain('invalid vertical')
+  })
+})
+
+// DURABLE ONBOARDING STREAM (#6154 item 4) — the resumable turn stream + the
+// session-rehydration GET, against an in-process DO backend (the package's real
+// handleRequest, one MemoryStreamStore per stream id).
+describe('durable onboarding stream + resume + GET session', () => {
+  class StreamRegistry {
+    private readonly stores = new Map<string, StreamStore>()
+    private storeFor(streamId: string): StreamStore {
+      let s = this.stores.get(streamId)
+      if (s === undefined) {
+        s = new MemoryStreamStore()
+        this.stores.set(streamId, s)
+      }
+      return s
+    }
+    fetch(request: Request): Promise<Response> {
+      const streamId = streamIdFromUrl(request.url)
+      if (streamId === null) {
+        return Promise.resolve(new Response('nope', { status: 404 }))
+      }
+      return handleRequest(this.storeFor(streamId), request, { streamId })
+    }
+  }
+
+  const durableNamespace = (
+    registry: StreamRegistry,
+  ): DurableStreamNamespace => ({
+    getByName: () => ({ fetch: (r: Request) => registry.fetch(r) }),
+  })
+
+  const chunkStream =
+    (chunks: ReadonlyArray<string>): OnboardingStreamClient =>
+    () =>
+      Effect.succeed<OnboardingStreamSource>({
+        deltas: (async function* () {
+          for (const chunk of chunks) {
+            yield chunk
+          }
+        })(),
+        final: () => chunks.join(''),
+      })
+
+  const streamRequest = (sessionId: string, body: unknown): Request =>
+    new Request(
+      `https://openagents.com/api/autopilot/onboarding/${sessionId}/turn`,
+      {
+        body: JSON.stringify(body),
+        method: 'POST',
+        headers: { accept: 'text/event-stream' },
+      },
+    )
+
+  const durableRoutes = (registry: StreamRegistry) =>
+    makeAutopilotOnboardingRoutes<Env>({
+      makeInferenceClient: () => echoInference,
+      makeStreamClient: () => chunkStream(['AAA', 'BBB', 'CCC']),
+      resolveDurableStream: () => durableNamespace(registry),
+      nowIso: () => '2026-06-23T00:00:00.000Z',
+    })
+
+  test('emits the stream handshake first, durable-tees the turn, and resumes by offset', async () => {
+    const registry = new StreamRegistry()
+    const routes = durableRoutes(registry)
+    const env = makeEnv()
+
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-dur', { userText: 'I run a bakery.' }),
+        env,
+      ),
+    )
+    expect(response.status).toBe(200)
+    // Durable response advertises the stable stream id + resume URL.
+    expect(response.headers.get('openagents-onboarding-stream-id')).toBe(
+      'onboarding:sess-dur:0',
+    )
+    expect(response.headers.get('openagents-onboarding-resume-url')).toBe(
+      '/api/autopilot/onboarding/sess-dur/turn/0/stream',
+    )
+
+    const text = await response.text()
+    // HANDSHAKE first, before any delta.
+    const streamIdx = text.indexOf('event: stream')
+    const firstDeltaIdx = text.indexOf('event: delta')
+    expect(streamIdx).toBeGreaterThanOrEqual(0)
+    expect(streamIdx).toBeLessThan(firstDeltaIdx)
+    expect(text).toContain('"streamId":"onboarding:sess-dur:0"')
+    expect(text).toContain('"sessionId":"sess-dur"')
+    expect(text).toContain('"turnIndex":0')
+    // Deltas + terminal done.
+    expect(text).toContain('event: delta\ndata: {"text":"AAA"}')
+    expect(text).toContain('event: delta\ndata: {"text":"CCC"}')
+    expect(text).toContain('event: done')
+
+    // RESUME from offset 0: the durable log replays the SAME delta/done wire.
+    const resume = await run(
+      routes.routeOnboardingTurnRequest(
+        new Request(
+          'https://openagents.com/api/autopilot/onboarding/sess-dur/turn/0/stream?offset=0',
+          { method: 'GET' },
+        ),
+        env,
+      ),
+    )
+    expect(resume.status).toBe(200)
+    expect(resume.headers.get('stream-closed')).toBe('true')
+    const resumeBody = await resume.text()
+    expect(resumeBody).toContain('event: delta\ndata: {"text":"AAA"}')
+    expect(resumeBody).toContain('event: delta\ndata: {"text":"CCC"}')
+    expect(resumeBody).toContain('event: done')
+    // The handshake frame is NOT persisted (metadata the browser already holds).
+    expect(resumeBody).not.toContain('event: stream')
+
+    // Mid-stream resume: a non-zero offset replays only the missing suffix.
+    const firstFrameBytes = new TextEncoder().encode(
+      'event: delta\ndata: {"text":"AAA"}\n\n',
+    ).length
+    const suffix = await run(
+      routes.routeOnboardingTurnRequest(
+        new Request(
+          `https://openagents.com/api/autopilot/onboarding/sess-dur/turn/0/stream?offset=${firstFrameBytes}`,
+          { method: 'GET' },
+        ),
+        env,
+      ),
+    )
+    const suffixBody = await suffix.text()
+    expect(suffixBody).not.toContain('"text":"AAA"')
+    expect(suffixBody).toContain('"text":"BBB"')
+  })
+
+  test('resume read is 404 when the durable substrate is unwired (fail-safe)', async () => {
+    const routes = makeAutopilotOnboardingRoutes<Env>({
+      makeInferenceClient: () => echoInference,
+      makeStreamClient: () => chunkStream(['x']),
+      // No resolveDurableStream -> non-durable.
+      nowIso: () => '2026-06-23T00:00:00.000Z',
+    })
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        new Request(
+          'https://openagents.com/api/autopilot/onboarding/sess-x/turn/0/stream?offset=0',
+          { method: 'GET' },
+        ),
+        makeEnv(),
+      ),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  test('GET session returns the persisted transcript + status + outputSpec', async () => {
+    const registry = new StreamRegistry()
+    const routes = durableRoutes(registry)
+    const env = makeEnv()
+
+    // Run a turn so the session is persisted. The finalize (transcript append +
+    // persist) runs in the stream body, so the response must be drained first.
+    const turn = await run(
+      routes.routeOnboardingTurnRequest(
+        streamRequest('sess-get', { userText: 'I run a bakery.' }),
+        env,
+      ),
+    )
+    await turn.text()
+
+    const session = await run(
+      routes.routeOnboardingTurnRequest(
+        new Request(
+          'https://openagents.com/api/autopilot/onboarding/sess-get',
+          { method: 'GET' },
+        ),
+        env,
+      ),
+    )
+    expect(session.status).toBe(200)
+    const json = (await session.json()) as {
+      sessionId: string
+      status: string
+      turnCount: number
+      transcript: ReadonlyArray<{ role: string; content: string }>
+    }
+    expect(json.sessionId).toBe('sess-get')
+    expect(json.turnCount).toBe(1)
+    expect(json.status).toBe('interviewing')
+    // The user turn + assistant reply are both in the transcript.
+    expect(json.transcript.some(t => t.role === 'user')).toBe(true)
+    expect(json.transcript.some(t => t.role === 'assistant')).toBe(true)
+  })
+
+  test('GET session is 404 for an unknown session', async () => {
+    const registry = new StreamRegistry()
+    const routes = durableRoutes(registry)
+    const response = await run(
+      routes.routeOnboardingTurnRequest(
+        new Request(
+          'https://openagents.com/api/autopilot/onboarding/never-existed',
+          { method: 'GET' },
+        ),
+        makeEnv(),
+      ),
+    )
+    expect(response.status).toBe(404)
   })
 })

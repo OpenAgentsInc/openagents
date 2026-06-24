@@ -16,6 +16,11 @@ import {
   AUTOPILOT_CONCIERGE_VERTICALS,
   type AutopilotConciergeVertical,
 } from './inference/autopilot-concierge-model'
+import {
+  type DurableStreamNamespace,
+  replayFromOffsetDO,
+  teeUpstreamToDurableDO,
+} from './inference/durable-inference-do-transport'
 import { resolveOnboardingPromptVertical } from './autopilot-onboarding-system-prompt'
 import {
   type OnboardingInferenceClient,
@@ -74,6 +79,15 @@ export type OnboardingRouteDependencies<Env extends OnboardingRouteEnv> =
       | undefined
     // Overridable for tests; defaults to the D1-backed store.
     makeStore?: ((env: WorkerEnv<Env>) => OnboardingSessionStore) | undefined
+    // DURABLE ONBOARDING STREAM (#6154 item 4). Resolves the per-request Durable
+    // Object namespace when the durable-stream flag is on AND the binding is
+    // wired; absent => the onboarding stream is the non-durable SSE (fail-safe).
+    // When present, each onboarding turn stream is teed into a durable log keyed
+    // by the STABLE id `onboarding:{sessionId}:{turnIndex}`, so an unauthenticated
+    // browser holding only `sessionId` + last offset can resume a dropped turn.
+    resolveDurableStream?:
+      | ((env: WorkerEnv<Env>) => DurableStreamNamespace | undefined)
+      | undefined
     nowIso?: (() => string) | undefined
   }>
 
@@ -120,11 +134,30 @@ const routeErrorResponse = (error: OnboardingRouteError): HttpResponse =>
 // OpenAI-compatible chat-completions wire here: the onboarding client only needs
 // prose deltas + a terminal payload, so the wire is intentionally minimal and
 // self-describing (the client's `parseComponentFrames`-style splitter reads it):
+//   event: stream  data: { "streamId", "sessionId", "turnIndex" }  (handshake, first)
 //   event: delta   data: { "text": "…" }     (one per content increment)
 //   event: done    data: <OnboardingTurnResponse JSON>   (terminal, once)
 //   event: error   data: { "error": "…" }     (terminal, on failure)
 const sseFrame = (event: string, payload: unknown): string =>
   `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`
+
+// The STABLE durable log key for an onboarding turn (#6154 item 4). Derivable by
+// the browser from `sessionId` + the turn index (the session's `turnCount` BEFORE
+// this turn finalizes), so a returning unauthenticated browser only needs to
+// persist `sessionId` + last `offset` — it never has to invent a requestId.
+export const onboardingDurableStreamId = (
+  sessionId: string,
+  turnIndex: number,
+): string => `onboarding:${sessionId}:${turnIndex}`
+
+// The public resume read URL for an in-flight onboarding turn (#6154 item 4).
+// Keyed by (sessionId, turnIndex) — both of which the browser holds — plus the
+// last `offset`. No prompt/credential material is in the path.
+export const onboardingResumeUrl = (
+  sessionId: string,
+  turnIndex: number,
+): string =>
+  `/api/autopilot/onboarding/${encodeURIComponent(sessionId)}/turn/${turnIndex}/stream`
 
 const STREAM_HEADERS: Readonly<Record<string, string>> = {
   'content-type': 'text/event-stream; charset=utf-8',
@@ -138,34 +171,114 @@ const wantsEventStream = (request: Request): boolean => {
   return accept.toLowerCase().includes('text/event-stream')
 }
 
+// The durable substrate for one prepared onboarding turn: the per-request DO
+// namespace + the STABLE stream id derived from `sessionId` + turn index. Absent
+// => the stream is the non-durable SSE (today's behaviour, fail-safe).
+type OnboardingDurable = Readonly<{
+  namespace: DurableStreamNamespace
+  streamId: string
+  sessionId: string
+  turnIndex: number
+}>
+
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then calls `finalize` (a plain Promise so the effect boundary stays OUT of the
 // Effect.gen request pipeline) to append + persist and resolve the terminal
 // payload, then emits the `done` frame. A failure at any point emits a terminal
 // `error` frame and closes — the client never hangs.
+//
+// DURABLE (#6154 item 4): when `durable` is present, the turn is teed into the
+// per-request Durable Object via the SAME `teeUpstreamToDurableDO` the gateway
+// uses, persisting the onboarding `delta`/`done` frames so a mid-turn disconnect
+// can resume by offset. An `event: stream` handshake frame is emitted FIRST (not
+// persisted — it is metadata the resuming browser already holds) carrying the
+// streamId + sessionId + turnIndex so the browser can persist them.
 const makeOnboardingStreamBody = (
   turn: OnboardingStreamTurn,
   finalize: (reply: string) => Promise<OnboardingTurnResponse>,
+  durable: OnboardingDurable | undefined,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   return new ReadableStream<Uint8Array>({
     async start(controller) {
-      let accumulated = ''
-      try {
-        for await (const delta of turn.source.deltas) {
-          if (delta !== '') {
-            accumulated += delta
-            controller.enqueue(encoder.encode(sseFrame('delta', { text: delta })))
-          }
-        }
-        const final = turn.source.final()
-        const reply = final === '' ? accumulated : final
-        const result = await finalize(reply)
-        controller.enqueue(encoder.encode(sseFrame('done', result)))
-      } catch {
-        controller.enqueue(
-          encoder.encode(sseFrame('error', { error: 'stream_failed' })),
+      const emit = (frame: string): void =>
+        controller.enqueue(encoder.encode(frame))
+
+      // HANDSHAKE: tell the client the durable stream id + keys FIRST, before any
+      // delta, so a refresh/navigate-away can resume by (sessionId, turnIndex,
+      // offset). Emitted live only — not part of the durable log.
+      if (durable !== undefined) {
+        emit(
+          sseFrame('stream', {
+            streamId: durable.streamId,
+            sessionId: durable.sessionId,
+            turnIndex: durable.turnIndex,
+          }),
         )
+      }
+
+      // The non-durable path: pump deltas straight to the client (today's wire).
+      if (durable === undefined) {
+        let accumulated = ''
+        try {
+          for await (const delta of turn.source.deltas) {
+            if (delta !== '') {
+              accumulated += delta
+              emit(sseFrame('delta', { text: delta }))
+            }
+          }
+          const final = turn.source.final()
+          const reply = final === '' ? accumulated : final
+          const result = await finalize(reply)
+          emit(sseFrame('done', result))
+        } catch {
+          emit(sseFrame('error', { error: 'stream_failed' }))
+        } finally {
+          controller.close()
+        }
+        return
+      }
+
+      // The durable path: adapt the onboarding source into an `InferenceStreamSource`
+      // and tee through the DO transport. `frameForDelta` renders the onboarding
+      // `delta` wire; `onEof` finalizes (append + persist the session) and renders
+      // the terminal `done` wire. Both the delta frames and the `done` frame are
+      // persisted to the durable log, so a resume replays the byte-identical wire.
+      // The session transcript append happens ONCE here in `onEof` (the live
+      // producer drain), never on a resume read.
+      let accumulated = ''
+      const adapted = {
+        frames: (async function* () {
+          for await (const delta of turn.source.deltas) {
+            if (delta !== '') {
+              accumulated += delta
+              yield { contentDelta: delta }
+            }
+          }
+        })(),
+        terminal: () => ({
+          finishReason: 'stop' as string | undefined,
+          servedModel: undefined,
+          usage: undefined,
+        }),
+      }
+
+      try {
+        await teeUpstreamToDurableDO({
+          emit,
+          frameForDelta: delta => sseFrame('delta', { text: delta }),
+          namespace: durable.namespace,
+          onEof: async () => {
+            const final = turn.source.final()
+            const reply = final === '' ? accumulated : final
+            const result = await finalize(reply)
+            return sseFrame('done', result)
+          },
+          requestId: durable.streamId,
+          source: adapted,
+        })
+      } catch {
+        emit(sseFrame('error', { error: 'stream_failed' }))
       } finally {
         controller.close()
       }
@@ -181,12 +294,25 @@ const buildStreamResponse = (
   turn: OnboardingStreamTurn,
   store: OnboardingSessionStore,
   nowIso: () => string,
+  durable: OnboardingDurable | undefined,
 ): globalThis.Response => {
   const finalize = (reply: string): Promise<OnboardingTurnResponse> =>
     Effect.runPromise(finalizeOnboardingStreamTurn(turn, reply, { store, nowIso }))
 
-  return new Response(makeOnboardingStreamBody(turn, finalize), {
-    headers: STREAM_HEADERS,
+  return new Response(makeOnboardingStreamBody(turn, finalize, durable), {
+    headers:
+      durable === undefined
+        ? STREAM_HEADERS
+        : {
+            ...STREAM_HEADERS,
+            // Advertise the durable resume read URL + the stable stream id so the
+            // browser can resume even if it missed the `event: stream` frame.
+            'openagents-onboarding-stream-id': durable.streamId,
+            'openagents-onboarding-resume-url': onboardingResumeUrl(
+              durable.sessionId,
+              durable.turnIndex,
+            ),
+          },
   })
 }
 
@@ -275,6 +401,7 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
   ): OnboardingRouteEffect => {
     const store = resolveStore(env)
     const streamClient = makeStreamClient(env)
+    const namespace = dependencies.resolveDurableStream?.(env)
 
     return decodeJsonBody(request, OnboardingTurnRequest).pipe(
       Effect.flatMap(body =>
@@ -296,13 +423,105 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
       // The Response construction is a PURE transform of the prepared turn; the
       // SSE pump + finalize (a plain Promise via `Effect.runPromise`) run AFTER
       // this request Effect resolves, so the effect boundary stays out of the
-      // request pipeline.
-      Effect.map(turn => buildStreamResponse(turn, store, nowIso)),
+      // request pipeline. The durable substrate (when wired) keys the per-turn
+      // log by the STABLE id `onboarding:{sessionId}:{turnIndex}`, where the turn
+      // index is the session's PRE-turn `turnCount` (so a resume read can derive
+      // it from `sessionId` + the count it last saw).
+      Effect.map(turn =>
+        buildStreamResponse(
+          turn,
+          store,
+          nowIso,
+          namespace === undefined
+            ? undefined
+            : {
+                namespace,
+                sessionId,
+                streamId: onboardingDurableStreamId(
+                  sessionId,
+                  turn.session.turnCount,
+                ),
+                turnIndex: turn.session.turnCount,
+              },
+        ),
+      ),
       // A prepare-time failure (validation / storage / inference open) becomes a
       // clean JSON error — the stream was never started.
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
   }
+
+  // RESUME READ (#6154 item 4): replay an in-flight (or completed) onboarding
+  // turn's durable log from `?offset=`, keyed by (sessionId, turnIndex). The
+  // browser calls this on reload with only `sessionId` + last `offset`. NEVER
+  // meters (onboarding is free; this only reads stored bytes). Returns 404 when
+  // the durable substrate is unwired or the turn has no durable log.
+  const resumeReadResponse = (
+    env: WorkerEnv<Env>,
+    sessionId: string,
+    turnIndex: number,
+    offset: string | undefined,
+  ): OnboardingRouteEffect => {
+    const namespace = dependencies.resolveDurableStream?.(env)
+    if (namespace === undefined) {
+      return Effect.succeed(
+        noStoreJsonResponse({ error: 'not_found' }, { status: 404 }),
+      )
+    }
+    return Effect.promise(async () => {
+      const replay = await replayFromOffsetDO({
+        namespace,
+        offset,
+        requestId: onboardingDurableStreamId(sessionId, turnIndex),
+      })
+      if (replay === undefined) {
+        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      }
+      if (replay.status === 400) {
+        return noStoreJsonResponse(
+          { error: 'invalid_offset' },
+          { status: 400 },
+        )
+      }
+      const headers: Record<string, string> = {
+        'cache-control': 'no-store',
+        'content-type': replay.contentType,
+        'stream-next-offset': replay.nextOffset,
+      }
+      if (replay.upToDate) {
+        headers['stream-up-to-date'] = 'true'
+      }
+      if (replay.streamClosed) {
+        headers['stream-closed'] = 'true'
+      }
+      return new Response(replay.body, { headers, status: 200 })
+    })
+  }
+
+  // GET SESSION (#6154 item 4): the persisted transcript + status + outputSpec +
+  // turnCount for a `sessionId`, so a returning browser can rehydrate past
+  // messages (even if a turn completed server-side while the tab was gone). Read
+  // only — no mutation, no metering. 404 when the session does not exist.
+  const sessionResponse = (
+    env: WorkerEnv<Env>,
+    sessionId: string,
+  ): OnboardingRouteEffect =>
+    resolveStore(env)
+      .read(sessionId)
+      .pipe(
+        Effect.map(session =>
+          session === undefined
+            ? noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+            : noStoreJsonResponse({
+                sessionId: session.id,
+                status: session.status,
+                turnCount: session.turnCount,
+                transcript: session.transcript,
+                outputSpec: session.outputSpec,
+              }),
+        ),
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
 
   return {
     routeOnboardingTurnRequest: (
@@ -310,26 +529,55 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
       env: WorkerEnv<Env>,
     ): OnboardingRouteEffect | undefined => {
       const url = new URL(request.url)
+
+      // RESUME READ: GET /api/autopilot/onboarding/{sessionId}/turn/{turnIndex}/stream?offset=
+      const resumeMatch =
+        /^\/api\/autopilot\/onboarding\/([^/]+)\/turn\/(\d+)\/stream$/.exec(
+          url.pathname,
+        )
+      if (resumeMatch !== null) {
+        if (request.method !== 'GET') {
+          return Effect.succeed(methodNotAllowed(['GET']))
+        }
+        return resumeReadResponse(
+          env,
+          decodeURIComponent(resumeMatch[1] ?? ''),
+          Number(resumeMatch[2] ?? '0'),
+          url.searchParams.get('offset') ?? undefined,
+        )
+      }
+
+      // TURN: POST /api/autopilot/onboarding/{sessionId}/turn
       const match =
         /^\/api\/autopilot\/onboarding\/([^/]+)\/turn$/.exec(url.pathname)
 
-      if (match === null) {
-        return undefined
+      if (match !== null) {
+        if (request.method !== 'POST') {
+          return Effect.succeed(methodNotAllowed(['POST']))
+        }
+
+        const sessionId = decodeURIComponent(match[1] ?? '')
+        const makeStreamClient = dependencies.makeStreamClient
+
+        // Content-negotiated: an `Accept: text/event-stream` request streams when
+        // a stream client is wired; otherwise the buffered JSON path serves (and
+        // is the fail-safe default whenever streaming is unavailable).
+        return wantsEventStream(request) && makeStreamClient !== undefined
+          ? streamResponse(request, env, sessionId, makeStreamClient)
+          : turnResponse(request, env, sessionId)
       }
 
-      if (request.method !== 'POST') {
-        return Effect.succeed(methodNotAllowed(['POST']))
+      // GET SESSION: GET /api/autopilot/onboarding/{sessionId}
+      const sessionMatch =
+        /^\/api\/autopilot\/onboarding\/([^/]+)$/.exec(url.pathname)
+      if (sessionMatch !== null) {
+        if (request.method !== 'GET') {
+          return Effect.succeed(methodNotAllowed(['GET']))
+        }
+        return sessionResponse(env, decodeURIComponent(sessionMatch[1] ?? ''))
       }
 
-      const sessionId = decodeURIComponent(match[1] ?? '')
-      const makeStreamClient = dependencies.makeStreamClient
-
-      // Content-negotiated: an `Accept: text/event-stream` request streams when a
-      // stream client is wired; otherwise the buffered JSON path serves (and is
-      // the fail-safe default whenever streaming is unavailable).
-      return wantsEventStream(request) && makeStreamClient !== undefined
-        ? streamResponse(request, env, sessionId, makeStreamClient)
-        : turnResponse(request, env, sessionId)
+      return undefined
     },
   }
 }

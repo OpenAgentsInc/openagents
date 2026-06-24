@@ -377,7 +377,20 @@ const budgetChecks = [
     // crawlable discovery-surface renderer already counted here, is public +
     // cacheable, mints no authority, and never charges. Ratchet back down when
     // these discovery handlers are extracted behind shared route mappers.
-    budget: 107,
+    // +3 (107 -> 110) on 2026-06-23 (#6154 / EPIC #6056) for the durable
+    // resumable-inference wiring: (a) the DO-fetch transport stub type in
+    // inference/durable-inference-do-transport.ts (`DurableStreamStub.fetch():
+    // Promise<Response>`, a REQUIRED structural typing of the Cloudflare DO stub
+    // surface, mirroring the package's own local DO typing convention), and (b)
+    // two SHARED response builders extracted in
+    // inference/durable-inference-read-routes.ts (`jsonError`, `replayToResponse`)
+    // that DEDUPLICATE the resume-read response shaping across the synchronous and
+    // the new async DO-backed read dispatchers — a net reduction in inline
+    // Response construction, just hoisted into named `: Response` helpers the
+    // counter sees. Both read dispatchers read stored bytes only and NEVER meter.
+    // Ratchet back down when the durable read surfaces are extracted behind a
+    // shared prefix-route mapper.
+    budget: 110,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

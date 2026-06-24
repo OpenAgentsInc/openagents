@@ -20,8 +20,13 @@
 
 import {
   type DurableInferenceStreamStore,
+  type DurableReplay,
   replayFromOffset,
 } from './durable-inference-proxy'
+import {
+  type DurableStreamNamespace,
+  replayFromOffsetDO,
+} from './durable-inference-do-transport'
 
 const DURABLE_PREFIX = '/v1/chat/completions/durable/'
 
@@ -48,68 +53,24 @@ const requestIdFromPath = (pathname: string): string | undefined => {
   return decodeURIComponent(raw)
 }
 
-// Dispatch a durable inference read. Returns `undefined` when the request is not
-// a durable read URL (the worker router falls through). When it IS a durable read
-// URL but the gateway is off / unwired / the id is unknown, returns the matching
-// 404/400/200 Response so the surface is honest.
-export const routeDurableInferenceReadRequest = (
-  request: Request,
-  deps: DurableInferenceReadDeps,
-): Response | undefined => {
-  const url = new URL(request.url)
-  const requestId = requestIdFromPath(url.pathname)
-  if (requestId === undefined) {
-    return undefined
-  }
-
-  // Shares the gateway flag: inert/404 when the gateway is off.
-  if (!deps.enabled || deps.durableStream === undefined) {
-    return new Response(JSON.stringify({ error: 'not_found' }), {
-      headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
-      status: 404,
-    })
-  }
-
-  if (request.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'method_not_allowed' }), {
-      headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
-      status: 405,
-    })
-  }
-
-  const store = deps.durableStream(requestId)
-  if (store === undefined) {
-    return new Response(JSON.stringify({ error: 'not_found' }), {
-      headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
-      status: 404,
-    })
-  }
-
-  const replay = replayFromOffset({
-    nowMs: deps.nowEpochMillis(),
-    offset: url.searchParams.get('offset') ?? undefined,
-    requestId,
-    store,
+const jsonError = (error: string, status: number): Response =>
+  new Response(JSON.stringify({ error }), {
+    headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
+    status,
   })
 
-  // Unknown request id (no durable stream) → 404.
+// Map a `DurableReplay` (from EITHER the sync store or the DO transport) to the
+// resume Response. `undefined` (unknown request id) → 404; status 400 (malformed
+// offset) → 400; otherwise the stored SSE suffix with the resume headers.
+const replayToResponse = (replay: DurableReplay | undefined): Response => {
   if (replay === undefined) {
-    return new Response(JSON.stringify({ error: 'not_found' }), {
-      headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
-      status: 404,
-    })
+    return jsonError('not_found', 404)
   }
-
-  // Malformed offset → 400.
   if (replay.status === 400) {
-    return new Response(JSON.stringify({ error: 'invalid_offset' }), {
-      headers: { 'cache-control': 'no-store', 'content-type': 'application/json' },
-      status: 400,
-    })
+    return jsonError('invalid_offset', 400)
   }
-
-  // Replay the stored SSE suffix. `Stream-Next-Offset` lets the client resume
-  // from exactly where it left off; `Stream-Closed` signals the completion EOF.
+  // `Stream-Next-Offset` lets the client resume from exactly where it left off;
+  // `Stream-Closed` signals the completion EOF.
   const headers: Record<string, string> = {
     'cache-control': 'no-store',
     'content-type': replay.contentType,
@@ -122,4 +83,95 @@ export const routeDurableInferenceReadRequest = (
     headers['stream-closed'] = 'true'
   }
   return new Response(replay.body, { headers, status: 200 })
+}
+
+// Parse a durable read request into `{ requestId, offset }`, or `undefined` when
+// it is not a durable read URL. Shared by the sync and DO dispatchers.
+export interface DurableReadMatch {
+  readonly requestId: string
+  readonly offset: string | undefined
+}
+
+export const matchDurableReadRequest = (
+  request: Request,
+): DurableReadMatch | undefined => {
+  const url = new URL(request.url)
+  const requestId = requestIdFromPath(url.pathname)
+  if (requestId === undefined) {
+    return undefined
+  }
+  return { offset: url.searchParams.get('offset') ?? undefined, requestId }
+}
+
+// Dispatch a durable inference read. Returns `undefined` when the request is not
+// a durable read URL (the worker router falls through). When it IS a durable read
+// URL but the gateway is off / unwired / the id is unknown, returns the matching
+// 404/400/200 Response so the surface is honest.
+export const routeDurableInferenceReadRequest = (
+  request: Request,
+  deps: DurableInferenceReadDeps,
+): Response | undefined => {
+  const matched = matchDurableReadRequest(request)
+  if (matched === undefined) {
+    return undefined
+  }
+
+  // Shares the gateway flag: inert/404 when the gateway is off.
+  if (!deps.enabled || deps.durableStream === undefined) {
+    return jsonError('not_found', 404)
+  }
+
+  if (request.method !== 'GET') {
+    return jsonError('method_not_allowed', 405)
+  }
+
+  const store = deps.durableStream(matched.requestId)
+  if (store === undefined) {
+    return jsonError('not_found', 404)
+  }
+
+  const replay = replayFromOffset({
+    nowMs: deps.nowEpochMillis(),
+    offset: matched.offset,
+    requestId: matched.requestId,
+    store,
+  })
+
+  return replayToResponse(replay)
+}
+
+// PRODUCTION DURABLE READ DISPATCHER (#6058). The async DO-backed resume: reads
+// the per-request Durable Object (`getByName(requestId)`) over the
+// `/v1/stream/{id}` HTTP contract. Returns `undefined` when the request is not a
+// durable read URL (router falls through). NEVER METERS — it reads stored bytes
+// only, so a reconnect / multi-tab share / catch-up read is free. The chat
+// route's producer drain already settled metering exactly once on the upstream
+// EOF; it can never fire here.
+export const routeDurableInferenceReadRequestDO = async (
+  request: Request,
+  deps: Readonly<{
+    enabled: boolean
+    namespace: DurableStreamNamespace | undefined
+  }>,
+): Promise<Response | undefined> => {
+  const matched = matchDurableReadRequest(request)
+  if (matched === undefined) {
+    return undefined
+  }
+
+  if (!deps.enabled || deps.namespace === undefined) {
+    return jsonError('not_found', 404)
+  }
+
+  if (request.method !== 'GET') {
+    return jsonError('method_not_allowed', 405)
+  }
+
+  const replay = await replayFromOffsetDO({
+    namespace: deps.namespace,
+    offset: matched.offset,
+    requestId: matched.requestId,
+  })
+
+  return replayToResponse(replay)
 }
