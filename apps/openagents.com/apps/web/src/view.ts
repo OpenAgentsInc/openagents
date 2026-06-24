@@ -31,6 +31,7 @@ import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
 import * as Trace from './page/trace'
+import * as TraceCompare from './page/trace-compare'
 import * as Ui from './ui'
 
 const githubLoginHref = '/login/github'
@@ -408,6 +409,8 @@ const title = (model: Model): string => {
       return 'Shared Workroom - OpenAgents'
     case 'Trace':
       return Trace.title(model.route)
+    case 'TraceCompare':
+      return TraceCompare.title(model.route)
     default:
       return 'OpenAgents'
   }
@@ -574,7 +577,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Run' &&
       model.route._tag !== 'Tassadar' &&
       model.route._tag !== 'TassadarReplay' &&
-      model.route._tag !== 'Trace'
+      model.route._tag !== 'Trace' &&
+      model.route._tag !== 'TraceCompare'
     ) {
       return undefined
     }
@@ -610,6 +614,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Trace') {
     return Trace.view<Message>(model.route, authState)
+  }
+
+  if (model.route._tag === 'TraceCompare') {
+    return TraceCompare.view<Message>(model.route, authState)
   }
 
   if (model.route._tag === 'Animations') {

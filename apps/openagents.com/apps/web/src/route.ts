@@ -75,6 +75,10 @@ export const ShareRoute = r('Share', { shareId: S.String })
 // Public, shareable ATIF trace render at `/trace/{uuid}` (issue #6209). No auth
 // to view a shared trace; the uuid is the stable shareable id.
 export const TraceRoute = r('Trace', { uuid: S.String })
+// Public, shareable comparison of N traces at `/trace/compare/{ids}` (issue
+// #6211 — the real "chill-evals"). `ids` is a comma-separated list of trace
+// uuids (the first is the baseline). Same public, no-auth posture as `/trace`.
+export const TraceCompareRoute = r('TraceCompare', { ids: S.String })
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
 export const LandingRoute = r('Landing')
@@ -178,6 +182,7 @@ export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type TraceRoute = typeof TraceRoute.Type
+export type TraceCompareRoute = typeof TraceCompareRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
 export type Moksha2Route = typeof Moksha2Route.Type
 export type LandingRoute = typeof LandingRoute.Type
@@ -251,6 +256,7 @@ export const LoggedOutRoute = S.Union([
   PublicAgentRoute,
   ShareRoute,
   TraceRoute,
+  TraceCompareRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -307,6 +313,7 @@ export const LoggedInRoute = S.Union([
   BlogPostRoute,
   PublicAgentRoute,
   TraceRoute,
+  TraceCompareRoute,
   DashboardRoute,
   ProRoute,
   ProRunsRoute,
@@ -374,6 +381,7 @@ export const AppRoute = S.Union([
   PublicAgentRoute,
   ShareRoute,
   TraceRoute,
+  TraceCompareRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -639,6 +647,15 @@ export const traceRouter = pipe(
   literal('trace'),
   slash(string('uuid')),
   Route.mapTo(TraceRoute),
+)
+// `/trace/compare/{ids}` MUST be registered before `traceRouter` in the parser
+// so the literal `compare` segment wins; the `ids` segment is a comma-separated
+// uuid list (#6211).
+export const traceCompareRouter = pipe(
+  literal('trace'),
+  slash(literal('compare')),
+  slash(string('ids')),
+  Route.mapTo(TraceCompareRoute),
 )
 export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
 export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
@@ -1188,6 +1205,17 @@ export const routeRegistry = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
+  // Public, shareable comparison of N traces at `/trace/compare/{ids}` (issue
+  // #6211). Identical posture to `/trace`: no auth bootstrap, open gate, in both
+  // unions, rendered through the stateless public-header shell
+  // (`page/trace-compare.ts`).
+  TraceCompare: {
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
   Moksha: {
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
@@ -1523,6 +1551,9 @@ const orderedParserRouters = [
   blogPostRouter,
   publicAgentRouter,
   shareRouter,
+  // `/trace/compare/{ids}` is more specific than `/trace/{uuid}`; it must come
+  // first so the literal `compare` segment wins (#6211).
+  traceCompareRouter,
   traceRouter,
   moksha2Router,
   mokshaRouter,

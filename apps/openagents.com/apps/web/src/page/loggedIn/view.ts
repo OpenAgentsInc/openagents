@@ -44,6 +44,7 @@ import {
   proRunsRouter,
   publicAgentRouter,
   traceRouter,
+  traceCompareRouter,
   publicTrainingRunRouter,
   publicTrainingRunsRouter,
   runRouter,
@@ -143,6 +144,7 @@ const currentHref = (model: Model): string =>
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
       Trace: ({ uuid }) => traceRouter({ uuid }),
+      TraceCompare: ({ ids }) => traceCompareRouter({ ids }),
       PublicTrainingRuns: () => publicTrainingRunsRouter(),
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
@@ -212,6 +214,7 @@ const routeKey = (model: Model): string =>
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
       Trace: ({ uuid }) => `Trace:${uuid}`,
+      TraceCompare: ({ ids }) => `TraceCompare:${ids}`,
       PublicTrainingRuns: () => 'PublicTrainingRuns',
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
@@ -622,6 +625,16 @@ const routeView = (model: Model): Html => {
           Trace: ({ uuid }) =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView(traceRouter({ uuid }), chatRouter(), 'Go to Chat'),
+            ]),
+          // /trace/compare/{ids} is likewise a public route resolved by
+          // `publicRouteBody`; this branch is unreachable but kept exhaustive.
+          TraceCompare: ({ ids }) =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(
+                traceCompareRouter({ ids }),
+                chatRouter(),
+                'Go to Chat',
+              ),
             ]),
           PublicTrainingRuns: () =>
             Ui.workroomScrollableRoute<Message>([

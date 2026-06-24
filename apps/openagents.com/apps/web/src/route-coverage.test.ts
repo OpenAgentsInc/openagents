@@ -43,6 +43,10 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   // The public shareable ATIF trace render (#6209). Parses regardless of
   // session; it is public-safe with no auth to view a shared trace.
   ['/trace/0e08d2db-2026-4624-9a39-f1efe8000001', 'Trace'],
+  // The public shareable trace comparison (#6211). The literal `compare`
+  // segment must win over `/trace/{uuid}`; the `ids` segment is a
+  // comma-separated uuid list (baseline first).
+  ['/trace/compare/a,b,c', 'TraceCompare'],
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
@@ -84,8 +88,9 @@ describe('public route parser coverage', () => {
 
     // Public/top-level routes incl. the authenticated `/pro` operator console
     // top-level route + its four subpages (runs index/detail, evals index/detail),
-    // now plus the public shareable `/trace/{uuid}` render (#6209) = 39.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
+    // the public shareable `/trace/{uuid}` render (#6209), and the public
+    // shareable `/trace/compare/{ids}` comparison (#6211) = 40.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(40)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
@@ -99,6 +104,19 @@ describe('public route parser coverage', () => {
     if (route._tag === 'Trace') {
       expect(route.uuid).toBe('0e08d2db-2026-4624-9a39-f1efe8000001')
     }
+  })
+
+  // The trace comparison (#6211) must capture the `ids` list AND beat the more
+  // generic `/trace/{uuid}` route — the literal `compare` segment is registered
+  // first, so `/trace/compare/...` resolves to TraceCompare, not Trace.
+  test('parses /trace/compare/{ids} with the correct specificity', () => {
+    const route = urlToAppRoute(appUrl('/trace/compare/aaa,bbb,ccc'))
+    expect(route._tag).toBe('TraceCompare')
+    if (route._tag === 'TraceCompare') {
+      expect(route.ids).toBe('aaa,bbb,ccc')
+    }
+    // A single-segment `/trace/{uuid}` is still the single-trace render.
+    expect(urlToAppRoute(appUrl('/trace/compare'))._tag).toBe('Trace')
   })
 
   // The specific-before-generic parser ordering must resolve the parameterized

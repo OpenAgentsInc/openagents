@@ -55,6 +55,7 @@ import {
   TeamProjectChatRoute,
   TermsRoute,
   TraceRoute,
+  TraceCompareRoute,
 } from '../route'
 import { routeRegistry } from '../route'
 import {
@@ -204,6 +205,35 @@ describe('startup route policy', () => {
     // disposition (resolved as a logged-out public route, not gated/redirected).
     expect(routeRequiresAuthBootstrap(TraceRoute({ uuid: 'x' }))).toBe(false)
     expect(startupCompleteDisposition.Trace).toBe('public')
+  })
+
+  test('keeps the public /trace/compare/{ids} view public for every auth state', () => {
+    // #6211: a shared trace comparison is viewable with no auth, exactly like a
+    // single trace. It must resolve in place (no redirect) for every visitor.
+    const compareRoute = TraceCompareRoute({ ids: 'a,b,c' })
+
+    expect(startupRouteForLoggedOut(compareRoute)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: compareRoute,
+    })
+    expect(startupRouteForLoggedIn(compareRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: compareRoute,
+    })
+    expect(startupRouteForLoggedIn(compareRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: compareRoute,
+    })
+  })
+
+  test('classifies /trace/compare as a no-auth-bootstrap public route', () => {
+    expect(routeRequiresAuthBootstrap(TraceCompareRoute({ ids: 'x' }))).toBe(
+      false,
+    )
+    expect(startupCompleteDisposition.TraceCompare).toBe('public')
   })
 
   test('keeps Moksha public for every auth state', () => {

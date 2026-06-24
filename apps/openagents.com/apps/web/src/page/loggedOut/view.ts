@@ -24,6 +24,7 @@ import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
 import * as Trace from '../trace'
+import * as TraceCompare from '../trace-compare'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
   ClickedAutopilotOnboardingStartOver,
@@ -198,6 +199,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
               Trace: route => Trace.view(route, { _tag: 'LoggedOut' }),
+              TraceCompare: route =>
+                TraceCompare.view(route, { _tag: 'LoggedOut' }),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),

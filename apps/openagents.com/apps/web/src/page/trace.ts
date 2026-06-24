@@ -53,7 +53,9 @@ const articleClass = 'mx-auto w-full max-w-3xl px-6 py-10 sm:px-8 sm:py-14'
 // Semantic accent helpers (DESIGN.md tokens, used only for functional state).
 // ---------------------------------------------------------------------------
 
-const toneTextClass = (tone: VerdictTone): string => {
+// Exported so the sibling `/trace/compare` view (issue #6211) renders verdict
+// state with the exact same DESIGN.md semantic tones as this single-trace page.
+export const toneTextClass = (tone: VerdictTone): string => {
   switch (tone) {
     case 'positive':
       return 'text-[#00c853]'
@@ -66,7 +68,7 @@ const toneTextClass = (tone: VerdictTone): string => {
   }
 }
 
-const toneBorderClass = (tone: VerdictTone): string => {
+export const toneBorderClass = (tone: VerdictTone): string => {
   switch (tone) {
     case 'positive':
       return 'border-[#00c853]/40'
@@ -79,7 +81,7 @@ const toneBorderClass = (tone: VerdictTone): string => {
   }
 }
 
-const toneDotClass = (tone: VerdictTone): string => {
+export const toneDotClass = (tone: VerdictTone): string => {
   switch (tone) {
     case 'positive':
       return 'bg-[#00c853]'
