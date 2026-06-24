@@ -4,34 +4,38 @@
 
 ## Overview
 
-**OpenAgents** (the agent network) deploys this **autonomous-QA example flow** as
-**Autopilot** — the agent type that *does the work*, powered by the **Khala**
-agentic model orchestrator. Autopilot drives real developer tools
-(headless Chrome, a terminal) against a product, develops a fix or check, then
-**distills the session into a committed, re-runnable `*.e2e.test.ts`** whose passing
-run — with video — is the review artifact. The thesis: a reviewer verifies an
-agent's work **without running anything locally** — just by reading the committed
-test, its verdict, and a shareable trace. It is a flagship showcase of OpenAgents
-deploying Autopilot — powered by Khala — over OpenAgents/Cloudflare primitives, not
-a one-off tool.
+**Autonomous QA — an agent that tests your app for you and leaves you proof.**
 
-A second, now-central output fell out of this flow: a **generic shareable agent
-trace** — any agent session (an Autopilot run, or an imported Claude Code / Codex
-session) rendered at a stable public URL `https://openagents.com/trace/{uuid}` in
-**ATIF** (Agent Trajectory Interchange Format), with redaction, side-by-side
-comparison, and an authenticated upload "data market" that can feed Khala training.
+Point it at a product and something to check — *"does sign-in still work?"*, *"did this
+change break checkout?"* — and it drives a **real browser and a real terminal** the way a
+person would (navigates, clicks, types, runs commands) to actually develop and confirm the
+answer. Then it **distills that session into a committed, re-runnable end-to-end test**
+(`*.e2e.test.ts`) with a video. You review the work by reading the test, its **pass/fail
+verdict**, and a **shareable trace** — *without running anything yourself*. Verified, not
+vibes.
 
-**Origin.** The shape comes from an external request by the author of
-[`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) (local clone
-`projects/repos/executor`) — he wants an OpenDevin-style autonomous-QA agent,
-offered to be the **first customer / GitHub Sponsor**, and to get on a call. We are
-not opening a PR to his repo; `executor` is studied as **prior art**, and he is a
-natural design partner / first customer for the hosted tier.
+Under the hood it's an OpenAgents **Autopilot** agent doing the work, powered by the
+**Khala** model. It's **open source and bring-your-own-model** —
+`npm i @openagentsinc/qa-runner`, point it at any model, no OpenAgents login — or run it
+hosted.
 
-> The full ask, thesis, prior-art audits (executor, Factory `droid-control`),
-> tooling (`gh-attach`), proposed architecture, and phased build plan are in
-> **§1–§9** below. This top section is the living **status / path-to-production /
-> changelog**.
+**Where it came from.** [Rhys Sullivan](https://github.com/RhysSullivan) (author of
+[`executor`](https://github.com/RhysSullivan/executor)) asked for exactly this — an
+OpenDevin-style autonomous-QA agent — and offered to be the first customer / sponsor. We
+built it as an owned example of what Autopilot + Khala can do, studying `executor` as prior
+art (we are not opening a PR on his repo).
+
+**Status (2026-06-24): shipped + live.** The runner, the real-tool drivers (Chrome /
+terminal / container / native desktop), the test distiller, video output, the OSS package
+(now on npm), and a shareable **agent-trace** surface are all live — e.g. this very build
+session is viewable as a trace at
+<https://openagents.com/trace/24c6fea6-b271-46c6-a9a9-bc614440e9ef>. What's left is a
+one-click **hosted** demo and hardening — see **Current status** and **Path to
+production-ready** below.
+
+> Everything past this point is the detailed delivery audit — the requirement-by-requirement
+> mapping, prior-art comparisons (executor, Factory `droid-control`), architecture, and the
+> phased build plan are in **§1–§9**.
 
 ## Current status — SHIPPED + LIVE (2026-06-24)
 
