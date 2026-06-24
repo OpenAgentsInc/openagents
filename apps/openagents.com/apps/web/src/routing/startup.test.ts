@@ -7,6 +7,7 @@ import {
   incompleteOnboardingStatus,
 } from '../domain/session'
 import {
+  AutopilotRoute,
   AutopilotWorkRoute,
   ChatRoute,
   Demo2OrderRoute,
@@ -648,5 +649,52 @@ describe('startup route policy', () => {
         }),
       ),
     ).toBe(false)
+  })
+
+  // The /autopilot onboarding PAGE is served by the LoggedOut submodel for
+  // EVERY auth state that actually shows it — that is what makes the LoggedOut
+  // `initialCommands` (which fires `RehydrateAutopilotOnboarding`) the single
+  // rehydration owner regardless of login. Pin it so a future routing change
+  // cannot silently move a logged-in onboarding user onto a non-rehydrating
+  // path and reintroduce the "refresh loses the conversation" bug.
+  test('a logged-in user with INCOMPLETE onboarding gets /autopilot via the LoggedOut submodel', () => {
+    expect(startupRouteForLoggedIn(AutopilotRoute(), incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      route: AutopilotRoute(),
+      redirect: Option.none(),
+    })
+  })
+
+  test('a logged-in user WITHOUT the core team (no workspace) gets /autopilot via the LoggedOut submodel', () => {
+    // Onboarding complete, but no operator workspace -> the public onboarding
+    // page (same as logged-out), not the cockpit.
+    expect(
+      startupRouteForLoggedIn(AutopilotRoute(), {
+        ...auth,
+        onboarding: completedOnboardingStatus(),
+      }),
+    ).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      route: AutopilotRoute(),
+      redirect: Option.none(),
+    })
+  })
+
+  test('a logged-out visitor gets /autopilot via the LoggedOut submodel', () => {
+    expect(startupRouteForLoggedOut(AutopilotRoute())).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      route: AutopilotRoute(),
+      redirect: Option.none(),
+    })
+  })
+
+  test('a logged-in core-team user with a workspace lands on the cockpit, not the onboarding page', () => {
+    // The only logged-in case that does NOT show the onboarding page: it routes
+    // to the chat cockpit (LoggedIn), so no onboarding rehydration is needed.
+    expect(startupRouteForLoggedIn(AutopilotRoute(), completeAuth)).toEqual({
+      _tag: 'LoggedInStartupRoute',
+      route: ChatRoute(),
+      redirect: Option.none(),
+    })
   })
 })

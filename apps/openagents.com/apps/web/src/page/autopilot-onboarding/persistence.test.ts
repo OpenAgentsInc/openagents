@@ -9,7 +9,9 @@ import {
   clearStoredSession,
   decodeStoredSession,
   encodeStoredSession,
+  makeMemoryOnboardingStoragePort,
   readStoredSession,
+  setOnboardingStoragePort,
   storedSessionFromParts,
   writeStoredSession,
 } from './persistence'
@@ -170,5 +172,66 @@ describe('autopilot onboarding persistence — localStorage wrapper', () => {
     // The first setItem call is the probe in maybeLocalStorage; it throws, so
     // the wrapper degrades to a no-op store. No exception escapes.
     expect(() => writeStoredSession(sampleSession())).not.toThrow()
+  })
+})
+
+describe('autopilot onboarding persistence — injectable storage port', () => {
+  let restore: (() => void) | undefined
+  afterEach(() => {
+    restore?.()
+    restore = undefined
+  })
+
+  test('an installed in-memory port backs read/write/clear with no DOM', () => {
+    const backing = new Map<string, string>()
+    restore = setOnboardingStoragePort(makeMemoryOnboardingStoragePort(backing))
+
+    // Nothing stored yet.
+    expect(Option.isNone(readStoredSession())).toBe(true)
+
+    // Write goes to the in-memory port (no window.localStorage touched).
+    writeStoredSession(sampleSession())
+    expect(backing.get(ONBOARDING_STORAGE_KEY)).toBeTruthy()
+    const read = readStoredSession()
+    expect(Option.isSome(read)).toBe(true)
+    expect(Option.getOrThrow(read).sessionId).toBe('ob_abc123')
+
+    // Clear removes it from the same port.
+    clearStoredSession()
+    expect(backing.has(ONBOARDING_STORAGE_KEY)).toBe(false)
+    expect(Option.isNone(readStoredSession())).toBe(true)
+  })
+
+  test('the explicit port argument overrides the active port (no global swap needed)', () => {
+    const portA = makeMemoryOnboardingStoragePort()
+    writeStoredSession(sampleSession(), portA)
+    expect(Option.isSome(readStoredSession(portA))).toBe(true)
+    // A fresh, unrelated port sees nothing.
+    expect(Option.isNone(readStoredSession(makeMemoryOnboardingStoragePort()))).toBe(
+      true,
+    )
+  })
+
+  test('setOnboardingStoragePort returns a restore that reinstates the previous port', () => {
+    const first = makeMemoryOnboardingStoragePort()
+    const restoreFirst = setOnboardingStoragePort(first)
+    writeStoredSession(sampleSession())
+    const second = makeMemoryOnboardingStoragePort()
+    const restoreSecond = setOnboardingStoragePort(second)
+    // The active port is now `second`, which is empty.
+    expect(Option.isNone(readStoredSession())).toBe(true)
+    restoreSecond()
+    // Back to `first`, which still holds the record.
+    expect(Option.isSome(readStoredSession())).toBe(true)
+    restoreFirst()
+  })
+
+  test('a corrupt blob in the port reads as none AND is purged from the port', () => {
+    const backing = new Map<string, string>([
+      [ONBOARDING_STORAGE_KEY, '{"broken": true'],
+    ])
+    restore = setOnboardingStoragePort(makeMemoryOnboardingStoragePort(backing))
+    expect(Option.isNone(readStoredSession())).toBe(true)
+    expect(backing.has(ONBOARDING_STORAGE_KEY)).toBe(false)
   })
 })

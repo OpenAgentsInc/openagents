@@ -1547,15 +1547,33 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         ]
       },
       FailedReconcileAutopilotOnboardingSession: ({ status }) => {
-        // 404 => the session expired or is unknown server-side: clear the stored
-        // record and start fresh (preserve the route's vertical). A transient
-        // network error (status 0) keeps the locally restored transcript.
+        // A transient network error (status 0) keeps the locally restored
+        // transcript untouched.
         if (status !== 404) {
           return [model, []]
         }
+        const flow = model.autopilotOnboarding
+        // A 404 means the server has no PERSISTED session row for this id. That
+        // is NOT always "stale/expired" — the FIRST turn's row is only written
+        // when that turn FINALIZES (after the stream drains). A refresh that
+        // lands mid-first-turn (or before the durable/D1 write is visible) sees
+        // a 404 even though the conversation is real and resumable from the
+        // durable log. Clearing here is what silently wiped the whole
+        // conversation on reload (the live bug). So: if a turn was mid-stream
+        // (a resuming in-flight cursor) OR we have a locally restored
+        // transcript, KEEP it — the durable resume read owns the in-flight tail
+        // and the local transcript is the user's real conversation; a later
+        // reconcile (after the turn finalizes server-side) will adopt the
+        // authoritative row. Only a 404 with NOTHING in flight and an EMPTY
+        // transcript is a genuinely dead pointer worth clearing.
+        const hasInFlight = flow.inFlight !== null
+        const hasTranscript = flow.transcript.length > 0
+        if (hasInFlight || hasTranscript) {
+          return [model, []]
+        }
         const nextModel = evo(model, {
-          autopilotOnboarding: flow =>
-            evo(flow, {
+          autopilotOnboarding: current =>
+            evo(current, {
               sessionId: () => null,
               status: () => 'idle',
               errorReason: () => null,
