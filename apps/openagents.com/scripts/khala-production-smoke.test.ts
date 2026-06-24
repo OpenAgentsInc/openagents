@@ -76,6 +76,42 @@ describe('Khala production smoke', () => {
           })
         }
 
+        if (url.pathname === '/receipts/test') {
+          return json({
+            receipt: {
+              kind: 'charge',
+              ledgerState: 'paid',
+              modelEvidence: {
+                requested_model: 'openagents/khala',
+                served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+                supply_lane: 'fireworks',
+                total_tokens: 8,
+                worker: 'fireworks',
+              },
+              receiptRef: 'inference.receipt.test',
+              schemaVersion: 'openagents.inference.receipt.v1',
+            },
+          })
+        }
+
+        if (url.pathname === '/receipts/stream') {
+          return json({
+            receipt: {
+              kind: 'charge',
+              ledgerState: 'paid',
+              modelEvidence: {
+                requested_model: 'openagents/khala',
+                served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+                supply_lane: 'fireworks',
+                total_tokens: 8,
+                worker: 'fireworks',
+              },
+              receiptRef: 'inference.receipt.stream',
+              schemaVersion: 'openagents.inference.receipt.v1',
+            },
+          })
+        }
+
         return json({ error: 'not found' }, { status: 404 })
       },
     )
@@ -98,6 +134,16 @@ describe('Khala production smoke', () => {
         worker: 'fireworks',
       },
       responseId: 'chatcmpl_test',
+      receipt: {
+        modelEvidence: {
+          requested_model: 'openagents/khala',
+          served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+          supply_lane: 'fireworks',
+          total_tokens: 8,
+          worker: 'fireworks',
+        },
+        url: 'https://openagents.com/receipts/test',
+      },
       totalTokens: 8,
     })
     expect(output.stream.openagents).toMatchObject({
@@ -106,6 +152,16 @@ describe('Khala production smoke', () => {
       served_model: 'accounts/fireworks/models/deepseek-v4-flash',
       supply_lane: 'fireworks',
       worker: 'fireworks',
+    })
+    expect(output.stream.receipt).toMatchObject({
+      modelEvidence: {
+        requested_model: 'openagents/khala',
+        served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+        supply_lane: 'fireworks',
+        total_tokens: 8,
+        worker: 'fireworks',
+      },
+      url: 'https://openagents.com/receipts/stream',
     })
     expect(output.checks.map((check: { name: string }) => check.name)).toEqual([
       'readiness_endpoint_200',
@@ -118,13 +174,181 @@ describe('Khala production smoke', () => {
       'nonstream_infrastructure_guard_clean',
       'nonstream_usage_present',
       'nonstream_backing_disclosure_present',
+      'nonstream_receipt_ref_present',
+      'nonstream_receipt_endpoint_200',
+      'nonstream_receipt_schema_present',
+      'nonstream_receipt_backing_evidence_present',
+      'nonstream_receipt_usage_present',
+      'nonstream_receipt_redaction_guard_clean',
       'stream_completion_200',
       'stream_done_seen',
       'stream_frames_present',
       'stream_public_model_preserved',
       'stream_infrastructure_guard_clean',
       'stream_backing_disclosure_present',
+      'stream_receipt_ref_present',
+      'stream_receipt_endpoint_200',
+      'stream_receipt_schema_present',
+      'stream_receipt_backing_evidence_present',
+      'stream_receipt_usage_present',
+      'stream_receipt_redaction_guard_clean',
     ])
+  })
+
+  test('fails when a completion has no dereferenceable receipt ref', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+
+      if (url.pathname === '/v1/gateway/readiness') {
+        return json({ servableModelCount: 1, status: 'ready' })
+      }
+
+      if (url.pathname === '/v1/models') {
+        return json({ data: [{ id: 'openagents/khala' }] })
+      }
+
+      if (url.pathname === '/v1/chat/completions') {
+        return json({
+          choices: [{ message: { content: 'READY', role: 'assistant' } }],
+          id: 'chatcmpl_no_receipt',
+          model: 'openagents/khala',
+          openagents: {
+            requested_model: 'openagents/khala',
+            served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+            supply_lane: 'fireworks',
+            worker: 'fireworks',
+          },
+          usage: { total_tokens: 8 },
+        })
+      }
+
+      return json({ error: 'not found' }, { status: 404 })
+    })
+
+    await expect(
+      smoke.runKhalaProductionSmoke({
+        approveLiveSpend: true,
+        fetchImpl,
+        token: 'oa_agent_test',
+      }),
+    ).rejects.toThrow('nonstream_receipt_ref_present failed')
+  })
+
+  test('fails when the dereferenced receipt backing evidence mismatches', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+
+      if (url.pathname === '/v1/gateway/readiness') {
+        return json({ servableModelCount: 1, status: 'ready' })
+      }
+
+      if (url.pathname === '/v1/models') {
+        return json({ data: [{ id: 'openagents/khala' }] })
+      }
+
+      if (url.pathname === '/v1/chat/completions') {
+        return json({
+          choices: [{ message: { content: 'READY', role: 'assistant' } }],
+          id: 'chatcmpl_bad_receipt',
+          model: 'openagents/khala',
+          openagents: {
+            receipt_url: 'https://openagents.com/receipts/mismatch',
+            requested_model: 'openagents/khala',
+            served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+            supply_lane: 'fireworks',
+            worker: 'fireworks',
+          },
+          usage: { total_tokens: 8 },
+        })
+      }
+
+      if (url.pathname === '/receipts/mismatch') {
+        return json({
+          receipt: {
+            kind: 'charge',
+            ledgerState: 'paid',
+            modelEvidence: {
+              requested_model: 'openagents/khala',
+              served_model: 'openai/gpt-oss-20b',
+              supply_lane: 'hydralisk',
+              total_tokens: 8,
+              worker: 'hydralisk-vllm',
+            },
+            receiptRef: 'inference.receipt.bad',
+            schemaVersion: 'openagents.inference.receipt.v1',
+          },
+        })
+      }
+
+      return json({ error: 'not found' }, { status: 404 })
+    })
+
+    await expect(
+      smoke.runKhalaProductionSmoke({
+        approveLiveSpend: true,
+        fetchImpl,
+        token: 'oa_agent_test',
+      }),
+    ).rejects.toThrow('nonstream_receipt_backing_evidence_present failed')
+  })
+
+  test('fails when the dereferenced receipt exposes raw prompt or secret-shaped material', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+
+      if (url.pathname === '/v1/gateway/readiness') {
+        return json({ servableModelCount: 1, status: 'ready' })
+      }
+
+      if (url.pathname === '/v1/models') {
+        return json({ data: [{ id: 'openagents/khala' }] })
+      }
+
+      if (url.pathname === '/v1/chat/completions') {
+        return json({
+          choices: [{ message: { content: 'READY', role: 'assistant' } }],
+          id: 'chatcmpl_unsafe_receipt',
+          model: 'openagents/khala',
+          openagents: {
+            receipt_url: 'https://openagents.com/receipts/unsafe',
+            requested_model: 'openagents/khala',
+            served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+            supply_lane: 'fireworks',
+            worker: 'fireworks',
+          },
+          usage: { total_tokens: 8 },
+        })
+      }
+
+      if (url.pathname === '/receipts/unsafe') {
+        return json({
+          receipt: {
+            kind: 'charge',
+            ledgerState: 'paid',
+            modelEvidence: {
+              requested_model: 'openagents/khala',
+              served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+              supply_lane: 'fireworks',
+              total_tokens: 8,
+              worker: 'fireworks',
+            },
+            raw_prompt: 'secret prompt text',
+            receiptRef: 'inference.receipt.unsafe',
+            schemaVersion: 'openagents.inference.receipt.v1',
+          },
+        })
+      }
+
+      return json({ error: 'not found' }, { status: 404 })
+    })
+
+    await expect(
+      smoke.runKhalaProductionSmoke({
+        approveLiveSpend: true,
+        fetchImpl,
+        token: 'oa_agent_test',
+      }),
+    ).rejects.toThrow('nonstream_receipt_redaction_guard_clean failed')
   })
 
   test('supports readiness-only mode without a token', async () => {

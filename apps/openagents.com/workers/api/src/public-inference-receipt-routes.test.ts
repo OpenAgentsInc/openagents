@@ -68,6 +68,8 @@ describe('public inference receipt routes', () => {
     const response = await route(
       storeFor([
         receiptRecord({
+          contextRef:
+            'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fdeepseek-v4-flash:tokens:421:requested:openagents%2Fkhala',
           receiptRef: 'receipt.inference.charge.chatcmpl_123',
         }),
       ]),
@@ -81,6 +83,13 @@ describe('public inference receipt routes', () => {
       generatedAt: '2026-06-20T00:01:00.000Z',
       kind: 'charge',
       ledgerState: 'paid',
+      modelEvidence: {
+        requested_model: 'openagents/khala',
+        served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+        supply_lane: 'fireworks',
+        total_tokens: 421,
+        worker: 'fireworks',
+      },
       receiptRef: 'receipt.inference.charge.chatcmpl_123',
       schemaVersion: 'openagents.inference.receipt.v1',
       staleness: {
@@ -175,10 +184,20 @@ describe('public inference receipt routes', () => {
       ]),
       'receipt.inference.charge.cs_test_123',
     )
+    const unsafeContext = await route(
+      storeFor([
+        receiptRecord({
+          contextRef: 'inference:fireworks:served:sk-leaked-secret:tokens:1',
+          receiptRef: 'receipt.inference.charge.chatcmpl_unsafe_context',
+        }),
+      ]),
+      'receipt.inference.charge.chatcmpl_unsafe_context',
+    )
 
     expect(pending.status).toBe(404)
     expect(mismatched.status).toBe(404)
     expect(unsafe.status).toBe(404)
+    expect(unsafeContext.status).toBe(404)
   })
 
   test('rejects mutations', async () => {

@@ -141,6 +141,25 @@ const terminalOpenAgentsFrom = frames => {
   return null
 }
 
+const receiptPathFrom = openagents => {
+  if (
+    typeof openagents?.receipt_url === 'string' &&
+    openagents.receipt_url.length > 0
+  ) {
+    return openagents.receipt_url
+  }
+  if (
+    typeof openagents?.telemetry?.detailRef === 'string' &&
+    openagents.telemetry.detailRef.length > 0
+  ) {
+    return openagents.telemetry.detailRef
+  }
+  if (typeof openagents?.receipt === 'string' && openagents.receipt.length > 0) {
+    return `/api/public/inference/receipts/${encodeURIComponent(openagents.receipt)}`
+  }
+  return null
+}
+
 const summarizeOpenAgents = openagents => ({
   lane: openagents?.lane,
   receipt: openagents?.receipt,
@@ -148,8 +167,103 @@ const summarizeOpenAgents = openagents => ({
   requested_model: openagents?.requested_model,
   served_model: openagents?.served_model,
   supply_lane: openagents?.supply_lane,
+  telemetry_detail_ref: openagents?.telemetry?.detailRef,
   worker: openagents?.worker,
 })
+
+const receiptProjectionFrom = body =>
+  typeof body?.receipt === 'object' && body.receipt !== null
+    ? body.receipt
+    : body
+
+const receiptModelEvidenceFrom = receipt =>
+  receipt?.modelEvidence ?? receipt?.model_evidence ?? receipt?.inference ?? null
+
+const receiptBackingFrom = receipt => {
+  const evidence = receiptModelEvidenceFrom(receipt)
+  return {
+    requested_model: evidence?.requested_model ?? evidence?.requestedModel,
+    served_model: evidence?.served_model ?? evidence?.servedModel,
+    supply_lane: evidence?.supply_lane ?? evidence?.supplyLane,
+    worker: evidence?.worker,
+  }
+}
+
+const receiptTotalTokensFrom = receipt => {
+  const evidence = receiptModelEvidenceFrom(receipt)
+  return evidence?.total_tokens ?? evidence?.totalTokens
+}
+
+const receiptRedactionLeaks = value => {
+  const serialized = JSON.stringify(value || {})
+  const patterns = [
+    /Bearer\s+[A-Za-z0-9._~+/=-]+/u,
+    /oa_agent_[A-Za-z0-9._~+/=-]+/u,
+    /sk-[A-Za-z0-9]{8,}/u,
+    /api[_-]?key/iu,
+    /access[_-]?token/iu,
+    /fireworks[_-]?api[_-]?key/iu,
+    /provider[_-]?(payload|secret|token)/iu,
+    /raw[\s_-]?prompt/iu,
+  ]
+  return patterns
+    .filter(pattern => pattern.test(serialized))
+    .map(pattern => String(pattern))
+}
+
+const summarizeReceipt = (receipt, url) => ({
+  kind: receipt?.kind,
+  ledgerState: receipt?.ledgerState,
+  modelEvidence: receiptModelEvidenceFrom(receipt),
+  receiptRef: receipt?.receiptRef,
+  schemaVersion: receipt?.schemaVersion,
+  url,
+})
+
+const verifyReceiptProof = async ({
+  backingExpectation,
+  check,
+  fetchImpl,
+  label,
+  openagents,
+  origin,
+}) => {
+  const receiptPath = receiptPathFrom(openagents)
+  check(`${label}_receipt_ref_present`, receiptPath !== null, { receiptPath })
+
+  const receiptResult = await requestJson(fetchImpl, origin, receiptPath)
+  check(`${label}_receipt_endpoint_200`, okStatus(receiptResult.response), {
+    status: receiptResult.response.status,
+  })
+
+  const receipt = receiptProjectionFrom(receiptResult.body)
+  check(
+    `${label}_receipt_schema_present`,
+    receipt?.schemaVersion === 'openagents.inference.receipt.v1',
+    {
+      schemaVersion: receipt?.schemaVersion,
+    },
+  )
+  check(
+    `${label}_receipt_backing_evidence_present`,
+    backingMatches(receiptBackingFrom(receipt), backingExpectation),
+    receiptBackingFrom(receipt),
+  )
+  check(
+    `${label}_receipt_usage_present`,
+    Number(receiptTotalTokensFrom(receipt) || 0) > 0,
+    { totalTokens: receiptTotalTokensFrom(receipt) },
+  )
+  const redactionLeaks = receiptRedactionLeaks(receiptResult.body)
+  check(`${label}_receipt_redaction_guard_clean`, redactionLeaks.length === 0, {
+    redactionLeaks,
+  })
+
+  return summarizeReceipt(
+    receipt,
+    absoluteUrl(origin, receiptPath),
+  )
+}
 
 const backingMatches = (
   openagents,
@@ -383,6 +497,14 @@ export const runKhalaProductionSmoke = async ({
     backingMatches(completion.body?.openagents, backingExpectation),
     summarizeOpenAgents(completion.body?.openagents),
   )
+  const nonstreamReceipt = await verifyReceiptProof({
+    backingExpectation,
+    check,
+    fetchImpl,
+    label: 'nonstream',
+    openagents: completion.body?.openagents,
+    origin,
+  })
 
   const streamResponse = await fetchImpl(
     absoluteUrl(origin, '/v1/chat/completions'),
@@ -418,12 +540,21 @@ export const runKhalaProductionSmoke = async ({
     backingMatches(terminalOpenAgents, backingExpectation),
     summarizeOpenAgents(terminalOpenAgents),
   )
+  const streamReceipt = await verifyReceiptProof({
+    backingExpectation,
+    check,
+    fetchImpl,
+    label: 'stream',
+    openagents: terminalOpenAgents,
+    origin,
+  })
 
   return {
     checks,
     model,
     nonstream: {
       openagents: summarizeOpenAgents(completion.body?.openagents),
+      receipt: nonstreamReceipt,
       responseId: completion.body?.id,
       totalTokens: completion.body?.usage?.total_tokens,
     },
@@ -435,6 +566,7 @@ export const runKhalaProductionSmoke = async ({
     stream: {
       frameCount: frames.length,
       openagents: summarizeOpenAgents(terminalOpenAgents),
+      receipt: streamReceipt,
     },
   }
 }

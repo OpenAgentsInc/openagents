@@ -38,6 +38,7 @@ import {
 } from '../payments-ledger'
 import { currentIsoTimestamp } from '../runtime-primitives'
 import { type ServingReceipt } from './openagents-network-adapter'
+import { inferenceChargeContextRef } from './inference-charge-context'
 import { type FundingKind, priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
 import {
@@ -204,52 +205,10 @@ export const inferenceChargeIdempotencyKey = (requestId: string): string =>
 export const inferenceChargeReceiptRef = (requestId: string): string =>
   `receipt.inference.charge.${requestId}`
 
-export const inferenceChargeContextRef = (
-  input: Readonly<{
-    adapterId: string
-    requestedModel?: string
-    servedModel: string
-    totalTokens: number
-  }>,
-): string => {
-  const base = `inference:${encodeURIComponent(input.adapterId)}:served:${encodeURIComponent(input.servedModel)}:tokens:${Math.max(0, Math.trunc(input.totalTokens))}`
-  const requestedModel = input.requestedModel?.trim() ?? ''
-  return requestedModel.length === 0
-    ? base
-    : `${base}:requested:${encodeURIComponent(requestedModel)}`
-}
-
-export const parseInferenceChargeContextRef = (
-  value: string,
-): Readonly<{
-  adapterId: string
-  requestedModel?: string
-  servedModel: string
-  totalTokens: number
-}> | undefined => {
-  const match =
-    /^inference:([^:]+):served:([^:]+):tokens:(\d+)(?::requested:([^:]+))?$/.exec(
-      value,
-    )
-  if (match === null) {
-    return undefined
-  }
-
-  const totalTokens = Number(match[3])
-  if (!Number.isSafeInteger(totalTokens)) {
-    return undefined
-  }
-
-  const requestedModel = match[4]
-  return {
-    adapterId: decodeURIComponent(match[1] ?? ''),
-    ...(requestedModel === undefined
-      ? {}
-      : { requestedModel: decodeURIComponent(requestedModel) }),
-    servedModel: decodeURIComponent(match[2] ?? ''),
-    totalTokens,
-  }
-}
+export {
+  inferenceChargeContextRef,
+  parseInferenceChargeContextRef,
+} from './inference-charge-context'
 
 // Build the debit-only PayIn plan for an inference charge: a single `adjustment`
 // pay-in funded by one `in` balance leg from the account (which debits the

@@ -2,6 +2,7 @@ import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
+import { parseInferenceChargeContextRef } from './inference/inference-charge-context'
 
 export type InferenceReceiptKind =
   | 'charge'
@@ -18,12 +19,21 @@ export type InferenceReceiptRecord = Readonly<{
   stateChangedAt: string
 }>
 
+export type PublicInferenceReceiptModelEvidence = Readonly<{
+  requested_model?: string
+  served_model: string
+  supply_lane: string
+  total_tokens: number
+  worker: string
+}>
+
 export type PublicInferenceReceiptProjection = Readonly<{
   authorityBoundary: string
   caveatRefs: ReadonlyArray<string>
   generatedAt: string
   kind: InferenceReceiptKind
   ledgerState: 'paid' | 'free_allowance'
+  modelEvidence?: PublicInferenceReceiptModelEvidence
   receiptRef: string
   schemaVersion: 'openagents.inference.receipt.v1'
   sourceRefs: ReadonlyArray<string>
@@ -46,6 +56,47 @@ export type InferenceReceiptStore = InferenceReceiptReadStore &
 
 const unsafePublicReceiptPattern =
   /(@|\/Users\/|\/home\/|access[_-]?token|bearer\s+|bolt11|cookie|cs_(?:live|test)_|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|idempotency|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?key|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(invoice|payment|payload|prompt|runner|state)|secret|seed[_-]?phrase|sk-[a-z0-9]|stripe|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
+
+const supplyLaneForAdapterId = (adapterId: string): string => {
+  switch (adapterId) {
+    case 'fireworks':
+      return 'fireworks'
+    case 'hydralisk-vllm':
+    case 'hydralisk-vllm-gpt-oss-120b':
+      return 'hydralisk'
+    case 'openagents-network':
+      return 'openagents-network'
+    case 'vertex-anthropic':
+      return 'vertex-anthropic'
+    case 'vertex-gemini':
+      return 'vertex-gemini'
+    default:
+      return adapterId
+  }
+}
+
+const modelEvidenceFromContextRef = (
+  contextRef: string | null,
+): PublicInferenceReceiptModelEvidence | undefined => {
+  if (contextRef === null) {
+    return undefined
+  }
+
+  const context = parseInferenceChargeContextRef(contextRef)
+  if (context === undefined) {
+    return undefined
+  }
+
+  return {
+    ...(context.requestedModel === undefined
+      ? {}
+      : { requested_model: context.requestedModel }),
+    served_model: context.servedModel,
+    supply_lane: supplyLaneForAdapterId(context.adapterId),
+    total_tokens: context.totalTokens,
+    worker: context.adapterId,
+  }
+}
 
 const kindForRecord = (
   record: InferenceReceiptRecord,
@@ -95,6 +146,11 @@ export const publicInferenceReceiptFromRecord = (
     return null
   }
 
+  const modelEvidence =
+    kind === 'charge' || kind === 'batch_job_charge'
+      ? modelEvidenceFromContextRef(record.contextRef)
+      : undefined
+
   const receipt: PublicInferenceReceiptProjection = {
     authorityBoundary:
       'Public proof only. This receipt read grants no spend, refund, payout, checkout, settlement, provider, or registry authority.',
@@ -106,6 +162,7 @@ export const publicInferenceReceiptFromRecord = (
     generatedAt,
     kind,
     ledgerState: kind === 'free_allowance' ? 'free_allowance' : 'paid',
+    ...(modelEvidence === undefined ? {} : { modelEvidence }),
     receiptRef: record.receiptRef,
     schemaVersion: 'openagents.inference.receipt.v1',
     sourceRefs: [
