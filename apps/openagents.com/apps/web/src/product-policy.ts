@@ -294,6 +294,7 @@ export const browserCommandProductIntents = {
   LoadTeamChatMessages: 'workroom.chat.team.messages.load',
   LoadThreadFileDetail: 'files.thread.detail.load',
   LoadThreadFiles: 'files.thread.index.load',
+  LoadTrace: 'trace.public.load',
   LoadWorkroomLifecycle: 'workroom.delivery.lifecycle.load',
   LoadWorkroomSurface: 'workroom.delivery.surface.load',
   LogError: 'telemetry.error.log',
