@@ -469,11 +469,24 @@ export const makeAutopilotOnboardingRoutes = <Env extends OnboardingRouteEnv>(
       )
     }
     return Effect.promise(async () => {
-      const replay = await replayFromOffsetDO({
-        namespace,
-        offset,
-        requestId: onboardingDurableStreamId(sessionId, turnIndex),
-      })
+      // A missing/empty durable log resolves to `undefined` (→ 404), NOT a throw
+      // (the DO SQL adapter reads its single metadata row tolerantly). A throw
+      // here is therefore a genuine DO transport fault; map it to a clean 502
+      // rather than an unhandled 500 defect. Onboarding is free, so this read
+      // never meters regardless.
+      let replay: Awaited<ReturnType<typeof replayFromOffsetDO>>
+      try {
+        replay = await replayFromOffsetDO({
+          namespace,
+          offset,
+          requestId: onboardingDurableStreamId(sessionId, turnIndex),
+        })
+      } catch {
+        return noStoreJsonResponse(
+          { error: 'durable_stream_unavailable' },
+          { status: 502 },
+        )
+      }
       if (replay === undefined) {
         return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
       }

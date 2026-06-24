@@ -167,11 +167,24 @@ export const routeDurableInferenceReadRequestDO = async (
     return jsonError('method_not_allowed', 405)
   }
 
-  const replay = await replayFromOffsetDO({
-    namespace: deps.namespace,
-    offset: matched.offset,
-    requestId: matched.requestId,
-  })
+  // A missing/empty stream is a graceful `undefined` (→ 404) from
+  // `replayFromOffsetDO`, NOT a throw — the package's `SqliteStreamStore` reads
+  // its single-row metadata tolerantly (a missing stream is zero rows, not an
+  // "expected exactly one result" SQL error). A throw here can therefore only be
+  // a genuine DO transport fault (binding unreachable, runtime error); map it to
+  // a clean 502 instead of letting it surface as an unhandled 500 defect. This is
+  // read-side fail-safe ONLY — it never masks a systematic write failure, which
+  // is fixed at the source in the durable producer / DO SQL adapter.
+  let replay: DurableReplay | undefined
+  try {
+    replay = await replayFromOffsetDO({
+      namespace: deps.namespace,
+      offset: matched.offset,
+      requestId: matched.requestId,
+    })
+  } catch {
+    return jsonError('durable_stream_unavailable', 502)
+  }
 
   return replayToResponse(replay)
 }
