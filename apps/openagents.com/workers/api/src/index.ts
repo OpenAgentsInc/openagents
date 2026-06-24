@@ -31,6 +31,7 @@ import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
+import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
@@ -6946,6 +6947,16 @@ const adminOverviewHandlers = makeAdminOverviewHandlers({
   requireBrowserSession,
 })
 
+// Admin-gated Cloudflare Browser Rendering smoke (#6205). Reuses the SAME admin
+// mechanism as every other `/api/admin/*` route. `launch` defaults to the real
+// `@cloudflare/playwright`; `env.BROWSER` is read off the runtime binding (not on
+// the statically-typed `Env`).
+const handleCfBrowserSmokeApi = makeCfBrowserSmokeHandler({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  requireBrowserSession,
+})
+
 const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -9594,6 +9605,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/admin/overview',
     handler: (request, env, ctx) =>
       adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
+  },
+  {
+    // Admin-gated Cloudflare Browser Rendering smoke (#6205). Proves the real
+    // `env.BROWSER` binding from a deployed Worker; honest `{ ok:false, reason }`
+    // if the binding is absent or Browser Rendering errors.
+    path: '/api/admin/cf-browser-smoke',
+    handler: (request, env, ctx) =>
+      handleCfBrowserSmokeApi(request, env, ctx),
   },
   {
     path: '/api/stats/token-usage/events',

@@ -109,6 +109,13 @@
     // rail; setting it does not enable charges on its own.
     "STRIPE_MPP_NETWORK_PROFILE_ID": "profile_61Uug9ZHyJKTH8vxOA6Uug9Z3HSQjWfjZIUGSnTl27Xk",
   },
+  // Cloudflare Browser Rendering binding (#6205). Managed headless Chrome,
+  // driven from the Worker via `@cloudflare/playwright`'s `launch(env.BROWSER)`.
+  // The admin-gated `/api/admin/cf-browser-smoke` route proves it on prod; the
+  // qa-runner `cfBrowserBackend` drives real QA runs through the same binding.
+  "browser": {
+    "binding": "BROWSER",
+  },
   "containers": [
     {
       "class_name": "MdkSidecarContainer",
