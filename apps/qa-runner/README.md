@@ -17,17 +17,35 @@ result and watching the video — *no local run*.
 
 | Piece | Status |
 |---|---|
-| `scriptedBrain` (deterministic decision-maker) | **real now** — used by the demo + tests |
-| `khalaBrain` (drives via `openagents/khala` inference) | **seam, owner/flag-gated, inert** — throws "not armed" without an injected driver; no live inference in CI |
+| `scriptedBrain` (deterministic decision-maker) | **real now** — deterministic CI + `demo:login` |
+| Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala` | **real now** — `demo:khala`; a prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling) |
+| `khalaBrain` (BrainStep seam for `runQaSession`) | **inert seam** — throws "not armed" without an injected driver; the live loop is `runKhalaSession`, not this seam |
+| `KhalaSessionTrace` capture + `assertSessionTracePublicSafe` tripwire | **real now** — deterministic, replayable, public-safe (`session-trace.json`) |
+| session → committed executor-style e2e scenario **distiller** (spec §E.2) | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts` |
+| skill emitter (NIP-SKL marketplace candidate, spec §E.1) | **typed seam + TODO, FUTURE/owner-gated** |
 | `localBackend` (real chromium on this host) | **real now** — the default |
-| `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM) | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied; `cloud` (`oa-node`/`oa-workroomd`) wires the real provisioner later |
+| `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM) | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied |
 | video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json` | **real now** |
-| session → committed e2e test distiller | **follow-up** (not in this app yet) |
-| run = verified receipt / settlement wrapper | **follow-up** |
+| run = verified receipt / settlement wrapper | **follow-up, owner-gated (settlement INERT)** |
 
 There is **no fake green**: an un-armed cloud backend or khala brain throws; a
 missing-chromium real run fails honestly; a failed assertion produces a `fail`
-result with the failure visible in the video.
+result with the failure visible in the video; an unparseable model action is a
+real failure (a bounded corrective re-prompt, never a fabricated action); a
+session that never reaches a verdict is reported `incomplete`/`fail`.
+
+## Credentials (no hardcoded secrets)
+
+`demo:khala` resolves the model endpoint from env + `~/work/.secrets/`, in order:
+
+1. `OPENAGENTS_API_KEY` env -> the real `openagents/khala` endpoint (preferred).
+2. a discovered `OPENAGENTS_AGENT_TOKEN=` in any `~/work/.secrets/*.env` -> real
+   `openagents/khala`.
+3. `PROBE_OPENAI_API_KEY` (env or `~/work/.secrets/probe-openai.env`) -> an
+   OpenAI-compatible **fallback** model, used ONLY to prove the loop runs for
+   real and clearly labeled; pass `--no-fallback` to forbid it.
+
+The credential VALUE is never printed; only its source LABEL is logged.
 
 ## One model
 
@@ -43,7 +61,16 @@ bun run --cwd apps/qa-runner test
 # Install chromium for the real-browser paths below
 bun run --cwd apps/qa-runner playwright:install   # or: bunx playwright install chromium
 
-# Headline demo (#6177): Khala /login regression on https://openagents.com
+# HEADLINE demo (epic #6174): Khala AUTONOMOUSLY drives the session, records it,
+# and distills it into a COMMITTED executor-style e2e scenario.
+bun run --cwd apps/qa-runner demo:khala
+bun run --cwd apps/qa-runner demo:khala -- --goal "..." --url https://openagents.com --out ./runs/khala
+#   -> writes session.mp4 + trace.zip + screenshots + result.json + session-trace.json,
+#      and emits generated/<slug>.e2e.test.ts (the review artifact alongside the video).
+# Run the generated scenario (a real, runnable test) against any target:
+TARGET_URL=https://openagents.com bun test apps/qa-runner/generated/login-verify.e2e.test.ts
+
+# Deterministic /login regression demo (scriptedBrain; no model, for CI):
 bun run --cwd apps/qa-runner demo:login
 bun run --cwd apps/qa-runner demo:login -- --out ./runs/login --headed
 # Prove honest failure: point the same scenario at a deliberately-wrong assertion
@@ -65,6 +92,11 @@ A run writes, into the artifact dir:
 - `trace.zip` (Playwright trace — open with `npx playwright show-trace`)
 - `NN-step.png` per-step screenshots
 - `result.json` — `{ status, target, brain, backend, steps, artifacts, failure? }`
+- `session-trace.json` (Khala runs) — the deterministic, public-safe
+  `KhalaSessionTrace` (`openagents.khala.session_trace.v1`): ordered beats
+  (chat_turn/tool_call/browser/terminal/verdict) with raw text/secrets withheld
+  (refs/hashes only), inferred typed inputs/outputs, receipts, and a content
+  digest. This is the distiller's input.
 
 `result.json` and all artifact metadata are **public-safe**: a tripwire
 (`assertPublicSafeResult`) rejects any forbidden field

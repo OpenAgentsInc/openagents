@@ -1,0 +1,4 @@
+# Per-run artifact output (video/trace/screenshots/result.json/session-trace.json).
+# The committed review artifact is the distilled scenario under generated/, not
+# these raw run outputs.
+runs/
