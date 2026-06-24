@@ -139,6 +139,27 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('redirects bare and unclaimed Gym document routes', () => {
+    expect(shouldRedirectUnknownDocumentToHome(requestFor('/gym'), '/gym')).toBe(
+      true,
+    )
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/gym/foo'), '/gym/foo'),
+    ).toBe(true)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/gym/oss/bar'),
+        '/gym/oss/bar',
+      ),
+    ).toBe(true)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/gym/legal'),
+        '/gym/legal',
+      ),
+    ).toBe(true)
+  })
+
   test('keeps the Pylon document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/pylons'), '/pylons'),

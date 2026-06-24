@@ -799,10 +799,9 @@ export type RouteLoggedInGate = 'open' | 'workroom' | 'admin' | 'mullet'
 //   - 'maintenance'    : NOT wired in view.ts; currently falls to the shared
 //                        maintenance body. This is an HONEST classification of
 //                        an existing route whose page has not (yet) been wired
-//                        into `view.ts` (e.g. `/gym`, the Gym Phase 0 fixture
-//                        page added on main). It is recorded explicitly rather
-//                        than hidden so the latent "renders maintenance body"
-//                        state is visible and intentional, not silent.
+//                        into `view.ts`. It is recorded explicitly rather than
+//                        hidden so the latent "renders maintenance body" state
+//                        is visible and intentional, not silent.
 export type RouteRenderDisposition =
   | 'submodel'
   | 'statelessShell'
@@ -1100,12 +1099,8 @@ export const routeRegistry = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
-  // Public Gym Phase 0 fixture page at `/gym` (added on main, issue 6166).
-  // Public (no auth bootstrap), in the LoggedOutRoute + AppRoute unions only
-  // (NOT LoggedInRoute), parser router `gymRouter` sits AFTER `gymOssRouter`
-  // so `/gym/oss` still matches GymOss first and `/gym` matches Gym. It is NOT
-  // wired into view.ts on main, so it currently renders the maintenance body —
-  // classified honestly as 'maintenance' to preserve that exact behavior.
+  // Retained model surface for the local Gym fixture, but intentionally not
+  // registered in the URL parser: the only public Gym document is `/gym/oss`.
   Gym: {
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
@@ -1497,7 +1492,6 @@ const orderedParserRouters = [
   tassadarRouter,
   gymOssRouter,
   loginRouter,
-  gymRouter,
   runRouter,
   forumReceiptRouter,
   forumTopicRouter,
@@ -1552,11 +1546,15 @@ const orderedParserRouters = [
   homeRouter,
 ] as const
 
-// Routers that are intentionally NOT registered in the parser (deprecated or
-// duplicate of an already-registered path). Kept here as an explicit,
-// documented list so the parser-coverage test can assert nothing slips in or
-// out by accident.
-export const unregisteredParserRouters = [chatRouter, landingRouter] as const
+// Routers that are intentionally NOT registered in the parser. Kept here as an
+// explicit, documented list so the parser-coverage test can assert nothing
+// slips in or out by accident. `gymRouter` stays out because `/gym` redirects
+// at the Worker document gate; `/gym/oss` is the only admitted Gym document.
+export const unregisteredParserRouters = [
+  chatRouter,
+  landingRouter,
+  gymRouter,
+] as const
 
 const routeParser = Route.oneOf(...orderedParserRouters)
 

@@ -121,6 +121,8 @@ export const gatewayLegacyPathname = (
     ? pathname.slice('/api'.length)
     : undefined
 
+const gymDocumentPathPattern = /^\/gym\/oss$/
+
 const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/$/,
   /^\/adjutant$/,
@@ -141,7 +143,7 @@ const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/files(?:\/[^/]+)?$/,
   /^\/forge$/,
   /^\/forum(?:\/.*)?$/,
-  /^\/gym\/oss$/,
+  gymDocumentPathPattern,
   /^\/images$/,
   /^\/landing$/,
   /^\/khala$/,

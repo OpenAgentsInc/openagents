@@ -39,7 +39,6 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/moksha', 'Moksha'],
   ['/moksha2', 'Moksha2'],
   ['/clients-preview', 'ClientsPreview'],
-  ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
@@ -79,11 +78,10 @@ describe('public route parser coverage', () => {
   )
 
   test('covers the documented public surface', () => {
-    // 33 original public/top-level routes + the public `/gym` fixture (34) +
-    // the authenticated `/pro` operator console top-level route (35) + the four
-    // /pro subpages (runs index/detail, evals index/detail) for the operator
-    // console build-out (39).
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
+    // 33 original public/top-level routes + the authenticated `/pro` operator
+    // console top-level route (34) + the four /pro subpages (runs index/detail,
+    // evals index/detail) for the operator console build-out (38).
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(38)
   })
 
   // The specific-before-generic parser ordering must resolve the parameterized
@@ -102,7 +100,8 @@ describe('public route parser coverage', () => {
   // The registry-driven parser derives its `oneOf` list from a single ordered
   // source; the deprecated/duplicate routers stay explicitly excluded.
   test('keeps deprecated/duplicate routers out of the parser', () => {
-    expect(unregisteredParserRouters.length).toBe(2)
+    expect(unregisteredParserRouters.length).toBe(3)
     expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/gym'))._tag).toBe('NotFound')
   })
 })
