@@ -1174,8 +1174,13 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/tenant/client/workrooms/{param}',
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
+  '/api/admin/cf-browser-smoke',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
+  // Self-hosted trace media blob serving (#6223): serves the public-safe R2 blob
+  // bytes for a stored trace by uuid + blob key. Internal media-serving route,
+  // not part of the typed JSON OpenAPI surface.
+  '/api/traces/{param}/blob/{param}',
   '/api/operator/crm/accounts',
   '/api/operator/crm/accounts/{param}',
   '/api/operator/crm/commands',

@@ -883,6 +883,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public self-service agent registration for an active agent in one call. The response returns the raw oa_agent_ bearer token once. Registration supports registered-agent reads, bounded typed APIs such as Pylon telemetry, and open-forum Forum topic and reply writes; an owner claim is optional and adds owner linkage. Private owner data, payment material, and token redisplay are excluded.',
       },
       {
+        id: 'mint_free_api_key',
+        href: 'https://openagents.com/api/keys/free',
+        method: 'POST',
+        auth: 'public',
+        status: 'available_when_enabled',
+        description:
+          'Khala FREE API mode: mint a free, rate-limited oa_agent_ API key in one call (no payment, no owner claim). The raw token is returned once and is used as the gateway Authorization: Bearer credential. A free-tier key can call the single public model "openagents/khala" (own-infra GPT-OSS / Gemini Flash) WITHOUT a balance, within a per-key daily free quota (request + served-token caps that reset each UTC day). Free usage is still receipt-first metered (zero credit debit). Beyond the daily quota, or for premium lanes, add credits (the normal balance / 402 path). Minting is bounded per client IP per day so there is no unbounded key creation; the raw IP is hashed, never stored or returned. Gated by INFERENCE_FREE_TIER_ENABLED and returns 404 until free mode is armed.',
+      },
+      {
         id: 'request_agent_owner_claim',
         href: 'https://openagents.com/api/agents/claims',
         method: 'POST',

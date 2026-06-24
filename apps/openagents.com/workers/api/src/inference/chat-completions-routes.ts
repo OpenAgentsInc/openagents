@@ -351,6 +351,23 @@ export type ChatCompletionsDeps = Readonly<{
     accountRef: string,
     model: string,
   ) => Promise<{ readonly exempt: boolean }>
+  // KHALA FREE TIER bypass (issue #6228). Read-only seam the balance gate calls
+  // BEFORE the 402: if the (account, model) is a FREE-TIER key on the free Khala
+  // lane (own-infra / non-premium) AND still within its per-key daily quota, the
+  // zero-balance request is allowed through (the `withFreeTierKhala` metering
+  // wrapper then records it as a zero-debit free receipt + accrues the quota).
+  // This is the THIRD balance-gate bypass alongside `checkFreeAllowance` (owner
+  // Sybil pool on Gemini) and `checkOperatorExemption` (owner operator credit);
+  // it is the self-serve one — anyone who mints a free key gets free Khala within
+  // quota. A PREMIUM model is NEVER free; over-quota / non-free-tier / non-Khala
+  // requests fall through to the normal 402. Default undefined => the gate is
+  // unchanged. Wired by the Worker to `makeFreeTierGate` ONLY when
+  // INFERENCE_FREE_TIER_ENABLED is on, against the SAME store + quota the metering
+  // wrapper uses so the bypass and the zero-debit accrual agree.
+  checkFreeTier?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<{ readonly free: boolean }>
   // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
   // (no-op), so the inert/flag-off path and the unconfigured-account path are
   // byte-for-byte unchanged. The decisions are computed by the pure deciders in
@@ -1634,7 +1651,20 @@ export const handleChatCompletions = (
           : (yield* Effect.promise(() =>
               deps.checkOperatorExemption!(session.accountRef, requestedModel),
             )).exempt
-      if (!freeAllowed && !operatorExempt) {
+      // KHALA FREE TIER bypass (issue #6228). A zero-balance request is ALSO not
+      // rejected when it resolves to a FREE-TIER key on the free Khala lane that
+      // is still within its per-key daily quota — that request is recorded by
+      // `withFreeTierKhala` after dispatch as a zero-debit free receipt (and its
+      // usage accrues against the daily quota). The seam itself refuses premium
+      // models, non-free-tier accounts, non-Khala models, and over-quota keys, so
+      // the 402 stands for them and Khala stays paid for funded keys beyond quota.
+      const freeTier =
+        deps.checkFreeTier === undefined
+          ? false
+          : (yield* Effect.promise(() =>
+              deps.checkFreeTier!(session.accountRef, requestedModel),
+            )).free
+      if (!freeAllowed && !operatorExempt && !freeTier) {
         return noStoreJsonResponse(
           {
             error: 'insufficient_credits',

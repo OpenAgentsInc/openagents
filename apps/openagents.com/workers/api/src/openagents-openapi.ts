@@ -3721,6 +3721,56 @@ const requestSchemas = (): JsonSchema => ({
       },
     ],
   },
+  FreeApiKeyMintRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: [],
+    properties: {
+      label: {
+        type: 'string',
+        maxLength: 80,
+        description:
+          'Optional public-safe display label for the minted key (e.g. an app name). Anonymous by default. No email is required; abuse is bounded by the per-IP mint rate limit and the per-key daily quota.',
+      },
+    },
+    examples: [{ label: 'my-cli' }, {}],
+  },
+  FreeApiKeyMintResponse: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['tier', 'model', 'credential', 'quota', 'usage'],
+    description:
+      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included.',
+    properties: {
+      tier: { type: 'string', enum: ['free'] },
+      model: { type: 'string', enum: ['openagents/khala'] },
+      credential: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['token', 'tokenPrefix', 'createdAt'],
+        properties: {
+          token: {
+            type: 'string',
+            description:
+              'The raw oa_agent_ bearer token, returned once. Send as Authorization: Bearer to the gateway.',
+          },
+          tokenPrefix: { type: 'string' },
+          createdAt: { type: 'string', format: 'date-time' },
+        },
+      },
+      quota: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['maxRequestsPerDay', 'maxTokensPerDay', 'window'],
+        properties: {
+          maxRequestsPerDay: { type: 'integer' },
+          maxTokensPerDay: { type: 'integer' },
+          window: { type: 'string', enum: ['utc_day'] },
+        },
+      },
+      usage: { type: 'string' },
+    },
+  },
   RegisterPylonRequest: objectSummary(
     'Registered-agent request to register or update its own Pylon. Includes pylonRef, displayName, resourceMode, capabilityRefs, walletRef, and statusRefs as public-safe refs only. Provider Pylons may also carry providerNostrPubkey (hex), providerNostrNpub, providerMarketRelayRefs (the relay URLs the provider loop actually listens on), and providerNip90LaneRefs for stranger-buyer discoverability.',
   ),
@@ -5664,6 +5714,24 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Programmatic agent registration.',
           '#/components/schemas/ProgrammaticAgentRegistration',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/keys/free': {
+    post: operation({
+      operationId: 'mintFreeApiKey',
+      summary: 'Mint a free Khala API key',
+      description:
+        'Khala FREE API mode: mints a free, rate-limited oa_agent_ API key in one call with no payment and no owner claim, and returns the raw bearer token once. The key is used as the Authorization: Bearer credential for POST /api/v1/chat/completions. A free-tier key can call the single public model "openagents/khala" (own-infra GPT-OSS / Gemini Flash) WITHOUT a credit balance, within a per-key daily free quota (request and served-token caps that reset each UTC day). Free usage is still receipt-first metered as a zero credit debit. Beyond the daily quota, or for premium lanes, add credits (the normal balance / 402 path). Minting is bounded per client IP per UTC day so there is no unbounded key minting; the raw IP is hashed and never stored or returned, and no token or secret is logged. Gated by INFERENCE_FREE_TIER_ENABLED; returns 404 until free mode is armed.',
+      tags: ['Agents'],
+      security: publicRead,
+      requestBody: jsonContent('#/components/schemas/FreeApiKeyMintRequest'),
+      responses: {
+        '201': okJson(
+          'Minted free API key (raw token returned once).',
+          '#/components/schemas/FreeApiKeyMintResponse',
         ),
         ...errorResponses(),
       },

@@ -66,6 +66,7 @@ import {
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
   makeD1AgentRegistrationStore,
+  sha256Hex,
   timingSafeEqual,
 } from './agent-registration'
 import {
@@ -393,6 +394,16 @@ import {
   makeOperatorExemptionGate,
   withOperatorCredit,
 } from './inference/inference-operator-exemption'
+import {
+  decideFreeKeyMint,
+  isFreeTierEnabled,
+  makeFreeTierGate,
+  markAccountFreeTierAsync,
+  readFreeKeyMintsToday,
+  recordFreeKeyMintAsync,
+  sanitizeFreeKeyLabel,
+  withFreeTierKhala,
+} from './inference/inference-free-tier-key'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
@@ -6484,6 +6495,108 @@ export const handleProgrammaticAgentRegistration = async (
   }
 }
 
+// Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited FREE
+// `oa_agent_` API key that may call the single public model `openagents/khala`
+// (own-infra GPT-OSS / Gemini Flash) with NO funded balance, within a per-key
+// daily quota (the balance-gate bypass + zero-debit metering live in
+// inference-free-tier-key.ts). It REUSES the existing agent-registration auth +
+// token plumbing — a free key is a normal agent credential, just tagged free
+// tier — so there is no parallel auth/inference stack. ABUSE-RESISTANT: minting
+// is bounded per client IP per UTC day (no unbounded minting). The simplest safe
+// option is anonymous + IP-rate-limited (no email required); an optional label is
+// only a display name. The raw IP is hashed (SHA-256), never stored or logged.
+//
+// INERT until INFERENCE_FREE_TIER_ENABLED is on: the endpoint returns 404 so the
+// surface is honestly absent until free mode is armed.
+export const handleFreeKeyMint = async (
+  request: Request,
+  env: Env,
+  agentRegistrationStore?: AgentRegistrationStore,
+): Promise<Response> => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+  if (!isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)) {
+    return notFound()
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    label?: unknown
+  }
+  const label = sanitizeFreeKeyLabel(
+    typeof body?.label === 'string' ? body.label : null,
+  )
+
+  const db = openAgentsDatabase(env)
+  const clientIp =
+    request.headers.get('cf-connecting-ip') ??
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    'unknown'
+  const ipHash = await sha256Hex(clientIp)
+  const nowIso = currentIsoTimestamp()
+  const mintDay = nowIso.slice(0, 10)
+
+  // ABUSE GUARD: bound the number of free keys one IP can mint per UTC day.
+  const mintsToday = await readFreeKeyMintsToday(db, ipHash, mintDay)
+  const mintGate = decideFreeKeyMint({ mintsToday })
+  if (!mintGate.allowed) {
+    return withAgentRateLimitHeaders(
+      jsonResponse(
+        {
+          error: 'free_key_mint_rate_limited',
+          maxMintsPerDay: mintGate.maxMintsPerDay,
+          reason: mintGate.reasonRef,
+        },
+        { status: 429 },
+      ),
+    )
+  }
+
+  const store =
+    agentRegistrationStore ?? makeD1AgentRegistrationStore(db)
+
+  try {
+    const registration = await createProgrammaticAgentRegistration(store, {
+      displayName: label,
+    })
+    const accountRef = `agent:${registration.user.id}`
+    await markAccountFreeTierAsync(db, {
+      accountRef,
+      mintSource: 'self_serve_anonymous',
+    })
+    await recordFreeKeyMintAsync(db, { ipHash, mintDay })
+
+    return withAgentRateLimitHeaders(
+      jsonResponse(
+        {
+          tier: 'free',
+          model: 'openagents/khala',
+          credential: {
+            token: registration.credential.token,
+            tokenPrefix: registration.credential.tokenPrefix,
+            createdAt: registration.credential.createdAt,
+          },
+          quota: {
+            maxRequestsPerDay: 200,
+            maxTokensPerDay: 200_000,
+            window: 'utc_day',
+          },
+          usage:
+            'Send this token as the Authorization: Bearer credential to POST /api/v1/chat/completions with {"model":"openagents/khala"}. Free within the daily quota; beyond it, add credits.',
+        },
+        { status: 201 },
+      ),
+    )
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return withAgentRateLimitHeaders(
+        jsonResponse({ error: 'free_key_mint_conflict' }, { status: 409 }),
+      )
+    }
+    return serverError()
+  }
+}
+
 const agentBalanceAuthForStore =
   (store: ReturnType<typeof makeD1AgentRegistrationStore>) =>
   async (request: Request): Promise<{ actorRef: string } | undefined> => {
@@ -10346,6 +10459,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       Effect.promise(() => handleProgrammaticAgentRegistration(request, env)),
   },
   {
+    // Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited
+    // free `oa_agent_` key for the free `openagents/khala` lane. INERT (404)
+    // until INFERENCE_FREE_TIER_ENABLED is on.
+    path: '/api/keys/free',
+    handler: (request, env) =>
+      Effect.promise(() => handleFreeKeyMint(request, env)),
+  },
+  {
     path: '/api/agents/me',
     handler: (request, env) =>
       Effect.promise(() => handleProgrammaticAgentMe(request, env)),
@@ -10473,6 +10594,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       const operatorExemptionEnabled = isOperatorExemptionEnabled(
         env.INFERENCE_OPERATOR_EXEMPTION_ENABLED,
       )
+      // KHALA FREE API MODE (issue #6228). Armed ONLY when
+      // INFERENCE_FREE_TIER_ENABLED is on (fail-closed, default OFF). When armed,
+      // a self-serve FREE-TIER key (minted at POST /api/keys/free, marked in
+      // `inference_free_tier_keys`) may call the single public model
+      // `openagents/khala` (own-infra GPT-OSS / Gemini Flash) with a zero balance
+      // WITHIN its per-key daily quota: the balance-gate seam admits it and
+      // `withFreeTierKhala` records it as a zero-debit free receipt + accrues the
+      // quota. A PREMIUM model is NEVER free; over-quota / non-free-tier keys
+      // still 402, so paid Khala behavior for funded keys is unchanged. Inert with
+      // the flag off — both seams are simply not wired.
+      const freeTierEnabled = isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)
       const laneArming = resolveSupplyLaneArming(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
@@ -10518,6 +10650,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // and short-circuits BEFORE the free-allowance/referral/ledger inner
         // hooks. Premium served models + non-exempt owners always fall through to
         // the normal path. Inert (identity) when the flag is off.
+        //
+        // KHALA FREE-TIER WRAPPER (issue #6228), ONLY when armed. For a FREE-TIER
+        // key on the free Khala lane within its daily quota it records a zero-
+        // debit free receipt + accrues the quota and short-circuits BEFORE the
+        // referral/ledger inner hooks. Premium served models, non-free-tier keys,
+        // non-Khala models, and over-quota requests fall through to the normal
+        // path. Inert (identity) when the flag is off. Each decorator acts only on
+        // its own lane, so the order among the free wrappers is independent.
         meteringHook: (
           baseHook =>
             operatorExemptionEnabled
@@ -10528,9 +10668,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               : baseHook
         )(
           withFreeAllowance(
-            withReferralAccrual(
-              makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
-              { db: openAgentsDatabase(env) },
+            (innerHook =>
+              freeTierEnabled
+                ? withFreeTierKhala(innerHook, {
+                    db: openAgentsDatabase(env),
+                  })
+                : innerHook)(
+              withReferralAccrual(
+                makeLedgerMeteringHook({ db: openAgentsDatabase(env) }),
+                { db: openAgentsDatabase(env) },
+              ),
             ),
             { db: openAgentsDatabase(env), resolveOwnerIdentity },
           ),
@@ -10602,6 +10749,23 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               checkOperatorExemption: makeOperatorExemptionGate({
                 db: openAgentsDatabase(env),
                 resolveOwnerIdentity,
+              }),
+            }
+          : {}),
+        // KHALA FREE-TIER SEAM (issue #6228). Wired ONLY when armed
+        // (INFERENCE_FREE_TIER_ENABLED). Lets a self-serve FREE-TIER key on the
+        // free Khala lane within its per-key daily quota bypass the 402 with a
+        // zero balance; the `withFreeTierKhala` wrapper above then records the
+        // request as a zero-debit free receipt + accrues the quota. The gate
+        // refuses premium models, non-free-tier accounts, non-Khala models, and
+        // over-quota keys, so the 402 stands for them and paid Khala for funded
+        // keys is unchanged. Left UNWIRED (=> closed, normal 402) when the flag is
+        // off. Uses the SAME store + quota + UTC-day bucket as the metering
+        // wrapper so the bypass and the zero-debit accrual agree.
+        ...(freeTierEnabled
+          ? {
+              checkFreeTier: makeFreeTierGate({
+                db: openAgentsDatabase(env),
               }),
             }
           : {}),

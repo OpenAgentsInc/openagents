@@ -182,7 +182,13 @@ const budgetChecks = [
     // sibling index.ts handlers already counted here. Do not raise further;
     // ratchet back down when index.ts env reads move behind the config/binding
     // boundary.
-    budget: 163,
+    // Raised 163 -> 164 on 2026-06-24 (#6228) for the Khala FREE API mode
+    // self-serve mint handler (`handleFreeKeyMint(request, env: Env)` in
+    // index.ts): one `(request, env: Env)` route handler the same shape as the
+    // sibling `handleProgrammaticAgentRegistration` already counted here. Do not
+    // raise further; ratchet back down when index.ts env reads move behind the
+    // config/binding boundary.
+    budget: 164,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(
@@ -390,7 +396,13 @@ const budgetChecks = [
     // counter sees. Both read dispatchers read stored bytes only and NEVER meter.
     // Ratchet back down when the durable read surfaces are extracted behind a
     // shared prefix-route mapper.
-    budget: 110,
+    // +1 (110 -> 111) on 2026-06-24 (#6228) for the Khala FREE API mode
+    // self-serve mint handler (`handleFreeKeyMint(...): Promise<Response>` in
+    // index.ts): one route handler the same `Promise<Response>` shape as the
+    // sibling `handleProgrammaticAgentRegistration` already counted here. It mints
+    // a rate-limited free key and grants no payout/settlement authority. Ratchet
+    // back down when index.ts route handlers move behind a shared route mapper.
+    budget: 111,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

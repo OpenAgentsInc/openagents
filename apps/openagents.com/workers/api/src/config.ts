@@ -105,6 +105,18 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // keys still 402. Granting is an owner/admin action; no owner id/token is ever
   // logged.
   INFERENCE_OPERATOR_EXEMPTION_ENABLED?: string | undefined
+  // Khala FREE API MODE feature flag (issue #6228, EPIC #5474). Default OFF: the
+  // self-serve free-key mint endpoint (`POST /api/keys/free`) is inert and the
+  // `/v1/chat/completions` balance gate is unchanged (a zero-balance key 402s),
+  // so Khala stays paid for funded keys. Set "true"/"1"/"on" to ARM free mode:
+  // anyone can mint a rate-limited free `oa_agent_` key, and a free-tier key may
+  // then call the single public model `openagents/khala` (own-infra GPT-OSS /
+  // Gemini Flash) with a zero balance, WITHIN a per-key daily quota (request +
+  // token caps). Free usage is still receipt-first metered (zero-debit). Beyond
+  // the quota, or for premium lanes, credits/budget are still required (the
+  // existing 402 path). A PREMIUM model is NEVER free; minting is per-IP
+  // rate-limited (no unbounded key minting); no token/IP is ever logged.
+  INFERENCE_FREE_TIER_ENABLED?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
   // #6058, EPIC #6056). Default OFF: a streaming completion is NOT persisted into
   // a durable offset log, so the `/v1/chat/completions` stream behaves as today's
