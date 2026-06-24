@@ -117,6 +117,17 @@ describe('trace render (sample trajectory)', () => {
     expect(rendered).toContain('Verified') // PASS verdict label
     expect(rendered).toContain(formatDuration(11459)) // 11.5s
     expect(rendered).toContain(formatCost(0)) // $0.00
+    expect(rendered).toContain('data-component="trace-header-meta-strip"')
+  })
+
+  test('renders a copy-all Markdown affordance backed by serialized trace text', () => {
+    const rendered = renderSample()
+    expect(rendered).toContain('data-component="trace-copy-markdown"')
+    expect(rendered).toContain('Copy all as Markdown')
+    expect(rendered).toContain('navigator.clipboard.writeText')
+    expect(rendered).toContain('data-trace-markdown-source')
+    expect(rendered).toContain('# Agent session trace')
+    expect(rendered).toContain('## Final metrics')
   })
 
   test('renders the goal node and a step timeline', () => {
@@ -184,6 +195,27 @@ describe('trace render (sample trajectory)', () => {
     expect(Trace.title(sampleRoute)).toBe(
       'Trace: openagents.com (Verified) - OpenAgents',
     )
+  })
+})
+
+describe('trace Markdown serialization', () => {
+  test('serializes the full trajectory into clean Markdown', () => {
+    const markdown = Trace.traceMarkdown(sampleTrajectory, SAMPLE_TRACE_UUID)
+    expect(markdown).toContain(
+      `# Agent session trace ${SAMPLE_TRACE_UUID.split('-')[0]}`,
+    )
+    expect(markdown).toContain(`- UUID: \`${SAMPLE_TRACE_UUID}\``)
+    expect(markdown).toContain('- Agent: openagents-qa-runner')
+    expect(markdown).toContain('- Model: openagents/khala')
+    expect(markdown).toContain('## Goal')
+    expect(markdown).toContain('Verify the login page works on this site')
+    expect(markdown).toContain('## Step 2')
+    expect(markdown).toContain('### Tool call: navigate()')
+    expect(markdown).toContain('```json')
+    expect(markdown).toContain('### Observation')
+    expect(markdown).toContain('```text')
+    expect(markdown).toContain('## Final metrics')
+    expect(markdown).not.toContain('undefined')
   })
 })
 

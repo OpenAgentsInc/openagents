@@ -54,7 +54,7 @@ const pageShellClass = 'h-dvh overflow-auto bg-[#000] text-[#f1efe8]'
 const mono =
   "font-['Commit_Mono',_'Berkeley_Mono',_ui-monospace,_monospace]"
 
-const articleClass = 'mx-auto w-full max-w-3xl px-6 py-10 sm:px-8 sm:py-14'
+const articleClass = 'mx-auto w-full max-w-5xl px-6 py-10 sm:px-8 sm:py-14'
 
 // ---------------------------------------------------------------------------
 // Semantic accent helpers (DESIGN.md tokens, used only for functional state).
@@ -120,7 +120,11 @@ const metaLabel = <Message>(text: string): Html => {
 const metaValue = <Message>(text: string, extra = ''): Html => {
   const h = html<Message>()
   return h.span(
-    [Ui.className<Message>(`text-sm leading-none text-[#f1efe8] ${extra}`)],
+    [
+      Ui.className<Message>(
+        `break-words text-sm leading-snug text-[#f1efe8] ${extra}`,
+      ),
+    ],
     [text],
   )
 }
@@ -193,8 +197,203 @@ const clampId = (text: string): string => {
 const metaCell = <Message>(label: string, value: Html): Html => {
   const h = html<Message>()
   return h.div(
-    [Ui.className<Message>('grid gap-1.5')],
+    [Ui.className<Message>('grid min-w-0 gap-1.5')],
     [metaLabel<Message>(label), value],
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Copy-all Markdown serialization.
+// ---------------------------------------------------------------------------
+
+const stringifyJsonPretty = (value: unknown): string => {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const markdownFence = (language: string, content: string): string => {
+  const text = content.trimEnd()
+  const longestBacktickRun =
+    text.match(/`{3,}/g)?.reduce((max, run) => Math.max(max, run.length), 2) ??
+    2
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun + 1))
+  return `${fence}${language}\n${text}\n${fence}`
+}
+
+const pushParagraph = (lines: string[], text: string | undefined): void => {
+  const trimmed = text?.trim()
+  if (trimmed === undefined || trimmed.length === 0) return
+  lines.push('', trimmed)
+}
+
+const pushMetric = (
+  lines: string[],
+  label: string,
+  value: string | undefined,
+): void => {
+  if (value === undefined) return
+  lines.push(`- ${label}: ${value}`)
+}
+
+export const traceMarkdown = (trajectory: Trajectory, uuid: string): string => {
+  const verdict = traceVerdict(trajectory)
+  const target = traceTarget(trajectory)
+  const durationMs = traceDurationMs(trajectory)
+  const cost = trajectory.final_metrics?.total_cost_usd
+  const model =
+    trajectory.agent.model_name ?? trajectory.steps[1]?.model_name ?? 'unknown'
+  const lines: string[] = [`# Agent session trace ${shortId(uuid)}`, '']
+
+  pushMetric(lines, 'UUID', `\`${uuid}\``)
+  pushMetric(lines, 'Agent', trajectory.agent.name)
+  pushMetric(lines, 'Model', model)
+  pushMetric(lines, 'Verdict', verdictLabel(verdict))
+  pushMetric(lines, 'Target', target?.name)
+  pushMetric(
+    lines,
+    'Duration',
+    durationMs === undefined ? undefined : formatDuration(durationMs),
+  )
+  pushMetric(lines, 'Cost', cost === undefined ? undefined : formatCost(cost))
+
+  const goal = traceGoal(trajectory)
+  if (goal !== undefined) {
+    lines.push('', '## Goal')
+    pushParagraph(lines, goal)
+  }
+
+  for (const step of agentSteps(trajectory)) {
+    lines.push('', `## Step ${step.step_id}`)
+    if (step.timestamp !== undefined) {
+      pushMetric(lines, 'Time', formatTimestamp(step.timestamp))
+    }
+    pushMetric(lines, 'Model', step.model_name)
+
+    const tokenBits: string[] = []
+    if (step.metrics?.prompt_tokens !== undefined) {
+      tokenBits.push(`${formatTokens(step.metrics.prompt_tokens)} input`)
+    }
+    if (step.metrics?.completion_tokens !== undefined) {
+      tokenBits.push(`${formatTokens(step.metrics.completion_tokens)} output`)
+    }
+    if (step.metrics?.cost_usd !== undefined) {
+      tokenBits.push(formatCost(step.metrics.cost_usd))
+    }
+    pushMetric(
+      lines,
+      'Metrics',
+      tokenBits.length === 0 ? undefined : tokenBits.join(' / '),
+    )
+
+    pushParagraph(lines, step.message)
+
+    for (const call of step.tool_calls ?? []) {
+      lines.push('', `### Tool call: ${call.function_name}()`)
+      pushMetric(lines, 'ID', `\`${call.tool_call_id}\``)
+      lines.push('', markdownFence('json', stringifyJsonPretty(call.arguments)))
+    }
+
+    if (step.observation !== undefined && step.observation.results.length > 0) {
+      lines.push('', '### Observation')
+      for (const result of step.observation.results) {
+        pushMetric(
+          lines,
+          'Source call',
+          result.source_call_id === undefined
+            ? undefined
+            : `\`${result.source_call_id}\``,
+        )
+        lines.push('', markdownFence('text', result.content ?? ''))
+      }
+    }
+
+    if (step.reasoning_content !== undefined) {
+      lines.push('', '### Reasoning')
+      pushParagraph(lines, step.reasoning_content)
+    }
+  }
+
+  const fm = trajectory.final_metrics
+  const finalMetrics: string[] = []
+  pushMetric(finalMetrics, 'Verdict', verdictLabel(verdict))
+  pushMetric(
+    finalMetrics,
+    'Duration',
+    durationMs === undefined ? undefined : formatDuration(durationMs),
+  )
+  pushMetric(
+    finalMetrics,
+    'Steps',
+    fm?.total_steps === undefined ? undefined : String(fm.total_steps),
+  )
+  pushMetric(
+    finalMetrics,
+    'Prompt tokens',
+    fm?.total_prompt_tokens === undefined
+      ? undefined
+      : formatTokens(fm.total_prompt_tokens),
+  )
+  pushMetric(
+    finalMetrics,
+    'Completion tokens',
+    fm?.total_completion_tokens === undefined
+      ? undefined
+      : formatTokens(fm.total_completion_tokens),
+  )
+  pushMetric(
+    finalMetrics,
+    'Cost',
+    fm?.total_cost_usd === undefined ? undefined : formatCost(fm.total_cost_usd),
+  )
+  if (finalMetrics.length > 0) {
+    lines.push('', '## Final metrics', '', ...finalMetrics)
+  }
+
+  if (trajectory.notes !== undefined) {
+    lines.push('', '## Notes')
+    pushParagraph(lines, trajectory.notes)
+  }
+
+  return `${lines.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`
+}
+
+const copyMarkdownControl = <Message>(markdown: string): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      Ui.className<Message>('inline-flex items-center'),
+      h.DataAttribute('component', 'trace-copy-markdown'),
+    ],
+    [
+      h.button(
+        [
+          h.Type('button'),
+          h.AriaLabel('Copy all as Markdown'),
+          h.Title('Copy all as Markdown'),
+          Ui.className<Message>(
+            'inline-flex min-h-8 items-center border border-[#222] px-3 text-xs font-semibold uppercase leading-none tracking-wide text-white/55 transition hover:border-[#333] hover:bg-[#080808] hover:text-[#f1efe8] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ffb400]',
+          ),
+          h.Attribute(
+            'onclick',
+            "(function(b){var r=b.closest('[data-component=\"trace-copy-markdown\"]');var t=r&&r.querySelector('[data-trace-markdown-source]');var m=t?t.value:'';var p=b.querySelector('[data-copy-mark]');function label(v){if(p){p.textContent=v;}}try{navigator.clipboard.writeText(m);label('Copied');setTimeout(function(){label('Copy all as Markdown');},1200);}catch(e){label('Copy unavailable');setTimeout(function(){label('Copy all as Markdown');},1600);}})(this)",
+          ),
+        ],
+        [h.span([h.DataAttribute('copy-mark', '')], ['Copy all as Markdown'])],
+      ),
+      h.textarea(
+        [
+          h.DataAttribute('trace-markdown-source', ''),
+          h.Attribute('hidden', 'hidden'),
+          h.Attribute('readonly', 'readonly'),
+          h.Attribute('tabindex', '-1'),
+          h.AriaHidden(true),
+        ],
+        [markdown],
+      ),
+    ],
   )
 }
 
@@ -284,7 +483,13 @@ const header = <Message>(trajectory: Trajectory, uuid: string): Html => {
             ],
             [`trace · ${shortId(uuid)}`],
           ),
-          verdictBadge,
+          h.div(
+            [Ui.className<Message>('flex flex-wrap items-center gap-2')],
+            [
+              copyMarkdownControl<Message>(traceMarkdown(trajectory, uuid)),
+              verdictBadge,
+            ],
+          ),
         ],
       ),
       h.h1(
@@ -299,8 +504,9 @@ const header = <Message>(trajectory: Trajectory, uuid: string): Html => {
       h.div(
         [
           Ui.className<Message>(
-            'grid grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-3 md:grid-cols-5',
+            'grid w-full grid-cols-1 gap-3 border-y border-[#222] py-4 sm:grid-cols-2 lg:grid-cols-5',
           ),
+          h.DataAttribute('component', 'trace-header-meta-strip'),
         ],
         metaCells,
       ),
