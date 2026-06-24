@@ -221,7 +221,7 @@ describe('persistent landing and Khala scene', () => {
     ).toBe(true)
   })
 
-  test('renders the landing scene with the Tassadar CTA (Khala CTA hidden)', () => {
+  test('renders the landing scene with the Khala + Tassadar CTAs', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(LandingRoute())),
@@ -230,9 +230,13 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-persistent-scene-shell="landing"]'),
       ).toExist(),
       Scene.expect(Scene.selector('[data-route="landing"]')).toExist(),
-      // The "What is Khala?" CTA is hidden until Khala is fully live.
-      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).not.toExist(),
-      Scene.expect(Scene.text('What is Khala?')).not.toExist(),
+      // CTA: "What is Khala?" (navigates to /khala — the flagship, re-enabled).
+      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toExist(),
+      Scene.expect(Scene.selector('[data-landing-cta="khala"]')).toHaveAttr(
+        'type',
+        'button',
+      ),
+      Scene.expect(Scene.text('What is Khala?')).toExist(),
       // CTA: "Join the Tassadar training run" (navigates to /tassadar).
       Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toExist(),
       Scene.expect(Scene.selector('[data-landing-cta="tassadar"]')).toHaveAttr(
@@ -277,8 +281,10 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).toExist(),
       Scene.expect(Scene.text('What is Khala?')).toExist(),
       // The popup carries the condensed, truthful Khala basics.
-      Scene.expect(Scene.text('openagents/khala-mini')).toExist(),
+      Scene.expect(Scene.text('openagents/khala')).toExist(),
       Scene.expect(Scene.text('https://openagents.com/api/v1')).toExist(),
+      // ...and the free self-serve key flow.
+      Scene.expect(Scene.text('POST /api/keys/free')).toExist(),
       // Clicking Close dismisses it.
       Scene.click(Scene.selector('[aria-label="Close"]')),
       Scene.expect(Scene.selector('[data-khala-chat-info-dialog]')).not.toExist(),

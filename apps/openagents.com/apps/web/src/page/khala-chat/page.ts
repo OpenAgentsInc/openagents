@@ -315,12 +315,10 @@ const infoPopup = <Message>(
               'You call a single API; underneath, requests are routed and orchestrated across a pool ' +
               'of models, tools, and validators, with receipt-backed disclosure about what happened.',
           ]),
-          infoRow<Message>('Models', [
-            'Two public model ids: ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala-mini']),
-            ' (the cheap default) and ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala-code']),
-            ' (coding-optimized). The gateway only serves a model whose lane is armed and ready.',
+          infoRow<Message>('Model', [
+            'One public model id: ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala']),
+            '. The orchestrator picks the backing lane; you buy the outcome.',
           ]),
           infoRow<Message>('API', [
             'OpenAI-compatible. Point any OpenAI client at the base URL ',
@@ -330,6 +328,13 @@ const infoPopup = <Message>(
             '. Streaming works over standard Server-Sent Events (set ',
             h.code([Ui.className<Message>(infoInlineCodeClass)], ['"stream": true']),
             ').',
+          ]),
+          infoRow<Message>('Free', [
+            'Free to use, no signup. Mint a key with ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['POST /api/keys/free']),
+            ', then send it as ',
+            h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
+            '. Free quota: 200 requests/day, 200k tokens/day.',
           ]),
           h.p(
             [

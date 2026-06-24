@@ -3,7 +3,7 @@ import { html } from 'foldkit/html'
 
 import { landingSquaresView } from '../../../scene/landingSquaresElement'
 import * as Ui from '../../../ui'
-import { ClickedEnterTassadar } from '../message'
+import { ClickedEnterKhala, ClickedEnterTassadar } from '../message'
 import type { Message } from '../message'
 import { view as tassadarView } from './tassadar'
 
@@ -121,17 +121,15 @@ const landingOverlay = (
           ),
         ],
         [
-          // "What is Khala?" CTA hidden until Khala is fully live. To restore:
-          // re-add `ClickedEnterKhala` to the '../message' import and uncomment:
-          //   h.button(
-          //     [
-          //       h.Type('button'),
-          //       h.OnClick(ClickedEnterKhala()),
-          //       h.DataAttribute('landing-cta', 'khala'),
-          //       Ui.className<Message>(landingButtonClass),
-          //     ],
-          //     ['What is Khala?'],
-          //   ),
+          h.button(
+            [
+              h.Type('button'),
+              h.OnClick(ClickedEnterKhala()),
+              h.DataAttribute('landing-cta', 'khala'),
+              Ui.className<Message>(landingButtonClass),
+            ],
+            ['What is Khala?'],
+          ),
           h.button(
             [
               h.Type('button'),
