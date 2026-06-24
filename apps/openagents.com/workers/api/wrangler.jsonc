@@ -44,6 +44,13 @@
     // by offset via `/v1/chat/completions/durable/{requestId}`. Metering still
     // settles EXACTLY ONCE on the real upstream EOF and NEVER on a replay.
     "INFERENCE_DURABLE_STREAM_ENABLED": "true",
+    // Hydralisk GPT-OSS 20B Khala lane (#6155, hydralisk#1). The transport URL
+    // and bearer are Worker secrets; these committed vars only arm the bounded
+    // model-id route after the 2026-06-24 public-origin L4/vLLM smoke produced
+    // public-safe capability + receipt evidence.
+    "HYDRALISK_GPT_OSS_20B_ENABLED": "ready",
+    "HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z",
+    "HYDRALISK_GPT_OSS_20B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527",
     "OPENAUTH_CLIENT_ID": "openagents-web",
     "OPENAUTH_ISSUER_URL": "https://auth.openagents.com",
     "OPENAGENTS_APP_URL": "https://openagents.com",

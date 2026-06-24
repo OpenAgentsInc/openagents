@@ -2,9 +2,11 @@
 
 Date: 2026-06-23
 
-Status: implementation-backed architecture note. Hydralisk now has a standalone
-repo scaffold and the OpenAgents Worker has day-zero routing hooks, but this is
-not yet a live GPU service, quota reservation, or public product promise.
+Status: live day-zero serving lane. Hydralisk now has a standalone repo, a live
+GCE L4/vLLM host for GPT-OSS 20B, public-safe capabilities/receipts, and
+OpenAgents Worker routing/config hooks for `openagents/khala-oss-20b`. This is
+still an internal Khala dogfood lane, not a broad product promise for every
+GPT-OSS workload.
 
 Scope: define **Hydralisk** as the Python/NVIDIA inference lane for OpenAgents:
 the stack we use when the right move is to stay in conventional Python ML
@@ -37,6 +39,48 @@ The first execution roadmap now lives in the standalone Hydralisk repo:
 It makes `gpt-oss-20b` on L4 the ASAP live-serving lane behind the OpenAgents
 API for Khala.
 
+## 2026-06-24 Live Update
+
+Hydralisk issue #1 is complete. The live host is:
+
+- project: `openagentsgemini`
+- instance: `hydralisk-gptoss20b-l4-20260624000550`
+- zone: `us-central1-a`
+- shape: `g2-standard-8`, 1 x NVIDIA L4
+- served model: `openai/gpt-oss-20b`
+- engine: vLLM `0.23.0`
+- proxy: Hydralisk bearer-protected FastAPI proxy
+- public HTTPS origin: stored as the OpenAgents Worker `HYDRALISK_BASE_URL`
+  secret, not committed here
+
+The live serving path passed:
+
+- host-local `scripts/smoke-gpt-oss-20b.sh`
+- public HTTPS-origin `scripts/smoke-gpt-oss-20b.sh`
+
+Public-safe evidence refs for Worker arming:
+
+```text
+HYDRALISK_GPT_OSS_20B_ENABLED=ready
+HYDRALISK_BASE_URL=<worker secret>
+HYDRALISK_BEARER_TOKEN=<worker secret>
+HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.20260624T002313Z
+HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527
+```
+
+The public-safe receipts observed on the host:
+
+- `hydralisk-run-0e65f1ef6281413eab28f8aa71580c7b`: non-streaming,
+  81 total tokens, 2578 ms wall time.
+- `hydralisk-run-88ccd454ea4f4fc7baee9a72c4894527`: streaming,
+  195 total tokens, 77 ms TTFT, 2050 ms wall time.
+
+Hydralisk repo follow-up `31e8b40` records the live promotion and the real
+fresh-host fixes: current DLVM image family
+`common-cu129-ubuntu-2204-nvidia-580`, `build-essential`/`ninja-build` for
+FlashInfer JIT, a quoted GPU env value, and a systemd PATH that includes the
+venv/CUDA toolchain.
+
 ## 2026-06-23 Implementation Update
 
 The Hydralisk repository exists at `OpenAgentsInc/hydralisk`.
@@ -61,10 +105,10 @@ The Worker arms Hydralisk only when all of these are present:
 
 ```text
 HYDRALISK_GPT_OSS_20B_ENABLED=ready
-HYDRALISK_BASE_URL=https://<hydralisk-origin>
-HYDRALISK_BEARER_TOKEN=<secret-backed bearer>
-HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=preflight.hydralisk.gpt_oss_20b.l4.v1
-HYDRALISK_GPT_OSS_20B_RECEIPT_REF=receipt.hydralisk.gpt_oss_20b.l4.smoke.v1
+HYDRALISK_BASE_URL=<worker secret>
+HYDRALISK_BEARER_TOKEN=<worker secret>
+HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF=<public-safe preflight ref>
+HYDRALISK_GPT_OSS_20B_RECEIPT_REF=<public-safe receipt ref>
 ```
 
 When unarmed, `/v1/models` hides `openagents/khala-oss-20b` and
@@ -74,11 +118,8 @@ balance, premium, or provider dispatch. When armed, the route discloses
 `openagents.supply_lane: hydralisk`; the legacy `openagents.lane` remains the
 model class (`open`) for backward compatibility.
 
-The remaining blocker is live host promotion. The latest GCloud audit showed
-`openagentsgemini` has L4 quota in `us-central1`, but the active L4 VM was a
-Psion training contributor and was not reclaimed. Hydralisk issue #1 stays open
-until a fresh or explicitly reclaimed L4 host runs the smoke script against real
-vLLM and publishes the preflight and receipt refs used by the Worker gate.
+The previous blocker was live host promotion. It is now cleared by the
+2026-06-24 L4 deployment above; the Psion L4 hosts were not reclaimed.
 
 The important boundary is simple: Hydralisk can own Python serving mechanics and
 model/runtime evidence, but OpenAgents/Khala keeps pricing, credits, payout,

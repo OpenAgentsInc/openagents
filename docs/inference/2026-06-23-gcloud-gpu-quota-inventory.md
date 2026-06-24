@@ -2,13 +2,20 @@
 
 Date: 2026-06-23
 
+Update 2026-06-24: Hydralisk GPT-OSS 20B is now running on a fresh
+`g2-standard-8` L4 VM, `hydralisk-gptoss20b-l4-20260624000550`, in
+`us-central1-a`. Current `us-central1` on-demand L4 usage is 3 of 16:
+the two Psion `gswarm508-clean2-20260325044551-*` L4 hosts plus the new
+Hydralisk inference host. Public-safe Hydralisk evidence refs are recorded in
+[`2026-06-23-hydralisk-python-nvidia-inference-stack.md`](./2026-06-23-hydralisk-python-nvidia-inference-stack.md).
+
 Update later on 2026-06-23: a follow-up `gcloud compute instances list
 --filter='guestAccelerators:*'` refresh for the GLM-5.2 feasibility pass no
 longer showed `oa-confidential-g4-probe-20260623-1` or any
 `oa-confidential-g4-probe-*` instance. Treat the G4 entry below as proof that
 the Spot G4 RTX PRO 6000 shape was allocatable during the original audit, not as
 current live capacity. Current live GPU instances are the running L4 contributor
-and the terminated L4 coordinator.
+and coordinator plus the live Hydralisk L4 inference host.
 
 Scope: local `gcloud` audit of project `openagentsgemini` for GPU capacity
 usable by the OpenAgents / Khala inference work. This is an access and quota
@@ -25,7 +32,7 @@ The most useful current lane is `us-central1`:
 
 | Lane | Current quota signal | Current usage | Practical inference read |
 | --- | ---: | ---: | --- |
-| L4 / `g2-standard-*` | 16 on-demand, 16 Spot | 1 running L4, 1 stopped L4 | Cheap always-on or small/medium open-weight inference lane; about 15 on-demand L4 quota free in `us-central1`. |
+| L4 / `g2-standard-*` | 16 on-demand, 16 Spot | 3 running L4s | Cheap always-on or small/medium open-weight inference lane; about 13 on-demand L4 quota free in `us-central1` after the Hydralisk GPT-OSS 20B host. |
 | RTX PRO 6000 / `g4-standard-*` | 16 Spot RTX PRO 6000, 16 on-demand VWS RTX PRO 6000 | 0 current live in the later refresh | Best immediate Blackwell-ish single-GPU lane if re-created. We have proven VM creation for a Spot `g4-standard-48` with 1 RTX PRO 6000 in `us-central1-b`, but the probe is no longer live. |
 | H100 / `a3-highgpu-*` | 64 Spot/preemptible H100 | 0 observed running | Strong single/multi-GPU lane for vLLM/SGLang probes and the Prompt Encryption SDK path. Quota exists; allocation still needs a create test. |
 | H200 | 64 Spot/preemptible H200 | 0 observed running | Promising high-memory lane; visible in `us-central1-b`, but no create test yet. |
@@ -33,13 +40,14 @@ The most useful current lane is `us-central1`:
 | A100 40GB | 16 on-demand, 64 Spot/preemptible | 0 observed running | Useful fallback for engines that do not need H100/RTX PRO 6000. |
 | A100 80GB | older Compute quota shows 0 in `us-central1`; Cloud Quotas did not show a usable nonblank regional value | 0 observed running | Do not plan on A100 80GB here unless quota is raised or a create test proves otherwise. |
 
-The original live inventory included:
+GPU instances observed across the audit and 2026-06-24 update:
 
 | Instance | Zone | Shape | GPU | Scheduling | Confidential | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `oa-confidential-g4-probe-20260623-1` | `us-central1-b` | `g4-standard-48` | 1 x `nvidia-rtx-pro-6000` | Spot/preemptible, stop on termination | `confidentialInstanceType: SEV` | `RUNNING` |
+| `oa-confidential-g4-probe-20260623-1` | `us-central1-b` | `g4-standard-48` | 1 x `nvidia-rtx-pro-6000` | Spot/preemptible, stop on termination | `confidentialInstanceType: SEV` | no longer visible in later refresh |
 | `gswarm508-clean2-20260325044551-contrib` | `us-central1-b` | `g2-standard-8` | 1 x `nvidia-l4` | standard on-demand | none | `RUNNING` |
-| `gswarm508-clean2-20260325044551-coord` | `us-central1-a` | `g2-standard-8` | 1 x `nvidia-l4` | not inspected in detail | none | `TERMINATED` |
+| `gswarm508-clean2-20260325044551-coord` | `us-central1-a` | `g2-standard-8` | 1 x `nvidia-l4` | not inspected in detail | none | `RUNNING` |
+| `hydralisk-gptoss20b-l4-20260624000550` | `us-central1-a` | `g2-standard-8` | 1 x `nvidia-l4` | standard on-demand | none | `RUNNING` |
 
 The G4 probe is still the biggest update versus the earlier confidential AI
 access note: access to G4 was not just visible; one Spot G4 VM with an RTX PRO
@@ -73,7 +81,7 @@ Older Compute regional quota output for `us-central1`:
 
 | Metric | Limit | Usage | Free by quota math |
 | --- | ---: | ---: | ---: |
-| `NVIDIA_L4_GPUS` | 16 | 1 | 15 |
+| `NVIDIA_L4_GPUS` | 16 | 3 | 13 |
 | `PREEMPTIBLE_NVIDIA_L4_GPUS` | 16 | 0 | 16 |
 | `NVIDIA_A100_GPUS` | 16 | 0 | 16 |
 | `PREEMPTIBLE_NVIDIA_A100_GPUS` | 64 | 0 | 64 |
@@ -126,7 +134,7 @@ families Google exposes to this project by zone.
 | NVIDIA H200 141GB | 9 regions | `us-central1-b` | High-memory lane; quota signal is Spot/preemptible 64 per region. |
 | NVIDIA B200 180GB | 10 regions | `us-central1-b` | Next-gen lane; quota signal is Spot/preemptible 64 per region. |
 | NVIDIA GB200 192GB | 4 regions | `us-central1-a`, `us-central1-b` | Visible accelerator type, but I did not find an explicit usable GB200 quota row in this audit. |
-| NVIDIA L4 | 18 regions | `us-central1-a`, `us-central1-b`, `us-central1-c` | Cheap current inference lane. One on-demand L4 is running. |
+| NVIDIA L4 | 18 regions | `us-central1-a`, `us-central1-b`, `us-central1-c` | Cheap current inference lane. Three on-demand L4s are running, including the Hydralisk GPT-OSS 20B host. |
 | NVIDIA A100 80GB | 5 regions | `us-central1-a`, `us-central1-c` | Visible, but quota is not currently favorable in `us-central1`. |
 | NVIDIA A100 40GB (`nvidia-tesla-a100`) | 10 regions | `us-central1-a`, `us-central1-b`, `us-central1-c`, `us-central1-f` | Usable fallback; 16 on-demand / 64 Spot in `us-central1`. |
 | NVIDIA V100 | 5 regions | `us-central1-a`, `us-central1-b`, `us-central1-c`, `us-central1-f` | Older fallback. |
@@ -144,7 +152,7 @@ rows across regions. Aggregated high-signal rows:
 | `PREEMPTIBLE_NVIDIA_A100_GPUS` | 43 | 2752 | 0 |
 | `NVIDIA_A100_GPUS` | 43 | 688 | 0 |
 | `PREEMPTIBLE_NVIDIA_L4_GPUS` | 43 | 688 | 0 |
-| `NVIDIA_L4_GPUS` | 43 | 688 | 1 |
+| `NVIDIA_L4_GPUS` | 43 | 688 | 3 |
 | `NVIDIA_K80_GPUS` | 24 | 384 | 0 |
 | `PREEMPTIBLE_NVIDIA_P100_GPUS` | 24 | 384 | 0 |
 | `PREEMPTIBLE_NVIDIA_P4_GPUS` | 24 | 384 | 0 |
