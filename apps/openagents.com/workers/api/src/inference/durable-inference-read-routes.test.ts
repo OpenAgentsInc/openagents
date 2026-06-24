@@ -287,4 +287,19 @@ describe('routeDurableInferenceReadRequestDO (production DO-backed resume)', () 
     )
     expect(result?.status).toBe(400)
   })
+
+  test('502 (not an unhandled 500 defect) when the DO transport genuinely faults', async () => {
+    // A missing stream is a graceful 404 (the fixed prod crash); a TRUE transport
+    // fault (binding unreachable) must be a clean 502, never a thrown defect.
+    const faulting: DurableStreamNamespace = {
+      getByName: () => ({
+        fetch: () => Promise.reject(new Error('DO unreachable')),
+      }),
+    }
+    const result = await routeDurableInferenceReadRequestDO(
+      req(`${durableInferenceReadUrl('req-fault')}?offset=0`),
+      { enabled: true, namespace: faulting },
+    )
+    expect(result?.status).toBe(502)
+  })
 })

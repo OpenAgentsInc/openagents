@@ -18,6 +18,16 @@ import type { AppendResult, ProducerState, StreamMeta, StreamStore } from "./sto
 // Minimal structural typings for the DO SQLite surface (mirrors the world DO's
 // approach of typing `ctx.storage.sql` locally rather than depending on
 // @cloudflare/workers-types at the package level).
+//
+// IMPORTANT — `one()` THROWS on zero rows: Cloudflare's real `SqlStorageCursor`
+// `.one()` returns the single row but raises "Expected exactly one result from
+// SQL query, but got no results." for zero rows (and an analogous error for >1).
+// `getMeta()`/`getProducer()` must read a row that MAY NOT EXIST yet (a missing
+// or not-yet-created stream), so this adapter reads the first row of `toArray()`
+// — which tolerates zero rows — and NEVER calls `.one()` on those queries. (The
+// in-memory `MemoryStreamStore` returns null/undefined for the same case, so the
+// in-memory conformance tests never exercised `.one()`'s throw; a real-SQLite
+// test in `sqlite-do.test.ts` now does.)
 interface SqlCursor<T> {
   toArray(): Array<T>
   one(): T | undefined
@@ -34,6 +44,10 @@ interface DurableObjectStateLike {
   readonly storage: DurableObjectStorageLike
   blockConcurrencyWhile<T>(fn: () => Promise<T>): Promise<T>
 }
+
+// Read the first row of a single-row query without `.one()`'s throw-on-zero-rows
+// behaviour. Returns `undefined` when the query matched no rows.
+const firstRow = <T>(cursor: SqlCursor<T>): T | undefined => cursor.toArray()[0]
 
 const MIGRATIONS: ReadonlyArray<string> = [
   `CREATE TABLE IF NOT EXISTS ds_meta (
@@ -66,8 +80,10 @@ export class SqliteStreamStore implements StreamStore {
   }
 
   getMeta(): StreamMeta | null {
-    const row = this.sql
-      .exec<{
+    // A not-yet-created / missing stream has zero `ds_meta` rows. Use `firstRow`
+    // (not `.one()`) so that returns null instead of throwing on the real DO.
+    const row = firstRow(
+      this.sql.exec<{
         stream_id: string
         content_type: string
         ttl_seconds: number | null
@@ -75,8 +91,8 @@ export class SqliteStreamStore implements StreamStore {
         closed: number
         created_at_ms: number
         last_stream_seq: string | null
-      }>(`SELECT * FROM ds_meta WHERE id = 1`)
-      .one()
+      }>(`SELECT * FROM ds_meta WHERE id = 1`),
+    )
     if (row === undefined) return null
     return {
       streamId: row.stream_id,
@@ -118,9 +134,13 @@ export class SqliteStreamStore implements StreamStore {
   }
 
   byteLength(): number {
-    const row = this.sql
-      .exec<{ n: number | null }>(`SELECT MAX(pos + LENGTH(byte)) AS n FROM ds_log`)
-      .one()
+    // `MAX(...)` over an aggregate always yields exactly one row (n=null when
+    // empty), but read via `firstRow` for uniformity / defence-in-depth.
+    const row = firstRow(
+      this.sql.exec<{ n: number | null }>(
+        `SELECT MAX(pos + LENGTH(byte)) AS n FROM ds_log`,
+      ),
+    )
     return row?.n ?? 0
   }
 
@@ -186,12 +206,19 @@ export class SqliteStreamStore implements StreamStore {
   }
 
   getProducer(producerId: string): ProducerState | null {
-    const row = this.sql
-      .exec<{ epoch: number; last_seq: number; closing_epoch: number | null; closing_seq: number | null }>(
+    // An unknown producer has zero `ds_producer` rows. Use `firstRow` (not
+    // `.one()`) so the brand-new-producer path returns null instead of throwing.
+    const row = firstRow(
+      this.sql.exec<{
+        epoch: number
+        last_seq: number
+        closing_epoch: number | null
+        closing_seq: number | null
+      }>(
         `SELECT epoch, last_seq, closing_epoch, closing_seq FROM ds_producer WHERE producer_id = ?`,
         producerId,
-      )
-      .one()
+      ),
+    )
     if (row === undefined) return null
     return {
       epoch: row.epoch,
