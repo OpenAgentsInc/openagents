@@ -2,12 +2,17 @@
 
 Date: 2026-06-23
 
-Update 2026-06-24: DeepSeek V4 Flash is now wired as an operator-selected
-Fireworks backing lane for the single public Khala model (`openagents/khala`) in
-OpenAgents issue #6198 / commit `84dbe64c93`. This does not prove Google
-self-hosting for DeepSeek V4 Flash: the provider notes still point at stock
-vLLM 0.20+ with DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Treat
-the Google G4/L4 inventory here as useful for smaller/owned probes, while the
+Update 2026-06-24: DeepSeek V4 Flash is live behind the single public Khala
+model (`openagents/khala`) through the operator-selected Fireworks backing lane.
+The production proof is issue #6201, Worker version
+`67a6648f-36a2-4824-8486-b274b2f83056`, and commit
+`da347df50256027d75237d8153a568dcfa2d9c49`; `/v1/models` exposes only
+`openagents/khala`, while authenticated non-streaming and streaming smokes both
+reported `served_model: accounts/fireworks/models/deepseek-v4-flash`,
+`supply_lane: fireworks`, and `worker: fireworks`. This does not prove Google
+self-hosting for DeepSeek V4 Flash: the provider notes still point at stock vLLM
+0.20+ with DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Treat the
+Google G4/L4 inventory here as useful for smaller/owned probes, while the
 immediate DeepSeek V4 Flash product path is the provider-backed Khala lane
 documented in
 [`2026-06-24-khala-deepseek-v4-flash-provider-backing.md`](./2026-06-24-khala-deepseek-v4-flash-provider-backing.md).

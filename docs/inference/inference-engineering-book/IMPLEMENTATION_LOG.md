@@ -434,3 +434,39 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
 - **Honest scope:** docs-only study. No production primitive, WebSocket route,
   batch worker, image/video worker, telemetry schema, product-promise state,
   traffic, spend, or deploy behavior changed.
+
+---
+
+## P2-12 — Provider-Backed DeepSeek Behind Khala — DONE, deployed `67a6648f`
+
+- **Notes ref:** `khala-investigation-notes.md` §P1/P2 provider matrix,
+  multi-cloud routing, and receipt-first honesty; the DeepSeek V4 Flash provider
+  inventory attachment; and
+  `../2026-06-24-khala-deepseek-v4-flash-provider-backing.md`.
+- **What shipped:** the single public OpenAI-compatible model remains
+  `openagents/khala`, but the operator can arm
+  `KHALA_BACKING_MODEL=deepseek-v4-flash` so Khala dispatches first to
+  Fireworks and maps the hidden provider id to
+  `accounts/fireworks/models/deepseek-v4-flash`. Public model selection did not
+  reopen.
+- **Production fix from smoke:** the first live smoke proved Fireworks was
+  serving DeepSeek but exposed a stale `supply_lane: hydralisk` because receipt
+  construction fell back from requested model `openagents/khala`. Commit
+  `da347df50256027d75237d8153a568dcfa2d9c49` now derives supply lane from the
+  served model first, then adapter id, then requested model fallback.
+- **Production evidence:** Worker version
+  `67a6648f-36a2-4824-8486-b274b2f83056` deployed with
+  `KHALA_BACKING_MODEL=deepseek-v4-flash`. Readiness returned `status: ready`
+  and `servableModelCount: 1`; `/v1/models` listed exactly `openagents/khala`;
+  forbidden raw/split ids were absent. Authenticated non-streaming and streaming
+  smokes both preserved public `openagents/khala` and disclosed
+  `served_model: accounts/fireworks/models/deepseek-v4-flash`,
+  `supply_lane: fireworks`, and `worker: fireworks`.
+- **Verification bar:** focused chat/router/pricing tests passed (153 tests);
+  Khala/GPT-OSS production-smoke unit tests passed (7 tests); Worker typecheck
+  passed; full pre-push `check:deploy` passed before the metadata fix was pushed.
+- **Honest scope:** this is a provider-backed production lane, not Google
+  self-hosting. The provider inventory still points stock DeepSeek V4 Flash at
+  vLLM 0.20+ / DeepGEMM on 8x H100/H200/B200-class high-memory hardware. Google
+  L4/G4 remains useful for smaller owned probes; native DeepSeek V4 Flash on
+  Google is a separate capacity and engine-validation problem.

@@ -1,7 +1,59 @@
 # Khala DeepSeek V4 Flash Provider Backing
 
 Date: 2026-06-24
-Issue: OpenAgentsInc/openagents#6198
+Issues: OpenAgentsInc/openagents#6198, OpenAgentsInc/openagents#6201
+
+## Production Activation
+
+Status: live on `https://openagents.com/v1/chat/completions` as of
+2026-06-24.
+
+Production commits:
+
+- `84dbe64c93`: initial Fireworks DeepSeek V4 Flash backing lane for Khala.
+- `346c44872065130660955b73b84b3283e0d945f5`: production smoke harness for the
+  closed Khala catalog and live backing disclosure.
+- `da347df50256027d75237d8153a568dcfa2d9c49`: receipt metadata fix so
+  Fireworks-backed Khala reports the concrete supply lane as `fireworks`, not
+  the requested-model fallback lane.
+
+Worker deploy:
+
+- Cloudflare Worker version:
+  `67a6648f-36a2-4824-8486-b274b2f83056`
+- Deploy command shape:
+  `bun run build:web`, then `bunx wrangler deploy --assets ../../apps/web/dist --containers-rollout none`
+- Env evidence from deploy output:
+  `KHALA_BACKING_MODEL=deepseek-v4-flash`
+
+Production smoke:
+
+- Public site and concrete JS asset returned HTTP 200.
+- `node apps/openagents.com/scripts/khala-production-smoke.mjs --readiness-only`
+  returned `ok: true`, `status: ready`, `servableModelCount: 1`.
+- `/v1/models` listed exactly one public model, `openagents/khala`; forbidden
+  raw/split ids were absent.
+- Authenticated live spend smoke with `--approve-live-spend` returned
+  `ok: true`.
+- Non-streaming response:
+  - public response model: `openagents/khala`
+  - requested model: `openagents/khala`
+  - served model: `accounts/fireworks/models/deepseek-v4-flash`
+  - supply lane: `fireworks`
+  - worker: `fireworks`
+  - response id: `chatcmpl_227263e010ae490796a001969643a381`
+- Streaming response:
+  - stream completed with `[DONE]`
+  - frame count: 3
+  - requested model: `openagents/khala`
+  - served model: `accounts/fireworks/models/deepseek-v4-flash`
+  - supply lane: `fireworks`
+  - worker: `fireworks`
+
+The result is the intended production shape: external users see only
+`openagents/khala`, while internal receipt metadata is precise enough to prove
+the hidden DeepSeek V4 Flash backing lane and bill against the Fireworks
+supply/cost basis.
 
 ## Decision
 
@@ -102,20 +154,29 @@ Local validation on 2026-06-24:
   response content matched the smoke sentinel and the response carried
   provider usage metadata for receipt metering.
 
+Production validation on 2026-06-24:
+
+- `bun run --cwd apps/openagents.com/workers/api test -- src/inference/chat-completions-routes.test.ts src/inference/model-router.test.ts src/inference/pricing.test.ts`
+  passed: 3 files, 153 tests.
+- `cd apps/openagents.com && bunx vitest run scripts/khala-production-smoke.test.ts scripts/gpt-oss20b-production-smoke.test.ts`
+  passed: 2 files, 7 tests.
+- `bun run --cwd apps/openagents.com/workers/api typecheck` passed.
+- Full pre-push `check:deploy` passed before pushing
+  `da347df50256027d75237d8153a568dcfa2d9c49`.
+- Production readiness-only smoke passed.
+- Production authenticated non-streaming and streaming smoke passed, with
+  `openagents/khala` public model preservation and Fireworks DeepSeek backing
+  disclosure.
+
 ## Remaining Work
 
-To make this live in production after merge:
+The live serving path is done. The next production-hardening step is receipt
+dereference proof: the smoke should follow the `openagents` telemetry receipt
+URL/detail ref and assert that the public-safe receipt itself carries the same
+requested model, served model, worker, supply lane, usage, and pricing evidence
+without raw prompts, secrets, or provider-private payloads.
 
-1. Ensure the Cloudflare Worker has the `FIREWORKS_API_KEY` secret set.
-2. Deploy `apps/openagents.com/workers/api` with
-   `KHALA_BACKING_MODEL=deepseek-v4-flash`.
-3. Run an authenticated `POST https://openagents.com/v1/chat/completions` with
-   `model: "openagents/khala"`.
-4. Verify the response model remains `openagents/khala`, the served receipt
-   points at the Fireworks DeepSeek backing, and a real ledger/MPP payment
-   receipt resolves.
-
-The self-hosted Google path remains a separate Hydralisk/Psionic effort:
-reserve or obtain an 8x high-memory H100/H200/B200-class host, validate vLLM
-0.20+ DeepGEMM admission, then profile toward the custom expert-prefetch path
-captured in the DeepSeek V4 Flash notes.
+The self-hosted Google path remains a separate Hydralisk/Psionic effort. Reserve
+or obtain an 8x high-memory H100/H200/B200-class host, validate vLLM 0.20+
+DeepGEMM admission, then profile toward the custom expert-prefetch path captured
+in the DeepSeek V4 Flash notes.
