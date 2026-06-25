@@ -23,6 +23,14 @@ import { Effect } from 'effect'
 export type InferenceMessage = Readonly<{
   role: string
   content: string
+  // OpenAI-compatible tool-call replay metadata. Tool-using clients (OpenCode,
+  // AI SDK, etc.) send prior assistant tool calls and tool results back through
+  // the next request; adapters that speak OpenAI-compatible chat must preserve
+  // these fields so the provider can associate each tool result with the call
+  // that requested it.
+  name?: string | undefined
+  toolCallId?: string | undefined
+  toolCalls?: ReadonlyArray<InferenceToolCall> | undefined
 }>
 
 // Normalized inference request handed to an adapter. Adapter implementations
@@ -49,6 +57,27 @@ export type InferenceUsage = Readonly<{
   cachedPromptTokens?: number | undefined
 }>
 
+export type InferenceToolCall = Readonly<{
+  id: string
+  type: 'function'
+  function: Readonly<{
+    name: string
+    arguments: string
+  }>
+}>
+
+export type InferenceToolCallDelta = Readonly<{
+  index: number
+  id?: string | undefined
+  type?: 'function' | undefined
+  function?:
+    | Readonly<{
+        name?: string | undefined
+        arguments?: string | undefined
+      }>
+    | undefined
+}>
+
 // Non-streaming adapter result.
 export type InferenceResult = Readonly<{
   // The assistant message content for the (single) completion choice.
@@ -59,6 +88,9 @@ export type InferenceResult = Readonly<{
   // Provider-native model id actually served (may differ from the requested
   // alias once routing/aliasing lands).
   servedModel: string
+  // OpenAI-compatible assistant tool calls, present when `finishReason` is
+  // `tool_calls` or a provider returns an assistant message that requests tools.
+  toolCalls?: ReadonlyArray<InferenceToolCall> | undefined
 }>
 
 // One normalized SSE frame as it is parsed off the upstream byte stream, plus
@@ -71,6 +103,10 @@ export type InferenceResult = Readonly<{
 export type InferenceStreamEvent = Readonly<{
   // Incremental content for this frame (may be empty on the terminal frame).
   contentDelta: string
+  // Incremental OpenAI-compatible tool-call deltas. Arguments may arrive in many
+  // partial frames; the route must forward them as-is instead of trying to
+  // assemble or validate the provider's JSON argument stream.
+  toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
   // Set when the upstream reports a finish reason (terminal frame).
   finishReason?: string | undefined
   // Set when the upstream emits a usage frame (terminal, receipt-first).
@@ -108,6 +144,8 @@ export type InferenceStreamSource = Readonly<{
 export type InferenceStreamChunk = Readonly<{
   // Incremental content delta for this frame (may be empty on the final frame).
   contentDelta: string
+  // Incremental OpenAI-compatible tool-call deltas.
+  toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
   // Set on the terminal frame only.
   finishReason?: string | undefined
   // Set on the terminal frame only (receipt-first usage).

@@ -35,7 +35,10 @@ import {
   type DurableProducerOutcome,
   type DurableReplay,
 } from './durable-inference-proxy'
-import { type InferenceStreamSource } from './provider-adapter'
+import {
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
+} from './provider-adapter'
 
 // Structural typing for the DO namespace + stub surface, matching the package's
 // own convention of typing the Cloudflare runtime locally rather than depending
@@ -147,6 +150,7 @@ export const teeUpstreamToDurableDO = async (input: {
   readonly namespace: DurableStreamNamespace
   readonly requestId: string
   readonly frameForDelta: (delta: string) => string
+  readonly frameForEvent?: ((event: InferenceStreamEvent) => string) | undefined
   readonly onEof: (
     terminal: ReturnType<InferenceStreamSource['terminal']>,
     content: string,
@@ -154,7 +158,15 @@ export const teeUpstreamToDurableDO = async (input: {
   readonly emit: (frame: string) => void
   readonly source: InferenceStreamSource
 }): Promise<DurableProducerOutcome> => {
-  const { emit, frameForDelta, namespace, onEof, requestId, source } = input
+  const {
+    emit,
+    frameForDelta,
+    frameForEvent,
+    namespace,
+    onEof,
+    requestId,
+    source,
+  } = input
 
   const stub = namespace.getByName(requestId)
   let durable = await ensureStreamDO(stub, requestId).catch(() => false)
@@ -177,9 +189,15 @@ export const teeUpstreamToDurableDO = async (input: {
 
   try {
     for await (const event of source.frames) {
-      if (event.contentDelta !== '') {
+      const hasDelta =
+        event.contentDelta !== '' ||
+        (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
+      if (hasDelta) {
         contentParts.push(event.contentDelta)
-        const frame = frameForDelta(event.contentDelta)
+        const frame =
+          frameForEvent === undefined
+            ? frameForDelta(event.contentDelta)
+            : frameForEvent(event)
         await persist(frame, false)
         if (durable) {
           seq += 1

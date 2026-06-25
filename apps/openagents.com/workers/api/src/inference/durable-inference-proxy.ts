@@ -42,7 +42,10 @@ import {
   tailOffset,
 } from '@openagentsinc/durable-stream'
 
-import { type InferenceStreamSource } from './provider-adapter'
+import {
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
+} from './provider-adapter'
 
 // The durable wire content type for persisted completion frames. Each appended
 // record is one already-rendered `chat.completion.chunk` SSE frame (text), so a
@@ -196,6 +199,10 @@ export const teeUpstreamToDurable = async (input: {
   readonly nowMs: number
   // Persist + forward each rendered content-delta frame to the client.
   readonly frameForDelta: (delta: string) => string
+  // Persist + forward a full rendered frame when the upstream carries a
+  // non-text delta such as OpenAI `tool_calls`. Older callers can keep using
+  // `frameForDelta` because content-only frames are still representable there.
+  readonly frameForEvent?: ((event: InferenceStreamEvent) => string) | undefined
   // Build the terminal frame (empty delta + finish reason + `openagents` block).
   // Receives the metering-once outcome the route resolves from the terminal
   // usage. Returns the rendered terminal SSE frame to persist + forward.
@@ -207,7 +214,16 @@ export const teeUpstreamToDurable = async (input: {
   readonly emit: (frame: string) => void
   readonly source: InferenceStreamSource
 }): Promise<DurableProducerOutcome> => {
-  const { emit, frameForDelta, nowMs, onEof, requestId, source, store } = input
+  const {
+    emit,
+    frameForDelta,
+    frameForEvent,
+    nowMs,
+    onEof,
+    requestId,
+    source,
+    store,
+  } = input
 
   ensureStream(store, requestId, nowMs)
 
@@ -216,9 +232,15 @@ export const teeUpstreamToDurable = async (input: {
 
   try {
     for await (const event of source.frames) {
-      if (event.contentDelta !== '') {
+      const hasDelta =
+        event.contentDelta !== '' ||
+        (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
+      if (hasDelta) {
         contentParts.push(event.contentDelta)
-        const frame = frameForDelta(event.contentDelta)
+        const frame =
+          frameForEvent === undefined
+            ? frameForDelta(event.contentDelta)
+            : frameForEvent(event)
         // Persist BEFORE emitting so a crash between persist and emit still
         // leaves the durable log ahead of (or equal to) what the client saw —
         // resume can only ever replay MORE, never less.

@@ -46,13 +46,15 @@
 // account/session/codebase identifiers — only an opaque correlation token.
 
 import { hashCacheAffinityKey } from './khala-telemetry'
+import { type InferenceMessage } from './provider-adapter'
 
 // ---------------------------------------------------------------------------
-// Message shape (structural — mirrors InferenceMessage without importing it, so
-// this module stays a pure leaf with no dependency on the adapter contract).
+// Message shape. Type-only import keeps this module runtime-pure while ensuring
+// cache-prefix assembly preserves OpenAI tool metadata carried on inference
+// messages (assistant `tool_calls`, tool `tool_call_id`, optional names).
 // ---------------------------------------------------------------------------
 
-export type PromptMessage = Readonly<{ role: string; content: string }>
+export type PromptMessage = InferenceMessage
 
 // ---------------------------------------------------------------------------
 // 1 + 2. Stable prompt layout (stable content first, novel content last).

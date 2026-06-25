@@ -34,6 +34,11 @@ import {
   type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
+import {
+  inferenceToolCallDeltasFromUnknown,
+  inferenceToolCallsFromUnknown,
+  openAiWireMessageFromInferenceMessage,
+} from './openai-chat-compat'
 
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 
@@ -127,10 +132,7 @@ const toRequestBody = (request: InferenceRequest): Record<string, unknown> => {
     request.passthroughParams
   return {
     ...params,
-    messages: request.messages.map(message => ({
-      content: message.content,
-      role: message.role,
-    })),
+    messages: request.messages.map(openAiWireMessageFromInferenceMessage),
     model: toFireworksModelId(request.model),
     stream: request.stream,
     // RECEIPT-FIRST STREAMING (the "missing terminal usage frame" 524 fix):
@@ -242,6 +244,19 @@ const deltaContentOf = (frame: Record<string, unknown>): string => {
   return typeof content === 'string' ? content : ''
 }
 
+const toolCallDeltasOf = (
+  frame: Record<string, unknown>,
+): InferenceStreamEvent['toolCallDeltas'] => {
+  const choice = firstChoice(frame)
+  const delta = recordFromUnknown(choice?.['delta'])
+  const toolCallDeltas = inferenceToolCallDeltasFromUnknown(
+    delta?.['tool_calls'],
+  )
+  return toolCallDeltas === undefined || toolCallDeltas.length === 0
+    ? undefined
+    : toolCallDeltas
+}
+
 const finishReasonOf = (frame: Record<string, unknown>): string | undefined => {
   const choice = firstChoice(frame)
   const reason = choice?.['finish_reason']
@@ -256,10 +271,15 @@ const eventForFrame = (
 ): InferenceStreamEvent => {
   const event: {
     contentDelta: string
+    toolCallDeltas?: InferenceStreamEvent['toolCallDeltas']
     finishReason?: string
     usage?: InferenceUsage
     servedModel?: string
   } = { contentDelta: deltaContentOf(frame) }
+  const toolCallDeltas = toolCallDeltasOf(frame)
+  if (toolCallDeltas !== undefined) {
+    event.toolCallDeltas = toolCallDeltas
+  }
   const reason = finishReasonOf(frame)
   if (reason !== undefined) {
     event.finishReason = reason
@@ -481,6 +501,7 @@ export const makeFireworksAdapter = (
       }
       const choice = firstChoice(raw)
       const message = recordFromUnknown(choice?.['message'])
+      const toolCalls = inferenceToolCallsFromUnknown(message?.['tool_calls'])
       const content =
         typeof message?.['content'] === 'string'
           ? (message['content'] as string)
@@ -493,6 +514,9 @@ export const makeFireworksAdapter = (
         content,
         finishReason,
         servedModel: servedModelFrom(raw, toFireworksModelId(request.model)),
+        ...(toolCalls === undefined || toolCalls.length === 0
+          ? {}
+          : { toolCalls }),
         usage,
       } satisfies InferenceResult
     }),
@@ -526,17 +550,27 @@ export const makeFireworksAdapter = (
 
       for (const frame of frames) {
         servedModel = servedModelFrom(frame, servedModel)
-        const delta = deltaContentOf(frame)
-        if (delta !== '') {
-          contentChunks.push({ contentDelta: delta })
+        const event = eventForFrame(frame)
+        if (
+          event.contentDelta !== '' ||
+          (event.toolCallDeltas !== undefined &&
+            event.toolCallDeltas.length > 0)
+        ) {
+          contentChunks.push({
+            contentDelta: event.contentDelta,
+            ...(event.toolCallDeltas === undefined
+              ? {}
+              : { toolCallDeltas: event.toolCallDeltas }),
+          })
         }
-        const reason = finishReasonOf(frame)
-        if (reason !== undefined) {
-          finishReason = reason
+        if (event.finishReason !== undefined) {
+          finishReason = event.finishReason
         }
-        const frameUsage = extractUsage(frame)
-        if (frameUsage !== undefined) {
-          usage = frameUsage
+        if (event.usage !== undefined) {
+          usage = event.usage
+        }
+        if (event.servedModel !== undefined) {
+          servedModel = event.servedModel
         }
       }
 

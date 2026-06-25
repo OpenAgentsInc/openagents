@@ -16,8 +16,9 @@
 // only base URL + key. Anthropic Messages compatibility is a parallel surface;
 // a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
 // #5476.
-import { Effect, Schema as S } from 'effect'
+import { Effect } from 'effect'
 
+import { recordFromUnknown } from '../json-boundary'
 import { noStoreJsonResponse } from '../http/responses'
 import {
   compactRandomId,
@@ -149,10 +150,12 @@ import {
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamSource,
+  type InferenceToolCallDelta,
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 import { type ServedTokensRecorder } from './served-tokens-recorder'
+import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. Public model selection has
@@ -524,21 +527,13 @@ export type ChatCompletionsDeps = Readonly<{
 }>
 
 // REQUEST SCHEMA ----------------------------------------------------------
-const ChatMessage = S.Struct({
-  role: S.String,
-  content: S.String,
-})
-
-// OpenAI Chat Completions request. Unknown sampling params are preserved and
-// forwarded to the adapter via `passthroughParams`; only the load-bearing
-// fields are decoded here.
-const ChatCompletionsRequestBody = S.Struct({
+type ChatCompletionsRequestBody = Readonly<{
   // `model` is OPTIONAL: an unspecified model defaults to DEFAULT_CHAT_MODEL
   // (`openagents/khala`) in `resolveRequestedModel` below.
-  model: S.optionalKey(S.String),
-  messages: S.Array(ChatMessage),
-  stream: S.optionalKey(S.Boolean),
-})
+  model?: string | undefined
+  messages: ReadonlyArray<InferenceMessage>
+  stream?: boolean | undefined
+}>
 
 // Resolve the effective requested model: a present, non-blank `model` normalized
 // through the single Khala alias rule, otherwise the Khala default. Centralized
@@ -551,11 +546,87 @@ export const resolveRequestedModel = (model: string | undefined): string => {
     : normalizeKhalaModelId(trimmed)
 }
 
-const decodeBody = (value: unknown) => {
-  try {
-    return S.decodeUnknownSync(ChatCompletionsRequestBody)(value)
-  } catch {
+const decodeOpenAiContent = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value === null) {
+    return ''
+  }
+  if (!Array.isArray(value)) {
     return undefined
+  }
+  const parts: Array<string> = []
+  for (const item of value) {
+    const record = recordFromUnknown(item)
+    if (record?.['type'] !== 'text' || typeof record['text'] !== 'string') {
+      return undefined
+    }
+    parts.push(record['text'])
+  }
+  return parts.join('\n\n')
+}
+
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined
+
+const decodeMessage = (value: unknown): InferenceMessage | undefined => {
+  const record = recordFromUnknown(value)
+  const role = nonEmptyString(record?.['role'])
+  if (record === undefined || role === undefined) {
+    return undefined
+  }
+  const rawToolCalls = record['tool_calls']
+  const toolCalls =
+    rawToolCalls === undefined
+      ? undefined
+      : inferenceToolCallsFromUnknown(rawToolCalls)
+  if (rawToolCalls !== undefined && toolCalls === undefined) {
+    return undefined
+  }
+  const content =
+    record['content'] === undefined && toolCalls !== undefined
+      ? ''
+      : decodeOpenAiContent(record['content'])
+  if (content === undefined) {
+    return undefined
+  }
+  const toolCallId = nonEmptyString(record['tool_call_id'])
+  const name = nonEmptyString(record['name'])
+  return {
+    content,
+    ...(name === undefined ? {} : { name }),
+    role,
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+    ...(toolCalls === undefined || toolCalls.length === 0
+      ? {}
+      : { toolCalls }),
+  }
+}
+
+const decodeBody = (
+  value: unknown,
+): ChatCompletionsRequestBody | undefined => {
+  const record = recordFromUnknown(value)
+  if (record === undefined || !Array.isArray(record['messages'])) {
+    return undefined
+  }
+  const model = record['model']
+  if (model !== undefined && typeof model !== 'string') {
+    return undefined
+  }
+  const stream = record['stream']
+  if (stream !== undefined && typeof stream !== 'boolean') {
+    return undefined
+  }
+  const messages = record['messages'].map(decodeMessage)
+  if (messages.some(message => message === undefined)) {
+    return undefined
+  }
+  return {
+    messages: messages as ReadonlyArray<InferenceMessage>,
+    ...(model === undefined ? {} : { model }),
+    ...(stream === undefined ? {} : { stream }),
   }
 }
 
@@ -649,7 +720,7 @@ const buildTaggedKhalaMessages = (
 }
 
 const toInferenceRequest = (
-  body: typeof ChatCompletionsRequestBody.Type,
+  body: ChatCompletionsRequestBody,
   raw: Record<string, unknown>,
   requestedModel: string,
   // The session-affinity passthrough params derived from the request's
@@ -662,9 +733,7 @@ const toInferenceRequest = (
   componentChannelActive?: boolean,
   autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
 ): InferenceRequest => {
-  const clientMessages: ReadonlyArray<InferenceMessage> = body.messages.map(
-    message => ({ content: message.content, role: message.role }),
-  )
+  const clientMessages: ReadonlyArray<InferenceMessage> = body.messages
   // For a non-Khala model, leave the messages exactly as the client sent them
   // (no gateway injection, no reordering) — byte-identical to prior behavior.
   // For a Khala model, assemble the cache-optimal stable layout.
@@ -1190,7 +1259,14 @@ const openAiResponse = (
     {
       finish_reason: input.result.finishReason,
       index: 0,
-      message: { content: input.result.content, role: 'assistant' },
+      message: {
+        content: input.result.content,
+        role: 'assistant',
+        ...(input.result.toolCalls === undefined ||
+        input.result.toolCalls.length === 0
+          ? {}
+          : { tool_calls: input.result.toolCalls }),
+      },
     },
   ],
   created: input.created,
@@ -1207,6 +1283,22 @@ const openAiResponse = (
 
 const sseFrame = (payload: unknown): string =>
   `data: ${JSON.stringify(payload)}\n\n`
+
+type StreamFrameDelta = Readonly<{
+  contentDelta: string
+  toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
+}>
+
+const hasStreamFrameDelta = (delta: StreamFrameDelta): boolean =>
+  delta.contentDelta !== '' ||
+  (delta.toolCallDeltas !== undefined && delta.toolCallDeltas.length > 0)
+
+const openAiChunkDelta = (delta: StreamFrameDelta): Record<string, unknown> => ({
+  ...(delta.contentDelta === '' ? {} : { content: delta.contentDelta }),
+  ...(delta.toolCallDeltas === undefined || delta.toolCallDeltas.length === 0
+    ? {}
+    : { tool_calls: delta.toolCallDeltas }),
+})
 
 // Build a TRUE incremental SSE Response body that pumps the upstream stream
 // source to the client frame-by-frame (the khala-code 524 fix). Each content
@@ -1288,14 +1380,14 @@ const makePassThroughResponseStream = (
   const encoder = new TextEncoder()
   const telemetryNow = input.nowMs ?? currentEpochMillis
   const chunkFrame = (
-    delta: string,
+    delta: StreamFrameDelta,
     finishReason: string | null,
     openagents?: OpenAgentsReceipt | undefined,
   ): string =>
     sseFrame({
       choices: [
         {
-          delta: delta === '' ? {} : { content: delta },
+          delta: openAiChunkDelta(delta),
           finish_reason: finishReason,
           index: 0,
         },
@@ -1409,7 +1501,11 @@ const makePassThroughResponseStream = (
         : { routeMetadata: input.routeMetadata }),
       timing: streamTiming,
     })
-    return chunkFrame('', terminal.finishReason ?? 'stop', openagents)
+    return chunkFrame(
+      { contentDelta: '' },
+      terminal.finishReason ?? 'stop',
+      openagents,
+    )
   }
 
   return new ReadableStream<Uint8Array>({
@@ -1435,7 +1531,8 @@ const makePassThroughResponseStream = (
             }
             controller.enqueue(encoder.encode(frame))
           },
-          frameForDelta: delta => chunkFrame(delta, null),
+          frameForDelta: delta => chunkFrame({ contentDelta: delta }, null),
+          frameForEvent: event => chunkFrame(event, null),
           namespace: input.durableNamespace,
           onEof: (terminal, content) =>
             buildTerminalFrame(terminal, content, {
@@ -1460,7 +1557,8 @@ const makePassThroughResponseStream = (
             }
             controller.enqueue(encoder.encode(frame))
           },
-          frameForDelta: delta => chunkFrame(delta, null),
+          frameForDelta: delta => chunkFrame({ contentDelta: delta }, null),
+          frameForEvent: event => chunkFrame(event, null),
           nowMs: input.durableNowMs ?? 0,
           onEof: (terminal, content) =>
             buildTerminalFrame(terminal, content, {
@@ -1481,13 +1579,15 @@ const makePassThroughResponseStream = (
       try {
         // Pump every upstream content delta to the client immediately.
         for await (const event of input.source.frames) {
-          if (event.contentDelta !== '') {
+          if (hasStreamFrameDelta(event)) {
             if (firstTokenMs === undefined) {
               firstTokenMs = telemetryNow()
             }
-            contentParts.push(event.contentDelta)
+            if (event.contentDelta !== '') {
+              contentParts.push(event.contentDelta)
+            }
             controller.enqueue(
-              encoder.encode(chunkFrame(event.contentDelta, null)),
+              encoder.encode(chunkFrame(event, null)),
             )
           }
         }
@@ -2195,10 +2295,7 @@ export const handleChatCompletions = (
             sseFrame({
               choices: [
                 {
-                  delta:
-                    chunk.contentDelta === ''
-                      ? {}
-                      : { content: chunk.contentDelta },
+                  delta: openAiChunkDelta(chunk),
                   finish_reason: chunk.finishReason ?? null,
                   index: 0,
                 },

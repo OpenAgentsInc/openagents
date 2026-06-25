@@ -80,6 +80,110 @@ describe('hydralisk vLLM adapter', () => {
     ).toBe('Bearer hydralisk-token')
   })
 
+  it('preserves OpenAI tool metadata in outbound messages and params', async () => {
+    let captured: Record<string, unknown> | undefined
+
+    const adapter = makeHydraliskVllmAdapter({
+      apiKey: Redacted.make('hydralisk-token'),
+      baseUrl: 'https://hydralisk.example.test/',
+      fetchImpl: async (_input, init) => {
+        captured = JSON.parse(String(init.body)) as Record<string, unknown>
+        return Response.json(responseBody)
+      },
+      id: HYDRALISK_ADAPTER_ID,
+    })
+
+    await Effect.runPromise(
+      adapter.complete(
+        request({
+          messages: [
+            {
+              content: '',
+              role: 'assistant',
+              toolCalls: [
+                {
+                  function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+                  id: 'call_bash',
+                  type: 'function',
+                },
+              ],
+            },
+            {
+              content: '/tmp/project',
+              role: 'tool',
+              toolCallId: 'call_bash',
+            },
+          ],
+          passthroughParams: {
+            max_tokens: 8,
+            tool_choice: 'auto',
+            tools: [
+              {
+                function: {
+                  name: 'bash',
+                  parameters: { type: 'object' },
+                },
+                type: 'function',
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const messages = captured?.['messages'] as
+      | ReadonlyArray<Record<string, unknown>>
+      | undefined
+    expect(captured?.['tools']).toHaveLength(1)
+    expect(captured?.['tool_choice']).toBe('auto')
+    expect(messages?.[0]?.['tool_calls']).toEqual([
+      {
+        function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
+    expect(messages?.[1]?.['tool_call_id']).toBe('call_bash')
+  })
+
+  it('preserves non-streaming assistant tool calls from the provider response', async () => {
+    const adapter = makeHydraliskVllmAdapter({
+      apiKey: Redacted.make('hydralisk-token'),
+      baseUrl: 'https://hydralisk.example.test',
+      fetchImpl: async () =>
+        Response.json({
+          ...responseBody,
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              message: {
+                content: '',
+                tool_calls: [
+                  {
+                    function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+                    id: 'call_bash',
+                    type: 'function',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      id: HYDRALISK_ADAPTER_ID,
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.toolCalls).toEqual([
+      {
+        function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
+  })
+
   it('fails closed when terminal usage is absent', async () => {
     const adapter = makeHydraliskVllmAdapter({
       apiKey: Redacted.make('hydralisk-token'),
@@ -196,6 +300,55 @@ describe('hydralisk vLLM adapter', () => {
       finishReason: 'stop',
       servedModel: 'openai/gpt-oss-20b',
       usage: { completionTokens: 1, promptTokens: 7, totalTokens: 8 },
+    })
+  })
+
+  it('preserves streamed tool_call deltas', async () => {
+    const encoder = new TextEncoder()
+    const sse = [
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_bash","type":"function","function":{"name":"bash"}}]},"finish_reason":null}]}',
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"cmd\\":\\"pwd\\"}"}}]},"finish_reason":null}]}',
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":7,"completion_tokens":4,"total_tokens":11}}',
+      'data: [DONE]',
+    ].join('\n\n')
+    const adapter = makeHydraliskVllmAdapter({
+      apiKey: Redacted.make('hydralisk-token'),
+      baseUrl: 'https://hydralisk.example.test',
+      fetchImpl: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(sse))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' }, status: 200 },
+        ),
+      id: HYDRALISK_ADAPTER_ID,
+    })
+
+    const source = await Effect.runPromise(
+      adapter.streamSse!(request({ stream: true })),
+    )
+    const toolCallDeltas: Array<unknown> = []
+    for await (const frame of source.frames) {
+      if (frame.toolCallDeltas !== undefined) {
+        toolCallDeltas.push(...frame.toolCallDeltas)
+      }
+    }
+
+    expect(toolCallDeltas).toEqual([
+      {
+        function: { name: 'bash' },
+        id: 'call_bash',
+        index: 0,
+        type: 'function',
+      },
+      { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+    ])
+    expect(source.terminal()).toMatchObject({
+      finishReason: 'tool_calls',
+      usage: { completionTokens: 4, promptTokens: 7, totalTokens: 11 },
     })
   })
 })

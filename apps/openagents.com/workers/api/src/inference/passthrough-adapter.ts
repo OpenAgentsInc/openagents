@@ -32,6 +32,10 @@ import {
   type InferenceStreamChunk,
   type InferenceUsage,
 } from './provider-adapter'
+import {
+  inferenceToolCallsFromUnknown,
+  openAiWireMessageFromInferenceMessage,
+} from './openai-chat-compat'
 
 // Partner HTTP response. Aliased so the adapter's transport types stay distinct
 // from the Worker's own Response-returning route surfaces (those are budgeted by
@@ -110,6 +114,9 @@ const OPENAI_FORWARDED_PARAMS = [
   'presence_penalty',
   'stop',
   'seed',
+  'tools',
+  'tool_choice',
+  'parallel_tool_calls',
 ] as const
 
 const ANTHROPIC_FORWARDED_PARAMS = [
@@ -146,7 +153,10 @@ type OpenAiResponse = Readonly<{
   choices?: ReadonlyArray<
     Readonly<{
       finish_reason?: string | null
-      message?: Readonly<{ content?: string | null }>
+      message?: Readonly<{
+        content?: string | null
+        tool_calls?: unknown
+      }>
     }>
   >
   usage?: OpenAiUsage
@@ -157,10 +167,7 @@ const openAiBody = (
   defaultMaxTokens: number,
 ): Record<string, unknown> => ({
   model: request.model,
-  messages: request.messages.map(message => ({
-    content: message.content,
-    role: message.role,
-  })),
+  messages: request.messages.map(openAiWireMessageFromInferenceMessage),
   max_tokens:
     numberParam(request.passthroughParams, 'max_tokens') ?? defaultMaxTokens,
   stream: request.stream,
@@ -184,10 +191,12 @@ const openAiResult = (
   payload: OpenAiResponse,
 ): InferenceResult => {
   const choice = payload.choices?.[0]
+  const toolCalls = inferenceToolCallsFromUnknown(choice?.message?.tool_calls)
   return {
     content: choice?.message?.content ?? '',
     finishReason: choice?.finish_reason ?? 'stop',
     servedModel: payload.model ?? request.model,
+    ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
     usage: openAiUsage(payload.usage),
   }
 }

@@ -331,6 +331,110 @@ describe('POST /v1/chat/completions', () => {
     expect(body.error).toBe('invalid_request')
   })
 
+  test('accepts OpenAI text content parts and normalizes them before dispatch', async () => {
+    const seen: Array<ReadonlyArray<{ role: string; content: string }>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          seen.push(request.messages)
+          return {
+            content: 'OK',
+            finishReason: 'stop',
+            servedModel: KHALA_MODEL_ID,
+            usage: { completionTokens: 1, promptTokens: 5, totalTokens: 6 },
+          }
+        }),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [
+            {
+              content: [
+                { text: 'hello', type: 'text' },
+                { text: 'world', type: 'text' },
+              ],
+              role: 'user',
+            },
+          ],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({ registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(seen[0]?.[seen[0].length - 1]?.content).toBe('hello\n\nworld')
+  })
+
+  test('preserves OpenAI tool-call replay metadata in request messages', async () => {
+    let seen: ReadonlyArray<{
+      role: string
+      content: string
+      toolCallId?: string | undefined
+      toolCalls?: ReadonlyArray<unknown> | undefined
+    }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          seen = request.messages
+          return {
+            content: 'OK',
+            finishReason: 'stop',
+            servedModel: KHALA_MODEL_ID,
+            usage: { completionTokens: 1, promptTokens: 5, totalTokens: 6 },
+          }
+        }),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [
+            {
+              content: null,
+              role: 'assistant',
+              tool_calls: [
+                {
+                  function: { arguments: '{"path":"README.md"}', name: 'read' },
+                  id: 'call_read',
+                  type: 'function',
+                },
+              ],
+            },
+            {
+              content: [{ text: 'file contents', type: 'text' }],
+              role: 'tool',
+              tool_call_id: 'call_read',
+            },
+          ],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({ registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const assistant = seen.find(message => message.role === 'assistant')
+    const tool = seen.find(message => message.role === 'tool')
+    expect(assistant?.toolCalls).toEqual([
+      {
+        function: { arguments: '{"path":"README.md"}', name: 'read' },
+        id: 'call_read',
+        type: 'function',
+      },
+    ])
+    expect(tool?.toolCallId).toBe('call_read')
+    expect(tool?.content).toBe('file contents')
+  })
+
   test('dispatches to the registered stub adapter and returns OpenAI shape', async () => {
     const response = await run(
       handleChatCompletions(
@@ -374,6 +478,48 @@ describe('POST /v1/chat/completions', () => {
     expect(body.usage.total_tokens).toBe(
       body.usage.prompt_tokens + body.usage.completion_tokens,
     )
+  })
+
+  test('returns non-streaming assistant tool_calls in the OpenAI response shape', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: '',
+          finishReason: 'tool_calls',
+          servedModel: KHALA_MODEL_ID,
+          toolCalls: [
+            {
+              function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+              id: 'call_bash',
+              type: 'function',
+            },
+          ],
+          usage: { completionTokens: 4, promptTokens: 7, totalTokens: 11 },
+        })),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(chatRequest(helloBody), baseDeps({ registry })),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{
+        finish_reason: string
+        message: { tool_calls?: unknown }
+      }>
+    }
+    expect(body.choices[0]?.finish_reason).toBe('tool_calls')
+    expect(body.choices[0]?.message.tool_calls).toEqual([
+      {
+        function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
   })
 
   test('returns model_unavailable when no adapter is registered for the route', async () => {
@@ -557,6 +703,116 @@ describe('POST /v1/chat/completions', () => {
     expect(captured).toHaveLength(1)
     expect(captured[0]?.streamed).toBe(true)
     expect(captured[0]?.usage.completionTokens).toBe(2)
+  })
+
+  test('streams buffered OpenAI tool_call deltas', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: '',
+          finishReason: 'tool_calls',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+        })),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () =>
+        Effect.sync(() => [
+          {
+            contentDelta: '',
+            toolCallDeltas: [
+              {
+                function: { name: 'bash' },
+                id: 'call_bash',
+                index: 0,
+                type: 'function',
+              },
+            ],
+          },
+          {
+            contentDelta: '',
+            toolCallDeltas: [
+              { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+            ],
+          },
+          {
+            contentDelta: '',
+            finishReason: 'tool_calls',
+            servedModel: KHALA_MODEL_ID,
+            usage: { completionTokens: 4, promptTokens: 7, totalTokens: 11 },
+          },
+        ]),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, stream: true }),
+        baseDeps({ registry }),
+      ),
+    )
+    const text = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(text).toContain('"tool_calls"')
+    expect(text).toContain('"id":"call_bash"')
+    expect(text).toContain('"arguments":"{\\"cmd\\":\\"pwd\\"}"')
+    expect(text).toContain('"finish_reason":"tool_calls"')
+  })
+
+  test('streams pass-through OpenAI tool_call deltas', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: '',
+          finishReason: 'tool_calls',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+        })),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+      streamSse: () =>
+        Effect.sync<InferenceStreamSource>(() => ({
+          frames: (async function* () {
+            yield {
+              contentDelta: '',
+              toolCallDeltas: [
+                {
+                  function: { name: 'bash' },
+                  id: 'call_bash',
+                  index: 0,
+                  type: 'function',
+                },
+              ],
+            }
+            yield {
+              contentDelta: '',
+              toolCallDeltas: [
+                { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+              ],
+            }
+          })(),
+          terminal: () => ({
+            finishReason: 'tool_calls',
+            servedModel: KHALA_MODEL_ID,
+            usage: { completionTokens: 4, promptTokens: 7, totalTokens: 11 },
+          }),
+        })),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, stream: true }),
+        baseDeps({ registry }),
+      ),
+    )
+    const text = await response.text()
+
+    expect(response.status).toBe(200)
+    expect(text).toContain('"tool_calls"')
+    expect(text).toContain('"id":"call_bash"')
+    expect(text).toContain('"arguments":"{\\"cmd\\":\\"pwd\\"}"')
+    expect(text).toContain('"finish_reason":"tool_calls"')
   })
 
   // STREAMING OPENAGENTS DISCLOSURE (M0 / #6008 follow-up) ------------------

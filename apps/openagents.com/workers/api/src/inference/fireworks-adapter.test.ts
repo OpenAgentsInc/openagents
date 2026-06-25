@@ -144,6 +144,60 @@ describe('fireworks adapter request mapping', () => {
     expect(body.max_tokens).toBe(256)
   })
 
+  test('preserves OpenAI tool metadata in outbound messages and params', async () => {
+    const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    await runResult(
+      adapter.complete(
+        request({
+          messages: [
+            {
+              content: '',
+              role: 'assistant',
+              toolCalls: [
+                {
+                  function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+                  id: 'call_bash',
+                  type: 'function',
+                },
+              ],
+            },
+            {
+              content: '/tmp/project',
+              role: 'tool',
+              toolCallId: 'call_bash',
+            },
+          ],
+          passthroughParams: {
+            tool_choice: 'auto',
+            tools: [
+              {
+                function: {
+                  name: 'bash',
+                  parameters: { type: 'object' },
+                },
+                type: 'function',
+              },
+            ],
+          },
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.tools).toHaveLength(1)
+    expect(body.tool_choice).toBe('auto')
+    expect(body.messages[0].tool_calls).toEqual([
+      {
+        function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
+    expect(body.messages[1].tool_call_id).toBe('call_bash')
+  })
+
   test('passes x-session-affinity as a header, not a body field', async () => {
     const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
     const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
@@ -224,6 +278,47 @@ describe('fireworks adapter usage extraction', () => {
         promptTokens: 11,
         totalTokens: 16,
       })
+    }
+  })
+
+  test('preserves non-streaming assistant tool calls from the provider response', async () => {
+    const { fetchImpl } = recordingFetch(
+      jsonResponse(
+        completionBody({
+          choices: [
+            {
+              finish_reason: 'tool_calls',
+              index: 0,
+              message: {
+                content: '',
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+                    id: 'call_bash',
+                    type: 'function',
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const result = await runResult(adapter.complete(request()))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.finishReason).toBe('tool_calls')
+      expect(result.success.toolCalls).toEqual([
+        {
+          function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+          id: 'call_bash',
+          type: 'function',
+        },
+      ])
     }
   })
 
@@ -403,6 +498,69 @@ describe('fireworks adapter streaming', () => {
     }
   })
 
+  test('preserves streamed tool_call deltas in the buffered stream path', async () => {
+    const { fetchImpl } = recordingFetch(
+      sseResponse([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    function: { name: 'bash' },
+                    id: 'call_bash',
+                    index: 0,
+                    type: 'function',
+                  },
+                ],
+              },
+              index: 0,
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+                ],
+              },
+              index: 0,
+            },
+          ],
+        },
+        {
+          choices: [{ delta: {}, finish_reason: 'tool_calls', index: 0 }],
+          usage: {
+            completion_tokens: 4,
+            prompt_tokens: 7,
+            total_tokens: 11,
+          },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const result = await runResult(adapter.stream(request({ stream: true })))
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success[0]?.toolCallDeltas).toEqual([
+        {
+          function: { name: 'bash' },
+          id: 'call_bash',
+          index: 0,
+          type: 'function',
+        },
+      ])
+      expect(result.success[1]?.toolCallDeltas).toEqual([
+        { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+      ])
+      expect(result.success[2]?.finishReason).toBe('tool_calls')
+    }
+  })
+
   test('streaming 429 maps to a retryable rate_limited error', async () => {
     const { fetchImpl } = recordingFetch(errorResponse(429))
     const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
@@ -545,12 +703,16 @@ const drainSource = async (
   }
   const source = sourceResult.success
   const deltas: Array<string> = []
+  const toolCallDeltas: Array<unknown> = []
   for await (const event of source.frames) {
     if (event.contentDelta !== '') {
       deltas.push(event.contentDelta)
     }
+    if (event.toolCallDeltas !== undefined) {
+      toolCallDeltas.push(...event.toolCallDeltas)
+    }
   }
-  return { ok: true as const, source, deltas }
+  return { ok: true as const, source, deltas, toolCallDeltas }
 }
 
 describe('fireworks adapter incremental pass-through stream', () => {
@@ -594,6 +756,64 @@ describe('fireworks adapter incremental pass-through stream', () => {
     expect(terminal.servedModel).toBe(
       'accounts/fireworks/models/kimi-k2p7-code',
     )
+  })
+
+  test('yields streamed tool_call deltas incrementally', async () => {
+    const { fetchImpl } = recordingFetch(
+      chunkedSseResponse([
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    function: { name: 'bash' },
+                    id: 'call_bash',
+                    index: 0,
+                    type: 'function',
+                  },
+                ],
+              },
+              index: 0,
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+                ],
+              },
+              index: 0,
+            },
+          ],
+        },
+        {
+          choices: [{ delta: {}, finish_reason: 'tool_calls', index: 0 }],
+          usage: { completion_tokens: 4, prompt_tokens: 7, total_tokens: 11 },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const drained = await drainSource(adapter, request({ stream: true }))
+
+    expect(drained.ok).toBe(true)
+    if (!drained.ok) {
+      return
+    }
+    expect(drained.toolCallDeltas).toEqual([
+      {
+        function: { name: 'bash' },
+        id: 'call_bash',
+        index: 0,
+        type: 'function',
+      },
+      { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
+    ])
+    expect(drained.source.terminal().finishReason).toBe('tool_calls')
   })
 
   // The missing-terminal-frame case for the pass-through path: the source still

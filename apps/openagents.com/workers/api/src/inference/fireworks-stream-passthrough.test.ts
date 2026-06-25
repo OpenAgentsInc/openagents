@@ -31,6 +31,7 @@ import {
 } from './fireworks-adapter'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import { FIREWORKS_ADAPTER_ID } from './model-router'
+import { KHALA_MODEL_ID } from './pricing'
 import { InferenceProviderRegistry } from './provider-adapter'
 import { recordFromUnknown } from '../json-boundary'
 
@@ -196,7 +197,7 @@ describe('fireworks streamSse — local route pass-through harness', () => {
 
     const response = await run(
       handleChatCompletions(
-        streamRequest('khala-code'),
+        streamRequest(KHALA_MODEL_ID),
         deps({
           lanePlan: () => [FIREWORKS_ADAPTER_ID],
           meteringHook,
@@ -261,7 +262,7 @@ describe('fireworks streamSse — local route pass-through harness', () => {
 
     const response = await run(
       handleChatCompletions(
-        streamRequest('khala-code'),
+        streamRequest(KHALA_MODEL_ID),
         deps({
           lanePlan: () => [FIREWORKS_ADAPTER_ID],
           meteringHook,

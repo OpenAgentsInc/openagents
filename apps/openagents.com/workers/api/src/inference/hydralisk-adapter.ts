@@ -19,6 +19,11 @@ import {
   type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
+import {
+  inferenceToolCallDeltasFromUnknown,
+  inferenceToolCallsFromUnknown,
+  openAiWireMessageFromInferenceMessage,
+} from './openai-chat-compat'
 
 type HydraliskResponse = Response
 
@@ -93,10 +98,7 @@ const toRequestBody = (
     request.passthroughParams
   return {
     ...params,
-    messages: request.messages.map(message => ({
-      content: message.content,
-      role: message.role,
-    })),
+    messages: request.messages.map(openAiWireMessageFromInferenceMessage),
     model: config.upstreamModel ?? request.model,
     stream: request.stream,
     ...(request.stream
@@ -242,6 +244,18 @@ const deltaContentOf = (frame: Record<string, unknown>): string => {
   return typeof content === 'string' ? content : ''
 }
 
+const toolCallDeltasOf = (
+  frame: Record<string, unknown>,
+): InferenceStreamEvent['toolCallDeltas'] => {
+  const delta = recordFromUnknown(firstChoice(frame)?.['delta'])
+  const toolCallDeltas = inferenceToolCallDeltasFromUnknown(
+    delta?.['tool_calls'],
+  )
+  return toolCallDeltas === undefined || toolCallDeltas.length === 0
+    ? undefined
+    : toolCallDeltas
+}
+
 const finishReasonOf = (frame: Record<string, unknown>): string | undefined => {
   const reason = firstChoice(frame)?.['finish_reason']
   return typeof reason === 'string' && reason.length > 0 ? reason : undefined
@@ -252,10 +266,15 @@ const eventForFrame = (
 ): InferenceStreamEvent => {
   const event: {
     contentDelta: string
+    toolCallDeltas?: InferenceStreamEvent['toolCallDeltas']
     finishReason?: string
     usage?: InferenceUsage
     servedModel?: string
   } = { contentDelta: deltaContentOf(frame) }
+  const toolCallDeltas = toolCallDeltasOf(frame)
+  if (toolCallDeltas !== undefined) {
+    event.toolCallDeltas = toolCallDeltas
+  }
   const reason = finishReasonOf(frame)
   if (reason !== undefined) {
     event.finishReason = reason
@@ -355,6 +374,7 @@ const toResult = (
   }
   const choice = firstChoice(raw)
   const message = recordFromUnknown(choice?.['message'])
+  const toolCalls = inferenceToolCallsFromUnknown(message?.['tool_calls'])
   const content =
     typeof message?.['content'] === 'string'
       ? (message['content'] as string)
@@ -367,6 +387,7 @@ const toResult = (
     content,
     finishReason,
     servedModel: servedModelFrom(raw, request.model),
+    ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
     usage,
   })
 }
@@ -418,21 +439,30 @@ const streamChunks = (
     let servedModel = request.model
     let usage: InferenceUsage | undefined
 
-    for (const frame of frames) {
-      servedModel = servedModelFrom(frame, servedModel)
-      const delta = deltaContentOf(frame)
-      if (delta !== '') {
-        contentChunks.push({ contentDelta: delta })
-      }
-      const reason = finishReasonOf(frame)
-      if (reason !== undefined) {
-        finishReason = reason
-      }
-      const frameUsage = extractUsage(frame)
-      if (frameUsage !== undefined) {
-        usage = frameUsage
-      }
+  for (const frame of frames) {
+    servedModel = servedModelFrom(frame, servedModel)
+    const event = eventForFrame(frame)
+    if (
+      event.contentDelta !== '' ||
+      (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
+    ) {
+      contentChunks.push({
+        contentDelta: event.contentDelta,
+        ...(event.toolCallDeltas === undefined
+          ? {}
+          : { toolCallDeltas: event.toolCallDeltas }),
+      })
     }
+    if (event.finishReason !== undefined) {
+      finishReason = event.finishReason
+    }
+    if (event.usage !== undefined) {
+      usage = event.usage
+    }
+    if (event.servedModel !== undefined) {
+      servedModel = event.servedModel
+    }
+  }
 
     return [
       ...contentChunks,
