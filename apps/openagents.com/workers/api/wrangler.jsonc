@@ -39,6 +39,15 @@
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
     "INFERENCE_FREE_TIER_ENABLED": "true",
+    // Default-ON redacted, private-by-default trace capture for free-tier traffic
+    // (#6293, EPIC redaction #6219). The master switch arms the Khala chat->ATIF
+    // trace emitter; the free-tier flag makes capture default-on for free traffic
+    // without a per-request opt-in. Captured traces are REDACTED (trace-redaction.ts,
+    // scrub-then-tripwire-backstop), stored owner_only/private by default
+    // (KHALA_AUTO_CAPTURE_VISIBILITY), and EXCLUDE paid-privacy callers fail-closed
+    // (#6295, INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED). Public sharing is opt-in only.
+    "KHALA_CHAT_TRACE_EMIT_ENABLED": "true",
+    "KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT": "true",
     // Owner-controlled inference balance-gate exemption (#6180). Arms the gate
     // ONLY; it is a no-op until a verified owner key is granted into
     // `inference_operator_exemption`. Own-infra/non-premium lanes only; exempt
