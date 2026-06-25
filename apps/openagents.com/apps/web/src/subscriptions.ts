@@ -274,7 +274,12 @@ export const settledFeedDependenciesForModel = (
 // re-fetch the public aggregate so the odometer count-up reads live. Reuses the
 // exact poll shape as autopilotRunPoll (Stream.tick + Stream.when); no Durable
 // Object / WebSocket for this pass (a true-push v2 is a noted follow-up).
-const KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS = 4
+// Scalar "tokens served" counter: poll fast so the number feels live. The server
+// caps the underlying D1 SUM to ≤1/sec via a 1s in-isolate cache, so a 1s client
+// poll stays cheap regardless of how many viewers are watching.
+const KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS = 1
+// Per-day history bars change slowly (daily buckets) — poll them far less often.
+const KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS = 15
 
 const inactiveKhalaTokensServedPoll = { isActive: false }
 
@@ -1121,8 +1126,8 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
         ),
     },
   ),
-  // The /stats history chart (#6227) polls the per-day series on the same
-  // interval and the same route-activity gate as the scalar counter above.
+  // The /stats history chart (#6227) polls the per-day series on a slower
+  // interval (daily buckets change slowly), with the same route-activity gate.
   khalaTokensServedHistoryPoll: entry(
     {
       isActive: S.Boolean,
@@ -1132,7 +1137,7 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
         Stream.when(
           Stream.tick(
-            Duration.seconds(KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS),
+            Duration.seconds(KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS),
           ).pipe(
             Stream.map(() =>
               GotLoggedOutMessage({

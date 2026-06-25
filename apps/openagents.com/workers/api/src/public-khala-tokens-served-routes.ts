@@ -38,12 +38,12 @@ type PublicKhalaTokensServedRouteInput = Readonly<{
 // "Khala Tokens Served" is the homepage's live network-wide aggregate. The
 // homepage polls this every few seconds (subscriptions.ts) and several visitors
 // can hit it at once; the running SUM over the full token usage ledger is a D1
-// scan, so cache the computed scalar in-isolate for a few seconds. Reads are
-// then instant and at most a few seconds stale (a token counter does not need
-// sub-second freshness on a poll). The response stays `no-store` so each client
-// poll gets the latest cached value, never a frozen browser copy. (Same shape
-// as public-pylon-stats-routes.ts.)
-const TOKENS_SERVED_CACHE_TTL_MS = 4_000
+// scan, so cache the computed scalar in-isolate for ~1s. That caps the D1 SUM to
+// at most ~1/sec no matter how many viewers poll, while keeping the counter
+// near-live (the client polls every 1s, so worst-case staleness is ~2s). The
+// response stays `no-store` so each client poll gets the latest cached value,
+// never a frozen browser copy. (Same shape as public-pylon-stats-routes.ts.)
+const TOKENS_SERVED_CACHE_TTL_MS = 1_000
 let tokensServedCache: { at: number; payload: unknown } | null = null
 
 export const handlePublicKhalaTokensServedApi = (
