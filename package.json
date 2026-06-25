@@ -85,6 +85,7 @@
     "typecheck:autopilot-ui": "bun run --cwd packages/autopilot-ui typecheck",
     "typecheck:durable-stream": "bun run --cwd packages/durable-stream typecheck",
     "verify:autopilot-desktop:deploy": "bun run --cwd apps/autopilot-desktop verify:deploy",
+    "verify:autopilot-desktop:if-changed": "bun run --cwd apps/autopilot-desktop run scripts/run-if-desktop-changed.ts -- bun run verify:deploy",
     "prepare": "effect-language-service patch"
   },
   "devDependencies": {

@@ -30,3 +30,7 @@ artifacts/
 # crashed run leaves one): the headless pixel harness and the app replica.
 .headless-render-*/
 .app-replica-*/
+
+# Temporary Chrome user-data dir for the Verse launch smoke (verse-launch-smoke.ts).
+# Auto-cleaned, but ignored in case a killed/timed-out run leaves one behind.
+.verse-launch-smoke-profile/

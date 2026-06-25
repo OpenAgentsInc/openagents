@@ -2196,6 +2196,35 @@ const main = async (): Promise<void> => {
   let chrome: Bun.Subprocess | null = null
   let cdp: CdpClient | null = null
 
+  // If a hard wall-clock bound (scripts/run-bounded.ts) terminates this process,
+  // make sure the detached Chrome process group is killed too — never leave a
+  // headless GPU process running after a timeout/SIGTERM.
+  const killChromeGroup = (signal: NodeJS.Signals) => {
+    if (chrome === null) return
+    try {
+      process.kill(-chrome.pid, signal)
+    } catch {
+      try {
+        chrome.kill(signal)
+      } catch {
+        // already gone
+      }
+    }
+  }
+  const onTermination = (signal: NodeJS.Signals) => {
+    killChromeGroup("SIGKILL")
+    try {
+      server?.stop(true)
+    } catch {
+      // ignore
+    }
+    process.exit(signal === "SIGINT" ? 130 : 143)
+  }
+  const handleSigterm = () => onTermination("SIGTERM")
+  const handleSigint = () => onTermination("SIGINT")
+  process.on("SIGTERM", handleSigterm)
+  process.on("SIGINT", handleSigint)
+
   try {
     if (target === "packaged") {
       if (
@@ -2246,6 +2275,10 @@ const main = async (): Promise<void> => {
         : devSmokeUrl!,
     )
     chrome = Bun.spawn({
+      // Own process group so a hard wall-clock kill from scripts/run-bounded.ts
+      // (or our own signal handler) can reap Chrome + its helper processes
+      // instead of orphaning a headless GPU process.
+      detached: true,
       cmd: [
         resolveChromePath(),
         "--headless=new",
@@ -2949,10 +2982,13 @@ const main = async (): Promise<void> => {
       )
     }
   } finally {
+    process.off("SIGTERM", handleSigterm)
+    process.off("SIGINT", handleSigint)
     cdp?.close()
     if (chrome !== null) {
-      chrome.kill()
+      killChromeGroup("SIGTERM")
       await Promise.race([chrome.exited.catch(() => null), wait(2_000)])
+      killChromeGroup("SIGKILL")
     }
     server?.stop(true)
     rmSync(tmpRoot, { force: true, recursive: true })

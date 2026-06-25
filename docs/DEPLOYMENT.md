@@ -63,6 +63,36 @@ migrations use unique tags in `wrangler.jsonc`, `WORLD_BRIDGE_QUEUE` carries
 compact bridge retry markers, and DO alarm expiry is validated through the
 Effect-clock expiry tests plus two-client live smoke.
 
+## Autopilot Desktop Verse smoke is the desktop release lane, NOT the Worker deploy gate
+
+The interactive Verse / mouselook desktop UI smoke
+(`apps/autopilot-desktop/scripts/verse-launch-smoke.ts`, run via
+`bun run --cwd apps/autopilot-desktop smoke:verse-launch` and inside
+`verify:deploy`) belongs to the **Autopilot Desktop release lane**, not the
+`openagents.com` Worker/web deploy gate. It launches an Electrobun build + a
+headless Chrome (CDP) and validates desktop UI; it does **not** validate the
+Worker/web change.
+
+- It is **removed from `check:deploy`** (the Worker deploy + pre-push gate). The
+  Worker gate still runs the real checks: typecheck:web/api, the web + worker
+  test suites, and the contract-drift / architecture / effect-topology /
+  public-projection guards. Putting the desktop smoke on that critical path
+  previously hung / OOM'd in headless/CI and SIGKILLed the whole deploy
+  (`DEPLOY_EXIT=137`) before `wrangler deploy` ran (issue #6234).
+- Run the desktop smoke on the desktop build/release path — see the
+  **Autopilot Desktop (macOS DMG)** row above — or standalone with
+  `bun run --cwd apps/autopilot-desktop verify:deploy` (full desktop lane) or
+  `bun run --cwd apps/autopilot-desktop smoke:verse-launch` (smoke only).
+- To gate only when desktop files changed, use
+  `bun run verify:autopilot-desktop:if-changed` (root). Force with
+  `OA_FORCE_DESKTOP_VERIFY=1`.
+- It is **hard-bounded**: `smoke:verse-launch` runs through
+  `scripts/run-bounded.ts` with a wall-clock timeout (default 480s, override
+  with `OA_VERSE_SMOKE_TIMEOUT_MS`). On timeout it SIGTERM→SIGKILLs the whole
+  child process group (Electrobun + Chrome) and exits non-zero (124) — fail
+  fast and loud, never an unbounded hang. Use
+  `smoke:verse-launch:unbounded` only for local debugging.
+
 ## Owned Visibility Freshness Smoke
 
 Full visibility/replay operations runbook:
