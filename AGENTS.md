@@ -119,7 +119,20 @@ heartbeat should return a `pylonRef`, `registered: true`, a fresh
 Codex refs such as `capacity.coding.codex.available=1`,
 `capacity.coding.codex.ready=1`, `load.coding.codex.busy=0`, and
 `load.coding.codex.queued=0`. Counted capacity refs with `=N` are valid and must
-not be stripped.
+not be stripped. To exercise same-account parallel work, set and publish a
+capacity greater than one, for example:
+
+```sh
+OPENAGENTS_PYLON_CODEX_CONCURRENCY=2 \
+OPENAGENTS_PYLON_CODEX_BUSY=0 \
+OPENAGENTS_PYLON_CODEX_QUEUED=0 \
+$PYLON presence heartbeat
+```
+
+The dispatch gate admits at most the heartbeat-advertised available Codex slots
+for that caller-owned Pylon. If a second fresh request is refused while fewer
+than that many assignments are active, inspect the Pylon assignment rows and the
+projected `capacity.coding.codex.available=N` refs before proceeding.
 
 2. Capture the public counter baseline:
 
@@ -201,7 +214,24 @@ curl -fsS https://openagents.com/api/public/khala-tokens-served
 
 The new `tokensServed` value must be greater than the baseline. This proves the
 Khala-orchestrated own-capacity path counted on the same public counter the
-homepage renders.
+homepage renders only when no other work is running. In normal multi-agent
+operation, aggregate counter movement is not enough: verify exact attribution in
+`token_usage_events` by the request id. The row should look like:
+
+```sql
+SELECT id, idempotency_key, account_ref, provider, model, total_tokens,
+       demand_kind, demand_source
+  FROM token_usage_events
+ WHERE id = 'event.inference.served-tokens.<durableRequestId>'
+    OR idempotency_key LIKE '%' || '<durableRequestId>' || '%';
+```
+
+Expected attribution for this flow is `provider='pylon-codex-own-capacity'`,
+`model='openagents/pylon-codex'`, `demand_kind='own_capacity'`, and
+`demand_source='khala_coding_delegation'`. When supervising parallel work, also
+verify the `pylon_api_assignments` rows for each assignment reached
+`closeout_submitted` and `pylon_api_events` contains one acceptance, progress,
+artifact/proof, and worker closeout event per assignment.
 
 Common failure signatures:
 
