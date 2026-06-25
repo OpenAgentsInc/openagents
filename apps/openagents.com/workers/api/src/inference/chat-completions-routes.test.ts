@@ -710,6 +710,32 @@ describe('POST /v1/chat/completions', () => {
     ])
   })
 
+  test('trace store failure never fails or alters the chat completion (#6293)', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          traceEmit: {
+            captureDefaultEnabled: true,
+            enabled: true,
+            emit: async () => {
+              throw new Error('forced trace store failure')
+            },
+            resolveCaptureDefault: async () => true,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      model: string
+    }
+    expect(json.model).toBe(KHALA_MODEL_ID)
+    expect(json.choices[0]?.message.content).toBe('hello world')
+  })
+
   test('records a residual-leak counter without failing the completion', async () => {
     const metrics: Array<{
       emitted: boolean
