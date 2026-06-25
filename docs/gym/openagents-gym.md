@@ -9,10 +9,12 @@
 > existing Khala benchmark matrix/runner/report path without real spend. The
 > public `/gym` route lives in
 > `apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` with typed
-> fixture knobs, a locked no-spend economics panel, a deterministic Three.js
-> fixture scene, and a public-safe report viewer that keeps `decisionGrade:
-> false`, drops `not_measured` samples from metric math, and renders null
-> cost-per-accepted-outcome as an explicit finding.
+> fixture knobs, a locked no-spend economics panel, a Terminal-Bench
+> `@openagentsinc/three-effect` run field, an accessible replay mirror, and a
+> public-safe report viewer that keeps `decisionGrade: false`, drops
+> `not_measured` samples from metric math, and renders null
+> cost-per-accepted-outcome as an explicit finding. The older fixture result
+> mirror remains text-only; full Autopilot Verse/world integration is deferred.
 > The owner/internal `/gym/oss` route is also landed (#6167) as the GPT-OSS 20B
 > latency playground: it is logged-in owner-gated, capped at eight in-flight
 > requests, streams against the neutral `openagents/khala-oss-20b` lane, reads
@@ -389,7 +391,11 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   official 89-task denominator, owner approval, public-safe summary,
   distinct-device verifier evidence, served-token cost basis, and cleared
   GPU-contention evidence; attempted-only or pilot denominators stay visible but
-  cannot satisfy the claim.
+  cannot satisfy the claim. The public `/gym` page now renders that comparison
+  as fixture replay data through `@openagentsinc/three-effect`, including profile
+  lanes, verifier placement, accepted/failing/not-started state, cost basis,
+  latency/throughput mirrors, and caveats. It remains `decisionGrade:false` and
+  does not claim live Verse integration.
 
 ## 9. Build spec (for a coding agent)
 
@@ -454,6 +460,11 @@ metric vocabulary, or a new settlement path.
     external 69.1% target as a target row, not an OpenAgents result; preserve
     `not_measured` versus measured `0`; require the official 89-task denominator
     before `replicationClaimSatisfied` can be true.
+14. Terminal-Bench `/gym` visualizer: adapt the public-safe comparison fixture
+    into `@openagentsinc/three-effect` `trainingRunView` options, render the
+    field on `/gym`, and provide an accessible mirror with lanes, verifier
+    placement, metrics, blockers, and caveats. Keep full Autopilot Verse
+    integration deferred until a later owner-armed world pass.
 ```
 
 ## 10. Open questions
@@ -464,8 +475,9 @@ metric vocabulary, or a new settlement path.
   dispatch/summary-ingest seam, and distinct-device verifier placement evidence
   are landed. Reward/cost mapping and training trajectory projection from Harbor
   summary/ATIF artifacts are also landed, along with the GLM-REAP profile
-  comparison report. Remaining work is wiring the live owner-armed executor path
-  and public/logged-in surfaces around the projections.
+  comparison report and public `/gym` three-effect visualizer. Remaining work is
+  wiring the live owner-armed executor path, Khala-orchestrated comparison runs,
+  and logged-in surfaces around the projections.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.

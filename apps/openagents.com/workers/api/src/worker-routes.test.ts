@@ -139,10 +139,13 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
-  test('redirects bare and unclaimed Gym document routes', () => {
+  test('keeps the public Terminal-Bench Gym document route in the app shell', () => {
     expect(shouldRedirectUnknownDocumentToHome(requestFor('/gym'), '/gym')).toBe(
-      true,
+      false,
     )
+  })
+
+  test('redirects unclaimed Gym document routes', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/gym/foo'), '/gym/foo'),
     ).toBe(true)

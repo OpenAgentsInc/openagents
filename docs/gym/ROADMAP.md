@@ -63,8 +63,9 @@ they do not block dogfood or ecosystem landings.
   TTFT/TPS/ITL, aggregate throughput, speculation acceptance, and the first
   latency/quota degradation point while preserving `not_measured` as non-zero
   absence (#6244).
-- **Gym Phase 0**: public fixture `/gym` + typed `GymExperiment` + fixture run/report
-  (#6163–#6166); owner-gated `/gym/oss` GPT-OSS latency playground (#6167).
+- **Gym Phase 0**: public fixture `/gym` + typed `GymExperiment` + fixture
+  run/report (#6163-#6166); owner-gated `/gym/oss` GPT-OSS latency playground
+  (#6167); public `/gym` Terminal-Bench three-effect visualizer (#6257).
 - **Autonomous QA** (`apps/qa-runner`): real-browser, video + committed e2e test +
   verdict, BYO-model, `/trace/{uuid}` publish; epic #6181 closed.
 - **Harbor on Hydralisk**: Hydralisk has already run Harbor for Terminal-Bench 2.0
@@ -478,6 +479,30 @@ decision-grade only when it has owner approval, the official full 89-task set,
 public-safe summary, verified distinct-device placement, served-token cost basis,
 and cleared GPU-contention evidence. Pilot or attempted-only denominators can be
 shown, but cannot satisfy `replicationClaimSatisfied`.
+
+### E5. Visualize Terminal-Bench Gym runs at `/gym` with three-effect ([#6257](https://github.com/OpenAgentsInc/openagents/issues/6257))
+
+**Type:** task · **Lever:** benchmarking/product · **Status:** shipped 2026-06-25
+**Why:** #6253 needs the comparison to be legible and compelling on the public Gym
+surface before deeper Autopilot Verse/world integration. The visualizer should
+look like the Verse run language while staying in the web app and public-safe.
+**Scope:** adapt the Terminal-Bench comparison fixture into
+`@openagentsinc/three-effect` `trainingRunView` options; render it on `/gym` with
+profile lanes, verifier placement, accepted/failing/not-started state, cost
+basis, latency/throughput mirrors, caveats, and blockers; keep a text/table
+accessibility mirror. Do not surface raw task prompts, completions, private
+endpoint material, bearer material, or hidden tokens.
+**Acceptance:** `/gym` is server-admitted and parses to `Gym`; the page renders
+the three-effect scene plus accessible mirror; tests prove the replay remains
+fixture-only, `decisionGrade:false`, and public-safe. Full Autopilot Verse
+integration remains deferred.
+
+**Shipped #6257:** `/gym` now serves the Terminal-Bench run field using
+`@openagentsinc/three-effect/foldkit` `trainingRunView`. The replay adapter
+projects public-safe fixture lanes into three-effect nodes, beams, bursts,
+operator signals, and world items; the page renders an accessible mirror with
+the same lanes/metrics/caveats. Route-table, parser, server-admission, product
+intent, page, and replay tests lock the contract.
 
 ---
 

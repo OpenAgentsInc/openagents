@@ -81,8 +81,8 @@ export type RouteRenderDisposition =
 //   - 'spaDocument'    : the Worker serves the SPA app-shell document for this
 //                        path (it is admitted by `knownDocumentPathPatterns`).
 //   - 'redirectOnly'   : the path is intentionally NOT a served document; a
-//                        hard navigation to it 302-redirects to "/" (e.g. bare
-//                        `/gym`, whose only admitted document is `/gym/oss`).
+//                        hard navigation to it 302-redirects to "/" (e.g. a
+//                        retired or internal-only alias).
 //   - 'clientOnly'     : resolvable in the client parser but never directly
 //                        navigated as a top-level document (e.g. the
 //                        NotFound catch-all). Not admitted server-side.
@@ -110,8 +110,6 @@ export type RouteTableEntry = Readonly<{
   //   - Home: `/` renders the Landing scene, so `/` parses to `Landing`.
   //   - Dashboard: `/dashboard` is server-admitted but has no client parser yet,
   //     so it parses to `NotFound`.
-  //   - Gym: bare `/gym` is redirect-only and not in the parser, so it parses to
-  //     `NotFound`.
   // Omit when the parse tag equals the entry key (the common case).
   clientParseTag?: string
   // Whether this route requires the auth bootstrap to be fetched before
@@ -567,24 +565,18 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'statelessShell',
   },
-  // Retained model surface for the local Gym fixture, but intentionally NOT a
-  // served document and NOT registered in the URL parser: the only public Gym
-  // document is `/gym/oss`. A hard nav to bare `/gym` 302-redirects (#6218).
   Gym: {
-    surface: 'redirectOnly',
-    serverDocument: null,
+    surface: 'spaDocument',
+    serverDocument: /^\/gym$/,
     examplePaths: ['/gym'],
-    // gymRouter is intentionally out of the parser, so bare `/gym` parses to
-    // `NotFound` (and 302s at the Worker document gate).
-    clientParseTag: 'NotFound',
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,
     inLoggedInUnion: false,
-    render: 'maintenance',
+    render: 'submodel',
   },
-  // The ONLY admitted Gym document (#6218 boundary): `/gym/oss` serves the SPA,
-  // every other `/gym/*` path (and bare `/gym`) redirects.
+  // Owner/internal Gym document: `/gym/oss` serves the admin-gated GPT-OSS
+  // playground while bare `/gym` is the public Terminal-Bench web visualizer.
   GymOss: {
     surface: 'spaDocument',
     serverDocument: /^\/gym\/oss$/,

@@ -902,6 +902,7 @@ const orderedParserRouters = [
   tassadarReplayRouter,
   tassadarRouter,
   gymOssRouter,
+  gymRouter,
   loginRouter,
   runRouter,
   forumReceiptRouter,
@@ -959,12 +960,10 @@ const orderedParserRouters = [
 
 // Routers that are intentionally NOT registered in the parser. Kept here as an
 // explicit, documented list so the parser-coverage test can assert nothing
-// slips in or out by accident. `gymRouter` stays out because `/gym` redirects
-// at the Worker document gate; `/gym/oss` is the only admitted Gym document.
+// slips in or out by accident.
 export const unregisteredParserRouters = [
   chatRouter,
   landingRouter,
-  gymRouter,
 ] as const
 
 const routeParser = Route.oneOf(...orderedParserRouters)

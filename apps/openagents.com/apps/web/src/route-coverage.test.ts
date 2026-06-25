@@ -39,6 +39,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/moksha', 'Moksha'],
   ['/moksha2', 'Moksha2'],
   ['/clients-preview', 'ClientsPreview'],
+  ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
   // The public shareable ATIF trace render (#6209). Parses regardless of
   // session; it is public-safe with no auth to view a shared trace.
@@ -84,13 +85,13 @@ describe('public route parser coverage', () => {
   )
 
   test('covers the documented public surface', () => {
-
     // Public/top-level routes incl. the authenticated `/pro` operator console
     // top-level route, the public shareable `/trace/{uuid}` render (#6209), and
     // the public shareable `/trace/compare/{ids}` comparison (#6211). The four
     // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
-    // covered count dropped from 40 to 36.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(36)
+    // covered count dropped from 40 to 36; the public `/gym` Terminal-Bench
+    // visualizer brings the parser-covered surface to 37.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(37)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
@@ -134,8 +135,8 @@ describe('public route parser coverage', () => {
   // The registry-driven parser derives its `oneOf` list from a single ordered
   // source; the deprecated/duplicate routers stay explicitly excluded.
   test('keeps deprecated/duplicate routers out of the parser', () => {
-    expect(unregisteredParserRouters.length).toBe(3)
+    expect(unregisteredParserRouters.length).toBe(2)
     expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('NotFound')
-    expect(urlToAppRoute(appUrl('/gym'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/gym'))._tag).toBe('Gym')
   })
 })

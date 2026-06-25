@@ -60,8 +60,8 @@ describe('client⇄server route table agreement (#6222)', () => {
 
   // Every `spaDocument` route MUST declare a server pattern (otherwise it cannot
   // be admitted). Conversely, `redirectOnly` / `clientOnly` routes MUST NOT be
-  // admitted as server documents — preserving the exact current behavior where a
-  // hard navigation to e.g. bare `/gym`, `/pro`, or `/decisions` 302s home.
+  // admitted as server documents, preserving the current behavior for paths
+  // that are intentionally not hard-navigation documents.
   test('spaDocument routes declare a server pattern; non-document routes do not', () => {
     for (const [tag, entry] of Object.entries(routeTable)) {
       if (entry.surface === 'spaDocument') {

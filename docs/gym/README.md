@@ -26,6 +26,12 @@ provider-adapter registry, verification-class registry, and the
 
 - Phase 0 public fixture Gym is landed and intentionally spend-free:
   `#6164`, `#6165`, `#6166`, and the closeout epic `#6163`.
+- Public `/gym` now also carries the Terminal-Bench 2.0 GLM-REAP comparison
+  visualizer from `#6257`: a Foldkit page with a
+  `@openagentsinc/three-effect` run field, profile lanes, verifier placement,
+  accepted/failing/not-started state, cost/latency/throughput mirror data, and
+  explicit caveats. It is fixture-only, `decisionGrade:false`, and defers full
+  Autopilot Verse/world integration.
 - GPT-OSS owner/internal latency playground is landed at `/gym/oss`:
   `#6167`. It is auth/owner-gated, capped at eight in-flight requests, streams
   against `openagents/khala-oss-20b`, and keeps `not_measured` distinct from
@@ -75,6 +81,10 @@ provider-adapter registry, verification-class registry, and the
   distinct-device verifier evidence, served-token cost basis, and cleared
   GPU-contention evidence; pilot/attempted-only denominators remain visible but
   cannot satisfy the replication claim.
+- **Epic E5 landed (#6257):** public `/gym` visualizes the Terminal-Bench replay
+  using `@openagentsinc/three-effect`, with an accessible text/table mirror and
+  no raw prompts, completions, private endpoint material, bearer material, or
+  hidden tokens. Full Autopilot Verse integration remains deferred.
 - **Epic F1/F2 landed:** `token_usage_events` now carries typed owner-gated
   demand attribution (`internal`, `external`, or `unlabeled` plus source/client
   labels), `GET /api/admin/inference-analytics` exposes the split plus

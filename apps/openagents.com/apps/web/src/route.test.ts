@@ -24,6 +24,7 @@ import {
   ForumReceiptRoute,
   ForumRoute,
   ForumTopicRoute,
+  GymRoute,
   GymOssRoute,
   ImagesRoute,
   KhalaRoute,
@@ -160,10 +161,8 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/khala'))).toEqual(KhalaRoute())
   })
 
-  test('does not claim the bare Gym route as a client document', () => {
-    expect(urlToAppRoute(appUrl('/gym'))).toEqual(
-      NotFoundRoute({ path: '/gym' }),
-    )
+  test('accepts the public Gym Terminal-Bench route', () => {
+    expect(urlToAppRoute(appUrl('/gym'))).toEqual(GymRoute())
   })
 
   test('accepts the owner-gated GPT-OSS Gym latency playground route', () => {
@@ -353,6 +352,7 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/animations', 'Animations'],
   ['/activity', 'Activity'],
   ['/run', 'Run'],
+  ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
   ['/tassadar', 'Tassadar'],
   ['/tassadar/replay/s1', 'TassadarReplay'],
@@ -436,15 +436,13 @@ describe('registry-driven route parser (behavior preservation)', () => {
   })
 
   test('keeps deprecated/duplicate routers OUT of the parser', () => {
-    // chatRouter, landingRouter, and gymRouter must stay unregistered: /chat
-    // and /gym are NotFound, while / is covered by the Landing alias.
-    expect(unregisteredParserRouters.length).toBe(3)
+    // chatRouter and landingRouter stay unregistered: /chat is NotFound, while
+    // / is covered by the Landing alias. /gym is now a served public document.
+    expect(unregisteredParserRouters.length).toBe(2)
     expect(urlToAppRoute(appUrl('/chat'))).toEqual(
       NotFoundRoute({ path: '/chat' }),
     )
-    expect(urlToAppRoute(appUrl('/gym'))).toEqual(
-      NotFoundRoute({ path: '/gym' }),
-    )
+    expect(urlToAppRoute(appUrl('/gym'))).toEqual(GymRoute())
   })
 
   test('NotFound carries the original path', () => {

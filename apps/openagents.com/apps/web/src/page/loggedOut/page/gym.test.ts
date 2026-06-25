@@ -67,6 +67,17 @@ describe('public Gym page', () => {
 
     expect(rendered).toContain('data-gym-page')
     expect(rendered).toContain('data-gym-no-spend-banner')
+    expect(rendered).toContain('data-gym-terminal-bench-panel')
+    expect(rendered).toContain(
+      'data-three-effect-scene="gym-terminal-bench-run"',
+    )
+    expect(rendered).toContain('Terminal-Bench 2.0')
+    expect(rendered).toContain('distinct-device verifier')
+    expect(rendered).toContain('accepted lane')
+    expect(rendered).toContain('failing lane')
+    expect(rendered).toContain('not started lane')
+    expect(rendered).toContain('Full Autopilot Verse integration is deferred')
+    expect(rendered).toContain('data-gym-terminal-bench-accessible-mirror')
     expect(rendered).toContain('Provider fan-out')
     expect(rendered).toContain('Program signature modules')
     expect(rendered).toContain('fixture only - no spend')
@@ -78,8 +89,10 @@ describe('public Gym page', () => {
 
     expect(rendered).toContain('data-gym-result')
     expect(rendered).toContain('openagents.gym.fixture_report.v1')
-    expect(rendered).toContain('data-gym-fixture-scene')
-    expect(rendered).toContain('data-three-effect-scene="gym-fixture-run"')
+    expect(rendered).toContain('data-gym-terminal-bench-panel')
+    expect(rendered).toContain(
+      'data-three-effect-scene="gym-terminal-bench-run"',
+    )
     expect(rendered).toContain('decisionGrade: false')
     expect(rendered).toContain('TTFT')
     expect(rendered).toContain('P50')

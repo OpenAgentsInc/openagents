@@ -31,8 +31,7 @@ const appUrl = (pathname: string) => ({
 
 // Every example path the table declares, paired with the tag the CLIENT parser
 // is expected to yield. That is the entry key unless `clientParseTag` overrides
-// it (root `/` → Landing, parser-less `/dashboard` → NotFound, `/gym` →
-// NotFound).
+// it (root `/` -> Landing, parser-less `/dashboard` -> NotFound).
 const tableExamples = Object.entries(
   routeTable as Record<string, RouteTableEntry>,
 ).flatMap(([tag, entry]) =>

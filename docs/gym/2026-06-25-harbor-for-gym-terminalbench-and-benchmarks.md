@@ -666,15 +666,21 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    OpenAgents result, and preserves `not_measured` separately from measured `0`.
    A profile row can satisfy replication only when it is decision-grade over the
    official 89-task denominator.
-8. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
+8. **Shipped (#6257): visualize Terminal-Bench at `/gym`** — the web route now
+   renders the public-safe GLM-REAP comparison fixture with
+   `@openagentsinc/three-effect`, profile lanes, verifier placement,
+   accepted/failing/not-started state, cost basis, latency/throughput mirror
+   data, blockers, and caveats. This is `decisionGrade:false`; full Autopilot
+   Verse/world integration remains deferred.
+9. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
    the `oracle` agent on the retained subset through the harness, asserts reward
    1.0, asserts the report is `decisionGrade:false`, and asserts the public-safety
    tripwire strips task content. Mirrors the spec's "fixture run is deterministic"
    test.
-9. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
+10. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
    traces spec asks for; Harbor-executed envs get ATIF for free, the OpenCode
    runner exports it. One trajectory format for benchmark + trace + training.
-10. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
+11. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
    balance gate, `preflightRealBenchmarkSweep`, real seam arming, metering
    contexts, and report receipts. A real `terminal-bench` executor still needs to
    plug into that gate for the first decision-grade Khala-vs-competitor number on
@@ -688,7 +694,8 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
   Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250), and
   the closed Terminal-Bench serving profile catalog (#6255), distinct-device
   verifier evidence gate (#6251), and Harbor reward/cost + training projection
-  (#6242), and the Terminal-Bench comparison report (#6256) are landed.
+  (#6242), the Terminal-Bench comparison report (#6256), and the public `/gym`
+  Terminal-Bench three-effect visualizer (#6257) are landed.
   Remaining direction is live owner-armed executor wiring, operational
   scheduling, and public/logged-in surfaces. We use Harbor's format (ATIF) and a
   typed out-of-process artifact seam, not Harbor runtime code in the Worker.

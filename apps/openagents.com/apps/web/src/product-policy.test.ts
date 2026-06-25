@@ -207,7 +207,9 @@ describe('browser product policy', () => {
   })
 
   test('keeps the public Gym route bootstrap-free', () => {
-    expect(browserRouteProductIntent(GymRoute())).toBe('public.gym.fixture')
+    expect(browserRouteProductIntent(GymRoute())).toBe(
+      'public.gym.terminal-bench',
+    )
     expect(routeRequiresAuthBootstrap(GymRoute())).toBe(false)
     expect(browserRouteGate(GymRoute())._tag).toBe('BrowserRouteAllowed')
   })

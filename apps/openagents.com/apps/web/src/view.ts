@@ -733,8 +733,8 @@ export const routeRenderDisposition = (
     case 'special':
     // 'maintenance' is an honestly-recorded disposition for a route that is not
     // yet wired into the render branches above and currently falls to
-    // `maintenanceBody` (e.g. `/gym`). It is a KNOWN disposition, so a route in
-    // this state is visible/intentional rather than a silent fall-through.
+    // `maintenanceBody`. It is a KNOWN disposition, so a route in this state is
+    // visible/intentional rather than a silent fall-through.
     case 'maintenance':
       return disposition
   }

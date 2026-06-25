@@ -1,7 +1,7 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
+import { trainingRunView } from '@openagentsinc/three-effect/foldkit'
 
-import { gymFixtureRunSceneView } from '../../../scene/gymFixtureRunSceneElement'
 import * as Ui from '../../../ui'
 import {
   ClickedRunGymFixture,
@@ -31,14 +31,24 @@ import {
   laneOptions,
   sequenceShapeOptions,
 } from '../gym/flow'
+import {
+  TERMINAL_BENCH_VISUAL_REPLAY,
+  formatTerminalBenchMetric,
+  formatTerminalBenchPercent,
+  terminalBenchLaneRate,
+  terminalBenchReplayTotals,
+  terminalBenchVisualizationOptions,
+  type TerminalBenchRunLane,
+} from '../gym/terminalBenchReplay'
 
 type InputAttr = Parameters<ReturnType<typeof html<Message>>['input']>[0][number]
 
 const pageClass =
-  'mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 text-white sm:px-6 lg:px-8'
-const panelClass = 'grid gap-4 border border-white/10 bg-[#050505] p-4'
+  'mx-auto grid min-w-0 w-full max-w-7xl gap-6 px-4 py-8 font-mono text-white sm:px-6 lg:px-8'
+const panelClass =
+  'grid min-w-0 gap-4 border border-white/10 bg-[#050505] p-4'
 const sectionTitleClass =
-  'm-0 text-[0.78rem] font-semibold uppercase tracking-[0.08em] text-white/55'
+  'm-0 font-mono text-[0.78rem] font-semibold uppercase tracking-wide text-white/55'
 const labelClass = 'grid gap-1.5 text-[0.78rem] font-medium text-white/70'
 const inputClass =
   'min-h-9 border border-white/15 bg-black px-2.5 text-[0.875rem] text-white outline-none transition focus:border-[#7fb0ff] disabled:cursor-not-allowed disabled:text-white/45'
@@ -80,6 +90,9 @@ const stat = (label: string, value: string): Html => {
 
 const formatMetric = (value: number, suffix: string): string =>
   `${Number.isInteger(value) ? String(value) : value.toFixed(1)}${suffix}`
+
+const formatMsat = (value: number | null): string =>
+  value === null ? 'not measured' : `${value.toLocaleString('en-US')} msat`
 
 const latencyMetric = (metric: PublicGymMetricSummary): Html => {
   const h = html<Message>()
@@ -132,6 +145,246 @@ const checkboxRow = (
     ]),
     h.span([], [label]),
   ])
+}
+
+const terminalBenchStateClass = (state: TerminalBenchRunLane['state']): string =>
+  state === 'accepted'
+    ? 'border-[#6abf69]/35 bg-[#051b0a] text-[#9bf59b]'
+    : state === 'failing'
+      ? 'border-[#ff7b7b]/35 bg-[#1c0707] text-[#ffb3b3]'
+      : 'border-[#ffcf6a]/35 bg-[#211a05] text-[#ffe0a3]'
+
+const terminalBenchStateLabel = (
+  state: TerminalBenchRunLane['state'],
+): string =>
+  state === 'accepted'
+    ? 'accepted lane'
+    : state === 'failing'
+      ? 'failing lane'
+      : 'not started lane'
+
+const terminalBenchMetricStrip = (): Html => {
+  const h = html<Message>()
+  const replay = TERMINAL_BENCH_VISUAL_REPLAY
+  const totals = terminalBenchReplayTotals(replay)
+
+  return h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-4')], [
+    stat('Task set', `${replay.officialTotalTasks} official`),
+    stat('Accepted tasks', String(totals.acceptedTasks)),
+    stat('Failing tasks', String(totals.failingTasks)),
+    stat('Not started', String(totals.notStartedTasks)),
+  ])
+}
+
+const terminalBenchLaneRow = (lane: TerminalBenchRunLane): Html => {
+  const h = html<Message>()
+
+  return h.tr([Ui.className<Message>('border-t border-white/10')], [
+    h.td(
+      [Ui.className<Message>('py-3 pr-4 align-top text-base text-white sm:text-sm')],
+      [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.span([Ui.className<Message>('font-semibold text-white')], [
+            lane.label,
+          ]),
+          h.span([Ui.className<Message>('text-base text-white/45 sm:text-sm')], [
+            lane.profileRef,
+          ]),
+        ]),
+      ],
+    ),
+    h.td(
+      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
+      [
+        `${lane.acceptedTasks} accepted / ${lane.failingTasks} failing / ${lane.notStartedTasks} not started`,
+      ],
+    ),
+    h.td(
+      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
+      [formatTerminalBenchPercent(terminalBenchLaneRate(lane))],
+    ),
+    h.td(
+      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
+      [
+        `${formatTerminalBenchMetric(lane.ttftMs, ' ms')} TTFT; ${formatTerminalBenchMetric(
+          lane.perceivedTps,
+          ' t/s',
+        )}`,
+      ],
+    ),
+    h.td(
+      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
+      [
+        lane.distinctVerifierDevice
+          ? 'distinct-device verifier'
+          : 'verifier placement blocked',
+      ],
+    ),
+    h.td(
+      [Ui.className<Message>('py-3 pl-4 align-top text-base text-white/70 sm:text-sm')],
+      [
+        h.span(
+          [
+            h.DataAttribute('gym-terminal-bench-lane-state', lane.state),
+            Ui.className<Message>(
+              `inline-flex border px-2 py-1 text-[0.75rem] font-medium ${terminalBenchStateClass(
+                lane.state,
+              )}`,
+            ),
+          ],
+          [terminalBenchStateLabel(lane.state)],
+        ),
+      ],
+    ),
+  ])
+}
+
+const terminalBenchMirror = (): Html => {
+  const h = html<Message>()
+  const replay = TERMINAL_BENCH_VISUAL_REPLAY
+
+  return h.section(
+    [
+      h.DataAttribute('gym-terminal-bench-accessible-mirror', ''),
+      h.AriaLabel('Terminal-Bench run mirror'),
+      Ui.className<Message>('grid min-w-0 gap-4'),
+    ],
+    [
+      h.div([Ui.className<Message>('grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], [
+            'Accessible run mirror',
+          ]),
+          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/60 sm:text-sm')], [
+            `${replay.externalClaim.label} is displayed as an external target, not an OpenAgents result. This replay is public-safe fixture data; raw task prompts, completions, and private Harbor artifacts are not included.`,
+          ]),
+        ]),
+        h.span(
+          [
+            h.DataAttribute('gym-terminal-bench-decision-grade', 'false'),
+            Ui.className<Message>(
+              'w-fit border border-[#ffcf6a]/35 bg-[#211a05] px-2 py-1 text-[0.75rem] text-[#ffe0a3]',
+            ),
+          ],
+          ['decisionGrade: false'],
+        ),
+      ]),
+      h.div([Ui.className<Message>('-mx-4 -my-2 max-w-[calc(100%+2rem)] min-w-0 overflow-x-auto whitespace-nowrap sm:-mx-4')], [
+        h.div([Ui.className<Message>('inline-block min-w-full px-4 py-2 align-middle')], [
+          h.table([Ui.className<Message>('w-full border-collapse')], [
+            h.thead([], [
+              h.tr([Ui.className<Message>('text-left text-[0.75rem] text-white/45')], [
+                h.th([Ui.className<Message>('whitespace-nowrap py-2 pr-4 font-medium')], [
+                  'Profile lane',
+                ]),
+                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
+                  'Tasks',
+                ]),
+                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
+                  'Solve rate',
+                ]),
+                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
+                  'Latency / throughput',
+                ]),
+                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
+                  'Verifier placement',
+                ]),
+                h.th([Ui.className<Message>('whitespace-nowrap py-2 pl-4 font-medium')], [
+                  'State',
+                ]),
+              ]),
+            ]),
+            h.tbody([], replay.lanes.map(terminalBenchLaneRow)),
+          ]),
+        ]),
+      ]),
+      h.div([Ui.className<Message>('grid gap-3 md:grid-cols-[1fr_1fr]')], [
+        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], ['Caveats']),
+          h.ul(
+            [
+              h.Role('list'),
+              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
+            ],
+            replay.caveatRefs.map(ref => h.li([], [ref])),
+          ),
+        ]),
+        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], ['Blocked before claims']),
+          h.ul(
+            [
+              h.Role('list'),
+              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
+            ],
+            replay.blockerRefs.map(ref => h.li([], [ref])),
+          ),
+        ]),
+      ]),
+    ],
+  )
+}
+
+const terminalBenchScenePanel = (): Html => {
+  const h = html<Message>()
+  const replay = TERMINAL_BENCH_VISUAL_REPLAY
+  const totals = terminalBenchReplayTotals(replay)
+
+  return h.section(
+    [
+      h.DataAttribute('gym-terminal-bench-panel', ''),
+      Ui.className<Message>(panelClass),
+    ],
+    [
+      h.div([Ui.className<Message>('grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end')], [
+        h.div([Ui.className<Message>('grid gap-2')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], [
+            'Terminal-Bench Gym replay',
+          ]),
+          h.h2(
+            [Ui.className<Message>('m-0 max-w-[18ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-4xl')],
+            ['Terminal-Bench 2.0 run field'],
+          ),
+          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
+            'A three-effect field for profile lanes, verifier placement, accepted/failing/not-started tasks, cost basis, latency, throughput, and claim caveats. Full Autopilot Verse integration is deferred until this web surface is solid.',
+          ]),
+        ]),
+        h.div(
+          [
+            h.DataAttribute('gym-terminal-bench-cost-meter', ''),
+            Ui.className<Message>(
+              'grid gap-1 border border-[#7cf0ff]/30 bg-[#061620] px-3 py-2 text-base text-[#bdf6ff] sm:text-sm',
+            ),
+          ],
+          [
+            h.span([Ui.className<Message>('text-white/45')], ['Cost basis']),
+            h.span([Ui.className<Message>('font-semibold tabular-nums')], [
+              formatMsat(totals.totalCostBasisMsat),
+            ]),
+          ],
+        ),
+      ]),
+      terminalBenchMetricStrip(),
+      h.div(
+        [
+          h.DataAttribute('gym-terminal-bench-scene', ''),
+          Ui.className<Message>(
+            'min-h-[420px] min-w-0 max-w-full overflow-hidden border border-[#3a7bff]/25 bg-[#020409]',
+          ),
+        ],
+        [
+          trainingRunView<Message>(
+            [
+              h.DataAttribute('three-effect-scene', 'gym-terminal-bench-run'),
+              h.AriaLabel('Terminal-Bench Gym three-effect run field'),
+              Ui.className<Message>('block min-h-[420px] min-w-0 max-w-full'),
+            ],
+            terminalBenchVisualizationOptions(replay),
+          ),
+        ],
+      ),
+      terminalBenchMirror(),
+    ],
+  )
 }
 
 const laneControl = (model: GymModel): Html => {
@@ -252,7 +505,7 @@ const resultPanel = (model: GymModel): Html => {
       h.section([Ui.className<Message>('grid gap-3')], [
         h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
           h.p([Ui.className<Message>(sectionTitleClass)], [
-            'Live fixture scene',
+            'Fixture lane mirror',
           ]),
           h.span(
             [
@@ -265,9 +518,6 @@ const resultPanel = (model: GymModel): Html => {
               `${result.scene.simulatedCostMsat} msat simulated meter / ${result.scene.billedCostMsat} msat billed`,
             ],
           ),
-        ]),
-        gymFixtureRunSceneView<Message>(result.scene, [
-          h.DataAttribute('gym-fixture-scene', ''),
         ]),
         h.div([Ui.className<Message>('grid gap-2 sm:grid-cols-3')], [
           ...result.scene.lanes.map(lane =>
@@ -355,7 +605,7 @@ export const view = (model: GymModel): Html => {
     [
       h.DataAttribute('route', 'gym'),
       h.DataAttribute('gym-page', ''),
-      Ui.className<Message>('min-h-screen bg-black'),
+      Ui.className<Message>('min-h-dvh bg-black'),
     ],
     [
       h.div([Ui.className<Message>(pageClass)], [
@@ -364,10 +614,10 @@ export const view = (model: GymModel): Html => {
             [
               h.DataAttribute('gym-no-spend-banner', ''),
               Ui.className<Message>(
-                'w-fit border border-[#7fb0ff]/30 bg-[#07111f] px-3 py-1 text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-[#b8d4ff]',
+                'w-fit border border-[#7fb0ff]/30 bg-[#07111f] px-3 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-[#b8d4ff]',
               ),
             ],
-            ['Illustrative / no-spend - fixture seam locked'],
+            ['Illustrative / no-spend'],
           ),
           h.h1(
             [Ui.className<Message>('m-0 text-3xl font-semibold sm:text-5xl')],
@@ -376,10 +626,11 @@ export const view = (model: GymModel): Html => {
           h.p(
             [Ui.className<Message>('m-0 max-w-3xl text-base text-white/65')],
             [
-              'A public fixture lab for Khala policy shapes. This Phase 0 page configures the bundled decision suite, emits a report-viewer payload, and never reaches provider accounts or billing.',
+              'A public fixture lab for Khala policy shapes and Terminal-Bench run visualization. This page configures the bundled decision suite, emits public-safe report payloads, and never reaches provider accounts or billing.',
             ],
           ),
         ]),
+        terminalBenchScenePanel(),
         h.div([Ui.className<Message>('grid gap-4 lg:grid-cols-[1.2fr_0.8fr]')], [
           h.section([Ui.className<Message>(panelClass)], [
             h.p([Ui.className<Message>(sectionTitleClass)], ['Experiment']),
@@ -601,7 +852,7 @@ export const view = (model: GymModel): Html => {
               [
                 h.p([Ui.className<Message>(sectionTitleClass)], ['Economics']),
                 h.label([Ui.className<Message>(labelClass)], [
-                  h.span([], ['Seam']),
+                  h.span([], ['Mode']),
                   h.input([
                     h.Type('text'),
                     h.Disabled(true),
@@ -621,7 +872,7 @@ export const view = (model: GymModel): Html => {
                 h.DataAttribute('gym-run', ''),
                 h.OnClick(ClickedRunGymFixture()),
                 Ui.className<Message>(
-                  'min-h-11 border border-[#7fb0ff]/40 bg-[#0a1d36] px-4 text-sm font-semibold text-[#d5e7ff] transition hover:bg-[#102b4d] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#7fb0ff]',
+                  'min-h-11 border border-[#7fb0ff]/40 bg-[#0a1d36] px-4 text-sm font-semibold text-[#d5e7ff] hover:bg-[#102b4d] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#7fb0ff]',
                 ),
               ],
               ['Run fixture'],
