@@ -334,7 +334,7 @@ approved runtime-promotion-ready path, Khala dogfood attribution, and unsafe-ref
 rejection without live Psionic or provider spend.
 
 ### D5. Phase 4 — public-safe leaderboard + (gated) plugin/module composition split  ([#6249](https://github.com/OpenAgentsInc/openagents/issues/6249))
-**Type:** task · **Lever:** benchmarking · **Status:** direction
+**Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** a recurring, citable quality bar; eventually a per-trace author split.
 **Scope:** public-safe leaderboard projection over `decisionGrade:true` reports only
 (keep fixture/synthetic runs out of any ranked surface); FUTURE/gated per-trace
@@ -342,6 +342,16 @@ revenue split to composed-module authors, boundary intact (no public marketplace
 **Acceptance:** a leaderboard ranks only decision-grade reports with public-safe
 fields; the author split is modeled on evidence behind owner arming.
 **Refs:** gym spec §8 Phase 4, §10.
+
+**Shipped:** `workers/api/src/inference/gym/leaderboard.ts` now projects a
+public-safe Gym leaderboard from decision-grade reports only, ranking by
+cost-per-accepted-outcome while excluding fixture, synthetic, zero-accepted, and
+public-safety-violating reports. The same module models owner-armed module-author
+splits from explicit composition evidence, contribution weights, and public refs,
+but keeps payout claims, settlement mutation, marketplace listing authority, and
+public marketplace authority false. Tests cover decision-grade-only ranking,
+fixture exclusion, unsafe-ref rejection, owner-armed split modeling, and blocked
+split projections when owner arming or complete evidence is missing.
 
 ---
 

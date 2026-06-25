@@ -352,7 +352,10 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   projection over decision-grade reports; (FUTURE/gated) per-trace revenue split
   to component authors. *Success:* a composed-module policy is benchmarked and
   metered, with the author split modeled on evidence — boundary intact (no public
-  plugin marketplace).
+  plugin marketplace). **Landed D5:** `leaderboard.ts` ranks only
+  `decisionGrade:true` public-safe reports and models owner-armed module-author
+  splits from composition evidence while keeping payout, settlement, listing, and
+  public marketplace authority disabled.
 
 ## 9. Build spec (for a coding agent)
 
@@ -393,6 +396,10 @@ metric vocabulary, or a new settlement path.
    Gym runner/eval calls, return improved candidates to the head-to-head as
    shadow candidates, and require an explicit approval ref before any
    `runtime_promotion` can be marked ready.
+9. Leaderboard/splits: project a public-safe leaderboard from decision-grade
+   reports only, excluding fixture/synthetic or unsafe reports; model module
+   author shares only from owner-armed composition evidence and keep payout,
+   settlement, listing, and public marketplace authority disabled.
 ```
 
 ## 10. Open questions
@@ -406,8 +413,9 @@ metric vocabulary, or a new settlement path.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.
-- Public leaderboard: which report fields are safe to rank publicly, and how to
-  keep `decisionGrade:false` runs out of any ranked surface.
+- Public leaderboard: the first projection is landed for public-safe,
+  `decisionGrade:true` reports only; open work is the logged-in/public surface
+  that dereferences those rows and its refresh cadence.
 - Where the Gym's logged-in run surface lives relative to the operator dashboard,
   and how Artanis may *propose* (approval-gated) Gym sweeps as `inference`-class
   work.

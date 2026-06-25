@@ -224,7 +224,8 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
 - Direction vs shipped: the Phase 0 fixture Gym (#6163–#6166), owner-gated
   `/gym/oss` playground (#6167), Phase 1 OpenCode/environment registry work
   (D1/D2), Phase 2 paid-run planning gate (D3), and Phase 3 typed reward/
-  dogfood/promotion flywheel contract (D4) are landed. Live published
+  dogfood/promotion flywheel contract (D4), and Phase 4 public-safe leaderboard
+  plus owner-armed author-split projection (D5) are landed. Live published
   decision-grade benchmark numbers still require an owner-armed real run over
   realistic traffic.
 - No published numbers without an owner-armed real seam over realistic traffic;

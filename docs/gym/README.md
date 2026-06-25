@@ -46,6 +46,10 @@ provider-adapter registry, verification-class registry, and the
   token attribution for the served-tokens counter, and gates shadow candidates
   plus approval-backed `runtime_promotion` readiness on decision-grade
   cost-per-accepted-outcome improvement.
+- **Phase 4 D5 landed:** `leaderboard.ts` ranks only decision-grade,
+  public-safe reports and models owner-armed module-author splits from
+  composition evidence while keeping payout, settlement, listing, and public
+  marketplace authority disabled.
   Remaining real-sweep work expands the executor backends and public surfaces.
 
 ## Contents
