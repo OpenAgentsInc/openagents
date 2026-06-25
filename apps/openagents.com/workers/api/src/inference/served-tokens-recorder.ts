@@ -44,6 +44,7 @@ import {
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
 } from '../token-usage-ledger'
+import { priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
 
 // The gateway-side recorder seam invoked by `chat-completions-routes.ts`.
@@ -94,6 +95,27 @@ export const servedTokensEventId = (requestId: string): string =>
 // leaderboards (it is the network-wide served counter, not a competitive tally);
 // the public `readPublicTokensServed()` SUM ignores that flag, so the counter
 // still reflects ALL served tokens.
+// Our marginal COST (USD) to serve this completion, priced against the SERVED
+// model on the real supply lane (so a Fireworks `deepseek-v4-flash` completion
+// is costed at the Fireworks rate, GPT-OSS at the Hydralisk rate, etc.). This is
+// the cost-side number the inference cost model + analytics read (issue #6232):
+// the metering hook already charges the customer; this records what the request
+// cost US so `token_usage_events.cost_amount` is complete going forward instead
+// of NULL. `costUsd` is cost-only (before margin); `card` funding is irrelevant
+// to cost so we pass it as a stable placeholder. Rounded to a stable 6 dp so the
+// stored REAL carries no floating-point noise.
+export const servedTokensCostUsd = (
+  servedModel: string,
+  usage: InferenceUsage,
+): number => {
+  const priced = priceRequest({
+    model: servedModel,
+    usage,
+    fundingKind: 'card',
+  })
+  return Math.round(Math.max(0, priced.costUsd) * 1_000_000) / 1_000_000
+}
+
 export const buildServedTokensIngestBody = (
   input: Readonly<{
     accountRef: string
@@ -108,6 +130,12 @@ export const buildServedTokensIngestBody = (
   schemaVersion: 'openagents.token_usage_event.v1' as const,
   actor: { accountRef: input.accountRef },
   backendProfile: input.adapterId,
+  // Our marginal cost to serve, in USD, so analytics can answer "what did it
+  // cost" without re-deriving from the pricing table for every historical row.
+  cost: {
+    amount: servedTokensCostUsd(input.servedModel, input.usage),
+    currency: 'USD' as const,
+  },
   eventId: servedTokensEventId(input.requestId),
   idempotencyKey: servedTokensIdempotencyKey(input.requestId),
   model: input.servedModel,

@@ -27,6 +27,7 @@ import {
 } from './pricing'
 import {
   DEFAULT_FREE_TIER_QUOTA,
+  type FreeTierQuota,
   decideFreeTierLane,
 } from './inference-free-tier-key'
 
@@ -76,6 +77,10 @@ export type PublishedModelFreeTier = Readonly<{
 
 export type ModelCatalogPolicy = Readonly<{
   freeTierEnabled?: boolean
+  // The effective free-tier quota (env-overridable; see resolveFreeTierQuota).
+  // When omitted the catalog falls back to the compiled DEFAULT_FREE_TIER_QUOTA
+  // so the published `oa_free_tier` numbers stay in lockstep with the gate.
+  freeTierQuota?: FreeTierQuota
 }>
 
 // One public catalog entry for a model the gateway serves.
@@ -134,10 +139,11 @@ const freeTierForModel = (
       window: null,
     }
   }
+  const quota = policy.freeTierQuota ?? DEFAULT_FREE_TIER_QUOTA
   return {
     eligible: true,
-    maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
-    maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+    maxRequestsPerDay: quota.maxRequestsPerDay,
+    maxTokensPerDay: quota.maxTokensPerDay,
     reasonRef: lane.reasonRef,
     window: 'utc_day',
   }

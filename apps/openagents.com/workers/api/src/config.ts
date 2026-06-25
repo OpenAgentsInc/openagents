@@ -117,6 +117,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // existing 402 path). A PREMIUM model is NEVER free; minting is per-IP
   // rate-limited (no unbounded key minting); no token/IP is ever logged.
   INFERENCE_FREE_TIER_ENABLED?: string | undefined
+  // Owner-tunable free-tier daily quota overrides (issue #6232,
+  // docs/inference/2026-06-25-khala-cost-model-and-analytics.md). Each is a
+  // positive-integer string; absent / non-numeric / <= 0 falls back to the
+  // compiled default (FREE_TIER_MAX_REQUESTS_PER_DAY=2000,
+  // FREE_TIER_MAX_TOKENS_PER_DAY=2500000 in inference-free-tier-key.ts). Read by
+  // resolveFreeTierQuota and threaded through the gate, the zero-debit metering
+  // wrapper, the mint response, and the public model catalog, so the owner can
+  // raise or lower the quota without a code deploy.
+  FREE_TIER_MAX_REQUESTS_PER_DAY?: string | undefined
+  FREE_TIER_MAX_TOKENS_PER_DAY?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
   // #6058, EPIC #6056). Default OFF: a streaming completion is NOT persisted into
   // a durable offset log, so the `/v1/chat/completions` stream behaves as today's

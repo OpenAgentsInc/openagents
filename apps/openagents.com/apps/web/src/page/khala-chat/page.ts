@@ -334,7 +334,7 @@ const infoPopup = <Message>(
             h.code([Ui.className<Message>(infoInlineCodeClass)], ['POST /api/keys/free']),
             ', then send it as ',
             h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
-            '. Free quota: 200 requests/day, 200k tokens/day.',
+            '. Free quota: 2,000 requests/day, 2.5M tokens/day.',
           ]),
           h.p(
             [
@@ -430,7 +430,7 @@ export const instructionsView = <Message>(counter?: Html): Html => {
             h.code([Ui.className<Message>(infoInlineCodeClass)], ['credential.token']),
             '), then send it as ',
             h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
-            '. Free quota: 200 requests/day, 200,000 tokens/day.',
+            '. Free quota: 2,000 requests/day, 2,500,000 tokens/day.',
           ]),
           h.div(
             [Ui.className<Message>('grid gap-1.5')],

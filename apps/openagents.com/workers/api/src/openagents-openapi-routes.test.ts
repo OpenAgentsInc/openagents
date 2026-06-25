@@ -1191,6 +1191,9 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
+  // Owner-gated inference cost / provider-lane analytics (#6232): internal cost
+  // + provider data, owner session only, not part of the public OpenAPI surface.
+  '/api/admin/inference-analytics',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
   // Self-hosted trace media blob serving (#6223): serves the public-safe R2 blob

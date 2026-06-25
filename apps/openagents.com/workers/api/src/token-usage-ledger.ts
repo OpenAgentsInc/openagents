@@ -1,4 +1,5 @@
 import {
+  InferenceAnalyticsResponse,
   PublicKhalaTokensServedAggregate,
   PublicKhalaTokensServedHistory,
   type PublicKhalaTokensServedHistoryBucket,
@@ -62,6 +63,11 @@ export type TokenUsageHistoryFilters = Readonly<{
   window?: '7d' | '30d' | 'all' | 'today' | string | undefined
 }>
 
+export type InferenceAnalyticsFilters = Readonly<{
+  now?: string | undefined
+  window?: '7d' | '30d' | 'all' | 'today' | string | undefined
+}>
+
 export type TokenUsageLeaderboardPreferenceInput = Readonly<{
   actorUserId?: string | undefined
   subjectKind: 'account' | 'team' | 'user'
@@ -110,6 +116,12 @@ export type TokenUsageLedgerShape = Readonly<{
     filters?: TokenUsageLedgerFilters,
   ) => Effect.Effect<
     typeof TokenUsageAggregateResponse.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
+  readInferenceAnalytics: (
+    filters?: InferenceAnalyticsFilters,
+  ) => Effect.Effect<
+    typeof InferenceAnalyticsResponse.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
   readPublicTokensServed: () => Effect.Effect<
@@ -336,6 +348,11 @@ const countsFromRow = (
   totalTokens: row?.total_tokens ?? 0,
 })
 
+// Round a USD cost SUM to a stable 6 dp so a stored REAL carries no
+// floating-point noise across the analytics rollups. Non-negative.
+const roundCostUsd = (value: number): number =>
+  Math.round(Math.max(0, value) * 1_000_000) / 1_000_000
+
 const isUnsafeKey = (key: string): boolean => unsafeKeyPattern.test(key)
 
 const validateSafePayload = (
@@ -435,6 +452,21 @@ const decodeAggregateResponse = (
     catch: error =>
       new TokenUsageLedgerValidationError({
         field: 'aggregate_response',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
+const decodeInferenceAnalyticsResponse = (
+  value: unknown,
+): Effect.Effect<
+  typeof InferenceAnalyticsResponse.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(InferenceAnalyticsResponse)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'inference_analytics_response',
         message: error instanceof Error ? error.message : String(error),
       }),
   })
@@ -1321,6 +1353,179 @@ export const makeD1TokenUsageLedger = (
         recentEvents,
         totals: countsFromRow(totals),
         usageEvents: totals?.usage_events ?? 0,
+      })
+    }),
+
+  // OWNER-GATED inference cost / provider-lane analytics (#6232). Aggregate-only
+  // token + cost rollups over `token_usage_events` grouped by provider, by
+  // model, by source-route/producer-system, and by UTC day, plus window-wide
+  // totals. `costUsd` sums the stored `cost_amount`; `costCoverage` reports the
+  // fraction of rows that carry a stored cost so a pre-cost-recording gap is
+  // explicit rather than silently understated. INTERNAL: provider ids + cost are
+  // not public — the route serves this behind the admin/owner gate only.
+  readInferenceAnalytics: (filters = {}) =>
+    Effect.gen(function* () {
+      const window = yield* normalizeLeaderboardWindow(filters.window ?? '7d')
+      const nowIso = yield* requireTimestamp(
+        'now',
+        filters.now ?? runtime.nowIso(),
+      )
+      const since = leaderboardWindowSince(window, nowIso, runtime)
+      const whereSql = since === undefined ? '' : 'WHERE observed_at >= ?'
+      const bind: ReadonlyArray<string> = since === undefined ? [] : [since]
+
+      const groupQuery = (
+        operation: string,
+        keyExpr: string,
+        labelExpr: string,
+        groupExpr: string,
+      ): Effect.Effect<
+        ReadonlyArray<{
+          key: string | null
+          label: string | null
+          input_tokens: number | null
+          output_tokens: number | null
+          total_tokens: number | null
+          usage_events: number | null
+          cost_usd: number | null
+        }>,
+        TokenUsageLedgerStorageError
+      > =>
+        d1Effect(operation, () =>
+          db
+            .prepare(
+              `SELECT
+                  ${keyExpr} AS key,
+                  ${labelExpr} AS label,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                  COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                    AS total_tokens,
+                  COUNT(*) AS usage_events,
+                  COALESCE(SUM(cost_amount), 0) AS cost_usd
+                 FROM token_usage_events
+                ${whereSql}
+                GROUP BY ${groupExpr}
+                ORDER BY total_tokens DESC, key ASC
+                LIMIT 100`,
+            )
+            .bind(...bind)
+            .all<{
+              key: string | null
+              label: string | null
+              input_tokens: number | null
+              output_tokens: number | null
+              total_tokens: number | null
+              usage_events: number | null
+              cost_usd: number | null
+            }>(),
+        ).pipe(Effect.map(result => result.results))
+
+      const analyticsRow = (row: {
+        key: string | null
+        label: string | null
+        input_tokens: number | null
+        output_tokens: number | null
+        total_tokens: number | null
+        usage_events: number | null
+        cost_usd: number | null
+      }) => ({
+        costUsd: roundCostUsd(row.cost_usd ?? 0),
+        inputTokens: Math.max(0, Math.trunc(row.input_tokens ?? 0)),
+        key: row.key ?? 'unknown',
+        label: row.label ?? 'unknown',
+        outputTokens: Math.max(0, Math.trunc(row.output_tokens ?? 0)),
+        totalTokens: Math.max(0, Math.trunc(row.total_tokens ?? 0)),
+        usageEvents: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+      })
+
+      const byProvider = yield* groupQuery(
+        'inferenceAnalytics.byProvider',
+        `COALESCE(provider, 'unknown')`,
+        `COALESCE(provider, 'unknown')`,
+        `COALESCE(provider, 'unknown')`,
+      )
+      const byModel = yield* groupQuery(
+        'inferenceAnalytics.byModel',
+        `COALESCE(model, 'unknown')`,
+        `COALESCE(model, 'unknown')`,
+        `COALESCE(model, 'unknown')`,
+      )
+      const byRoute = yield* groupQuery(
+        'inferenceAnalytics.byRoute',
+        `producer_system || ':' || source_route`,
+        `producer_system || ' / ' || source_route`,
+        `producer_system, source_route`,
+      )
+      const byDayRows = yield* groupQuery(
+        'inferenceAnalytics.byDay',
+        `date(observed_at)`,
+        `date(observed_at)`,
+        `date(observed_at)`,
+      )
+      const totalsRow = yield* d1Effect(
+        'inferenceAnalytics.totals',
+        () =>
+          db
+            .prepare(
+              `SELECT
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                  COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                    AS total_tokens,
+                  COUNT(*) AS usage_events,
+                  COALESCE(SUM(cost_amount), 0) AS cost_usd,
+                  COALESCE(SUM(CASE WHEN cost_amount IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS cost_rows
+                 FROM token_usage_events
+                ${whereSql}`,
+            )
+            .bind(...bind)
+            .first<{
+              input_tokens: number | null
+              output_tokens: number | null
+              total_tokens: number | null
+              usage_events: number | null
+              cost_usd: number | null
+              cost_rows: number | null
+            }>(),
+      )
+
+      const usageEvents = Math.max(0, Math.trunc(totalsRow?.usage_events ?? 0))
+      const costRows = Math.max(0, Math.trunc(totalsRow?.cost_rows ?? 0))
+
+      return yield* decodeInferenceAnalyticsResponse({
+        schemaVersion: 'openagents.inference_analytics.v1',
+        byDay: byDayRows
+          .filter(
+            (row): row is typeof row & { key: string } =>
+              typeof row.key === 'string' && row.key !== '',
+          )
+          .map(row => ({
+            costUsd: roundCostUsd(row.cost_usd ?? 0),
+            day: row.key,
+            inputTokens: Math.max(0, Math.trunc(row.input_tokens ?? 0)),
+            outputTokens: Math.max(0, Math.trunc(row.output_tokens ?? 0)),
+            totalTokens: Math.max(0, Math.trunc(row.total_tokens ?? 0)),
+            usageEvents: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+          }))
+          .sort((left, right) => left.day.localeCompare(right.day)),
+        byModel: byModel.map(analyticsRow),
+        byProvider: byProvider.map(analyticsRow),
+        byRoute: byRoute.map(analyticsRow),
+        generatedAt: runtime.nowIso(),
+        totals: {
+          costCoverage:
+            usageEvents === 0
+              ? 1
+              : Math.round((costRows / usageEvents) * 1_000_000) / 1_000_000,
+          costUsd: roundCostUsd(totalsRow?.cost_usd ?? 0),
+          inputTokens: Math.max(0, Math.trunc(totalsRow?.input_tokens ?? 0)),
+          outputTokens: Math.max(0, Math.trunc(totalsRow?.output_tokens ?? 0)),
+          totalTokens: Math.max(0, Math.trunc(totalsRow?.total_tokens ?? 0)),
+          usageEvents,
+        },
+        window,
       })
     }),
 

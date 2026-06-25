@@ -12,6 +12,8 @@ import {
 import {
   DEFAULT_FREE_TIER_QUOTA,
   FREE_KEY_MINT_REASON_RATE_LIMITED,
+  FREE_TIER_MAX_REQUESTS_PER_DAY,
+  FREE_TIER_MAX_TOKENS_PER_DAY,
   FREE_TIER_QUOTA_REASON_REQUESTS_EXCEEDED,
   FREE_TIER_QUOTA_REASON_TOKENS_EXCEEDED,
   FREE_TIER_QUOTA_REASON_WITHIN,
@@ -30,7 +32,9 @@ import {
   readAccountFreeTier,
   readFreeKeyMintsToday,
   readFreeTierUsage,
+  parsePositiveIntEnv,
   recordFreeKeyMint,
+  resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference-free-tier-key'
@@ -250,6 +254,49 @@ describe('decideFreeTierQuota (pure)', () => {
     expect(d.withinQuota).toBe(false)
     expect(d.reasonRef).toBe(FREE_TIER_QUOTA_REASON_TOKENS_EXCEEDED)
     expect(d.remainingTokens).toBe(0)
+  })
+})
+
+describe('free-tier quota constants + env overrides (#6232)', () => {
+  test('the raised default quota matches the cost-model decision', () => {
+    // Raised from the 200/200k "rookie numbers" to a cost-model-bounded "try it"
+    // session: 2,000 requests/day and 2,500,000 tokens/day.
+    expect(FREE_TIER_MAX_REQUESTS_PER_DAY).toBe(2_000)
+    expect(FREE_TIER_MAX_TOKENS_PER_DAY).toBe(2_500_000)
+    expect(DEFAULT_FREE_TIER_QUOTA).toEqual({
+      maxRequestsPerDay: 2_000,
+      maxTokensPerDay: 2_500_000,
+    })
+  })
+
+  test('parsePositiveIntEnv parses a positive integer and falls back otherwise', () => {
+    expect(parsePositiveIntEnv('5000000', 7)).toBe(5_000_000)
+    expect(parsePositiveIntEnv('  1234  ', 7)).toBe(1_234)
+    expect(parsePositiveIntEnv(undefined, 7)).toBe(7)
+    expect(parsePositiveIntEnv('0', 7)).toBe(7)
+    expect(parsePositiveIntEnv('-3', 7)).toBe(7)
+    expect(parsePositiveIntEnv('abc', 7)).toBe(7)
+    expect(parsePositiveIntEnv(42, 7)).toBe(7)
+  })
+
+  test('resolveFreeTierQuota uses env overrides when present, else the defaults', () => {
+    expect(resolveFreeTierQuota({})).toEqual(DEFAULT_FREE_TIER_QUOTA)
+    expect(
+      resolveFreeTierQuota({
+        FREE_TIER_MAX_REQUESTS_PER_DAY: '500',
+        FREE_TIER_MAX_TOKENS_PER_DAY: '9000000',
+      }),
+    ).toEqual({ maxRequestsPerDay: 500, maxTokensPerDay: 9_000_000 })
+    // A bad override falls back to the compiled default per-field.
+    expect(
+      resolveFreeTierQuota({
+        FREE_TIER_MAX_REQUESTS_PER_DAY: 'nope',
+        FREE_TIER_MAX_TOKENS_PER_DAY: '1500000',
+      }),
+    ).toEqual({
+      maxRequestsPerDay: FREE_TIER_MAX_REQUESTS_PER_DAY,
+      maxTokensPerDay: 1_500_000,
+    })
   })
 })
 

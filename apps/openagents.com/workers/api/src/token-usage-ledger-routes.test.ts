@@ -1,4 +1,5 @@
 import {
+  InferenceAnalyticsResponse,
   TokenUsageAggregateResponse,
   TokenUsageEventRecord,
   TokenUsageLeaderboardPreferenceResponse,
@@ -136,6 +137,63 @@ const leaderboardsResponse = S.decodeUnknownSync(TokenUsageLeaderboardsResponse)
   topUsers: aggregateResponse.byActor,
 })
 
+const analyticsResponse = S.decodeUnknownSync(InferenceAnalyticsResponse)({
+  schemaVersion: 'openagents.inference_analytics.v1' as const,
+  window: '7d' as const,
+  generatedAt: '2026-06-08T12:00:00.000Z',
+  byProvider: [
+    {
+      key: 'fireworks',
+      label: 'fireworks',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byModel: [
+    {
+      key: 'accounts/fireworks/models/deepseek-v4-flash',
+      label: 'accounts/fireworks/models/deepseek-v4-flash',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byRoute: [
+    {
+      key: 'omega:omega_hosted_gemini',
+      label: 'omega / omega_hosted_gemini',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byDay: [
+    {
+      day: '2026-06-25',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  totals: {
+    inputTokens: 321065,
+    outputTokens: 810787,
+    totalTokens: 1131852,
+    usageEvents: 560,
+    costUsd: 0.272,
+    costCoverage: 1,
+  },
+})
+
 const preferenceResponse = S.decodeUnknownSync(
   TokenUsageLeaderboardPreferenceResponse,
 )({
@@ -159,6 +217,7 @@ const makeRoutes = (
 ) => {
   const calls: Array<unknown> = []
   const aggregateFilters: Array<unknown> = []
+  const analyticsFilters: Array<unknown> = []
   const leaderboardFilters: Array<unknown> = []
   const preferenceInputs: Array<unknown> = []
   const ledger: TokenUsageLedgerShape = {
@@ -174,6 +233,11 @@ const makeRoutes = (
       aggregateFilters.push(filters ?? {})
 
       return Effect.succeed(aggregateResponse)
+    },
+    readInferenceAnalytics: filters => {
+      analyticsFilters.push(filters ?? {})
+
+      return Effect.succeed(analyticsResponse)
     },
     readPublicTokensServed: () => Effect.succeed({ tokensServed: 0 }),
     readPublicTokensServedHistory: () =>
@@ -215,7 +279,14 @@ const makeRoutes = (
     },
   })
 
-  return { aggregateFilters, calls, leaderboardFilters, preferenceInputs, routes }
+  return {
+    aggregateFilters,
+    analyticsFilters,
+    calls,
+    leaderboardFilters,
+    preferenceInputs,
+    routes,
+  }
 }
 
 const env = { OPENAGENTS_DB: {} as D1Database }
@@ -332,6 +403,84 @@ describe('token usage ledger routes', () => {
         usageTruth: 'exact',
       },
     ])
+  })
+
+  test('requires an admin/owner session for inference analytics reads', async () => {
+    const anonymous = makeRoutes(undefined)
+    const unauthorized = await Effect.runPromise(
+      anonymous.routes.handleInferenceAnalyticsApi(
+        new Request('https://openagents.com/api/admin/inference-analytics'),
+        env,
+        makeExecutionContext(),
+      ),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const nonAdmin = makeRoutes({
+      user: {
+        email: 'operator@example.com',
+        userId: 'user_operator',
+      },
+    })
+    const forbidden = await Effect.runPromise(
+      nonAdmin.routes.handleInferenceAnalyticsApi(
+        new Request('https://openagents.com/api/admin/inference-analytics'),
+        env,
+        makeExecutionContext(),
+      ),
+    )
+
+    expect(forbidden.status).toBe(403)
+  })
+
+  test('returns aggregate inference analytics and passes the window filter for an admin', async () => {
+    const admin = makeRoutes({
+      user: {
+        email: 'chris@openagents.com',
+        userId: 'user_chris',
+      },
+    })
+    const response = await Effect.runPromise(
+      admin.routes.handleInferenceAnalyticsApi(
+        new Request(
+          'https://openagents.com/api/admin/inference-analytics?window=7d',
+        ),
+        env,
+        makeExecutionContext(),
+      ),
+    )
+    const body = await readJson(response)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-test-session-refreshed')).toBe('true')
+    expect(body).toMatchObject({
+      schemaVersion: 'openagents.inference_analytics.v1',
+      window: '7d',
+      byProvider: [{ key: 'fireworks', costUsd: 0.272 }],
+      totals: { costCoverage: 1, totalTokens: 1131852 },
+    })
+    expect(admin.analyticsFilters).toEqual([{ window: '7d' }])
+  })
+
+  test('rejects a non-GET inference analytics request', async () => {
+    const admin = makeRoutes({
+      user: {
+        email: 'chris@openagents.com',
+        userId: 'user_chris',
+      },
+    })
+    const response = await Effect.runPromise(
+      admin.routes.handleInferenceAnalyticsApi(
+        new Request('https://openagents.com/api/admin/inference-analytics', {
+          method: 'POST',
+        }),
+        env,
+        makeExecutionContext(),
+      ),
+    )
+
+    expect(response.status).toBe(405)
   })
 
   test('requires admin access for leaderboard reads and passes window filters', async () => {

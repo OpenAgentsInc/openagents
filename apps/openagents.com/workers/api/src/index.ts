@@ -401,6 +401,7 @@ import {
   markAccountFreeTierAsync,
   readFreeKeyMintsToday,
   recordFreeKeyMintAsync,
+  resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
@@ -6583,8 +6584,8 @@ export const handleFreeKeyMint = async (
             createdAt: registration.credential.createdAt,
           },
           quota: {
-            maxRequestsPerDay: 200,
-            maxTokensPerDay: 200_000,
+            maxRequestsPerDay: resolveFreeTierQuota(env).maxRequestsPerDay,
+            maxTokensPerDay: resolveFreeTierQuota(env).maxTokensPerDay,
             window: 'utc_day',
           },
           usage:
@@ -9762,6 +9763,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       tokenUsageLedgerRoutes.handleTokenUsageAggregateApi(request, env, ctx),
   },
   {
+    // OWNER-GATED inference cost / provider-lane analytics (#6232). Aggregate
+    // token + cost rollups (byProvider, byModel, byRoute, byDay, totals) over a
+    // window. Admin/owner session only — provider ids + cost are internal.
+    path: '/api/admin/inference-analytics',
+    handler: (request, env, ctx) =>
+      tokenUsageLedgerRoutes.handleInferenceAnalyticsApi(request, env, ctx),
+  },
+  {
     path: '/api/stats/token-usage/leaderboards',
     handler: (request, env, ctx) =>
       tokenUsageLedgerRoutes.handleTokenUsageLeaderboardsApi(request, env, ctx),
@@ -10616,6 +10625,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // still 402, so paid Khala behavior for funded keys is unchanged. Inert with
       // the flag off — both seams are simply not wired.
       const freeTierEnabled = isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)
+      const freeTierQuota = resolveFreeTierQuota(env)
       const laneArming = resolveSupplyLaneArming(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
@@ -10683,6 +10693,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               freeTierEnabled
                 ? withFreeTierKhala(innerHook, {
                     db: openAgentsDatabase(env),
+                    quota: freeTierQuota,
                   })
                 : innerHook)(
               withReferralAccrual(
@@ -10796,6 +10807,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           ? {
               checkFreeTier: makeFreeTierGate({
                 db: openAgentsDatabase(env),
+                quota: freeTierQuota,
               }),
             }
           : {}),
@@ -11072,6 +11084,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleModelsList(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
+        freeTierQuota: resolveFreeTierQuota(env),
         laneArming: resolveSupplyLaneArming(env),
       }),
   },
@@ -11320,6 +11333,7 @@ const routeRequest = makeWorkerRouteRequest({
     routeModelRetrieveRequest(request, {
       enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
       freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
+      freeTierQuota: resolveFreeTierQuota(env),
       laneArming: resolveSupplyLaneArming(env),
     }),
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}

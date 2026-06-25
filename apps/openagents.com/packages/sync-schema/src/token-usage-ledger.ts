@@ -300,3 +300,84 @@ export class PublicKhalaTokensServedHistory extends S.Class<PublicKhalaTokensSer
   bucket: PublicKhalaTokensServedHistoryBucket,
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
 }) {}
+
+// ----------------------------------------------------------------------------
+// Inference cost / provider-lane analytics (issue #6232) — OWNER-GATED
+// ----------------------------------------------------------------------------
+//
+// An aggregate-only read over `token_usage_events` for the owner to answer
+// "which providers/models/lanes has Khala inference gone to, how many tokens,
+// and what did it cost us." It is INTERNAL cost data (provider ids + cost), NOT
+// public — served behind the admin/owner gate, never on a public route. Every
+// row is aggregate (SUM/COUNT) with no per-user / per-account / prompt material.
+// `costUsd` is the SUM of our marginal cost (token_usage_events.cost_amount);
+// rows written before cost was recorded carry NULL cost and are reported as 0
+// stored cost with a `costCoverage` ratio so the gap is explicit.
+
+export const InferenceAnalyticsWindow = S.Literals([
+  'today',
+  '7d',
+  '30d',
+  'all',
+])
+export type InferenceAnalyticsWindow = typeof InferenceAnalyticsWindow.Type
+
+// One aggregate analytics row: a grouping key + label, the summed token counts,
+// the request count, and our summed marginal cost in USD for the group.
+export class InferenceAnalyticsRow extends S.Class<InferenceAnalyticsRow>(
+  'InferenceAnalyticsRow',
+)({
+  key: S.String,
+  label: S.String,
+  inputTokens: S.Int,
+  outputTokens: S.Int,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  // SUM of our marginal cost (USD) over the group. 0 when every row in the group
+  // predates cost recording (see costCoverage on the response).
+  costUsd: S.Number,
+}) {}
+
+// One per-day analytics point (UTC calendar day) with summed tokens, request
+// count, and summed marginal cost.
+export class InferenceAnalyticsDayPoint extends S.Class<InferenceAnalyticsDayPoint>(
+  'InferenceAnalyticsDayPoint',
+)({
+  day: S.String,
+  inputTokens: S.Int,
+  outputTokens: S.Int,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  costUsd: S.Number,
+}) {}
+
+// Window-wide totals across the whole result.
+export class InferenceAnalyticsTotals extends S.Class<InferenceAnalyticsTotals>(
+  'InferenceAnalyticsTotals',
+)({
+  inputTokens: S.Int,
+  outputTokens: S.Int,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  // SUM of stored marginal cost (USD) across the window.
+  costUsd: S.Number,
+  // Fraction (0..1) of rows in the window that carry a stored cost_amount. < 1
+  // means some rows predate cost recording, so costUsd understates true cost.
+  costCoverage: S.Number,
+}) {}
+
+// The owner-gated inference analytics response: token + cost aggregates grouped
+// by provider, by model, by source-route/producer-system, and by day, plus
+// window-wide totals.
+export class InferenceAnalyticsResponse extends S.Class<InferenceAnalyticsResponse>(
+  'InferenceAnalyticsResponse',
+)({
+  schemaVersion: S.Literal('openagents.inference_analytics.v1'),
+  window: InferenceAnalyticsWindow,
+  generatedAt: S.String,
+  byProvider: S.Array(InferenceAnalyticsRow),
+  byModel: S.Array(InferenceAnalyticsRow),
+  byRoute: S.Array(InferenceAnalyticsRow),
+  byDay: S.Array(InferenceAnalyticsDayPoint),
+  totals: InferenceAnalyticsTotals,
+}) {}

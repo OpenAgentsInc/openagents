@@ -81,13 +81,58 @@ export const isFreeTierEnabled = (value: unknown): boolean =>
 
 // Per-key, per-UTC-day FREE request ceiling. The last allowed request lands the
 // counter AT the ceiling; the next one falls through to the normal balance gate.
-// !! TUNABLE: issue #6228.
-export const FREE_TIER_MAX_REQUESTS_PER_DAY = 200 as const
+// !! TUNABLE: issue #6228, raised on the cost model (issue #6232,
+// docs/inference/2026-06-25-khala-cost-model-and-analytics.md). Env-overridable
+// via FREE_TIER_MAX_REQUESTS_PER_DAY without a deploy.
+export const FREE_TIER_MAX_REQUESTS_PER_DAY = 2_000 as const
 
 // Per-key, per-UTC-day FREE served-token ceiling (prompt + completion). Bounds a
 // single free key's draw on the shared own-infra pool regardless of request
-// count. !! TUNABLE: issue #6228.
-export const FREE_TIER_MAX_TOKENS_PER_DAY = 200_000 as const
+// count. Raised from 200k -> 2.5M on the cost model: the real Khala lane
+// (Fireworks DeepSeek V4 Flash, $0.14 in / $0.28 out per Mtok) costs ~$0.60 to
+// serve a fully-maxed 2.5M-token day, ~$0.12 at realistic utilization — a
+// generous "try it" session bounded by cost (issue #6232).
+// !! TUNABLE: env-overridable via FREE_TIER_MAX_TOKENS_PER_DAY without a deploy.
+export const FREE_TIER_MAX_TOKENS_PER_DAY = 2_500_000 as const
+
+// Env keys the owner can set to tune the free-tier quota WITHOUT a code deploy.
+// A missing / non-positive / non-numeric value falls back to the constant above.
+export const FREE_TIER_MAX_REQUESTS_PER_DAY_ENV_KEY =
+  'FREE_TIER_MAX_REQUESTS_PER_DAY' as const
+export const FREE_TIER_MAX_TOKENS_PER_DAY_ENV_KEY =
+  'FREE_TIER_MAX_TOKENS_PER_DAY' as const
+
+// Parse a positive-integer env override; any absent / non-numeric / <= 0 value
+// returns the fallback. Bounded numeric parse, never an intent parser.
+export const parsePositiveIntEnv = (
+  value: unknown,
+  fallback: number,
+): number => {
+  if (typeof value !== 'string') {
+    return fallback
+  }
+  const parsed = Number.parseInt(value.trim(), 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+// Resolve the effective free-tier quota from the Worker env, falling back to the
+// compiled defaults. This is the ONE place env overrides are read so the gate,
+// the metering wrapper, the mint response, and the public catalog all agree.
+export const resolveFreeTierQuota = (
+  env: Readonly<{
+    FREE_TIER_MAX_REQUESTS_PER_DAY?: unknown
+    FREE_TIER_MAX_TOKENS_PER_DAY?: unknown
+  }>,
+): FreeTierQuota => ({
+  maxRequestsPerDay: parsePositiveIntEnv(
+    env.FREE_TIER_MAX_REQUESTS_PER_DAY,
+    FREE_TIER_MAX_REQUESTS_PER_DAY,
+  ),
+  maxTokensPerDay: parsePositiveIntEnv(
+    env.FREE_TIER_MAX_TOKENS_PER_DAY,
+    FREE_TIER_MAX_TOKENS_PER_DAY,
+  ),
+})
 
 // Per-IP-hash, per-UTC-day self-serve MINT ceiling so anonymous minting is
 // bounded (no unbounded key minting). !! TUNABLE: issue #6228.

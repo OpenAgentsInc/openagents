@@ -13,7 +13,7 @@ Base URL:   https://openagents.com/api/v1      (the bare /v1 also works as an al
 Model:      openagents/khala
 Get a key:  curl -X POST https://openagents.com/api/keys/free
 Auth:       Authorization: Bearer <your oa_agent_... token>
-Free tier:  200 requests/day · 200,000 tokens/day (resets at UTC midnight)
+Free tier:  2,000 requests/day · 2,500,000 tokens/day (resets at UTC midnight)
 ```
 
 ## 1. Get a free key
@@ -35,7 +35,7 @@ Response (real shape):
     "tokenPrefix": "oa_agent_XXXX",
     "createdAt": "2026-06-24T22:00:00.000Z"
   },
-  "quota": { "maxRequestsPerDay": 200, "maxTokensPerDay": 200000, "window": "utc_day" },
+  "quota": { "maxRequestsPerDay": 2000, "maxTokensPerDay": 2500000, "window": "utc_day" },
   "usage": { "requestsToday": 0, "tokensToday": 0 }
 }
 ```
@@ -122,7 +122,7 @@ OpenAI SDKs: pass `stream=True` / `{ stream: true }` as usual.
 
 ## 6. Limits & errors
 
-- **Free quota:** 200 requests/day and 200,000 tokens/day, per key, resetting at **UTC
+- **Free quota:** 2,000 requests/day and 2,500,000 tokens/day, per key, resetting at **UTC
   midnight** (`window: "utc_day"`).
 - **`401`** — missing or invalid `Authorization` header / key.
 - **`402`** — over the free quota (or calling a paid-only lane without credits). The free

@@ -9,6 +9,7 @@ import {
 import {
   buildServedTokensIngestBody,
   makeServedTokensRecorder,
+  servedTokensCostUsd,
   servedTokensEventId,
   servedTokensIdempotencyKey,
 } from './served-tokens-recorder'
@@ -445,5 +446,36 @@ describe('served-tokens-recorder', () => {
     expect(body.producerSystem).toBe('omega')
     expect(body.sourceRoute).toBe('omega_hosted_gemini')
     expect(JSON.stringify(body)).not.toContain('prompt_text')
+  })
+
+  test('records our marginal cost (USD) against the SERVED provider lane (#6232)', () => {
+    // The real prod Khala lane is Fireworks DeepSeek V4 Flash ($0.14 in /
+    // $0.28 out per Mtok). 1,000,000 in + 1,000,000 out => $0.14 + $0.28 = $0.42.
+    const cost = servedTokensCostUsd('accounts/fireworks/models/deepseek-v4-flash', {
+      completionTokens: 1_000_000,
+      promptTokens: 1_000_000,
+      totalTokens: 2_000_000,
+    })
+
+    expect(cost).toBeCloseTo(0.42, 6)
+  })
+
+  test('the ingest body carries cost_amount priced on the served model (#6232)', () => {
+    const body = buildServedTokensIngestBody({
+      accountRef: 'agent:cost-1',
+      adapterId: 'fireworks',
+      observedAt: fixedNow(),
+      requestId: 'chatcmpl-cost-1',
+      requestedModel: 'openagents/khala',
+      servedModel: 'accounts/fireworks/models/deepseek-v4-flash',
+      usage: {
+        completionTokens: 1_000_000,
+        promptTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      },
+    })
+
+    expect(body.cost.currency).toBe('USD')
+    expect(body.cost.amount).toBeCloseTo(0.42, 6)
   })
 })

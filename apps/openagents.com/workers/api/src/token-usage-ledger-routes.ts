@@ -255,6 +255,15 @@ const tokenUsageLeaderboardFilters = (
   return filters
 }
 
+const inferenceAnalyticsFilters = (
+  request: Request,
+): Readonly<{ window?: string }> => {
+  const url = new URL(request.url)
+  const value = url.searchParams.get('window')?.trim()
+
+  return value === undefined || value === '' ? {} : { window: value }
+}
+
 const runRoute = (
   effect: Effect.Effect<
     HttpResponse,
@@ -304,6 +313,41 @@ export const makeTokenUsageLedgerRoutes = <
 
           return dependencies.appendRefreshedSessionCookies(
             noStoreJsonResponse(aggregate),
+            session,
+          )
+        }),
+        ledgerLayer(env, runtime),
+      )
+    },
+
+    // OWNER-GATED inference cost / provider-lane analytics (#6232). Returns
+    // aggregate token + cost rollups (byProvider, byModel, byRoute, byDay,
+    // totals) over the requested window. Admin/owner session ONLY — provider ids
+    // and cost are internal, not public. Aggregate-only; no per-user material.
+    handleInferenceAnalyticsApi: (
+      request: Request,
+      env: Bindings,
+      ctx: ExecutionContext,
+    ): Effect.Effect<HttpResponse> => {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return runRoute(
+        Effect.gen(function* () {
+          const session = yield* requireAdminSession(
+            dependencies,
+            request,
+            env,
+            ctx,
+          )
+          const ledger = yield* TokenUsageLedger
+          const analytics = yield* ledger.readInferenceAnalytics(
+            inferenceAnalyticsFilters(request),
+          )
+
+          return dependencies.appendRefreshedSessionCookies(
+            noStoreJsonResponse(analytics),
             session,
           )
         }),

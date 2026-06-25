@@ -18,6 +18,7 @@ import { Effect } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { currentEpochSeconds } from '../runtime-primitives'
+import { type FreeTierQuota } from './inference-free-tier-key'
 import {
   buildModelCatalog,
   findModelCatalogEntry,
@@ -46,6 +47,9 @@ export type ModelsListDeps = Readonly<{
   // Whether the self-serve free API mode is armed. This drives only the public
   // catalog projection (`oa_free_tier*`), not the quota/key/balance gates.
   freeTierEnabled?: boolean
+  // The effective (env-overridable) free-tier quota to publish in the catalog.
+  // When omitted, the catalog falls back to the compiled default.
+  freeTierQuota?: FreeTierQuota
   // Provider serving policy: which supply lanes are armed (credential present).
   // When supplied, the catalog is narrowed to ONLY models the gateway can
   // actually serve, so a paid gateway never advertises an unservable model
@@ -56,6 +60,9 @@ export type ModelsListDeps = Readonly<{
 
 const catalogPolicy = (deps: ModelsListDeps): ModelCatalogPolicy => ({
   freeTierEnabled: deps.freeTierEnabled === true,
+  ...(deps.freeTierQuota === undefined
+    ? {}
+    : { freeTierQuota: deps.freeTierQuota }),
 })
 
 // Serve the OpenAI-compatible `/v1/models` listing for the gateway.

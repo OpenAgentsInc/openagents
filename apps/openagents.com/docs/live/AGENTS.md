@@ -55,7 +55,7 @@ endpoint — **free, no signup, no payment**:
 - **Model:** `openagents/khala` (one public model)
 - **Get a free key:** `POST https://openagents.com/api/keys/free` → use the returned
   `credential.token` (an `oa_agent_...` key) as `Authorization: Bearer <token>`
-- **Free quota:** 200 requests/day · 200,000 tokens/day (resets at UTC midnight)
+- **Free quota:** 2,000 requests/day · 2,500,000 tokens/day (resets at UTC midnight)
 
 ```sh
 KEY=$(curl -s -X POST https://openagents.com/api/keys/free | jq -r .credential.token)
