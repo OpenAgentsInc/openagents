@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const defaultBaseUrl = 'https://openagents.com'
+const defaultApiPrefix = '/v1'
 const defaultModel = 'openagents/khala'
 const defaultPrompt =
   'OpenAgents Khala production smoke: answer with exactly READY and no other words.'
@@ -31,6 +32,17 @@ const defaultForbiddenPublicModelIds = [
 
 const trimBaseUrl = baseUrl =>
   String(baseUrl || defaultBaseUrl).replace(/\/+$/, '')
+
+const normalizedApiPrefix = apiPrefix => {
+  const prefix = String(apiPrefix || defaultApiPrefix).trim()
+  if (prefix === '') {
+    return defaultApiPrefix
+  }
+  return `/${prefix.replace(/^\/+|\/+$/gu, '')}`
+}
+
+const apiPath = (apiPrefix, path) =>
+  `${normalizedApiPrefix(apiPrefix)}${path.startsWith('/') ? path : `/${path}`}`
 
 const absoluteUrl = (baseUrl, pathOrUrl) =>
   new URL(String(pathOrUrl || ''), baseUrl).toString()
@@ -294,6 +306,7 @@ const backingMatches = (
 
 export const parseArgs = (argv, env = process.env) => {
   const options = {
+    apiPrefix: env.OPENAGENTS_KHALA_API_PREFIX || defaultApiPrefix,
     approveLiveSpend:
       truthy(env.OPENAGENTS_KHALA_SMOKE_APPROVE_LIVE_SPEND) ||
       truthy(env.KHALA_SMOKE_APPROVE_LIVE_SPEND),
@@ -316,7 +329,9 @@ export const parseArgs = (argv, env = process.env) => {
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index]
-    if (value === '--base-url' || value === '--baseUrl') {
+    if (value === '--api-prefix') {
+      options.apiPrefix = argv[++index] || options.apiPrefix
+    } else if (value === '--base-url' || value === '--baseUrl') {
       options.baseUrl = argv[++index] || options.baseUrl
     } else if (value === '--model') {
       options.model = argv[++index] || options.model
@@ -355,6 +370,7 @@ export const usage = () => `Usage:
     node scripts/khala-production-smoke.mjs --approve-live-spend
 
 Options:
+  --api-prefix <path>                    Gateway prefix. Defaults to /v1.
   --base-url <url>                         OpenAgents origin. Defaults to https://openagents.com.
   --model <model>                          Defaults to openagents/khala.
   --prompt <text>                          Prompt used for both nonstreaming and streaming calls.
@@ -373,6 +389,7 @@ completion text.
 `
 
 export const runKhalaProductionSmoke = async ({
+  apiPrefix = defaultApiPrefix,
   approveLiveSpend = false,
   baseUrl = defaultBaseUrl,
   expectedServedModelContains = defaultExpectedServedModelContains,
@@ -388,6 +405,7 @@ export const runKhalaProductionSmoke = async ({
   assert(typeof fetchImpl === 'function', 'A fetch implementation is required.')
 
   const origin = trimBaseUrl(baseUrl)
+  const gatewayPrefix = normalizedApiPrefix(apiPrefix)
   const checks = []
   const check = (name, passed, details = {}) => {
     checks.push({ details, name, passed: Boolean(passed) })
@@ -397,7 +415,7 @@ export const runKhalaProductionSmoke = async ({
   const readiness = await requestJson(
     fetchImpl,
     origin,
-    '/v1/gateway/readiness',
+    apiPath(gatewayPrefix, '/gateway/readiness'),
   )
   check('readiness_endpoint_200', okStatus(readiness.response), {
     status: readiness.response.status,
@@ -411,7 +429,11 @@ export const runKhalaProductionSmoke = async ({
     },
   )
 
-  const models = await requestJson(fetchImpl, origin, '/v1/models')
+  const models = await requestJson(
+    fetchImpl,
+    origin,
+    apiPath(gatewayPrefix, '/models'),
+  )
   const modelIds = modelIdsFrom(models.body)
   const forbiddenPublicIds = forbiddenCatalogIdsFrom(
     modelIds,
@@ -430,6 +452,7 @@ export const runKhalaProductionSmoke = async ({
 
   if (readinessOnly) {
     return {
+      apiPrefix: gatewayPrefix,
       checks,
       model,
       ok: true,
@@ -467,7 +490,7 @@ export const runKhalaProductionSmoke = async ({
   const completion = await requestJson(
     fetchImpl,
     origin,
-    '/v1/chat/completions',
+    apiPath(gatewayPrefix, '/chat/completions'),
     {
       body: JSON.stringify({ ...chatBody, stream: false }),
       headers: authHeaders,
@@ -507,7 +530,7 @@ export const runKhalaProductionSmoke = async ({
   })
 
   const streamResponse = await fetchImpl(
-    absoluteUrl(origin, '/v1/chat/completions'),
+    absoluteUrl(origin, apiPath(gatewayPrefix, '/chat/completions')),
     {
       body: JSON.stringify({ ...chatBody, stream: true }),
       headers: {
@@ -550,6 +573,7 @@ export const runKhalaProductionSmoke = async ({
   })
 
   return {
+    apiPrefix: gatewayPrefix,
     checks,
     model,
     nonstream: {
