@@ -630,6 +630,21 @@ export type ChatCompletionsDeps = Readonly<{
   // emission are explicit follow-ups (#6214), not built on this path.
   traceEmit?: Readonly<{
     enabled: boolean
+    // DEFAULT-ON FREE-TIER CAPTURE flag (#6293), SEPARATE from the master
+    // `enabled` kill-switch. When false (the default), capture only happens for
+    // a request that EXPLICITLY opts in (today's behaviour). When true, a
+    // free-tier-and-not-paid-privacy completion is captured WITHOUT an opt-in
+    // (private-by-default, redacted). Staged independently of the master flag so
+    // the flip can be enabled by a single env var after redaction is confirmed.
+    captureDefaultEnabled?: boolean | undefined
+    // CAPTURE-DEFAULT resolver (#6293/#6295). Returns whether THIS (account,
+    // model) qualifies for default-on capture: `freeTier.free && !paidPrivacy`.
+    // FAIL-CLOSED-TO-PRIVATE: an unsafe/unknown determination must resolve to
+    // false (do not capture). Only consulted when `captureDefaultEnabled` is on.
+    // Absent => captureDefault is always false (no auto-capture).
+    resolveCaptureDefault?:
+      | ((accountRef: string, model: string) => Promise<boolean>)
+      | undefined
     // Persist a completed Khala chat session as an ATIF trace. The Worker wires
     // this to `emitKhalaChatTrace` against the shared trace store + the resolved
     // owner. Absent => no-op. Returns void; the call site logs nothing sensitive.
@@ -641,6 +656,9 @@ export type ChatCompletionsDeps = Readonly<{
         result: InferenceResult
         responseId: string
         optedIn: boolean
+        // DEFAULT-ON CAPTURE: persist even without an explicit opt-in. Stored
+        // owner_only (private-by-default). Resolved at the call site.
+        captureDefault: boolean
       }>,
     ) => Promise<void>
   }>
@@ -2911,32 +2929,53 @@ export const handleChatCompletions = (
       result: guardedResult,
     })
 
-    // CROSS-APP TRACE EMISSION (#6214): map this completed Khala chat session to a
-    // public-safe ATIF trajectory and (opt-in, flag-gated) persist it as a
-    // shareable `/trace/{uuid}`. Fire-and-forget over the already-priced
-    // completion: it never blocks, fails, or alters the response. INERT unless
-    // `deps.traceEmit` is wired AND enabled AND this request opted in; the emitter
-    // itself re-checks every gate. We pass the GUARDED result so the trace records
-    // the same identity-safe content the client received, and the ORIGINAL client
-    // messages (gateway-injected scaffolding is dropped inside the emitter).
-    if (
-      deps.traceEmit !== undefined &&
-      deps.traceEmit.enabled &&
-      traceEmitOptIn
-    ) {
-      yield* Effect.promise(() =>
-        deps.traceEmit!.emit({
-          accountRef: session.accountRef,
-          optedIn: traceEmitOptIn,
-          requestMessages: body.messages.map(message => ({
-            content: message.content,
-            role: message.role,
-          })),
-          requestedModel,
-          responseId,
-          result: guardedResult,
-        }),
-      )
+    // CROSS-APP TRACE EMISSION (#6214) + DEFAULT-ON FREE-TIER CAPTURE (#6293):
+    // map this completed Khala chat session to a public-safe ATIF trajectory and
+    // (flag-gated) persist it as a `/trace/{uuid}`. Fire-and-forget over the
+    // already-priced completion: it NEVER blocks, fails, or alters the response.
+    //
+    // Persist when the MASTER flag is on AND (this request opted in OR
+    // `captureDefault` is true). `captureDefault` is the default-on free-tier
+    // policy (#6293): only consulted when the SEPARATE
+    // `traceEmit.captureDefaultEnabled` flag is on, resolved as
+    // `freeTier.free && !paidPrivacy` (#6295, fail-closed-to-private). The
+    // resolver is consulted ONLY when there is no explicit opt-in (an opted-in
+    // request is already captured). We pass the GUARDED result (the same
+    // identity-safe content the client received) and the ORIGINAL client messages
+    // (gateway scaffolding is dropped inside the emitter); the emitter REDACTS the
+    // trajectory before the public-safety tripwire and re-checks every gate.
+    if (deps.traceEmit !== undefined && deps.traceEmit.enabled) {
+      // Resolve captureDefault lazily: skip the resolver entirely when the
+      // capture-default flag is off, the request already opted in, or no resolver
+      // is wired. Fail-soft: a resolver error => NOT captured (do not block).
+      let captureDefault = false
+      if (
+        !traceEmitOptIn &&
+        deps.traceEmit.captureDefaultEnabled === true &&
+        deps.traceEmit.resolveCaptureDefault !== undefined
+      ) {
+        captureDefault = yield* Effect.promise(() =>
+          deps
+            .traceEmit!.resolveCaptureDefault!(session.accountRef, requestedModel)
+            .catch(() => false),
+        )
+      }
+      if (traceEmitOptIn || captureDefault) {
+        yield* Effect.promise(() =>
+          deps.traceEmit!.emit({
+            accountRef: session.accountRef,
+            optedIn: traceEmitOptIn,
+            captureDefault,
+            requestMessages: body.messages.map(message => ({
+              content: message.content,
+              role: message.role,
+            })),
+            requestedModel,
+            responseId,
+            result: guardedResult,
+          }),
+        )
+      }
     }
 
     return noStoreJsonResponse(

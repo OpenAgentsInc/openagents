@@ -75,6 +75,18 @@ const makeFakeStore = (): TraceStore & {
   return {
     created,
     createTrace: async (input): Promise<CreateTraceResult> => {
+      // Mirror the real D1 store's idempotency contract: a repeat
+      // (ownerUserId, idempotencyKey) returns the existing record unchanged.
+      if (input.idempotencyKey !== null && input.idempotencyKey !== undefined) {
+        const existing = created.find(
+          c =>
+            c.ownerUserId === input.ownerUserId &&
+            c.idempotencyKey === input.idempotencyKey,
+        )
+        if (existing !== undefined) {
+          return { record: recordFromInput(existing), created: false }
+        }
+      }
       created.push(input)
       return { record: recordFromInput(input), created: true }
     },
@@ -188,11 +200,13 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
       makeId: () => 'fixed-uuid-0001',
       nowIso: () => '2026-06-24T00:00:00.000Z',
     })
-    expect(result).toEqual({
-      emitted: true,
-      uuid: 'fixed-uuid-0001',
-      url: '/trace/fixed-uuid-0001',
-    })
+    expect(result.emitted).toBe(true)
+    if (result.emitted) {
+      expect(result.uuid).toBe('fixed-uuid-0001')
+      expect(result.url).toBe('/trace/fixed-uuid-0001')
+      // Redaction always runs on the capture path; a clean session reports zero.
+      expect(result.redactionReport?.total).toBe(0)
+    }
     expect(store.created).toHaveLength(1)
     const stored = store.created[0]!
     expect(stored.ownerUserId).toBe('u1')
@@ -210,14 +224,16 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
     expect(trajectory.agent.model_name).toBe('openagents/khala')
   })
 
-  it('rejects (does not store) a session that trips the public-safety tripwire', async () => {
+  it('REDACTS (then stores) a session that would otherwise trip the tripwire', async () => {
     const store = makeFakeStore()
     const result = await emitKhalaChatTrace(
       fakeSession({
         result: fakeResult({
-          // A real bearer-token VALUE: caught by the SAME tripwire the ingest
-          // route runs, so it is rejected before persistence.
-          content: 'Use header Authorization: Bearer abcdef0123456789ABCDEF',
+          // A real bearer-token VALUE plus an email + key. Under default-on
+          // capture these are SCRUBBED before the tripwire (redact-before-trip),
+          // so the trace is captured-and-safe rather than dropped.
+          content:
+            'Use header Authorization: Bearer abcdef0123456789ABCDEF and mail bob@example.com key sk-abcdefghijklmnop0123456789ABCD',
         }),
       }),
       {
@@ -225,13 +241,21 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
         optedIn: true,
         store,
         owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+        makeId: () => 'fixed-uuid-redacted',
       },
     )
-    expect(result.emitted).toBe(false)
-    if (!result.emitted) {
-      expect(result.reason).toBe('public_safety_rejected')
+    expect(result.emitted).toBe(true)
+    expect(store.created).toHaveLength(1)
+    const stored = store.created[0]!
+    const serialized = JSON.stringify(stored.trajectory)
+    // NOTHING sensitive survives in the stored trajectory.
+    expect(serialized).not.toContain('abcdef0123456789ABCDEF')
+    expect(serialized).not.toContain('bob@example.com')
+    expect(serialized).not.toContain('sk-abcdefghijklmnop')
+    expect(serialized).toContain('[REDACTED:')
+    if (result.emitted) {
+      expect((result.redactionReport?.total ?? 0)).toBeGreaterThanOrEqual(3)
     }
-    expect(store.created).toHaveLength(0)
   })
 
   it('returns store_error (never throws) when the store fails', async () => {
@@ -254,6 +278,79 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
     if (!result.emitted) {
       expect(result.reason).toBe('store_error')
     }
+  })
+})
+
+describe('default-on free-tier capture (#6293/#6294)', () => {
+  it('captures WITHOUT a per-request opt-in when captureDefault is true, stored owner_only', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: false,
+      captureDefault: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      makeId: () => 'fixed-uuid-auto',
+    })
+    expect(result.emitted).toBe(true)
+    expect(store.created).toHaveLength(1)
+    // PRIVATE-BY-DEFAULT: an auto-captured trace is owner_only, not unlisted.
+    expect(store.created[0]!.visibility).toBe('owner_only')
+  })
+
+  it('an EXPLICIT opt-in is stored unlisted (shareable link), not owner_only', async () => {
+    const store = makeFakeStore()
+    await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: true,
+      captureDefault: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+    })
+    expect(store.created[0]!.visibility).toBe('unlisted')
+  })
+
+  it('is a no-op (not_opted_in) when neither opted in NOR captureDefault', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: false,
+      captureDefault: false,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+    })
+    expect(result).toEqual({ emitted: false, reason: 'not_opted_in' })
+    expect(store.created).toHaveLength(0)
+  })
+
+  it('the MASTER flag still hard-disables even with captureDefault on', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: false,
+      optedIn: false,
+      captureDefault: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+    })
+    expect(result).toEqual({ emitted: false, reason: 'disabled' })
+    expect(store.created).toHaveLength(0)
+  })
+
+  it('idempotent per responseId on the capture-default path', async () => {
+    const store = makeFakeStore()
+    const deps = {
+      enabled: true,
+      optedIn: false,
+      captureDefault: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' as const },
+    }
+    const a = await emitKhalaChatTrace(fakeSession(), deps)
+    const b = await emitKhalaChatTrace(fakeSession(), deps)
+    expect(a.emitted).toBe(true)
+    expect(b.emitted).toBe(true)
+    // Same responseId => the store dedups on idempotencyKey; one row.
+    expect(store.created).toHaveLength(1)
   })
 })
 

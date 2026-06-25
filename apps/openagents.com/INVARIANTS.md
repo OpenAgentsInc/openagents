@@ -310,6 +310,52 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/atif-trace-schema.test.ts` and
   `workers/api/src/trace-store-routes.test.ts`.
 
+## Default-On Free-Tier Trace Capture (redacted, private-by-default)
+
+- The Khala chat-completions emitter (`workers/api/src/inference/
+  khala-chat-trace-emitter.ts`) captures a completed session DEFAULT-ON for
+  free-tier traffic (#6293, epic #6206) behind TWO staged flags: the master
+  kill-switch `KHALA_CHAT_TRACE_EMIT_ENABLED` AND the separate
+  `KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`. Both default OFF in code. The gate is
+  `enabled && (optedIn || captureDefault)`; the emitter re-checks it
+  (`not_opted_in` reject when neither holds). The master flag still
+  HARD-disables everything.
+- `captureDefault = freeTier.free && !paidPrivacy`, resolved at the chat seam
+  alongside `checkFreeTier`. Free-tier is the existing self-serve free signal
+  (`inference-free-tier-key.ts`). Paid-privacy is the confidential-compute /
+  per-account opt-OUT (#6295, `inference-privacy-entitlement.ts`,
+  `inference_privacy_entitlements`, env
+  `INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED`). A paid-for-privacy /
+  confidential-compute caller is NEVER auto-captured. The privacy resolve is
+  FAIL-CLOSED-TO-PRIVATE: any unsafe/unknown determination (read error,
+  resolver error) resolves to NOT-captured (the inverse of the free-tier gate's
+  fail-closed-to-paid).
+- REDACT-BEFORE-TRIPWIRE. The capture path is no longer reject-on-leak: the
+  emitter runs the deterministic redactor
+  (`workers/api/src/inference/trace-redaction.ts`, the gateway-side equivalent
+  of the #6219 `TraceRedactor`) on the mapped trajectory FIRST — scrubbing
+  secrets/keys/tokens, wallet/payment material, PII (emails), and local paths
+  into typed `[REDACTED:<category>]` placeholders. The redactor covers a
+  SUPERSET of every category `atifTraceTripwire` rejects. The tripwire then runs
+  as the FAIL-CLOSED BACKSTOP: a trajectory that STILL trips after redaction is
+  DROPPED (`redaction_residual_drop`), never stored — but the completion is
+  never affected.
+- PRIVATE-BY-DEFAULT. An AUTO-CAPTURED trace (captureDefault, no explicit
+  opt-in) is stored `owner_only` (#6294) — not even link-reachable until the
+  owner opts into sharing. An EXPLICIT per-request opt-in keeps the historical
+  `unlisted` (shareable-by-link) default.
+- FAIL-SOFT + IDEMPOTENT. Capture is fire-and-forget after the priced
+  completion: a redaction/store/resolver error NEVER blocks, fails, or alters
+  `/v1/chat/completions`. Idempotency is keyed on the chat `responseId`
+  (`createTrace` idempotencyKey), so a retried emit never duplicates.
+- A captured trace stays evidence only (no reward/consent/authority drift; the
+  data-market reward marker stays INERT). No raw backend model id, secret,
+  wallet/payment material, PII, or raw CoT is ever stored.
+- Regression coverage:
+  `workers/api/src/inference/trace-redaction.test.ts`,
+  `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
+  `workers/api/src/inference/inference-privacy-entitlement.test.ts`.
+
 ## Trace Upload Data Market
 
 - The trace upload data market (#6221, epic #6206; migrations

@@ -164,6 +164,25 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // (never bypassed); the emitted model id is the gateway projection
   // `openagents/khala`, never a raw backend.
   KHALA_CHAT_TRACE_EMIT_ENABLED?: string | undefined
+  // DEFAULT-ON free-tier trace capture flag (openagents #6293, epic #6206).
+  // SEPARATE from the master KHALA_CHAT_TRACE_EMIT_ENABLED kill-switch so the
+  // flip can be staged independently. DEFAULT OFF: with this off, a completed
+  // Khala chat session is captured ONLY for a request that explicitly opts in
+  // (today's behaviour). Set "true"/"1"/"on" to ARM default-on capture: a
+  // free-tier-and-not-paid-privacy completion is then captured WITHOUT an opt-in
+  // — REDACTED (the primary scrubber runs before the public-safety tripwire) and
+  // PRIVATE-BY-DEFAULT (stored `owner_only`, not even link-reachable until the
+  // owner opts into sharing). The master flag must ALSO be on; a paid-privacy /
+  // confidential-compute caller is NEVER captured (#6295). DO NOT enable in prod
+  // until the redaction tests are confirmed and the migration is applied — the
+  // coordinator deploys via the migrations-safe path and flips this last.
+  KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT?: string | undefined
+  // Confidential-compute capture opt-OUT flag (openagents #6295, child of
+  // #6293). DEFAULT OFF. When "true"/"1"/"on", the deployment runs in
+  // confidential-compute mode and EVERY caller is treated as paying for privacy
+  // — NOTHING is auto-captured, regardless of the capture-default flag or the
+  // per-account privacy entitlement. The explicit deployment-wide exclusion.
+  INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED?: string | undefined
   // Async batch-job consumer feature flag (Khala, EPIC #6017 / #6028). Default
   // OFF: the queue handler does NOT route batch-job messages to the consumer
   // (`batch-job-consumer.ts executeBatchJob`) on the live Worker until the

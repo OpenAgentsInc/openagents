@@ -49,6 +49,18 @@ import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
 import type { TraceStore, TraceUploadSource } from '../trace-store-d1'
 import { isKhalaModel } from './pricing'
 import type { InferenceMessage, InferenceResult } from './provider-adapter'
+import {
+  redactTraceValue,
+  type TraceRedactionReport,
+} from './trace-redaction'
+
+// The visibility an AUTO-CAPTURED (non-opted-in) free-tier trace is stored at:
+// `owner_only` (#6294 storage half). A trace the user never chose to share must
+// not be link-reachable by uuid guess/leak — it renders only to the owning
+// session/admin until the owner explicitly opts it into sharing. An EXPLICIT
+// per-request opt-in keeps the historical `unlisted` default (the caller asked
+// for a shareable link).
+export const KHALA_AUTO_CAPTURE_VISIBILITY = 'owner_only' as const
 
 // The single public Khala gateway model id projected into every emitted trace.
 // We NEVER emit a raw served backend id.
@@ -62,6 +74,20 @@ const KHALA_TRACE_AGENT_VERSION = 'gateway-1' as const
 // Parse the emit flag value. Default OFF: anything other than an explicit truthy
 // token leaves the emitter inert (mirrors `isInferenceGatewayEnabled`).
 export const isKhalaChatTraceEmitEnabled = (
+  value: string | undefined,
+): boolean => {
+  if (value === undefined) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// Parse the DEFAULT-ON free-tier CAPTURE flag (#6293). SEPARATE from the master
+// emit flag above so the flip is staged independently. DEFAULT OFF: anything
+// other than an explicit truthy token leaves default-on capture inert (only
+// explicitly-opted-in requests are captured). The Worker reads
+// `env.KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT`.
+export const isKhalaFreeTierTraceCaptureDefaultEnabled = (
   value: string | undefined,
 ): boolean => {
   if (value === undefined) {
@@ -231,8 +257,17 @@ export type EmitKhalaChatTraceDeps = Readonly<{
   // OFF: the Worker passes
   // `isKhalaChatTraceEmitEnabled(env.KHALA_CHAT_TRACE_EMIT_ENABLED)`.
   enabled: boolean
-  // Did THIS request opt in (header / body switch)? Both gates must be true.
+  // Did THIS request opt in (header / body switch)? Persist when the master flag
+  // is on AND (the request opted in OR `captureDefault` is true).
   optedIn: boolean
+  // DEFAULT-ON CAPTURE (#6293). When true, this completion is captured even
+  // WITHOUT a per-request opt-in — the free-tier-default policy resolved at the
+  // chat seam (`captureDefault = freeTier.free && !paidPrivacy`, fail-closed to
+  // NOT-captured). Default false: with neither `optedIn` nor `captureDefault`,
+  // the emitter is the historical honest no-op (`not_opted_in`). An auto-capture
+  // (captureDefault, not optedIn) is stored `owner_only` (private-by-default);
+  // an explicit opt-in keeps `unlisted`.
+  captureDefault?: boolean | undefined
   // The shared trace store (the SAME `TraceStore` the ingest route persists
   // through). Absent => honest no-op (nothing to persist into).
   store: TraceStore | undefined
@@ -247,7 +282,6 @@ export type EmitKhalaChatTraceDeps = Readonly<{
 }>
 
 export type EmitKhalaChatTraceResult =
-  | Readonly<{ emitted: true; uuid: string; url: string }>
   | Readonly<{
       emitted: false
       reason:
@@ -258,18 +292,37 @@ export type EmitKhalaChatTraceResult =
         | 'no_owner'
         | 'invalid_trajectory'
         | 'public_safety_rejected'
+        | 'redaction_residual_drop'
         | 'store_error'
       detail?: string | undefined
+      // Public-safe redaction report (category -> count + total) attached on the
+      // capture path so a caller/log can see a trace was scrubbed WITHOUT ever
+      // surfacing a redacted VALUE. Present whenever redaction ran.
+      redactionReport?: TraceRedactionReport | undefined
+    }>
+  | Readonly<{
+      emitted: true
+      uuid: string
+      url: string
+      redactionReport?: TraceRedactionReport | undefined
     }>
 
 /**
- * Flag-gated, opt-in persist of a completed Khala chat session as an ATIF trace.
+ * Flag-gated persist of a completed Khala chat session as an ATIF trace.
  *
- * Honest no-op (no store call, no work) when the flag is off, the request did not
- * opt in, the session is not a Khala model, or no store/owner is wired. When all
- * gates pass it maps the session, runs the SAME validator + tripwire the ingest
- * route runs (never bypassed), and persists through the shared `TraceStore`,
- * returning the `{uuid}` + the shareable `/trace/{uuid}` url.
+ * Honest no-op (no store call, no work) when the master flag is off, the request
+ * neither opted in NOR qualifies for default-on free-tier capture, the session
+ * is not a Khala model, or no store/owner is wired. When all gates pass it maps
+ * the session, REDACTS the trajectory (the primary scrubber — secrets, wallet,
+ * PII, paths), then runs the SAME structural validator + public-safety tripwire
+ * the ingest route runs as the FAIL-CLOSED BACKSTOP (a trace that still trips
+ * AFTER redaction is dropped, never stored), and persists through the shared
+ * `TraceStore`, returning the `{uuid}` + the shareable `/trace/{uuid}` url.
+ *
+ * Visibility: an EXPLICIT per-request opt-in keeps the historical `unlisted`
+ * default (the caller wants a shareable link). An AUTO-CAPTURE (the default-on
+ * free-tier path, no explicit opt-in) is stored `owner_only` — private by
+ * default (#6294), not even link-reachable until the owner opts to share.
  *
  * This NEVER throws: the call site treats trace emission as fire-and-forget over
  * an already-delivered completion. All failures are returned as a typed reason.
@@ -281,7 +334,10 @@ export const emitKhalaChatTrace = async (
   if (!deps.enabled) {
     return { emitted: false, reason: 'disabled' }
   }
-  if (!deps.optedIn) {
+  const captureDefault = deps.captureDefault === true
+  // DEFAULT-ON CAPTURE (#6293): persist when the master flag is on AND
+  // (this request opted in OR it qualifies for the free-tier capture default).
+  if (!deps.optedIn && !captureDefault) {
     return { emitted: false, reason: 'not_opted_in' }
   }
   // The emitter only projects Khala sessions (it is a Khala gateway capability).
@@ -295,12 +351,18 @@ export const emitKhalaChatTrace = async (
     return { emitted: false, reason: 'no_owner' }
   }
 
-  const visibility: TraceVisibility = deps.visibility ?? 'unlisted'
-  const trajectory = khalaChatSessionToAtifTrajectory(session, { visibility })
+  // PRIVATE-BY-DEFAULT (#6294): an auto-captured trace (no explicit opt-in) is
+  // `owner_only`. An explicit caller opt-in (or a caller-set `deps.visibility`)
+  // keeps the historical default.
+  const visibility: TraceVisibility =
+    deps.visibility ??
+    (deps.optedIn ? 'unlisted' : KHALA_AUTO_CAPTURE_VISIBILITY)
+  const mapped = khalaChatSessionToAtifTrajectory(session, { visibility })
 
   // SAME structural validation the ingest route runs. A malformed projection is
-  // rejected, never stored.
-  const structuralIssues = validateAtifTrajectory(trajectory)
+  // rejected, never stored. (Run on the mapped trajectory; redaction below only
+  // rewrites string LEAVES, never structure, so validity is preserved.)
+  const structuralIssues = validateAtifTrajectory(mapped)
   if (structuralIssues.length > 0) {
     return {
       emitted: false,
@@ -309,14 +371,27 @@ export const emitKhalaChatTrace = async (
     }
   }
 
-  // SAME public-safety tripwire the ingest route runs. A leaky projection is
-  // rejected (never redacted, never stored). We surface finding CODES only.
+  // REDACTION (#6219, the PRIMARY scrubber). For default-on capture of real
+  // free-tier traffic, "drop the whole trace if it contains an email or a
+  // secret-shaped token" would silently lose a large fraction of real
+  // conversations. So we deterministically SCRUB secrets / wallet+payment / PII
+  // / local paths into typed placeholders BEFORE the tripwire. The redacted
+  // value is the one we store. The report (counts only, never values) is
+  // returned for public-safe observability.
+  const { value: redacted, report: redactionReport } = redactTraceValue(mapped)
+  const trajectory = redacted as AtifTrajectory
+
+  // SAME public-safety tripwire the ingest route runs — now the FAIL-CLOSED
+  // BACKSTOP after redaction. If anything STILL trips post-redaction, drop the
+  // trace (never store a residual leak); the completion is unaffected. We surface
+  // finding CODES only, never the offending value.
   const tripwireFindings = atifTraceTripwire(trajectory)
   if (tripwireFindings.length > 0) {
     return {
       emitted: false,
-      reason: 'public_safety_rejected',
+      reason: 'redaction_residual_drop',
       detail: tripwireFindings.map(finding => finding.code).join(','),
+      redactionReport,
     }
   }
 
@@ -354,12 +429,14 @@ export const emitKhalaChatTrace = async (
       emitted: true,
       uuid: stored.record.traceUuid,
       url: `/trace/${stored.record.traceUuid}`,
+      redactionReport,
     }
   } catch (error) {
     return {
       emitted: false,
       reason: 'store_error',
       detail: error instanceof Error ? error.message : String(error),
+      redactionReport,
     }
   }
 }

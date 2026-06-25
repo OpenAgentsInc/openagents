@@ -407,6 +407,7 @@ import {
   isFreeTierEnabled,
   makeFreeTierGate,
   markAccountFreeTierAsync,
+  readAccountFreeTier,
   readFreeKeyMintsToday,
   recordFreeKeyMintAsync,
   resolveFreeKeyMintCap,
@@ -414,6 +415,10 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
+import {
+  isConfidentialComputeEnabled,
+  makePaidPrivacyResolver,
+} from './inference/inference-privacy-entitlement'
 import {
   isOperatorExemptionEnabled,
   makeOperatorExemptionGate,
@@ -430,6 +435,7 @@ import {
 import {
   emitKhalaChatTrace,
   isKhalaChatTraceEmitEnabled,
+  isKhalaFreeTierTraceCaptureDefaultEnabled,
 } from './inference/khala-chat-trace-emitter'
 import { isComponentChannelEnabled } from './inference/khala-component-channel'
 import {
@@ -11203,6 +11209,32 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           enabled: isKhalaChatTraceEmitEnabled(
             env.KHALA_CHAT_TRACE_EMIT_ENABLED,
           ),
+          // DEFAULT-ON FREE-TIER CAPTURE (#6293). SEPARATE staged flag (default
+          // OFF in code): merging this does NOT auto-capture in prod — the
+          // coordinator flips KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT only after
+          // the redaction tests are confirmed + the migration is applied.
+          captureDefaultEnabled: isKhalaFreeTierTraceCaptureDefaultEnabled(
+            env.KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT,
+          ),
+          // CAPTURE-DEFAULT resolver: `freeTier.free && !paidPrivacy` (#6293 +
+          // #6295). Free-tier is the existing self-serve free signal; paid-privacy
+          // is the confidential-compute / per-account opt-OUT, FAIL-CLOSED-TO-
+          // PRIVATE (an unsafe read => paidPrivacy => NOT captured). The resolver
+          // itself is wrapped fail-soft at the call site (errors => not captured).
+          resolveCaptureDefault: async (accountRef, _model) => {
+            const db = openAgentsDatabase(env)
+            const free = await readAccountFreeTier(db, accountRef)
+            if (!free) {
+              return false
+            }
+            const paidPrivacy = await makePaidPrivacyResolver({
+              db,
+              confidentialComputeEnabled: isConfidentialComputeEnabled(
+                env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+              ),
+            })(accountRef)
+            return !paidPrivacy.enabled
+          },
           emit: async input => {
             // The accountRef is `agent:<id>`; the trace owner is that agent.
             const ownerUserId = input.accountRef.startsWith('agent:')
@@ -11220,6 +11252,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                   env.KHALA_CHAT_TRACE_EMIT_ENABLED,
                 ),
                 optedIn: input.optedIn,
+                // DEFAULT-ON CAPTURE (#6293): persist even without an explicit
+                // opt-in when the call site resolved captureDefault. The emitter
+                // stores an auto-capture (captureDefault && !optedIn) as
+                // owner_only (private-by-default).
+                captureDefault: input.captureDefault,
                 store: makeD1TraceStore(openAgentsDatabase(env)),
                 owner: {
                   ownerUserId,
