@@ -602,6 +602,114 @@ describe('POST /v1/chat/completions', () => {
     ])
   })
 
+  test('does not auto-capture when the paid-privacy resolver marks the caller private', async () => {
+    const emitted: Array<Readonly<{ optedIn: boolean; captureDefault: boolean }>> =
+      []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          traceEmit: {
+            captureDefaultEnabled: true,
+            enabled: true,
+            emit: async input => {
+              emitted.push({
+                captureDefault: input.captureDefault,
+                optedIn: input.optedIn,
+              })
+              return { emitted: true }
+            },
+            resolveCaptureDefault: async () => false,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(emitted).toHaveLength(0)
+  })
+
+  test('does not auto-capture when capture-default resolution errors', async () => {
+    const emitted: Array<Readonly<{ optedIn: boolean; captureDefault: boolean }>> =
+      []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          traceEmit: {
+            captureDefaultEnabled: true,
+            enabled: true,
+            emit: async input => {
+              emitted.push({
+                captureDefault: input.captureDefault,
+                optedIn: input.optedIn,
+              })
+              return { emitted: true }
+            },
+            resolveCaptureDefault: async () => {
+              throw new Error('privacy resolution unavailable')
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(emitted).toHaveLength(0)
+  })
+
+  test('auto-captures a free caller without paid-privacy when capture-default is enabled', async () => {
+    const emitted: Array<
+      Readonly<{
+        accountRef: string
+        captureDefault: boolean
+        optedIn: boolean
+        requestedModel: string
+      }>
+    > = []
+    const resolved: Array<Readonly<{ accountRef: string; model: string }>> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          traceEmit: {
+            captureDefaultEnabled: true,
+            enabled: true,
+            emit: async input => {
+              emitted.push({
+                accountRef: input.accountRef,
+                captureDefault: input.captureDefault,
+                optedIn: input.optedIn,
+                requestedModel: input.requestedModel,
+              })
+              return { emitted: true }
+            },
+            resolveCaptureDefault: async (accountRef, model) => {
+              resolved.push({ accountRef, model })
+              return true
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(resolved).toEqual([
+      { accountRef: 'agent:test-user', model: KHALA_MODEL_ID },
+    ])
+    expect(emitted).toEqual([
+      {
+        accountRef: 'agent:test-user',
+        captureDefault: true,
+        optedIn: false,
+        requestedModel: KHALA_MODEL_ID,
+      },
+    ])
+  })
+
   test('records a residual-leak counter without failing the completion', async () => {
     const metrics: Array<{
       emitted: boolean
