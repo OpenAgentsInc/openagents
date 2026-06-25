@@ -281,7 +281,7 @@ Fixture experiments for all four Phase-1 environments run through the existing
 matrix→fixture-seam→report path with `decisionGrade:false`.
 
 ### D3. Phase 2 — paid runs (owner-armed real seam → report receipt)  ([#6247](https://github.com/OpenAgentsInc/openagents/issues/6247))
-**Type:** epic · **Lever:** benchmarking/revenue · **Status:** direction (owner-gated)
+**Type:** epic · **Lever:** benchmarking/revenue · **Status:** shipped 2026-06-25
 **Why:** decision-grade numbers + benchmark-as-a-service revenue.
 **Scope:** quote (`compileGymExperiment` + `LANE_AVAILABILITY` + samples) → balance
 gate (`402`) → `preflightRealBenchmarkSweep` (budget cap, billable cap, realistic-
@@ -292,6 +292,19 @@ public-safe report receipt; cost-per-accepted-outcome consumes the real per-lane
 over realistic traffic and gets a `decisionGrade:true` report receipt; an un-armed
 env cannot issue a billable request.
 **Refs:** gym spec §6, §8 Phase 2; the cost-model doc.
+
+**Shipped:** `workers/api/src/inference/gym/paid-run.ts` now prepares paid Gym
+runs without spending during compile: it quotes executable matrix cells with
+`priceRequest`, returns an explicit `payment_required`/`402` balance gate for
+unfunded accounts, requires `preflightRealBenchmarkSweep` for budget caps,
+billable-sample caps, realistic traffic evidence, and owner approval, then arms
+the real lane seam only for startable plans. Owner-armed runs can declare a
+narrow real executor for otherwise `fixture_only` lanes such as BigPickle, so the
+global lane registry stays honest while the paid Khala-vs-BigPickle acceptance
+path can run. The prepared run emits `MeteringContext`s for the existing
+`MeteringHook` and builds a public-safe report receipt with `decisionGrade:true`
+only after the real preflight passes. Tests inject the real executor, so CI covers
+the funded acceptance path without live provider spend.
 
 ### D4. Phase 3 — Gym → training loop, and the Gym runs on Khala (the flywheel)  ([#6248](https://github.com/OpenAgentsInc/openagents/issues/6248))
 **Type:** epic · **Lever:** benchmarking/dogfood · **Status:** direction

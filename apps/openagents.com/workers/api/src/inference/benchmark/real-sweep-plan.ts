@@ -1,4 +1,4 @@
-import type { BenchmarkMatrixConfig } from './matrix'
+import type { BenchmarkLane, BenchmarkMatrixConfig } from './matrix'
 import { expandMatrix } from './matrix'
 
 export type RealSweepBlockerCode =
@@ -31,6 +31,7 @@ export type RealSweepPreflightOptions = Readonly<{
   budgetCapMsat?: number | undefined
   maxBillableSamples: number
   trafficEvidence?: ReadonlyArray<RealTrafficShapeEvidence> | undefined
+  executableFixtureOnlyLanes?: ReadonlyArray<BenchmarkLane> | undefined
 }>
 
 export type RealTrafficShapeEvidence = Readonly<{
@@ -54,6 +55,7 @@ export type RealSweepPreflight = Readonly<{
   realisticShapes: number
   syntheticShapes: number
   realTrafficEvidenceRefs: ReadonlyArray<string>
+  executableFixtureOnlyLanes: ReadonlyArray<BenchmarkLane>
   blockers: ReadonlyArray<RealSweepBlocker>
   warnings: ReadonlyArray<RealSweepWarning>
 }>
@@ -95,8 +97,14 @@ export const preflightRealBenchmarkSweep = (
   options: RealSweepPreflightOptions,
 ): RealSweepPreflight => {
   const cells = expandMatrix(config)
+  const executableFixtureOnlyLanes = new Set(
+    options.executableFixtureOnlyLanes ?? [],
+  )
   const executableCells = cells.filter(
-    cell => cell.laneAvailability === 'available',
+    cell =>
+      cell.laneAvailability === 'available' ||
+      (cell.laneAvailability === 'fixture_only' &&
+        executableFixtureOnlyLanes.has(cell.lane)),
   )
   const skippedFutureCells = cells.length - executableCells.length
   const billableSampleUpperBound = executableCells.reduce(
@@ -229,6 +237,7 @@ export const preflightRealBenchmarkSweep = (
     realisticShapes: realisticShapeIds.size,
     syntheticShapes: syntheticShapeIds.size,
     realTrafficEvidenceRefs,
+    executableFixtureOnlyLanes: [...executableFixtureOnlyLanes].sort(),
     blockers,
     warnings,
   }

@@ -101,6 +101,11 @@ export type BenchmarkLaneSeam = Readonly<{
   // Whether this seam may issue real, billable provider requests. The fixture
   // seam is always `false`; the real seam is `true` ONLY when owner-armed.
   canSpend: boolean
+  // Fixture-only lanes are not generally available to real sweeps. A paid,
+  // owner-armed sweep may attach an explicit real executor for one of those
+  // lanes (for example BigPickle through OpenCode); only those lanes are allowed
+  // to run on a spending seam.
+  canExecuteFixtureOnlyLane?: (lane: BenchmarkCell['lane']) => boolean
   // Execute one sample of one cell. The runner calls this `samplesPerCell` times
   // (or once for a not-yet-available lane, which the seam reports as unexecuted).
   sample: (cell: BenchmarkCell, sampleIndex: number) => BenchmarkLaneSample
@@ -441,6 +446,10 @@ export type RealLaneSeamOptions = Readonly<{
   armRealSweep: boolean
   // The injected live executor. Required only when armed.
   executor?: RealLaneExecutor | undefined
+  // Fixture-only lanes this owner-armed executor can really serve. Keeps the
+  // global lane availability honest while allowing a specific paid sweep to
+  // bring a real competitor adapter online.
+  executableFixtureOnlyLanes?: ReadonlyArray<BenchmarkCell['lane']> | undefined
 }>
 
 // Construct the real lane seam. When `armRealSweep` is not exactly `true`, the
@@ -451,9 +460,14 @@ export const makeRealLaneSeam = (
   options: RealLaneSeamOptions,
 ): BenchmarkLaneSeam => {
   const armed = options.armRealSweep === true && options.executor !== undefined
+  const executableFixtureOnlyLanes = new Set(
+    options.executableFixtureOnlyLanes ?? [],
+  )
   return {
     id: 'real',
     canSpend: armed,
+    canExecuteFixtureOnlyLane: lane =>
+      armed && executableFixtureOnlyLanes.has(lane),
     sample: (cell, sampleIndex) => {
       if (!armed || options.executor === undefined) {
         throw new RealLaneNotArmedError()

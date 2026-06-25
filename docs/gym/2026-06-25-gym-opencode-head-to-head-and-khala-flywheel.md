@@ -207,16 +207,22 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
    illustrative.
 4. **Real cost basis** — wire cost-per-accepted-outcome to the now-stored per-lane
    `cost_amount` / the admin analytics endpoint and the cost-model doc.
-5. **Owner-armed sweep** — `preflightRealBenchmarkSweep` (budget cap, billable cap,
-   real-traffic evidence, approval ref) → first decision-grade Khala-vs-BigPickle
-   report on the OpenCode surface; revenue splits ride the existing spine.
+5. **Owner-armed sweep** — **D3 landed the paid-run planning path:** quote, 402
+   balance gate, `preflightRealBenchmarkSweep` (budget cap, billable cap,
+   real-traffic evidence, approval ref), explicitly covered real executors for
+   otherwise fixture-only competitor lanes, `MeteringHook` contexts, and a
+   public-safe report receipt. The first live decision-grade
+   Khala-vs-BigPickle report on the OpenCode surface remains owner-armed.
 6. **Gym↔Khala dog-food wiring** — route the Gym's own runner/eval inference through
    Khala (counter moves; flywheel closes).
 
 ## 10. Honest-scope boundaries (unchanged)
 
-- Direction vs shipped: only the Phase 0 fixture Gym (#6163–#6166) and the owner-gated
-  `/gym/oss` playground (#6167) are landed. Everything in §3–§9 above is direction.
+- Direction vs shipped: the Phase 0 fixture Gym (#6163–#6166), owner-gated
+  `/gym/oss` playground (#6167), Phase 1 OpenCode/environment registry work
+  (D1/D2), and Phase 2 paid-run planning gate (D3) are landed. Live published
+  decision-grade benchmark numbers still require an owner-armed real run over
+  realistic traffic.
 - No published numbers without an owner-armed real seam over realistic traffic;
   fixture/synthetic runs are `decisionGrade: false` + carry the `illustrativeNotice`.
 - No fabricated numbers: `not_measured` ≠ `0`; an unavailable lane is an honest

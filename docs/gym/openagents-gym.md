@@ -332,6 +332,11 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   `preflightRealBenchmarkSweep` → real seam → report-receipt path. *Success:* a
   funded account pays to run a real, billable sweep over realistic traffic and
   gets a `decisionGrade:true` report receipt; revenue splits land on the spine.
+  **Landed D3:** `paid-run.ts` compiles real-seam experiments as pure plans,
+  quotes the executable cells, returns a `402` balance gate before spend, requires
+  real-sweep preflight evidence and owner approval, arms only explicitly covered
+  real lane executors, emits `MeteringHook` contexts, and builds the public-safe
+  receipt.
 - **Phase 3 — Gym → training loop.** Gym reports feed GEPA candidate feedback +
   TRINITY/Conductor training in Psionic; winners return as shadow candidates and
   re-enter the Gym for the head-to-head. *Success:* a coordinator candidate
@@ -368,8 +373,11 @@ metric vocabulary, or a new settlement path.
 4. Add GymRoute() + the public /gym page in Foldkit; the live-run visualization
    in @openagentsinc/three-effect, reusing the Verse fan-out/verdict/cost visual
    language. Knobs/dials bind to the typed config fields above.
-5. Paid runs: quote -> readAgentBalance/402 gate -> preflightRealBenchmarkSweep
-   (owner-gated, real seam only) -> MeteringHook receipt-first -> report receipt;
+5. Paid runs: `prepareGymPaidRun` compiles without spending, quotes executable
+   cells from `LANE_AVAILABILITY` and samples, returns a readAgentBalance/402
+   gate when unfunded, requires `preflightRealBenchmarkSweep` with owner approval
+   and realistic traffic evidence, arms a real seam only for startable plans,
+   calls `MeteringHook` receipt-first, and returns a public-safe report receipt;
    splits on the revenue-loop spine (RL-1/RL-2, RL-3 author split FUTURE/gated).
 6. Keep the fixture seam the default (free, in-CI, decisionGrade:false). Make it
    impossible for an un-armed environment to issue a billable request.
@@ -387,7 +395,8 @@ metric vocabulary, or a new settlement path.
   the owner-armed Harbor executor runs (Hydralisk/Pylon/Psionic) so the verifier
   is on a **distinct** device from the producer.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
-  how the quote is computed before real provider usage is known.
+  the first quote path is landed from matrix shape and configured lane prices,
+  while tier packaging and certified-report pricing remain open.
 - Public leaderboard: which report fields are safe to rank publicly, and how to
   keep `decisionGrade:false` runs out of any ranked surface.
 - Where the Gym's logged-in run surface lives relative to the operator dashboard,

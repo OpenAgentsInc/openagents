@@ -12,8 +12,9 @@ web route is the Phase 0
 fixture-only knobs-and-dials surface in Foldkit + `@openagentsinc/three-effect`;
 the owner-gated `/gym/oss` surface is the GPT-OSS 20B latency playground for
 hammering the hourly Hydralisk L4 lane without exposing a public load generator.
-Future paid runs ride the existing metering/settlement spine so people can pay to
-run decision-grade benchmarks.
+Paid-run planning now rides the existing metering/settlement spine so funded,
+owner-armed accounts can pay to run decision-grade benchmarks once the real lane
+executor is supplied.
 
 It is **not** a new inference engine or metric vocabulary — it compiles down to
 the already-landed Khala benchmark harness, coordinator/`ModelRouter`,
@@ -36,7 +37,11 @@ provider-adapter registry, verification-class registry, and the
   `m8-head-to-head` with task-set, verifier, acceptance-contract, default-shape,
   and default-tool bindings. The fixture seam runs all four with their grader
   bound; graderless environments are rejected before execution.
-  Remaining Phase 1 work expands owner-armed real sweeps.
+- **Phase 2 D3 landed:** `paid-run.ts` prepares owner-armed real Gym sweeps with
+  quote, 402 balance gate, real-sweep preflight, narrowly declared real executors
+  for otherwise fixture-only competitor lanes, `MeteringHook` contexts, and a
+  public-safe report receipt.
+  Remaining real-sweep work expands the executor backends and public surfaces.
 
 ## Contents
 

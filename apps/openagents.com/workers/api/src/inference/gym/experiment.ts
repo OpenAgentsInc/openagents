@@ -697,13 +697,6 @@ const validateGymExperiment = (
   if (maybeEnvironmentError !== null) {
     return maybeEnvironmentError
   }
-  if (experiment.budget.seam === 'real') {
-    return new GymExperimentCompileError({
-      reason: 'real_seam_disabled_in_phase_0',
-      message:
-        'OpenAgents Gym Phase 0 is fixture-only; seam: real is owner-gated future work and is rejected here.',
-    })
-  }
   if (isReadonlyArrayEmpty(experiment.policy.fanout.lanes)) {
     return new GymExperimentCompileError({
       reason: 'empty_fanout',

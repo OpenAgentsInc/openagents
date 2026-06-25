@@ -641,16 +641,19 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 6. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
    traces spec asks for; Harbor-executed envs get ATIF for free, the OpenCode
    runner exports it. One trajectory format for benchmark + trace + training.
-7. **(Phase 2/3, owner-armed)** — a real `terminal-bench` sweep behind
-   `preflightRealBenchmarkSweep` for a first decision-grade Khala-vs-competitor
-   number on a citable benchmark; feed the resulting ATIF + rewards into the
-   Psionic training loop as the trajectory leg of the flywheel.
+7. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
+   balance gate, `preflightRealBenchmarkSweep`, real seam arming, metering
+   contexts, and report receipts. A real `terminal-bench` executor still needs to
+   plug into that gate for the first decision-grade Khala-vs-competitor number on
+   a citable benchmark; feed the resulting ATIF + rewards into the Psionic
+   training loop as the trajectory leg of the flywheel.
 
 ## 9. Honest-scope boundaries
 
-- **Direction vs shipped:** only the Phase 0 fixture Gym (#6163–#6166) and the
-  owner-gated `/gym/oss` (#6167) are landed. Everything about running Harbor as a
-  benchmark executor is direction. We use only Harbor's *format* (ATIF) today.
+- **Direction vs shipped:** the Phase 0 fixture Gym (#6163–#6166), owner-gated
+  `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, and Phase 2 paid-run
+  gate are landed. Everything about running Harbor as a benchmark executor is
+  direction. We use only Harbor's *format* (ATIF) today.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

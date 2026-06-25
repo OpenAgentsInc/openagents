@@ -1,6 +1,6 @@
 # OpenAgents Gym Issue Run Audit (#6163-#6167)
 
-Updated: 2026-06-24
+Updated: 2026-06-25
 
 This audit tracks the sequential issue run for the OpenAgents Gym Phase 0 work
 and the focused GPT-OSS owner/internal latency playground. The Phase 0 run is
@@ -24,10 +24,10 @@ a public paid-lane benchmark route.
 | --- | --- |
 | `GET /gym` renders the explainer + knobs/dials surface. | `GymRoute()` is registered for `/gym`; the logged-out view renders `apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts` with typed controls and the no-spend banner. |
 | Knobs bind to typed `GymExperiment` config. | Backend `GymExperiment` lives in `workers/api/src/inference/gym/experiment.ts`; public web fixture controls use Effect Schema-backed `PublicGymExperiment` in `apps/web/src/page/loggedOut/gym/flow.ts`. |
-| "Run" compiles and executes through the fixture seam only. | `compileGymExperiment` rejects real seam without owner arming; the public web route materializes a fixture result only, with `budget.seam: "fixture"`. |
+| "Run" compiles and executes through the fixture seam only. | The public web route materializes a fixture result only, with `budget.seam: "fixture"`. After Phase 2 D3, `compileGymExperiment` may compile `budget.seam: "real"` as a pure no-spend plan, but billable execution is locked behind `prepareGymPaidRun`, balance/preflight gates, and an owner-armed real seam. |
 | A `three-effect` run scene animates the fixture run. | `apps/web/src/scene/gymFixtureRunSceneElement.ts` renders the deterministic fan-out/verdict/cost scene and is covered by scene tests. |
 | Report panel shows percentiles, cost-per-accepted-outcome, verification rate, cache-hit rate, `illustrativeNotice`, and `decisionGrade: false`. | Public report viewer fields are rendered from `PublicGymReportViewer`; null cost-per-accepted-outcome is an explicit finding, not a fake number. |
-| No code path can spend from `/gym` in Phase 0. | The logged-out Gym model only carries fixture budget data, and the backend compiler/run tests cover fixture-only behavior and real-seam refusal. |
+| No code path can spend from `/gym` in Phase 0. | The logged-out Gym model only carries fixture budget data. Backend tests keep fixture-only behavior covered; Phase 2 paid-run tests separately prove unfunded/unarmed real plans stop at the 402/preflight/seam gate. |
 
 ## #6167 GPT-OSS Playground Acceptance
 

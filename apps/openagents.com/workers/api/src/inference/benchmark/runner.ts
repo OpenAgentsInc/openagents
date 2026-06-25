@@ -74,7 +74,11 @@ const skippedReasonForCell = (
   if (cell.laneAvailability === 'not_yet_available') {
     return `lane_not_yet_available:${cell.lane}`
   }
-  if (cell.laneAvailability === 'fixture_only' && seam.canSpend) {
+  if (
+    cell.laneAvailability === 'fixture_only' &&
+    seam.canSpend &&
+    seam.canExecuteFixtureOnlyLane?.(cell.lane) !== true
+  ) {
     return `lane_fixture_only:${cell.lane}`
   }
   return null

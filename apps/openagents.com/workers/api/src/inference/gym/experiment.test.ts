@@ -156,17 +156,17 @@ describe('compileGymExperiment', () => {
     }
   })
 
-  test('rejects seam: real before any lane seam can be constructed', () => {
-    expect(() =>
-      compileGymExperiment({
-        ...BUNDLED_GYM_EXPERIMENT,
-        budget: {
-          ...BUNDLED_GYM_EXPERIMENT.budget,
-          seam: 'real',
-          ownerApprovalRef: 'approval:future',
-        },
-      }),
-    ).toThrow(/fixture-only/)
+  test('compiles a real-seam experiment without spending', () => {
+    const compiled = compileGymExperiment({
+      ...BUNDLED_GYM_EXPERIMENT,
+      budget: {
+        ...BUNDLED_GYM_EXPERIMENT.budget,
+        seam: 'real',
+        ownerApprovalRef: 'approval:future',
+      },
+    })
+
+    expect(compiled.matrixConfig.id).toBe('gym:gym-fixture-decision-suite-v1')
   })
 
   test('rejects empty fanout and empty shapes with typed compile errors', () => {
