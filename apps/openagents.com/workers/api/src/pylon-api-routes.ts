@@ -49,6 +49,7 @@ import {
   publicPylonApiAssignmentProjection,
   publicPylonApiEventProjection,
   publicPylonApiRegistrationProjection,
+  pylonCodingServiceCapacityProjection,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
   resolveSparkPayoutTargetReadiness,
@@ -357,6 +358,39 @@ const activeDuplicateAssignmentRefs = (
     .filter(assignment => pylonAssignmentHasActiveLease(assignment, nowIso))
     .map(assignment => assignment.assignmentRef)
 
+const codingServiceByCapabilityRef = new Map<string, 'claude' | 'codex'>([
+  ['capability.pylon.local_claude_agent', 'claude'],
+  ['capability.pylon.local_codex', 'codex'],
+])
+
+const activeDuplicateCapacitySlots = (
+  input: Readonly<{
+    body: PylonApiCreateAssignmentRequest
+    registration: PylonApiRegistrationRecord | undefined
+  }>,
+): number => {
+  if (input.registration === undefined) {
+    return 1
+  }
+
+  const requestedServices = new Set(
+    gateRefs(input.body.requiredCapabilityRefs)
+      .map(ref => codingServiceByCapabilityRef.get(ref))
+      .filter((service): service is 'claude' | 'codex' => service !== undefined),
+  )
+
+  if (requestedServices.size !== 1) {
+    return 1
+  }
+
+  const [requestedService] = requestedServices
+  const capacity = pylonCodingServiceCapacityProjection(input.registration).find(
+    item => item.service === requestedService,
+  )
+
+  return Math.max(1, capacity?.available ?? 1)
+}
+
 const hasControlledDispatchOnlineStatus = (
   registration: PylonApiRegistrationRecord,
 ): boolean =>
@@ -439,6 +473,10 @@ export const controlledPylonAssignmentDispatchGate = (
     input.activeAssignments,
     input.nowIso,
   )
+  const duplicateCapacitySlots = activeDuplicateCapacitySlots({
+    body,
+    registration,
+  })
   const heartbeatAge =
     registration === undefined
       ? null
@@ -497,7 +535,7 @@ export const controlledPylonAssignmentDispatchGate = (
     )
       ? [TASSADAR_DISPATCH_CAPABILITY_UNRECEIPTED_BLOCKER_REF]
       : []),
-    ...(duplicateRefs.length > 0
+    ...(duplicateRefs.length >= duplicateCapacitySlots
       ? ['blocker.public.pylon_dispatch.duplicate_active_assignment']
       : []),
   ])

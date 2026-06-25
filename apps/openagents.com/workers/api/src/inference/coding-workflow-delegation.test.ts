@@ -342,6 +342,71 @@ describe('coding workflow delegation', () => {
     expect(result).toBeNull()
   })
 
+  test('allows same-account parallel coding delegation up to advertised Codex slots', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [assignment()],
+        registrations: [
+          registration({
+            latestCapacityRefs: [
+              'capacity.coding.codex.ready=2',
+              'capacity.coding.codex.available=2',
+            ],
+            latestLoadRefs: [
+              'load.coding.codex.busy=0',
+              'load.coding.codex.queued=0',
+            ],
+          }),
+        ],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_parallel_2',
+    })
+
+    expect(result?.kind).toBe('assigned')
+  })
+
+  test('blocks same-account coding delegation once advertised Codex slots are reserved', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.test.active_one',
+            id: 'pylon_api_assignment_active_one',
+          }),
+          assignment({
+            assignmentRef: 'assignment.public.test.active_two',
+            id: 'pylon_api_assignment_active_two',
+          }),
+        ],
+        registrations: [
+          registration({
+            latestCapacityRefs: [
+              'capacity.coding.codex.ready=2',
+              'capacity.coding.codex.available=2',
+            ],
+            latestLoadRefs: [
+              'load.coding.codex.busy=0',
+              'load.coding.codex.queued=0',
+            ],
+          }),
+        ],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_parallel_full',
+    })
+
+    expect(result).toBeNull()
+  })
+
   test('does not treat submitted closeout evidence as active Codex capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,
