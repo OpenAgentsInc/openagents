@@ -93,6 +93,10 @@ provider-adapter registry, verification-class registry, and the
   and freshness to `POST /api/operator/gym/run-progress`. Raw trajectories,
   prompts, completions, logs, pane recordings, verifier stdout, bearer material,
   private endpoints, and task ids stay out of the Worker and public projection.
+- **Issue #6272 landed:** a bounded Harbor Terminal-Bench 2.0 smoke ran through
+  `openagents/khala`, moved the public Khala token counter, and published running
+  plus completed snapshots to `/api/public/gym/run-progress` / `/gym`. Evidence:
+  [`2026-06-25-khala-terminal-bench-through-openagents-run.md`](2026-06-25-khala-terminal-bench-through-openagents-run.md).
 - **Epic E6 landed (#6258):** `terminal-bench-khala-orchestration.ts` compares
   decision-grade Khala Terminal-Bench policy reports against the raw Z.ai
   GLM-5.2 REAP baseline and emits explicit `beats_on_solve_rate`,
@@ -123,6 +127,10 @@ provider-adapter registry, verification-class registry, and the
   Gym's executor/verifier for `terminal-bench` and other benchmarks; the
   Hydralisk/Psionic placement, the separate-verifier distinct-device seam, and the
   trajectory→training flywheel.
+- [`2026-06-25-khala-terminal-bench-through-openagents-run.md`](2026-06-25-khala-terminal-bench-through-openagents-run.md)
+  — evidence note for #6272: a bounded Harbor Terminal-Bench 2.0 run through
+  `openagents/khala`, token-counter verification, D1 migration repair, and live
+  `/gym` progress projection.
 - [`2026-06-24-openagents-gym-issues-6164-6166-audit.md`](2026-06-24-openagents-gym-issues-6164-6166-audit.md)
   — the Phase 0 / `/gym/oss` issue-run audit (#6163–#6167).
 

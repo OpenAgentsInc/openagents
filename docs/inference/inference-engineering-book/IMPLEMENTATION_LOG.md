@@ -593,3 +593,26 @@ apps/openagents.com/scripts/khala-production-readiness-monitor.mjs` from repo
   material, or private endpoint URLs are rejected with a typed 400 before
   storage. Partial runs remain `decisionGrade:false` and cannot become final
   benchmark claims.
+
+---
+
+## P2-17 — Khala Terminal-Bench Through OpenAgents Smoke — DONE (#6272)
+
+- **Notes ref:** `../../gym/2026-06-25-khala-terminal-bench-through-openagents-run.md`.
+- **What shipped:** a bounded Harbor Terminal-Bench 2.0 run executed through
+  `openagents/khala`, not the raw GLM endpoint. The run used Terminus 2,
+  `openai/openagents/khala` via LiteLLM with
+  `api_base=https://openagents.com/api/v1`, and internal Gym demand headers.
+- **Operational repair:** production D1 had one pending migration,
+  `0234_pylon_openauth_links.sql`, which was required for
+  `agent_credentials.openauth_user_id`. Applying it restored programmatic agent
+  registration, `/api/agents/me`, and bearer-authenticated Khala completions.
+- **Evidence:** the direct tagged probe returned `usage.total_tokens = 367`,
+  and the public Khala counter moved by exactly `367`. The Harbor run completed
+  `1/1` bounded task in `2m 24s`, with zero exceptions, reward `0.0`, and
+  `101,018` total Harbor tokens.
+- **Gym projection:** the Harbor pusher wrote both running and completed
+  snapshots for `run.gym.terminal_bench.khala.6272.20260625T185215Z`; public
+  `/api/public/gym/run-progress` showed the completed `decisionGrade:false`
+  web-authorized row. This proves the end-to-end path without claiming a
+  decision-grade score or GLM-via-Khala readiness.

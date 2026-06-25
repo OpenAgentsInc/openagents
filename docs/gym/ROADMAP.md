@@ -601,6 +601,22 @@ arrays, projects only counts/token counts/public-safe refs/freshness, and never
 sends raw benchmark prompts, completions, task ids, logs, trajectories, keys, or
 private endpoint material.
 
+**Shipped #6272:**
+The first bounded Terminal-Bench 2.0 run through `openagents/khala` is live.
+Before the run, production D1 had one pending migration
+(`0234_pylon_openauth_links.sql`) that made agent registration and bearer auth
+return `500`; applying it restored fresh agent registration, `/api/agents/me`,
+and Khala chat completions. A tagged direct Khala probe returned
+`usage.total_tokens = 367`, and the public tokens-served counter moved by the
+same `367`. Harbor then ran one task through Terminus 2 + `openagents/khala`
+(`run.gym.terminal_bench.khala.6272.20260625T185215Z`), completed with zero
+exceptions, reward `0.0`, and `101,018` total Harbor tokens. The progress pusher
+posted both running and completed snapshots to
+`POST /api/operator/gym/run-progress`, and public
+`/api/public/gym/run-progress` showed the completed `decisionGrade:false`
+web-authorized row. Evidence:
+[`2026-06-25-khala-terminal-bench-through-openagents-run.md`](2026-06-25-khala-terminal-bench-through-openagents-run.md).
+
 ---
 
 ## EPIC F — Measurement & honesty (cross-cutting)
