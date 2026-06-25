@@ -395,7 +395,11 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   as fixture replay data through `@openagentsinc/three-effect`, including profile
   lanes, verifier placement, accepted/failing/not-started state, cost basis,
   latency/throughput mirrors, and caveats. It remains `decisionGrade:false` and
-  does not claim live Verse integration.
+  does not claim live Verse integration. Issue #6261 is the follow-on live
+  progress layer: a public-safe `openagents.gym.run_progress.v1` status path and
+  `/gym` follow-along view for active Harbor jobs, without exposing raw
+  trajectories, logs, prompts, completions, verifier stdout, or private endpoint
+  material.
 
 ## 9. Build spec (for a coding agent)
 

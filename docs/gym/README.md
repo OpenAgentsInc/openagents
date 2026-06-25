@@ -85,6 +85,11 @@ provider-adapter registry, verification-class registry, and the
   using `@openagentsinc/three-effect`, with an accessible text/table mirror and
   no raw prompts, completions, private endpoint material, bearer material, or
   hidden tokens. Full Autopilot Verse integration remains deferred.
+- **Epic E5b direction (#6261):** active owner-armed Harbor runs need a live
+  `openagents.gym.run_progress.v1` status path and `/gym` follow-along view over
+  the same three-effect visual language. Until that lands, operators should pull
+  public-safe progress from Harbor `result.json` rather than raw trajectories,
+  logs, pane recordings, verifier stdout, or private endpoint material.
 - **Epic E6 landed (#6258):** `terminal-bench-khala-orchestration.ts` compares
   decision-grade Khala Terminal-Bench policy reports against the raw Z.ai
   GLM-5.2 REAP baseline and emits explicit `beats_on_solve_rate`,

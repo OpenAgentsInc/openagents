@@ -522,6 +522,24 @@ operator signals, and world items; the page renders an accessible mirror with
 the same lanes/metrics/caveats. Route-table, parser, server-admission, product
 intent, page, and replay tests lock the contract.
 
+### E5b. Live Gym / Harbor run progress API and `/gym` follow-along view ([#6261](https://github.com/OpenAgentsInc/openagents/issues/6261))
+
+**Type:** task · **Lever:** benchmarking/product · **Status:** direction
+**Why:** #6253 exposed the operator gap between a local Harbor `result.json` and
+a first-class `/gym` follow-along surface. The replay visualizer is shipped, but
+active owner-armed runs still need a public-safe progress schema, status API, and
+live visual projection.
+**Scope:** define `openagents.gym.run_progress.v1`; ingest or poll Harbor
+progress without exposing raw prompts, completions, trajectories, logs, private
+endpoint material, bearer material, or hidden tokens; render completed/running/
+pending/error/cancelled counts, official denominator, in-progress pass rate,
+profile metadata, freshness, and partial-run caveats through the existing
+three-effect run field and accessible mirror.
+**Acceptance:** authorized operators can follow an active Terminal-Bench run from
+`/gym`; public projections remain explicitly partial until the final
+decision-grade receipt lands; tests cover schema parsing, redaction boundaries,
+partial-run rendering, and completed-run rendering.
+
 ### E6. Khala orchestrated Terminal-Bench comparison and flywheel projection ([#6258](https://github.com/OpenAgentsInc/openagents/issues/6258))
 
 **Type:** task · **Lever:** benchmarking/product · **Status:** shipped 2026-06-25
