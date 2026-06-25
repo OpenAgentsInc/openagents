@@ -881,7 +881,19 @@ const toInferenceRequest = (
         ),
       ).messages
     : clientMessages
-  const { messages: _messages, model: _model, stream: _stream, ...rest } = raw
+  const {
+    codebase: _codebase,
+    disable_coding_delegation: _disableCodingDelegation,
+    disableCodingDelegation: _disableCodingDelegationCamel,
+    messages: _messages,
+    model: _model,
+    oa_component_channel: _oaComponentChannel,
+    openagents: _openagents,
+    stream: _stream,
+    workflow_class: _workflowClassSnake,
+    workflowClass: _workflowClass,
+    ...rest
+  } = raw
   return {
     messages,
     model: requestedModel,
@@ -2057,6 +2069,175 @@ export const handleChatCompletions = (
       )
     }
 
+    const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
+    const newId = deps.newId ?? defaultId
+    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
+    const created = nowEpochSeconds()
+    const responseId = newId()
+    const requestStartMs = nowEpochMillis()
+    const codingWorkflow = classifyCodingWorkflow({
+      headers: request.headers,
+      messages: body.messages,
+      rawBody,
+    })
+
+    if (
+      codingWorkflow.workflowClass !== 'none' &&
+      !codingDelegationDisabled(request, rawBody)
+    ) {
+      if (deps.codingDelegation === undefined) {
+        return noStoreJsonResponse(
+          {
+            error: 'coding_delegation_unavailable',
+            reason:
+              'Coding workflow delegation is not wired on this gateway.',
+          },
+          { status: 503 },
+        )
+      }
+      const codingDelegation = deps.codingDelegation
+
+      const openauthUserId = yield* Effect.promise(() =>
+        codingDelegation.resolveOpenAuthUserId(session.accountRef),
+      )
+      const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
+      const selfLinkedAgent =
+        selfAgentUserId === undefined
+          ? []
+          : [{ agentUserId: selfAgentUserId }]
+      const openAuthLinkedAgents =
+        openauthUserId === undefined ||
+        codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+          undefined
+          ? []
+          : yield* Effect.promise(() =>
+              codingDelegation.agentStore
+                .listLinkedAgentsForOpenAuthUser!(openauthUserId, 100),
+            )
+      const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
+      const nowIso = epochMillisToIsoTimestamp(created * 1000)
+      const delegation = yield* Effect.promise(() =>
+        delegateCodingWorkflow({
+          classification: codingWorkflow,
+          linkedAgents,
+          makeId: newId,
+          nowIso,
+          pylonStore: codingDelegation.pylonStore,
+          rawBody,
+          requestId: responseId,
+        }),
+      )
+
+      if (delegation?.kind === 'rejected') {
+        return noStoreJsonResponse(
+          {
+            error: delegation.error,
+            evidenceRefs: delegation.evidenceRefs,
+            reason: delegation.reason,
+            requestedPylonRef: delegation.requestedPylonRef,
+          },
+          { status: delegation.statusCode },
+        )
+      }
+
+      if (delegation !== null) {
+        const content =
+          `Coding workflow delegated to linked Pylon ${delegation.pylon.pylonRef}. ` +
+          `Resume stream: ${delegation.durableStreamUrl}`
+        const frame = sseFrame({
+          choices: [
+            {
+              delta: { content, role: 'assistant' },
+              finish_reason: null,
+              index: 0,
+            },
+          ],
+          created,
+          id: responseId,
+          model: requestedModel,
+          object: 'chat.completion.chunk',
+          openagents: {
+            coding_delegation: {
+              assignmentRef: delegation.assignment.assignmentRef,
+              durableStreamUrl: delegation.durableStreamUrl,
+              evidenceRefs: delegation.evidenceRefs,
+              pylonRef: delegation.pylon.pylonRef,
+              workflowClass: codingWorkflow.workflowClass,
+            },
+          },
+        })
+        const doneFrame = 'data: [DONE]\n\n'
+        const streamBody = `${frame}${doneFrame}`
+
+        if (deps.durableStreamEnabled === true) {
+          if (deps.durableStreamNamespace !== undefined) {
+            yield* Effect.promise(() =>
+              seedDurableInferenceStreamDO({
+                close: true,
+                frames: [frame, doneFrame],
+                namespace: deps.durableStreamNamespace!,
+                requestId: responseId,
+              }),
+            )
+          } else if (deps.durableStream !== undefined) {
+            const store = resolveDurableStore(deps.durableStream, responseId)
+            if (store !== undefined) {
+              seedDurableInferenceStream({
+                close: true,
+                frames: [frame, doneFrame],
+                nowMs: requestStartMs,
+                requestId: responseId,
+                store,
+              })
+            }
+          }
+        }
+
+        if (deps.recordTokensServed !== undefined) {
+          yield* deps.recordTokensServed({
+            accountRef: session.accountRef,
+            adapterId: 'pylon-codex-own-capacity',
+            requestAttribution: {
+              demandKind: 'own_capacity',
+              demandSource: 'khala_coding_delegation',
+            },
+            requestId: responseId,
+            requestedModel,
+            servedModel: 'openagents/pylon-codex',
+            streamed: true,
+            usage: estimatedDelegatedCodingUsage(body.messages),
+          })
+        }
+
+        return new Response(streamBody, {
+          headers: {
+            'cache-control': 'no-store',
+            'content-type': 'text/event-stream; charset=utf-8',
+            'openagents-coding-assignment-ref':
+              delegation.assignment.assignmentRef,
+            'openagents-durable-stream-url': delegation.durableStreamUrl,
+            'stream-closed': 'true',
+            'stream-next-offset': String(
+              new TextEncoder().encode(streamBody).byteLength,
+            ),
+            'stream-up-to-date': 'true',
+            vary: 'authorization',
+          },
+          status: 200,
+        })
+      }
+
+      return noStoreJsonResponse(
+        {
+          error: 'coding_delegation_unavailable',
+          evidenceRefs: codingWorkflow.evidenceRefs,
+          reason:
+            'No linked, heartbeat-fresh, Codex-capable Pylon capacity is available for this account.',
+        },
+        { status: 503 },
+      )
+    }
+
     // PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing). Reject a
     // public Khala model whose backing supply lane is NOT armed with the SAME
     // clean `model_unavailable` the catalog hides and the quote 404s — keeping
@@ -2181,150 +2362,9 @@ export const handleChatCompletions = (
     const meteringHook = deps.meteringHook ?? stubMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
-    const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
-    const newId = deps.newId ?? defaultId
-    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
-    const created = nowEpochSeconds()
-    const responseId = newId()
-    const requestStartMs = nowEpochMillis()
     const fundingKind = yield* Effect.promise(() =>
       resolveFundingKind(session.accountRef),
     )
-    const codingWorkflow = classifyCodingWorkflow({
-      headers: request.headers,
-      messages: body.messages,
-      rawBody,
-    })
-
-    if (
-      deps.codingDelegation !== undefined &&
-      codingWorkflow.workflowClass !== 'none' &&
-      !codingDelegationDisabled(request, rawBody)
-    ) {
-      const openauthUserId = yield* Effect.promise(() =>
-        deps.codingDelegation!.resolveOpenAuthUserId(session.accountRef),
-      )
-      const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
-      const selfLinkedAgent =
-        selfAgentUserId === undefined
-          ? []
-          : [{ agentUserId: selfAgentUserId }]
-      const openAuthLinkedAgents =
-        openauthUserId === undefined ||
-        deps.codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
-          undefined
-          ? []
-          : yield* Effect.promise(() =>
-              deps.codingDelegation!.agentStore
-                .listLinkedAgentsForOpenAuthUser!(openauthUserId, 100),
-            )
-      const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
-      const nowIso = epochMillisToIsoTimestamp(created * 1000)
-      const delegation = yield* Effect.promise(() =>
-        delegateCodingWorkflow({
-          classification: codingWorkflow,
-          linkedAgents,
-          makeId: newId,
-          nowIso,
-          pylonStore: deps.codingDelegation!.pylonStore,
-          rawBody,
-          requestId: responseId,
-        }),
-      )
-
-      if (delegation?.kind === 'rejected') {
-        return noStoreJsonResponse(
-          {
-            error: delegation.error,
-            evidenceRefs: delegation.evidenceRefs,
-            reason: delegation.reason,
-            requestedPylonRef: delegation.requestedPylonRef,
-          },
-          { status: delegation.statusCode },
-        )
-      }
-
-      if (delegation !== null) {
-        const content =
-          `Coding workflow delegated to linked Pylon ${delegation.pylon.pylonRef}. ` +
-          `Resume stream: ${delegation.durableStreamUrl}`
-        const frame = sseFrame({
-          choices: [
-            {
-              delta: { content, role: 'assistant' },
-              finish_reason: null,
-              index: 0,
-            },
-          ],
-          created,
-          id: responseId,
-          model: requestedModel,
-          object: 'chat.completion.chunk',
-          openagents: {
-            coding_delegation: {
-              assignmentRef: delegation.assignment.assignmentRef,
-              durableStreamUrl: delegation.durableStreamUrl,
-              evidenceRefs: delegation.evidenceRefs,
-              pylonRef: delegation.pylon.pylonRef,
-              workflowClass: codingWorkflow.workflowClass,
-            },
-          },
-        })
-        const doneFrame = 'data: [DONE]\n\n'
-        const streamBody = `${frame}${doneFrame}`
-
-        if (deps.durableStreamEnabled === true) {
-          if (deps.durableStreamNamespace !== undefined) {
-            yield* Effect.promise(() =>
-              seedDurableInferenceStreamDO({
-                close: true,
-                frames: [frame, doneFrame],
-                namespace: deps.durableStreamNamespace!,
-                requestId: responseId,
-              }),
-            )
-          } else if (deps.durableStream !== undefined) {
-            const store = resolveDurableStore(deps.durableStream, responseId)
-            if (store !== undefined) {
-              seedDurableInferenceStream({
-                close: true,
-                frames: [frame, doneFrame],
-                nowMs: requestStartMs,
-                requestId: responseId,
-                store,
-              })
-            }
-          }
-        }
-
-        if (deps.recordTokensServed !== undefined) {
-          yield* deps.recordTokensServed({
-            accountRef: session.accountRef,
-            adapterId: 'pylon-codex-own-capacity',
-            requestAttribution: {
-              demandKind: 'own_capacity',
-              demandSource: 'khala_coding_delegation',
-            },
-            requestId: responseId,
-            requestedModel,
-            servedModel: 'openagents/pylon-codex',
-            streamed: true,
-            usage: estimatedDelegatedCodingUsage(body.messages),
-          })
-        }
-
-        return new Response(streamBody, {
-          headers: {
-            'cache-control': 'no-store',
-            'content-type': 'text/event-stream; charset=utf-8',
-            'openagents-coding-assignment-ref':
-              delegation.assignment.assignmentRef,
-            'openagents-durable-stream-url': delegation.durableStreamUrl,
-          },
-          status: 200,
-        })
-      }
-    }
 
     // SUPPLY SELECTION (#5482) -------------------------------------------
     // Resolve the ordered candidate adapter ids for this model. When a

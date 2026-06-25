@@ -356,6 +356,111 @@ describe('coding delegation default-on guard', () => {
     })
     expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(32)
   })
+
+  test('delegates typed coding workflows before balance and provider supply gates', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: {} as AgentRegistrationStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          laneArming: ALL_LANES_UNARMED,
+          newId: () => 'request_before_money',
+          nowEpochSeconds: () => 0,
+          readAvailableMsat: emptyBalance,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_before_money',
+    )
+  })
+
+  test('fails closed when typed coding delegation is unavailable', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: { workflowClass: 'codex_agent_task' },
+        }),
+        baseDeps(),
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    const body = (await response.json()) as {
+      error: string
+      reason: string
+    }
+    expect(body.error).toBe('coding_delegation_unavailable')
+    expect(body.reason).toContain('not wired')
+  })
+
+  test('scrubs OpenAgents-only control fields before provider passthrough when delegation is disabled', async () => {
+    const captured: Array<Readonly<Record<string, unknown>>> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          captured.push(request.passthroughParams)
+          return {
+            content: 'ok',
+            finishReason: 'stop',
+            servedModel: request.model,
+            usage: {
+              completionTokens: 1,
+              promptTokens: 1,
+              totalTokens: 2,
+            },
+          }
+        }),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          codebase: 'public-repo-hint',
+          disable_coding_delegation: true,
+          oa_component_channel: true,
+          openagents: {
+            coding: { targetPylonRef: 'pylon.owner.codex' },
+            workflowClass: 'codex_agent_task',
+          },
+          temperature: 0,
+          workflowClass: 'codex_agent_task',
+          workflow_class: 'codex_agent_task',
+        }),
+        baseDeps({ registry }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(captured).toHaveLength(1)
+    expect(captured[0]).toMatchObject({ temperature: 0 })
+    expect(captured[0]).not.toHaveProperty('openagents')
+    expect(captured[0]).not.toHaveProperty('workflowClass')
+    expect(captured[0]).not.toHaveProperty('workflow_class')
+    expect(captured[0]).not.toHaveProperty('codebase')
+    expect(captured[0]).not.toHaveProperty('oa_component_channel')
+    expect(captured[0]).not.toHaveProperty('disable_coding_delegation')
+  })
 })
 
 describe('POST /v1/chat/completions', () => {
