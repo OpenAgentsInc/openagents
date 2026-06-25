@@ -566,6 +566,7 @@ import { makeD1NexusTreasuryPayoutLedgerStore } from './nexus-treasury-payout-le
 import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
 import {
   logWorkerRouteError,
+  logWorkerRouteInfo,
   logWorkerRouteWarning,
   observedEffect,
   observedPromise,
@@ -11258,7 +11259,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             const ownerUserId = input.accountRef.startsWith('agent:')
               ? input.accountRef.slice('agent:'.length)
               : input.accountRef
-            await emitKhalaChatTrace(
+            return await emitKhalaChatTrace(
               {
                 requestedModel: input.requestedModel,
                 requestMessages: input.requestMessages,
@@ -11299,6 +11300,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                     }),
               },
             )
+          },
+          recordRedactionMetrics: event => {
+            logWorkerRouteInfo('khala_trace_redaction_metrics', {
+              emitted: event.emitted,
+              reason: event.reason,
+              redactionTotal: event.redactionTotal,
+              redactionCounts: JSON.stringify(event.redactionCounts),
+              residualTripwireCount: event.residualTripwireCount,
+            })
           },
         },
         registry: inferenceProviderRegistry,

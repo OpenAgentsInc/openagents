@@ -20,6 +20,7 @@
 
 export * from "./trace-schema.ts"
 export { ATIF_PINNED_SCHEMA_VERSION as ATIF_TRACE_SCHEMA_VERSION } from "./trace-schema.ts"
+export * from "./redaction.ts"
 
 export {
   AtifTrajectorySchema,

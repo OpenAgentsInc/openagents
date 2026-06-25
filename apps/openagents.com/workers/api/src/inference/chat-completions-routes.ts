@@ -647,7 +647,8 @@ export type ChatCompletionsDeps = Readonly<{
       | undefined
     // Persist a completed Khala chat session as an ATIF trace. The Worker wires
     // this to `emitKhalaChatTrace` against the shared trace store + the resolved
-    // owner. Absent => no-op. Returns void; the call site logs nothing sensitive.
+    // owner. Absent => no-op. Returns only public-safe result metadata; the call
+    // site never logs trace text or offending values.
     emit: (
       input: Readonly<{
         accountRef: string
@@ -665,7 +666,12 @@ export type ChatCompletionsDeps = Readonly<{
         // re-parse the demand headers; we reuse the already-resolved value.
         requestAttribution?: ServedTokensRequestAttribution | undefined
       }>,
-    ) => Promise<void>
+    ) => Promise<TraceEmitResultForMetrics | void>
+    // REDACTION METRICS (#6297): optional public-safe sink for redaction-rate
+    // and residual leak counters. Receives counts only, never trace content.
+    recordRedactionMetrics?:
+      | ((event: TraceRedactionMetricEvent) => Promise<void> | void)
+      | undefined
   }>
 }>
 
@@ -677,6 +683,55 @@ type ChatCompletionsRequestBody = Readonly<{
   messages: ReadonlyArray<InferenceMessage>
   stream?: boolean | undefined
 }>
+
+type TraceEmitRedactionReport = Readonly<{
+  counts: Readonly<Record<string, number>>
+  total: number
+}>
+
+type TraceEmitResultForMetrics = Readonly<{
+  emitted: boolean
+  reason?: string | undefined
+  detail?: string | undefined
+  redactionReport?: TraceEmitRedactionReport | undefined
+}>
+
+export type TraceRedactionMetricEvent = Readonly<{
+  emitted: boolean
+  reason: string
+  redactionTotal: number
+  redactionCounts: Readonly<Record<string, number>>
+  residualTripwireCount: number
+}>
+
+const residualTripwireCount = (
+  result: TraceEmitResultForMetrics,
+): number => {
+  if (result.emitted || result.reason !== 'redaction_residual_drop') {
+    return 0
+  }
+  const codes =
+    result.detail
+      ?.split(',')
+      .map(code => code.trim())
+      .filter(code => code !== '') ?? []
+  return Math.max(1, codes.length)
+}
+
+const traceRedactionMetricEvent = (
+  result: TraceEmitResultForMetrics,
+): TraceRedactionMetricEvent | undefined => {
+  if (result.redactionReport === undefined) {
+    return undefined
+  }
+  return {
+    emitted: result.emitted,
+    reason: result.emitted ? 'emitted' : (result.reason ?? 'not_emitted'),
+    redactionCounts: result.redactionReport.counts,
+    redactionTotal: result.redactionReport.total,
+    residualTripwireCount: residualTripwireCount(result),
+  }
+}
 
 // Resolve the effective requested model: a present, non-blank `model` normalized
 // through the single Khala alias rule, otherwise the Khala default. Centralized
@@ -3008,26 +3063,42 @@ export const handleChatCompletions = (
         )
       }
       if (traceEmitOptIn || captureDefault) {
-        yield* Effect.promise(() =>
-          deps.traceEmit!.emit({
-            accountRef: session.accountRef,
-            optedIn: traceEmitOptIn,
-            captureDefault,
-            requestMessages: body.messages.map(message => ({
-              content: message.content,
-              role: message.role,
-            })),
-            requestedModel,
-            responseId,
-            result: guardedResult,
-            // DEMAND-ORIGIN (#6298): reuse the SAME resolved attribution the
-            // recorder got (resolved once at the chat seam), so the captured
-            // trace and its ledger event always agree on internal-vs-external.
-            ...(requestAttribution === undefined
-              ? {}
-              : { requestAttribution }),
-          }),
+        const emitResult = yield* Effect.promise(() =>
+          deps
+            .traceEmit!.emit({
+              accountRef: session.accountRef,
+              optedIn: traceEmitOptIn,
+              captureDefault,
+              requestMessages: body.messages.map(message => ({
+                content: message.content,
+                role: message.role,
+              })),
+              requestedModel,
+              responseId,
+              result: guardedResult,
+              // DEMAND-ORIGIN (#6298): reuse the SAME resolved attribution the
+              // recorder got (resolved once at the chat seam), so the captured
+              // trace and its ledger event always agree on internal-vs-external.
+              ...(requestAttribution === undefined
+                ? {}
+                : { requestAttribution }),
+            })
+            .catch(() => undefined),
         )
+        const metricEvent =
+          emitResult === undefined
+            ? undefined
+            : traceRedactionMetricEvent(emitResult)
+        if (
+          metricEvent !== undefined &&
+          deps.traceEmit.recordRedactionMetrics !== undefined
+        ) {
+          yield* Effect.promise(() =>
+            Promise.resolve(
+              deps.traceEmit!.recordRedactionMetrics!(metricEvent),
+            ).catch(() => undefined),
+          )
+        }
       }
     }
 

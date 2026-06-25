@@ -91,9 +91,10 @@ describe("redactString — known secrets are redacted", () => {
     expect(r.value).not.toContain("openagents-mdk-treasury.env");
   });
 
-  test("absolute home path redacts the username, keeps the shape", () => {
+  test("absolute home path redacts the whole local path", () => {
     const r = red("/Users/christopherdavid/work/openagents/file.ts");
-    expect(r.value).toBe("/Users/[REDACTED:home]/work/openagents/file.ts");
+    expect(r.value).toBe("[REDACTED:home_path]");
+    expect(r.value).not.toContain("/Users/");
     expect(r.value).not.toContain("christopherdavid");
     expect(r.report.counts.home_path).toBe(1);
   });

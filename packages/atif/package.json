@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./trace": "./src/trace-schema.ts",
     "./emit": "./src/emit.ts",
-    "./validate": "./src/validate.ts"
+    "./validate": "./src/validate.ts",
+    "./redaction": "./src/redaction.ts"
   },
   "files": [
     "src",

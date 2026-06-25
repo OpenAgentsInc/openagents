@@ -560,6 +560,92 @@ describe('POST /v1/chat/completions', () => {
     expect(calls).toBe(0)
   })
 
+  test('records public-safe trace redaction metrics after an opted-in capture', async () => {
+    const metrics: Array<{
+      emitted: boolean
+      reason: string
+      redactionTotal: number
+      redactionCounts: Readonly<Record<string, number>>
+      residualTripwireCount: number
+    }> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, oa_emit_trace: true }),
+        baseDeps({
+          traceEmit: {
+            enabled: true,
+            emit: async () => ({
+              emitted: true,
+              redactionReport: {
+                counts: { bearer: 1, email: 1 },
+                total: 2,
+              },
+            }),
+            recordRedactionMetrics: event => {
+              metrics.push(event)
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(metrics).toEqual([
+      {
+        emitted: true,
+        reason: 'emitted',
+        redactionCounts: { bearer: 1, email: 1 },
+        redactionTotal: 2,
+        residualTripwireCount: 0,
+      },
+    ])
+  })
+
+  test('records a residual-leak counter without failing the completion', async () => {
+    const metrics: Array<{
+      emitted: boolean
+      reason: string
+      redactionTotal: number
+      redactionCounts: Readonly<Record<string, number>>
+      residualTripwireCount: number
+    }> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, oa_emit_trace: true }),
+        baseDeps({
+          traceEmit: {
+            enabled: true,
+            emit: async () => ({
+              detail: 'SECRET_MATERIAL,LOCAL_PATH',
+              emitted: false,
+              reason: 'redaction_residual_drop',
+              redactionReport: {
+                counts: { bearer: 1 },
+                total: 1,
+              },
+            }),
+            recordRedactionMetrics: event => {
+              metrics.push(event)
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(metrics).toEqual([
+      {
+        emitted: false,
+        reason: 'redaction_residual_drop',
+        redactionCounts: { bearer: 1 },
+        redactionTotal: 1,
+        residualTripwireCount: 2,
+      },
+    ])
+  })
+
   // OWNER BALANCE-GATE EXEMPTION (issue #6180). These exercise the route's
   // `checkOperatorExemption` seam against a real OWN-INFRA Khala request (the
   // public route only serves Khala). A registered Khala-serving adapter + armed

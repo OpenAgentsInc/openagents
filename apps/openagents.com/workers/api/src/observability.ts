@@ -72,6 +72,17 @@ export const logWorkerRouteWarning = (
   )
 }
 
+export const logWorkerRouteInfo = (
+  event: string,
+  fields: WorkerLogFields = {},
+): void => {
+  Effect.runSync(
+    Effect.logInfo(workerLogEntry(event, fields)).pipe(
+      Effect.withSpan(`WorkerRoute.${event}`),
+    ),
+  )
+}
+
 export const observedPromise = <A>(
   spanName: string,
   run: () => Promise<A>,
