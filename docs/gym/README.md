@@ -41,6 +41,11 @@ provider-adapter registry, verification-class registry, and the
   — Episode 243 considerations: the OpenCode head-to-head, BigPickle (de-TBD'd),
   the expanded lane set (Fireworks DeepSeek V4 Flash, GPT-OSS via Hydralisk,
   Cerebras GLM 5.2), the real cost basis, and the train-and-use-Khala flywheel.
+- [`2026-06-25-harbor-for-gym-terminalbench-and-benchmarks.md`](2026-06-25-harbor-for-gym-terminalbench-and-benchmarks.md)
+  — audit: using Harbor (the official Terminal-Bench 2.0 harness + ATIF) as the
+  Gym's executor/verifier for `terminal-bench` and other benchmarks; the
+  Hydralisk/Psionic placement, the separate-verifier distinct-device seam, and the
+  trajectory→training flywheel.
 - [`2026-06-24-openagents-gym-issues-6164-6166-audit.md`](2026-06-24-openagents-gym-issues-6164-6166-audit.md)
   — the Phase 0 / `/gym/oss` issue-run audit (#6163–#6167).
 
