@@ -1,4 +1,5 @@
 import {
+  InferenceAnalyticsResponse,
   TokenUsageAggregateResponse,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardsResponse,
@@ -59,7 +60,7 @@ const queryStringFromFilters = (filters: TokenUsageStatsFilters): string => {
   return query === '' ? '' : `?${query}`
 }
 
-const leaderboardQueryStringFromFilters = (
+const windowQueryStringFromFilters = (
   filters: TokenUsageStatsFilters,
 ): string => {
   const window = filters.leaderboardWindow.trim() || '7d'
@@ -92,8 +93,18 @@ export const LoadTokenUsageStats = Command.define(
         headers: { accept: 'application/json' },
       },
       name: 'loggedIn.stats.tokenUsage.leaderboards.load',
-      request: `/api/stats/token-usage/leaderboards${leaderboardQueryStringFromFilters(filters)}`,
+      request: `/api/stats/token-usage/leaderboards${windowQueryStringFromFilters(filters)}`,
       schema: TokenUsageLeaderboardsResponse,
+    })
+    const analytics = yield* requestJson({
+      init: {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      },
+      name: 'loggedIn.stats.inferenceAnalytics.load',
+      request: `/api/admin/inference-analytics${windowQueryStringFromFilters(filters)}`,
+      schema: InferenceAnalyticsResponse,
     })
     const preference = yield* requestJson({
       init: {
@@ -107,6 +118,7 @@ export const LoadTokenUsageStats = Command.define(
     })
 
     return SucceededLoadTokenUsageStats({
+      analytics,
       filters,
       leaderboards,
       preference,
@@ -147,6 +159,7 @@ export const updateStats = (model: Model, message: Message): UpdateReturn =>
         Option.none(),
       ],
       SucceededLoadTokenUsageStats: ({
+        analytics,
         filters,
         leaderboards,
         preference,
@@ -155,6 +168,7 @@ export const updateStats = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           tokenUsageStats: () =>
             TokenUsageStatsLoaded({
+              analytics,
               filters,
               leaderboards,
               preference,

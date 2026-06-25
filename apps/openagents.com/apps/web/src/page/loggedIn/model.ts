@@ -1,6 +1,7 @@
 import {
   SyncPatch,
   SyncSnapshot,
+  InferenceAnalyticsResponse,
   TokenUsageAggregateResponse,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardsResponse,
@@ -487,6 +488,7 @@ export const TokenUsageStatsLoading = ts('TokenUsageStatsLoading', {
   filters: TokenUsageStatsFilters,
 })
 export const TokenUsageStatsLoaded = ts('TokenUsageStatsLoaded', {
+  analytics: InferenceAnalyticsResponse,
   filters: TokenUsageStatsFilters,
   leaderboards: TokenUsageLeaderboardsResponse,
   preference: TokenUsageLeaderboardPreferenceResponse,

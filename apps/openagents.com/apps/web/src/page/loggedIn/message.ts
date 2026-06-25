@@ -1,5 +1,6 @@
 import {
   CursorGap,
+  InferenceAnalyticsResponse,
   SyncPatch,
   SyncSnapshot,
   TokenUsageAggregateResponse,
@@ -678,6 +679,7 @@ export const FailedLoadAdminOverview = m('FailedLoadAdminOverview', {
 })
 export const RequestedLoadTokenUsageStats = m('RequestedLoadTokenUsageStats')
 export const SucceededLoadTokenUsageStats = m('SucceededLoadTokenUsageStats', {
+  analytics: InferenceAnalyticsResponse,
   filters: TokenUsageStatsFilters,
   leaderboards: TokenUsageLeaderboardsResponse,
   preference: TokenUsageLeaderboardPreferenceResponse,

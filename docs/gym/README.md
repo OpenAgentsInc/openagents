@@ -61,11 +61,12 @@ provider-adapter registry, verification-class registry, and the
   `harbor-reward.ts` then maps Harbor rewards to cost-per-accepted-outcome using
   served-token cost basis, emits a training-ready public-safe ATIF trajectory
   bundle, and blocks readiness when GPU contention is not cleared.
-- **Epic F1 landed:** `token_usage_events` now carries typed owner-gated
+- **Epic F1/F2 landed:** `token_usage_events` now carries typed owner-gated
   demand attribution (`internal`, `external`, or `unlabeled` plus source/client
-  labels), and `GET /api/admin/inference-analytics` exposes the split while the
-  public Khala tokens-served counter stays total-only. Remaining real-sweep work
-  expands live executor wiring and public surfaces.
+  labels), `GET /api/admin/inference-analytics` exposes the split plus
+  demand-client/day adoption, and public `/stats` shows the tokens-served per-day
+  curve while the public Khala tokens-served counter stays total-only. Remaining
+  real-sweep work expands live executor wiring and throughput measurement.
 
 ## Contents
 

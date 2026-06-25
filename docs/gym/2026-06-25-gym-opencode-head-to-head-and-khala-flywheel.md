@@ -256,8 +256,10 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
   landed from Harbor summaries + served-token cost basis + public-safe ATIF refs.
 - How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
   from an owner playground to a typed Gym environment, or keep it separate?).
-- Per-day history and owner-facing per-tool adoption views should consume the
-  shipped demand tags rather than reclassifying traffic.
+- Per-day history and owner-facing per-tool adoption views now consume the shipped
+  demand tags: public `/stats` shows the `/history` curve, and admin Stats shows
+  demand split, source/client rollups, and demand-client/day adoption without
+  reclassifying unlabeled traffic.
 
 ## 12. Cross-ref: QA-runner verified traces are the realistic-traffic + verifier source the Gym needs (added 2026-06-25)
 

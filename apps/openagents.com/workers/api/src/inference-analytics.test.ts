@@ -243,6 +243,18 @@ describe('readInferenceAnalytics (#6232)', () => {
         totalTokens: 431_852,
       }),
     ])
+    expect(result.byDemandClientDay).toEqual([
+      expect.objectContaining({
+        day: '2026-06-25',
+        key: 'internal:gym-opencode-runner',
+        totalTokens: 700_000,
+      }),
+      expect.objectContaining({
+        day: '2026-06-25',
+        key: 'external:sdk',
+        totalTokens: 431_852,
+      }),
+    ])
 
     // byDay collapses both same-day rows into one ascending point.
     expect(result.byDay).toHaveLength(1)

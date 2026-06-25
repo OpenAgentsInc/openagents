@@ -1204,6 +1204,57 @@ describe('logged-in Autopilot chat runs', () => {
         updatedByUserId: 'github:14167547',
       },
     }
+    const analytics = {
+      schemaVersion: 'openagents.inference_analytics.v1' as const,
+      window: '7d' as const,
+      generatedAt: '2026-06-08T12:00:00.000Z',
+      byProvider: [],
+      byModel: [],
+      byRoute: [],
+      byDemandKind: [],
+      byDemandSource: [],
+      byDemandClient: [
+        {
+          key: 'external:sdk',
+          label: 'external / sdk',
+          inputTokens: 50,
+          outputTokens: 25,
+          totalTokens: 75,
+          usageEvents: 1,
+          costUsd: 0.01,
+        },
+      ],
+      byDay: [
+        {
+          day: '2026-06-08',
+          inputTokens: 50,
+          outputTokens: 25,
+          totalTokens: 75,
+          usageEvents: 1,
+          costUsd: 0.01,
+        },
+      ],
+      byDemandClientDay: [
+        {
+          day: '2026-06-08',
+          key: 'external:sdk',
+          label: 'external / sdk',
+          inputTokens: 50,
+          outputTokens: 25,
+          totalTokens: 75,
+          usageEvents: 1,
+          costUsd: 0.01,
+        },
+      ],
+      totals: {
+        inputTokens: 50,
+        outputTokens: 25,
+        totalTokens: 75,
+        usageEvents: 1,
+        costUsd: 0.01,
+        costCoverage: 1,
+      },
+    }
     const model = init(StatsRoute(), { ...authWithTeam, isAdmin: true })
     const commands = initialCommands(model)
     const [filteredModel] = update(
@@ -1220,6 +1271,7 @@ describe('logged-in Autopilot chat runs', () => {
     const [loadedModel] = update(
       loadingModel,
       SucceededLoadTokenUsageStats({
+        analytics,
         filters: loadingModel.tokenUsageStats.filters,
         leaderboards,
         preference,
@@ -1240,6 +1292,7 @@ describe('logged-in Autopilot chat runs', () => {
     })
     expect(loadedModel.tokenUsageStats).toMatchObject({
       _tag: 'TokenUsageStatsLoaded',
+      analytics: { byDemandClient: [{ key: 'external:sdk' }] },
       response: { usageEvents: 1 },
     })
   })

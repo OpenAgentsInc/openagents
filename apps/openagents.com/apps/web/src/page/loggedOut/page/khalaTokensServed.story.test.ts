@@ -25,6 +25,7 @@ import {
 } from '../model'
 import { update } from '../update'
 import * as Home from './home'
+import * as StatsPage from './stats'
 
 const served = (tokensServed: number) =>
   PublicKhalaTokensServed.make({
@@ -178,6 +179,19 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
       // The visually-hidden fallback lists each day + value, so the data is
       // never locked inside the SVG.
+      Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
+    )
+  })
+
+  test('renders the same per-day curve on public /stats', () => {
+    Scene.scene(
+      {
+        update,
+        view: () => StatsPage.view(homeInputWithTokens(1_250_000)),
+      },
+      Scene.with(LoggedOut.init(HomeRoute())),
+      Scene.expect(Scene.text('Network Stats')).toExist(),
+      Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
       Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
     )
   })

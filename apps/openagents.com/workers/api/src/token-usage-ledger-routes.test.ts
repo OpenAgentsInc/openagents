@@ -214,6 +214,18 @@ const analyticsResponse = S.decodeUnknownSync(InferenceAnalyticsResponse)({
       costUsd: 0.272,
     },
   ],
+  byDemandClientDay: [
+    {
+      day: '2026-06-25',
+      key: 'external:sdk',
+      label: 'external / sdk',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
   byDay: [
     {
       day: '2026-06-25',

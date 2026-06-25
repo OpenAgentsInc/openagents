@@ -158,8 +158,8 @@ callers may send `external`. Missing or partial attribution is deliberately
 `TokenUsageLedger.readInferenceAnalytics({ window })` (aggregate-only, no
 per-user/prompt material) returns token + cost rollups grouped by **provider**,
 **model**, **source-route/producer-system**, **demand kind**, **demand source**,
-**demand client**, and **day**, plus window-wide totals. Windows:
-`today | 7d | 30d | all`.
+**demand client**, **day**, and **demand client by day**, plus window-wide
+totals. Windows: `today | 7d | 30d | all`.
 
 ### The endpoint (owner-gated)
 
@@ -187,6 +187,15 @@ Sample response shape:
   "byDemandSource": [ { "key": "internal:openagents-gym", "totalTokens": 700000, ... } ],
   "byDemandClient": [ { "key": "internal:gym-opencode-runner", "totalTokens": 700000, ... } ],
   "byDay":    [ { "day": "2026-06-25", "totalTokens": 1131852, "costUsd": 0.272, ... } ],
+  "byDemandClientDay": [
+    {
+      "day": "2026-06-25",
+      "key": "internal:gym-opencode-runner",
+      "label": "internal / gym-opencode-runner",
+      "totalTokens": 700000,
+      "costUsd": 0.18
+    }
+  ],
   "totals": {
     "inputTokens": 321065, "outputTokens": 810787, "totalTokens": 1131852,
     "usageEvents": 560, "costUsd": 0.272, "costCoverage": 0.0
@@ -210,8 +219,9 @@ and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
   Use `window=today` for the day, `30d`/`all` for trend. Watch `byProvider`
   (which lane is carrying load + its cost), `byDemandKind` /
   `byDemandSource` / `byDemandClient` (internal dogfood vs external vs
-  unlabeled tool traffic), `byDay.costUsd` (daily burn), and
-  `totals.costCoverage` (data completeness).
+  unlabeled tool traffic), `byDemandClientDay` (which tools are moving the
+  curve over time), `byDay.costUsd` (daily burn), and `totals.costCoverage`
+  (data completeness).
 - **Public served-tokens counter** (`/api/public/khala-tokens-served` +
   `/history`) remains the public-safe token total; it never exposes demand
   labels or implies internal dogfood is external traction. The analytics

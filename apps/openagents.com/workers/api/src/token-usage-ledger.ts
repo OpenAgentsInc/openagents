@@ -1524,6 +1524,44 @@ export const makeD1TokenUsageLedger = (
         `date(observed_at)`,
         `date(observed_at)`,
       )
+      const byDemandClientDayRows = yield* d1Effect(
+        'inferenceAnalytics.byDemandClientDay',
+        () =>
+          db
+            .prepare(
+              `SELECT
+                  date(observed_at) AS day,
+                  COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ':' ||
+                    COALESCE(NULLIF(demand_client, ''), 'unknown') AS key,
+                  COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ' / ' ||
+                    COALESCE(NULLIF(demand_client, ''), 'unknown') AS label,
+                  COALESCE(SUM(input_tokens), 0) AS input_tokens,
+                  COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                  COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                    AS total_tokens,
+                  COUNT(*) AS usage_events,
+                  COALESCE(SUM(cost_amount), 0) AS cost_usd
+                 FROM token_usage_events
+                ${whereSql}
+                GROUP BY
+                  date(observed_at),
+                  COALESCE(NULLIF(demand_kind, ''), 'unlabeled'),
+                  COALESCE(NULLIF(demand_client, ''), 'unknown')
+                ORDER BY day ASC, total_tokens DESC, key ASC
+                LIMIT 500`,
+            )
+            .bind(...bind)
+            .all<{
+              day: string | null
+              key: string | null
+              label: string | null
+              input_tokens: number | null
+              output_tokens: number | null
+              total_tokens: number | null
+              usage_events: number | null
+              cost_usd: number | null
+            }>(),
+      ).pipe(Effect.map(result => result.results))
       const totalsRow = yield* d1Effect('inferenceAnalytics.totals', () =>
         db
           .prepare(
@@ -1569,6 +1607,24 @@ export const makeD1TokenUsageLedger = (
             usageEvents: Math.max(0, Math.trunc(row.usage_events ?? 0)),
           }))
           .sort((left, right) => left.day.localeCompare(right.day)),
+        byDemandClientDay: byDemandClientDayRows
+          .filter(
+            (row): row is typeof row & { day: string; key: string } =>
+              typeof row.day === 'string' &&
+              row.day !== '' &&
+              typeof row.key === 'string' &&
+              row.key !== '',
+          )
+          .map(row => ({
+            costUsd: roundCostUsd(row.cost_usd ?? 0),
+            day: row.day,
+            inputTokens: Math.max(0, Math.trunc(row.input_tokens ?? 0)),
+            key: row.key,
+            label: row.label ?? row.key,
+            outputTokens: Math.max(0, Math.trunc(row.output_tokens ?? 0)),
+            totalTokens: Math.max(0, Math.trunc(row.total_tokens ?? 0)),
+            usageEvents: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+          })),
         byModel: byModel.map(analyticsRow),
         byProvider: byProvider.map(analyticsRow),
         byRoute: byRoute.map(analyticsRow),

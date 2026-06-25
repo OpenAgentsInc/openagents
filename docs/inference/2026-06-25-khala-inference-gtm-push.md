@@ -348,10 +348,13 @@ shown on `/stats` and `/khala`. We want the per-day history curve to bend upward
 and stay up. Supporting metrics:
 
 - **Per-tool adoption** — tokens attributable to OpenCode, Aider, etc. (so we know
-  which ecosystem landings actually move traffic).
+  which ecosystem landings actually move traffic). The admin Stats view now shows
+  per-tool rollups and per-tool/day adoption from the owner-gated demand-client
+  tags.
 - **Internal vs external split** — keep them distinguishable in our analytics so
   we never imply external traction we do not have. The owner-gated analytics now
-  expose internal/external/unlabeled demand kind plus source/client rollups.
+  expose internal/external/unlabeled demand kind plus source/client rollups; missing
+  attribution stays unlabeled rather than being counted as external or zero.
 - **Quality/latency/cost** — from the benchmark harness (P50/P90/P99 latency,
   cost-per-accepted-outcome, verified-rate), decision-grade only.
 

@@ -51,8 +51,9 @@ they do not block dogfood or ecosystem landings.
   monotonic + exact (#6231 + the authoritative-total fix).
 - **Served-tokens recorder** writes one ledger row per completion with per-lane
   **`cost_amount`**; owner-gated **`GET /api/admin/inference-analytics`** (tokens +
-  cost by provider/model/route/day plus demand kind/source/client). Cost model:
-  real lane = Fireworks DeepSeek V4 Flash, ~$0.24/Mtok blended (#6232, #6252).
+  cost by provider/model/route/day plus demand kind/source/client and
+  demand-client/day adoption). Cost model: real lane = Fireworks DeepSeek V4
+  Flash, ~$0.24/Mtok blended (#6232, #6252, #6243).
 - **OpenCode→Khala tool-calling** fixed across the Hydralisk + Fireworks adapters
   (content arrays + tool-call deltas preserved); ten concurrent OpenCode→Khala
   sessions ran. Runbook: `../inference/2026-06-25-opencode-khala-runbook-and-audit.md`.
@@ -470,7 +471,7 @@ migration 0232 backfills existing safe metadata, and
 
 ### F2. Per-day history + per-tool adoption surfaced for the North Star ([#6243](https://github.com/OpenAgentsInc/openagents/issues/6243))
 
-**Type:** task · **Lever:** measurement · **Status:** direction
+**Type:** task · **Lever:** measurement · **Status:** shipped 2026-06-25
 **Why:** "we want the per-day history curve to bend upward and stay up" — the curve and
 its per-tool decomposition are how we steer.
 **Scope:** surface the tokens-served `/history` per-day curve + per-tool adoption (from
@@ -478,6 +479,14 @@ F1 tags) on `/stats` (+ owner views); keep `not_measured` ≠ `0`.
 **Acceptance:** `/stats` shows the per-day curve; the admin view shows per-tool
 adoption over time.
 **Refs:** GTM §6.
+
+**Shipped:** public `/stats` renders the same accessible
+`/api/public/khala-tokens-served/history` per-day curve as `/khala`; the admin
+Stats view loads owner-gated `GET /api/admin/inference-analytics?window=...` and
+shows demand split, per-source adoption, per-tool adoption, daily served-token
+history, and `byDemandClientDay` per-tool adoption over time. Unlabeled/unknown
+traffic remains visible as its own row instead of being collapsed into external
+or zero.
 
 ### F3. Throughput/concurrency as a first-class Gym measurement (promote `/gym/oss` patterns) ([#6244](https://github.com/OpenAgentsInc/openagents/issues/6244))
 

@@ -30,6 +30,31 @@ type AggregateRow = Readonly<{
   usageEvents: number
 }>
 
+type AnalyticsRow = Readonly<{
+  costUsd: number
+  inputTokens: number
+  key: string
+  label: string
+  outputTokens: number
+  totalTokens: number
+  usageEvents: number
+}>
+
+type AnalyticsDayPoint = Readonly<{
+  costUsd: number
+  day: string
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  usageEvents: number
+}>
+
+type AnalyticsDemandClientDayPoint = AnalyticsDayPoint &
+  Readonly<{
+    key: string
+    label: string
+  }>
+
 type ActorRow = Readonly<{
   accountRef: string | null
   anonymous: boolean
@@ -68,6 +93,12 @@ type EventRecord = Readonly<{
 }>
 
 const numberFormatter = new Intl.NumberFormat('en-US')
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  currency: 'USD',
+  maximumFractionDigits: 4,
+  minimumFractionDigits: 2,
+  style: 'currency',
+})
 
 const emptyCounts: TokenCounts = {
   cacheReadTokens: 0,
@@ -88,6 +119,9 @@ const unsafeValuePattern =
 const formatNumber = (value: number): string =>
   numberFormatter.format(Math.max(0, Math.trunc(value)))
 
+const formatUsd = (value: number): string =>
+  usdFormatter.format(Math.max(0, value))
+
 const safeText = (value: string | null | undefined): string => {
   const text = value?.trim()
 
@@ -97,6 +131,11 @@ const safeText = (value: string | null | undefined): string => {
 
   return unsafeValuePattern.test(text) ? '[redacted]' : text
 }
+
+const analyticsLabel = (row: Pick<AnalyticsRow, 'key' | 'label'>): string =>
+  row.key === 'unlabeled' || row.key.startsWith('unlabeled:')
+    ? safeText(row.label.replace(/^unlabeled/i, 'Unlabeled traffic'))
+    : safeText(row.label)
 
 const truthEventCount = (
   rows: ReadonlyArray<AggregateRow>,
@@ -402,6 +441,220 @@ const actorRowsTable = (input: {
   )
 }
 
+const analyticsRowsTable = (input: {
+  body: string
+  eyebrow: string
+  firstColumn: string
+  rows: ReadonlyArray<AnalyticsRow>
+  title: string
+}): Html => {
+  const h = html<Message>()
+
+  return Ui.section<Message>(
+    [
+      Ui.headingBlock<Message>({
+        eyebrow: input.eyebrow,
+        title: input.title,
+        body: input.body,
+        level: 2,
+      }),
+      h.div(
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                `${tableHeaderClass} grid-cols-[minmax(14rem,1fr)_repeat(4,minmax(6rem,auto))]`,
+              ),
+            ],
+            [
+              h.span([], [input.firstColumn]),
+              h.span([], ['Tokens']),
+              h.span([], ['Events']),
+              h.span([], ['Cost']),
+              h.span([], ['In / Out']),
+            ],
+          ),
+          ...(input.rows.length === 0
+            ? [
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'bg-[#010102] px-3 py-4 text-sm text-white/45',
+                    ),
+                  ],
+                  ['No owner analytics rows for this window.'],
+                ),
+              ]
+            : input.rows.map(row =>
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      `${tableRowClass} grid-cols-[minmax(14rem,1fr)_repeat(4,minmax(6rem,auto))]`,
+                    ),
+                  ],
+                  [
+                    h.span(
+                      [
+                        Ui.className<Message>(
+                          'min-w-0 truncate text-[#f1efe8]',
+                        ),
+                      ],
+                      [analyticsLabel(row)],
+                    ),
+                    h.span([], [formatNumber(row.totalTokens)]),
+                    h.span([], [formatNumber(row.usageEvents)]),
+                    h.span([], [formatUsd(row.costUsd)]),
+                    h.span([], [
+                      `${formatNumber(row.inputTokens)} / ${formatNumber(row.outputTokens)}`,
+                    ]),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    ],
+    [Ui.className<Message>('min-w-0')],
+  )
+}
+
+const analyticsDayRowsTable = (rows: ReadonlyArray<AnalyticsDayPoint>): Html => {
+  const h = html<Message>()
+
+  return Ui.section<Message>(
+    [
+      Ui.headingBlock<Message>({
+        eyebrow: 'History',
+        title: 'Daily served-token history',
+        body: 'UTC daily buckets for the selected owner analytics window.',
+        level: 2,
+      }),
+      h.div(
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                `${tableHeaderClass} grid-cols-[minmax(8rem,1fr)_repeat(4,minmax(6rem,auto))]`,
+              ),
+            ],
+            [
+              h.span([], ['Day']),
+              h.span([], ['Tokens']),
+              h.span([], ['Events']),
+              h.span([], ['Cost']),
+              h.span([], ['In / Out']),
+            ],
+          ),
+          ...(rows.length === 0
+            ? [
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'bg-[#010102] px-3 py-4 text-sm text-white/45',
+                    ),
+                  ],
+                  ['No daily analytics rows for this window.'],
+                ),
+              ]
+            : rows.map(row =>
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      `${tableRowClass} grid-cols-[minmax(8rem,1fr)_repeat(4,minmax(6rem,auto))]`,
+                    ),
+                  ],
+                  [
+                    h.span([Ui.className<Message>('text-[#f1efe8]')], [
+                      safeText(row.day),
+                    ]),
+                    h.span([], [formatNumber(row.totalTokens)]),
+                    h.span([], [formatNumber(row.usageEvents)]),
+                    h.span([], [formatUsd(row.costUsd)]),
+                    h.span([], [
+                      `${formatNumber(row.inputTokens)} / ${formatNumber(row.outputTokens)}`,
+                    ]),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    ],
+    [Ui.className<Message>('min-w-0')],
+  )
+}
+
+const analyticsDemandClientDayTable = (
+  rows: ReadonlyArray<AnalyticsDemandClientDayPoint>,
+): Html => {
+  const h = html<Message>()
+
+  return Ui.section<Message>(
+    [
+      Ui.headingBlock<Message>({
+        eyebrow: 'Adoption',
+        title: 'Per-tool adoption over time',
+        body: 'UTC daily demand-client buckets for attributed and unlabeled traffic.',
+        level: 2,
+      }),
+      h.div(
+        [Ui.className<Message>('mt-4 overflow-x-auto border border-[#222]')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                `${tableHeaderClass} grid-cols-[8rem_minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`,
+              ),
+            ],
+            [
+              h.span([], ['Day']),
+              h.span([], ['Tool']),
+              h.span([], ['Tokens']),
+              h.span([], ['Events']),
+              h.span([], ['Cost']),
+            ],
+          ),
+          ...(rows.length === 0
+            ? [
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'bg-[#010102] px-3 py-4 text-sm text-white/45',
+                    ),
+                  ],
+                  ['No per-tool daily analytics rows for this window.'],
+                ),
+              ]
+            : rows.map(row =>
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      `${tableRowClass} grid-cols-[8rem_minmax(14rem,1fr)_repeat(3,minmax(6rem,auto))]`,
+                    ),
+                  ],
+                  [
+                    h.span([], [safeText(row.day)]),
+                    h.span(
+                      [
+                        Ui.className<Message>(
+                          'min-w-0 truncate text-[#f1efe8]',
+                        ),
+                      ],
+                      [analyticsLabel(row)],
+                    ),
+                    h.span([], [formatNumber(row.totalTokens)]),
+                    h.span([], [formatNumber(row.usageEvents)]),
+                    h.span([], [formatUsd(row.costUsd)]),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    ],
+    [Ui.className<Message>('min-w-0')],
+  )
+}
+
 const eventRowsTable = (rows: ReadonlyArray<EventRecord>): Html => {
   const h = html<Message>()
 
@@ -507,13 +760,24 @@ const loadedPreference = (model: Model) =>
     ? model.tokenUsageStats.preference.preference
     : undefined
 
+const loadedAnalytics = (model: Model) =>
+  model.tokenUsageStats._tag === 'TokenUsageStatsLoaded'
+    ? model.tokenUsageStats.analytics
+    : undefined
+
 export const view = (model: Model): Html => {
   const response = loadedResponse(model)
   const leaderboards = loadedLeaderboards(model)
   const preference = loadedPreference(model)
+  const analytics = loadedAnalytics(model)
   const totals = response?.totals ?? emptyCounts
   const usageEvents = response?.usageEvents ?? 0
   const byUsageTruth = (response?.byUsageTruth ?? []) as ReadonlyArray<AggregateRow>
+  const byDemandKind = (analytics?.byDemandKind ?? []) as ReadonlyArray<AnalyticsRow>
+  const byDemandSource = (analytics?.byDemandSource ?? []) as ReadonlyArray<AnalyticsRow>
+  const byDemandClient = (analytics?.byDemandClient ?? []) as ReadonlyArray<AnalyticsRow>
+  const byDay = (analytics?.byDay ?? []) as ReadonlyArray<AnalyticsDayPoint>
+  const byDemandClientDay = (analytics?.byDemandClientDay ?? []) as ReadonlyArray<AnalyticsDemandClientDayPoint>
   const h = html<Message>()
 
   return Ui.container<Message>(
@@ -549,10 +813,52 @@ export const view = (model: Model): Html => {
           { label: 'Cache write', value: formatNumber(totals.cacheWrite5mTokens + totals.cacheWrite1hTokens), tone: 'neutral' },
           { label: 'Estimated events', value: formatNumber(truthEventCount(byUsageTruth, 'estimated')), tone: 'warning' },
           { label: 'Unknown events', value: formatNumber(truthEventCount(byUsageTruth, 'unknown')), tone: 'negative' },
+          ...(analytics === undefined
+            ? []
+            : [
+                { label: 'Owner cost', value: formatUsd(analytics.totals.costUsd), tone: 'warning' as const },
+                {
+                  label: 'Cost coverage',
+                  value: `${formatNumber(analytics.totals.costCoverage * 100)}%`,
+                  tone: analytics.totals.costCoverage < 1 ? 'negative' as const : 'positive' as const,
+                },
+              ]),
           { label: 'Usage events', value: formatNumber(usageEvents), tone: 'neutral' },
         ],
         [Ui.className<Message>('mt-4')],
       ),
+      ...(analytics === undefined
+        ? []
+        : [
+            h.div(
+              [Ui.className<Message>('mt-4 grid gap-4 2xl:grid-cols-2')],
+              [
+                analyticsRowsTable({
+                  body: 'External, internal, and unlabeled demand stay separated for GTM measurement.',
+                  eyebrow: 'Demand',
+                  firstColumn: 'Demand',
+                  rows: byDemandKind,
+                  title: 'Demand split',
+                }),
+                analyticsRowsTable({
+                  body: 'Source tags show which channel or campaign produced the served tokens.',
+                  eyebrow: 'Attribution',
+                  firstColumn: 'Source',
+                  rows: byDemandSource,
+                  title: 'Per-source adoption',
+                }),
+                analyticsRowsTable({
+                  body: 'Client tags identify the tool, SDK, runner, or app using Khala capacity.',
+                  eyebrow: 'Adoption',
+                  firstColumn: 'Tool',
+                  rows: byDemandClient,
+                  title: 'Per-tool adoption',
+                }),
+                analyticsDayRowsTable(byDay),
+                analyticsDemandClientDayTable(byDemandClientDay),
+              ],
+            ),
+          ]),
       h.div(
         [Ui.className<Message>('mt-4 grid gap-4 2xl:grid-cols-2')],
         [

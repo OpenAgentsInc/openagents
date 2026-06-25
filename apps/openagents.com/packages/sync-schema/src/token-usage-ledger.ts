@@ -368,6 +368,22 @@ export class InferenceAnalyticsDayPoint extends S.Class<InferenceAnalyticsDayPoi
   costUsd: S.Number,
 }) {}
 
+// One per-tool/per-day analytics point. The key/label mirrors byDemandClient so
+// owner views can render tool adoption over time without joining separate
+// response arrays client-side.
+export class InferenceAnalyticsDemandClientDayPoint extends S.Class<InferenceAnalyticsDemandClientDayPoint>(
+  'InferenceAnalyticsDemandClientDayPoint',
+)({
+  day: S.String,
+  key: S.String,
+  label: S.String,
+  inputTokens: S.Int,
+  outputTokens: S.Int,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  costUsd: S.Number,
+}) {}
+
 // Window-wide totals across the whole result.
 export class InferenceAnalyticsTotals extends S.Class<InferenceAnalyticsTotals>(
   'InferenceAnalyticsTotals',
@@ -401,5 +417,6 @@ export class InferenceAnalyticsResponse extends S.Class<InferenceAnalyticsRespon
   byDemandSource: S.Array(InferenceAnalyticsRow),
   byDemandClient: S.Array(InferenceAnalyticsRow),
   byDay: S.Array(InferenceAnalyticsDayPoint),
+  byDemandClientDay: S.Array(InferenceAnalyticsDemandClientDayPoint),
   totals: InferenceAnalyticsTotals,
 }) {}
