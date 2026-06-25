@@ -442,6 +442,96 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.fundingKind).toBe('bitcoin')
   })
 
+  test('records served tokens for a completed non-streaming completion (issue #6227)', async () => {
+    const recorded: Array<{
+      accountRef: string
+      requestId: string
+      servedModel: string
+      streamed: boolean
+      usage: InferenceUsage
+    }> = []
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                accountRef: input.accountRef,
+                requestId: input.requestId,
+                servedModel: input.servedModel,
+                streamed: input.streamed,
+                usage: input.usage,
+              })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.accountRef).toBe('agent:test-user')
+    expect(recorded[0]?.streamed).toBe(false)
+    expect(recorded[0]?.servedModel).toBe(KHALA_MODEL_ID)
+    // The same served usage the metering hook saw (echoed reply = 2 completion).
+    expect(recorded[0]?.usage.completionTokens).toBe(2)
+    expect(typeof recorded[0]?.requestId).toBe('string')
+  })
+
+  test('records served tokens for a completed streaming completion (issue #6227)', async () => {
+    const recorded: Array<{ streamed: boolean; usage: InferenceUsage }> = []
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, stream: true }),
+        baseDeps({
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ streamed: input.streamed, usage: input.usage })
+            }),
+        }),
+      ),
+    )
+    // Drain the SSE so the terminal-frame metering + recorder run.
+    await response.text()
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.streamed).toBe(true)
+    expect(recorded[0]?.usage.completionTokens).toBe(2)
+  })
+
+  test('does NOT record served tokens for a provider failure (issue #6227)', async () => {
+    const recorded: Array<unknown> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: STUB_ECHO_ADAPTER_ID,
+            kind: 'upstream_error',
+            reason: 'boom',
+            retryable: false,
+          }),
+        ),
+      id: STUB_ECHO_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          registry,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push(input)
+            }),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    expect(recorded).toHaveLength(0)
+  })
+
   test('streams OpenAI-compatible SSE frames and meters from the terminal usage frame', async () => {
     const captured: Array<MeteringContext> = []
     const meteringHook: MeteringHook = context =>

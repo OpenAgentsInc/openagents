@@ -152,6 +152,7 @@ import {
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
+import { type ServedTokensRecorder } from './served-tokens-recorder'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. Public model selection has
@@ -312,6 +313,21 @@ export type ChatCompletionsDeps = Readonly<{
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
+  // SERVED-TOKENS RECORDER (issue #6227). Records one canonical
+  // `token_usage_events` row per SERVED completion so the public "Khala Tokens
+  // Served" counter (GET /api/public/khala-tokens-served) reflects ALL Khala
+  // traffic. Invoked AFTER the metering hook on every completion path
+  // (non-streaming, buffered stream, true pass-through stream) and only when the
+  // request produced real provider usage — so a failed / 4xx / refused call is
+  // never recorded. It runs INDEPENDENTLY of which metering wrapper handled the
+  // request, so a FREE-TIER completion (whose credit-ledger hook is
+  // short-circuited in `withFreeTierKhala`) STILL records its served tokens (the
+  // tokens were served and must count, even though no credit was debited). The
+  // row is idempotent per request id (one served completion = one row); a
+  // retry/replay is a no-op insert. Default undefined => no-op (the inert/test
+  // path is byte-for-byte unchanged). The recorder never throws and never fails
+  // the customer's already-delivered completion.
+  recordTokensServed?: ServedTokensRecorder | undefined
   // Resolves the account's funding kind (card | bitcoin) for the metering hook.
   // Defaults to card (no Bitcoin discount).
   resolveFundingKind?: InferenceFundingResolver
@@ -1236,6 +1252,9 @@ const makePassThroughResponseStream = (
     created: number
     fundingKind: FundingKind
     meteringHook: MeteringHook
+    // SERVED-TOKENS RECORDER (issue #6227). Invoked after metering on the terminal
+    // usage frame so the public served-tokens counter reflects this stream.
+    recordTokensServed?: ServedTokensRecorder | undefined
     requestedModel: string
     responseId: string
     source: InferenceStreamSource
@@ -1305,16 +1324,37 @@ const makePassThroughResponseStream = (
     const servedModel = terminal.servedModel ?? input.requestedModel
     let streamMetering: MeteringOutcome | undefined
     if (terminal.usage !== undefined) {
+      const terminalUsage = terminal.usage
+      const recordTokensServed = input.recordTokensServed
+      // Settle metering AND record the served tokens in ONE Effect program, run
+      // through the single terminal-frame `Effect.runPromise` bridge. The
+      // served-tokens recorder (issue #6227) runs AFTER metering so the public
+      // counter reflects this stream; it is Effect-shaped and never fails (it
+      // swallows its own errors), so it can never break the delivered stream.
       streamMetering = await Effect.runPromise(
-        input.meteringHook({
-          accountRef: input.accountRef,
-          adapterId: input.adapterId,
-          fundingKind: input.fundingKind,
-          requestId: input.responseId,
-          requestedModel: input.requestedModel,
-          servedModel,
-          streamed: true,
-          usage: terminal.usage,
+        Effect.gen(function* () {
+          const outcome = yield* input.meteringHook({
+            accountRef: input.accountRef,
+            adapterId: input.adapterId,
+            fundingKind: input.fundingKind,
+            requestId: input.responseId,
+            requestedModel: input.requestedModel,
+            servedModel,
+            streamed: true,
+            usage: terminalUsage,
+          })
+          if (recordTokensServed !== undefined) {
+            yield* recordTokensServed({
+              accountRef: input.accountRef,
+              adapterId: input.adapterId,
+              requestId: input.responseId,
+              requestedModel: input.requestedModel,
+              servedModel,
+              streamed: true,
+              usage: terminalUsage,
+            })
+          }
+          return outcome
         }),
       )
     }
@@ -1913,6 +1953,9 @@ export const handleChatCompletions = (
           ...(durableNamespace === undefined ? {} : { durableNamespace }),
           fundingKind,
           meteringHook,
+          ...(deps.recordTokensServed === undefined
+            ? {}
+            : { recordTokensServed: deps.recordTokensServed }),
           // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
           // and generation wall-clock are genuinely observable (first delta + EOF).
           nowMs: nowEpochMillis,
@@ -1993,6 +2036,20 @@ export const handleChatCompletions = (
           streamed: true,
           usage: terminal.usage,
         })
+        // SERVED-TOKENS COUNTER (issue #6227): buffered-stream fallback path.
+        // Record the served completion in the canonical token ledger so the public
+        // counter reflects it. Only on a real terminal usage frame; never throws.
+        if (deps.recordTokensServed !== undefined) {
+          yield* deps.recordTokensServed({
+            accountRef: session.accountRef,
+            adapterId: chunks.served.value.adapterId,
+            requestId: responseId,
+            requestedModel,
+            servedModel: streamServedModel,
+            streamed: true,
+            usage: terminal.usage,
+          })
+        }
       }
 
       // OPENAGENTS DISCLOSURE (M0 / #6008 follow-up). Streaming carries the SAME
@@ -2261,6 +2318,22 @@ export const handleChatCompletions = (
       streamed: false,
       usage: guardedResult.usage,
     })
+
+    // SERVED-TOKENS COUNTER (issue #6227): non-streaming path. Record this served
+    // completion in the canonical token ledger so the public "Khala Tokens Served"
+    // counter reflects it. This is a SUCCESSFUL completion (a provider failure
+    // returned the 502 above), so the served tokens count; never throws.
+    if (deps.recordTokensServed !== undefined) {
+      yield* deps.recordTokensServed({
+        accountRef: session.accountRef,
+        adapterId: servedAdapterId,
+        requestId: responseId,
+        requestedModel,
+        servedModel: guardedResult.servedModel,
+        streamed: false,
+        usage: guardedResult.usage,
+      })
+    }
 
     // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produced a runnable artifact,
     // enqueue an out-of-Worker verification job (flagged; inert by default). The

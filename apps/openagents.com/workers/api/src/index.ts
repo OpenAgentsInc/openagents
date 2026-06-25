@@ -409,6 +409,7 @@ import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
+import { makeD1ServedTokensRecorder } from './inference/served-tokens-recorder'
 import {
   dispatchWithOverflow,
   HYDRALISK_ADAPTER_ID,
@@ -10682,6 +10683,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             { db: openAgentsDatabase(env), resolveOwnerIdentity },
           ),
         ),
+        // SERVED-TOKENS COUNTER (issue #6227). Records one canonical
+        // `token_usage_events` row per SERVED completion so the public "Khala
+        // Tokens Served" counter (GET /api/public/khala-tokens-served) reflects
+        // ALL Khala traffic — paid AND free-tier (the free-tier credit-ledger
+        // hook short-circuits, but the tokens were still served and must count).
+        // Idempotent per request; never fails the completion. INERT regardless —
+        // only reached when the gateway is enabled.
+        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env)),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
@@ -10928,6 +10937,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               { db: openAgentsDatabase(env) },
             ),
             { db: openAgentsDatabase(env), resolveOwnerIdentity },
+          ),
+          // SERVED-TOKENS COUNTER (issue #6227): the MPP (machine-payable) Khala
+          // completion path lands its served tokens in the SAME canonical ledger
+          // the public counter sums, so x402/MPP traffic counts too.
+          recordTokensServed: makeD1ServedTokensRecorder(
+            openAgentsDatabase(env),
           ),
           lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
           laneArming,
