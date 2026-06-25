@@ -135,8 +135,32 @@ export const resolveFreeTierQuota = (
 })
 
 // Per-IP-hash, per-UTC-day self-serve MINT ceiling so anonymous minting is
-// bounded (no unbounded key minting). !! TUNABLE: issue #6228.
-export const FREE_KEY_MAX_MINTS_PER_IP_PER_DAY = 25 as const
+// bounded (no unbounded key minting). !! TUNABLE: issue #6228, raised 25 -> 200
+// after the 2026-06-25 outage AAR: the responder could not mint a fresh key to
+// test the recovering gateway because the cap was hit and was NOT env-overridable
+// (docs/incidents/2026-06-25-khala-500-completions-outage-aar.md). 200/IP/day is
+// still a hard abuse bound (the per-key daily token + request quota is the real
+// spend bound), but it leaves ample headroom for ops/canary key provisioning.
+// Env-overridable via FREE_KEY_MAX_MINTS_PER_IP_PER_DAY without a deploy.
+export const FREE_KEY_MAX_MINTS_PER_IP_PER_DAY = 200 as const
+
+// Env key the owner can set to tune the per-IP daily mint ceiling WITHOUT a code
+// deploy. A missing / non-positive / non-numeric value falls back to the constant
+// above. Read through the same bounded `parsePositiveIntEnv` numeric parse as the
+// free-tier quota overrides — never an intent parser.
+export const FREE_KEY_MAX_MINTS_PER_IP_PER_DAY_ENV_KEY =
+  'FREE_KEY_MAX_MINTS_PER_IP_PER_DAY' as const
+
+// Resolve the effective per-IP daily mint ceiling from the Worker env, falling
+// back to the compiled default. The ONE place this override is read so the mint
+// route gate and any catalog/diagnostic surface agree.
+export const resolveFreeKeyMintCap = (
+  env: Readonly<{ FREE_KEY_MAX_MINTS_PER_IP_PER_DAY?: unknown }>,
+): number =>
+  parsePositiveIntEnv(
+    env.FREE_KEY_MAX_MINTS_PER_IP_PER_DAY,
+    FREE_KEY_MAX_MINTS_PER_IP_PER_DAY,
+  )
 
 export type FreeTierQuota = Readonly<{
   maxRequestsPerDay: number

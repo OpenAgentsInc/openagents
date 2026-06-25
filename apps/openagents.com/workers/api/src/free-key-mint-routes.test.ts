@@ -99,10 +99,12 @@ const makeDb = (): D1Database => {
 const makeEnv = (
   db: D1Database,
   flag: string | undefined,
+  mintCap?: string | undefined,
 ): Env =>
   ({
     OPENAGENTS_DB: db,
     INFERENCE_FREE_TIER_ENABLED: flag,
+    FREE_KEY_MAX_MINTS_PER_IP_PER_DAY: mintCap,
   }) as unknown as Env
 
 const mintRequest = (
@@ -178,8 +180,10 @@ describe('POST /api/keys/free (issue #6228)', () => {
   test('is rate-limited per IP: repeated mints from one IP eventually 429', async () => {
     const db = makeDb()
     const store = new MemoryAgentRegistrationStore()
-    const env = makeEnv(db, 'true')
-    const cap = FREE_KEY_MAX_MINTS_PER_IP_PER_DAY
+    // Use a small env-override cap so the loop stays fast; it also exercises the
+    // FREE_KEY_MAX_MINTS_PER_IP_PER_DAY env override path (AAR 2026-06-25).
+    const cap = 4
+    const env = makeEnv(db, 'true', String(cap))
     const statuses: Array<number> = []
     // The first `cap` mints from one IP succeed; the next one is 429.
     for (let i = 0; i < cap + 1; i += 1) {
@@ -192,6 +196,25 @@ describe('POST /api/keys/free (issue #6228)', () => {
     }
     expect(statuses.slice(0, cap).every(status => status === 201)).toBe(true)
     expect(statuses[cap]).toBe(429)
+  })
+
+  test('the per-IP mint cap is env-overridable (AAR 2026-06-25)', async () => {
+    // The compiled default is 200, but a HIGHER env override lets ops mint past
+    // the compiled default during an incident. With cap=300, the 201st mint that
+    // would 429 under the old 25 cap (and even the 200 compiled default) succeeds.
+    const db = makeDb()
+    const store = new MemoryAgentRegistrationStore()
+    const env = makeEnv(db, 'true', '300')
+    const ip = '198.51.100.42'
+    const statuses: Array<number> = []
+    for (let i = 0; i < 205; i += 1) {
+      const response = await handleFreeKeyMint(mintRequest({ ip }), env, store)
+      statuses.push(response.status)
+    }
+    // Past the compiled default of 200, still minting under the raised cap.
+    expect(FREE_KEY_MAX_MINTS_PER_IP_PER_DAY).toBe(200)
+    expect(statuses.every(status => status === 201)).toBe(true)
+    expect(statuses.length).toBe(205)
   })
 
   test('public-safety: the response never echoes the raw client IP', async () => {

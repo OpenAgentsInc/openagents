@@ -11,6 +11,7 @@ import {
 } from './chat-completions-routes'
 import {
   DEFAULT_FREE_TIER_QUOTA,
+  FREE_KEY_MAX_MINTS_PER_IP_PER_DAY,
   FREE_KEY_MINT_REASON_RATE_LIMITED,
   FREE_TIER_MAX_REQUESTS_PER_DAY,
   FREE_TIER_MAX_TOKENS_PER_DAY,
@@ -34,6 +35,7 @@ import {
   readFreeTierUsage,
   parsePositiveIntEnv,
   recordFreeKeyMint,
+  resolveFreeKeyMintCap,
   resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
@@ -320,6 +322,28 @@ describe('decideFreeKeyMint (pure)', () => {
     const d = decideFreeKeyMint({ maxMintsPerDay: 5, mintsToday: 5 })
     expect(d.allowed).toBe(false)
     expect(d.reasonRef).toBe(FREE_KEY_MINT_REASON_RATE_LIMITED)
+  })
+})
+
+describe('free-key mint cap + env override (AAR 2026-06-25)', () => {
+  test('the compiled default mint cap was raised 25 -> 200', () => {
+    // Raised after the 2026-06-25 outage AAR: the responder could not mint a
+    // fresh key to test the recovering gateway because the (then-25) cap was hit.
+    expect(FREE_KEY_MAX_MINTS_PER_IP_PER_DAY).toBe(200)
+  })
+
+  test('resolveFreeKeyMintCap uses the env override when present, else default', () => {
+    expect(resolveFreeKeyMintCap({})).toBe(FREE_KEY_MAX_MINTS_PER_IP_PER_DAY)
+    expect(
+      resolveFreeKeyMintCap({ FREE_KEY_MAX_MINTS_PER_IP_PER_DAY: '1000' }),
+    ).toBe(1_000)
+    // A bad / non-positive override falls back to the compiled default.
+    expect(
+      resolveFreeKeyMintCap({ FREE_KEY_MAX_MINTS_PER_IP_PER_DAY: 'nope' }),
+    ).toBe(FREE_KEY_MAX_MINTS_PER_IP_PER_DAY)
+    expect(
+      resolveFreeKeyMintCap({ FREE_KEY_MAX_MINTS_PER_IP_PER_DAY: '0' }),
+    ).toBe(FREE_KEY_MAX_MINTS_PER_IP_PER_DAY)
   })
 })
 

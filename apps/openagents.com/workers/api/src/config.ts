@@ -127,6 +127,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // raise or lower the quota without a code deploy.
   FREE_TIER_MAX_REQUESTS_PER_DAY?: string | undefined
   FREE_TIER_MAX_TOKENS_PER_DAY?: string | undefined
+  // Owner-tunable per-IP daily free-key MINT ceiling (AAR 2026-06-25). A
+  // positive-integer string; absent / non-numeric / <= 0 falls back to the
+  // compiled default (FREE_KEY_MAX_MINTS_PER_IP_PER_DAY=200 in
+  // inference-free-tier-key.ts). Read by resolveFreeKeyMintCap in the
+  // `POST /api/keys/free` route so the cap can be raised without a code deploy if
+  // ops/canaries need fresh keys during an incident.
+  FREE_KEY_MAX_MINTS_PER_IP_PER_DAY?: string | undefined
   // Durable-stream resumable inference feature flag (durable-stream Rank-1,
   // #6058, EPIC #6056). Default OFF: a streaming completion is NOT persisted into
   // a durable offset log, so the `/v1/chat/completions` stream behaves as today's

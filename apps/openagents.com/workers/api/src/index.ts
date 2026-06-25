@@ -407,6 +407,7 @@ import {
   markAccountFreeTierAsync,
   readFreeKeyMintsToday,
   recordFreeKeyMintAsync,
+  resolveFreeKeyMintCap,
   resolveFreeTierQuota,
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
@@ -6581,8 +6582,14 @@ export const handleFreeKeyMint = async (
   const mintDay = nowIso.slice(0, 10)
 
   // ABUSE GUARD: bound the number of free keys one IP can mint per UTC day.
+  // Env-overridable (FREE_KEY_MAX_MINTS_PER_IP_PER_DAY) so the cap can be raised
+  // without a deploy if ops/canaries need fresh keys during an incident (AAR
+  // 2026-06-25).
   const mintsToday = await readFreeKeyMintsToday(db, ipHash, mintDay)
-  const mintGate = decideFreeKeyMint({ mintsToday })
+  const mintGate = decideFreeKeyMint({
+    mintsToday,
+    maxMintsPerDay: resolveFreeKeyMintCap(env),
+  })
   if (!mintGate.allowed) {
     return withAgentRateLimitHeaders(
       jsonResponse(

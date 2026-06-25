@@ -63,17 +63,18 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   `apps/web/src/page/loggedOut/page/login.ts` is a legacy/local auth view and
   is not the production `/login` surface. When changing deployed UI, verify
   against the served bundle or rendered DOM before calling the work complete.
-- When the user asks to deploy this repo, always build the latest web assets
-  before deploying the Worker. For JS/CSS/public-doc/web-asset-only changes,
-  prefer the no-container path in
-  `docs/2026-06-15-openagents-web-deploy-runbook.md`: run
-  `bun run check:deploy`, run `bun run build:web`, then deploy from
-  `apps/openagents.com/workers/api` with
-  `npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist`
-  so Wrangler does not build or update Containers. Use
-  `bun run --cwd workers/api deploy` for full production deploys that need its
-  orchestration, such as container image rollout or remote D1 migrations. Do
-  not run bare `wrangler deploy` after UI/web changes. Never report deployment
+- When the user asks to deploy this repo, the ONLY sanctioned path is
+  `bun run --cwd workers/api deploy:safe` (see the Worker deploy safety gate in
+  `docs/DEPLOYMENT.md`). It always, in order: checks local==origin/main, runs
+  `check:deploy` (typecheck:web/api + the real web/worker test suites + guards,
+  with NO dependency on the flaky `verse-launch-smoke`), applies remote D1
+  migrations, runs `check:pending-migrations` (fails if ANY migration is still
+  pending), builds web assets, then uploads the worker LAST. **Raw
+  `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy path:**
+  it skips migrations and shipped the worker ahead of its schema in the
+  2026-06-25 gateway-wide 500 outage
+  (`docs/incidents/2026-06-25-khala-500-completions-outage-aar.md`). Migrations
+  are always applied before the worker is uploaded. Never report deployment
   success until live smoke checks prove both the document and JS asset are
   reachable:
   `curl -fsSI https://openagents.com/` and the concrete

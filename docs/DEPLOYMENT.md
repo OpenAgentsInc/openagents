@@ -27,7 +27,7 @@ change, update its linked runbook **and** fix the pointer here.
 
 | Surface | What | Canonical runbook | One-line recipe | GitHub release tag |
 |---|---|---|---|---|
-| **openagents.com Worker** | Cloudflare Worker + web app + API (product promises, Forum, Autopilot/Forge UI) | `apps/openagents.com/docs/2026-06-15-openagents-web-deploy-runbook.md` | `bun run build:web` → `cd workers/api && npx wrangler deploy --assets ../../apps/web/dist` (the `--assets` is **mandatory** or you ship stale UI; worker-only: add `--containers-rollout=none`) | — |
+| **openagents.com Worker** | Cloudflare Worker + web app + API (product promises, Forum, Autopilot/Forge UI) | `apps/openagents.com/docs/2026-06-15-openagents-web-deploy-runbook.md` | **`bun run --cwd apps/openagents.com/workers/api deploy:safe`** (the ONLY sanctioned path — see the Worker deploy safety gate below). For a web-asset-only no-container deploy after a fresh `deploy:safe` run, the documented no-container variant adds `--containers-rollout=none`. | — |
 | **Pylon (npm)** | `@openagentsinc/pylon` CLI/runtime | `apps/pylon/docs/npm-publishing-runbook.md` | publish leaf deps first → `cd apps/pylon && bun run release:gate` → `bun pm pack` → `npm publish <tgz> --tag rc --access public` (**not** `bun publish`; `--tag rc` keeps `latest` stable; corgi manifest lags minutes after publish) | `pylon-v<version>` (prerelease for rc) |
 | **Pylon RC binaries / OTA** | signed standalone binaries → auto-update feed | `apps/oa-updates/docs/release-signing-runbook.md` | `bash apps/pylon/scripts/build-rc-binaries.sh <version>` (ed25519-signed) → publish to `updates.openagents.com` | — |
 | **Autopilot Desktop (macOS DMG)** | Electrobun desktop app | `apps/autopilot-desktop/README.md` (Release Builds) + `apps/autopilot-desktop/scripts/notarize-macos.sh` + the signing runbook | bump `electrobun.config.ts` version → `bun run --cwd apps/autopilot-desktop build:stable` (unsigned `.app`+`.dmg`) → `notarize:macos` (codesign `--options runtime` + `notarytool --wait` + staple the `.app`) → **re-create the DMG from the stapled `.app`** then codesign/notarize/staple the DMG → `gcloud storage cp …dmg gs://openagentsgemini-oa-updates/desktop/` → GitHub release pointing to it | `autopilot-desktop-v<version>` (prerelease) |
@@ -37,6 +37,38 @@ change, update its linked runbook **and** fix the pointer here.
 | **SHC agent** | SHC agent deploy | `apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md` | see runbook | — |
 | **Nostr relay** | `relay.openagents.com` Cloudflare Worker + Durable Object (market rails + gated general coordination) | `apps/nostr-relay/README.md` | `bun run --cwd apps/nostr-relay typecheck && bun run --cwd apps/nostr-relay test` → `bun run --cwd apps/nostr-relay deploy` (= `wrangler deploy`). Set general-kind authorized pubkeys via `OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS` (#5537). | — |
 | **Verse world service** | Cloudflare Worker + Region Durable Objects + D1 for live Verse presence, local interaction, interest-scoped fanout, and world WebSockets | `apps/openagents-world/README.md` + `docs/game/2026-06-22-effect-typescript-world-backend-replacement-audit.md` | preflight world contract/client/service tests → `cd apps/openagents-world && bunx wrangler d1 migrations apply openagents-world --remote` → `bun run deploy` | — |
+
+## openagents.com Worker deploy safety gate (AAR 2026-06-25 — read before deploying)
+
+**The ONLY sanctioned way to deploy the `openagents.com` Worker is
+`bun run --cwd apps/openagents.com/workers/api deploy:safe`.** It runs, IN ORDER:
+
+1. `check:deploy-from-main` — local HEAD must equal `origin/main` (no stale ship).
+2. `check:deploy` — typecheck:web + typecheck:api + the real web/worker test
+   suites + the contract-drift / architecture / effect-topology /
+   public-projection guards + the deploy-guard self-tests
+   (`test:pending-migrations-guard`). It does **NOT** depend on the flaky
+   `verse-launch-smoke` (that desktop smoke was removed from `check:deploy`,
+   #6234), so there is **no reason to ever bypass it** with a raw deploy.
+3. **`wrangler d1 migrations apply openagents-autopilot --remote`** — migrations
+   are applied to remote D1 **before** the worker is uploaded, always.
+4. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
+   and **fails the deploy if ANY migration is still pending**, naming the files.
+   This is the guard that makes "code shipped ahead of its schema" impossible.
+5. `build:web` → `wrangler deploy --assets …` — the worker is uploaded last.
+
+**Raw `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy
+path** because it skips both `migrations apply` and `check:pending-migrations`.
+That exact shortcut (`build:web && bunx wrangler deploy --assets`, taken to
+dodge the flaky `verse-launch-smoke`) shipped the worker ahead of migration
+`0234_pylon_openauth_links.sql` and caused the **2026-06-25 gateway-wide 500
+outage** (every `POST /api/v1/chat/completions` returned 500 for all keys —
+full AAR: `docs/incidents/2026-06-25-khala-500-completions-outage-aar.md`).
+
+`deploy:safe` needs the owner OAuth env (`wrangler login` /
+`CLOUDFLARE_API_TOKEN`) to reach remote D1; it cannot run unattended in CI. The
+pure logic of `check:pending-migrations` IS unit-tested in CI
+(`scripts/check-pending-migrations.test.ts`, wired into `check:deploy`).
 
 ## Verse World Service Gate
 

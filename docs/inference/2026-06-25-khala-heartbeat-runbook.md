@@ -122,6 +122,113 @@ bash ~/work/openagents/scripts/khala-heartbeat.sh       # run once on demand
 - Do **not** spam `NEEDS_OWNER.md`; the heartbeat writes its own `FAILURES.log`.
   Surface to the owner only on a sustained outage that needs an owner action.
 
+## 500 RED-ALERT synthetic canary (the fast outage detector — AAR 2026-06-25)
+
+The 15-minute heartbeat above proves "the real customer paths + accounting work",
+but it is too coarse and too heavy to be a *fast outage detector*. The
+**2026-06-25 gateway-wide 500 outage** (every `POST /api/v1/chat/completions`
+returned 500 for ~10+ minutes after the worker shipped ahead of migration
+`0234`) was **not auto-detected — the owner noticed manually**. AAR:
+`docs/incidents/2026-06-25-khala-500-completions-outage-aar.md`.
+
+`scripts/khala-canary.sh` is the tight loop that closes that detection gap. Each
+run (every ~90s) fires **ONE** small real `openagents/khala` completion and:
+
+- **UP** (exit 0): http 200 and the public counter moved.
+- **DEGRADED** (exit 2): http 402/429 — endpoint alive, the canary key is just
+  quota/rate-limited (rotate/add keys). **No RED ALERT.**
+- **DOWN** (exit 1): http 500 / any non-200, OR http 200 but the counter did not
+  move while tokens were served (the served-tokens recorder regressed).
+
+On a **healthy→down transition only** (edge-triggered, so a sustained outage does
+NOT spam), DOWN:
+
+1. writes a prominent block to `~/work/.khala-heartbeat/RED-ALERT.log` (with the
+   exact first-investigation steps — including `bun run check:pending-migrations`,
+   the single most likely cause given the AAR),
+2. appends ONE dated `RED-ALERT:` line to `~/work/NEEDS_OWNER.md`,
+3. exits non-zero so a scheduler/agent watcher reacts.
+
+Recovery (down→up) is logged to `RED-ALERT.log` (no NEEDS_OWNER spam).
+
+**It should trigger an agent investigation.** When the canary is DOWN, an agent
+(or the owner) should immediately: (a) run
+`cd apps/openagents.com && bun run check:pending-migrations` — if anything is
+pending, that IS the outage class from the AAR, apply it with
+`cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote`;
+(b) check `GET /api/v1/models` + lane health for a 5xx backing lane; (c) review
+the most recent deploy (the ONLY sanctioned deploy is `deploy:safe`).
+
+Secret-safe like the heartbeat: keys come from the gitignored secrets file (by
+default `~/work/.secrets/khala-heartbeat.env`; point at a dedicated ops pool with
+`KHALA_CANARY_ENV` + `KHALA_CANARY_KEYS`). No key/prompt/completion/raw-IP ever
+lands in any file.
+
+Check it:
+
+```sh
+cat ~/work/.khala-heartbeat/canary-status.json | jq .   # latest tick
+tail ~/work/.khala-heartbeat/RED-ALERT.log              # any fired alerts (+ recoveries)
+tail -20 ~/work/.khala-heartbeat/canary.jsonl | jq .    # recent ticks
+bash ~/work/openagents/scripts/khala-canary.sh          # run once on demand
+```
+
+### Ops free-key pool convention (so the canary/ops are never keyless)
+
+The canary and the heartbeat reuse pre-provisioned **free-tier** keys rather than
+minting on every run. Keep a small **stable** ops pool in the gitignored secrets
+dir so an agent is never keyless (AAR 2026-06-25 secondary pain: the responder
+hit `free_key_mint_rate_limited` trying to mint a fresh key mid-incident):
+
+```sh
+# ~/work/.secrets/khala-ops-keys.env   (NEVER commit; NEVER print the values)
+# A handful of long-lived free-tier oa_agent_ keys reserved for ops/canary use.
+KHALA_CANARY_KEYS=oa_agent_aaa,oa_agent_bbb
+```
+
+Then point the canary at it: `KHALA_CANARY_ENV=~/work/.secrets/khala-ops-keys.env`
+in the canary LaunchAgent's `EnvironmentVariables`. If absent, the canary falls
+back to `KHALA_HEARTBEAT_KEYS`. The per-IP mint cap is now **200/day and
+env-overridable** (`FREE_KEY_MAX_MINTS_PER_IP_PER_DAY`), so an agent can also mint
+a fresh ops key during an incident — but a stable pre-provisioned pool is the
+no-mint default.
+
+### The canary LaunchAgent plist (reproduce if missing)
+
+`~/Library/LaunchAgents/com.openagents.khala-canary.plist`, `StartInterval 90`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.openagents.khala-canary</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/christopherdavid/work/openagents/scripts/khala-canary.sh</string>
+  </array>
+  <key>StartInterval</key><integer>90</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/christopherdavid/work/.khala-heartbeat/canary-launchd.out</string>
+  <key>StandardErrorPath</key><string>/Users/christopherdavid/work/.khala-heartbeat/canary-launchd.err</string>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>KHALA_CANARY_ENV</key><string>/Users/christopherdavid/work/.secrets/khala-ops-keys.env</string>
+  </dict>
+</dict></plist>
+```
+
+Install / reinstall:
+
+```sh
+launchctl unload ~/Library/LaunchAgents/com.openagents.khala-canary.plist 2>/dev/null
+launchctl load   ~/Library/LaunchAgents/com.openagents.khala-canary.plist
+launchctl kickstart -k gui/$(id -u)/com.openagents.khala-canary   # run once now
+```
+
+On Linux hosts use cron: `* * * * * /path/to/scripts/khala-canary.sh` (1-minute
+granularity; the script self-bounds each tick well under a minute).
+
 ## The LaunchAgent plist (reproduce if missing)
 
 ```xml
