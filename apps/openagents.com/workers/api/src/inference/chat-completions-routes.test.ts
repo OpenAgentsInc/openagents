@@ -11,6 +11,9 @@ import {
 } from './acceptance-spec'
 import {
   type ChatCompletionsDeps,
+  INFERENCE_CLIENT_HEADER,
+  INFERENCE_DEMAND_KIND_HEADER,
+  INFERENCE_DEMAND_SOURCE_HEADER,
   type InferenceAuth,
   type InferenceBalanceReader,
   handleChatCompletions,
@@ -605,6 +608,7 @@ describe('POST /v1/chat/completions', () => {
     const recorded: Array<{
       accountRef: string
       requestId: string
+      requestAttribution?: unknown
       servedModel: string
       streamed: boolean
       usage: InferenceUsage
@@ -618,6 +622,7 @@ describe('POST /v1/chat/completions', () => {
               recorded.push({
                 accountRef: input.accountRef,
                 requestId: input.requestId,
+                requestAttribution: input.requestAttribution,
                 servedModel: input.servedModel,
                 streamed: input.streamed,
                 usage: input.usage,
@@ -634,6 +639,34 @@ describe('POST /v1/chat/completions', () => {
     // The same served usage the metering hook saw (echoed reply = 2 completion).
     expect(recorded[0]?.usage.completionTokens).toBe(2)
     expect(typeof recorded[0]?.requestId).toBe('string')
+  })
+
+  test('records public-safe QA demand attribution from request headers', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'qa-runner',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'qa-dogfood',
+          },
+        }),
+        baseDeps({
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandClient: 'qa-runner',
+      demandKind: 'internal',
+      demandSource: 'qa-dogfood',
+    })
   })
 
   test('records served tokens for a completed streaming completion (issue #6227)', async () => {

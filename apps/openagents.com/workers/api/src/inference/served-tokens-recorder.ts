@@ -47,6 +47,12 @@ import {
 import { priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
 
+export type ServedTokensRequestAttribution = Readonly<{
+  demandKind: 'external' | 'internal' | 'unlabeled'
+  demandSource?: string | undefined
+  demandClient?: string | undefined
+}>
+
 // The gateway-side recorder seam invoked by `chat-completions-routes.ts`.
 // Effect-shaped so it stays in the route's Effect topology (the non-streaming and
 // buffered-stream paths `yield*` it; the true pass-through path folds it into the
@@ -64,6 +70,10 @@ export type ServedTokensRecorderInput = Readonly<{
   // one ledger row; the idempotency key is derived from it so a retry/replay is
   // a no-op insert.
   requestId: string
+  // Optional public-safe attribution from request headers. Used to distinguish
+  // first-party dogfood such as qa-runner from external demand without storing
+  // prompts, keys, customer data, or raw provider material.
+  requestAttribution?: ServedTokensRequestAttribution | undefined
 }>
 
 export type ServedTokensRecorder = (
@@ -124,6 +134,7 @@ export const buildServedTokensIngestBody = (
     adapterId: string
     usage: InferenceUsage
     requestId: string
+    requestAttribution?: ServedTokensRequestAttribution | undefined
     observedAt: string
   }>,
 ) => ({
@@ -145,7 +156,20 @@ export const buildServedTokensIngestBody = (
   // The adapter id is the provider-capacity attribution (which served lane
   // produced these tokens), mirroring the metering hook's adapter attribution.
   provider: input.adapterId,
-  safeMetadata: { requestedModel: input.requestedModel },
+  safeMetadata: {
+    requestedModel: input.requestedModel,
+    ...(input.requestAttribution === undefined
+      ? {}
+      : {
+          demandKind: input.requestAttribution.demandKind,
+          ...(input.requestAttribution.demandSource === undefined
+            ? {}
+            : { demandSource: input.requestAttribution.demandSource }),
+          ...(input.requestAttribution.demandClient === undefined
+            ? {}
+            : { demandClient: input.requestAttribution.demandClient }),
+        }),
+  },
   sourceRoute: KHALA_GATEWAY_SOURCE_ROUTE,
   tokenCounts: {
     cacheReadTokens: Math.max(
@@ -211,6 +235,9 @@ export const makeServedTokensRecorder = (
         adapterId: input.adapterId,
         observedAt,
         requestId: input.requestId,
+        ...(input.requestAttribution === undefined
+          ? {}
+          : { requestAttribution: input.requestAttribution }),
         requestedModel: input.requestedModel,
         servedModel: input.servedModel,
         usage: input.usage,

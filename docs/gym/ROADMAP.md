@@ -121,7 +121,7 @@ the in-world fan-out.
 > [`../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md`](../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md).
 
 ### B1. qa-runner: default its model backend to Khala  ([#6237](https://github.com/OpenAgentsInc/openagents/issues/6237))
-**Type:** task · **Lever:** dogfood · **Status:** direction
+**Type:** task · **Lever:** dogfood · **Status:** shipped (#6237)
 **Why:** QA runs continuously doing real browser work with verified verdicts — a
 steady token floor on the North Star *and* a continuous correctness signal on Khala
 over the exact code/verification workload it must be good at. Dogfood lane #1.
@@ -132,6 +132,11 @@ not a hard dependency). Tag QA traffic as internal.
 **Acceptance:** a `qa run` moves the counter; the verdict + video + committed e2e
 test are produced as today; analytics attribute the tokens to QA (internal).
 **Refs:** QA audit §2; GTM §5.1.
+
+**Shipped 2026-06-25:** the BYO `qa` CLI defaults to `openagents/khala` at
+`https://openagents.com/api/v1`, preserves flag/env overrides, keeps
+`--fake-model` no-network, and sends public-safe `internal` / `qa-runner`
+attribution headers that the served-token recorder stores in ledger metadata.
 
 ### B2. QA on every push — Tier 1: bounded, scoped pre-push smoke (no GitHub Actions)  ([#6245](https://github.com/OpenAgentsInc/openagents/issues/6245))
 **Type:** task · **Lever:** dogfood/quality · **Status:** direction

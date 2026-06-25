@@ -4,13 +4,13 @@
 // issue #6191 (Rhys req #5). It deliberately does NOT touch `khala-config.ts`:
 // that module discovers OpenAgents agent tokens in `~/work/.secrets/` and treats
 // the OpenAI-compatible endpoint as a "fallback". Here the OpenAI-compatible
-// endpoint is the FIRST-CLASS, ONLY path: you bring any model + baseURL + key.
+// endpoint is the FIRST-CLASS path.
 //
-//   - Khala is just ONE option (point `--base-url` at openagents.com if you want
-//     it) — it is NOT required and NOT preferred.
-//   - There is no `~/work/.secrets/` discovery, no agent-token lookup, and no
-//     hidden OpenAgents dependency. The core local run works with no OpenAgents
-//     account.
+// For the internal dogfood lane (#6237), the default endpoint is Khala:
+// `openagents/khala` at `https://openagents.com/api/v1`. Bring-your-own overrides
+// still win via flags/env, and the deterministic `--fake-model` path stays
+// no-network/no-key. The core local run still has no OpenAgents login; a Khala
+// run uses a free `oa_agent_…` key minted by `POST /api/keys/free`.
 //
 // Resolution is pure and explicit (flags win over env), so a third party
 // (executor.sh's CI) can reason about exactly what endpoint will be hit. The
@@ -26,6 +26,10 @@ export interface ByoModelConfig {
   readonly apiKey: string;
   /** Where the key came from (label only, never the value). */
   readonly keySource: string;
+  /** Public-safe demand label sent only to OpenAgents endpoints. */
+  readonly demandKind: QaDemandKind;
+  /** Public-safe demand source sent only to OpenAgents endpoints. */
+  readonly demandSource: string;
 }
 
 /** Explicit flags (parsed from argv) that override env. */
@@ -53,47 +57,45 @@ export class ByoModelConfigError extends Error {
   }
 }
 
+export const DEFAULT_QA_MODEL = "openagents/khala";
+export const DEFAULT_QA_BASE_URL = "https://openagents.com/api/v1";
+export const FREE_KHALA_KEY_URL = "https://openagents.com/api/keys/free";
+export const QA_DEMAND_KIND_HEADER = "x-openagents-demand-kind";
+export const QA_DEMAND_SOURCE_HEADER = "x-openagents-demand-source";
+export const QA_CLIENT_HEADER = "x-openagents-client";
+
+export type QaDemandKind = "external" | "internal" | "unlabeled";
+
 const stripTrailingSlash = (s: string): string => s.replace(/\/+$/, "");
 
 /**
  * Resolve the BYO model endpoint from flags + env. Pure and deterministic.
  *
  * Precedence (first non-empty wins), per field:
- *   model    : --model    > QA_MODEL    > OPENAI_MODEL    > (required)
- *   base-url : --base-url > QA_BASE_URL > OPENAI_BASE_URL > (required)
+ *   model    : --model    > QA_MODEL    > OPENAI_MODEL    > openagents/khala
+ *   base-url : --base-url > QA_BASE_URL > OPENAI_BASE_URL > https://openagents.com/api/v1
  *   api-key  : --api-key  > QA_API_KEY  > OPENAI_API_KEY  > (required, unless allowKeyless)
+ *   demand   : QA_DEMAND_KIND > internal
  *
  * `QA_*` are the CLI's own neutral names; `OPENAI_*` are accepted because they
  * are the de-facto standard for OpenAI-compatible endpoints, so an existing CI
  * with `OPENAI_API_KEY` / `OPENAI_BASE_URL` set works with zero new config.
  *
- * No OpenAgents-specific env var, no secrets-dir discovery, no login.
+ * No secrets-dir discovery, no login.
  */
 export function resolveByoModelConfig(options: ResolveByoModelOptions = {}): ByoModelConfig {
   const flags = options.flags ?? {};
   const env = options.env ?? process.env;
   const allowKeyless = options.allowKeyless ?? false;
 
-  const model = firstNonEmpty(flags.model, env.QA_MODEL, env.OPENAI_MODEL);
-  if (!model) {
-    throw new ByoModelConfigError(
-      "no model specified: pass --model <id> (or set QA_MODEL / OPENAI_MODEL). " +
-        "The model is bring-your-own; e.g. --model gpt-4o-mini, or any served alias on your endpoint.",
-    );
-  }
-
-  const baseUrl = firstNonEmpty(flags.baseUrl, env.QA_BASE_URL, env.OPENAI_BASE_URL);
-  if (!baseUrl) {
-    throw new ByoModelConfigError(
-      "no base URL specified: pass --base-url <url> (or set QA_BASE_URL / OPENAI_BASE_URL). " +
-        "Use any OpenAI-compatible endpoint, e.g. https://api.openai.com/v1 or http://localhost:8080/v1.",
-    );
-  }
+  const model = firstNonEmpty(flags.model, env.QA_MODEL, env.OPENAI_MODEL) ?? DEFAULT_QA_MODEL;
+  const baseUrl = firstNonEmpty(flags.baseUrl, env.QA_BASE_URL, env.OPENAI_BASE_URL) ?? DEFAULT_QA_BASE_URL;
 
   const keyResolution = resolveKey(flags.apiKey, env);
   if (!keyResolution.apiKey && !allowKeyless) {
     throw new ByoModelConfigError(
       "no API key specified: pass --api-key <key> (or set QA_API_KEY / OPENAI_API_KEY). " +
+        `For the default Khala endpoint, mint a free key with: curl -X POST ${FREE_KHALA_KEY_URL}. ` +
         "Pass --allow-keyless for a local server that needs no key.",
     );
   }
@@ -103,6 +105,8 @@ export function resolveByoModelConfig(options: ResolveByoModelOptions = {}): Byo
     model,
     apiKey: keyResolution.apiKey,
     keySource: keyResolution.keySource,
+    demandKind: resolveDemandKind(env.QA_DEMAND_KIND),
+    demandSource: safeHeaderToken(env.QA_DEMAND_SOURCE) ?? "qa-runner",
   };
 }
 
@@ -122,10 +126,32 @@ function firstNonEmpty(...values: ReadonlyArray<string | undefined>): string | u
   return undefined;
 }
 
+function resolveDemandKind(value: string | undefined): QaDemandKind {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "external" || normalized === "internal" || normalized === "unlabeled") return normalized;
+  return "internal";
+}
+
+function safeHeaderToken(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(trimmed)) return undefined;
+  return trimmed;
+}
+
+function isOpenAgentsEndpoint(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return url.hostname === "openagents.com" && url.pathname.replace(/\/+$/, "").endsWith("/api/v1");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build a plain `fetch`-based OpenAI-compatible chat client from a BYO config.
- * No new dependency; no OpenAgents code path. A per-request timeout aborts a
- * stuck call. `Authorization` is omitted entirely for a keyless endpoint.
+ * No new dependency; OpenAgents attribution headers are added only for the
+ * OpenAgents endpoint. A per-request timeout aborts a stuck call. `Authorization`
+ * is omitted entirely for a keyless endpoint.
  *
  * Shaped to satisfy the runner's `ChatClient` (`{ complete(messages) }`) without
  * importing the Khala module, keeping the BYO core free of Khala coupling.
@@ -145,6 +171,11 @@ export function makeByoChatClient(
       try {
         const headers: Record<string, string> = { "content-type": "application/json" };
         if (config.apiKey.length > 0) headers.authorization = `Bearer ${config.apiKey}`;
+        if (isOpenAgentsEndpoint(config.baseUrl)) {
+          headers[QA_CLIENT_HEADER] = "qa-runner";
+          headers[QA_DEMAND_KIND_HEADER] = config.demandKind;
+          headers[QA_DEMAND_SOURCE_HEADER] = config.demandSource;
+        }
         const response = await fetchImpl(url, {
           method: "POST",
           headers,

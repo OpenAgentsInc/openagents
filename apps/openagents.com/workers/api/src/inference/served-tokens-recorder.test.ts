@@ -169,6 +169,11 @@ describe('served-tokens-recorder', () => {
       accountRef: 'agent:paid-1',
       adapterId: 'hydralisk',
       requestId: 'chatcmpl-paid-1',
+      requestAttribution: {
+        demandClient: 'qa-runner',
+        demandKind: 'internal',
+        demandSource: 'qa-dogfood',
+      },
       requestedModel: 'openagents/khala',
       servedModel: 'openagents/khala',
       streamed: false,
@@ -180,6 +185,12 @@ describe('served-tokens-recorder', () => {
     expect(rows[0]!.idempotency_key).toBe(
       servedTokensIdempotencyKey('chatcmpl-paid-1'),
     )
+    expect(JSON.parse(String(rows[0]!.safe_metadata_json))).toMatchObject({
+      demandClient: 'qa-runner',
+      demandKind: 'internal',
+      demandSource: 'qa-dogfood',
+      requestedModel: 'openagents/khala',
+    })
 
     const after = await readServed(ledger)
     // The public counter sums input + output (12 + 30).
@@ -428,6 +439,11 @@ describe('served-tokens-recorder', () => {
       adapterId: 'vertex-gemini',
       observedAt: fixedNow(),
       requestId: 'chatcmpl-body-1',
+      requestAttribution: {
+        demandClient: 'qa-runner',
+        demandKind: 'internal',
+        demandSource: 'qa-dogfood',
+      },
       requestedModel: 'openagents/khala',
       servedModel: 'openagents/khala',
       usage: {
@@ -445,6 +461,12 @@ describe('served-tokens-recorder', () => {
     expect(body.tokenCounts.cacheReadTokens).toBe(7)
     expect(body.producerSystem).toBe('omega')
     expect(body.sourceRoute).toBe('omega_hosted_gemini')
+    expect(body.safeMetadata).toMatchObject({
+      demandClient: 'qa-runner',
+      demandKind: 'internal',
+      demandSource: 'qa-dogfood',
+      requestedModel: 'openagents/khala',
+    })
     expect(JSON.stringify(body)).not.toContain('prompt_text')
   })
 

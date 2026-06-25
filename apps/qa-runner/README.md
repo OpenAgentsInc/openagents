@@ -5,8 +5,9 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 
 > **OSS + BYO-model + no login (issue #6191 / Rhys req #5).** The core path runs
 > on YOUR machine, against YOUR target, driven by ANY OpenAI-compatible model you
-> bring (model + base URL + key via flags/env) — **no OpenAgents account, login,
-> or key required**. It records a video + trace + screenshots and distills the
+> bring (model + base URL + key via flags/env) — **no OpenAgents account or login
+> required**. The fake-model proof needs no key; Khala uses a free `oa_agent_…`
+> key from `POST /api/keys/free`. It records a video + trace + screenshots and distills the
 > session into a **committed e2e test**. Khala / OpenAgents Cloud / `/pro` /
 > receipts / settlement are **optional add-ons, not dependencies of the core
 > run**. MIT-licensed (`LICENSE`). Full walkthrough:
@@ -16,10 +17,15 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 > # 10-second proof: no key, no network, no login. Emits a video + a committed test.
 > bun run --cwd apps/qa-runner demo:byo
 >
-> # Real run against your dev server with your model:
+> # Real Khala run against your dev server. Mint a free key first:
+> export QA_API_KEY="$(curl -fsS -X POST https://openagents.com/api/keys/free | jq -r '.credential.token')"
+> bun run --cwd apps/qa-runner qa run \
+>   --url http://localhost:3000 --out ./runs/my-app
+>
+> # BYO override still works:
 > bun run --cwd apps/qa-runner qa run \
 >   --url http://localhost:3000 --model gpt-4o-mini \
->   --base-url https://api.openai.com/v1 --api-key "$OPENAI_API_KEY" --out ./runs/my-app
+>   --base-url https://api.openai.com/v1 --api-key "$OPENAI_API_KEY" --out ./runs/my-app-openai
 > ```
 >
 > **Genuinely standalone.** The shipped `qa` CLI is a single self-contained
@@ -62,6 +68,16 @@ real failure (a bounded corrective re-prompt, never a fabricated action); a
 session that never reaches a verdict is reported `incomplete`/`fail`.
 
 ## Credentials (no hardcoded secrets)
+
+The `qa` CLI defaults to the Khala dogfood endpoint:
+
+- `QA_MODEL` default: `openagents/khala`
+- `QA_BASE_URL` default: `https://openagents.com/api/v1`
+- `QA_API_KEY`: a free `oa_agent_…` key from
+  `curl -X POST https://openagents.com/api/keys/free`
+- `QA_DEMAND_KIND` default: `internal`, sent only to the OpenAgents endpoint so
+  served-token analytics can distinguish first-party QA dogfood from external
+  demand. Override with `external` or `unlabeled` for non-dogfood runs.
 
 `demo:khala` resolves the model endpoint from env + `~/work/.secrets/`, in order:
 

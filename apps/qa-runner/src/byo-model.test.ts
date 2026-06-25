@@ -4,7 +4,17 @@
 // ONLY, with no OpenAgents secrets-dir discovery and no agent-token lookup.
 
 import { describe, expect, test } from "bun:test";
-import { ByoModelConfigError, makeByoChatClient, resolveByoModelConfig } from "./byo-model";
+import {
+  ByoModelConfigError,
+  DEFAULT_QA_BASE_URL,
+  DEFAULT_QA_MODEL,
+  FREE_KHALA_KEY_URL,
+  QA_CLIENT_HEADER,
+  QA_DEMAND_KIND_HEADER,
+  QA_DEMAND_SOURCE_HEADER,
+  makeByoChatClient,
+  resolveByoModelConfig,
+} from "./byo-model";
 
 describe("resolveByoModelConfig (BYO, no OpenAgents login)", () => {
   test("flags resolve a full OpenAI-compatible endpoint", () => {
@@ -45,10 +55,18 @@ describe("resolveByoModelConfig (BYO, no OpenAgents login)", () => {
     expect(config.keySource).toBe("QA_API_KEY env");
   });
 
-  test("missing model / base-url / key are honest errors (no silent default endpoint)", () => {
+  test("defaults to Khala model/base while still requiring a key", () => {
+    const config = resolveByoModelConfig({ env: { QA_API_KEY: "oa_agent_test" } });
+    expect(config.model).toBe(DEFAULT_QA_MODEL);
+    expect(config.baseUrl).toBe(DEFAULT_QA_BASE_URL);
+    expect(config.keySource).toBe("QA_API_KEY env");
+    expect(config.demandKind).toBe("internal");
+    expect(config.demandSource).toBe("qa-runner");
+  });
+
+  test("missing key is an honest error that points to the free Khala key endpoint", () => {
     expect(() => resolveByoModelConfig({ env: {} })).toThrow(ByoModelConfigError);
-    expect(() => resolveByoModelConfig({ flags: { model: "m" }, env: {} })).toThrow(/base URL/);
-    expect(() => resolveByoModelConfig({ flags: { model: "m", baseUrl: "https://x/v1" }, env: {} })).toThrow(/API key/);
+    expect(() => resolveByoModelConfig({ env: {} })).toThrow(FREE_KHALA_KEY_URL);
   });
 
   test("--allow-keyless permits a keyless local server", () => {
@@ -73,7 +91,7 @@ describe("resolveByoModelConfig (BYO, no OpenAgents login)", () => {
   });
 });
 
-describe("makeByoChatClient (fetch-based, no OpenAgents code path)", () => {
+describe("makeByoChatClient (fetch-based OpenAI-compatible client)", () => {
   test("posts to <base>/chat/completions with the model and returns content", async () => {
     let seenUrl = "";
     let seenAuth: string | null = "MISSING";
@@ -87,7 +105,14 @@ describe("makeByoChatClient (fetch-based, no OpenAgents code path)", () => {
     }) as unknown as typeof fetch;
 
     const client = makeByoChatClient(
-      { baseUrl: "https://api.example/v1", model: "m", apiKey: "sk-1", keySource: "x" },
+      {
+        apiKey: "sk-1",
+        baseUrl: "https://api.example/v1",
+        demandKind: "external",
+        demandSource: "third-party",
+        keySource: "x",
+        model: "m",
+      },
       { fetchImpl: fakeFetch },
     );
     const out = await client.complete([{ role: "user", content: "hi" }]);
@@ -103,10 +128,39 @@ describe("makeByoChatClient (fetch-based, no OpenAgents code path)", () => {
       return new Response(JSON.stringify({ choices: [{ message: { content: "" } }] }), { status: 200 });
     }) as unknown as typeof fetch;
     const client = makeByoChatClient(
-      { baseUrl: "http://localhost:8080/v1", model: "local", apiKey: "", keySource: "none" },
+      {
+        apiKey: "",
+        baseUrl: "http://localhost:8080/v1",
+        demandKind: "unlabeled",
+        demandSource: "local",
+        keySource: "none",
+        model: "local",
+      },
       { fetchImpl: fakeFetch },
     );
     await client.complete([{ role: "user", content: "hi" }]);
     expect(seenAuth).toBeNull();
+  });
+
+  test("tags OpenAgents Khala traffic as internal QA demand without sending secrets", async () => {
+    let seenHeaders = new Headers();
+    const fakeFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      seenHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const config = resolveByoModelConfig({
+      env: { QA_API_KEY: "oa_agent_test", QA_DEMAND_SOURCE: "qa-dogfood" },
+    });
+    const client = makeByoChatClient(config, { fetchImpl: fakeFetch });
+    await client.complete([{ role: "user", content: "hi" }]);
+
+    expect(seenHeaders.get(QA_CLIENT_HEADER)).toBe("qa-runner");
+    expect(seenHeaders.get(QA_DEMAND_KIND_HEADER)).toBe("internal");
+    expect(seenHeaders.get(QA_DEMAND_SOURCE_HEADER)).toBe("qa-dogfood");
+    expect(seenHeaders.get(QA_DEMAND_SOURCE_HEADER)).not.toContain("oa_agent");
   });
 });

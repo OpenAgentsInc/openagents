@@ -155,7 +155,10 @@ import {
 } from './provider-adapter'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
-import { type ServedTokensRecorder } from './served-tokens-recorder'
+import {
+  type ServedTokensRecorder,
+  type ServedTokensRequestAttribution,
+} from './served-tokens-recorder'
 import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
 
 // DEFAULT MODEL ------------------------------------------------------------
@@ -163,6 +166,62 @@ import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
 // collapsed to Khala; internal callers may say `khala`, external OpenAI-style
 // clients should say `openagents/khala`.
 export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
+
+export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
+export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
+export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
+
+const safeAttributionToken = (value: string | null): string | undefined => {
+  const trimmed = value?.trim()
+
+  if (
+    trimmed === undefined ||
+    trimmed === '' ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(trimmed)
+  ) {
+    return undefined
+  }
+
+  return trimmed
+}
+
+const demandKindFromHeader = (
+  value: string | null,
+): ServedTokensRequestAttribution['demandKind'] | undefined => {
+  const normalized = value?.trim().toLowerCase()
+
+  if (
+    normalized === 'external' ||
+    normalized === 'internal' ||
+    normalized === 'unlabeled'
+  ) {
+    return normalized
+  }
+
+  return undefined
+}
+
+const requestAttributionFromHeaders = (
+  headers: Headers,
+): ServedTokensRequestAttribution | undefined => {
+  const demandKind = demandKindFromHeader(
+    headers.get(INFERENCE_DEMAND_KIND_HEADER),
+  )
+  const demandSource = safeAttributionToken(
+    headers.get(INFERENCE_DEMAND_SOURCE_HEADER),
+  )
+  const demandClient = safeAttributionToken(headers.get(INFERENCE_CLIENT_HEADER))
+
+  if (demandKind === undefined) {
+    return undefined
+  }
+
+  return {
+    demandKind,
+    ...(demandSource === undefined ? {} : { demandSource }),
+    ...(demandClient === undefined ? {} : { demandClient }),
+  }
+}
 
 // AUTH SEAM ---------------------------------------------------------------
 // Resolves the per-account API key (the OpenAgents agent bearer token) to an
@@ -1349,6 +1408,7 @@ const makePassThroughResponseStream = (
     // SERVED-TOKENS RECORDER (issue #6227). Invoked after metering on the terminal
     // usage frame so the public served-tokens counter reflects this stream.
     recordTokensServed?: ServedTokensRecorder | undefined
+    requestAttribution?: ServedTokensRequestAttribution | undefined
     requestedModel: string
     responseId: string
     source: InferenceStreamSource
@@ -1442,6 +1502,9 @@ const makePassThroughResponseStream = (
               accountRef: input.accountRef,
               adapterId: input.adapterId,
               requestId: input.responseId,
+              ...(input.requestAttribution === undefined
+                ? {}
+                : { requestAttribution: input.requestAttribution }),
               requestedModel: input.requestedModel,
               servedModel,
               streamed: true,
@@ -1643,6 +1706,7 @@ export const handleChatCompletions = (
     // Messages into the same InferenceRequest and reuses the registry +
     // metering hook below. Out of scope for #5476.
 
+    const requestAttribution = requestAttributionFromHeaders(request.headers)
     const session = yield* Effect.promise(() => deps.authenticate(request))
     if (session === undefined) {
       const headers = new Headers({ 'www-authenticate': 'Bearer' })
@@ -2058,6 +2122,9 @@ export const handleChatCompletions = (
           ...(deps.recordTokensServed === undefined
             ? {}
             : { recordTokensServed: deps.recordTokensServed }),
+          ...(requestAttribution === undefined
+            ? {}
+            : { requestAttribution }),
           // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
           // and generation wall-clock are genuinely observable (first delta + EOF).
           nowMs: nowEpochMillis,
@@ -2146,6 +2213,9 @@ export const handleChatCompletions = (
             accountRef: session.accountRef,
             adapterId: chunks.served.value.adapterId,
             requestId: responseId,
+            ...(requestAttribution === undefined
+              ? {}
+              : { requestAttribution }),
             requestedModel,
             servedModel: streamServedModel,
             streamed: true,
@@ -2427,6 +2497,7 @@ export const handleChatCompletions = (
         accountRef: session.accountRef,
         adapterId: servedAdapterId,
         requestId: responseId,
+        ...(requestAttribution === undefined ? {} : { requestAttribution }),
         requestedModel,
         servedModel: guardedResult.servedModel,
         streamed: false,

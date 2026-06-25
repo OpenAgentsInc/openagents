@@ -1,14 +1,15 @@
 #!/usr/bin/env bun
 // `qa` — the OSS, local-first, BYO-model QA CLI (issue #6191 / Rhys req #5).
 //
-// Runs an autonomous e2e scenario LOCALLY against any target, driven by ANY
-// OpenAI-compatible model you bring (model + base URL + key via flags/env). It
+// Runs an autonomous e2e scenario LOCALLY against any target, driven by an
+// OpenAI-compatible model (Khala by default; any endpoint via flags/env). It
 // records a playable video + Playwright trace + per-step screenshots, and
 // DISTILLS the session into a COMMITTED executor-style e2e test file.
 //
-//   *** No OpenAgents account, login, or key is required. ***
+//   *** No OpenAgents account or login is required. ***
 //
-// Khala is just one option (point --base-url at openagents.com if you want it).
+// Khala is the default dogfood endpoint; flags/env can point at any
+// OpenAI-compatible model endpoint.
 // OpenAgents-specific add-ons (Cloud VMs, /pro, receipts, settlement) are NOT
 // used by this path and are NOT dependencies of it.
 //
@@ -23,12 +24,14 @@
 //     [--emit generated/<name>.e2e.test.ts] [--headed] [--max-turns 16]
 //     [--allow-keyless]
 //
-//   # Deterministic, no-network, no-key, no-OpenAgents proof of the local loop
+//   # Deterministic, no-network, no-key proof of the local loop
 //   # (drives a canned /login scenario; emits video + a committed test):
 //   qa run --fake-model --url https://example.test --out ./runs/qa-fake
 //
-// Env equivalents (de-facto OpenAI standard, so existing CI works as-is):
+// Env equivalents (QA_* first, then de-facto OpenAI standard):
 //   QA_MODEL / OPENAI_MODEL, QA_BASE_URL / OPENAI_BASE_URL, QA_API_KEY / OPENAI_API_KEY
+// Default model/base if omitted: openagents/khala at https://openagents.com/api/v1.
+// Mint a free key with: curl -X POST https://openagents.com/api/keys/free
 //
 // Exit code is honest: 0 only on a clean pass + an admissible distilled test.
 
@@ -74,9 +77,10 @@ USAGE
 OPTIONS
   --url <url>          Target dev/prod server to drive (required for a real run).
   --goal "<text>"      What the agent should verify (defaults to a /login check).
-  --model <id>         BYO model id (or env QA_MODEL / OPENAI_MODEL).
-  --base-url <url>     OpenAI-compatible base URL (or env QA_BASE_URL / OPENAI_BASE_URL).
+  --model <id>         Model id (default openagents/khala; env QA_MODEL / OPENAI_MODEL).
+  --base-url <url>     OpenAI-compatible base URL (default https://openagents.com/api/v1).
   --api-key <key>      Bearer key (or env QA_API_KEY / OPENAI_API_KEY). Never printed.
+                       For Khala, mint one with: curl -X POST https://openagents.com/api/keys/free
   --allow-keyless      Permit a keyless local server (llama.cpp / vLLM / Ollama shim).
   --out <dir>          Artifact dir for video/trace/screenshots/result (default ./runs/qa).
   --emit <path>        Where to write the distilled e2e test (default generated/<slug>.e2e.test.ts).
@@ -86,7 +90,7 @@ OPTIONS
                        the loop. Drives a canned /login scenario against a fake
                        page; still emits a real video + a committed e2e test.
 
-NO OPENAGENTS LOGIN IS REQUIRED. Khala is one optional backend, not a dependency.
+NO OPENAGENTS LOGIN IS REQUIRED. Khala is the default dogfood backend; overrides remain BYO.
 `;
 
 /** A deterministic, no-network chat client: replays canned /login actions. */
@@ -158,7 +162,7 @@ async function runCommand(argv: ReadonlyArray<string>): Promise<number> {
     console.log("=== qa run (BYO-model, OSS, local-first) ===");
     console.log(`model:   ${config.model}  (base ${config.baseUrl})`);
     console.log(`key src: ${config.keySource}`); // label only, never the value
-    console.log("login:   NONE — this is a bring-your-own-model run, no OpenAgents account.");
+    console.log("login:   NONE — no OpenAgents account or browser login.");
   }
   console.log(`target:  ${baseUrlTarget}`);
   console.log(`goal:    ${goal}\n`);

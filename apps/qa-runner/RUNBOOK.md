@@ -55,7 +55,15 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
 
 ## 3. Other lanes
 
-- **BYO model / any target:** `bun run src/byo.ts run --url <url> --model <id> --out ./runs/x`
+- **Khala dogfood / any target:** mint a free key with
+  `curl -X POST https://openagents.com/api/keys/free`, export
+  `QA_API_KEY` from `.credential.token`, then run
+  `bun run src/byo.ts run --url <url> --out ./runs/x`. The default model/base
+  are `openagents/khala` and `https://openagents.com/api/v1`; the runner sends
+  public-safe `internal` / `qa-runner` attribution headers only to the
+  OpenAgents endpoint so served-token analytics can split first-party QA
+  dogfood from external demand.
+- **BYO override / any target:** `bun run src/byo.ts run --url <url> --model <id> --base-url <url> --api-key <key> --out ./runs/x`
   (bring-your-own model, no OpenAgents login).
 - **Compare configs ("chill-eval"):** `bun run src/pr-comment-run.ts --changed "<paths>" --out ./runs/pr-eval`
   → comparison table + a `/trace/compare` link. **Agent-triggered** (no GitHub Actions — per the no-GHA invariant): an agent runs this and posts the PR comment itself, e.g. PR #6224.
