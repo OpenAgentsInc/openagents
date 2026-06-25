@@ -294,6 +294,68 @@ describe('coding delegation default-on guard', () => {
       requestedPylonRef: 'pylon.other.codex',
     })
   })
+
+  test('delegates targeted Pylon requests for the authenticated agent account', async () => {
+    const recorded: Array<{
+      adapterId: string
+      requestAttribution?: unknown
+      servedModel: string
+      usage: InferenceUsage
+    }> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: {} as AgentRegistrationStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          newId: () => 'request_agent_owned',
+          nowEpochSeconds: () => 0,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                adapterId: input.adapterId,
+                requestAttribution: input.requestAttribution,
+                servedModel: input.servedModel,
+                usage: input.usage,
+              })
+            }),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_agent_owned',
+    )
+    const text = await response.text()
+    expect(text).toContain(
+      'Coding workflow delegated to linked Pylon pylon.owner.codex',
+    )
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      adapterId: 'pylon-codex-own-capacity',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+      },
+      servedModel: 'openagents/pylon-codex',
+    })
+    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(32)
+  })
 })
 
 describe('POST /v1/chat/completions', () => {

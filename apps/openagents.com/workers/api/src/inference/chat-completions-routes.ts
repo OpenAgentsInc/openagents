@@ -83,6 +83,7 @@ import {
   type FairShareDecision,
   type SpendCapDecision,
 } from './inference-abuse-controls'
+import { agentUserIdFromAccountRef } from './inference-owner-identity'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 import {
@@ -2185,7 +2186,12 @@ export const handleChatCompletions = (
       const openauthUserId = yield* Effect.promise(() =>
         deps.codingDelegation!.resolveOpenAuthUserId(session.accountRef),
       )
-      const linkedAgents =
+      const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
+      const selfLinkedAgent =
+        selfAgentUserId === undefined
+          ? []
+          : [{ agentUserId: selfAgentUserId }]
+      const openAuthLinkedAgents =
         openauthUserId === undefined ||
         deps.codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
           undefined
@@ -2194,6 +2200,7 @@ export const handleChatCompletions = (
               deps.codingDelegation!.agentStore
                 .listLinkedAgentsForOpenAuthUser!(openauthUserId, 100),
             )
+      const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
       const nowIso = epochMillisToIsoTimestamp(created * 1000)
       const delegation = yield* Effect.promise(() =>
         delegateCodingWorkflow({

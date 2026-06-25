@@ -18,7 +18,9 @@ const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF =
 
 export type CodingDelegationInput = Readonly<{
   classification: CodingWorkflowClassification
-  linkedAgents: ReadonlyArray<LinkedAgentOwnerRecord>
+  linkedAgents: ReadonlyArray<
+    LinkedAgentOwnerRecord | Readonly<{ agentUserId: string }>
+  >
   makeId: () => string
   nowIso: string
   pylonStore: PylonApiStore
