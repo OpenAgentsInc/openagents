@@ -384,10 +384,10 @@ harness interface, dispatch receipt, and
 strictly scoped to `terminal-bench@2.0` against `openagents/khala`, requests only
 public-safe summary + ATIF artifacts, keeps raw Harbor logs/prompts/responses on
 Hydralisk, and tests that the Worker imports no Harbor runtime code. Reward→cost
-report mapping and distinct-device verifier placement remain E2/E3.
+report mapping remains E3; distinct-device verifier evidence is now E2.
 
 ### E2. Distinct-device verifier via Harbor `environment_mode = "separate"`  ([#6251](https://github.com/OpenAgentsInc/openagents/issues/6251))
-**Type:** task · **Lever:** benchmarking · **Status:** direction
+**Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** the Gym spec requires the verifier on a **distinct device** from the producer;
 Harbor ships this as a feature.
 **Scope:** run the agent container and the `no-network` verifier container on distinct
@@ -396,6 +396,14 @@ hosts/VMs (agent on a Pylon/Hydralisk lane, verifier on Psionic/another VM) usin
 **Acceptance:** a Terminal-Bench run records the verifier executing on a different
 device than the agent, with the reward read from the verifier's artifact.
 **Refs:** harbor doc §3.4; gym spec §10.
+
+**Shipped 2026-06-25:** `harbor-dispatch.ts` now requires
+`openagents.gym.harbor_verifier_placement.v1` evidence in the Hydralisk dispatch
+receipt. The validator requires `environmentMode: "separate"`, distinct
+agent/verifier host and device refs, `verifierNetworkMode: "no-network"`,
+explicit artifact handoff refs, and `rewardReadFrom: "verifier_artifact"` with a
+reward artifact ref. The ingest projection records the verified placement fields
+and rejects same-host/same-device or missing-reward-artifact evidence.
 
 ### E3. Map Harbor reward → Gym cost-per-accepted-outcome; ingest Harbor trajectories for training  ([#6242](https://github.com/OpenAgentsInc/openagents/issues/6242))
 **Type:** task · **Lever:** benchmarking/training · **Status:** direction

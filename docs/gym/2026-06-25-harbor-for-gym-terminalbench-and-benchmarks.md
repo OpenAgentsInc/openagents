@@ -376,12 +376,15 @@ the Harbor harness:
   `examples/tasks/separate-verifier-environment/task.toml`) so the grader cannot
   be reached or exfiltrated to — this is the reward-hacking guard the TMAX lesson
   motivates.
-- **Honest scope of "distinct device."** Harbor's primitive is process/container
-  isolation; true device isolation comes from *where we schedule the two
-  containers*. Recommendation: make `verifierMode: "separate"` + verifier on a
-  distinct VM the Gym default for `terminal-bench`. This is direction — the GLM-5.2
-  run proved the harness and the model-on-a-separate-host pattern, not a
-  fully separate-VM verifier placement.
+- **Shipped Worker-side evidence gate (#6251).** Harbor's primitive is
+  process/container isolation; true device isolation comes from *where we schedule
+  the two containers*. `harbor-dispatch.ts` now requires the Hydralisk dispatch
+  receipt to carry `openagents.gym.harbor_verifier_placement.v1` evidence:
+  `environmentMode: "separate"`, distinct agent/verifier host and device refs,
+  `verifierNetworkMode: "no-network"`, explicit artifact handoff refs, and
+  `rewardReadFrom: "verifier_artifact"` with a reward artifact ref. Ingest rejects
+  same-host/same-device or missing reward-artifact evidence before it marks
+  placement verified.
 
 ### 3.4 Onto the matrix → runner → report path
 
@@ -634,18 +637,23 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    Raw Harbor logs, task prompts, and model responses remain on Hydralisk; the
    Worker imports no Harbor runtime package. Reward→telemetry/report mapping is
    still the next step.
-4. **Wire cost-per-accepted-outcome** for the env using the real per-lane
+4. **Shipped (#6251): require distinct-device verifier evidence** — Hydralisk
+   dispatch receipts must now prove Harbor `environment_mode = "separate"`,
+   distinct agent/verifier devices, `no-network` verifier execution, explicit
+   artifact handoff, and reward read from the verifier artifact before the Worker
+   accepts the placement as verified.
+5. **Wire cost-per-accepted-outcome** for the env using the real per-lane
    `cost_amount` basis (the cost-model doc) × Harbor's verdict; render null
    cost-per-outcome for zero-accepted groups (no fake-cheap results).
-5. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
+6. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
    the `oracle` agent on the retained subset through the harness, asserts reward
    1.0, asserts the report is `decisionGrade:false`, and asserts the public-safety
    tripwire strips task content. Mirrors the spec's "fixture run is deterministic"
    test.
-6. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
+7. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
    traces spec asks for; Harbor-executed envs get ATIF for free, the OpenCode
    runner exports it. One trajectory format for benchmark + trace + training.
-7. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
+8. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
    balance gate, `preflightRealBenchmarkSweep`, real seam arming, metering
    contexts, and report receipts. A real `terminal-bench` executor still needs to
    plug into that gate for the first decision-grade Khala-vs-competitor number on
@@ -656,10 +664,11 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 
 - **Direction vs shipped:** the Phase 0 fixture Gym (#6163–#6166), owner-gated
   `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, Phase 2 paid-run gate,
-  and the Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250) are
-  landed. Distinct-device verifier placement, Harbor reward→Gym report mapping,
-  and training ingestion remain direction. We use Harbor's format (ATIF) and now
-  a typed out-of-process artifact seam, not Harbor runtime code in the Worker.
+  Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250), and
+  distinct-device verifier evidence gate (#6251) are landed. Harbor reward→Gym
+  report mapping and training ingestion remain direction. We use Harbor's format
+  (ATIF) and now a typed out-of-process artifact seam, not Harbor runtime code in
+  the Worker.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

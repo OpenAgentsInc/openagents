@@ -6,10 +6,12 @@ import {
   GYM_HARBOR_TERMINAL_BENCH_INGEST_SCHEMA,
   HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
   buildGymHarborTerminalBenchJobSpec,
+  checkGymHarborVerifierPlacement,
   checkHydraliskTerminalBenchSummaryPublicSafety,
   dispatchGymHarborTerminalBenchRun,
   type GymHarborTerminalBenchDispatchReceipt,
   type GymHarborTerminalBenchJobSpec,
+  type GymHarborVerifierPlacementEvidence,
   type HydraliskHarborTerminalBenchHarness,
   type HydraliskTerminalBenchSummary,
 } from './harbor-dispatch'
@@ -96,6 +98,19 @@ const sampleSummary: HydraliskTerminalBenchSummary = {
   },
 }
 
+const distinctVerifierPlacement: GymHarborVerifierPlacementEvidence = {
+  schemaVersion: 'openagents.gym.harbor_verifier_placement.v1',
+  environmentMode: 'separate',
+  agentHostRef: 'hydralisk.host.agent.l4.001',
+  verifierHostRef: 'psionic.host.verifier.cpu.001',
+  agentDeviceRef: 'gce.vm.hydralisk-agent-l4-001',
+  verifierDeviceRef: 'gce.vm.psionic-verifier-cpu-001',
+  verifierNetworkMode: 'no-network',
+  artifactHandoffRefs: ['artifact.hydralisk.terminal_bench.answer_json.001'],
+  rewardArtifactRef: 'artifact.hydralisk.terminal_bench.reward_txt.001',
+  rewardReadFrom: 'verifier_artifact',
+}
+
 describe('Gym Harbor Terminal-Bench dispatch seam', () => {
   test('builds a public-safe Hydralisk Harbor job spec for openagents/khala', () => {
     const { compiled, job } = buildGymHarborTerminalBenchJobSpec(
@@ -121,6 +136,13 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
     expect(job.artifacts.requestPublicSafeSummary).toBe(true)
     expect(job.artifacts.requestAtifTrajectory).toBe(true)
     expect(job.artifacts.requestRawHarborLogs).toBe(false)
+    expect(job.verifierPlacement).toEqual({
+      requestedEnvironmentMode: 'separate',
+      requestedVerifierNetworkMode: 'no-network',
+      requireDistinctDevice: true,
+      requireArtifactHandoff: true,
+      requireRewardArtifact: true,
+    })
     expect(job.publicSafetyBoundary.workerImportsHarborRuntime).toBe(false)
     expect(job.retainedPublicTaskRefs).toContain('configure-git-webserver')
   })
@@ -142,6 +164,7 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
             'artifact.hydralisk.terminal_bench.khala.summary.001',
           atifTraceRef: 'trace.hydralisk.terminal_bench.khala.001',
           rawHarborArtifactRef: null,
+          verifierPlacement: distinctVerifierPlacement,
         }
       },
       async readTerminalBenchSummary() {
@@ -168,9 +191,63 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
     expect(result.ingest.attemptedOutcomes).toBe(4)
     expect(result.ingest.publicClaimEligible).toBe(false)
     expect(result.ingest.decisionGradeReportReady).toBe(false)
+    expect(result.ingest.verifierPlacementVerified).toBe(true)
+    expect(result.ingest.environmentMode).toBe('separate')
+    expect(result.ingest.agentHostRef).not.toBe(result.ingest.verifierHostRef)
+    expect(result.ingest.verifierNetworkMode).toBe('no-network')
+    expect(result.ingest.rewardArtifactRef).toBe(
+      'artifact.hydralisk.terminal_bench.reward_txt.001',
+    )
     expect(result.ingest.caveats).toContain(
       'cost_per_accepted_outcome_mapping_deferred_to_6242',
     )
+  })
+
+  test('rejects verifier placement that does not prove distinct-device reward handoff', async () => {
+    const invalidPlacement: GymHarborVerifierPlacementEvidence = {
+      ...distinctVerifierPlacement,
+      verifierHostRef: distinctVerifierPlacement.agentHostRef,
+      verifierDeviceRef: distinctVerifierPlacement.agentDeviceRef,
+      artifactHandoffRefs: [],
+      rewardArtifactRef: '',
+    }
+    expect(checkGymHarborVerifierPlacement(invalidPlacement)).toEqual({
+      valid: false,
+      violations: [
+        'agent_and_verifier_same_host',
+        'agent_and_verifier_same_device',
+        'artifact_handoff_missing',
+        'reward_artifact_ref_empty',
+      ],
+    })
+
+    const harness: HydraliskHarborTerminalBenchHarness = {
+      async dispatchTerminalBenchJob(
+        job,
+      ): Promise<GymHarborTerminalBenchDispatchReceipt> {
+        return {
+          schemaVersion:
+            'openagents.gym.harbor_terminal_bench_dispatch_receipt.v1',
+          jobRef: job.jobRef,
+          hydraliskRunRef: 'hydralisk.run.terminal_bench.khala.invalid',
+          state: 'completed',
+          summaryArtifactRef:
+            'artifact.hydralisk.terminal_bench.khala.summary.invalid',
+          atifTraceRef: 'trace.hydralisk.terminal_bench.khala.invalid',
+          rawHarborArtifactRef: null,
+          verifierPlacement: invalidPlacement,
+        }
+      },
+      async readTerminalBenchSummary() {
+        return sampleSummary
+      },
+    }
+
+    await expect(
+      dispatchGymHarborTerminalBenchRun(TERMINAL_BENCH_GYM_EXPERIMENT, {
+        harness,
+      }),
+    ).rejects.toThrow(/distinct-device verifier placement/)
   })
 
   test('rejects summaries that fail the Hydralisk public-safety boundary', () => {

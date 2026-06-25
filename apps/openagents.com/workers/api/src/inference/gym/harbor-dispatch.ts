@@ -16,6 +16,8 @@ export const GYM_HARBOR_TERMINAL_BENCH_DISPATCH_RECEIPT_SCHEMA =
   'openagents.gym.harbor_terminal_bench_dispatch_receipt.v1'
 export const GYM_HARBOR_TERMINAL_BENCH_INGEST_SCHEMA =
   'openagents.gym.harbor_terminal_bench_ingest.v1'
+export const GYM_HARBOR_VERIFIER_PLACEMENT_SCHEMA =
+  'openagents.gym.harbor_verifier_placement.v1'
 export const HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA =
   'hydralisk.evals.terminal_bench.summary.v1'
 
@@ -41,6 +43,31 @@ export const GymHarborTerminalBenchArtifactPolicy = S.Struct({
 })
 export type GymHarborTerminalBenchArtifactPolicy =
   typeof GymHarborTerminalBenchArtifactPolicy.Type
+
+export const GymHarborVerifierPlacementRequirement = S.Struct({
+  requestedEnvironmentMode: S.Literal('separate'),
+  requestedVerifierNetworkMode: S.Literal('no-network'),
+  requireDistinctDevice: S.Literal(true),
+  requireArtifactHandoff: S.Literal(true),
+  requireRewardArtifact: S.Literal(true),
+})
+export type GymHarborVerifierPlacementRequirement =
+  typeof GymHarborVerifierPlacementRequirement.Type
+
+export const GymHarborVerifierPlacementEvidence = S.Struct({
+  schemaVersion: S.Literal(GYM_HARBOR_VERIFIER_PLACEMENT_SCHEMA),
+  environmentMode: S.Literal('separate'),
+  agentHostRef: S.String,
+  verifierHostRef: S.String,
+  agentDeviceRef: S.String,
+  verifierDeviceRef: S.String,
+  verifierNetworkMode: S.Literal('no-network'),
+  artifactHandoffRefs: S.Array(S.String),
+  rewardArtifactRef: S.String,
+  rewardReadFrom: S.Literal('verifier_artifact'),
+})
+export type GymHarborVerifierPlacementEvidence =
+  typeof GymHarborVerifierPlacementEvidence.Type
 
 export const GymHarborTerminalBenchCommandSpec = S.Struct({
   executable: S.Literal('harbor'),
@@ -70,6 +97,7 @@ export const GymHarborTerminalBenchJobSpec = S.Struct({
   ownerApprovalRef: S.NullOr(S.String),
   command: GymHarborTerminalBenchCommandSpec,
   artifacts: GymHarborTerminalBenchArtifactPolicy,
+  verifierPlacement: GymHarborVerifierPlacementRequirement,
   publicSafetyBoundary: S.Struct({
     rawHarborArtifactsStayOnHydralisk: S.Literal(true),
     workerImportsHarborRuntime: S.Literal(false),
@@ -88,6 +116,7 @@ export const GymHarborTerminalBenchDispatchReceipt = S.Struct({
   summaryArtifactRef: S.String,
   atifTraceRef: S.NullOr(S.String),
   rawHarborArtifactRef: S.NullOr(S.String),
+  verifierPlacement: GymHarborVerifierPlacementEvidence,
 })
 export type GymHarborTerminalBenchDispatchReceipt =
   typeof GymHarborTerminalBenchDispatchReceipt.Type
@@ -192,6 +221,13 @@ export const GymHarborTerminalBenchIngest = S.Struct({
   publicSafe: S.Literal(true),
   publicClaimEligible: S.Literal(false),
   decisionGradeReportReady: S.Literal(false),
+  verifierPlacementVerified: S.Literal(true),
+  environmentMode: S.Literal('separate'),
+  agentHostRef: S.String,
+  verifierHostRef: S.String,
+  verifierNetworkMode: S.Literal('no-network'),
+  artifactHandoffRefs: S.Array(S.String),
+  rewardArtifactRef: S.String,
   acceptedOutcomes: S.Number,
   attemptedOutcomes: S.Number,
   totalTasks: S.Number,
@@ -211,6 +247,7 @@ export class GymHarborDispatchError extends S.TaggedErrorClass<GymHarborDispatch
       'unsupported_lane',
       'dispatch_job_ref_mismatch',
       'unsafe_summary',
+      'invalid_verifier_placement',
     ]),
     message: S.String,
   },
@@ -236,6 +273,11 @@ export type GymHarborTerminalBenchRun = Readonly<{
 
 export type HydraliskTerminalBenchSummaryPublicSafety = Readonly<{
   safe: boolean
+  violations: ReadonlyArray<string>
+}>
+
+export type GymHarborVerifierPlacementCheck = Readonly<{
+  valid: boolean
   violations: ReadonlyArray<string>
 }>
 
@@ -410,6 +452,13 @@ export const buildGymHarborTerminalBenchJobSpec = (
       requestRawTaskPrompts: false,
       requestRawModelResponses: false,
     },
+    verifierPlacement: {
+      requestedEnvironmentMode: 'separate',
+      requestedVerifierNetworkMode: 'no-network',
+      requireDistinctDevice: true,
+      requireArtifactHandoff: true,
+      requireRewardArtifact: true,
+    },
     publicSafetyBoundary: {
       rawHarborArtifactsStayOnHydralisk: true,
       workerImportsHarborRuntime: false,
@@ -419,6 +468,52 @@ export const buildGymHarborTerminalBenchJobSpec = (
   })
 
   return { compiled, job }
+}
+
+export const checkGymHarborVerifierPlacement = (
+  placement: GymHarborVerifierPlacementEvidence,
+): GymHarborVerifierPlacementCheck => {
+  const violations: Array<string> = []
+  if (placement.environmentMode !== 'separate') {
+    violations.push('environment_mode_not_separate')
+  }
+  if (placement.verifierNetworkMode !== 'no-network') {
+    violations.push('verifier_network_not_no_network')
+  }
+  if (placement.agentHostRef.trim() === '') {
+    violations.push('agent_host_ref_empty')
+  }
+  if (placement.verifierHostRef.trim() === '') {
+    violations.push('verifier_host_ref_empty')
+  }
+  if (
+    placement.agentHostRef.trim() !== '' &&
+    placement.agentHostRef === placement.verifierHostRef
+  ) {
+    violations.push('agent_and_verifier_same_host')
+  }
+  if (placement.agentDeviceRef.trim() === '') {
+    violations.push('agent_device_ref_empty')
+  }
+  if (placement.verifierDeviceRef.trim() === '') {
+    violations.push('verifier_device_ref_empty')
+  }
+  if (
+    placement.agentDeviceRef.trim() !== '' &&
+    placement.agentDeviceRef === placement.verifierDeviceRef
+  ) {
+    violations.push('agent_and_verifier_same_device')
+  }
+  if (placement.artifactHandoffRefs.length === 0) {
+    violations.push('artifact_handoff_missing')
+  }
+  if (placement.rewardArtifactRef.trim() === '') {
+    violations.push('reward_artifact_ref_empty')
+  }
+  if (placement.rewardReadFrom !== 'verifier_artifact') {
+    violations.push('reward_not_read_from_verifier_artifact')
+  }
+  return { valid: violations.length === 0, violations }
 }
 
 export const checkHydraliskTerminalBenchSummaryPublicSafety = (
@@ -462,6 +557,16 @@ export const buildGymHarborTerminalBenchIngest = (input: {
   dispatch: GymHarborTerminalBenchDispatchReceipt
   summary: HydraliskTerminalBenchSummary
 }): GymHarborTerminalBenchIngest => {
+  const placementCheck = checkGymHarborVerifierPlacement(
+    input.dispatch.verifierPlacement,
+  )
+  if (!placementCheck.valid) {
+    throw new GymHarborDispatchError({
+      reason: 'invalid_verifier_placement',
+      message:
+        'Hydralisk Terminal-Bench dispatch did not prove distinct-device verifier placement.',
+    })
+  }
   const publicSafety = checkHydraliskTerminalBenchSummaryPublicSafety(
     input.summary,
   )
@@ -490,6 +595,13 @@ export const buildGymHarborTerminalBenchIngest = (input: {
     publicSafe: true,
     publicClaimEligible: false,
     decisionGradeReportReady: false,
+    verifierPlacementVerified: true,
+    environmentMode: input.dispatch.verifierPlacement.environmentMode,
+    agentHostRef: input.dispatch.verifierPlacement.agentHostRef,
+    verifierHostRef: input.dispatch.verifierPlacement.verifierHostRef,
+    verifierNetworkMode: input.dispatch.verifierPlacement.verifierNetworkMode,
+    artifactHandoffRefs: input.dispatch.verifierPlacement.artifactHandoffRefs,
+    rewardArtifactRef: input.dispatch.verifierPlacement.rewardArtifactRef,
     acceptedOutcomes: input.summary.counts.solved,
     attemptedOutcomes: input.summary.counts.properlyAttempted,
     totalTasks: input.summary.counts.total,

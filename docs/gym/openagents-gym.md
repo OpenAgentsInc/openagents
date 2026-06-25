@@ -364,7 +364,10 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   openagents/khala`, then ingests the public-safe
   `hydralisk.evals.terminal_bench.summary.v1` summary plus an ATIF trace ref.
   The Worker imports no Harbor runtime code; raw Harbor artifacts stay on
-  Hydralisk. E2/E3 still own distinct-device verifier placement and reward/cost
+  Hydralisk. The dispatch receipt now also carries verified distinct-device
+  verifier placement evidence: Harbor `environment_mode = separate`, distinct
+  agent/verifier host+device refs, `no-network` verifier, explicit artifact
+  handoff, and reward read from a verifier artifact. E3 still owns reward/cost
   report mapping.
 
 ## 9. Build spec (for a coding agent)
@@ -415,16 +418,20 @@ metric vocabulary, or a new settlement path.
     `openagents/khala`, request only public-safe summary + ATIF artifacts, ingest
     `hydralisk.evals.terminal_bench.summary.v1`, and assert no Harbor runtime
     package is imported into the Worker bundle.
+11. Harbor verifier placement: require dispatch evidence proving
+    `environment_mode = separate`, distinct agent/verifier devices, `no-network`
+    verifier execution, explicit artifact handoff, and reward read from the
+    verifier artifact before ingest can mark the placement verified.
 ```
 
 ## 10. Open questions
 
 - Environment adapter contract beyond the fixture seam: the minimal descriptor is
   landed, but real dispatch adapters still need per-surface artifact ingest.
-- Terminal-Bench specifically: the typed env and Worker-side Hydralisk Harbor
-  dispatch/summary-ingest seam are landed. The next open parts are E2 verifier
-  placement (agent/verifier on **distinct** devices) and E3 reward/cost mapping
-  from Harbor summary/ATIF artifacts into a decision-grade Gym report.
+- Terminal-Bench specifically: the typed env, Worker-side Hydralisk Harbor
+  dispatch/summary-ingest seam, and distinct-device verifier placement evidence
+  are landed. The next open part is E3 reward/cost mapping from Harbor
+  summary/ATIF artifacts into a decision-grade Gym report.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.
