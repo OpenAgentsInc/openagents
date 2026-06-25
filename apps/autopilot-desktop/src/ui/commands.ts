@@ -1475,6 +1475,10 @@ export const RunVerseKhalaTurn = Command.define(
         text: result.text,
         receipt: result.receipt,
         live: result.live,
+        issuerPath: result.issuerPath,
+        durableRequestId: result.durableRequestId,
+        durableStreamUrl: result.durableStreamUrl,
+        assignmentRef: result.assignmentRef,
       }),
     ),
     Effect.catch((error) =>

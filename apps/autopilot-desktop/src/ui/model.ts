@@ -216,6 +216,13 @@ export const VerseKhalaReceipt = S.Struct({
 })
 export type VerseKhalaReceipt = typeof VerseKhalaReceipt.Type
 
+export const VerseKhalaIssuerPath = S.Literals([
+  "legacy_gateway",
+  "pylon_mcp_local",
+  "remote_mcp",
+])
+export type VerseKhalaIssuerPath = typeof VerseKhalaIssuerPath.Type
+
 // Dev affordance (#6033): one isolated scene spawned into the live Verse. `sceneId`
 // is a registered spawnable-scene id (shared/verse-spawned-scene.ts); `showPortal`
 // toggles the optional gateway-portal variant for this spawn.
@@ -663,14 +670,18 @@ export const Model = ts("AutopilotDesktop", {
   // gates the input while a turn is live; `verseKhalaStatus` carries the honest
   // state (info/error, e.g. 402 add-credit); `verseKhalaReceipt` is the public-safe
   // receipt that drives the LOCAL crackling-arc effect (null = no effect, evidence-
-  // bound). These are desktop-only Verse fields; the cockpit RPC + token resolution
-  // are reused unchanged.
+  // bound). The durable handle fields surface the unified Pylon/MCP issuer handle
+  // without exposing prompts or credentials.
   verseKhalaInput: S.String,
   verseKhalaResponse: S.String,
   verseKhalaTurnId: S.NullOr(S.String),
   verseKhalaInFlight: S.Boolean,
   verseKhalaStatus: ChatStatus,
   verseKhalaReceipt: S.NullOr(VerseKhalaReceipt),
+  verseKhalaIssuerPath: S.NullOr(VerseKhalaIssuerPath),
+  verseKhalaDurableRequestId: S.NullOr(S.String),
+  verseKhalaDurableStreamUrl: S.NullOr(S.String),
+  verseKhalaAssignmentRef: S.NullOr(S.String),
 
   // Dev affordance (#6033 / EPIC #6017): isolated SCENE STATIONS spawned into the
   // live Verse world. Each entry is a registered spawnable-scene id (e.g.
@@ -1294,6 +1305,10 @@ export const initialModel: Model = Model.make({
   verseKhalaInFlight: false,
   verseKhalaStatus: { text: "", tone: "idle" },
   verseKhalaReceipt: null,
+  verseKhalaIssuerPath: null,
+  verseKhalaDurableRequestId: null,
+  verseKhalaDurableStreamUrl: null,
+  verseKhalaAssignmentRef: null,
   verseSpawnedScenes: [],
   verseGameScreenActive: false,
   managedAccounts: null,

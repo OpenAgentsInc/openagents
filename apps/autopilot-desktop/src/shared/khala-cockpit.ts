@@ -85,18 +85,33 @@ export type KhalaReceiptProjection = Readonly<{
     | null
 }>
 
-// A cockpit turn result: the rendered answer text plus the receipt projection.
-export type KhalaTurnResult = Readonly<{
-  ok: boolean
-  // The assistant answer (or an honest in-conversation error message). Never a
-  // faked answer.
-  text: string
-  // The receipt projection, when the response carried an `openagents` block.
-  receipt: KhalaReceiptProjection | null
-  // The LIVE gate: true ONLY when `receipt.receipt` is a non-empty ref. A real
-  // completion with no receipt is `live: false` (rendered as unverified).
-  live: boolean
+export type KhalaTurnIssuerPath =
+  | "legacy_gateway"
+  | "pylon_mcp_local"
+  | "remote_mcp"
+
+export type KhalaDurableHandleProjection = Readonly<{
+  durableRequestId: string | null
+  durableStreamUrl: string | null
+  assignmentRef: string | null
 }>
+
+// A cockpit turn result: the rendered answer text plus the receipt projection.
+export type KhalaTurnResult = KhalaDurableHandleProjection &
+  Readonly<{
+    ok: boolean
+    // The assistant answer (or an honest in-conversation error message). Never a
+    // faked answer.
+    text: string
+    // The receipt projection, when the response carried an `openagents` block.
+    receipt: KhalaReceiptProjection | null
+    // The LIVE gate: true ONLY when `receipt.receipt` is a non-empty ref. A real
+    // completion with no receipt is `live: false` (rendered as unverified).
+    live: boolean
+    // Which host-side issuer produced this result. This is public-safe
+    // provenance for the desktop UI, not a routing decision in the webview.
+    issuerPath: KhalaTurnIssuerPath
+  }>
 
 const asString = (value: unknown): string | null =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null

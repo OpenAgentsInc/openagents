@@ -719,6 +719,10 @@ export const RespondedVerseKhala = m("RespondedVerseKhala", {
   // accessor). Null when the turn carried no `openagents` block — then no effect.
   receipt: S.NullOr(S.Unknown),
   live: S.Boolean,
+  issuerPath: S.Literals(["legacy_gateway", "pylon_mcp_local", "remote_mcp"]),
+  durableRequestId: S.NullOr(S.String),
+  durableStreamUrl: S.NullOr(S.String),
+  assignmentRef: S.NullOr(S.String),
 })
 export const FailedVerseKhala = m("FailedVerseKhala", {
   turnId: S.String,

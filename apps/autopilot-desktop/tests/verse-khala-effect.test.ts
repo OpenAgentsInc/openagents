@@ -24,6 +24,7 @@ import type { KhalaReceiptProjection } from "../src/shared/khala-cockpit"
 import { initialModel, Model } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import { verseSceneVisualization } from "../src/ui/view"
+import { verseKhalaInputOverlay } from "../src/ui/verse-khala-input"
 import {
   ChangedVerseKhalaInput,
   SubmittedVerseKhala,
@@ -46,6 +47,43 @@ const liveReceipt = (
   rubric: null,
   ...overrides,
 })
+
+type VNodeLike = {
+  children?: unknown[]
+  data?: {
+    attrs?: Record<string, unknown>
+    class?: Record<string, boolean>
+    props?: Record<string, unknown>
+  }
+  sel?: string
+  text?: string
+}
+
+const isVNodeLike = (value: unknown): value is VNodeLike =>
+  typeof value === "object" && value !== null
+
+const renderHtml = (node: unknown): string => {
+  if (!isVNodeLike(node)) return ""
+  const attrs = node.data?.attrs ?? {}
+  const props = node.data?.props ?? {}
+  const classes = Object.entries(node.data?.class ?? {})
+    .filter(([, on]) => on)
+    .map(([c]) => c)
+    .join(" ")
+  const attrStr = [
+    ...Object.entries(attrs),
+    ...Object.entries(props),
+    ...(classes ? [["class", classes] as const] : []),
+  ]
+    .filter(([, v]) => v !== false && v !== undefined && v !== null)
+    .map(([k, v]) => (v === true ? ` ${k}` : ` ${k}="${String(v)}"`))
+    .join("")
+  const tag = node.sel ?? "node"
+  const children = (node.children ?? [])
+    .map((c) => (typeof c === "string" ? c : renderHtml(c)))
+    .join("")
+  return `<${tag}${attrStr}>${node.text ?? ""}${children}</${tag}>`
+}
 
 const avatar = { x: 4, y: 0, z: -2 }
 
@@ -226,6 +264,10 @@ describe("in-world Khala textbox → khalaTurn reducer flow (#6017)", () => {
         text: "streamed answer",
         receipt: liveReceipt(),
         live: true,
+        issuerPath: "legacy_gateway",
+        durableRequestId: null,
+        durableStreamUrl: null,
+        assignmentRef: null,
       }),
     )
     expect(next.verseKhalaInFlight).toBe(false)
@@ -247,10 +289,64 @@ describe("in-world Khala textbox → khalaTurn reducer flow (#6017)", () => {
         text: "an answer with no receipt",
         receipt: liveReceipt({ receipt: null, receiptUrl: null }),
         live: false,
+        issuerPath: "legacy_gateway",
+        durableRequestId: null,
+        durableStreamUrl: null,
+        assignmentRef: null,
       }),
     )
     expect(next.verseKhalaReceipt).toBeNull()
     expect(next.verseKhalaStatus.tone).toBe("info")
+  })
+
+  test("an MCP-issued answer stores the resumable durable handle", () => {
+    const active = Model.make({
+      ...initialModel,
+      verseKhalaInFlight: true,
+      verseKhalaTurnId: "verse.khala.active",
+    })
+    const [next] = update(
+      active,
+      RespondedVerseKhala({
+        turnId: "verse.khala.active",
+        ok: true,
+        text: "Khala coding request issued through local Pylon MCP.",
+        receipt: null,
+        live: false,
+        issuerPath: "pylon_mcp_local",
+        durableRequestId: "chatcmpl_khala_123",
+        durableStreamUrl: "/v1/chat/completions/durable/chatcmpl_khala_123",
+        assignmentRef: "assignment.khala.123",
+      }),
+    )
+    expect(next.verseKhalaInFlight).toBe(false)
+    expect(next.verseKhalaReceipt).toBeNull()
+    expect(next.verseKhalaIssuerPath).toBe("pylon_mcp_local")
+    expect(next.verseKhalaDurableRequestId).toBe("chatcmpl_khala_123")
+    expect(next.verseKhalaAssignmentRef).toBe("assignment.khala.123")
+    expect(next.verseKhalaStatus.tone).toBe("info")
+  })
+
+  test("the Verse overlay renders the resumable durable handle", () => {
+    const model = Model.make({
+      ...initialModel,
+      verseKhalaIssuerPath: "pylon_mcp_local",
+      verseKhalaDurableRequestId: "chatcmpl_khala_123",
+      verseKhalaDurableStreamUrl:
+        "/v1/chat/completions/durable/chatcmpl_khala_123",
+      verseKhalaAssignmentRef: "assignment.khala.123",
+      verseKhalaResponse: "Khala coding request issued.",
+    })
+    const rendered = renderHtml(verseKhalaInputOverlay(model))
+    expect(rendered).toContain('data-verse-khala-durable="pylon_mcp_local"')
+    expect(rendered).toContain(
+      'data-verse-khala-durable-request-id="chatcmpl_khala_123"',
+    )
+    expect(rendered).toContain(
+      'data-verse-khala-assignment-ref="assignment.khala.123"',
+    )
+    expect(rendered).toContain("local Pylon MCP")
+    expect(rendered).toContain("resume chatcmpl_khala_123")
   })
 
   test("a 402 add-credit answer surfaces as the response text + error tone", () => {
@@ -270,6 +366,10 @@ describe("in-world Khala textbox → khalaTurn reducer flow (#6017)", () => {
         text: addCredit,
         receipt: null,
         live: false,
+        issuerPath: "legacy_gateway",
+        durableRequestId: null,
+        durableStreamUrl: null,
+        assignmentRef: null,
       }),
     )
     expect(next.verseKhalaInFlight).toBe(false)

@@ -3896,6 +3896,10 @@ export const update = (model: Model, message: Message): Result => {
           // effect only fires on its OWN real receipt (evidence-bound).
           verseKhalaResponse: "",
           verseKhalaReceipt: null,
+          verseKhalaIssuerPath: null,
+          verseKhalaDurableRequestId: null,
+          verseKhalaDurableStreamUrl: null,
+          verseKhalaAssignmentRef: null,
           verseKhalaStatus: { text: "asking Khala…", tone: "info" },
         }),
         [RunVerseKhalaTurn({ prompt, turnId })],
@@ -3946,6 +3950,10 @@ export const update = (model: Model, message: Message): Result => {
           // the LOCAL crackling effect fires for genuine turns only.
           verseKhalaReceipt:
             receipt !== null && receipt.receipt !== null ? receipt : null,
+          verseKhalaIssuerPath: message.issuerPath,
+          verseKhalaDurableRequestId: message.durableRequestId,
+          verseKhalaDurableStreamUrl: message.durableStreamUrl,
+          verseKhalaAssignmentRef: message.assignmentRef,
           verseKhalaStatus: {
             text: message.live
               ? "Khala answered — verified receipt"
@@ -3965,6 +3973,10 @@ export const update = (model: Model, message: Message): Result => {
           ...model,
           verseKhalaInFlight: false,
           verseKhalaReceipt: null,
+          verseKhalaIssuerPath: null,
+          verseKhalaDurableRequestId: null,
+          verseKhalaDurableStreamUrl: null,
+          verseKhalaAssignmentRef: null,
           verseKhalaResponse:
             model.verseKhalaResponse.trim().length > 0
               ? model.verseKhalaResponse

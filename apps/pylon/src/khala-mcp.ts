@@ -215,12 +215,14 @@ async function callKhalaTool(
       if (prompt === undefined) {
         return toolError("khala.request requires prompt or objective")
       }
+      const targetPylonRef =
+        stringArg(args, "targetPylonRef") ?? stringArg(args, "pylonRef")
+      const workflow = workflowArg(args)
       return toolResult(
         await issuePylonKhalaRequest(deps.network, {
           prompt,
-          targetPylonRef:
-            stringArg(args, "targetPylonRef") ?? stringArg(args, "pylonRef"),
-          workflow: workflowArg(args),
+          ...(targetPylonRef === undefined ? {} : { targetPylonRef }),
+          ...(workflow === undefined ? {} : { workflow }),
         }),
       )
     }
@@ -230,9 +232,10 @@ async function callKhalaTool(
       if (durableRequestId === undefined) {
         return toolError("khala.resume requires durableRequestId")
       }
+      const offset = offsetArg(args, "offset")
       return callRemoteKhalaMcpTool(deps.network, "khala.resume", {
         durableRequestId,
-        offset: offsetArg(args, "offset"),
+        ...(offset === undefined ? {} : { offset }),
       })
     }
 

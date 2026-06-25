@@ -702,12 +702,12 @@ export type ShellTurnResponse = {
 }
 
 // M1 (#6009, EPIC #6017) — Lane A Cockpit. One Khala cockpit turn: the Bun host
-// submits the prompt to a `openagents/khala-*` model on the OpenAI-compatible
-// `/v1/chat/completions` gateway, and projects back the plain answer text PLUS
-// the NON-BREAKING `openagents` receipt block (requested/served model, worker,
-// lane, verification, receipt ref/url, rubric) so a Khala completion is
-// auditable. `live` is TRUE only when the response carried a real receipt ref —
-// never claim live off a stub/free route. The raw token never crosses here.
+// issues the prompt through the unified Pylon/MCP issuer by default, with the
+// legacy OpenAI-compatible `/v1/chat/completions` stream available behind the
+// host-side off switch. The webview receives only public-safe answer text,
+// receipt projection, durable handle refs, and issuer provenance. `live` is TRUE
+// only when the response carried a real receipt ref — never claim live off a
+// stub/free route. The raw token never crosses here.
 export type KhalaReceiptProjectionResponse = {
   readonly requestedModel: string
   readonly servedModel: string
@@ -729,6 +729,10 @@ export type KhalaTurnResponse = {
   readonly text: string
   readonly receipt: KhalaReceiptProjectionResponse | null
   readonly live: boolean
+  readonly issuerPath: "legacy_gateway" | "pylon_mcp_local" | "remote_mcp"
+  readonly durableRequestId: string | null
+  readonly durableStreamUrl: string | null
+  readonly assignmentRef: string | null
 }
 
 // #5821: the Verse chat bar talks to Tassadar/OpenAgents by default. Bun owns

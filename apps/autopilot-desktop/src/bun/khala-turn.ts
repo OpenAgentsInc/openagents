@@ -1,11 +1,10 @@
 // Bun-host Khala cockpit turn (M1, #6009, EPIC #6017).
 //
-// Lane A — Cockpit. Submits a cockpit prompt to the single public
-// `openagents/khala` model on the OpenAI-compatible `POST /v1/chat/completions`
-// gateway (the public path that records served tokens), projects the
-// assistant answer AND the NON-BREAKING `openagents` receipt block back to the
-// webview, and computes the LIVE gate (only true when a real receipt ref is
-// present).
+// Lane A — Cockpit. Issues Verse Khala prompts through the unified Pylon/MCP
+// issuer contract by default (local Pylon MCP when a local Pylon signal is
+// present, remote `/api/mcp` otherwise). `OPENAGENTS_DESKTOP_KHALA_ISSUER=off`
+// preserves the legacy OpenAI-compatible `POST /v1/chat/completions` streaming
+// path, including the public `openagents` receipt block and LIVE gate.
 //
 // This is the Khala-specific sibling of `shell-turn.ts`. It submits to the single
 // public `openagents/khala` model (not the free-tier default), and — unlike the
@@ -41,12 +40,18 @@ import {
   resolveInferenceGatewaySettings,
 } from "../shared/inference-gateway.js"
 import {
+  durableRequestIdFromUrl,
+} from "../../../pylon/src/khala-requester.js"
+import { handlePylonKhalaMcpRequest } from "../../../pylon/src/khala-mcp.js"
+import {
   isEventStreamResponse,
   isLiveReceipt,
   normalizeKhalaCockpitModelId,
   parseKhalaReceipt,
   reconstructKhalaCompletionFromSse,
   type KhalaCockpitModelId,
+  type KhalaDurableHandleProjection,
+  type KhalaTurnIssuerPath,
   type KhalaTurnResult,
 } from "../shared/khala-cockpit.js"
 
@@ -67,6 +72,11 @@ const NO_TOKEN_MESSAGE =
   "the app uses to talk to openagents.com) and submit again. " +
   "You can create or copy a token from your account at https://openagents.com."
 
+const DESKTOP_KHALA_ISSUER_ENV = "OPENAGENTS_DESKTOP_KHALA_ISSUER"
+const DESKTOP_KHALA_TARGET_PYLON_ENV =
+  "OPENAGENTS_DESKTOP_KHALA_TARGET_PYLON_REF"
+const KHALA_CODING_WORKFLOW = "codex_agent_task" as const
+
 type KhalaTurnEnv = Readonly<Record<string, string | undefined>>
 
 export type BuildKhalaTurnInput = Readonly<{
@@ -86,6 +96,258 @@ export type BuildKhalaTurnInput = Readonly<{
   // Public-safe (token text only); never carries credentials or the receipt.
   onToken?: (delta: string) => void
 }>
+
+type KhalaMcpToolOutcome = Readonly<{
+  content?: unknown
+  isError?: unknown
+  structuredContent?: unknown
+}>
+
+const EMPTY_DURABLE_HANDLE: KhalaDurableHandleProjection = {
+  assignmentRef: null,
+  durableRequestId: null,
+  durableStreamUrl: null,
+}
+
+const envString = (env: KhalaTurnEnv, key: string): string | null => {
+  const value = env[key]?.trim()
+  return value && value.length > 0 ? value : null
+}
+
+const hasLocalPylonSignal = (env: KhalaTurnEnv): boolean =>
+  envString(env, "PYLON_HOME") !== null ||
+  envString(env, "PYLON_CONTROL_BASE_URL") !== null ||
+  envString(env, "PYLON_REF") !== null
+
+const resolveKhalaTurnIssuerPath = (env: KhalaTurnEnv): KhalaTurnIssuerPath => {
+  const configured = envString(env, DESKTOP_KHALA_ISSUER_ENV)
+  if (configured === null) {
+    return hasLocalPylonSignal(env) ? "pylon_mcp_local" : "remote_mcp"
+  }
+  const raw = configured.toLowerCase()
+  if (raw === "0" || raw === "off" || raw === "legacy") {
+    return "legacy_gateway"
+  }
+  if (raw === "remote" || raw === "http" || raw === "openagents") {
+    return "remote_mcp"
+  }
+  if (raw === "auto" || raw === "1" || raw === "on" || raw === "true") {
+    return hasLocalPylonSignal(env) ? "pylon_mcp_local" : "remote_mcp"
+  }
+  if (
+    raw === "local" ||
+    raw === "mcp" ||
+    raw === "pylon" ||
+    raw === "stdio"
+  ) {
+    return "pylon_mcp_local"
+  }
+  return "legacy_gateway"
+}
+
+const targetPylonRefFromEnv = (env: KhalaTurnEnv): string | undefined =>
+  envString(env, DESKTOP_KHALA_TARGET_PYLON_ENV) ??
+  envString(env, "OPENAGENTS_TRAINING_PYLON_REF") ??
+  envString(env, "PYLON_REF") ??
+  undefined
+
+const mcpEndpointUrl = (baseUrl: string): string =>
+  `${baseUrl.replace(/\/+$/, "")}/api/mcp`
+
+const durableHandleFromResponse = (res: Response): KhalaDurableHandleProjection => {
+  const durableStreamUrl = res.headers.get("openagents-durable-stream-url")
+  return {
+    assignmentRef: res.headers.get("openagents-coding-assignment-ref"),
+    durableRequestId: durableRequestIdFromUrl(durableStreamUrl),
+    durableStreamUrl,
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+
+const stringField = (
+  record: Record<string, unknown>,
+  key: string,
+): string | null => {
+  const value = record[key]
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null
+}
+
+const firstTextContent = (outcome: KhalaMcpToolOutcome): string | null => {
+  const content = outcome.content
+  if (!Array.isArray(content)) return null
+  for (const item of content) {
+    if (!isRecord(item)) continue
+    if (item.type === "text" && typeof item.text === "string") {
+      const text = item.text.trim()
+      if (text.length > 0) return text
+    }
+  }
+  return null
+}
+
+const parseJsonTextContent = (
+  outcome: KhalaMcpToolOutcome,
+): Record<string, unknown> | null => {
+  const text = firstTextContent(outcome)
+  if (text === null) return null
+  try {
+    const parsed = JSON.parse(text) as unknown
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const structuredMcpData = (
+  outcome: KhalaMcpToolOutcome,
+): Record<string, unknown> | null => {
+  if (isRecord(outcome.structuredContent)) return outcome.structuredContent
+  return parseJsonTextContent(outcome)
+}
+
+const mcpEnvelopeOutcome = (envelope: unknown): KhalaMcpToolOutcome => {
+  if (!isRecord(envelope)) {
+    throw new Error("invalid MCP response")
+  }
+  const rpcError = envelope.error
+  if (isRecord(rpcError)) {
+    const message = stringField(rpcError, "message") ?? "MCP request failed"
+    throw new Error(message)
+  }
+  const result = envelope.result
+  if (!isRecord(result)) {
+    throw new Error("MCP response did not include a tool result")
+  }
+  return result
+}
+
+const mcpArguments = (
+  prompt: string,
+  env: KhalaTurnEnv,
+): Record<string, unknown> => {
+  const targetPylonRef = targetPylonRefFromEnv(env)
+  return {
+    prompt,
+    workflow: KHALA_CODING_WORKFLOW,
+    ...(targetPylonRef === undefined ? {} : { targetPylonRef }),
+  }
+}
+
+const mcpToolCallRequest = (
+  prompt: string,
+  env: KhalaTurnEnv,
+): Record<string, unknown> => ({
+  id: "desktop.khala.request",
+  jsonrpc: "2.0",
+  method: "tools/call",
+  params: {
+    arguments: mcpArguments(prompt, env),
+    name: "khala.request",
+  },
+})
+
+const issuerLabel = (issuerPath: KhalaTurnIssuerPath): string =>
+  issuerPath === "pylon_mcp_local"
+    ? "local Pylon MCP"
+    : issuerPath === "remote_mcp"
+      ? "remote MCP"
+      : "gateway"
+
+const textForMcpIssuedRequest = (
+  issuerPath: KhalaTurnIssuerPath,
+  data: Record<string, unknown>,
+): string => {
+  const text = stringField(data, "text")
+  if (text !== null) return text
+  const durableRequestId = stringField(data, "durableRequestId")
+  const label = issuerLabel(issuerPath)
+  return durableRequestId === null
+    ? `Khala coding request issued through ${label}.`
+    : `Khala coding request issued through ${label}. Resume handle: ${durableRequestId}.`
+}
+
+const resultFromMcpOutcome = (
+  issuerPath: KhalaTurnIssuerPath,
+  outcome: KhalaMcpToolOutcome,
+): KhalaTurnResult => {
+  const data = structuredMcpData(outcome)
+  if (outcome.isError === true) {
+    return errorResult(
+      (data === null ? null : stringField(data, "error")) ??
+        firstTextContent(outcome) ??
+        "Khala issuer returned an error.",
+      issuerPath,
+    )
+  }
+  if (data === null) {
+    return errorResult("Khala issuer returned an empty MCP result.", issuerPath)
+  }
+  return {
+    assignmentRef: stringField(data, "assignmentRef"),
+    durableRequestId: stringField(data, "durableRequestId"),
+    durableStreamUrl: stringField(data, "durableStreamUrl"),
+    issuerPath,
+    live: false,
+    ok: true,
+    receipt: null,
+    text: textForMcpIssuedRequest(issuerPath, data),
+  }
+}
+
+const requestThroughLocalPylonMcp = async (input: {
+  env: KhalaTurnEnv
+  fetchFn: typeof fetch
+  prompt: string
+  settingsBaseUrl: string
+  token: string
+}): Promise<KhalaTurnResult> => {
+  const response = await handlePylonKhalaMcpRequest(
+    mcpToolCallRequest(input.prompt, input.env),
+    {
+      network: {
+        agentToken: input.token,
+        baseUrl: input.settingsBaseUrl,
+        fetch: input.fetchFn,
+      },
+    },
+  )
+  return resultFromMcpOutcome("pylon_mcp_local", mcpEnvelopeOutcome(response))
+}
+
+const requestThroughRemoteMcp = async (input: {
+  env: KhalaTurnEnv
+  fetchFn: typeof fetch
+  prompt: string
+  settingsBaseUrl: string
+  token: string
+}): Promise<KhalaTurnResult> => {
+  const res = await input.fetchFn(mcpEndpointUrl(input.settingsBaseUrl), {
+    body: JSON.stringify(mcpToolCallRequest(input.prompt, input.env)),
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${input.token}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  })
+  let body: unknown = null
+  try {
+    body = await res.json()
+  } catch {
+    body = null
+  }
+  if (!res.ok) {
+    return errorResult(
+      `Khala MCP issuer request failed (${res.status}). Please try again.`,
+      "remote_mcp",
+    )
+  }
+  return resultFromMcpOutcome("remote_mcp", mcpEnvelopeOutcome(body))
+}
 
 // Pull the assistant text out of an OpenAI-compatible chat-completions body.
 const parseAssistantText = (body: unknown): string | null => {
@@ -112,7 +374,12 @@ const parseErrorMessage = (body: unknown, status: number): string => {
   return `request failed (${status})`
 }
 
-const errorResult = (text: string): KhalaTurnResult => ({
+const errorResult = (
+  text: string,
+  issuerPath: KhalaTurnIssuerPath = "legacy_gateway",
+): KhalaTurnResult => ({
+  ...EMPTY_DURABLE_HANDLE,
+  issuerPath,
   ok: false,
   text,
   receipt: null,
@@ -194,6 +461,42 @@ export const buildKhalaTurn = async (
     return errorResult(NO_TOKEN_MESSAGE)
   }
 
+  const issuerPath = resolveKhalaTurnIssuerPath(input.env)
+  if (issuerPath === "pylon_mcp_local") {
+    try {
+      return await requestThroughLocalPylonMcp({
+        env: input.env,
+        fetchFn,
+        prompt,
+        settingsBaseUrl: settings.baseUrl,
+        token,
+      })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "network error"
+      return errorResult(
+        `I couldn't reach Khala through the local Pylon MCP issuer (${reason}). Check your connection and try again.`,
+        issuerPath,
+      )
+    }
+  }
+  if (issuerPath === "remote_mcp") {
+    try {
+      return await requestThroughRemoteMcp({
+        env: input.env,
+        fetchFn,
+        prompt,
+        settingsBaseUrl: settings.baseUrl,
+        token,
+      })
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "network error"
+      return errorResult(
+        `I couldn't reach Khala through the remote MCP issuer (${reason}). Check your connection and try again.`,
+        issuerPath,
+      )
+    }
+  }
+
   // Streaming is the interactive default; `stream:false` only on explicit opt-out.
   const useStream = input.stream !== false
 
@@ -260,12 +563,15 @@ export const buildKhalaTurn = async (
       )
     }
 
+    const durableHandle = durableHandleFromResponse(res)
     const text = parseAssistantText(body)
     const receipt = parseKhalaReceipt(body)
     if (text === null) {
       // No answer text: still surface the receipt if one came back, but the turn
       // is not "ok".
       return {
+        ...durableHandle,
+        issuerPath,
         ok: false,
         text: "Khala returned an empty response. Please try again.",
         receipt,
@@ -273,6 +579,8 @@ export const buildKhalaTurn = async (
       }
     }
     return {
+      ...durableHandle,
+      issuerPath,
       ok: true,
       text,
       receipt,

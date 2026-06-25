@@ -28,6 +28,67 @@ import { summarizeKhalaReceipt } from "../shared/khala-cockpit.js"
 const h = html<Message>()
 const cls = (value: string): Attribute<Message> => h.Class(value)
 
+const shortRef = (value: string): string =>
+  value.length <= 40 ? value : `${value.slice(0, 18)}…${value.slice(-12)}`
+
+const issuerLabel = (value: Model["verseKhalaIssuerPath"]): string =>
+  value === "pylon_mcp_local"
+    ? "local Pylon MCP"
+    : value === "remote_mcp"
+      ? "remote MCP"
+      : "gateway"
+
+const verseKhalaDurableHandleLine = (model: Model): Html => {
+  const hasHandle =
+    model.verseKhalaDurableRequestId !== null ||
+    model.verseKhalaDurableStreamUrl !== null ||
+    model.verseKhalaAssignmentRef !== null
+  const issuerPath = model.verseKhalaIssuerPath
+  if (!hasHandle && (issuerPath === null || issuerPath === "legacy_gateway")) {
+    return h.empty
+  }
+  const pieces = [
+    issuerLabel(issuerPath),
+    model.verseKhalaDurableRequestId === null
+      ? null
+      : `resume ${shortRef(model.verseKhalaDurableRequestId)}`,
+    model.verseKhalaAssignmentRef === null
+      ? null
+      : `assignment ${shortRef(model.verseKhalaAssignmentRef)}`,
+  ].filter((piece): piece is string => piece !== null)
+  return h.p(
+    [
+      cls("verse-khala-durable"),
+      h.DataAttribute("verse-khala-durable", issuerPath ?? "legacy_gateway"),
+      ...(model.verseKhalaDurableRequestId === null
+        ? []
+        : [
+            h.DataAttribute(
+              "verse-khala-durable-request-id",
+              model.verseKhalaDurableRequestId,
+            ),
+          ]),
+      ...(model.verseKhalaDurableStreamUrl === null
+        ? []
+        : [
+            h.DataAttribute(
+              "verse-khala-durable-stream-url",
+              model.verseKhalaDurableStreamUrl,
+            ),
+          ]),
+      ...(model.verseKhalaAssignmentRef === null
+        ? []
+        : [
+            h.DataAttribute(
+              "verse-khala-assignment-ref",
+              model.verseKhalaAssignmentRef,
+            ),
+          ]),
+    ],
+    [pieces.join(" — ")],
+  )
+}
+
 // The receipt line: a short, public-safe one-liner. With a real receipt it shows
 // the served model / lane / verification / live; with none, "no receipt".
 const verseKhalaReceiptLine = (model: Model): Html => {
@@ -134,6 +195,7 @@ export const verseKhalaInputOverlay = (model: Model): Html =>
     ],
     [
       verseKhalaResponseBubble(model),
+      verseKhalaDurableHandleLine(model),
       verseKhalaReceiptLine(model),
       verseKhalaStatusLine(model),
       verseKhalaInputBar(model),

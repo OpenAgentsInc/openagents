@@ -3682,6 +3682,17 @@ body {
   color: rgb(255 255 255 / 0.5);
 }
 
+.verse-khala-durable {
+  margin: 0;
+  padding: 0 0.2rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: rgb(150 220 210 / 0.82);
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+
 .verse-khala-status {
   margin: 0;
   padding: 0 0.2rem;

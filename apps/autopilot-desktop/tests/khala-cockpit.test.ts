@@ -43,15 +43,17 @@ function buildKhalaSseWire(
 
 // A Response-like object backed by a real ReadableStream so the incremental
 // reader path in consumeSseBody runs.
-function sseResponse(wire: string): Response {
+function sseResponse(wire: string, headers: HeadersInit = {}): Response {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(new TextEncoder().encode(wire))
       controller.close()
     },
   })
+  const responseHeaders = new Headers(headers)
+  responseHeaders.set("content-type", "text/event-stream; charset=utf-8")
   return new Response(stream, {
-    headers: { "content-type": "text/event-stream; charset=utf-8" },
+    headers: responseHeaders,
   })
 }
 
@@ -174,7 +176,8 @@ describe("parseKhalaReceipt — consumes the gateway openagents block", () => {
 })
 
 describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
-  const env = { OPENAGENTS_INFERENCE_GATEWAY_BASE_URL: "https://gw.test" }
+  const baseEnv = { OPENAGENTS_INFERENCE_GATEWAY_BASE_URL: "https://gw.test" }
+  const env = { ...baseEnv, OPENAGENTS_DESKTOP_KHALA_ISSUER: "off" }
 
   test("no token: honest message, no network call, not live", async () => {
     let called = false
@@ -376,6 +379,124 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
     expect(r.receipt?.verification).toBe("test_passed")
     expect(r.receipt?.receipt).toBe("oa_receipt_stream_live")
     expect(r.live).toBe(true)
+  })
+
+  test("legacy gateway path captures resumable durable headers when present", async () => {
+    const wire = buildKhalaSseWire(["durable ", "answer"])
+    const fetchFn = (() =>
+      Promise.resolve(
+        sseResponse(wire, {
+          "openagents-coding-assignment-ref": "assignment.khala.legacy",
+          "openagents-durable-stream-url":
+            "/v1/chat/completions/durable/chatcmpl_legacy_123",
+        }),
+      )) as unknown as typeof fetch
+    const r = await buildKhalaTurn({
+      prompt: "hello",
+      env,
+      agentToken: "agent-token",
+      fetchFn,
+    })
+    expect(r.ok).toBe(true)
+    expect(r.issuerPath).toBe("legacy_gateway")
+    expect(r.durableRequestId).toBe("chatcmpl_legacy_123")
+    expect(r.durableStreamUrl).toBe(
+      "/v1/chat/completions/durable/chatcmpl_legacy_123",
+    )
+    expect(r.assignmentRef).toBe("assignment.khala.legacy")
+  })
+
+  test("local issuer mode uses the Pylon MCP khala.request contract", async () => {
+    let sentUrl = ""
+    let sentBody: Record<string, unknown> = {}
+    const wire = buildKhalaSseWire(["mcp ", "answer"])
+    const fetchFn = ((url: URL | string, init?: RequestInit) => {
+      sentUrl = String(url)
+      sentBody = init?.body ? JSON.parse(init.body as string) : {}
+      return Promise.resolve(
+        sseResponse(wire, {
+          "openagents-coding-assignment-ref": "assignment.khala.local",
+          "openagents-durable-stream-url":
+            "/v1/chat/completions/durable/chatcmpl_local_123",
+        }),
+      )
+    }) as unknown as typeof fetch
+    const r = await buildKhalaTurn({
+      prompt: "build the thing",
+      env: {
+        ...baseEnv,
+        OPENAGENTS_DESKTOP_KHALA_ISSUER: "local",
+        OPENAGENTS_DESKTOP_KHALA_TARGET_PYLON_REF: "pylon.local_123",
+      },
+      agentToken: "agent-token",
+      fetchFn,
+    })
+    expect(sentUrl).toBe("https://gw.test/v1/chat/completions")
+    expect(sentBody.model).toBe("openagents/khala")
+    expect(sentBody.stream).toBe(true)
+    expect((sentBody.openagents as { workflowClass?: string }).workflowClass).toBe(
+      "codex_agent_task",
+    )
+    expect(
+      (
+        (sentBody.openagents as { coding?: { targetPylonRef?: string } })
+          .coding ?? {}
+      ).targetPylonRef,
+    ).toBe("pylon.local_123")
+    expect(r.ok).toBe(true)
+    expect(r.issuerPath).toBe("pylon_mcp_local")
+    expect(r.text).toBe("mcp answer")
+    expect(r.durableRequestId).toBe("chatcmpl_local_123")
+    expect(r.assignmentRef).toBe("assignment.khala.local")
+  })
+
+  test("default issuer mode calls remote /api/mcp and surfaces the durable handle", async () => {
+    let sentUrl = ""
+    let sentBody: Record<string, unknown> = {}
+    const fetchFn = ((url: string, init?: RequestInit) => {
+      sentUrl = url
+      sentBody = init?.body ? JSON.parse(init.body as string) : {}
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: "desktop.khala.request",
+            jsonrpc: "2.0",
+            result: {
+              content: [{ text: "{}", type: "text" }],
+              structuredContent: {
+                assignmentRef: "assignment.khala.remote",
+                durableRequestId: "chatcmpl_remote_123",
+                durableStreamUrl:
+                  "/v1/chat/completions/durable/chatcmpl_remote_123",
+                ok: true,
+                schema: "openagents.khala_mcp.request.v1",
+                stream: true,
+                workflow: "codex_agent_task",
+              },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      )
+    }) as unknown as typeof fetch
+    const r = await buildKhalaTurn({
+      prompt: "build the remote thing",
+      env: baseEnv,
+      agentToken: "agent-token",
+      fetchFn,
+    })
+    expect(sentUrl).toBe("https://gw.test/api/mcp")
+    expect(sentBody.method).toBe("tools/call")
+    expect((sentBody.params as { name?: string }).name).toBe("khala.request")
+    expect(
+      ((sentBody.params as { arguments?: { workflow?: string } }).arguments ?? {})
+        .workflow,
+    ).toBe("codex_agent_task")
+    expect(r.ok).toBe(true)
+    expect(r.issuerPath).toBe("remote_mcp")
+    expect(r.text).toContain("Resume handle: chatcmpl_remote_123")
+    expect(r.durableRequestId).toBe("chatcmpl_remote_123")
+    expect(r.assignmentRef).toBe("assignment.khala.remote")
   })
 
   test("streamed completion with NO receipt: real answer but NOT live", async () => {

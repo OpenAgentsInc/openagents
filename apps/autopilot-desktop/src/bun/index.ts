@@ -1045,9 +1045,10 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
           }),
         })
       },
-      // M1 (#6009, EPIC #6017): one Khala cockpit turn. Submits to a
-      // `openagents/khala-*` model and returns the answer plus the public-safe
-      // `openagents` receipt projection. Reuses the same host-side agent token
+      // M1 (#6009, EPIC #6017): one Khala cockpit turn. Routes through the
+      // unified Pylon/MCP issuer by default (or the legacy gateway stream when
+      // explicitly disabled) and returns the answer/handle plus the public-safe
+      // receipt projection when available. Reuses the same host-side agent token
       // resolution as shellTurn; the raw token never crosses to the webview.
       async khalaTurn(params) {
         // M8 streaming (#6027): the turn STREAMS by default. The Bun host
