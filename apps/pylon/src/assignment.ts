@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import {
   collectInterpreterOutputs,
   executeTassadarNumericModel,
@@ -836,12 +836,18 @@ export async function computeAssignmentAdmission(
   return { admissible: blockerRefs.size === 0, blockerRefs: [...blockerRefs] }
 }
 
-async function postJson(options: AssignmentClientOptions, path: string, body: JsonRecord, state: PylonLocalState): Promise<JsonRecord> {
+async function postJson(
+  options: AssignmentClientOptions,
+  path: string,
+  body: JsonRecord,
+  state: PylonLocalState,
+  idempotencyRef?: string,
+): Promise<JsonRecord> {
   assertPublicProjectionSafe(body)
   const fetchImpl = options.fetch ?? fetch
   const url = new URL(path, options.baseUrl).toString()
   const text = JSON.stringify(body)
-  const idempotencyKey = `pylon.assignment.${state.identity.pylonRef}.${stableRef("request", `${path}:${text}`)}`
+  const idempotencyKey = `pylon.assignment.${state.identity.pylonRef}.${idempotencyRef ?? stableRef("request", `${path}:${text}`)}`
   const headers = options.agentToken
     ? {
         authorization: `Bearer ${options.agentToken}`,
@@ -977,6 +983,10 @@ export async function acceptAssignment(
     accepted: true,
     status: "accepted",
   }
+  const claimAttemptRef = stableRef(
+    "claim.pylon.assignment_acceptance",
+    `${lease.leaseRef}:${state.identity.nodeId}:${randomUUID()}`,
+  )
   let response: JsonRecord
   try {
     response = await postJson(
@@ -984,6 +994,7 @@ export async function acceptAssignment(
       `/api/pylons/${encodeURIComponent(state.identity.pylonRef)}/assignments/${encodeURIComponent(lease.leaseRef)}/accept`,
       body,
       state,
+      claimAttemptRef,
     )
   } catch (error) {
     return {
