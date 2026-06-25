@@ -129,10 +129,10 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
      `enqueued_at` and the queue message carries `enqueuedAtIso` (the START of the
      batch wait), the consumer stamps `started_at` from an injected clock (the
      END), and `computeBatchWaitMs` derives `batchWaitMs = started_at -
-     enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
+enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
      when timing is unavailable (a pre-`0223` job, a token-only job that was never
      enqueued). Surfaced on the closeout receipt AND `GET
-     /v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
+/v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
   3. **Durable-connection scope documented + confirmed (deliverable 4).** The
      chat gateway uses a DO only for the #6056 single-client reconnect proxy (not
      multi-subscriber); DO + hibernatable-WebSocket multi-subscriber transport is
@@ -488,10 +488,10 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
   `8cdf26af-1ce5-4b18-8ceb-79beec429964`. The Khala production smoke now follows
   both non-streaming and streaming `openagents` telemetry detail refs to the
   public receipt endpoint and proves `schemaVersion:
-  openagents.inference.receipt.v1`, `ledgerState: paid`, usage presence, and
+openagents.inference.receipt.v1`, `ledgerState: paid`, usage presence, and
   public-safe `modelEvidence` (`requested_model: openagents/khala`,
   `served_model: deepseek-v4-flash`, `supply_lane: fireworks`, `worker:
-  fireworks`). The live receipt refs were
+fireworks`). The live receipt refs were
   `receipt.inference.charge.chatcmpl_b19c2bf5b1f747a48225783976c60ac5` and
   `receipt.inference.charge.chatcmpl_7ae95e81c354411aa2639b4ee1c55fce`; both
   passed the redaction guard for secrets, raw prompts, provider-private payloads,
@@ -521,7 +521,7 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
   mutation.
 - **Command:** `bun run monitor:khala:production-readiness` from
   `apps/openagents.com`, or `node
-  apps/openagents.com/scripts/khala-production-readiness-monitor.mjs` from repo
+apps/openagents.com/scripts/khala-production-readiness-monitor.mjs` from repo
   root.
 - **Honest scope:** this monitor does not prove paid inference or receipt
   dereference. The paid proof remains
@@ -550,3 +550,23 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
 - **Verification bar:** focused Artanis health and scheduled-runner tests cover
   the ready path, leak-blocked path, disabled runner, unknown observation state,
   and public projection redaction.
+
+---
+
+## P2-15 — GLM Pool Heartbeat Ledger — DONE (#6269)
+
+- **Notes ref:** `../2026-06-25-khala-glm-52-reap-backing-lane.md` and
+  `../2026-06-25-khala-cost-model-and-analytics.md`.
+- **What shipped:** an inert-by-default Worker heartbeat for the Hydralisk
+  GLM-5.2 REAP pool. It reads replica config, records skipped rows for
+  `benchmarkReserved` and `draining` replicas without probing them, checks
+  `/health` and `/v1/models` for eligible replicas, and sends a tiny warm
+  completion only behind
+  `HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED=true`.
+- **Benchmark guardrail:** `HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE=true`
+  blocks warm completions while still allowing control-plane health checks.
+- **Routing + owner visibility:** the heartbeat updates an in-process
+  routing-state oracle and writes public-safe token-usage ledger rows. Owner
+  analytics now surface per-replica `keepWarmStatus`, `watchdogStatus`,
+  `warmCompletionStatus`, warm state, wall time, and exact warm-completion token
+  counts when present.

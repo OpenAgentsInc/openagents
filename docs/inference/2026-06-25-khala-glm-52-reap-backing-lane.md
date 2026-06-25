@@ -81,6 +81,32 @@ Only the variable names and evidence-reference names belong in tracked files.
 Endpoint values, bearer tokens, and private topology stay in Worker secrets or
 operator-only notes.
 
+## Worker Pool Heartbeat
+
+The Worker has an inert-by-default GLM pool heartbeat for owner visibility and
+route hints:
+
+```text
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED=true
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES=4
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED=false
+HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE=false
+```
+
+When enabled, each cadence tick reads the same replica config as the GLM pool.
+Replicas marked `benchmarkReserved` or `draining` are recorded as skipped and
+receive no HTTP probe. Eligible replicas get control-plane probes to `/health`
+and `/v1/models`. A tiny `/v1/chat/completions` warm probe is sent only when
+`HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED=true` and
+`HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE=false`.
+
+Heartbeat rows land in the canonical token-usage ledger with public-safe refs,
+selected replica ref/id, `keepWarmStatus`, `watchdogStatus`,
+`warmCompletionStatus`, wall-clock milliseconds, and exact token counts when a
+warm completion ran. The in-process routing oracle consumes the latest heartbeat
+state it has seen, so warm healthy replicas rank ahead of cold ones while
+unhealthy replicas are avoided.
+
 ## Pool Routing Contract
 
 Each GLM replica is treated as one interactive singleflight slot unless its
@@ -92,6 +118,8 @@ public-safe state says otherwise. The pool adapter builds a typed
 - last 429 timestamp, observed TTFT, observed tokens/second, and region when
   the control plane exposes them;
 - coarse capacity class (`spot`, `on_demand`, or `unknown`);
+- heartbeat-derived warm state (`warm`, `unknown`, or `cold`) when the Worker
+  heartbeat has observed the replica;
 - `benchmarkReserved` and `draining` lifecycle flags.
 
 The selector only sends product traffic to replicas that are healthy, not
@@ -223,9 +251,10 @@ refs instead of silently treating uncovered owned-infra cost as free.
 - Owner analytics can see derived GLM hourly burn, monthly burn, window burn,
   idle burn, active serving hours, internal/external/unlabeled demand burn,
   effective cost per served token, and cost per accepted outcome when accepted
-  outcomes are recorded. Keep-warm status, watchdog status, benchmark-reserved
-  burn, storage overhead, and exact host lifecycle remain explicit
-  `not_measured` gaps until heartbeat telemetry lands.
+  outcomes are recorded. When the Worker heartbeat is enabled, owners also see
+  keep-warm and watchdog status per replica. Benchmark-reserved burn, storage
+  overhead, and exact host lifecycle remain explicit `not_measured` gaps until
+  those host-side ledgers land.
 - Direct customer selection remains closed; public model listing still exposes
   Khala, not internal supply workers.
 

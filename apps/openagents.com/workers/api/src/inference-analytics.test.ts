@@ -92,7 +92,12 @@ const fireworksEvent = (
     outputTokens: number
     costUsd?: number | undefined
     demandClient?: string | undefined
-    demandKind?: 'external' | 'internal' | 'unlabeled' | undefined
+    demandKind?:
+      | 'external'
+      | 'internal'
+      | 'own_capacity'
+      | 'unlabeled'
+      | undefined
     demandSource?: string | undefined
     backendProfile?: string | undefined
     model?: string | undefined
@@ -482,6 +487,59 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.totals.costUsd).toBeCloseTo(0.69, 6)
     // Every row carried a stored cost.
     expect(result.totals.costCoverage).toBe(1)
+  })
+
+  test('projects GLM heartbeat metadata into owner replica warmth columns (#6269)', async () => {
+    const db = makeDb()
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          backendProfile: 'hydralisk-vllm-glm-5p2-reap-504b',
+          demandClient: 'worker-cron',
+          demandKind: 'own_capacity',
+          demandSource: 'glm-pool-heartbeat',
+          eventId: 'glm-heartbeat-second',
+          inputTokens: 0,
+          model: 'openagents/glm-5.2-reap-504b',
+          observedAt: '2026-06-25T11:56:00.000Z',
+          outputTokens: 0,
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          safeMetadata: {
+            heartbeatKind: 'glm_pool_heartbeat',
+            heartbeatRunRef: 'heartbeat.hydralisk.glm_52_reap_504b.fixture',
+            keepWarmStatus: 'skipped_benchmark_window',
+            replicaWarmState: 'unknown',
+            selectedReplicaId: 'second',
+            selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+            totalWallClockMs: 240,
+            warmCompletionStatus: 'skipped',
+            watchdogStatus: 'healthy',
+          },
+        }),
+      ),
+    )
+
+    const result = await runLedger(db, analytics({ window: 'today' }))
+
+    expect(result.glmReplicas).toEqual([
+      expect.objectContaining({
+        keepWarmStatus: 'skipped_benchmark_window',
+        key: 'replica.hydralisk.glm_52_reap_504b.second',
+        label: 'second',
+        totalTokens: 0,
+        usageEvents: 1,
+        warmState: 'unknown',
+        watchdogStatus: 'healthy',
+      }),
+    ])
+    expect(result.byDemandKind).toEqual([
+      expect.objectContaining({
+        key: 'own_capacity',
+        totalTokens: 0,
+        usageEvents: 1,
+      }),
+    ])
   })
 
   test('amortizes owned GLM hourly burn across idle, served-token, and accepted-outcome math (#6267)', async () => {

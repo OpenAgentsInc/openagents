@@ -64,6 +64,7 @@ export type GlmSaturationPolicy =
 export type GlmReplicaRoutingState = Readonly<{
   replicaId: string
   health: GlmReplicaHealth
+  warmState: 'cold' | 'unknown' | 'warm'
   warmAtEpochMs?: number | undefined
   inflightCount: number
   maxInflight: number
@@ -85,6 +86,7 @@ export type GlmReplicaRoutingStateOverride = Partial<
     | 'inflightCount'
     | 'maxInflight'
     | 'replicaId'
+    | 'warmState'
   >
 > &
   Readonly<{
@@ -93,6 +95,7 @@ export type GlmReplicaRoutingStateOverride = Partial<
     health?: GlmReplicaHealth | undefined
     inflightCount?: number | undefined
     maxInflight?: number | undefined
+    warmState?: 'cold' | 'unknown' | 'warm' | undefined
   }>
 
 export type GlmReplicaRoutingStateOracle = (
@@ -645,6 +648,9 @@ const stateForReplica = (
     positiveInteger(replica.maxInflight) ??
     1
   const externalInflight = finiteNonNegative(override?.inflightCount) ?? 0
+  const warmAtEpochMs = finiteNonNegative(override?.warmAtEpochMs)
+  const warmState =
+    override?.warmState ?? (warmAtEpochMs === undefined ? 'unknown' : 'warm')
   return {
     benchmarkReserved: override?.benchmarkReserved ?? replica.benchmarkReserved,
     capacityClass: override?.capacityClass ?? 'unknown',
@@ -654,6 +660,7 @@ const stateForReplica = (
     maxInflight,
     queueDepth: finiteNonNegative(override?.queueDepth) ?? 0,
     replicaId: replica.replicaId,
+    warmState,
     ...(finiteNonNegative(override?.last429AtEpochMs) === undefined
       ? {}
       : { last429AtEpochMs: finiteNonNegative(override?.last429AtEpochMs)! }),
@@ -666,9 +673,7 @@ const stateForReplica = (
     ...(typeof override?.region === 'string' && override.region.trim() !== ''
       ? { region: override.region.trim() }
       : {}),
-    ...(finiteNonNegative(override?.warmAtEpochMs) === undefined
-      ? {}
-      : { warmAtEpochMs: finiteNonNegative(override?.warmAtEpochMs)! }),
+    ...(warmAtEpochMs === undefined ? {} : { warmAtEpochMs }),
   }
 }
 
@@ -704,6 +709,21 @@ const rankEligibleReplicas = (
   a: ReplicaCandidate,
   b: ReplicaCandidate,
 ): number => {
+  const warmRank = (state: GlmReplicaRoutingState): number => {
+    switch (state.warmState) {
+      case 'warm':
+        return 2
+      case 'unknown':
+        return 1
+      case 'cold':
+        return 0
+    }
+  }
+  const aWarmRank = warmRank(a.state)
+  const bWarmRank = warmRank(b.state)
+  if (aWarmRank !== bWarmRank) {
+    return bWarmRank - aWarmRank
+  }
   const aWarm = a.state.warmAtEpochMs ?? -1
   const bWarm = b.state.warmAtEpochMs ?? -1
   if (aWarm !== bWarm) {
@@ -745,8 +765,7 @@ const metadataForSelection = (
   replicaInflightCount: selected.state.inflightCount,
   replicaMaxInflight: selected.state.maxInflight,
   replicaQueueDepth: selected.state.queueDepth,
-  replicaWarmState:
-    selected.state.warmAtEpochMs === undefined ? 'unknown' : 'warm',
+  replicaWarmState: selected.state.warmState,
   ...(selected.state.region === undefined
     ? {}
     : { replicaRegion: selected.state.region }),

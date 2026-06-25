@@ -1,0 +1,569 @@
+import { Effect } from 'effect'
+
+import { recordFromUnknown } from '../json-boundary'
+import {
+  currentEpochMillis,
+  epochMillisToIsoTimestamp,
+} from '../runtime-primitives'
+import {
+  type TokenUsageLedgerShape,
+  makeD1TokenUsageLedger,
+} from '../token-usage-ledger'
+import type { GlmReplicaRoutingStateOverride } from './hydralisk-adapter'
+import { HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID } from './model-router'
+import type {
+  HydraliskGlm52Replica,
+  SupplyLaneCredentialEnv,
+} from './model-serving-policy'
+import { resolveHydraliskGlm52Reap504bArming } from './model-serving-policy'
+import { HYDRALISK_GLM_52_REAP_504B_MODEL_ID, priceRequest } from './pricing'
+import type { InferenceUsage } from './provider-adapter'
+
+export type GlmPoolHeartbeatHttpResponse = Readonly<{
+  json: () => Promise<unknown>
+  ok: boolean
+}>
+
+export type GlmPoolHeartbeatFetch = (
+  input: string,
+  init: RequestInit,
+) => Promise<GlmPoolHeartbeatHttpResponse>
+
+export type GlmPoolHeartbeatProbeStatus = 'ok' | 'failed' | 'skipped'
+
+export type GlmPoolKeepWarmStatus =
+  | 'completed'
+  | 'control_plane_only'
+  | 'disabled'
+  | 'failed'
+  | 'skipped_benchmark_reserved'
+  | 'skipped_benchmark_window'
+  | 'skipped_draining'
+
+export type GlmPoolWatchdogStatus = 'healthy' | 'unhealthy' | 'skipped'
+
+export type GlmPoolHeartbeatWarmState = 'cold' | 'unknown' | 'warm'
+
+export type GlmPoolHeartbeatReplicaRecord = Readonly<{
+  benchmarkReserved: boolean
+  draining: boolean
+  healthStatus: GlmPoolHeartbeatProbeStatus
+  keepWarmStatus: GlmPoolKeepWarmStatus
+  modelsStatus: GlmPoolHeartbeatProbeStatus
+  observedAt: string
+  replicaId: string
+  replicaRef: string
+  runRef: string
+  totalWallClockMs: number
+  usage: InferenceUsage
+  warmCompletionStatus: GlmPoolHeartbeatProbeStatus
+  warmState: GlmPoolHeartbeatWarmState
+  watchdogStatus: GlmPoolWatchdogStatus
+}>
+
+export type GlmPoolHeartbeatRunReport = Readonly<{
+  benchmarkOwnershipActive: boolean
+  enabled: boolean
+  observedAt: string
+  records: ReadonlyArray<GlmPoolHeartbeatReplicaRecord>
+  runRef: string
+  skippedReason?: 'cadence' | 'disabled' | 'unarmed' | undefined
+  warmCompletionEnabled: boolean
+}>
+
+export type HydraliskGlmPoolHeartbeatEnv = SupplyLaneCredentialEnv &
+  Readonly<{
+    HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED?:
+      | string
+      | undefined
+  }>
+
+const REPLICA_REF_PREFIX = 'replica.hydralisk.glm_52_reap_504b'
+const HEARTBEAT_ACCOUNT_REF = 'account.openagents.owned_inference'
+const HEARTBEAT_DEMAND_CLIENT = 'worker-cron'
+const HEARTBEAT_DEMAND_SOURCE = 'glm-pool-heartbeat'
+
+const latestRoutingStateByReplica = new Map<
+  string,
+  GlmReplicaRoutingStateOverride
+>()
+
+const isEnabledFlag = (value: string | undefined): boolean => {
+  const normalized = value?.trim().toLowerCase()
+  return (
+    normalized === 'true' ||
+    normalized === '1' ||
+    normalized === 'yes' ||
+    normalized === 'on'
+  )
+}
+
+const parsePositiveInteger = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  const parsed = Number(value?.trim())
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const isoSlug = (iso: string): string =>
+  iso
+    .trim()
+    .replace(/[^0-9a-z]/giu, '')
+    .toLowerCase()
+
+const replicaRefFor = (replicaId: string): string =>
+  `${REPLICA_REF_PREFIX}.${replicaId}`
+
+const runRefFor = (observedAt: string): string =>
+  `heartbeat.hydralisk.glm_52_reap_504b.${isoSlug(observedAt)}`
+
+const urlFor = (replica: HydraliskGlm52Replica, path: string): string =>
+  `${replica.baseUrl.replace(/\/+$/u, '')}${path}`
+
+const authorizedHeaders = (
+  replica: HydraliskGlm52Replica,
+): Record<string, string> => ({
+  accept: 'application/json',
+  authorization: `Bearer ${replica.bearerToken}`,
+})
+
+const fetchOk = (
+  fetchImpl: GlmPoolHeartbeatFetch,
+  replica: HydraliskGlm52Replica,
+  path: string,
+): Effect.Effect<boolean> =>
+  Effect.tryPromise({
+    catch: () => 'glm_pool_heartbeat_fetch_failed' as const,
+    try: async () => {
+      const response = await fetchImpl(urlFor(replica, path), {
+        headers: authorizedHeaders(replica),
+        method: 'GET',
+      })
+      return response.ok
+    },
+  }).pipe(Effect.catch(() => Effect.succeed(false)))
+
+const warmRequestBody = (): Record<string, unknown> => ({
+  max_tokens: 1,
+  messages: [{ content: 'Reply READY.', role: 'user' }],
+  model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+  stream: false,
+  temperature: 0,
+})
+
+const usageFromWarmCompletion = (
+  value: unknown,
+): InferenceUsage | undefined => {
+  const record = recordFromUnknown(value)
+  const usage = recordFromUnknown(record?.['usage'])
+  const promptTokens = Number(usage?.['prompt_tokens'])
+  const completionTokens = Number(usage?.['completion_tokens'])
+  const totalTokens = Number(usage?.['total_tokens'])
+  if (
+    !Number.isFinite(promptTokens) ||
+    !Number.isFinite(completionTokens) ||
+    !Number.isFinite(totalTokens)
+  ) {
+    return undefined
+  }
+  return {
+    completionTokens,
+    promptTokens,
+    totalTokens,
+  }
+}
+
+const warmCompletion = (
+  fetchImpl: GlmPoolHeartbeatFetch,
+  replica: HydraliskGlm52Replica,
+): Effect.Effect<InferenceUsage | undefined> =>
+  Effect.tryPromise({
+    catch: () => 'glm_pool_heartbeat_warm_failed' as const,
+    try: async () => {
+      const response = await fetchImpl(
+        urlFor(replica, '/v1/chat/completions'),
+        {
+          body: JSON.stringify(warmRequestBody()),
+          headers: {
+            ...authorizedHeaders(replica),
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+        },
+      )
+      if (!response.ok) {
+        return undefined
+      }
+      return usageFromWarmCompletion(await response.json())
+    },
+  }).pipe(
+    Effect.catch(() =>
+      Effect.sync((): InferenceUsage | undefined => undefined),
+    ),
+  )
+
+const emptyUsage: InferenceUsage = {
+  completionTokens: 0,
+  promptTokens: 0,
+  totalTokens: 0,
+}
+
+const roundMs = (value: number): number =>
+  Math.max(0, Math.round(value * 1000) / 1000)
+
+const costUsdFor = (usage: InferenceUsage): number =>
+  Math.round(
+    Math.max(
+      0,
+      priceRequest({
+        fundingKind: 'card',
+        model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+        usage,
+      }).costUsd,
+    ) * 1_000_000,
+  ) / 1_000_000
+
+const recordRoutingState = (
+  record: GlmPoolHeartbeatReplicaRecord,
+): GlmReplicaRoutingStateOverride => ({
+  benchmarkReserved: record.benchmarkReserved,
+  draining: record.draining,
+  health:
+    record.watchdogStatus === 'healthy'
+      ? 'healthy'
+      : record.watchdogStatus === 'skipped'
+        ? 'degraded'
+        : 'unhealthy',
+  warmState: record.warmState,
+  ...(record.warmState === 'warm'
+    ? { warmAtEpochMs: Date.parse(record.observedAt) }
+    : {}),
+})
+
+export const recordGlmPoolHeartbeatRoutingState = (
+  records: ReadonlyArray<GlmPoolHeartbeatReplicaRecord>,
+): void => {
+  for (const record of records) {
+    latestRoutingStateByReplica.set(
+      record.replicaId,
+      recordRoutingState(record),
+    )
+  }
+}
+
+export const glmPoolHeartbeatRoutingStateOracle = (
+  replicaId: string,
+): GlmReplicaRoutingStateOverride | undefined =>
+  latestRoutingStateByReplica.get(replicaId)
+
+const ingestHeartbeatRecord = (
+  ledger: TokenUsageLedgerShape,
+  record: GlmPoolHeartbeatReplicaRecord,
+): Effect.Effect<void> =>
+  ledger
+    .ingestEvent({
+      schemaVersion: 'openagents.token_usage_event.v1',
+      actor: { accountRef: HEARTBEAT_ACCOUNT_REF },
+      backendProfile: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      cost:
+        record.usage.totalTokens > 0
+          ? { amount: costUsdFor(record.usage), currency: 'USD' }
+          : undefined,
+      demand: {
+        demandClient: HEARTBEAT_DEMAND_CLIENT,
+        demandKind: 'own_capacity',
+        demandSource: HEARTBEAT_DEMAND_SOURCE,
+      },
+      eventId: `event.${record.runRef}.${record.replicaId}`,
+      idempotencyKey: `inference:glm-pool-heartbeat:${record.runRef}:${record.replicaId}`,
+      model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+      observedAt: record.observedAt,
+      privacy: { leaderboardEligible: false, privacyOptOut: false },
+      producerSystem: 'omega',
+      provider: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      safeMetadata: {
+        benchmarkReserved: record.benchmarkReserved,
+        demandClient: HEARTBEAT_DEMAND_CLIENT,
+        demandKind: 'own_capacity',
+        demandSource: HEARTBEAT_DEMAND_SOURCE,
+        draining: record.draining,
+        heartbeatKind: 'glm_pool_heartbeat',
+        heartbeatRunRef: record.runRef,
+        healthStatus: record.healthStatus,
+        keepWarmStatus: record.keepWarmStatus,
+        modelsStatus: record.modelsStatus,
+        replicaWarmState: record.warmState,
+        selectedReplicaId: record.replicaId,
+        selectedReplicaRef: record.replicaRef,
+        totalWallClockMs: record.totalWallClockMs,
+        warmCompletionStatus: record.warmCompletionStatus,
+        watchdogStatus: record.watchdogStatus,
+      },
+      sourceRefs: { runRef: record.runRef },
+      sourceRoute: 'omega_hosted_gemini',
+      tokenCounts: {
+        cacheReadTokens: 0,
+        cacheWrite1hTokens: 0,
+        cacheWrite5mTokens: 0,
+        inputTokens: Math.max(0, Math.trunc(record.usage.promptTokens)),
+        outputTokens: Math.max(0, Math.trunc(record.usage.completionTokens)),
+        reasoningTokens: 0,
+        totalTokens: Math.max(0, Math.trunc(record.usage.totalTokens)),
+      },
+      usageTruth: 'exact',
+    })
+    .pipe(
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    )
+
+const skippedRecord = (
+  input: Readonly<{
+    keepWarmStatus: Extract<
+      GlmPoolKeepWarmStatus,
+      'skipped_benchmark_reserved' | 'skipped_draining'
+    >
+    observedAt: string
+    replica: HydraliskGlm52Replica
+    runRef: string
+  }>,
+): GlmPoolHeartbeatReplicaRecord => ({
+  benchmarkReserved: input.replica.benchmarkReserved,
+  draining: input.replica.draining,
+  healthStatus: 'skipped',
+  keepWarmStatus: input.keepWarmStatus,
+  modelsStatus: 'skipped',
+  observedAt: input.observedAt,
+  replicaId: input.replica.replicaId,
+  replicaRef: replicaRefFor(input.replica.replicaId),
+  runRef: input.runRef,
+  totalWallClockMs: 0,
+  usage: emptyUsage,
+  warmCompletionStatus: 'skipped',
+  warmState: 'unknown',
+  watchdogStatus: 'skipped',
+})
+
+const probeReplica = (
+  input: Readonly<{
+    benchmarkOwnershipActive: boolean
+    fetchImpl: GlmPoolHeartbeatFetch
+    ledger: TokenUsageLedgerShape
+    nowMs: () => number
+    observedAt: string
+    replica: HydraliskGlm52Replica
+    runRef: string
+    warmCompletionEnabled: boolean
+  }>,
+): Effect.Effect<GlmPoolHeartbeatReplicaRecord> =>
+  Effect.gen(function* () {
+    if (input.replica.benchmarkReserved) {
+      return skippedRecord({
+        keepWarmStatus: 'skipped_benchmark_reserved',
+        observedAt: input.observedAt,
+        replica: input.replica,
+        runRef: input.runRef,
+      })
+    }
+    if (input.replica.draining) {
+      return skippedRecord({
+        keepWarmStatus: 'skipped_draining',
+        observedAt: input.observedAt,
+        replica: input.replica,
+        runRef: input.runRef,
+      })
+    }
+
+    const startedAt = input.nowMs()
+    const healthOk = yield* fetchOk(input.fetchImpl, input.replica, '/health')
+    const modelsOk = yield* fetchOk(
+      input.fetchImpl,
+      input.replica,
+      '/v1/models',
+    )
+    const shouldWarm =
+      input.warmCompletionEnabled && !input.benchmarkOwnershipActive
+    const usage = shouldWarm
+      ? yield* warmCompletion(input.fetchImpl, input.replica)
+      : undefined
+    const totalWallClockMs = roundMs(input.nowMs() - startedAt)
+    const warmOk = usage !== undefined
+    const watchdogStatus: GlmPoolWatchdogStatus =
+      healthOk && modelsOk ? 'healthy' : 'unhealthy'
+    const keepWarmStatus: GlmPoolKeepWarmStatus =
+      shouldWarm && warmOk
+        ? 'completed'
+        : shouldWarm
+          ? 'failed'
+          : input.benchmarkOwnershipActive
+            ? 'skipped_benchmark_window'
+            : input.warmCompletionEnabled
+              ? 'failed'
+              : 'control_plane_only'
+    const healthStatus: GlmPoolHeartbeatProbeStatus = healthOk ? 'ok' : 'failed'
+    const modelsStatus: GlmPoolHeartbeatProbeStatus = modelsOk ? 'ok' : 'failed'
+    const warmCompletionStatus: GlmPoolHeartbeatProbeStatus = shouldWarm
+      ? warmOk
+        ? 'ok'
+        : 'failed'
+      : 'skipped'
+    const warmState: GlmPoolHeartbeatWarmState = warmOk
+      ? 'warm'
+      : watchdogStatus === 'healthy'
+        ? 'unknown'
+        : 'cold'
+
+    return {
+      benchmarkReserved: input.replica.benchmarkReserved,
+      draining: input.replica.draining,
+      healthStatus,
+      keepWarmStatus,
+      modelsStatus,
+      observedAt: input.observedAt,
+      replicaId: input.replica.replicaId,
+      replicaRef: replicaRefFor(input.replica.replicaId),
+      runRef: input.runRef,
+      totalWallClockMs,
+      usage: usage ?? emptyUsage,
+      warmCompletionStatus,
+      warmState,
+      watchdogStatus,
+    }
+  }).pipe(Effect.tap(record => ingestHeartbeatRecord(input.ledger, record)))
+
+export const runGlmPoolHeartbeat = (
+  input: Readonly<{
+    benchmarkOwnershipActive: boolean
+    fetchImpl?: GlmPoolHeartbeatFetch | undefined
+    ledger: TokenUsageLedgerShape
+    nowMs?: (() => number) | undefined
+    observedAt: string
+    replicas: ReadonlyArray<HydraliskGlm52Replica>
+    warmCompletionEnabled: boolean
+  }>,
+): Effect.Effect<GlmPoolHeartbeatRunReport> => {
+  const runRef = runRefFor(input.observedAt)
+  const fetchImpl = input.fetchImpl ?? globalThis.fetch
+  const nowMs = input.nowMs ?? currentEpochMillis
+
+  return Effect.gen(function* () {
+    const records = yield* Effect.forEach(input.replicas, replica =>
+      probeReplica({
+        benchmarkOwnershipActive: input.benchmarkOwnershipActive,
+        fetchImpl,
+        ledger: input.ledger,
+        nowMs,
+        observedAt: input.observedAt,
+        replica,
+        runRef,
+        warmCompletionEnabled: input.warmCompletionEnabled,
+      }),
+    )
+    recordGlmPoolHeartbeatRoutingState(records)
+
+    return {
+      benchmarkOwnershipActive: input.benchmarkOwnershipActive,
+      enabled: true,
+      observedAt: input.observedAt,
+      records,
+      runRef,
+      warmCompletionEnabled: input.warmCompletionEnabled,
+    }
+  })
+}
+
+const cadenceAllows = (
+  scheduledTimeMs: number,
+  cadenceMinutes: number,
+): boolean => {
+  const minute = Math.floor(scheduledTimeMs / 60_000)
+  return minute % cadenceMinutes === 0
+}
+
+export const runScheduledGlmPoolHeartbeat = (
+  input: Readonly<{
+    env: HydraliskGlmPoolHeartbeatEnv
+    fetchImpl?: GlmPoolHeartbeatFetch | undefined
+    ledger: TokenUsageLedgerShape
+    scheduledTimeMs: number
+  }>,
+): Effect.Effect<GlmPoolHeartbeatRunReport> => {
+  const observedAt = epochMillisToIsoTimestamp(input.scheduledTimeMs)
+  const runRef = runRefFor(observedAt)
+  const enabled = isEnabledFlag(
+    input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED,
+  )
+  const warmCompletionEnabled = isEnabledFlag(
+    input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED,
+  )
+  const benchmarkOwnershipActive = isEnabledFlag(
+    input.env.HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE,
+  )
+  const cadenceMinutes = parsePositiveInteger(
+    input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES,
+    4,
+  )
+  const arming = resolveHydraliskGlm52Reap504bArming(input.env)
+
+  if (!enabled) {
+    return Effect.succeed({
+      benchmarkOwnershipActive,
+      enabled: false,
+      observedAt,
+      records: [],
+      runRef,
+      skippedReason: 'disabled',
+      warmCompletionEnabled,
+    })
+  }
+
+  if (!cadenceAllows(input.scheduledTimeMs, cadenceMinutes)) {
+    return Effect.succeed({
+      benchmarkOwnershipActive,
+      enabled: true,
+      observedAt,
+      records: [],
+      runRef,
+      skippedReason: 'cadence',
+      warmCompletionEnabled,
+    })
+  }
+
+  if (arming.replicas.length === 0) {
+    return Effect.succeed({
+      benchmarkOwnershipActive,
+      enabled: true,
+      observedAt,
+      records: [],
+      runRef,
+      skippedReason: 'unarmed',
+      warmCompletionEnabled,
+    })
+  }
+
+  return runGlmPoolHeartbeat({
+    benchmarkOwnershipActive,
+    ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
+    ledger: input.ledger,
+    observedAt,
+    replicas: arming.replicas,
+    warmCompletionEnabled,
+  })
+}
+
+export const runScheduledGlmPoolHeartbeatForD1 = (
+  input: Readonly<{
+    db: D1Database
+    env: HydraliskGlmPoolHeartbeatEnv
+    scheduledTimeMs: number
+  }>,
+): Effect.Effect<GlmPoolHeartbeatRunReport> =>
+  runScheduledGlmPoolHeartbeat({
+    env: input.env,
+    ledger: makeD1TokenUsageLedger(input.db),
+    scheduledTimeMs: input.scheduledTimeMs,
+  })

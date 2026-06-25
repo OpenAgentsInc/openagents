@@ -379,6 +379,10 @@ import {
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import {
+  glmPoolHeartbeatRoutingStateOracle,
+  runScheduledGlmPoolHeartbeatForD1,
+} from './inference/glm-pool-heartbeat'
+import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
 } from './inference/gym/run-progress-routes'
@@ -8826,6 +8830,7 @@ const registerHydraliskAdapter = (
           replicaId: replica.replicaId,
           upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
         })),
+        routingStateOracle: glmPoolHeartbeatRoutingStateOracle,
         upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
       }),
     )
@@ -12003,6 +12008,14 @@ export default {
       observedEffect(
         'RelayHealth.probeTick',
         runRelayHealthProbeScheduled(env, event.scheduledTime),
+      ),
+      observedEffect(
+        'HydraliskGlmPoolHeartbeat.run',
+        runScheduledGlmPoolHeartbeatForD1({
+          db: openAgentsDatabase(env),
+          env,
+          scheduledTimeMs: event.scheduledTime,
+        }),
       ),
       observedEffect(
         'SelfServeWindowProducer.topUp',

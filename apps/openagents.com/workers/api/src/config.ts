@@ -296,6 +296,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_BENCHMARK_RESERVED?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_DRAINING?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED?:
+    | string
+    | undefined
+  HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE?: string | undefined
   // Optional comma-separated pool names. When absent, the five legacy GLM
   // fields above are treated as the `primary` replica. When present, each
   // named replica reads HYDRALISK_GLM_52_REAP_504B_<REPLICA>_<FIELD>, with

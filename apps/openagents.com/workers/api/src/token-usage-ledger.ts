@@ -407,6 +407,9 @@ type InferenceAnalyticsMetadataRow = Readonly<{
   demand_source: string | null
   fallback_reason: string | null
   glm_saturation_policy: string | null
+  heartbeat_kind: string | null
+  heartbeat_run_ref: string | null
+  keep_warm_status: string | null
   perceived_tokens_per_second: number | null
   queue_wait_ms: number | null
   replica_busy_reason: string | null
@@ -423,6 +426,8 @@ type InferenceAnalyticsMetadataRow = Readonly<{
   total_tokens: number | null
   total_wall_clock_ms: number | null
   ttft_ms: number | null
+  warm_completion_status: string | null
+  watchdog_status: string | null
 }>
 
 const finiteNonNegativeNumber = (
@@ -573,7 +578,7 @@ const glmReplicaSummaries = (
           replicaCost?.effectiveCostPerServedTokenUsd ?? NOT_MEASURED,
         fallbackEvents,
         idleHours: replicaCost?.idleHours ?? NOT_MEASURED,
-        keepWarmStatus: NOT_MEASURED,
+        keepWarmStatus: safeTextOrNotMeasured(latest?.keep_warm_status),
         key: safeTextOrNotMeasured(latest?.selected_replica_ref),
         label: safeTextOrNotMeasured(latest?.selected_replica_id),
         latestInflight: measuredLatest(latest?.replica_inflight_count),
@@ -588,7 +593,7 @@ const glmReplicaSummaries = (
         uptimeHours: replicaCost?.uptimeHours ?? NOT_MEASURED,
         usageEvents,
         warmState: safeTextOrNotMeasured(latest?.replica_warm_state),
-        watchdogStatus: NOT_MEASURED,
+        watchdogStatus: safeTextOrNotMeasured(latest?.watchdog_status),
       }
     })
     .sort(
@@ -1814,6 +1819,9 @@ export const makeD1TokenUsageLedger = (
                   demand_source,
                   json_extract(safe_metadata_json, '$.fallbackReason') AS fallback_reason,
                   json_extract(safe_metadata_json, '$.glmSaturationPolicy') AS glm_saturation_policy,
+                  json_extract(safe_metadata_json, '$.heartbeatKind') AS heartbeat_kind,
+                  json_extract(safe_metadata_json, '$.heartbeatRunRef') AS heartbeat_run_ref,
+                  json_extract(safe_metadata_json, '$.keepWarmStatus') AS keep_warm_status,
                   json_extract(safe_metadata_json, '$.perceivedTokensPerSecond') AS perceived_tokens_per_second,
                   json_extract(safe_metadata_json, '$.queueWaitMs') AS queue_wait_ms,
                   json_extract(safe_metadata_json, '$.replicaBusyReason') AS replica_busy_reason,
@@ -1829,7 +1837,9 @@ export const makeD1TokenUsageLedger = (
                   json_extract(safe_metadata_json, '$.selectedReplicaRef') AS selected_replica_ref,
                   total_tokens,
                   json_extract(safe_metadata_json, '$.totalWallClockMs') AS total_wall_clock_ms,
-                  json_extract(safe_metadata_json, '$.ttftMs') AS ttft_ms
+                  json_extract(safe_metadata_json, '$.ttftMs') AS ttft_ms,
+                  json_extract(safe_metadata_json, '$.warmCompletionStatus') AS warm_completion_status,
+                  json_extract(safe_metadata_json, '$.watchdogStatus') AS watchdog_status
                  FROM token_usage_events
                 ${whereSql}`,
             )

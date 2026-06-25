@@ -183,9 +183,30 @@ It also returns operational summaries:
   selected replica was up for the selected analytics window, and amortizes that
   hourly burn across active serving wall-clock, idle time, served tokens, and
   accepted outcomes when an accepted-outcome count is present. Because host
-  lifecycle, storage, keep-warm, and benchmark-reserved telemetry are not yet
-  first-class ledgers, `costCoverage` is `partial` and those gaps appear as
-  blocker refs rather than being hidden as $0.
+  lifecycle, storage, and benchmark-reserved burn are not yet first-class
+  ledgers, `costCoverage` is `partial` and those gaps appear as blocker refs
+  rather than being hidden as $0. Keep-warm and watchdog status come from the
+  Worker GLM pool heartbeat when it is enabled.
+
+### GLM heartbeat visibility
+
+The Worker heartbeat is disabled by default and controlled separately from model
+serving:
+
+```text
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED=true
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES=4
+HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED=false
+HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE=false
+```
+
+Each enabled tick writes one public-safe ledger row per configured replica.
+Rows for replicas marked `benchmarkReserved` or `draining` are skipped without
+calling the endpoint. Eligible replicas get `/health` and `/v1/models` checks,
+and only send a tiny warm completion when the warm-completion flag is true and
+the benchmark ownership flag is false. Owner analytics read
+`keepWarmStatus`, `watchdogStatus`, `warmCompletionStatus`, warm state, wall
+time, and any exact warm-completion token counts from those rows.
 
 ### Owned GLM hourly profiles
 

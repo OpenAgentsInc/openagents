@@ -214,6 +214,36 @@ describe('hydralisk vLLM adapter', () => {
     ])
   })
 
+  it('uses heartbeat warm state to avoid cold replicas when another candidate is usable', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('cold', {
+          baseUrl: 'https://cold.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('unknown', {
+          baseUrl: 'https://unknown.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'cold' ? { warmState: 'cold' } : undefined,
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaWarmState: 'unknown',
+      selectedReplicaId: 'unknown',
+    })
+    expect(capturedInputs).toEqual([
+      'https://unknown.example.test/v1/chat/completions',
+    ])
+  })
+
   it('sends concurrent singleflight requests to different idle replicas', async () => {
     const capturedInputs: Array<string> = []
     let releasePrimary: (() => void) | undefined
