@@ -27,30 +27,30 @@ served adapter id) is the ground truth.
 
 **Production ledger (`token_usage_events`, queried 2026-06-25):**
 
-| provider | model | rows | input tok | output tok | served | stored cost |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| `fireworks` | `accounts/fireworks/models/deepseek-v4-flash` | 560 | 321,065 | 810,787 | 1,131,852 | NULL |
-| `google_gemini` | `gemini-2.5-flash` | 1 | 6 | 1 | 7 | NULL |
+| provider        | model                                         | rows | input tok | output tok |    served | stored cost |
+| --------------- | --------------------------------------------- | ---: | --------: | ---------: | --------: | ----------: |
+| `fireworks`     | `accounts/fireworks/models/deepseek-v4-flash` |  560 |   321,065 |    810,787 | 1,131,852 |        NULL |
+| `google_gemini` | `gemini-2.5-flash`                            |    1 |         6 |          1 |         7 |        NULL |
 
 The ~1.13M tokens served so far were served by **Fireworks DeepSeek V4 Flash** —
 NOT GPT-OSS-120B and NOT Gemini Flash. The owner's "Flash"/Gemini intuition maps
-to the *final overflow lane*, which carried ~7 tokens. **DeepSeek V4 Flash is the
+to the _final overflow lane_, which carried ~7 tokens. **DeepSeek V4 Flash is the
 real cost basis to reason about today.**
 
 ## 2. Cost model — $ per 1M tokens on the real lane
 
 Fireworks DeepSeek V4 Flash, verified cost (`2026-06-19-fireworks-provider.md`):
 
-| dimension | our cost $/Mtok | Khala sell $/Mtok (catalog `oa_price`) |
-| --- | ---: | ---: |
-| input | **0.14** | 0.196 |
-| cached input | 0.028 | — |
-| output | **0.28** | 0.392 |
+| dimension    | our cost $/Mtok | Khala sell $/Mtok (catalog `oa_price`) |
+| ------------ | --------------: | -------------------------------------: |
+| input        |        **0.14** |                                  0.196 |
+| cached input |           0.028 |                                      — |
+| output       |        **0.28** |                                  0.392 |
 
 - The catalog `oa_multiplier 0.03` / sell `$0.196 in / $0.392 out` is the
   **customer price**; our **cost** is the Fireworks rate above. Sell ÷ cost =
   **1.4×** → exactly the 40% margin band. (The catalog row for `openagents/khala`
-  is modeled on the GPT-OSS-120B cost basis, $0.15/$0.60; the *actually served*
+  is modeled on the GPT-OSS-120B cost basis, $0.15/$0.60; the _actually served_
   lane, DeepSeek V4 Flash at $0.14/$0.28, is even cheaper, so margin is intact.)
 - **Blended cost at the observed mix** (28% input / 72% output):
   **~$0.24 / Mtok**. Output dominates because Khala traffic runs ~2.5 output : 1
@@ -72,20 +72,20 @@ spend. Khala inference is, at current volume, financially negligible.
 Using blended cost ~$0.24/Mtok (realistic) and the all-output worst case
 ($0.28/Mtok):
 
-| daily quota | realistic $/user/day | worst-case $/user/day |
-| ---: | ---: | ---: |
-| 200,000 (old) | $0.048 | $0.056 |
-| 1,000,000 | $0.240 | $0.280 |
-| **2,500,000 (chosen)** | **$0.601** | **$0.700** |
-| 5,000,000 | $1.201 | $1.400 |
+|            daily quota | realistic $/user/day | worst-case $/user/day |
+| ---------------------: | -------------------: | --------------------: |
+|          200,000 (old) |               $0.048 |                $0.056 |
+|              1,000,000 |               $0.240 |                $0.280 |
+| **2,500,000 (chosen)** |           **$0.601** |            **$0.700** |
+|              5,000,000 |               $1.201 |                $1.400 |
 
 ### Projection table (chosen 2.5M quota × N daily free users)
 
-| daily free users | all maxing quota (realistic) | @20% avg utilization |
-| ---: | ---: | ---: |
-| 10 | $6.01/day (~$180/mo) | $1.20/day (~$36/mo) |
-| 100 | $60.07/day (~$1.8k/mo) | $12.01/day (~$360/mo) |
-| 1000 | $600.72/day (~$18k/mo) | $120.14/day (~$3.6k/mo) |
+| daily free users | all maxing quota (realistic) |    @20% avg utilization |
+| ---------------: | ---------------------------: | ----------------------: |
+|               10 |         $6.01/day (~$180/mo) |     $1.20/day (~$36/mo) |
+|              100 |       $60.07/day (~$1.8k/mo) |   $12.01/day (~$360/mo) |
+|             1000 |       $600.72/day (~$18k/mo) | $120.14/day (~$3.6k/mo) |
 
 "All maxing the full 2.5M every day" is a deliberate worst case; a real "try it"
 session uses a fraction. Even so, 100 fully-maxed free users is ~$60/day — a
@@ -131,12 +131,12 @@ npx wrangler secret put FREE_TIER_MAX_REQUESTS_PER_DAY  # e.g. 4000
 `producer_system`, `source_route`, `input_tokens`, `output_tokens`,
 `total_tokens`, `observed_at`, and — importantly — `cost_amount` / `currency`
 columns, with indexes on `(provider, model, observed_at)` and
-`(producer_system, source_route, observed_at)`. So **"which providers + how many
-tokens + when" was fully answerable** from day one.
+`(producer_system, source_route, observed_at)`. Migration 0232 adds typed demand
+attribution columns: `demand_kind`, `demand_source`, and `demand_client`.
 
 **The one gap: cost was never recorded.** Every one of the 561 rows had
 `cost_amount = NULL` — the served-tokens recorder wrote tokens but not cost. So
-"what did it cost" could only be *derived*, not read.
+"what did it cost" could only be _derived_, not read.
 
 ### What I added to storage
 
@@ -147,12 +147,19 @@ the ledger answers "what did it cost" directly. Historical NULL-cost rows are
 reported honestly via a `costCoverage` ratio (see below) rather than silently
 counted as $0.
 
+The same recorder also promotes request attribution into the typed demand
+columns. Internal dogfood callers send `x-openagents-demand-kind: internal` plus
+a bounded source/client label such as `openagents-gym` or `qa-runner`. External
+callers may send `external`. Missing or partial attribution is deliberately
+`unlabeled`, never guessed as external.
+
 ### The analytics read
 
 `TokenUsageLedger.readInferenceAnalytics({ window })` (aggregate-only, no
 per-user/prompt material) returns token + cost rollups grouped by **provider**,
-**model**, **source-route/producer-system**, and **day**, plus window-wide
-totals. Windows: `today | 7d | 30d | all`.
+**model**, **source-route/producer-system**, **demand kind**, **demand source**,
+**demand client**, and **day**, plus window-wide totals. Windows:
+`today | 7d | 30d | all`.
 
 ### The endpoint (owner-gated)
 
@@ -176,6 +183,9 @@ Sample response shape:
   ],
   "byModel":  [ { "key": "accounts/fireworks/models/deepseek-v4-flash", ... } ],
   "byRoute":  [ { "key": "omega:omega_hosted_gemini", ... } ],
+  "byDemandKind":   [ { "key": "internal", "totalTokens": 700000, ... } ],
+  "byDemandSource": [ { "key": "internal:openagents-gym", "totalTokens": 700000, ... } ],
+  "byDemandClient": [ { "key": "internal:gym-opencode-runner", "totalTokens": 700000, ... } ],
   "byDay":    [ { "day": "2026-06-25", "totalTokens": 1131852, "costUsd": 0.272, ... } ],
   "totals": {
     "inputTokens": 321065, "outputTokens": 810787, "totalTokens": 1131852,
@@ -198,11 +208,14 @@ and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
     -H "Cookie: <your authenticated openagents.com session cookie>" | jq .
   ```
   Use `window=today` for the day, `30d`/`all` for trend. Watch `byProvider`
-  (which lane is carrying load + its cost), `byDay.costUsd` (daily burn), and
+  (which lane is carrying load + its cost), `byDemandKind` /
+  `byDemandSource` / `byDemandClient` (internal dogfood vs external vs
+  unlabeled tool traffic), `byDay.costUsd` (daily burn), and
   `totals.costCoverage` (data completeness).
 - **Public served-tokens counter** (`/api/public/khala-tokens-served` +
-  `/history`) remains the public-safe token total; the analytics endpoint is the
-  internal cost/provider companion.
+  `/history`) remains the public-safe token total; it never exposes demand
+  labels or implies internal dogfood is external traction. The analytics
+  endpoint is the internal cost/provider/demand companion.
 - **Re-confirm the cost basis** whenever the served lane changes: re-run the
   prod ledger group-by from §1; if a new `provider`/`model` appears, add/confirm
   its row in `pricing.ts` so `cost_amount` keeps pricing the real lane.

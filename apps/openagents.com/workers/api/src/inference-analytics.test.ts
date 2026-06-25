@@ -1,11 +1,11 @@
 // Owner-gated inference cost / provider-lane analytics (#6232) — SQL behavior
 // test. Runs `readInferenceAnalytics` against a REAL node:sqlite database loaded
-// with migration 0137, so the GROUP BY / SUM / cost-coverage SQL is exercised
-// for real rather than against a hand-rolled query mock.
+// with the real token-usage migrations, so the GROUP BY / SUM / cost-coverage
+// / demand-attribution SQL is exercised for real rather than against a
+// hand-rolled query mock.
+import { Effect } from 'effect'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-
-import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -63,14 +63,21 @@ class SqliteD1 {
   }
 }
 
-const migration = readFileSync(
+const tokenUsageEventsMigration = readFileSync(
   new URL('../migrations/0137_token_usage_events.sql', import.meta.url),
+  'utf8',
+)
+const demandAttributionMigration = readFileSync(
+  new URL(
+    '../migrations/0232_token_usage_demand_attribution.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 
 const makeDb = (): D1Database => {
   const raw = new DatabaseSync(':memory:')
-  raw.exec(migration)
+  raw.exec(`${tokenUsageEventsMigration}\n${demandAttributionMigration}`)
   return new SqliteD1(raw) as unknown as D1Database
 }
 
@@ -84,6 +91,9 @@ const fireworksEvent = (
     inputTokens: number
     outputTokens: number
     costUsd?: number | undefined
+    demandClient?: string | undefined
+    demandKind?: 'external' | 'internal' | 'unlabeled' | undefined
+    demandSource?: string | undefined
   }>,
 ) => ({
   schemaVersion: 'openagents.token_usage_event.v1' as const,
@@ -92,6 +102,19 @@ const fireworksEvent = (
   ...(overrides.costUsd === undefined
     ? {}
     : { cost: { amount: overrides.costUsd, currency: 'USD' } }),
+  ...(overrides.demandKind === undefined
+    ? {}
+    : {
+        demand: {
+          demandKind: overrides.demandKind,
+          ...(overrides.demandSource === undefined
+            ? {}
+            : { demandSource: overrides.demandSource }),
+          ...(overrides.demandClient === undefined
+            ? {}
+            : { demandClient: overrides.demandClient }),
+        },
+      }),
   eventId: overrides.eventId,
   idempotencyKey: `idem:${overrides.eventId}`,
   model: 'accounts/fireworks/models/deepseek-v4-flash',
@@ -117,9 +140,7 @@ const runLedger = <A>(
 ): Promise<A> =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(
-        TokenUsageLedger.live(db, systemTokenUsageLedgerRuntime),
-      ),
+      Effect.provide(TokenUsageLedger.live(db, systemTokenUsageLedgerRuntime)),
     ),
   )
 
@@ -133,6 +154,9 @@ const analytics = (filters?: TokenUsageLedgerFilters & { window?: string }) =>
     ledger.readInferenceAnalytics({ now: NOW, ...filters }),
   )
 
+const publicTokensServed = () =>
+  Effect.flatMap(TokenUsageLedger, ledger => ledger.readPublicTokensServed())
+
 describe('readInferenceAnalytics (#6232)', () => {
   test('aggregates tokens + cost by provider, model, route, and day', async () => {
     const db = makeDb()
@@ -141,6 +165,9 @@ describe('readInferenceAnalytics (#6232)', () => {
       ingest(
         fireworksEvent({
           costUsd: 0.18,
+          demandClient: 'gym-opencode-runner',
+          demandKind: 'internal',
+          demandSource: 'openagents-gym',
           eventId: 'e1',
           inputTokens: 200_000,
           observedAt: '2026-06-25T01:00:00.000Z',
@@ -153,6 +180,9 @@ describe('readInferenceAnalytics (#6232)', () => {
       ingest(
         fireworksEvent({
           costUsd: 0.09,
+          demandClient: 'sdk',
+          demandKind: 'external',
+          demandSource: 'public-api',
           eventId: 'e2',
           inputTokens: 121_065,
           observedAt: '2026-06-25T05:00:00.000Z',
@@ -181,6 +211,38 @@ describe('readInferenceAnalytics (#6232)', () => {
       'accounts/fireworks/models/deepseek-v4-flash',
     )
     expect(result.byRoute[0]?.key).toBe('omega:omega_hosted_gemini')
+    expect(result.byDemandKind).toEqual([
+      expect.objectContaining({
+        key: 'internal',
+        totalTokens: 700_000,
+        usageEvents: 1,
+      }),
+      expect.objectContaining({
+        key: 'external',
+        totalTokens: 431_852,
+        usageEvents: 1,
+      }),
+    ])
+    expect(result.byDemandSource).toEqual([
+      expect.objectContaining({
+        key: 'internal:openagents-gym',
+        totalTokens: 700_000,
+      }),
+      expect.objectContaining({
+        key: 'external:public-api',
+        totalTokens: 431_852,
+      }),
+    ])
+    expect(result.byDemandClient).toEqual([
+      expect.objectContaining({
+        key: 'internal:gym-opencode-runner',
+        totalTokens: 700_000,
+      }),
+      expect.objectContaining({
+        key: 'external:sdk',
+        totalTokens: 431_852,
+      }),
+    ])
 
     // byDay collapses both same-day rows into one ascending point.
     expect(result.byDay).toHaveLength(1)
@@ -230,6 +292,45 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.totals.costUsd).toBeCloseTo(0.1, 6)
     // Half the rows carry a stored cost.
     expect(result.totals.costCoverage).toBe(0.5)
+  })
+
+  test('keeps the public token counter total-only across internal and external demand', async () => {
+    const db = makeDb()
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          demandClient: 'qa-runner',
+          demandKind: 'internal',
+          demandSource: 'qa-dogfood',
+          eventId: 'internal',
+          inputTokens: 100,
+          observedAt: '2026-06-25T01:00:00.000Z',
+          outputTokens: 50,
+        }),
+      ),
+    )
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          demandClient: 'sdk',
+          demandKind: 'external',
+          demandSource: 'public-api',
+          eventId: 'external',
+          inputTokens: 20,
+          observedAt: '2026-06-25T02:00:00.000Z',
+          outputTokens: 10,
+        }),
+      ),
+    )
+
+    const result = await runLedger(db, publicTokensServed())
+
+    expect(result).toEqual({ tokensServed: 180 })
+    expect(JSON.stringify(result)).not.toContain('internal')
+    expect(JSON.stringify(result)).not.toContain('external')
+    expect(JSON.stringify(result)).not.toContain('qa-dogfood')
   })
 
   test('window=today excludes rows before UTC start of day', async () => {

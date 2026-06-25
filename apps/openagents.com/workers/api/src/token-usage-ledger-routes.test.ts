@@ -10,14 +10,14 @@ import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  isoTimestampAfterIso,
+  utcStartOfDayIsoTimestamp,
+} from './runtime-primitives'
+import {
   TokenUsageLedger,
   type TokenUsageLedgerShape,
 } from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
-import {
-  isoTimestampAfterIso,
-  utcStartOfDayIsoTimestamp,
-} from './runtime-primitives'
 
 type TestSession = Readonly<{
   user: Readonly<{
@@ -40,6 +40,11 @@ const eventRecord = S.decodeUnknownSync(TokenUsageEventRecord)({
   },
   backendProfile: 'worker-secret',
   cost: null,
+  demand: {
+    demandKind: 'external' as const,
+    demandSource: 'public-api',
+    demandClient: 'sdk',
+  },
   eventId: 'token_event_route_1',
   idempotencyKey: 'route:event:1',
   ingestedAt: '2026-06-08T12:00:00.000Z',
@@ -121,7 +126,9 @@ const aggregateResponse = S.decodeUnknownSync(TokenUsageAggregateResponse)({
   usageEvents: 1,
 })
 
-const leaderboardsResponse = S.decodeUnknownSync(TokenUsageLeaderboardsResponse)({
+const leaderboardsResponse = S.decodeUnknownSync(
+  TokenUsageLeaderboardsResponse,
+)({
   schemaVersion: 'openagents.token_usage_leaderboards.v1' as const,
   anonymousTotals: eventRecord.tokenCounts,
   filters: {
@@ -167,6 +174,39 @@ const analyticsResponse = S.decodeUnknownSync(InferenceAnalyticsResponse)({
     {
       key: 'omega:omega_hosted_gemini',
       label: 'omega / omega_hosted_gemini',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byDemandKind: [
+    {
+      key: 'external',
+      label: 'external',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byDemandSource: [
+    {
+      key: 'external:public-api',
+      label: 'external / public-api',
+      inputTokens: 321065,
+      outputTokens: 810787,
+      totalTokens: 1131852,
+      usageEvents: 560,
+      costUsd: 0.272,
+    },
+  ],
+  byDemandClient: [
+    {
+      key: 'external:sdk',
+      label: 'external / sdk',
       inputTokens: 321065,
       outputTokens: 810787,
       totalTokens: 1131852,
@@ -458,6 +498,8 @@ describe('token usage ledger routes', () => {
       schemaVersion: 'openagents.inference_analytics.v1',
       window: '7d',
       byProvider: [{ key: 'fireworks', costUsd: 0.272 }],
+      byDemandKind: [{ key: 'external', totalTokens: 1131852 }],
+      byDemandSource: [{ key: 'external:public-api', totalTokens: 1131852 }],
       totals: { costCoverage: 1, totalTokens: 1131852 },
     })
     expect(admin.analyticsFilters).toEqual([{ window: '7d' }])
@@ -492,7 +534,9 @@ describe('token usage ledger routes', () => {
     })
     const forbiddenResponse = await Effect.runPromise(
       nonAdmin.routes.handleTokenUsageLeaderboardsApi(
-        new Request('https://openagents.com/api/stats/token-usage/leaderboards'),
+        new Request(
+          'https://openagents.com/api/stats/token-usage/leaderboards',
+        ),
         env,
         makeExecutionContext(),
       ),

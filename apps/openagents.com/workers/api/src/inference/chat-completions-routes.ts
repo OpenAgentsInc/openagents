@@ -18,8 +18,8 @@
 // #5476.
 import { Effect } from 'effect'
 
-import { recordFromUnknown } from '../json-boundary'
 import { noStoreJsonResponse } from '../http/responses'
+import { recordFromUnknown } from '../json-boundary'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -74,6 +74,7 @@ import {
   type SpendCapDecision,
 } from './inference-abuse-controls'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
+import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 import {
   KHALA_CODE_VERIFIER_WORKER_ID,
   type KhalaCodeVerificationVerdict,
@@ -109,13 +110,13 @@ import {
   stubMeteringHook,
 } from './metering-hook'
 import {
-  FIREWORKS_ADAPTER_ID,
-  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-  HYDRALISK_ADAPTER_ID,
-  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-  OPENAGENTS_NETWORK_ADAPTER_ID,
   type DispatchDeps,
   type DispatchRouteMetadata,
+  FIREWORKS_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENAGENTS_NETWORK_ADAPTER_ID,
   VERTEX_ANTHROPIC_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   classifyModel,
@@ -126,6 +127,7 @@ import {
   type SupplyLaneArming,
   resolveNamedModelServability,
 } from './model-serving-policy'
+import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
 import {
   type FundingKind,
   KHALA_CODE_MODEL_ID,
@@ -153,13 +155,11 @@ import {
   type InferenceStreamSource,
   type InferenceToolCallDelta,
 } from './provider-adapter'
-import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
-import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
 import {
   type ServedTokensRecorder,
   type ServedTokensRequestAttribution,
 } from './served-tokens-recorder'
-import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
+import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. Public model selection has
@@ -210,14 +210,20 @@ const requestAttributionFromHeaders = (
   const demandSource = safeAttributionToken(
     headers.get(INFERENCE_DEMAND_SOURCE_HEADER),
   )
-  const demandClient = safeAttributionToken(headers.get(INFERENCE_CLIENT_HEADER))
+  const demandClient = safeAttributionToken(
+    headers.get(INFERENCE_CLIENT_HEADER),
+  )
 
-  if (demandKind === undefined) {
+  if (
+    demandKind === undefined &&
+    demandSource === undefined &&
+    demandClient === undefined
+  ) {
     return undefined
   }
 
   return {
-    demandKind,
+    demandKind: demandKind ?? 'unlabeled',
     ...(demandSource === undefined ? {} : { demandSource }),
     ...(demandClient === undefined ? {} : { demandClient }),
   }
@@ -658,15 +664,11 @@ const decodeMessage = (value: unknown): InferenceMessage | undefined => {
     ...(name === undefined ? {} : { name }),
     role,
     ...(toolCallId === undefined ? {} : { toolCallId }),
-    ...(toolCalls === undefined || toolCalls.length === 0
-      ? {}
-      : { toolCalls }),
+    ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
   }
 }
 
-const decodeBody = (
-  value: unknown,
-): ChatCompletionsRequestBody | undefined => {
+const decodeBody = (value: unknown): ChatCompletionsRequestBody | undefined => {
   const record = recordFromUnknown(value)
   if (record === undefined || !Array.isArray(record['messages'])) {
     return undefined
@@ -1354,7 +1356,9 @@ const hasStreamFrameDelta = (delta: StreamFrameDelta): boolean =>
   delta.contentDelta !== '' ||
   (delta.toolCallDeltas !== undefined && delta.toolCallDeltas.length > 0)
 
-const openAiChunkDelta = (delta: StreamFrameDelta): Record<string, unknown> => ({
+const openAiChunkDelta = (
+  delta: StreamFrameDelta,
+): Record<string, unknown> => ({
   ...(delta.contentDelta === '' ? {} : { content: delta.contentDelta }),
   ...(delta.toolCallDeltas === undefined || delta.toolCallDeltas.length === 0
     ? {}
@@ -1651,9 +1655,7 @@ const makePassThroughResponseStream = (
             if (event.contentDelta !== '') {
               contentParts.push(event.contentDelta)
             }
-            controller.enqueue(
-              encoder.encode(chunkFrame(event, null)),
-            )
+            controller.enqueue(encoder.encode(chunkFrame(event, null)))
           }
         }
       } catch {
@@ -2122,9 +2124,7 @@ export const handleChatCompletions = (
           ...(deps.recordTokensServed === undefined
             ? {}
             : { recordTokensServed: deps.recordTokensServed }),
-          ...(requestAttribution === undefined
-            ? {}
-            : { requestAttribution }),
+          ...(requestAttribution === undefined ? {} : { requestAttribution }),
           // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
           // and generation wall-clock are genuinely observable (first delta + EOF).
           nowMs: nowEpochMillis,
@@ -2213,9 +2213,7 @@ export const handleChatCompletions = (
             accountRef: session.accountRef,
             adapterId: chunks.served.value.adapterId,
             requestId: responseId,
-            ...(requestAttribution === undefined
-              ? {}
-              : { requestAttribution }),
+            ...(requestAttribution === undefined ? {} : { requestAttribution }),
             requestedModel,
             servedModel: streamServedModel,
             streamed: true,
@@ -2528,7 +2526,11 @@ export const handleChatCompletions = (
     // itself re-checks every gate. We pass the GUARDED result so the trace records
     // the same identity-safe content the client received, and the ORIGINAL client
     // messages (gateway-injected scaffolding is dropped inside the emitter).
-    if (deps.traceEmit !== undefined && deps.traceEmit.enabled && traceEmitOptIn) {
+    if (
+      deps.traceEmit !== undefined &&
+      deps.traceEmit.enabled &&
+      traceEmitOptIn
+    ) {
       yield* Effect.promise(() =>
         deps.traceEmit!.emit({
           accountRef: session.accountRef,

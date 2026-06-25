@@ -37,8 +37,8 @@ import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
-  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
@@ -50,8 +50,8 @@ import {
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MODEL_ID,
 } from './pricing'
@@ -573,7 +573,8 @@ describe('POST /v1/chat/completions', () => {
     // their reconciliation.
     expect(context?.usage.completionTokens).toBe(2)
     expect(context?.usage.totalTokens).toBe(
-      (context?.usage.promptTokens ?? 0) + (context?.usage.completionTokens ?? 0),
+      (context?.usage.promptTokens ?? 0) +
+        (context?.usage.completionTokens ?? 0),
     )
     // Funding kind defaults to card, and the request id is threaded for
     // idempotency-keyed metering.
@@ -666,6 +667,31 @@ describe('POST /v1/chat/completions', () => {
       demandClient: 'qa-runner',
       demandKind: 'internal',
       demandSource: 'qa-dogfood',
+    })
+  })
+
+  test('keeps partial demand labels unlabeled instead of assuming external demand', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'opencode',
+          },
+        }),
+        baseDeps({
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandClient: 'opencode',
+      demandKind: 'unlabeled',
     })
   })
 
@@ -1489,7 +1515,10 @@ describe('POST /v1/chat/completions', () => {
     const meteringHook: MeteringHook = context =>
       Effect.sync(() => {
         captured.push(context)
-        return { metered: true, receiptRef: 'receipt.hydralisk.120b.route.test' }
+        return {
+          metered: true,
+          receiptRef: 'receipt.hydralisk.120b.route.test',
+        }
       })
 
     const response = await run(
@@ -3615,7 +3644,9 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
     }
     const captured: Array<Captured> = []
     const registry = new InferenceProviderRegistry()
-    registry.register(recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, captured, usage))
+    registry.register(
+      recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, captured, usage),
+    )
 
     const response = await run(
       handleChatCompletions(

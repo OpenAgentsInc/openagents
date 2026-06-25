@@ -20,7 +20,7 @@ Updated: 2026-06-25
 **Tokens served per day — and bend the curve exponentially, honestly.** Every epic
 below is justified by how it moves that one number (read off
 `/api/public/khala-tokens-served` + `/history`, shown on `/stats` and `/khala`),
-*and* keeps the number real (internal dogfood tokens tagged as such; no vanity
+_and_ keeps the number real (internal dogfood tokens tagged as such; no vanity
 inflation; published benchmark numbers only from owner-armed real seams).
 
 The three levers, in gating order (they overlap; this is what blocks what):
@@ -30,7 +30,7 @@ The three levers, in gating order (they overlap; this is what blocks what):
    Ships first, blocks on nobody. (Epics A, B.)
 2. **Ecosystem tools (Pillar 2)** — be a one-config-line drop-in in the coding/agent
    tools developers already use. First external demand. (Epic C.)
-3. **Benchmarking (Pillar 3)** — make it good and *prove* it: the Gym + Harbor +
+3. **Benchmarking (Pillar 3)** — make it good and _prove_ it: the Gym + Harbor +
    the head-to-head ladder. Quality is what keeps tools pointed at us. (Epics D, E.)
 4. **Measurement & honesty (cross-cutting)** — the analytics, cost basis, and
    counter that make all of the above legible and honest. (Epic F.)
@@ -51,8 +51,8 @@ they do not block dogfood or ecosystem landings.
   monotonic + exact (#6231 + the authoritative-total fix).
 - **Served-tokens recorder** writes one ledger row per completion with per-lane
   **`cost_amount`**; owner-gated **`GET /api/admin/inference-analytics`** (tokens +
-  cost by provider/model/route/day). Cost model: real lane = Fireworks DeepSeek V4
-  Flash, ~$0.24/Mtok blended (#6232).
+  cost by provider/model/route/day plus demand kind/source/client). Cost model:
+  real lane = Fireworks DeepSeek V4 Flash, ~$0.24/Mtok blended (#6232, #6252).
 - **OpenCode→Khala tool-calling** fixed across the Hydralisk + Fireworks adapters
   (content arrays + tool-call deltas preserved); ten concurrent OpenCode→Khala
   sessions ran. Runbook: `../inference/2026-06-25-opencode-khala-runbook-and-audit.md`.
@@ -78,6 +78,7 @@ they do not block dogfood or ecosystem landings.
 > them when the dogfood wiring is ready to start. Epics B–F are filed (#6237–#6252).
 
 ### A1. Autopilot / Raynor default their agent inference to Khala
+
 **Type:** task · **Lever:** dogfood · **Status:** direction
 **Why:** Autopilot is the gateway's designated anchor buyer — every coding session is
 captive first-party demand; Raynor's forum/progress posting is steady reasoning
@@ -91,6 +92,7 @@ source; no premium call silently hits the free lane.
 **Refs:** GTM §2.2; `2026-06-19-inference-gateway-business.md` §2.
 
 ### A2. Product seams default to Khala (Sites, forum agent, onboarding, Artanis, Concierge)
+
 **Type:** task · **Lever:** dogfood · **Status:** direction
 **Why:** "one internal seam, many internal callers, all counted" — every product that
 calls a model directly is uncounted demand we already pay for elsewhere.
@@ -103,6 +105,7 @@ the gateway.
 **Refs:** GTM §2.3.
 
 ### A3. Verse 3D visualization drives NPC/scene/narration inference through Khala
+
 **Type:** task · **Lever:** dogfood · **Status:** direction
 **Why:** the Verse already renders each Khala request as energy fanned to Pylons;
 driving its own inference through Khala makes the visualization literally show its
@@ -120,10 +123,11 @@ the in-world fan-out.
 > Pillar 1's highest-value first move, and the owner's explicit ask. Full audit:
 > [`../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md`](../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md).
 
-### B1. qa-runner: default its model backend to Khala  ([#6237](https://github.com/OpenAgentsInc/openagents/issues/6237))
+### B1. qa-runner: default its model backend to Khala ([#6237](https://github.com/OpenAgentsInc/openagents/issues/6237))
+
 **Type:** task · **Lever:** dogfood · **Status:** shipped (#6237)
 **Why:** QA runs continuously doing real browser work with verified verdicts — a
-steady token floor on the North Star *and* a continuous correctness signal on Khala
+steady token floor on the North Star _and_ a continuous correctness signal on Khala
 over the exact code/verification workload it must be good at. Dogfood lane #1.
 **Scope:** set `qa-runner`'s BYO-model config to `openagents/khala`, base
 `https://openagents.com/api/v1`, key from `POST /api/keys/free` (`QA_MODEL` /
@@ -138,7 +142,8 @@ test are produced as today; analytics attribute the tokens to QA (internal).
 `--fake-model` no-network, and sends public-safe `internal` / `qa-runner`
 attribution headers that the served-token recorder stores in ledger metadata.
 
-### B2. QA on every push — Tier 1: bounded, scoped pre-push smoke (no GitHub Actions)  ([#6245](https://github.com/OpenAgentsInc/openagents/issues/6245))
+### B2. QA on every push — Tier 1: bounded, scoped pre-push smoke (no GitHub Actions) ([#6245](https://github.com/OpenAgentsInc/openagents/issues/6245))
+
 **Type:** task · **Lever:** dogfood/quality · **Status:** shipped (#6245)
 **Why:** the owner wants every push to run QA; the repo has a hard **no-GitHub-Actions**
 invariant, so it must live in the local pre-push hook / our own infra — and must not
@@ -159,7 +164,8 @@ changed user-facing surfaces, runs deterministic `qa run --fake-model` under
 `OA_QA_PRE_PUSH_TIMEOUT_MS` (default 60s), skips unrelated pushes, and remains
 warning-only so a failed or incomplete QA run never forces `--no-verify`.
 
-### B3. QA on every push — Tier 2: full async QA pass on our GCE runner  ([#6238](https://github.com/OpenAgentsInc/openagents/issues/6238))
+### B3. QA on every push — Tier 2: full async QA pass on our GCE runner ([#6238](https://github.com/OpenAgentsInc/openagents/issues/6238))
+
 **Type:** epic · **Lever:** dogfood/quality · **Status:** shipped (#6238)
 **Why:** the authoritative, non-blocking, owned-infra home for the full matrix — what
 the no-Actions invariant intends ("autonomous/unattended execution on OUR GCE").
@@ -188,7 +194,8 @@ prints a warning, and pushes still proceed after `check:deploy` is green.
 > First external demand. Each child = a verified, published "point your tool at us"
 > recipe with a test checklist. Ordered by coding-traffic leverage.
 
-### C1. Publish the OpenCode → Khala recipe (first external landing)  ([#6239](https://github.com/OpenAgentsInc/openagents/issues/6239))
+### C1. Publish the OpenCode → Khala recipe (first external landing) ([#6239](https://github.com/OpenAgentsInc/openagents/issues/6239))
+
 **Type:** task · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** OpenCode is the cleanest first landing — config-driven OpenAI-compatible
 provider, coding wedge, exercises tool-calling. Tool-calling is already fixed.
@@ -208,7 +215,8 @@ upstream. The support docs now use the real free-key response field
 `credential.token` and the current free tier, 2,000 requests/day plus 2,500,000
 tokens/day per key.
 
-### C2. Land the next tools: Aider → Cline/Continue → Vercel AI SDK → LiteLLM/LangChain  ([#6240](https://github.com/OpenAgentsInc/openagents/issues/6240))
+### C2. Land the next tools: Aider → Cline/Continue → Vercel AI SDK → LiteLLM/LangChain ([#6240](https://github.com/OpenAgentsInc/openagents/issues/6240))
+
 **Type:** epic · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** breadth of one-config-line adoption across the coding/agent ecosystem; the
 Vercel AI SDK recipe is high-leverage (substrate under many tools).
@@ -224,7 +232,7 @@ recipes for Aider, Cline, Continue, AI SDK, LiteLLM, and LangChain. The recipe
 set records upstream research sources, uses the current Khala free-key shape,
 documents which clients can set `x-openagents-*` attribution headers today, and
 uses fresh per-tool keys plus public counter deltas for clients that cannot set
-headers. Owner-gated per-tool rollups remain the F1 analytics issue (#6252).
+headers. Owner-gated per-tool rollups now consume the F1 analytics demand tags.
 
 ---
 
@@ -234,10 +242,11 @@ headers. Owner-gated per-tool rollups remain the F1 analytics issue (#6252).
 > Spec: [`openagents-gym.md`](openagents-gym.md); Episode 243 deltas:
 > [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md).
 
-### D1. Phase 1 — competitor lanes + the OpenCode client-surface environment  ([#6246](https://github.com/OpenAgentsInc/openagents/issues/6246))
+### D1. Phase 1 — competitor lanes + the OpenCode client-surface environment ([#6246](https://github.com/OpenAgentsInc/openagents/issues/6246))
+
 **Type:** epic · **Lever:** benchmarking · **Status:** shipped 2026-06-25
-**Why:** the first real head-to-head: compare *model endpoints through a real coding
-agent*, not just supply lanes. BigPickle (OpenCode's default free model) is rung 1.
+**Why:** the first real head-to-head: compare _model endpoints through a real coding
+agent_, not just supply lanes. BigPickle (OpenCode's default free model) is rung 1.
 **Scope:** add typed `BenchmarkLane` values for competitor endpoints (`bigpickle`,
 `gemini-free`, `openai-gpt`, `claude`) + the own/open lanes (`gpt-oss-20b`,
 `gpt-oss-120b`, `glm-52`) with honest `LANE_AVAILABILITY`; add an **OpenCode client
@@ -260,7 +269,8 @@ records wall-clock/tool-call success/verifier verdict, and feeds the existing
 matrix→runner→report path. `OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT` produces a
 public-safe `decisionGrade:false` report over one OpenCode coding task.
 
-### D2. Phase 1 — register the first environments (Terminal-Bench, khala-code, long-context, M8)  ([#6241](https://github.com/OpenAgentsInc/openagents/issues/6241))
+### D2. Phase 1 — register the first environments (Terminal-Bench, khala-code, long-context, M8) ([#6241](https://github.com/OpenAgentsInc/openagents/issues/6241))
+
 **Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** an env without its verifier+acceptance contract is not runnable; these are the
 first task sets the ladder runs on. Terminal-Bench rides Harbor (Epic E).
@@ -280,7 +290,8 @@ environment through that registry, carries the grader binding in
 Fixture experiments for all four Phase-1 environments run through the existing
 matrix→fixture-seam→report path with `decisionGrade:false`.
 
-### D3. Phase 2 — paid runs (owner-armed real seam → report receipt)  ([#6247](https://github.com/OpenAgentsInc/openagents/issues/6247))
+### D3. Phase 2 — paid runs (owner-armed real seam → report receipt) ([#6247](https://github.com/OpenAgentsInc/openagents/issues/6247))
+
 **Type:** epic · **Lever:** benchmarking/revenue · **Status:** shipped 2026-06-25
 **Why:** decision-grade numbers + benchmark-as-a-service revenue.
 **Scope:** quote (`compileGymExperiment` + `LANE_AVAILABILITY` + samples) → balance
@@ -306,7 +317,8 @@ path can run. The prepared run emits `MeteringContext`s for the existing
 only after the real preflight passes. Tests inject the real executor, so CI covers
 the funded acceptance path without live provider spend.
 
-### D4. Phase 3 — Gym → training loop, and the Gym runs on Khala (the flywheel)  ([#6248](https://github.com/OpenAgentsInc/openagents/issues/6248))
+### D4. Phase 3 — Gym → training loop, and the Gym runs on Khala (the flywheel) ([#6248](https://github.com/OpenAgentsInc/openagents/issues/6248))
+
 **Type:** epic · **Lever:** benchmarking/dogfood · **Status:** shipped 2026-06-25
 **Why:** the tightest flywheel — Gym reports are the eval+reward artifacts that train
 the coordinator, and the Gym's own runner/eval inference is itself dogfood traffic.
@@ -333,7 +345,8 @@ Tests cover the cheaper-candidate path, the missing-approval shadow gate, the
 approved runtime-promotion-ready path, Khala dogfood attribution, and unsafe-ref
 rejection without live Psionic or provider spend.
 
-### D5. Phase 4 — public-safe leaderboard + (gated) plugin/module composition split  ([#6249](https://github.com/OpenAgentsInc/openagents/issues/6249))
+### D5. Phase 4 — public-safe leaderboard + (gated) plugin/module composition split ([#6249](https://github.com/OpenAgentsInc/openagents/issues/6249))
+
 **Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** a recurring, citable quality bar; eventually a per-trace author split.
 **Scope:** public-safe leaderboard projection over `decisionGrade:true` reports only
@@ -363,7 +376,8 @@ split projections when owner arming or complete evidence is missing.
 > Khala policy, cost-per-accepted-outcome, reports, metering, promotion. No Harbor
 > code in the Worker.
 
-### E1. Formalize the Worker/Gym → Hydralisk → Harbor dispatch seam  ([#6250](https://github.com/OpenAgentsInc/openagents/issues/6250))
+### E1. Formalize the Worker/Gym → Hydralisk → Harbor dispatch seam ([#6250](https://github.com/OpenAgentsInc/openagents/issues/6250))
+
 **Type:** epic · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** Harbor is Python 3.12/uv/Docker and already provisioned on Hydralisk (our
 own GPU infra) — formalize the out-of-process dispatch so the Gym can trigger runs.
@@ -386,7 +400,8 @@ public-safe summary + ATIF artifacts, keeps raw Harbor logs/prompts/responses on
 Hydralisk, and tests that the Worker imports no Harbor runtime code. Reward→cost
 report mapping remains E3; distinct-device verifier evidence is now E2.
 
-### E2. Distinct-device verifier via Harbor `environment_mode = "separate"`  ([#6251](https://github.com/OpenAgentsInc/openagents/issues/6251))
+### E2. Distinct-device verifier via Harbor `environment_mode = "separate"` ([#6251](https://github.com/OpenAgentsInc/openagents/issues/6251))
+
 **Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** the Gym spec requires the verifier on a **distinct device** from the producer;
 Harbor ships this as a feature.
@@ -405,7 +420,8 @@ explicit artifact handoff refs, and `rewardReadFrom: "verifier_artifact"` with a
 reward artifact ref. The ingest projection records the verified placement fields
 and rejects same-host/same-device or missing-reward-artifact evidence.
 
-### E3. Map Harbor reward → Gym cost-per-accepted-outcome; ingest Harbor trajectories for training  ([#6242](https://github.com/OpenAgentsInc/openagents/issues/6242))
+### E3. Map Harbor reward → Gym cost-per-accepted-outcome; ingest Harbor trajectories for training ([#6242](https://github.com/OpenAgentsInc/openagents/issues/6242))
+
 **Type:** task · **Lever:** benchmarking/training · **Status:** shipped 2026-06-25
 **Why:** Harbor's float reward IS the executed verdict the Gym multiplies by the real
 per-lane cost basis; Harbor trajectories feed Khala training.
@@ -432,8 +448,9 @@ contention is not cleared by a benchmark replica or exclusive off-peak window.
 > Make the North Star legible and the claims honest. Several pieces shipped today;
 > these are the gaps.
 
-### F1. Internal-vs-external demand tagging across the counter + analytics  ([#6252](https://github.com/OpenAgentsInc/openagents/issues/6252))
-**Type:** task · **Lever:** measurement · **Status:** direction
+### F1. Internal-vs-external demand tagging across the counter + analytics ([#6252](https://github.com/OpenAgentsInc/openagents/issues/6252))
+
+**Type:** task · **Lever:** measurement · **Status:** shipped 2026-06-25
 **Why:** dogfood tokens are real served tokens, but we must never imply external
 traction we don't have. Every dogfood epic (A, B, D4) depends on this to report honestly.
 **Scope:** tag each served completion with a demand source (internal-dogfood vs
@@ -444,7 +461,15 @@ breakdown stays owner-gated.
 token splits; no public surface implies external demand from internal tokens.
 **Refs:** GTM §2 honesty note, §6; cost-model + analytics doc.
 
-### F2. Per-day history + per-tool adoption surfaced for the North Star  ([#6243](https://github.com/OpenAgentsInc/openagents/issues/6243))
+**Shipped:** `workers/api/src/inference/served-tokens-recorder.ts` promotes
+bounded request attribution into typed `token_usage_events` demand columns,
+migration 0232 backfills existing safe metadata, and
+`readInferenceAnalytics` now exposes owner-gated `byDemandKind`,
+`byDemandSource`, and `byDemandClient` rollups. Missing/partial attribution stays
+`unlabeled`; the public Khala tokens-served counter remains total-only.
+
+### F2. Per-day history + per-tool adoption surfaced for the North Star ([#6243](https://github.com/OpenAgentsInc/openagents/issues/6243))
+
 **Type:** task · **Lever:** measurement · **Status:** direction
 **Why:** "we want the per-day history curve to bend upward and stay up" — the curve and
 its per-tool decomposition are how we steer.
@@ -454,7 +479,8 @@ F1 tags) on `/stats` (+ owner views); keep `not_measured` ≠ `0`.
 adoption over time.
 **Refs:** GTM §6.
 
-### F3. Throughput/concurrency as a first-class Gym measurement (promote `/gym/oss` patterns)  ([#6244](https://github.com/OpenAgentsInc/openagents/issues/6244))
+### F3. Throughput/concurrency as a first-class Gym measurement (promote `/gym/oss` patterns) ([#6244](https://github.com/OpenAgentsInc/openagents/issues/6244))
+
 **Type:** task · **Lever:** benchmarking/measurement · **Status:** direction
 **Why:** "we're in the inference business, we can't ship slow APIs" — tok/s and the
 concurrency ceiling are product metrics (smoke tests reached ~9.5k tok/s; ten
@@ -470,16 +496,15 @@ point where latency/quota degrades, with `not_measured` distinct from `0`.
 
 ## Suggested filing order (one pass)
 
-1. **F1 (#6252)** (demand tagging) — unblocks honest reporting for everything dogfood.
-2. **B1 (#6237)** + **A1/A2** (qa-runner, Autopilot/Raynor, products → Khala) — move the
+1. **B1 (#6237)** + **A1/A2** (qa-runner, Autopilot/Raynor, products → Khala) — move the
    counter now.
-3. **C1 (#6239)** (publish the OpenCode recipe) — first external demand.
-4. **B2 → B3** (QA on every push: pre-push smoke, then GCE async).
-5. **D1 + D2 + E1** (Gym Phase 1 + Harbor/Terminal-Bench backend) — the head-to-head.
-6. **D4, F3, remaining Harbor ops** (training loop, throughput, live executor wiring) — quality
-   + flywheel.
-7. **D3, C2, D5, A3, F2** (paid runs [owner-gated], more tools, leaderboard, Verse,
-   history surfacing) — broaden behind proof.
+2. **C1 (#6239)** (publish the OpenCode recipe) — first external demand.
+3. **B2 → B3** (QA on every push: pre-push smoke, then GCE async).
+4. **D1 + D2 + E1** (Gym Phase 1 + Harbor/Terminal-Bench backend) — the head-to-head.
+5. **F2 (#6243), D4, F3, remaining Harbor ops** (history/adoption, training loop, throughput, live executor wiring) — quality
+   - flywheel.
+6. **D3, C2, D5, A3** (paid runs [owner-gated], more tools, leaderboard, Verse)
+   — broaden behind proof.
 
 > Cross-refs: Gym spec [`openagents-gym.md`](openagents-gym.md) · Episode 243 deltas
 > [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)

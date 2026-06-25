@@ -5,12 +5,13 @@ import {
   type PublicKhalaTokensServedHistoryBucket,
   TokenUsageAggregateResponse,
   TokenUsageCounts,
+  type TokenUsageDemandKind,
   TokenUsageEventIngestBody,
   TokenUsageEventRecord,
+  type TokenUsageEventRecord as TokenUsageEventRecordType,
   TokenUsageLeaderboardPreferenceResponse,
   TokenUsageLeaderboardPreferenceUpdateBody,
   TokenUsageLeaderboardsResponse,
-  type TokenUsageEventRecord as TokenUsageEventRecordType,
 } from '@openagentsinc/sync-schema'
 import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
@@ -183,6 +184,9 @@ type TokenUsageEventRow = Readonly<{
   usage_truth: string
   cost_amount: number | null
   currency: string | null
+  demand_kind: string | null
+  demand_source: string | null
+  demand_client: string | null
   leaderboard_eligible: number | null
   privacy_opt_out: number | null
   safe_metadata_json: string | null
@@ -232,6 +236,28 @@ const optionalText = (value: string | undefined): string | undefined => {
 
   return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }
+
+const demandKindFromText = (
+  value: string | null | undefined,
+): TokenUsageDemandKind => {
+  const normalized = value?.trim().toLowerCase()
+
+  return normalized === 'external' || normalized === 'internal'
+    ? normalized
+    : 'unlabeled'
+}
+
+const demandAttributionFromInput = (
+  body: typeof TokenUsageEventIngestBody.Type,
+): Readonly<{
+  demandClient: string | null
+  demandKind: TokenUsageDemandKind
+  demandSource: string | null
+}> => ({
+  demandClient: optionalText(body.demand?.demandClient) ?? null,
+  demandKind: demandKindFromText(body.demand?.demandKind),
+  demandSource: optionalText(body.demand?.demandSource) ?? null,
+})
 
 const validateTimestamp = (
   field: string,
@@ -568,6 +594,11 @@ const rowToRecord = (
       row.cost_amount === null || row.currency === null
         ? null
         : { amount: row.cost_amount, currency: row.currency },
+    demand: {
+      ...(row.demand_client == null ? {} : { demandClient: row.demand_client }),
+      demandKind: demandKindFromText(row.demand_kind),
+      ...(row.demand_source == null ? {} : { demandSource: row.demand_source }),
+    },
     eventId: row.id,
     idempotencyKey: row.idempotency_key,
     ingestedAt: row.ingested_at,
@@ -604,38 +635,45 @@ const storedRowFromInput = (
     safeMetadataJson: string
     tokenCounts: typeof TokenUsageCounts.Type
   }>,
-): TokenUsageEventRow => ({
-  account_ref: body.actor?.accountRef ?? null,
-  actor_team_id: body.actor?.teamId ?? null,
-  actor_user_id: body.actor?.userId ?? null,
-  anonymized_source_ref: body.sourceRefs?.anonymizedSourceRef ?? null,
-  backend_profile: body.backendProfile ?? null,
-  cache_read_tokens: input.tokenCounts.cacheReadTokens,
-  cache_write_1h_tokens: input.tokenCounts.cacheWrite1hTokens,
-  cache_write_5m_tokens: input.tokenCounts.cacheWrite5mTokens,
-  cost_amount: body.cost?.amount ?? null,
-  currency: body.cost?.currency ?? null,
-  id: body.eventId,
-  idempotency_key: body.idempotencyKey,
-  ingested_at: input.ingestedAt,
-  input_tokens: input.tokenCounts.inputTokens,
-  leaderboard_eligible: body.privacy?.leaderboardEligible === false ? 0 : 1,
-  model: body.model ?? null,
-  observed_at: body.observedAt,
-  output_tokens: input.tokenCounts.outputTokens,
-  privacy_opt_out: body.privacy?.privacyOptOut === true ? 1 : 0,
-  producer_system: body.producerSystem,
-  provider: body.provider ?? null,
-  reasoning_tokens: input.tokenCounts.reasoningTokens,
-  repository_ref: body.sourceRefs?.repositoryRef ?? null,
-  run_ref: body.sourceRefs?.runRef ?? null,
-  safe_metadata_json: input.safeMetadataJson,
-  session_ref: body.sourceRefs?.sessionRef ?? null,
-  source_route: body.sourceRoute,
-  task_ref: body.sourceRefs?.taskRef ?? null,
-  total_tokens: input.tokenCounts.totalTokens,
-  usage_truth: body.usageTruth,
-})
+): TokenUsageEventRow => {
+  const demand = demandAttributionFromInput(body)
+
+  return {
+    account_ref: body.actor?.accountRef ?? null,
+    actor_team_id: body.actor?.teamId ?? null,
+    actor_user_id: body.actor?.userId ?? null,
+    anonymized_source_ref: body.sourceRefs?.anonymizedSourceRef ?? null,
+    backend_profile: body.backendProfile ?? null,
+    cache_read_tokens: input.tokenCounts.cacheReadTokens,
+    cache_write_1h_tokens: input.tokenCounts.cacheWrite1hTokens,
+    cache_write_5m_tokens: input.tokenCounts.cacheWrite5mTokens,
+    cost_amount: body.cost?.amount ?? null,
+    currency: body.cost?.currency ?? null,
+    demand_client: demand.demandClient,
+    demand_kind: demand.demandKind,
+    demand_source: demand.demandSource,
+    id: body.eventId,
+    idempotency_key: body.idempotencyKey,
+    ingested_at: input.ingestedAt,
+    input_tokens: input.tokenCounts.inputTokens,
+    leaderboard_eligible: body.privacy?.leaderboardEligible === false ? 0 : 1,
+    model: body.model ?? null,
+    observed_at: body.observedAt,
+    output_tokens: input.tokenCounts.outputTokens,
+    privacy_opt_out: body.privacy?.privacyOptOut === true ? 1 : 0,
+    producer_system: body.producerSystem,
+    provider: body.provider ?? null,
+    reasoning_tokens: input.tokenCounts.reasoningTokens,
+    repository_ref: body.sourceRefs?.repositoryRef ?? null,
+    run_ref: body.sourceRefs?.runRef ?? null,
+    safe_metadata_json: input.safeMetadataJson,
+    session_ref: body.sourceRefs?.sessionRef ?? null,
+    source_route: body.sourceRoute,
+    task_ref: body.sourceRefs?.taskRef ?? null,
+    total_tokens: input.tokenCounts.totalTokens,
+    usage_truth: body.usageTruth,
+  }
+}
 
 const insertBindings = (
   row: TokenUsageEventRow,
@@ -667,6 +705,9 @@ const insertBindings = (
   row.usage_truth,
   row.cost_amount,
   row.currency,
+  row.demand_kind,
+  row.demand_source,
+  row.demand_client,
   row.leaderboard_eligible,
   row.privacy_opt_out,
   row.safe_metadata_json,
@@ -793,10 +834,13 @@ const insertEventRow = (
           usage_truth,
           cost_amount,
           currency,
+          demand_kind,
+          demand_source,
+          demand_client,
           leaderboard_eligible,
           privacy_opt_out,
           safe_metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
       .run(),
@@ -838,12 +882,7 @@ const aggregateWhere = (
 
     applyTextFilter(clauses, values, 'provider', filters.provider)
     applyTextFilter(clauses, values, 'model', filters.model)
-    applyTextFilter(
-      clauses,
-      values,
-      'producer_system',
-      filters.producerSystem,
-    )
+    applyTextFilter(clauses, values, 'producer_system', filters.producerSystem)
     applyTextFilter(clauses, values, 'source_route', filters.sourceRoute)
     applyTextFilter(clauses, values, 'actor_user_id', filters.actorUserId)
     applyTextFilter(clauses, values, 'actor_team_id', filters.actorTeamId)
@@ -927,9 +966,7 @@ const defaultPreferenceRow = (
   updated_by_user_id: input.actorUserId ?? null,
 })
 
-const preferenceResponseFromRow = (
-  row: TokenUsageLeaderboardPreferenceRow,
-) =>
+const preferenceResponseFromRow = (row: TokenUsageLeaderboardPreferenceRow) =>
   decodeLeaderboardPreferenceResponse({
     schemaVersion: 'openagents.token_usage_leaderboard_preference.v1',
     preference: {
@@ -944,7 +981,10 @@ const preferenceResponseFromRow = (
 
 const normalizeLeaderboardWindow = (
   value: string | undefined,
-): Effect.Effect<'7d' | '30d' | 'all' | 'today', TokenUsageLedgerValidationError> => {
+): Effect.Effect<
+  '7d' | '30d' | 'all' | 'today',
+  TokenUsageLedgerValidationError
+> => {
   const window = optionalText(value) ?? '7d'
 
   return window === 'today' ||
@@ -1092,7 +1132,10 @@ const sourceRefSpecs = [
 const aggregateSourceRefRows = (
   db: D1Database,
   where: AggregateWhere,
-): Effect.Effect<ReadonlyArray<TokenUsageGroupRow>, TokenUsageLedgerStorageError> =>
+): Effect.Effect<
+  ReadonlyArray<TokenUsageGroupRow>,
+  TokenUsageLedgerStorageError
+> =>
   Effect.gen(function* () {
     const rows = yield* Effect.forEach(sourceRefSpecs, spec =>
       d1Effect(`tokenUsageEvents.aggregate.${spec.kind}Ref`, () =>
@@ -1457,18 +1500,34 @@ export const makeD1TokenUsageLedger = (
         `producer_system || ' / ' || source_route`,
         `producer_system, source_route`,
       )
+      const byDemandKind = yield* groupQuery(
+        'inferenceAnalytics.byDemandKind',
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled')`,
+      )
+      const byDemandSource = yield* groupQuery(
+        'inferenceAnalytics.byDemandSource',
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ':' || COALESCE(NULLIF(demand_source, ''), 'unknown')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ' / ' || COALESCE(NULLIF(demand_source, ''), 'unknown')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled'), COALESCE(NULLIF(demand_source, ''), 'unknown')`,
+      )
+      const byDemandClient = yield* groupQuery(
+        'inferenceAnalytics.byDemandClient',
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ':' || COALESCE(NULLIF(demand_client, ''), 'unknown')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled') || ' / ' || COALESCE(NULLIF(demand_client, ''), 'unknown')`,
+        `COALESCE(NULLIF(demand_kind, ''), 'unlabeled'), COALESCE(NULLIF(demand_client, ''), 'unknown')`,
+      )
       const byDayRows = yield* groupQuery(
         'inferenceAnalytics.byDay',
         `date(observed_at)`,
         `date(observed_at)`,
         `date(observed_at)`,
       )
-      const totalsRow = yield* d1Effect(
-        'inferenceAnalytics.totals',
-        () =>
-          db
-            .prepare(
-              `SELECT
+      const totalsRow = yield* d1Effect('inferenceAnalytics.totals', () =>
+        db
+          .prepare(
+            `SELECT
                   COALESCE(SUM(input_tokens), 0) AS input_tokens,
                   COALESCE(SUM(output_tokens), 0) AS output_tokens,
                   COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
@@ -1479,16 +1538,16 @@ export const makeD1TokenUsageLedger = (
                     AS cost_rows
                  FROM token_usage_events
                 ${whereSql}`,
-            )
-            .bind(...bind)
-            .first<{
-              input_tokens: number | null
-              output_tokens: number | null
-              total_tokens: number | null
-              usage_events: number | null
-              cost_usd: number | null
-              cost_rows: number | null
-            }>(),
+          )
+          .bind(...bind)
+          .first<{
+            input_tokens: number | null
+            output_tokens: number | null
+            total_tokens: number | null
+            usage_events: number | null
+            cost_usd: number | null
+            cost_rows: number | null
+          }>(),
       )
 
       const usageEvents = Math.max(0, Math.trunc(totalsRow?.usage_events ?? 0))
@@ -1513,6 +1572,9 @@ export const makeD1TokenUsageLedger = (
         byModel: byModel.map(analyticsRow),
         byProvider: byProvider.map(analyticsRow),
         byRoute: byRoute.map(analyticsRow),
+        byDemandKind: byDemandKind.map(analyticsRow),
+        byDemandSource: byDemandSource.map(analyticsRow),
+        byDemandClient: byDemandClient.map(analyticsRow),
         generatedAt: runtime.nowIso(),
         totals: {
           costCoverage:
@@ -1593,8 +1655,9 @@ export const makeD1TokenUsageLedger = (
       )
 
       const series = rows.results
-        .filter((row): row is { day: string; tokens: number | null } =>
-          typeof row.day === 'string' && row.day !== '',
+        .filter(
+          (row): row is { day: string; tokens: number | null } =>
+            typeof row.day === 'string' && row.day !== '',
         )
         .map(row => ({
           day: row.day,
@@ -1673,10 +1736,12 @@ export const makeD1TokenUsageLedger = (
   readLeaderboards: (filters = {}) =>
     Effect.gen(function* () {
       const where = yield* leaderboardWhere(filters, runtime)
-      const totals = yield* d1Effect('tokenUsageLeaderboards.globalTotals', () =>
-        db
-          .prepare(
-            `SELECT
+      const totals = yield* d1Effect(
+        'tokenUsageLeaderboards.globalTotals',
+        () =>
+          db
+            .prepare(
+              `SELECT
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
@@ -1687,9 +1752,9 @@ export const makeD1TokenUsageLedger = (
                 COUNT(*) AS usage_events
                FROM token_usage_events
               ${where.sql}`,
-          )
-          .bind(...where.values)
-          .first<TokenUsageCountRow>(),
+            )
+            .bind(...where.values)
+            .first<TokenUsageCountRow>(),
       )
       const anonymousTotals = yield* d1Effect(
         'tokenUsageLeaderboards.anonymousTotals',
@@ -1812,10 +1877,12 @@ export const makeD1TokenUsageLedger = (
           .bind(...where.values)
           .all<TokenUsageGroupRow>(),
       )
-      const topProjects = yield* d1Effect('tokenUsageLeaderboards.projects', () =>
-        db
-          .prepare(
-            `SELECT
+      const topProjects = yield* d1Effect(
+        'tokenUsageLeaderboards.projects',
+        () =>
+          db
+            .prepare(
+              `SELECT
                 'repository:' || repository_ref AS key,
                 'repository / ' || repository_ref AS label,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
@@ -1831,9 +1898,9 @@ export const makeD1TokenUsageLedger = (
               GROUP BY repository_ref
               ORDER BY total_tokens DESC, key ASC
               LIMIT 100`,
-          )
-          .bind(...where.values)
-          .all<TokenUsageGroupRow>(),
+            )
+            .bind(...where.values)
+            .all<TokenUsageGroupRow>(),
       )
 
       return yield* decodeLeaderboardsResponse({

@@ -1798,7 +1798,9 @@ describe('logged-in workroom sidebar', () => {
         Scene.selector('[data-component="logged-in-workroom-shell"]'),
       ).not.toExist(),
       Scene.expect(Scene.selector('[data-component="pro-console"]')).toExist(),
-      Scene.expect(Scene.selector('[data-component="pro-top-strip"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-component="pro-top-strip"]'),
+      ).toExist(),
       Scene.expect(Scene.selector('[data-component="pro-register"]')).toExist(),
       // The teaching Overview empty state with its honest forward affordances.
       Scene.expect(
@@ -1814,9 +1816,7 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(
         Scene.role('link', { name: 'View a shared trace' }),
       ).toExist(),
-      Scene.expect(
-        Scene.role('link', { name: 'Compare traces' }),
-      ).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Compare traces' })).toExist(),
       // The remaining forward affordance stays an honest disabled placeholder.
       Scene.expect(
         Scene.role('button', { name: 'Connect a coding agent' }),
@@ -2100,6 +2100,11 @@ describe('logged-in workroom sidebar', () => {
               },
               backendProfile: null,
               cost: null,
+              demand: {
+                demandKind: 'external',
+                demandSource: 'public-api',
+                demandClient: 'sdk',
+              },
               eventId: 'token_event_scene_1',
               idempotencyKey: 'scene:1',
               ingestedAt: '2026-06-08T12:00:00.000Z',
@@ -2128,6 +2133,9 @@ describe('logged-in workroom sidebar', () => {
               actor: {},
               backendProfile: null,
               cost: null,
+              demand: {
+                demandKind: 'unlabeled',
+              },
               eventId: 'token_event_scene_2',
               idempotencyKey: 'scene:2',
               ingestedAt: '2026-06-08T12:01:00.000Z',

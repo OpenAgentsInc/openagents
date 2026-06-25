@@ -61,7 +61,11 @@ provider-adapter registry, verification-class registry, and the
   `harbor-reward.ts` then maps Harbor rewards to cost-per-accepted-outcome using
   served-token cost basis, emits a training-ready public-safe ATIF trajectory
   bundle, and blocks readiness when GPU contention is not cleared.
-  Remaining real-sweep work expands live executor wiring and public surfaces.
+- **Epic F1 landed:** `token_usage_events` now carries typed owner-gated
+  demand attribution (`internal`, `external`, or `unlabeled` plus source/client
+  labels), and `GET /api/admin/inference-analytics` exposes the split while the
+  public Khala tokens-served counter stays total-only. Remaining real-sweep work
+  expands live executor wiring and public surfaces.
 
 ## Contents
 
@@ -69,7 +73,7 @@ provider-adapter registry, verification-class registry, and the
   GitHub issues with titles + bodies) covering QA, the Gym, Terminal-Bench/Harbor,
   ecosystem-tool landings, the dogfood lanes, and measurement — keyed to the North
   Star (tokens served/day). Start here for "what to build, in what order."
-- [`openagents-gym.md`](openagents-gym.md) — the Gym spec (what the Gym *is*).
+- [`openagents-gym.md`](openagents-gym.md) — the Gym spec (what the Gym _is_).
 - [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)
   — Episode 243 considerations: the OpenCode head-to-head, BigPickle (de-TBD'd),
   the expanded lane set (Fireworks DeepSeek V4 Flash, GPT-OSS via Hydralisk,
@@ -99,8 +103,8 @@ provider-adapter registry, verification-class registry, and the
 - [`../inference/2026-06-25-khala-inference-gtm-push.md`](../inference/2026-06-25-khala-inference-gtm-push.md)
   — the GTM push (Pillar 3 "run it through the gym — the benchmark ladder").
 - [`../inference/2026-06-25-opencode-khala-runbook-and-audit.md`](../inference/2026-06-25-opencode-khala-runbook-and-audit.md)
-  + [`../opencode/`](../opencode/) — pointing OpenCode at Khala (the first Gym
-  client surface) and the OpenCode-via-Khala planning memos.
+  - [`../opencode/`](../opencode/) — pointing OpenCode at Khala (the first Gym
+    client surface) and the OpenCode-via-Khala planning memos.
 - [`../inference/2026-06-25-khala-cost-model-and-analytics.md`](../inference/2026-06-25-khala-cost-model-and-analytics.md)
   — the real per-lane cost basis the Gym's cost-per-accepted-outcome consumes.
 - [`../transcripts/243.md`](../transcripts/243.md) — Episode 243, "Khala in

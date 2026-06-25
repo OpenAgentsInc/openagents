@@ -3,16 +3,16 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, test } from 'vitest'
 
 import {
+  isoTimestampAfterIso,
+  utcStartOfDayIsoTimestamp,
+} from './runtime-primitives'
+import {
   type TokenUsageHistoryFilters,
   type TokenUsageIngestResult,
   TokenUsageLedger,
   type TokenUsageLedgerFilters,
   type TokenUsageLedgerRuntime,
 } from './token-usage-ledger'
-import {
-  isoTimestampAfterIso,
-  utcStartOfDayIsoTimestamp,
-} from './runtime-primitives'
 
 const nowIso = '2026-06-08T12:00:00.000Z'
 
@@ -329,7 +329,8 @@ const makeMemoryD1 = (
           const byDay = new Map<string, number>()
           for (const row of rows) {
             const day = String(row.observed_at).slice(0, 10)
-            const served = Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
+            const served =
+              Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
             byDay.set(day, (byDay.get(day) ?? 0) + served)
           }
 
@@ -383,9 +384,7 @@ const makeMemoryD1 = (
       },
       raw,
       run: <T = Record<string, unknown>>() => {
-        if (
-          query.includes('INSERT INTO token_usage_leaderboard_preferences')
-        ) {
+        if (query.includes('INSERT INTO token_usage_leaderboard_preferences')) {
           const row = {
             leaderboard_participation: values[2] as string,
             leaderboard_visibility: values[3] as string,
@@ -430,21 +429,24 @@ const makeMemoryD1 = (
             cache_write_5m_tokens: values[21] as number,
             cost_amount: values[25] as number | null,
             currency: values[26] as string | null,
+            demand_client: values[29] as string | null,
+            demand_kind: values[27] as string,
+            demand_source: values[28] as string | null,
             id,
             idempotency_key: idempotencyKey,
             ingested_at: values[3] as string,
             input_tokens: values[17] as number,
-            leaderboard_eligible: values[27] as number,
+            leaderboard_eligible: values[30] as number,
             model: values[15] as string | null,
             observed_at: values[2] as string,
             output_tokens: values[18] as number,
-            privacy_opt_out: values[28] as number,
+            privacy_opt_out: values[31] as number,
             producer_system: values[4] as string,
             provider: values[14] as string | null,
             reasoning_tokens: values[19] as number,
             repository_ref: values[13] as string | null,
             run_ref: values[10] as string | null,
-            safe_metadata_json: values[29] as string,
+            safe_metadata_json: values[32] as string,
             session_ref: values[11] as string | null,
             source_route: values[5] as string,
             task_ref: values[12] as string | null,
@@ -515,11 +517,7 @@ const leaderboards = () =>
 
 const updatePreference = (
   body: unknown,
-): Effect.Effect<
-  unknown,
-  never,
-  TokenUsageLedger
-> =>
+): Effect.Effect<unknown, never, TokenUsageLedger> =>
   Effect.flatMap(TokenUsageLedger, ledger =>
     ledger
       .updateLeaderboardPreference(
@@ -864,9 +862,7 @@ describe('public tokens-served history', () => {
 
     const history = await runLedger(db, tokensServedHistory({ window: '7d' }))
 
-    expect(history.series).toEqual([
-      { day: '2026-06-07', tokensServed: 100 },
-    ])
+    expect(history.series).toEqual([{ day: '2026-06-07', tokensServed: 100 }])
   })
 
   test('empty ledger → empty series', async () => {

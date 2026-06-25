@@ -14,10 +14,10 @@ Updated: 2026-06-25
 ## 0. Why this doc
 
 In Episode 243 the owner named the Gym as the **next thing to build** after the
-Khala inference launch: *"one of the things we actually end up building from this
+Khala inference launch: _"one of the things we actually end up building from this
 will be a gym, so we can do better head-to-heads of different models — starting
-with OpenCode, then expanding that out to other things."* And: *"I'm excited to
-build the gym. And I'm hoping we can build the gym using the Khala coding agent."*
+with OpenCode, then expanding that out to other things."_ And: _"I'm excited to
+build the gym. And I'm hoping we can build the gym using the Khala coding agent."_
 
 The episode also resolved two garbled-voice terms that had been sitting as TBDs,
 expanded the set of provider lanes Khala routes across, grounded
@@ -29,11 +29,11 @@ deltas so the Gym spec stays honest and the next build steps are concrete.
 
 - **"do the gym," not "do a gem."** The benchmark/eval surface is the **Gym** — the
   same Gym this folder specs. Multiple transcripts and one OpenCode-via-Khala memo
-  had carried "gem" as a garbled transcription; the owner confirmed *"I said
-  'do gym,' like, you know, do the gym."* Treat any lingering "gem" in derived
+  had carried "gem" as a garbled transcription; the owner confirmed _"I said
+  'do gym,' like, you know, do the gym."_ Treat any lingering "gem" in derived
   docs as a transcription error to fix.
 - **"BigPickle" = the main free model in OpenCode.** Confirmed by the owner:
-  *"'Big Pickle,' with a space, is the main free model of OpenCode."* It is **not**
+  _"'Big Pickle,' with a space, is the main free model of OpenCode."_ It is **not**
   an external benchmark or a mystery competitor — it is the default open/free model
   an OpenCode user reaches for without configuring a paid provider. That makes it
   **ladder rung 1**: the immediate baseline Khala must beat on
@@ -65,9 +65,9 @@ labeled illustrative and are never published as measurements.
 
 The shipped benchmark matrix compares **supply lanes** (Fireworks vs Vertex behind
 the gateway). Episode 243 makes the first real Gym environment a **client surface**:
-run the *same coding task through OpenCode* against each model endpoint (Khala,
-BigPickle, a free Gemini, a paid frontier model) and score the *whole coding-agent
-experience* — including whether the model actually drives tools to a verified
+run the _same coding task through OpenCode_ against each model endpoint (Khala,
+BigPickle, a free Gemini, a paid frontier model) and score the _whole coding-agent
+experience_ — including whether the model actually drives tools to a verified
 result. This is a genuinely new axis for the Gym and the right first environment,
 because coding is the wedge and OpenCode is the cleanest "point your tool at us"
 landing (config-driven, OpenAI-compatible, AI-SDK provider).
@@ -107,17 +107,17 @@ Episode 243 the live/near-live set includes:
   Python/NVIDIA inference engine; the `/gym/oss` playground already exercises the
   20B lane.
 - **GLM 5.2 (Z.ai) (REAP) on RTX Pro** — newest entrant; the model is from the lab
-  **Z.ai** (z.ai), served on our own RTX Pro infra; *"add it to the mix that
-  goes into Khala… exercise it in the gym."*
+  **Z.ai** (z.ai), served on our own RTX Pro infra; _"add it to the mix that
+  goes into Khala… exercise it in the gym."_
 
 The Gym is explicitly the place where a **new or tuned lane gets exercised before it
 joins the Khala mix**. Episode 243's GLM-REAP work is the canonical example: a
 serving-shape tune (two independent 4× replicas beat 8× tensor-parallel) plus a
 speculative-decoding win (MTP2 profile with min-P omitted, since vLLM rejects min-P
 under speculative decoding) moved it from ~35 → ~48 tok/s. That is exactly the kind
-of lane-level result the Gym should measure on the *outcome* axis, not just raw
-tok/s — "faster" is meaningless until you say faster at *what*, on *which lane*,
-under *which traffic*, judged on *which outcome*. Concretely:
+of lane-level result the Gym should measure on the _outcome_ axis, not just raw
+tok/s — "faster" is meaningless until you say faster at _what_, on _which lane_,
+under _which traffic_, judged on _which outcome_. Concretely:
 
 - Add `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `glm-52` as typed
   lanes in `LANE_AVAILABILITY`, labeled honestly (live vs future), never fabricated
@@ -131,14 +131,15 @@ The Gym's headline metric (cost-per-accepted-outcome) needs a real per-lane cost
 basis. As of 2026-06-25 we have it: the served-tokens recorder now **prices each
 completion against the served model's real lane and writes `cost_amount`** to the
 ledger, and there is an owner-gated `GET /api/admin/inference-analytics` that breaks
-tokens + cost down by provider/model/route/day. The cost model
+tokens + cost down by provider/model/route/day and by demand
+kind/source/client. The cost model
 ([`../inference/2026-06-25-khala-cost-model-and-analytics.md`](../inference/2026-06-25-khala-cost-model-and-analytics.md))
 puts the real lane (Fireworks DeepSeek V4 Flash) at ~$0.14 in / $0.28 out per Mtok,
 ~$0.24/Mtok blended at the observed 2.5:1 output:input mix. Gym quotes and
 cost-per-accepted-outcome should consume that real basis (and the analytics endpoint
 for historicals), not estimates — with the honesty rule intact: a free-tier
 competitor call is `costBasisMsat: 0` but labeled `provenance: 'free_tier'` (zero
-*direct* spend, not free of quota/rate-limit cost), and a zero-accepted-outcome group
+_direct_ spend, not free of quota/rate-limit cost), and a zero-accepted-outcome group
 is a `null` cost-per-outcome finding, never a fake-cheap result.
 
 The free tier was also raised to **2.5M tokens/day, 2,000 req/day** (env-tunable),
@@ -147,15 +148,15 @@ real runs.
 
 ## 6. The tightest flywheel: the Gym both trains Khala and runs on Khala
 
-Episode 243 names the Gym as a **dog-food lane**, not just a quality lab: *"The gym
+Episode 243 names the Gym as a **dog-food lane**, not just a quality lab: _"The gym
 trains Khala and uses Khala… training that consumes the product it improves is the
-tightest possible flywheel."* Two directions, kept honest:
+tightest possible flywheel."_ Two directions, kept honest:
 
 - **Trains Khala** (already the spec's Phase 3): Gym reports are the eval+reward
   artifacts (executed verification verdict + cost-per-accepted-outcome) that feed
   GEPA candidate feedback + TRINITY/Conductor training in Psionic; winners return as
   shadow candidates and re-enter the Gym head-to-head; promotion is approval-gated.
-- **Runs on Khala** (new dog-food lane to build): the Gym's *own* agent and eval
+- **Runs on Khala** (new dog-food lane to build): the Gym's _own_ agent and eval
   inference — the OpenCode client runner, any judging/verification model calls,
   scene narration — should default to Khala where model fit allows, so every Gym run
   also moves the tokens-served-per-day counter (the North Star). **Direction, not a
@@ -173,8 +174,9 @@ first environments) is itself good dog-food traffic: route the implementing codi
 sessions through Khala/OpenCode, which (a) exercises the exact tool-calling/edit/run
 workload, (b) adds real served tokens, and (c) surfaces compatibility bugs early —
 exactly how the tool-call-array blocker was found and fixed. Keep the honesty split:
-internal dog-food tokens are real served tokens, but analytics must distinguish
-internal vs external demand so we never imply external traction we do not have.
+internal dog-food tokens are real served tokens, and the shipped analytics tags now
+distinguish internal, external, and unlabeled tool traffic so we never imply
+external traction we do not have.
 
 ## 8. Throughput & concurrency belong in the Gym too
 
@@ -254,8 +256,8 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
   landed from Harbor summaries + served-token cost basis + public-safe ATIF refs.
 - How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
   from an owner playground to a typed Gym environment, or keep it separate?).
-- Internal-vs-external demand tagging in the analytics so Gym/dog-food tokens never
-  imply external traction.
+- Per-day history and owner-facing per-tool adoption views should consume the
+  shipped demand tags rather than reclassifying traffic.
 
 ## 12. Cross-ref: QA-runner verified traces are the realistic-traffic + verifier source the Gym needs (added 2026-06-25)
 

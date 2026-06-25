@@ -35,7 +35,6 @@
 // customer's inference response: a persistence error logs a public-safe
 // diagnostic and is swallowed (the counter is a projection, not the source of
 // the served answer).
-
 import { Effect } from 'effect'
 
 import { workerLogEntry } from '../observability'
@@ -147,6 +146,9 @@ export const buildServedTokensIngestBody = (
     amount: servedTokensCostUsd(input.servedModel, input.usage),
     currency: 'USD' as const,
   },
+  ...(input.requestAttribution === undefined
+    ? {}
+    : { demand: input.requestAttribution }),
   eventId: servedTokensEventId(input.requestId),
   idempotencyKey: servedTokensIdempotencyKey(input.requestId),
   model: input.servedModel,
@@ -221,10 +223,7 @@ export const makeServedTokensRecorder = (
       // zero-token result (e.g. an empty/no-usage frame) is skipped — nothing
       // was served, so there is nothing to count.
       const inputTokens = Math.max(0, Math.trunc(input.usage.promptTokens))
-      const outputTokens = Math.max(
-        0,
-        Math.trunc(input.usage.completionTokens),
-      )
+      const outputTokens = Math.max(0, Math.trunc(input.usage.completionTokens))
       if (inputTokens + outputTokens <= 0) {
         return
       }

@@ -34,6 +34,13 @@ export type TokenUsageSourceRoute = typeof TokenUsageSourceRoute.Type
 export const TokenUsageTruth = S.Literals(['exact', 'estimated', 'unknown'])
 export type TokenUsageTruth = typeof TokenUsageTruth.Type
 
+export const TokenUsageDemandKind = S.Literals([
+  'external',
+  'internal',
+  'unlabeled',
+])
+export type TokenUsageDemandKind = typeof TokenUsageDemandKind.Type
+
 export const TokenUsageLeaderboardWindow = S.Literals([
   'today',
   '7d',
@@ -99,6 +106,14 @@ export class TokenUsagePrivacyFlags extends S.Class<TokenUsagePrivacyFlags>(
   privacyOptOut: S.Boolean,
 }) {}
 
+export class TokenUsageDemandAttribution extends S.Class<TokenUsageDemandAttribution>(
+  'TokenUsageDemandAttribution',
+)({
+  demandKind: TokenUsageDemandKind,
+  demandSource: S.optionalKey(S.String),
+  demandClient: S.optionalKey(S.String),
+}) {}
+
 export class TokenUsageEventIngestBody extends S.Class<TokenUsageEventIngestBody>(
   'TokenUsageEventIngestBody',
 )({
@@ -106,6 +121,7 @@ export class TokenUsageEventIngestBody extends S.Class<TokenUsageEventIngestBody
   actor: S.optionalKey(TokenUsageActorRefs),
   backendProfile: S.optionalKey(S.String),
   cost: S.optionalKey(TokenUsageCost),
+  demand: S.optionalKey(TokenUsageDemandAttribution),
   eventId: TokenUsageLedgerEventId,
   idempotencyKey: TokenUsageIdempotencyKey,
   model: S.optionalKey(S.String),
@@ -127,6 +143,7 @@ export class TokenUsageEventRecord extends S.Class<TokenUsageEventRecord>(
   actor: TokenUsageActorRefs,
   backendProfile: S.NullOr(S.String),
   cost: S.NullOr(TokenUsageCost),
+  demand: TokenUsageDemandAttribution,
   eventId: TokenUsageLedgerEventId,
   idempotencyKey: TokenUsageIdempotencyKey,
   ingestedAt: S.String,
@@ -367,8 +384,10 @@ export class InferenceAnalyticsTotals extends S.Class<InferenceAnalyticsTotals>(
 }) {}
 
 // The owner-gated inference analytics response: token + cost aggregates grouped
-// by provider, by model, by source-route/producer-system, and by day, plus
-// window-wide totals.
+// by provider, by model, by source-route/producer-system, by demand attribution,
+// and by day, plus window-wide totals. Demand attribution is owner-gated so
+// internal dogfood tokens remain real served tokens without being presented as
+// external market demand on public surfaces.
 export class InferenceAnalyticsResponse extends S.Class<InferenceAnalyticsResponse>(
   'InferenceAnalyticsResponse',
 )({
@@ -378,6 +397,9 @@ export class InferenceAnalyticsResponse extends S.Class<InferenceAnalyticsRespon
   byProvider: S.Array(InferenceAnalyticsRow),
   byModel: S.Array(InferenceAnalyticsRow),
   byRoute: S.Array(InferenceAnalyticsRow),
+  byDemandKind: S.Array(InferenceAnalyticsRow),
+  byDemandSource: S.Array(InferenceAnalyticsRow),
+  byDemandClient: S.Array(InferenceAnalyticsRow),
   byDay: S.Array(InferenceAnalyticsDayPoint),
   totals: InferenceAnalyticsTotals,
 }) {}

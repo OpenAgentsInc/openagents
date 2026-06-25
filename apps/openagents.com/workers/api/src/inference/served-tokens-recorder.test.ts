@@ -54,6 +54,9 @@ const COLUMNS = [
   'usage_truth',
   'cost_amount',
   'currency',
+  'demand_kind',
+  'demand_source',
+  'demand_client',
   'leaderboard_eligible',
   'privacy_opt_out',
   'safe_metadata_json',
@@ -95,8 +98,7 @@ const makeFakeDb = (rows: Array<Row> = []): D1Database => {
           // findExisting: idempotency_key = ? OR id = ?
           const [idempotencyKey, id] = bound as [string, string]
           const found = rows.find(
-            row =>
-              row.idempotency_key === idempotencyKey || row.id === id,
+            row => row.idempotency_key === idempotencyKey || row.id === id,
           )
           return (found ?? null) as unknown as T
         }
@@ -143,9 +145,9 @@ const makeFakeDb = (rows: Array<Row> = []): D1Database => {
 
 const readServed = (ledger: TokenUsageLedgerShape): Promise<number> =>
   Effect.runPromise(
-    ledger.readPublicTokensServed().pipe(
-      Effect.map(aggregate => aggregate.tokensServed),
-    ),
+    ledger
+      .readPublicTokensServed()
+      .pipe(Effect.map(aggregate => aggregate.tokensServed)),
   )
 
 const fixedNow = () => '2026-06-24T00:00:00.000Z'
@@ -191,6 +193,9 @@ describe('served-tokens-recorder', () => {
       demandSource: 'qa-dogfood',
       requestedModel: 'openagents/khala',
     })
+    expect(rows[0]!.demand_kind).toBe('internal')
+    expect(rows[0]!.demand_source).toBe('qa-dogfood')
+    expect(rows[0]!.demand_client).toBe('qa-runner')
 
     const after = await readServed(ledger)
     // The public counter sums input + output (12 + 30).
@@ -467,17 +472,25 @@ describe('served-tokens-recorder', () => {
       demandSource: 'qa-dogfood',
       requestedModel: 'openagents/khala',
     })
+    expect(body.demand).toEqual({
+      demandClient: 'qa-runner',
+      demandKind: 'internal',
+      demandSource: 'qa-dogfood',
+    })
     expect(JSON.stringify(body)).not.toContain('prompt_text')
   })
 
   test('records our marginal cost (USD) against the SERVED provider lane (#6232)', () => {
     // The real prod Khala lane is Fireworks DeepSeek V4 Flash ($0.14 in /
     // $0.28 out per Mtok). 1,000,000 in + 1,000,000 out => $0.14 + $0.28 = $0.42.
-    const cost = servedTokensCostUsd('accounts/fireworks/models/deepseek-v4-flash', {
-      completionTokens: 1_000_000,
-      promptTokens: 1_000_000,
-      totalTokens: 2_000_000,
-    })
+    const cost = servedTokensCostUsd(
+      'accounts/fireworks/models/deepseek-v4-flash',
+      {
+        completionTokens: 1_000_000,
+        promptTokens: 1_000_000,
+        totalTokens: 2_000_000,
+      },
+    )
 
     expect(cost).toBeCloseTo(0.42, 6)
   })

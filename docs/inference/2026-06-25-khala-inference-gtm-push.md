@@ -118,7 +118,7 @@ Targets, in rough order of how much traffic they can move:
    internal seam, many internal callers, all counted.
 4. **The gym trains Khala AND uses Khala.** The training/gym loop is dual-purpose:
    it improves the model that backs `openagents/khala`, and its own agent/eval
-   inference can run *through* Khala. Training that consumes the product it
+   inference can run _through_ Khala. Training that consumes the product it
    improves is the tightest possible flywheel — and it ties directly to the
    "improves, does not depreciate" claim from Ep 242. (Direction: the gym↔Khala
    wiring is not a single shipped seam today; treat as the next dogfood lane to
@@ -129,19 +129,21 @@ Targets, in rough order of how much traffic they can move:
    visualization literally show its own traffic, and adds tokens. (Direction.)
 
 **Why this is the right first pillar:** it is the only lever we fully control. We
-can move the counter meaningfully *before* a single external developer adopts us,
+can move the counter meaningfully _before_ a single external developer adopts us,
 and every internal token is a real test that makes the product better for the
 external developers we are about to court in Pillar 2. Honesty note: internal
 dogfood tokens are real served tokens and may be reported as such, but we should
 be able to **distinguish** internal vs external demand in our own analytics so we
-never imply external traction we do not have.
+never imply external traction we do not have. As of 2026-06-25, the served-token
+ledger records owner-gated demand kind/source/client tags; missing attribution
+stays `unlabeled`, not external.
 
 ## 3. Pillar 2 — The ecosystem-tools playbook
 
 This is exactly how every inference business grew. OpenRouter, Fireworks, and
 Together did not win by being a website — they won by being a **drop-in base URL +
 key + model id** in the tools developers already use, so adoption costs one config
-line and zero rewrites. Our gateway is OpenAI-compatible *specifically* so this
+line and zero rewrites. Our gateway is OpenAI-compatible _specifically_ so this
 works (`2026-06-19-inference-gateway-business.md` §4: "work by changing only the
 base URL + key — zero-rewrite adoption removes friction").
 
@@ -203,6 +205,7 @@ It was verified against the OpenCode repo docs/schema
   `model: "openagents/khala"`. No server-side alias is needed.
 
 **What to test before we publish the OpenCode recipe:**
+
 - The endpoint serves chat-completions at `/api/v1/chat/completions` (it does) and
   OpenCode's request reaches it with `model: "openagents/khala"`.
 - **Tool/function calling** works end to end — OpenCode's edit/run loop depends on
@@ -264,15 +267,15 @@ outcome), a runner with a fixture lane (deterministic, spend-free) and an
 **owner-gated** real lane (`makeRealLaneSeam`, default OFF, refuses to spend
 unarmed), and a public-safe dereferenceable report (latency percentiles,
 **cost-per-accepted-outcome**, verification rate, cache hit rate). The book's
-lesson is baked in: "faster" is meaningless until you say faster at *what*, on
-*which lane*, under *which traffic*, judged on *which outcome*; read latency in
+lesson is baked in: "faster" is meaningless until you say faster at _what_, on
+_which lane_, under _which traffic_, judged on _which outcome_; read latency in
 P50/P90/P99, not the mean; and a benchmark is only decision-grade when an
 owner-armed real seam runs over **realistic** traffic.
 
 What the GTM push needs on top of that:
 
 - **An owner-armed real sweep.** Replace synthetic shapes with shapes sourced from
-  observed Khala traffic (the dogfood from Pillar 1 *is* that traffic), arm
+  observed Khala traffic (the dogfood from Pillar 1 _is_ that traffic), arm
   `makeRealLaneSeam` with a live executor under a budget cap, and produce the first
   `decisionGrade: true` report comparing Khala vs Fireworks/Vertex on chat /
   khala-code / verifier / long-context. This is the existing Open Question #5
@@ -289,8 +292,8 @@ What the GTM push needs on top of that:
 
 The **gym** is where this runs: the same gym that trains and uses Khala (Pillar 1)
 also **benchmarks** it on a recurring basis, so every training or serving change is
-automatically re-scored. The gym drives the harness above over a *ladder of
-opponents*, all on identical prompts and our axes (tokens, $, wall-clock,
+automatically re-scored. The gym drives the harness above over a _ladder of
+opponents_, all on identical prompts and our axes (tokens, $, wall-clock,
 cost-per-accepted-outcome, verified-rate):
 
 1. **BigPickle vs Khala** — the first named baseline target. **BigPickle is
@@ -332,7 +335,7 @@ are explicitly labeled illustrative and never published as measurements.
 5. **Keep driving internal dogfood demand throughout.** Pillar 1 never stops; new
    internal systems default to Khala as they ship. Constant motion.
 
-These overlap (1 and 2 can run in parallel; 1 feeds 3), but the *gating* order is:
+These overlap (1 and 2 can run in parallel; 1 feeds 3), but the _gating_ order is:
 internal demand and OpenCode do not block on the paid loop or the registry, so
 they ship first; the paid three-way-split economics are owner-gated and sequence
 behind proof.
@@ -347,7 +350,8 @@ and stay up. Supporting metrics:
 - **Per-tool adoption** — tokens attributable to OpenCode, Aider, etc. (so we know
   which ecosystem landings actually move traffic).
 - **Internal vs external split** — keep them distinguishable in our analytics so
-  we never imply external traction we do not have.
+  we never imply external traction we do not have. The owner-gated analytics now
+  expose internal/external/unlabeled demand kind plus source/client rollups.
 - **Quality/latency/cost** — from the benchmark harness (P50/P90/P99 latency,
   cost-per-accepted-outcome, verified-rate), decision-grade only.
 
