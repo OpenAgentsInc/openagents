@@ -276,16 +276,29 @@ What the GTM push needs on top of that:
   (`../khala/khala-buildout-roadmap.md`), but generalized into a recurring quality
   bar we can publish.
 
-> **TBD — confirm with the owner.** The founder named specific benchmark targets
-> that came through **garbled voice transcription**: "BigPickle" and "do a gem."
-> Read charitably, these point at (a) a named **coding/inference benchmark** to run
-> Khala against, and (b) a named **competitor tool/model** to beat — possibly a
-> benchmark "gem" (harness/leaderboard) and a competitor codenamed something
-> mis-transcribed. **Do not invent specifics.** The action item is to confirm the
-> exact benchmark and tool names with the owner before standing up that specific
-> sweep. Frame externally only as "a coding/inference benchmark plus named
-> competitor tools, to confirm." Everything else in this benchmarking pillar
-> stands on the already-shipped harness regardless of those names.
+### Run it through the gym — the benchmark ladder
+
+The **gym** is where this runs: the same gym that trains and uses Khala (Pillar 1)
+also **benchmarks** it on a recurring basis, so every training or serving change is
+automatically re-scored. The gym drives the harness above over a *ladder of
+opponents*, all on identical prompts and our axes (tokens, $, wall-clock,
+cost-per-accepted-outcome, verified-rate):
+
+1. **BigPickle vs Khala** — the first named baseline target. *(Confirm exactly
+   which model/benchmark "BigPickle" refers to before wiring this rung; the rest
+   of the ladder doesn't depend on it.)*
+2. **Other (open / free) models vs Khala** — the open models a developer would
+   otherwise reach for (the catalog/ecosystem set), so we know where Khala stands
+   among the free options people compare us to.
+3. **Paid (frontier) models vs Khala** — the paid Claude/GPT/Gemini-class models as
+   the upper bar, so we can see the gap to frontier and track it closing over time.
+
+The progression is deliberate: prove Khala against the baseline and the **free**
+field first (where we must win on cost-per-accepted-outcome and verified-rate),
+then measure the climb toward **paid** frontier. The gym publishes the ladder as a
+recurring, dereferenceable leaderboard — and per the honesty bar below, numbers are
+only published from the owner-armed real seam over realistic traffic
+(`decisionGrade: true`).
 
 Honesty bar for any published benchmark number: it must come from the owner-armed
 real seam over realistic traffic (`decisionGrade: true`); fixture/synthetic runs
