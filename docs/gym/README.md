@@ -31,7 +31,12 @@ provider-adapter registry, verification-class registry, and the
 - **Phase 1 D1 landed:** the **OpenCode coding-agent head-to-head** now has typed
   benchmark lanes, a fixture-only BigPickle rung, an OpenCode config/usage runner,
   and a deterministic `decisionGrade:false` Khala-vs-BigPickle fixture report.
-  Remaining Phase 1 work expands environments and owner-armed real sweeps.
+- **Phase 1 D2 landed:** `GYM_ENVIRONMENT_REGISTRY` now registers
+  `terminal-bench`, `khala-code`, `long-context-codebase-qa`, and
+  `m8-head-to-head` with task-set, verifier, acceptance-contract, default-shape,
+  and default-tool bindings. The fixture seam runs all four with their grader
+  bound; graderless environments are rejected before execution.
+  Remaining Phase 1 work expands owner-armed real sweeps.
 
 ## Contents
 

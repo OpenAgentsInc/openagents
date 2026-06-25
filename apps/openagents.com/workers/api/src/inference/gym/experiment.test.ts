@@ -2,10 +2,18 @@ import { describe, expect, test } from 'vitest'
 
 import {
   BUNDLED_GYM_EXPERIMENT,
+  GYM_ENVIRONMENT_REGISTRY,
+  KHALA_CODE_GYM_EXPERIMENT,
+  LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
+  M8_HEAD_TO_HEAD_GYM_EXPERIMENT,
   OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT,
+  PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS,
+  TERMINAL_BENCH_GYM_EXPERIMENT,
   compileGymExperiment,
   decodeGymExperiment,
   encodeGymExperiment,
+  getGymEnvironmentDefinition,
+  listGymEnvironmentDefinitions,
   runGymFixtureExperiment,
 } from './experiment'
 
@@ -22,11 +30,19 @@ describe('OpenAgents Gym experiment schema', () => {
     expect(encoded).toEqual(OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT)
   })
 
+  test('round-trips the Phase 1 environment fixture experiments', () => {
+    for (const experiment of PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS) {
+      const decoded = decodeGymExperiment(experiment)
+      const encoded = encodeGymExperiment(decoded)
+      expect(encoded).toEqual(experiment)
+    }
+  })
+
   test('rejects malformed configs at the schema boundary', () => {
     expect(() =>
       decodeGymExperiment({
         ...BUNDLED_GYM_EXPERIMENT,
-        environment: 'terminal-bench',
+        environment: 'unknown-environment',
       }),
     ).toThrow()
     expect(() =>
@@ -38,6 +54,39 @@ describe('OpenAgents Gym experiment schema', () => {
   })
 })
 
+describe('Gym environment registry', () => {
+  test('registers the Phase 1 environments with task sets, verifiers, contracts, and default shapes', () => {
+    expect(
+      listGymEnvironmentDefinitions().map(definition => definition.ref),
+    ).toEqual([
+      'bundled-decision-suite-v1',
+      'opencode-head-to-head-v1',
+      'terminal-bench',
+      'khala-code',
+      'long-context-codebase-qa',
+      'm8-head-to-head',
+    ])
+
+    const terminalBench = getGymEnvironmentDefinition('terminal-bench')
+    expect(terminalBench.taskSet.harborDataset).toBe('terminal-bench@2.0')
+    expect(terminalBench.taskSet.publicSafeTaskRefs).toContain(
+      'configure-git-webserver',
+    )
+    expect(terminalBench.verifier.mode).toBe('harbor-separate')
+    expect(terminalBench.acceptance.verifierRef).toBe(
+      terminalBench.verifier.ref,
+    )
+
+    for (const definition of listGymEnvironmentDefinitions()) {
+      expect(definition.verifier.ref).not.toBe('')
+      expect(definition.acceptance.ref).not.toBe('')
+      expect(definition.acceptance.verifierRef).toBe(definition.verifier.ref)
+      expect(definition.workloads.length).toBeGreaterThan(0)
+      expect(definition.defaultShapes.length).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe('compileGymExperiment', () => {
   test('expands the bundled fixture experiment to the expected matrix cells', () => {
     const compiled = compileGymExperiment(BUNDLED_GYM_EXPERIMENT)
@@ -45,6 +94,9 @@ describe('compileGymExperiment', () => {
     expect(compiled.expectedCellCount).toBe(48)
     expect(compiled.matrixConfig.id).toBe('gym:gym-fixture-decision-suite-v1')
     expect(compiled.matrixConfig.samplesPerCell).toBe(5)
+    expect(compiled.policySelection.environment.verifierRef).toBe(
+      'verifier.fixture.khala-decision-suite.v1',
+    )
     expect(compiled.policySelection.coordinator).toBe('heuristic-v0')
     expect(compiled.policySelection.fanout.lanes).toEqual([
       'fireworks',
@@ -65,6 +117,43 @@ describe('compileGymExperiment', () => {
     ])
     expect(compiled.policySelection.tools).toBe('opencode-client-tools')
     expect(compiled.policySelection.skippedCells).toEqual([])
+  })
+
+  test('expands each Phase 1 environment through its registered verifier binding', () => {
+    const expectations = [
+      {
+        experiment: TERMINAL_BENCH_GYM_EXPERIMENT,
+        workload: 'verifier-run',
+        verifier: 'verifier.harbor.terminal_bench.summary.v1',
+      },
+      {
+        experiment: KHALA_CODE_GYM_EXPERIMENT,
+        workload: 'khala-code-artifact-gen',
+        verifier: 'verifier.khala_code.executed_acceptance_suite.v1',
+      },
+      {
+        experiment: LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
+        workload: 'long-context-codebase-question',
+        verifier: 'verifier.seeded.long_context_answer.v1',
+      },
+      {
+        experiment: M8_HEAD_TO_HEAD_GYM_EXPERIMENT,
+        workload: 'khala-code-artifact-gen',
+        verifier: 'verifier.khala_code.executed_acceptance_suite.v1',
+      },
+    ] as const
+
+    for (const { experiment, workload, verifier } of expectations) {
+      const compiled = compileGymExperiment(experiment)
+      expect(compiled.matrixConfig.workloads).toEqual([workload])
+      expect(compiled.matrixConfig.shapes).toEqual(
+        GYM_ENVIRONMENT_REGISTRY[experiment.environment].defaultShapes,
+      )
+      expect(compiled.policySelection.environment.verifierRef).toBe(verifier)
+      expect(compiled.policySelection.environment.acceptanceContractRef).toBe(
+        GYM_ENVIRONMENT_REGISTRY[experiment.environment].acceptance.ref,
+      )
+    }
   })
 
   test('rejects seam: real before any lane seam can be constructed', () => {
@@ -99,6 +188,23 @@ describe('compileGymExperiment', () => {
         shapes: [],
       }),
     ).toThrow(/shapes/)
+  })
+
+  test('rejects an environment registry entry without a bound verifier', () => {
+    const brokenRegistry = {
+      ...GYM_ENVIRONMENT_REGISTRY,
+      'terminal-bench': {
+        ...GYM_ENVIRONMENT_REGISTRY['terminal-bench'],
+        verifier: {
+          ...GYM_ENVIRONMENT_REGISTRY['terminal-bench'].verifier,
+          ref: '',
+        },
+      },
+    }
+
+    expect(() =>
+      compileGymExperiment(TERMINAL_BENCH_GYM_EXPERIMENT, brokenRegistry),
+    ).toThrow(/verifier/)
   })
 })
 
@@ -138,5 +244,21 @@ describe('runGymFixtureExperiment', () => {
     expect(bigpickle?.toolCallSuccessRate).toBeCloseTo(2 / 3, 6)
     expect(bigpickle?.verificationRate).toBe(0)
     expect(result.publicSafety.safe).toBe(true)
+  })
+
+  test('runs every Phase 1 environment fixture with its grader bound', () => {
+    for (const experiment of PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS) {
+      const result = runGymFixtureExperiment(experiment)
+      const environment = result.compiled.policySelection.environment
+      expect(environment.verifierRef).toBe(
+        GYM_ENVIRONMENT_REGISTRY[experiment.environment].verifier.ref,
+      )
+      expect(environment.acceptanceContractRef).toBe(
+        GYM_ENVIRONMENT_REGISTRY[experiment.environment].acceptance.ref,
+      )
+      expect(result.runSet.seamId).toBe('fixture')
+      expect(result.report.decisionGrade).toBe(false)
+      expect(result.publicSafety.safe).toBe(true)
+    }
   })
 })

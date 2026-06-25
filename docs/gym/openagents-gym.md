@@ -323,8 +323,11 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   endpoint lanes, provisions public-safe `opencode.json`, records provider usage
   without estimation, and produces a `decisionGrade:false` Khala-vs-BigPickle
   report scored on cost-per-accepted-outcome, verified-rate, and tool-call
-  success. Remaining Phase 1 work registers Terminal-Bench, `khala-code`,
-  long-context QA, and M8.
+  success. **Landed D2:** `GYM_ENVIRONMENT_REGISTRY` binds `terminal-bench`,
+  `khala-code`, `long-context-codebase-qa`, and `m8-head-to-head` to a task set,
+  verifier, acceptance contract, default realistic/public-safe shape, and default
+  tool set. `compileGymExperiment` carries that grader binding forward and
+  refuses unregistered or graderless environments before any fixture run starts.
 - **Phase 2 — paid runs (owner-armed real seam).** The quote → balance-gate →
   `preflightRealBenchmarkSweep` → real seam → report-receipt path. *Success:* a
   funded account pays to run a real, billable sweep over realistic traffic and
@@ -358,9 +361,10 @@ metric vocabulary, or a new settlement path.
    expandMatrix / runner.ts / buildBenchmarkReport. Reuse the
    openagents.khala.telemetry.v1 schema and checkReportPublicSafety. No forks.
 3. Register environments behind a typed GymEnvironment registry (task set +
-   verifier + acceptance contract + default shapes): OpenCode head-to-head is
-   landed for the fixture seam; terminal-bench, khala-code, long-context-qa, and
-   m8 follow. Selection is typed/semantic, never string-matched.
+   verifier + acceptance contract + default shapes): OpenCode head-to-head,
+   terminal-bench, khala-code, long-context-qa, and m8 are landed for the fixture
+   seam. Selection is typed/semantic, never string-matched, and a graderless env
+   is rejected before it can run.
 4. Add GymRoute() + the public /gym page in Foldkit; the live-run visualization
    in @openagentsinc/three-effect, reusing the Verse fan-out/verdict/cost visual
    language. Knobs/dials bind to the typed config fields above.
@@ -376,12 +380,12 @@ metric vocabulary, or a new settlement path.
 
 ## 10. Open questions
 
-- Environment adapter contract: what is the minimal typed interface a new
-  `GymEnvironment` must satisfy (task source, verifier binding, acceptance
-  contract, default realistic shapes, public-safety of its task content)?
-- Terminal-Bench specifically: which retained fixtures (`apps/pylon/docs/probe-port/`
-  Terminal-Bench material) seed the first env, and where does the executor run
-  (Pylon/Psionic) so the verifier is on a **distinct** device from the producer?
+- Environment adapter contract beyond the fixture seam: the minimal descriptor is
+  landed, but real dispatch adapters still need per-surface artifact ingest.
+- Terminal-Bench specifically: the typed env now seeds from retained public-safe
+  fixture handles in `apps/pylon/docs/probe-port/`; the next open part is where
+  the owner-armed Harbor executor runs (Hydralisk/Pylon/Psionic) so the verifier
+  is on a **distinct** device from the producer.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   how the quote is computed before real provider usage is known.
 - Public leaderboard: which report fields are safe to rank publicly, and how to

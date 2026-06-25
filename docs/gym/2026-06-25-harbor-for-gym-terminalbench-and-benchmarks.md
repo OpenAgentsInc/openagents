@@ -619,11 +619,11 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    `environment_mode = "separate"` works on that host, and reuse
    `hydralisk-terminal-bench-summary` for the public-safe receipt. (Operational;
    no Worker change.)
-2. **Define the typed `terminal-bench` `GymEnvironment`** — `{ harborDataset,
-   taskIdSubset?, acceptanceRewardThreshold: 1.0, verifierMode: "separate", env }`,
-   selected via the typed env enum. Seed `taskIdSubset` from the existing retained
-   fixtures (`apps/pylon/.../probe-retained-terminal-bench-fixtures.md`) so the
-   first env stays inside the established public-safe boundary.
+2. **Shipped (#6241): define the typed `terminal-bench` `GymEnvironment`** —
+   `GYM_ENVIRONMENT_REGISTRY` now records `harborDataset: "terminal-bench@2.0"`,
+   retained public-safe task refs, `verifierMode: "harbor-separate"`, the
+   acceptance reward threshold, and default realistic shapes. The first env stays
+   inside the established retained-fixture boundary.
 3. **Add the job-dispatch + artifact-ingest seam** — `runner.ts` learns to
    dispatch a Harbor job to the Hydralisk harness and ingest
    `result.json`/ATIF, mapping `verifier_result.rewards["reward"]` → the

@@ -261,7 +261,7 @@ matrix→runner→report path. `OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT` produces a
 public-safe `decisionGrade:false` report over one OpenCode coding task.
 
 ### D2. Phase 1 — register the first environments (Terminal-Bench, khala-code, long-context, M8)  ([#6241](https://github.com/OpenAgentsInc/openagents/issues/6241))
-**Type:** task · **Lever:** benchmarking · **Status:** direction
+**Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** an env without its verifier+acceptance contract is not runnable; these are the
 first task sets the ladder runs on. Terminal-Bench rides Harbor (Epic E).
 **Scope:** typed `GymEnvironment` registry entries (task set + verifier + acceptance
@@ -269,6 +269,16 @@ contract + default realistic shapes), selection typed/semantic only.
 **Acceptance:** each env runs through the fixture seam with its grader bound; a run
 cannot start without the env's verifier.
 **Refs:** gym spec §3, §10; flywheel doc §9.
+
+**Shipped:** `workers/api/src/inference/gym/experiment.ts` now has a typed
+`GYM_ENVIRONMENT_REGISTRY` with task-set, verifier, acceptance-contract, default
+shape, and default tool bindings for `terminal-bench`, `khala-code`,
+`long-context-codebase-qa`, and `m8-head-to-head`, alongside the existing bundled
+decision suite and OpenCode head-to-head. `compileGymExperiment` resolves the
+environment through that registry, carries the grader binding in
+`policySelection.environment`, and refuses unregistered/graderless environments.
+Fixture experiments for all four Phase-1 environments run through the existing
+matrix→fixture-seam→report path with `decisionGrade:false`.
 
 ### D3. Phase 2 — paid runs (owner-armed real seam → report receipt)  ([#6247](https://github.com/OpenAgentsInc/openagents/issues/6247))
 **Type:** epic · **Lever:** benchmarking/revenue · **Status:** direction (owner-gated)
