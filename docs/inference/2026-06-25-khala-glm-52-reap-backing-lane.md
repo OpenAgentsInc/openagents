@@ -179,12 +179,27 @@ counts, TTFT, wall time, queue wait, and perceived tokens/sec. This is the
 private owner/operator surface for answering: which replica served, what fell
 back, what saturated, and what cost was recorded on the token row.
 
-Owned hourly economics are deliberately separated from marginal token cost.
-Until Hydralisk host lifecycle telemetry writes keep-warm/watchdog status,
-uptime, idle time, and hourly cost into an owner ledger, the analytics response
-shows those fields as `not_measured` under `ownedHourly` and per-replica
-`effectiveCostPerServedTokenUsd`. That prevents an idle four-GPU or eight-GPU
-host from looking free just because a token row has no hourly-burn allocation.
+Owned hourly economics are deliberately separated from marginal token cost. The
+analytics response now maps GLM `replicaCostProfileRef` values to typed
+`OwnedInferenceCostProfile` rows and amortizes the selected window's hourly burn
+across active serving wall-clock, idle time, served tokens, demand labels, and
+accepted outcomes when a caller records `acceptedOutcomes` in public-safe
+metadata.
+
+For the default 4-GPU Spot profile
+`cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25`, the current
+owner estimate is `$2,696/month` or `$3.693151/hour` using a 730-hour month. A
+12-hour `today` window therefore shows `$44.317812` of GLM burn even when no
+token rows exist; if one hour of that window served traffic, roughly `$3.693151`
+is active demand burn and the remaining `$40.624661` is idle burn. The same
+schema also returns DWS-flex and on-demand scenarios for the same machine shape,
+so owners can compare Spot vs durable capacity without changing dashboards.
+
+The response stays honest about what is still missing. `ownedHourly.costCoverage`
+is `partial` until Hydralisk host lifecycle telemetry writes exact uptime,
+keep-warm probes, watchdog status, benchmark reservation windows, and storage
+overhead into an owner ledger. Those fields remain `not_measured` with blocker
+refs instead of silently treating uncovered owned-infra cost as free.
 
 ## Expected Behavior
 
@@ -205,9 +220,12 @@ host from looking free just because a token row has no hourly-burn allocation.
 - Owner analytics can see GLM replica refs, capacity class, latest inflight,
   queue depth, warm state, fallback/saturation counts, TTFT, wall time, queue
   wait, and TPS without exposing private endpoints.
-- Owned GLM hourly burn, idle burn, keep-warm status, watchdog status, uptime,
-  idle hours, and effective hourly cost per served token remain explicitly
-  `not_measured` until host lifecycle telemetry exists.
+- Owner analytics can see derived GLM hourly burn, monthly burn, window burn,
+  idle burn, active serving hours, internal/external/unlabeled demand burn,
+  effective cost per served token, and cost per accepted outcome when accepted
+  outcomes are recorded. Keep-warm status, watchdog status, benchmark-reserved
+  burn, storage overhead, and exact host lifecycle remain explicit
+  `not_measured` gaps until heartbeat telemetry lands.
 - Direct customer selection remains closed; public model listing still exposes
   Khala, not internal supply workers.
 

@@ -17,6 +17,7 @@ import { Effect, Layer, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 import { OpenAgentsDatabase } from './bindings'
+import { summarizeOwnedInferenceHourlyCost } from './inference/owned-inference-cost'
 import { isRecord, parseJsonRecord } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -395,14 +396,20 @@ type InferenceAnalyticsGroupRow = Readonly<{
 }>
 
 type InferenceAnalyticsMetadataRow = Readonly<{
+  accepted_outcomes: number | null
   batch_wait_ms: number | null
+  benchmark_reserved: boolean | number | string | null
   cost_amount: number | null
+  demand_client: string | null
+  demand_kind: string | null
+  demand_source: string | null
   fallback_reason: string | null
   glm_saturation_policy: string | null
   perceived_tokens_per_second: number | null
   queue_wait_ms: number | null
   replica_busy_reason: string | null
   replica_capacity_class: string | null
+  replica_cost_profile_ref: string | null
   replica_inflight_count: number | null
   replica_max_inflight: number | null
   replica_queue_depth: number | null
@@ -478,6 +485,14 @@ const safeTextOrNotMeasured = (value: string | null | undefined): string => {
 
 const glmReplicaSummaries = (
   rows: ReadonlyArray<InferenceAnalyticsMetadataRow>,
+  ownedCostByReplicaRef: ReadonlyMap<
+    string,
+    Readonly<{
+      effectiveCostPerServedTokenUsd: MeasuredNumber
+      idleHours: number
+      uptimeHours: number
+    }>
+  > = new Map(),
 ) =>
   Object.values(
     rows.reduce<
@@ -543,15 +558,19 @@ const glmReplicaSummaries = (
           typeof row.glm_saturation_policy === 'string' &&
           row.glm_saturation_policy.trim() !== '',
       ).length
+      const replicaCost = ownedCostByReplicaRef.get(
+        safeTextOrNotMeasured(latest?.selected_replica_ref),
+      )
 
       return {
         busyEvents,
         capacityClass: safeTextOrNotMeasured(latest?.replica_capacity_class),
         costCoverage: costCoverage(usageEvents, costRows),
         costUsd: roundCostUsd(costUsd),
-        effectiveCostPerServedTokenUsd: NOT_MEASURED,
+        effectiveCostPerServedTokenUsd:
+          replicaCost?.effectiveCostPerServedTokenUsd ?? NOT_MEASURED,
         fallbackEvents,
-        idleHours: NOT_MEASURED,
+        idleHours: replicaCost?.idleHours ?? NOT_MEASURED,
         keepWarmStatus: NOT_MEASURED,
         key: safeTextOrNotMeasured(latest?.selected_replica_ref),
         label: safeTextOrNotMeasured(latest?.selected_replica_id),
@@ -564,7 +583,7 @@ const glmReplicaSummaries = (
         totalTokens,
         totalWallClockMs: latencySummary(totalWallClockMs),
         ttftMs: latencySummary(ttftMs),
-        uptimeHours: NOT_MEASURED,
+        uptimeHours: replicaCost?.uptimeHours ?? NOT_MEASURED,
         usageEvents,
         warmState: safeTextOrNotMeasured(latest?.replica_warm_state),
         watchdogStatus: NOT_MEASURED,
@@ -1781,14 +1800,23 @@ export const makeD1TokenUsageLedger = (
           db
             .prepare(
               `SELECT
+                  COALESCE(
+                    json_extract(safe_metadata_json, '$.acceptedOutcomes'),
+                    json_extract(safe_metadata_json, '$.accepted_outcomes')
+                  ) AS accepted_outcomes,
                   json_extract(safe_metadata_json, '$.batchWaitMs') AS batch_wait_ms,
+                  json_extract(safe_metadata_json, '$.benchmarkReserved') AS benchmark_reserved,
                   cost_amount,
+                  demand_client,
+                  demand_kind,
+                  demand_source,
                   json_extract(safe_metadata_json, '$.fallbackReason') AS fallback_reason,
                   json_extract(safe_metadata_json, '$.glmSaturationPolicy') AS glm_saturation_policy,
                   json_extract(safe_metadata_json, '$.perceivedTokensPerSecond') AS perceived_tokens_per_second,
                   json_extract(safe_metadata_json, '$.queueWaitMs') AS queue_wait_ms,
                   json_extract(safe_metadata_json, '$.replicaBusyReason') AS replica_busy_reason,
                   json_extract(safe_metadata_json, '$.replicaCapacityClass') AS replica_capacity_class,
+                  json_extract(safe_metadata_json, '$.replicaCostProfileRef') AS replica_cost_profile_ref,
                   json_extract(safe_metadata_json, '$.replicaInflightCount') AS replica_inflight_count,
                   json_extract(safe_metadata_json, '$.replicaMaxInflight') AS replica_max_inflight,
                   json_extract(safe_metadata_json, '$.replicaQueueDepth') AS replica_queue_depth,
@@ -1864,6 +1892,11 @@ export const makeD1TokenUsageLedger = (
           typeof row.glm_saturation_policy === 'string' &&
           row.glm_saturation_policy.trim() !== '',
       ).length
+      const ownedCost = summarizeOwnedInferenceHourlyCost({
+        nowIso,
+        rows: metadataRows,
+        sinceIso: since,
+      })
 
       return yield* decodeInferenceAnalyticsResponse({
         schemaVersion: 'openagents.inference_analytics.v1',
@@ -1910,7 +1943,7 @@ export const makeD1TokenUsageLedger = (
         byDemandSource: byDemandSource.map(analyticsRow),
         byDemandClient: byDemandClient.map(analyticsRow),
         generatedAt: runtime.nowIso(),
-        glmReplicas: glmReplicaSummaries(metadataRows),
+        glmReplicas: glmReplicaSummaries(metadataRows, ownedCost.byReplicaRef),
         operational: {
           batchWaitMs: latencySummary(batchWaitMs),
           busyEvents,
@@ -1926,18 +1959,7 @@ export const makeD1TokenUsageLedger = (
           totalWallClockMs: latencySummary(totalWallClockMs),
           ttftMs: latencySummary(ttftMs),
         },
-        ownedHourly: {
-          blockerRefs: [
-            'blocker.inference_analytics.owned_hourly_host_lifecycle_missing',
-            'blocker.inference_analytics.glm_idle_burn_not_measured',
-          ],
-          costCoverage: 'not_measured',
-          effectiveCostPerServedTokenUsd: NOT_MEASURED,
-          hourlyBurnUsd: NOT_MEASURED,
-          idleBurnUsd: NOT_MEASURED,
-          idleHours: NOT_MEASURED,
-          uptimeHours: NOT_MEASURED,
-        },
+        ownedHourly: ownedCost.summary,
         totals: {
           costCoverage: costCoverage(usageEvents, costRows),
           costUsd: roundCostUsd(totalsRow?.cost_usd ?? 0),

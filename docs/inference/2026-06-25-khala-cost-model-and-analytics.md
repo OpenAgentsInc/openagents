@@ -1,7 +1,8 @@
 # Khala inference cost model, free-tier quota, and provider-lane analytics
 
-Date: 2026-06-25. Issues #6232 and #6266. Status: **shipped** (cost model +
-raised quota + owner-gated analytics, extended with GLM pool visibility).
+Date: 2026-06-25. Issues #6232, #6266, and #6267. Status: **shipped** (cost
+model + raised quota + owner-gated analytics, extended with GLM pool visibility
+and owned-GPU hourly amortization).
 Internal — provider ids and cost are NOT public claim copy. Companion to
 `2026-06-19-pricing-model.md` and `2026-06-19-fireworks-provider.md`.
 
@@ -177,11 +178,49 @@ It also returns operational summaries:
 - `glmReplicas`: one row per selected GLM replica ref with token/cost rollups,
   latest public-safe inflight/max-inflight/queue-depth, warm state, capacity
   class, fallback/busy/saturation counts, and per-replica latency/throughput.
-- `ownedHourly`: the owned-GPU hourly accounting slot. It currently reports
-  `not_measured` for hourly burn, idle burn, uptime hours, idle hours, keep-warm
-  status, watchdog status, and effective hourly cost per served token because
-  host lifecycle telemetry is not yet written to the token ledger. That is
-  intentional: missing owned-infra cost is visible as uncovered, never $0.
+- `ownedHourly`: the owned-GPU hourly accounting slot. It maps public-safe GLM
+  cost-profile refs to typed `OwnedInferenceCostProfile` rows, assumes each
+  selected replica was up for the selected analytics window, and amortizes that
+  hourly burn across active serving wall-clock, idle time, served tokens, and
+  accepted outcomes when an accepted-outcome count is present. Because host
+  lifecycle, storage, keep-warm, and benchmark-reserved telemetry are not yet
+  first-class ledgers, `costCoverage` is `partial` and those gaps appear as
+  blocker refs rather than being hidden as $0.
+
+### Owned GLM hourly profiles
+
+These are owner estimates for the current Google Cloud GLM lane, normalized to
+730 hours/month. Storage overhead is deliberately `not_measured` until disk and
+image retention are metered separately.
+
+| profile                         | machine           | GPUs | spot $/mo | DWS flex $/mo | on-demand $/mo | spot $/h | DWS flex $/h | on-demand $/h |
+| ------------------------------- | ----------------- | ---: | --------: | ------------: | -------------: | -------: | -----------: | ------------: |
+| GLM-5.2 REAP 504B 4-GPU profile | `g4-standard-192` |    4 |    $2,696 |        $6,570 |        $13,140 |    $3.69 |        $9.00 |        $18.00 |
+| GLM-5.2 REAP 504B 8-GPU profile | `g4-standard-384` |    8 |    $5,392 |       $13,140 |        $26,280 |    $7.39 |       $18.00 |        $36.00 |
+
+Plain language: the 8-GPU host roughly doubles the hourly cost of the 4-GPU
+host. It may improve capacity, concurrency, KV/cache headroom, and some per-user
+latency depending on the serving topology, but it is not automatically "twice as
+fast" for one request. The analytics model therefore compares cost scenarios
+from the same schema rather than assuming bigger is better.
+
+For one 4-GPU Spot replica that is kept up all day, idle burn is about
+`$3.693151 * 24 = $88.64/day` even if nobody sends a request. For a 12-hour
+`today` window, the owner endpoint now answers that as `$44.32` of window burn.
+If that 12-hour window served 30,000 tokens and produced 2 accepted outcomes,
+the derived values are:
+
+- effective cost per served token: `$44.317812 / 30,000 = $0.001477/token`
+- effective cost per accepted outcome: `$44.317812 / 2 = $22.158906/outcome`
+- active demand burn for a one-hour request window: `$3.693151`
+- idle burn for the remaining 11 hours: `$40.624661`
+
+At higher sustained utilization the effective $/token drops quickly. A 4-GPU
+Spot host held up for 24 hours costs about `$88.64/day`; that is `$88.64/Mtok`
+at 1M tokens/day, `$8.86/Mtok` at 10M tokens/day, and `$0.89/Mtok` at 100M
+tokens/day. That is why owner analytics must show both provider-token marginal
+cost and owned-GPU idle burn: low utilization makes an otherwise cheap owned lane
+look expensive per token.
 
 ### The endpoint (owner-gated)
 
@@ -268,21 +307,57 @@ Sample response shape:
       "saturationEvents": 0,
       "keepWarmStatus": "not_measured",
       "watchdogStatus": "not_measured",
-      "uptimeHours": "not_measured",
-      "idleHours": "not_measured",
-      "effectiveCostPerServedTokenUsd": "not_measured"
+      "uptimeHours": 168,
+      "idleHours": 167.999333,
+      "effectiveCostPerServedTokenUsd": 0.020682
     }
   ],
   "ownedHourly": {
-    "costCoverage": "not_measured",
-    "hourlyBurnUsd": "not_measured",
-    "idleBurnUsd": "not_measured",
-    "uptimeHours": "not_measured",
-    "idleHours": "not_measured",
-    "effectiveCostPerServedTokenUsd": "not_measured",
+    "costCoverage": "partial",
+    "hourlyBurnUsd": 3.693151,
+    "monthlyBurnUsd": 2696,
+    "windowBurnUsd": 620.449368,
+    "activeDemandBurnUsd": 0.002462,
+    "idleBurnUsd": 620.446906,
+    "uptimeHours": 168,
+    "activeServingHours": 0.000667,
+    "idleHours": 167.999333,
+    "internalDemandBurnUsd": 0.002462,
+    "externalDemandBurnUsd": 0,
+    "unlabeledDemandBurnUsd": 0,
+    "acceptedOutcomes": "not_measured",
+    "costPerAcceptedOutcomeUsd": "not_measured",
+    "effectiveCostPerServedTokenUsd": 0.020682,
+    "profiles": [
+      {
+        "profileRef": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+        "machineShape": "g4-standard-192",
+        "gpuCount": 4,
+        "provisioningModel": "spot",
+        "monthlyComputeUsd": 2696,
+        "hourlyComputeUsd": 3.693151,
+        "monthlyStorageOverheadUsd": "not_measured",
+        "hourlyStorageOverheadUsd": "not_measured"
+      }
+    ],
+    "scenarios": [
+      { "provisioningModel": "spot", "windowBurnUsd": 620.449368 },
+      { "provisioningModel": "dws_flex", "windowBurnUsd": 1512 },
+      { "provisioningModel": "on_demand", "windowBurnUsd": 3024 }
+    ],
+    "demand": [
+      {
+        "key": "internal:openagents-gym:gym-opencode-runner",
+        "activeDemandBurnUsd": 0.002462,
+        "totalTokens": 30000
+      }
+    ],
     "blockerRefs": [
-      "blocker.inference_analytics.owned_hourly_host_lifecycle_missing",
-      "blocker.inference_analytics.glm_idle_burn_not_measured"
+      "blocker.inference_analytics.accepted_outcomes_not_measured",
+      "blocker.inference_analytics.glm_benchmark_reserved_burn_not_measured",
+      "blocker.inference_analytics.glm_keepwarm_burn_not_measured",
+      "blocker.inference_analytics.glm_storage_overhead_not_measured",
+      "blocker.inference_analytics.owned_hourly_host_lifecycle_derived_window_assumption"
     ]
   },
   "totals": {
@@ -296,8 +371,10 @@ Sample response shape:
 `cost_amount`. Before this change it is ~0 (all historical rows are NULL-cost);
 as new rows land it climbs toward 1. When `< 1`, `costUsd` understates true cost
 and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
-`ownedHourly.costCoverage` is separate from token-row `costCoverage`: it remains
-`not_measured` until a host lifecycle/keep-warm/watchdog feed exists.
+`ownedHourly.costCoverage` is separate from token-row `costCoverage`: `partial`
+means the compute profile and selected analytics window are known, but host
+lifecycle, storage, keep-warm, and benchmark reservation splits are still
+derived or uncovered.
 
 ## 5. How to measure this going forward
 
@@ -315,7 +392,8 @@ and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
   vs external vs unlabeled tool traffic), `byDemandClientDay` (which tools are
   moving the curve over time), `byDay.costUsd` (daily marginal token burn),
   `totals.costCoverage` (token-cost completeness), and `ownedHourly` (owned GPU
-  hourly/idle burn, currently explicitly not measured).
+  hourly/idle burn, scenario comparison, cost per served token, and cost per
+  accepted outcome when measured).
 - **Public served-tokens counter** (`/api/public/khala-tokens-served` +
   `/history`) remains the public-safe token total; it never exposes demand
   labels or implies internal dogfood is external traction. The analytics

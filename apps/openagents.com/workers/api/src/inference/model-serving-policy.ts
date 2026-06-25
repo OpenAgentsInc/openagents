@@ -20,6 +20,7 @@
 // no money and changes no promise state — it only narrows what the public
 // catalog advertises to what is genuinely servable.
 import type { ModelCatalogEntry } from './model-catalog'
+import { DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF } from './owned-inference-cost'
 import {
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
@@ -223,7 +224,7 @@ const LEGACY_GLM_REPLICA_ID = 'primary'
 const DEFAULT_GLM_PROFILE_REF =
   'profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1'
 const DEFAULT_GLM_COST_PROFILE_REF =
-  'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25'
+  DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF
 const REPLICA_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u
 
 const isEnabledFlag = (value: string | undefined): boolean => {

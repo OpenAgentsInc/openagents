@@ -388,9 +388,9 @@ describe('readInferenceAnalytics (#6232)', () => {
         capacityClass: 'spot',
         costCoverage: 1,
         costUsd: 0.42,
-        effectiveCostPerServedTokenUsd: 'not_measured',
+        effectiveCostPerServedTokenUsd: expect.any(Number),
         fallbackEvents: 0,
-        idleHours: 'not_measured',
+        idleHours: expect.any(Number),
         keepWarmStatus: 'not_measured',
         key: 'replica.hydralisk.glm_52_reap_504b.second',
         label: 'second',
@@ -399,7 +399,7 @@ describe('readInferenceAnalytics (#6232)', () => {
         maxInflight: 1,
         saturationEvents: 0,
         totalTokens: 30_000,
-        uptimeHours: 'not_measured',
+        uptimeHours: 168,
         usageEvents: 1,
         warmState: 'warm',
         watchdogStatus: 'not_measured',
@@ -413,20 +413,184 @@ describe('readInferenceAnalytics (#6232)', () => {
       p50TokensPerSecond: 40_000,
       sampleCount: 1,
     })
+    expect(result.glmReplicas[0]?.idleHours).toBeCloseTo(167.999333, 6)
+    expect(result.glmReplicas[0]?.effectiveCostPerServedTokenUsd).toBeCloseTo(
+      0.020682,
+      6,
+    )
     expect(result.ownedHourly).toMatchObject({
-      costCoverage: 'not_measured',
-      hourlyBurnUsd: 'not_measured',
-      idleBurnUsd: 'not_measured',
+      activeDemandBurnUsd: 0.002462,
+      activeServingHours: 0.000667,
+      costCoverage: 'partial',
+      effectiveCostPerServedTokenUsd: 0.020682,
+      externalDemandBurnUsd: 0,
+      hourlyBurnUsd: 3.693151,
+      idleBurnUsd: 620.446906,
+      idleHours: 167.999333,
+      internalDemandBurnUsd: 0.002462,
+      monthlyBurnUsd: 2696,
+      windowBurnUsd: 620.449368,
       blockerRefs: [
-        'blocker.inference_analytics.owned_hourly_host_lifecycle_missing',
-        'blocker.inference_analytics.glm_idle_burn_not_measured',
+        'blocker.inference_analytics.accepted_outcomes_not_measured',
+        'blocker.inference_analytics.glm_benchmark_reserved_burn_not_measured',
+        'blocker.inference_analytics.glm_keepwarm_burn_not_measured',
+        'blocker.inference_analytics.glm_storage_overhead_not_measured',
+        'blocker.inference_analytics.owned_hourly_host_lifecycle_derived_window_assumption',
       ],
     })
+    expect(result.ownedHourly.profiles).toEqual([
+      expect.objectContaining({
+        gpuCount: 4,
+        machineShape: 'g4-standard-192',
+        monthlyComputeUsd: 2696,
+        profileRef:
+          'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25',
+        provisioningModel: 'spot',
+      }),
+    ])
+    expect(result.ownedHourly.scenarios).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provisioningModel: 'spot',
+          replicaCount: 1,
+          windowBurnUsd: 620.449368,
+        }),
+        expect.objectContaining({
+          provisioningModel: 'dws_flex',
+          replicaCount: 1,
+          windowBurnUsd: 1512,
+        }),
+        expect.objectContaining({
+          provisioningModel: 'on_demand',
+          replicaCount: 1,
+          windowBurnUsd: 3024,
+        }),
+      ]),
+    )
+    expect(result.ownedHourly.demand).toEqual([
+      expect.objectContaining({
+        activeDemandBurnUsd: 0.002462,
+        demandClient: 'gym-opencode-runner',
+        demandKind: 'internal',
+        demandSource: 'openagents-gym',
+        key: 'internal:openagents-gym:gym-opencode-runner',
+        totalTokens: 30_000,
+      }),
+    ])
     expect(result.totals.totalTokens).toBe(1_161_852)
     expect(result.totals.usageEvents).toBe(3)
     expect(result.totals.costUsd).toBeCloseTo(0.69, 6)
     // Every row carried a stored cost.
     expect(result.totals.costCoverage).toBe(1)
+  })
+
+  test('amortizes owned GLM hourly burn across idle, served-token, and accepted-outcome math (#6267)', async () => {
+    const db = makeDb()
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          backendProfile: 'hydralisk-vllm-glm-5p2-reap-504b',
+          costUsd: 0.42,
+          demandClient: 'gym-opencode-runner',
+          demandKind: 'internal',
+          demandSource: 'openagents-gym',
+          eventId: 'glm-owned-cost',
+          inputTokens: 10_000,
+          model: 'openagents/glm-5.2-reap-504b',
+          observedAt: '2026-06-25T06:00:00.000Z',
+          outputTokens: 20_000,
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          safeMetadata: {
+            acceptedOutcomes: 2,
+            replicaCapacityClass: 'spot',
+            replicaCostProfileRef:
+              'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25',
+            replicaMaxInflight: 1,
+            replicaWarmState: 'warm',
+            requestClass: 'interactive_stream',
+            selectedReplicaId: 'primary',
+            selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.primary',
+            supplyLane: 'hydralisk',
+            totalWallClockMs: 3_600_000,
+          },
+        }),
+      ),
+    )
+
+    const result = await runLedger(db, analytics({ window: 'today' }))
+
+    expect(result.ownedHourly).toMatchObject({
+      acceptedOutcomes: 2,
+      activeDemandBurnUsd: 3.693151,
+      activeServingHours: 1,
+      costCoverage: 'partial',
+      costPerAcceptedOutcomeUsd: 22.158906,
+      effectiveCostPerServedTokenUsd: 0.001477,
+      hourlyBurnUsd: 3.693151,
+      idleBurnUsd: 40.624661,
+      idleHours: 11,
+      internalDemandBurnUsd: 3.693151,
+      monthlyBurnUsd: 2696,
+      uptimeHours: 12,
+      windowBurnUsd: 44.317812,
+    })
+    expect(result.ownedHourly.blockerRefs).not.toContain(
+      'blocker.inference_analytics.accepted_outcomes_not_measured',
+    )
+    expect(result.ownedHourly.scenarios).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          costPerAcceptedOutcomeUsd: 22.158906,
+          effectiveCostPerServedTokenUsd: 0.001477,
+          provisioningModel: 'spot',
+          windowBurnUsd: 44.317812,
+        }),
+        expect.objectContaining({
+          costPerAcceptedOutcomeUsd: 54,
+          provisioningModel: 'dws_flex',
+          windowBurnUsd: 108,
+        }),
+        expect.objectContaining({
+          costPerAcceptedOutcomeUsd: 108,
+          provisioningModel: 'on_demand',
+          windowBurnUsd: 216,
+        }),
+      ]),
+    )
+    expect(result.glmReplicas[0]).toMatchObject({
+      effectiveCostPerServedTokenUsd: 0.001477,
+      idleHours: 11,
+      uptimeHours: 12,
+    })
+  })
+
+  test('reports owned GLM idle burn even when no token rows were served (#6267)', async () => {
+    const db = makeDb()
+
+    const result = await runLedger(db, analytics({ window: 'today' }))
+
+    expect(result.totals.usageEvents).toBe(0)
+    expect(result.ownedHourly).toMatchObject({
+      activeDemandBurnUsd: 0,
+      activeServingHours: 0,
+      costCoverage: 'partial',
+      effectiveCostPerServedTokenUsd: 'not_measured',
+      hourlyBurnUsd: 3.693151,
+      idleBurnUsd: 44.317812,
+      idleHours: 12,
+      monthlyBurnUsd: 2696,
+      uptimeHours: 12,
+      windowBurnUsd: 44.317812,
+    })
+    expect(result.ownedHourly.demand).toEqual([])
+    expect(result.ownedHourly.profiles[0]).toMatchObject({
+      gpuCount: 4,
+      machineShape: 'g4-standard-192',
+      profileRef:
+        'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25',
+      provisioningModel: 'spot',
+    })
   })
 
   test('reports cost coverage < 1 when rows predate cost recording', async () => {

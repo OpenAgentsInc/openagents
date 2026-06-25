@@ -435,15 +435,98 @@ export const InferenceAnalyticsHourlyCostCoverage = S.Literals([
 export type InferenceAnalyticsHourlyCostCoverage =
   typeof InferenceAnalyticsHourlyCostCoverage.Type
 
+export const OwnedInferenceProvisioningModel = S.Literals([
+  'spot',
+  'on_demand',
+  'dws_flex',
+])
+export type OwnedInferenceProvisioningModel =
+  typeof OwnedInferenceProvisioningModel.Type
+
+export class OwnedInferenceCostProfile extends S.Class<OwnedInferenceCostProfile>(
+  'OwnedInferenceCostProfile',
+)({
+  profileRef: S.String,
+  supplyLane: S.String,
+  modelRef: S.String,
+  machineShape: S.String,
+  gpuCount: S.Int,
+  provisioningModel: OwnedInferenceProvisioningModel,
+  monthlyComputeUsd: S.Number,
+  hourlyComputeUsd: S.Number,
+  monthlyStorageOverheadUsd: InferenceAnalyticsMeasuredNumber,
+  hourlyStorageOverheadUsd: InferenceAnalyticsMeasuredNumber,
+  sourceRef: S.String,
+  evidenceRefs: S.Array(S.String),
+}) {}
+
+export class InferenceAnalyticsOwnedCostScenario extends S.Class<InferenceAnalyticsOwnedCostScenario>(
+  'InferenceAnalyticsOwnedCostScenario',
+)({
+  profileRef: S.String,
+  machineShape: S.String,
+  gpuCount: S.Int,
+  provisioningModel: OwnedInferenceProvisioningModel,
+  replicaCount: S.Int,
+  uptimeHours: S.Number,
+  activeServingHours: S.Number,
+  idleHours: S.Number,
+  hourlyBurnUsd: S.Number,
+  monthlyComputeUsd: S.Number,
+  windowBurnUsd: S.Number,
+  idleBurnUsd: S.Number,
+  activeDemandBurnUsd: S.Number,
+  internalDemandBurnUsd: S.Number,
+  externalDemandBurnUsd: S.Number,
+  unlabeledDemandBurnUsd: S.Number,
+  benchmarkReservedBurnUsd: InferenceAnalyticsMeasuredNumber,
+  keepWarmBurnUsd: InferenceAnalyticsMeasuredNumber,
+  storageOverheadUsd: InferenceAnalyticsMeasuredNumber,
+  acceptedOutcomes: InferenceAnalyticsMeasuredNumber,
+  costPerAcceptedOutcomeUsd: InferenceAnalyticsMeasuredNumber,
+  effectiveCostPerServedTokenUsd: InferenceAnalyticsMeasuredNumber,
+  sourceRef: S.String,
+}) {}
+
+export class InferenceAnalyticsOwnedDemandCostRow extends S.Class<InferenceAnalyticsOwnedDemandCostRow>(
+  'InferenceAnalyticsOwnedDemandCostRow',
+)({
+  key: S.String,
+  label: S.String,
+  demandKind: TokenUsageDemandKind,
+  demandSource: S.String,
+  demandClient: S.String,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  activeServingHours: S.Number,
+  activeDemandBurnUsd: S.Number,
+  costPerServedTokenUsd: InferenceAnalyticsMeasuredNumber,
+}) {}
+
 export class InferenceAnalyticsOwnedHourlySummary extends S.Class<InferenceAnalyticsOwnedHourlySummary>(
   'InferenceAnalyticsOwnedHourlySummary',
 )({
   costCoverage: InferenceAnalyticsHourlyCostCoverage,
   hourlyBurnUsd: InferenceAnalyticsMeasuredNumber,
+  monthlyBurnUsd: InferenceAnalyticsMeasuredNumber,
+  windowBurnUsd: InferenceAnalyticsMeasuredNumber,
+  activeDemandBurnUsd: InferenceAnalyticsMeasuredNumber,
   idleBurnUsd: InferenceAnalyticsMeasuredNumber,
   uptimeHours: InferenceAnalyticsMeasuredNumber,
+  activeServingHours: InferenceAnalyticsMeasuredNumber,
   idleHours: InferenceAnalyticsMeasuredNumber,
+  internalDemandBurnUsd: InferenceAnalyticsMeasuredNumber,
+  externalDemandBurnUsd: InferenceAnalyticsMeasuredNumber,
+  unlabeledDemandBurnUsd: InferenceAnalyticsMeasuredNumber,
+  benchmarkReservedBurnUsd: InferenceAnalyticsMeasuredNumber,
+  keepWarmBurnUsd: InferenceAnalyticsMeasuredNumber,
+  storageOverheadUsd: InferenceAnalyticsMeasuredNumber,
+  acceptedOutcomes: InferenceAnalyticsMeasuredNumber,
+  costPerAcceptedOutcomeUsd: InferenceAnalyticsMeasuredNumber,
   effectiveCostPerServedTokenUsd: InferenceAnalyticsMeasuredNumber,
+  profiles: S.Array(OwnedInferenceCostProfile),
+  scenarios: S.Array(InferenceAnalyticsOwnedCostScenario),
+  demand: S.Array(InferenceAnalyticsOwnedDemandCostRow),
   blockerRefs: S.Array(S.String),
 }) {}
 
