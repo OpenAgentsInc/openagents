@@ -6,7 +6,8 @@ environments + one interface so policies can be compared), it lets you configure
 Khala **policy** — coordinator candidate × provider fan-out × tool set ×
 plugin/module composition × sampling × quantization/speculation — run it against a
 registered **environment** (Terminal-Bench, `khala-code`, long-context QA, the M8
-head-to-head, the **OpenCode coding-agent head-to-head**, ...), and score it on the
+head-to-head, the **OpenCode coding-agent head-to-head**, throughput/concurrency,
+...), and score it on the
 **executed verification verdict + cost-per-accepted-outcome**. The public `/gym`
 web route is the Phase 0
 fixture-only knobs-and-dials surface in Foldkit + `@openagentsinc/three-effect`;
@@ -29,6 +30,10 @@ provider-adapter registry, verification-class registry, and the
   `#6167`. It is auth/owner-gated, capped at eight in-flight requests, streams
   against `openagents/khala-oss-20b`, and keeps `not_measured` distinct from
   fabricated zeroes.
+- **Epic F3 landed:** `throughput-concurrency` is registered as a typed Gym
+  environment, and `throughput.ts` builds repeatable per-lane TTFT/TPS/ITL,
+  aggregate-throughput, speculation-acceptance, and degradation-point reports
+  from `/gym/oss`-style reconciled samples without coercing `not_measured` to 0.
 - **Phase 1 D1 landed:** the **OpenCode coding-agent head-to-head** now has typed
   benchmark lanes, a fixture-only BigPickle rung, an OpenCode config/usage runner,
   and a deterministic `decisionGrade:false` Khala-vs-BigPickle fixture report.

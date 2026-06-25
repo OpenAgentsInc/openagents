@@ -18,6 +18,12 @@
 > requests, streams against the neutral `openagents/khala-oss-20b` lane, reads
 > `openagents.khala.telemetry.v1`, and charts TTFT/TPS/ITL/wall-clock without a
 > per-call balance gate because that Hydralisk L4 lane is billed hourly.
+> As of #6244, the same pattern is promoted into a typed
+> `throughput-concurrency` Gym environment and a pure Worker-side
+> `openagents.gym.throughput_concurrency_report.v1` artifact that reports
+> per-lane TTFT/TPS/ITL, aggregate throughput, speculation acceptance, and the
+> first concurrency point where quota or latency degrades while preserving
+> `not_measured` as distinct from measured `0`.
 > The Gym is the interactive experimentation surface and **eval+reward factory**
 > that sits *on top of the
 > already-landed Khala benchmark harness*

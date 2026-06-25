@@ -30,6 +30,7 @@ export const GymEnvironmentRef = S.Literals([
   'khala-code',
   'long-context-codebase-qa',
   'm8-head-to-head',
+  'throughput-concurrency',
 ])
 export type GymEnvironmentRef = typeof GymEnvironmentRef.Type
 
@@ -62,6 +63,7 @@ export const GymEnvironmentSurface = S.Literals([
   'artifact-acceptance',
   'retrieval-qa',
   'recorded-head-to-head',
+  'throughput-concurrency',
 ])
 export type GymEnvironmentSurface = typeof GymEnvironmentSurface.Type
 
@@ -73,6 +75,7 @@ export const GymEnvironmentTaskSet = S.Struct({
     'khala-acceptance',
     'retained-public-fixture',
     'recorded-manifest',
+    'throughput-ramp',
   ]),
   publicSafeTaskRefs: S.Array(S.String),
   harborDataset: S.optional(S.String),
@@ -85,6 +88,7 @@ export const GymVerifierMode = S.Literals([
   'harbor-separate',
   'executed-acceptance',
   'seeded-reference',
+  'telemetry-reconciliation',
 ])
 export type GymVerifierMode = typeof GymVerifierMode.Type
 
@@ -288,6 +292,17 @@ const M8_HEAD_TO_HEAD_SHAPE: typeof SequenceShape.Type = {
   provenance: 'realistic',
 }
 
+const THROUGHPUT_CONCURRENCY_RAMP_SHAPES: ReadonlyArray<
+  typeof SequenceShape.Type
+> = [1, 2, 4, 8].map(concurrency => ({
+  id: `throughput-concurrency-ramp-c${concurrency}`,
+  inputTokens: 1200,
+  outputTokens: 512,
+  cacheablePrefixTokens: 0,
+  concurrency,
+  provenance: 'realistic',
+}))
+
 export const GYM_ENVIRONMENT_REGISTRY: Readonly<
   Record<GymEnvironmentRef, GymEnvironmentDefinition>
 > = {
@@ -445,6 +460,30 @@ export const GYM_ENVIRONMENT_REGISTRY: Readonly<
     },
     defaultShapes: [M8_HEAD_TO_HEAD_SHAPE],
     defaultTools: 'khala-code-tools',
+  },
+  'throughput-concurrency': {
+    ref: 'throughput-concurrency',
+    surface: 'throughput-concurrency',
+    taskSet: {
+      ref: 'taskset.gym.throughput_concurrency.ramp.v1',
+      source: 'throughput-ramp',
+      publicSafeTaskRefs: ['gym.throughput.ramp.1-2-4-8.v1'],
+    },
+    workloads: ['chat'],
+    verifier: {
+      ref: 'verifier.gym.throughput.telemetry_reconciliation.v1',
+      mode: 'telemetry-reconciliation',
+      expectedOutcome: 'none',
+    },
+    acceptance: {
+      ref: 'acceptance.gym.throughput.not_measured_is_not_zero.v1',
+      verifierRef: 'verifier.gym.throughput.telemetry_reconciliation.v1',
+      scalarRewardPassThreshold: 0,
+      requiresExecutedVerifier: false,
+      publicClaimEligible: false,
+    },
+    defaultShapes: THROUGHPUT_CONCURRENCY_RAMP_SHAPES,
+    defaultTools: 'no-tools',
   },
 }
 
@@ -678,6 +717,32 @@ export const M8_HEAD_TO_HEAD_GYM_EXPERIMENT: GymExperiment = {
   id: 'gym-m8-crossy-road-head-to-head-fixture-v1',
   environment: 'm8-head-to-head',
   shapes: GYM_ENVIRONMENT_REGISTRY['m8-head-to-head'].defaultShapes,
+}
+
+export const THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT: GymExperiment = {
+  ...TERMINAL_BENCH_GYM_EXPERIMENT,
+  id: 'gym-throughput-concurrency-ramp-fixture-v1',
+  environment: 'throughput-concurrency',
+  policy: {
+    ...TERMINAL_BENCH_GYM_EXPERIMENT.policy,
+    fanout: {
+      lanes: ['gpt-oss-20b', 'glm-52'],
+      mode: 'single',
+      concurrency: 8,
+    },
+    tools: GYM_ENVIRONMENT_REGISTRY['throughput-concurrency'].defaultTools,
+    sampling: {
+      temperature: 0.2,
+      reasoningEffort: 'off',
+      maxTokens: 1024,
+      transport: 'streaming',
+    },
+    serving: {
+      quantization: { mode: 'none' },
+      speculation: { mode: 'ngram', draftModelRef: 'glm-52.mtp2' },
+    },
+  },
+  shapes: GYM_ENVIRONMENT_REGISTRY['throughput-concurrency'].defaultShapes,
 }
 
 export const PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS: ReadonlyArray<GymExperiment> =

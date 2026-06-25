@@ -57,6 +57,12 @@ they do not block dogfood or ecosystem landings.
 - **OpenCode→Khala tool-calling** fixed across the Hydralisk + Fireworks adapters
   (content arrays + tool-call deltas preserved); ten concurrent OpenCode→Khala
   sessions ran. Runbook: `../inference/2026-06-25-opencode-khala-runbook-and-audit.md`.
+- **Throughput/concurrency Gym measurement** is typed: the
+  `throughput-concurrency` environment and
+  `openagents.gym.throughput_concurrency_report.v1` report per-lane
+  TTFT/TPS/ITL, aggregate throughput, speculation acceptance, and the first
+  latency/quota degradation point while preserving `not_measured` as non-zero
+  absence (#6244).
 - **Gym Phase 0**: public fixture `/gym` + typed `GymExperiment` + fixture run/report
   (#6163–#6166); owner-gated `/gym/oss` GPT-OSS latency playground (#6167).
 - **Autonomous QA** (`apps/qa-runner`): real-browser, video + committed e2e test +
@@ -490,7 +496,7 @@ or zero.
 
 ### F3. Throughput/concurrency as a first-class Gym measurement (promote `/gym/oss` patterns) ([#6244](https://github.com/OpenAgentsInc/openagents/issues/6244))
 
-**Type:** task · **Lever:** benchmarking/measurement · **Status:** direction
+**Type:** task · **Lever:** benchmarking/measurement · **Status:** shipped 2026-06-25
 **Why:** "we're in the inference business, we can't ship slow APIs" — tok/s and the
 concurrency ceiling are product metrics (smoke tests reached ~9.5k tok/s; ten
 concurrent OpenCode sessions ran; GLM-52 got a MTP2 speculative-decoding speed win).
@@ -501,6 +507,15 @@ acceptance), feeding real latency/concurrency curves to the cost model.
 point where latency/quota degrades, with `not_measured` distinct from `0`.
 **Refs:** gym spec §3 (`/gym/oss`); flywheel doc §8; the GLM-52 REAP MTP2 win.
 
+**Shipped:** `workers/api/src/inference/gym/experiment.ts` now registers
+`throughput-concurrency` as a typed Gym environment with the 1→2→4→8 ramp, and
+`workers/api/src/inference/gym/throughput.ts` builds
+`openagents.gym.throughput_concurrency_report.v1` from reconciled samples. The
+report groups by lane/concurrency, reports TTFT/TPS/ITL/wall-clock/completion
+tokens, aggregate TPS, speculative-decoding acceptance, and detects the first
+quota-limited or latency-degraded concurrency point. Tests assert that measured
+zero stays distinct from `not_measured`.
+
 ---
 
 ## Suggested filing order (one pass)
@@ -510,8 +525,8 @@ point where latency/quota degrades, with `not_measured` distinct from `0`.
 2. **C1 (#6239)** (publish the OpenCode recipe) — first external demand.
 3. **B2 → B3** (QA on every push: pre-push smoke, then GCE async).
 4. **D1 + D2 + E1** (Gym Phase 1 + Harbor/Terminal-Bench backend) — the head-to-head.
-5. **F2 (#6243), D4, F3, remaining Harbor ops** (history/adoption, training loop, throughput, live executor wiring) — quality
-   - flywheel.
+5. **D4 + remaining Harbor ops** (training loop + live executor wiring) — quality
+   flywheel after the shipped history/adoption/throughput measurement work.
 6. **D3, C2, D5, A3** (paid runs [owner-gated], more tools, leaderboard, Verse)
    — broaden behind proof.
 

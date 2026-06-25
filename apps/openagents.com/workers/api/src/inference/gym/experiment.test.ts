@@ -9,6 +9,7 @@ import {
   OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT,
   PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS,
   TERMINAL_BENCH_GYM_EXPERIMENT,
+  THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT,
   compileGymExperiment,
   decodeGymExperiment,
   encodeGymExperiment,
@@ -38,6 +39,12 @@ describe('OpenAgents Gym experiment schema', () => {
     }
   })
 
+  test('round-trips the throughput/concurrency fixture experiment', () => {
+    const decoded = decodeGymExperiment(THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT)
+    const encoded = encodeGymExperiment(decoded)
+    expect(encoded).toEqual(THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT)
+  })
+
   test('rejects malformed configs at the schema boundary', () => {
     expect(() =>
       decodeGymExperiment({
@@ -65,6 +72,7 @@ describe('Gym environment registry', () => {
       'khala-code',
       'long-context-codebase-qa',
       'm8-head-to-head',
+      'throughput-concurrency',
     ])
 
     const terminalBench = getGymEnvironmentDefinition('terminal-bench')
@@ -76,6 +84,14 @@ describe('Gym environment registry', () => {
     expect(terminalBench.acceptance.verifierRef).toBe(
       terminalBench.verifier.ref,
     )
+
+    const throughput = getGymEnvironmentDefinition('throughput-concurrency')
+    expect(throughput.surface).toBe('throughput-concurrency')
+    expect(throughput.verifier.mode).toBe('telemetry-reconciliation')
+    expect(throughput.acceptance.requiresExecutedVerifier).toBe(false)
+    expect(throughput.defaultShapes.map(shape => shape.concurrency)).toEqual([
+      1, 2, 4, 8,
+    ])
 
     for (const definition of listGymEnvironmentDefinitions()) {
       expect(definition.verifier.ref).not.toBe('')
@@ -154,6 +170,26 @@ describe('compileGymExperiment', () => {
         GYM_ENVIRONMENT_REGISTRY[experiment.environment].acceptance.ref,
       )
     }
+  })
+
+  test('expands the throughput/concurrency environment as a typed ramp', () => {
+    const compiled = compileGymExperiment(THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT)
+
+    expect(compiled.matrixConfig.workloads).toEqual(['chat'])
+    expect(compiled.matrixConfig.shapes.map(shape => shape.concurrency)).toEqual(
+      [1, 2, 4, 8],
+    )
+    expect(compiled.policySelection.fanout.lanes).toEqual([
+      'gpt-oss-20b',
+      'glm-52',
+    ])
+    expect(compiled.policySelection.environment.verifierRef).toBe(
+      'verifier.gym.throughput.telemetry_reconciliation.v1',
+    )
+    expect(compiled.policySelection.serving.speculation).toEqual({
+      mode: 'ngram',
+      draftModelRef: 'glm-52.mtp2',
+    })
   })
 
   test('compiles a real-seam experiment without spending', () => {

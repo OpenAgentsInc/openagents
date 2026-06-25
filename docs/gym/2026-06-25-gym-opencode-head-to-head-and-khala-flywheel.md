@@ -183,11 +183,14 @@ external traction we do not have.
 Episode 243 stress-tested raw serving throughput (smoke tests reached ~9,500
 tokens/sec; ten concurrent OpenCode→Khala sessions ran). The owner-gated `/gym/oss`
 playground already measures TTFT/TPS/ITL/wall-clock with a 1→2→4→8 concurrency ramp
-and a hard in-flight cap. Direction: generalize a **throughput/concurrency
-environment** so "how many tokens/sec, and at what concurrency before quota/latency
-degrades" is a first-class, repeatable Gym measurement (not just an ad-hoc smoke),
-reusing `/gym/oss`'s telemetry-reconciliation (`not_measured` ≠ `0`) discipline.
-This also gives the cost model real concurrency/latency curves per lane.
+and a hard in-flight cap. That pattern is now generalized as a typed
+**throughput/concurrency environment** plus
+`openagents.gym.throughput_concurrency_report.v1`, so "how many tokens/sec, and
+at what concurrency before quota/latency degrades" is a first-class, repeatable
+Gym measurement (not just an ad-hoc smoke), reusing `/gym/oss`'s
+telemetry-reconciliation (`not_measured` ≠ `0`) discipline. This also gives the
+cost model real concurrency/latency curves per lane once real runner samples are
+fed into the report.
 
 ## 9. Concrete next steps (Phase 1, keyed to existing seams)
 
@@ -254,8 +257,9 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
   public-safe summary ingest, ATIF trace ref, and distinct-device verifier
   evidence gate. Reward/cost mapping and training trajectory projection are also
   landed from Harbor summaries + served-token cost basis + public-safe ATIF refs.
-- How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
-  from an owner playground to a typed Gym environment, or keep it separate?).
+- The throughput/concurrency environment (§8) is promoted from `/gym/oss` patterns
+  into a typed Gym environment and pure report artifact; `/gym/oss` remains the
+  owner runner surface that can feed real reconciled samples.
 - Per-day history and owner-facing per-tool adoption views now consume the shipped
   demand tags: public `/stats` shows the `/history` curve, and admin Stats shows
   demand split, source/client rollups, and demand-client/day adoption without
