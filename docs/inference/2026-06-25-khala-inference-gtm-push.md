@@ -37,8 +37,9 @@ Khala is live as an **OpenAI-compatible inference API**:
   header in `apps/openagents.com/workers/api/src/inference/inference-free-tier-key.ts`).
 - **Free tier, self-serve:** `POST /api/keys/free` mints a normal `oa_agent_`
   bearer key; free inference on `openagents/khala` is metered against a per-key
-  per-UTC-day quota of **200 requests / 200,000 tokens** (`FREE_TIER_MAX_REQUESTS_PER_DAY`,
-  `FREE_TIER_MAX_TOKENS_PER_DAY` in `inference-free-tier-key.ts`). Over-quota or
+  per-UTC-day quota of **2,000 requests / 2,500,000 tokens** (`FREE_TIER_MAX_REQUESTS_PER_DAY`,
+  `FREE_TIER_MAX_TOKENS_PER_DAY` in `inference-free-tier-key.ts`; raised from
+  200/200k on the cost model, #6232, and env-overridable). Over-quota or
   premium lanes fall through to the normal balance + `402` gate — free within the
   quota, paid beyond it.
 - **A live public "Khala Tokens Served" counter + per-day history:**
@@ -205,7 +206,7 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   it. This is the single biggest risk: a model that cannot reliably tool-call is
   unusable as a coding agent regardless of token quality.
 - **Streaming (SSE)** works for a good interactive experience.
-- The free-tier 200 req / 200k tok daily quota is enough for a real "try it"
+- The free-tier 2,000 req / 2.5M tok daily quota is enough for a real "try it"
   session, and the `402`/quota-exceeded fall-through is a clean, legible error in
   OpenCode (not an opaque crash).
 - Token accounting: an OpenCode session's tokens show up on the public

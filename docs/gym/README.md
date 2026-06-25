@@ -36,7 +36,11 @@ provider-adapter registry, verification-class registry, and the
 
 ## Contents
 
-- [`openagents-gym.md`](openagents-gym.md) — the spec & roadmap (start here).
+- [`ROADMAP.md`](ROADMAP.md) — **the one unified build roadmap** (epics → proposed
+  GitHub issues with titles + bodies) covering QA, the Gym, Terminal-Bench/Harbor,
+  ecosystem-tool landings, the dogfood lanes, and measurement — keyed to the North
+  Star (tokens served/day). Start here for "what to build, in what order."
+- [`openagents-gym.md`](openagents-gym.md) — the Gym spec (what the Gym *is*).
 - [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)
   — Episode 243 considerations: the OpenCode head-to-head, BigPickle (de-TBD'd),
   the expanded lane set (Fireworks DeepSeek V4 Flash, GPT-OSS via Hydralisk,
