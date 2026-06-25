@@ -244,7 +244,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'OpenAI-compatible model catalog for the Khala inference gateway, with published per-1M-token price and policy. Public pre-purchase discovery exposes one model: openagents/khala. Inside OpenAgents-owned callers the slug is khala; raw GPT-OSS ids and old split names are internal/legacy implementation details, not public products.',
+          'OpenAI-compatible model catalog for the Khala inference gateway, with published per-1M-token price and policy. Public pre-purchase discovery exposes one model: openagents/khala. The oa_free_tier_eligible boolean and oa_free_tier quota object reflect the same INFERENCE_FREE_TIER_ENABLED arming and free-key lane policy as POST /api/keys/free. Inside OpenAgents-owned callers the slug is khala; raw GPT-OSS ids and old split names are internal/legacy implementation details, not public products.',
       },
       {
         id: 'agent_full_reference',

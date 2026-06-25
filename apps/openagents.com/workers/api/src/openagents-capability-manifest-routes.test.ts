@@ -127,6 +127,12 @@ describe('OpenAgents capability manifest route', () => {
         }),
         expect.objectContaining({
           auth: 'public',
+          href: 'https://openagents.com/api/v1/models',
+          id: 'inference_models_catalog',
+          description: expect.stringContaining('oa_free_tier_eligible'),
+        }),
+        expect.objectContaining({
+          auth: 'public',
           href: 'https://openagents.com/AGENTS.md',
           id: 'agent_full_reference',
         }),

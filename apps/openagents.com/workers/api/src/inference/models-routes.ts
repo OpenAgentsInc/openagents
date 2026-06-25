@@ -21,6 +21,7 @@ import { currentEpochSeconds } from '../runtime-primitives'
 import {
   buildModelCatalog,
   findModelCatalogEntry,
+  type ModelCatalogPolicy,
   toOpenAiModelObject,
   toOpenAiModelsResponse,
 } from './model-catalog'
@@ -42,6 +43,9 @@ export type ModelsListDeps = Readonly<{
   nowEpochSeconds?: () => number
   // Catalog margin override (defaults to the launch margin inside the catalog).
   margin?: number
+  // Whether the self-serve free API mode is armed. This drives only the public
+  // catalog projection (`oa_free_tier*`), not the quota/key/balance gates.
+  freeTierEnabled?: boolean
   // Provider serving policy: which supply lanes are armed (credential present).
   // When supplied, the catalog is narrowed to ONLY models the gateway can
   // actually serve, so a paid gateway never advertises an unservable model
@@ -49,6 +53,10 @@ export type ModelsListDeps = Readonly<{
   // (the prior behaviour — preserved for callers that do not gate on arming).
   laneArming?: SupplyLaneArming
 }>
+
+const catalogPolicy = (deps: ModelsListDeps): ModelCatalogPolicy => ({
+  freeTierEnabled: deps.freeTierEnabled === true,
+})
 
 // Serve the OpenAI-compatible `/v1/models` listing for the gateway.
 export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
@@ -70,7 +78,7 @@ export const handleModelsList = (request: Request, deps: ModelsListDeps) =>
     }
 
     const now = (deps.nowEpochSeconds ?? currentEpochSeconds)()
-    const fullCatalog = buildModelCatalog(deps.margin)
+    const fullCatalog = buildModelCatalog(deps.margin, catalogPolicy(deps))
     // PROVIDER POLICY: when the worker supplies lane arming, advertise only the
     // models whose supply lane is actually servable right now; otherwise list
     // the full catalog (prior behaviour).
@@ -111,14 +119,14 @@ export const handleModelRetrieve = (
 
     const catalog =
       deps.laneArming === undefined
-        ? buildModelCatalog(deps.margin)
+        ? buildModelCatalog(deps.margin, catalogPolicy(deps))
         : projectKhalaCatalogForArming(
-            buildModelCatalog(deps.margin),
+            buildModelCatalog(deps.margin, catalogPolicy(deps)),
             deps.laneArming,
           )
     const entry =
       deps.laneArming === undefined
-        ? findModelCatalogEntry(modelId, deps.margin)
+        ? findModelCatalogEntry(modelId, deps.margin, catalogPolicy(deps))
         : catalog.find(model => model.id === modelId)
     // PROVIDER POLICY: when lane arming is supplied, a model whose lane is not
     // servable right now is reported `model_not_found` (same as an unknown id),

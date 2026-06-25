@@ -11035,8 +11035,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Public model catalog (OpenAI-compatible GET /v1/models) for the inference
     // gateway. INERT by default: gated behind the SAME INFERENCE_GATEWAY_ENABLED
     // flag as /v1/chat/completions, so it 404s when the gateway is off. Public,
-    // unauthenticated, public-safe (published sell prices + free-tier flag only,
-    // no prompts/credentials/balances) — the pre-purchase discovery surface a
+    // unauthenticated, public-safe (published sell prices + free-key tier policy
+    // only, no prompts/credentials/balances) — the pre-purchase discovery surface a
     // credits customer reads to learn what each model costs before funding a
     // balance. Derived from the SAME pricing table the metering hook charges
     // against, so the published price cannot drift from the billed price. No
@@ -11045,6 +11045,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handleModelsList(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
         laneArming: resolveSupplyLaneArming(env),
       }),
   },
@@ -11286,12 +11287,13 @@ const routeRequest = makeWorkerRouteRequest({
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so
   // it 404s when the gateway is off. Public + unauthenticated (published price
-  // and policy only — public-safe pre-purchase discovery), serving prices
-  // derived from the same pricing table the metering hook charges against. No
-  // promise state changes; the paid loop is still secrets-gated.
+  // and free-key tier policy only — public-safe pre-purchase discovery), serving
+  // prices derived from the same pricing table the metering hook charges
+  // against. No promise state changes; the paid loop is still secrets-gated.
   routeModelRetrieveRequest: (request, env) =>
     routeModelRetrieveRequest(request, {
       enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+      freeTierEnabled: isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED),
       laneArming: resolveSupplyLaneArming(env),
     }),
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}

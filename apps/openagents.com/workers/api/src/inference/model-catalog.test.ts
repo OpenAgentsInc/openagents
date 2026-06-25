@@ -7,9 +7,14 @@ import {
   toOpenAiModelsResponse,
 } from './model-catalog'
 import {
+  DEFAULT_FREE_TIER_QUOTA,
+  FREE_TIER_REASON_ELIGIBLE,
+} from './inference-free-tier-key'
+import {
   DEFAULT_MARGIN,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  KHALA_MODEL_ID,
   MODEL_PRICING_TABLE,
   sellPricePerMtok,
 } from './pricing'
@@ -55,9 +60,32 @@ describe('buildModelCatalog', () => {
     }
   })
 
-  it('marks only the Gemini free-tier lane as free-tier eligible', () => {
+  it('keeps the public free API tier disabled by default', () => {
     const free = buildModelCatalog().filter(m => m.freeTierEligible)
-    expect(free.map(m => m.id)).toEqual(['gemini-3.5-flash'])
+    expect(free.map(m => m.id)).toEqual([])
+    expect(buildModelCatalog().find(m => m.id === KHALA_MODEL_ID)?.freeTier)
+      .toEqual({
+        eligible: false,
+        maxRequestsPerDay: null,
+        maxTokensPerDay: null,
+        reasonRef: 'reason.inference_free_tier.disabled',
+        window: null,
+      })
+  })
+
+  it('marks only public Khala as free-key eligible when free API mode is armed', () => {
+    const catalog = buildModelCatalog(DEFAULT_MARGIN, {
+      freeTierEnabled: true,
+    })
+    const free = catalog.filter(m => m.freeTierEligible)
+    expect(free.map(m => m.id)).toEqual([KHALA_MODEL_ID])
+    expect(catalog.find(m => m.id === KHALA_MODEL_ID)?.freeTier).toEqual({
+      eligible: true,
+      maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+      maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+      reasonRef: FREE_TIER_REASON_ELIGIBLE,
+      window: 'utc_day',
+    })
   })
 
   it('marks Fireworks open models as verified cost basis and Vertex as list placeholder', () => {
@@ -115,12 +143,34 @@ describe('toOpenAiModelsResponse', () => {
     expect(first.oa_price.inputUsdPerMtok).toBeGreaterThanOrEqual(0)
   })
 
-  it('carries the OpenAgents price/policy extension fields', () => {
+  it('carries the OpenAgents price/policy extension fields when free API mode is disabled', () => {
     const response = toOpenAiModelsResponse(buildModelCatalog(), 1)
-    const gemini = response.data.find(m => m.id === 'gemini-3.5-flash')!
-    expect(gemini.oa_free_tier_eligible).toBe(true)
-    expect(gemini.oa_lane).toBe('vertex-gemini')
-    expect(gemini.oa_cost_basis).toBe('list_placeholder')
+    const khala = response.data.find(m => m.id === KHALA_MODEL_ID)!
+    expect(khala.oa_free_tier_eligible).toBe(false)
+    expect(khala.oa_free_tier).toEqual({
+      eligible: false,
+      maxRequestsPerDay: null,
+      maxTokensPerDay: null,
+      reasonRef: 'reason.inference_free_tier.disabled',
+      window: null,
+    })
+    expect(khala.oa_price.inputUsdPerMtok).toBeGreaterThanOrEqual(0)
+  })
+
+  it('projects Khala as free-key eligible with quota when free API mode is armed', () => {
+    const response = toOpenAiModelsResponse(
+      buildModelCatalog(DEFAULT_MARGIN, { freeTierEnabled: true }),
+      1,
+    )
+    const khala = response.data.find(m => m.id === KHALA_MODEL_ID)!
+    expect(khala.oa_free_tier_eligible).toBe(true)
+    expect(khala.oa_free_tier).toEqual({
+      eligible: true,
+      maxRequestsPerDay: DEFAULT_FREE_TIER_QUOTA.maxRequestsPerDay,
+      maxTokensPerDay: DEFAULT_FREE_TIER_QUOTA.maxTokensPerDay,
+      reasonRef: FREE_TIER_REASON_ELIGIBLE,
+      window: 'utc_day',
+    })
   })
 
   it('publishes sell price >= the underlying cost basis (margin is non-negative)', () => {
@@ -170,12 +220,12 @@ describe('findModelCatalogEntry', () => {
 
 describe('toOpenAiModelObject', () => {
   it('projects a single model object matching the list projection', () => {
-    const entry = findModelCatalogEntry('gemini-3.5-flash')!
+    const entry = findModelCatalogEntry(KHALA_MODEL_ID)!
     const single = toOpenAiModelObject(entry, 1_700_000_000)
     const fromList = toOpenAiModelsResponse(
       buildModelCatalog(),
       1_700_000_000,
-    ).data.find(m => m.id === 'gemini-3.5-flash')!
+    ).data.find(m => m.id === KHALA_MODEL_ID)!
     expect(single).toEqual(fromList)
   })
 })

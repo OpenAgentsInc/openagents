@@ -378,6 +378,22 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/omni/sdk-seed', 'get').operationId).toBe(
       'getOmniApiSdkSeed',
     )
+    const inferenceModelsOperation = operationAt(body, '/api/v1/models', 'get')
+    expect(inferenceModelsOperation.operationId).toBe('listInferenceModels')
+    expect(inferenceModelsOperation.description).toEqual(
+      expect.stringContaining('oa_free_tier_eligible'),
+    )
+    const khalaTokensServedOperation = operationAt(
+      body,
+      '/api/public/khala-tokens-served',
+      'get',
+    )
+    expect(khalaTokensServedOperation.operationId).toBe(
+      'getPublicKhalaTokensServed',
+    )
+    expect(khalaTokensServedOperation.description).toEqual(
+      expect.stringContaining('tokensServed'),
+    )
     expect(operationAt(body, '/api/agents/me', 'get').operationId).toBe(
       'getProgrammaticAgentMe',
     )

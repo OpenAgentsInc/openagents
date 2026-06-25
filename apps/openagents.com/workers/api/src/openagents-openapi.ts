@@ -1712,6 +1712,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonStats: objectSummary(
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
+  PublicKhalaTokensServed: objectSummary(
+    'Public-safe Khala usage aggregate with schemaVersion, tokensServed, generatedAt, and the live_at_read public-projection staleness contract. It is computed from the token usage ledger as one network-wide scalar and excludes per-user, per-team, provider, prompt, completion, API key, wallet, payment, and secret material. Read-only; grants no billing, quota, payout, settlement, or model-performance claim authority.',
+  ),
   TrainingRunEnvelope: objectSummary(
     'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, provider-confirmed settled payout sats, and the CS336 A1 real-gradient status/loss/leaderboard projection. Pending, offered, claimed, and wallet-side records are not counted as paid. The real-gradient status remains blocked unless Psionic evidence includes two real contributor devices, Freivalds commitments, merge/eval refs, verified closeouts, and loss under budget. It grants no assignment, payout, model-publication, or spend authority.',
   ),
@@ -4558,19 +4561,19 @@ const paths = (): JsonSchema => ({
       operationId: 'listInferenceModels',
       summary: 'List inference gateway models',
       description:
-        'OpenAI-compatible model catalog for the Khala inference gateway. Public, pre-purchase discovery (published per-1M-token price + policy only; no prompts, balances, or credentials). The public catalog intentionally exposes one model: openagents/khala. Inside the OpenAgents ecosystem the slug is khala; external clients use openagents/khala. Raw GPT-OSS ids and old Khala split names are internal/legacy implementation details and are not public or MPP-payable. Canonical under the /api base; the legacy bare /v1/models path remains a non-breaking alias.',
+        'OpenAI-compatible model catalog for the Khala inference gateway. Public, pre-purchase discovery (published per-1M-token price + policy only; no prompts, balances, or credentials). The public catalog intentionally exposes one model: openagents/khala. Its oa_free_tier_eligible boolean and oa_free_tier quota object reflect the same INFERENCE_FREE_TIER_ENABLED arming and free-key lane policy as POST /api/keys/free. Inside the OpenAgents ecosystem the slug is khala; external clients use openagents/khala. Raw GPT-OSS ids and old Khala split names are internal/legacy implementation details and are not public or MPP-payable. Canonical under the /api base; the legacy bare /v1/models path remains a non-breaking alias.',
       tags: ['Inference'],
       security: publicRead,
       responses: {
         '200': {
           description:
-            'OpenAI-compatible { object: "list", data: [...] } model catalog. Each entry carries id, owned_by, and oa_* price/policy fields.',
+            'OpenAI-compatible { object: "list", data: [...] } model catalog. Each entry carries id, owned_by, and oa_* price/policy fields including oa_free_tier_eligible and oa_free_tier.',
           content: {
             'application/json': {
               schema: {
                 type: 'object',
                 description:
-                  'OpenAI /v1/models list response; data entries include only the public Khala model openagents/khala when its backing supply lane is armed.',
+                  'OpenAI /v1/models list response; data entries include only the public Khala model openagents/khala when its backing supply lane is armed. When free API mode is armed, openagents/khala carries oa_free_tier_eligible=true and an oa_free_tier quota object; otherwise it reports false.',
               },
             },
           },
@@ -4640,6 +4643,23 @@ const paths = (): JsonSchema => ({
       security: publicRead,
       responses: {
         '200': okJson('Pylon stats.', '#/components/schemas/PublicPylonStats'),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServed',
+      summary: 'Read public Khala tokens-served aggregate',
+      description:
+        'Returns the public-safe network-wide Khala tokens-served aggregate from the token usage ledger. The response contains schemaVersion, tokensServed, generatedAt, and the live_at_read staleness contract only; it excludes per-user, per-team, provider, prompt, completion, API key, wallet, payment, and secret material.',
+      tags: ['Public Proof', 'Inference'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Khala tokens-served aggregate.',
+          '#/components/schemas/PublicKhalaTokensServed',
+        ),
         ...errorResponses(),
       },
     }),
