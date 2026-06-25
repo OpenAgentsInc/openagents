@@ -9,6 +9,7 @@ export type PylonKhalaWorkflow =
 
 export type PylonKhalaRequestInput = {
   prompt: string
+  targetPylonRef?: string
   workflow?: PylonKhalaWorkflow
 }
 
@@ -63,6 +64,7 @@ function requireAgentToken(options: TipsNetworkOptions): string {
 }
 
 const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength
+const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
 
 export function durableRequestIdFromUrl(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value.trim() === "") {
@@ -86,6 +88,28 @@ export function buildPylonKhalaChatRequestBody(
   }
   assertPublicSafe(prompt, "khala request prompt")
 
+  const targetPylonRef = input.targetPylonRef?.trim()
+  if (targetPylonRef !== undefined && targetPylonRef !== "") {
+    if (!pylonRefPattern.test(targetPylonRef)) {
+      throw new Error("khala request --pylon-ref must be a public-safe Pylon ref")
+    }
+    assertPublicSafe(targetPylonRef, "khala request target pylon ref")
+  }
+
+  const openagents =
+    input.workflow === undefined && (targetPylonRef === undefined || targetPylonRef === "")
+      ? undefined
+      : {
+          ...(input.workflow === undefined ? {} : { workflowClass: input.workflow }),
+          ...(targetPylonRef === undefined || targetPylonRef === ""
+            ? {}
+            : {
+                coding: {
+                  targetPylonRef,
+                },
+              }),
+        }
+
   const body = {
     messages: [
       {
@@ -94,13 +118,7 @@ export function buildPylonKhalaChatRequestBody(
       },
     ],
     model: KHALA_REQUEST_MODEL,
-    ...(input.workflow === undefined
-      ? {}
-      : {
-          openagents: {
-            workflowClass: input.workflow,
-          },
-        }),
+    ...(openagents === undefined ? {} : { openagents }),
     stream: true,
   }
   assertPublicSafe(body, "khala request body")

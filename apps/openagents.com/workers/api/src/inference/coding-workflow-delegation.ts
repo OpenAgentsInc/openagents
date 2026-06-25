@@ -26,12 +26,29 @@ export type CodingDelegationInput = Readonly<{
   requestId: string
 }>
 
-export type CodingDelegationResult = Readonly<{
+export type CodingDelegationAssignmentResult = Readonly<{
   assignment: PylonApiAssignmentRecord
   durableStreamUrl: string
   evidenceRefs: ReadonlyArray<string>
+  kind: 'assigned'
   pylon: PylonApiRegistrationRecord
 }>
+
+export type CodingDelegationRejection = Readonly<{
+  error:
+    | 'invalid_target_pylon_ref'
+    | 'target_pylon_not_authorized'
+    | 'target_pylon_unavailable'
+  evidenceRefs: ReadonlyArray<string>
+  kind: 'rejected'
+  reason: string
+  requestedPylonRef: string | null
+  statusCode: 400 | 403 | 409
+}>
+
+export type CodingDelegationResult =
+  | CodingDelegationAssignmentResult
+  | CodingDelegationRejection
 
 const requestIdRef = (requestId: string): string =>
   `request.public.khala_coding.${requestId.replaceAll(/[^A-Za-z0-9_.:-]/g, '_')}`
@@ -39,9 +56,7 @@ const requestIdRef = (requestId: string): string =>
 const workflowRef = (classification: CodingWorkflowClassification): string =>
   `workflow.public.khala_coding.${classification.workflowClass}`
 
-const rawWorkspaceFromBody = (
-  body: unknown,
-): Record<string, unknown> | null => {
+const rawCodingFromBody = (body: unknown): Record<string, unknown> | null => {
   const openagents =
     body !== null && typeof body === 'object'
       ? (body as Record<string, unknown>).openagents
@@ -50,14 +65,72 @@ const rawWorkspaceFromBody = (
     openagents !== null && typeof openagents === 'object'
       ? (openagents as Record<string, unknown>).coding
       : undefined
-  const workspace =
-    coding !== null && typeof coding === 'object'
-      ? (coding as Record<string, unknown>).workspace
-      : undefined
+
+  return coding !== null && typeof coding === 'object'
+    ? (coding as Record<string, unknown>)
+    : null
+}
+
+const rawWorkspaceFromBody = (
+  body: unknown,
+): Record<string, unknown> | null => {
+  const workspace = rawCodingFromBody(body)?.workspace
 
   return workspace !== null && typeof workspace === 'object'
     ? (workspace as Record<string, unknown>)
     : null
+}
+
+const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
+
+const targetPylonRefFromBody = (
+  body: unknown,
+):
+  | Readonly<{ kind: 'none' }>
+  | Readonly<{ kind: 'target'; pylonRef: string }>
+  | Readonly<{
+      kind: 'rejected'
+      rejection: CodingDelegationRejection
+    }> => {
+  const coding = rawCodingFromBody(body)
+  const rawValue = coding?.targetPylonRef ?? coding?.pylonRef
+
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { kind: 'none' }
+  }
+
+  if (typeof rawValue !== 'string') {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_target_pylon_ref',
+        evidenceRefs: ['evidence.khala_coding.target_pylon_ref.invalid_type'],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.targetPylonRef must be a public-safe Pylon ref string.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+
+  const pylonRef = rawValue.trim()
+  if (!pylonRefPattern.test(pylonRef)) {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_target_pylon_ref',
+        evidenceRefs: ['evidence.khala_coding.target_pylon_ref.invalid_ref'],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.targetPylonRef must match the Pylon public ref contract.',
+        requestedPylonRef: pylonRef,
+        statusCode: 400,
+      },
+    }
+  }
+
+  return { kind: 'target', pylonRef }
 }
 
 const codingAssignmentFromInput = (
@@ -158,9 +231,26 @@ export const delegateCodingWorkflow = async (
     return null
   }
 
+  const target = targetPylonRefFromBody(input.rawBody)
+  if (target.kind === 'rejected') {
+    return target.rejection
+  }
+
   const ownerAgentUserIds = input.linkedAgents.map(agent => agent.agentUserId)
   if (ownerAgentUserIds.length === 0) {
-    return null
+    return target.kind === 'target'
+      ? {
+          error: 'target_pylon_not_authorized',
+          evidenceRefs: [
+            'evidence.khala_coding.target_pylon_ref.no_linked_agents',
+          ],
+          kind: 'rejected',
+          reason:
+            'The requested Pylon is not linked to this OpenAuth account.',
+          requestedPylonRef: target.pylonRef,
+          statusCode: 403,
+        }
+      : null
   }
 
   const registrations =
@@ -173,11 +263,42 @@ export const delegateCodingWorkflow = async (
           200,
         )
 
-  const candidates = registrations
+  const authorizedRegistrations =
+    target.kind === 'target'
+      ? registrations.filter(
+          registration => registration.pylonRef === target.pylonRef,
+        )
+      : registrations
+
+  if (target.kind === 'target' && authorizedRegistrations.length === 0) {
+    return {
+      error: 'target_pylon_not_authorized',
+      evidenceRefs: ['evidence.khala_coding.target_pylon_ref.not_linked'],
+      kind: 'rejected',
+      reason:
+        'The requested Pylon is not linked to this OpenAuth account and cannot be used for caller-owned Khala coding capacity.',
+      requestedPylonRef: target.pylonRef,
+      statusCode: 403,
+    }
+  }
+
+  const candidates = authorizedRegistrations
     .filter(registration => registration.status === 'active')
     .filter(registration => hasFreshOnlineHeartbeat(registration, input.nowIso))
     .filter(hasAvailableCodexCapacity)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+
+  if (target.kind === 'target' && candidates.length === 0) {
+    return {
+      error: 'target_pylon_unavailable',
+      evidenceRefs: ['evidence.khala_coding.target_pylon_ref.unavailable'],
+      kind: 'rejected',
+      reason:
+        'The requested linked Pylon is not active, heartbeat-fresh, Codex-capable, and available.',
+      requestedPylonRef: target.pylonRef,
+      statusCode: 409,
+    }
+  }
 
   for (const registration of candidates) {
     const body = assignmentRequestFromInput(input, registration.pylonRef)
@@ -213,6 +334,7 @@ export const delegateCodingWorkflow = async (
         ...input.classification.evidenceRefs,
         'evidence.khala_coding.own_capacity_linked_pylon',
       ],
+      kind: 'assigned',
       pylon: registration,
     }
   }

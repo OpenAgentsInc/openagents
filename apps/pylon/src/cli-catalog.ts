@@ -345,6 +345,8 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--prompt", "request: prompt text for openagents/khala."),
       opt("--objective", "request: objective text alias for --prompt."),
       opt("--workflow", "request: typed workflow class cloud_coding_session|codex_agent_task."),
+      opt("--pylon-ref", "request: target a specific caller-owned Pylon ref."),
+      opt("--target-pylon-ref", "request: alias for --pylon-ref."),
       opt("--resume", "request/resume: durable request id to resume."),
       opt("--offset", "resume/status: durable byte offset."),
       opt("--base-url", "OpenAgents base URL."),

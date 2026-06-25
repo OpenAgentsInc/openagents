@@ -59,12 +59,16 @@ describe("pylon khala requester body", () => {
   test("builds an OpenAI-compatible Khala request with a typed workflow marker", () => {
     const body = buildPylonKhalaChatRequestBody({
       prompt: "Fix the public failing test",
+      targetPylonRef: "pylon.owner.codex",
       workflow: "codex_agent_task",
     })
 
     expect(body).toMatchObject({
       model: "openagents/khala",
-      openagents: { workflowClass: "codex_agent_task" },
+      openagents: {
+        coding: { targetPylonRef: "pylon.owner.codex" },
+        workflowClass: "codex_agent_task",
+      },
       stream: true,
     })
     expect((body.messages as Array<{ content: string; role: string }>)[0]).toEqual({
@@ -103,6 +107,7 @@ describe("pylon khala requester API", () => {
       },
       {
         prompt: "Run the fixture task",
+        targetPylonRef: "pylon.owner.codex",
         workflow: "codex_agent_task",
       },
     )
@@ -113,7 +118,10 @@ describe("pylon khala requester API", () => {
     expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe("Bearer oa_agent_test")
     expect(JSON.parse(String(calls[0]?.init.body))).toMatchObject({
       model: "openagents/khala",
-      openagents: { workflowClass: "codex_agent_task" },
+      openagents: {
+        coding: { targetPylonRef: "pylon.owner.codex" },
+        workflowClass: "codex_agent_task",
+      },
       stream: true,
     })
     expect(result).toMatchObject({
@@ -241,6 +249,8 @@ describe("pylon khala requester API", () => {
         "Run the CLI fixture task",
         "--workflow",
         "codex_agent_task",
+        "--pylon-ref",
+        "pylon.owner.codex",
         "--json",
       ],
       {
@@ -256,7 +266,10 @@ describe("pylon khala requester API", () => {
     expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_cli_test")
     expect(requests[0]?.body).toMatchObject({
       model: "openagents/khala",
-      openagents: { workflowClass: "codex_agent_task" },
+      openagents: {
+        coding: { targetPylonRef: "pylon.owner.codex" },
+        workflowClass: "codex_agent_task",
+      },
       stream: true,
     })
     const body = JSON.parse(result.stdout) as Record<string, unknown>

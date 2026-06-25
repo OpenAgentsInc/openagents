@@ -114,3 +114,36 @@ gcloud compute ssh pylon-gcloud-1 \
 Then verify the live Pylon projection through the public OpenAgents API and
 issue-comment only public refs: registration ref, heartbeat ref, capability
 refs, serving benchmark refs, and any canary/replay receipt refs.
+
+## Remote Khala Issuer Authorization Smoke
+
+The GCE Pylon env file may also carry:
+
+```sh
+OPENAGENTS_AGENT_TOKEN=...
+PYLON_OPENAGENTS_BASE_URL=https://openagents.com
+```
+
+Do not print either value. From the VM, first run the negative authorization
+smoke. It reaches the Khala gateway with the remote bearer token but deliberately
+targets a Pylon ref that is not linked to that OpenAuth account, so no assignment
+is created and no money path is exercised:
+
+```sh
+pylon khala request \
+  --prompt "Remote-token capacity authorization smoke" \
+  --workflow codex_agent_task \
+  --pylon-ref pylon.not_linked.authorization_smoke \
+  --json
+```
+
+Expected result: a non-zero exit with JSON containing
+`target_pylon_not_authorized` (or the server's equivalent not-linked target
+reason) and no `assignmentRef`. Running the same command locally with the same
+token should produce the same authorization result; origin/IP is not authority.
+
+For an owner-approved positive smoke, replace `--pylon-ref` with a real
+caller-owned, heartbeat-fresh Codex Pylon. The successful response should include
+`assignmentRef`, `durableRequestId`, and `durableStreamUrl`; the assignment still
+stays on the Khala coding `unpaid_smoke` path unless a separate paid-capacity
+change explicitly arms spend.

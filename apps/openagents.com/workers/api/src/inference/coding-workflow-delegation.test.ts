@@ -5,7 +5,10 @@ import type {
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from '../pylon-api'
-import { delegateCodingWorkflow } from './coding-workflow-delegation'
+import {
+  type CodingDelegationAssignmentResult,
+  delegateCodingWorkflow,
+} from './coding-workflow-delegation'
 
 const nowIso = '2026-06-25T12:00:00.000Z'
 
@@ -113,31 +116,39 @@ const classification = {
   workflowClass: 'codex_agent_task',
 } as const
 
+const linkedOwner = {
+  agentUserId: 'agent_owner',
+  credentialId: 'agent_credential_owner',
+  displayName: 'Owner agent',
+  linkKind: 'credential_anchor',
+  openauthUserId: 'user_owner',
+  tokenPrefix: 'oa_agent_owner',
+} as const
+
+const expectAssigned = (
+  result: Awaited<ReturnType<typeof delegateCodingWorkflow>>,
+): CodingDelegationAssignmentResult => {
+  expect(result?.kind).toBe('assigned')
+  return result as CodingDelegationAssignmentResult
+}
+
 describe('coding workflow delegation', () => {
   test('creates a controlled assignment on caller-owned Codex capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,
-      linkedAgents: [
-        {
-          agentUserId: 'agent_owner',
-          credentialId: 'agent_credential_owner',
-          displayName: 'Owner agent',
-          linkKind: 'credential_anchor',
-          openauthUserId: 'user_owner',
-          tokenPrefix: 'oa_agent_owner',
-        },
-      ],
+      linkedAgents: [linkedOwner],
       makeId: () => 'id1',
       nowIso,
       pylonStore: makeStore({ registrations: [registration()] }),
       rawBody: {},
       requestId: 'chatcmpl_coding_1',
     })
+    const assigned = expectAssigned(result)
 
-    expect(result?.assignment.ownerAgentUserId).toBe('agent_owner')
-    expect(result?.assignment.pylonRef).toBe('pylon.owner.codex')
-    expect(result?.assignment.jobKind).toBe('codex_agent_task')
-    expect(result?.assignment.codingAssignment?.codex).toMatchObject({
+    expect(assigned.assignment.ownerAgentUserId).toBe('agent_owner')
+    expect(assigned.assignment.pylonRef).toBe('pylon.owner.codex')
+    expect(assigned.assignment.jobKind).toBe('codex_agent_task')
+    expect(assigned.assignment.codingAssignment?.codex).toMatchObject({
       agentKind: 'codex_sdk',
       schema: 'openagents.pylon.codex_agent_task.v0.3',
     })
@@ -166,19 +177,74 @@ describe('coding workflow delegation', () => {
     expect(result).toBeNull()
   })
 
+  test('rejects an explicit attempt to target another account Pylon', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration(),
+          registration({
+            ownerAgentCredentialId: 'agent_credential_other',
+            ownerAgentTokenPrefix: 'oa_agent_other',
+            ownerAgentUserId: 'agent_other',
+            pylonRef: 'pylon.other.codex',
+          }),
+        ],
+      }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.other.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_cross_account',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_not_authorized',
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.other.codex',
+      statusCode: 403,
+    })
+  })
+
+  test('explicit target authorization is origin-independent for local and remote issuers', async () => {
+    const issue = (origin: 'local' | 'remote') =>
+      delegateCodingWorkflow({
+        classification,
+        linkedAgents: [linkedOwner],
+        makeId: () => `id-${origin}`,
+        nowIso,
+        pylonStore: makeStore({ registrations: [registration()] }),
+        rawBody: {
+          openagents: {
+            coding: {
+              issuerOrigin: origin,
+              pylonRef: 'pylon.owner.codex',
+            },
+          },
+        },
+        requestId: `chatcmpl_coding_${origin}`,
+      })
+
+    const local = expectAssigned(await issue('local'))
+    const remote = expectAssigned(await issue('remote'))
+
+    expect(local.pylon.pylonRef).toBe('pylon.owner.codex')
+    expect(remote.pylon.pylonRef).toBe(local.pylon.pylonRef)
+    expect(remote.assignment.ownerAgentUserId).toBe(
+      local.assignment.ownerAgentUserId,
+    )
+  })
+
   test('inherits duplicate active assignment blocking from the shared gate', async () => {
     const result = await delegateCodingWorkflow({
       classification,
-      linkedAgents: [
-        {
-          agentUserId: 'agent_owner',
-          credentialId: 'agent_credential_owner',
-          displayName: 'Owner agent',
-          linkKind: 'credential_anchor',
-          openauthUserId: 'user_owner',
-          tokenPrefix: 'oa_agent_owner',
-        },
-      ],
+      linkedAgents: [linkedOwner],
       makeId: () => 'id1',
       nowIso,
       pylonStore: makeStore({

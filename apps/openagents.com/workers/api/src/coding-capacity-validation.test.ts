@@ -513,9 +513,13 @@ describe('#6273 coding-capacity validation harness', () => {
       rawBody: {},
       requestId: 'chatcmpl_validate_own',
     })
-    expect(result?.assignment.ownerAgentUserId).toBe('agent_a')
-    expect(result?.assignment.pylonRef).toBe('pylon.a.codex')
-    expect(result?.durableStreamUrl).toContain(
+    expect(result?.kind).toBe('assigned')
+    if (result?.kind !== 'assigned') {
+      throw new Error('expected coding delegation assignment')
+    }
+    expect(result.assignment.ownerAgentUserId).toBe('agent_a')
+    expect(result.assignment.pylonRef).toBe('pylon.a.codex')
+    expect(result.durableStreamUrl).toContain(
       '/v1/chat/completions/durable/',
     )
   })

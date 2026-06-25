@@ -2207,6 +2207,18 @@ export const handleChatCompletions = (
         }),
       )
 
+      if (delegation?.kind === 'rejected') {
+        return noStoreJsonResponse(
+          {
+            error: delegation.error,
+            evidenceRefs: delegation.evidenceRefs,
+            reason: delegation.reason,
+            requestedPylonRef: delegation.requestedPylonRef,
+          },
+          { status: delegation.statusCode },
+        )
+      }
+
       if (delegation !== null) {
         const content =
           `Coding workflow delegated to linked Pylon ${delegation.pylon.pylonRef}. ` +

@@ -2,7 +2,13 @@ import { MemoryStreamStore } from '@openagentsinc/durable-stream'
 import { Effect, Option } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import type { AgentRegistrationStore } from '../agent-registration'
 import type { InferenceReceiptReadStore } from '../inference-receipts'
+import type {
+  PylonApiAssignmentRecord,
+  PylonApiRegistrationRecord,
+  PylonApiStore,
+} from '../pylon-api'
 import { makePublicInferenceReceiptRoutes } from '../public-inference-receipt-routes'
 import {
   acceptanceContractGuidanceForRequest,
@@ -107,6 +113,73 @@ const helloBody = {
   model: KHALA_MODEL_ID,
 }
 
+const codingPylonRegistration = (
+  overrides: Partial<PylonApiRegistrationRecord> = {},
+): PylonApiRegistrationRecord => ({
+  capabilityRefs: ['capability.pylon.local_codex'],
+  clientProtocolVersion: '0.3.0',
+  clientVersion: '0.3.0',
+  createdAt: '2026-06-25T12:00:00.000Z',
+  displayName: 'Linked Codex Pylon',
+  id: 'pylon_api_registration_owner',
+  latestCapacityRefs: [
+    'capacity.coding.codex.ready=1',
+    'capacity.coding.codex.available=1',
+  ],
+  latestHeartbeatAt: '1970-01-01T00:00:00.000Z',
+  latestHeartbeatStatus: 'online',
+  latestHealthRefs: ['health.public.pylon_cli.ok'],
+  latestLoadRefs: ['load.coding.codex.busy=0', 'load.coding.codex.queued=0'],
+  latestResourceMode: 'background_20',
+  ownerAgentCredentialId: 'agent_credential_owner',
+  ownerAgentTokenPrefix: 'oa_agent_owner',
+  ownerAgentUserId: 'agent_owner',
+  providerMarketRelayRefs: [],
+  providerNip90LaneRefs: [],
+  providerNostrNpub: null,
+  providerNostrPubkey: null,
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.owner.codex',
+  resourceMode: 'background_20',
+  status: 'active',
+  updatedAt: '2026-06-25T12:00:00.000Z',
+  walletReady: true,
+  walletRef: null,
+  ...overrides,
+})
+
+const codingPylonStore = (
+  registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+): PylonApiStore =>
+  ({
+    createAssignment: async (record: PylonApiAssignmentRecord) => ({
+      idempotent: false,
+      record,
+    }),
+    listAssignmentsForPylon: async () => [],
+    listRegistrations: async () => registrations,
+    listRegistrationsForOwnerAgentUserIds: async (
+      ownerAgentUserIds: ReadonlyArray<string>,
+    ) =>
+      registrations.filter(registration =>
+        ownerAgentUserIds.includes(registration.ownerAgentUserId),
+      ),
+  }) as unknown as PylonApiStore
+
+const linkedCodingAgentStore: AgentRegistrationStore =
+  ({
+    listLinkedAgentsForOpenAuthUser: async () => [
+      {
+        agentUserId: 'agent_owner',
+        credentialId: 'agent_credential_owner',
+        displayName: 'Owner agent',
+        linkKind: 'credential_anchor',
+        openauthUserId: 'user_owner',
+        tokenPrefix: 'oa_agent_owner',
+      },
+    ],
+  }) as unknown as AgentRegistrationStore
+
 const hydraliskReadyArming = resolveSupplyLaneArming({
   HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
   HYDRALISK_BEARER_TOKEN: 'secret-route-token',
@@ -187,6 +260,39 @@ describe('coding delegation default-on guard', () => {
         {},
       ),
     ).toBe(true)
+  })
+
+  test('rejects explicit cross-account Pylon targets before provider routing', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.other.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          codingDelegation: {
+            agentStore: linkedCodingAgentStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => 'user_owner',
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(403)
+    const body = (await response.json()) as {
+      error: string
+      requestedPylonRef: string
+    }
+    expect(body).toMatchObject({
+      error: 'target_pylon_not_authorized',
+      requestedPylonRef: 'pylon.other.codex',
+    })
   })
 })
 

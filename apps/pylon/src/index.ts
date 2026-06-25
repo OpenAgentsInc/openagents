@@ -3613,8 +3613,11 @@ async function main() {
           optionString(options, "objective") ??
           (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
         const workflow = optionString(options, "workflow")
+        const targetPylonRef =
+          optionString(options, "pylon-ref") ??
+          optionString(options, "target-pylon-ref")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--json]")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--json]")
         }
         if (
           workflow !== undefined &&
@@ -3625,6 +3628,9 @@ async function main() {
         }
         const result = await issuePylonKhalaRequest(networkOptions, {
           prompt,
+          ...(targetPylonRef === undefined
+            ? {}
+            : { targetPylonRef }),
           ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
         })
         emit(result)
