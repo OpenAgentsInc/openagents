@@ -15,7 +15,10 @@ const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
 const PublicSafeRef = NonEmptyTrimmedString.check(
   S.isMinLength(3),
   S.isMaxLength(260),
-  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/),
+  // Pylon heartbeat refs include bounded metric suffixes such as
+  // `capacity.coding.codex.ready=1`; the value still stays public-safe and
+  // scanner-guarded below, but the request schema must admit the modeled form.
+  S.isPattern(/^[A-Za-z0-9][A-Za-z0-9_.:/=-]*$/),
 )
 const PublicSafeRefs = S.optionalKey(S.Array(PublicSafeRef))
 const NonNegativeInteger = S.Int.check(S.isGreaterThanOrEqualTo(0))

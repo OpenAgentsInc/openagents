@@ -1065,6 +1065,58 @@ describe('Pylon API routes', () => {
     expect(detail.pylon?.walletReady).toBe(true)
   })
 
+  test('heartbeat accepts counted coding capacity refs and projects service dimensions (#6276)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: ['capability.pylon.local_codex'],
+    })
+
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capacityRefs: [
+            'capacity.coding.codex.ready=2',
+            'capacity.coding.codex.available=1',
+          ],
+          clientProtocolVersion: '0.3.0',
+          clientVersion: 'openagents.pylon@0.3.0',
+          healthRefs: ['health.public.ok'],
+          loadRefs: [
+            'load.coding.codex.busy=1',
+            'load.coding.codex.queued=0',
+          ],
+          resourceMode: 'balanced',
+          status: 'online',
+        },
+        idempotencyKey: 'key-heartbeat-counted-coding-capacity',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    expect(heartbeat.status).toBe(201)
+
+    const detail = await responseJson<PylonRouteJson>(
+      await route(store, '/api/pylons/pylon.test.one'),
+    )
+    expect(detail.pylon?.latestCapacityRefs).toEqual([
+      'capacity.coding.codex.available=1',
+      'capacity.coding.codex.ready=2',
+    ])
+    expect(detail.pylon?.latestLoadRefs).toEqual([
+      'load.coding.codex.busy=1',
+      'load.coding.codex.queued=0',
+    ])
+    expect(detail.pylon?.codingCapacity).toContainEqual({
+      available: 1,
+      busy: 1,
+      queued: 0,
+      ready: 2,
+      service: 'codex',
+    })
+  })
+
   test('records heartbeat, wallet readiness, assignment, artifact, payment, and settlement events', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)
