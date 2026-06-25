@@ -39,7 +39,13 @@ idx=0; [ -f "$STATE" ] && idx=$(cat "$STATE" 2>/dev/null || echo 0)
 KEY="${KEYS[$(( idx % ${#KEYS[@]} ))]}"
 echo $(( (idx + 1) % 1000000 )) > "$STATE"
 
-AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json")
+AUTH=(
+  -H "Authorization: Bearer $KEY"
+  -H "content-type: application/json"
+  -H "x-openagents-demand-kind: internal"
+  -H "x-openagents-demand-source: heartbeat"
+  -H "x-openagents-client: khala-heartbeat"
+)
 ok=0; fail=0; q402=0; summed=0; details=""
 
 before=$(curl -s --max-time 15 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')

@@ -49,6 +49,7 @@ import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
 import type { TraceStore, TraceUploadSource } from '../trace-store-d1'
 import { isKhalaModel } from './pricing'
 import type { InferenceMessage, InferenceResult } from './provider-adapter'
+import type { ServedTokensRequestAttribution } from './served-tokens-recorder'
 import {
   redactTraceValue,
   type TraceRedactionReport,
@@ -274,6 +275,8 @@ export type EmitKhalaChatTraceDeps = Readonly<{
   // The resolved owner of the trace. Absent => no-op (we never store an
   // unowned/anonymous gateway trace).
   owner: KhalaChatTraceOwner | undefined
+  // Public-safe demand-origin attribution resolved at the request boundary.
+  requestAttribution?: ServedTokensRequestAttribution | undefined
   // Default visibility for an emitted trace. Defaults to `unlisted`.
   visibility?: TraceVisibility | undefined
   // Deterministic id/clock injection for tests.
@@ -423,6 +426,8 @@ export const emitKhalaChatTrace = async (
       rewardEligible: false,
       rewardAmountSats: null,
       uploadSource: deps.owner.uploadSource,
+      demandKind: deps.requestAttribution?.demandKind ?? null,
+      demandSource: deps.requestAttribution?.demandSource ?? null,
       nowIso,
     })
     return {

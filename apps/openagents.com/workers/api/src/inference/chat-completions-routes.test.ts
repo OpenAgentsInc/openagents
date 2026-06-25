@@ -1011,6 +1011,64 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('passes public-safe demand attribution into trace emission', async () => {
+    const emitted: Array<{ requestAttribution?: unknown }> = []
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(
+          { ...helloBody, oa_emit_trace: true },
+          {
+            headers: {
+              [INFERENCE_CLIENT_HEADER]: 'qa-runner',
+              [INFERENCE_DEMAND_KIND_HEADER]: 'internal',
+              [INFERENCE_DEMAND_SOURCE_HEADER]: 'qa-dogfood',
+            },
+          },
+        ),
+        baseDeps({
+          traceEmit: {
+            enabled: true,
+            emit: async input => {
+              emitted.push({ requestAttribution: input.requestAttribution })
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]?.requestAttribution).toEqual({
+      demandClient: 'qa-runner',
+      demandKind: 'internal',
+      demandSource: 'qa-dogfood',
+    })
+  })
+
+  test('labels captured traces with external/unlabeled when demand headers are absent', async () => {
+    const emitted: Array<{ requestAttribution?: unknown }> = []
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, oa_emit_trace: true }),
+        baseDeps({
+          traceEmit: {
+            enabled: true,
+            emit: async input => {
+              emitted.push({ requestAttribution: input.requestAttribution })
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]?.requestAttribution).toEqual({
+      demandKind: 'external',
+      demandSource: 'unlabeled',
+    })
+  })
+
   test('records served tokens for a completed streaming completion (issue #6227)', async () => {
     const recorded: Array<{ streamed: boolean; usage: InferenceUsage }> = []
     const response = await run(

@@ -40,6 +40,17 @@ export type TraceBlobRef = Readonly<{
 /** How an upload authenticated (#6221). */
 export type TraceUploadSource = 'agent' | 'user_session'
 
+/** Public-safe demand-origin segment attached to captured traces (#6298). */
+export type TraceDemandKind =
+  | 'external'
+  | 'internal'
+  | 'own_capacity'
+  | 'unlabeled'
+
+export type TraceListFilters = Readonly<{
+  demandKind?: TraceDemandKind | undefined
+}>
+
 export type TraceRecord = Readonly<{
   traceUuid: string
   ownerUserId: string
@@ -84,6 +95,13 @@ export type TraceRecord = Readonly<{
   rewardAmountSats: number | null
   /** Whether the upload arrived via agent bearer or a user web session. */
   uploadSource: TraceUploadSource
+  /**
+   * Public-safe demand-origin classification (#6298). Null means the trace was
+   * created before attribution existed, or via an upload path with no resolved
+   * demand metadata.
+   */
+  demandKind: TraceDemandKind | null
+  demandSource: string | null
   createdAt: string
   updatedAt: string
 }>
@@ -107,6 +125,8 @@ export type CreateTraceInput = Readonly<{
   rewardEligible: boolean
   rewardAmountSats: number | null
   uploadSource: TraceUploadSource
+  demandKind?: TraceDemandKind | null | undefined
+  demandSource?: string | null | undefined
   nowIso: string
 }>
 
@@ -127,6 +147,7 @@ export type TraceStore = Readonly<{
   listTracesForOwner: (
     ownerUserId: string,
     limit: number,
+    filters?: TraceListFilters | undefined,
   ) => Promise<ReadonlyArray<TraceRecord>>
   /**
    * Dedup lookup (#6221): the existing trace for `(ownerUserId, contentDigest)`,
@@ -159,6 +180,18 @@ const bool = (value: unknown): boolean =>
 
 const uploadSourceFromRow = (value: unknown): TraceUploadSource =>
   value === 'user_session' ? 'user_session' : 'agent'
+
+const demandKindFromRow = (value: unknown): TraceDemandKind | null => {
+  if (
+    value === 'external' ||
+    value === 'internal' ||
+    value === 'own_capacity' ||
+    value === 'unlabeled'
+  ) {
+    return value
+  }
+  return null
+}
 
 const visibilityFromRow = (value: unknown): TraceVisibility =>
   value === 'public' || value === 'owner_only' ? value : 'unlisted'
@@ -193,29 +226,64 @@ const recordFromRow = (row: Record<string, unknown>): TraceRecord => ({
   rewardEligible: bool(row.reward_eligible),
   rewardAmountSats: nullableNum(row.reward_amount_sats),
   uploadSource: uploadSourceFromRow(row.upload_source),
+  demandKind: demandKindFromRow(row.demand_kind),
+  demandSource: nullableStr(row.demand_source),
   createdAt: str(row.created_at),
   updatedAt: str(row.updated_at),
 })
 
 // Shared public-safe column projection. Extended by #6221 with the data-market
 // consent/license/digest/reward/upload-source columns (migration 0229) and the
-// large-trajectory R2 pointer (migration 0230).
-const TRACE_COLUMNS = `trace_uuid, owner_user_id, agent_ref, schema_version,
+// large-trajectory R2 pointer (migration 0230). Demand-origin columns (#6298)
+// are selected only after their migration is present so code-before-migration
+// deploys continue to read existing traces.
+const TRACE_BASE_COLUMNS = `trace_uuid, owner_user_id, agent_ref, schema_version,
                   trajectory_id, session_id, visibility, step_count,
                   trajectory_json, trajectory_r2_key, blob_refs_json,
                   idempotency_key,
                   training_consent, license, content_digest,
-                  reward_eligible, reward_amount_sats, upload_source,
+                  reward_eligible, reward_amount_sats, upload_source`
+
+const TRACE_COLUMNS_WITH_DEMAND = `${TRACE_BASE_COLUMNS},
+                  demand_kind, demand_source,
                   created_at, updated_at`
 
+const TRACE_COLUMNS_WITHOUT_DEMAND = `${TRACE_BASE_COLUMNS},
+                  NULL AS demand_kind, NULL AS demand_source,
+                  created_at, updated_at`
+
+const traceColumns = (includeDemandAttribution: boolean): string =>
+  includeDemandAttribution
+    ? TRACE_COLUMNS_WITH_DEMAND
+    : TRACE_COLUMNS_WITHOUT_DEMAND
+
 export const makeD1TraceStore = (db: D1Database): TraceStore => {
+  let demandAttributionColumnsAvailable: boolean | undefined
+
+  const hasDemandAttributionColumns = async (): Promise<boolean> => {
+    if (demandAttributionColumnsAvailable !== undefined) {
+      return demandAttributionColumnsAvailable
+    }
+    const result = await db
+      .prepare('PRAGMA table_info(agent_traces)')
+      .all<Record<string, unknown>>()
+    const names = new Set((result.results ?? []).map(row => str(row.name)))
+    demandAttributionColumnsAvailable =
+      names.has('demand_kind') && names.has('demand_source')
+    return demandAttributionColumnsAvailable
+  }
+
+  const selectTraceColumns = async (): Promise<string> =>
+    traceColumns(await hasDemandAttributionColumns())
+
   const readByUuid = async (
     traceUuid: string,
   ): Promise<TraceRecord | undefined> => {
     try {
+      const columns = await selectTraceColumns()
       const row = await db
         .prepare(
-          `SELECT ${TRACE_COLUMNS}
+          `SELECT ${columns}
              FROM agent_traces
             WHERE trace_uuid = ?1`,
         )
@@ -233,9 +301,10 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
     idempotencyKey: string,
   ): Promise<TraceRecord | undefined> => {
     try {
+      const columns = await selectTraceColumns()
       const row = await db
         .prepare(
-          `SELECT ${TRACE_COLUMNS}
+          `SELECT ${columns}
              FROM agent_traces
             WHERE owner_user_id = ?1 AND idempotency_key = ?2`,
         )
@@ -261,42 +330,82 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
       }
 
       try {
-        await db
-          .prepare(
-            `INSERT INTO agent_traces
-               (trace_uuid, owner_user_id, agent_ref, schema_version,
-                trajectory_id, session_id, visibility, step_count,
-                trajectory_json, trajectory_r2_key, blob_refs_json,
-                idempotency_key,
-                training_consent, license, content_digest,
-                reward_eligible, reward_amount_sats, upload_source,
-                created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)`,
-          )
-          .bind(
-            input.traceUuid,
-            input.ownerUserId,
-            input.agentRef,
-            input.schemaVersion,
-            input.trajectoryId,
-            input.sessionId,
-            input.visibility,
-            input.stepCount,
-            JSON.stringify(input.trajectory),
-            input.trajectoryR2Key,
-            JSON.stringify(input.blobRefs),
-            input.idempotencyKey,
-            input.trainingConsent ? 1 : 0,
-            input.license,
-            input.contentDigest,
-            input.rewardEligible ? 1 : 0,
-            input.rewardAmountSats,
-            input.uploadSource,
-            input.nowIso,
-            input.nowIso,
-          )
-          .run()
+        const demandColumnsAvailable = await hasDemandAttributionColumns()
+        const statement = demandColumnsAvailable
+          ? db
+              .prepare(
+                `INSERT INTO agent_traces
+                   (trace_uuid, owner_user_id, agent_ref, schema_version,
+                    trajectory_id, session_id, visibility, step_count,
+                    trajectory_json, trajectory_r2_key, blob_refs_json,
+                    idempotency_key,
+                    training_consent, license, content_digest,
+                    reward_eligible, reward_amount_sats, upload_source,
+                    demand_kind, demand_source,
+                    created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                         ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)`,
+              )
+              .bind(
+                input.traceUuid,
+                input.ownerUserId,
+                input.agentRef,
+                input.schemaVersion,
+                input.trajectoryId,
+                input.sessionId,
+                input.visibility,
+                input.stepCount,
+                JSON.stringify(input.trajectory),
+                input.trajectoryR2Key,
+                JSON.stringify(input.blobRefs),
+                input.idempotencyKey,
+                input.trainingConsent ? 1 : 0,
+                input.license,
+                input.contentDigest,
+                input.rewardEligible ? 1 : 0,
+                input.rewardAmountSats,
+                input.uploadSource,
+                input.demandKind ?? null,
+                input.demandSource ?? null,
+                input.nowIso,
+                input.nowIso,
+              )
+          : db
+              .prepare(
+                `INSERT INTO agent_traces
+                   (trace_uuid, owner_user_id, agent_ref, schema_version,
+                    trajectory_id, session_id, visibility, step_count,
+                    trajectory_json, trajectory_r2_key, blob_refs_json,
+                    idempotency_key,
+                    training_consent, license, content_digest,
+                    reward_eligible, reward_amount_sats, upload_source,
+                    created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+                         ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)`,
+              )
+              .bind(
+                input.traceUuid,
+                input.ownerUserId,
+                input.agentRef,
+                input.schemaVersion,
+                input.trajectoryId,
+                input.sessionId,
+                input.visibility,
+                input.stepCount,
+                JSON.stringify(input.trajectory),
+                input.trajectoryR2Key,
+                JSON.stringify(input.blobRefs),
+                input.idempotencyKey,
+                input.trainingConsent ? 1 : 0,
+                input.license,
+                input.contentDigest,
+                input.rewardEligible ? 1 : 0,
+                input.rewardAmountSats,
+                input.uploadSource,
+                input.nowIso,
+                input.nowIso,
+              )
+        await statement.run()
       } catch (error) {
         // A racing idempotent insert can lose the unique-index race; surface the
         // already-stored record rather than a conflict.
@@ -322,18 +431,36 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
       return { record: stored, created: true }
     },
     readTraceByUuid: readByUuid,
-    listTracesForOwner: async (ownerUserId, limit) => {
+    listTracesForOwner: async (ownerUserId, limit, filters) => {
       try {
-        const result = await db
-          .prepare(
-            `SELECT ${TRACE_COLUMNS}
-               FROM agent_traces
-              WHERE owner_user_id = ?1
-              ORDER BY created_at DESC
-              LIMIT ?2`,
-          )
-          .bind(ownerUserId, limit)
-          .all<Record<string, unknown>>()
+        const demandKind = filters?.demandKind
+        const demandColumnsAvailable = await hasDemandAttributionColumns()
+        if (demandKind !== undefined && !demandColumnsAvailable) {
+          return []
+        }
+        const columns = traceColumns(demandColumnsAvailable)
+        const result =
+          demandKind === undefined
+            ? await db
+                .prepare(
+                  `SELECT ${columns}
+                     FROM agent_traces
+                    WHERE owner_user_id = ?1
+                    ORDER BY created_at DESC
+                    LIMIT ?2`,
+                )
+                .bind(ownerUserId, limit)
+                .all<Record<string, unknown>>()
+            : await db
+                .prepare(
+                  `SELECT ${columns}
+                     FROM agent_traces
+                    WHERE owner_user_id = ?1 AND demand_kind = ?2
+                    ORDER BY created_at DESC
+                    LIMIT ?3`,
+                )
+                .bind(ownerUserId, demandKind, limit)
+                .all<Record<string, unknown>>()
 
         return (result.results ?? []).map(recordFromRow)
       } catch (error) {
@@ -342,9 +469,10 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
     },
     findTraceByOwnerDigest: async (ownerUserId, contentDigest) => {
       try {
+        const columns = await selectTraceColumns()
         const row = await db
           .prepare(
-            `SELECT ${TRACE_COLUMNS}
+            `SELECT ${columns}
                FROM agent_traces
               WHERE owner_user_id = ?1 AND content_digest = ?2`,
           )

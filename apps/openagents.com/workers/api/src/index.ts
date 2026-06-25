@@ -11281,6 +11281,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                   agentRef: input.accountRef,
                   uploadSource: 'agent',
                 },
+                requestAttribution: input.requestAttribution,
               },
             )
           },

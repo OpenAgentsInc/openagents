@@ -28,6 +28,7 @@ import {
 } from './runtime-primitives'
 import {
   type TraceBlobRef,
+  type TraceDemandKind,
   type TraceMediaBlobStore,
   type TraceRecord,
   type TraceStore,
@@ -421,6 +422,10 @@ const publicTraceProjection = (record: TraceRecord) => ({
   trajectory: record.trajectory,
   blobRefs: record.blobRefs,
   createdAt: record.createdAt,
+  demand: {
+    kind: record.demandKind ?? 'unlabeled',
+    ...(record.demandSource === null ? {} : { source: record.demandSource }),
+  },
   // Data market (#6221), public-safe. The reward marker is INERT: eligibility
   // only, amount TBD; it moves no money and grants no payout authority.
   dataMarket: {
@@ -447,11 +452,30 @@ const ownerTraceSummary = (record: TraceRecord) => ({
   agentRef: record.agentRef,
   stepCount: record.stepCount,
   createdAt: record.createdAt,
+  demand: {
+    kind: record.demandKind ?? 'unlabeled',
+    ...(record.demandSource === null ? {} : { source: record.demandSource }),
+  },
   trainingConsent: record.trainingConsent,
   ...(record.license === null ? {} : { license: record.license }),
   uploadSource: record.uploadSource,
   rewardEligible: record.rewardEligible,
 })
+
+const traceDemandKindFromSearchParam = (
+  value: string | null,
+): TraceDemandKind | undefined => {
+  const normalized = value?.trim().toLowerCase()
+  if (
+    normalized === 'external' ||
+    normalized === 'internal' ||
+    normalized === 'own_capacity' ||
+    normalized === 'unlabeled'
+  ) {
+    return normalized
+  }
+  return undefined
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/traces — ingest
@@ -1022,12 +1046,20 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
       return yield* new TraceUnauthorized({})
     }
 
+    const url = new URL(request.url)
+    const demandKind = traceDemandKindFromSearchParam(
+      url.searchParams.get('demandKind') ?? url.searchParams.get('demand_kind'),
+    )
     const traces = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
       try: () =>
         dependencies
           .makeStore(env)
-          .listTracesForOwner(session.user.userId, OWNER_LIST_LIMIT),
+          .listTracesForOwner(
+            session.user.userId,
+            OWNER_LIST_LIMIT,
+            demandKind === undefined ? undefined : { demandKind },
+          ),
     })
 
     return dependencies.appendRefreshedSessionCookies(

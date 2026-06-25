@@ -243,6 +243,16 @@ const requestAttributionFromHeaders = (
   }
 }
 
+const requestAttributionForCapturedTrace = (
+  requestAttribution: ServedTokensRequestAttribution | undefined,
+): ServedTokensRequestAttribution => ({
+  demandKind: requestAttribution?.demandKind ?? 'external',
+  demandSource: requestAttribution?.demandSource ?? 'unlabeled',
+  ...(requestAttribution?.demandClient === undefined
+    ? {}
+    : { demandClient: requestAttribution.demandClient }),
+})
+
 const booleanBodyFlag = (body: Record<string, unknown>, key: string): boolean =>
   body[key] === true || body[key] === 'true' || body[key] === 1
 
@@ -659,6 +669,7 @@ export type ChatCompletionsDeps = Readonly<{
         // DEFAULT-ON CAPTURE: persist even without an explicit opt-in. Stored
         // owner_only (private-by-default). Resolved at the call site.
         captureDefault: boolean
+        requestAttribution?: ServedTokensRequestAttribution | undefined
       }>,
     ) => Promise<void>
   }>
@@ -3015,6 +3026,8 @@ export const handleChatCompletions = (
             requestedModel,
             responseId,
             result: guardedResult,
+            requestAttribution:
+              requestAttributionForCapturedTrace(requestAttribution),
           }),
         )
       }

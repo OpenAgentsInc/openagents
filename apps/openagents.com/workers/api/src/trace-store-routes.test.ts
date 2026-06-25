@@ -9,6 +9,7 @@ import { ATIF_PINNED_SCHEMA_VERSION } from './atif-trace-schema'
 import { makeTraceStoreRoutes } from './trace-store-routes'
 import type {
   CreateTraceInput,
+  TraceDemandKind,
   TraceMediaBlobObject,
   TraceMediaBlobStore,
   TraceRecord,
@@ -74,6 +75,8 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
     rewardEligible: input.rewardEligible,
     rewardAmountSats: input.rewardAmountSats,
     uploadSource: input.uploadSource,
+    demandKind: input.demandKind ?? null,
+    demandSource: input.demandSource ?? null,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
   })
@@ -96,10 +99,15 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
       return Promise.resolve({ record, created: true })
     },
     readTraceByUuid: uuid => Promise.resolve(rows.get(uuid)),
-    listTracesForOwner: (ownerUserId, limit) =>
+    listTracesForOwner: (ownerUserId, limit, filters) =>
       Promise.resolve(
         [...rows.values()]
           .filter(row => row.ownerUserId === ownerUserId)
+          .filter(row =>
+            filters?.demandKind === undefined
+              ? true
+              : row.demandKind === filters.demandKind,
+          )
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
           .slice(0, limit),
       ),
@@ -742,6 +750,10 @@ const seedTrace = async (
   store: TraceStore,
   visibility: 'public' | 'unlisted' | 'owner_only',
   ownerUserId = 'agent-1',
+  demand?: Readonly<{
+    kind: TraceDemandKind
+    source?: string | undefined
+  }>,
 ): Promise<string> => {
   const result = await store.createTrace({
     traceUuid: `uuid-${visibility}`,
@@ -762,6 +774,8 @@ const seedTrace = async (
     rewardEligible: false,
     rewardAmountSats: null,
     uploadSource: 'agent',
+    demandKind: demand?.kind ?? null,
+    demandSource: demand?.source ?? null,
     nowIso: NOW,
   })
   return result.record.traceUuid
@@ -773,7 +787,10 @@ const readRequest = (uuid: string): Request =>
 describe('GET /api/traces/{uuid} read', () => {
   it('returns the public-safe projection for a public trace (no auth)', async () => {
     const store = makeMemoryStore()
-    const uuid = await seedTrace(store, 'public')
+    const uuid = await seedTrace(store, 'public', 'agent-1', {
+      kind: 'external',
+      source: 'unlabeled',
+    })
     const routes = makeDeps({ store })
     const response = await run(
       routes.routeTraceRequest(readRequest(uuid), ENV, CTX),
@@ -783,6 +800,10 @@ describe('GET /api/traces/{uuid} read', () => {
     expect(json.trace.uuid).toBe(uuid)
     expect(json.trace.visibility).toBe('public')
     expect(json.trace.blobRefs).toHaveLength(1)
+    expect(json.trace.demand).toEqual({
+      kind: 'external',
+      source: 'unlabeled',
+    })
     expect((json.trace.authority as Record<string, unknown>).payoutAuthority).toBe(
       false,
     )
@@ -900,6 +921,39 @@ describe('GET /api/traces owner list', () => {
     expect(response.status).toBe(200)
     const json = (await response.json()) as { traces: ReadonlyArray<unknown> }
     expect(json.traces).toHaveLength(2)
+  })
+
+  it('filters the owner list by demand kind', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'public', 'agent-1', {
+      kind: 'internal',
+      source: 'heartbeat',
+    })
+    await seedTrace(store, 'owner_only', 'agent-1', {
+      kind: 'external',
+      source: 'unlabeled',
+    })
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/api/traces?demandKind=internal'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      traces: ReadonlyArray<{ demand: unknown; uuid: string }>
+    }
+    expect(json.traces).toHaveLength(1)
+    expect(json.traces[0]?.uuid).toBe('uuid-public')
+    expect(json.traces[0]?.demand).toEqual({
+      kind: 'internal',
+      source: 'heartbeat',
+    })
   })
 
   it('401s an anonymous owner list', async () => {

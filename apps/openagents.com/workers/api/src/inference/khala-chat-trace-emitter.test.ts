@@ -69,6 +69,8 @@ const makeFakeStore = (): TraceStore & {
     rewardEligible: input.rewardEligible,
     rewardAmountSats: input.rewardAmountSats,
     uploadSource: input.uploadSource,
+    demandKind: input.demandKind ?? null,
+    demandSource: input.demandSource ?? null,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
   })
@@ -217,11 +219,31 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
     expect(stored.trainingConsent).toBe(false)
     expect(stored.rewardEligible).toBe(false)
     expect(stored.rewardAmountSats).toBeNull()
+    expect(stored.demandKind).toBeNull()
+    expect(stored.demandSource).toBeNull()
     // Idempotency keyed by the chat response id.
     expect(stored.idempotencyKey).toBe('chatcmpl-abc123')
     // The stored trajectory is the gateway projection.
     const trajectory = stored.trajectory as { agent: { model_name: string } }
     expect(trajectory.agent.model_name).toBe('openagents/khala')
+  })
+
+  it('persists public-safe demand attribution when supplied by the route', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      requestAttribution: {
+        demandClient: 'khala-canary',
+        demandKind: 'internal',
+        demandSource: 'canary',
+      },
+    })
+    expect(result.emitted).toBe(true)
+    expect(store.created[0]?.demandKind).toBe('internal')
+    expect(store.created[0]?.demandSource).toBe('canary')
   })
 
   it('REDACTS (then stores) a session that would otherwise trip the tripwire', async () => {
