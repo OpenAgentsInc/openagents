@@ -1,12 +1,14 @@
 # OpenCode x Khala Runbook And Compatibility Audit
 
 > Status: internal runbook/audit, 2026-06-25. This is not public claim copy and
-> does not change any product-promise state. It operationalizes the OpenCode lane
-> from [`2026-06-25-khala-inference-gtm-push.md`](./2026-06-25-khala-inference-gtm-push.md)
+> does not change any product-promise state. The authoritative OpenCode recipe
+> lives at [`../opencode/opencode-khala-recipe.md`](../opencode/opencode-khala-recipe.md).
+> This runbook operationalizes the OpenCode lane from
+> [`2026-06-25-khala-inference-gtm-push.md`](./2026-06-25-khala-inference-gtm-push.md)
 > and keeps the honesty boundary from
 > [`../promises/2026-06-25-khala-inference-push-promise-review.md`](../promises/2026-06-25-khala-inference-push-promise-review.md):
-> Khala is a live OpenAI-compatible endpoint, but OpenCode tool-loop support is
-> gated on the exact API compatibility smoke below before it becomes public copy.
+> Khala is a live OpenAI-compatible endpoint, but public OpenCode copy still
+> waits on the exact API compatibility smoke below and the promise gate.
 
 ## Summary
 
@@ -27,6 +29,11 @@ Direct Khala API smoke works: a plain chat-completions request to
 public `GET /api/public/khala-tokens-served` counter increased by exactly `399`.
 That proves the base endpoint, auth, usage reporting, and public token counter are
 alive for simple chat.
+
+The OpenCode selector decision is now fixed: the user-facing OpenCode selector is
+`openagents/khala`, implemented with provider id `openagents`, JSON model key
+`khala`, and per-model `api.id: "openagents/khala"`. Do not publish the older
+`openagents/openagents/khala` doubled selector path as the recipe.
 
 The first OpenCode smoke exposed a real compatibility bug: OpenCode sends
 standard OpenAI-compatible typed message content arrays and streamed tool-call
@@ -133,7 +140,9 @@ bug.
 ### 6. Configure OpenCode
 
 Use a project config for an isolated test, or global config for daily dogfood.
-OpenCode reads `provider` config and migrates it internally.
+OpenCode reads `provider` config and migrates it internally. This is the same
+configuration published in
+[`../opencode/opencode-khala-recipe.md`](../opencode/opencode-khala-recipe.md).
 
 ```json
 {
@@ -147,22 +156,30 @@ OpenCode reads `provider` config and migrates it internally.
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "api": {
+            "id": "openagents/khala"
+          },
           "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
   },
-  "model": "openagents/openagents/khala"
+  "model": "openagents/khala"
 }
 ```
 
-The doubled selector path is an OpenCode consequence of provider id plus model
-key. The model key must remain `openagents/khala` until the Khala API accepts a
-shorter alias, because the model key is what OpenCode sends upstream as
-`model: "openagents/khala"`.
+Selector decision:
+
+- OpenCode displays `providerId/modelKey`, so provider `openagents` plus model
+  key `khala` renders as `openagents/khala`.
+- The `api.id` override is what OpenCode sends upstream as
+  `model: "openagents/khala"`.
+- Do not use model key `openagents/khala` for the recipe. That renders
+  `openagents/openagents/khala` in OpenCode and is now just historical context,
+  not the published path.
 
 ### 7. Run the OpenCode smoke
 
@@ -172,7 +189,7 @@ export OPENAGENTS_API_KEY="$OPENAGENTS_AGENT_TOKEN"
 opencode run \
   --pure \
   --agent plan \
-  --model openagents/openagents/khala \
+  --model openagents/khala \
   --dir /Users/christopherdavid/work/openagents-worktrees/khala-opencode-runbook \
   --dangerously-skip-permissions \
   'Use tools to read docs/faq/khala-inference-quickstart.md. Reply with exactly: base=<base-url>; model=<model-id>'
@@ -292,8 +309,7 @@ change the process exit code.
 ## What To Do In Order
 
 1. **Deploy the #6232 compatibility fix from clean `origin/main`.** Keep the
-   Worker deploy tied to the committed source SHA; do not publish the OpenCode
-   recipe until production smoke is green.
+   Worker deploy tied to the committed source SHA.
 2. **Rerun the OpenCode smoke with a dedicated key.** Use a dedicated
    `oa_agent_` token for OpenCode dogfood so token attribution can distinguish
    this lane from generic internal demand.
@@ -301,9 +317,10 @@ change the process exit code.
    OpenCode reads a file via its built-in `read` tool, the final answer is correct,
    `usage.total_tokens` appears in the terminal telemetry/receipt path where
    available, and the public tokens-served counter increases.
-4. **Only then publish the recipe.** Keep it in repo docs first; promote to
-   `/khala` and public quickstart copy only after the product-promise copy gate
-   says the wording is safe.
+4. **Keep the repo recipe canonical.** The exact config is published in
+   `docs/opencode/opencode-khala-recipe.md`; promote it to `/khala` and public
+   quickstart copy only after the product-promise copy gate says the wording is
+   safe.
 5. **Add OpenCode to the benchmark gem.** Start the head-to-head harness with
    OpenCode as the first client surface, then add the owner-named Big Pickle
    comparator and OpenCode Zen/Go/free-model alternatives. Capture model id,
@@ -312,6 +329,18 @@ change the process exit code.
 6. **Broaden after OpenCode.** Aider, Cline/Continue, AI SDK, LiteLLM, and
    LangChain all become easier after the same OpenAI-compatible content/tool-call
    contracts are green.
+
+## Publication Checklist For The Recipe
+
+- Exact config uses `baseURL: "https://openagents.com/api/v1"`, model key
+  `khala`, `api.id: "openagents/khala"`, and default selector
+  `openagents/khala`.
+- Free key docs name `POST /api/keys/free` and the real response field
+  `credential.token`.
+- Quota docs use the current free tier: 2,000 requests/day and 2,500,000
+  tokens/day per key, reset at UTC midnight.
+- Smoke covers tool-calling, streaming, public token-counter movement, and a
+  readable HTTP 402 quota path.
 
 ## Benchmark Gem Shape
 

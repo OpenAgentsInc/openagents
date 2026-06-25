@@ -41,7 +41,7 @@ Aider uses the OpenAI Python client under the hood. Base URL override maps direc
 1. Aider connects and lists files with `/files` — proves base chat completion works
 2. Aider makes an edit (tool call round-trip) — `read_file` → edit → `write_file` → `run lint` — the full tool-calling loop
 3. Aider streaming output renders cleanly (no garbled deltas)
-4. Free-tier quota: one session stays within 200k tokens; a second session after quota exhaust returns a readable 402
+4. Free-tier quota: one session stays within 2,500,000 tokens; a second session after quota exhaust returns a readable 402
 5. Token counter: session tokens appear on `/api/public/khala-tokens-served`
 6. `--model-settings-role map` — if Aider maps model ids to capability profiles, ensure `openagents/khala` is recognized or falls back gracefully
 
@@ -110,7 +110,7 @@ Or in VS Code settings.json:
 2. Context retrieval: Continue sends retrieved context as system messages; verify the system-message limit
 3. Streaming in the Continue sidebar renders cleanly
 4. Slash commands (`/edit`, `/comment`) produce valid tool calls (Continue uses different tool schemas than OpenCode — verify compatibility)
-5. Free tier: a typical Continue session fits within 200k tokens
+5. Free tier: a typical Continue session fits within 2,500,000 tokens
 
 **Adoption path:**
 1. Verify with live Cline and Continue sessions

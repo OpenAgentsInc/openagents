@@ -1,6 +1,8 @@
 # OpenCode Provider Config & Model Selector
 
 > Focused note for engineers wiring `openagents/khala` in OpenCode.
+> The copy-pasteable recipe lives in
+> [`opencode-khala-recipe.md`](./opencode-khala-recipe.md).
 
 ## OpenAI-Compatible Base URL
 
@@ -59,6 +61,7 @@ Override `api.id` explicitly to decouple the TUI display key from the upstream m
           "api": {
             "id": "openagents/khala"
           },
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
@@ -79,12 +82,13 @@ Verified: OpenCode's `packages/core/src/plugin/provider/opencode.ts:125` applies
 ## Key Minting
 
 ```bash
-curl -X POST https://openagents.com/api/keys/free
-# returns {"key": "oa_agent_..."}
+curl -fsS -X POST https://openagents.com/api/keys/free
+# response includes {"credential": {"token": "oa_agent_..."}}
 export OPENAGENTS_API_KEY="oa_agent_..."
 ```
 
-Free tier: 200 requests / 200,000 tokens per UTC day per key. Over-quota → 402 `insufficient_credits`.
+Free tier: 2,000 requests / 2,500,000 tokens per UTC day per key. Over-quota
+returns HTTP 402 with a readable OpenAI-style error body.
 
 ## Summary
 
@@ -94,4 +98,6 @@ Free tier: 200 requests / 200,000 tokens per UTC day per key. Over-quota → 402
 | Wrong upstream model id | Short model key with no override | Set `api.id` to `"openagents/khala"` |
 | Both right | — | Recipe above |
 
-**Status:** Internal recipe verified against OpenCode provider schema. Tool-call compatibility (issue #6232 — content arrays, tool-call deltas) deployed but needs production smoke before public publication. No changes to other files. No commits. No pushes.
+**Status:** Selector decision resolved for #6239. Publish model key `khala` with
+`api.id: "openagents/khala"` so OpenCode displays `openagents/khala` while the
+gateway receives the real public model id.

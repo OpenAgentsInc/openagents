@@ -9,6 +9,22 @@ internal agents through Khala (Pillar 1), lands ecosystem-tool integrations
 starting with OpenCode (Pillar 2), and benchmarks Khala on a ladder of
 opponents (Pillar 3).
 
+## Authoritative Recipe
+
+- [`opencode-khala-recipe.md`](./opencode-khala-recipe.md) is the current
+  copy-pasteable OpenCode to Khala recipe: free key, `opencode.json`, selector
+  decision, smoke test, token-counter check, and 402/quota behavior.
+- [`opencode-provider-config-model-selector.md`](./opencode-provider-config-model-selector.md)
+  explains why the recipe uses model key `khala` plus
+  `api.id: "openagents/khala"` to show `openagents/khala` in OpenCode while
+  sending the correct upstream model id.
+- [`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md)
+  documents the current free tier and quota failure path.
+
+The final-output files below are planning exports from the 2026-06-25 sessions.
+They preserve explored configs and historical notes, including older doubled
+selector examples; use the authoritative recipe above for implementation.
+
 ## Sessions
 
 | Session title | Final output | One-line description |

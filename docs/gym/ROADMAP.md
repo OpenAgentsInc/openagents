@@ -189,7 +189,7 @@ prints a warning, and pushes still proceed after `check:deploy` is green.
 > recipe with a test checklist. Ordered by coding-traffic leverage.
 
 ### C1. Publish the OpenCode → Khala recipe (first external landing)  ([#6239](https://github.com/OpenAgentsInc/openagents/issues/6239))
-**Type:** task · **Lever:** ecosystem · **Status:** in-progress (integration fixed; recipe to publish)
+**Type:** task · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** OpenCode is the cleanest first landing — config-driven OpenAI-compatible
 provider, coding wedge, exercises tool-calling. Tool-calling is already fixed.
 **Scope:** finalize + publish the exact `opencode.json` recipe (base
@@ -200,6 +200,13 @@ server-accepted key) and document the chosen one — no ambiguous instructions.
 task end-to-end (tool-calling + streaming), and sees their tokens on the counter; the
 402/quota path is a legible error, not a crash.
 **Refs:** GTM §3 "First target: OpenCode"; the runbook + `../opencode/`.
+
+**Shipped:** `../opencode/opencode-khala-recipe.md` is now the canonical recipe.
+The selector decision is model key `khala` with `api.id: "openagents/khala"`,
+which displays `openagents/khala` in OpenCode and sends the same public model id
+upstream. The support docs now use the real free-key response field
+`credential.token` and the current free tier, 2,000 requests/day plus 2,500,000
+tokens/day per key.
 
 ### C2. Land the next tools: Aider → Cline/Continue → Vercel AI SDK → LiteLLM/LangChain  ([#6240](https://github.com/OpenAgentsInc/openagents/issues/6240))
 **Type:** epic · **Lever:** ecosystem · **Status:** direction

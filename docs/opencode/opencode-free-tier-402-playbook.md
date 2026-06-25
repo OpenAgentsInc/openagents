@@ -16,12 +16,14 @@ unlocks inference on `openagents/khala` at:
 POST https://openagents.com/api/v1/chat/completions
 ```
 
-Store the key in OpenCode via `/connect → Other → id "openagents"` (stored at
+The response includes the bearer key at `credential.token`. Store that key in
+OpenCode via `/connect -> Other -> id "openagents"` (stored at
 `~/.local/share/opencode/auth.json`) or export as `OPENAGENTS_API_KEY`. The provider
 config in `~/.config/opencode/opencode.json`:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "provider": {
     "openagents": {
       "npm": "@ai-sdk/openai-compatible",
@@ -31,13 +33,18 @@ config in `~/.config/opencode/opencode.json`:
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "api": {
+            "id": "openagents/khala"
+          },
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
-  }
+  },
+  "model": "openagents/khala"
 }
 ```
 
@@ -45,8 +52,8 @@ config in `~/.config/opencode/opencode.json`:
 
 | Resource | Limit |
 |----------|-------|
-| Requests per day | **200** |
-| Tokens per day | **200,000** |
+| Requests per day | **2,000** |
+| Tokens per day | **2,500,000** |
 
 Both counters reset at 00:00 UTC. The free tier is a **research preview** — enough
 for a real "try it" session (a few coding turns) but not for sustained daily use.
@@ -101,6 +108,5 @@ request/token counts, and limit.
 ---
 
 **Status:** File created at `docs/opencode/opencode-free-tier-402-playbook.md`.
-Single-focused playbook covering free key minting, 200-req/200k-tok daily quota,
+Single-focused playbook covering free key minting, 2,000-request/2.5M-token daily quota,
 over-quota 402 JSON shape, paid balance fallback, and OpenCode error display.
-No other files edited. No commit, no push.
