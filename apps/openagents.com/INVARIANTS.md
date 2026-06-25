@@ -296,6 +296,12 @@ This is the invariant ledger for `openagents`.
   enforced on read. `public` and `unlisted` reads need no auth (anyone with the
   link); `owner_only` reads require the owning browser session (or an admin) and
   otherwise return 404 so an owner-only trace's existence is not revealed.
+- Visibility updates (`PATCH /api/traces/{uuid}`) require the owning browser
+  session or an admin session and accept only the same bounded visibility enum.
+  This route is the owner/admin opt-in path from auto-captured `owner_only` to
+  `unlisted` link sharing or `public` feed discovery; it must not mutate
+  trajectory content, ownership, consent, reward, payout, settlement, or public
+  claim authority.
 - Ingest has bounded abuse controls: a body-size cap, a max step count, and a
   max blob-ref count. The owner-scoped list is bounded and returns summaries
   only.

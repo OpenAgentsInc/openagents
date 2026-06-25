@@ -121,20 +121,24 @@ The emitter defaults emitted traces to `unlisted`
 and `/trace/{uuid}` is not discoverable.** The public discovery index
 (`idx_agent_traces_public`) is scoped to `visibility = 'public'` only.
 
-### 2.2 The gap: there is no way for an owner to opt a trace public
+### 2.2 Owner opt-in-to-public mutation route
 
 Enumerated routes in `trace-store-routes.ts`:
 
 - `POST /api/traces` (+ `/api/traces/upload`) — ingest (sets visibility at
   **creation** from body/trajectory, default `unlisted`).
 - `GET /api/traces/{traceRef}` — visibility-gated read.
+- `PATCH /api/traces/{traceRef}` — owner/admin authenticated visibility update
+  (`owner_only` | `unlisted` | `public`).
 - `POST|GET /api/traces/{uuid}/blob/{r2Key}` — media.
 - `GET /api/traces` — owner-scoped list.
 
-There is **no PATCH / set-visibility / share endpoint**, and `TraceStore`
-(`trace-store-d1.ts`) exposes no `updateVisibility`. Once created `unlisted`, a
-trace's tier is immutable through the API. **Owner opt-in-to-public must be
-built** (a new authenticated mutation + store method; see issue 2).
+Issue #6294 landed the visibility mutation route and D1 store method. Only the
+owning browser session or an admin session may update a trace's visibility; a
+non-owner receives 404. The route mutates only the bounded visibility enum and
+returns a minimal public-safe confirmation, so it does not alter trajectory
+content, ownership, consent, reward, payout, settlement, or public-claim
+authority.
 
 ### 2.3 Decision for auto-capture default tier
 
@@ -272,8 +276,8 @@ New (to build):
   carry this; auto-capture sets `upload_source = 'agent'` and a new
   `capture_source = 'free_tier_auto'` marker is worth adding for honest
   provenance).
-- **Visibility-mutation route + store method** (`updateVisibility`) for
-  owner-opt-in-to-public (§2.2).
+- **Visibility-mutation route + store method** (`updateTraceVisibility`) for
+  owner-opt-in-to-public (§2.2). **LANDED** for #6294.
 - Recommend auto-capture default tier `owner_only` (§2.3) — a one-line change to
   the emit default, plus the `updateVisibility` walk.
 
@@ -323,9 +327,9 @@ Ordered; each maps to a filed issue (§9):
 3. **Paid-privacy opt-OUT.** Privacy entitlement column/config + resolver;
    `captureDefault = free && !privacy`; fail-closed-to-private. The
    confidential-compute module configuration is the explicit exclusion.
-4. **Owner opt-in-to-public.** `updateVisibility` store method + authenticated
-   mutation route (`owner_only → unlisted → public`), owner/admin-gated, scoped
-   to the owning account.
+4. **Owner opt-in-to-public.** `updateTraceVisibility` store method +
+   authenticated mutation route (`owner_only → unlisted → public`),
+   owner/admin-gated, scoped to the owning account. **LANDED** for #6294.
 5. **Disclosure / consent surface.** The honest "free API → we capture & may
    train; pay for privacy" terms, routed through `docs/promises/` and surfaced at
    free-key mint + in product copy. (Do not change user-facing copy without owner

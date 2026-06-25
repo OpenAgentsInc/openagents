@@ -148,6 +148,15 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
       }
       return Promise.resolve(counts)
     },
+    updateTraceVisibility: (traceUuid, ownerUserId, visibility, nowIso) => {
+      const existing = rows.get(traceUuid)
+      if (existing === undefined || existing.ownerUserId !== ownerUserId) {
+        return Promise.resolve(undefined)
+      }
+      const updated = { ...existing, visibility, updatedAt: nowIso }
+      rows.set(traceUuid, updated)
+      return Promise.resolve(updated)
+    },
   }
 }
 
@@ -805,6 +814,16 @@ const seedTrace = async (
 const readRequest = (uuid: string): Request =>
   new Request(`https://openagents.com/api/traces/${uuid}`)
 
+const visibilityUpdateRequest = (
+  uuid: string,
+  body: unknown,
+): Request =>
+  new Request(`https://openagents.com/api/traces/${uuid}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
 describe('GET /api/traces/{uuid} read', () => {
   it('returns the public-safe projection for a public trace (no auth)', async () => {
     const store = makeMemoryStore()
@@ -892,6 +911,120 @@ describe('GET /api/traces/{uuid} read', () => {
       routes.routeTraceRequest(readRequest('does-not-exist'), ENV, CTX),
     )
     expect(response.status).toBe(404)
+  })
+})
+
+describe('PATCH /api/traces/{uuid} visibility update (#6294)', () => {
+  it('lets the owner promote an auto-captured owner_only trace to unlisted', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'unlisted' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { trace: Record<string, unknown> }
+    expect(json.trace.uuid).toBe(uuid)
+    expect(json.trace.visibility).toBe('unlisted')
+    expect(store.rows.get(uuid)?.visibility).toBe('unlisted')
+  })
+
+  it('lets the owner publish a trace to the public feed tier', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'unlisted', 'agent-1')
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(store.rows.get(uuid)?.visibility).toBe('public')
+  })
+
+  it('lets an admin update visibility without taking ownership', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      browserSession: {
+        user: { userId: 'admin-user', email: 'admin@openagents.com' },
+      },
+      adminEmails: ['admin@openagents.com'],
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(store.rows.get(uuid)?.ownerUserId).toBe('agent-1')
+    expect(store.rows.get(uuid)?.visibility).toBe('public')
+  })
+
+  it('401s an unauthenticated visibility update', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({ store, browserSession: undefined })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(401)
+    expect(store.rows.get(uuid)?.visibility).toBe('owner_only')
+  })
+
+  it('404s a non-owner visibility update without revealing authority details', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'someone-else' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'public' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(404)
+    expect(store.rows.get(uuid)?.visibility).toBe('owner_only')
+  })
+
+  it('400s an invalid visibility value', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        visibilityUpdateRequest(uuid, { visibility: 'private' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(store.rows.get(uuid)?.visibility).toBe('owner_only')
   })
 })
 

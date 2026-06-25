@@ -224,6 +224,16 @@ export type TraceStore = Readonly<{
   countTracesForOwnerByDemand: (
     ownerUserId: string,
   ) => Promise<Record<TraceDemandKind, number>>
+  /**
+   * Owner-scoped visibility mutation (#6294). Route layer owns owner/admin
+   * authority; the store still requires the owning account as a second guard.
+   */
+  updateTraceVisibility: (
+    traceUuid: string,
+    ownerUserId: string,
+    visibility: TraceVisibility,
+    nowIso: string,
+  ) => Promise<TraceRecord | undefined>
 }>
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
@@ -526,6 +536,23 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
           }
         }
         return counts
+      } catch (error) {
+        throw traceStoreErrorFromUnknown(error)
+      }
+    },
+    updateTraceVisibility: async (traceUuid, ownerUserId, visibility, nowIso) => {
+      try {
+        await db
+          .prepare(
+            `UPDATE agent_traces
+                SET visibility = ?3,
+                    updated_at = ?4
+              WHERE trace_uuid = ?1
+                AND owner_user_id = ?2`,
+          )
+          .bind(traceUuid, ownerUserId, visibility, nowIso)
+          .run()
+        return readByUuid(traceUuid)
       } catch (error) {
         throw traceStoreErrorFromUnknown(error)
       }

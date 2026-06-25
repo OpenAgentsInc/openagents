@@ -104,6 +104,7 @@ const makeFakeStore = (): TraceStore & {
       own_capacity: 0,
       unlabeled: 0,
     }),
+    updateTraceVisibility: async () => undefined,
   }
 }
 
@@ -284,6 +285,7 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
         own_capacity: 0,
         unlabeled: 0,
       }),
+      updateTraceVisibility: async () => undefined,
     }
     const result = await emitKhalaChatTrace(fakeSession(), {
       enabled: true,

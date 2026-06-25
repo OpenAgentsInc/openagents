@@ -1432,6 +1432,22 @@ const schemaComponents = (): JsonSchema => ({
   OwnerTraceListEnvelope: objectSummary(
     'Owner-scoped list of the signed-in user\'s own traces: { traces: [{ uuid, trajectoryId, visibility, agentRef, stepCount, createdAt, trainingConsent, license?, uploadSource, rewardEligible }] }. Summaries only, newest first. The rewardEligible marker is INERT.',
   ),
+  AtifTraceVisibilityUpdateRequest: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['visibility'],
+    properties: {
+      visibility: {
+        type: 'string',
+        enum: ['public', 'unlisted', 'owner_only'],
+        description:
+          'Bounded trace visibility tier. owner_only requires the owner/admin session; unlisted is link-shareable; public is eligible for public discovery/feed surfaces.',
+      },
+    },
+  },
+  AtifTraceVisibilityUpdateEnvelope: objectSummary(
+    'Owner/admin trace visibility update response (#6294): { trace: { uuid, visibility, updatedAt } }. Mutates only the bounded visibility enum; it does not alter trajectory content, ownership, consent, reward, payout, settlement, or public-claim authority.',
+  ),
   ErrorResponse: {
     type: 'object',
     additionalProperties: false,
@@ -7620,6 +7636,25 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public-safe ATIF trace projection.',
           '#/components/schemas/AtifTraceReadEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    patch: operation({
+      operationId: 'updateAgentTraceVisibility',
+      summary: 'Update an owned trace visibility tier',
+      description:
+        'Owner/admin opt-in route for trace sharing (#6294). The owning browser session, or an admin session, may update only the bounded visibility enum (`owner_only`, `unlisted`, `public`). Non-owners receive 404 so owner-only trace existence is not revealed. The route mutates no trajectory content, ownership, consent, reward, payout, settlement, or public-claim authority.',
+      tags: ['Traces'],
+      security: [{ browserSession: [] }],
+      parameters: [pathParam('traceRef', 'Trace uuid.')],
+      requestBody: jsonContent(
+        '#/components/schemas/AtifTraceVisibilityUpdateRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Updated trace visibility.',
+          '#/components/schemas/AtifTraceVisibilityUpdateEnvelope',
         ),
         ...errorResponses(),
       },

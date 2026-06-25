@@ -121,6 +121,12 @@ class IngestTraceRequest extends S.Class<IngestTraceRequest>(
   license: S.optionalKey(LicenseSchema),
 }) {}
 
+class UpdateTraceVisibilityRequest extends S.Class<UpdateTraceVisibilityRequest>(
+  'UpdateTraceVisibilityRequest',
+)({
+  visibility: S.Literals(['public', 'unlisted', 'owner_only']),
+}) {}
+
 type TraceBrowserSession = Readonly<{
   user: Readonly<{
     email?: string | undefined
@@ -463,6 +469,35 @@ const ownerTraceSummary = (record: TraceRecord) => ({
     : { demandSource: record.demandSource }),
 })
 
+const requireTraceOwnerOrAdmin = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  record: TraceRecord,
+): Effect.Effect<Session, TraceRouteError> =>
+  Effect.gen(function* () {
+    const session = yield* Effect.tryPromise({
+      catch: () => new TraceUnauthorized({}),
+      try: () => dependencies.requireBrowserSession(request, env, ctx),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+    if (session === undefined) {
+      return yield* new TraceUnauthorized({})
+    }
+
+    const isOwner = session.user.userId === record.ownerUserId
+    const isAdmin =
+      session.user.email !== undefined &&
+      dependencies.isAdminEmail(session.user.email)
+
+    if (!isOwner && !isAdmin) {
+      return yield* new TraceNotFound({})
+    }
+
+    return session
+  })
+
 // ---------------------------------------------------------------------------
 // POST /api/traces — ingest
 // ---------------------------------------------------------------------------
@@ -788,6 +823,84 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
     const rehydrated = yield* rehydrateTrajectory(dependencies, env, record)
     return dependencies.appendRefreshedSessionCookies(
       noStoreJsonResponse({ trace: publicTraceProjection(rehydrated) }),
+      session,
+    )
+  })
+
+// ---------------------------------------------------------------------------
+// PATCH /api/traces/{uuid} — owner/admin visibility update
+// ---------------------------------------------------------------------------
+
+const routeUpdateVisibility = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+  traceRef: string,
+): Effect.Effect<HttpResponse, TraceRouteError> =>
+  Effect.gen(function* () {
+    const store = dependencies.makeStore(env)
+    const existing = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => store.readTraceByUuid(traceRef),
+    })
+
+    if (existing === undefined) {
+      return yield* new TraceNotFound({})
+    }
+
+    const session = yield* requireTraceOwnerOrAdmin(
+      dependencies,
+      request,
+      env,
+      ctx,
+      existing,
+    )
+
+    const rawBody = yield* Effect.tryPromise({
+      catch: () =>
+        new TraceValidationError({ reason: 'Request body could not be read.' }),
+      try: () => request.text(),
+    })
+
+    const body = yield* Effect.try({
+      catch: error =>
+        new TraceValidationError({
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Request body does not match the trace visibility schema.',
+        }),
+      try: () => {
+        const parsed: unknown =
+          rawBody.trim() === '' ? {} : parseJsonUnknown(rawBody)
+        return decodeUnknownWithSchema(UpdateTraceVisibilityRequest, parsed)
+      },
+    })
+
+    const updated = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () =>
+        store.updateTraceVisibility(
+          existing.traceUuid,
+          existing.ownerUserId,
+          body.visibility,
+          routeNowIso(dependencies),
+        ),
+    })
+
+    if (updated === undefined) {
+      return yield* new TraceNotFound({})
+    }
+
+    return dependencies.appendRefreshedSessionCookies(
+      noStoreJsonResponse({
+        trace: {
+          uuid: updated.traceUuid,
+          visibility: updated.visibility,
+          updatedAt: updated.updatedAt,
+        },
+      }),
       session,
     )
   })
@@ -1187,16 +1300,26 @@ export const makeTraceStoreRoutes = <
 
     const readMatch = /^\/api\/traces\/([^/]+)$/.exec(url.pathname)
     if (readMatch !== null) {
-      if (request.method !== 'GET') {
-        return Effect.succeed(methodNotAllowed(['GET']))
+      const traceUuid = decodeURIComponent(readMatch[1] ?? '')
+      if (request.method === 'GET') {
+        return routeRead(
+          dependencies,
+          request,
+          env,
+          ctx,
+          traceUuid,
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
       }
-      return routeRead(
-        dependencies,
-        request,
-        env,
-        ctx,
-        decodeURIComponent(readMatch[1] ?? ''),
-      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      if (request.method === 'PATCH') {
+        return routeUpdateVisibility(
+          dependencies,
+          request,
+          env,
+          ctx,
+          traceUuid,
+        ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+      }
+      return Effect.succeed(methodNotAllowed(['GET', 'PATCH']))
     }
 
     return undefined
