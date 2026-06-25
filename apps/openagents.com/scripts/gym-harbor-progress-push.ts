@@ -96,6 +96,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const numberOrNull = (value: unknown): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 
+// A non-negative integer count, or 0 when absent/invalid (counts are never null).
+const countOrZero = (value: unknown): number => {
+  const parsed = numberOrNull(value)
+  return parsed !== null && parsed >= 0 ? Math.floor(parsed) : 0
+}
+
 // Pull an array of per-trial entries from a Harbor `result.json`. Harbor has
 // emitted the trials under a few keys across versions; we accept the common
 // shapes and otherwise treat the top-level value as the trial array.
@@ -227,17 +233,141 @@ const derivePhase = (
   return 'completed'
 }
 
+// ---------------------------------------------------------------------------
+// Real Terminal-Bench 2.0 Harbor `result.json` shape: a `.stats` SUMMARY with
+// NO per-trial array.
+// ---------------------------------------------------------------------------
+//
+// The live TB2.0 / Harbor result carries `n_total_trials` plus a `.stats`
+// object with `n_completed_trials`/`n_running_trials`/`n_pending_trials`/
+// `n_errored_trials`/`n_cancelled_trials`, summed token counts, and a per-eval
+// pass/fail breakdown under `.stats.evals[<evalKey>].reward_stats.reward`. That
+// reward object is keyed by reward VALUE (e.g. "1.0", "0.0") with arrays of task
+// ids as values. We count ONLY the list LENGTHS (passed = ids under reward > 0,
+// failed = ids under reward <= 0), never the ids themselves, summed across all
+// eval keys. In TB2.0 an errored trial still counts as a completed reward-0.0
+// failure (Harbor's own `metrics[0].mean` = passed / n_completed confirms this),
+// so `n_errored_trials` is reported as a SUBSET of completed, not an additive
+// disjoint bucket.
+
+// Sum, across all eval keys, the count of task ids whose reward key passes the
+// predicate. PURE: only list lengths leave this function — never the ids.
+const sumRewardListLengths = (
+  evals: Record<string, unknown>,
+  rewardPredicate: (reward: number) => boolean,
+): number =>
+  Object.values(evals).reduce((total, evalValue) => {
+    if (!isRecord(evalValue)) {
+      return total
+    }
+    const rewardStats = evalValue['reward_stats']
+    if (!isRecord(rewardStats)) {
+      return total
+    }
+    const reward = rewardStats['reward']
+    if (!isRecord(reward)) {
+      return total
+    }
+    const matched = Object.entries(reward).reduce((sum, [key, ids]) => {
+      const rewardValue = Number(key)
+      if (!Number.isFinite(rewardValue) || !rewardPredicate(rewardValue)) {
+        return sum
+      }
+      return sum + (Array.isArray(ids) ? ids.length : 0)
+    }, 0)
+    return total + matched
+  }, 0)
+
+// Project the real TB2.0 `.stats` summary into a public-safe snapshot. Returns
+// undefined when the result is not the stats shape so the caller falls back to
+// the per-trial-array parser. PURE: counts / denominator / tokens only.
+const projectStatsToSnapshot = (
+  result: Record<string, unknown>,
+  context: SnapshotContext,
+  now: string,
+): GymRunProgressSnapshot | undefined => {
+  const stats = result['stats']
+  if (!isRecord(stats)) {
+    return undefined
+  }
+
+  const evals = isRecord(stats['evals']) ? stats['evals'] : {}
+  const completedPassed = sumRewardListLengths(evals, reward => reward > 0)
+  const completedFailed = sumRewardListLengths(evals, reward => reward <= 0)
+  const running = countOrZero(stats['n_running_trials'])
+  const pending = countOrZero(stats['n_pending_trials'])
+  const error = countOrZero(stats['n_errored_trials'])
+  const cancelled = countOrZero(stats['n_cancelled_trials'])
+
+  // Prefer the official total from the file; fall back to the configured one.
+  const officialDenominator =
+    countOrZero(result['n_total_trials']) || context.officialDenominator
+
+  const observed = {
+    completedPassed,
+    completedFailed,
+    running,
+    pending,
+    error,
+    cancelled,
+  }
+
+  // `finished_at` is the authoritative completion marker for the whole job.
+  const finished =
+    typeof result['finished_at'] === 'string' &&
+    result['finished_at'].trim() !== ''
+  const phase: Phase =
+    context.phase ??
+    (finished
+      ? 'completed'
+      : derivePhase(observed, officialDenominator, undefined))
+
+  return {
+    runRef: context.runRef,
+    jobRef: context.jobRef,
+    configId: context.configId,
+    profileRef: context.profileRef,
+    agent: context.agent,
+    publication: context.publication,
+    officialDenominator,
+    completedPassed,
+    completedFailed,
+    running,
+    pending,
+    error,
+    cancelled,
+    promptTokens: numberOrNull(stats['n_input_tokens']),
+    completionTokens: numberOrNull(stats['n_output_tokens']),
+    elapsedMs: null,
+    lastUpdatedAt: now,
+    caveatRefs: [],
+    blockerRefs: [],
+    phase,
+  }
+}
+
 /**
  * Project a parsed Harbor `result.json` into a public-safe run-progress
  * snapshot. PURE: counts + typed context only. Never copies a prompt, command,
  * response, log, or trajectory field out of the trials.
+ *
+ * Prefers the real Terminal-Bench 2.0 `.stats` summary shape; falls back to the
+ * per-trial-array parser for other/older Harbor result shapes.
  */
 export const projectHarborResultToSnapshot = (
   result: unknown,
   context: SnapshotContext,
 ): GymRunProgressSnapshot => {
-  const trials = trialArray(result)
   const now = (context.nowIso ?? (() => new Date().toISOString()))()
+
+  if (isRecord(result)) {
+    const fromStats = projectStatsToSnapshot(result, context, now)
+    if (fromStats !== undefined) {
+      return fromStats
+    }
+  }
+
+  const trials = trialArray(result)
 
   const tally = trials.reduce(
     (acc, trial) => {

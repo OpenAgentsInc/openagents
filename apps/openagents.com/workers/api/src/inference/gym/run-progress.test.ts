@@ -104,6 +104,39 @@ describe('buildGymRunProgress — schema parse + derived fields', () => {
       buildGymRunProgress({ ...baseInput, error: -1 }),
     ).toThrow(GymRunProgressError)
   })
+
+  test('accepts errored tasks as a subset of completed (TB2.0 reward-0.0)', () => {
+    // 9 passed + 8 failed (incl. 5 errored) + 1 running + 71 pending = 89.
+    const progress = buildGymRunProgress({
+      ...baseInput,
+      completedPassed: 9,
+      completedFailed: 8,
+      running: 1,
+      pending: 71,
+      error: 5,
+      cancelled: 0,
+    })
+    expect(progress.counts.completed).toBe(17)
+    expect(progress.counts.error).toBe(5)
+    // error stays a subset of completed, so the disjoint sum still equals 89.
+    const { completed, running, pending, cancelled } = progress.counts
+    expect(completed + running + pending + cancelled).toBe(89)
+    // pass-rate is over ALL completed (incl. errored failures): 9/17.
+    expect(progress.passRateOverCompleted).toBeCloseTo(9 / 17)
+  })
+
+  test('rejects errored tasks exceeding completed', () => {
+    expect(() =>
+      buildGymRunProgress({
+        ...baseInput,
+        completedPassed: 2,
+        completedFailed: 1,
+        error: 5,
+        running: 1,
+        pending: 80,
+      }),
+    ).toThrow(GymRunProgressError)
+  })
 })
 
 describe('redaction boundary — a leaky input never produces a published object', () => {

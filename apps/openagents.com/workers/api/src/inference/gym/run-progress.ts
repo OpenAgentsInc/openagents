@@ -94,6 +94,11 @@ export const GymRunProgressCounts = S.Struct({
   completedFailed: S.Number,
   running: S.Number,
   pending: S.Number,
+  // Errored trials. In Terminal-Bench 2.0 an errored trial is also a completed
+  // reward-0.0 failure, so `error` is a SUBSET of `completed` (already inside
+  // `completedFailed`), reported for operator visibility — not an additive
+  // disjoint bucket. The disjoint lifecycle partition is
+  // completed + running + pending + cancelled.
   error: S.Number,
   cancelled: S.Number,
 })
@@ -311,8 +316,21 @@ export const buildGymRunProgress = (
     })
   }
 
+  // In Terminal-Bench 2.0, an ERRORED trial is still a COMPLETED reward-0.0
+  // failure (Harbor's own `metrics.mean` = passed / n_completed counts it), so
+  // `error` is reported as a SUBSET-of-completed annotation, NOT an additive
+  // disjoint lifecycle bucket. The disjoint lifecycle partition the run is
+  // measured against is completed + running + pending + cancelled; `error` must
+  // not exceed `completed`.
+  if (input.error > completed) {
+    throw new GymRunProgressError({
+      reason: 'invalid_counts',
+      message:
+        'Live progress errored tasks are a subset of completed and must not exceed it.',
+    })
+  }
   const accountedFor =
-    completed + input.running + input.pending + input.error + input.cancelled
+    completed + input.running + input.pending + input.cancelled
   if (input.officialDenominator > 0 && accountedFor > input.officialDenominator) {
     throw new GymRunProgressError({
       reason: 'invalid_counts',
