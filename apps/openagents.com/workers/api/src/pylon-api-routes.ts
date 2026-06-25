@@ -1070,6 +1070,11 @@ const terminalAssignmentEventAllowed = (
   assignmentState === 'accepted_work' &&
   (eventKind === 'payment_receipt' || eventKind === 'settlement_status')
 
+const assignmentAcceptanceCanClaim = (
+  eventKind: PylonApiEventKind,
+  assignmentState: PylonApiAssignmentState,
+): boolean => eventKind !== 'assignment_acceptance' || assignmentState === 'offered'
+
 const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
@@ -1216,6 +1221,17 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
           new PylonApiStoreError({
             kind: 'conflict',
             reason: 'Pylon assignment is already closed.',
+          }),
+        )
+      }
+
+      if (
+        !assignmentAcceptanceCanClaim(input.eventKind, assignment.state)
+      ) {
+        return routeErrorResponse(
+          new PylonApiStoreError({
+            kind: 'conflict',
+            reason: 'Pylon assignment was already claimed.',
           }),
         )
       }

@@ -49,7 +49,12 @@ const lease = (overrides: Partial<PylonAssignmentLease> = {}): PylonAssignmentLe
   ...overrides,
 })
 
-function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAccept?: boolean; cancelOnProgress?: boolean } = {}) {
+function fakeAssignmentServer(input: {
+  leases?: PylonAssignmentLease[]
+  rejectAccept?: boolean
+  rejectAcceptRefs?: ReadonlyArray<string>
+  cancelOnProgress?: boolean
+} = {}) {
   const requests: { path: string; body: any; headers: Headers }[] = []
   const accepted = new Set<string>()
   const server = Bun.serve({
@@ -97,7 +102,10 @@ function fakeAssignmentServer(input: { leases?: PylonAssignmentLease[]; rejectAc
       }
       if (url.pathname.endsWith("/accept")) {
         const assignmentRef = decodeURIComponent(url.pathname.split("/").at(-2) ?? "")
-        if (input.rejectAccept) {
+        if (
+          input.rejectAccept ||
+          input.rejectAcceptRefs?.includes(assignmentRef) === true
+        ) {
           return Response.json({ statusRef: "assignment.rejected.fake", reasonRef: "reject.fake" }, { status: 409 })
         }
         if (accepted.has(assignmentRef)) {
@@ -251,6 +259,41 @@ describe("Pylon assignment lease flow", () => {
         .map((request) => request.path)
         .filter((path) => path.endsWith("/accept"))
       expect(acceptPaths).toEqual([
+        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(secondLease.leaseRef)}/accept`,
+      ])
+    })
+  })
+
+  test("tries the next no-spend lease after a race-lost server acceptance", async () => {
+    await withTempHome(async (home) => {
+      const firstLease = lease({
+        assignmentRef: "assignment.public.no_spend.race_lost",
+        leaseRef: "lease.public.no_spend.race_lost",
+      })
+      const secondLease = lease({
+        assignmentRef: "assignment.public.no_spend.parallel_slot",
+        leaseRef: "lease.public.no_spend.parallel_slot",
+      })
+      const fake = fakeAssignmentServer({
+        leases: [firstLease, secondLease],
+        rejectAcceptRefs: [firstLease.leaseRef],
+      })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected runner to claim the second lease")
+      expect(result.lease.leaseRef).toBe(secondLease.leaseRef)
+      const acceptPaths = fake.requests
+        .map((request) => request.path)
+        .filter((path) => path.endsWith("/accept"))
+      expect(acceptPaths).toEqual([
+        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(firstLease.leaseRef)}/accept`,
         `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(secondLease.leaseRef)}/accept`,
       ])
     })

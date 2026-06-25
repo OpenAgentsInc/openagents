@@ -1077,18 +1077,28 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const state = await ensurePylonLocalState(summary)
   const store = await loadAssignmentStore(state)
   const leases = await pollAssignments(summary, options)
-  const lease = leases.find((candidate) =>
+  const candidates = leases.filter((candidate) =>
     candidate.paymentMode === "no-spend" &&
     !localLeaseIsTerminal(store, candidate.leaseRef)
   )
-  if (!lease) {
-    return { ok: false, reason: "no no-spend assignment lease available", leases }
+  let claimed:
+    | { acceptance: AssignmentAcceptance; lease: PylonAssignmentLease }
+    | undefined
+  let lastAcceptance: AssignmentAcceptance | undefined
+  for (const candidate of candidates) {
+    const result = await acceptAssignment(summary, candidate, options)
+    if (result.accepted) {
+      claimed = { acceptance: result, lease: candidate }
+      break
+    }
+    lastAcceptance = result
   }
-
-  const acceptance = await acceptAssignment(summary, lease, options)
-  if (!acceptance.accepted) {
-    return { ok: false, acceptance }
+  if (claimed === undefined) {
+    return lastAcceptance === undefined
+      ? { ok: false, reason: "no no-spend assignment lease available", leases }
+      : { ok: false, acceptance: lastAcceptance, leases }
   }
+  const { acceptance, lease } = claimed
 
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()

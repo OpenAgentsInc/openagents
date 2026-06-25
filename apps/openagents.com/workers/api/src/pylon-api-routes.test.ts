@@ -2225,6 +2225,19 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
+    const duplicateAccept = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.echo_ready_duplicate'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-echo-duplicate-claim',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
     const progress = await route(
       store,
       '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/progress',
@@ -2313,6 +2326,8 @@ describe('Pylon API routes', () => {
     const listBody = await responseJson<PylonRouteJson>(list)
     const acceptBody = await responseJson<PylonRouteJson>(accept)
     const acceptReplayBody = await responseJson<PylonRouteJson>(acceptReplay)
+    const duplicateAcceptBody =
+      await responseJson<PylonRouteJson>(duplicateAccept)
     const progressBody = await responseJson<PylonRouteJson>(progress)
     const artifactsBody = await responseJson<PylonRouteJson>(artifacts)
     const workerCloseoutBody =
@@ -2340,6 +2355,8 @@ describe('Pylon API routes', () => {
     expect(acceptBody.assignment?.state).toBe('accepted')
     expect(acceptReplay.status).toBe(200)
     expect(acceptReplayBody.idempotent).toBe(true)
+    expect(duplicateAccept.status).toBe(409)
+    expect(duplicateAcceptBody.error).toBe('pylon_api_conflict')
     expect(progress.status).toBe(201)
     expect(progressBody.assignment?.state).toBe('running')
     expect(artifacts.status).toBe(201)
