@@ -5,12 +5,12 @@ import {
   isEventStreamResponse,
   isKhalaCockpitModelId,
   isLiveReceipt,
+  normalizeKhalaCockpitModelId,
   parseKhalaReceipt,
   reconstructKhalaCompletionFromSse,
   summarizeKhalaReceipt,
-  KHALA_CODE_MODEL_ID,
   KHALA_COCKPIT_MODEL_IDS,
-  KHALA_MINI_MODEL_ID,
+  KHALA_MODEL_ID,
 } from "../src/shared/khala-cockpit"
 
 // Build the SSE wire bytes the gateway emits for a streamed completion: a series
@@ -61,20 +61,32 @@ const CROSSY_ROAD_PROMPT =
   "build a really high quality single html file crossy road game with three.js"
 
 describe("khala-cockpit model ids", () => {
-  test("exposes khala-mini and khala-code", () => {
-    expect(KHALA_COCKPIT_MODEL_IDS).toEqual([
-      KHALA_MINI_MODEL_ID,
-      KHALA_CODE_MODEL_ID,
-    ])
-    expect(KHALA_MINI_MODEL_ID).toBe("openagents/khala-mini")
-    expect(KHALA_CODE_MODEL_ID).toBe("openagents/khala-code")
+  test("exposes the single public openagents/khala id", () => {
+    expect(KHALA_COCKPIT_MODEL_IDS).toEqual([KHALA_MODEL_ID])
+    expect(KHALA_MODEL_ID).toBe("openagents/khala")
   })
 
-  test("type guard accepts only known khala ids", () => {
+  test("type guard recognizes the public id and tolerates deprecated split ids", () => {
+    expect(isKhalaCockpitModelId("openagents/khala")).toBe(true)
+    // Deprecated split ids are still recognized so a stale slug normalizes
+    // instead of re-triggering model_unavailable.
     expect(isKhalaCockpitModelId("openagents/khala-mini")).toBe(true)
     expect(isKhalaCockpitModelId("openagents/khala-code")).toBe(true)
     expect(isKhalaCockpitModelId("openagents/khala-typo")).toBe(false)
     expect(isKhalaCockpitModelId("gemini-3.5-flash")).toBe(false)
+  })
+
+  test("normalizes any khala-family slug to the single public id", () => {
+    expect(normalizeKhalaCockpitModelId(undefined)).toBe("openagents/khala")
+    expect(normalizeKhalaCockpitModelId("openagents/khala")).toBe(
+      "openagents/khala",
+    )
+    expect(normalizeKhalaCockpitModelId("openagents/khala-mini")).toBe(
+      "openagents/khala",
+    )
+    expect(normalizeKhalaCockpitModelId("openagents/khala-code")).toBe(
+      "openagents/khala",
+    )
   })
 })
 
@@ -229,14 +241,16 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
 
     const r = await buildKhalaTurn({
       prompt: CROSSY_ROAD_PROMPT,
-      model: KHALA_CODE_MODEL_ID,
+      model: KHALA_MODEL_ID,
       env,
       agentToken: "agent-token",
       fetchFn,
     })
 
     expect(sentUrl).toBe("https://gw.test/v1/chat/completions")
-    expect((sentBody as { model?: string }).model).toBe("openagents/khala-code")
+    // The cockpit always submits the single public id, even when a split slug
+    // is requested — the gateway only serves openagents/khala.
+    expect((sentBody as { model?: string }).model).toBe("openagents/khala")
     expect(r.ok).toBe(true)
     expect(r.text).toContain("crossy road")
     expect(r.receipt?.servedModel).toBe("fireworks-coder")
@@ -269,7 +283,7 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
     expect(r.live).toBe(false)
   })
 
-  test("defaults to khala-mini when no model given", async () => {
+  test("defaults to the single public openagents/khala when no model given", async () => {
     let sentModel = ""
     const fetchFn = ((_url: string, init?: RequestInit) => {
       sentModel = init?.body
@@ -280,7 +294,27 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
       )
     }) as unknown as typeof fetch
     await buildKhalaTurn({ prompt: "hi", env, agentToken: "t", fetchFn })
-    expect(sentModel).toBe("openagents/khala-mini")
+    expect(sentModel).toBe("openagents/khala")
+  })
+
+  test("normalizes a stale split slug to openagents/khala (the model_unavailable fix)", async () => {
+    let sentModel = ""
+    const fetchFn = ((_url: string, init?: RequestInit) => {
+      sentModel = init?.body
+        ? (JSON.parse(init.body as string) as { model: string }).model
+        : ""
+      return Promise.resolve(
+        new Response(JSON.stringify({ choices: [{ message: { content: "x" } }] })),
+      )
+    }) as unknown as typeof fetch
+    await buildKhalaTurn({
+      prompt: "hi",
+      model: "openagents/khala-mini",
+      env,
+      agentToken: "t",
+      fetchFn,
+    })
+    expect(sentModel).toBe("openagents/khala")
   })
 
   test("402 maps to an actionable credit message, not a faked answer", async () => {
@@ -324,7 +358,7 @@ describe("buildKhalaTurn — cockpit call path (stub gateway)", () => {
     const tokens: string[] = []
     const r = await buildKhalaTurn({
       prompt: CROSSY_ROAD_PROMPT,
-      model: KHALA_CODE_MODEL_ID,
+      model: KHALA_MODEL_ID,
       env,
       agentToken: "agent-token",
       fetchFn,

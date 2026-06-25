@@ -17,25 +17,42 @@
 // completion with no receipt (e.g. a stub/free route) renders as a real answer
 // but an UNVERIFIED / not-live badge. Never claim "live" off a missing receipt.
 
-// The Khala virtual model ids the cockpit can submit to. Mirrors the gateway
-// catalog (`khala.md` §3). Kept as a closed union so the cockpit cannot submit
-// to an unknown "khala-*" id by typo.
-export const KHALA_MINI_MODEL_ID = "openagents/khala-mini" as const
-export const KHALA_CODE_MODEL_ID = "openagents/khala-code" as const
+// The single public Khala virtual model id the cockpit submits to. Public model
+// selection intentionally collapses to ONE id: the gateway model-router/catalog
+// (`apps/openagents.com/.../inference/pricing.ts` `KHALA_MODEL_ID`) only accepts
+// `openagents/khala` (alias `khala`); the old `openagents/khala-mini` /
+// `openagents/khala-code` split ids are deprecated/removed and the gateway
+// rejects them with `model_unavailable` (the desktop "Talk to Khala" bug). Mini/
+// pro/code/pylon names are legacy internal implementation details, never public
+// choices.
+export const KHALA_MODEL_ID = "openagents/khala" as const
 
-export type KhalaCockpitModelId =
-  | typeof KHALA_MINI_MODEL_ID
-  | typeof KHALA_CODE_MODEL_ID
+export type KhalaCockpitModelId = typeof KHALA_MODEL_ID
 
 export const KHALA_COCKPIT_MODEL_IDS: ReadonlyArray<KhalaCockpitModelId> = [
-  KHALA_MINI_MODEL_ID,
-  KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
 ]
+
+// The deprecated split ids the gateway no longer serves. Accepted by the guard
+// only so a stale stored/forwarded slug NORMALIZES to the single public id
+// instead of re-triggering `model_unavailable`; they are never re-emitted.
+const DEPRECATED_KHALA_MODEL_IDS: ReadonlyArray<string> = [
+  "openagents/khala-mini",
+  "openagents/khala-code",
+  "openagents/khala-pro",
+]
+
+// Normalize any incoming Khala-family slug to the single public id. A blank or
+// unknown value falls back to the public id so the cockpit never submits an
+// unservable slug.
+export const normalizeKhalaCockpitModelId = (
+  value: string | undefined,
+): KhalaCockpitModelId => KHALA_MODEL_ID
 
 export const isKhalaCockpitModelId = (
   value: string,
 ): value is KhalaCockpitModelId =>
-  (KHALA_COCKPIT_MODEL_IDS as ReadonlyArray<string>).includes(value)
+  value === KHALA_MODEL_ID || DEPRECATED_KHALA_MODEL_IDS.includes(value)
 
 // The public-safe projection of the gateway `openagents` block for the cockpit.
 // This is what crosses the RPC boundary to the webview and what the receipt UI

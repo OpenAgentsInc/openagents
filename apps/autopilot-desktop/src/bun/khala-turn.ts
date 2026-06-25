@@ -1,15 +1,17 @@
 // Bun-host Khala cockpit turn (M1, #6009, EPIC #6017).
 //
-// Lane A — Cockpit. Submits a cockpit prompt to a `openagents/khala-*` model on
-// the OpenAI-compatible `POST /v1/chat/completions` gateway, projects the
+// Lane A — Cockpit. Submits a cockpit prompt to the single public
+// `openagents/khala` model on the OpenAI-compatible `POST /v1/chat/completions`
+// gateway (the public path that records served tokens), projects the
 // assistant answer AND the NON-BREAKING `openagents` receipt block back to the
 // webview, and computes the LIVE gate (only true when a real receipt ref is
 // present).
 //
-// This is the Khala-specific sibling of `shell-turn.ts`. It deliberately keeps
-// the Khala model id explicit (the cockpit chooses khala-mini / khala-code)
-// instead of the free-tier default, and — unlike the plain shell turn — it
-// surfaces the receipt so a Khala completion is auditable, not opaque.
+// This is the Khala-specific sibling of `shell-turn.ts`. It submits to the single
+// public `openagents/khala` model (not the free-tier default), and — unlike the
+// plain shell turn — it surfaces the receipt so a Khala completion is auditable,
+// not opaque. The old khala-mini / khala-code split ids are deprecated; the
+// gateway only serves `openagents/khala`.
 //
 // SECRET BOUNDARY: the agent token lives ONLY in the Bun host. It is placed in
 // the outbound Authorization header here and NEVER crosses the RPC boundary.
@@ -40,13 +42,12 @@ import {
 } from "../shared/inference-gateway.js"
 import {
   isEventStreamResponse,
-  isKhalaCockpitModelId,
   isLiveReceipt,
+  normalizeKhalaCockpitModelId,
   parseKhalaReceipt,
   reconstructKhalaCompletionFromSse,
   type KhalaCockpitModelId,
   type KhalaTurnResult,
-  KHALA_MINI_MODEL_ID,
 } from "../shared/khala-cockpit.js"
 
 // A short, neutral TASK steer for the cockpit. IDENTITY IS OWNED BY THE GATEWAY:
@@ -70,8 +71,9 @@ type KhalaTurnEnv = Readonly<Record<string, string | undefined>>
 
 export type BuildKhalaTurnInput = Readonly<{
   prompt: string
-  // The Khala model id to submit to. Defaults to khala-mini.
-  model?: KhalaCockpitModelId
+  // The Khala model id to submit to. Always normalized to the single public
+  // `openagents/khala` id; a stale split slug is accepted and collapsed.
+  model?: KhalaCockpitModelId | string
   env: KhalaTurnEnv
   // The OpenAgents agent token (kept in the Bun host); never crosses to webview.
   agentToken: string | null
@@ -173,10 +175,10 @@ export const buildKhalaTurn = async (
 ): Promise<KhalaTurnResult> => {
   const fetchFn = input.fetchFn ?? fetch
   const settings = resolveInferenceGatewaySettings(input.env)
-  const model: KhalaCockpitModelId =
-    input.model && isKhalaCockpitModelId(input.model)
-      ? input.model
-      : KHALA_MINI_MODEL_ID
+  // The public model collapses to the single `openagents/khala` id. Any supplied
+  // value (including a stale `khala-mini`/`khala-code` slug) normalizes to it so
+  // the gateway never rejects the request with `model_unavailable`.
+  const model: KhalaCockpitModelId = normalizeKhalaCockpitModelId(input.model)
   const url = inferenceGatewayChatCompletionsUrl(settings.baseUrl)
   const prompt = input.prompt.trim()
 

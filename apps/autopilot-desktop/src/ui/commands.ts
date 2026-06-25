@@ -1464,7 +1464,7 @@ export const RunVerseKhalaTurn = Command.define(
   Effect.tryPromise(() =>
     getRequest().khalaTurn({
       prompt,
-      model: "openagents/khala-mini",
+      model: "openagents/khala",
       turnId,
     }),
   ).pipe(

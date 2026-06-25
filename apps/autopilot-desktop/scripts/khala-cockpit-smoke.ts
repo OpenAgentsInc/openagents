@@ -3,10 +3,16 @@
 // Stands up a tiny LOCAL STUB gateway that mimics the OpenAI-compatible
 // `/v1/chat/completions` shape + the NON-BREAKING `openagents` receipt block,
 // then runs the crossy-road north-star prompt through the real cockpit call
-// path (`buildKhalaTurn`) against `openagents/khala-mini` and
-// `openagents/khala-code`. Prints the rendered completion and the receipt
-// projection, and asserts the LIVE gate behaves: a receipt-bearing response is
-// live, a receipt-less response is not.
+// path (`buildKhalaTurn`) against the single public `openagents/khala` model.
+// Prints the rendered completion and the receipt projection, and asserts the
+// LIVE gate behaves: a receipt-bearing response is live, a receipt-less response
+// is not.
+//
+// SINGLE MODEL: the public catalog collapses to `openagents/khala`; the old
+// khala-mini / khala-code split ids are deprecated/removed and the gateway
+// rejects them with `model_unavailable`. The cockpit always submits the public
+// id, so this smoke drives ONE model and switches the stub between a verified
+// receipt and a no-receipt route via a prompt marker.
 //
 // SCAFFOLD, not product proof: this exercises the cockpit consumption path
 // against a STUB, so the prod gateway being inert/owner-gated does not block it.
@@ -14,27 +20,38 @@
 
 import { buildKhalaTurn } from "../src/bun/khala-turn.js"
 import {
-  KHALA_CODE_MODEL_ID,
-  KHALA_MINI_MODEL_ID,
+  KHALA_MODEL_ID,
   summarizeKhalaReceipt,
 } from "../src/shared/khala-cockpit.js"
 
 const CROSSY_ROAD_PROMPT =
   "build a really high quality single html file crossy road game with three.js"
 
+// A marker the stub reads off the user message to decide which route to mimic
+// (verified-receipt vs no-receipt). The cockpit submits one model id either way.
+const NO_RECEIPT_MARKER = "[[stub:no-receipt]]"
+
 const STUB_HTML =
   "<!doctype html><html><head><title>Crossy Road</title></head>" +
   "<body><script type=\"module\">/* three.js crossy road */</script></body></html>"
 
-// A stub gateway: khala-code returns a verified receipt; khala-mini returns a
-// no-receipt (free/stub) route. Mimics the gateway `openagents` block shape.
+// A stub gateway: a normal prompt returns a verified receipt; a prompt carrying
+// the no-receipt marker returns a no-receipt (free/stub) route. Mimics the
+// gateway `openagents` block shape. Both serve the single `openagents/khala` id.
 const startStubGateway = (): { url: string; stop: () => void } => {
   const server = Bun.serve({
     port: 0,
     fetch: async (req) => {
-      const body = (await req.json()) as { model: string }
+      const body = (await req.json()) as {
+        model: string
+        messages?: Array<{ content?: string }>
+      }
       const model = body.model
-      if (model === KHALA_CODE_MODEL_ID) {
+      const userText = (body.messages ?? [])
+        .map((m) => m.content ?? "")
+        .join(" ")
+      const noReceipt = userText.includes(NO_RECEIPT_MARKER)
+      if (!noReceipt) {
         return Response.json({
           id: "chatcmpl_stub_code",
           model,
@@ -43,7 +60,7 @@ const startStubGateway = (): { url: string; stop: () => void } => {
           ],
           usage: { prompt_tokens: 18, completion_tokens: 540, total_tokens: 558 },
           openagents: {
-            requested_model: KHALA_CODE_MODEL_ID,
+            requested_model: model,
             served_model: "stub-coder",
             worker: "stub-fabric",
             lane: "coding",
@@ -60,7 +77,7 @@ const startStubGateway = (): { url: string; stop: () => void } => {
           },
         })
       }
-      // khala-mini: a real answer but NO receipt (e.g. free/stub route).
+      // No-receipt route: a real answer but NO receipt (e.g. free/stub route).
       return Response.json({
         id: "chatcmpl_stub_mini",
         model,
@@ -84,13 +101,14 @@ const main = async () => {
   const agentToken = "stub-agent-token"
   let failures = 0
 
-  const run = async (
-    label: string,
-    model: typeof KHALA_MINI_MODEL_ID | typeof KHALA_CODE_MODEL_ID,
-    expectLive: boolean,
-  ) => {
-    const r = await buildKhalaTurn({ prompt: CROSSY_ROAD_PROMPT, model, env, agentToken })
-    console.log(`\n=== ${label} (${model}) ===`)
+  const run = async (label: string, prompt: string, expectLive: boolean) => {
+    const r = await buildKhalaTurn({
+      prompt,
+      model: KHALA_MODEL_ID,
+      env,
+      agentToken,
+    })
+    console.log(`\n=== ${label} (${KHALA_MODEL_ID}) ===`)
     console.log(`ok=${r.ok} live=${r.live}`)
     console.log(`completion: ${r.text.slice(0, 80)}${r.text.length > 80 ? "..." : ""}`)
     console.log(`receipt: ${summarizeKhalaReceipt(r.receipt)}`)
@@ -111,8 +129,12 @@ const main = async () => {
     }
   }
 
-  await run("khala-mini (no receipt → not live)", KHALA_MINI_MODEL_ID, false)
-  await run("khala-code (verified receipt → live)", KHALA_CODE_MODEL_ID, true)
+  await run(
+    "no receipt → not live",
+    `${CROSSY_ROAD_PROMPT} ${NO_RECEIPT_MARKER}`,
+    false,
+  )
+  await run("verified receipt → live", CROSSY_ROAD_PROMPT, true)
 
   gateway.stop()
   if (failures > 0) {

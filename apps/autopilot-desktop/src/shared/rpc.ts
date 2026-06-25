@@ -1009,14 +1009,16 @@ export type DesktopRPCSchema = {
         readonly response: ShellTurnResponse
       }
       // M1 (#6009, EPIC #6017): one Khala cockpit turn. The Bun host submits the
-      // prompt to a `openagents/khala-*` model on the gateway and returns the
-      // plain answer PLUS the public-safe `openagents` receipt projection. `live`
-      // is gated on a real receipt ref. Works against local/stub or staging; the
-      // raw token never crosses this boundary.
+      // prompt to the single public `openagents/khala` model on the gateway and
+      // returns the plain answer PLUS the public-safe `openagents` receipt
+      // projection. `live` is gated on a real receipt ref. Works against
+      // local/stub or staging; the raw token never crosses this boundary. The old
+      // khala-mini / khala-code split ids are deprecated (gateway returns
+      // model_unavailable for them); the host normalizes any value to the single id.
       readonly khalaTurn: {
         readonly params: {
           readonly prompt: string
-          readonly model?: "openagents/khala-mini" | "openagents/khala-code"
+          readonly model?: "openagents/khala"
           // M8 streaming (#6027): correlates this turn to its live token push
           // (`webview.messages.khalaToken`). Omitted by callers that do not want
           // live tokens; the Bun host then streams server-side without pushing.

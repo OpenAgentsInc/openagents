@@ -87,7 +87,7 @@ export type DesktopRequests = {
   // separately on the `khalaToken` Bun→webview push (correlated by turnId).
   khalaTurn(p: {
     prompt: string
-    model?: "openagents/khala-mini" | "openagents/khala-code"
+    model?: "openagents/khala"
     turnId?: string
   }): Promise<KhalaTurnResponse>
   installReadiness(
