@@ -18,7 +18,7 @@ describe("pylon command catalog", () => {
   })
 
   test("the new CL-5035 steering verbs are all listed", () => {
-    for (const name of ["help", "sessions", "approvals", "deploy", "training"]) {
+    for (const name of ["help", "sessions", "approvals", "deploy", "training", "khala"]) {
       expect(findCommandEntry(name), `missing ${name}`).toBeDefined()
     }
   })
@@ -60,6 +60,17 @@ describe("pylon command catalog", () => {
       expect(entry.spends).toBe(false)
       expect(entry.json).toBe(true)
     }
+  })
+
+  test("khala issuer is catalogued as network-backed and non-spending", () => {
+    const entry = findCommandEntry("khala")!
+    expect(entry.needsNetwork).toBe(true)
+    expect(entry.spends).toBe(false)
+    expect(entry.mutates).toBe(true)
+    expect(entry.json).toBe(true)
+    expect(entry.args[0]?.name).toContain("request")
+    expect(entry.args.some((arg) => arg.name === "--workflow")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--resume")).toBe(true)
   })
 
   test("every entry has a non-empty summary and unique command name", () => {

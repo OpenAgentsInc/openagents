@@ -250,6 +250,12 @@ import {
   workAcceptanceMemoryEntry,
   workRequestMemoryEntry,
 } from "./work-requester.js"
+import {
+  issuePylonKhalaRequest,
+  readPylonKhalaStatus,
+  resumePylonKhalaRequest,
+  type PylonKhalaWorkflow,
+} from "./khala-requester.js"
 import { hostname } from "node:os"
 
 // Routes node lifecycle log lines from plain async call sites into the
@@ -3572,6 +3578,89 @@ async function main() {
       }
 
       throw new Error("usage: pylon work submit|status|review|request|offers|accept ...")
+    } catch (error) {
+      process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "khala") {
+    try {
+      const command = args[1]
+      const khalaArgs = args.slice(2)
+      const options = parseKeyValueOptions(khalaArgs)
+      const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      if (!baseUrl) throw new Error("khala commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
+      const networkOptions = {
+        agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        baseUrl,
+      }
+      const emit = (payload: Record<string, unknown>) => {
+        if (optionFlag(options, "json")) {
+          process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`)
+          return
+        }
+        const text = typeof payload.text === "string" && payload.text.trim() !== ""
+          ? payload.text
+          : JSON.stringify(payload, null, 2)
+        process.stdout.write(`${text}\n`)
+      }
+
+      if (command === "request") {
+        const prompt =
+          optionString(options, "prompt") ??
+          optionString(options, "objective") ??
+          (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
+        const workflow = optionString(options, "workflow")
+        if (!prompt) {
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--json]")
+        }
+        if (
+          workflow !== undefined &&
+          workflow !== "cloud_coding_session" &&
+          workflow !== "codex_agent_task"
+        ) {
+          throw new Error("khala request --workflow must be cloud_coding_session or codex_agent_task")
+        }
+        const result = await issuePylonKhalaRequest(networkOptions, {
+          prompt,
+          ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
+        })
+        emit(result)
+        return
+      }
+
+      if (command === "resume") {
+        const durableRequestId =
+          args[2] !== undefined && !args[2].startsWith("--")
+            ? args[2]
+            : optionString(options, "resume")
+        if (!durableRequestId) {
+          throw new Error("usage: pylon khala resume <durable-request-id> [--offset <n>] [--json]")
+        }
+        const result = await resumePylonKhalaRequest(networkOptions, {
+          durableRequestId,
+          offset: optionString(options, "offset"),
+        })
+        emit(result)
+        return
+      }
+
+      if (command === "status") {
+        const durableRequestId =
+          args[2] !== undefined && !args[2].startsWith("--")
+            ? args[2]
+            : optionString(options, "resume")
+        if (!durableRequestId) {
+          throw new Error("usage: pylon khala status <durable-request-id> [--json]")
+        }
+        const result = await readPylonKhalaStatus(networkOptions, durableRequestId)
+        emit(result)
+        return
+      }
+
+      throw new Error("usage: pylon khala request|resume|status ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1

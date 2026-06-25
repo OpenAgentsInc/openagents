@@ -53,7 +53,7 @@ function stableRef(prefix: string, input: string) {
   return `${prefix}.${createHash("sha256").update(input).digest("hex").slice(0, 24)}`
 }
 
-function assertPublicSafe(value: unknown, field: string) {
+export function assertPublicSafe(value: unknown, field: string) {
   if (unsafeWorkRequestPattern.test(JSON.stringify(value) ?? "")) {
     throw new Error(`${field} contains private, payment, credential, wallet, or raw material`)
   }
