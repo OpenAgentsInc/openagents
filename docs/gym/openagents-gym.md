@@ -356,6 +356,16 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   `decisionGrade:true` public-safe reports and models owner-armed module-author
   splits from composition evidence while keeping payout, settlement, listing, and
   public marketplace authority disabled.
+- **Harbor backend seam — Terminal-Bench on Hydralisk.** The Worker-side
+  dispatch/ingest contract for the first real Terminal-Bench backend is landed:
+  `harbor-dispatch.ts` builds a typed
+  `openagents.gym.harbor_terminal_bench_job_spec.v1` for Hydralisk to run
+  `harbor run -d terminal-bench/terminal-bench-2 --agent terminus-2 --model
+  openagents/khala`, then ingests the public-safe
+  `hydralisk.evals.terminal_bench.summary.v1` summary plus an ATIF trace ref.
+  The Worker imports no Harbor runtime code; raw Harbor artifacts stay on
+  Hydralisk. E2/E3 still own distinct-device verifier placement and reward/cost
+  report mapping.
 
 ## 9. Build spec (for a coding agent)
 
@@ -400,16 +410,21 @@ metric vocabulary, or a new settlement path.
    reports only, excluding fixture/synthetic or unsafe reports; model module
    author shares only from owner-armed composition evidence and keep payout,
    settlement, listing, and public marketplace authority disabled.
+10. Harbor dispatch seam: for `terminal-bench`, build a typed Worker-side job
+    spec for the Hydralisk Harbor harness, scope the first run to
+    `openagents/khala`, request only public-safe summary + ATIF artifacts, ingest
+    `hydralisk.evals.terminal_bench.summary.v1`, and assert no Harbor runtime
+    package is imported into the Worker bundle.
 ```
 
 ## 10. Open questions
 
 - Environment adapter contract beyond the fixture seam: the minimal descriptor is
   landed, but real dispatch adapters still need per-surface artifact ingest.
-- Terminal-Bench specifically: the typed env now seeds from retained public-safe
-  fixture handles in `apps/pylon/docs/probe-port/`; the next open part is where
-  the owner-armed Harbor executor runs (Hydralisk/Pylon/Psionic) so the verifier
-  is on a **distinct** device from the producer.
+- Terminal-Bench specifically: the typed env and Worker-side Hydralisk Harbor
+  dispatch/summary-ingest seam are landed. The next open parts are E2 verifier
+  placement (agent/verifier on **distinct** devices) and E3 reward/cost mapping
+  from Harbor summary/ATIF artifacts into a decision-grade Gym report.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.

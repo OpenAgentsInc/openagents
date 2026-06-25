@@ -624,12 +624,16 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    retained public-safe task refs, `verifierMode: "harbor-separate"`, the
    acceptance reward threshold, and default realistic shapes. The first env stays
    inside the established retained-fixture boundary.
-3. **Add the job-dispatch + artifact-ingest seam** — `runner.ts` learns to
-   dispatch a Harbor job to the Hydralisk harness and ingest
-   `result.json`/ATIF, mapping `verifier_result.rewards["reward"]` → the
-   `test_passed`/scalar-reward field of `openagents.khala.telemetry.v1`, and
-   cross-checking tokens against the served-tokens recorder. CLI+artifact seam
-   first.
+3. **Shipped (#6250): add the job-dispatch + artifact-ingest seam** —
+   `harbor-dispatch.ts` now builds a typed Worker-side
+   `openagents.gym.harbor_terminal_bench_job_spec.v1` job for Hydralisk to run
+   `harbor run -d terminal-bench/terminal-bench-2 --agent terminus-2 --model
+   openagents/khala`, consumes an injected Hydralisk harness dispatch receipt,
+   and ingests the public-safe
+   `hydralisk.evals.terminal_bench.summary.v1` summary plus an ATIF trace ref.
+   Raw Harbor logs, task prompts, and model responses remain on Hydralisk; the
+   Worker imports no Harbor runtime package. Reward→telemetry/report mapping is
+   still the next step.
 4. **Wire cost-per-accepted-outcome** for the env using the real per-lane
    `cost_amount` basis (the cost-model doc) × Harbor's verdict; render null
    cost-per-outcome for zero-accepted groups (no fake-cheap results).
@@ -651,9 +655,11 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 ## 9. Honest-scope boundaries
 
 - **Direction vs shipped:** the Phase 0 fixture Gym (#6163–#6166), owner-gated
-  `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, and Phase 2 paid-run
-  gate are landed. Everything about running Harbor as a benchmark executor is
-  direction. We use only Harbor's *format* (ATIF) today.
+  `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, Phase 2 paid-run gate,
+  and the Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250) are
+  landed. Distinct-device verifier placement, Harbor reward→Gym report mapping,
+  and training ingestion remain direction. We use Harbor's format (ATIF) and now
+  a typed out-of-process artifact seam, not Harbor runtime code in the Worker.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

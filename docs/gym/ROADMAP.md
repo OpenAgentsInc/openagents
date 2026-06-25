@@ -364,7 +364,7 @@ split projections when owner arming or complete evidence is missing.
 > code in the Worker.
 
 ### E1. Formalize the Worker/Gym → Hydralisk → Harbor dispatch seam  ([#6250](https://github.com/OpenAgentsInc/openagents/issues/6250))
-**Type:** epic · **Lever:** benchmarking · **Status:** direction (Hydralisk has already run Harbor manually)
+**Type:** epic · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** Harbor is Python 3.12/uv/Docker and already provisioned on Hydralisk (our
 own GPU infra) — formalize the out-of-process dispatch so the Gym can trigger runs.
 **Scope:** Worker/Gym dispatches a job → Hydralisk runs `harbor run -d
@@ -376,6 +376,15 @@ sanitized result + trajectory (ATIF / `/trace/{uuid}`) back. Reuse the existing
 **Acceptance:** the Gym triggers a Harbor Terminal-Bench run on Hydralisk against
 `openagents/khala` and ingests a public-safe summary; no Harbor import in the Worker.
 **Refs:** harbor doc §3 (Where Harbor runs — Hydralisk), §7, §8.
+
+**Shipped 2026-06-25:** `harbor-dispatch.ts` defines the Worker-side
+`openagents.gym.harbor_terminal_bench_job_spec.v1` job spec, injected Hydralisk
+harness interface, dispatch receipt, and
+`hydralisk.evals.terminal_bench.summary.v1` ingest path. The first seam is
+strictly scoped to `terminal-bench@2.0` against `openagents/khala`, requests only
+public-safe summary + ATIF artifacts, keeps raw Harbor logs/prompts/responses on
+Hydralisk, and tests that the Worker imports no Harbor runtime code. Reward→cost
+report mapping and distinct-device verifier placement remain E2/E3.
 
 ### E2. Distinct-device verifier via Harbor `environment_mode = "separate"`  ([#6251](https://github.com/OpenAgentsInc/openagents/issues/6251))
 **Type:** task · **Lever:** benchmarking · **Status:** direction

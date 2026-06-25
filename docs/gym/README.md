@@ -50,7 +50,13 @@ provider-adapter registry, verification-class registry, and the
   public-safe reports and models owner-armed module-author splits from
   composition evidence while keeping payout, settlement, listing, and public
   marketplace authority disabled.
-  Remaining real-sweep work expands the executor backends and public surfaces.
+- **Epic E1 landed:** `harbor-dispatch.ts` formalizes the Worker/Gym →
+  Hydralisk → Harbor seam for Terminal-Bench against `openagents/khala`: typed
+  job spec, injected Hydralisk harness, public-safe
+  `hydralisk.evals.terminal_bench.summary.v1` ingest, ATIF artifact ref, and a
+  test that the Worker imports no Harbor runtime code.
+  Remaining real-sweep work expands verifier placement, reward/cost mapping, and
+  public surfaces.
 
 ## Contents
 

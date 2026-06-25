@@ -247,7 +247,10 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
 - Minimal typed `GymEnvironment` contract for client-surface, task-set,
   artifact-acceptance, retrieval-QA, and recorded-head-to-head environments is
   landed in `GYM_ENVIRONMENT_REGISTRY`; real dispatch adapters still differ by
-  surface and remain owner-armed work.
+  surface and remain owner-armed work. The first task-set dispatch seam is now
+  landed for Terminal-Bench on Hydralisk/Harbor: typed job spec, injected harness,
+  public-safe summary ingest, and ATIF trace ref, with reward/cost mapping still
+  owned by the next Harbor issue.
 - How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
   from an owner playground to a typed Gym environment, or keep it separate?).
 - Internal-vs-external demand tagging in the analytics so Gym/dog-food tokens never
