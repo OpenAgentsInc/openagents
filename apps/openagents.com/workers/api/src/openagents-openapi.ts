@@ -1941,6 +1941,12 @@ const schemaComponents = (): JsonSchema => ({
   PylonApiAssignmentWriteResponse: objectSummary(
     'Pylon assignment create or closeout response with a public-safe assignment projection, controlled dispatch gate metadata on create, and idempotency flag when applicable.',
   ),
+  AccountPylonsResponse: objectSummary(
+    'Signed-in account view of the Pylons owned by the OpenAuth user, resolved through that user’s linked OpenAgents agents. Returns public-safe Pylon registration projections, recent public-safe assignment and event activity, the linked-agent list (agentRef, displayName, linkKind, tokenPrefix only), and summary counts. Raw agent tokens, wallet material, private telemetry, payment material, and raw timestamps are excluded. Read-only projection; grants no assignment, payment, or settlement authority.',
+  ),
+  AccountPylonAgentLinkResponse: objectSummary(
+    'Result of linking an OpenAgents agent credential to the signed-in OpenAuth account. Returns the linked-agent projection (agentRef, displayName, linkKind, tokenPrefix only). The raw agent token is never echoed; an agent credential already bound to another OpenAuth user is rejected.',
+  ),
   SignaturePackageValidationRequest: objectSummary(
     'Read-only developer signature package validation request. Includes a manifest and optional deterministic validation request ref.',
   ),
@@ -3792,6 +3798,9 @@ const requestSchemas = (): JsonSchema => ({
       usage: { type: 'string' },
     },
   },
+  LinkAccountPylonAgentRequest: objectSummary(
+    'Signed-in account request to link an OpenAgents agent credential to the OpenAuth user. Carries a single agentToken (oa_agent_… prefix) used to authenticate the agent credential being linked; it is not echoed back. The browser session is the request authority.',
+  ),
   RegisterPylonRequest: objectSummary(
     'Registered-agent request to register or update its own Pylon. Includes pylonRef, displayName, resourceMode, capabilityRefs, walletRef, and statusRefs as public-safe refs only. Provider Pylons may also carry providerNostrPubkey (hex), providerNostrNpub, providerMarketRelayRefs (the relay URLs the provider loop actually listens on), and providerNip90LaneRefs for stranger-buyer discoverability.',
   ),
@@ -5949,6 +5958,43 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Rejected agent owner claim.',
           '#/components/schemas/AgentOwnerClaimResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/account/pylons': {
+    get: operation({
+      operationId: 'listAccountPylons',
+      summary: 'List account Pylons',
+      description:
+        'Lists the Pylons owned by the signed-in OpenAuth account, resolved through that user’s linked OpenAgents agents, with public-safe registration projections, recent assignment and event activity, the linked-agent list, and summary counts. Requires a signed-in browser session. Read-only projection; grants no assignment, payment, or settlement authority.',
+      tags: ['Pylon'],
+      security: [{ browserSession: [] }],
+      responses: {
+        '200': okJson(
+          'Account Pylon list projection.',
+          '#/components/schemas/AccountPylonsResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/account/pylon-agent-links': {
+    post: operation({
+      operationId: 'linkAccountPylonAgent',
+      summary: 'Link agent to account',
+      description:
+        'Links an OpenAgents agent credential to the signed-in OpenAuth account using the agent token in the request body, so the account can see and manage that agent’s Pylons. Requires a signed-in browser session. The raw agent token is never echoed, and an agent credential already linked to another OpenAuth user is rejected. This route does not grant spend, assignment, or settlement authority.',
+      tags: ['Pylon'],
+      security: [{ browserSession: [] }],
+      requestBody: jsonContent(
+        '#/components/schemas/LinkAccountPylonAgentRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Linked agent projection.',
+          '#/components/schemas/AccountPylonAgentLinkResponse',
         ),
         ...errorResponses(),
       },
