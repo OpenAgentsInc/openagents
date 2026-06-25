@@ -1,16 +1,24 @@
-// Routes for live Gym / Harbor run progress (#6261, epic #6253).
+// Routes for live Gym / Harbor run progress (#6261, #6271, epic #6253).
 //
 //   - `GET /api/operator/gym/run-progress` (admin bearer): the scoped operator
 //     status surface. Returns every live progress object, INCLUDING `local_only`
 //     runs that are not yet authorized for web publication. Still public-safe —
 //     "scoped" gates VISIBILITY of unpublished runs, not extra private fields.
+//   - `POST /api/operator/gym/run-progress` (admin bearer, #6271): the push-ingest
+//     boundary. A Harbor-side pusher POSTs a `GymRunProgressInput` snapshot; the
+//     Worker RE-BUILDS it through `buildGymRunProgress` (which re-asserts
+//     `checkGymRunProgressPublicSafety`) and upserts the public-safe object by
+//     `runRef`. Anything smuggling prompts/responses/logs/trajectories/keys/
+//     private endpoints is REJECTED with a typed 400 and never stored.
 //   - `GET /api/public/gym/run-progress` (no auth): the public-safe projection.
 //     `web_authorized` runs render their live counts; `local_only` runs degrade
 //     honestly to an "awaiting authorization" marker with NO live numbers.
 //
-// Polling a scoped status endpoint is the chosen path (the issue allows it): a
-// Harbor job emits at most one update per task completion, so a Foldkit poll is
-// the simpler robust path than wiring a sync room for a low-frequency feed.
+// The endpoints read the STORED ingested runs (D1) — there is no seeded fixture.
+// The surface is honestly `[]` until a real run is pushed. Polling a scoped
+// status endpoint is the chosen path (the issue allows it): a Harbor job emits at
+// most one update per task completion, so a Foldkit poll is the simpler robust
+// path than wiring a sync room for a low-frequency feed.
 //
 // No dispatch, spend, settlement, payout, or public-claim authority. A progress
 // object is in-progress evidence only and is always `decisionGrade: false`.
@@ -20,9 +28,15 @@ import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
 import { storedSnapshotStaleness } from '../../public-projection-staleness'
 import {
+  buildGymRunProgress,
+  GymRunProgressError,
   type GymRunProgress,
   projectPublicGymRunProgress,
 } from './run-progress'
+import type {
+  GymRunProgressSourceStore,
+  GymRunProgressStore,
+} from './run-progress-store'
 
 // A live Harbor run emits at most one update per task completion, so a five-minute
 // staleness bound is honest for the polled stored-snapshot projection: each
@@ -39,9 +53,13 @@ const gymRunProgressStaleness = () =>
 export type GymRunProgressRouteInput = Readonly<{
   // Source of live progress objects. There is NO seeded default: the endpoints
   // return ONLY real ingested runs and `[]` when none exist yet. The live ingest
-  // (Hydralisk Harbor `result.json` -> Worker) is a separate pipeline; until it
-  // lands the surface is honestly empty rather than faked. Every supplied object
+  // (Hydralisk Harbor `result.json` -> POST -> D1) feeds `store`; until a run is
+  // pushed the surface is honestly empty rather than faked. Every supplied object
   // MUST already be public-safe (built via buildGymRunProgress).
+  //
+  // `store` is the production D1 source; `listRunProgress` is a synchronous
+  // in-memory override used by tests. When both are absent the surface is `[]`.
+  store?: GymRunProgressSourceStore
   listRunProgress?: () => ReadonlyArray<GymRunProgress>
   nowIso?: () => string
 }>
@@ -49,23 +67,116 @@ export type GymRunProgressRouteInput = Readonly<{
 export type GymRunProgressOperatorRouteInput = GymRunProgressRouteInput &
   Readonly<{
     requireAdminApiToken: (request: Request) => Promise<boolean>
+    // The writable store for the POST ingest verb. Optional so the GET-only
+    // operator surface and tests can supply a read-only source.
+    store?: GymRunProgressStore
   }>
 
 const listProgress = (
   input: GymRunProgressRouteInput,
-): ReadonlyArray<GymRunProgress> =>
-  (input.listRunProgress ?? (() => []))()
+): Effect.Effect<ReadonlyArray<GymRunProgress>> => {
+  if (input.store !== undefined) {
+    return input.store.listRunProgress()
+  }
+  return Effect.succeed((input.listRunProgress ?? (() => []))())
+}
 
 const unauthorized = () =>
   noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
 
-// Scoped operator status: full progress objects incl. local_only runs.
+const ingestBadRequest = (reason: string) =>
+  noStoreJsonResponse(
+    { error: 'gym_run_progress_ingest_rejected', reason },
+    { status: 400 },
+  )
+
+const ingestUnavailable = () =>
+  noStoreJsonResponse(
+    {
+      error: 'gym_run_progress_ingest_unavailable',
+      reason: 'No writable run-progress store is configured.',
+    },
+    { status: 503 },
+  )
+
+// Build a public-safe progress object from a pushed snapshot. The build
+// re-validates counts and RE-ASSERTS the public-safety boundary, so any payload
+// carrying prompts/responses/logs/trajectories/keys/private endpoints is rejected
+// here and never reaches D1. Returns the built object or a typed reject reason.
+const buildIngestedProgress = (
+  raw: unknown,
+): Effect.Effect<
+  | Readonly<{ progress: GymRunProgress; tag: 'ok' }>
+  | Readonly<{ reason: string; tag: 'reject' }>
+> =>
+  Effect.try({
+    catch: error =>
+      error instanceof GymRunProgressError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : String(error),
+    try: () => buildGymRunProgress(raw),
+  }).pipe(
+    Effect.map(progress => ({ progress, tag: 'ok' as const })),
+    Effect.catch(reason => Effect.succeed({ reason, tag: 'reject' as const })),
+  )
+
+const handleOperatorListRunProgress = (
+  input: GymRunProgressOperatorRouteInput,
+): Effect.Effect<Response> =>
+  listProgress(input).pipe(
+    Effect.map(runs =>
+      noStoreJsonResponse({
+        schemaVersion: 'openagents.gym.run_progress.v1',
+        scope: 'operator',
+        runs,
+      }),
+    ),
+  )
+
+const handleOperatorIngestRunProgress = (
+  request: Request,
+  input: GymRunProgressOperatorRouteInput,
+): Effect.Effect<Response> => {
+  const store = input.store
+  if (store === undefined) {
+    return Effect.succeed(ingestUnavailable())
+  }
+  return Effect.tryPromise({
+    catch: error => (error instanceof Error ? error.message : String(error)),
+    try: () => request.json(),
+  }).pipe(
+    Effect.flatMap(raw => buildIngestedProgress(raw)),
+    Effect.flatMap(result =>
+      result.tag === 'reject'
+        ? Effect.succeed(ingestBadRequest(result.reason))
+        : store.upsertRunProgress(result.progress).pipe(
+            Effect.map(() =>
+              noStoreJsonResponse(
+                {
+                  schemaVersion: 'openagents.gym.run_progress.v1',
+                  kind: 'gym_run_progress_ingested',
+                  run: result.progress,
+                },
+                { status: 201 },
+              ),
+            ),
+          ),
+    ),
+    Effect.catch(reason => Effect.succeed(ingestBadRequest(reason))),
+  )
+}
+
+// Scoped operator surface (#6261, #6271):
+//   GET  returns full progress objects incl. local_only runs.
+//   POST ingests a pushed snapshot through the public-safety boundary.
 export const handleOperatorGymRunProgressApi = (
   request: Request,
   input: GymRunProgressOperatorRouteInput,
 ): Effect.Effect<Response> => {
-  if (request.method !== 'GET') {
-    return Effect.succeed(methodNotAllowed(['GET']))
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return Effect.succeed(methodNotAllowed(['GET', 'POST']))
   }
   return Effect.gen(function* () {
     const authorized = yield* Effect.promise(() =>
@@ -74,13 +185,11 @@ export const handleOperatorGymRunProgressApi = (
     if (!authorized) {
       return unauthorized()
     }
-    const runs = listProgress(input)
-    return noStoreJsonResponse({
-      schemaVersion: 'openagents.gym.run_progress.v1',
-      scope: 'operator',
-      runs,
-    })
-  }).pipe(Effect.catch(() => Effect.succeed(unauthorized())))
+    if (request.method === 'POST') {
+      return yield* handleOperatorIngestRunProgress(request, input)
+    }
+    return yield* handleOperatorListRunProgress(input)
+  })
 }
 
 // Public-safe projection: web_authorized runs render live; local_only runs
@@ -92,14 +201,15 @@ export const handlePublicGymRunProgressApi = (
   if (request.method !== 'GET') {
     return Effect.succeed(methodNotAllowed(['GET']))
   }
-  const runs = listProgress(input).map(projectPublicGymRunProgress)
-  return Effect.succeed(
-    noStoreJsonResponse({
-      schemaVersion: 'openagents.gym.run_progress.v1',
-      scope: 'public',
-      generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
-      staleness: gymRunProgressStaleness(),
-      runs,
-    }),
+  return listProgress(input).pipe(
+    Effect.map(runs =>
+      noStoreJsonResponse({
+        schemaVersion: 'openagents.gym.run_progress.v1',
+        scope: 'public',
+        generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
+        staleness: gymRunProgressStaleness(),
+        runs: runs.map(projectPublicGymRunProgress),
+      }),
+    ),
   )
 }

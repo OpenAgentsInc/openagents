@@ -382,6 +382,7 @@ import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
 } from './inference/gym/run-progress-routes'
+import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
 import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
@@ -9252,7 +9253,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // in-progress + decisionGrade:false markers; local_only runs degrade to an
     // honest awaiting-authorization marker. No raw prompts/responses/logs/keys.
     path: '/api/public/gym/run-progress',
-    handler: request => handlePublicGymRunProgressApi(request),
+    handler: (request, env) =>
+      handlePublicGymRunProgressApi(request, {
+        store: makeD1GymRunProgressStore(openAgentsDatabase(env)),
+      }),
   },
   {
     // Contributor accrual bundle dereference, addressed by accepted-outcome
@@ -9564,14 +9568,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    // Scoped operator status for live Gym / Harbor runs (#6261): returns every
-    // progress object, including local_only runs not yet authorized for web
-    // publication. Still public-safe; "scoped" gates visibility, not fields.
+    // Scoped operator surface for live Gym / Harbor runs (#6261, #6271).
+    //   GET  returns every progress object, including local_only runs not yet
+    //        authorized for web publication. Still public-safe; "scoped" gates
+    //        visibility, not fields.
+    //   POST ingests a Harbor-side pushed snapshot: it is REBUILT through
+    //        buildGymRunProgress + checkGymRunProgressPublicSafety (rejecting any
+    //        prompts/responses/logs/trajectories/keys/private endpoints with a
+    //        typed 400) and upserted by runRef into D1.
     path: '/api/operator/gym/run-progress',
     handler: (request, env) =>
       handleOperatorGymRunProgressApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
+        store: makeD1GymRunProgressStore(openAgentsDatabase(env)),
       }),
   },
   {

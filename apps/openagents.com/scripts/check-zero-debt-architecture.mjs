@@ -410,7 +410,18 @@ const budgetChecks = [
     // public-safe `openagents.gym.run_progress.v1` projection (counts only) and
     // mint no spend/settlement/payout/public-claim authority. Ratchet back down
     // when these route handlers move behind a shared route mapper.
-    budget: 113,
+    // +2 (113 -> 115) on 2026-06-25 (#6271) for the live Gym / Harbor run
+    // progress PUSH-INGEST split in inference/gym/run-progress-routes.ts: two
+    // extracted `: Effect.Effect<Response>` handlers
+    // (`handleOperatorListRunProgress`, `handleOperatorIngestRunProgress`) that
+    // separate the operator GET-list surface from the new admin-gated POST
+    // ingest surface. The ingest handler REBUILDS the pushed snapshot through
+    // buildGymRunProgress + checkGymRunProgressPublicSafety (rejecting any
+    // prompts/responses/logs/trajectories/keys/private endpoints) and upserts it
+    // by runRef into D1; it mints no spend/settlement/payout/public-claim
+    // authority. Ratchet back down when these handlers move behind a shared
+    // route mapper.
+    budget: 115,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

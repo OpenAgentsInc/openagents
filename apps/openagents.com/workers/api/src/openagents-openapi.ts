@@ -1614,6 +1614,21 @@ const schemaComponents = (): JsonSchema => ({
   CustomerOneCohortPrivateRowsEnvelope: objectSummary(
     'Operator-only Customer #1 cohort source row list with generatedAt and private rows. This feed is the source for the public evidence-only cohort projection and grants no runtime, deployment, merge, accepted-work, payout, settlement, or provider authority.',
   ),
+  GymRunProgress: objectSummary(
+    'Public-safe live Gym / Harbor run-progress object (openagents.gym.run_progress.v1). Carries completed/running/pending/error/cancelled COUNTS, the official denominator, pass-rate over COMPLETED tasks (separate from the official denominator), token counts when safe, public-safe serving-profile refs, and freshness. Always decisionGrade:false and inProgress:true for partial phases. Never carries raw prompts, responses, logs, trajectories, keys, or private endpoints.',
+  ),
+  GymRunProgressInput: objectSummary(
+    'Operator push-ingest snapshot for a live Gym / Harbor run. Counts-only fields plus public-safe refs; rebuilt and re-asserted public-safe at ingest. Intake rejects any prompts, responses, logs, trajectories, keys, or private endpoints.',
+  ),
+  GymRunProgressOperatorEnvelope: objectSummary(
+    'Operator-only live Gym / Harbor run-progress list: schemaVersion, scope="operator", and every progress object including local_only runs not yet authorized for web publication. Still public-safe; "scoped" gates visibility, not fields.',
+  ),
+  GymRunProgressIngestEnvelope: objectSummary(
+    'Operator push-ingest receipt: schemaVersion, kind="gym_run_progress_ingested", and the stored public-safe run-progress object. Storage evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  GymRunProgressPublicEnvelope: objectSummary(
+    'Public-safe live Gym / Harbor run-progress projection: schemaVersion, scope="public", generatedAt, the declared stored_snapshot staleness contract, and the runs. web_authorized runs render live counts; local_only runs degrade to an honest awaiting-authorization marker with no live numbers.',
+  ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
   ),
@@ -4758,6 +4773,56 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Customer #1 cohort projection.',
           '#/components/schemas/CustomerOneCohortProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/gym/run-progress': {
+    get: operation({
+      operationId: 'getPublicGymRunProgress',
+      summary: 'Read public-safe live Gym / Harbor run progress',
+      description:
+        'Returns the public-safe live Gym / Harbor run-progress projection. web_authorized runs render live counts/denominator/pass-rate-over-completed/freshness with decisionGrade:false and in-progress markers; local_only runs degrade to an honest awaiting-authorization marker with no live numbers. Empty runs:[] when none is active. No raw prompts, responses, logs, trajectories, keys, or private endpoints.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe live run-progress projection.',
+          '#/components/schemas/GymRunProgressPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/gym/run-progress': {
+    get: operation({
+      operationId: 'operatorListGymRunProgress',
+      summary: 'List live Gym / Harbor run progress (operator)',
+      description:
+        'Admin-token-gated scoped operator surface for live Gym / Harbor runs. Returns every progress object including local_only runs not yet authorized for web publication. Still public-safe; "scoped" gates visibility, not fields.',
+      tags: ['Admin'],
+      security: adminSession,
+      responses: {
+        '200': okJson(
+          'Operator live run-progress list.',
+          '#/components/schemas/GymRunProgressOperatorEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'operatorIngestGymRunProgress',
+      summary: 'Ingest a live Gym / Harbor run-progress snapshot',
+      description:
+        'Admin-token-gated push-ingest for one Harbor-side run-progress snapshot. The snapshot is rebuilt through buildGymRunProgress and re-asserted public-safe (rejecting any prompts, responses, logs, trajectories, keys, or private endpoints with a typed 400) before being upserted by runRef. Storage evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Admin'],
+      security: adminSession,
+      requestBody: jsonContent('#/components/schemas/GymRunProgressInput'),
+      responses: {
+        '201': okJson(
+          'Stored public-safe run-progress snapshot.',
+          '#/components/schemas/GymRunProgressIngestEnvelope',
         ),
         ...errorResponses(),
       },

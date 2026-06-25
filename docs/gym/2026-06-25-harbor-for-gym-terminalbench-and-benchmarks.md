@@ -726,6 +726,28 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
   (fan-out into passed/failed/running/pending) plus an accessible text/table
   mirror. Polling the scoped status endpoint is the chosen path (low-frequency
   per-task updates).
+- **Live push-ingest (#6271):** the Worker cannot read a job's local
+  `result.json`, so a Harbor-side pusher streams progress to the Worker. The
+  endpoints now read STORED ingested runs from D1 (no fixture): the migration
+  `workers/api/migrations/0233_gym_run_progress_snapshots.sql` holds one
+  public-safe `openagents.gym.run_progress.v1` object per `runRef`, served by
+  `GET /api/public/gym/run-progress` (public projection + `local_only`
+  degradation) and `GET /api/operator/gym/run-progress` (full, admin bearer),
+  `[]` when none. Ingest is `POST /api/operator/gym/run-progress` (admin
+  bearer): the pushed snapshot is REBUILT through `buildGymRunProgress` +
+  `checkGymRunProgressPublicSafety`, so any payload smuggling
+  prompts/responses/logs/trajectories/keys/private endpoints is rejected with a
+  typed `400` and never stored. The pusher
+  (`apps/openagents.com/scripts/gym-harbor-progress-push.ts`) reads a job's
+  `result.json` on a poll cadence, projects COUNTS + typed run context only
+  (never raw benchmark content; tokens summed when present), and POSTs with the
+  `OPENAGENTS_ADMIN_API_TOKEN` operator bearer (never printed). Example:
+  `bun scripts/gym-harbor-progress-push.ts --result path/to/result.json
+  --run-ref run.gym.terminal_bench.<id> --job-ref job.gym.harbor_terminal_bench.<id>
+  --config-id gym.terminal_bench.<id> --profile-ref khala-public-heuristic
+  --agent opencode --official-denominator 89 --publication web_authorized
+  --poll-seconds 15`; add `--once` for a single push or `--dry-run` to print the
+  snapshot without sending.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic
