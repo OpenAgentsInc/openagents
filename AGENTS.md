@@ -83,6 +83,116 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - Strict bug form:
   <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
+## Khala -> Pylon -> Codex Coding Delegation Runbook
+
+Use this when a user wants coding work routed through Khala to the user's own
+local Pylon, with Pylon executing the assignment through the local Codex-capable
+session. The deeper smoke doc is
+`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`; the invariant
+ledger is `apps/openagents.com/INVARIANTS.md` under "Khala Coding Delegation
+Through Pylons".
+
+Prerequisites:
+
+- The caller has a valid `OPENAGENTS_AGENT_TOKEN` in the environment. Never
+  print it, paste it into issue comments, or commit it.
+- The local Codex login exists, normally `~/.codex/auth.json`. Treat it as
+  private local credential material.
+- The Pylon command may be either installed `pylon` or, from this repo,
+  `bun apps/pylon/src/index.ts`. Examples below use `$PYLON` for either form:
+
+```sh
+export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
+export PYLON="bun apps/pylon/src/index.ts"
+```
+
+1. Bring the owner Pylon online and publish fresh capacity:
+
+```sh
+$PYLON provider go-online
+$PYLON presence heartbeat
+```
+
+`provider online` is accepted as an alias for `provider go-online`. The
+heartbeat should return a `pylonRef`, `registered: true`, a fresh
+`lastHeartbeatAt`, and no blocker refs. The public Pylon projection should show
+Codex refs such as `capacity.coding.codex.available=1`,
+`capacity.coding.codex.ready=1`, `load.coding.codex.busy=0`, and
+`load.coding.codex.queued=0`. Counted capacity refs with `=N` are valid and must
+not be stripped.
+
+2. Capture the public counter baseline:
+
+```sh
+curl -fsS https://openagents.com/api/public/khala-tokens-served
+```
+
+The homepage counter with `data-counter="khala-tokens-served"` is backed by
+this endpoint and the matching public sync feed.
+
+3. Issue a typed Khala coding request against the caller-owned Pylon:
+
+```sh
+$PYLON khala request \
+  --prompt "Run the public-safe fixture task through my linked local Codex Pylon." \
+  --workflow codex_agent_task \
+  --pylon-ref "<owner pylon ref>" \
+  --json
+```
+
+Expected output includes `ok: true`, `assignmentRef`,
+`durableRequestId`, `durableStreamUrl`, `workflow: "codex_agent_task"`, and a
+delegation frame naming the targeted Pylon. If the request falls through to a
+model/provider path instead of returning a delegation frame, stop and debug the
+delegation preconditions before running spendful or unrelated work.
+
+4. Execute the assignment locally with no spend:
+
+```sh
+$PYLON assignment run-no-spend --json
+```
+
+Expected output: the lease is accepted, progress reaches `proof-ready`, and the
+closeout status is `accepted` with `settlementState: "not_applicable"` and
+`payoutClaimAllowed: false`. For the public fixture, a successful run includes
+`result.public.pylon.codex_agent_task.fixture_repair_passed`.
+
+5. Verify durable resume:
+
+```sh
+$PYLON khala resume "<durableRequestId>" --offset 0 --json
+```
+
+Expected output includes the original delegation frame, `[DONE]`,
+`streamClosed: true`, and `streamUpToDate: true`.
+
+6. Confirm the public counter ticked:
+
+```sh
+curl -fsS https://openagents.com/api/public/khala-tokens-served
+```
+
+The new `tokensServed` value must be greater than the baseline. This proves the
+Khala-orchestrated own-capacity path counted on the same public counter the
+homepage renders.
+
+Common failure signatures:
+
+- `target_pylon_not_authorized` or "requested Pylon is not linked" means the
+  token does not own or link to that Pylon, or caller-aware delegation regressed.
+- `target_pylon_unavailable` means the Pylon is not active, heartbeat-fresh,
+  Codex-capable, wallet-ready where required, or capacity-available.
+- A provider error about extra `openagents` inputs means delegation did not
+  happen and the request fell through to normal provider routing. Recheck
+  `--workflow codex_agent_task`, target Pylon freshness, and caller ownership.
+- A heartbeat validation error on `capacity.coding.*=N` means the counted
+  capacity-ref schema regressed.
+
+Report evidence with the deployment commit, Worker version, live `/` and exact
+asset smoke, `pylonRef`, `assignmentRef`, `durableRequestId`, closeout refs, and
+before/after counter values. Keep raw tokens, private prompts, wallet material,
+and local Codex auth out of reports.
+
 ## Deploying & Releasing
 
 - **`docs/DEPLOYMENT.md` is the single hub for every deploy / publish / release.**
