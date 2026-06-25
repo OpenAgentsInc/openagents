@@ -145,20 +145,21 @@ describe('OpenAgents admin access policy', () => {
     }
   })
 
-  test('redirects the deleted login page route home', async () => {
+  test('serves the login page route through the app shell', async () => {
+    const appShell = '<!doctype html><div id="root"></div>'
     const response = await worker.fetch(
       new Request('https://openagents.com/login') as never,
       {
         ASSETS: {
-          fetch: () => Response.json({ unused: true }),
+          fetch: () => new Response(appShell),
         },
         ...requiredWorkerConfig,
       } as never,
       executionContext,
     )
 
-    expect(response.status).toBe(302)
-    expect(response.headers.get('location')).toBe('/')
+    expect(response.status).toBe(200)
+    expect(await response.text()).toBe(appShell)
   })
 
   test('cleans share product routes before serving the app shell', async () => {
@@ -323,6 +324,33 @@ describe('OpenAgents admin access policy', () => {
       cookies.some(cookie =>
         cookie.includes(
           'oa_login_return_to=%2Fagents%2Fclaims%2Fagent_claim_claim-1',
+        ),
+      ),
+    ).toBe(true)
+    expect(cookies.join('\n')).not.toContain('ignored')
+  })
+
+  test('stores a clean Pylon OpenAgents auth verifier return target when starting GitHub login', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/login/github?returnTo=%2Fapi%2Fpylon%2Fauth%2Fopenagents%2Fdevice%2Fverify%3Fattempt%3Dpylon_openauth_attempt-1%26code%3Dabcd-efgh%26ignored%3D1',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+    const cookies = response.headers.getSetCookie()
+
+    expect(response.status).toBe(302)
+    expect(cookies.some(cookie => cookie.includes('oa_auth_state='))).toBe(true)
+    expect(
+      cookies.some(cookie =>
+        cookie.includes(
+          'oa_login_return_to=%2Fapi%2Fpylon%2Fauth%2Fopenagents%2Fdevice%2Fverify%3Fattempt%3Dpylon_openauth_attempt-1%26code%3DABCD-EFGH',
         ),
       ),
     ).toBe(true)

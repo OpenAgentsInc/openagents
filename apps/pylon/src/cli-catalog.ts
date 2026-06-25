@@ -65,6 +65,23 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     args: [flag("--json", "Emit JSON."), opt("--pylon-ref", "Stable Pylon ref."), opt("--display-name", "Display name.")],
   },
   {
+    command: "auth",
+    summary: "Connect OpenAgents and Codex accounts with the minimum device-login flow.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [
+      pos("openagents|codex", "Target to connect. codex also ensures the OpenAgents Pylon link first."),
+      opt("--account", "codex: stable local account ref. Omit to use codex, codex-2, codex-3, ... automatically."),
+      opt("--agent-token", "Optional existing OpenAgents agent token. Stored locally with private file permissions."),
+      opt("--base-url", "OpenAgents base URL."),
+      opt("--timeout-seconds", "Maximum time to wait for device confirmations."),
+      flag("--force-device-login", "codex: run Codex device auth even when that account home already has auth.json."),
+      flag("--json", "Emit JSON instead of only verification URL/code lines."),
+    ],
+  },
+  {
     command: "status",
     summary: "Project public node status (identity, inventory, psionic); read-only, never binds the control port.",
     mutates: false,

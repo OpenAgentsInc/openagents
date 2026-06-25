@@ -436,6 +436,18 @@ describe('provider api key connect route dispatch', () => {
       handleProviderDeviceLoginStatusApi: stub('deviceStatus', calls),
       handlePylonProviderDeviceLoginStartApi: stub('pylonDeviceStart', calls),
       handlePylonProviderDeviceLoginStatusApi: stub('pylonDeviceStatus', calls),
+      handlePylonOpenAgentsAuthStartApi: stub(
+        'pylonOpenAgentsAuthStart',
+        calls,
+      ),
+      handlePylonOpenAgentsAuthStatusApi: stub(
+        'pylonOpenAgentsAuthStatus',
+        calls,
+      ),
+      handlePylonOpenAgentsAuthVerifyApi: stub(
+        'pylonOpenAgentsAuthVerify',
+        calls,
+      ),
     })
 
   const ctx = {
@@ -508,5 +520,34 @@ describe('provider api key connect route dispatch', () => {
     }
 
     expect(calls).toEqual(['pylonDeviceStart', 'pylonDeviceStatus'])
+  })
+
+  test('routes Pylon OpenAgents auth device-link paths to auth handlers', async () => {
+    const calls: Array<string> = []
+    const router = makeRouter(calls)
+
+    for (const path of [
+      '/api/pylon/auth/openagents/device/start',
+      '/api/pylon/auth/openagents/device/verify?attempt=pylon_openauth_1&code=ABCD-EFGH',
+      '/api/pylon/auth/openagents/device/pylon_openauth_1',
+    ]) {
+      const effect = router.routeProviderAccountRequest(
+        new Request(`https://openagents.com${path}`, { method: 'POST' }),
+        {},
+        ctx,
+      )
+
+      expect(effect).toBeDefined()
+
+      if (effect !== undefined) {
+        await Effect.runPromise(effect)
+      }
+    }
+
+    expect(calls).toEqual([
+      'pylonOpenAgentsAuthStart',
+      'pylonOpenAgentsAuthVerify',
+      'pylonOpenAgentsAuthStatus',
+    ])
   })
 })

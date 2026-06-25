@@ -219,17 +219,18 @@ payout target`) run from the palette and always end in an explicit
   one has been observed. On wide dashboards it renders beside telemetry; on
   narrow dashboards use `f6` or the command palette to open the full context
   view, and `Context: refresh repo & AI` to re-probe local state.
-- `pylon accounts connect codex --account <ref> --json` creates or reuses an
-  isolated local Codex home, forces `cli_auth_credentials_store = "file"` for
-  that home, runs `codex login --device-auth` unless the home is already
-  authenticated, and registers the ref in `dev.accounts`. Add
-  `--openagents-link` to also start the OpenAgents-linked ChatGPT/Codex
-  provider-account device flow through the Pylon agent token; the returned
-  verification URL/code attaches to the OpenAuth account linked to that Pylon
-  token, not to an ambient browser session. After entering the code, poll with
-  `--openagents-attempt-id <id>` so OpenAgents records the connected provider
-  account. The command never prints raw `auth.json`, OAuth tokens, agent tokens,
-  or local absolute credential paths.
+- `pylon auth codex` is the human path for connecting Codex capacity. It first
+  ensures the local Pylon agent is linked to your OpenAgents account, then
+  creates an isolated local Codex home, runs `codex login --device-auth` for
+  that home when needed, starts the OpenAgents-linked ChatGPT/Codex
+  provider-account device flow, and polls until the provider account is
+  connected. The only human output is the verification URL and user code for
+  each required browser/device step; attempt IDs, tokens, JSON plumbing, and
+  local credential paths stay hidden. Re-run `pylon auth codex` to add another
+  Codex account (`codex`, `codex-2`, `codex-3`, ...), or pass
+  `--account <ref>` for an explicit account name. `pylon auth openagents` runs
+  only the OpenAgents account-link step. The older `pylon accounts connect ...`
+  command remains available for lower-level automation.
 - `pylon accounts list --json` reports configured credential homes by
   provider, readiness state, and hashed home/account refs without raw paths.
   `pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json`
@@ -309,9 +310,9 @@ pylon bootstrap --json
 pylon bootstrap --register-openagents --setup-mdk-wallet --pylon-ref <ref> --display-name <name> --resource-mode background_20 --capability-ref <ref> --json
 pylon status --json
 pylon context --json
-pylon accounts connect codex --account codex-a --json
-pylon accounts connect codex --account codex-b --openagents-link --json
-pylon accounts connect codex --account codex-b --skip-device-login --openagents-attempt-id <attempt-id> --json
+pylon auth openagents
+pylon auth codex
+pylon auth codex --account codex-work
 pylon accounts list --json
 pylon accounts usage --json
 pylon accounts usage --account codex --json

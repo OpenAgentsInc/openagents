@@ -258,12 +258,6 @@ import {
 } from './customer-one-cohort-routes'
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
-import {
-  combineMcpCatalogs,
-  khalaDurableRequestIsLinkedToPrincipal,
-  khalaMcpAgentPrincipal,
-  makeKhalaMcpCatalog,
-} from './khala-mcp'
 import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
 import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
@@ -383,6 +377,8 @@ import {
   routeDurableInferenceReadRequestDO,
 } from './inference/durable-inference-read-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
+import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
+import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
 import {
   glmPoolHeartbeatRoutingStateOracle,
@@ -415,12 +411,6 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
-import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
-import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
-import {
-  isConfidentialComputeEnabled,
-  makePaidPrivacyResolver,
-} from './inference/inference-privacy-entitlement'
 import {
   isOperatorExemptionEnabled,
   makeOperatorExemptionGate,
@@ -428,6 +418,10 @@ import {
 } from './inference/inference-operator-exemption'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
+import {
+  isConfidentialComputeEnabled,
+  makePaidPrivacyResolver,
+} from './inference/inference-privacy-entitlement'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import {
@@ -506,9 +500,9 @@ import { parseInternalAccountRefs } from './inference/inference-internal-account
 import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
 import { handleQuote } from './inference/quote-routes'
 import {
+  type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
   makeD1ServedTokensRecorder,
-  type ServedTokensRecorderInput,
 } from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
@@ -533,6 +527,12 @@ import {
 } from './json-boundary'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
+import {
+  combineMcpCatalogs,
+  khalaDurableRequestIsLinkedToPrincipal,
+  khalaMcpAgentPrincipal,
+  makeKhalaMcpCatalog,
+} from './khala-mcp'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
 import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
 import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
@@ -700,6 +700,7 @@ import {
   handlePylonMultiEarningNodeApi,
   isPylonMultiEarningProjectionEnabled,
 } from './pylon-multi-earning-node-routes'
+import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -3794,6 +3795,18 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       return token === undefined || token === ''
         ? undefined
         : `${url.pathname}?token=${encodeURIComponent(token)}`
+    }
+
+    if (url.pathname === '/api/pylon/auth/openagents/device/verify') {
+      const attempt = url.searchParams.get('attempt')?.trim()
+      const code = url.searchParams.get('code')?.trim().toUpperCase()
+
+      return attempt === undefined ||
+        code === undefined ||
+        !/^pylon_openauth_[A-Za-z0-9_-]+$/.test(attempt) ||
+        !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)
+        ? undefined
+        : `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
     }
 
     const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)
@@ -7120,6 +7133,12 @@ const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
   storeStartedCodexDeviceLogin,
 })
 
+const pylonOpenAgentsAuthHandlers = makePylonOpenAgentsAuthHandlers({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  appendRefreshedSessionCookies,
+  requireBrowserSession,
+})
+
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial,
   requireProviderServiceActor,
@@ -7305,6 +7324,20 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         env,
         attemptId,
       ),
+    ),
+  handlePylonOpenAgentsAuthStartApi: (request, env) =>
+    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStartApi(request, env),
+  handlePylonOpenAgentsAuthStatusApi: (request, env, attemptId) =>
+    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStatusApi(
+      request,
+      env,
+      attemptId,
+    ),
+  handlePylonOpenAgentsAuthVerifyApi: (request, env, ctx) =>
+    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthVerifyApi(
+      request,
+      env,
+      ctx,
     ),
 })
 

@@ -98,6 +98,20 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     env: Bindings,
     attemptId: string,
   ) => RouteEffect
+  handlePylonOpenAgentsAuthStartApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
+  handlePylonOpenAgentsAuthStatusApi: (
+    request: Request,
+    env: Bindings,
+    attemptId: string,
+  ) => RouteEffect
+  handlePylonOpenAgentsAuthVerifyApi: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => RouteEffect
 }>
 
 export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
@@ -142,6 +156,18 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderDeviceLoginStartApi(request, env),
+      )
+    }
+
+    if (url.pathname === '/api/pylon/auth/openagents/device/start') {
+      return routeEffectOrResponse(
+        dependencies.handlePylonOpenAgentsAuthStartApi(request, env),
+      )
+    }
+
+    if (url.pathname === '/api/pylon/auth/openagents/device/verify') {
+      return routeEffectOrResponse(
+        dependencies.handlePylonOpenAgentsAuthVerifyApi(request, env, ctx),
       )
     }
 
@@ -278,6 +304,23 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       if (attemptId !== undefined) {
         return routeEffectOrResponse(
           dependencies.handlePylonProviderDeviceLoginStatusApi(
+            request,
+            env,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const pylonOpenAgentsAuthStatusMatch =
+      /^\/api\/pylon\/auth\/openagents\/device\/([^/]+)$/.exec(url.pathname)
+
+    if (pylonOpenAgentsAuthStatusMatch !== null) {
+      const attemptId = pylonOpenAgentsAuthStatusMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handlePylonOpenAgentsAuthStatusApi(
             request,
             env,
             attemptId,

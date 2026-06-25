@@ -93,6 +93,11 @@ import {
   runPylonAccountsConnect,
 } from "./account-connect.js"
 import {
+  parsePylonAuthArgs,
+  runPylonAuthCodex,
+  runPylonAuthOpenAgents,
+} from "./auth.js"
+import {
   collectPylonAccountsList,
   collectPylonAccountsUsage,
   parsePylonAccountsUsageArgs,
@@ -3036,6 +3041,42 @@ async function main() {
       const message = error instanceof Error ? error.message : String(error)
       if (json) process.stdout.write(`${JSON.stringify({ status: "error", error: message, applied: false }, null, 2)}\n`)
       else process.stderr.write(`Pylon update failed: ${message}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "auth") {
+    try {
+      const options = parsePylonAuthArgs(args.slice(1))
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const onDevicePrompt = options.json
+        ? undefined
+        : (prompt: { userCode: string; verificationUrl: string }) => {
+            process.stdout.write(`${prompt.verificationUrl}\n${prompt.userCode}\n`)
+          }
+
+      if (options.target === "openagents") {
+        const result = await runPylonAuthOpenAgents(summary, options, {
+          env: Bun.env,
+          onDevicePrompt,
+        })
+        if (options.json) {
+          process.stdout.write(`${JSON.stringify(result.projection, null, 2)}\n`)
+        }
+        return
+      }
+
+      const projection = await runPylonAuthCodex(summary, options, {
+        env: Bun.env,
+        onDevicePrompt,
+      })
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+      }
+      return
+    } catch (error) {
+      process.stderr.write(`Pylon auth failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
       return
     }
