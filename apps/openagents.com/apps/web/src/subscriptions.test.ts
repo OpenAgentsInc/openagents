@@ -1,9 +1,14 @@
 import { describe, expect, test } from 'vitest'
+import { evo } from 'foldkit/struct'
 
 import {
   authBootstrapFromSession,
   incompleteOnboardingStatus,
 } from './domain/session'
+import {
+  GYM_RUN_PROGRESS_SCOPE,
+  gymRunProgressStreamOpen,
+} from './page/loggedOut/gym/runProgressFeed'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import {
   LoadedStoredAutopilotOnboarding,
@@ -38,6 +43,7 @@ import {
   demoKeyboardDependenciesForModel,
   demoPlaybackDependenciesForModel,
   gymRunProgressPollDependenciesForModel,
+  gymRunProgressStreamDependenciesForModel,
   khalaTokensServedPollDependenciesForModel,
   khalaTokensServedStreamDependenciesForModel,
   onboardingResumeDependenciesForModel,
@@ -171,6 +177,36 @@ describe('gym run-progress poll subscription (#6261)', () => {
     expect(
       gymRunProgressPollDependenciesForModel(LoggedOut.init(HomeRoute())),
     ).toEqual({ isActive: false })
+  })
+
+  test('the reconcile poll is the socket-down fallback only (not while open)', () => {
+    const open = evo(LoggedOut.init(GymRoute()), {
+      gymRunProgressStream: gymRunProgressStreamOpen,
+    })
+    expect(gymRunProgressPollDependenciesForModel(open)).toEqual({
+      isActive: false,
+    })
+  })
+})
+
+describe('gym run-progress realtime stream subscription (#6261)', () => {
+  test('opens the WebSocket to the run-progress sync scope on /gym', () => {
+    const dependencies = gymRunProgressStreamDependenciesForModel(
+      LoggedOut.init(GymRoute()),
+    )
+    expect(dependencies.isActive).toBe(true)
+    expect(dependencies.scope).toBe(GYM_RUN_PROGRESS_SCOPE)
+    expect(dependencies.scope).toBe('public-gym-run-progress:network')
+    expect(dependencies.streamHref).toBe(
+      '/api/sync/public-gym-run-progress/network/stream?cursor=0',
+    )
+  })
+
+  test('is gated to the /gym route (inactive elsewhere)', () => {
+    expect(
+      gymRunProgressStreamDependenciesForModel(LoggedOut.init(HomeRoute()))
+        .isActive,
+    ).toBe(false)
   })
 })
 

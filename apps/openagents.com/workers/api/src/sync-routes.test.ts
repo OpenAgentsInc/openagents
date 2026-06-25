@@ -423,4 +423,57 @@ describe('sync routes', () => {
     expect(streamResponse.status).toBe(204)
     expect(capturedScopes).toEqual(['public-settled-feed:tassadar'])
   })
+
+  test('allows anonymous public gym run-progress snapshots and streams (#6261)', async () => {
+    const db = makeMemoryD1()
+    db.changes.push({
+      actor_id: 'system',
+      collection: 'gym_run_progress',
+      created_at: '2026-06-25T00:00:00.000Z',
+      entity_id: 'run.gym.terminal_bench.web.test',
+      mutation_id: null,
+      op: 'put',
+      patch_json: null,
+      scope: 'public-gym-run-progress:network',
+      seq: 1,
+      value_json: JSON.stringify({
+        schemaVersion: 'openagents.gym.run_progress.v1',
+        runRef: 'run.gym.terminal_bench.web.test',
+        publication: 'web_authorized',
+      }),
+    })
+
+    const snapshotResponse = await runRoute(
+      new Request(
+        'https://openagents.test/api/sync/public-gym-run-progress/network/snapshot',
+      ),
+      makeEnv(db),
+      undefined,
+    )
+
+    await expect(snapshotResponse.json()).resolves.toMatchObject({
+      collections: {
+        gym_run_progress: {
+          'run.gym.terminal_bench.web.test': {
+            runRef: 'run.gym.terminal_bench.web.test',
+            publication: 'web_authorized',
+          },
+        },
+      },
+      scope: 'public-gym-run-progress:network',
+    })
+    expect(snapshotResponse.status).toBe(200)
+
+    const capturedScopes: Array<string> = []
+    const streamResponse = await runRoute(
+      new Request(
+        'https://openagents.test/api/sync/public-gym-run-progress/network/stream',
+      ),
+      makeEnv(makeMemoryD1(), makeSyncRoom(capturedScopes)),
+      undefined,
+    )
+
+    expect(streamResponse.status).toBe(204)
+    expect(capturedScopes).toEqual(['public-gym-run-progress:network'])
+  })
 })

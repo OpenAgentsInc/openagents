@@ -1,4 +1,11 @@
-import { Clock, Effect, Match as M, Option, Schema as S } from 'effect'
+import {
+  Array as Arr,
+  Clock,
+  Effect,
+  Match as M,
+  Option,
+  Schema as S,
+} from 'effect'
 import { Command, Dom } from 'foldkit'
 import { load, pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
@@ -26,6 +33,7 @@ import {
   FailedLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicGymRunProgress,
+  FailedLoadGymRunProgressSnapshot,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
@@ -43,6 +51,7 @@ import {
   SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicGymRunProgress,
+  SucceededLoadGymRunProgressSnapshot,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
@@ -122,7 +131,10 @@ import {
   toggleGymLane,
   toggleGymSequenceShape,
 } from './gym/flow'
-import { GymRunProgressResponse } from './gym/runProgress'
+import {
+  GymRunProgressPublicProjection,
+  GymRunProgressResponse,
+} from './gym/runProgress'
 import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
@@ -150,6 +162,15 @@ import {
   khalaTokensServedStreamFailed,
   khalaTokensServedStreamOpen,
 } from './khala-tokens-served-feed'
+import {
+  GYM_RUN_PROGRESS_SCOPE,
+  applyGymRunProgressPatch,
+  gymRunProgressAfterSnapshot,
+  gymRunProgressStreamAfterCursorGap,
+  gymRunProgressStreamClosed,
+  gymRunProgressStreamFailed,
+  gymRunProgressStreamOpen,
+} from './gym/runProgressFeed'
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
@@ -605,6 +626,81 @@ export const LoadPublicGymRunProgress = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicGymRunProgress({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+class GymRunProgressSnapshotLoadError extends S.TaggedErrorClass<GymRunProgressSnapshotLoadError>()(
+  'GymRunProgressSnapshotLoadError',
+  {
+    error: S.Defect,
+  },
+) {}
+
+const GymRunProgressSnapshotPayload = S.Struct({
+  collections: S.Record(S.String, S.Record(S.String, S.Unknown)),
+  cursor: S.Number,
+})
+
+// Gym run-progress snapshot seed (#6261). ONE read of the public gym
+// run-progress sync scope returns each run's latest public-safe projection
+// (collapsed by `runRef`) + the cursor. The client seeds the panel from this and
+// subscribes strictly from that cursor, so a put already baked into the seed is
+// never replayed into a duplicate card. An empty/absent collection seeds an
+// honest empty panel (no runs yet) rather than an error.
+export const LoadGymRunProgressSnapshot = Command.define(
+  'LoadGymRunProgressSnapshot',
+  SucceededLoadGymRunProgressSnapshot,
+  FailedLoadGymRunProgressSnapshot,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`/api/sync/${GYM_RUN_PROGRESS_SCOPE.replace(':', '/')}/snapshot`, {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new GymRunProgressSnapshotLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new GymRunProgressSnapshotLoadError({
+        error: `Gym run progress snapshot returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new GymRunProgressSnapshotLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(GymRunProgressSnapshotPayload)(payload)
+    const collection = decoded.collections['gym_run_progress'] ?? {}
+    const maybeRuns = yield* Effect.forEach(
+      Object.values(collection),
+      value =>
+        S.decodeUnknownEffect(GymRunProgressPublicProjection)(value).pipe(
+          Effect.map(run =>
+            Option.some<GymRunProgressPublicProjection>(run),
+          ),
+          Effect.orElseSucceed(() =>
+            Option.none<GymRunProgressPublicProjection>(),
+          ),
+        ),
+    )
+    const runs = Arr.getSomes(maybeRuns)
+
+    return SucceededLoadGymRunProgressSnapshot({
+      cursor: decoded.cursor,
+      runs,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadGymRunProgressSnapshot({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1425,7 +1521,7 @@ export const initialCommands = (
           // subscribe to the SAME live stream below — no parallel data source.
           [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
       : model.route._tag === 'Gym'
-        ? [LoadPublicGymRunProgress()]
+        ? [LoadGymRunProgressSnapshot(), LoadPublicGymRunProgress()]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
         : model.route._tag === 'PublicTrainingRuns'
@@ -1725,16 +1821,24 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
-      // Gym run-progress poll tick: re-fetch the live runs. The model holds its
-      // last loaded runs (no flash to Loading) so the follow-along stays stable
-      // between fetches and just updates when the next runs arrive.
+      // Gym run-progress reconcile tick (#6261): the WebSocket push is the
+      // primary path, so this is now a SLOW socket-down fallback that re-fetches
+      // the authoritative full run set. The model holds its last loaded runs (no
+      // flash to Loading) so the panel stays stable between reconciles.
       RequestedPollGymRunProgress: () => [model, [LoadPublicGymRunProgress()]],
-      SucceededLoadPublicGymRunProgress: ({ runs }) => [
-        evo(model, {
-          gymRunProgress: () => LoadedPublicGymRunProgress({ runs }),
-        }),
-        [],
-      ],
+      // The cold-read full set is the seed/reconcile. It must NOT clobber a live
+      // streamed set: when the stream is open the per-run pushes are authoritative
+      // (a stale reconcile snapshot mid-flight would flicker the cards), so the
+      // reconcile only applies while the socket is not open.
+      SucceededLoadPublicGymRunProgress: ({ runs }) =>
+        model.gymRunProgressStream.connection === 'open'
+          ? [model, []]
+          : [
+              evo(model, {
+                gymRunProgress: () => LoadedPublicGymRunProgress({ runs }),
+              }),
+              [],
+            ],
       // A failed poll must never wipe out an already-loaded set of live runs:
       // only surface the error if no runs have loaded yet, so a transient
       // network blip never flashes the follow-along back to an empty/error
@@ -1745,6 +1849,62 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           : evo(model, {
               gymRunProgress: () => FailedPublicGymRunProgress({ error }),
             }),
+        [],
+      ],
+      // One-shot snapshot seed of the run cards + stream cursor (#6261). Subscribe
+      // strictly from this cursor so a put baked into the seed is never replayed.
+      SucceededLoadGymRunProgressSnapshot: ({ cursor, runs }) => {
+        const seeded = gymRunProgressAfterSnapshot({
+          counter: model.gymRunProgress,
+          cursor,
+          runs,
+          stream: model.gymRunProgressStream,
+        })
+
+        return [
+          evo(model, {
+            gymRunProgress: () => seeded.counter,
+            gymRunProgressStream: () => seeded.stream,
+          }),
+          [],
+        ]
+      },
+      // A failed snapshot seed leaves the panel as-is (the cold GET still seeds
+      // and the slow reconcile + next push self-heal); never flash to an error.
+      FailedLoadGymRunProgressSnapshot: () => [model, []],
+      // Live gym run-progress delta stream (#6261).
+      OpenedGymRunProgressStream: () => [
+        evo(model, { gymRunProgressStream: gymRunProgressStreamOpen }),
+        [],
+      ],
+      ClosedGymRunProgressStream: () => [
+        evo(model, { gymRunProgressStream: gymRunProgressStreamClosed }),
+        [],
+      ],
+      FailedGymRunProgressStream: () => [
+        evo(model, { gymRunProgressStream: gymRunProgressStreamFailed }),
+        [],
+      ],
+      ReceivedGymRunProgressPatch: ({ patch }) => {
+        const applied = applyGymRunProgressPatch({
+          counter: model.gymRunProgress,
+          patch,
+          stream: model.gymRunProgressStream,
+        })
+
+        return [
+          evo(model, {
+            gymRunProgress: () => applied.counter,
+            gymRunProgressStream: () => applied.stream,
+          }),
+          [],
+        ]
+      },
+      ReceivedGymRunProgressCursorGap: ({ gap }) => [
+        evo(model, {
+          gymRunProgressStream: stream =>
+            gymRunProgressStreamAfterCursorGap(stream, gap),
+        }),
         [],
       ],
       SucceededLoadPublicForumLaunchStatus: ({ status }) => [

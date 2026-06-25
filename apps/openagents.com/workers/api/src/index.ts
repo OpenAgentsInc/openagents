@@ -393,6 +393,7 @@ import {
   handlePublicGymRunProgressApi,
 } from './inference/gym/run-progress-routes'
 import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
+import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
@@ -9753,11 +9754,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     //        prompts/responses/logs/trajectories/keys/private endpoints with a
     //        typed 400) and upserted by runRef into D1.
     path: '/api/operator/gym/run-progress',
-    handler: (request, env) =>
+    handler: (request, env, ctx) =>
       handleOperatorGymRunProgressApi(request, {
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1GymRunProgressStore(openAgentsDatabase(env)),
+        // Realtime push (#6261): after the upsert lands, publish the public-safe
+        // projected snapshot to the live `public-gym-run-progress` sync scope so
+        // the `/gym` follow-along updates the instant the snapshot is ingested.
+        // Fail-soft and off the customer path via the execution context.
+        publishProgress: progress =>
+          publishGymRunProgressSnapshot(env, progress, { ctx }),
       }),
   },
   {

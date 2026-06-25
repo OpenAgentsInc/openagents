@@ -212,11 +212,12 @@ export const FailedLoadPublicKhalaTokensServedHistory = m(
     error: S.String,
   },
 )
-// Live Gym / Harbor run-progress follow-along (#6261). The poll subscription
-// fires RequestedPollGymRunProgress on a ~12s cadence while on the `/gym`
-// route; the command resolves to Succeeded/Failed and the follow-along renders
-// every returned run (counts, pass-rate over completed, freshness). The model
-// holds its last loaded runs between ticks (no flash to Loading).
+// Live Gym / Harbor run-progress follow-along (#6261). PUSH is the primary path:
+// the panel seeds its run cards + cursor from ONE sync snapshot read on `/gym`
+// entry, then upserts each run card the instant a snapshot is ingested over the
+// `public-gym-run-progress` scope. The poll below is now only a SLOW socket-down
+// reconcile/fallback; the model holds its last loaded runs between ticks (no
+// flash to Loading).
 export const RequestedPollGymRunProgress = m('RequestedPollGymRunProgress')
 export const SucceededLoadPublicGymRunProgress = m(
   'SucceededLoadPublicGymRunProgress',
@@ -228,6 +229,39 @@ export const FailedLoadPublicGymRunProgress = m(
   'FailedLoadPublicGymRunProgress',
   {
     error: S.String,
+  },
+)
+// One-shot seed of the gym run-progress run cards + cursor from the public sync
+// snapshot. Subscribing strictly from that cursor means a put already baked into
+// the seed is never replayed into a duplicate card.
+export const SucceededLoadGymRunProgressSnapshot = m(
+  'SucceededLoadGymRunProgressSnapshot',
+  {
+    cursor: S.Number,
+    runs: S.Array(GymRunProgressPublicProjection),
+  },
+)
+export const FailedLoadGymRunProgressSnapshot = m(
+  'FailedLoadGymRunProgressSnapshot',
+  {
+    error: S.String,
+  },
+)
+// Live gym run-progress delta stream (#6261). The `/gym` panel subscribes to a
+// public sync scope and replaces each run card the instant a public-safe
+// projected snapshot is ingested — no per-12s poll.
+export const OpenedGymRunProgressStream = m('OpenedGymRunProgressStream')
+export const ClosedGymRunProgressStream = m('ClosedGymRunProgressStream')
+export const FailedGymRunProgressStream = m('FailedGymRunProgressStream', {
+  error: S.String,
+})
+export const ReceivedGymRunProgressPatch = m('ReceivedGymRunProgressPatch', {
+  patch: SyncPatch,
+})
+export const ReceivedGymRunProgressCursorGap = m(
+  'ReceivedGymRunProgressCursorGap',
+  {
+    gap: CursorGap,
   },
 )
 export const SucceededLoadPublicForumLaunchStatus = m(
@@ -535,6 +569,13 @@ export const Message = S.Union([
   RequestedPollGymRunProgress,
   SucceededLoadPublicGymRunProgress,
   FailedLoadPublicGymRunProgress,
+  SucceededLoadGymRunProgressSnapshot,
+  FailedLoadGymRunProgressSnapshot,
+  OpenedGymRunProgressStream,
+  ClosedGymRunProgressStream,
+  FailedGymRunProgressStream,
+  ReceivedGymRunProgressPatch,
+  ReceivedGymRunProgressCursorGap,
   SucceededLoadPublicForumLaunchStatus,
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,

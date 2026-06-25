@@ -41,6 +41,11 @@ import {
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
   RequestedPollGymRunProgress,
+  ClosedGymRunProgressStream,
+  FailedGymRunProgressStream,
+  OpenedGymRunProgressStream,
+  ReceivedGymRunProgressCursorGap,
+  ReceivedGymRunProgressPatch,
   SucceededAutopilotOnboardingTurn,
   SucceededResumeAutopilotOnboardingTurn,
   FailedKhalaChatTurn,
@@ -61,6 +66,7 @@ import {
 import { newOnboardingSessionId } from './page/loggedOut/update'
 import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
 import { KHALA_TOKENS_SERVED_SCOPE } from './page/loggedOut/khala-tokens-served-feed'
+import { GYM_RUN_PROGRESS_SCOPE } from './page/loggedOut/gym/runProgressFeed'
 import {
   syncAgentRunScope,
   syncTeamScope,
@@ -417,6 +423,88 @@ const khalaTokensServedStream = (
   )
 }
 
+// Live gym run-progress delta stream socket (#6261). Mirrors
+// `khalaTokensServedStream`: open the WebSocket, push Opened, map each sync
+// message to the gym patch/cursor-gap/failed message, and push Closed/Failed.
+const gymRunProgressStream = (
+  dependencies: GymRunProgressStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { streamHref } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const socket = new WebSocket(webSocketUrl(streamHref))
+        const resource = { released: false, socket }
+        socket.addEventListener('open', () => {
+          if (resource.released) {
+            socket.close()
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: OpenedGymRunProgressStream() }),
+          )
+        })
+        socket.addEventListener('message', event => {
+          const decoded = syncMessageFromPayload(String(event.data))
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message:
+                decoded._tag === 'ReceivedSyncPatch'
+                  ? ReceivedGymRunProgressPatch({ patch: decoded.patch })
+                  : decoded._tag === 'ReceivedSyncCursorGap'
+                    ? ReceivedGymRunProgressCursorGap({ gap: decoded.gap })
+                    : FailedGymRunProgressStream({ error: decoded.error }),
+            }),
+          )
+        })
+        socket.addEventListener('close', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: ClosedGymRunProgressStream() }),
+          )
+        })
+        socket.addEventListener('error', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message: FailedGymRunProgressStream({
+                error: 'Gym run progress stream connection failed.',
+              }),
+            }),
+          )
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.released = true
+
+          if (resource.socket.readyState === WebSocket.OPEN) {
+            resource.socket.close()
+          }
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
+
 const inactiveKhalaTokensServedPoll = { isActive: false }
 
 type KhalaTokensServedPollDependencies = typeof inactiveKhalaTokensServedPoll
@@ -431,22 +519,68 @@ export const khalaTokensServedPollDependenciesForModel = (
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 
-// Live Gym / Harbor run-progress follow-along (#6261). The `/gym` route polls
-// `GET /api/public/gym/run-progress` so the follow-along renders live runs as
-// each Harbor task completes. Polled on a short cadence (~12s) gated on the
-// route; the stored snapshot's staleness contract rebuilds at most every 300s,
-// so a 12s client poll comfortably reflects fresh task completions without
-// hammering the endpoint. Mirrors the Khala history poll gate.
-const GYM_RUN_PROGRESS_POLL_INTERVAL_SECONDS = 12
+// Live Gym / Harbor "Follow an active Terminal-Bench run" panel (#6261). PUSH is
+// now the primary path: the panel seeds from the sync snapshot on `/gym` entry,
+// then the `gymRunProgressStream` WebSocket below updates each run card the
+// instant a snapshot is ingested. The poll is no longer the live path; it is a
+// SLOW (~45s) reconcile/fallback that re-fetches the authoritative full run set
+// so the panel self-heals if the socket is down or a put was missed. This drops
+// the per-12s client poll.
+const GYM_RUN_PROGRESS_POLL_INTERVAL_SECONDS = 45
+
+// Live gym run-progress delta stream (#6261). The `/gym` panel subscribes to ONE
+// public, read-only sync room scope so each run card updates the instant a
+// public-safe projected snapshot is ingested. Reuses the exact same WebSocket +
+// cursor-replay plumbing as the Khala tokens-served counter; the slow reconcile
+// poll below is the graceful fallback when the socket is unavailable.
+const inactiveGymRunProgressStream: {
+  readonly cursor: number
+  readonly isActive: boolean
+  readonly scope: string
+  readonly streamHref: string
+} = {
+  cursor: 0,
+  isActive: false,
+  scope: '',
+  streamHref: '',
+}
+
+type GymRunProgressStreamDependencies = typeof inactiveGymRunProgressStream
+
+const gymRouteIsLive = (model: Model): boolean =>
+  model._tag === 'LoggedOut' && model.route._tag === 'Gym'
+
+export const gymRunProgressStreamDependenciesForModel = (
+  model: Model,
+): GymRunProgressStreamDependencies => {
+  if (model._tag !== 'LoggedOut' || model.route._tag !== 'Gym') {
+    return inactiveGymRunProgressStream
+  }
+
+  const cursor = model.gymRunProgressStream.cursor
+
+  return {
+    cursor,
+    isActive: true,
+    scope: GYM_RUN_PROGRESS_SCOPE,
+    streamHref: syncStreamHref(GYM_RUN_PROGRESS_SCOPE, cursor),
+  }
+}
 
 const inactiveGymRunProgressPoll = { isActive: false }
 
 type GymRunProgressPollDependencies = typeof inactiveGymRunProgressPoll
 
+// The run-progress reconcile poll is the SOCKET-DOWN FALLBACK only (#6261). When
+// the realtime stream is open, per-run pushes are authoritative; re-fetching the
+// full set on a timer is unnecessary and a stale mid-flight snapshot would
+// flicker the cards. So the reconcile only runs while the stream is NOT open.
 export const gymRunProgressPollDependenciesForModel = (
   model: Model,
 ): GymRunProgressPollDependencies =>
-  model._tag === 'LoggedOut' && model.route._tag === 'Gym'
+  model._tag === 'LoggedOut' &&
+  gymRouteIsLive(model) &&
+  model.gymRunProgressStream.connection !== 'open'
     ? { isActive: true }
     : inactiveGymRunProgressPoll
 
@@ -1337,9 +1471,27 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
         ),
     },
   ),
-  // Live Gym / Harbor run-progress follow-along (#6261). Polls the public-safe
-  // run-progress projection on a short cadence while on the `/gym` route so the
-  // follow-along renders live runs (counts/pass-rate-over-completed/freshness).
+  // Live Gym / Harbor run-progress delta stream (#6261): the primary realtime
+  // path for the "Follow an active Terminal-Bench run" panel. The poll below is
+  // now just a slow socket-down reconcile/fallback.
+  gymRunProgressStream: entry(
+    {
+      cursor: S.Number,
+      isActive: S.Boolean,
+      scope: S.String,
+      streamHref: S.String,
+    },
+    {
+      modelToDependencies: gymRunProgressStreamDependenciesForModel,
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive && left.scope === right.scope,
+      dependenciesToStream: gymRunProgressStream,
+    },
+  ),
+  // The run-progress reconcile poll is now the SOCKET-DOWN FALLBACK only (#6261):
+  // a slow (~45s) re-fetch of the authoritative full run set, gated on the `/gym`
+  // route AND the stream not being open, so the panel self-heals if the socket is
+  // down or a put was missed without flickering a live-streamed set.
   gymRunProgressPoll: entry(
     {
       isActive: S.Boolean,

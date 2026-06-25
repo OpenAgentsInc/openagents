@@ -11,6 +11,7 @@ import {
   publicAgentRunScope,
   publicAgentScope,
   publicGoalScope,
+  publicGymRunProgressScope,
   publicKhalaTokensServedScope,
   publicSettledFeedScope,
   threadScope as syncThreadScope,
@@ -33,6 +34,7 @@ type SyncScopeKind =
   | 'public-agent'
   | 'public-agent-run'
   | 'public-goal'
+  | 'public-gym-run-progress'
   | 'public-khala-tokens-served'
   | 'public-settled-feed'
   | 'team'
@@ -154,6 +156,10 @@ const syncScopeForPath = (
     return publicKhalaTokensServedScope(id)
   }
 
+  if (kind === 'public-gym-run-progress') {
+    return publicGymRunProgressScope(id)
+  }
+
   return undefined
 }
 
@@ -165,6 +171,7 @@ const optionalSyncScopeKind = (value: string): SyncScopeKind | undefined =>
   value === 'public-agent' ||
   value === 'public-goal' ||
   value === 'public-agent-run' ||
+  value === 'public-gym-run-progress' ||
   value === 'public-khala-tokens-served' ||
   value === 'public-settled-feed'
     ? value
@@ -309,6 +316,7 @@ const isPublicSyncPath = (syncPath: ParsedSyncPath): boolean =>
   syncPath.kind === 'public-agent' ||
   syncPath.kind === 'public-goal' ||
   syncPath.kind === 'public-agent-run' ||
+  syncPath.kind === 'public-gym-run-progress' ||
   syncPath.kind === 'public-khala-tokens-served' ||
   syncPath.kind === 'public-settled-feed'
 

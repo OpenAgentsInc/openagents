@@ -15,10 +15,15 @@
 //     honestly to an "awaiting authorization" marker with NO live numbers.
 //
 // The endpoints read the STORED ingested runs (D1) — there is no seeded fixture.
-// The surface is honestly `[]` until a real run is pushed. Polling a scoped
-// status endpoint is the chosen path (the issue allows it): a Harbor job emits at
-// most one update per task completion, so a Foldkit poll is the simpler robust
-// path than wiring a sync room for a low-frequency feed.
+// The surface is honestly `[]` until a real run is pushed.
+//
+// REALTIME PUSH (#6261): the POST ingest also publishes the public-safe projected
+// snapshot to the live `public-gym-run-progress` sync scope (see
+// `run-progress-sync.ts`), reusing the SAME sync-room outbox + poke path the
+// Khala tokens-served counter uses. The `/gym` follow-along subscribes to that
+// scope over a WebSocket and updates the instant a snapshot is ingested; the GET
+// projection remains as the cold-read seed plus a slow socket-down reconcile
+// fallback, no longer a ~12s poll.
 //
 // No dispatch, spend, settlement, payout, or public-claim authority. A progress
 // object is in-progress evidence only and is always `decisionGrade: false`.
@@ -70,6 +75,15 @@ export type GymRunProgressOperatorRouteInput = GymRunProgressRouteInput &
     // The writable store for the POST ingest verb. Optional so the GET-only
     // operator surface and tests can supply a read-only source.
     store?: GymRunProgressStore
+    // Fire-and-forget realtime publish (#6261). After a successful upsert, the
+    // ingest publishes the public-safe projected snapshot to the live
+    // `public-gym-run-progress` sync scope so the `/gym` follow-along updates the
+    // instant a snapshot lands instead of waiting for the next ~12s poll. Wired
+    // by the Worker to `publishGymRunProgressSnapshot`; left undefined by the
+    // GET-only operator surface and tests that do not exercise the realtime path.
+    // It is FAIL-SOFT: a publish failure must never break or slow the ingest, so
+    // the route swallows any rejection and still returns the 201.
+    publishProgress?: (progress: GymRunProgress) => Promise<void>
   }>
 
 const listProgress = (
@@ -152,6 +166,16 @@ const handleOperatorIngestRunProgress = (
       result.tag === 'reject'
         ? Effect.succeed(ingestBadRequest(result.reason))
         : store.upsertRunProgress(result.progress).pipe(
+            // Fire-and-forget realtime publish AFTER the upsert lands. Fail-soft:
+            // a publish error must never break or slow the ingest, so any
+            // rejection is swallowed and the 201 is still returned.
+            Effect.tap(() =>
+              input.publishProgress === undefined
+                ? Effect.void
+                : Effect.promise(() =>
+                    input.publishProgress!(result.progress).catch(() => {}),
+                  ),
+            ),
             Effect.map(() =>
               noStoreJsonResponse(
                 {

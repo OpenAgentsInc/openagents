@@ -1382,6 +1382,31 @@ export const PublicGymRunProgressModel = S.Union([
 ])
 export type PublicGymRunProgressModel = typeof PublicGymRunProgressModel.Type
 
+// Live Gym / Harbor run-progress stream (#6261). The `/gym` "Follow an active
+// Terminal-Bench run" panel seeds its run cards + cursor from ONE sync snapshot
+// read on route entry, then each operator ingest pushes the run's public-safe
+// projected snapshot over the `public-gym-run-progress:network` scope. The client
+// subscribes strictly from the seeded cursor and upserts each run by `runRef`, so
+// a put baked into the seed is never replayed into a duplicate card. `cursor`
+// tracks the last applied seq so a reconnect replays missed puts from there;
+// `appliedEventRefs` is a redundant de-dupe guard atop the upsert-by-runRef. The
+// GET projection is now only the cold-read seed plus a slow socket-down reconcile.
+// This slice is purely live transport state; the run cards live on `gymRunProgress`.
+export const GymRunProgressStreamModel = ts('LoggedOutGymRunProgressStream', {
+  connection: SettledFeedConnection,
+  cursor: S.Number,
+  appliedEventRefs: S.Array(S.String),
+})
+export type GymRunProgressStreamModel =
+  typeof GymRunProgressStreamModel.Type
+
+export const initGymRunProgressStreamModel = (): GymRunProgressStreamModel =>
+  GymRunProgressStreamModel({
+    connection: 'idle',
+    cursor: 0,
+    appliedEventRefs: [],
+  })
+
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
@@ -1394,6 +1419,7 @@ export const Model = ts('LoggedOut', {
   khalaChat: KhalaChatModel,
   gym: GymModel,
   gymRunProgress: PublicGymRunProgressModel,
+  gymRunProgressStream: GymRunProgressStreamModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1440,6 +1466,7 @@ export const init = (
       route._tag === 'Gym'
         ? LoadingPublicGymRunProgress()
         : IdlePublicGymRunProgress(),
+    gymRunProgressStream: initGymRunProgressStreamModel(),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

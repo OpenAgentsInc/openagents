@@ -648,6 +648,20 @@ export const publicKhalaTokensServedScope = (
   feedId: string = PUBLIC_KHALA_TOKENS_SERVED_ID,
 ): string => `public-khala-tokens-served:${feedId}`
 
+// Single public, read-only scope for the live Gym / Harbor "Follow an active
+// Terminal-Bench run" panel (openagents #6261). Each operator run-progress
+// ingest publishes the public-safe projected snapshot (one put per `runRef`)
+// onto this scope so the `/gym` follow-along updates the instant a snapshot is
+// ingested instead of polling every ~12s. The id is a stable network key so
+// every public surface subscribes to one room. Public-safe payloads only — the
+// already-redacted `openagents.gym.run_progress.v1` projection (counts /
+// denominators / public-safe refs), never raw prompts/responses/logs/keys.
+export const PUBLIC_GYM_RUN_PROGRESS_ID = 'network'
+
+export const publicGymRunProgressScope = (
+  feedId: string = PUBLIC_GYM_RUN_PROGRESS_ID,
+): string => `public-gym-run-progress:${feedId}`
+
 export const makeD1SyncOutboxStore = (
   db: D1Database,
   runtime: SyncWorkerRuntime = systemSyncWorkerRuntime,
