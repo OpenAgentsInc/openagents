@@ -174,13 +174,18 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "tool_call": true,
+          "api": {
+            "id": "openagents/khala"
+          },
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
-  }
+  },
+  "model": "openagents/khala"
 }
 ```
 
@@ -190,14 +195,11 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   `OPENAGENTS_API_KEY`, or use OpenCode's `/connect → Other → id "openagents"` to
   store it in `~/.local/share/opencode/auth.json`. The provider id typed in
   `/connect` must equal the `provider` key in the config.
-- **Model selection:** OpenCode's model reference is `providerId/modelKey`. With
-  the model **key** `openagents/khala` (which is what gets sent upstream as the
-  model id — correct for our API), the in-TUI selector path reads
-  `openagents/openagents/khala`. **TBD to confirm in testing:** whether to keep the
-  model key literally `openagents/khala` (sends the right model id; selector has a
-  doubled segment) or to add server-side acceptance of a shorter key so the
-  selector reads cleanly. Document whichever we choose; do not ship ambiguous
-  instructions.
+- **Model selection:** OpenCode's model reference is `providerId/modelKey`. The
+  selected recipe uses model key `khala`, so the selector/default model is
+  `openagents/khala`. The per-model `api.id` override makes the upstream
+  Chat Completions body still send `model: "openagents/khala"`. This resolves the
+  old doubled selector without adding a server-side alias.
 
 **What to test before we publish the OpenCode recipe:**
 - The endpoint serves chat-completions at `/api/v1/chat/completions` (it does) and

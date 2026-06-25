@@ -147,22 +147,26 @@ OpenCode reads `provider` config and migrates it internally.
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
           "tool_call": true,
+          "api": {
+            "id": "openagents/khala"
+          },
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
   },
-  "model": "openagents/openagents/khala"
+  "model": "openagents/khala"
 }
 ```
 
-The doubled selector path is an OpenCode consequence of provider id plus model
-key. The model key must remain `openagents/khala` until the Khala API accepts a
-shorter alias, because the model key is what OpenCode sends upstream as
-`model: "openagents/khala"`.
+The selected #6239 recipe uses short model key `khala` so OpenCode's
+`providerId/modelKey` selector is `openagents/khala`. The `api.id` override keeps
+the upstream Chat Completions request on the canonical model id:
+`model: "openagents/khala"`. No Khala API alias or server behavior change is
+required.
 
 ### 7. Run the OpenCode smoke
 
@@ -172,7 +176,7 @@ export OPENAGENTS_API_KEY="$OPENAGENTS_AGENT_TOKEN"
 opencode run \
   --pure \
   --agent plan \
-  --model openagents/openagents/khala \
+  --model openagents/khala \
   --dir /Users/christopherdavid/work/openagents-worktrees/khala-opencode-runbook \
   --dangerously-skip-permissions \
   'Use tools to read docs/faq/khala-inference-quickstart.md. Reply with exactly: base=<base-url>; model=<model-id>'
@@ -183,6 +187,16 @@ Expected result after #6232 is deployed:
 ```txt
 base=https://openagents.com/api/v1; model=openagents/khala
 ```
+
+Acceptance checklist for the #6239 recipe:
+
+- OpenCode completes the task by invoking its file-read/tool path, not by a
+  text-only guess.
+- Streaming remains interactive; SSE chunks arrive normally until `[DONE]`.
+- Provider usage is visible in the session/receipt path where OpenCode surfaces
+  it, and the public Khala tokens-served counter increases by the same total.
+- For an exhausted free key, OpenCode shows a readable 402/quota message and the
+  session remains recoverable after key/top-up/reset.
 
 Observed pre-fix result:
 

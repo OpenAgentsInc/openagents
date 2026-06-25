@@ -10,7 +10,7 @@ POST https://openagents.com/api/keys/free
 ```
 
 Returns a normal `oa_agent_` bearer key. No signup, no payment instrument. The key
-unlocks inference on `openagents/khala` at:
+is returned at `credential.token` and unlocks inference on `openagents/khala` at:
 
 ```
 POST https://openagents.com/api/v1/chat/completions
@@ -22,6 +22,7 @@ config in `~/.config/opencode/opencode.json`:
 
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "provider": {
     "openagents": {
       "npm": "@ai-sdk/openai-compatible",
@@ -31,25 +32,36 @@ config in `~/.config/opencode/opencode.json`:
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "tool_call": true,
+          "api": {
+            "id": "openagents/khala"
+          },
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
-  }
+  },
+  "model": "openagents/khala"
 }
 ```
+
+The OpenCode selector is `openagents/khala` (`providerId/modelKey`), while the
+upstream API still receives `model: "openagents/khala"` through the `api.id`
+override. Do not use the older doubled selector recipe
+`openagents/openagents/khala` for new docs.
 
 ## Daily Quota (Per-Key, Per-UTC-Day)
 
 | Resource | Limit |
 |----------|-------|
-| Requests per day | **200** |
-| Tokens per day | **200,000** |
+| Requests per day | **2,000** |
+| Tokens per day | **2,500,000** |
 
 Both counters reset at 00:00 UTC. The free tier is a **research preview** — enough
-for a real "try it" session (a few coding turns) but not for sustained daily use.
+for a real "try it" session and heavier coding evaluation, but not for sustained
+daily production use.
 
 ## Over-Quota Behavior — 402 Payment Required
 
@@ -100,7 +112,6 @@ request/token counts, and limit.
 
 ---
 
-**Status:** File created at `docs/opencode/opencode-free-tier-402-playbook.md`.
-Single-focused playbook covering free key minting, 200-req/200k-tok daily quota,
-over-quota 402 JSON shape, paid balance fallback, and OpenCode error display.
-No other files edited. No commit, no push.
+**Status:** Single-focused playbook covering free key minting, the current
+2,000-request / 2,500,000-token daily quota, over-quota 402 JSON shape, paid
+balance fallback, and OpenCode error display.

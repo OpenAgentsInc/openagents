@@ -19,7 +19,7 @@ counter. These existing registry promises are the ones it moves:
 
 | promiseId | state | How this push advances it | What it still needs for green |
 | --- | --- | --- | --- |
-| `inference.free_tier_taste.v1` | yellow | Pillars 1–2 drive real usage of the live free lane (`openagents/khala`, `POST /api/keys/free`, 200 req / 200k tok/day). The more tools point at the free tier, the stronger the live free-API evidence. | `blocker.product_promises.inference_free_taste_paid_upgrade_not_collectable` — green needs the collectable paid loop so free→paid is a sellable product, plus a receipt-first upgrade. (Owner-gated; out of scope for the GTM push.) |
+| `inference.free_tier_taste.v1` | yellow | Pillars 1–2 drive real usage of the live free lane (`openagents/khala`, `POST /api/keys/free`, 2,000 req / 2.5M tok/day). The more tools point at the free tier, the stronger the live free-API evidence. | `blocker.product_promises.inference_free_taste_paid_upgrade_not_collectable` — green needs the collectable paid loop so free→paid is a sellable product, plus a receipt-first upgrade. (Owner-gated; out of scope for the GTM push.) |
 | `inference.gateway_credits_business.v1` | red | The gateway request surface this promise describes (`POST /v1/chat/completions`, key-auth, balance gate, routing, receipt-first metering) is the exact surface the push grows demand on. More demand = more pressure/evidence for the paid loop. | `..._inference_paid_credits_card_to_credit_not_collectable`, `..._inference_paid_receipt_not_yet_supplied`, `..._inference_mpp_owner_activation_pending`, `public_paid_model_gateway_missing` — needs a real card/MPP→credit→inference-spend settled receipt, owner-signed. |
 | `inference.fireworks_open_model_provider.v1` | yellow | Benchmarking (Pillar 3) compares Khala vs the Fireworks open-model lane; the dogfood traffic exercises it as live supply. | `..._inference_paid_credits_card_to_credit_not_collectable`, `..._inference_open_model_paid_product_no_receipt` — needs a real customer-completed funded open-model request with dereferenceable metering + settlement. |
 | `api.hosted_gemini.v1` | yellow | Khala's free lane serves Gemini Flash today; dogfood + tools exercise the hosted path. | `..._public_paid_model_gateway_missing`, `..._production_hosted_gemini_executor_binding_missing`. |
@@ -67,7 +67,7 @@ publicly built on:
 - **safeCopy (proposed):** "Khala is a free, live, OpenAI-compatible inference
   API. Point any OpenAI-compatible client at `https://openagents.com/api/v1` with
   model `openagents/khala`, mint a free key at `POST /api/keys/free`, and run
-  inference free within a per-key daily quota (200 requests / 200,000 tokens per
+  inference free within a per-key daily quota (2,000 requests / 2,500,000 tokens per
   UTC day). Over-quota and premium lanes require credits. Free inference serves
   own-infra / non-premium models only; the `claude`/premium lanes are never free."
 - **unsafeCopy (must-not-say):** "Paid Khala is generally launched"; "you can fund
@@ -76,7 +76,7 @@ publicly built on:
 - **evidence (proposed):** `POST /api/v1/chat/completions` live (`index.ts`);
   `POST /api/keys/free` live (`free-key-mint-routes.ts`,
   `inference/inference-free-tier-key.ts`, quota constants
-  `FREE_TIER_MAX_REQUESTS_PER_DAY=200`, `FREE_TIER_MAX_TOKENS_PER_DAY=200_000`);
+  `FREE_TIER_MAX_REQUESTS_PER_DAY=2_000`, `FREE_TIER_MAX_TOKENS_PER_DAY=2_500_000`);
   free lane policy (own-infra only, premium excluded) in the same module; capability
   manifest + OpenAPI entries.
 - **rationale:** Splitting the free-API claim out of the credits-business red

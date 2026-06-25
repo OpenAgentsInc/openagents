@@ -17,14 +17,14 @@ This hits our live `POST /api/v1/chat/completions`, model `openagents/khala`.
 OpenCode resolves the in-TUI model selector path as:
 
 ```
-providerId / model.api.id
+providerId / model key
 ```
 
 Two separate concepts:
 
 | Field | Purpose | Example |
 |---|---|---|
-| JSON **key** under `models` | TUI model key segment | `openagents/khala` or `khala` |
+| JSON **key** under `models` | TUI/default-model key segment | `openagents/khala` or `khala` |
 | `api.id` (optional override) | What gets sent as `"model"` upstream | defaults to the JSON key |
 
 If you set model key `openagents/khala` with no `api.id` override, the selector renders `openagents/openagents/khala` (doubled) — correct upstream (sends `{"model": "openagents/khala"}`) but ugly UX.
@@ -56,6 +56,7 @@ Override `api.id` explicitly to decouple the TUI display key from the upstream m
       "models": {
         "khala": {
           "name": "Khala",
+          "tool_call": true,
           "api": {
             "id": "openagents/khala"
           },
@@ -73,18 +74,21 @@ Override `api.id` explicitly to decouple the TUI display key from the upstream m
 | Model JSON **key** | `khala` | Selector reads `openagents/khala` — clean |
 | `api.id` override | `openagents/khala` | Upstream sends `{"model": "openagents/khala"}` — correct |
 | `model` (default) | `openagents/khala` | OpenCode's default model selection |
+| `tool_call` | `true` | OpenCode may use tools/edit loops with the model |
 
 Verified: OpenCode's `packages/core/src/plugin/provider/opencode.ts:125` applies `config.id` when `api.id` is set (`if (config.id !== undefined) model.api.id = config.id`).
 
 ## Key Minting
 
 ```bash
-curl -X POST https://openagents.com/api/keys/free
-# returns {"key": "oa_agent_..."}
+curl -fsS -X POST https://openagents.com/api/keys/free
+# returns {"credential":{"token":"oa_agent_..."}}
 export OPENAGENTS_API_KEY="oa_agent_..."
 ```
 
-Free tier: 200 requests / 200,000 tokens per UTC day per key. Over-quota → 402 `insufficient_credits`.
+Do not paste raw keys into issues, docs, commits, logs, or benchmark artifacts.
+
+Free tier: 2,000 requests / 2,500,000 tokens per UTC day per key. Over-quota -> 402 `insufficient_credits` / `quota_exceeded`.
 
 ## Summary
 
@@ -94,4 +98,4 @@ Free tier: 200 requests / 200,000 tokens per UTC day per key. Over-quota → 402
 | Wrong upstream model id | Short model key with no override | Set `api.id` to `"openagents/khala"` |
 | Both right | — | Recipe above |
 
-**Status:** Internal recipe verified against OpenCode provider schema. Tool-call compatibility (issue #6232 — content arrays, tool-call deltas) deployed but needs production smoke before public publication. No changes to other files. No commits. No pushes.
+**Status:** Selected #6239 recipe for repo docs. Tool-call compatibility (issue #6232 — content arrays, tool-call deltas) is deployed; public promotion still needs a live OpenCode smoke evidence packet covering tool-calling, streaming, token-counter delta, and legible 402 handling.
