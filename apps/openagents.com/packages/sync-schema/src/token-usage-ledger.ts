@@ -353,6 +353,98 @@ export class InferenceAnalyticsRow extends S.Class<InferenceAnalyticsRow>(
   // SUM of our marginal cost (USD) over the group. 0 when every row in the group
   // predates cost recording (see costCoverage on the response).
   costUsd: S.Number,
+  // Fraction (0..1) of rows in this group that carry a stored cost_amount.
+  // Missing costs are not silently treated as free.
+  costCoverage: S.Number,
+}) {}
+
+export const InferenceAnalyticsMeasuredNumber = S.Union([
+  S.Number,
+  S.Literal('not_measured'),
+])
+export type InferenceAnalyticsMeasuredNumber =
+  typeof InferenceAnalyticsMeasuredNumber.Type
+
+export class InferenceAnalyticsLatencySummary extends S.Class<InferenceAnalyticsLatencySummary>(
+  'InferenceAnalyticsLatencySummary',
+)({
+  sampleCount: S.Int,
+  averageMs: InferenceAnalyticsMeasuredNumber,
+  p50Ms: InferenceAnalyticsMeasuredNumber,
+  p90Ms: InferenceAnalyticsMeasuredNumber,
+  p99Ms: InferenceAnalyticsMeasuredNumber,
+}) {}
+
+export class InferenceAnalyticsThroughputSummary extends S.Class<InferenceAnalyticsThroughputSummary>(
+  'InferenceAnalyticsThroughputSummary',
+)({
+  sampleCount: S.Int,
+  averageTokensPerSecond: InferenceAnalyticsMeasuredNumber,
+  p50TokensPerSecond: InferenceAnalyticsMeasuredNumber,
+  p90TokensPerSecond: InferenceAnalyticsMeasuredNumber,
+  p99TokensPerSecond: InferenceAnalyticsMeasuredNumber,
+}) {}
+
+export class InferenceAnalyticsOperationalSummary extends S.Class<InferenceAnalyticsOperationalSummary>(
+  'InferenceAnalyticsOperationalSummary',
+)({
+  busyEvents: S.Int,
+  fallbackEvents: S.Int,
+  fallbackRate: S.Number,
+  saturationEvents: S.Int,
+  queueWaitMs: InferenceAnalyticsLatencySummary,
+  batchWaitMs: InferenceAnalyticsLatencySummary,
+  ttftMs: InferenceAnalyticsLatencySummary,
+  totalWallClockMs: InferenceAnalyticsLatencySummary,
+  perceivedTokensPerSecond: InferenceAnalyticsThroughputSummary,
+}) {}
+
+export class InferenceAnalyticsGlmReplicaSummary extends S.Class<InferenceAnalyticsGlmReplicaSummary>(
+  'InferenceAnalyticsGlmReplicaSummary',
+)({
+  key: S.String,
+  label: S.String,
+  totalTokens: S.Int,
+  usageEvents: S.Int,
+  costUsd: S.Number,
+  costCoverage: S.Number,
+  capacityClass: S.String,
+  warmState: S.String,
+  latestInflight: InferenceAnalyticsMeasuredNumber,
+  maxInflight: InferenceAnalyticsMeasuredNumber,
+  latestQueueDepth: InferenceAnalyticsMeasuredNumber,
+  busyEvents: S.Int,
+  fallbackEvents: S.Int,
+  saturationEvents: S.Int,
+  queueWaitMs: InferenceAnalyticsLatencySummary,
+  ttftMs: InferenceAnalyticsLatencySummary,
+  totalWallClockMs: InferenceAnalyticsLatencySummary,
+  perceivedTokensPerSecond: InferenceAnalyticsThroughputSummary,
+  keepWarmStatus: S.String,
+  watchdogStatus: S.String,
+  uptimeHours: InferenceAnalyticsMeasuredNumber,
+  idleHours: InferenceAnalyticsMeasuredNumber,
+  effectiveCostPerServedTokenUsd: InferenceAnalyticsMeasuredNumber,
+}) {}
+
+export const InferenceAnalyticsHourlyCostCoverage = S.Literals([
+  'measured',
+  'not_measured',
+  'partial',
+])
+export type InferenceAnalyticsHourlyCostCoverage =
+  typeof InferenceAnalyticsHourlyCostCoverage.Type
+
+export class InferenceAnalyticsOwnedHourlySummary extends S.Class<InferenceAnalyticsOwnedHourlySummary>(
+  'InferenceAnalyticsOwnedHourlySummary',
+)({
+  costCoverage: InferenceAnalyticsHourlyCostCoverage,
+  hourlyBurnUsd: InferenceAnalyticsMeasuredNumber,
+  idleBurnUsd: InferenceAnalyticsMeasuredNumber,
+  uptimeHours: InferenceAnalyticsMeasuredNumber,
+  idleHours: InferenceAnalyticsMeasuredNumber,
+  effectiveCostPerServedTokenUsd: InferenceAnalyticsMeasuredNumber,
+  blockerRefs: S.Array(S.String),
 }) {}
 
 // One per-day analytics point (UTC calendar day) with summed tokens, request
@@ -411,12 +503,19 @@ export class InferenceAnalyticsResponse extends S.Class<InferenceAnalyticsRespon
   window: InferenceAnalyticsWindow,
   generatedAt: S.String,
   byProvider: S.Array(InferenceAnalyticsRow),
+  bySupplyLane: S.Array(InferenceAnalyticsRow),
+  byAdapter: S.Array(InferenceAnalyticsRow),
   byModel: S.Array(InferenceAnalyticsRow),
   byRoute: S.Array(InferenceAnalyticsRow),
+  byGlmReplica: S.Array(InferenceAnalyticsRow),
+  byRequestClass: S.Array(InferenceAnalyticsRow),
   byDemandKind: S.Array(InferenceAnalyticsRow),
   byDemandSource: S.Array(InferenceAnalyticsRow),
   byDemandClient: S.Array(InferenceAnalyticsRow),
   byDay: S.Array(InferenceAnalyticsDayPoint),
   byDemandClientDay: S.Array(InferenceAnalyticsDemandClientDayPoint),
+  operational: InferenceAnalyticsOperationalSummary,
+  glmReplicas: S.Array(InferenceAnalyticsGlmReplicaSummary),
+  ownedHourly: InferenceAnalyticsOwnedHourlySummary,
   totals: InferenceAnalyticsTotals,
 }) {}

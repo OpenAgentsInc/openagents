@@ -449,6 +449,26 @@ describe('served-tokens-recorder', () => {
         demandKind: 'internal',
         demandSource: 'qa-dogfood',
       },
+      requestMetrics: {
+        fallbackReason: 'glm_pool_saturated',
+        generationWallClockMs: 1000,
+        glmSaturationPolicy: 'queue_then_overflow',
+        queueWaitMs: 125,
+        replicaCapacityClass: 'spot',
+        replicaCostProfileRef: 'cost.hydralisk.glm_52_reap_504b.g4_spot.tp4.v1',
+        replicaHealthScore: 1,
+        replicaInflightCount: 1,
+        replicaMaxInflight: 1,
+        replicaQueueDepth: 0,
+        replicaRegion: 'us-central1-a',
+        replicaWarmState: 'warm',
+        requestClass: 'interactive_stream',
+        selectedReplicaId: 'second',
+        selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+        supplyLane: 'hydralisk',
+        totalWallClockMs: 1500,
+        ttftMs: 250,
+      },
       requestedModel: 'openagents/khala',
       servedModel: 'openagents/khala',
       usage: {
@@ -470,7 +490,16 @@ describe('served-tokens-recorder', () => {
       demandClient: 'qa-runner',
       demandKind: 'internal',
       demandSource: 'qa-dogfood',
+      fallbackReason: 'glm_pool_saturated',
+      glmSaturationPolicy: 'queue_then_overflow',
+      perceivedTokensPerSecond: 40,
+      queueWaitMs: 125,
       requestedModel: 'openagents/khala',
+      requestClass: 'interactive_stream',
+      selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+      supplyLane: 'hydralisk',
+      totalWallClockMs: 1500,
+      ttftMs: 250,
     })
     expect(body.demand).toEqual({
       demandClient: 'qa-runner',
@@ -478,6 +507,8 @@ describe('served-tokens-recorder', () => {
       demandSource: 'qa-dogfood',
     })
     expect(JSON.stringify(body)).not.toContain('prompt_text')
+    expect(JSON.stringify(body)).not.toContain('https://')
+    expect(JSON.stringify(body)).not.toContain('Bearer ')
   })
 
   test('records our marginal cost (USD) against the SERVED provider lane (#6232)', () => {

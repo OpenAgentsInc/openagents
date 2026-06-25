@@ -738,8 +738,15 @@ const metadataForSelection = (
   glmSaturationPolicy: saturationPolicy,
   queueWaitMs,
   replicaBusyReason,
+  replicaCapacityClass: selected.state.capacityClass,
+  replicaCostProfileRef: selected.replica.costProfileRef,
   replicaFallbackReason,
   replicaHealthScore: healthScore(selected.state.health),
+  replicaInflightCount: selected.state.inflightCount,
+  replicaMaxInflight: selected.state.maxInflight,
+  replicaQueueDepth: selected.state.queueDepth,
+  replicaWarmState:
+    selected.state.warmAtEpochMs === undefined ? 'unknown' : 'warm',
   ...(selected.state.region === undefined
     ? {}
     : { replicaRegion: selected.state.region }),

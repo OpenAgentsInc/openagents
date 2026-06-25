@@ -1939,6 +1939,31 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
+            },
+          ],
+          bySupplyLane: [
+            {
+              key: 'google_gemini',
+              label: 'google_gemini',
+              inputTokens: 120,
+              outputTokens: 60,
+              totalTokens: 180,
+              usageEvents: 2,
+              costUsd: 0.018,
+              costCoverage: 1,
+            },
+          ],
+          byAdapter: [
+            {
+              key: 'google_gemini',
+              label: 'google_gemini',
+              inputTokens: 120,
+              outputTokens: 60,
+              totalTokens: 180,
+              usageEvents: 2,
+              costUsd: 0.018,
+              costCoverage: 1,
             },
           ],
           byModel: [
@@ -1950,6 +1975,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
             },
           ],
           byRoute: [
@@ -1961,8 +1987,11 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
             },
           ],
+          byGlmReplica: [],
+          byRequestClass: [],
           byDemandKind: [
             {
               key: 'external',
@@ -1972,6 +2001,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
             },
             {
               key: 'internal',
@@ -1981,6 +2011,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 100,
               usageEvents: 1,
               costUsd: 0.009,
+              costCoverage: 1,
             },
             {
               key: 'unlabeled',
@@ -1990,6 +2021,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 25,
               usageEvents: 1,
               costUsd: 0,
+              costCoverage: 0,
             },
           ],
           byDemandSource: [
@@ -2001,6 +2033,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
             },
             {
               key: 'internal:openagents-gym',
@@ -2010,6 +2043,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 100,
               usageEvents: 1,
               costUsd: 0.009,
+              costCoverage: 1,
             },
             {
               key: 'unlabeled:unknown',
@@ -2019,6 +2053,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 25,
               usageEvents: 1,
               costUsd: 0,
+              costCoverage: 0,
             },
           ],
           byDemandClient: [
@@ -2030,6 +2065,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 180,
               usageEvents: 2,
               costUsd: 0.018,
+              costCoverage: 1,
             },
             {
               key: 'internal:gym-opencode-runner',
@@ -2039,6 +2075,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 100,
               usageEvents: 1,
               costUsd: 0.009,
+              costCoverage: 1,
             },
             {
               key: 'unlabeled:unknown',
@@ -2048,6 +2085,7 @@ describe('logged-in workroom sidebar', () => {
               totalTokens: 25,
               usageEvents: 1,
               costUsd: 0,
+              costCoverage: 0,
             },
           ],
           byDay: [
@@ -2100,6 +2138,60 @@ describe('logged-in workroom sidebar', () => {
               costUsd: 0,
             },
           ],
+          operational: {
+            batchWaitMs: {
+              averageMs: 'not_measured',
+              p50Ms: 'not_measured',
+              p90Ms: 'not_measured',
+              p99Ms: 'not_measured',
+              sampleCount: 0,
+            },
+            busyEvents: 0,
+            fallbackEvents: 0,
+            fallbackRate: 0,
+            perceivedTokensPerSecond: {
+              averageTokensPerSecond: 'not_measured',
+              p50TokensPerSecond: 'not_measured',
+              p90TokensPerSecond: 'not_measured',
+              p99TokensPerSecond: 'not_measured',
+              sampleCount: 0,
+            },
+            queueWaitMs: {
+              averageMs: 'not_measured',
+              p50Ms: 'not_measured',
+              p90Ms: 'not_measured',
+              p99Ms: 'not_measured',
+              sampleCount: 0,
+            },
+            saturationEvents: 0,
+            totalWallClockMs: {
+              averageMs: 'not_measured',
+              p50Ms: 'not_measured',
+              p90Ms: 'not_measured',
+              p99Ms: 'not_measured',
+              sampleCount: 0,
+            },
+            ttftMs: {
+              averageMs: 'not_measured',
+              p50Ms: 'not_measured',
+              p90Ms: 'not_measured',
+              p99Ms: 'not_measured',
+              sampleCount: 0,
+            },
+          },
+          glmReplicas: [],
+          ownedHourly: {
+            blockerRefs: [
+              'blocker.inference_analytics.owned_hourly_host_lifecycle_missing',
+              'blocker.inference_analytics.glm_idle_burn_not_measured',
+            ],
+            costCoverage: 'not_measured',
+            effectiveCostPerServedTokenUsd: 'not_measured',
+            hourlyBurnUsd: 'not_measured',
+            idleBurnUsd: 'not_measured',
+            idleHours: 'not_measured',
+            uptimeHours: 'not_measured',
+          },
           totals: {
             inputTokens: 205,
             outputTokens: 100,

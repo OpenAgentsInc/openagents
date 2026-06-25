@@ -162,6 +162,30 @@ That makes operator and owner dashboards honest about why a request did not use
 GLM while still keeping the private Hydralisk topology out of customer-visible
 data.
 
+## Owner Analytics Contract
+
+Completed Khala requests now persist public-safe GLM routing metrics into the
+canonical token usage ledger. The owner-only endpoint:
+
+```text
+GET /api/admin/inference-analytics?window=today|7d|30d|all
+```
+
+can group traffic by supply lane, adapter id, backing model, request class,
+demand labels, and selected GLM replica ref. It also returns a `glmReplicas`
+summary with latest inflight count, max inflight, queue depth, warm state,
+capacity class (`spot`, `on_demand`, or `unknown`), busy/fallback/saturation
+counts, TTFT, wall time, queue wait, and perceived tokens/sec. This is the
+private owner/operator surface for answering: which replica served, what fell
+back, what saturated, and what cost was recorded on the token row.
+
+Owned hourly economics are deliberately separated from marginal token cost.
+Until Hydralisk host lifecycle telemetry writes keep-warm/watchdog status,
+uptime, idle time, and hourly cost into an owner ledger, the analytics response
+shows those fields as `not_measured` under `ownedHourly` and per-replica
+`effectiveCostPerServedTokenUsd`. That prevents an idle four-GPU or eight-GPU
+host from looking free just because a token row has no hourly-burn allocation.
+
 ## Expected Behavior
 
 - `openagents/khala` uses the GLM Hydralisk adapter first when the GLM lane is
@@ -178,6 +202,12 @@ data.
   rest of the Khala plan.
 - The GLM backing lane counts as Hydralisk supply for disclosures, usage
   receipts, and billing context.
+- Owner analytics can see GLM replica refs, capacity class, latest inflight,
+  queue depth, warm state, fallback/saturation counts, TTFT, wall time, queue
+  wait, and TPS without exposing private endpoints.
+- Owned GLM hourly burn, idle burn, keep-warm status, watchdog status, uptime,
+  idle hours, and effective hourly cost per served token remain explicitly
+  `not_measured` until host lifecycle telemetry exists.
 - Direct customer selection remains closed; public model listing still exposes
   Khala, not internal supply workers.
 

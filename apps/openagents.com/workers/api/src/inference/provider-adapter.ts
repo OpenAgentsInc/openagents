@@ -70,6 +70,12 @@ export type InferenceAdapterRouteMetadata = Readonly<{
   replicaBusyReason?: string | null | undefined
   queueWaitMs?: number | undefined
   glmSaturationPolicy?: string | undefined
+  replicaCapacityClass?: string | undefined
+  replicaCostProfileRef?: string | undefined
+  replicaInflightCount?: number | undefined
+  replicaMaxInflight?: number | undefined
+  replicaQueueDepth?: number | undefined
+  replicaWarmState?: 'cold' | 'unknown' | 'warm' | undefined
 }>
 
 export type InferenceToolCall = Readonly<{

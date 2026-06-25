@@ -229,7 +229,7 @@ const unsafeKeyPattern =
   /(^|[_-])(access[_-]?token|api[_-]?key|authorization|bearer[_-]?token|callback[_-]?(token|url)|code[_-]?verifier|completion|cookie|credential|device[_-]?auth|private[_-]?(key|path|repo|source|trace)|prompt|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(auth|completion|log|payload|prompt|provider|response|source|text|trace)|refresh[_-]?token|secret|source[_-]?code|tool[_-]?args)$/i
 
 const unsafeValuePattern =
-  /(@|\/Users\/|\/home\/|Bearer\s+[A-Za-z0-9._-]{8,}|authorization:\s*bearer|access[_-]?token=|api[_-]?key=|callback[_-]?token|callback[_-]?url|cookie=|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|opencode_auth_content|private[_-]?(key|repo|source)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(completion|payload|prompt|provider|response|source|text|trace)|refresh[_-]?token|secret|sk-[a-z0-9]|source[_-]?archive|wallet[_-]?(key|mnemonic|secret|seed))/i
+  /(@|\/Users\/|\/home\/|Bearer\s+[A-Za-z0-9._-]{8,}|authorization:\s*bearer|access[_-]?token=|api[_-]?key=|callback[_-]?token|callback[_-]?url|cookie=|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|opencode_auth_content|private[_-]?(key|repo|source)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(completion|payload|prompt|provider|response|source|text|trace)|refresh[_-]?token|secret|(?:^|[^a-z0-9])sk-[a-z0-9]|source[_-]?archive|wallet[_-]?(key|mnemonic|secret|seed))/i
 
 const optionalText = (value: string | undefined): string | undefined => {
   const trimmed = value?.trim()
@@ -378,6 +378,203 @@ const countsFromRow = (
 // floating-point noise across the analytics rollups. Non-negative.
 const roundCostUsd = (value: number): number =>
   Math.round(Math.max(0, value) * 1_000_000) / 1_000_000
+
+const NOT_MEASURED = 'not_measured' as const
+
+type MeasuredNumber = number | typeof NOT_MEASURED
+
+type InferenceAnalyticsGroupRow = Readonly<{
+  key: string | null
+  label: string | null
+  input_tokens: number | null
+  output_tokens: number | null
+  total_tokens: number | null
+  usage_events: number | null
+  cost_usd: number | null
+  cost_rows: number | null
+}>
+
+type InferenceAnalyticsMetadataRow = Readonly<{
+  batch_wait_ms: number | null
+  cost_amount: number | null
+  fallback_reason: string | null
+  glm_saturation_policy: string | null
+  perceived_tokens_per_second: number | null
+  queue_wait_ms: number | null
+  replica_busy_reason: string | null
+  replica_capacity_class: string | null
+  replica_inflight_count: number | null
+  replica_max_inflight: number | null
+  replica_queue_depth: number | null
+  replica_warm_state: string | null
+  request_class: string | null
+  observed_at: string | null
+  selected_replica_id: string | null
+  selected_replica_ref: string | null
+  total_tokens: number | null
+  total_wall_clock_ms: number | null
+  ttft_ms: number | null
+}>
+
+const finiteNonNegativeNumber = (
+  value: number | null | undefined,
+): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined
+
+const measuredAverage = (values: ReadonlyArray<number>): MeasuredNumber =>
+  values.length === 0
+    ? NOT_MEASURED
+    : Math.round(
+        (values.reduce((sum, value) => sum + value, 0) / values.length) * 1000,
+      ) / 1000
+
+const measuredPercentile = (
+  values: ReadonlyArray<number>,
+  percentile: number,
+): MeasuredNumber => {
+  if (values.length === 0) {
+    return NOT_MEASURED
+  }
+  const sorted = [...values].sort((left, right) => left - right)
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1),
+  )
+
+  return Math.round(sorted[index]! * 1000) / 1000
+}
+
+const latencySummary = (values: ReadonlyArray<number>) => ({
+  averageMs: measuredAverage(values),
+  p50Ms: measuredPercentile(values, 50),
+  p90Ms: measuredPercentile(values, 90),
+  p99Ms: measuredPercentile(values, 99),
+  sampleCount: values.length,
+})
+
+const throughputSummary = (values: ReadonlyArray<number>) => ({
+  averageTokensPerSecond: measuredAverage(values),
+  p50TokensPerSecond: measuredPercentile(values, 50),
+  p90TokensPerSecond: measuredPercentile(values, 90),
+  p99TokensPerSecond: measuredPercentile(values, 99),
+  sampleCount: values.length,
+})
+
+const costCoverage = (usageEvents: number, costRows: number): number =>
+  usageEvents === 0
+    ? 1
+    : Math.round((costRows / usageEvents) * 1_000_000) / 1_000_000
+
+const measuredLatest = (value: number | null | undefined): MeasuredNumber =>
+  finiteNonNegativeNumber(value) ?? NOT_MEASURED
+
+const safeTextOrNotMeasured = (value: string | null | undefined): string => {
+  const trimmed = value?.trim()
+
+  return trimmed === undefined || trimmed === '' ? NOT_MEASURED : trimmed
+}
+
+const glmReplicaSummaries = (
+  rows: ReadonlyArray<InferenceAnalyticsMetadataRow>,
+) =>
+  Object.values(
+    rows.reduce<
+      Record<
+        string,
+        Readonly<{
+          rows: Array<InferenceAnalyticsMetadataRow>
+        }>
+      >
+    >((groups, row) => {
+      const key = safeTextOrNotMeasured(row.selected_replica_ref)
+      if (key === NOT_MEASURED) {
+        return groups
+      }
+      groups[key] = { rows: [...(groups[key]?.rows ?? []), row] }
+
+      return groups
+    }, {}),
+  )
+    .map(group => {
+      const sortedRows = [...group.rows].sort((left, right) =>
+        safeTextOrNotMeasured(left.observed_at).localeCompare(
+          safeTextOrNotMeasured(right.observed_at),
+        ),
+      )
+      const latest = sortedRows.at(-1)
+      const usageEvents = group.rows.length
+      const totalTokens = group.rows.reduce(
+        (sum, row) => sum + Math.max(0, Math.trunc(row.total_tokens ?? 0)),
+        0,
+      )
+      const costRows = group.rows.filter(
+        row => finiteNonNegativeNumber(row.cost_amount) !== undefined,
+      ).length
+      const costUsd = group.rows.reduce(
+        (sum, row) => sum + (finiteNonNegativeNumber(row.cost_amount) ?? 0),
+        0,
+      )
+      const queueWaitMs = group.rows
+        .map(row => finiteNonNegativeNumber(row.queue_wait_ms))
+        .filter((value): value is number => value !== undefined)
+      const ttftMs = group.rows
+        .map(row => finiteNonNegativeNumber(row.ttft_ms))
+        .filter((value): value is number => value !== undefined)
+      const totalWallClockMs = group.rows
+        .map(row => finiteNonNegativeNumber(row.total_wall_clock_ms))
+        .filter((value): value is number => value !== undefined)
+      const perceivedTokensPerSecond = group.rows
+        .map(row => finiteNonNegativeNumber(row.perceived_tokens_per_second))
+        .filter((value): value is number => value !== undefined)
+      const busyEvents = group.rows.filter(
+        row =>
+          typeof row.replica_busy_reason === 'string' &&
+          row.replica_busy_reason.trim() !== '',
+      ).length
+      const fallbackEvents = group.rows.filter(
+        row =>
+          typeof row.fallback_reason === 'string' &&
+          row.fallback_reason.trim() !== '',
+      ).length
+      const saturationEvents = group.rows.filter(
+        row =>
+          typeof row.glm_saturation_policy === 'string' &&
+          row.glm_saturation_policy.trim() !== '',
+      ).length
+
+      return {
+        busyEvents,
+        capacityClass: safeTextOrNotMeasured(latest?.replica_capacity_class),
+        costCoverage: costCoverage(usageEvents, costRows),
+        costUsd: roundCostUsd(costUsd),
+        effectiveCostPerServedTokenUsd: NOT_MEASURED,
+        fallbackEvents,
+        idleHours: NOT_MEASURED,
+        keepWarmStatus: NOT_MEASURED,
+        key: safeTextOrNotMeasured(latest?.selected_replica_ref),
+        label: safeTextOrNotMeasured(latest?.selected_replica_id),
+        latestInflight: measuredLatest(latest?.replica_inflight_count),
+        latestQueueDepth: measuredLatest(latest?.replica_queue_depth),
+        maxInflight: measuredLatest(latest?.replica_max_inflight),
+        perceivedTokensPerSecond: throughputSummary(perceivedTokensPerSecond),
+        queueWaitMs: latencySummary(queueWaitMs),
+        saturationEvents,
+        totalTokens,
+        totalWallClockMs: latencySummary(totalWallClockMs),
+        ttftMs: latencySummary(ttftMs),
+        uptimeHours: NOT_MEASURED,
+        usageEvents,
+        warmState: safeTextOrNotMeasured(latest?.replica_warm_state),
+        watchdogStatus: NOT_MEASURED,
+      }
+    })
+    .sort(
+      (left, right) =>
+        right.totalTokens - left.totalTokens ||
+        left.key.localeCompare(right.key),
+    )
 
 const isUnsafeKey = (key: string): boolean => unsafeKeyPattern.test(key)
 
@@ -1422,19 +1619,17 @@ export const makeD1TokenUsageLedger = (
         keyExpr: string,
         labelExpr: string,
         groupExpr: string,
+        predicate?: string,
       ): Effect.Effect<
-        ReadonlyArray<{
-          key: string | null
-          label: string | null
-          input_tokens: number | null
-          output_tokens: number | null
-          total_tokens: number | null
-          usage_events: number | null
-          cost_usd: number | null
-        }>,
+        ReadonlyArray<InferenceAnalyticsGroupRow>,
         TokenUsageLedgerStorageError
-      > =>
-        d1Effect(operation, () =>
+      > => {
+        const scopedWhereSql =
+          predicate === undefined
+            ? whereSql
+            : `${whereSql === '' ? 'WHERE' : `${whereSql} AND`} ${predicate}`
+
+        return d1Effect(operation, () =>
           db
             .prepare(
               `SELECT
@@ -1445,45 +1640,50 @@ export const makeD1TokenUsageLedger = (
                   COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
                     AS total_tokens,
                   COUNT(*) AS usage_events,
-                  COALESCE(SUM(cost_amount), 0) AS cost_usd
+                  COALESCE(SUM(cost_amount), 0) AS cost_usd,
+                  COALESCE(SUM(CASE WHEN cost_amount IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS cost_rows
                  FROM token_usage_events
-                ${whereSql}
+                ${scopedWhereSql}
                 GROUP BY ${groupExpr}
                 ORDER BY total_tokens DESC, key ASC
                 LIMIT 100`,
             )
             .bind(...bind)
-            .all<{
-              key: string | null
-              label: string | null
-              input_tokens: number | null
-              output_tokens: number | null
-              total_tokens: number | null
-              usage_events: number | null
-              cost_usd: number | null
-            }>(),
+            .all<InferenceAnalyticsGroupRow>(),
         ).pipe(Effect.map(result => result.results))
+      }
 
-      const analyticsRow = (row: {
-        key: string | null
-        label: string | null
-        input_tokens: number | null
-        output_tokens: number | null
-        total_tokens: number | null
-        usage_events: number | null
-        cost_usd: number | null
-      }) => ({
-        costUsd: roundCostUsd(row.cost_usd ?? 0),
-        inputTokens: Math.max(0, Math.trunc(row.input_tokens ?? 0)),
-        key: row.key ?? 'unknown',
-        label: row.label ?? 'unknown',
-        outputTokens: Math.max(0, Math.trunc(row.output_tokens ?? 0)),
-        totalTokens: Math.max(0, Math.trunc(row.total_tokens ?? 0)),
-        usageEvents: Math.max(0, Math.trunc(row.usage_events ?? 0)),
-      })
+      const analyticsRow = (row: InferenceAnalyticsGroupRow) => {
+        const usageEvents = Math.max(0, Math.trunc(row.usage_events ?? 0))
+        const costRows = Math.max(0, Math.trunc(row.cost_rows ?? 0))
+
+        return {
+          costCoverage: costCoverage(usageEvents, costRows),
+          costUsd: roundCostUsd(row.cost_usd ?? 0),
+          inputTokens: Math.max(0, Math.trunc(row.input_tokens ?? 0)),
+          key: row.key ?? 'unknown',
+          label: row.label ?? 'unknown',
+          outputTokens: Math.max(0, Math.trunc(row.output_tokens ?? 0)),
+          totalTokens: Math.max(0, Math.trunc(row.total_tokens ?? 0)),
+          usageEvents,
+        }
+      }
 
       const byProvider = yield* groupQuery(
         'inferenceAnalytics.byProvider',
+        `COALESCE(provider, 'unknown')`,
+        `COALESCE(provider, 'unknown')`,
+        `COALESCE(provider, 'unknown')`,
+      )
+      const bySupplyLane = yield* groupQuery(
+        'inferenceAnalytics.bySupplyLane',
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.supplyLane'), ''), 'unknown')`,
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.supplyLane'), ''), 'unknown')`,
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.supplyLane'), ''), 'unknown')`,
+      )
+      const byAdapter = yield* groupQuery(
+        'inferenceAnalytics.byAdapter',
         `COALESCE(provider, 'unknown')`,
         `COALESCE(provider, 'unknown')`,
         `COALESCE(provider, 'unknown')`,
@@ -1499,6 +1699,19 @@ export const makeD1TokenUsageLedger = (
         `producer_system || ':' || source_route`,
         `producer_system || ' / ' || source_route`,
         `producer_system, source_route`,
+      )
+      const byGlmReplica = yield* groupQuery(
+        'inferenceAnalytics.byGlmReplica',
+        `json_extract(safe_metadata_json, '$.selectedReplicaRef')`,
+        `COALESCE(json_extract(safe_metadata_json, '$.selectedReplicaId'), json_extract(safe_metadata_json, '$.selectedReplicaRef'))`,
+        `json_extract(safe_metadata_json, '$.selectedReplicaRef'), json_extract(safe_metadata_json, '$.selectedReplicaId')`,
+        `json_type(safe_metadata_json, '$.selectedReplicaRef') = 'text'`,
+      )
+      const byRequestClass = yield* groupQuery(
+        'inferenceAnalytics.byRequestClass',
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.requestClass'), ''), 'not_measured')`,
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.requestClass'), ''), 'not_measured')`,
+        `COALESCE(NULLIF(json_extract(safe_metadata_json, '$.requestClass'), ''), 'not_measured')`,
       )
       const byDemandKind = yield* groupQuery(
         'inferenceAnalytics.byDemandKind',
@@ -1562,6 +1775,37 @@ export const makeD1TokenUsageLedger = (
               cost_usd: number | null
             }>(),
       ).pipe(Effect.map(result => result.results))
+      const metadataRows = yield* d1Effect(
+        'inferenceAnalytics.metadataSamples',
+        () =>
+          db
+            .prepare(
+              `SELECT
+                  json_extract(safe_metadata_json, '$.batchWaitMs') AS batch_wait_ms,
+                  cost_amount,
+                  json_extract(safe_metadata_json, '$.fallbackReason') AS fallback_reason,
+                  json_extract(safe_metadata_json, '$.glmSaturationPolicy') AS glm_saturation_policy,
+                  json_extract(safe_metadata_json, '$.perceivedTokensPerSecond') AS perceived_tokens_per_second,
+                  json_extract(safe_metadata_json, '$.queueWaitMs') AS queue_wait_ms,
+                  json_extract(safe_metadata_json, '$.replicaBusyReason') AS replica_busy_reason,
+                  json_extract(safe_metadata_json, '$.replicaCapacityClass') AS replica_capacity_class,
+                  json_extract(safe_metadata_json, '$.replicaInflightCount') AS replica_inflight_count,
+                  json_extract(safe_metadata_json, '$.replicaMaxInflight') AS replica_max_inflight,
+                  json_extract(safe_metadata_json, '$.replicaQueueDepth') AS replica_queue_depth,
+                  json_extract(safe_metadata_json, '$.replicaWarmState') AS replica_warm_state,
+                  json_extract(safe_metadata_json, '$.requestClass') AS request_class,
+                  observed_at,
+                  json_extract(safe_metadata_json, '$.selectedReplicaId') AS selected_replica_id,
+                  json_extract(safe_metadata_json, '$.selectedReplicaRef') AS selected_replica_ref,
+                  total_tokens,
+                  json_extract(safe_metadata_json, '$.totalWallClockMs') AS total_wall_clock_ms,
+                  json_extract(safe_metadata_json, '$.ttftMs') AS ttft_ms
+                 FROM token_usage_events
+                ${whereSql}`,
+            )
+            .bind(...bind)
+            .all<InferenceAnalyticsMetadataRow>(),
+      ).pipe(Effect.map(result => result.results))
       const totalsRow = yield* d1Effect('inferenceAnalytics.totals', () =>
         db
           .prepare(
@@ -1590,6 +1834,36 @@ export const makeD1TokenUsageLedger = (
 
       const usageEvents = Math.max(0, Math.trunc(totalsRow?.usage_events ?? 0))
       const costRows = Math.max(0, Math.trunc(totalsRow?.cost_rows ?? 0))
+      const queueWaitMs = metadataRows
+        .map(row => finiteNonNegativeNumber(row.queue_wait_ms))
+        .filter((value): value is number => value !== undefined)
+      const batchWaitMs = metadataRows
+        .map(row => finiteNonNegativeNumber(row.batch_wait_ms))
+        .filter((value): value is number => value !== undefined)
+      const ttftMs = metadataRows
+        .map(row => finiteNonNegativeNumber(row.ttft_ms))
+        .filter((value): value is number => value !== undefined)
+      const totalWallClockMs = metadataRows
+        .map(row => finiteNonNegativeNumber(row.total_wall_clock_ms))
+        .filter((value): value is number => value !== undefined)
+      const perceivedTokensPerSecond = metadataRows
+        .map(row => finiteNonNegativeNumber(row.perceived_tokens_per_second))
+        .filter((value): value is number => value !== undefined)
+      const busyEvents = metadataRows.filter(
+        row =>
+          typeof row.replica_busy_reason === 'string' &&
+          row.replica_busy_reason.trim() !== '',
+      ).length
+      const fallbackEvents = metadataRows.filter(
+        row =>
+          typeof row.fallback_reason === 'string' &&
+          row.fallback_reason.trim() !== '',
+      ).length
+      const saturationEvents = metadataRows.filter(
+        row =>
+          typeof row.glm_saturation_policy === 'string' &&
+          row.glm_saturation_policy.trim() !== '',
+      ).length
 
       return yield* decodeInferenceAnalyticsResponse({
         schemaVersion: 'openagents.inference_analytics.v1',
@@ -1627,16 +1901,45 @@ export const makeD1TokenUsageLedger = (
           })),
         byModel: byModel.map(analyticsRow),
         byProvider: byProvider.map(analyticsRow),
+        bySupplyLane: bySupplyLane.map(analyticsRow),
+        byAdapter: byAdapter.map(analyticsRow),
         byRoute: byRoute.map(analyticsRow),
+        byGlmReplica: byGlmReplica.map(analyticsRow),
+        byRequestClass: byRequestClass.map(analyticsRow),
         byDemandKind: byDemandKind.map(analyticsRow),
         byDemandSource: byDemandSource.map(analyticsRow),
         byDemandClient: byDemandClient.map(analyticsRow),
         generatedAt: runtime.nowIso(),
-        totals: {
-          costCoverage:
+        glmReplicas: glmReplicaSummaries(metadataRows),
+        operational: {
+          batchWaitMs: latencySummary(batchWaitMs),
+          busyEvents,
+          fallbackEvents,
+          fallbackRate:
             usageEvents === 0
-              ? 1
-              : Math.round((costRows / usageEvents) * 1_000_000) / 1_000_000,
+              ? 0
+              : Math.round((fallbackEvents / usageEvents) * 1_000_000) /
+                1_000_000,
+          perceivedTokensPerSecond: throughputSummary(perceivedTokensPerSecond),
+          queueWaitMs: latencySummary(queueWaitMs),
+          saturationEvents,
+          totalWallClockMs: latencySummary(totalWallClockMs),
+          ttftMs: latencySummary(ttftMs),
+        },
+        ownedHourly: {
+          blockerRefs: [
+            'blocker.inference_analytics.owned_hourly_host_lifecycle_missing',
+            'blocker.inference_analytics.glm_idle_burn_not_measured',
+          ],
+          costCoverage: 'not_measured',
+          effectiveCostPerServedTokenUsd: NOT_MEASURED,
+          hourlyBurnUsd: NOT_MEASURED,
+          idleBurnUsd: NOT_MEASURED,
+          idleHours: NOT_MEASURED,
+          uptimeHours: NOT_MEASURED,
+        },
+        totals: {
+          costCoverage: costCoverage(usageEvents, costRows),
           costUsd: roundCostUsd(totalsRow?.cost_usd ?? 0),
           inputTokens: Math.max(0, Math.trunc(totalsRow?.input_tokens ?? 0)),
           outputTokens: Math.max(0, Math.trunc(totalsRow?.output_tokens ?? 0)),

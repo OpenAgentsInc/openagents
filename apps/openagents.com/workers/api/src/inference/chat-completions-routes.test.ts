@@ -610,6 +610,7 @@ describe('POST /v1/chat/completions', () => {
       accountRef: string
       requestId: string
       requestAttribution?: unknown
+      requestMetrics?: unknown
       servedModel: string
       streamed: boolean
       usage: InferenceUsage
@@ -624,6 +625,7 @@ describe('POST /v1/chat/completions', () => {
                 accountRef: input.accountRef,
                 requestId: input.requestId,
                 requestAttribution: input.requestAttribution,
+                requestMetrics: input.requestMetrics,
                 servedModel: input.servedModel,
                 streamed: input.streamed,
                 usage: input.usage,
@@ -640,6 +642,10 @@ describe('POST /v1/chat/completions', () => {
     // The same served usage the metering hook saw (echoed reply = 2 completion).
     expect(recorded[0]?.usage.completionTokens).toBe(2)
     expect(typeof recorded[0]?.requestId).toBe('string')
+    expect(recorded[0]?.requestMetrics).toMatchObject({
+      requestClass: 'async_job',
+      totalWallClockMs: 0,
+    })
   })
 
   test('records public-safe QA demand attribution from request headers', async () => {

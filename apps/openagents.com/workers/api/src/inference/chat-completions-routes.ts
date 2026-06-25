@@ -148,6 +148,7 @@ import {
 } from './prompt-prefix-cache'
 import {
   InferenceAdapterError,
+  type InferenceAdapterRouteMetadata,
   type InferenceMessage,
   type InferenceProviderRegistry,
   type InferenceRequest,
@@ -158,6 +159,7 @@ import {
 import {
   type ServedTokensRecorder,
   type ServedTokensRequestAttribution,
+  type ServedTokensRequestMetrics,
 } from './served-tokens-recorder'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
 
@@ -1001,6 +1003,101 @@ const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
   }
 }
 
+const servedTokensRequestMetrics = (
+  input: Readonly<{
+    adapterId: string
+    adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
+    routeMetadata?: DispatchRouteMetadata | undefined
+    requestClass: ServedTokensRequestMetrics['requestClass']
+    timing?: KhalaTelemetryTiming | undefined
+  }>,
+): ServedTokensRequestMetrics => {
+  const adapterRouteMetadata = input.adapterRouteMetadata
+  const fallbackAdapterRouteMetadata =
+    input.routeMetadata?.fallbackAdapterRouteMetadata
+  const routeQueueWaitMs =
+    input.timing?.queueWaitMs ??
+    adapterRouteMetadata?.queueWaitMs ??
+    fallbackAdapterRouteMetadata?.queueWaitMs
+  const fallbackReason =
+    input.routeMetadata?.fallbackReason ??
+    adapterRouteMetadata?.replicaFallbackReason ??
+    undefined
+  return {
+    requestClass: input.requestClass,
+    ...(supplyLaneForAdapterId(input.adapterId) === undefined
+      ? {}
+      : { supplyLane: supplyLaneForAdapterId(input.adapterId) }),
+    ...(fallbackReason === undefined ? {} : { fallbackReason }),
+    ...(adapterRouteMetadata?.selectedReplicaId === undefined
+      ? {}
+      : { selectedReplicaId: adapterRouteMetadata.selectedReplicaId }),
+    ...(adapterRouteMetadata?.selectedReplicaRef === undefined
+      ? {}
+      : { selectedReplicaRef: adapterRouteMetadata.selectedReplicaRef }),
+    ...((adapterRouteMetadata?.replicaFallbackReason ??
+      fallbackAdapterRouteMetadata?.replicaFallbackReason) === undefined
+      ? {}
+      : {
+          replicaFallbackReason:
+            adapterRouteMetadata?.replicaFallbackReason ??
+            fallbackAdapterRouteMetadata?.replicaFallbackReason,
+        }),
+    ...((adapterRouteMetadata?.replicaBusyReason ??
+      fallbackAdapterRouteMetadata?.replicaBusyReason) === undefined
+      ? {}
+      : {
+          replicaBusyReason:
+            adapterRouteMetadata?.replicaBusyReason ??
+            fallbackAdapterRouteMetadata?.replicaBusyReason,
+        }),
+    ...(adapterRouteMetadata?.replicaHealthScore === undefined
+      ? {}
+      : { replicaHealthScore: adapterRouteMetadata.replicaHealthScore }),
+    ...(adapterRouteMetadata?.replicaRegion === undefined
+      ? {}
+      : { replicaRegion: adapterRouteMetadata.replicaRegion }),
+    ...(adapterRouteMetadata?.replicaCapacityClass === undefined
+      ? {}
+      : { replicaCapacityClass: adapterRouteMetadata.replicaCapacityClass }),
+    ...(adapterRouteMetadata?.replicaCostProfileRef === undefined
+      ? {}
+      : { replicaCostProfileRef: adapterRouteMetadata.replicaCostProfileRef }),
+    ...(adapterRouteMetadata?.replicaInflightCount === undefined
+      ? {}
+      : { replicaInflightCount: adapterRouteMetadata.replicaInflightCount }),
+    ...(adapterRouteMetadata?.replicaMaxInflight === undefined
+      ? {}
+      : { replicaMaxInflight: adapterRouteMetadata.replicaMaxInflight }),
+    ...(adapterRouteMetadata?.replicaQueueDepth === undefined
+      ? {}
+      : { replicaQueueDepth: adapterRouteMetadata.replicaQueueDepth }),
+    ...(adapterRouteMetadata?.replicaWarmState === undefined
+      ? {}
+      : { replicaWarmState: adapterRouteMetadata.replicaWarmState }),
+    ...((adapterRouteMetadata?.glmSaturationPolicy ??
+      fallbackAdapterRouteMetadata?.glmSaturationPolicy) === undefined
+      ? {}
+      : {
+          glmSaturationPolicy:
+            adapterRouteMetadata?.glmSaturationPolicy ??
+            fallbackAdapterRouteMetadata?.glmSaturationPolicy,
+        }),
+    ...(routeQueueWaitMs === undefined
+      ? {}
+      : { queueWaitMs: routeQueueWaitMs }),
+    ...(input.timing?.ttftMs === undefined
+      ? {}
+      : { ttftMs: input.timing.ttftMs }),
+    ...(input.timing?.totalWallClockMs === undefined
+      ? {}
+      : { totalWallClockMs: input.timing.totalWallClockMs }),
+    ...(input.timing?.generationWallClockMs === undefined
+      ? {}
+      : { generationWallClockMs: input.timing.generationWallClockMs }),
+  }
+}
+
 // What the gateway can MEASURE about this request's lifecycle on the hot path
 // today (book P0-1). All optional: an unmeasured value becomes the honest
 // `not_measured` sentinel in the telemetry builder — never a fabricated number.
@@ -1575,6 +1672,32 @@ const makePassThroughResponseStream = (
     timing?: Readonly<{ firstTokenMs?: number | undefined; eofMs: number }>,
   ): Promise<string> => {
     const servedModel = terminal.servedModel ?? input.requestedModel
+    // Derive the measurable lifecycle timing for the TRUE streaming path. TTFT =
+    // first-token - request-accept; total wall-clock = EOF - request-accept;
+    // generation wall-clock = EOF - first-token (the decode window, used to derive
+    // perceived TPS + ITL). Any boundary we did not observe stays undefined =>
+    // honest sentinel downstream.
+    const start = input.requestStartMs
+    const streamTiming =
+      timing === undefined
+        ? { streamed: true as const }
+        : {
+            streamed: true as const,
+            ...(start === undefined
+              ? {}
+              : { totalWallClockMs: Math.max(0, timing.eofMs - start) }),
+            ...(start === undefined || timing.firstTokenMs === undefined
+              ? {}
+              : { ttftMs: Math.max(0, timing.firstTokenMs - start) }),
+            ...(timing.firstTokenMs === undefined
+              ? {}
+              : {
+                  generationWallClockMs: Math.max(
+                    0,
+                    timing.eofMs - timing.firstTokenMs,
+                  ),
+                }),
+          }
     let streamMetering: MeteringOutcome | undefined
     if (terminal.usage !== undefined) {
       const terminalUsage = terminal.usage
@@ -1604,6 +1727,13 @@ const makePassThroughResponseStream = (
               ...(input.requestAttribution === undefined
                 ? {}
                 : { requestAttribution: input.requestAttribution }),
+              requestMetrics: servedTokensRequestMetrics({
+                adapterId: input.adapterId,
+                adapterRouteMetadata: terminal.adapterRouteMetadata,
+                requestClass: 'interactive_stream',
+                routeMetadata: input.routeMetadata,
+                timing: streamTiming,
+              }),
               requestedModel: input.requestedModel,
               servedModel,
               streamed: true,
@@ -1628,32 +1758,6 @@ const makePassThroughResponseStream = (
         totalTokens: 0,
       },
     }
-    // Derive the measurable lifecycle timing for the TRUE streaming path. TTFT =
-    // first-token − request-accept; total wall-clock = EOF − request-accept;
-    // generation wall-clock = EOF − first-token (the decode window, used to derive
-    // perceived TPS + ITL). Any boundary we did not observe stays undefined =>
-    // honest sentinel downstream.
-    const start = input.requestStartMs
-    const streamTiming =
-      timing === undefined
-        ? { streamed: true as const }
-        : {
-            streamed: true as const,
-            ...(start === undefined
-              ? {}
-              : { totalWallClockMs: Math.max(0, timing.eofMs - start) }),
-            ...(start === undefined || timing.firstTokenMs === undefined
-              ? {}
-              : { ttftMs: Math.max(0, timing.firstTokenMs - start) }),
-            ...(timing.firstTokenMs === undefined
-              ? {}
-              : {
-                  generationWallClockMs: Math.max(
-                    0,
-                    timing.eofMs - timing.firstTokenMs,
-                  ),
-                }),
-          }
     const openagents = openAgentsReceiptForResult({
       adapterId: input.adapterId,
       ...(input.cacheAffinityKeyRaw === undefined
@@ -2278,6 +2382,10 @@ export const handleChatCompletions = (
       const terminal = [...servedChunks]
         .reverse()
         .find(chunk => chunk.usage !== undefined)
+      const bufferedStreamTiming = {
+        streamed: true as const,
+        totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+      }
       // Capture the metering outcome so the disclosure block (below) carries the
       // same receipt the non-streaming path attaches. `undefined` when no
       // terminal usage frame was served (no metering ran).
@@ -2303,6 +2411,13 @@ export const handleChatCompletions = (
             adapterId: chunks.served.value.adapterId,
             requestId: responseId,
             ...(requestAttribution === undefined ? {} : { requestAttribution }),
+            requestMetrics: servedTokensRequestMetrics({
+              adapterId: chunks.served.value.adapterId,
+              adapterRouteMetadata: terminal.adapterRouteMetadata,
+              requestClass: 'interactive_stream',
+              routeMetadata: chunks.served.route,
+              timing: bufferedStreamTiming,
+            }),
             requestedModel,
             servedModel: streamServedModel,
             streamed: true,
@@ -2390,10 +2505,7 @@ export const handleChatCompletions = (
         // completion is materialized before a byte is emitted, so there is no
         // observable first-token boundary here — TTFT/ITL stay honest sentinels.
         // Total wall-clock IS measurable from request accept to drain.
-        timing: {
-          streamed: true,
-          totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
-        },
+        timing: bufferedStreamTiming,
       })
 
       // When the identity guard rewrote the content, the original per-delta
@@ -2561,6 +2673,10 @@ export const handleChatCompletions = (
       guardedContent === servedValue.content
         ? servedValue
         : { ...servedValue, content: guardedContent }
+    const nonStreamTiming = {
+      streamed: false as const,
+      totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+    }
 
     const metering = yield* meteringHook({
       accountRef: session.accountRef,
@@ -2583,6 +2699,13 @@ export const handleChatCompletions = (
         adapterId: servedAdapterId,
         requestId: responseId,
         ...(requestAttribution === undefined ? {} : { requestAttribution }),
+        requestMetrics: servedTokensRequestMetrics({
+          adapterId: servedAdapterId,
+          adapterRouteMetadata: guardedResult.adapterRouteMetadata,
+          requestClass: 'async_job',
+          routeMetadata: result.served.route,
+          timing: nonStreamTiming,
+        }),
         requestedModel,
         servedModel: guardedResult.servedModel,
         streamed: false,
@@ -2653,10 +2776,7 @@ export const handleChatCompletions = (
           routeMetadata: result.served.route,
           // Non-streaming: total wall-clock is measurable; TTFT/ITL are not (no
           // first-token boundary on a buffered completion) => honest sentinels.
-          timing: {
-            streamed: false,
-            totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
-          },
+          timing: nonStreamTiming,
         }),
         result: guardedResult,
       }),

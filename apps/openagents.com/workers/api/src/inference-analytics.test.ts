@@ -94,11 +94,15 @@ const fireworksEvent = (
     demandClient?: string | undefined
     demandKind?: 'external' | 'internal' | 'unlabeled' | undefined
     demandSource?: string | undefined
+    backendProfile?: string | undefined
+    model?: string | undefined
+    provider?: string | undefined
+    safeMetadata?: Record<string, unknown> | undefined
   }>,
 ) => ({
   schemaVersion: 'openagents.token_usage_event.v1' as const,
   actor: { accountRef: 'agent:tester' },
-  backendProfile: 'fireworks',
+  backendProfile: overrides.backendProfile ?? 'fireworks',
   ...(overrides.costUsd === undefined
     ? {}
     : { cost: { amount: overrides.costUsd, currency: 'USD' } }),
@@ -117,10 +121,13 @@ const fireworksEvent = (
       }),
   eventId: overrides.eventId,
   idempotencyKey: `idem:${overrides.eventId}`,
-  model: 'accounts/fireworks/models/deepseek-v4-flash',
+  model: overrides.model ?? 'accounts/fireworks/models/deepseek-v4-flash',
   observedAt: overrides.observedAt,
   producerSystem: 'omega' as const,
-  provider: 'fireworks',
+  provider: overrides.provider ?? 'fireworks',
+  ...(overrides.safeMetadata === undefined
+    ? {}
+    : { safeMetadata: overrides.safeMetadata }),
   sourceRoute: 'omega_hosted_gemini' as const,
   tokenCounts: {
     cacheReadTokens: 0,
@@ -172,6 +179,11 @@ describe('readInferenceAnalytics (#6232)', () => {
           inputTokens: 200_000,
           observedAt: '2026-06-25T01:00:00.000Z',
           outputTokens: 500_000,
+          safeMetadata: {
+            requestClass: 'async_job',
+            supplyLane: 'fireworks',
+            totalWallClockMs: 1200,
+          },
         }),
       ),
     )
@@ -187,6 +199,52 @@ describe('readInferenceAnalytics (#6232)', () => {
           inputTokens: 121_065,
           observedAt: '2026-06-25T05:00:00.000Z',
           outputTokens: 310_787,
+          safeMetadata: {
+            fallbackReason: 'glm_pool_saturated',
+            glmSaturationPolicy: 'queue_then_overflow',
+            queueWaitMs: 125,
+            requestClass: 'async_job',
+            supplyLane: 'fireworks',
+            totalWallClockMs: 800,
+          },
+        }),
+      ),
+    )
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          backendProfile: 'hydralisk-vllm-glm-5p2-reap-504b',
+          costUsd: 0.42,
+          demandClient: 'gym-opencode-runner',
+          demandKind: 'internal',
+          demandSource: 'openagents-gym',
+          eventId: 'e3-glm',
+          inputTokens: 10_000,
+          model: 'openagents/glm-5.2-reap-504b',
+          observedAt: '2026-06-25T06:00:00.000Z',
+          outputTokens: 20_000,
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          safeMetadata: {
+            generationWallClockMs: 500,
+            perceivedTokensPerSecond: 40_000,
+            queueWaitMs: 0,
+            replicaCapacityClass: 'spot',
+            replicaCostProfileRef:
+              'cost.hydralisk.glm_52_reap_504b.g4_spot.tp4.v1',
+            replicaHealthScore: 1,
+            replicaInflightCount: 1,
+            replicaMaxInflight: 1,
+            replicaQueueDepth: 0,
+            replicaRegion: 'us-central1-a',
+            replicaWarmState: 'warm',
+            requestClass: 'interactive_stream',
+            selectedReplicaId: 'second',
+            selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+            supplyLane: 'hydralisk',
+            totalWallClockMs: 2400,
+            ttftMs: 320,
+          },
         }),
       ),
     )
@@ -196,8 +254,9 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.schemaVersion).toBe('openagents.inference_analytics.v1')
     expect(result.window).toBe('7d')
 
-    // byProvider collapses the two Fireworks rows into one group.
-    expect(result.byProvider).toHaveLength(1)
+    // byProvider collapses the two Fireworks rows and keeps the GLM adapter
+    // visible as its own serving lane.
+    expect(result.byProvider).toHaveLength(2)
     expect(result.byProvider[0]).toMatchObject({
       key: 'fireworks',
       inputTokens: 321_065,
@@ -206,16 +265,56 @@ describe('readInferenceAnalytics (#6232)', () => {
       usageEvents: 2,
     })
     expect(result.byProvider[0]?.costUsd).toBeCloseTo(0.27, 6)
+    expect(result.byProvider[0]?.costCoverage).toBe(1)
 
     expect(result.byModel[0]?.key).toBe(
       'accounts/fireworks/models/deepseek-v4-flash',
     )
     expect(result.byRoute[0]?.key).toBe('omega:omega_hosted_gemini')
+    expect(result.bySupplyLane).toEqual([
+      expect.objectContaining({
+        key: 'fireworks',
+        totalTokens: 1_131_852,
+      }),
+      expect.objectContaining({
+        key: 'hydralisk',
+        totalTokens: 30_000,
+      }),
+    ])
+    expect(result.byAdapter).toEqual([
+      expect.objectContaining({
+        key: 'fireworks',
+        totalTokens: 1_131_852,
+      }),
+      expect.objectContaining({
+        key: 'hydralisk-vllm-glm-5p2-reap-504b',
+        totalTokens: 30_000,
+      }),
+    ])
+    expect(result.byGlmReplica).toEqual([
+      expect.objectContaining({
+        key: 'replica.hydralisk.glm_52_reap_504b.second',
+        label: 'second',
+        totalTokens: 30_000,
+      }),
+    ])
+    expect(result.byRequestClass).toEqual([
+      expect.objectContaining({
+        key: 'async_job',
+        totalTokens: 1_131_852,
+        usageEvents: 2,
+      }),
+      expect.objectContaining({
+        key: 'interactive_stream',
+        totalTokens: 30_000,
+        usageEvents: 1,
+      }),
+    ])
     expect(result.byDemandKind).toEqual([
       expect.objectContaining({
         key: 'internal',
-        totalTokens: 700_000,
-        usageEvents: 1,
+        totalTokens: 730_000,
+        usageEvents: 2,
       }),
       expect.objectContaining({
         key: 'external',
@@ -226,7 +325,7 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.byDemandSource).toEqual([
       expect.objectContaining({
         key: 'internal:openagents-gym',
-        totalTokens: 700_000,
+        totalTokens: 730_000,
       }),
       expect.objectContaining({
         key: 'external:public-api',
@@ -236,7 +335,7 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.byDemandClient).toEqual([
       expect.objectContaining({
         key: 'internal:gym-opencode-runner',
-        totalTokens: 700_000,
+        totalTokens: 730_000,
       }),
       expect.objectContaining({
         key: 'external:sdk',
@@ -247,7 +346,7 @@ describe('readInferenceAnalytics (#6232)', () => {
       expect.objectContaining({
         day: '2026-06-25',
         key: 'internal:gym-opencode-runner',
-        totalTokens: 700_000,
+        totalTokens: 730_000,
       }),
       expect.objectContaining({
         day: '2026-06-25',
@@ -260,13 +359,72 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(result.byDay).toHaveLength(1)
     expect(result.byDay[0]).toMatchObject({
       day: '2026-06-25',
-      totalTokens: 1_131_852,
-      usageEvents: 2,
+      totalTokens: 1_161_852,
+      usageEvents: 3,
     })
 
-    expect(result.totals.totalTokens).toBe(1_131_852)
-    expect(result.totals.usageEvents).toBe(2)
-    expect(result.totals.costUsd).toBeCloseTo(0.27, 6)
+    expect(result.operational).toMatchObject({
+      busyEvents: 0,
+      fallbackEvents: 1,
+      fallbackRate: 0.333333,
+      saturationEvents: 1,
+      queueWaitMs: {
+        p50Ms: 0,
+        p90Ms: 125,
+        sampleCount: 2,
+      },
+      ttftMs: {
+        p50Ms: 320,
+        sampleCount: 1,
+      },
+      perceivedTokensPerSecond: {
+        p50TokensPerSecond: 40_000,
+        sampleCount: 1,
+      },
+    })
+    expect(result.glmReplicas).toEqual([
+      expect.objectContaining({
+        busyEvents: 0,
+        capacityClass: 'spot',
+        costCoverage: 1,
+        costUsd: 0.42,
+        effectiveCostPerServedTokenUsd: 'not_measured',
+        fallbackEvents: 0,
+        idleHours: 'not_measured',
+        keepWarmStatus: 'not_measured',
+        key: 'replica.hydralisk.glm_52_reap_504b.second',
+        label: 'second',
+        latestInflight: 1,
+        latestQueueDepth: 0,
+        maxInflight: 1,
+        saturationEvents: 0,
+        totalTokens: 30_000,
+        uptimeHours: 'not_measured',
+        usageEvents: 1,
+        warmState: 'warm',
+        watchdogStatus: 'not_measured',
+      }),
+    ])
+    expect(result.glmReplicas[0]?.ttftMs).toMatchObject({
+      p50Ms: 320,
+      sampleCount: 1,
+    })
+    expect(result.glmReplicas[0]?.perceivedTokensPerSecond).toMatchObject({
+      p50TokensPerSecond: 40_000,
+      sampleCount: 1,
+    })
+    expect(result.ownedHourly).toMatchObject({
+      costCoverage: 'not_measured',
+      hourlyBurnUsd: 'not_measured',
+      idleBurnUsd: 'not_measured',
+      blockerRefs: [
+        'blocker.inference_analytics.owned_hourly_host_lifecycle_missing',
+        'blocker.inference_analytics.glm_idle_burn_not_measured',
+      ],
+    })
+    expect(result.totals.totalTokens).toBe(1_161_852)
+    expect(result.totals.usageEvents).toBe(3)
+    expect(result.totals.costUsd).toBeCloseTo(0.69, 6)
     // Every row carried a stored cost.
     expect(result.totals.costCoverage).toBe(1)
   })

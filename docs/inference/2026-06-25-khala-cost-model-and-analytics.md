@@ -1,9 +1,9 @@
 # Khala inference cost model, free-tier quota, and provider-lane analytics
 
-Date: 2026-06-25. Issue #6232. Status: **shipped** (cost model + raised quota +
-owner-gated analytics). Internal — provider ids and cost are NOT public claim
-copy. Companion to `2026-06-19-pricing-model.md` and
-`2026-06-19-fireworks-provider.md`.
+Date: 2026-06-25. Issues #6232 and #6266. Status: **shipped** (cost model +
+raised quota + owner-gated analytics, extended with GLM pool visibility).
+Internal — provider ids and cost are NOT public claim copy. Companion to
+`2026-06-19-pricing-model.md` and `2026-06-19-fireworks-provider.md`.
 
 This doc answers four questions the owner asked: (1) what does Khala inference
 cost us and what is the burn rate, (2) what should the free-tier quota be, (3)
@@ -147,6 +147,14 @@ the ledger answers "what did it cost" directly. Historical NULL-cost rows are
 reported honestly via a `costCoverage` ratio (see below) rather than silently
 counted as $0.
 
+For GLM pool traffic, the recorder also writes public-safe routing and
+performance metadata into `safe_metadata_json`: supply lane, request class,
+selected replica ref/id, replica inflight/max-inflight/queue-depth, warm state,
+capacity class (`spot` / `on_demand` / `unknown`), queue wait, batch wait, TTFT,
+total wall time, perceived tokens/sec, and bounded fallback/saturation reasons.
+It deliberately does **not** write raw prompts, responses, private endpoint
+URLs, IPs, bearer tokens, or provider payloads.
+
 The same recorder also promotes request attribution into the typed demand
 columns. Internal dogfood callers send `x-openagents-demand-kind: internal` plus
 a bounded source/client label such as `openagents-gym` or `qa-runner`. External
@@ -157,9 +165,23 @@ callers may send `external`. Missing or partial attribution is deliberately
 
 `TokenUsageLedger.readInferenceAnalytics({ window })` (aggregate-only, no
 per-user/prompt material) returns token + cost rollups grouped by **provider**,
-**model**, **source-route/producer-system**, **demand kind**, **demand source**,
+**supply lane**, **adapter id**, **model**, **source-route/producer-system**,
+**GLM replica ref**, **request class**, **demand kind**, **demand source**,
 **demand client**, **day**, and **demand client by day**, plus window-wide
 totals. Windows: `today | 7d | 30d | all`.
+
+It also returns operational summaries:
+
+- `operational`: busy/429 count, fallback rate, GLM saturation count, queue wait, batch wait,
+  TTFT, total wall time, and perceived tokens/sec (`p50` / `p90` / `p99`).
+- `glmReplicas`: one row per selected GLM replica ref with token/cost rollups,
+  latest public-safe inflight/max-inflight/queue-depth, warm state, capacity
+  class, fallback/busy/saturation counts, and per-replica latency/throughput.
+- `ownedHourly`: the owned-GPU hourly accounting slot. It currently reports
+  `not_measured` for hourly burn, idle burn, uptime hours, idle hours, keep-warm
+  status, watchdog status, and effective hourly cost per served token because
+  host lifecycle telemetry is not yet written to the token ledger. That is
+  intentional: missing owned-infra cost is visible as uncovered, never $0.
 
 ### The endpoint (owner-gated)
 
@@ -177,12 +199,34 @@ Sample response shape:
   "window": "7d",
   "generatedAt": "2026-06-25T...Z",
   "byProvider": [
-    { "key": "fireworks", "label": "fireworks",
-      "inputTokens": 321065, "outputTokens": 810787, "totalTokens": 1131852,
-      "usageEvents": 560, "costUsd": 0.272 }
+    {
+      "key": "fireworks",
+      "label": "fireworks",
+      "inputTokens": 321065,
+      "outputTokens": 810787,
+      "totalTokens": 1131852,
+      "usageEvents": 560,
+      "costUsd": 0.272,
+      "costCoverage": 1
+    }
+  ],
+  "bySupplyLane": [
+    { "key": "fireworks", "totalTokens": 1131852, "costCoverage": 1 }
+  ],
+  "byAdapter": [
+    { "key": "fireworks", "totalTokens": 1131852, "costCoverage": 1 }
   ],
   "byModel":  [ { "key": "accounts/fireworks/models/deepseek-v4-flash", ... } ],
   "byRoute":  [ { "key": "omega:omega_hosted_gemini", ... } ],
+  "byGlmReplica": [
+    {
+      "key": "replica.hydralisk.glm_52_reap_504b.second",
+      "label": "second",
+      "totalTokens": 30000,
+      "costCoverage": 1
+    }
+  ],
+  "byRequestClass": [ { "key": "interactive_stream", "totalTokens": 30000 } ],
   "byDemandKind":   [ { "key": "internal", "totalTokens": 700000, ... } ],
   "byDemandSource": [ { "key": "internal:openagents-gym", "totalTokens": 700000, ... } ],
   "byDemandClient": [ { "key": "internal:gym-opencode-runner", "totalTokens": 700000, ... } ],
@@ -196,6 +240,51 @@ Sample response shape:
       "costUsd": 0.18
     }
   ],
+  "operational": {
+    "busyEvents": 0,
+    "fallbackEvents": 1,
+    "fallbackRate": 0.333333,
+    "saturationEvents": 1,
+    "queueWaitMs": { "sampleCount": 2, "p50Ms": 0, "p90Ms": 125 },
+    "batchWaitMs": { "sampleCount": 0, "p50Ms": "not_measured" },
+    "ttftMs": { "sampleCount": 1, "p50Ms": 320, "p90Ms": 320 },
+    "totalWallClockMs": { "sampleCount": 3, "p50Ms": 1200, "p90Ms": 2400 },
+    "perceivedTokensPerSecond": {
+      "sampleCount": 1,
+      "p50TokensPerSecond": 40000
+    }
+  },
+  "glmReplicas": [
+    {
+      "key": "replica.hydralisk.glm_52_reap_504b.second",
+      "label": "second",
+      "capacityClass": "spot",
+      "warmState": "warm",
+      "latestInflight": 1,
+      "maxInflight": 1,
+      "latestQueueDepth": 0,
+      "busyEvents": 0,
+      "fallbackEvents": 0,
+      "saturationEvents": 0,
+      "keepWarmStatus": "not_measured",
+      "watchdogStatus": "not_measured",
+      "uptimeHours": "not_measured",
+      "idleHours": "not_measured",
+      "effectiveCostPerServedTokenUsd": "not_measured"
+    }
+  ],
+  "ownedHourly": {
+    "costCoverage": "not_measured",
+    "hourlyBurnUsd": "not_measured",
+    "idleBurnUsd": "not_measured",
+    "uptimeHours": "not_measured",
+    "idleHours": "not_measured",
+    "effectiveCostPerServedTokenUsd": "not_measured",
+    "blockerRefs": [
+      "blocker.inference_analytics.owned_hourly_host_lifecycle_missing",
+      "blocker.inference_analytics.glm_idle_burn_not_measured"
+    ]
+  },
   "totals": {
     "inputTokens": 321065, "outputTokens": 810787, "totalTokens": 1131852,
     "usageEvents": 560, "costUsd": 0.272, "costCoverage": 0.0
@@ -207,6 +296,8 @@ Sample response shape:
 `cost_amount`. Before this change it is ~0 (all historical rows are NULL-cost);
 as new rows land it climbs toward 1. When `< 1`, `costUsd` understates true cost
 and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
+`ownedHourly.costCoverage` is separate from token-row `costCoverage`: it remains
+`not_measured` until a host lifecycle/keep-warm/watchdog feed exists.
 
 ## 5. How to measure this going forward
 
@@ -217,11 +308,14 @@ and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
     -H "Cookie: <your authenticated openagents.com session cookie>" | jq .
   ```
   Use `window=today` for the day, `30d`/`all` for trend. Watch `byProvider`
-  (which lane is carrying load + its cost), `byDemandKind` /
-  `byDemandSource` / `byDemandClient` (internal dogfood vs external vs
-  unlabeled tool traffic), `byDemandClientDay` (which tools are moving the
-  curve over time), `byDay.costUsd` (daily burn), and `totals.costCoverage`
-  (data completeness).
+  / `bySupplyLane` / `byAdapter` (which lane is carrying load + its cost),
+  `byGlmReplica` and `glmReplicas` (which owned replica is serving, saturated,
+  warm, idle, or uncovered), `operational` (TTFT, queue wait, TPS, fallback
+  rate), `byDemandKind` / `byDemandSource` / `byDemandClient` (internal dogfood
+  vs external vs unlabeled tool traffic), `byDemandClientDay` (which tools are
+  moving the curve over time), `byDay.costUsd` (daily marginal token burn),
+  `totals.costCoverage` (token-cost completeness), and `ownedHourly` (owned GPU
+  hourly/idle burn, currently explicitly not measured).
 - **Public served-tokens counter** (`/api/public/khala-tokens-served` +
   `/history`) remains the public-safe token total; it never exposes demand
   labels or implies internal dogfood is external traction. The analytics
@@ -248,4 +342,5 @@ and you should fall back to the per-Mtok rates in §2 for the uncovered rows.
   (`handleInferenceAnalyticsApi`), wired in `index.ts` at
   `/api/admin/inference-analytics`
 - Tests: `inference-analytics.test.ts`, `token-usage-ledger-routes.test.ts`,
-  `inference/served-tokens-recorder.test.ts`, `inference/inference-free-tier-key.test.ts`
+  `token-usage-ledger.test.ts`, `inference/served-tokens-recorder.test.ts`,
+  `inference/inference-free-tier-key.test.ts`

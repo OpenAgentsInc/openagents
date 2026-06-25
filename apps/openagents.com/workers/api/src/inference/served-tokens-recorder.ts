@@ -52,6 +52,30 @@ export type ServedTokensRequestAttribution = Readonly<{
   demandClient?: string | undefined
 }>
 
+export type ServedTokensRequestMetrics = Readonly<{
+  supplyLane?: string | undefined
+  requestClass?: 'async_job' | 'interactive_stream' | 'batch_job' | undefined
+  fallbackReason?: string | null | undefined
+  selectedReplicaId?: string | undefined
+  selectedReplicaRef?: string | undefined
+  replicaFallbackReason?: string | null | undefined
+  replicaBusyReason?: string | null | undefined
+  replicaHealthScore?: number | undefined
+  replicaRegion?: string | undefined
+  replicaCapacityClass?: string | undefined
+  replicaCostProfileRef?: string | undefined
+  replicaInflightCount?: number | undefined
+  replicaMaxInflight?: number | undefined
+  replicaQueueDepth?: number | undefined
+  replicaWarmState?: 'cold' | 'unknown' | 'warm' | undefined
+  glmSaturationPolicy?: string | undefined
+  queueWaitMs?: number | undefined
+  batchWaitMs?: number | undefined
+  ttftMs?: number | undefined
+  totalWallClockMs?: number | undefined
+  generationWallClockMs?: number | undefined
+}>
+
 // The gateway-side recorder seam invoked by `chat-completions-routes.ts`.
 // Effect-shaped so it stays in the route's Effect topology (the non-streaming and
 // buffered-stream paths `yield*` it; the true pass-through path folds it into the
@@ -73,6 +97,10 @@ export type ServedTokensRecorderInput = Readonly<{
   // first-party dogfood such as qa-runner from external demand without storing
   // prompts, keys, customer data, or raw provider material.
   requestAttribution?: ServedTokensRequestAttribution | undefined
+  // Optional public-safe measurements/refs from the gateway route. These are
+  // operator analytics fields only: no prompts, responses, private endpoint
+  // URLs, bearer material, or raw provider payloads.
+  requestMetrics?: ServedTokensRequestMetrics | undefined
 }>
 
 export type ServedTokensRecorder = (
@@ -125,6 +153,105 @@ export const servedTokensCostUsd = (
   return Math.round(Math.max(0, priced.costUsd) * 1_000_000) / 1_000_000
 }
 
+const finiteNonNegative = (value: number | undefined): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value * 1_000) / 1_000
+    : undefined
+
+const optionalText = (value: string | null | undefined): string | undefined => {
+  const trimmed = value?.trim()
+
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed
+}
+
+const servedTokensSafeMetrics = (
+  metrics: ServedTokensRequestMetrics | undefined,
+  usage: InferenceUsage,
+): Record<string, unknown> => {
+  if (metrics === undefined) {
+    return {}
+  }
+
+  const generationWallClockMs = finiteNonNegative(metrics.generationWallClockMs)
+  const completionTokens = Math.max(0, Math.trunc(usage.completionTokens))
+  const perceivedTokensPerSecond =
+    generationWallClockMs === undefined || generationWallClockMs <= 0
+      ? undefined
+      : Math.round((completionTokens / (generationWallClockMs / 1000)) * 1000) /
+        1000
+
+  return {
+    ...(optionalText(metrics.supplyLane) === undefined
+      ? {}
+      : { supplyLane: optionalText(metrics.supplyLane) }),
+    ...(metrics.requestClass === undefined
+      ? {}
+      : { requestClass: metrics.requestClass }),
+    ...(optionalText(metrics.fallbackReason) === undefined
+      ? {}
+      : { fallbackReason: optionalText(metrics.fallbackReason) }),
+    ...(optionalText(metrics.selectedReplicaId) === undefined
+      ? {}
+      : { selectedReplicaId: optionalText(metrics.selectedReplicaId) }),
+    ...(optionalText(metrics.selectedReplicaRef) === undefined
+      ? {}
+      : { selectedReplicaRef: optionalText(metrics.selectedReplicaRef) }),
+    ...(optionalText(metrics.replicaFallbackReason) === undefined
+      ? {}
+      : {
+          replicaFallbackReason: optionalText(metrics.replicaFallbackReason),
+        }),
+    ...(optionalText(metrics.replicaBusyReason) === undefined
+      ? {}
+      : { replicaBusyReason: optionalText(metrics.replicaBusyReason) }),
+    ...(finiteNonNegative(metrics.replicaHealthScore) === undefined
+      ? {}
+      : { replicaHealthScore: finiteNonNegative(metrics.replicaHealthScore) }),
+    ...(optionalText(metrics.replicaRegion) === undefined
+      ? {}
+      : { replicaRegion: optionalText(metrics.replicaRegion) }),
+    ...(optionalText(metrics.replicaCapacityClass) === undefined
+      ? {}
+      : { replicaCapacityClass: optionalText(metrics.replicaCapacityClass) }),
+    ...(optionalText(metrics.replicaCostProfileRef) === undefined
+      ? {}
+      : { replicaCostProfileRef: optionalText(metrics.replicaCostProfileRef) }),
+    ...(finiteNonNegative(metrics.replicaInflightCount) === undefined
+      ? {}
+      : {
+          replicaInflightCount: finiteNonNegative(metrics.replicaInflightCount),
+        }),
+    ...(finiteNonNegative(metrics.replicaMaxInflight) === undefined
+      ? {}
+      : { replicaMaxInflight: finiteNonNegative(metrics.replicaMaxInflight) }),
+    ...(finiteNonNegative(metrics.replicaQueueDepth) === undefined
+      ? {}
+      : { replicaQueueDepth: finiteNonNegative(metrics.replicaQueueDepth) }),
+    ...(metrics.replicaWarmState === undefined
+      ? {}
+      : { replicaWarmState: metrics.replicaWarmState }),
+    ...(optionalText(metrics.glmSaturationPolicy) === undefined
+      ? {}
+      : { glmSaturationPolicy: optionalText(metrics.glmSaturationPolicy) }),
+    ...(finiteNonNegative(metrics.queueWaitMs) === undefined
+      ? {}
+      : { queueWaitMs: finiteNonNegative(metrics.queueWaitMs) }),
+    ...(finiteNonNegative(metrics.batchWaitMs) === undefined
+      ? {}
+      : { batchWaitMs: finiteNonNegative(metrics.batchWaitMs) }),
+    ...(finiteNonNegative(metrics.ttftMs) === undefined
+      ? {}
+      : { ttftMs: finiteNonNegative(metrics.ttftMs) }),
+    ...(finiteNonNegative(metrics.totalWallClockMs) === undefined
+      ? {}
+      : { totalWallClockMs: finiteNonNegative(metrics.totalWallClockMs) }),
+    ...(generationWallClockMs === undefined ? {} : { generationWallClockMs }),
+    ...(perceivedTokensPerSecond === undefined
+      ? {}
+      : { perceivedTokensPerSecond }),
+  }
+}
+
 export const buildServedTokensIngestBody = (
   input: Readonly<{
     accountRef: string
@@ -134,6 +261,7 @@ export const buildServedTokensIngestBody = (
     usage: InferenceUsage
     requestId: string
     requestAttribution?: ServedTokensRequestAttribution | undefined
+    requestMetrics?: ServedTokensRequestMetrics | undefined
     observedAt: string
   }>,
 ) => ({
@@ -160,6 +288,7 @@ export const buildServedTokensIngestBody = (
   provider: input.adapterId,
   safeMetadata: {
     requestedModel: input.requestedModel,
+    ...servedTokensSafeMetrics(input.requestMetrics, input.usage),
     ...(input.requestAttribution === undefined
       ? {}
       : {
@@ -237,6 +366,9 @@ export const makeServedTokensRecorder = (
         ...(input.requestAttribution === undefined
           ? {}
           : { requestAttribution: input.requestAttribution }),
+        ...(input.requestMetrics === undefined
+          ? {}
+          : { requestMetrics: input.requestMetrics }),
         requestedModel: input.requestedModel,
         servedModel: input.servedModel,
         usage: input.usage,

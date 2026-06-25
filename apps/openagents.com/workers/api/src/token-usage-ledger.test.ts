@@ -634,6 +634,32 @@ describe('token usage ledger', () => {
     expect(db.rows).toHaveLength(0)
   })
 
+  test('accepts public GLM adapter refs without mistaking hydralisk for an sk secret', async () => {
+    const db = makeMemoryD1()
+    await runLedger(
+      db,
+      ingest({
+        ...validProbeEvent,
+        backendProfile: 'hydralisk-vllm-glm-5p2-reap-504b',
+        eventId: 'token_event_hydralisk_glm',
+        idempotencyKey: 'probe:event:hydralisk-glm',
+        model: 'openagents/glm-5.2-reap-504b',
+        provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+        safeMetadata: {
+          replicaCapacityClass: 'spot',
+          selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+          supplyLane: 'hydralisk',
+        },
+      }),
+    )
+
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      backend_profile: 'hydralisk-vllm-glm-5p2-reap-504b',
+      provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+    })
+  })
+
   test('aggregates anonymous and identified events while preserving privacy flags', async () => {
     const db = makeMemoryD1()
     await runLedger(db, ingest(validProbeEvent))
