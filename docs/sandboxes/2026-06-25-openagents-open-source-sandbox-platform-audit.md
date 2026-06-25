@@ -9,14 +9,25 @@
   something does not exist yet, it is called out explicitly as not-built. Nothing here claims
   production readiness, an SLA, pricing, or a ship date. This is design/direction only — do **not**
   read it as a commitment.
-- **Clean-room / IP note:** Daytona (`daytonaio/daytona`) closed-sourced its core development in
-  June 2026. **We will not use Daytona and use NONE of their code.** Daytona was consulted at the
-  **conceptual / feature / public-API-contract level only**, to understand the capability surface a
-  competitor must match. No Daytona source, file contents, schemas, or copyrighted text are copied
-  into this doc or into any OpenAgents code. The local checkout at
-  `~/work/projects/repos/daytona/` already contains only `README.md` + `assets/` (the code was
-  removed when they went private), so the study here is unavoidably and intentionally
-  conceptual-only. All architecture below is grounded in OpenAgents' own existing assets.
+- **Clean-room / IP note (load-bearing — read before any implementation):** Daytona
+  (`daytonaio/daytona`) closed-sourced its core in June 2026, and its open-source code was published
+  under **AGPL-3.0** (strong copyleft + a network-use source-disclosure clause). **We are NOT
+  switching to AGPL.** OpenAgents Sandboxes is a permissive (Apache/MIT) + economy-billed offering,
+  so **we will use NONE of Daytona's code** — not copied, not adapted, not "read-then-rewritten."
+  Incorporating any AGPL-3.0 code (or a derivative of it) would force-license our entire product
+  AGPL-3.0 and trigger source-disclosure obligations to every user of the hosted service. That is
+  disqualifying, independent of the moral/IP point that they have since withdrawn the code.
+- **Correction to an earlier draft of this note:** the *working tree* at
+  `~/work/projects/repos/daytona/` shows only `README.md` + `assets/` (the close-source commit
+  removed the code), **but the full AGPL-3.0 source is still recoverable from that clone's local git
+  history** (~4,143 commits, the complete Go/TS tree in the pack). **That history is OFF-LIMITS.**
+  We do not read it, extract from it, or consult it for the build.
+- **Clean-room discipline:** this audit and design were written **without reading the Daytona
+  source or its history** — purely from the conceptual / public-feature / API-contract level (the
+  capability surface a competitor must match). Whoever implements OpenAgents Sandboxes **must also
+  not read the Daytona source/history**; they build only from this conceptual spec. No Daytona
+  source, file contents, schemas, or copyrighted text appear in this doc or in any OpenAgents code.
+  All architecture below is grounded in OpenAgents' own existing assets.
 
 ---
 
