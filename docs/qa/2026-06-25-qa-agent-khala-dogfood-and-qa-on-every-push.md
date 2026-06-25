@@ -21,14 +21,16 @@ Updated: 2026-06-25
 - `qa-runner` is shipped and real today: it drives a **real browser**, emits a
   **video + a committed e2e test + an honest pass/fail verdict**, is OSS /
   local-first / **BYO-model**, and can publish a shareable redacted `/trace/{uuid}`.
-  Khala is an **optional** model backend, not a dependency. (§1)
-- **Route `qa-runner` → Khala** by pointing its BYO-model config at
-  `openagents/khala`, base `https://openagents.com/api/v1`, with a free key from
-  `POST /api/keys/free`. This is dogfood lane #1: it is already running, it is a
-  steady **token floor** on the North Star (tokens served per day), and it is a
-  continuous **correctness signal** on Khala over the exact code/verification
-  workload Khala is meant to be good at. Honest caveat: these are real served
-  tokens but must be **tagged internal vs external** in analytics. (§2)
+  Khala is now the default backend, while flags/env preserve third-party and
+  local BYO overrides. (§1)
+- **Route `qa-runner` → Khala is shipped (#6237):** the BYO-model config now
+  defaults to `openagents/khala`, base `https://openagents.com/api/v1`, with a
+  free key from `POST /api/keys/free`; flags/env still override. This is dogfood
+  lane #1: it is already running, it is a steady **token floor** on the North Star
+  (tokens served per day), and it is a continuous **correctness signal** on Khala
+  over the exact code/verification workload Khala is meant to be good at. QA
+  dogfood traffic is tagged `internal` / `qa-runner` in served-token metadata.
+  (§2)
 - **"QA on every push" cannot be a GitHub Action** — `check:no-github-actions`
   fails the deploy gate if any `.github/workflows/*.yml` exists. The real options
   are: a bounded **git pre-push hook** stage, the **deploy pipeline**, or **our own
@@ -36,9 +38,11 @@ Updated: 2026-06-25
   a fast, bounded, scoped smoke on pre-push, plus the **full QA pass async on our
   GCE runner** triggered by the push, which publishes the green VERIFIED traces +
   videos. (§3)
-- Apply the **#6234 deploy-gate lesson** verbatim: bounded by a hard timeout,
-  scoped to changed surfaces, **fail loud but never silently block or SIGKILL the
-  push/deploy**. Do not recreate a flaky gate that forces `--no-verify`. (§3, §4)
+- **Tier 1 pre-push QA smoke is shipped (#6245):** `.githooks/pre-push` now runs a
+  warning-only `scripts/qa-pre-push-smoke.ts` stage after `check:deploy`. It is
+  scoped to changed user-facing surfaces, hard-timeout-bounded, deterministic
+  (`qa run --fake-model`), and yields on failure/incomplete instead of forcing
+  `--no-verify`. (§3, §4)
 
 ---
 
@@ -46,8 +50,8 @@ Updated: 2026-06-25
 
 `@openagentsinc/qa-runner` (v0.1.0, `apps/qa-runner/`) is the OSS, local-first,
 runtime-agnostic autonomous-QA runner — the substrate and headline demo for the
-Khala autonomous-QA flow (epic #6174, rolled up into #6181). The pitch
-(`apps/qa-runner/QA-RUNNER.md`):
+Khala autonomous-QA flow (epic #6174, rolled up into #6181). The public pitch
+(`apps/qa-runner/QA-RUNNER.md`) still emphasizes the standalone/BYO posture:
 
 > drives a **real browser** against any target, verifies a check the way a person
 > would, and emits a **video + a committed e2e test + an honest pass/fail
@@ -76,14 +80,16 @@ test; a real deviation yields a FAIL visible in the video — **never a fake gre
 
 ### BYO-model, no login (the core run is provider-agnostic)
 
-The core path runs on your machine, against your target, driven by **any
-OpenAI-compatible model** you bring, with **no OpenAgents account/login/key
-required** (`apps/qa-runner/README.md`; issue #6191 / Rhys req #5). Model
+The core path runs on your machine, against your target, driven by the default
+Khala endpoint or **any OpenAI-compatible model** you bring, with **no OpenAgents
+account/login required** (`apps/qa-runner/README.md`; issue #6191 / Rhys req #5).
+Model/base overrides keep the BYO contract intact, while the default dogfood lane
+requires a free `oa_agent_…` key from `POST /api/keys/free`. Model
 selection precedence (`src/byo-model.ts`):
 
 ```
-model    : --model    > QA_MODEL    > OPENAI_MODEL    > (required)
-base-url : --base-url > QA_BASE_URL > OPENAI_BASE_URL > (required)
+model    : --model    > QA_MODEL    > OPENAI_MODEL    > openagents/khala
+base-url : --base-url > QA_BASE_URL > OPENAI_BASE_URL > https://openagents.com/api/v1
 api-key  : --api-key  > QA_API_KEY  > OPENAI_API_KEY  > (required, unless --allow-keyless)
 ```
 
@@ -203,11 +209,10 @@ curl -X POST https://openagents.com/api/keys/free
 #        "quota": { "maxRequestsPerDay":2000, "maxTokensPerDay":2500000, "window":"utc_day" } }
 ```
 
-Point the BYO-model config at Khala (handout card values):
+The BYO-model config now defaults to Khala (handout card values) when model/base
+are omitted:
 
 ```sh
-export QA_MODEL="openagents/khala"
-export QA_BASE_URL="https://openagents.com/api/v1"   # the bare /v1 alias also works
 export QA_API_KEY="oa_agent_…"                        # the free key above; never printed
 
 bun run --cwd apps/qa-runner qa run \
@@ -216,7 +221,9 @@ bun run --cwd apps/qa-runner qa run \
   --out ./runs/khala-dogfood
 ```
 
-Equivalent flags: `--model openagents/khala --base-url https://openagents.com/api/v1
+`QA_MODEL` / `QA_BASE_URL` (or `--model` / `--base-url`) still override the
+defaults, so third-party OpenAI-compatible endpoints remain BYO. Equivalent
+explicit flags: `--model openagents/khala --base-url https://openagents.com/api/v1
 --api-key "$OA_AGENT_TOKEN"`. The dedicated headline path is `demo:khala`
 (`src/demo-khala.ts`), which resolves the endpoint from env + `~/work/.secrets/`
 in order: `OPENAGENTS_API_KEY` → a discovered `OPENAGENTS_AGENT_TOKEN` in
@@ -384,14 +391,14 @@ QA **complements** `check:deploy`; it must not **become** it.
 **Shipped vs direction.**
 
 - **Shipped (live):** `qa-runner` real-browser run + video + committed e2e test +
-  honest verdict; BYO-model incl. Khala; verify verdict (#6192); harness quality
-  bar (#6193); QA Control API (#6196); shareable redacted `/trace/{uuid}` publish
-  (proven live 2026-06-24); the pre-push `check:deploy` gate; `oa-codex-control` +
+  honest verdict; BYO-model incl. Khala default (#6237); verify verdict (#6192);
+  harness quality bar (#6193); QA Control API (#6196); shareable redacted
+  `/trace/{uuid}` publish (proven live 2026-06-24); the pre-push `check:deploy`
+  gate; warning-only scoped/bounded Tier 1 QA smoke (#6245); `oa-codex-control` +
   GCE (deployed). Epic #6181 closed.
 - **Direction (to build):** the push→`oa-codex-control` trigger seam for Tier 2;
-  the Tier 1 scoped/bounded pre-push QA smoke; the internal-vs-external token tag
-  on QA dogfood traffic; a Gym environment seeded from QA tasks + the real-browser
-  verifier (§GYM cross-ref).
+  a Gym environment seeded from QA tasks + the real-browser verifier (§GYM
+  cross-ref).
 
 **Risks.**
 
@@ -417,12 +424,7 @@ QA **complements** `check:deploy`; it must not **become** it.
 1. Build the **push → `oa-codex-control`** trigger seam (deploy-hook or a
    thin owned-infra listener) that launches the full Khala-backed QA matrix async
    and publishes traces/videos.
-2. Add the **Tier 1 scoped/bounded pre-push smoke**, reusing
-   `run-bounded.ts` + `run-if-desktop-changed.ts` patterns; start warning-only,
-   promote to blocking only once it is provably non-flaky.
-3. Add the **internal-vs-external token dimension** (or dedicated dogfood key
-   class) to inference analytics so QA's tokens are honestly attributable.
-4. Seed a **Gym environment from QA** (QA tasks + the real-browser verifier) — see
+2. Seed a **Gym environment from QA** (QA tasks + the real-browser verifier) — see
    the cross-ref appended to
    [`../gym/2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](../gym/2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md).
 
@@ -441,7 +443,8 @@ QA **complements** `check:deploy`; it must not **become** it.
 - `apps/qa-runner/package.json` — scripts (`qa`, `demo:khala`, `api`, `evals`, …).
 - `INVARIANTS.md` (root) — No GitHub-Hosted CI / Cloud Actions; `check:no-github-actions`.
 - `apps/openagents.com/package.json` — `check:deploy`, `check:no-github-actions`.
-- `.githooks/pre-push`, `scripts/enable-git-hooks.sh` — the pre-push gate.
+- `.githooks/pre-push`, `scripts/enable-git-hooks.sh`,
+  `scripts/qa-pre-push-smoke.ts` — the pre-push gate and Tier 1 QA smoke.
 - `apps/autopilot-desktop/scripts/run-bounded.ts`,
   `scripts/run-if-desktop-changed.ts`; commit `a462f448d1` — the #6234 fix.
 - `cloud/crates/oa-codex-control/`, `cloud/scripts/gcp-codex-control-deploy.sh`;

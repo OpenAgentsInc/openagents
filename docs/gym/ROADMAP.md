@@ -139,7 +139,7 @@ test are produced as today; analytics attribute the tokens to QA (internal).
 attribution headers that the served-token recorder stores in ledger metadata.
 
 ### B2. QA on every push — Tier 1: bounded, scoped pre-push smoke (no GitHub Actions)  ([#6245](https://github.com/OpenAgentsInc/openagents/issues/6245))
-**Type:** task · **Lever:** dogfood/quality · **Status:** direction
+**Type:** task · **Lever:** dogfood/quality · **Status:** shipped (#6245)
 **Why:** the owner wants every push to run QA; the repo has a hard **no-GitHub-Actions**
 invariant, so it must live in the local pre-push hook / our own infra — and must not
 become the next verse-smoke (#6234).
@@ -152,6 +152,12 @@ must yield (report `incomplete`) rather than block/SIGKILL if it can't finish.
 within the timeout and prints a clear verdict; pushing unrelated changes skips it; it
 never forces `--no-verify`.
 **Refs:** QA audit §3 (Tier 1), §4; #6234 lesson.
+
+**Shipped 2026-06-25:** `.githooks/pre-push` runs
+`scripts/qa-pre-push-smoke.ts` after `check:deploy`. The smoke scopes itself to
+changed user-facing surfaces, runs deterministic `qa run --fake-model` under
+`OA_QA_PRE_PUSH_TIMEOUT_MS` (default 60s), skips unrelated pushes, and remains
+warning-only so a failed or incomplete QA run never forces `--no-verify`.
 
 ### B3. QA on every push — Tier 2: full async QA pass on our GCE runner  ([#6238](https://github.com/OpenAgentsInc/openagents/issues/6238))
 **Type:** epic · **Lever:** dogfood/quality · **Status:** direction

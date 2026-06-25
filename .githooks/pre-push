@@ -33,5 +33,11 @@ if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then
   exit 1
 fi
 
-echo "[pre-push gate] check:deploy GREEN — push allowed." >&2
+echo "[pre-push gate] check:deploy GREEN." >&2
+echo "[pre-push gate] running warning-only Tier 1 QA smoke for changed user-facing surfaces..." >&2
+if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
+  echo "[pre-push gate] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
+fi
+
+echo "[pre-push gate] main gate green; QA smoke yielded — push allowed." >&2
 exit 0
