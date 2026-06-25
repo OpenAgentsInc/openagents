@@ -1,16 +1,29 @@
-Here is the planning memo for the OpenCode adoption lane.
+# OpenCode Adoption Lane — Planning Memo
 
----
+> Companion docs: [GTM push](../inference/2026-06-25-khala-inference-gtm-push.md) ·
+> [Runbook & audit](../inference/2026-06-25-opencode-khala-runbook-and-audit.md) ·
+> [Promise review](../promises/2026-06-25-khala-inference-push-promise-review.md) ·
+> [Head-to-head gym](./khala-head-to-head-gym-final-output.md) ·
+> [Tool compat audit](./khala-tool-compat-final-output.md)
 
-## OpenCode Adoption Lane — Planning Memo
+## Context
+
+**Big Pickle** (with a space) is the main free model in OpenCode — the default
+open/free option users reach for without a paid provider. Khala must beat Big
+Pickle on cost-per-accepted-outcome and verified-rate to be the natural
+default. (See [head-to-head gym doc](./khala-head-to-head-gym-final-output.md)
+for the full ladder: Khala vs Big Pickle → Khala vs free/open models → Khala
+vs paid frontier.)
 
 ### 1. Exact User Recipe (verified against both the live API and the OpenCode provider schema)
 
 The config is valid. OpenCode's `ConfigV2.Provider.Info` schema (at `packages/core/src/config/provider.ts` in the opencode repo) uses `api: { type: "aisdk", package: string, url?, settings? }`. The GTM doc's JSON maps directly: `npm` → `package`, `options` → `settings`. The OpenCode docs (`providers.mdx`) confirm the `@ai-sdk/openai-compatible` pattern matches any `/v1/chat/completions` endpoint.
 
-**Finalized recipe:**
+Direct chat-completions smoke is **verified**: a plain request to `openagents/khala` returned `200`, reported `usage.total_tokens: 399`, and the public counter increased by exactly 399. Full OpenCode tool-loop smoke is gated on the #6232 compatibility fix (content arrays + tool-call payloads; see runbook).
 
-```jsonc
+**Operational recipe** (from the runbook, includes `tool_call: true` and the doubled selector path):
+
+```json
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
@@ -24,11 +37,13 @@ The config is valid. OpenCode's `ConfigV2.Provider.Info` schema (at `packages/co
       "models": {
         "openagents/khala": {
           "name": "Khala",
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
-  }
+  },
+  "model": "openagents/openagents/khala"
 }
 ```
 
@@ -39,6 +54,8 @@ Key verification:
 | Base URL format matches provider schema | Confirmed — `baseURL` maps to `settings.baseURL` in the AISDK provider; the provider schema accepts `Record<string, unknown>` in `settings` |
 | `{env:OPENAGENTS_API_KEY}` syntax | Confirmed — OpenCode docs document the `{env:VAR}` syntax |
 | Model key `openagents/khala` sent upstream as model id | Confirmed — the AI SDK's `languageModel(api.id)` sends `api.id` as the `model` field in the POST body |
+| Direct chat + token accounting | **Verified** — 399-token delta confirmed on public counter |
+| Tool-call round-trip | **Gated on #6232** — content arrays and tool-call payloads under test |
 
 ### 2. Upstream/Provider Preset Opportunity
 
@@ -80,7 +97,7 @@ The free tier (200 req / 200k tokens per UTC day) is enforced by `decideFreeTier
 | Exhausted and then reset next UTC day | Next request within quota succeeds |
 | Mint a second key from same IP | Allowed up to 25/day; 26th gets 429 `free_key_mint_rate_limited` |
 
-**Risk**: OpenCode may not handle a 402 gracefully in all paths (model listing vs. chat completion). Need to test and possibly document a workaround (e.g., "if you see a 402, top up or wait for your daily quota to reset").
+**Risk**: OpenCode may not handle a 402 gracefully in all paths (model listing vs. chat completion). Need to test and possibly document a workaround (e.g., "if you see a 402, top up or wait for your daily quota to reset"). Big Pickle (the default free OpenCode model) has no quota gate — Khala must match that always-available expectation in the free tier, or users who hit the 200-req/200k-tok ceiling will silently fall back to Big Pickle rather than top up.
 
 ### 4. Token-Counter Acceptance Checks
 
@@ -94,36 +111,39 @@ The public counter (`GET /api/public/khala-tokens-served` and `/history`) is alr
 | Counter survives concurrent requests | Already verified under 24-wide concurrent stress (per GTM doc) |
 | Idempotency on retry | Same request_id does not double-count |
 
-### 5. Docs/Runbook Updates Needed
+### 5. Docs/Runbook Updates — Status
 
-No `docs/inference/runbook*` files exist. The inference README covers architecture but not adoption recipes. Required additions:
+The runbook already exists at `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md`. Remaining gaps:
 
 | Document | What it needs |
 |---|---|
-| `docs/inference/2026-06-25-khala-opencode-adoption-runbook.md` (new) | Full runbook: the exact config (with the `api.id` fix above), `curl` command to mint a key, step-by-step OpenCode `/connect` flow, quota behavior, what to test, troubleshooting |
-| `docs/inference/README.md` | Add a section "Ecosystem Adoption" linking to the new runbook, and a checklist row for OpenCode in the status table |
-| `apps/openagents.com/AGENTS.md` or a companion doc | Add the one-config recipe and the "what to test" checklist so future agent sessions can verify OpenCode integration without re-researching |
-| `/khala` page copy (public) | Once through copy gate: "Point OpenCode at Khala with this one-config recipe" — keep it short, link to the full runbook |
+| `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` | **Exists.** Contains: exact config (with `model: "openagents/openagents/khala"` doubled path), key minting curl, smoke commands, #6232 fix coverage, regression test list. Needs post-deploy update once #6232 lands — update the pre-fix smoke result, confirm tool-call round-trip passes. Also add Big Pickle as the stated default-comparator baseline. |
+| `docs/inference/README.md` | Add a section "Ecosystem Adoption" linking to the runbook, and mention Big Pickle as the main free OpenCode model that sets the comparison bar. |
+| `apps/openagents.com/AGENTS.md` or a companion doc | Add the one-config recipe and the "what to test" checklist so future agent sessions can verify OpenCode integration without re-researching. |
+| `/khala` page copy (public) | Once through copy gate: "Point OpenCode at Khala with this one-config recipe" — keep it short, link to the full runbook. |
 
-The runbook should also document the **model-key doubling fix** prominently, so anyone publishing the recipe gets the clean `openagents/khala` selector rather than the doubled form.
+The runbook documents the **model-key doubling** (`openagents/openagents/khala` in the TUI selector). The cleaner `api.id` override approach from §2 below is an alternative to keep on the table once tested.
 
 ### 6. Sequence / Gating
 
 In order of execution:
 
-1. **Verify** — Run a live OpenCode session against the endpoint with the fixed recipe (model key `khala`, api.id `openagents/khala`). Test tool-calling, streaming, all quota states, and the counter increment.
-2. **Write runbook** — `docs/inference/2026-06-25-khala-opencode-adoption-runbook.md` with the exact recipe, verbatim curl for key minting, and the test checklist.
-3. **Update README** — Link from `docs/inference/README.md` to the new runbook.
-4. **Update AGENTS.md** — Add the one-config recipe and checklist so agents can reproduce.
-5. **Promise-register** — Confirm the runbook recipe matches `inference.khala_free_openai_compatible_api.v1` (proposed) safeCopy before public copy.
-6. **Public copy** — Only after all above pass. The `/khala` page and any social copy reference the runbook.
-7. **Upstream PR** (optional, later) — Add `openagents` as a built-in OpenCode provider.
+1. **Ship #6232** — Deploy the content-array + tool-call payload fix from clean `origin/main`. Production smoke the fix before any published recipe.
+2. **Rerun OpenCode smoke** — With the fix live, run the runbook smoke against a dedicated `oa_agent_` key. Confirm tool calls, streaming, token counter movement, and all quota states. **Also smoke against Big Pickle** to establish the baseline tool-call experience users will compare Khala to.
+3. **Update the runbook** — `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` already exists; update it post-#6232 with the passing smoke result and Big Pickle baseline note.
+4. **Update README** — Link from `docs/inference/README.md` to the runbook.
+5. **Update AGENTS.md** — Add the one-config recipe and checklist so agents can reproduce.
+6. **Promise-register** — Confirm the runbook recipe matches `inference.khala_free_openai_compatible_api.v1` (proposed) safeCopy before public copy.
+7. **Public copy** — Only after all above pass. The `/khala` page and any social copy reference the runbook.
+8. **Upstream PR** (optional, later) — Add `openagents` as a built-in OpenCode provider.
 
 ### Summary of Open Items
 
 | Item | Resolution |
 |---|---|
-| Model key `openagents/khala` → doubled selector | Use `api.id` override in model config (fixed recipe above) |
-| 402 handling in OpenCode | Test and document; may need an OpenCode issue if unhandled |
+| Model key `openagents/khala` → doubled selector | Use `model: "openagents/openagents/khala"` in config (per runbook); `api.id` override alternative untested |
+| 402 handling in OpenCode | Test and document; may need an OpenCode issue if unhandled. Big Pickle has no quota gate — users hitting Khala's free ceiling will compare unfavorably |
+| Big Pickle baseline | **Missing from this doc** — added. Khala must beat Big Pickle on cost-per-accepted-outcome and verified-rate. Add a GYM ladder rung comparing Khala vs Big Pickle on the OpenCode coding-agent surface |
+| Runbook already exists | `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` — needs post-#6232 update |
 | Upstream preset PR | Deferred until the one-config recipe is verified |
 | Promise gate for public copy | Owner-gated; runbook is internal until green |

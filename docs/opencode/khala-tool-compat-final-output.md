@@ -196,4 +196,4 @@ After metering, `ServedTokensRecorder` writes a `token_usage_events` row idempot
    
 3. **Production smoke scripts** that exercise all seven smoke types above, runnable against staging/prod with a free key.
 
-4. **Documentation** for the GTM doc: confirm the OpenCode model key naming (the `openagents/openagents/khala` double-segment concern in §3.1). Consider accepting a shorter model key server-side so the OpenCode selector shows `openagents/khala` cleanly.
+4. **Documentation** for the GTM doc: note the `openagents/openagents/khala` display in OpenCode's TUI selector is a cosmetic concatenation of provider id (`openagents`) + model key (`openagents/khala`). The public model id on the server is already the single segment `openagents/khala` — no server-side change is needed. The display concern is purely OpenCode's `providerId/modelKey` rendering; if the cosmetic double-segment bothers users, the fix would be a shorter model key alias or a display hint in the OpenCode config, not a gateway change.

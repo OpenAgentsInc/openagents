@@ -1,15 +1,15 @@
-Here is the comprehensive inventory plan for `docs/OpenCode` — every surface found across the repo.
+Here is the comprehensive inventory plan for `docs/opencode/` — every surface found across the repo.
 
 ---
 
-## Inventory Plan: `docs/OpenCode`
+## Inventory Plan: `docs/opencode/`
 
 ### 1. Inference / Khala Integration (the GTM push targets)
 
 | File | Relevance |
 |---|---|
 | `docs/inference/2026-06-25-khala-inference-gtm-push.md`§151 | **Primary source** — names OpenCode as first ecosystem-tool target, exact config JSON for `opencode.json`, model selector path, "what to test" checklist |
-| `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` | **Operational runbook** — live compatibility audit, bug #6232 (content array + tool-call fixes), smoke commands, benchmark gem shape |
+| `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md` | **Operational runbook** — live compatibility audit, bug #6232 (content array + tool-call fixes), smoke commands, benchmark GYM (benchmarking gym) shape |
 | `docs/promises/2026-06-25-khala-inference-push-promise-review.md` | Promise copy gate for OpenCode recipe publication |
 
 ### 2. Reference Repo (external)
@@ -127,12 +127,12 @@ apps/openagents.com/docs/2026-06-02-chatgpt-codex-account-connection-opencode-op
 
 ---
 
-### Proposed `docs/OpenCode` Structure
+### Proposed `docs/opencode/` Structure
 
 Based on the inventory, we would recommend organizing into these sections:
 
 1. **`README.md`** — what OpenCode is in relation to OpenAgents, glossary (`opencode` the product vs `opencode_codex` the runtime string vs `codex` the OpenAI runtime)
-2. **`khala-integration.md`** — distill from the two GTM docs: config recipe, tool-call compatibility, running smoke tests, benchmark gem shape
+2. **`khala-integration.md`** — distill from the two GTM docs: config recipe, tool-call compatibility, running smoke tests, benchmark GYM shape
 3. **`runtime-opencode-codex.md`** — inventory of every `opencode_codex` literal: where it's defined in schema (sync-schema), where it's the default runtime (omni-runs), migration history (0019 SQL), test fixtures to update if renaming, and the UI copy path
 4. **`runtime-codex.md`** — inventory of standalone `codex` references: type unions, Pylon adapter/bridge code, Autopilot Desktop UI code, reverse-proxy routes (`chatgpt-codex`, `codex-runs`), infrastructure (`oa-codex-control`), and rename implications
 5. **`reference-repo.md`** — how the external opencode repo at `/Users/christopherdavid/work/projects/repos/opencode` is used (read-only reference, parity targets, `opencode-run.ts` helper), and whether a workspace symlink should exist

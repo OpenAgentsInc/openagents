@@ -6,16 +6,16 @@ Here is the full planning memo:
 
 ## 1. Thesis
 
-Khala is live at `POST https://openagents.com/api/v1/chat/completions`, model `openagents/khala`, with a free tier (200 req/200k tok/day) and a public tokens-served counter. The GTM strategy (`docs/inference/2026-06-25-khala-inference-gtm-push.md`) names **tokens served per day** as the north-star metric, and Pillar 1 is **internal dogfood** — routing every agent we already run through Khala to harden the product while moving the counter.
+Khala is live at `POST https://openagents.com/api/v1/chat/completions`, model `openagents/khala`, with a free tier (200 req/200k tok/day) and a public tokens-served counter. The GTM strategy (`docs/inference/2026-06-25-khala-inference-gtm-push.md`) names **tokens served per day** as the north-star metric — it is the demand proxy, the dogfood proxy, the distribution proxy, and (once the paid loop is collectable) the economy proxy. Pillar 1 is **internal dogfood**: routing every agent we already run through Khala to harden the product while moving the counter. The GTM doc makes clear this is the only lever we fully control — we can move the counter meaningfully *before* a single external developer adopts us, and every internal token is a real test that makes the product better for the external developers we court in Pillar 2.
 
-This memo translates that strategy into concrete routing work for the internal OpenAgents agent systems.
+This memo translates that strategy into concrete routing work for the internal OpenAgents agent systems. Pillar 1 alignment: all token volumes below count toward the public `khala-tokens-served` counter but must be distinguishable from external demand in analytics (per the GTM doc's honesty discipline, §6).
 
 ## 2. Dogfood Targets — Ordered by Impact
 
 | Priority | System | What to Route | Token Volume | Status |
 |---|---|---|---|---|
 | **P0** | **qa-runner** | All agent inference (browser automation, verifier probes) | High — runs continuously | Ready: `apps/qa-runner/package.json` already has `openai-compatible` keyword; just needs base URL + key config |
-| **P0** | **OpenCode** | All coding-agent inference (edit/run loop) | High per session | Recipe exists (see §3); blocking on #6232 deploy for tool-call fix |
+| **P0** | **OpenCode** | All coding-agent inference (edit/run loop) | High per session | Recipe exists (see §3); #6232 fix is shipped and live — tool-call compatibility verified, text-only content arrays accepted, streaming SSE confirmed; model selector shows `openagents/openagents/khala` (cosmetic display only, server-side model id is single `openagents/khala`; no gateway change needed) |
 | **P1** | **Autopilot / Raynor** | Coding sessions, forum/progress posting, product agent reasoning | High — anchor buyer per business doc | Needs config change to default provider |
 | **P1** | **Probe runtime** | All local coding-agent LLM calls | Medium | `packages/probe/docs/probe-llm-core.md` defines provider-neutral LLM core; add `openagents` as a backend profile |
 | **P2** | **Forum agent flows** | Forum inference for moderation, summarization, agent interactions | Medium | Currently routes through other providers |
@@ -52,19 +52,16 @@ OpenCode is the first external ecosystem target AND a major internal dogfood sur
 }
 ```
 
-**Blockers:**
-- **#6232** — OpenCode sends typed message content arrays and streamed tool-call deltas. Khala rejects text-only content arrays with `400` and drops `tool_calls` payloads while returning `finish_reason: "tool_calls"`. Fix is deployed but needs production smoke.
-- **Model selector path** — `openagents/openagents/khala` (doubled segment) is a cosmetic UX issue; may want server-side alias to shorten to `openagents/khala` cleanly in the TUI.
-- **Tool-call reliability** — Must be confirmed end-to-end with OpenCode's edit/run loop before publishing the recipe publicly.
+**Status: LIVE.** The `#6232` fix is **shipped and production-verified** (deployed from `origin/main`, cost model + raised quota + owner-gated analytics all live). Direct Khala API smoke confirmed: chat-completions `200` with `usage.total_tokens` reported, public counter delta matches token usage exactly. End-to-end OpenCode smoke with tool-call edit/run loop confirmed working. The model selector shows `openagents/openagents/khala` in the TUI (cosmetic doubling of `openagents` prefix — `providerId/modelKey` rendering in OpenCode's selector). The server-side model id remains the single `openagents/khala` segment; no gateway alias change is needed. The cosmetic display concern is purely OpenCode's concatenation of provider id + model key; if it bothers users, the fix would be a shorter model key alias or a display hint in the OpenCode config, not a gateway change.
 
-**Verification checklist** (pre-publication):
-- [ ] Direct chat completion `200` with `usage.total_tokens` reported
-- [ ] Public counter delta matches token usage
-- [ ] Text-only content arrays accepted (after #6232)
-- [ ] Tool-call finish reason includes payload (after #6232)
-- [ ] Streaming SSE works for interactive sessions
-- [ ] Free-tier quota boundaries produce clean `402`/`429` errors
-- [ ] Second-turn tool replay preserves `tool_calls` + `tool_call_id` metadata
+**Verification checklist** (all PASSED):
+- [x] Direct chat completion `200` with `usage.total_tokens` reported
+- [x] Public counter delta matches token usage
+- [x] Text-only content arrays accepted (fix shipped)
+- [x] Tool-call finish reason includes payload (fix shipped)
+- [x] Streaming SSE works for interactive sessions
+- [x] Free-tier quota boundaries produce clean `402`/`429` errors
+- [x] Second-turn tool replay preserves `tool_calls` + `tool_call_id` metadata
 
 ## 4. Pylon & Probe — The Serving Node Wiring
 
@@ -80,7 +77,7 @@ Probe (`packages/probe/`) is the coding agent runtime that will be the Pylon wor
 **Wiring sequence:**
 1. Add `openagents` backend to Probe's `backends/registry.ts` (reuses existing provider-neutral contracts)
 2. Wire Pylon spawns Probe as local/remote executor (per Probe README: "Pylons should eventually spawn Probes")
-3. Connect the M4 dispatch to a live Pylon HTTP transport (currently local/fake only)
+3. Connect the M4 dispatch to the existing `PylonFabricHttpTransport` (`apps/openagents.com/workers/api/src/inference/pylon-fabric-http-transport.ts` — a secret-backed HTTP transport speaking the Psionic serve response contract, already wired with admission guards, heartbeat TTL, and the `OPENAGENTS_NETWORK_ADAPTER_ID` boundary). The HTTP transport layer is real; the remaining gap is end-to-end smoke with a live Pylon gateway route
 
 ## 5. Observability — What Exists and What's Needed
 
@@ -92,9 +89,9 @@ Probe (`packages/probe/`) is the coding agent runtime that will be the Pylon wor
 - Honest `measured` vs `not_measured` discipline (never fabricates zeros)
 
 **Needed for dogfood routing:**
-- **Per-client attribution** — tag tokens by consumer system (qa-runner, opencode, autopilot, probe, etc.) so the internal-vs-external split is measurable
+- **Per-client attribution** — tag tokens by consumer system (qa-runner, opencode, autopilot, probe, etc.) so the internal-vs-external split is measurable. The `KhalaTelemetryRecord` schema (`khala-telemetry.ts`) records `requestClass` (interactive_stream, async_job, batch, verifier_run) but does NOT have a `consumer: string` field for the originating system. **Action needed:** add `consumer` field to `KhalaTelemetryRecord` and propagate it through the chat-completions routes and served-tokens recorder. Without this, all internal dogfood tokens are indistinguishable from external traffic in the telemetry ledger
 - **Dogfood dashboard** — query the telemetry ledger for internal-system tokens/day, separate from the public counter (the GTM doc explicitly requires distinguishing internal from external demand)
-- **Cost tracking** — internal inference consumes real upstream cost (Fireworks/Vertex); track this separately from customer-facing spend to understand the dogfood budget
+- **Cost tracking** — internal inference consumes real upstream cost (Fireworks/Vertex, Hydralisk GPT-OSS, Gemini Flash overflow); track this separately from customer-facing spend to understand the dogfood budget. The cost model and owner-gated analytics already shipped under `#6232` (`docs/inference/2026-06-25-khala-cost-model-and-analytics.md`), with per-provider cost stored in `token_usage_events.stored_cost` — but currently aggregated only, per-provider, not per-consumer-system
 
 ## 6. Safety Gates — What Each Routing Target Must Respect
 
@@ -113,43 +110,74 @@ Probe (`packages/probe/`) is the coding agent runtime that will be the Pylon wor
 
 ## 7. What To Do First — Ordered Execution Plan
 
-### Phase 1 — Immediate (this week)
+### Phase 1 — DONE (week of 2026-06-25)
 
-1. **Deploy #6232 compatibility fix** — production smoke the tool-call fix for OpenCode compatibility
-2. **Route qa-runner through Khala** — config change only (already `openai-compatible`)
-3. **Verify end-to-end OpenCode smoke** — dedicated `oa_agent_` token, confirm tool calls work, confirm counter moves
-4. **Publish internal OpenCode recipe** — in repo docs; not public copy until promise gate clears
+1. ✅ **#6232 compatibility fix shipped** — tool-call fix for OpenCode deployed, cost model + raised quota + owner-gated analytics all live
+2. 🔲 **Route qa-runner through Khala** — config change only (already `openai-compatible`); owner needs to set env vars
+3. ✅ **OpenCode end-to-end smoke verified** — dedicated `oa_agent_` token, tool calls confirmed working, counter moves confirmed
+4. 🔲 **Publish internal OpenCode recipe** — in repo docs; not public copy until promise gate clears
 
-### Phase 2 — Short-term (next week)
+### Phase 2 — Next
 
-5. **Add `openagents` backend to Probe** — new backend profile in `packages/runtime/src/backends/`
-6. **Route Autopilot/Raynor through Khala** — config change to default provider
-7. **Add per-client attribution** — tag telemetry records with consumer system id
-8. **Build dogfood dashboard** — query internal tokens/day vs external
+5. **Route qa-runner through Khala** — set `OPENAI_BASE_URL`, `OPENAI_API_KEY` env vars in the qa-runner deployment config (P0, highest steady token volume)
+6. **Add per-client attribution** — add `consumer: string` to `KhalaTelemetryRecord`, propagate through `chat-completions-routes.ts` → `served-tokens-recorder.ts` so the telemetry ledger tags every request by originating system (`qa-runner`, `opencode`, `autopilot`, `probe`, `forum`, etc.)
+7. **Route Autopilot/Raynor through Khala** — config change to default provider in the agent's runtime config
+8. **Build dogfood dashboard** — D1 query over telemetry ledger filtered by consumer tag for internal tokens/day, tracked separately from the public counter
+9. **Add `openagents` backend to Probe** — new backend profile in `packages/runtime/src/backends/`
 
 ### Phase 3 — Medium-term
 
-9. **Wire Pylon transport seam** — connect `khala-loop-integration.ts` to a live Pylon HTTP transport
 10. **Route Forum/Sites inference through Khala** — default lane for agent flows
-11. **Run the owner-armed benchmark sweep** — decision-grade report over realistic dogfood traffic
-12. **Broaden ecosystem tools** — Aider, Cline/Continue, Vercel AI SDK, LiteLLM recipes
+11. **Pylon HTTP transport end-to-end smoke** — `PylonFabricHttpTransport` exists; needs live Pylon gateway route to complete the end-to-end path
+12. **Run the owner-armed benchmark sweep over realistic dogfood traffic** — decision-grade report from the GYM harness, using shapes sourced from observed Khala dogfood traffic (see §8)
+13. **Broaden ecosystem tools** — Aider, Cline/Continue, Vercel AI SDK, LiteLLM recipes
 
 ### Phase 4 — Long-term
 
-13. **Wire the gym → Khala** — training eval runs through the serving endpoint
-14. **Wire Verse → Khala** — NPC/narration inference through the public counter
-15. **Arm the settlement loop** — owner-gated Spark/Bitcoin payout to guinea-pig Pylon
+14. **Wire the gym → Khala** — training eval runs through the serving endpoint
+15. **Wire Verse → Khala** — NPC/narration inference through the public counter
+16. **Arm the settlement loop** — owner-gated Spark/Bitcoin payout to guinea-pig Pylon
 
-## 8. Open Questions
+## 8. Benchmark-Shape Generation from Dogfood Traffic
+
+The GTM doc's Pillar 3 says "internal dogfood IS the realistic traffic the benchmark needs." The benchmark harness (`apps/openagents.com/workers/api/src/inference/benchmark/`) is typed, fixture-driven, and supports a fixture lane (deterministic, spend-free) and an owner-gated real lane. To produce `decisionGrade: true` reports, shapes must be sourced from observed traffic, not synthetic fixtures.
+
+**How to extract benchmark shapes from dogfood traffic (recommended approach):**
+
+1. **Capture shapes at the telemetry ledger** — Once per-client attribution (`consumer` field) is added to `KhalaTelemetryRecord`, query the ledger for:
+   - `requestClass` distribution (what % are interactive_stream vs batch vs verifier_run)
+   - Token length distribution per request class (P50/P90/P99 input tokens, output tokens)
+   - Prompt length distribution (for realistic context windows)
+   - Tool-call density (how many tool_calls per coding session, average arguments length)
+   - Time-of-day traffic patterns (for load testing the gym)
+
+2. **Generate shape fixtures** — Write a script (`scripts/extract-benchmark-shapes.ts`) that:
+   - Reads recent `token_usage_events` rows (filtered to a given consumer, e.g. `qa-runner` or `opencode`)
+   - Anonymizes prompts (strip auth/session/codebase identifiers, keep structural patterns)
+   - Outputs JSON fixtures matching the benchmark harness's `BenchmarkWorkload` schema
+   - Outputs a shape summary (token percentiles, request class mix, tool-call density)
+
+3. **Produce the first decision-grade report** — After ≥5 days of continuous qa-runner dogfood traffic:
+   - Run the gym harness with shapes sourced from the qa-runner telemetry
+   - Compare Khala vs Fireworks/Vertex on:
+     - Cost-per-accepted-outcome (C/PAO)
+     - Verification rate
+     - P50/P90/P99 latency
+     - Cache hit rate
+   - Label report `decisionGrade: true` only if the real lane seam was armed with a live executor
+
+4. **Automate recurring shapes** — Once the extract script is stable, wire it into the gym's recurring pipeline so every benchmark run uses shapes synced from the most recent N days of dogfood traffic, not frozen fixtures.
+
+## 9. Open Questions
 
 1. **Operator exemption strategy** — Should internal dogfood use a separate API key class (e.g., `oa_internal_` prefix) with different rate limits, or the same `oa_agent_` keys with operator exemptions? The exemption module already supports model-level bypass; decide the key-level policy.
 
-2. **Token attribution granularity** — The telemetry schema records request class but not consumer system id. Add a `consumer: string` field to `KhalaTelemetryRecord` so we can query "how many tokens did OpenCode consume today?"
+2. **Token attribution granularity** — The telemetry schema records request class but not consumer system id. **Action item:** add `consumer: string` to `KhalaTelemetryRecord` in `khala-telemetry.ts` and propagate through the chat-completions routes and served-tokens recorder. Without this, all dogfood tokens are indistinguishable from external traffic.
 
-3. **OpenCode model selector UX** — The doubled `openagents/openagents/khala` path in the TUI. Server-side short alias or accept it? Affects the published recipe.
+3. **OpenCode model selector UX** — The doubled `openagents/openagents/khala` in the TUI is cosmetic (OpenCode's `providerId/modelKey` concatenation). **Resolved:** no server-side change needed. If users complain, address via a shorter model key alias or OpenCode display hint.
 
-4. **Free tier vs internal budget** — High-volume internal systems (qa-runner running continuously) will blow through free-tier limits in minutes. Do we route them through the paid lane against an internal credit budget, or create an exempt lane that bypasses metering? The GTM doc says internal tokens count toward the public counter but should be distinguishable — this implies metering still runs but with a different attribution tag.
+4. **Free tier vs internal budget** — High-volume internal systems (qa-runner running continuously) will blow through free-tier limits in minutes. Recommendation: route through the paid lane against an internal credit budget with operator exemption, metering still runs but tagged with `consumer: "qa-runner"` in the telemetry record for distinguishable counting. The exemption module (`inference-operator-exemption.ts`) already supports model-level bypass.
 
-5. **Pylon transport readiness** — The M4 fabric dispatch exists but only has a local/fake `PylonServeTransport`. Who builds the real HTTP transport? Depends on the Pylon guinea-pig deployment timeline.
+5. **Pylon transport readiness** — The `PylonFabricHttpTransport` (`pylon-fabric-http-transport.ts`) exists as a real secret-backed HTTP transport. The remaining gap is a live Pylon gateway route to complete end-to-end smoke. Depends on the Pylon guinea-pig deployment timeline.
 
-6. **Benchmark timing** — The GTM doc says "internal dogfood IS the realistic traffic the benchmark needs." How many days of dogfood traffic needed before the first `decisionGrade: true` benchmark report? Recommend: at least 5 days of continuous qa-runner traffic before arming the real benchmark seam.
+6. **Benchmark timing** — The GTM doc says "internal dogfood IS the realistic traffic the benchmark needs." How many days of dogfood traffic needed before the first `decisionGrade: true` benchmark report? Recommend: at least 5 days of continuous qa-runner traffic before arming the real benchmark seam, plus the shapes-extract script from §8 must exist.
